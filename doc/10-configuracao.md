@@ -17,9 +17,11 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
-| Fator de replicação | `replication.factor` | **3** | Número de nós responsáveis (primário + réplicas) que precisam confirmar o registro e o commit antes de responder ao cliente. | 3.1, 7.1, 7.2 |
-| Retry de registro/commit de mensagem | `write.retry.attempts`, `write.retry.backoff` | A definir | Tentativas (e intervalo/backoff) ao repetir a chamada ao nó que falhou, tanto no registro quanto no commit. Esgotado, retorna erro ao cliente e envia rollback. | 3.1, 7.2 |
-| Expiração de registro pendente | `write.pending.ttl` | A definir | Tempo após o qual um registro sem commit é descartado sozinho (o rollback apenas antecipa a liberação). | 3.1 |
+| Fator de replicação | `replication.factor` | **3** | Número total de nós responsáveis (primário + réplicas) que devem acabar recebendo a mensagem — a durabilidade "plena", alcançada em segundo plano quando o quórum é menor que o total. | 3.1, 7.1, 7.2 |
+| Quórum mínimo de escrita | `write.quorum` | Maioria de `replication.factor` (ex.: **2** em 3) | Número de confirmações — **sempre incluindo o primário do bloco** (nunca um quórum só de réplicas) — suficiente para decidir o commit e responder ao cliente, sem esperar as demais réplicas. Só vale para **mensagens** (escrita, entrega/invisibilidade, ack); registro de nó e definição de tópico continuam exigindo todos os nós, sem quórum reduzido. | 3.1, 7.2 |
+| Retry de registro/commit de mensagem | `write.retry.attempts`, `write.retry.backoff` | A definir | Tentativas (e intervalo/backoff) ao repetir a chamada ao nó que falhou, tanto no registro quanto no commit. | 3.1, 7.2 |
+| Expiração de registro pendente | `write.pending.ttl` | A definir | Tempo após o qual um registro (fase 1) sem commit é descartado sozinho, se ainda não chegou rollback. Só se aplica **antes** do quórum decidir; depois disso não há mais descarte. | 3.1 |
+| Teto do commit (fase 2) | `write.commit.timeout` | A definir | Tempo máximo que o coordenador insiste no commit **nas réplicas fora do quórum**, depois de já ter respondido ao cliente. Esgotado o teto sem confirmação em alguma réplica, o coordenador **não faz rollback** (o quórum, com o primário, já efetivou a mensagem) e continua tentando em segundo plano — o bloco fica temporariamente abaixo do fator de replicação pleno, mas nunca abaixo do quórum. | 3.1, 7.2 |
 
 ## Cluster
 
@@ -43,7 +45,7 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PATCH`. | 12.3 |
 | Tamanho da lista de prontos | `delivery.ready-list.size` | A definir | Número fixo de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
 
-> Retry e expiração de pendente da invisibilidade reutilizam `write.retry.*` e `write.pending.ttl`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
+> Quórum, retry, expiração de pendente e teto de commit da invisibilidade reutilizam `write.quorum`, `write.retry.*`, `write.pending.ttl` e `write.commit.timeout`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
 ## Observabilidade
 

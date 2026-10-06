@@ -6,7 +6,7 @@
  
 Decisão de arquitetura definida para a comunicação e o gerenciamento de membros do cluster.
  
-Registro e desregistro de nó são operações **pesadas** (afetam o roteamento do anel inteiro), por isso ambos usam o **mesmo protocolo em duas fases (registro → commit)** definido para mensagens na seção 7.2 — garantindo que a operação só é efetivada quando todos os nós confirmam.
+Registro e desregistro de nó são operações **pesadas** (afetam o roteamento do anel inteiro), por isso ambos usam o **mesmo protocolo em duas fases (registro → commit)** definido para mensagens na seção 7.2 — garantindo que a operação só é efetivada quando **todos** os nós confirmam. Diferente das mensagens, aqui **não há quórum reduzido**: são operações raras, sem o caminho crítico de latência que justifica decidir o commit antes de todas as confirmações.
  
 ### 6.1 Comunicação entre nós
 - A comunicação entre nós é feita via **API HTTP**.
@@ -18,7 +18,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 4. Após todos confirmarem a fase de registro, o nó que recebeu envia a **todos os nós** uma chamada de **commit (fase 2)**, efetivando o novo nó na tabela de membros.
 5. Só então **responde** à chamada original do novo nó com a **tabela de nós** (já com o commit confirmado em todo o cluster) e a **tabela de tópicos** ([02-arquitetura.md](02-arquitetura.md), seção 3.3).
 6. Ao final do processo, o novo nó já conhece todos os demais membros do cluster e vice-versa, e o novo nó abre ativamente o canal permanente com cada nó da tabela (seção 6.1). Quando um nó cai e reinicia, é sempre ele quem se conecta de volta aos outros, pelos IPs que conhece da tabela de membros.
-7. Se o teste de conexão (passo 2) falhar, ou se a fase de registro/commit não for confirmada por todos os nós, o processo é abortado e o novo nó é **excluído** — ver seção 6.5.
+7. **Falha antes do commit** (teste de conexão do passo 2, ou fase de registro sem confirmação de todos): o processo é abortado (rollback do registro pendente) e o novo nó é **excluído** — ver seção 6.5. **Falha no commit** (fase de registro já confirmada por todos): a decisão já foi tomada e não é desfeita — o nó que coordena insiste no commit dentro do teto `write.commit.timeout` até confirmar em todos, em vez de abortar o novo nó, pois algum membro do cluster já pode tê-lo efetivado na tabela.
 8. Ao assumir sua posição no anel (seção 7), o novo nó passa a ser responsável por blocos de mensagem como primário, secundário, terciário etc., conforme o fator de replicação configurado — seguindo o procedimento de sincronização distribuída da seção 7.3.
 ### 6.3 Detecção de falhas e desregistro
  
@@ -26,7 +26,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 2. Quando o canal com um nó **cai ou fica sem sinal de vida**, o nó que detectou **tenta reconectar algumas vezes** (tentativas e intervalo configuráveis) antes de agir.
 3. Se o canal continuar fora após as tentativas, isto é, o nó ficou inacessível por tempo demais, é aberta uma **votação de exclusão** entre os nós do cluster.
 4. **Quórum mínimo padrão: 3 votos** concordando com a exclusão para efetivar a remoção — valor inicial a ser confirmado/ajustado conforme testes em produção.
-5. Atingido o quórum, o desregistro segue o **mesmo protocolo de duas fases**: um pedido de **desregistro (fase 1)** é enviado a todos os nós e, em seguida, um **commit (fase 2)** efetiva a remoção do nó da tabela de membros em todo o cluster.
+5. Atingido o quórum, o desregistro segue o **mesmo protocolo de duas fases**: um pedido de **desregistro (fase 1)** é enviado a todos os nós e, em seguida, um **commit (fase 2)** efetiva a remoção do nó da tabela de membros em todo o cluster. Mesma regra de falha da seção 7.2: antes do commit, rollback; depois de decidido, sem rollback — insiste dentro do teto `write.commit.timeout` até confirmar a remoção em todos.
 > Enquanto a votação não conclui, os sinais para o nó ficam acumulados em filas em memória; se o canal reconecta antes disso, nada muda e o envio é retomado. Se a fila estourar o limite, o nó é tratado como falho e a votação é aberta. Concluída a exclusão, todos os nós descartam as filas para aquele nó ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.9).
 ### 6.4 Tamanho mínimo do cluster
 | Ambiente | Nós mínimos | Racional |
@@ -36,7 +36,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
  
 ### 6.5 Falha no registro de um novo nó
  
-Se o registro de um novo nó **falhar** (teste de conexão do bootstrap malsucedido, ou a fase de registro/commit não confirmada por todos os nós):
+Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bootstrap malsucedido, ou a fase de registro sem confirmação de todos os nós, dentro de `write.commit.timeout` — seção 6.2, passo 7):
  
 1. O nó é **excluído** do cluster — não chega a ser efetivado na tabela de membros.
 2. Os **blocos** que seriam assumidos por ele são **rebalanceados** entre os nós restantes do cluster (o anel de hash é recalculado sem esse nó).

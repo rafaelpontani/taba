@@ -98,8 +98,10 @@ Lado **coordenador** (nó que recebeu a publicação):
 | `msg.write.coordinated` | counter | {message} | `outcome` (`committed`/`failed`) | Publicações coordenadas por este nó. |
 | `msg.write.duration` | histogram | s | `phase` (`register`/`commit`/`total`) | Duração de cada fase e da escrita completa. |
 | `msg.write.retries` | counter | {retry} | `phase`, `peer` | Retries por fase e por nó de destino — o registro concentra a maior parte das falhas. |
-| `msg.write.rollbacks` | counter | {rollback} | — | Rollbacks enviados após esgotar os retries. |
-| `msg.write.replicas_confirmed` | histogram | {node} | — | Réplicas com commit confirmado por escrita (deve acompanhar `replication.factor`). |
+| `msg.write.rollbacks` | counter | {rollback} | — | Rollbacks enviados por falha em fechar o **quórum** (fase 1), após esgotar os retries — nunca por falha em réplica fora do quórum. |
+| `msg.write.commit_timeouts` | counter | {timeout} | — | Vezes que `write.commit.timeout` esgotou sem commit confirmado numa réplica fora do quórum; o commit já decidido **não** é desfeito, e o retry continua em segundo plano. |
+| `msg.write.replicas_confirmed` | histogram | {node} | — | Réplicas com commit confirmado por escrita, medido em dois pontos: **na resposta ao cliente** (deve acompanhar `write.quorum`) e **eventualmente** (deve acompanhar `replication.factor`). |
+| `msg.write.quorum_latency` | histogram | s | — | Tempo entre o início da escrita e o quórum confirmado — a latência que o cliente efetivamente espera. |
 
 Lado **réplica** (nó responsável pelo bloco):
 
@@ -173,8 +175,9 @@ Derivada das métricas de nó, exposta em `GET /stats/cluster` e `GET /health/re
 | `member-unreachable` | aviso | Canal com algum nó caído ou em reconexão, ainda antes da votação. |
 | `node-frozen` | aviso | Nó(s) em período de freezing. |
 | `syncing` | aviso | Blocos em sincronização; a entrega está suspensa neles (seção 7.3). |
-| `under-replicated` | crítica | Blocos com menos réplicas íntegras que `replication.factor` — escritas podem falhar por não atingir o número de réplicas. |
-| `quorum-lost` | crítica | Menos nós ativos que o quórum de votação; nenhuma exclusão de nó consegue ser efetivada. |
+| `under-replicated` | aviso | Blocos com menos réplicas íntegras que `replication.factor`, mas ainda **no ou acima do `write.quorum`** — estado normal e transitório (réplica alcançando o commit em segundo plano, seção 7.2), escritas continuam respondendo ao cliente normalmente. |
+| `write-quorum-at-risk` | crítica | Blocos com réplicas íntegras **abaixo do `write.quorum`** — escritas podem falhar por não conseguir fechar quórum algum. |
+| `quorum-lost` | crítica | Menos nós ativos que o quórum de votação (`cluster.vote.quorum`); nenhuma exclusão de nó consegue ser efetivada. Não confundir com `write-quorum-at-risk`, que é sobre durabilidade de mensagens, não sobre votação de membros. |
 | `membership-divergent` | crítica | Tabelas de membros com versões diferentes entre nós. |
 | `message-loss` | crítica | Um ou mais eventos de perda de mensagem registrados. |
 | `storage-pressure` | aviso | Disco de `storage.dir` abaixo de um limite de espaço livre. |
@@ -342,12 +345,12 @@ Detalhes:
 
 Um trace por operação de cliente, com spans internos para cada etapa relevante:
 
-- **Publicação:** span raiz `POST /topics/{topic}/messages` → span de registro (um por nó de destino) → span de commit (um por nó de destino) → rollback, se houver. O contexto de trace é propagado nas chamadas internas entre nós (cabeçalho W3C `traceparent`), de modo que a escrita completa aparece em um único trace mesmo passando por vários nós.
+- **Publicação:** span raiz `POST /topics/{topic}/messages` → span de registro (um por nó de destino) → span de commit (um por nó de destino) → rollback, se a falha foi em fechar o **quórum**. O span raiz **termina com sucesso assim que o quórum confirma o commit** (sempre incluindo o primário) — não espera as demais réplicas. Os spans de registro/commit das réplicas fora do quórum continuam **fora do trace já encerrado**; se `write.commit.timeout` esgota numa delas, isso não reabre nem afeta o span raiz, só gera o evento de observabilidade correspondente (`msg.write.commit_timeouts`). O contexto de trace é propagado nas chamadas internas entre nós (cabeçalho W3C `traceparent`), de modo que a escrita completa aparece em um único trace mesmo passando por vários nós.
 - **Consumo e ack:** span raiz da requisição → leitura em memória ou disco.
 - **Sincronização de bloco:** um trace por bloco sincronizado, com um span por lote de `GET`, indicando o nó de origem.
 - **Registro/desregistro de nó e votação:** um trace por operação, com um span por nó consultado.
 - **Atributos dos spans:** tags do tópico, ID da mensagem, ID do bloco, IDs dos nós envolvidos, número da tentativa (retry). Como o ID da mensagem é um GUID v7 de alta cardinalidade, ele vai em **traces e logs, nunca em métricas**.
-- **Amostragem:** `telemetry.traces.sample-ratio`; falhas (erro ao cliente, rollback, perda de mensagem) devem ser sempre mantidas.
+- **Amostragem:** `telemetry.traces.sample-ratio`; falhas e eventos de durabilidade (erro ao cliente, rollback, teto de commit esgotado numa réplica, perda de mensagem) devem ser sempre mantidos.
 
 ## Logs
 
@@ -356,8 +359,9 @@ Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id
 | Evento | Nível | Origem |
 |---|---|---|
 | Falha de registro/commit de mensagem (por tentativa) | `warn` | Escrita (seção 7.2) |
-| Escrita abortada e rollback enviado | `error` | Escrita (seção 3.1) |
+| Escrita abortada e rollback enviado (falha em fechar o quórum) | `error` | Escrita (seção 3.1) |
 | Registro pendente expirado | `warn` | Escrita (seção 3.1) |
+| Teto de commit esgotado numa réplica fora do quórum, sem rollback — retry continua em segundo plano | `warn` | Escrita (seção 7.2) |
 | Canal com um nó caiu, reconectou ou esgotou as tentativas; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
 | Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
 | Falha de bootstrap do nó | `error` | Cluster (seção 6.5) |

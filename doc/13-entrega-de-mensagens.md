@@ -12,7 +12,7 @@ A entrega segue o modelo de **invisibilidade temporária**, como o *visibility t
 
 | Peça | Papel |
 |---|---|
-| **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor. Propagada a todos os nós responsáveis pela mensagem antes de ela ser entregue. |
+| **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor. Propagada ao **quórum** de nós responsáveis (`write.quorum`, sempre incluindo o primário) antes de ela ser entregue; réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). |
 | **Contador de entregas** | `deliveryCount`, incrementado a cada entrega. Base para reentrega e, futuramente, dead-letter. |
 | **Metadados da mensagem** | `deliveryCount` e `invisibleUntil`, guardados junto da mensagem em memória ou em disco (seção 12.5). |
 | **Dono da entrega** | O nó primário do bloco da mensagem: só ele a coloca na sua lista de prontos (seção 12.7). |
@@ -27,12 +27,14 @@ O nó que atende o `GET` usa o mesmo protocolo em duas fases da escrita (seção
 1. Escolhe um ID da **lista de prontos** do tópico (seção 12.6), que contém só mensagens de que ele é o dono da entrega (seção 12.7).
 2. Calcula, pelo ID, os **nós responsáveis** pelo bloco (primário + réplicas), como na seção 7.2.
 3. **Fase 1 (registro):** envia a todos eles o pedido de marcar a mensagem como invisível até `agora + visibilityTimeout`, com `deliveryCount + 1`. Cada nó grava a alteração como **pendente** e confirma.
-4. **Fase 2 (commit):** com todos os registros confirmados, o coordenador do `GET` chama o commit em todos os nós. Cada nó efetiva a nova invisibilidade e o novo contador.
-5. **Só depois** de o commit ser confirmado a mensagem é **devolvida ao cliente**.
-6. Ao receber o commit, cada nó **remove o ID da sua lista de prontos** do tópico — a mensagem deixa de ser candidata a nova entrega em qualquer réplica.
-7. Falha no registro ou no commit: retry, e esgotado, **rollback** para descartar a alteração pendente. Mesmos parâmetros de retry e de expiração de pendente da escrita (`write.retry.*`, `write.pending.ttl`).
+4. **Fase 2 (commit), decidida por quórum:** assim que o **quórum de confirmações** é atingido — o **primário sempre incluso** (é ele quem remove o ID da própria lista de prontos, passo 6) —, o coordenador do `GET` decide e chama o commit nos nós do quórum.
+5. **Só depois** de o commit ser confirmado **no quórum** a mensagem é **devolvida ao cliente**; as réplicas fora do quórum recebem o commit em segundo plano.
+6. Ao receber o commit, cada nó do quórum **remove o ID da sua lista de prontos** do tópico. Como o primário está sempre no quórum, a mensagem deixa de ser candidata a nova entrega **no próprio nó que a entregou** no mesmo instante em que o cliente a recebe — igual ao comportamento de hoje, sem depender das réplicas fora do quórum.
+7. **Falha antes do quórum fechar:** retry e, esgotado, **rollback** para descartar a alteração pendente (mesmos `write.retry.*` e `write.pending.ttl` da escrita, seção 7.2). **Falha nas réplicas fora do quórum:** sem rollback — o coordenador insiste dentro do teto `write.commit.timeout`.
 
-A mensagem só chega ao cliente depois de a invisibilidade estar marcada em **todos** os nós responsáveis; assim, uma queda do coordenador logo após a entrega não faz outro nó entregá-la em paralelo.
+A mensagem só chega ao cliente depois de a invisibilidade estar marcada no **quórum** (sempre incluindo o primário); assim, uma queda do coordenador logo após a entrega não faz outro nó entregá-la em paralelo **a partir do mesmo bloco**.
+
+> **Trade-off aceito:** se o primário cair exatamente entre commitar localmente (passo 4) e replicar isso às réplicas fora do quórum, e for excluído do cluster antes de terminar essa replicação, o novo primário herda — via sincronização de bloco (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) — o `invisibleUntil` de **quem sobreviveu**, que pode estar desatualizado. Na prática, a mensagem pode voltar a ficar entregável **antes** do prazo original prometido ao primeiro consumidor. Isso não quebra a semântica *at-least-once* (entrega duplicada já é esperada) — só encurta, nesse caso raro, a garantia de tempo mínimo de processamento do `visibilityTimeout`.
 
 ### 12.3 Alteração da invisibilidade
 
@@ -42,12 +44,12 @@ O cliente pode **alterar e acrescentar** tempo de invisibilidade de uma mensagem
 |---|---|---|
 | `PATCH` | `/topics/{topic}/messages/{id}` | Altera a invisibilidade da mensagem: `{"visibilityTimeout": 300}`. |
 
-A alteração é propagada com o **mesmo processo**: pedido de alteração (registro) a todos os nós responsáveis e, com todos confirmando, commit. Só então a chamada responde ao cliente. Esta operação **não** incrementa `deliveryCount` (não é uma nova entrega) e **não** mexe na lista de prontos.
+A alteração é propagada com o **mesmo processo**: pedido de alteração (registro) a todos os nós responsáveis e, com o **quórum** confirmando (primário incluso), commit. Só então a chamada responde ao cliente; as réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). Esta operação **não** incrementa `deliveryCount` (não é uma nova entrega) e **não** mexe na lista de prontos.
 
 ### 12.4 Confirmação (ack) e reentrega
 
-- **Ack** (`DELETE /topics/{topic}/messages/{id}`): segue o **mesmo protocolo de registro + commit** das demais operações sobre a mensagem (entrega, seção 12.2; escrita, seção 7.2). O coordenador do `DELETE` pede o registro da remoção a todos os nós responsáveis pelo bloco; só com todos confirmando ele chama o commit, que remove a mensagem e seus metadados em cada nó — **sem deixar tombstone**: a ausência do ID já é suficiente, e a sincronização de bloco trata a janela residual de uma remoção concorrente por conta própria (verificação final, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)).
-- **Falha:** se o registro ou o commit não forem confirmados por todos os nós, a operação é **cancelada** (rollback, mesma regra da seção 3.1) e a API retorna **erro ao cliente** — a mensagem continua disponível, nunca um ack parcial.
+- **Ack** (`DELETE /topics/{topic}/messages/{id}`): segue o **mesmo protocolo de registro + commit** das demais operações sobre a mensagem (entrega, seção 12.2; escrita, seção 7.2). O coordenador do `DELETE` pede o registro da remoção a todos os nós responsáveis pelo bloco; com o **quórum** confirmando (primário incluso) ele chama o commit, que remove a mensagem e seus metadados nesses nós — as réplicas fora do quórum removem em segundo plano — **sem deixar tombstone**: a ausência do ID já é suficiente, e a sincronização de bloco trata a janela residual de uma remoção concorrente por conta própria (verificação final, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)).
+- **Falha:** mesma regra da seção 3.1/7.2 — falha antes do quórum fechar **cancela** o ack (rollback) e a API retorna erro ao cliente, a mensagem continua disponível; falha nas réplicas fora do quórum, já decidido, não é desfeita: o coordenador insiste dentro do teto `write.commit.timeout` e, esgotado, o bloco fica temporariamente abaixo do fator de replicação pleno (evento de observabilidade, não falha de saúde). Nunca um ack parcial visível a outro consumidor — o quórum inclui sempre o primário, que é quem decide se a mensagem ainda existe para efeito de entrega.
 - **Reentrega:** se o prazo `invisibleUntil` passa sem ack, a mensagem volta a ser elegível. *(Proposta: a thread da lista de prontos, seção 12.6, também re-inclui as mensagens cuja invisibilidade expirou.)* Ao ser entregue de novo, `deliveryCount` sobe.
 
 ### 12.5 Metadados em memória e em disco

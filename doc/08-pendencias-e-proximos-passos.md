@@ -12,7 +12,7 @@ Legenda:
 - `[ ]` — em aberto, sem proposta.
 - `[~]` — parcialmente resolvida: o texto diz **o que já está definido**, e cada pergunta que falta tem seu sub-código.
 
-**Já decididas** (registradas nos documentos técnicos): D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3.
+**Já decididas** (registradas nos documentos técnicos): D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3; rollback do protocolo de registro/commit limitado a antes do quórum decidir, com teto configurável (`write.commit.timeout`) para as réplicas fora do quórum depois de decidido, em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2; **estratégia de quórum mínimo para mensagens** (`write.quorum`, sempre incluindo o primário do bloco, em vez de esperar confirmação de todas as `replication.factor` réplicas) para escrita, entrega/invisibilidade e ack — registro/desregistro de nó e definição de tópico continuam exigindo confirmação de todos os nós, sem quórum reduzido — em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2 e [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.2.
 
 ### Resumo das dúvidas por passo
 
@@ -21,11 +21,12 @@ Legenda:
 | 1 — Contrato da API | D2, D4, D6–D7, D25, D27–D28, D31: ordenação, assinantes do `broadcast`, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET` |
 | 2 — Arquitetura | D8, D9, D29, D30: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova |
 | 3 — Protótipo | D10–D13: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
+| 4 — Protocolo de registro/commit | D33: quórum de escrita fixo ou proporcional |
 | 6 — Sincronização | D15–D16: evento de perda, otimização de listagem |
 | 8 — Sinal de vida, quórum e freezing | D17–D19: quórum, freezing, retry do bootstrap |
 | 10 — Docker e Kubernetes | D20–D24: métricas, Prometheus, rate limit das rotas de operação, `X-Forwarded-For`, métricas por assinante |
 
-Os passos 4, 5, 7 e 9 não têm dúvidas próprias.
+Os passos 5, 7 e 9 não têm dúvidas próprias.
 
 Os valores numéricos ainda "A definir" em [10-configuracao.md](10-configuracao.md) (retries, intervalos, TTLs, limiares, tetos) são **calibragem**, não dúvida de design: cada passo os cita numa linha "Valores iniciais" e eles podem ser fechados com um chute razoável e ajustados em teste.
 
@@ -54,7 +55,7 @@ Cobre os endpoints de registro/descoberta de nós, mensagens, sincronização e 
 O fluxo de escrita está definido (seção 3.1); os itens abaixo são lacunas do desenho.
 
 - **D8.** [ ] **Como um nó novo encontra o primeiro nó do cluster** (seção 6.2 diz "se conecta a um nó existente", mas não como obtém o endereço): lista de sementes, DNS, API do Kubernetes. Liga-se à "descoberta automática" do escopo e à integração com Kubernetes (seção 4.4). Vale também para o reinício de um nó, que volta como nó novo (D29.2).
-- **D9.** [~] **Fluxo de leitura/consumo.** Já definido ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)): o nó que recebe o `GET` pega um ID da **lista de prontos** do tópico, marca a invisibilidade em todos os nós responsáveis (registro + commit) e só então devolve a mensagem. A lista de cada nó tem só as mensagens de que ele é **primário** (dono da entrega, seção 12.7); com a lista vazia, o nó pede ao dono de outro nó e, com long polling, espera avisos pelo canal entre nós (seção 12.8). Depende de D2 e D28.
+- **D9.** [~] **Fluxo de leitura/consumo.** Já definido ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)): o nó que recebe o `GET` pega um ID da **lista de prontos** do tópico, marca a invisibilidade por registro + commit (decidido por **quórum**, sempre incluindo o primário) e só então devolve a mensagem. A lista de cada nó tem só as mensagens de que ele é **primário** (dono da entrega, seção 12.7); com a lista vazia, o nó pede ao dono de outro nó e, com long polling, espera avisos pelo canal entre nós (seção 12.8). Depende de D2 e D28.
   - **D9.1** Com o dono **fora do ar** e ainda não desregistrado, o secundário pode assumir a entrega das mensagens dele?
   - **D9.2** Como a thread da lista encontra candidatos (varredura vs. índice, incluindo as de invisibilidade expirada).
 - **D29.** [~] **Canal entre nós** (seções 12.8 e 12.9, e 6.3). Já definido: canal **WebSocket** permanente entre cada par de nós (malha completa), que também é o controle de vida (substitui o ping); só sinais pequenos; filas por nó com retomada na reconexão.
@@ -86,9 +87,10 @@ Inclui o overflow por tópico (seção 3.2).
 
 ### Passo 4 — Protocolo genérico de registro/commit
 
-Reutilizado em nós, mensagens e recuperação. Sem dúvidas de design.
+Reutilizado em nós, mensagens e recuperação. Decidido nesta revisão: rollback só é seguro **antes** do quórum decidir (registro pendente); depois de decidido, o coordenador nunca desfaz — insiste na(s) réplica(s) restante(s) dentro de um teto configurável. Mensagens (escrita, entrega/invisibilidade, ack) decidem o commit por **quórum mínimo**, sempre incluindo o primário do bloco, em vez de esperar todas as réplicas; registro/desregistro de nó e definição de tópico continuam exigindo todos os nós, por serem operações raras sem caminho crítico de latência ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2).
 
-- Valores iniciais: `write.retry.attempts`, `write.retry.backoff`, `write.pending.ttl`.
+- **D33.** [ ] **Quórum de escrita fixo ou proporcional?** Hoje proposto como maioria simples de `replication.factor` (ex.: 2 em 3). Falta decidir se é sempre maioria, um valor fixo configurável independente do fator de replicação, ou se pode variar por tipo de operação (escrita vs. entrega/invisibilidade vs. ack) em vez de um único `write.quorum` global.
+- Valores iniciais: `write.retry.attempts`, `write.retry.backoff`, `write.pending.ttl`, `write.commit.timeout`, `write.quorum`.
 
 ### Passo 5 — Anel de hash circular
 

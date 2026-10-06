@@ -14,8 +14,8 @@
 - Recebimento inicial da mensagem em memória, com **espaço configurável** e **overflow para disco** (`${topico}/${id}.json`) quando o limite é atingido — ver seção 3.2.
 - Espaço de memória dividido **dinamicamente entre tópicos**, priorizando os de maior fluxo de leitura (seção 3.2).
 - Replicação/confirmação nos nós responsáveis pelo bloco de mensagens (primário, secundário, terciário...).
-- Retry configurável do registro e do commit e, esgotado, erro ao cliente + rollback nos nós responsáveis (seção 3.1).
-- Política configurável: número de réplicas exigidas para a escrita ser considerada durável (padrão: 3).
+- Retry configurável do registro e do commit; esgotado o retry sem o **quórum mínimo** fechado, erro ao cliente + rollback nos nós responsáveis; esgotado o teto do commit nas réplicas fora do quórum (`write.commit.timeout`), sem rollback — o commit já decidido continua sendo tentado em segundo plano (seção 3.1/7.2).
+- Política configurável em duas camadas: número **total** de réplicas (`replication.factor`, padrão 3) e **quórum mínimo** de confirmação para responder ao cliente (`write.quorum`, padrão maioria — ex. 2 em 3), sempre incluindo o primário do bloco.
 ### 4.3 Cluster
 - Descoberta automática de nós.
 - Comunicação interna entre nós **via API HTTP**.
