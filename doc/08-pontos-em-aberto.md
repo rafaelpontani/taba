@@ -18,6 +18,7 @@
 - Ordenação de mensagens (por tópico, por chave ou sem garantia).
 - Modelo de consumo: polling, long polling ou push.
 - Política de retenção, expiração (TTL) e dead-letter.
-- Métricas e observabilidade: as tags de tópico já alimentam atributos OpenTelemetry (seção 8.1); falta definir o conjunto de métricas/traces exportados, o endpoint OTLP configurável e se haverá também endpoint Prometheus.
+- Métricas e observabilidade: o conjunto de métricas, traces e logs está proposto em [12-observabilidade.md](12-observabilidade.md) (métricas de tópico em rotas próprias, para não escalar com o volume de tópicos); faltam nomes definitivos, o endpoint OTLP, como o Prometheus descobre os nós, como o evento de perda de mensagem identifica o tópico, e o rate limit das rotas de operação quando isoladas por porta/IP (o acesso já é controlável por `operations.port` e `operations.allowed-ips`).
 - Propagação de criação/alteração/remoção de tópico entre os nós do cluster (provavelmente pelo mesmo protocolo registro → commit) e o comportamento do `DELETE /topics/{topic}` com mensagens ainda pendentes.
+- **Rate limits da API de cliente** (ver [13-limites-api.md](13-limites-api.md)): ainda não fazem parte do escopo formal; faltam valores padrão, identificação do cliente (não há autenticação definida) e se o limite é por IP, por token futuro ou global por nó.
 

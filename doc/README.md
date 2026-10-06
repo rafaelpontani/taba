@@ -18,5 +18,8 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
 | [08-pontos-em-aberto.md](08-pontos-em-aberto.md) | 10 | Decisões ainda pendentes. |
 | [09-glossario.md](09-glossario.md) | 11 | Termos do projeto. |
 | [10-proximos-passos.md](10-proximos-passos.md) | 12, 13 | Próximos passos e referências. |
+| [11-configuracao.md](11-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
+| [12-observabilidade.md](12-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
+| [13-limites-api.md](13-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
 
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

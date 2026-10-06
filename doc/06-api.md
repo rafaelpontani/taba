@@ -25,11 +25,25 @@
 - diferencia maiúsculas de minúsculas (`Pedidos` e `pedidos` são tópicos distintos);
 - nomes inválidos são rejeitados na criação (`POST /topics`) com erro `400`.
 
-**Tags do tópico** (`tags`): pares chave/valor definidos na criação (`POST /topics`) e alterados via `PATCH /topics/{topic}`. Servem para monitoramento: são enviadas como **atributos** nas métricas, traces e logs exportados via **OpenTelemetry** para as operações daquele tópico (ex.: `{"time": "financeiro", "ambiente": "prod"}`).
+**Tags do tópico** (`tags`): pares chave/valor definidos na criação (`POST /topics`) e alterados via `PATCH /topics/{topic}`. Servem para monitoramento: são enviadas como **atributos** nos traces e logs exportados via **OpenTelemetry** para as operações daquele tópico, e nas métricas de tópico conforme a configuração de exportação ([12-observabilidade.md](12-observabilidade.md)) (ex.: `{"time": "financeiro", "ambiente": "prod"}`).
 - chave de 1 a 64 caracteres e valor de 0 a 128, restritos a `A-Za-z0-9_-.:` (seguros como atributo OTel e em URL);
 - máximo de 20 tags por tópico;
 - as tags não afetam o comportamento das mensagens, apenas a telemetria.
  
+### 8.1.1 API de operação (observabilidade)
+
+Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e métricas em [12-observabilidade.md](12-observabilidade.md). Opcionalmente podem ser servidas em **porta própria** e/ou restritas a uma **lista de IPs/faixas** (`operations.port`, `operations.allowed-ips`); sem essa configuração, ficam na porta da API de cliente e são tratadas como qualquer outra rota ([12-observabilidade.md](12-observabilidade.md#acesso-às-rotas-de-operação)).
+
+| Verbo | Recurso | Descrição |
+|---|---|---|
+| `GET` | `/metrics` | Métricas locais do nó no formato Prometheus (um alvo de scrape por nó, sem fan-out). |
+| `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local). |
+| `GET` | `/stats/cluster` | Métricas de todos os nós e condição geral do cluster (consulta todos os nós, *best-effort*). |
+| `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `sort`, `tag.*`, `condition`, `fields`, `groupBy`). |
+| `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
+| `GET` | `/health/live` | O processo está de pé. |
+| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster). |
+
 ### 8.2 API interna (cluster)
  
 | Verbo | Recurso | Descrição |
@@ -44,4 +58,6 @@
 | `GET` | `/cluster/blocks/{id}/ids` | Retorna a lista de IDs de mensagens (e tombstones) que o nó possui para o bloco — usado na sincronização distribuída (seção 7.3). |
 | `GET` | `/cluster/blocks/{id}/messages/{messageId}` | Retorna o conteúdo de uma mensagem específica do bloco, para as chamadas balanceadas de sincronização. |
 | `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar aos novos donos mensagens que estavam registradas como perdidas. |
+| `GET` | `/cluster/stats/node` | Métricas locais do nó, para a agregação de `/stats/cluster`. |
+| `GET` | `/cluster/stats/topics` | Contadores locais por tópico (apenas mensagens em que o nó é primário), somados por quem atende `/stats/topics`. |
 

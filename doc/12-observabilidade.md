@@ -1,0 +1,390 @@
+# Observabilidade
+
+[← Índice](README.md)
+
+> Valores dos parâmetros e padrões: [11-configuracao.md](11-configuracao.md#observabilidade).
+
+> Os nomes de métricas, rotas e parâmetros abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [11-configuracao.md](11-configuracao.md)).
+
+## Visão geral
+
+A saída de monitoramento do sistema é feita via **OpenTelemetry** (métricas, traces e logs), exportada (*push*) para um endpoint OTLP configurável (`telemetry.otlp.endpoint`). Cada nó expõe também um endpoint **`GET /metrics`** no formato de texto do **Prometheus** (*pull*), e **rotas de consulta** (`/stats/...`) para inspeção direta, sem depender de um backend de observabilidade.
+
+| Saída | Modelo | Conteúdo | Uso típico |
+|---|---|---|---|
+| OTLP | push | Métricas, traces e logs | Backend compatível com OpenTelemetry |
+| `GET /metrics` | pull, por nó | Somente métricas | Prometheus (e compatíveis: VictoriaMetrics, Grafana Agent, Mimir) |
+| `GET /stats/*` | sob demanda | Métricas com visão de cluster e condições | Operador, scripts, diagnóstico sem backend |
+
+OTLP e `/metrics` são alimentados pelos **mesmos instrumentos** (uma única instrumentação, dois exportadores): as métricas são as mesmas nas duas saídas, mudando só o formato de nomes (seção [Endpoint Prometheus](#endpoint-prometheus)).
+
+A telemetria se divide em **dois níveis**, tratados de forma diferente:
+
+| Nível | Cardinalidade | Exportação OTLP | Rotas de consulta |
+|---|---|---|---|
+| **Nó / cluster** | Limitada (nº de nós, de peers, de rotas) | Sempre | `/stats/node`, `/stats/cluster` |
+| **Tópico** | **Ilimitada** (nº de tópicos × valores de tags) | Opt-in, com agregação e teto | `/stats/topics`, `/stats/topics/{topic}` |
+
+**Por que separar:** métricas de nó são um conjunto fixo e pequeno, seguro de exportar sempre. Métricas de tópico crescem com o número de tópicos (e cada tag multiplica as séries); exportá-las por padrão faria o custo de telemetria escalar com o volume de tópicos, e o sistema de monitoramento poderia se tornar um problema maior que aquilo que monitora. Por isso ficam em **rotas próprias**, paginadas e sob demanda (seção [Métricas de tópico](#métricas-de-tópico-rotas-próprias)).
+
+## Tags de tópico como atributos
+
+Cada tópico pode ter **tags**: pares chave/valor definidos na criação (`POST /topics`) e alterados depois via `PATCH /topics/{topic}` (ver [06-api.md](06-api.md)).
+
+- Nos **traces e logs** das operações daquele tópico (publicação, consumo, ack), as tags são enviadas como **atributos**. Traces e logs são eventos, não séries: não sofrem o mesmo problema de cardinalidade.
+- Nas **métricas**, as tags só aparecem nas **métricas de tópico** e conforme a configuração de exportação (seção [Exportação das métricas de tópico](#exportação-das-métricas-de-tópico-otlp-e-prometheus)). As métricas de **nó nunca carregam tags nem o nome do tópico**.
+- Exemplo: um tópico com `{"time": "financeiro", "ambiente": "prod"}` propaga esses dois atributos aos traces/logs dele, permitindo filtrar/agrupar por time ou ambiente no backend.
+- As tags **não afetam o comportamento** das mensagens — servem só para telemetria.
+- Limites de tamanho e caracteres das tags estão em [13-limites-api.md](13-limites-api.md), por serem regras fixas da API.
+
+## Métricas de nó
+
+Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáveis em `GET /stats/node` (local) e `GET /stats/cluster` (todos os nós). Prefixo sugerido: `msg.`.
+
+**Atributos de recurso** (em toda métrica do nó): `service.name`, `service.instance.id` (ID do nó), `service.version`, nome do cluster, ambiente.
+
+**Atributos de métrica:** somente de cardinalidade limitada — `route` (o **template** da rota, ex.: `/topics/{topic}/messages`, nunca o caminho real), `status_class` (`2xx`, `4xx`, `5xx`), `phase` (`register`/`commit`/`rollback`), `outcome`, `peer` (ID de outro nó, limitado pelo tamanho do cluster).
+
+### Processo e host
+
+| Métrica | Tipo | Unidade | Descrição |
+|---|---|---|---|
+| `msg.node.uptime` | gauge | s | Tempo desde o início do processo. |
+| `msg.node.cpu.utilization` | gauge | 1 | Uso de CPU do processo. |
+| `msg.node.process.memory` | gauge | By | Memória total do processo (inclui a parcela fora do limite de mensagens). |
+| `msg.node.threads` | gauge | {thread} | Threads/tarefas ativas (conforme o runtime — ver [pontos em aberto](08-pontos-em-aberto.md)). |
+| `msg.node.open_files` | gauge | {file} | Descritores/arquivos abertos (relevante pelo overflow em disco: um arquivo por mensagem). |
+| `msg.node.connections` | gauge | {connection} | Conexões HTTP abertas (cliente e interna, separadas por atributo). |
+
+### Armazenamento e overflow (seção 3.2)
+
+| Métrica | Tipo | Unidade | Descrição |
+|---|---|---|---|
+| `msg.storage.memory.used` | gauge | By | Memória ocupada por mensagens. |
+| `msg.storage.memory.limit` | gauge | By | Limite configurado (`memory.limit`). |
+| `msg.storage.memory.messages` | gauge | {message} | Mensagens mantidas em memória. |
+| `msg.storage.disk.messages` | gauge | {message} | Mensagens em disco (overflow). |
+| `msg.storage.disk.used` | gauge | By | Espaço ocupado em disco pelas mensagens. |
+| `msg.storage.disk.free` | gauge | By | Espaço livre no volume de `storage.dir`. |
+| `msg.storage.overflow` | counter | {message} | Mensagens movidas de memória para disco. |
+| `msg.storage.read.disk` | counter | {read} | Leituras que não encontraram a mensagem em memória e foram ao disco. |
+| `msg.storage.read.memory` | counter | {read} | Leituras atendidas em memória (com a anterior, dá o *hit ratio*). |
+| `msg.storage.disk.duration` | histogram | s | Latência de leitura/escrita em disco. |
+| `msg.storage.disk.errors` | counter | {error} | Falhas de I/O em disco. |
+
+### API de cliente
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.api.requests` | counter | {request} | `route`, `method`, `status_class` | Requisições recebidas. |
+| `msg.api.duration` | histogram | s | `route`, `method` | Latência das requisições. |
+| `msg.api.in_flight` | gauge | {request} | `route` | Requisições em andamento. |
+| `msg.api.request.size` / `msg.api.response.size` | histogram | By | `route` | Tamanho de corpo de requisição/resposta. |
+| `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`) | Requisições rejeitadas com `429` ([13-limites-api.md](13-limites-api.md)). |
+
+### API interna (cluster)
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.cluster.rpc.requests` | counter | {request} | `route`, `peer`, `direction` (`in`/`out`), `outcome` | Chamadas entre nós. |
+| `msg.cluster.rpc.duration` | histogram | s | `route`, `peer`, `direction` | Latência das chamadas entre nós. |
+
+### Escrita de mensagens (seção 3.1 e 7.2)
+
+Lado **coordenador** (nó que recebeu a publicação):
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.write.coordinated` | counter | {message} | `outcome` (`committed`/`failed`) | Publicações coordenadas por este nó. |
+| `msg.write.duration` | histogram | s | `phase` (`register`/`commit`/`total`) | Duração de cada fase e da escrita completa. |
+| `msg.write.retries` | counter | {retry} | `phase`, `peer` | Retries por fase e por nó de destino — o registro concentra a maior parte das falhas. |
+| `msg.write.rollbacks` | counter | {rollback} | — | Rollbacks enviados após esgotar os retries. |
+| `msg.write.replicas_confirmed` | histogram | {node} | — | Réplicas com commit confirmado por escrita (deve acompanhar `replication.factor`). |
+
+Lado **réplica** (nó responsável pelo bloco):
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.write.received` | counter | {message} | `phase` | Registros, commits e rollbacks recebidos. |
+| `msg.write.pending` | gauge | {message} | — | Registros pendentes (sem commit). |
+| `msg.write.pending.oldest_age` | gauge | s | — | Idade do registro pendente mais antigo (perto de `write.pending.ttl` indica commits não chegando). |
+| `msg.write.pending.expired` | counter | {message} | — | Registros descartados por expiração (sem commit nem rollback). |
+
+### Membros do cluster e falhas (seção 6)
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.cluster.members` | gauge | {node} | `state` (`active`/`frozen`/`suspect`) | Membros na tabela deste nó. |
+| `msg.cluster.members.version` | gauge | 1 | — | Versão/época da tabela de membros; divergência entre nós indica propagação incompleta. |
+| `msg.cluster.quorum.available` | gauge | 1 | — | `1` se há nós suficientes para o quórum de votação (`cluster.vote.quorum`). |
+| `msg.cluster.ping` | counter | {ping} | `peer`, `outcome` | Pings enviados e resultado. |
+| `msg.cluster.ping.duration` | histogram | s | `peer` | Latência do ping por peer. |
+| `msg.cluster.ping.consecutive_failures` | gauge | {ping} | `peer` | Falhas seguidas por peer (próximo do limite de `cluster.ping.retries` = votação iminente). |
+| `msg.cluster.vote` | counter | {vote} | `role` (`opened`/`cast`), `outcome` | Votações de exclusão abertas/votadas e seu resultado. |
+| `msg.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
+| `msg.cluster.bootstrap.failures` | counter | {failure} | `reason` | Falhas de bootstrap (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
+| `msg.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
+| `msg.cluster.node.state` | gauge | 1 | `state` (`joining`/`active`/`syncing`/`returning`) | Estado deste nó (incluindo retorno após exclusão — seção 6.6). |
+
+### Anel, blocos e sincronização (seção 7)
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.ring.virtual_nodes` | gauge | {vnode} | — | Nós virtuais deste nó (`ring.virtual-nodes`). |
+| `msg.ring.blocks` | gauge | {block} | `role` (`primary`/`secondary`/`tertiary`/...), `state` (`healthy`/`syncing`) | Blocos que o nó atende, por papel e integridade. Desequilíbrio entre nós indica má distribuição do anel. |
+| `msg.sync.blocks.active` | gauge | {block} | — | Blocos em sincronização agora (entrega suspensa nesses blocos). |
+| `msg.sync.duration` | histogram | s | — | Tempo para tornar um bloco íntegro. |
+| `msg.sync.ids.listed` | counter | {id} | — | IDs consolidados (união) nas listas de origem. |
+| `msg.sync.messages.pulled` | counter | {message} | `peer` | Mensagens obtidas por nó de origem — mostra se o balanceamento entre origens está uniforme. |
+| `msg.sync.bytes` | counter | By | `peer` | Volume transferido na sincronização. |
+| `msg.sync.pending_deletions` | gauge | {deletion} | — | Tamanho do log de deleções pendentes durante a sincronização. |
+| `msg.sync.failures` | counter | {failure} | `reason` | Falhas de sincronização de bloco. |
+| `msg.cluster.message_loss` | counter | {event} | — | **Eventos de perda de mensagem** (seção 7.3). Qualquer valor acima de zero merece alerta. |
+| `msg.cluster.recover` | counter | {message} | `direction` (`sent`/`received`) | Mensagens recuperadas na volta de um nó (seção 6.6). |
+
+### Consulta
+
+- `GET /stats/node` — métricas do **nó que atende a chamada**, leitura local, sem consulta a outros nós.
+- `GET /stats/cluster` — visão do cluster: consulta **todos os nós** (pela rota interna `GET /cluster/stats/node`) e devolve a lista de métricas por nó mais um resumo (membros, quórum, blocos em sincronização, eventos de perda, condição geral). Nós que não respondem aparecem como `unreachable` em vez de falhar a chamada inteira (*best-effort*).
+- Toda resposta traz `collectedAt` (instante da coleta).
+
+## Condição do cluster
+
+Derivada das métricas de nó, exposta em `GET /stats/cluster` e `GET /health/ready`. **Condições, não um estado único** — o cluster pode ter mais de uma ao mesmo tempo:
+
+| Condição | Severidade | Quando |
+|---|---|---|
+| `ok` | — | Nenhuma das abaixo. |
+| `member-unreachable` | aviso | Algum nó com falhas de ping consecutivas, ainda antes da votação. |
+| `node-frozen` | aviso | Nó(s) em período de freezing. |
+| `syncing` | aviso | Blocos em sincronização; a entrega está suspensa neles (seção 7.3). |
+| `under-replicated` | crítica | Blocos com menos réplicas íntegras que `replication.factor` — escritas podem falhar por não atingir o número de réplicas. |
+| `quorum-lost` | crítica | Menos nós ativos que o quórum de votação; nenhuma exclusão de nó consegue ser efetivada. |
+| `membership-divergent` | crítica | Tabelas de membros com versões diferentes entre nós. |
+| `message-loss` | crítica | Um ou mais eventos de perda de mensagem registrados. |
+| `storage-pressure` | aviso | Disco de `storage.dir` abaixo de um limite de espaço livre. |
+
+> **Degradação de replicação é propriedade do cluster, não do tópico.** Os blocos são definidos pelo **ID da mensagem** (seção 7.2), não pelo tópico: as mensagens de um mesmo tópico se espalham por todos os blocos. Por isso `under-replicated` e `syncing` aparecem aqui e não na condição de tópico.
+
+## Métricas de tópico (rotas próprias)
+
+Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, pensadas para funcionar bem com **muitos tópicos**:
+
+| Verbo | Recurso | Descrição |
+|---|---|---|
+| `GET` | `/stats/topics` | Lista **paginada** com as métricas resumidas de cada tópico. |
+| `GET` | `/stats/topics/{topic}` | Métricas detalhadas de **um** tópico. |
+
+> Prefixo `/stats` (e não `/metrics`) porque `/metrics` é o endpoint Prometheus (seção [Endpoint Prometheus](#endpoint-prometheus)), que tem formato e semântica próprios.
+
+### Parâmetros de `GET /stats/topics`
+
+| Parâmetro | Descrição |
+|---|---|
+| `limit` / `cursor` | Paginação por cursor (o resultado devolve `nextCursor`). Padrão e máximo de `limit` a definir. |
+| `sort` | Campo de ordenação, prefixo `-` para decrescente. Ex.: `-depth` (mais mensagens acumuladas), `-oldestAge`, `-publishRate`. Permite o uso de **top-N** em vez de varrer tudo. |
+| `tag.<chave>=<valor>` | Filtra por tag. Ex.: `tag.time=financeiro`. |
+| `condition` | Filtra por condição (ex.: `condition=backlog`) — o caso de uso principal: "quais tópicos estão com problema?". |
+| `fields` | Restringe os campos devolvidos, para respostas menores. |
+| `groupBy` | Agrega por tag (ex.: `groupBy=time`), devolvendo uma linha por valor de tag em vez de uma por tópico. |
+
+### Métricas por tópico
+
+| Grupo | Métrica | Descrição |
+|---|---|---|
+| **Publicação** | `published` | Total de mensagens publicadas. |
+| | `publishRate` | Mensagens publicadas por segundo (janela recente). |
+| | `publishedBytes` | Bytes publicados; com `published` dá o tamanho médio da mensagem. |
+| | `publishErrors` | Publicações que falharam (erro devolvido ao cliente). |
+| | `publishLatency` | p50/p95/p99 da latência de publicação. |
+| **Consumo** | `consumed` | Total de mensagens entregues em `GET`. |
+| | `acked` | Total de confirmações (`DELETE` da mensagem). |
+| | `consumeRate` / `ackRate` | Mensagens consumidas / confirmadas por segundo. É a **taxa de leitura** usada na divisão dinâmica de memória (seção 3.2). |
+| | `consumeLatency` | p50/p95/p99 da latência de consumo e de ack. |
+| **Fila** | `depth` | Mensagens disponíveis, ainda não confirmadas. |
+| | `inFlight` | Mensagens entregues sem ack. *Só faz sentido depois de definida a semântica de entrega — ver [pontos em aberto](08-pontos-em-aberto.md).* |
+| | `oldestAge` | Idade da mensagem mais antiga (tempo desde a publicação) — o melhor indicador de consumidor parado. |
+| | `bytes` | Volume total acumulado. |
+| **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |
+| | `memoryBytes` / `diskBytes` | Bytes em memória e em disco. |
+| | `memoryShare` | Parcela da memória do cluster que o tópico ocupa (resultado da divisão dinâmica). |
+| **Perda** | `lossEvents` | Eventos de perda de mensagem atribuíveis ao tópico (*depende de o evento identificar o tópico — ver [Ainda em aberto](#ainda-em-aberto)*). |
+| **Identificação** | `type`, `tags`, `createdAt` | Tipo (`single`/`broadcast`), tags e criação. |
+
+Para tópicos `broadcast`, métricas por assinante (entregas por assinante, atraso por assinante) dependem de o sistema ter o conceito de assinante identificável — hoje não definido ([03-escopo.md](03-escopo.md)).
+
+### Condição do tópico
+
+Também uma **lista de condições**, com o campo `status` sendo a de maior severidade. Limites configuráveis ([11-configuracao.md](11-configuracao.md#observabilidade)):
+
+| Condição | Severidade | Quando |
+|---|---|---|
+| `ok` | — | Nenhuma das abaixo. |
+| `idle` | info | Sem publicação nem consumo há `stats.topics.idle-after`. |
+| `backlog` | aviso | `depth` ou `oldestAge` acima do limite. |
+| `stalled` | aviso | Há mensagens (`depth > 0`) mas **nenhum consumo** há `stats.topics.stalled-after` — consumidor parado ou ausente. |
+| `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` >> `memoryMessages`): leituras mais lentas. |
+| `message-loss` | crítica | O tópico tem eventos de perda de mensagem registrados. |
+
+### Como o valor é calculado (custo)
+
+- As mensagens de um tópico se espalham pelos blocos do anel; cada mensagem existe em `replication.factor` nós. Portanto o valor do tópico no cluster é a **soma entre nós**, contando apenas a **réplica primária** de cada mensagem — do contrário, tudo apareceria multiplicado pelo fator de replicação.
+- Cada nó mantém contadores **locais** por tópico. Uma rota interna (`GET /cluster/stats/topics`) devolve esses parciais; o nó que atende `/stats/topics` **consulta todos os nós, soma e devolve**.
+- Esse fan-out é justamente o custo que justifica isolar essas métricas: com muitos tópicos, o payload de cada nó cresce. Mitigações: o resultado é mantido em **cache** por `stats.topics.cache-ttl` (a resposta traz `collectedAt`); o `sort` + `limit` é aplicado depois do merge; `fields` reduz o tamanho; e `GET /stats/topics/{topic}` pede aos nós só aquele tópico.
+- Os valores são uma **fotografia aproximada** (leitura sem lock global, nó que não responde fica de fora e é listado como `partial`), não um valor transacional.
+
+## Exportação das métricas de tópico (OTLP e Prometheus)
+
+Opt-in por `telemetry.topics.mode`, com o **mesmo efeito** no OTLP e em `GET /metrics`:
+
+| Modo | Padrão | O que exporta | Cardinalidade |
+|---|---|---|---|
+| `off` | ✔ | Nada por tópico; só as rotas `/stats/topics`. | Nenhuma |
+| `by-tags` | | Métricas agregadas **por combinação de tags** escolhidas em `telemetry.topics.group-by-tags` (ex.: `time`, `ambiente`). | Limitada pelos valores das tags, **não** pelo número de tópicos |
+| `per-topic` | | Uma série por tópico, com o atributo `topic` (mais as tags). Limitada por `telemetry.topics.max-topics`; acima do teto, os tópicos excedentes são agregados em `topic="_other"`. | Limitada pelo teto |
+
+Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métricas por tópico, escolhidas por serem contadores/gauges baratos): `msg.topic.published`, `msg.topic.consumed`, `msg.topic.acked`, `msg.topic.depth`, `msg.topic.oldest_age`, `msg.topic.memory_bytes`, `msg.topic.disk_bytes`.
+
+## Endpoint Prometheus
+
+| Verbo | Recurso | Descrição |
+|---|---|---|
+| `GET` | `/metrics` | Métricas **locais deste nó** no formato de texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics quando pedido via `Accept`). |
+
+### Modelo: um alvo de scrape por nó
+
+- Cada nó é um **alvo de scrape** independente; o Prometheus consulta **todos os nós** (descoberta de serviço estática, DNS ou a própria tabela de membros) e agrega com PromQL.
+- `/metrics` devolve só valores **locais**, **sem fan-out** — diferente de `/stats/cluster`. A resposta é barata e não depende de outros nós estarem de pé, o que é essencial para monitorar justamente o cluster degradado.
+- A agregação entre nós é feita pelo Prometheus. Para isso funcionar, os contadores de tópico contam **apenas as mensagens em que o nó é primário** (mesma regra de [Como o valor é calculado](#como-o-valor-é-calculado-custo)): `sum(msg_topic_depth) by (topic)` dá o valor do cluster, sem multiplicar pelo fator de replicação.
+- O rótulo de identificação do nó (`instance`, ou `node_id` via `service.instance.id`) é o que distingue as séries entre nós.
+
+### Conteúdo
+
+- **Métricas de nó:** todas as da seção [Métricas de nó](#métricas-de-nó), sempre.
+- **Métricas de tópico:** conforme `telemetry.topics.mode` — `off` (padrão) não emite nenhuma; `by-tags` e `per-topic` seguem as regras e o teto de cardinalidade já descritos. Ou seja, **o `/metrics` também não escala com o número de tópicos por padrão**.
+- **Condições** (cluster e tópico, seções acima) como *gauges* `0/1`: `msg_cluster_condition{condition="under-replicated"} 1`; no tópico, apenas nos modos que exportam tópicos.
+- `target_info` com os atributos de recurso (versão, nome do cluster, ambiente), no estilo OpenMetrics.
+
+### Mapeamento de nomes (OTel → Prometheus)
+
+| Regra | Exemplo (OTel → Prometheus) |
+|---|---|
+| Pontos viram `_` | `msg.storage.memory.used` → `msg_storage_memory_used_bytes` |
+| Unidade vira sufixo | `s` → `_seconds`, `By` → `_bytes`, razão `1` → `_ratio` |
+| Contadores ganham `_total` | `msg.write.retries` → `msg_write_retries_total` |
+| Histogramas viram `_bucket`/`_sum`/`_count` | `msg.write.duration` → `msg_write_duration_seconds_bucket{phase="commit",le="0.05"}` |
+| Atributos viram rótulos | `phase`, `route`, `peer`, `outcome`, `status_class` |
+
+Regras de rótulo iguais às do OTLP: `route` é sempre o **template** (`/topics/{topic}/messages`), nunca o caminho real; o ID da mensagem nunca é rótulo; `topic` só aparece no modo `per-topic`.
+
+### Configuração e exposição
+
+- `telemetry.prometheus.enabled` liga/desliga o endpoint.
+- Porta e restrição de acesso do `/metrics` são as das demais rotas de operação: ver [Acesso às rotas de operação](#acesso-às-rotas-de-operação).
+
+### Exemplos de alertas (PromQL)
+
+
+Sugestões de partida, a calibrar em produção:
+
+| Alerta | Expressão |
+|---|---|
+| Perda de mensagem | `increase(msg_cluster_message_loss_total[5m]) > 0` |
+| Nó fora do ar | `up{job="mensageria"} == 0` |
+| Cluster sem quórum | `min(msg_cluster_quorum_available) == 0` |
+| Tabelas de membros divergentes | `count(count by (version) (msg_cluster_members_version)) > 1` |
+| Memória perto do limite | `msg_storage_memory_used_bytes / msg_storage_memory_limit_bytes > 0.9` |
+| Falhas de escrita | `sum(rate(msg_write_coordinated_total{outcome="failed"}[5m])) > 0` |
+| Registros pendentes envelhecendo | `max(msg_write_pending_oldest_age_seconds) > 30` |
+
+## Acesso às rotas de operação
+
+As **rotas de operação** são `GET /metrics`, `GET /stats/*` e `GET /health/*`. Ao contrário da API de cliente, são destinadas a operadores, ao Prometheus e a orquestradores/balanceadores. Duas restrições **opcionais e independentes** podem ser configuradas para elas:
+
+| Parâmetro | Efeito |
+|---|---|
+| `operations.port` | Serve as rotas de operação em uma **porta própria**. Nessa configuração, elas **deixam de existir** na porta da API de cliente (que responde `404` para esses caminhos). |
+| `operations.allowed-ips` | **Lista de IPs e faixas (CIDR)**, ex.: `10.0.0.0/8, 192.168.1.10`, autorizados a acessar essas rotas. Requisições de fora da lista recebem `403 Forbidden`. Vale em qualquer porta que sirva as rotas. |
+
+As duas podem ser combinadas (porta própria **e** lista de IPs), usadas isoladas, ou nenhuma:
+
+| Configuração | Comportamento |
+|---|---|
+| Nenhuma (padrão) | As rotas ficam na **mesma porta da API de cliente**, sem restrição de origem, e são **tratadas como qualquer outra rota** — inclusive para rate limit ([13-limites-api.md](13-limites-api.md)) e para qualquer autenticação que venha a existir. |
+| Só `operations.port` | Porta separada, sem filtro por IP: quem alcança a porta acessa. |
+| Só `operations.allowed-ips` | Mesma porta da API, mas só os IPs da lista acessam essas rotas; a API de cliente segue aberta. |
+| Ambas | Porta separada, acessível apenas pelos IPs/faixas listados. |
+
+Detalhes:
+
+- Recomendação para produção: ao menos a lista de IPs (Prometheus, balanceadores, faixa dos operadores); idealmente também a porta própria, pois o `/metrics` e o `/stats/topics` expõem nomes de tópicos e tags, e o `/stats/cluster` expõe a topologia do cluster.
+- A lista deve incluir os IPs do **balanceador** que chama `/health/ready` e do **Prometheus** que faz o scrape.
+- O IP avaliado é o **endereço de origem da conexão**. Atrás de proxy/balanceador ele será o do proxy, e cabeçalhos como `X-Forwarded-For` **não são confiados** por padrão (ver [Ainda em aberto](#ainda-em-aberto)).
+- As rotas internas entre nós (`/cluster/...`, inclusive `/cluster/stats/*`) **não** são rotas de operação: têm mecanismo próprio e não são afetadas por essas configurações.
+- O nó **não sobe** se `operations.port` estiver ocupada ou se a lista tiver entrada inválida — falha explícita no início, em vez de expor as rotas sem restrição por engano.
+
+## Traces
+
+Um trace por operação de cliente, com spans internos para cada etapa relevante:
+
+- **Publicação:** span raiz `POST /topics/{topic}/messages` → span de registro (um por nó de destino) → span de commit (um por nó de destino) → rollback, se houver. O contexto de trace é propagado nas chamadas internas entre nós (cabeçalho W3C `traceparent`), de modo que a escrita completa aparece em um único trace mesmo passando por vários nós.
+- **Consumo e ack:** span raiz da requisição → leitura em memória ou disco.
+- **Sincronização de bloco:** um trace por bloco sincronizado, com um span por lote de `GET`, indicando o nó de origem.
+- **Registro/desregistro de nó e votação:** um trace por operação, com um span por nó consultado.
+- **Atributos dos spans:** tags do tópico, ID da mensagem, ID do bloco, IDs dos nós envolvidos, número da tentativa (retry). Como o ID da mensagem é um GUID v7 de alta cardinalidade, ele vai em **traces e logs, nunca em métricas**.
+- **Amostragem:** `telemetry.traces.sample-ratio`; falhas (erro ao cliente, rollback, perda de mensagem) devem ser sempre mantidas.
+
+## Logs
+
+Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id`) e as tags do tópico quando houver. Eventos de log esperados:
+
+| Evento | Nível | Origem |
+|---|---|---|
+| Falha de registro/commit de mensagem (por tentativa) | `warn` | Escrita (seção 7.2) |
+| Escrita abortada e rollback enviado | `error` | Escrita (seção 3.1) |
+| Registro pendente expirado | `warn` | Escrita (seção 3.1) |
+| Nó não respondeu ao ping; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
+| Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
+| Falha de bootstrap do nó | `error` | Cluster (seção 6.5) |
+| Início e fim de sincronização de bloco | `info` | Sincronização (seção 7.3) |
+| **Perda de mensagem** (ID, bloco, nós consultados) | `error` | Sincronização (seção 7.3) |
+| Retorno de nó e mensagens recuperadas | `info` | Cluster (seção 6.6) |
+| Overflow de memória para disco (resumo periódico, não por mensagem) | `info` | Armazenamento (seção 3.2) |
+| Erro de I/O em disco | `error` | Armazenamento |
+
+O nível de log é configurável (`telemetry.logs.level`). Logs por mensagem em caminho quente (publicação, consumo) ficam em `debug` para não pesar na latência.
+
+## Health checks
+
+Rotas leves para orquestradores e balanceadores, **sem** fan-out para outros nós:
+
+| Verbo | Recurso | Descrição |
+|---|---|---|
+| `GET` | `/health/live` | O processo está de pé e respondendo. Falha → reiniciar o processo. |
+| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
+
+`/health/ready` **não** exige que todos os blocos estejam íntegros: um nó em sincronização de blocos continua recebendo publicações (seção 7.3) e não deve ser removido da rotação por isso.
+
+## Eventos de perda de mensagem (seção 7.3)
+
+Proposta para o ponto em aberto sobre o formato/canal do evento:
+
+1. **Log estruturado** em nível `error` (ID da mensagem, bloco, nós consultados) — o registro detalhado para investigação.
+2. **Métrica** `msg.cluster.message_loss` (contador) — permite alerta no backend de observabilidade por uma regra simples (`> 0`).
+3. **Lista consultável** dos eventos, usada também pelo procedimento de retorno de nó (seção 6.6), que precisa reconhecer IDs registrados como perdidos.
+
+O **alerta ativo** (e-mail, chat, plantão) fica a cargo do backend de observabilidade, sobre a métrica; o sistema não envia notificações por conta própria.
+
+## Ainda em aberto
+
+- Nomes definitivos de métricas e atributos (seguir as convenções semânticas do OpenTelemetry onde houver equivalente).
+- Como o Prometheus **descobre** os nós (lista estática, DNS, ou um alvo derivado da tabela de membros, que muda quando nós entram e saem).
+- Como o evento de perda de mensagem identifica o **tópico** (o sincronizador trabalha com IDs de mensagem por bloco): sem isso, `lossEvents` e a condição `message-loss` do tópico não são possíveis, só a do cluster.
+- Rate limit das rotas de operação: sem configuração de porta/IP elas são tratadas como qualquer rota, mas falta definir em qual categoria ([13-limites-api.md](13-limites-api.md): `admin`?) e se, quando isoladas por porta própria ou lista de IPs, ficam isentas.
+- Autenticação por token nessas rotas: o escopo atual não define autenticação ([03-escopo.md](03-escopo.md)); por ora o controle de acesso é a porta própria e a lista de IPs.
+- Se `operations.allowed-ips` deve poder confiar em `X-Forwarded-For` (com uma lista de proxies confiáveis) para nós atrás de balanceador.
+- Valores padrão de paginação (`limit` padrão e máximo), de `stats.topics.*` e do teto de `telemetry.topics.max-topics`.
+- Métricas de `inFlight` e por assinante (`broadcast`): dependem da semântica de entrega e do modelo de assinantes.
+- Retenção/janela das taxas (`publishRate`, `consumeRate`): mesma janela do algoritmo de priorização de memória (seção 3.2), ainda não definida.
+
+Ver [08-pontos-em-aberto.md](08-pontos-em-aberto.md).
