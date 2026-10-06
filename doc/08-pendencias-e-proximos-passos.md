@@ -12,19 +12,19 @@ Legenda:
 - `[ ]` — em aberto, sem proposta.
 - `[~]` — parcialmente resolvida: o texto diz **o que já está definido**, e cada pergunta que falta tem seu sub-código.
 
-**Já decididas** (registradas nos documentos técnicos): D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3; rollback do protocolo de registro/commit limitado a antes do quórum decidir, com teto configurável (`write.commit.timeout`) para as réplicas fora do quórum depois de decidido, em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2; **estratégia de quórum mínimo para mensagens** (`write.quorum`, sempre incluindo o primário do bloco, em vez de esperar confirmação de todas as `replication.factor` réplicas) para escrita, entrega/invisibilidade e ack — registro/desregistro de nó e definição de tópico continuam exigindo confirmação de todos os nós, sem quórum reduzido — em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2 e [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.2.
+**Já decididas** (registradas nos documentos técnicos): D4 e D24 (o modelo de assinantes deu lugar ao Tópico Distribuidor, que copia a publicação para filas por prefixo; não há assinante identificado; filas voláteis e nó gestor), em [15-topicos-distribuidor.md](15-topicos-distribuidor.md); D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3; rollback do protocolo de registro/commit limitado a antes do quórum decidir, com teto configurável (`write.commit.timeout`) para as réplicas fora do quórum depois de decidido, em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2; **estratégia de quórum mínimo para mensagens** (`write.quorum`, sempre incluindo o primário do bloco, em vez de esperar confirmação de todas as `replication.factor` réplicas) para escrita, entrega/invisibilidade e ack — registro/desregistro de nó e definição de tópico continuam exigindo confirmação de todos os nós, sem quórum reduzido — em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2 e [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.2.
 
 ### Resumo das dúvidas por passo
 
 | Passo | Dúvidas |
 |---|---|
-| 1 — Contrato da API | D2, D4, D6–D7, D25, D27–D28, D31: ordenação, assinantes do `broadcast`, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET` |
+| 1 — Contrato da API | D2, D6–D7, D25, D27–D28, D31, D36–D37: ordenação, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET`, limites de fan-out e de filas criadas por `autoCreate` |
 | 2 — Arquitetura | D8, D9, D29, D30: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova |
 | 3 — Protótipo | D10–D13, D34–D35: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
 | 4 — Protocolo de registro/commit | D33: quórum de escrita fixo ou proporcional |
 | 6 — Sincronização | D15–D16: evento de perda, otimização de listagem |
 | 8 — Sinal de vida, quórum e freezing | D17–D19: quórum, freezing, retry do bootstrap |
-| 10 — Docker e Kubernetes | D20–D24: métricas, Prometheus, rate limit das rotas de operação, `X-Forwarded-For`, métricas por assinante |
+| 10 — Docker e Kubernetes | D20–D23: métricas, Prometheus, rate limit das rotas de operação, `X-Forwarded-For` |
 
 Os passos 5, 7 e 9 não têm dúvidas próprias.
 
@@ -35,11 +35,10 @@ Os valores numéricos ainda "A definir" em [10-configuracao.md](10-configuracao.
 Cobre os endpoints de registro/descoberta de nós, mensagens, sincronização e recuperação (seções 6, 7 e 8).
 
 - **D2.** [~] **Ordenação.** Já definido: o ID é um GUID v7 ordenável por tempo, e a lista de prontos de cada nó é reposta nessa ordem, só com as mensagens de que ele é o dono da entrega ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.6 e 12.7). Falta: declarar a garantia ao cliente — a ordem vale por nó dono, não por tópico (as mensagens se espalham por todos os blocos, seção 7.2), então a garantia seria de melhor esforço, sem ordem global; por chave não há conceito de chave na API.
-- **D4.** [ ] **Assinantes do tipo `broadcast`.** O tipo existe (`single` ou `broadcast`), mas não há conceito de assinante. A invisibilidade e o contador de entregas ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) hoje são por mensagem; no `broadcast` teriam de ser por assinante.
-  - **D4.1** Quem é o assinante e como é identificado (não há autenticação).
-  - **D4.2** Como o ack funciona quando cada assinante confirma separadamente e quando a mensagem sai do tópico.
 - **D6.** [~] **Rate limits da API de cliente** ([12-limites-api.md](12-limites-api.md)). Já definido: três categorias (publicação, consumo, administrativo), taxa + burst, resposta `429` com `Retry-After`. Falta: **como identificar o cliente** (não há autenticação — está fora do escopo) e se o limite é por IP ou global por nó.
 - **D7.** [~] **Paginação.** Já definido: `/stats/topics` usa `limit`/`cursor`. Falta: se `GET /topics` também pagina (o `limit` padrão e máximo entram na calibragem).
+- **D36.** [ ] **Limite de destinos por publicação num Tópico Distribuidor** ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2). Um DT com prefixo amplo gera uma cópia por fila que casa. Falta: teto de filas por publicação e o que fazer ao ultrapassá-lo (recusar a publicação inteira ou entregar até o teto).
+- **D37.** [ ] **Limite de filas criadas por `autoCreate`** (seção 14.4). Um erro de digitação cria uma fila, que some após `idleTimeout`; falta decidir se há teto de filas voláteis por cluster e se `autoCreate` tem rate limit próprio ([12-limites-api.md](12-limites-api.md)).
 - **D25.** [~] **Alteração da invisibilidade** (`PATCH`, seção 12.3). Já definido: rota que altera o prazo, propagada por registro + commit.
   - **D25.1** O valor é o **novo tempo a partir de agora** ou um **acréscimo** ao prazo atual.
   - **D25.2** Se `0` libera a mensagem na hora.
@@ -138,7 +137,6 @@ Observabilidade e rotas de operação, a fechar até aqui.
 - **D21.** [~] **Como o Prometheus descobre os nós.** Já definido: cada nó é um alvo de scrape e `/metrics` é local, sem fan-out. Falta: escolher entre lista estática, DNS ou tabela de membros — no Kubernetes, o caminho natural é a descoberta do próprio cluster (ligado à D8).
 - **D22.** [~] **Rate limit das rotas de operação.** Já definido: sem porta própria nem lista de IPs, valem as regras de qualquer rota. Falta só o caso em que estão isoladas: em qual categoria entram e se ficam isentas.
 - **D23.** [~] **`X-Forwarded-For` em `operations.allowed-ips`.** Já definido: por padrão não é confiado. Falta: se pode ser habilitado, com lista de proxies confiáveis, para nós atrás de balanceador.
-- **D24.** [ ] **Métricas por assinante** (`broadcast`): dependem do modelo de assinantes (D4).
 - Valores iniciais: `telemetry.*`, `stats.topics.*` (inclui `telemetry.topics.max-topics`), `stats.disk.free-min`.
 
 ## Referências internas

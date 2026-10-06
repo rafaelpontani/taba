@@ -23,6 +23,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
 | [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
 | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: contador de entregas, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit. |
+| [15-topicos-distribuidor.md](15-topicos-distribuidor.md) | 14 | Nomenclatura (QT, DT, QTV; análogos ao SQS e ao SNS), Tópico Distribuidor por prefixos, fila volátil, criação automática pelo `GET`, nó gestor e sua relação com entrada, saída e rebalanceamento de nós. |
 | [14-invisibilidade.md](14-invisibilidade.md) | 13 | Invisibilidade: metadados, propagação entre nós, lista de invisíveis em memória, excedente em disco (índice de expiração), vencimento e reconstrução. |
 
 ## Diagramas
@@ -44,5 +45,9 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | Ciclo da invisibilidade | [14-invisibilidade.md](14-invisibilidade.md), seção 13.1 |
 | Entrega e ack | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.2 |
 | Três cenários do `GET` | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8 |
+| Publicação em Tópico Distribuidor | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2 |
+| Criação automática de fila volátil | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.4 |
+| Exclusão de fila volátil pelo gestor | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5 |
+| Troca de gestor nas mudanças do anel | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.6 |
 
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Criação automática de uma fila volátil",
+    "output": "doc/diagramas/html/fila-volatil-criacao.html",
+    "viewBox": [
+      1080,
+      500
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "cons",
+      "type": "external",
+      "label": "Consumidor",
+      "sublabel": "cliente"
+    },
+    {
+      "id": "no",
+      "type": "backend",
+      "label": "Nó que recebe o GET",
+      "sublabel": "coordenador"
+    },
+    {
+      "id": "todos",
+      "type": "cloud",
+      "label": "Todos os nós",
+      "sublabel": "tabela de tópicos"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 186,
+      "label": "Consumo"
+    },
+    {
+      "from": 194,
+      "to": 306,
+      "label": "Criação"
+    },
+    {
+      "from": 314,
+      "to": 370,
+      "label": "Entrega"
+    }
+  ],
+  "messages": [
+    {
+      "id": "get",
+      "from": "cons",
+      "to": "no",
+      "y": 172,
+      "label": "GET messages?autoCreate=true",
+      "variant": "security",
+      "note": "fila não existe; conta como consumidor"
+    },
+    {
+      "id": "reg",
+      "from": "no",
+      "to": "todos",
+      "y": 208,
+      "label": "registro do tópico (fase 1)",
+      "note": "id GUID v7, volatile, idleTimeout"
+    },
+    {
+      "id": "ok",
+      "from": "todos",
+      "to": "no",
+      "y": 236,
+      "label": "todos confirmam",
+      "variant": "return"
+    },
+    {
+      "id": "com",
+      "from": "no",
+      "to": "todos",
+      "y": 264,
+      "label": "commit (fase 2)",
+      "variant": "emphasis",
+      "note": "grava _topics/ e define o gestor"
+    },
+    {
+      "id": "fim",
+      "from": "todos",
+      "to": "no",
+      "y": 292,
+      "label": "fila na tabela de tópicos",
+      "variant": "return"
+    },
+    {
+      "id": "resp",
+      "from": "no",
+      "to": "cons",
+      "y": 328,
+      "label": "mensagem ou vazio (long polling)",
+      "variant": "return"
+    },
+    {
+      "id": "prox",
+      "from": "cons",
+      "to": "no",
+      "y": 356,
+      "label": "GETs seguintes: a fila já existe",
+      "variant": "dashed",
+      "note": "parâmetros de criação ignorados"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Padrões",
+      "items": [
+        "Volátil por padrão (volatile=true)",
+        "idleTimeout de 10 min, se não informado",
+        "Só cria Tópico Fila, nunca Distribuidor"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Disputa",
+      "items": [
+        "Vários consumidores criam ao mesmo tempo",
+        "O nome duplicado é rejeitado no registro",
+        "Quem perde trata como fila existente"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Erros",
+      "items": [
+        "Nome inválido: 400",
+        "Nome de Distribuidor: 409",
+        "Sem autoCreate e sem fila: 404"
+      ]
+    }
+  ]
+}

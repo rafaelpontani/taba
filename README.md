@@ -35,7 +35,7 @@ Tudo é HTTP. O contrato completo (OpenAPI) ainda está em definição; os verbo
 
 | O que você quer | Chamada |
 |---|---|
-| Criar um tópico (fila ou broadcast) | `POST /topics` |
+| Criar um tópico (Fila ou Distribuidor) | `POST /topics` |
 | Publicar uma mensagem | `POST /topics/{topic}/messages` |
 | Receber mensagens (com long polling de até 20 s) | `GET /topics/{topic}/messages` |
 | Confirmar o consumo (ack) | `DELETE /topics/{topic}/messages/{id}` |
@@ -74,7 +74,7 @@ A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP q
 
 | Letra | Promessa | Como o Taba cumpre |
 |---|---|---|
-| **T**ópicos | Uma API enxuta, com fila (entrega única) e pub/sub (broadcast) no mesmo lugar. | Você envia para um tópico com verbos HTTP e escolhe o modelo: SQS ou SNS. |
+| **T**ópicos | Uma API enxuta, com fila (entrega única) e distribuição por prefixo no mesmo lugar. | Você envia para um tópico com verbos HTTP e escolhe o tipo: Tópico Fila ou Tópico Distribuidor. |
 | **A**ssíncronos | O produtor envia e segue em frente. | A escrita é confirmada em memória por um número configurável de nós; o disco só entra por overflow. |
 | **B**alanceados | Nenhum nó carrega tudo sozinho. | Um hash circular reparte os tópicos em blocos e os replica em vários nós. |
 | **A**utogeridos | Sem coordenador e sem operação manual. | Os nós se descobrem, se monitoram e votam a saída de quem falha. Quando o nó volta, é reintegrado. |

@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Troca de gestor nas mudanças do anel",
+    "output": "doc/diagramas/html/fila-volatil-troca-gestor.html",
+    "viewBox": [
+      1080,
+      480
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "mud",
+      "type": "external",
+      "label": "Nó que entra ou sai",
+      "sublabel": "comissionamento"
+    },
+    {
+      "id": "nos",
+      "type": "cloud",
+      "label": "Demais nós",
+      "sublabel": "tabelas de nós e tópicos"
+    },
+    {
+      "id": "novo",
+      "type": "backend",
+      "label": "Novo gestor",
+      "sublabel": "primário da posição"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 214,
+      "label": "Mudança do anel"
+    },
+    {
+      "from": 222,
+      "to": 278,
+      "label": "Assunção"
+    },
+    {
+      "from": 286,
+      "to": 342,
+      "label": "Exclusão em curso"
+    }
+  ],
+  "messages": [
+    {
+      "id": "com",
+      "from": "mud",
+      "to": "nos",
+      "y": 172,
+      "label": "commit de registro ou desregistro",
+      "variant": "emphasis",
+      "note": "cada nó recalcula suas filas"
+    },
+    {
+      "id": "tab",
+      "from": "nos",
+      "to": "mud",
+      "y": 200,
+      "label": "nó novo recebe a tabela de tópicos",
+      "variant": "return"
+    },
+    {
+      "id": "cons",
+      "from": "novo",
+      "to": "nos",
+      "y": 236,
+      "label": "consulta ociosidade das filas novas",
+      "variant": "security",
+      "note": "espalhada no tempo (jitter)"
+    },
+    {
+      "id": "dur",
+      "from": "nos",
+      "to": "novo",
+      "y": 264,
+      "label": "duração do último GET, por nó",
+      "variant": "return",
+      "note": "agenda o prazo real"
+    },
+    {
+      "id": "exc",
+      "from": "novo",
+      "to": "nos",
+      "y": 300,
+      "label": "exclusão com o id, se já venceu",
+      "variant": "dashed"
+    },
+    {
+      "id": "sem",
+      "from": "nos",
+      "to": "novo",
+      "y": 328,
+      "label": "id já excluído ou recriado: sem efeito",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Sem transferência",
+      "items": [
+        "A lista de filas é derivada do anel",
+        "O estado está nos nós, não no gestor"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Eventos do anel",
+      "items": [
+        "Entrada: o nó novo assume sua faixa",
+        "Saída: o próximo primário assume",
+        "Falha no registro: volta ao anterior"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Duas tentativas",
+      "items": [
+        "Gestor antigo e novo podem excluir juntos",
+        "O id do tópico torna a segunda inofensiva"
+      ]
+    }
+  ]
+}

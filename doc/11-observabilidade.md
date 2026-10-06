@@ -230,9 +230,9 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | | `memoryBytes` / `diskBytes` | Bytes em memória e em disco. |
 | | `memoryShare` | Parcela da memória do cluster que o tópico ocupa (resultado da divisão dinâmica). |
 | **Perda** | `lossEvents` | Eventos de perda de mensagem atribuíveis ao tópico (*depende de o evento identificar o tópico — ver [Ainda em aberto](#ainda-em-aberto)*). |
-| **Identificação** | `type`, `tags`, `createdAt` | Tipo (`single`/`broadcast`), tags e criação. |
+| **Identificação** | `type`, `tags`, `createdAt` | Tipo (`queue`/`distributor`), `id`, tags e criação; em fila volátil, também `volatile` e `idleTimeout`. |
 
-Para tópicos `broadcast`, métricas por assinante (entregas por assinante, atraso por assinante) dependem de o sistema ter o conceito de assinante identificável — hoje não definido ([03-escopo.md](03-escopo.md)).
+Um Tópico Distribuidor não guarda mensagens: as métricas de fila (profundidade, idade, armazenamento) se aplicam às **filas destino**, e o distribuidor expõe apenas publicações recebidas, cópias geradas e falhas por fila. Não há métricas por assinante. Ver [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.7.
 
 ### Condição do tópico
 
@@ -415,6 +415,17 @@ Proposta para o ponto em aberto sobre o formato/canal do evento:
 
 O **alerta ativo** (e-mail, chat, plantão) fica a cargo do backend de observabilidade, sobre a métrica; o sistema não envia notificações por conta própria.
 
+## Eventos de distribuidor e de fila volátil (seção 14)
+
+Eventos pontuais, não condições de saúde do nó nem do cluster ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.7):
+
+| Evento | Quando |
+|---|---|
+| `distributor-no-target` | Publicação num Tópico Distribuidor sem nenhuma fila casando (sucesso, mensagem descartada). |
+| `distributor-partial` | Ao menos uma cópia de uma publicação em DT falhou. |
+| `volatile-deleted` | Fila volátil excluída por ociosidade. |
+| `volatile-check-blocked` | O gestor não concluiu a verificação final porque algum nó não respondeu. |
+
 ## Ainda em aberto
 
-As pendências desta área (nomes de métricas, descoberta pelo Prometheus, rate limit e `X-Forwarded-For` nas rotas de operação, identificação do tópico no evento de perda, métricas por assinante) ficam em [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md), nos passos 1, 6 e 10.
+As pendências desta área (nomes de métricas, descoberta pelo Prometheus, rate limit e `X-Forwarded-For` nas rotas de operação, identificação do tópico no evento de perda) ficam em [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md), nos passos 1, 6 e 10.

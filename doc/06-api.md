@@ -10,13 +10,13 @@
  
 | Verbo | Recurso | Descrição |
 |---|---|---|
-| `POST` | `/topics` | Cria um tópico (nome, tipo `single` ou `broadcast`, e opcionalmente `tags`). Propagado a todos os nós por registro + commit; persistido em disco ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
+| `POST` | `/topics` | Cria um tópico (nome, tipo `queue` ou `distributor`, e opcionalmente `tags`; `prefixes` para `distributor`; `volatile` e `idleTimeout` para `queue`). Gera o `id` (GUID v7) do tópico. Propagado a todos os nós por registro + commit; persistido em disco ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
 | `GET` | `/topics` | Lista os tópicos existentes. Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), diferente de `/stats/topics`, que faz fan-out para métricas de consumo. |
 | `GET` | `/topics/{topic}` | Retorna as informações e configurações do tópico (tipo, tags etc.). Também respondida localmente, pelo mesmo motivo. |
-| `PATCH` | `/topics/{topic}` | Altera informações do tópico (ex.: tags). Nome e tipo são imutáveis. Mesma propagação do `POST`. |
+| `PATCH` | `/topics/{topic}` | Altera informações do tópico (tags; `prefixes` de um `distributor`; `idleTimeout` de uma fila volátil). Nome, `id`, tipo e `volatile` são imutáveis. Mesma propagação do `POST`. |
 | `DELETE` | `/topics/{topic}` | Remove o tópico e **todas** as suas mensagens, mesmo as pendentes (ainda não entregues ou não confirmadas) — sempre funciona, sem checagem. Mesma propagação do `POST`; falha no registro **cancela** a remoção (rollback); falha no commit, já decidido, não cancela — o coordenador insiste dentro do teto `write.commit.timeout`. Nunca uma remoção parcial visível. |
-| `POST` | `/topics/{topic}/messages` | Publica uma mensagem no tópico. |
-| `GET` | `/topics/{topic}/messages` | Consome mensagem(ns) do tópico. Aceita `visibilityTimeout` (segundos, padrão 120): a mensagem entregue fica invisível a outros consumidores por esse tempo; e `waitTime` (segundos, 0 a 20, padrão 0): long polling, aguarda novas mensagens antes de responder vazio ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
+| `POST` | `/topics/{topic}/messages` | Publica uma mensagem no tópico. Num `distributor`, copia a mensagem para as filas cujo nome começa com algum prefixo e responde com o resultado por fila; sem fila casando, responde sucesso e descarta ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2). |
+| `GET` | `/topics/{topic}/messages` | Consome mensagem(ns) do tópico. Rejeitado com `409` num `distributor`. Aceita `autoCreate=true` (cria a fila se não existir, volátil por padrão, com `idleTimeout`, `volatile` e `tag.<chave>` opcionais; seção 14.4), `visibilityTimeout` (segundos, padrão 120): a mensagem entregue fica invisível a outros consumidores por esse tempo; e `waitTime` (segundos, 0 a 20, padrão 0): long polling, aguarda novas mensagens antes de responder vazio ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
 | `PATCH` | `/topics/{topic}/messages/{id}` | Altera a invisibilidade de uma mensagem já entregue (`{"visibilityTimeout": 300}`), por exemplo para ganhar mais tempo de processamento. |
 | `DELETE` | `/topics/{topic}/messages/{id}` | Confirma o consumo (ack) de uma mensagem, removendo-a do tópico. Decide o commit por **quórum** (sempre com o primário): falha antes do quórum **cancela** o ack (rollback); falha numa réplica fora do quórum, já decidido, não cancela — insiste dentro do teto `write.commit.timeout` ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.4). |
 
@@ -58,6 +58,7 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `POST` | `/cluster/topics/register` | Fase 1 (registro) de uma criação, alteração ou remoção de tópico: propaga a definição a todos os nós ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
 | `POST` | `/cluster/topics/commit` | Fase 2 (commit): efetiva a definição na tabela de tópicos de todos os nós, e cada um grava/atualiza/remove o `${topico}.json` local. |
 | `POST` | `/cluster/topics/rollback` | Descarta a alteração de tópico pendente (sem commit) após esgotar os retries. |
+| `GET` | `/cluster/topics/{id}/idle` | Usado pelo **nó gestor** de uma fila volátil: devolve há quanto tempo foi o último `GET` do tópico neste nó (duração decorrida; sem registro, o tempo desde que o nó subiu). Leitura local, sem estado pendente ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5). |
 | `POST` | `/cluster/vote-remove` | Usado para votar a remoção de um nó suspeito de falha (quórum mínimo: 3 — aberta quando o canal com o nó fica fora após as tentativas de reconexão, antes do commit de desregistro). |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/register` | Fase 1 (registro) de uma mensagem, enviado ao(s) nó(s) responsável(is) pelo bloco (primário/réplicas). |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/commit` | Fase 2 (commit) da entrega de uma mensagem já registrada nos nós responsáveis; decidido assim que o quórum confirma (primário incluso), enviado às demais réplicas em paralelo/segundo plano. |

@@ -8,8 +8,10 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
  
 A aplicação expõe uma API enxuta em que o cliente envia mensagens para um **tópico**, que pode ser de dois tipos:
  
-- **Entrega única (fila):** cada mensagem é consumida por apenas um consumidor (modelo SQS).
-- **Broadcast (pub/sub):** cada mensagem é entregue a todos os assinantes do tópico (modelo SNS).
+- **Tópico Fila (QT, *Queue Topic*):** guarda as mensagens, e cada uma é consumida por apenas um consumidor. Pode ser **volátil**: some sozinho se ficar sem consumidor por um tempo configurável.
+- **Tópico Distribuidor (DT, *Distributor Topic*):** não guarda mensagens; copia cada publicação para todas as filas cujo nome começa com um dos prefixos que ele distribui.
+
+O QT é o análogo do Amazon SQS e o DT é o análogo do Amazon SNS (análogos, não equivalentes). Nomenclatura e siglas em [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.
 ![C4 nível 0: contexto do Sistema de Mensagens](diagramas/img/c4-nivel0-contexto.svg)
 
 *Contexto do sistema (C4 nível 0). Fonte: [c4-nivel0-contexto.json](diagramas/fonte/c4-nivel0-contexto.json).*

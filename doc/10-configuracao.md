@@ -50,6 +50,14 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 
 > Quórum, retry, expiração de pendente e teto de commit da invisibilidade reutilizam `write.quorum`, `write.retry.*`, `write.pending.ttl` e `write.commit.timeout`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) e [14-invisibilidade.md](14-invisibilidade.md).
 
+## Tópicos voláteis e distribuidores
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Ociosidade padrão da fila volátil | `topics.volatile.idle-timeout.default` | **600 s** (10 min) | `idleTimeout` usado quando a fila é criada (por `POST /topics` com `volatile` ou por `autoCreate`) sem informar o valor. | 14.3 |
+| Nova tentativa da verificação | `topics.volatile.idle-check.retry-interval` | A definir (sugestão: 30 s) | Intervalo para o nó gestor repetir a verificação final quando algum nó não respondeu. | 14.5 |
+| Espalhamento ao assumir tópicos | `topics.volatile.takeover.jitter` | A definir | Janela em que o nó que assume filas voláteis (entrada ou saída de nó) espalha suas primeiras consultas de ociosidade. | 14.6 |
+
 ## Observabilidade
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |

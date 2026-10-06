@@ -5,7 +5,8 @@
 ## 4. Escopo inicial (dentro do escopo)
  
 ### 4.1 API
-- Criar e configurar tópicos (tipo: entrega única ou broadcast).
+- Criar e configurar tópicos (tipo: Tópico Fila ou Tópico Distribuidor).
+- **Filas voláteis** (excluídas sozinhas após `idleTimeout` sem consumidor), criáveis pelo próprio `GET` (`autoCreate`), e **Tópicos Distribuidores** que copiam a publicação para as filas cujo nome começa com um de seus prefixos, com um **nó gestor** por fila volátil — ver [15-topicos-distribuidor.md](15-topicos-distribuidor.md).
 - Enviar mensagem para um tópico (`POST`).
 - Receber mensagens de um tópico (`GET`).
 - Confirmar o consumo de uma mensagem (ack).

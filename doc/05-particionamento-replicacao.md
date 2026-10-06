@@ -15,7 +15,7 @@
 - Os nós responsáveis por um bloco (primário, secundário, terciário etc.) são sempre **nós físicos distintos**: ao percorrer o anel em busca das réplicas, posições de nós virtuais de um nó físico já escolhido são puladas.
 - O **primário** do bloco é o **dono da entrega** das mensagens dele ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.7). Qualquer nó calcula o primário de uma mensagem a partir do ID e da tabela de membros.
 - Quando um nó sobe, ele assume blocos de mensagem como **primário**, **secundário**, **terciário** etc., conforme o **número de réplicas persistentes** exigido para uma mensagem. **Padrão: 3 réplicas.**
-- **O tópico fica o mais espalhado e redundante possível.** O bloco é decidido pelo **ID da mensagem**, não pelo tópico: as mensagens de um mesmo tópico caem em todo o anel, cada uma com seu primário e suas réplicas em nós físicos distintos. Nenhum nó guarda o tópico inteiro nem é dono dele, e a perda de um nó deixa cada mensagem ainda em pelo menos `replication.factor − 1` nós.
+- **O tópico fica o mais espalhado e redundante possível.** O bloco é decidido pelo **ID da mensagem**, não pelo tópico: as mensagens de um mesmo tópico caem em todo o anel, cada uma com seu primário e suas réplicas em nós físicos distintos. Nenhum nó guarda o tópico inteiro nem é dono dele (a exceção é administrativa: uma fila volátil tem um **nó gestor**, escolhido pelo hash do `id` do tópico no mesmo anel, que só decide a exclusão por ociosidade — [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5), e a perda de um nó deixa cada mensagem ainda em pelo menos `replication.factor − 1` nós.
 
 ![Um tópico espalhado e redundante](diagramas/img/topico-espalhado.svg)
 
