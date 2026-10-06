@@ -46,7 +46,8 @@ A alteração é propagada com o **mesmo processo**: pedido de alteração (regi
 
 ### 12.4 Confirmação (ack) e reentrega
 
-- **Ack** (`DELETE /topics/{topic}/messages/{id}`): remove a mensagem, e com ela seus metadados.
+- **Ack** (`DELETE /topics/{topic}/messages/{id}`): segue o **mesmo protocolo de registro + commit** das demais operações sobre a mensagem (entrega, seção 12.2; escrita, seção 7.2). O coordenador do `DELETE` pede o registro da remoção a todos os nós responsáveis pelo bloco; só com todos confirmando ele chama o commit, que remove a mensagem e seus metadados em cada nó — **sem deixar tombstone**: a ausência do ID já é suficiente, e a sincronização de bloco trata a janela residual de uma remoção concorrente por conta própria (verificação final, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)).
+- **Falha:** se o registro ou o commit não forem confirmados por todos os nós, a operação é **cancelada** (rollback, mesma regra da seção 3.1) e a API retorna **erro ao cliente** — a mensagem continua disponível, nunca um ack parcial.
 - **Reentrega:** se o prazo `invisibleUntil` passa sem ack, a mensagem volta a ser elegível. *(Proposta: a thread da lista de prontos, seção 12.6, também re-inclui as mensagens cuja invisibilidade expirou.)* Ao ser entregue de novo, `deliveryCount` sobe.
 
 ### 12.5 Metadados em memória e em disco

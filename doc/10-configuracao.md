@@ -11,7 +11,7 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
 | Limite de memória por nó | `memory.limit` | A definir | Espaço em memória destinado às mensagens (ex.: MB/GB). Ao atingir o limite, as mensagens excedentes vão para disco (overflow). | 3.2 |
-| Diretório raiz de disco | `storage.dir` | A definir | Raiz onde ficam os arquivos `${topico}/${id}.json` do overflow (relativo a quê: nó? bloco? ainda em aberto). | 3.2 |
+| Diretório raiz de disco | `storage.dir` | A definir | Raiz onde ficam os arquivos `${topico}/${id}.json` do overflow (relativo a quê: nó? bloco? ainda em aberto) e `_topics/${topico}.json` da definição do tópico. | 3.2, 3.3 |
 
 ## Escrita e durabilidade
 

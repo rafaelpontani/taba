@@ -12,13 +12,13 @@ Legenda:
 - `[ ]` — em aberto, sem proposta.
 - `[~]` — parcialmente resolvida: o texto diz **o que já está definido**, e cada pergunta que falta tem seu sub-código.
 
-**Já decididas** (registradas nos documentos técnicos): D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); e, do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8).
+**Já decididas** (registradas nos documentos técnicos): D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3.
 
 ### Resumo das dúvidas por passo
 
 | Passo | Dúvidas |
 |---|---|
-| 1 — Contrato da API | D2, D4–D7, D25–D28, D31: ordenação, assinantes do `broadcast`, propagação de tópicos, rate limits, paginação, alteração de invisibilidade, ack nas réplicas, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET` |
+| 1 — Contrato da API | D2, D4, D6–D7, D25, D27–D28, D31: ordenação, assinantes do `broadcast`, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET` |
 | 2 — Arquitetura | D8, D9, D29, D30: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova |
 | 3 — Protótipo | D10–D13: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
 | 6 — Sincronização | D15–D16: evento de perda, otimização de listagem |
@@ -37,17 +37,11 @@ Cobre os endpoints de registro/descoberta de nós, mensagens, sincronização e 
 - **D4.** [ ] **Assinantes do tipo `broadcast`.** O tipo existe (`single` ou `broadcast`), mas não há conceito de assinante. A invisibilidade e o contador de entregas ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) hoje são por mensagem; no `broadcast` teriam de ser por assinante.
   - **D4.1** Quem é o assinante e como é identificado (não há autenticação).
   - **D4.2** Como o ack funciona quando cada assinante confirma separadamente e quando a mensagem sai do tópico.
-- **D5.** [ ] **Propagação de tópicos entre os nós.**
-  - **D5.1** Criação, alteração e remoção de tópico não têm rota interna em 8.2 (provavelmente o mesmo protocolo registro → commit).
-  - **D5.2** Comportamento do `DELETE /topics/{topic}` com mensagens ainda pendentes.
 - **D6.** [~] **Rate limits da API de cliente** ([12-limites-api.md](12-limites-api.md)). Já definido: três categorias (publicação, consumo, administrativo), taxa + burst, resposta `429` com `Retry-After`. Falta: **como identificar o cliente** (não há autenticação — está fora do escopo) e se o limite é por IP ou global por nó.
 - **D7.** [~] **Paginação.** Já definido: `/stats/topics` usa `limit`/`cursor`. Falta: se `GET /topics` também pagina (o `limit` padrão e máximo entram na calibragem).
 - **D25.** [~] **Alteração da invisibilidade** (`PATCH`, seção 12.3). Já definido: rota que altera o prazo, propagada por registro + commit.
   - **D25.1** O valor é o **novo tempo a partir de agora** ou um **acréscimo** ao prazo atual.
   - **D25.2** Se `0` libera a mensagem na hora.
-- **D26.** [ ] **Ack nas réplicas.** O `DELETE` remove a mensagem, mas falta definir:
-  - **D26.1** Como a remoção chega a todos os nós responsáveis (registro + commit, como na entrega?).
-  - **D26.2** Como se grava o tombstone que a sincronização de bloco usa (seção 7.3).
 - **D27.** [ ] **Ack ou alteração de uma entrega obsoleta.** Ack e `PATCH` identificam a mensagem só pelo ID: um consumidor lento, cujo prazo já expirou, pode confirmar ou alterar uma mensagem que já foi reentregue a outro. Falta decidir se a entrega devolve um recibo (ex.: o `deliveryCount` da entrega, exigido no ack e no `PATCH`) ou se isso é aceito como característica do at-least-once.
 - **D28.** [~] **Concorrência no `GET`.** Já definido: o dono da entrega evita a disputa em condições normais (seção 12.7).
   - **D28.1** Proposta a confirmar: o registro de invisibilidade é exclusivo — um nó rejeita o pedido se já há um pendente ou se a mensagem já está invisível, e o `GET` tenta outro ID da lista.
@@ -107,7 +101,7 @@ Na entrada de novos nós, incluindo o evento de falha de perda de mensagem.
 - **D15.** [~] **Evento de perda de mensagem** (seção 7.3). Já definido: proposta em [11-observabilidade.md](11-observabilidade.md) — log `error`, métrica `msg.cluster.message_loss` e lista consultável; o alerta fica no backend, o sistema não notifica.
   - **D15.1** Aprovar a proposta.
   - **D15.2** **Como o evento identifica o tópico** (o sincronizador só enxerga IDs de mensagem por bloco); sem isso só existe a condição `message-loss` do cluster, não a do tópico.
-- **D16.** [ ] *(não bloqueia)* **Otimização da listagem de IDs por bloco** para blocos muito grandes — ex.: merkle tree ou hashing incremental por faixa, em vez de listar todos os IDs a cada vez.
+- **D16.** [ ] *(não bloqueia)* **Otimização da listagem de IDs por bloco** para blocos muito grandes — ex.: merkle tree ou hashing incremental por faixa, em vez de listar todos os IDs a cada vez. Vale tanto para a listagem inicial quanto para a verificação final (seção 7.3), que hoje relista.
 
 ### Passo 7 — Rebalanceamento de blocos
 

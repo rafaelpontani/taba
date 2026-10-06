@@ -40,3 +40,14 @@ O espaço em memória destinado às mensagens em cada nó é **configurável** (
 - Na prática, cada tópico tem uma métrica de **taxa de leitura** (mensagens consumidas por período), usada para decidir, no momento em que a memória está cheia, quais mensagens (de quais tópicos) devem ser movidas para disco para abrir espaço às novas.
 > O algoritmo exato de priorização (ex.: janela de tempo para calcular a taxa de leitura, política de despejo tipo LRU/LFU por tópico, como tratar tópicos novos sem histórico) ainda não foi definido (ver seção 10).
 
+### 3.3 Definição de tópicos: propagação e persistência
+
+A **definição de um tópico** (nome, tipo, tags) é um dado diferente da mensagem: pequeno, de baixa frequência de alteração, e do interesse do **cluster inteiro** — não é particionado pelo hash circular como as mensagens (seção 7). Por isso segue o mesmo tratamento da tabela de membros (seção 6): **todo nó conhece a definição de todos os tópicos.**
+
+- **Propagação:** criação (`POST /topics`), alteração (`PATCH /topics/{topic}`) e remoção (`DELETE /topics/{topic}`) usam o **mesmo protocolo de duas fases** (registro → commit) das mensagens e do registro de nó (seções 7.2 e 6.2): o nó que recebe a chamada propaga o pedido a **todos os nós do cluster** e, confirmado por todos, envia o commit, efetivando a alteração em toda a tabela de tópicos. Só então a API responde ao cliente.
+- **Falha:** se o registro ou o commit não forem confirmados por todos os nós, a operação é **cancelada** (rollback) e a API retorna **erro ao cliente** — a mesma regra da escrita de mensagens (seção 3.1), nunca uma alteração parcial.
+- **Persistência:** ao contrário das mensagens (que só vão a disco por overflow, acima), a definição do tópico é **sempre persistida**, por ser dado de configuração e não de fila — um arquivo por tópico, `${storage.dir}/_topics/${topico}.json`, gravado no commit em cada nó.
+- **Volátil vs. persistente:** o arquivo do tópico guarda só a **definição**. Dados de **consumo** — profundidade de fila, mensagens visíveis/invisíveis, taxas (`publishRate`, `consumeRate`), histogramas de latência etc. — nunca vão a esse arquivo; ficam só em memória, específicos de cada nó (ver [11-observabilidade.md](11-observabilidade.md)).
+- **Bootstrap:** um nó novo recebe a tabela de tópicos da mesma forma que a tabela de membros (seção 6.2).
+- **Remoção com mensagens pendentes:** o `DELETE /topics/{topic}` **sempre funciona**, mesmo com mensagens ainda não entregues ou não confirmadas (ack) no tópico. Cada nó, no commit da remoção, apaga **todas as mensagens do tópico** que tem localmente — em memória, em disco (`${topico}/`) e seus metadados — sem checar se estão pendentes.
+
