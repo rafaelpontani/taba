@@ -11,6 +11,11 @@
 - O **primário** do bloco é o **dono da entrega** das mensagens dele ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.7). Qualquer nó calcula o primário de uma mensagem a partir do ID e da tabela de membros.
 - Quando um nó sobe, ele assume blocos de mensagem como **primário**, **secundário**, **terciário** etc., conforme o **número de réplicas persistentes** exigido para uma mensagem. **Padrão: 3 réplicas.**
 ### 7.2 Procedimento de recebimento de uma mensagem (registro + commit, quórum mínimo)
+
+![Sequência da recepção de uma mensagem](diagramas/img/recepcao.svg)
+
+*Fonte: [recepcao.json](diagramas/fonte/recepcao.json).*
+
 1. **Ler a configuração:** número total de réplicas (`replication.factor`, padrão 3) e o **quórum mínimo de confirmação** (`write.quorum`, padrão maioria simples de `replication.factor` — ex.: 2 em 3). O quórum **sempre conta o primário como confirmação obrigatória**, mais `write.quorum - 1` de quaisquer outras réplicas — nunca um quórum formado só por secundário/terciário. Motivo: só o primário decide o que é entregável (seção 12.7); se ele ficar de fora do quórum, a escrita pode ser considerada "durável" antes de estar visível a qualquer consumidor.
 2. A partir do **GUID v7 (ID)** da mensagem, gerado pelo nó coordenador ao receber a requisição (antes da fase de registro) e ordenável por tempo, calcular no anel de hash circular **qual bloco de mensagens** deve persistir a mensagem, determinando os nós responsáveis: primário, secundário, terciário etc.
 3. **Entregar a todos os nós responsáveis** (as `replication.factor` réplicas, não só o quórum) um pedido de **registro** da mensagem.

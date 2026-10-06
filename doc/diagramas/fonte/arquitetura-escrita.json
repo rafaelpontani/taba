@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sistema de Mensagens: escrita no cluster",
+    "output": "doc/diagramas/html/arquitetura-escrita.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Cliente",
+      "sublabel": "publica / consome",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "api-cli",
+      "type": "backend",
+      "label": "API HTTP (cliente)",
+      "sublabel": "nó coordenador",
+      "pos": [
+        260,
+        200
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "api-int",
+      "type": "backend",
+      "label": "API HTTP (interna)",
+      "sublabel": "registro, commit, rollback",
+      "pos": [
+        520,
+        200
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "cluster-mgr",
+      "type": "security",
+      "label": "Cluster manager",
+      "sublabel": "hash circular · membros",
+      "pos": [
+        520,
+        60
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "Storage engine",
+      "sublabel": "memória com overflow",
+      "pos": [
+        520,
+        340
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "disk",
+      "type": "database",
+      "label": "Disco",
+      "sublabel": "topico/id.json",
+      "pos": [
+        520,
+        480
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "peers",
+      "type": "cloud",
+      "label": "Nós responsáveis",
+      "sublabel": "primário + réplicas",
+      "pos": [
+        830,
+        200
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "mesma arquitetura"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Nó do cluster (idêntico, sem mestre)",
+      "wraps": [
+        "api-cli",
+        "api-int",
+        "cluster-mgr",
+        "storage",
+        "disk"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-to-api",
+      "from": "client",
+      "to": "api-cli",
+      "label": "HTTP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-internal",
+      "from": "api-cli",
+      "to": "api-int",
+      "label": "coordena"
+    },
+    {
+      "id": "ring-lookup",
+      "from": "api-int",
+      "to": "cluster-mgr",
+      "label": "responsáveis pelo ID",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "two-phase",
+      "from": "api-int",
+      "to": "peers",
+      "label": "registro → commit (quórum)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "heartbeat",
+      "from": "cluster-mgr",
+      "to": "peers",
+      "label": "WebSocket: sinal de vida",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "local-write",
+      "from": "api-int",
+      "to": "storage",
+      "label": "grava pendente / commit",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "overflow",
+      "from": "storage",
+      "to": "disk",
+      "label": "overflow",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Escrita",
+      "items": [
+        "Fase 1: registro em todos os responsáveis",
+        "Fase 2: commit ao fechar quórum, primário incluso",
+        "Resposta ao cliente após o quórum confirmar o commit"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Falhas",
+      "items": [
+        "Antes do quórum: retry, depois erro e rollback",
+        "Depois do quórum: sem rollback, insiste até write.commit.timeout"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Cluster",
+      "items": [
+        "Registro de nó e tópicos exigem confirmação de todos",
+        "Canal WebSocket em malha entre cada par de nós"
+      ]
+    }
+  ]
+}

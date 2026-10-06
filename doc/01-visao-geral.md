@@ -10,6 +10,10 @@ A aplicação expõe uma API enxuta em que o cliente envia mensagens para um **t
  
 - **Entrega única (fila):** cada mensagem é consumida por apenas um consumidor (modelo SQS).
 - **Broadcast (pub/sub):** cada mensagem é entregue a todos os assinantes do tópico (modelo SNS).
+![C4 nível 0: contexto do Sistema de Mensagens](diagramas/img/c4-nivel0-contexto.svg)
+
+*Contexto do sistema (C4 nível 0). Fonte: [c4-nivel0-contexto.json](diagramas/fonte/c4-nivel0-contexto.json).*
+
 ## 2. Objetivos
  
 | # | Objetivo | Descrição |

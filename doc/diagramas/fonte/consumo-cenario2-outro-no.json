@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Cenário 2: lista local vazia, outro nó tem mensagem",
+    "output": "doc/diagramas/html/consumo-cenario2-outro-no.html",
+    "viewBox": [
+      1080,
+      486
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "consumidor",
+      "type": "external",
+      "label": "Consumidor",
+      "sublabel": "cliente HTTP"
+    },
+    {
+      "id": "a",
+      "type": "backend",
+      "label": "Nó A",
+      "sublabel": "lista de prontos vazia"
+    },
+    {
+      "id": "b",
+      "type": "security",
+      "label": "Nó B",
+      "sublabel": "primário de m2 e m5"
+    },
+    {
+      "id": "quorum",
+      "type": "database",
+      "label": "Réplicas (quórum)",
+      "sublabel": "com o primário B"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "y": 176,
+      "from": "consumidor",
+      "to": "a",
+      "label": "GET /topics/pedidos/messages",
+      "variant": "emphasis",
+      "note": "tabela em memória: B e C têm mensagens"
+    },
+    {
+      "id": "m2",
+      "y": 214,
+      "from": "a",
+      "to": "b",
+      "label": "take: entregue uma mensagem",
+      "note": "sorteia um peer que tem: B"
+    },
+    {
+      "id": "m3",
+      "y": 252,
+      "from": "b",
+      "to": "quorum",
+      "label": "registro + commit de invisibilidade"
+    },
+    {
+      "id": "m4",
+      "y": 290,
+      "from": "quorum",
+      "to": "b",
+      "label": "confirma: quórum fechado",
+      "variant": "return"
+    },
+    {
+      "id": "m5",
+      "y": 328,
+      "from": "b",
+      "to": "a",
+      "label": "mensagem m2",
+      "variant": "return"
+    },
+    {
+      "id": "m6",
+      "y": 366,
+      "from": "a",
+      "to": "consumidor",
+      "label": "200 m2",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Como A sabia",
+      "items": [
+        "Quando a lista de A esvaziou, A enviou o sinal \"sem prontas\" pelo WebSocket",
+        "B e C guardaram isso na tabela em memória"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Dica desatualizada",
+      "items": [
+        "Se B responder vazio, A tenta outro peer, um por vez",
+        "Até delivery.take.max-attempts; depois vira ouvinte (cenário 3)"
+      ]
+    }
+  ]
+}

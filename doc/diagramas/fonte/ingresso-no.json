@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Ingresso de um novo nó no cluster",
+    "output": "doc/diagramas/html/ingresso-no.html",
+    "viewBox": [
+      1080,
+      694
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "novo",
+      "type": "backend",
+      "label": "Novo nó",
+      "sublabel": "bootstrap"
+    },
+    {
+      "id": "contato",
+      "type": "security",
+      "label": "Nó de contato",
+      "sublabel": "coordena o registro"
+    },
+    {
+      "id": "demais",
+      "type": "cloud",
+      "label": "Demais nós",
+      "sublabel": "todos os membros"
+    },
+    {
+      "id": "resp",
+      "type": "database",
+      "label": "Nós do bloco",
+      "sublabel": "primário e réplicas"
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 240,
+      "label": "Teste de conexão"
+    },
+    {
+      "from": 248,
+      "to": 388,
+      "label": "Registro e commit em todos"
+    },
+    {
+      "from": 396,
+      "to": 564,
+      "label": "Sincronização do bloco"
+    }
+  ],
+  "messages": [
+    {
+      "id": "boot",
+      "from": "novo",
+      "to": "contato",
+      "y": 170,
+      "label": "registro: IPs e porta",
+      "variant": "emphasis"
+    },
+    {
+      "id": "teste",
+      "from": "contato",
+      "to": "novo",
+      "y": 198,
+      "label": "testa conexão de volta"
+    },
+    {
+      "id": "teste-ok",
+      "from": "novo",
+      "to": "contato",
+      "y": 226,
+      "label": "conexão ok",
+      "variant": "return"
+    },
+    {
+      "id": "reg",
+      "from": "contato",
+      "to": "demais",
+      "y": 262,
+      "label": "registro (fase 1)"
+    },
+    {
+      "id": "reg-ok",
+      "from": "demais",
+      "to": "contato",
+      "y": 290,
+      "label": "todos confirmam",
+      "variant": "return"
+    },
+    {
+      "id": "com",
+      "from": "contato",
+      "to": "demais",
+      "y": 318,
+      "label": "commit (fase 2)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "com-ok",
+      "from": "demais",
+      "to": "contato",
+      "y": 346,
+      "label": "ok",
+      "variant": "return"
+    },
+    {
+      "id": "tabela",
+      "from": "contato",
+      "to": "novo",
+      "y": 374,
+      "label": "tabela de nós e de tópicos",
+      "variant": "return"
+    },
+    {
+      "id": "canal",
+      "from": "novo",
+      "to": "demais",
+      "y": 410,
+      "label": "abre canal WebSocket",
+      "variant": "dashed",
+      "note": "assume posição no anel"
+    },
+    {
+      "id": "ids",
+      "from": "novo",
+      "to": "resp",
+      "y": 438,
+      "label": "lista de IDs do bloco"
+    },
+    {
+      "id": "ids-ok",
+      "from": "resp",
+      "to": "novo",
+      "y": 466,
+      "label": "IDs (união das listas)",
+      "variant": "return"
+    },
+    {
+      "id": "get",
+      "from": "novo",
+      "to": "resp",
+      "y": 494,
+      "label": "GET das mensagens (distribuído)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "get-ok",
+      "from": "resp",
+      "to": "novo",
+      "y": 522,
+      "label": "conteúdo",
+      "variant": "return"
+    },
+    {
+      "id": "final",
+      "from": "novo",
+      "to": "resp",
+      "y": 550,
+      "label": "verificação final: relista IDs",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Falha antes do commit",
+      "items": [
+        "Rollback do registro e o novo nó é excluído",
+        "Blocos são rebalanceados sem ele"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Falha no commit",
+      "items": [
+        "Sem rollback: insiste até write.commit.timeout"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Durante a sincronização",
+      "items": [
+        "Recebe novas mensagens, mas não entrega o bloco",
+        "Deleções ficam em log e são aplicadas ao fim"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C4 Nível 1: Contêineres do Sistema de Mensagens",
+    "output": "doc/diagramas/html/c4-nivel1-conteineres.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "produtor",
+      "type": "external",
+      "label": "Produtor",
+      "sublabel": "[Pessoa/App]",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "consumidor",
+      "type": "external",
+      "label": "Consumidor",
+      "sublabel": "[Pessoa/App]",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "operador",
+      "type": "external",
+      "label": "Operador",
+      "sublabel": "[Pessoa]",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "external",
+      "label": "Observabilidade",
+      "sublabel": "[Sistema] OTel / Prom.",
+      "pos": [
+        40,
+        340
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "api-cli",
+      "type": "backend",
+      "label": "API HTTP (cliente)",
+      "sublabel": "[Contêiner] coordenador",
+      "pos": [
+        340,
+        170
+      ],
+      "size": [
+        160,
+        110
+      ]
+    },
+    {
+      "id": "api-int",
+      "type": "backend",
+      "label": "API HTTP (interna)",
+      "sublabel": "[Contêiner] registro/commit",
+      "pos": [
+        620,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "cluster-mgr",
+      "type": "security",
+      "label": "Cluster manager",
+      "sublabel": "[Contêiner] anel e membros",
+      "pos": [
+        620,
+        60
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "Storage engine",
+      "sublabel": "[Contêiner] memória",
+      "pos": [
+        620,
+        340
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "disk",
+      "type": "database",
+      "label": "Disco",
+      "sublabel": "[Volume] topico/id.json",
+      "pos": [
+        620,
+        480
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "peers",
+      "type": "cloud",
+      "label": "Outros nós",
+      "sublabel": "[Sistema] mesma imagem",
+      "pos": [
+        940,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Sistema de Mensagens: um nó (N nós idênticos)",
+      "wraps": [
+        "api-cli",
+        "api-int",
+        "cluster-mgr",
+        "storage",
+        "disk"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "publica",
+      "from": "produtor",
+      "to": "api-cli",
+      "label": "publica",
+      "variant": "emphasis"
+    },
+    {
+      "id": "consome",
+      "from": "consumidor",
+      "to": "api-cli",
+      "label": "consome, ack",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stats",
+      "from": "operador",
+      "to": "api-cli",
+      "label": "/stats, /topics",
+      "variant": "dashed"
+    },
+    {
+      "id": "telemetria",
+      "from": "api-cli",
+      "to": "obs",
+      "label": "OTLP · /metrics",
+      "variant": "dashed"
+    },
+    {
+      "id": "coordena",
+      "from": "api-cli",
+      "to": "api-int",
+      "label": "coordena"
+    },
+    {
+      "id": "anel",
+      "from": "api-int",
+      "to": "cluster-mgr",
+      "label": "responsáveis pelo ID",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "duas-fases",
+      "from": "api-int",
+      "to": "peers",
+      "label": "registro → commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sinal-vida",
+      "from": "cluster-mgr",
+      "to": "peers",
+      "label": "WebSocket: sinal de vida",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "grava",
+      "from": "api-int",
+      "to": "storage",
+      "label": "grava pendente / commit",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "overflow",
+      "from": "storage",
+      "to": "disk",
+      "label": "overflow",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Contêineres lógicos",
+      "items": [
+        "Todas as camadas rodam no mesmo processo e imagem",
+        "Cada nó é idêntico: sem mestre fixo"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Cluster",
+      "items": [
+        "Escrita: quórum com o primário incluso",
+        "Registro de nó e tópicos: confirmação de todos"
+      ]
+    }
+  ]
+}

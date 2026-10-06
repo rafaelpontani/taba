@@ -12,6 +12,11 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 - A comunicação entre nós é feita via **API HTTP**.
 - Além das chamadas HTTP, cada nó mantém um **canal permanente WebSocket com cada um dos outros nós** (malha completa: um por par, para todos os tópicos): carrega o **sinal de vida** entre nós (seção 6.3) e os sinais de disponibilidade da entrega de mensagens (long polling, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8). O canal transporta **somente sinais pequenos** — nunca o conteúdo das mensagens nem listas longas —, para ficar livre e rápido.
 ### 6.2 Registro de um novo nó (bootstrap)
+
+![Sequência do ingresso de um novo nó](diagramas/img/ingresso-no.svg)
+
+*Fonte: [ingresso-no.json](diagramas/fonte/ingresso-no.json). A sincronização do bloco está na seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).*
+
 1. O novo nó se conecta a um nó existente do cluster, informando **seus próprios IPs e porta** na mesma chamada síncrona (uma única requisição de registro).
 2. O nó que recebe a chamada **testa os IPs** informados, tentando estabelecer conexão de volta com o novo nó.
 3. Se a conexão for bem-sucedida, o nó que recebeu envia a **todos os nós do cluster** um pedido de **registro (fase 1)** com os dados do novo nó.
@@ -21,6 +26,10 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 7. **Falha antes do commit** (teste de conexão do passo 2, ou fase de registro sem confirmação de todos): o processo é abortado (rollback do registro pendente) e o novo nó é **excluído** — ver seção 6.5. **Falha no commit** (fase de registro já confirmada por todos): a decisão já foi tomada e não é desfeita — o nó que coordena insiste no commit dentro do teto `write.commit.timeout` até confirmar em todos, em vez de abortar o novo nó, pois algum membro do cluster já pode tê-lo efetivado na tabela.
 8. Ao assumir sua posição no anel (seção 7), o novo nó passa a ser responsável por blocos de mensagem como primário, secundário, terciário etc., conforme o fator de replicação configurado — seguindo o procedimento de sincronização distribuída da seção 7.3.
 ### 6.3 Detecção de falhas e desregistro
+
+![Sequência da remoção de um nó](diagramas/img/remocao-no.svg)
+
+*Fonte: [remocao-no.json](diagramas/fonte/remocao-no.json).*
  
 1. Cada par de nós mantém um **canal permanente** (seção 6.1), que também carrega um **sinal de vida** leve (keepalive). O controle de quem está online é feito por esse canal, em malha, sem coordenador — **não há ping separado**.
 2. Quando o canal com um nó **cai ou fica sem sinal de vida**, o nó que detectou **tenta reconectar algumas vezes** (tentativas e intervalo configuráveis) antes de agir.

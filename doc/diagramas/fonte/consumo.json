@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Consumo de mensagem (entrega e ack)",
+    "output": "doc/diagramas/html/consumo.html",
+    "viewBox": [
+      1080,
+      658
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "consumidor",
+      "type": "external",
+      "label": "Consumidor",
+      "sublabel": "cliente HTTP"
+    },
+    {
+      "id": "no",
+      "type": "backend",
+      "label": "Nó coordenador",
+      "sublabel": "dono da entrega no GET"
+    },
+    {
+      "id": "replica",
+      "type": "database",
+      "label": "Réplica (quórum)",
+      "sublabel": "confirma com o dono"
+    },
+    {
+      "id": "fora",
+      "type": "cloud",
+      "label": "Réplica fora",
+      "sublabel": "fora do quórum"
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 352,
+      "label": "Entrega (GET)"
+    },
+    {
+      "from": 360,
+      "to": 528,
+      "label": "Confirmação (ack)"
+    }
+  ],
+  "messages": [
+    {
+      "id": "get",
+      "from": "consumidor",
+      "to": "no",
+      "y": 170,
+      "label": "GET .../messages?visibilityTimeout=120",
+      "variant": "emphasis",
+      "note": "escolhe um ID da lista de prontos"
+    },
+    {
+      "id": "reg-r",
+      "from": "no",
+      "to": "replica",
+      "y": 198,
+      "label": "registro: invisível até T, count+1"
+    },
+    {
+      "id": "reg-f",
+      "from": "no",
+      "to": "fora",
+      "y": 226,
+      "label": "registro: invisível até T"
+    },
+    {
+      "id": "ok-r",
+      "from": "replica",
+      "to": "no",
+      "y": 254,
+      "label": "confirma: quórum fechado",
+      "variant": "return"
+    },
+    {
+      "id": "com-r",
+      "from": "no",
+      "to": "replica",
+      "y": 282,
+      "label": "commit",
+      "variant": "emphasis",
+      "note": "remove o ID da lista de prontos"
+    },
+    {
+      "id": "resp-get",
+      "from": "no",
+      "to": "consumidor",
+      "y": 310,
+      "label": "200 mensagem",
+      "variant": "return"
+    },
+    {
+      "id": "com-f",
+      "from": "no",
+      "to": "fora",
+      "y": 338,
+      "label": "commit (2º plano)",
+      "variant": "dashed"
+    },
+    {
+      "id": "ack",
+      "from": "consumidor",
+      "to": "no",
+      "y": 374,
+      "label": "DELETE .../messages/{id}",
+      "variant": "emphasis",
+      "note": "antes de invisibleUntil expirar"
+    },
+    {
+      "id": "ack-reg",
+      "from": "no",
+      "to": "replica",
+      "y": 402,
+      "label": "registro da remoção"
+    },
+    {
+      "id": "ack-ok",
+      "from": "replica",
+      "to": "no",
+      "y": 430,
+      "label": "confirma: quórum fechado",
+      "variant": "return"
+    },
+    {
+      "id": "ack-com",
+      "from": "no",
+      "to": "replica",
+      "y": 458,
+      "label": "commit: apaga msg e meta",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ack-resp",
+      "from": "no",
+      "to": "consumidor",
+      "y": 486,
+      "label": "204 sem conteúdo",
+      "variant": "return"
+    },
+    {
+      "id": "ack-bg",
+      "from": "no",
+      "to": "fora",
+      "y": 514,
+      "label": "remoção (2º plano)",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "At-least-once",
+      "items": [
+        "Sem ack, invisibleUntil expira e a mensagem volta à lista de prontos",
+        "deliveryCount sobe a cada entrega"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Lista de prontos vazia",
+      "items": [
+        "Pede ao dono em outro nó (rota interna take), uma vez",
+        "Senão vira ouvinte local até waitTime (0 a 20 s)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Falhas",
+      "items": [
+        "Antes do quórum: rollback, mensagem continua disponível",
+        "Depois do quórum: sem rollback, insiste em 2º plano"
+      ]
+    }
+  ]
+}

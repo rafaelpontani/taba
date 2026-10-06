@@ -22,4 +22,19 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
 | [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
 | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: invisibilidade, contador de entregas, metadados em disco, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit. |
 
+## Diagramas
+
+Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/fonte/` e o SVG embutido nos documentos fica em `diagramas/img/`. Para editar e regerar, veja a seção "Diagramas" do [AGENTS.md](../AGENTS.md).
+
+| Diagrama | Onde aparece |
+|---|---|
+| C4 nível 0, contexto | [01-visao-geral.md](01-visao-geral.md) |
+| C4 nível 1, contêineres | [02-arquitetura.md](02-arquitetura.md), seção 3 |
+| Arquitetura da escrita | [02-arquitetura.md](02-arquitetura.md), seção 3.1 |
+| Recepção de mensagem | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2 |
+| Ingresso de nó | [04-cluster.md](04-cluster.md), seção 6.2 |
+| Remoção de nó | [04-cluster.md](04-cluster.md), seção 6.3 |
+| Entrega e ack | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.2 |
+| Três cenários do `GET` | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8 |
+
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

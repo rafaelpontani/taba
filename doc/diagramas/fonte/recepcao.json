@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Recepção de mensagem (escrita por quórum)",
+    "output": "doc/diagramas/html/recepcao.html",
+    "viewBox": [
+      1080,
+      668
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "cliente",
+      "type": "external",
+      "label": "Cliente",
+      "sublabel": "produtor"
+    },
+    {
+      "id": "coord",
+      "type": "backend",
+      "label": "Coordenador",
+      "sublabel": "nó que recebeu o POST"
+    },
+    {
+      "id": "primario",
+      "type": "security",
+      "label": "Primário",
+      "sublabel": "dono do bloco"
+    },
+    {
+      "id": "replica",
+      "type": "database",
+      "label": "Réplica (quórum)",
+      "sublabel": "write.quorum - 1"
+    },
+    {
+      "id": "fora",
+      "type": "cloud",
+      "label": "Réplica fora",
+      "sublabel": "fora do quórum"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 298,
+      "label": "Fase 1: registro"
+    },
+    {
+      "from": 306,
+      "to": 446,
+      "label": "Fase 2: commit"
+    },
+    {
+      "from": 454,
+      "to": 538,
+      "label": "Resposta e 2º plano"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post",
+      "from": "cliente",
+      "to": "coord",
+      "y": 172,
+      "label": "POST /topics/{t}/messages",
+      "variant": "emphasis",
+      "note": "gera GUID v7 e calcula o bloco"
+    },
+    {
+      "id": "reg-p",
+      "from": "coord",
+      "to": "primario",
+      "y": 200,
+      "label": "registro (pendente)"
+    },
+    {
+      "id": "reg-r",
+      "from": "coord",
+      "to": "replica",
+      "y": 228,
+      "label": "registro (pendente)"
+    },
+    {
+      "id": "reg-f",
+      "from": "coord",
+      "to": "fora",
+      "y": 256,
+      "label": "registro (pendente)"
+    },
+    {
+      "id": "ok-p",
+      "from": "primario",
+      "to": "coord",
+      "y": 284,
+      "label": "confirma",
+      "variant": "return"
+    },
+    {
+      "id": "ok-r",
+      "from": "replica",
+      "to": "coord",
+      "y": 320,
+      "label": "confirma: quórum fechado",
+      "variant": "return"
+    },
+    {
+      "id": "com-p",
+      "from": "coord",
+      "to": "primario",
+      "y": 348,
+      "label": "commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "com-r",
+      "from": "coord",
+      "to": "replica",
+      "y": 376,
+      "label": "commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cok-p",
+      "from": "primario",
+      "to": "coord",
+      "y": 404,
+      "label": "ok",
+      "variant": "return"
+    },
+    {
+      "id": "cok-r",
+      "from": "replica",
+      "to": "coord",
+      "y": 432,
+      "label": "ok",
+      "variant": "return"
+    },
+    {
+      "id": "resp",
+      "from": "coord",
+      "to": "cliente",
+      "y": 468,
+      "label": "201 {id}",
+      "variant": "return"
+    },
+    {
+      "id": "bg",
+      "from": "coord",
+      "to": "fora",
+      "y": 496,
+      "label": "registro + commit (insiste)",
+      "variant": "dashed",
+      "note": "até write.commit.timeout"
+    },
+    {
+      "id": "bg-ok",
+      "from": "fora",
+      "to": "coord",
+      "y": 524,
+      "label": "confirma",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Quórum",
+      "items": [
+        "Sempre inclui o primário",
+        "Resposta sai com o commit confirmado no quórum"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Falha antes do quórum",
+      "items": [
+        "Retry (write.retry.*), depois erro ao cliente",
+        "Rollback nos nós que já confirmaram"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Falha depois do quórum",
+      "items": [
+        "Nunca há rollback",
+        "Bloco fica abaixo do fator pleno: evento under-replicated"
+      ]
+    }
+  ]
+}

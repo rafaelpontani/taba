@@ -13,7 +13,15 @@ O sistema é composto por **nós** (nodes) idênticos entre si (sem nó "mestre"
 | **Storage engine** | Armazenamento em memória com overflow para disco (seção 3.2). |
 | **Cluster manager** | Descoberta, registro, detecção de falhas, votação de membros e particionamento (hash circular). |
  
+![C4 nível 1: contêineres do Sistema de Mensagens](diagramas/img/c4-nivel1-conteineres.svg)
+
+*Contêineres de um nó (C4 nível 1). São camadas lógicas do mesmo processo e da mesma imagem. Fonte: [c4-nivel1-conteineres.json](diagramas/fonte/c4-nivel1-conteineres.json).*
+
 ### 3.1 Fluxo de escrita de uma mensagem
+
+![Arquitetura da escrita de uma mensagem no cluster](diagramas/img/arquitetura-escrita.svg)
+
+*Fonte: [arquitetura-escrita.json](diagramas/fonte/arquitetura-escrita.json). A sequência detalhada está na seção 7.2 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).*
  
 1. Cliente envia mensagem via API HTTP para um nó qualquer do cluster (o nó **coordenador** da requisição).
 2. O nó coordenador calcula, pelo ID da mensagem, os **nós responsáveis pelo bloco** (primário + réplicas) e **encaminha internamente** a mensagem a eles — ver o procedimento detalhado na seção 7. O coordenador pode ser ele mesmo um dos nós de destino, mas provavelmente não é o único.

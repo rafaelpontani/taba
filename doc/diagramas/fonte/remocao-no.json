@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Remoção de um nó do cluster",
+    "output": "doc/diagramas/html/remocao-no.html",
+    "viewBox": [
+      1080,
+      646
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "falho",
+      "type": "external",
+      "label": "Nó com falha",
+      "sublabel": "canal fora"
+    },
+    {
+      "id": "detector",
+      "type": "backend",
+      "label": "Nó detector",
+      "sublabel": "primeiro a notar"
+    },
+    {
+      "id": "demais",
+      "type": "cloud",
+      "label": "Demais nós",
+      "sublabel": "votantes"
+    }
+  ],
+  "segments": [
+    {
+      "from": 154,
+      "to": 218,
+      "label": "Detecção"
+    },
+    {
+      "from": 232,
+      "to": 328,
+      "label": "Votação"
+    },
+    {
+      "from": 342,
+      "to": 438,
+      "label": "Desregistro"
+    },
+    {
+      "from": 452,
+      "to": 516,
+      "label": "Retorno"
+    }
+  ],
+  "messages": [
+    {
+      "id": "sem-sinal",
+      "from": "detector",
+      "to": "falho",
+      "y": 170,
+      "label": "sinal de vida perdido",
+      "variant": "dashed"
+    },
+    {
+      "id": "reconecta",
+      "from": "detector",
+      "to": "falho",
+      "y": 202,
+      "label": "reconecta N vezes",
+      "variant": "dashed",
+      "note": "sinais acumulam na fila"
+    },
+    {
+      "id": "voto",
+      "from": "detector",
+      "to": "demais",
+      "y": 248,
+      "label": "abre votação de exclusão",
+      "variant": "security"
+    },
+    {
+      "id": "votos",
+      "from": "demais",
+      "to": "detector",
+      "y": 280,
+      "label": "votos (quórum padrão: 3)",
+      "variant": "return"
+    },
+    {
+      "id": "des",
+      "from": "detector",
+      "to": "demais",
+      "y": 312,
+      "label": "desregistro (fase 1)"
+    },
+    {
+      "id": "des-ok",
+      "from": "demais",
+      "to": "detector",
+      "y": 358,
+      "label": "todos confirmam",
+      "variant": "return"
+    },
+    {
+      "id": "des-com",
+      "from": "detector",
+      "to": "demais",
+      "y": 390,
+      "label": "commit (fase 2)",
+      "variant": "emphasis",
+      "note": "descartam filas e rebalanceiam"
+    },
+    {
+      "id": "des-fim",
+      "from": "demais",
+      "to": "detector",
+      "y": 422,
+      "label": "nó removido da tabela",
+      "variant": "return"
+    },
+    {
+      "id": "volta",
+      "from": "falho",
+      "to": "demais",
+      "y": 468,
+      "label": "envia mensagens perdidas aos novos donos",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rebootstrap",
+      "from": "falho",
+      "to": "demais",
+      "y": 500,
+      "label": "limpa estado e refaz o bootstrap",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reconexão a tempo",
+      "items": [
+        "Se o canal volta antes do fim da votação, nada muda"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Concorrência",
+      "items": [
+        "Durante a votação, novos bootstraps ficam em espera",
+        "Freezing opcional impede o retorno imediato do nó"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Tamanho mínimo",
+      "items": [
+        "Produção: 3 nós, para haver quórum de votação"
+      ]
+    }
+  ]
+}

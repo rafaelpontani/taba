@@ -20,6 +20,10 @@ A entrega segue o modelo de **invisibilidade temporária**, como o *visibility t
 
 ### 12.2 Entrega (`GET`)
 
+![Sequência da entrega e do ack](diagramas/img/consumo.svg)
+
+*Entrega (`GET`) e confirmação (ack). Fonte: [consumo.json](diagramas/fonte/consumo.json). Como o `GET` acha a mensagem quando a lista local está vazia: seção 12.8.*
+
 O cliente informa a invisibilidade desejada na query string: `GET /topics/{topic}/messages?visibilityTimeout=120`. O valor é em segundos; **o padrão é 120 s** (`delivery.visibility-timeout.default`).
 
 O nó que atende o `GET` usa o mesmo protocolo em duas fases da escrita (seção 7.2), agora para a invisibilidade:
@@ -79,6 +83,14 @@ Os metadados são `deliveryCount` (incremental) e `invisibleUntil` (data e hora)
 
 As mensagens de um tópico se espalham por vários blocos e nós (seção 7.2), e vários nós têm cópia de cada mensagem. Se todas as réplicas entregassem, elas disputariam o commit de invisibilidade da mesma mensagem, com falhas e retries que aumentariam a latência do `GET` quando há muitos consumidores. Por isso cada mensagem tem **um único dono da entrega: o nó primário do bloco dela**.
 
+**Como o `GET` acha uma mensagem (resumo).** O particionamento é **por ID da mensagem, não por tópico** (seção 7.1): as mensagens de um mesmo tópico ficam espalhadas por todos os nós, e o tópico **não pertence a nenhum nó**. Por isso o `GET` nunca precisa localizar "o nó do tópico". Basta:
+
+1. Cada nó entrega apenas as mensagens de que é o **primário**, guardadas na sua lista de prontos do tópico.
+2. Se a lista de prontos local tem um ID, o nó entrega direto, sem consultar outros nós.
+3. Se a lista local está vazia, o nó usa a tabela **em memória** de "quais nós têm mensagens prontas neste tópico", mantida pelos sinais do canal entre nós (seção 12.8), e pede a **um** desses nós que entregue. Não há varredura nem consulta a todos os nós.
+
+Um exemplo com os três cenários está na seção 12.8.
+
 **Como cada nó sabe de quais mensagens é dono, sem conhecer o tópico inteiro:**
 
 1. O ID da mensagem vira um hash, que cai numa posição do anel (seção 7.1), que pertence a um bloco, que tem seus nós responsáveis (primário, secundário, terciário...).
@@ -92,7 +104,7 @@ As mensagens de um tópico se espalham por vários blocos e nós (seção 7.2), 
 - A ordem de entrega é a do GUID v7 **dentro da lista de cada nó**; não há ordem global no tópico.
 - **A partição não é o que garante a correção.** O registro de invisibilidade continua sendo exclusivo: um nó rejeita o pedido se já há outro pendente ou se a mensagem já está invisível, e o `GET` tenta outro ID. A divisão por dono só evita a disputa; se ela acontecer (por exemplo, com tabelas de membros divergentes por instantes), nenhuma mensagem é entregue em duplicidade.
 - **Mudança no anel:** quando o primário de um bloco muda (entrada, saída ou rebalanceamento), a thread refaz o filtro dos blocos afetados. Um bloco em sincronização não entrega (seção 7.3).
-- **Lista vazia:** se a lista do nó que recebeu o `GET` está vazia, ele pede mensagens ao dono de outro nó e, com long polling, aguarda novas mensagens — ver seção 12.8.
+- **Lista vazia:** se a lista do nó que recebeu o `GET` está vazia, ele consulta a tabela em memória de nós com mensagens prontas, pede a **um** deles que entregue e, com long polling, aguarda novas mensagens se nenhum tiver — ver seção 12.8.
 - **Dono indisponível:** se o dono de parte das mensagens está fora do ar e ainda não foi desregistrado, essas mensagens ficam sem entrega até o desregistro. *(Se outro nó pode assumir nesse intervalo está em aberto — ver [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md).)*
 
 **Alternativa descartada — nó controlador por tópico:** um nó eleito com a lista de entrega do tópico daria ordem total, mas todo `GET` do tópico passaria por ele (gargalo em tópico quente), exigiria eleição de líder (o cluster só tem votação de exclusão) e contraria o desenho de nós idênticos, sem mestre fixo (seção 3).
@@ -103,11 +115,41 @@ As mensagens de um tópico se espalham por vários blocos e nós (seção 7.2), 
 
 **Fluxo do `GET` quando o nó não tem mensagem pronta:**
 
-1. O nó consulta o que sabe em memória (ver "Canal entre nós" abaixo) sobre **quais outros nós têm mensagens prontas** do tópico e pede a eles, **uma única vez**, que entreguem (rota interna `POST /cluster/topics/{topic}/messages/take`). Quem entrega é sempre o **dono da mensagem**: ele escolhe o ID da sua lista de prontos, faz o registro + commit de invisibilidade (seção 12.2) e devolve a mensagem ao nó que pediu, que a repassa ao cliente. Assim a mensagem continua tendo um único coordenador.
+1. O nó consulta o que sabe em memória (ver "Canal entre nós" abaixo) sobre **quais outros nós têm mensagens prontas** do tópico e pede a **um deles por vez** que entregue (rota interna `POST /cluster/topics/{topic}/messages/take`). O peer é escolhido **aleatoriamente** entre os que a tabela marca como "tem mensagens prontas". Se ele responder vazio (o estado era uma dica desatualizada) ou falhar, o nó tenta o próximo, até um teto de tentativas (`delivery.take.max-attempts`, a definir); esgotado o teto, segue para o passo 2. Assim o custo de um `GET` com lista local vazia é limitado a esse teto, nunca a um pedido a todos os nós. Quem entrega é sempre o **dono da mensagem**: ele escolhe o ID da sua lista de prontos, faz o registro + commit de invisibilidade (seção 12.2) e devolve a mensagem ao nó que pediu, que a repassa ao cliente. Assim a mensagem continua tendo um único coordenador.
 2. Se nenhum nó tem mensagem, o `GET` entra como **ouvinte local** do tópico (fila de espera em memória, na ordem de chegada) até `waitTime`.
 3. Quando chega uma **mensagem nova pronta no próprio nó**, ela vai direto ao primeiro ouvinte local, sem tráfego entre nós.
 4. Quando o aviso vem de **outro nó** (abaixo), o ouvinte repete o passo 1 apenas com aquele nó. Se a mensagem já foi levada por outro, ele volta a esperar.
 5. Esgotado `waitTime`, responde vazio. Se o cliente desconectar antes, o ouvinte é removido, liberando o recurso.
+
+**Exemplo: três cenários.** Cluster com 3 nós (A, B, C) e o tópico `pedidos` com 6 mensagens. O hash do ID as distribui, e cada nó é primário de duas delas:
+
+| Nó | É primário de | Lista de prontos de `pedidos` |
+|---|---|---|
+| A | m1, m4 | [m1, m4] |
+| B | m2, m5 | [m2, m5] |
+| C | m3, m6 | [m3, m6] |
+
+Cada nó também guarda réplicas de mensagens de outros nós, mas réplica não entra na lista de prontos: só o primário entrega.
+
+- **Cenário 1: lista local com mensagem.** O consumidor faz `GET` em A. A lista de A tem m1, então A é o dono: faz registro + commit de invisibilidade no quórum e devolve m1. Nenhum outro nó é consultado para achar a mensagem. Em fila cheia, é o caso comum.
+- **Cenário 2: lista local vazia, outro nó tem.** A já entregou m1 e m4 e sua lista esvaziou. Nesse momento A enviou o sinal "sem mensagens prontas em `pedidos`", e B e C mantêm na memória a tabela `pedidos → {A: não, B: sim, C: sim}`. Um novo `GET` chega a A, que consulta a própria tabela, escolhe B ao acaso e chama `take`. B, o dono, faz registro + commit de invisibilidade e devolve a mensagem a A, que a repassa ao cliente. Se B já tivesse esvaziado, A tentaria C.
+- **Cenário 3: nenhum nó tem.** A tabela marca A, B e C como "não". O `GET` de A, com `waitTime > 0`, vira ouvinte local, e A informa aos demais, uma única vez, "`pedidos` tem ouvintes em A". Quando uma mensagem nova fica pronta em B, B consulta a própria tabela, vê o ouvinte em A e manda o aviso "há mensagens novas de `pedidos` aqui". A chama `take` em B, recebe a mensagem e a entrega ao ouvinte. Sem chegada de mensagem até `waitTime`, o `GET` responde vazio.
+
+![Cenário 1: a lista local tem mensagem](diagramas/img/consumo-cenario1-lista-local.svg)
+
+![Cenário 2: lista local vazia, outro nó tem mensagem](diagramas/img/consumo-cenario2-outro-no.svg)
+
+![Cenário 3: nenhum nó tem mensagem, o GET espera](diagramas/img/consumo-cenario3-espera.svg)
+
+*Fontes: [cenário 1](diagramas/fonte/consumo-cenario1-lista-local.json), [cenário 2](diagramas/fonte/consumo-cenario2-outro-no.json) e [cenário 3](diagramas/fonte/consumo-cenario3-espera.json).*
+
+Ninguém varre os nós: o custo de saber onde há mensagens é pago só nas **transições** (um nó passa de "tem" para "não tem", ou o contrário), com sinais pequenos. Comparação com as alternativas descartadas:
+
+| Alternativa | Custo por `GET` com lista local vazia |
+|---|---|
+| Ler o monitoramento de todos os nós | Consulta a N nós, estado já velho ao chegar |
+| `GET` em todos, um por um | Até N chamadas por `GET`; C consumidores esperando geram C × N chamadas |
+| Sinais nas transições (adotada) | Consulta local em memória + até `delivery.take.max-attempts` chamadas |
 
 **Canal entre nós.** Entre cada par de nós existe **um canal de comunicação permanente** (uma conexão **WebSocket**, em malha completa: cada nó conectado a todos os outros), único e compartilhado por todos os tópicos (nunca uma conexão por chamada de long polling nem por tópico). Por ele cada nó informa aos outros, **somente quando o estado muda** (não a cada chamada):
 
