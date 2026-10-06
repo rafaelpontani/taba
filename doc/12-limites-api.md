@@ -12,6 +12,7 @@ Regras de formato, aplicadas na criação/alteração de recursos, sem relação
 
 - **Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.json`) — 1 a 80 caracteres, regex `^[A-Za-z0-9_-]{1,80}$`, diferencia maiúsculas de minúsculas. Nome inválido é rejeitado na criação (`POST /topics`) com `400`.
 - **Tags de tópico**: até 20 tags por tópico; chave de 1 a 64 caracteres e valor de 0 a 128, restritos a `A-Za-z0-9_-.:` (seguros como atributo OTel e em URL — ver [11-observabilidade.md](11-observabilidade.md)).
+- **Long polling** (`waitTime` no `GET /topics/{topic}/messages`): de 0 a 20 segundos, padrão 0 (responde na hora). Valor fora da faixa é rejeitado com `400`. Ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
 ## Rate limits
 

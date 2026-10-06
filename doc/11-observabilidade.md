@@ -110,6 +110,18 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.write.pending.oldest_age` | gauge | s | — | Idade do registro pendente mais antigo (perto de `write.pending.ttl` indica commits não chegando). |
 | `msg.write.pending.expired` | counter | {message} | — | Registros descartados por expiração (sem commit nem rollback). |
 
+### Entrega e long polling ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md))
+
+| Métrica | Tipo | Unidade | Atributos | Descrição |
+|---|---|---|---|---|
+| `msg.delivery.ready` | gauge | {message} | — | IDs nas listas de prontos deste nó (todos os tópicos). |
+| `msg.delivery.redeliveries` | counter | {message} | — | Entregas de mensagens já entregues antes (`deliveryCount` > 1). |
+| `msg.delivery.longpoll.waiting` | gauge | {request} | — | Chamadas de long polling aguardando neste nó. |
+| `msg.delivery.longpoll.outcome` | counter | {request} | `outcome` (`delivered`/`empty`/`disconnected`) | Como terminaram as chamadas de long polling. |
+| `msg.delivery.take` | counter | {request} | `direction` (`in`/`out`), `outcome` (`delivered`/`empty`/`error`) | Pedidos de entrega a outro dono (`/messages/take`). |
+| `msg.cluster.channel.connections` | gauge | {connection} | — | Canais permanentes abertos com outros nós (esperado: nós do cluster − 1). |
+| `msg.cluster.channel.notifications` | counter | {message} | `direction` (`in`/`out`), `outcome` | Avisos de mensagem nova enviados e recebidos (`outcome`: `fetched`/`empty` no lado que recebe). |
+
 ### Membros do cluster e falhas (seção 6)
 
 | Métrica | Tipo | Unidade | Atributos | Descrição |
@@ -117,9 +129,12 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.cluster.members` | gauge | {node} | `state` (`active`/`frozen`/`suspect`) | Membros na tabela deste nó. |
 | `msg.cluster.members.version` | gauge | 1 | — | Versão/época da tabela de membros; divergência entre nós indica propagação incompleta. |
 | `msg.cluster.quorum.available` | gauge | 1 | — | `1` se há nós suficientes para o quórum de votação (`cluster.vote.quorum`). |
-| `msg.cluster.ping` | counter | {ping} | `peer`, `outcome` | Pings enviados e resultado. |
-| `msg.cluster.ping.duration` | histogram | s | `peer` | Latência do ping por peer. |
-| `msg.cluster.ping.consecutive_failures` | gauge | {ping} | `peer` | Falhas seguidas por peer (próximo do limite de `cluster.ping.retries` = votação iminente). |
+| `msg.cluster.channel.state` | gauge | 1 | `peer` | `1` se o canal com o peer está conectado, `0` se caído (substitui o ping — seção 6.3). |
+| `msg.cluster.channel.rtt` | histogram | s | `peer` | Latência do sinal de vida do canal, por peer. |
+| `msg.cluster.channel.reconnects` | counter | {attempt} | `peer`, `outcome` | Tentativas de reconexão do canal e resultado; perto do limite de `cluster.channel.reconnect.retries` = votação iminente. |
+| `msg.cluster.channel.queue.out` | gauge | {signal} | `peer` | Sinais na fila de saída para o peer; cresce enquanto o canal está fora (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
+| `msg.cluster.channel.queue.in` | gauge | {signal} | `peer` | Sinais recebidos do peer ainda a processar; crescimento contínuo indica processamento mais lento que a chegada. |
+| `msg.cluster.channel.queue.dropped` | counter | {signal} | `peer`, `reason` (`coalesced`/`expired`/`overflow`) | Sinais substituídos, descartados por idade ou descartados por estouro do limite da fila de saída (o estouro abre a votação de exclusão do peer). |
 | `msg.cluster.vote` | counter | {vote} | `role` (`opened`/`cast`), `outcome` | Votações de exclusão abertas/votadas e seu resultado. |
 | `msg.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
 | `msg.cluster.bootstrap.failures` | counter | {failure} | `reason` | Falhas de bootstrap (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
@@ -155,7 +170,7 @@ Derivada das métricas de nó, exposta em `GET /stats/cluster` e `GET /health/re
 | Condição | Severidade | Quando |
 |---|---|---|
 | `ok` | — | Nenhuma das abaixo. |
-| `member-unreachable` | aviso | Algum nó com falhas de ping consecutivas, ainda antes da votação. |
+| `member-unreachable` | aviso | Canal com algum nó caído ou em reconexão, ainda antes da votação. |
 | `node-frozen` | aviso | Nó(s) em período de freezing. |
 | `syncing` | aviso | Blocos em sincronização; a entrega está suspensa neles (seção 7.3). |
 | `under-replicated` | crítica | Blocos com menos réplicas íntegras que `replication.factor` — escritas podem falhar por não atingir o número de réplicas. |
@@ -343,7 +358,7 @@ Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id
 | Falha de registro/commit de mensagem (por tentativa) | `warn` | Escrita (seção 7.2) |
 | Escrita abortada e rollback enviado | `error` | Escrita (seção 3.1) |
 | Registro pendente expirado | `warn` | Escrita (seção 3.1) |
-| Nó não respondeu ao ping; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
+| Canal com um nó caiu, reconectou ou esgotou as tentativas; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
 | Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
 | Falha de bootstrap do nó | `error` | Cluster (seção 6.5) |
 | Início e fim de sincronização de bloco | `info` | Sincronização (seção 7.3) |

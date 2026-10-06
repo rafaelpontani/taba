@@ -26,8 +26,9 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
 | Nós virtuais por nó físico | `ring.virtual-nodes` | A definir | Quantidade de posições que cada nó físico ocupa no anel de hash, para melhorar a distribuição dos blocos. | 7.1 |
-| Intervalo de ping | `cluster.ping.interval` | A definir | Periodicidade do ping em malha entre os nós. | 6.3 |
-| Retries de ping | `cluster.ping.retries` | A definir | Tentativas antes de abrir a votação de exclusão de um nó que não responde. | 6.3 |
+| Sinal de vida do canal | `cluster.channel.keepalive.interval` | A definir | Periodicidade do sinal de vida enviado em cada canal entre nós, e tempo sem sinal para considerá-lo caído. | 6.3 |
+| Reconexão do canal | `cluster.channel.reconnect.retries`, `cluster.channel.reconnect.backoff` | A definir | Tentativas de reconectar (e intervalo/backoff) antes de abrir a votação de exclusão de um nó cujo canal caiu. | 6.3 |
+| Limite da fila do canal | `cluster.channel.queue.max-size`, `cluster.channel.queue.max-age` | A definir | Tamanho e idade máximos da fila de saída para um nó com canal fora; ao passar, o nó com canal fora é tratado como falho e a votação de exclusão é aberta. | 12.9 |
 | Quórum de votação | `cluster.vote.quorum` | **3** | Votos mínimos concordando com a exclusão para efetivar a remoção do nó. | 6.3 |
 | Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Comportamento durante o freezing ainda em aberto. | 6.7 |
 | Retry de bootstrap | `cluster.bootstrap.retry` | A definir | Comportamento (tentativa imediata, backoff, manual) após exclusão por falha no registro. | 6.5 |
@@ -87,5 +88,6 @@ Não são configuráveis; são regras de validação da API de cliente ([06-api.
 | Tags por tópico | máximo de 20 |
 | Chave de tag | 1 a 64 caracteres, `A-Za-z0-9_-.:` |
 | Valor de tag | 0 a 128 caracteres, `A-Za-z0-9_-.:` |
+| Espera do long polling (`waitTime`) | 0 a 20 segundos (padrão 0) |
 
 > Explicação do tema: [12-limites-api.md](12-limites-api.md).

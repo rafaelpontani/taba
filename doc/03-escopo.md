@@ -9,7 +9,7 @@
 - Enviar mensagem para um tópico (`POST`).
 - Receber mensagens de um tópico (`GET`).
 - Confirmar o consumo de uma mensagem (ack).
-- Controle de entrega por **invisibilidade temporária** (padrão 120 s, ajustável no `GET` e depois via `PATCH`), com contador de entregas e reentrega se não houver ack — ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
+- Controle de entrega por **invisibilidade temporária** (padrão 120 s, ajustável no `GET` e depois via `PATCH`), com contador de entregas e reentrega se não houver ack, e **long polling** de até 20 s, com aviso entre nós por canal permanente — ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 ### 4.2 Armazenamento e durabilidade
 - Recebimento inicial da mensagem em memória, com **espaço configurável** e **overflow para disco** (`${topico}/${id}.json`) quando o limite é atingido — ver seção 3.2.
 - Espaço de memória dividido **dinamicamente entre tópicos**, priorizando os de maior fluxo de leitura (seção 3.2).
@@ -21,7 +21,7 @@
 - Comunicação interna entre nós **via API HTTP**.
 - Entrada e saída de nós usando o **mesmo protocolo de registro/commit** das mensagens (ver seção 6.2/6.3), por serem operações pesadas que afetam o roteamento de todo o anel.
 - Falha no registro de um nó **exclui o nó** e dispara **rebalanceamento dos blocos** (ver seção 6.5).
-- Detecção de falhas com **retries de ping antes de votar**, quórum mínimo padrão de **3 votos**, e reintegração controlada de nós que voltam (ver seção 6.3/6.6).
+- Detecção de falhas com **canal permanente entre nós como sinal de vida (reconexão antes de votar)**, quórum mínimo padrão de **3 votos**, e reintegração controlada de nós que voltam (ver seção 6.3/6.6).
 - **Período de freezing configurável** para evitar nós instáveis entrando e saindo repetidamente do cluster (ver seção 6.7).
 - Sincronização de blocos **escopada e distribuída** entre as réplicas existentes, sem bloquear o cluster inteiro (ver seção 7.3).
 - Tamanho mínimo do cluster: **1 nó** (ambiente de teste/dev) ou **3 nós** (produção).

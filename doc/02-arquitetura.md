@@ -9,7 +9,7 @@ O sistema é composto por **nós** (nodes) idênticos entre si (sem nó "mestre"
 | Camada | Responsabilidade |
 |---|---|
 | **API HTTP (cliente)** | Recebe publicações e entregas de mensagens dos clientes. |
-| **API HTTP (interna/cluster)** | Comunicação entre nós: registro, ping, propagação de tabela de membros, replicação de mensagens. |
+| **API HTTP (interna/cluster)** | Comunicação entre nós: registro, propagação de tabela de membros, replicação de mensagens; mais o canal permanente entre nós (sinal de vida e sinais de entrega). |
 | **Storage engine** | Armazenamento em memória com overflow para disco (seção 3.2). |
 | **Cluster manager** | Descoberta, registro, detecção de falhas, votação de membros e particionamento (hash circular). |
  
