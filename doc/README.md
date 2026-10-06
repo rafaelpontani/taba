@@ -1,8 +1,10 @@
-# Sistema de Mensagens — Documentação
+# Taba — Documentação
 
 > Versão 0.9 — documento vivo (escopo + documentação técnica), atualizado conforme o projeto evolui.
 
-Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no Amazon SQS e SNS.
+Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Amazon SQS e SNS. Para a apresentação do projeto, veja o [README da raiz](../README.md).
+
+> Quer entender como tudo isso funciona? Comece pela [visão geral](01-visao-geral.md) e siga o índice abaixo.
 
 ## Índice
 
