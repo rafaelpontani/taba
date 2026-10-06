@@ -41,7 +41,7 @@ O espaço em memória destinado às mensagens em cada nó é **configurável** (
   ```
   (uma pasta por tópico, um arquivo JSON por mensagem).
 - Ao ler (`GET`) uma mensagem que não está mais em memória, ela é buscada no disco pelo mesmo caminho.
-- Os metadados de entrega (contador de entregas e invisibilidade) ficam em um arquivo ao lado, `${topico}/${id}.meta.json` — ver [14-invisibilidade.md](14-invisibilidade.md). O excedente da lista de mensagens invisíveis também vai a disco, em `${topico}/_expiracao/${janela}.log`.
+- Os metadados de entrega (contador de entregas e invisibilidade) ficam em um arquivo ao lado, `${topico}/${id}.meta.json` — ver [14-invisibilidade.md](14-invisibilidade.md). O excedente da lista de mensagens invisíveis também vai a disco, em `${topico}/_expiracao/${janela}.jsonl`.
 **Divisão do espaço entre tópicos:**
 - O espaço de memória **não é dividido de forma fixa e igual** entre os tópicos do nó.
 - A divisão é **dinâmica**, priorizando os tópicos com **maior fluxo de saída/leitura** (consumo) — ou seja, tópicos mais lidos mantêm mais mensagens "quentes" em memória, enquanto tópicos com menor atividade de leitura têm suas mensagens movidas para disco primeiro quando o espaço fica escasso.

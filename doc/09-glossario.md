@@ -28,7 +28,7 @@
 | **Overflow para disco** | Persistência em disco (`${topico}/${id}.json`) das mensagens que excedem o espaço de memória configurado para o nó (seção 3.2). |
 | **Invisibilidade** | Prazo (`invisibleUntil`) em que uma mensagem já entregue não é entregue a outro consumidor; se não houver ack até lá, ela volta a ser entregável (seções 12 e 13). Padrão: 120 s. |
 | **Lista de invisíveis** | Lista, por tópico e só no dono da entrega, dos pares (ID, `invisibleUntil`) das mensagens invisíveis, ordenada por prazo e de tamanho limitado; a thread de vencimento a usa para devolver mensagens à lista de prontos (seções 13.4 e 13.6). |
-| **Índice de expiração** | Arquivos em disco (`${topico}/_expiracao/${janela}.log`) com os pares (ID, prazo) que não couberam na lista de invisíveis; derivado dos metadados, com remoção preguiçosa de entradas velhas (seção 13.5). |
+| **Índice de expiração** | Arquivos em disco (`${topico}/_expiracao/${janela}.jsonl`) com os pares (ID, prazo) que não couberam na lista de invisíveis; derivado dos metadados, com remoção preguiçosa de entradas velhas (seção 13.5). |
 | **Contador de entregas** | `deliveryCount`: quantas vezes a mensagem foi entregue; guardado nos metadados (`${topico}/${id}.meta.json` quando em disco). |
 | **Dono da entrega** | Nó primário do bloco de uma mensagem; é o único que a coloca na lista de prontos, evitando disputa entre réplicas (seção 12.7). Sempre faz parte do **quórum de escrita** (seção 7.2) — sem isso, uma escrita poderia ser considerada durável antes de estar visível a qualquer consumidor. |
 | **Long polling** | `GET` com `waitTime` (até 20 s) que aguarda novas mensagens em vez de responder vazio; o nó registra o pedido como ouvinte do tópico (seção 12.8). |

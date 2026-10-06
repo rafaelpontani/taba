@@ -93,7 +93,7 @@ Enquanto todas as mensagens invisíveis do dono cabem na lista, ela é a única 
 **Índice de expiração.** Arquivos append-only por tópico, um por **janela de tempo** do prazo (`delivery.invisible.spill.window`):
 
 ```
-${topico}/_expiracao/${janela}.log     # linhas "id invisibleUntil"
+${topico}/_expiracao/${janela}.jsonl     # JSON Lines: {"id":"...","invisibleUntil":"..."}
 ```
 
 A `janela` é o prazo truncado ao intervalo (por exemplo, ao minuto). Anexar uma linha é uma escrita sequencial barata; ler o que vence primeiro é abrir o arquivo da janela mais antiga.
@@ -105,7 +105,7 @@ A `janela` é o prazo truncado ao intervalo (por exemplo, ao minuto). Anexar uma
 
 Isso mantém uma **invariante**: **tudo o que está na lista vence antes de tudo o que está no disco.** Logo a cabeça da lista é sempre o próximo a vencer de fato, e a thread nunca precisa olhar o disco enquanto a lista não esvazia.
 
-**Recarga.** Quando a lista cai abaixo de um limiar (ou esvazia) e há arquivos no índice, a thread lê a janela mais antiga, ordena e insere os pares pela mesma regra de inclusão; o que não cabe volta para o disco (o arquivo da janela é reescrito só com o restante) e o arquivo esvaziado é apagado. Prazos já vencidos no índice (por exemplo, o dono ficou parado) são tratados como vencimento na hora.
+**Recarga.** Quando a lista cai abaixo de um limiar (ou esvazia) e há arquivos no índice, a thread lê a janela mais antiga, ordena e insere os pares pela mesma regra de inclusão; o arquivo **nunca é editado**: depois de lido inteiro, é apagado, e o que não coube volta ao índice como **novas linhas anexadas** (que recriam o arquivo só com as sobras). A janela é lida por inteiro na memória, de forma transitória, então a duração dela deve ser pequena o bastante para isso (D34.1). Prazos já vencidos no índice (por exemplo, o dono ficou parado) são tratados como vencimento na hora.
 
 **Entradas velhas (remoção preguiçosa).** Ack, `PATCH` e nova entrega **não** procuram a linha no índice: só a lista em memória é atualizada. Ao ler uma linha, a thread a **confere nos metadados**: só vale se a mensagem ainda existe, o nó ainda é o dono e o `invisibleUntil` dos metadados é igual ao da linha (senão foi alterada ou reentregue e já tem outra entrada). Linha que não passa na conferência é descartada. O custo é uma leitura de metadado por linha lida, sem escrever em disco a cada ack.
 
