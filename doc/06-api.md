@@ -40,7 +40,7 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `GET` | `/metrics` | Métricas locais do nó no formato Prometheus (um alvo de scrape por nó, sem fan-out). |
 | `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local). |
 | `GET` | `/stats/cluster` | Métricas de todos os nós e condição geral do cluster (consulta todos os nós, *best-effort*). |
-| `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `sort`, `tag.*`, `condition`, `fields`, `groupBy`). |
+| `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `sort`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`). Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
 | `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
 | `GET` | `/health/live` | O processo está de pé. |
 | `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster). |
@@ -74,5 +74,5 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `GET` | `/cluster/blocks/{id}/messages/{messageId}` | Retorna o conteúdo de uma mensagem específica do bloco, para as chamadas balanceadas de sincronização. |
 | `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar aos novos donos mensagens que estavam registradas como perdidas. |
 | `GET` | `/cluster/stats/node` | Métricas locais do nó, para a agregação de `/stats/cluster`. |
-| `GET` | `/cluster/stats/topics` | Contadores locais por tópico (apenas mensagens em que o nó é primário), somados por quem atende `/stats/topics`. |
+| `GET` | `/cluster/stats/topics` | Contadores locais por tópico (apenas mensagens em que o nó é primário: visíveis, invisíveis e data da mais antiga), agregados por quem atende `/stats/topics` (soma das quantidades, menor data). |
 

@@ -200,7 +200,8 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | Parâmetro | Descrição |
 |---|---|
 | `limit` / `cursor` | Paginação por cursor (o resultado devolve `nextCursor`). Padrão e máximo de `limit` a definir. |
-| `sort` | Campo de ordenação, prefixo `-` para decrescente. Ex.: `-depth` (mais mensagens acumuladas), `-oldestAge`, `-publishRate`. Permite o uso de **top-N** em vez de varrer tudo. |
+| `scope` | `cluster` (padrão, com fan-out e agregação) ou `node` (só os valores deste nó, sem consultar outros — seção [Visão do nó e visão do cluster](#visão-do-nó-e-visão-do-cluster)). |
+| `sort` | Campo de ordenação, prefixo `-` para decrescente. Ex.: `-depth` (mais mensagens acumuladas), `-visibleMessages`, `-invisibleMessages`, `oldestMessageAt` (mais antiga primeiro), `-publishRate`. Permite o uso de **top-N** em vez de varrer tudo. |
 | `tag.<chave>=<valor>` | Filtra por tag. Ex.: `tag.time=financeiro`. |
 | `condition` | Filtra por condição (ex.: `condition=backlog`) — o caso de uso principal: "quais tópicos estão com problema?". |
 | `fields` | Restringe os campos devolvidos, para respostas menores. |
@@ -219,9 +220,11 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | | `acked` | Total de confirmações (`DELETE` da mensagem). |
 | | `consumeRate` / `ackRate` | Mensagens consumidas / confirmadas por segundo. É a **taxa de leitura** usada na divisão dinâmica de memória (seção 3.2). |
 | | `consumeLatency` | p50/p95/p99 da latência de consumo e de ack. |
-| **Fila** | `depth` | Mensagens disponíveis, ainda não confirmadas. |
-| | `inFlight` | Mensagens entregues sem ack e ainda invisíveis (`invisibleUntil` no futuro — [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
-| | `oldestAge` | Idade da mensagem mais antiga (tempo desde a publicação) — o melhor indicador de consumidor parado. |
+| **Fila** | `visibleMessages` | Mensagens **visíveis**: prontas para entrega, sem `invisibleUntil` no futuro ([14-invisibilidade.md](14-invisibilidade.md)). |
+| | `invisibleMessages` | Mensagens **invisíveis**: entregues, sem ack e com `invisibleUntil` no futuro (em processamento por algum consumidor). |
+| | `depth` | Mensagens ainda não confirmadas: `visibleMessages + invisibleMessages`. |
+| | `oldestMessageAt` | **Data de publicação da mensagem mais antiga** ainda não confirmada (visível ou invisível), tirada do timestamp do GUID v7 do ID. Ausente se o tópico não tem mensagens. |
+| | `oldestAge` | Derivado: `agora − oldestMessageAt`. O melhor indicador de consumidor parado. |
 | | `bytes` | Volume total acumulado. |
 | **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |
 | | `memoryBytes` / `diskBytes` | Bytes em memória e em disco. |
@@ -244,6 +247,24 @@ Também uma **lista de condições**, com o campo `status` sendo a de maior seve
 | `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` >> `memoryMessages`): leituras mais lentas. |
 | `message-loss` | crítica | O tópico tem eventos de perda de mensagem registrados. |
 
+### Visão do nó e visão do cluster
+
+Os valores de fila (`visibleMessages`, `invisibleMessages`, `depth`, `oldestMessageAt`) existem em dois pontos de vista, e o cluster **interpreta** os do nó, não os repete:
+
+| Métrica | Visão do **nó** (local) | Visão do **cluster** (agregada) |
+|---|---|---|
+| `visibleMessages` | Visíveis das mensagens de que **este nó é o primário** | **Soma** dos valores de todos os nós |
+| `invisibleMessages` | Invisíveis das mensagens de que este nó é o primário | **Soma** dos valores de todos os nós |
+| `depth` | `visibleMessages + invisibleMessages` do nó | **Soma** dos valores de todos os nós |
+| `oldestMessageAt` | Data da mais antiga entre as mensagens de que este nó é o primário | **A mais antiga** (menor data) entre todos os nós; nó sem mensagens do tópico não entra na conta |
+| `oldestAge` | `agora − oldestMessageAt` do nó | `agora − oldestMessageAt` do cluster (é a maior idade entre os nós) |
+
+- **Só o primário conta**, como no restante desta seção; senão a soma seria multiplicada pelo fator de replicação.
+- Cada nó mantém **contadores** dessas quantidades, atualizados nas transições (publicação: +1 visível; entrega: −1 visível, +1 invisível; vencimento do prazo: −1 invisível, +1 visível; ack: −1 no estado em que estava), sem varrer mensagens a cada consulta. A data mais antiga é a menor entre a mais antiga das visíveis e a mais antiga das invisíveis; como achá-la sem varredura é o D35 ([08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md)).
+- **Nó sem mensagens do tópico:** `oldestMessageAt` fica **ausente** (sem valor), nunca zero — um zero venceria o "mais antigo" do cluster.
+- **Nó que não responde** fica de fora e o resultado é marcado `partial`: as somas viram **piso** (o cluster tem ao menos aquilo) e a data mais antiga pode ser mais recente que a real.
+- **Como consultar cada visão:** `GET /stats/topics` e `GET /stats/topics/{topic}` devolvem a visão do **cluster** por padrão; com `scope=node` devolvem a visão **só do nó que atende**, sem consulta a outros nós. `groupBy` por tag aplica as mesmas regras (soma das quantidades, menor data) sobre os tópicos do grupo.
+
 ### Como o valor é calculado (custo)
 
 - As mensagens de um tópico se espalham pelos blocos do anel; cada mensagem existe em `replication.factor` nós. Portanto o valor do tópico no cluster é a **soma entre nós**, contando apenas a **réplica primária** de cada mensagem — do contrário, tudo apareceria multiplicado pelo fator de replicação.
@@ -261,7 +282,7 @@ Opt-in por `telemetry.topics.mode`, com o **mesmo efeito** no OTLP e em `GET /me
 | `by-tags` | | Métricas agregadas **por combinação de tags** escolhidas em `telemetry.topics.group-by-tags` (ex.: `time`, `ambiente`). | Limitada pelos valores das tags, **não** pelo número de tópicos |
 | `per-topic` | | Uma série por tópico, com o atributo `topic` (mais as tags). Limitada por `telemetry.topics.max-topics`; acima do teto, os tópicos excedentes são agregados em `topic="_other"`. | Limitada pelo teto |
 
-Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métricas por tópico, escolhidas por serem contadores/gauges baratos): `msg.topic.published`, `msg.topic.consumed`, `msg.topic.acked`, `msg.topic.depth`, `msg.topic.oldest_age`, `msg.topic.memory_bytes`, `msg.topic.disk_bytes`.
+Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métricas por tópico, escolhidas por serem contadores/gauges baratos): `msg.topic.published`, `msg.topic.consumed`, `msg.topic.acked`, `msg.topic.visible`, `msg.topic.invisible`, `msg.topic.depth`, `msg.topic.oldest_timestamp` (gauge em segundos Unix da mensagem mais antiga; **sem série** no nó que não tem mensagens do tópico), `msg.topic.memory_bytes`, `msg.topic.disk_bytes`.
 
 ## Endpoint Prometheus
 
@@ -273,7 +294,7 @@ Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métrica
 
 - Cada nó é um **alvo de scrape** independente; o Prometheus consulta **todos os nós** (descoberta de serviço estática, DNS ou a própria tabela de membros) e agrega com PromQL.
 - `/metrics` devolve só valores **locais**, **sem fan-out** — diferente de `/stats/cluster`. A resposta é barata e não depende de outros nós estarem de pé, o que é essencial para monitorar justamente o cluster degradado.
-- A agregação entre nós é feita pelo Prometheus. Para isso funcionar, os contadores de tópico contam **apenas as mensagens em que o nó é primário** (mesma regra de [Como o valor é calculado](#como-o-valor-é-calculado-custo)): `sum(msg_topic_depth) by (topic)` dá o valor do cluster, sem multiplicar pelo fator de replicação.
+- A agregação entre nós é feita pelo Prometheus. Para isso funcionar, os contadores de tópico contam **apenas as mensagens em que o nó é primário** (mesma regra de [Como o valor é calculado](#como-o-valor-é-calculado-custo)): `sum(msg_topic_visible) by (topic)` e `sum(msg_topic_invisible) by (topic)` dão os valores do cluster, sem multiplicar pelo fator de replicação, e `min(msg_topic_oldest_timestamp_seconds) by (topic)` dá a data da mensagem mais antiga do cluster.
 - O rótulo de identificação do nó (`instance`, ou `node_id` via `service.instance.id`) é o que distingue as séries entre nós.
 
 ### Conteúdo

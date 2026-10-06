@@ -20,7 +20,7 @@ Legenda:
 |---|---|
 | 1 — Contrato da API | D2, D4, D6–D7, D25, D27–D28, D31: ordenação, assinantes do `broadcast`, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET` |
 | 2 — Arquitetura | D8, D9, D29, D30: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova |
-| 3 — Protótipo | D10–D13, D34: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
+| 3 — Protótipo | D10–D13, D34–D35: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
 | 4 — Protocolo de registro/commit | D33: quórum de escrita fixo ou proporcional |
 | 6 — Sincronização | D15–D16: evento de perda, otimização de listagem |
 | 8 — Sinal de vida, quórum e freezing | D17–D19: quórum, freezing, retry do bootstrap |
@@ -87,6 +87,7 @@ Inclui o overflow por tópico (seção 3.2).
   - **D34.1** Tamanho da janela e limiar de recarga da lista.
   - **D34.2** Se a gravação do índice precisa de `fsync` (proposta: não, por ser derivado dos metadados).
   - **D34.3** Custo da reconstrução ao assumir um bloco grande (varredura dos `.meta.json`) e se vale um índice persistente.
+- **D35.** [ ] **Como o nó descobre a mensagem mais antiga do tópico sem varredura** (`oldestMessageAt`, [11-observabilidade.md](11-observabilidade.md)). A mais antiga visível é a cabeça da lista de prontos; falta a das invisíveis (a lista é ordenada por prazo, não por ID, e o excedente está em disco) e o que fazer quando a mais antiga recebe ack. Propostas: manter também um índice ordenado por ID, ou aceitar valor aproximado, recalculado por varredura periódica.
 - Valores iniciais: `memory.limit`, `delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.spill.window`.
 
 ### Passo 4 — Protocolo genérico de registro/commit
