@@ -10,12 +10,12 @@
  
 | Verbo | Recurso | Descrição |
 |---|---|---|
-| `POST` | `/topics` | Cria um tópico (nome, tipo `queue` ou `distributor`, e opcionalmente `tags`; `prefixes` para `distributor`; `volatile` e `idleTimeout` para `queue`). Gera o `id` (GUID v7) do tópico. Propagado a todos os nós por registro + commit; persistido em disco ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
-| `GET` | `/topics` | Lista os tópicos existentes, **paginada** (seção 8.1.2). Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), diferente de `/stats/topics`, que faz fan-out para métricas de consumo. |
+| `POST` | `/topics` | Cria um tópico (nome, tipo `queue` ou `distributor`, e opcionalmente `tags`; `prefixes` para `distributor`; `volatile` e `idleTimeout` para `queue`; `maxMessageBytes` opcional, tamanho máximo da mensagem do tópico, padrão `message.max-bytes` = 5 MB, podendo ser maior, até `message.max-bytes.hard-limit`). Gera o `id` (GUID v7) do tópico. Propagado a todos os nós por registro + commit; persistido em disco ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
+| `GET` | `/topics` | Lista os tópicos existentes, **paginada** (seção 8.1.2), com `sort` (`name`, `id`, `createdAt`) e o filtro `name`, que devolve os tópicos cujo nome **contém** o texto informado (ex.: `?name=pedidos`), para ajudar na busca; diferencia maiúsculas de minúsculas, como o nome do tópico. Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), diferente de `/stats/topics`, que faz fan-out para métricas de consumo. |
 | `GET` | `/topics/{topic}` | Retorna as informações e configurações do tópico (tipo, tags etc.). Também respondida localmente, pelo mesmo motivo. |
-| `PATCH` | `/topics/{topic}` | Altera informações do tópico (tags; `prefixes` de um `distributor`; `idleTimeout` de uma fila volátil). Nome, `id`, tipo e `volatile` são imutáveis. Mesma propagação do `POST`. |
+| `PATCH` | `/topics/{topic}` | Altera informações do tópico (tags; `prefixes` de um `distributor`; `idleTimeout` de uma fila volátil; `maxMessageBytes`). Nome, `id`, tipo e `volatile` são imutáveis. Mesma propagação do `POST`. |
 | `DELETE` | `/topics/{topic}` | Remove o tópico e **todas** as suas mensagens, mesmo as pendentes (ainda não entregues ou não confirmadas) — sempre funciona, sem checagem. Mesma propagação do `POST`; falha no registro **cancela** a remoção (rollback); falha no commit, já decidido, não cancela — o coordenador insiste dentro do teto `write.commit.timeout`. Nunca uma remoção parcial visível. |
-| `POST` | `/topics/{topic}/messages` | Publica uma mensagem no tópico. Num `distributor`, copia a mensagem para as filas cujo nome começa com algum prefixo e responde com o resultado por fila; sem fila casando, responde sucesso e descarta ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2). |
+| `POST` | `/topics/{topic}/messages` | Publica uma mensagem no tópico. Corpo acima do tamanho máximo do tópico (`maxMessageBytes` ou, sem ele, `message.max-bytes`) retorna `413`. Num `distributor`, copia a mensagem para as filas cujo nome começa com algum prefixo e responde com o resultado por fila; sem fila casando, responde sucesso e descarta ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2). |
 | `GET` | `/topics/{topic}/messages` | Consome mensagem(ns) do tópico. Rejeitado com `409` num `distributor`. Aceita `autoCreate=true` (cria a fila se não existir, volátil por padrão, com `idleTimeout`, `volatile` e `tag.<chave>` opcionais; seção 14.4), `visibilityTimeout` (segundos, padrão 120): a mensagem entregue fica invisível a outros consumidores por esse tempo; e `waitTime` (segundos, 0 a 20, padrão 0): long polling, aguarda novas mensagens antes de responder vazio; e `maxMessages` (padrão **10**, configurável, com teto): a resposta traz de 1 a `maxMessages` mensagens, as que estiverem prontas ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Sem garantia de ordem entre as mensagens (seção 12.7). |
 | `PATCH` | `/topics/{topic}/messages/{id}` | Altera a invisibilidade de uma mensagem já entregue (`{"visibilityTimeout": 300, "receiptToken": "..."}`), por exemplo para ganhar mais tempo de processamento. O `receiptToken` (devolvido na entrega) é obrigatório; token obsoleto retorna `409`. O valor é o novo tempo **a partir de agora**, não um acréscimo; `0` libera a mensagem na hora. |
 | `DELETE` | `/topics/{topic}/messages/{id}` | Confirma o consumo (ack) de uma mensagem, removendo-a do tópico. Exige `receiptToken` (query string), o da última entrega; token obsoleto retorna `409`. Decide o commit por **quórum** (sempre com o primário): falha antes do quórum **cancela** o ack (rollback); falha numa réplica fora do quórum, já decidido, não cancela — insiste dentro do teto `write.commit.timeout` ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.4). |
@@ -40,10 +40,10 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `GET` | `/metrics` | Métricas locais do nó no formato Prometheus (um alvo de scrape por nó, sem fan-out). |
 | `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local). |
 | `GET` | `/stats/cluster` | Métricas de todos os nós e condição geral do cluster (consulta todos os nós, *best-effort*). |
-| `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `sort`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`). Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
+| `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`), **sem `sort`**: a ordem é sempre por nome do tópico. Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
 | `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
 | `GET` | `/health/live` | O processo está de pé. |
-| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster e com a tabela de tópicos completa). |
+| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster e com toda a sincronização concluída: tópicos, blocos e log de eventos; seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). |
 
 ### 8.1.2 Paginação
 
@@ -53,7 +53,7 @@ Toda rota de **cliente ou de operação** que pode devolver um número ilimitado
 |---|---|
 | `limit` | Itens por página. Tem padrão e máximo (a calibrar, [10-configuracao.md](10-configuracao.md)). |
 | `cursor` | Token **opaco** devolvido em `nextCursor` pela página anterior. O cliente nunca o monta. |
-| `sort` | Campo de ordenação, prefixo `-` para decrescente. Só aceita campos da lista de cada rota. |
+| `sort` | Campo de ordenação, prefixo `-` para decrescente. Só nas rotas que o aceitam (hoje, `GET /topics`), e só com campos imutáveis. Sem `sort`, a ordem é a do nome. |
 
 A resposta traz os itens e `nextCursor`; sem `nextCursor`, acabou. Não há `page`/`offset` nem `total` (contar custa caro e o valor muda durante a leitura).
 
@@ -65,7 +65,7 @@ A resposta traz os itens e `nextCursor`; sem `nextCursor`, acabou. Não há `pag
 
 A garantia é a de quem percorre tudo: recebe todo item que existia durante o percurso inteiro, sem repetição. Itens criados ou removidos durante o percurso podem ou não aparecer. É consistência fraca, suficiente para consulta; as rotas entre nós usam outro mecanismo (seção 8.2.1).
 
-Em `sort` por valor que muda (ex.: `-depth` em `/stats/topics`), a ordem pode se alterar entre páginas; a garantia de não perder nem repetir vale para ordenação por campo imutável.
+Por isso nenhuma rota ordena por valor que muda: `GET /stats/topics` não tem `sort` e pagina sempre por nome.
 
 ### 8.2 API interna (cluster)
 

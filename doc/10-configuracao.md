@@ -6,7 +6,7 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 
 > Os nomes da coluna "Chave sugerida" são propostas; ainda não há contrato de configuração definido.
 
-Todo parâmetro pode ser definido por **variável de ambiente**. Convenção proposta: prefixo `TABA_`, chave em maiúsculas com `.` e `-` trocados por `_` (ex.: `topics.distributor.max-targets` vira `TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS`). **Sem limite** significa que o teto não existe enquanto a variável não for definida.
+Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: prefixo `TABA_`, chave em maiúsculas com `.` e `-` trocados por `_` (ex.: `topics.distributor.max-targets` vira `TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS`). **Sem limite** significa que o teto não existe enquanto a variável não for definida.
 
 ## Armazenamento e memória
 
@@ -14,6 +14,14 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção pro
 |---|---|---|---|---|
 | Limite de memória por nó | `memory.limit` | A definir | Espaço em memória destinado às mensagens (ex.: MB/GB). Ao atingir o limite, as mensagens excedentes vão para disco (overflow). | 3.2 |
 | Diretório raiz de disco | `storage.dir` | A definir | Raiz onde ficam os arquivos `${topico}/${id}.json` do overflow (relativo a quê: nó? bloco? ainda em aberto) e `_topics/${topico}.json` da definição do tópico. | 3.2, 3.3 |
+
+## Mensagens
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Tamanho máximo da mensagem (geral) | `message.max-bytes` | **5 MB** (5.242.880 bytes) | Tamanho máximo do corpo de uma mensagem publicada. Vale para todo tópico que não define o seu próprio `maxMessageBytes`. Acima disso, `POST /topics/{topic}/messages` responde `413`. | 8.1 |
+| Tamanho máximo da mensagem (por tópico) | `maxMessageBytes` (campo da definição do tópico) | Vazio (usa `message.max-bytes`) | Substitui o geral naquele tópico e **pode ser maior que ele**. Definido na criação e alterável por `PATCH`; não pode passar de `message.max-bytes.hard-limit`, senão `400`. | 8.1 |
+| Limite rígido da mensagem | `message.max-bytes.hard-limit` | A definir | Teto absoluto para o `maxMessageBytes` de qualquer tópico, contra abuso de quem configura. O geral (`message.max-bytes`) também não pode passar dele. | 8.1 |
 
 ## Escrita e durabilidade
 
@@ -38,8 +46,10 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção pro
 | Retry de bootstrap | `cluster.bootstrap.retry` | A definir | Comportamento (tentativa imediata, backoff, manual) após exclusão por falha no registro. | 6.5 |
 | Teto de itens por stream de sincronização | `cluster.sync.stream.max-items` | A definir | Itens que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
 | Teto de bytes por stream de sincronização | `cluster.sync.stream.max-bytes` | A definir | Bytes que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
-| Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. | 8.2.1 |
+| Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir (maior que `message.max-bytes.hard-limit` mais a margem do envelope JSON) | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. Precisa caber a maior mensagem possível. | 8.2.1 |
 | Timeout de leitura do stream | `cluster.sync.stream.idle-timeout` | A definir | Tempo sem receber uma linha para o receptor considerar o stream falho e retomar pelo último ID lido. | 8.2.1 |
+| Teto dos logs de sincronização | `cluster.sync.log.max-bytes` | A definir | Tamanho máximo, em disco, do log de carga e do log de eventos de um nó em sincronização. Passou do teto, o nó entra em falha e o cluster fica liberado para votar o desregistro dele. | 7.3 |
+| Prazo da sincronização sem origem | `cluster.sync.timeout` | A definir | Tempo que o nó em sincronização tenta de novo quando nenhum nó serve uma carga; esgotado, entra em falha como no disco cheio. | 7.3 |
 
 > Tamanho mínimo do cluster (seção 6.4): 1 nó em desenvolvimento e 3 nós em produção. É uma recomendação de ambiente, não um parâmetro.
 

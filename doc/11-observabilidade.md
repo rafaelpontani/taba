@@ -154,7 +154,9 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.sync.ids.listed` | counter | {id} | — | IDs consolidados (união) nas listas de origem. |
 | `msg.sync.messages.pulled` | counter | {message} | `peer` | Mensagens obtidas por nó de origem — mostra se o balanceamento entre origens está uniforme. |
 | `msg.sync.bytes` | counter | By | `peer` | Volume transferido na sincronização. |
-| `msg.sync.pending_deletions` | gauge | {deletion} | — | Tamanho do log de deleções pendentes durante a sincronização. |
+| `msg.sync.log.events` | gauge | {event} | — | Eventos no log de eventos ainda por aplicar durante a sincronização. |
+| `msg.sync.log.bytes` | gauge | By | `log` (`carga`/`eventos`) | Tamanho dos logs de sincronização em disco. |
+| `msg.sync.phase` | gauge | 1 | `phase` (`topicos`/`blocos`/`replay`/`verificacao`/`pronto`) | Fase atual da sincronização do nó. |
 | `msg.sync.failures` | counter | {failure} | `reason` | Falhas de sincronização de bloco. |
 | `msg.cluster.message_loss` | counter | {event} | — | **Eventos de perda de mensagem** (seção 7.3). Qualquer valor acima de zero merece alerta. |
 | `msg.cluster.recover` | counter | {message} | `direction` (`sent`/`received`) | Mensagens recuperadas na volta de um nó (seção 6.6). |
@@ -199,9 +201,8 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 
 | Parâmetro | Descrição |
 |---|---|
-| `limit` / `cursor` | Paginação por cursor (o resultado devolve `nextCursor`). Padrão e máximo de `limit` a definir. |
+| `limit` / `cursor` | Paginação por cursor (o resultado devolve `nextCursor`). Padrão e máximo de `limit` a definir. A ordem é sempre por nome do tópico; **não há `sort`**, pois as métricas mudam a todo instante e a paginação por chave não se sustentaria. Para achar os tópicos com problema, use `condition`. |
 | `scope` | `cluster` (padrão, com fan-out e agregação) ou `node` (só os valores deste nó, sem consultar outros — seção [Visão do nó e visão do cluster](#visão-do-nó-e-visão-do-cluster)). |
-| `sort` | Campo de ordenação, prefixo `-` para decrescente. Ex.: `-depth` (mais mensagens acumuladas), `-visibleMessages`, `-invisibleMessages`, `oldestMessageAt` (mais antiga primeiro), `-publishRate`. Permite o uso de **top-N** em vez de varrer tudo. |
 | `tag.<chave>=<valor>` | Filtra por tag. Ex.: `tag.time=financeiro`. |
 | `condition` | Filtra por condição (ex.: `condition=backlog`) — o caso de uso principal: "quais tópicos estão com problema?". |
 | `fields` | Restringe os campos devolvidos, para respostas menores. |
@@ -269,7 +270,7 @@ Os valores de fila (`visibleMessages`, `invisibleMessages`, `depth`, `oldestMess
 
 - As mensagens de um tópico se espalham pelos blocos do anel; cada mensagem existe em `replication.factor` nós. Portanto o valor do tópico no cluster é a **soma entre nós**, contando apenas a **réplica primária** de cada mensagem — do contrário, tudo apareceria multiplicado pelo fator de replicação.
 - Cada nó mantém contadores **locais** por tópico. Uma rota interna (`GET /cluster/stats/topics`) devolve esses parciais; o nó que atende `/stats/topics` **consulta todos os nós, soma e devolve**.
-- Esse fan-out é justamente o custo que justifica isolar essas métricas: com muitos tópicos, o payload de cada nó cresce. Mitigações: o resultado é mantido em **cache** por `stats.topics.cache-ttl` (a resposta traz `collectedAt`); o `sort` + `limit` é aplicado depois do merge; `fields` reduz o tamanho; e `GET /stats/topics/{topic}` pede aos nós só aquele tópico.
+- Esse fan-out é justamente o custo que justifica isolar essas métricas: com muitos tópicos, o payload de cada nó cresce. Mitigações: o resultado é mantido em **cache** por `stats.topics.cache-ttl` (a resposta traz `collectedAt`); o filtro e o `limit` são aplicados depois do merge; `fields` reduz o tamanho; e `GET /stats/topics/{topic}` pede aos nós só aquele tópico.
 - Os valores são uma **fotografia aproximada** (leitura sem lock global, nó que não responde fica de fora e é listado como `partial`), não um valor transacional.
 
 ## Exportação das métricas de tópico (OTLP e Prometheus)
@@ -401,9 +402,9 @@ Rotas leves para orquestradores e balanceadores, **sem** fan-out para outros nó
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `GET` | `/health/live` | O processo está de pé e respondendo. Falha → reiniciar o processo. |
-| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **tabela de tópicos completa** (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
+| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **sincronização concluída** (tabela de tópicos, todos os blocos e o log de eventos já aplicados, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
 
-`/health/ready` **não** exige que todos os blocos estejam íntegros: um nó em sincronização de blocos continua recebendo publicações (seção 7.3) e não deve ser removido da rotação por isso.
+`/health/ready` só passa a responder com sucesso quando o nó termina a sincronização inteira: enquanto sincroniza, o nó apenas grava no log de eventos e repassa as chamadas de cliente a outro nó (seção 6.9 de [04-cluster.md](04-cluster.md)); mesmo assim deve ficar fora da rotação do balanceador, para não gastar o salto extra à toa. Depois de pronto, ele volta a atender normalmente.
 
 ## Eventos de perda de mensagem (seção 7.3)
 
