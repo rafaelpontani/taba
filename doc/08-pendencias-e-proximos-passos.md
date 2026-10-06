@@ -75,9 +75,9 @@ Inclui o overflow por tópico (seção 3.2).
   - **D11.1** Janela de tempo da taxa (a mesma serve a `publishRate` e `consumeRate`).
   - **D11.2** Política de despejo (LRU/LFU por tópico).
   - **D11.3** Tratamento de tópicos novos sem histórico.
-- **D12.** [~] **Disco.** Já definido: um arquivo por mensagem em `${topico}/${id}.json` (mais `${id}.meta.json`), e o nome do tópico é restrito para ser seguro como pasta.
-  - **D12.1** Onde fica a raiz (`storage.dir`) e se há subpasta por bloco.
-  - **D12.2** Rotina de limpeza dos arquivos.
+- **D12.** [~] **Disco.** Já definido: um arquivo por mensagem em `${topico}/${id}.json` (mais `${id}.meta.json`) e um por tópico em `_topics/${topico}.json` (seção 3.3) — sempre organizado por **tópico**, nunca por bloco (a mensagem se move de bloco se o anel mudar, mas não muda de pasta).
+  - **D12.1** Onde fica a raiz (`storage.dir`): path padrão e se é por nó.
+  - **D12.2** Rotina de limpeza dos arquivos — a remoção pelo `DELETE /topics/{topic}` já está decidida (seção 3.3); falta o caso geral (arquivos órfãos, expiração por TTL quando D13.1 for decidido).
 - **D13.** [~] **Retenção, expiração (TTL) e dead-letter.** Já definido: cada mensagem tem `deliveryCount` nos metadados, base para um limite de entregas. Reprocessamento histórico está fora do escopo (seção 5).
   - **D13.1** TTL da mensagem.
   - **D13.2** Limite de entregas antes do dead-letter.
@@ -101,6 +101,7 @@ Na entrada de novos nós, incluindo o evento de falha de perda de mensagem.
 - **D15.** [~] **Evento de perda de mensagem** (seção 7.3). Já definido: proposta em [11-observabilidade.md](11-observabilidade.md) — log `error`, métrica `msg.cluster.message_loss` e lista consultável; o alerta fica no backend, o sistema não notifica.
   - **D15.1** Aprovar a proposta.
   - **D15.2** **Como o evento identifica o tópico** (o sincronizador só enxerga IDs de mensagem por bloco); sem isso só existe a condição `message-loss` do cluster, não a do tópico.
+  - **D15.3** *(achado nesta revisão)* **Falso positivo com a verificação final (seção 7.3):** hoje, se a busca de conteúdo (passo 3) falha para um ID porque ele foi deletado por um ack que nunca passou por este nó (a mesma janela residual que a verificação final do passo 5 cobre), o texto atual gera um evento de perda **antes** de chegar ao passo 5 — a verificação final só re-checa mensagens já obtidas, não as que falharam ao buscar. Ou o passo 3 dá à mensagem não encontrada a mesma chance da verificação final antes de declarar perda, ou se aceita esse falso positivo raro como está.
 - **D16.** [ ] *(não bloqueia)* **Otimização da listagem de IDs por bloco** para blocos muito grandes — ex.: merkle tree ou hashing incremental por faixa, em vez de listar todos os IDs a cada vez. Vale tanto para a listagem inicial quanto para a verificação final (seção 7.3), que hoje relista.
 
 ### Passo 7 — Rebalanceamento de blocos

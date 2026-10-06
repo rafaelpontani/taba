@@ -11,8 +11,8 @@
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `POST` | `/topics` | Cria um tópico (nome, tipo `single` ou `broadcast`, e opcionalmente `tags`). Propagado a todos os nós por registro + commit; persistido em disco ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
-| `GET` | `/topics` | Lista os tópicos existentes. |
-| `GET` | `/topics/{topic}` | Retorna as informações e configurações do tópico (tipo, tags etc.). |
+| `GET` | `/topics` | Lista os tópicos existentes. Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), diferente de `/stats/topics`, que faz fan-out para métricas de consumo. |
+| `GET` | `/topics/{topic}` | Retorna as informações e configurações do tópico (tipo, tags etc.). Também respondida localmente, pelo mesmo motivo. |
 | `PATCH` | `/topics/{topic}` | Altera informações do tópico (ex.: tags). Nome e tipo são imutáveis. Mesma propagação do `POST`. |
 | `DELETE` | `/topics/{topic}` | Remove o tópico e **todas** as suas mensagens, mesmo as pendentes (ainda não entregues ou não confirmadas) — sempre funciona, sem checagem. Mesma propagação do `POST`; se o registro ou o commit falhar em algum nó, a remoção é **cancelada** (rollback) e a API retorna erro — nunca uma remoção parcial. |
 | `POST` | `/topics/{topic}/messages` | Publica uma mensagem no tópico. |
