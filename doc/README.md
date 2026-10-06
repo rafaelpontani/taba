@@ -32,6 +32,8 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | C4 nível 0, contexto | [01-visao-geral.md](01-visao-geral.md) |
 | C4 nível 1, contêineres | [02-arquitetura.md](02-arquitetura.md), seção 3 |
 | Arquitetura da escrita | [02-arquitetura.md](02-arquitetura.md), seção 3.1 |
+| Anel de hash: blocos e papéis | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.1 |
+| Tópico espalhado e redundante | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.1 |
 | Recepção de mensagem | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2 |
 | Ingresso de nó | [04-cluster.md](04-cluster.md), seção 6.2 |
 | Remoção de nó | [04-cluster.md](04-cluster.md), seção 6.3 |

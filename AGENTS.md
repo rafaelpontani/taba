@@ -26,6 +26,10 @@ doc/diagramas/
 - O texto dos diagramas é em português; a legenda e a interface do viewer do Archify são fixas em inglês.
 - Ao mudar o comportamento descrito em um `.md`, atualize o diagrama correspondente (tabela em [doc/README.md](doc/README.md#diagramas)) e regere.
 
+### Diagramas desenhados por script (exceção)
+
+`anel-hash.svg` e `topico-espalhado.svg` não passam pelo Archify (ele não desenha anéis nem matrizes) e **não têm JSON**: a fonte é `doc/diagramas/scripts/gerar-hash.mjs`. Edite as constantes do script (nós, posições do anel, mensagens, matriz) e rode `node doc/diagramas/scripts/gerar-hash.mjs`; o `gerar.sh` não os gera. Faça commit do script **e** dos SVGs juntos. O script não valida o layout: abra o SVG (ou faça uma captura no Chrome) e confira textos sobrepostos.
+
 ### Pré-requisitos
 
 - Node.js 22 ou superior.
