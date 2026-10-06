@@ -30,7 +30,7 @@ doc/diagramas/
 
 `anel-hash.svg` e `topico-espalhado.svg` não passam pelo Archify (ele não desenha anéis nem matrizes) e **não têm JSON**: a fonte é `doc/diagramas/scripts/gerar-hash.mjs`. Edite as constantes do script (nós, posições do anel, mensagens, matriz) e rode `node doc/diagramas/scripts/gerar-hash.mjs`; o `gerar.sh` não os gera. Faça commit do script **e** dos SVGs juntos. O script não valida o layout: abra o SVG (ou faça uma captura no Chrome) e confira textos sobrepostos.
 
-O mesmo vale para o hero do README da raiz (`hero.svg` e `hero.gif`): a fonte é `doc/diagramas/scripts/gerar-hero.mjs`. Edite os textos, as cores e a linha do tempo (`T`, `LEGENDA`) e rode `node doc/diagramas/scripts/gerar-hero.mjs`. O `hero.svg` é o quadro estático (instante `ESTATICO`) e o `hero.gif` é o que o README embute; o GIF usa o Chrome headless e o `ffmpeg` (variável `FFMPEG` se não estiver no PATH). `--so-svg` gera só o SVG. Faça commit do script **e** dos dois arquivos juntos.
+O mesmo vale para o hero do README da raiz (`hero.svg` e `hero.gif`): a fonte é `doc/diagramas/scripts/gerar-hero.mjs`. Edite os textos, as cores e a linha do tempo (`PRODUTORES`, `CONSUMIDORES`, `MSGS`, `LEGENDA`) e rode `node doc/diagramas/scripts/gerar-hero.mjs`. O `hero.svg` é o quadro estático (instante `ESTATICO`) e o `hero.gif` é o que o README embute; o GIF usa o Chrome headless e o `ffmpeg` (variável `FFMPEG` se não estiver no PATH). `--so-svg` gera só o SVG. Faça commit do script **e** dos dois arquivos juntos.
 
 ### Pré-requisitos
 

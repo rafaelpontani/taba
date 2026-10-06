@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/diagramas/img/hero.gif" width="100%" alt="Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma só imagem Docker. Animação: o produtor publica uma mensagem, o nó primário a replica nos outros dois nós, e o consumidor a recebe e confirma.">
+  <img src="doc/diagramas/img/hero.gif" width="100%" alt="Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma só imagem Docker. Animação: 3 nós, cada um desenhado como um prédio de 3 andares. Vários produtores entram e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica nos outros dois, e todo nó é o primário de parte delas. Consumidores chegam depois, leem de forma assíncrona e confirmam com ack.">
 </p>
 
 **Taba** é um sistema de mensageria **leve, rápido e open source** que roda com **uma única imagem Docker**, em 1 nó para testar e em 3 para produção. Ele reúne **fila** (entrega única, como o SQS) e **pub/sub** (broadcast, como o SNS) na mesma API HTTP, e escala adicionando nós, sem coordenador e sem configuração complexa.
