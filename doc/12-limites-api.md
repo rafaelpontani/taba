@@ -2,7 +2,7 @@
 
 [← Índice](README.md)
 
-> Valores dos parâmetros e padrões: [11-configuracao.md](11-configuracao.md#rate-limits) e [11-configuracao.md](11-configuracao.md#limites-fixos-da-api).
+> Valores dos parâmetros e padrões: [10-configuracao.md](10-configuracao.md#rate-limits) e [10-configuracao.md](10-configuracao.md#limites-fixos-da-api).
 
 Dois tipos de limite na API de cliente ([06-api.md](06-api.md)): os **limites fixos** de validação (não configuráveis) e os **rate limits** (limites de taxa, configuráveis).
 
@@ -11,7 +11,7 @@ Dois tipos de limite na API de cliente ([06-api.md](06-api.md)): os **limites fi
 Regras de formato, aplicadas na criação/alteração de recursos, sem relação com taxa de requisições:
 
 - **Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.json`) — 1 a 80 caracteres, regex `^[A-Za-z0-9_-]{1,80}$`, diferencia maiúsculas de minúsculas. Nome inválido é rejeitado na criação (`POST /topics`) com `400`.
-- **Tags de tópico**: até 20 tags por tópico; chave de 1 a 64 caracteres e valor de 0 a 128, restritos a `A-Za-z0-9_-.:` (seguros como atributo OTel e em URL — ver [12-observabilidade.md](12-observabilidade.md)).
+- **Tags de tópico**: até 20 tags por tópico; chave de 1 a 64 caracteres e valor de 0 a 128, restritos a `A-Za-z0-9_-.:` (seguros como atributo OTel e em URL — ver [11-observabilidade.md](11-observabilidade.md)).
 
 ## Rate limits
 
@@ -29,8 +29,8 @@ Cada limite é do tipo taxa + estouro (`ratelimit.burst`, ex.: token bucket), pa
 
 **Identificação do cliente (pendência):** o escopo atual não define autenticação/API key ([03-escopo.md](03-escopo.md), seção 5 — fora do escopo). Sem isso, falta decidir se o rate limit é aplicado por IP, por um token de API futuro, ou globalmente por nó enquanto não houver identificação de cliente.
 
-**Rotas de operação:** `/metrics`, `/stats/*` e `/health/*` ([12-observabilidade.md](12-observabilidade.md#acesso-às-rotas-de-operação)) são tratadas como qualquer outra rota — inclusive para rate limit — quando não configuradas com porta própria (`operations.port`) ou lista de IPs (`operations.allowed-ips`). Se e como o limite se aplica a elas quando isoladas está em aberto.
+**Rotas de operação:** `/metrics`, `/stats/*` e `/health/*` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)) são tratadas como qualquer outra rota — inclusive para rate limit — quando não configuradas com porta própria (`operations.port`) ou lista de IPs (`operations.allowed-ips`). Se e como o limite se aplica a elas quando isoladas está em aberto.
 
 **Não confundir com:** o retry de registro/commit entre nós do cluster ([04-cluster.md](04-cluster.md), [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) é comunicação interna e não tem relação com o rate limit da API de cliente — um protege a durabilidade, o outro protege a disponibilidade do nó contra uso excessivo de um cliente.
 
-Ver também [08-pontos-em-aberto.md](08-pontos-em-aberto.md).
+Pendências: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) (passo 1).

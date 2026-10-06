@@ -15,11 +15,10 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
 | [05-particionamento-replicacao.md](05-particionamento-replicacao.md) | 7 | Hash circular, registro + commit de mensagens, sincronização distribuída de blocos. |
 | [06-api.md](06-api.md) | 8 | API de cliente (tópicos, mensagens, tags) e API interna do cluster. |
 | [07-principios-design.md](07-principios-design.md) | 9 | Princípios de design. |
-| [08-pontos-em-aberto.md](08-pontos-em-aberto.md) | 10 | Decisões ainda pendentes. |
+| [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) | 10 | Decisões em aberto, organizadas pelos próximos passos que dependem delas. |
 | [09-glossario.md](09-glossario.md) | 11 | Termos do projeto. |
-| [10-proximos-passos.md](10-proximos-passos.md) | 12, 13 | Próximos passos e referências. |
-| [11-configuracao.md](11-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
-| [12-observabilidade.md](12-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
-| [13-limites-api.md](13-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
+| [10-configuracao.md](10-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
+| [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
+| [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
 
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

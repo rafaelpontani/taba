@@ -25,14 +25,14 @@
 - diferencia maiúsculas de minúsculas (`Pedidos` e `pedidos` são tópicos distintos);
 - nomes inválidos são rejeitados na criação (`POST /topics`) com erro `400`.
 
-**Tags do tópico** (`tags`): pares chave/valor definidos na criação (`POST /topics`) e alterados via `PATCH /topics/{topic}`. Servem para monitoramento: são enviadas como **atributos** nos traces e logs exportados via **OpenTelemetry** para as operações daquele tópico, e nas métricas de tópico conforme a configuração de exportação ([12-observabilidade.md](12-observabilidade.md)) (ex.: `{"time": "financeiro", "ambiente": "prod"}`).
+**Tags do tópico** (`tags`): pares chave/valor definidos na criação (`POST /topics`) e alterados via `PATCH /topics/{topic}`. Servem para monitoramento: são enviadas como **atributos** nos traces e logs exportados via **OpenTelemetry** para as operações daquele tópico, e nas métricas de tópico conforme a configuração de exportação ([11-observabilidade.md](11-observabilidade.md)) (ex.: `{"time": "financeiro", "ambiente": "prod"}`).
 - chave de 1 a 64 caracteres e valor de 0 a 128, restritos a `A-Za-z0-9_-.:` (seguros como atributo OTel e em URL);
 - máximo de 20 tags por tópico;
 - as tags não afetam o comportamento das mensagens, apenas a telemetria.
  
 ### 8.1.1 API de operação (observabilidade)
 
-Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e métricas em [12-observabilidade.md](12-observabilidade.md). Opcionalmente podem ser servidas em **porta própria** e/ou restritas a uma **lista de IPs/faixas** (`operations.port`, `operations.allowed-ips`); sem essa configuração, ficam na porta da API de cliente e são tratadas como qualquer outra rota ([12-observabilidade.md](12-observabilidade.md#acesso-às-rotas-de-operação)).
+Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e métricas em [11-observabilidade.md](11-observabilidade.md). Opcionalmente podem ser servidas em **porta própria** e/ou restritas a uma **lista de IPs/faixas** (`operations.port`, `operations.allowed-ips`); sem essa configuração, ficam na porta da API de cliente e são tratadas como qualquer outra rota ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
 
 | Verbo | Recurso | Descrição |
 |---|---|---|

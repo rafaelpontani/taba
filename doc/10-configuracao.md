@@ -2,7 +2,7 @@
 
 [← Índice](README.md)
 
-Lista dos parâmetros configuráveis citados na documentação e seus valores padrão. **A definir** significa que o parâmetro é configurável, mas o padrão ainda não foi decidido (ver [pontos em aberto](08-pontos-em-aberto.md)).
+Lista dos parâmetros configuráveis citados na documentação e seus valores padrão. **A definir** significa que o parâmetro é configurável, mas o padrão ainda não foi decidido (ver [pendências](08-pendencias-e-proximos-passos.md)).
 
 > Os nomes da coluna "Chave sugerida" são propostas; ainda não há contrato de configuração definido.
 
@@ -54,7 +54,7 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Limiar de `idle` | `stats.topics.idle-after` | A definir | Tempo sem publicação nem consumo para a condição `idle`. | 8.1.1 |
 | Espaço livre mínimo em disco | `stats.disk.free-min` | A definir | Abaixo disso o cluster entra na condição `storage-pressure`. | 8.1.1 |
 
-> Explicação do tema: [12-observabilidade.md](12-observabilidade.md).
+> Explicação do tema: [11-observabilidade.md](11-observabilidade.md).
 
 ## Rate limits
 
@@ -65,7 +65,7 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por cliente/API key, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
 | Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. |
 
-> Explicação do tema, incluindo a resposta ao exceder o limite e a pendência de identificação do cliente: [13-limites-api.md](13-limites-api.md).
+> Explicação do tema, incluindo a resposta ao exceder o limite e a pendência de identificação do cliente: [12-limites-api.md](12-limites-api.md).
 
 ## Limites fixos da API
 
@@ -78,4 +78,4 @@ Não são configuráveis; são regras de validação da API de cliente ([06-api.
 | Chave de tag | 1 a 64 caracteres, `A-Za-z0-9_-.:` |
 | Valor de tag | 0 a 128 caracteres, `A-Za-z0-9_-.:` |
 
-> Explicação do tema: [13-limites-api.md](13-limites-api.md).
+> Explicação do tema: [12-limites-api.md](12-limites-api.md).

@@ -2,9 +2,9 @@
 
 [← Índice](README.md)
 
-> Valores dos parâmetros e padrões: [11-configuracao.md](11-configuracao.md#observabilidade).
+> Valores dos parâmetros e padrões: [10-configuracao.md](10-configuracao.md#observabilidade).
 
-> Os nomes de métricas, rotas e parâmetros abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [11-configuracao.md](11-configuracao.md)).
+> Os nomes de métricas, rotas e parâmetros abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [10-configuracao.md](10-configuracao.md)).
 
 ## Visão geral
 
@@ -35,7 +35,7 @@ Cada tópico pode ter **tags**: pares chave/valor definidos na criação (`POST 
 - Nas **métricas**, as tags só aparecem nas **métricas de tópico** e conforme a configuração de exportação (seção [Exportação das métricas de tópico](#exportação-das-métricas-de-tópico-otlp-e-prometheus)). As métricas de **nó nunca carregam tags nem o nome do tópico**.
 - Exemplo: um tópico com `{"time": "financeiro", "ambiente": "prod"}` propaga esses dois atributos aos traces/logs dele, permitindo filtrar/agrupar por time ou ambiente no backend.
 - As tags **não afetam o comportamento** das mensagens — servem só para telemetria.
-- Limites de tamanho e caracteres das tags estão em [13-limites-api.md](13-limites-api.md), por serem regras fixas da API.
+- Limites de tamanho e caracteres das tags estão em [12-limites-api.md](12-limites-api.md), por serem regras fixas da API.
 
 ## Métricas de nó
 
@@ -52,7 +52,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.node.uptime` | gauge | s | Tempo desde o início do processo. |
 | `msg.node.cpu.utilization` | gauge | 1 | Uso de CPU do processo. |
 | `msg.node.process.memory` | gauge | By | Memória total do processo (inclui a parcela fora do limite de mensagens). |
-| `msg.node.threads` | gauge | {thread} | Threads/tarefas ativas (conforme o runtime — ver [pontos em aberto](08-pontos-em-aberto.md)). |
+| `msg.node.threads` | gauge | {thread} | Threads/tarefas ativas (conforme o runtime — ver [pendências](08-pendencias-e-proximos-passos.md)). |
 | `msg.node.open_files` | gauge | {file} | Descritores/arquivos abertos (relevante pelo overflow em disco: um arquivo por mensagem). |
 | `msg.node.connections` | gauge | {connection} | Conexões HTTP abertas (cliente e interna, separadas por atributo). |
 
@@ -80,7 +80,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.api.duration` | histogram | s | `route`, `method` | Latência das requisições. |
 | `msg.api.in_flight` | gauge | {request} | `route` | Requisições em andamento. |
 | `msg.api.request.size` / `msg.api.response.size` | histogram | By | `route` | Tamanho de corpo de requisição/resposta. |
-| `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`) | Requisições rejeitadas com `429` ([13-limites-api.md](13-limites-api.md)). |
+| `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`) | Requisições rejeitadas com `429` ([12-limites-api.md](12-limites-api.md)). |
 
 ### API interna (cluster)
 
@@ -202,7 +202,7 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | | `consumeRate` / `ackRate` | Mensagens consumidas / confirmadas por segundo. É a **taxa de leitura** usada na divisão dinâmica de memória (seção 3.2). |
 | | `consumeLatency` | p50/p95/p99 da latência de consumo e de ack. |
 | **Fila** | `depth` | Mensagens disponíveis, ainda não confirmadas. |
-| | `inFlight` | Mensagens entregues sem ack. *Só faz sentido depois de definida a semântica de entrega — ver [pontos em aberto](08-pontos-em-aberto.md).* |
+| | `inFlight` | Mensagens entregues sem ack. *Só faz sentido depois de definida a semântica de entrega — ver [pendências](08-pendencias-e-proximos-passos.md).* |
 | | `oldestAge` | Idade da mensagem mais antiga (tempo desde a publicação) — o melhor indicador de consumidor parado. |
 | | `bytes` | Volume total acumulado. |
 | **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |
@@ -215,7 +215,7 @@ Para tópicos `broadcast`, métricas por assinante (entregas por assinante, atra
 
 ### Condição do tópico
 
-Também uma **lista de condições**, com o campo `status` sendo a de maior severidade. Limites configuráveis ([11-configuracao.md](11-configuracao.md#observabilidade)):
+Também uma **lista de condições**, com o campo `status` sendo a de maior severidade. Limites configuráveis ([10-configuracao.md](10-configuracao.md#observabilidade)):
 
 | Condição | Severidade | Quando |
 |---|---|---|
@@ -310,7 +310,7 @@ As duas podem ser combinadas (porta própria **e** lista de IPs), usadas isolada
 
 | Configuração | Comportamento |
 |---|---|
-| Nenhuma (padrão) | As rotas ficam na **mesma porta da API de cliente**, sem restrição de origem, e são **tratadas como qualquer outra rota** — inclusive para rate limit ([13-limites-api.md](13-limites-api.md)) e para qualquer autenticação que venha a existir. |
+| Nenhuma (padrão) | As rotas ficam na **mesma porta da API de cliente**, sem restrição de origem, e são **tratadas como qualquer outra rota** — inclusive para rate limit ([12-limites-api.md](12-limites-api.md)) e para qualquer autenticação que venha a existir. |
 | Só `operations.port` | Porta separada, sem filtro por IP: quem alcança a porta acessa. |
 | Só `operations.allowed-ips` | Mesma porta da API, mas só os IPs da lista acessam essas rotas; a API de cliente segue aberta. |
 | Ambas | Porta separada, acessível apenas pelos IPs/faixas listados. |
@@ -377,14 +377,4 @@ O **alerta ativo** (e-mail, chat, plantão) fica a cargo do backend de observabi
 
 ## Ainda em aberto
 
-- Nomes definitivos de métricas e atributos (seguir as convenções semânticas do OpenTelemetry onde houver equivalente).
-- Como o Prometheus **descobre** os nós (lista estática, DNS, ou um alvo derivado da tabela de membros, que muda quando nós entram e saem).
-- Como o evento de perda de mensagem identifica o **tópico** (o sincronizador trabalha com IDs de mensagem por bloco): sem isso, `lossEvents` e a condição `message-loss` do tópico não são possíveis, só a do cluster.
-- Rate limit das rotas de operação: sem configuração de porta/IP elas são tratadas como qualquer rota, mas falta definir em qual categoria ([13-limites-api.md](13-limites-api.md): `admin`?) e se, quando isoladas por porta própria ou lista de IPs, ficam isentas.
-- Autenticação por token nessas rotas: o escopo atual não define autenticação ([03-escopo.md](03-escopo.md)); por ora o controle de acesso é a porta própria e a lista de IPs.
-- Se `operations.allowed-ips` deve poder confiar em `X-Forwarded-For` (com uma lista de proxies confiáveis) para nós atrás de balanceador.
-- Valores padrão de paginação (`limit` padrão e máximo), de `stats.topics.*` e do teto de `telemetry.topics.max-topics`.
-- Métricas de `inFlight` e por assinante (`broadcast`): dependem da semântica de entrega e do modelo de assinantes.
-- Retenção/janela das taxas (`publishRate`, `consumeRate`): mesma janela do algoritmo de priorização de memória (seção 3.2), ainda não definida.
-
-Ver [08-pontos-em-aberto.md](08-pontos-em-aberto.md).
+As pendências desta área (nomes de métricas, descoberta pelo Prometheus, rate limit e `X-Forwarded-For` nas rotas de operação, identificação do tópico no evento de perda, métricas por assinante) ficam em [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md), nos passos 1, 6 e 10.
