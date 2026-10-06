@@ -16,6 +16,14 @@ Regras de formato, aplicadas na criação/alteração de recursos, sem relação
 - **`idleTimeout` de fila volátil**: de 60 s a 7 dias (604800 s); fora da faixa, `400` (seção 14.3).
 - **Long polling** (`waitTime` no `GET /topics/{topic}/messages`): de 0 a 20 segundos, padrão 0 (responde na hora). Valor fora da faixa é rejeitado com `400`. Ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
+## Limites configuráveis, sem teto por padrão
+
+Definidos por variável de ambiente ([10-configuracao.md](10-configuracao.md)); enquanto não definidos, não há limite:
+
+- **Destinos por publicação** num Tópico Distribuidor (`topics.distributor.max-targets`): acima do teto, a publicação é recusada inteira com `422`.
+- **Filas voláteis** no cluster (`topics.volatile.max-count`): atingido o teto, o `autoCreate` é recusado com `422`.
+- **Mensagens por `GET`** (`maxMessages`): padrão 10 (`delivery.max-messages.default`), com teto configurável (`delivery.max-messages.max`).
+
 ## Rate limits
 
 > Ainda não fazem parte do escopo documentado ([03-escopo.md](03-escopo.md)) — esta seção propõe uma estrutura inicial, a ser validada.

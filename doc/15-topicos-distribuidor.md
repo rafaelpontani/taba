@@ -55,7 +55,7 @@ Exemplo de resposta de `POST /topics/pedidos-dist/messages` com dois destinos:
 }
 ```
 
-> O custo do casamento é local: a tabela de tópicos é mantida ordenada por nome (ou em árvore de prefixos) em cada nó, e o casamento é uma busca por faixa. Um DT com muitas filas destino gera muitas cópias por publicação; o limite de destinos por publicação está em aberto (D36).
+> O custo do casamento é local: a tabela de tópicos é mantida ordenada por nome (ou em árvore de prefixos) em cada nó, e o casamento é uma busca por faixa. Um DT com muitas filas destino gera muitas cópias por publicação; o número de destinos por publicação tem um teto configurável (`topics.distributor.max-targets`), **sem limite por padrão**. Se o teto está definido e a publicação casa com mais filas, ela é **recusada inteira** (`422`, nenhuma cópia é feita), em vez de entregar só a parte que cabe, o que deixaria destinos escolhidos pela ordem do casamento, sem critério para quem recebe.
 
 ### 14.3 Fila volátil (QTV)
 
@@ -99,6 +99,7 @@ GET /topics/{topic}/messages?autoCreate=true&idleTimeout=300&tag.time=financeiro
 - **Idempotente:** se o tópico já existe e é QT, os parâmetros de criação são **ignorados** e o `GET` segue como um consumo normal. Se o nome pertence a um DT, retorna `409`.
 - **Criação concorrente:** vários consumidores subindo juntos disputam a criação. A criação usa o registro + commit de todos os nós (seção 3.3), que rejeita o nome duplicado; quem perde a disputa trata como "já existe" e prossegue.
 - **Latência:** o primeiro `GET` paga o registro + commit em todos os nós. Isso ocorre uma vez por fila.
+- **Teto de filas voláteis:** `topics.volatile.max-count` limita quantas filas voláteis existem no cluster, **sem limite por padrão**. Com o teto definido e atingido, a criação pelo `autoCreate` é recusada com `422`. A checagem é local, sobre a tabela de tópicos que todo nó tem; criações simultâneas podem ultrapassar o teto por pouco, o que é aceito. O `autoCreate` não tem rate limit próprio: vale a categoria de consumo ([12-limites-api.md](12-limites-api.md)).
 - **Nome inválido** retorna `400`, como na criação normal.
 - O `GET` que criou a fila **já conta como consumidor** (seção 14.3).
 - Sem `autoCreate`, o `GET` de um tópico inexistente retorna `404`.

@@ -6,7 +6,7 @@
 
 Uma mensagem **entregue** fica **invisível** por um prazo (`invisibleUntil`): nesse tempo nenhum outro consumidor a recebe. Se o consumidor a confirma (ack) dentro do prazo, ela é removida; se não confirma, o prazo vence e a mensagem **volta a ser entregável**. Esta seção reúne tudo sobre o tema: o que é guardado e onde, como a informação se propaga entre os nós, como o dono da mensagem controla a volta à visibilidade e o que acontece quando a memória não comporta todas as mensagens invisíveis. A entrega em si (o `GET`, o long polling e o canal entre nós) continua em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
-> Nomes de parâmetros, rotas e arquivos são **propostas**, como em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md). Pendências: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) (D25, D27, D28 e D34).
+> Nomes de parâmetros, rotas e arquivos são **propostas**, como em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md). Pendências: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) (D34).
 
 ### 13.1 Visão geral
 
@@ -35,7 +35,9 @@ Só os **metadados** são replicados. As três estruturas do dono são um **índ
 
 ### 13.2 Metadados
 
-Os metadados são `deliveryCount` (incremental) e `invisibleUntil` (data e hora absoluta).
+Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora absoluta) e `receiptToken` (token opaco gerado pelo dono a cada entrega, por exemplo um GUID). O `receiptToken` é guardado e replicado **exatamente como a invisibilidade**: no mesmo registro + commit da entrega, nos mesmos metadados em memória ou em `${id}.meta.json`.
+
+**Uso do `receiptToken`** (como o `ReceiptHandle` do SQS): a entrega devolve o token ao cliente junto da mensagem, e o ack (`DELETE`) e o `PATCH` o enviam (`receiptToken` na query string do `DELETE`, no corpo do `PATCH`). O nó compara com o token dos metadados e, se for diferente, responde `409`, sem alterar nada. Assim, um consumidor lento cujo prazo venceu e cuja mensagem foi reentregue a outro não consegue confirmá-la nem alterá-la: o token dele ficou obsoleto. Se o prazo venceu mas a mensagem **ainda não foi reentregue**, o token continua válido e o ack vale. O `PATCH` mantém o mesmo token; só uma nova entrega gera outro.
 
 - **Mensagem em memória:** os metadados ficam em memória junto dela.
 - **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): ficam em **outro arquivo, com quase o mesmo nome e sufixo de metadado**, ao lado do arquivo da mensagem:
@@ -55,8 +57,8 @@ A invisibilidade se propaga por **registro + commit decidido por quórum**, o me
 
 | Operação | Quando | O que se propaga | `deliveryCount` | Lista de prontos | Lista de invisíveis do dono |
 |---|---|---|---|---|---|
-| **Entrega** (`GET` ou `take`) | Uma mensagem pronta é entregue | Novo `invisibleUntil` = `agora + visibilityTimeout` | +1 | Remove o ID | Insere ID e prazo |
-| **Alteração** (`PATCH`) | O consumidor pede mais (ou menos) tempo | Novo `invisibleUntil` | Não muda | Não muda | Substitui o prazo da entrada |
+| **Entrega** (`GET` ou `take`) | Uma mensagem pronta é entregue | Novo `invisibleUntil` = `agora + visibilityTimeout` e novo `receiptToken` | +1 | Remove o ID | Insere ID e prazo |
+| **Alteração** (`PATCH`) | O consumidor pede mais (ou menos) tempo | Novo `invisibleUntil` = `agora + visibilityTimeout` (não é acréscimo); com `0`, a mensagem é liberada na hora | Não muda | Não muda (com `0`, o dono insere o ID, como num vencimento) | Substitui o prazo da entrada (com `0`, remove) |
 | **Ack** (`DELETE`) | O consumidor confirma | Remoção da mensagem e dos metadados | — | — | Remove a entrada |
 | **Vencimento do prazo** | `invisibleUntil` chega ao passado sem ack | **Nada** | Não muda | Insere o ID | Remove a entrada |
 
@@ -64,7 +66,7 @@ A invisibilidade se propaga por **registro + commit decidido por quórum**, o me
 
 1. O **dono** é sempre o coordenador: no `GET` local ele mesmo; num `take` (seção 12.8), o nó que atende o cliente pede ao dono, que coordena. Assim o relógio que fixa `invisibleUntil` é o do dono.
 2. O dono calcula os nós responsáveis pelo ID (primário + réplicas) e envia a todos o **registro** do novo `invisibleUntil` (e de `deliveryCount + 1`, na entrega). Cada nó grava como **pendente** e confirma.
-3. O registro é **exclusivo**: um nó rejeita o pedido se já há outro pendente para a mensagem ou, numa entrega, se ela já está invisível. O `GET` tenta então outro ID (D28.1).
+3. Não há disputa em condições normais: só o primário entrega e só IDs prontos (seção 12.7 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Por segurança, o registro continua **exclusivo**: um nó rejeita o pedido se já há outro pendente para a mensagem ou, numa entrega, se ela já está invisível, e o `GET` tenta outro ID. No `PATCH` e no ack, o registro também é rejeitado se o `receiptToken` não confere.
 4. Com o **quórum** confirmando (`write.quorum`, sempre incluindo o primário), o dono decide o **commit**. Cada nó do quórum efetiva os metadados; no **dono**, o commit também atualiza as listas da tabela acima (remove da de prontos e insere na de invisíveis, ou substitui a entrada, no `PATCH`).
 5. Só então a chamada **responde ao cliente**. As réplicas fora do quórum recebem o commit em segundo plano, dentro de `write.commit.timeout`.
 6. **Falha antes do quórum:** retry e, esgotado, rollback do pendente (`write.retry.*`, `write.pending.ttl`); as listas do dono **não** são tocadas, e a mensagem segue como estava. **Falha nas réplicas fora do quórum:** sem rollback, o dono insiste até o teto.
@@ -119,7 +121,7 @@ Uma thread do dono (pode ser a mesma da lista de prontos, seção 12.6) cuida do
 
 1. Olha a **cabeça** da lista de invisíveis do tópico e dorme até o prazo dela (com um teto curto, para reagir a `PATCH`, entregas e chegadas de entradas mais cedo).
 2. Quando `invisibleUntil ≤ agora`, **remove** a entrada e **confere** nos metadados: a mensagem ainda existe, o nó ainda é dono, e o prazo ainda é o da entrada. Se não, descarta e segue.
-3. Insere o ID na **lista de prontos**, na **ordem do GUID v7**: uma mensagem que volta é antiga, e por isso tende a ficar perto do início. Se a lista de prontos está cheia, o ID de **maior** GUID sai da lista para dar lugar (ele continua visível e é reposto depois pela thread, seção 12.6); a mensagem que venceu não se perde.
+3. Insere o ID na **lista de prontos**, pela posição do GUID v7: uma mensagem que volta é antiga, e por isso tende a ficar perto da ponta antiga, a primeira da sanfona. Se a lista de prontos está cheia, o ID do **meio** da lista (o último que a entrega intercalada pelas duas pontas alcançaria, seção 12.6) sai para dar lugar (ele continua visível e é reposto depois pela thread); a mensagem que venceu não se perde.
 4. Se a lista de prontos **estava vazia**, envia o sinal "tem mensagens prontas" aos outros nós (seção 12.8); se há **ouvinte local** (long polling), a mensagem vai direto a ele, sem tráfego entre nós, como qualquer mensagem pronta no próprio dono.
 5. Nada é escrito nos metadados nem enviado às réplicas (seção 13.3): `deliveryCount` só sobe na **próxima entrega**.
 
