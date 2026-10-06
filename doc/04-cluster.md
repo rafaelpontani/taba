@@ -97,5 +97,5 @@ Enquanto um nó que entrou ainda não está íntegro (seção 7.3 de [05-partici
 - **Repasse transparente:** método, caminho, query, corpo e cabeçalhos seguem como vieram, e a resposta volta como o destino a deu (inclusive `409`, `413` e `429`). Vale para todas as rotas de cliente, também o `GET` de mensagens com long polling e `autoCreate`.
 - **Sem laço:** o repasse leva um marcador interno (`X-Taba-Forwarded`), aceito só de membros da tabela. Quem o recebe nunca repassa de novo; se estiver sincronizando, responde `503`.
 - **Falha do destino:** antes de o corpo ser enviado (conexão recusada), tenta outro nó, até um teto pequeno de tentativas. Depois de enviado, **não repete**: um `POST` de mensagem repetido duplicaria a publicação, já que o ID é gerado no coordenador. Responde `502` ou `504` e o cliente decide.
-- **Rate limit e IP:** o limite é aplicado uma vez, no nó que recebeu a chamada; o destino não conta de novo a chamada marcada. O IP do cliente segue em cabeçalho interno, para o `operations.allowed-ips` e a identificação do cliente (D6).
+- **Rate limit e IP:** o limite é aplicado uma vez, no nó que recebeu a chamada, por IP do cliente ([12-limites-api.md](12-limites-api.md)); o destino não conta de novo a chamada marcada. O IP do cliente já resolvido segue em cabeçalho interno.
 - **Sem destino:** se nenhum outro nó responde, `503` com `Retry-After`.

@@ -39,7 +39,12 @@ Cada limite é do tipo taxa + estouro (`ratelimit.burst`, ex.: token bucket), pa
 
 **Resposta ao exceder o limite:** `429 Too Many Requests` com cabeçalho `Retry-After`.
 
-**Identificação do cliente (pendência):** o escopo atual não define autenticação/API key ([03-escopo.md](03-escopo.md), seção 5 — fora do escopo). Sem isso, falta decidir se o rate limit é aplicado por IP, por um token de API futuro, ou globalmente por nó enquanto não houver identificação de cliente.
+**Identificação do cliente:** como o escopo não tem autenticação nem API key ([03-escopo.md](03-escopo.md), seção 5), o rate limit é **por IP do cliente**, contado **localmente em cada nó**, sem compartilhar contadores entre nós (um cliente que se espalha por N nós pode chegar a N vezes o limite, o que é aceito). Para nós atrás de balanceador, o IP do cliente pode vir de **cabeçalhos HTTP**:
+
+- `client-ip.headers.enabled` (bool, padrão `true`): liga ou desliga o uso dos cabeçalhos. Desligado, vale sempre o endereço da conexão.
+- `client-ip.headers` (lista, padrão `X-Forwarded-For`): cabeçalhos consultados, em ordem; vale o primeiro presente. Em listas separadas por vírgula (`X-Forwarded-For: cliente, proxy1`), vale o **primeiro** endereço, o do cliente original. Cabeçalho ausente ou com endereço inválido: cai no endereço da conexão.
+- **Cuidado:** com os cabeçalhos ligados e o nó exposto sem balanceador, o cliente pode forjá-los e escapar do limite; sem balanceador na frente, desligue (`false`). O IP resolvido vale **só para o rate limit**: `operations.allowed-ips` continua olhando o endereço da conexão (D23).
+- Nas chamadas repassadas durante a sincronização (seção 6.9 de [04-cluster.md](04-cluster.md)), o IP resolvido segue num cabeçalho interno.
 
 **Rotas de operação:** `/metrics`, `/stats/*` e `/health/*` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)) são tratadas como qualquer outra rota — inclusive para rate limit — quando não configuradas com porta própria (`operations.port`) ou lista de IPs (`operations.allowed-ips`). Se e como o limite se aplica a elas quando isoladas está em aberto.
 

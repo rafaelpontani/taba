@@ -105,12 +105,14 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 
 | Parâmetro | Chave sugerida | Padrão | Descrição |
 |---|---|---|---|
-| Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, por cliente/API key, para `POST /topics/{topic}/messages`. |
-| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por cliente/API key, para `GET /topics/{topic}/messages`, `PATCH /topics/{topic}/messages/{id}` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
-| Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por cliente/API key, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
+| Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST /topics/{topic}/messages`. |
+| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por IP do cliente, para `GET /topics/{topic}/messages`, `PATCH /topics/{topic}/messages/{id}` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
+| Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
 | Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. |
+| IP do cliente por cabeçalho | `client-ip.headers.enabled` | **true** | Usa os cabeçalhos abaixo para achar o IP do cliente atrás de balanceador; `false` usa só o endereço da conexão. |
+| Cabeçalhos do IP do cliente | `client-ip.headers` | `X-Forwarded-For` | Lista, em ordem, de cabeçalhos consultados; vale o primeiro presente e, nele, o primeiro endereço. |
 
-> Explicação do tema, incluindo a resposta ao exceder o limite e a pendência de identificação do cliente: [12-limites-api.md](12-limites-api.md).
+> Explicação do tema, incluindo a resposta ao exceder o limite e a identificação do cliente por IP: [12-limites-api.md](12-limites-api.md).
 
 ## Limites fixos da API
 
