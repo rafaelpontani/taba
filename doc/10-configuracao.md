@@ -38,16 +38,22 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
 | Nós virtuais por nó físico | `ring.virtual-nodes` | A definir | Quantidade de posições que cada nó físico ocupa no anel de hash, para melhorar a distribuição dos blocos. | 7.1 |
-| Sinal de vida do canal | `cluster.channel.keepalive.interval` | A definir | Periodicidade do sinal de vida enviado em cada canal entre nós, e tempo sem sinal para considerá-lo caído. | 6.3 |
+| Sinal de vida do canal | `cluster.channel.keepalive.interval` | A definir | Periodicidade do sinal de vida (mensagem própria com data e hora, resumo de monitoramento e mensagens prontas por tópico) enviado em cada canal entre nós, e tempo sem sinal para considerá-lo caído. | 6.3 |
+| Tópicos por sinal de vida | `cluster.channel.keepalive.max-topics` | A definir | Máximo de tópicos, com mensagens prontas, informados em cada sinal de vida. | 12.8 |
+| Janela de agrupamento dos avisos | `cluster.notify.window` | **100 ms** | Tempo que o responsável pelos avisos do tópico acumula mensagens prontas antes de mandar um aviso só. | 12.8 |
+| Espera pelo nó avisado | `cluster.notify.wait` | A definir (sugestão: alguns ms) | Tempo que o responsável espera o nó avisado vir buscar as mensagens antes de passar ao próximo nó com ouvinte. | 12.8 |
 | Reconexão do canal | `cluster.channel.reconnect.retries`, `cluster.channel.reconnect.backoff` | A definir | Tentativas de reconectar (e intervalo/backoff) antes de abrir a votação de exclusão de um nó cujo canal caiu. | 6.3 |
 | Limite da fila do canal | `cluster.channel.queue.max-size`, `cluster.channel.queue.max-age` | A definir | Tamanho e idade máximos da fila de saída para um nó com canal fora; ao passar, o nó com canal fora é tratado como falho e a votação de exclusão é aberta. | 12.9 |
 | Quórum de votação | `cluster.vote.quorum` | **3** | Votos mínimos concordando com a exclusão para efetivar a remoção do nó. | 6.3 |
 | Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Comportamento durante o freezing ainda em aberto. | 6.7 |
+| Endereço do balanceador do cluster | `cluster.entry-address` | **Obrigatório** | Endereço (host:porta) do balanceador à frente do cluster, usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe. | 6.2 |
+| Primeiro nó do cluster | `cluster.first-node` | `false` | Só no primeiro nó de um cluster novo: se a listagem não encontra nenhum membro, ele inicia o cluster sozinho. Nos demais, a listagem sem resposta é erro e o nó tenta de novo. | 6.2 |
 | Retry de bootstrap | `cluster.bootstrap.retry` | A definir | Comportamento (tentativa imediata, backoff, manual) após exclusão por falha no registro. | 6.5 |
 | Teto de itens por stream de sincronização | `cluster.sync.stream.max-items` | A definir | Itens que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
 | Teto de bytes por stream de sincronização | `cluster.sync.stream.max-bytes` | A definir | Bytes que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
 | Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir (maior que `message.max-bytes.hard-limit` mais a margem do envelope JSON) | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. Precisa caber a maior mensagem possível. | 8.2.1 |
 | Timeout de leitura do stream | `cluster.sync.stream.idle-timeout` | A definir | Tempo sem receber uma linha para o receptor considerar o stream falho e retomar pelo último ID lido. | 8.2.1 |
+| Tamanho da faixa de sincronização | `cluster.sync.range.size` | A definir | Tamanho de cada faixa de IDs pedida a uma origem na sincronização de conteúdo de um bloco; relaciona-se com `cluster.sync.stream.max-items`. | 7.3 |
 | Teto dos logs de sincronização | `cluster.sync.log.max-bytes` | A definir | Tamanho máximo, em disco, do log de carga e do log de eventos de um nó em sincronização. Passou do teto, o nó entra em falha e o cluster fica liberado para votar o desregistro dele. | 7.3 |
 | Prazo da sincronização sem origem | `cluster.sync.timeout` | A definir | Tempo que o nó em sincronização tenta de novo quando nenhum nó serve uma carga; esgotado, entra em falha como no disco cheio. | 7.3 |
 
@@ -59,7 +65,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 |---|---|---|---|---|
 | Invisibilidade padrão | `delivery.visibility-timeout.default` | **120 s** | Tempo em que a mensagem entregue fica invisível a outros consumidores quando o `GET` não informa `visibilityTimeout`. | 12.2 |
 | Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PATCH`. | 12.3 |
-| Tamanho da lista de prontos | `delivery.ready-list.size` | A definir | Número fixo de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
+| Tamanho da lista de prontos | `delivery.ready-list.size` | **1000** | Número de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
 | Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para o índice de expiração em disco. | 13.4 |
 | Janela do índice de expiração | `delivery.invisible.spill.window` | A definir (sugestão: 60 s) | Intervalo de tempo coberto por cada arquivo do índice de expiração em disco (`${topico}/_expiracao/${janela}.jsonl`). | 13.5 |
 | Mensagens por `GET` (padrão) | `delivery.max-messages.default` | **10** | Quantidade de mensagens do `GET` quando o cliente não informa `maxMessages`. | 12.2 |

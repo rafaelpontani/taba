@@ -141,7 +141,7 @@ As estruturas do dono são derivadas; três situações as refazem a partir dos 
 |---|---|---|
 | Invisibilidade padrão | `delivery.visibility-timeout.default` | 120 s |
 | Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir |
-| Tamanho da lista de prontos | `delivery.ready-list.size` | A definir |
+| Tamanho da lista de prontos | `delivery.ready-list.size` | 1000 |
 | Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir |
 | Janela do índice de expiração | `delivery.invisible.spill.window` | A definir (sugestão: 60 s) |
 

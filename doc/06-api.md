@@ -75,6 +75,8 @@ Por isso nenhuma rota ordena por valor que muda: `GET /stats/topics` não tem `s
 
 | Verbo | Recurso | Descrição |
 |---|---|---|
+| `GET` | `/cluster/nodes` | Lista a tabela de membros (ID, IPs internos, porta, estado). É a primeira chamada de um nó ao iniciar, feita pelo endereço do balanceador (`cluster.entry-address`); qualquer nó a responde. |
+| `POST` | `/cluster/nodes/join` | Pedido de ingresso do nó novo, com seus IPs e porta, feito a um membro da lista. O membro testa os IPs e coordena o registro + commit (seção 6.2 de [04-cluster.md](04-cluster.md)); responde com a tabela de nós. |
 | `POST` | `/cluster/nodes/register` | Fase 1 (registro) de um novo nó: propaga os dados do novo nó (IP/porta) a todos os nós. |
 | `POST` | `/cluster/nodes/commit` | Fase 2 (commit) de registro **ou** desregistro de nó: efetiva a operação na tabela de membros de todos os nós. |
 | `POST` | `/cluster/topics/register` | Fase 1 (registro) de uma criação, alteração ou remoção de tópico: propaga a definição a todos os nós ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |

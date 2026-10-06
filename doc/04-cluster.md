@@ -17,7 +17,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 
 *Fonte: [ingresso-no.json](diagramas/fonte/ingresso-no.json). A sincronização do bloco está na seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).*
 
-1. O novo nó se conecta a um nó existente do cluster, informando **seus próprios IPs e porta** na mesma chamada síncrona (uma única requisição de registro).
+1. **Descoberta.** A configuração exige o **endereço do balanceador do cluster** (`cluster.entry-address`, obrigatório e sem padrão; se faltar, o nó não sobe). A primeira coisa que o nó faz ao iniciar é chamar, por esse endereço, a listagem de nós (`GET /cluster/nodes`), que devolve a tabela de membros com os **IPs internos** de cada um. Com a lista, o nó escolhe um membro ao acaso e envia a ele, **numa única requisição síncrona** (`POST /cluster/nodes/join`), o pedido de registro com **seus próprios IPs e porta**; esse nó passa a coordenar o registro dos passos 2 a 5. Se o membro não responde, tenta outro da lista. Vale também para o reinício de um nó, que volta como nó novo (seção 6.8). Se a listagem falha, o nó tenta de novo conforme `cluster.bootstrap.retry`; só o **primeiro nó** de um cluster novo (`cluster.first-node=true`, padrão `false`), quando a listagem não encontra ninguém, inicia o cluster sozinho como único membro.
 2. O nó que recebe a chamada **testa os IPs** informados, tentando estabelecer conexão de volta com o novo nó.
 3. Se a conexão for bem-sucedida, o nó que recebeu envia a **todos os nós do cluster** um pedido de **registro (fase 1)** com os dados do novo nó.
 4. Após todos confirmarem a fase de registro, o nó que recebeu envia a **todos os nós** uma chamada de **commit (fase 2)**, efetivando o novo nó na tabela de membros.
@@ -32,7 +32,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 
 *Fonte: [remocao-no.json](diagramas/fonte/remocao-no.json).*
  
-1. Cada par de nós mantém um **canal permanente** (seção 6.1), que também carrega um **sinal de vida** leve (keepalive). O controle de quem está online é feito por esse canal, em malha, sem coordenador — **não há ping separado**.
+1. Cada par de nós mantém um **canal permanente** (seção 6.1), que também carrega um **sinal de vida** leve (keepalive), uma mensagem própria com data e hora, resumo de monitoramento e as mensagens prontas por tópico (seção 12.8 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). O controle de quem está online é feito por esse canal, em malha, sem coordenador — **não há ping separado**.
 2. Quando o canal com um nó **cai ou fica sem sinal de vida**, o nó que detectou **tenta reconectar algumas vezes** (tentativas e intervalo configuráveis) antes de agir.
 3. Se o canal continuar fora após as tentativas, isto é, o nó ficou inacessível por tempo demais, é aberta uma **votação de exclusão** entre os nós do cluster.
 4. **Quórum mínimo padrão: 3 votos** concordando com a exclusão para efetivar a remoção — valor inicial a ser confirmado/ajustado conforme testes em produção.
