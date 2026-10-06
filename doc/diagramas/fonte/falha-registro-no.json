@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Falha no registro de um novo nó",
+    "output": "doc/diagramas/html/falha-registro-no.html",
+    "viewBox": [
+      1080,
+      528
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "novo",
+      "type": "backend",
+      "label": "Novo nó",
+      "sublabel": "bootstrap"
+    },
+    {
+      "id": "contato",
+      "type": "security",
+      "label": "Nó de contato",
+      "sublabel": "coordena o registro"
+    },
+    {
+      "id": "demais",
+      "type": "cloud",
+      "label": "Demais nós",
+      "sublabel": "todos os membros"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 214,
+      "label": "Falha no teste"
+    },
+    {
+      "from": 222,
+      "to": 306,
+      "label": "Falha na fase de registro"
+    },
+    {
+      "from": 314,
+      "to": 398,
+      "label": "Exclusão"
+    }
+  ],
+  "messages": [
+    {
+      "id": "boot",
+      "from": "novo",
+      "to": "contato",
+      "y": 172,
+      "label": "registro: IPs e porta",
+      "variant": "emphasis"
+    },
+    {
+      "id": "teste",
+      "from": "contato",
+      "to": "novo",
+      "y": 200,
+      "label": "testa conexão de volta: falha",
+      "variant": "security"
+    },
+    {
+      "id": "reg",
+      "from": "contato",
+      "to": "demais",
+      "y": 236,
+      "label": "registro (fase 1)"
+    },
+    {
+      "id": "reg-falha",
+      "from": "demais",
+      "to": "contato",
+      "y": 264,
+      "label": "nem todos confirmam (write.commit.timeout)",
+      "variant": "return"
+    },
+    {
+      "id": "rollback",
+      "from": "contato",
+      "to": "demais",
+      "y": 292,
+      "label": "rollback do registro pendente",
+      "variant": "security"
+    },
+    {
+      "id": "excluido",
+      "from": "contato",
+      "to": "novo",
+      "y": 328,
+      "label": "registro recusado: nó excluído",
+      "variant": "return",
+      "note": "nunca entra na tabela de membros"
+    },
+    {
+      "id": "rebalanceia",
+      "from": "contato",
+      "to": "demais",
+      "y": 356,
+      "label": "anel recalculado sem o novo nó",
+      "variant": "emphasis"
+    },
+    {
+      "id": "retry",
+      "from": "novo",
+      "to": "contato",
+      "y": 384,
+      "label": "nova tentativa de bootstrap",
+      "variant": "dashed",
+      "note": "retry e backoff a definir"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Antes do commit",
+      "items": [
+        "Teste de conexão ou fase 1 sem todas as confirmações",
+        "Aborta com rollback do registro pendente"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Depois da fase 1",
+      "items": [
+        "Não é falha de registro: sem rollback",
+        "Coordenador insiste no commit até write.commit.timeout"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Efeito",
+      "items": [
+        "Blocos rebalanceados entre os nós restantes"
+      ]
+    }
+  ]
+}

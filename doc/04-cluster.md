@@ -44,6 +44,10 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 | Produção | 3 | Permite quórum de votação e evita decisão de falha por um único nó. |
  
 ### 6.5 Falha no registro de um novo nó
+
+![Sequência da falha no registro de um novo nó](diagramas/img/falha-registro-no.svg)
+
+*Fonte: [falha-registro-no.json](diagramas/fonte/falha-registro-no.json).*
  
 Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bootstrap malsucedido, ou a fase de registro sem confirmação de todos os nós, dentro de `write.commit.timeout` — seção 6.2, passo 7):
  
@@ -53,6 +57,10 @@ Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bo
 > Diferente da falha descrita na seção 7.3 (mensagem não encontrada durante a sincronização de um bloco), a falha de registro é sobre o **nó como um todo** não conseguir entrar no cluster — por isso o efeito é exclusão + rebalanceamento, e não apenas um alerta.
  
 ### 6.6 Retorno de um nó excluído
+
+![Sequência do retorno de um nó excluído](diagramas/img/retorno-no-excluido.svg)
+
+*Fonte: [retorno-no-excluido.json](diagramas/fonte/retorno-no-excluido.json).*
  
 Quando um nó que foi **desregistrado por falha do canal** (seção 6.3) volta a ficar disponível, ele não simplesmente retoma seu lugar antigo no anel — os blocos que ele atendia já podem ter sido reatribuídos a outros nós. O procedimento:
  

@@ -34,6 +34,8 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | Recepção de mensagem | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2 |
 | Ingresso de nó | [04-cluster.md](04-cluster.md), seção 6.2 |
 | Remoção de nó | [04-cluster.md](04-cluster.md), seção 6.3 |
+| Falha no registro de nó | [04-cluster.md](04-cluster.md), seção 6.5 |
+| Retorno de nó excluído | [04-cluster.md](04-cluster.md), seção 6.6 |
 | Entrega e ack | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.2 |
 | Três cenários do `GET` | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8 |
 

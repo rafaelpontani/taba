@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Retorno de um nó excluído",
+    "output": "doc/diagramas/html/retorno-no-excluido.html",
+    "viewBox": [
+      1080,
+      480
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "volta",
+      "type": "external",
+      "label": "Nó que voltou",
+      "sublabel": "excluído por falha"
+    },
+    {
+      "id": "donos",
+      "type": "database",
+      "label": "Novos donos",
+      "sublabel": "blocos reatribuídos"
+    },
+    {
+      "id": "contato",
+      "type": "security",
+      "label": "Nó de contato",
+      "sublabel": "coordena o registro"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 242,
+      "label": "Recuperação de mensagens"
+    },
+    {
+      "from": 250,
+      "to": 334,
+      "label": "Novo bootstrap"
+    }
+  ],
+  "messages": [
+    {
+      "id": "envia",
+      "from": "volta",
+      "to": "donos",
+      "y": 172,
+      "label": "mensagens de eventos de perda (registro)",
+      "variant": "emphasis",
+      "note": "confere IDs localmente antes"
+    },
+    {
+      "id": "envia-ok",
+      "from": "donos",
+      "to": "volta",
+      "y": 200,
+      "label": "todos confirmam",
+      "variant": "return"
+    },
+    {
+      "id": "envia-com",
+      "from": "volta",
+      "to": "donos",
+      "y": 228,
+      "label": "commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "boot",
+      "from": "volta",
+      "to": "contato",
+      "y": 264,
+      "label": "registro: IPs e porta",
+      "variant": "emphasis",
+      "note": "limpa estado local e recomeça do zero"
+    },
+    {
+      "id": "ingresso",
+      "from": "contato",
+      "to": "donos",
+      "y": 292,
+      "label": "registro e commit em todos (seção 6.2)"
+    },
+    {
+      "id": "tabela",
+      "from": "contato",
+      "to": "volta",
+      "y": 320,
+      "label": "tabela de nós e de tópicos",
+      "variant": "return",
+      "note": "nova posição no anel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Sem mensagens perdidas",
+      "items": [
+        "Nada a enviar: limpa o estado e refaz o bootstrap"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Freezing opcional",
+      "items": [
+        "Pode impedir o novo registro até o período expirar"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Não retoma o lugar antigo",
+      "items": [
+        "Os blocos dele já foram reatribuídos a outros nós"
+      ]
+    }
+  ]
+}
