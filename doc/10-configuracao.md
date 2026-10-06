@@ -34,6 +34,16 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 
 > Tamanho mínimo do cluster (seção 6.4): 1 nó em desenvolvimento e 3 nós em produção. É uma recomendação de ambiente, não um parâmetro.
 
+## Entrega de mensagens
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Invisibilidade padrão | `delivery.visibility-timeout.default` | **120 s** | Tempo em que a mensagem entregue fica invisível a outros consumidores quando o `GET` não informa `visibilityTimeout`. | 12.2 |
+| Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PATCH`. | 12.3 |
+| Tamanho da lista de prontos | `delivery.ready-list.size` | A definir | Número fixo de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
+
+> Retry e expiração de pendente da invisibilidade reutilizam `write.retry.*` e `write.pending.ttl`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
+
 ## Observabilidade
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
@@ -61,7 +71,7 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Parâmetro | Chave sugerida | Padrão | Descrição |
 |---|---|---|---|
 | Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, por cliente/API key, para `POST /topics/{topic}/messages`. |
-| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por cliente/API key, para `GET /topics/{topic}/messages` e `DELETE /topics/{topic}/messages/{id}` (ack). |
+| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por cliente/API key, para `GET /topics/{topic}/messages`, `PATCH /topics/{topic}/messages/{id}` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
 | Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por cliente/API key, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
 | Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. |
 

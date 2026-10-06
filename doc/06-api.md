@@ -16,7 +16,8 @@
 | `PATCH` | `/topics/{topic}` | Altera informações do tópico (ex.: tags). Nome e tipo são imutáveis. |
 | `DELETE` | `/topics/{topic}` | Remove o tópico e suas mensagens. |
 | `POST` | `/topics/{topic}/messages` | Publica uma mensagem no tópico. |
-| `GET` | `/topics/{topic}/messages` | Consome mensagem(ns) do tópico. |
+| `GET` | `/topics/{topic}/messages` | Consome mensagem(ns) do tópico. Aceita `visibilityTimeout` (segundos, padrão 120): a mensagem entregue fica invisível a outros consumidores por esse tempo ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
+| `PATCH` | `/topics/{topic}/messages/{id}` | Altera a invisibilidade de uma mensagem já entregue (`{"visibilityTimeout": 300}`), por exemplo para ganhar mais tempo de processamento. |
 | `DELETE` | `/topics/{topic}/messages/{id}` | Confirma o consumo (ack) de uma mensagem, removendo-a do tópico. |
 
 **Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.json`):
@@ -55,6 +56,9 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `POST` | `/cluster/topics/{topic}/messages/{id}/register` | Fase 1 (registro) de uma mensagem, enviado ao(s) nó(s) responsável(is) pelo bloco (primário/réplicas). |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/commit` | Fase 2 (commit) da entrega de uma mensagem já registrada nos nós responsáveis. |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/rollback` | Descarta o registro pendente (sem commit) de uma mensagem cujo registro ou commit falhou após os retries. |
+| `POST` | `/cluster/topics/{topic}/messages/{id}/visibility/register` | Fase 1 (registro) de uma entrega ou de uma alteração de invisibilidade: grava como pendente o novo `invisibleUntil` (e o `deliveryCount`, se for entrega) nos nós responsáveis. |
+| `POST` | `/cluster/topics/{topic}/messages/{id}/visibility/commit` | Fase 2 (commit): efetiva a invisibilidade; no caso de entrega, o nó também remove o ID da sua lista de prontos. |
+| `POST` | `/cluster/topics/{topic}/messages/{id}/visibility/rollback` | Descarta a alteração de invisibilidade pendente após esgotar os retries. |
 | `GET` | `/cluster/blocks/{id}/ids` | Retorna a lista de IDs de mensagens (e tombstones) que o nó possui para o bloco — usado na sincronização distribuída (seção 7.3). |
 | `GET` | `/cluster/blocks/{id}/messages/{messageId}` | Retorna o conteúdo de uma mensagem específica do bloco, para as chamadas balanceadas de sincronização. |
 | `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar aos novos donos mensagens que estavam registradas como perdidas. |

@@ -9,6 +9,7 @@
 - Enviar mensagem para um tópico (`POST`).
 - Receber mensagens de um tópico (`GET`).
 - Confirmar o consumo de uma mensagem (ack).
+- Controle de entrega por **invisibilidade temporária** (padrão 120 s, ajustável no `GET` e depois via `PATCH`), com contador de entregas e reentrega se não houver ack — ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 ### 4.2 Armazenamento e durabilidade
 - Recebimento inicial da mensagem em memória, com **espaço configurável** e **overflow para disco** (`${topico}/${id}.json`) quando o limite é atingido — ver seção 3.2.
 - Espaço de memória dividido **dinamicamente entre tópicos**, priorizando os de maior fluxo de leitura (seção 3.2).

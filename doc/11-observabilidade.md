@@ -202,7 +202,7 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | | `consumeRate` / `ackRate` | Mensagens consumidas / confirmadas por segundo. É a **taxa de leitura** usada na divisão dinâmica de memória (seção 3.2). |
 | | `consumeLatency` | p50/p95/p99 da latência de consumo e de ack. |
 | **Fila** | `depth` | Mensagens disponíveis, ainda não confirmadas. |
-| | `inFlight` | Mensagens entregues sem ack. *Só faz sentido depois de definida a semântica de entrega — ver [pendências](08-pendencias-e-proximos-passos.md).* |
+| | `inFlight` | Mensagens entregues sem ack e ainda invisíveis (`invisibleUntil` no futuro — [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
 | | `oldestAge` | Idade da mensagem mais antiga (tempo desde a publicação) — o melhor indicador de consumidor parado. |
 | | `bytes` | Volume total acumulado. |
 | **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |

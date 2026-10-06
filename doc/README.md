@@ -20,5 +20,6 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
 | [10-configuracao.md](10-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
 | [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
 | [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
+| [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: invisibilidade, contador de entregas, metadados em disco, lista de prontos. |
 
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

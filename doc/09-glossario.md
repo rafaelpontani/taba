@@ -24,5 +24,9 @@
 | **Evento de perda de mensagem** | Registro gerado quando uma mensagem esperada não é encontrada em nenhuma réplica durante a sincronização de bloco; usado depois para reconciliar mensagens recuperadas por um nó que retorna (seção 6.6). |
 | **Período de freezing** | Intervalo de tempo configurável em que um nó desregistrado por falha fica impedido de se registrar novamente, para evitar flapping. |
 | **Overflow para disco** | Persistência em disco (`${topico}/${id}.json`) das mensagens que excedem o espaço de memória configurado para o nó (seção 3.2). |
+| **Invisibilidade** | Prazo (`invisibleUntil`) em que uma mensagem já entregue não é entregue a outro consumidor; se não houver ack até lá, ela volta a ser entregável (seção 12). Padrão: 120 s. |
+| **Contador de entregas** | `deliveryCount`: quantas vezes a mensagem foi entregue; guardado nos metadados (`${topico}/${id}.meta.json` quando em disco). |
+| **Dono da entrega** | Nó primário do bloco de uma mensagem; é o único que a coloca na lista de prontos, evitando disputa entre réplicas (seção 12.7). |
+| **Lista de prontos** | Lista, por tópico e por nó, de IDs de mensagens prontas para entrega, mantida em tamanho fixo por uma thread (seção 12.6). |
 | **Taxa de leitura de um tópico** | Métrica de fluxo de consumo (mensagens lidas por período) usada para decidir a prioridade de cada tópico na divisão do espaço de memória disponível. |
 

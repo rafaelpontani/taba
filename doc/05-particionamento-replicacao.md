@@ -7,6 +7,8 @@
 ### 7.1 Hash circular (consistent hashing)
 - O cluster particiona as mensagens em **blocos de mensagem**, distribuídos em um **anel de hash circular** (consistent hashing).
 - Cada nó físico pode representar múltiplos **nós virtuais** no anel; o **número de nós virtuais é configurável**, melhorando a distribuição dos blocos entre os nós físicos.
+- Os nós responsáveis por um bloco (primário, secundário, terciário etc.) são sempre **nós físicos distintos**: ao percorrer o anel em busca das réplicas, posições de nós virtuais de um nó físico já escolhido são puladas.
+- O **primário** do bloco é o **dono da entrega** das mensagens dele ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.7). Qualquer nó calcula o primário de uma mensagem a partir do ID e da tabela de membros.
 - Quando um nó sobe, ele assume blocos de mensagem como **primário**, **secundário**, **terciário** etc., conforme o **número de réplicas persistentes** exigido para uma mensagem. **Padrão: 3 réplicas.**
 ### 7.2 Procedimento de recebimento de uma mensagem (registro + commit)
 1. **Ler a configuração** do número de nós exigido para confirmar o recebimento (fator de replicação — padrão 3).
