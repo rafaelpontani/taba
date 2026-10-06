@@ -44,9 +44,11 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Invisibilidade padrão | `delivery.visibility-timeout.default` | **120 s** | Tempo em que a mensagem entregue fica invisível a outros consumidores quando o `GET` não informa `visibilityTimeout`. | 12.2 |
 | Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PATCH`. | 12.3 |
 | Tamanho da lista de prontos | `delivery.ready-list.size` | A definir | Número fixo de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
+| Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para o índice de expiração em disco. | 13.4 |
+| Janela do índice de expiração | `delivery.invisible.spill.window` | A definir (sugestão: 60 s) | Intervalo de tempo coberto por cada arquivo do índice de expiração em disco (`${topico}/_expiracao/${janela}.log`). | 13.5 |
 | Tentativas de `take` | `delivery.take.max-attempts` | A definir | Teto de peers consultados, um por vez, quando a lista de prontos local está vazia (cada um escolhido ao acaso entre os que a tabela marca com mensagens prontas). Esgotado, o `GET` vira ouvinte local. | 12.8 |
 
-> Quórum, retry, expiração de pendente e teto de commit da invisibilidade reutilizam `write.quorum`, `write.retry.*`, `write.pending.ttl` e `write.commit.timeout`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
+> Quórum, retry, expiração de pendente e teto de commit da invisibilidade reutilizam `write.quorum`, `write.retry.*`, `write.pending.ttl` e `write.commit.timeout`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) e [14-invisibilidade.md](14-invisibilidade.md).
 
 ## Observabilidade
 

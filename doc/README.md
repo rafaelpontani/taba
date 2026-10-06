@@ -20,7 +20,8 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
 | [10-configuracao.md](10-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
 | [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
 | [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
-| [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: invisibilidade, contador de entregas, metadados em disco, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit. |
+| [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: contador de entregas, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit. |
+| [14-invisibilidade.md](14-invisibilidade.md) | 13 | Invisibilidade: metadados, propagação entre nós, lista de invisíveis em memória, excedente em disco (índice de expiração), vencimento e reconstrução. |
 
 ## Diagramas
 
@@ -36,6 +37,7 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | Remoção de nó | [04-cluster.md](04-cluster.md), seção 6.3 |
 | Falha no registro de nó | [04-cluster.md](04-cluster.md), seção 6.5 |
 | Retorno de nó excluído | [04-cluster.md](04-cluster.md), seção 6.6 |
+| Ciclo da invisibilidade | [14-invisibilidade.md](14-invisibilidade.md), seção 13.1 |
 | Entrega e ack | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.2 |
 | Três cenários do `GET` | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8 |
 

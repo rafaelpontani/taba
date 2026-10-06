@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Ciclo da invisibilidade de uma mensagem",
+    "output": "doc/diagramas/html/invisibilidade.html",
+    "viewBox": [
+      1080,
+      584
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "cliente",
+      "type": "external",
+      "label": "Consumidor",
+      "sublabel": "GET e ack"
+    },
+    {
+      "id": "dono",
+      "type": "backend",
+      "label": "Nó dono",
+      "sublabel": "primário do bloco"
+    },
+    {
+      "id": "replicas",
+      "type": "cloud",
+      "label": "Réplicas",
+      "sublabel": "do quórum e fora dele"
+    },
+    {
+      "id": "prontos",
+      "type": "messagebus",
+      "label": "Lista de prontos",
+      "sublabel": "memória do dono"
+    },
+    {
+      "id": "disco",
+      "type": "database",
+      "label": "Índice em disco",
+      "sublabel": "excedente de invisíveis"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 326,
+      "label": "Entrega e propagação"
+    },
+    {
+      "from": 334,
+      "to": 362,
+      "label": "Excedente em disco"
+    },
+    {
+      "from": 370,
+      "to": 454,
+      "label": "Expiração"
+    }
+  ],
+  "messages": [
+    {
+      "id": "get",
+      "from": "cliente",
+      "to": "dono",
+      "y": 172,
+      "label": "GET (visibilityTimeout)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reg",
+      "from": "dono",
+      "to": "replicas",
+      "y": 200,
+      "label": "registro: invisibleUntil, entrega + 1"
+    },
+    {
+      "id": "reg-ok",
+      "from": "replicas",
+      "to": "dono",
+      "y": 228,
+      "label": "quórum confirma",
+      "variant": "return"
+    },
+    {
+      "id": "com",
+      "from": "dono",
+      "to": "replicas",
+      "y": 256,
+      "label": "commit (quórum)",
+      "variant": "emphasis",
+      "note": "dono guarda ID e prazo na lista de invisíveis"
+    },
+    {
+      "id": "tira",
+      "from": "dono",
+      "to": "prontos",
+      "y": 284,
+      "label": "remove o ID",
+      "variant": "dashed"
+    },
+    {
+      "id": "msg",
+      "from": "dono",
+      "to": "cliente",
+      "y": 312,
+      "label": "mensagem entregue",
+      "variant": "return"
+    },
+    {
+      "id": "cheia",
+      "from": "dono",
+      "to": "disco",
+      "y": 348,
+      "label": "lista cheia: grava o de prazo mais distante",
+      "variant": "security"
+    },
+    {
+      "id": "repoe",
+      "from": "dono",
+      "to": "prontos",
+      "y": 384,
+      "label": "prazo vence sem ack: ID volta à lista",
+      "variant": "emphasis",
+      "note": "sem tráfego entre nós"
+    },
+    {
+      "id": "janela",
+      "from": "dono",
+      "to": "disco",
+      "y": 412,
+      "label": "lista esvazia: lê a janela mais próxima",
+      "variant": "dashed"
+    },
+    {
+      "id": "janela-ok",
+      "from": "disco",
+      "to": "dono",
+      "y": 440,
+      "label": "IDs e prazos",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ack ou PATCH",
+      "items": [
+        "Registro + commit no quórum, como a entrega",
+        "O dono remove ou atualiza a entrada na lista"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Expiração não se propaga",
+      "items": [
+        "Prazo no passado nos metadados já significa visível",
+        "A próxima entrega grava o novo prazo"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Índice é derivado",
+      "items": [
+        "A fonte de verdade são os metadados",
+        "Entradas velhas são conferidas e descartadas ao ler"
+      ]
+    }
+  ]
+}

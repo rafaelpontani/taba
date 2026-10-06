@@ -20,7 +20,7 @@ Legenda:
 |---|---|
 | 1 — Contrato da API | D2, D4, D6–D7, D25, D27–D28, D31: ordenação, assinantes do `broadcast`, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET` |
 | 2 — Arquitetura | D8, D9, D29, D30: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova |
-| 3 — Protótipo | D10–D13: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
+| 3 — Protótipo | D10–D13, D34: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
 | 4 — Protocolo de registro/commit | D33: quórum de escrita fixo ou proporcional |
 | 6 — Sincronização | D15–D16: evento de perda, otimização de listagem |
 | 8 — Sinal de vida, quórum e freezing | D17–D19: quórum, freezing, retry do bootstrap |
@@ -57,7 +57,7 @@ O fluxo de escrita está definido (seção 3.1); os itens abaixo são lacunas do
 - **D8.** [ ] **Como um nó novo encontra o primeiro nó do cluster** (seção 6.2 diz "se conecta a um nó existente", mas não como obtém o endereço): lista de sementes, DNS, API do Kubernetes. Liga-se à "descoberta automática" do escopo e à integração com Kubernetes (seção 4.4). Vale também para o reinício de um nó, que volta como nó novo (D29.2).
 - **D9.** [~] **Fluxo de leitura/consumo.** Já definido ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)): o nó que recebe o `GET` pega um ID da **lista de prontos** do tópico, marca a invisibilidade por registro + commit (decidido por **quórum**, sempre incluindo o primário) e só então devolve a mensagem. A lista de cada nó tem só as mensagens de que ele é **primário** (dono da entrega, seção 12.7); com a lista vazia, o nó pede ao dono de outro nó e, com long polling, espera avisos pelo canal entre nós (seção 12.8). Depende de D2 e D28.
   - **D9.1** Com o dono **fora do ar** e ainda não desregistrado, o secundário pode assumir a entrega das mensagens dele?
-  - **D9.2** Como a thread da lista encontra candidatos (varredura vs. índice, incluindo as de invisibilidade expirada).
+  - **D9.2** Como a thread da lista encontra candidatos visíveis que não estão na lista. As de invisibilidade vencida já voltam pela lista de invisíveis ([14-invisibilidade.md](14-invisibilidade.md), seção 13.6); falta o caso geral (varredura vs. índice para as demais).
 - **D29.** [~] **Canal entre nós** (seções 12.8 e 12.9, e 6.3). Já definido: canal **WebSocket** permanente entre cada par de nós (malha completa), que também é o controle de vida (substitui o ping); só sinais pequenos; filas por nó com retomada na reconexão.
   - *Decidido:* **D29.1** o nó que entra ou volta abre a conexão, pelos IPs da tabela de membros, e numa queda com os dois nós vivos quem detectar primeiro reconecta, com desempate pelo menor hash do ID do nó, que fecha a conexão dele; **D29.2** a tabela de membros não é persistida: um reinício faz o nó voltar como novo e passar pelo registro (seção 6.6), enviando as mensagens em disco a quem as perdeu; **D29.5** não há ressincronização do estado do canal: se a fila estoura, o nó é excluído do cluster e, ao voltar, é forçado a sincronizar por um novo registro.
   - **D29.3** O sinal de vida: usar o ping/pong do WebSocket ou um sinal próprio.
@@ -83,7 +83,11 @@ Inclui o overflow por tópico (seção 3.2).
   - **D13.1** TTL da mensagem.
   - **D13.2** Limite de entregas antes do dead-letter.
   - **D13.3** Para onde a mensagem vai no dead-letter (tópico próprio?).
-- Valores iniciais: `memory.limit`, `delivery.ready-list.size`.
+- **D34.** [~] **Excedente da lista de invisíveis em disco** ([14-invisibilidade.md](14-invisibilidade.md), seção 13.5). Já definido: índice de expiração por janela de tempo em `${topico}/_expiracao/`, com a invariante "a lista em memória vence antes do disco", remoção preguiçosa e reconstrução a partir dos metadados.
+  - **D34.1** Tamanho da janela e limiar de recarga da lista.
+  - **D34.2** Se a gravação do índice precisa de `fsync` (proposta: não, por ser derivado dos metadados).
+  - **D34.3** Custo da reconstrução ao assumir um bloco grande (varredura dos `.meta.json`) e se vale um índice persistente.
+- Valores iniciais: `memory.limit`, `delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.spill.window`.
 
 ### Passo 4 — Protocolo genérico de registro/commit
 

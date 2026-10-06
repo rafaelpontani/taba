@@ -6,13 +6,13 @@
 
 A entrega segue o modelo de **invisibilidade temporária**, como o *visibility timeout* do SQS: ao entregar uma mensagem, o sistema a torna **invisível** por um tempo. Se o consumidor a confirma (ack) nesse prazo, ela é removida; se não confirma, o prazo expira e a mensagem volta a ficar disponível para entrega. A semântica resultante é **at-least-once**: uma mensagem pode ser entregue mais de uma vez, mas não se perde por falta de confirmação.
 
-> Os nomes de parâmetros, rotas e arquivos abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [10-configuracao.md](10-configuracao.md)). Pendências deste tema: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md).
+> A invisibilidade em si (metadados, propagação, lista de invisíveis, excedente em disco e vencimento) está reunida em [14-invisibilidade.md](14-invisibilidade.md). Os nomes de parâmetros, rotas e arquivos abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [10-configuracao.md](10-configuracao.md)). Pendências deste tema: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md).
 
 ### 12.1 Peças do controle
 
 | Peça | Papel |
 |---|---|
-| **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor. Propagada ao **quórum** de nós responsáveis (`write.quorum`, sempre incluindo o primário) antes de ela ser entregue; réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). |
+| **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor ([14-invisibilidade.md](14-invisibilidade.md)). Propagada ao **quórum** de nós responsáveis (`write.quorum`, sempre incluindo o primário) antes de ela ser entregue; réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). |
 | **Contador de entregas** | `deliveryCount`, incrementado a cada entrega. Base para reentrega e, futuramente, dead-letter. |
 | **Metadados da mensagem** | `deliveryCount` e `invisibleUntil`, guardados junto da mensagem em memória ou em disco (seção 12.5). |
 | **Dono da entrega** | O nó primário do bloco da mensagem: só ele a coloca na sua lista de prontos (seção 12.7). |
@@ -42,34 +42,17 @@ A mensagem só chega ao cliente depois de a invisibilidade estar marcada no **qu
 
 ### 12.3 Alteração da invisibilidade
 
-O cliente pode **alterar e acrescentar** tempo de invisibilidade de uma mensagem já entregue — por exemplo, um consumidor que precisa de mais tempo para processá-la:
-
-| Verbo | Recurso | Descrição |
-|---|---|---|
-| `PATCH` | `/topics/{topic}/messages/{id}` | Altera a invisibilidade da mensagem: `{"visibilityTimeout": 300}`. |
-
-A alteração é propagada com o **mesmo processo**: pedido de alteração (registro) a todos os nós responsáveis e, com o **quórum** confirmando (primário incluso), commit. Só então a chamada responde ao cliente; as réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). Esta operação **não** incrementa `deliveryCount` (não é uma nova entrega) e **não** mexe na lista de prontos.
+O cliente pode alterar o tempo de invisibilidade de uma mensagem já entregue (`PATCH /topics/{topic}/messages/{id}`, `{"visibilityTimeout": 300}`), com o mesmo registro + commit por quórum da entrega, sem incrementar `deliveryCount` e sem mexer na lista de prontos. Detalhes em [14-invisibilidade.md](14-invisibilidade.md), seção 13.3.
 
 ### 12.4 Confirmação (ack) e reentrega
 
 - **Ack** (`DELETE /topics/{topic}/messages/{id}`): segue o **mesmo protocolo de registro + commit** das demais operações sobre a mensagem (entrega, seção 12.2; escrita, seção 7.2). O coordenador do `DELETE` pede o registro da remoção a todos os nós responsáveis pelo bloco; com o **quórum** confirmando (primário incluso) ele chama o commit, que remove a mensagem e seus metadados nesses nós — as réplicas fora do quórum removem em segundo plano — **sem deixar tombstone**: a ausência do ID já é suficiente, e a sincronização de bloco trata a janela residual de uma remoção concorrente por conta própria (verificação final, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)).
 - **Falha:** mesma regra da seção 3.1/7.2 — falha antes do quórum fechar **cancela** o ack (rollback) e a API retorna erro ao cliente, a mensagem continua disponível; falha nas réplicas fora do quórum, já decidido, não é desfeita: o coordenador insiste dentro do teto `write.commit.timeout` e, esgotado, o bloco fica temporariamente abaixo do fator de replicação pleno (evento de observabilidade, não falha de saúde). Nunca um ack parcial visível a outro consumidor — o quórum inclui sempre o primário, que é quem decide se a mensagem ainda existe para efeito de entrega.
-- **Reentrega:** se o prazo `invisibleUntil` passa sem ack, a mensagem volta a ser elegível. *(Proposta: a thread da lista de prontos, seção 12.6, também re-inclui as mensagens cuja invisibilidade expirou.)* Ao ser entregue de novo, `deliveryCount` sobe.
+- **Reentrega:** se o prazo `invisibleUntil` passa sem ack, a mensagem volta a ser elegível: o dono a recoloca na lista de prontos a partir da sua lista de invisíveis (com excedente em disco), sem propagar nada às réplicas — ver [14-invisibilidade.md](14-invisibilidade.md), seções 13.4 a 13.6. Ao ser entregue de novo, `deliveryCount` sobe.
 
 ### 12.5 Metadados em memória e em disco
 
-Os metadados são `deliveryCount` (incremental) e `invisibleUntil` (data e hora).
-
-- **Mensagem em memória:** os metadados ficam em memória junto dela.
-- **Mensagem em disco** (overflow, seção 3.2): os metadados ficam em **outro arquivo, com quase o mesmo nome e sufixo de metadado**, ao lado do arquivo da mensagem:
-
-  ```
-  ${topico}/${id}.json          # a mensagem
-  ${topico}/${id}.meta.json     # metadados de entrega
-  ```
-
-- O arquivo de metadados é atualizado no **commit** de cada entrega ou alteração e removido junto com a mensagem no ack.
-- Assim, alterar a invisibilidade de uma mensagem em disco reescreve só o arquivo pequeno de metadados, sem tocar no conteúdo da mensagem.
+`deliveryCount` e `invisibleUntil` ficam junto da mensagem em memória ou em `${topico}/${id}.meta.json`, ao lado do arquivo dela. Detalhes em [14-invisibilidade.md](14-invisibilidade.md), seção 13.2.
 
 ### 12.6 Lista de prontos
 
@@ -77,6 +60,7 @@ Os metadados são `deliveryCount` (incremental) e `invisibleUntil` (data e hora)
 - Uma **thread** dedicada é responsável por **manter sempre um número fixo de IDs prontos** (`delivery.ready-list.size`), repondo a lista conforme ela é consumida.
 - A lista é reposta **na ordem do GUID v7** (ordem de publicação) das mensagens de que o nó é dono.
 - Ao receber o **commit** de uma entrega (seção 12.2, passo 4), o nó remove o ID da lista automaticamente.
+- Mensagens cuja invisibilidade vence voltam à lista pela thread de vencimento ([14-invisibilidade.md](14-invisibilidade.md), seção 13.6), na ordem do GUID v7; se a lista está cheia, o ID de maior GUID sai para dar lugar e é reposto depois.
 - O `GET` só consulta a lista, sem varrer memória e disco a cada chamada; o custo da busca fica na thread de reposição, fora do caminho crítico da entrega.
 
 ### 12.7 Dono da entrega
