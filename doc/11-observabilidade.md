@@ -401,7 +401,7 @@ Rotas leves para orquestradores e balanceadores, **sem** fan-out para outros nó
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `GET` | `/health/live` | O processo está de pé e respondendo. Falha → reiniciar o processo. |
-| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
+| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **tabela de tópicos completa** (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
 
 `/health/ready` **não** exige que todos os blocos estejam íntegros: um nó em sincronização de blocos continua recebendo publicações (seção 7.3) e não deve ser removido da rotação por isso.
 

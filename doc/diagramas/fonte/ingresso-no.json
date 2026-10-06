@@ -6,7 +6,7 @@
     "output": "doc/diagramas/html/ingresso-no.html",
     "viewBox": [
       1080,
-      694
+      696
     ],
     "column_fit": "spread",
     "quality_profile": "showcase"
@@ -39,18 +39,18 @@
   ],
   "segments": [
     {
-      "from": 156,
-      "to": 240,
+      "from": 158,
+      "to": 214,
       "label": "Teste de conexão"
     },
     {
-      "from": 248,
-      "to": 388,
+      "from": 222,
+      "to": 362,
       "label": "Registro e commit em todos"
     },
     {
-      "from": 396,
-      "to": 564,
+      "from": 370,
+      "to": 566,
       "label": "Sincronização do bloco"
     }
   ],
@@ -59,7 +59,7 @@
       "id": "boot",
       "from": "novo",
       "to": "contato",
-      "y": 170,
+      "y": 172,
       "label": "registro: IPs e porta",
       "variant": "emphasis"
     },
@@ -67,29 +67,22 @@
       "id": "teste",
       "from": "contato",
       "to": "novo",
-      "y": 198,
-      "label": "testa conexão de volta"
-    },
-    {
-      "id": "teste-ok",
-      "from": "novo",
-      "to": "contato",
-      "y": 226,
-      "label": "conexão ok",
-      "variant": "return"
+      "y": 200,
+      "label": "testa conexão de volta",
+      "note": "se falhar, aborta"
     },
     {
       "id": "reg",
       "from": "contato",
       "to": "demais",
-      "y": 262,
+      "y": 236,
       "label": "registro (fase 1)"
     },
     {
       "id": "reg-ok",
       "from": "demais",
       "to": "contato",
-      "y": 290,
+      "y": 264,
       "label": "todos confirmam",
       "variant": "return"
     },
@@ -97,7 +90,7 @@
       "id": "com",
       "from": "contato",
       "to": "demais",
-      "y": 318,
+      "y": 292,
       "label": "commit (fase 2)",
       "variant": "emphasis"
     },
@@ -105,7 +98,7 @@
       "id": "com-ok",
       "from": "demais",
       "to": "contato",
-      "y": 346,
+      "y": 320,
       "label": "ok",
       "variant": "return"
     },
@@ -113,15 +106,23 @@
       "id": "tabela",
       "from": "contato",
       "to": "novo",
-      "y": 374,
-      "label": "tabela de nós e de tópicos",
+      "y": 348,
+      "label": "tabela de nós",
       "variant": "return"
+    },
+    {
+      "id": "topicos",
+      "from": "novo",
+      "to": "demais",
+      "y": 384,
+      "label": "puxa tabela de tópicos (stream)",
+      "variant": "dashed"
     },
     {
       "id": "canal",
       "from": "novo",
       "to": "demais",
-      "y": 410,
+      "y": 412,
       "label": "abre canal WebSocket",
       "variant": "dashed",
       "note": "assume posição no anel"
@@ -130,14 +131,14 @@
       "id": "ids",
       "from": "novo",
       "to": "resp",
-      "y": 438,
-      "label": "lista de IDs do bloco"
+      "y": 440,
+      "label": "stream de IDs do bloco"
     },
     {
       "id": "ids-ok",
       "from": "resp",
       "to": "novo",
-      "y": 466,
+      "y": 468,
       "label": "IDs (união das listas)",
       "variant": "return"
     },
@@ -145,23 +146,23 @@
       "id": "get",
       "from": "novo",
       "to": "resp",
-      "y": 494,
-      "label": "GET das mensagens (distribuído)",
+      "y": 496,
+      "label": "GET por faixa (distribuído)",
       "variant": "emphasis"
     },
     {
       "id": "get-ok",
       "from": "resp",
       "to": "novo",
-      "y": 522,
-      "label": "conteúdo",
+      "y": 524,
+      "label": "mensagens (NDJSON)",
       "variant": "return"
     },
     {
       "id": "final",
       "from": "novo",
       "to": "resp",
-      "y": 550,
+      "y": 552,
       "label": "verificação final: relista IDs",
       "variant": "dashed"
     }

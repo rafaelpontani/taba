@@ -11,7 +11,7 @@
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `POST` | `/topics` | Cria um tópico (nome, tipo `queue` ou `distributor`, e opcionalmente `tags`; `prefixes` para `distributor`; `volatile` e `idleTimeout` para `queue`). Gera o `id` (GUID v7) do tópico. Propagado a todos os nós por registro + commit; persistido em disco ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
-| `GET` | `/topics` | Lista os tópicos existentes. Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), diferente de `/stats/topics`, que faz fan-out para métricas de consumo. |
+| `GET` | `/topics` | Lista os tópicos existentes, **paginada** (seção 8.1.2). Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), diferente de `/stats/topics`, que faz fan-out para métricas de consumo. |
 | `GET` | `/topics/{topic}` | Retorna as informações e configurações do tópico (tipo, tags etc.). Também respondida localmente, pelo mesmo motivo. |
 | `PATCH` | `/topics/{topic}` | Altera informações do tópico (tags; `prefixes` de um `distributor`; `idleTimeout` de uma fila volátil). Nome, `id`, tipo e `volatile` são imutáveis. Mesma propagação do `POST`. |
 | `DELETE` | `/topics/{topic}` | Remove o tópico e **todas** as suas mensagens, mesmo as pendentes (ainda não entregues ou não confirmadas) — sempre funciona, sem checagem. Mesma propagação do `POST`; falha no registro **cancela** a remoção (rollback); falha no commit, já decidido, não cancela — o coordenador insiste dentro do teto `write.commit.timeout`. Nunca uma remoção parcial visível. |
@@ -43,7 +43,29 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `sort`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`). Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
 | `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
 | `GET` | `/health/live` | O processo está de pé. |
-| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster). |
+| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster e com a tabela de tópicos completa). |
+
+### 8.1.2 Paginação
+
+Toda rota de **cliente ou de operação** que pode devolver um número ilimitado de itens é paginada, sempre com a mesma convenção:
+
+| Parâmetro | Descrição |
+|---|---|
+| `limit` | Itens por página. Tem padrão e máximo (a calibrar, [10-configuracao.md](10-configuracao.md)). |
+| `cursor` | Token **opaco** devolvido em `nextCursor` pela página anterior. O cliente nunca o monta. |
+| `sort` | Campo de ordenação, prefixo `-` para decrescente. Só aceita campos da lista de cada rota. |
+
+A resposta traz os itens e `nextCursor`; sem `nextCursor`, acabou. Não há `page`/`offset` nem `total` (contar custa caro e o valor muda durante a leitura).
+
+**Para não perder nem repetir itens entre páginas**, a paginação é por **chave** (*keyset*), não por deslocamento:
+
+- A ordem é sempre **total e estável**: toda ordenação termina num campo único e imutável como desempate (o nome ou o `id`). `sort=-createdAt` vale, na prática, `(createdAt desc, id asc)`.
+- O cursor guarda a **última chave lida**, mais o `sort` e os filtros em uso. A página seguinte pede "depois dessa chave", então inserir ou remover itens antes dela não desloca nada. Cursor com `sort` ou filtros diferentes dos atuais é rejeitado com `400`.
+- Repetir um cursor devolve a mesma página enquanto os dados não mudarem, e o cursor **não expira** (não há estado no servidor).
+
+A garantia é a de quem percorre tudo: recebe todo item que existia durante o percurso inteiro, sem repetição. Itens criados ou removidos durante o percurso podem ou não aparecer. É consistência fraca, suficiente para consulta; as rotas entre nós usam outro mecanismo (seção 8.2.1).
+
+Em `sort` por valor que muda (ex.: `-depth` em `/stats/topics`), a ordem pode se alterar entre páginas; a garantia de não perder nem repetir vale para ordenação por campo imutável.
 
 ### 8.2 API interna (cluster)
 
@@ -71,9 +93,38 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `POST` | `/cluster/topics/{topic}/messages/{id}/ack/register` | Fase 1 (registro) do ack: pedido de remoção da mensagem a todos os nós responsáveis pelo bloco. |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/ack/commit` | Fase 2 (commit): remove a mensagem (e seus metadados); decidido por quórum (primário incluso), replicado às demais réplicas em segundo plano. Sem tombstone: a ausência do ID já basta para a sincronização (seção 7.3). |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/ack/rollback` | Descarta o registro de ack pendente após esgotar os retries; a mensagem permanece disponível. |
-| `GET` | `/cluster/blocks/{id}/ids` | Retorna a lista de IDs de mensagens que o nó possui para o bloco — usado na sincronização distribuída, inclusive na verificação final (seção 7.3). |
-| `GET` | `/cluster/blocks/{id}/messages/{messageId}` | Retorna o conteúdo de uma mensagem específica do bloco, para as chamadas balanceadas de sincronização. |
-| `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar aos novos donos mensagens que estavam registradas como perdidas. |
+| `GET` | `/cluster/topics` | **Stream** (NDJSON, seção 8.2.1) com as definições de tópico que o nó possui, ordenadas por `id`; `from`/`to` opcionais. Usado pelo nó novo para montar a tabela de tópicos depois do registro, inclusive na verificação final (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). |
+| `GET` | `/cluster/blocks/{id}/ids` | **Stream** (NDJSON) com os IDs de mensagens que o nó possui para o bloco, ordenados; `from`/`to` opcionais. Usado na sincronização distribuída, inclusive na verificação final (seção 7.3). |
+| `GET` | `/cluster/blocks/{id}/messages` | **Stream** (NDJSON) com as mensagens do bloco que o nó possui na faixa `from`–`to` (IDs, inclusivos). É a chamada balanceada da sincronização: o nó novo divide a lista unida de IDs em faixas e pede cada faixa a um nó de origem. |
+| `GET` | `/cluster/blocks/{id}/messages/{messageId}` | Retorna o conteúdo de **uma** mensagem do bloco. Mantida por consistência REST e para análise individual quando há problema com uma mensagem; também serve de reforço para uma mensagem que faltou numa faixa. |
+| `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar aos novos donos mensagens que estavam registradas como perdidas. O **corpo da requisição** é um stream NDJSON (seção 8.2.1). |
 | `GET` | `/cluster/stats/node` | Métricas locais do nó, para a agregação de `/stats/cluster`. |
 | `GET` | `/cluster/stats/topics` | Contadores locais por tópico (apenas mensagens em que o nó é primário: visíveis, invisíveis e data da mais antiga), agregados por quem atende `/stats/topics` (soma das quantidades, menor data). |
+
+### 8.2.1 Rotas de sincronização: streams NDJSON
+
+As rotas entre nós que podem mover volume grande (`/cluster/topics`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/messages` e o corpo do `/cluster/messages/recover`) **não usam a paginação do cliente** (seção 8.1.2). Quem sincroniza precisa saber que recebeu **tudo**, e a conexão é sempre direta entre dois nós, sem balanceador no caminho. O contrato é:
+
+- **Formato:** `Content-Type: application/x-ndjson`, **um objeto JSON por linha**. Emissor e receptor trabalham com um buffer por linha, sem montar a resposta inteira em memória. O tamanho máximo de uma linha é limitado (`cluster.sync.stream.max-line-bytes`).
+- **Ordem:** por **ID ascendente** (GUID v7, comparado como texto na forma canônica em minúsculas), que acompanha a ordem de criação. Mensagem e definição de tópico não mudam o `id`.
+- **Faixa:** `from` e `to` (ambos **inclusivos**, ambos opcionais) delimitam os IDs pedidos. `limit` opcional reduz o teto de itens do stream.
+- **Linha final obrigatória:** o stream termina com `{"end":true,"count":N,"last":"<id>","hasMore":false}`. **Sem essa linha o trecho é considerado falho**, mesmo que a conexão tenha fechado limpa: um corte entre duas linhas não se distingue de um fim normal sem ela.
+- **Teto por stream:** o emissor fecha o stream ao atingir `cluster.sync.stream.max-items` ou `cluster.sync.stream.max-bytes`, com `hasMore: true`. O receptor abre outro com `from=<last>`.
+- **Retomada:** depois de um corte ou de `hasMore`, o receptor repete a chamada com `from=<último ID lido>`. O emissor devolve de novo essa linha, e o receptor a **ignora** (aplicação idempotente por ID). Não há token nem estado no servidor, e a repetição devolve as mesmas linhas porque a mensagem não muda depois de gravada.
+- **Erro depois do `200`:** o status já foi enviado, então o emissor escreve `{"error":"..."}` e fecha, ou apenas fecha sem a linha final. Nos dois casos o receptor retoma pela regra acima.
+- **Timeout:** vale um **timeout de leitura por linha** (`cluster.sync.stream.idle-timeout`), não um teto para o stream inteiro. Não há *heartbeat*: sem balanceador, só um nó parado ou lento fica sem escrever.
+- **Contrapressão:** o receptor lê no próprio ritmo e o TCP segura o emissor. O emissor não mantém transação nem lista congelada aberta; ele lê o armazenamento em blocos pequenos.
+- **Corpo de `POST`** (`/cluster/messages/recover`): o mesmo formato, com a mesma linha final no corpo. A resposta também termina com `{"end":true,"count":N}`, com a quantidade aplicada. Se a conexão cair, quem envia reenvia tudo; mensagens já aplicadas são ignoradas.
+
+Cada rota usa o mesmo formato com linhas diferentes:
+
+| Rota | Linha de dados |
+|---|---|
+| `/cluster/topics` | A definição do tópico (a mesma de `_topics/${topico}.json`). |
+| `/cluster/blocks/{id}/ids` | `{"id":"<id>"}` |
+| `/cluster/blocks/{id}/messages` | A mensagem completa (`id`, conteúdo e metadados). |
+
+Quando faltar mensagem numa faixa (o `count` é menor que os IDs pedidos), o receptor busca só as que faltaram em outro nó de origem, e a rota por ID único serve de último recurso. Se nenhum nó a tem, vale o evento de perda da seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).
+
+Esse contrato **não cria tombstone nem log novo**: a remoção continua por ausência do ID, e a janela residual da seção 7.3 continua tratada como lá.
 

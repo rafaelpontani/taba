@@ -12,21 +12,22 @@ Legenda:
 - `[ ]` — em aberto, sem proposta.
 - `[~]` — parcialmente resolvida: o texto diz **o que já está definido**, e cada pergunta que falta tem seu sub-código.
 
-**Já decididas** (registradas nos documentos técnicos): D4 e D24 (o modelo de assinantes deu lugar ao Tópico Distribuidor, que copia a publicação para filas por prefixo; não há assinante identificado; filas voláteis e nó gestor), em [15-topicos-distribuidor.md](15-topicos-distribuidor.md); D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3; rollback do protocolo de registro/commit limitado a antes do quórum decidir, com teto configurável (`write.commit.timeout`) para as réplicas fora do quórum depois de decidido, em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2; **estratégia de quórum mínimo para mensagens** (`write.quorum`, sempre incluindo o primário do bloco, em vez de esperar confirmação de todas as `replication.factor` réplicas) para escrita, entrega/invisibilidade e ack — registro/desregistro de nó e definição de tópico continuam exigindo confirmação de todos os nós, sem quórum reduzido — em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2 e [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.2.
+**Já decididas** (registradas nos documentos técnicos): D7 (paginação por `limit`/`cursor`/`sort` com chave estável nas rotas de cliente, e streams NDJSON com linha final e retomada por ID nas rotas de sincronização entre nós; inclui a nova rota `GET /cluster/topics` para a carga da tabela de tópicos no bootstrap), em [06-api.md](06-api.md) seções 8.1.2 e 8.2.1; D4 e D24 (o modelo de assinantes deu lugar ao Tópico Distribuidor, que copia a publicação para filas por prefixo; não há assinante identificado; filas voláteis e nó gestor), em [15-topicos-distribuidor.md](15-topicos-distribuidor.md); D1 (semântica de entrega), D3 (modelo de consumo: polling e long polling de até 20 s) e D32 (limite e juntada das filas do canal), em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); o controle de vida entre nós pelo canal permanente, sem ping (seção 6.3); do canal entre nós (D29), D29.1, D29.2, D29.5 e D29.6 (concorrência entre registro e desregistro, seção 6.8); D5 (propagação e remoção de tópicos, incluindo mensagens pendentes) e D26 (ack por registro + commit, sem tombstone — a verificação final da sincronização de bloco cobre a janela residual), em [02-arquitetura.md](02-arquitetura.md) seção 3.3, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.4 e [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.3; rollback do protocolo de registro/commit limitado a antes do quórum decidir, com teto configurável (`write.commit.timeout`) para as réplicas fora do quórum depois de decidido, em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2; **estratégia de quórum mínimo para mensagens** (`write.quorum`, sempre incluindo o primário do bloco, em vez de esperar confirmação de todas as `replication.factor` réplicas) para escrita, entrega/invisibilidade e ack — registro/desregistro de nó e definição de tópico continuam exigindo confirmação de todos os nós, sem quórum reduzido — em [05-particionamento-replicacao.md](05-particionamento-replicacao.md) seção 7.2 e [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) seção 12.2.
 
 ### Resumo das dúvidas por passo
 
 | Passo | Dúvidas |
 |---|---|
-| 1 — Contrato da API | D2, D6–D7, D25, D27–D28, D31, D36–D37: ordenação, rate limits, paginação, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET`, limites de fan-out e de filas criadas por `autoCreate` |
-| 2 — Arquitetura | D8, D9, D29, D30: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova |
+| 1 — Contrato da API | D2, D6, D25, D27–D28, D31, D36–D40: ordenação, rate limits, alteração de invisibilidade, ack de entrega obsoleta, concorrência no `GET`, mensagens por `GET`, limites de fan-out e de filas criadas por `autoCreate`, `sort` por valor mutável, commit de tópico com a definição completa, tamanho máximo da mensagem |
+| 2 — Arquitetura | D8, D9, D29, D30, D41–D42: como o nó novo acha o primeiro nó, fluxo de leitura, detalhes do canal WebSocket entre nós, avisos de mensagem nova, falha da carga de tópicos e escolha do nó de origem |
 | 3 — Protótipo | D10–D13, D34–D35: linguagem, priorização de memória, disco, retenção/TTL/dead-letter |
 | 4 — Protocolo de registro/commit | D33: quórum de escrita fixo ou proporcional |
-| 6 — Sincronização | D15–D16: evento de perda, otimização de listagem |
+| 6 — Sincronização | D15–D16, D43–D44: evento de perda, otimização de listagem, mensagem de tópico ainda desconhecido, divisão em faixas |
 | 8 — Sinal de vida, quórum e freezing | D17–D19: quórum, freezing, retry do bootstrap |
-| 10 — Docker e Kubernetes | D20–D23: métricas, Prometheus, rate limit das rotas de operação, `X-Forwarded-For` |
+| 9 — Retorno de nó | D45: o `recover` em lote contra o registro/commit |
+| 10 — Docker e Kubernetes | D20–D23, D46: métricas, Prometheus, rate limit das rotas de operação, `X-Forwarded-For`, métricas dos streams de sincronização |
 
-Os passos 5, 7 e 9 não têm dúvidas próprias.
+Os passos 5 e 7 não têm dúvidas próprias.
 
 Os valores numéricos ainda "A definir" em [10-configuracao.md](10-configuracao.md) (retries, intervalos, TTLs, limiares, tetos) são **calibragem**, não dúvida de design: cada passo os cita numa linha "Valores iniciais" e eles podem ser fechados com um chute razoável e ajustados em teste.
 
@@ -36,7 +37,6 @@ Cobre os endpoints de registro/descoberta de nós, mensagens, sincronização e 
 
 - **D2.** [~] **Ordenação.** Já definido: o ID é um GUID v7 ordenável por tempo, e a lista de prontos de cada nó é reposta nessa ordem, só com as mensagens de que ele é o dono da entrega ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.6 e 12.7). Falta: declarar a garantia ao cliente — a ordem vale por nó dono, não por tópico (as mensagens se espalham por todos os blocos, seção 7.2), então a garantia seria de melhor esforço, sem ordem global; por chave não há conceito de chave na API.
 - **D6.** [~] **Rate limits da API de cliente** ([12-limites-api.md](12-limites-api.md)). Já definido: três categorias (publicação, consumo, administrativo), taxa + burst, resposta `429` com `Retry-After`. Falta: **como identificar o cliente** (não há autenticação — está fora do escopo) e se o limite é por IP ou global por nó.
-- **D7.** [~] **Paginação.** Já definido: `/stats/topics` usa `limit`/`cursor`. Falta: se `GET /topics` também pagina (o `limit` padrão e máximo entram na calibragem).
 - **D36.** [ ] **Limite de destinos por publicação num Tópico Distribuidor** ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2). Um DT com prefixo amplo gera uma cópia por fila que casa. Falta: teto de filas por publicação e o que fazer ao ultrapassá-lo (recusar a publicação inteira ou entregar até o teto).
 - **D37.** [ ] **Limite de filas criadas por `autoCreate`** (seção 14.4). Um erro de digitação cria uma fila, que some após `idleTimeout`; falta decidir se há teto de filas voláteis por cluster e se `autoCreate` tem rate limit próprio ([12-limites-api.md](12-limites-api.md)).
 - **D25.** [~] **Alteração da invisibilidade** (`PATCH`, seção 12.3). Já definido: rota que altera o prazo, propagada por registro + commit.
@@ -47,6 +47,9 @@ Cobre os endpoints de registro/descoberta de nós, mensagens, sincronização e 
   - **D28.1** Proposta a confirmar: o registro de invisibilidade é exclusivo — um nó rejeita o pedido se já há um pendente ou se a mensagem já está invisível, e o `GET` tenta outro ID da lista.
   - **D28.2** O que o `GET` devolve quando o registro falha após os retries (erro ao cliente ou próximo ID).
 - **D31.** [ ] **Mensagens por `GET`.** A API fala em "mensagem(ns)", mas não há parâmetro nem teto para a quantidade (ex.: `maxMessages`). Vale também para o pedido `take` entre nós.
+- **D38.** [~] **`sort` por valor que muda** ([06-api.md](06-api.md), seção 8.1.2). Já definido: a paginação por chave não perde nem repete itens quando o `sort` é por campo imutável (nome, `id`, `createdAt`); em `sort` por valor mutável (ex.: `-depth` de `/stats/topics`) a ordem pode mudar entre páginas, e isso está registrado como ressalva. Falta decidir se a ressalva basta ou se `sort` fica restrito a campos estáveis (a ordenação por métrica seguiria só como top-N, sem paginar além da primeira página).
+- **D39.** [~] **O commit de tópico carrega a definição completa?** A carga da tabela de tópicos no bootstrap ([02-arquitetura.md](02-arquitetura.md), seção 3.3) assume que o `commit` de criação ou alteração leva a definição inteira, para que o que chegou por commit prevaleça sobre o que veio do stream. Falta escrever isso no contrato de `/cluster/topics/commit` e decidir o que o `commit` da remoção leva (basta o `id`).
+- **D40.** [ ] **Tamanho máximo da mensagem.** Nenhum documento fixa um limite para o corpo de uma mensagem. Ele define `cluster.sync.stream.max-line-bytes` (o buffer por linha dos streams de sincronização) e o corpo aceito em `POST /topics/{topic}/messages`, e uma mensagem maior que a linha quebraria a sincronização. Falta o valor e se entra nos limites fixos da API ([10-configuracao.md](10-configuracao.md)).
 - Valores iniciais: `delivery.visibility-timeout.max` (vale para o `GET` e o `PATCH`), `limit` padrão e máximo da paginação, valores de `ratelimit.*`.
 
 ### Passo 2 — Arquitetura do cluster e fluxo em camadas
@@ -64,6 +67,8 @@ O fluxo de escrita está definido (seção 3.1); os itens abaixo são lacunas do
 - **D30.** [~] **Avisos de mensagem nova.** Já definido: o nó dono avisa um nó com ouvinte, que vai buscar.
   - **D30.1** **Quantos nós avisar** por mensagem nova (proposta: um por mensagem pronta, revezando entre os nós com ouvintes, para não acordar todos e provocar disputa).
   - **D30.2** Se avisos em rajada são agrupados numa janela curta.
+- **D41.** [ ] **Falha total da carga da tabela de tópicos** (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). Se nenhum nó consegue servir `GET /cluster/topics`, o nó novo nunca fica pronto. Falta decidir se ele espera e tenta de novo, ou se a falha conta como falha do registro (exclusão e novo bootstrap, ligado ao D19).
+- **D42.** [ ] **De qual nó puxar os tópicos.** Qualquer nó serve, e a carga continua em outro se o primeiro falhar. Falta escolher a regra: o nó de contato, um aleatório ou o mais próximo. Não afeta a corretude.
 - Valores iniciais: `cluster.channel.queue.max-size`, `cluster.channel.queue.max-age`.
 
 ### Passo 3 — Protótipo de nó único (memória + disco)
@@ -107,8 +112,13 @@ Na entrada de novos nós, incluindo o evento de falha de perda de mensagem.
 - **D15.** [~] **Evento de perda de mensagem** (seção 7.3). Já definido: proposta em [11-observabilidade.md](11-observabilidade.md) — log `error`, métrica `msg.cluster.message_loss` e lista consultável; o alerta fica no backend, o sistema não notifica.
   - **D15.1** Aprovar a proposta.
   - **D15.2** **Como o evento identifica o tópico** (o sincronizador só enxerga IDs de mensagem por bloco); sem isso só existe a condição `message-loss` do cluster, não a do tópico.
+  - **D15.4** Com a busca por faixa (`GET /cluster/blocks/{id}/messages?from=&to=`, seção 8.2.1 de [06-api.md](06-api.md)), o que faltou na faixa é buscado em outro nó e depois pela rota por ID único. Revisar o D15.3 com isso: a mensagem só é declarada perdida depois dessas tentativas e da verificação final.
   - **D15.3** *(achado nesta revisão)* **Falso positivo com a verificação final (seção 7.3):** hoje, se a busca de conteúdo (passo 3) falha para um ID porque ele foi deletado por um ack que nunca passou por este nó (a mesma janela residual que a verificação final do passo 5 cobre), o texto atual gera um evento de perda **antes** de chegar ao passo 5 — a verificação final só re-checa mensagens já obtidas, não as que falharam ao buscar. Ou o passo 3 dá à mensagem não encontrada a mesma chance da verificação final antes de declarar perda, ou se aceita esse falso positivo raro como está.
 - **D16.** [ ] *(não bloqueia)* **Otimização da listagem de IDs por bloco** para blocos muito grandes — ex.: merkle tree ou hashing incremental por faixa, em vez de listar todos os IDs a cada vez. Vale tanto para a listagem inicial quanto para a verificação final (seção 7.3), que hoje relista.
+
+- **D43.** [ ] **Mensagem para um tópico que o nó novo ainda não conhece.** O nó novo entra na tabela de membros antes de terminar de carregar os tópicos, então pode receber o registro de uma mensagem (como réplica) ou uma publicação de um tópico ainda desconhecido. Falta decidir se ele guarda a mensagem à espera da definição, a recusa (o coordenador tenta de novo) ou a aceita sem validar o tópico.
+- **D44.** [ ] *(calibragem)* **Divisão em faixas** da sincronização de conteúdo: tamanho de cada faixa pedida a uma origem e relação com `cluster.sync.stream.max-items`. Entra nos valores iniciais abaixo.
+- Valores iniciais: `cluster.sync.stream.*` (teto de itens e de bytes, tamanho máximo de linha, timeout de leitura) e o tamanho das faixas.
 
 ### Passo 7 — Rebalanceamento de blocos
 
@@ -127,7 +137,9 @@ Em caso de falha de registro ou desregistro de nó. Sem pendências.
 
 ### Passo 9 — Retorno de nó
 
-Recuperação de mensagens perdidas + novo bootstrap. Depende da lista de eventos de perda (D15). Sem pendências próprias.
+Recuperação de mensagens perdidas + novo bootstrap. Depende da lista de eventos de perda (D15).
+
+- **D45.** [ ] **`recover` em lote contra o registro/commit** (seção 6.6 de [04-cluster.md](04-cluster.md)). O texto diz que o nó que volta envia as mensagens "via o mesmo procedimento de registro/commit da seção 7.2", mas `POST /cluster/messages/recover` agora é um stream NDJSON em lote, e duas fases por mensagem não combinam com isso. Falta decidir se o `recover` grava direto nos donos do bloco (idempotente por ID, como a sincronização) ou se mantém registro + commit por linha, e como isso conversa com o quórum de escrita.
 
 ### Passo 10 — Empacotamento em Docker e validação em Kubernetes
 
@@ -137,6 +149,7 @@ Observabilidade e rotas de operação, a fechar até aqui.
 - **D21.** [~] **Como o Prometheus descobre os nós.** Já definido: cada nó é um alvo de scrape e `/metrics` é local, sem fan-out. Falta: escolher entre lista estática, DNS ou tabela de membros — no Kubernetes, o caminho natural é a descoberta do próprio cluster (ligado à D8).
 - **D22.** [~] **Rate limit das rotas de operação.** Já definido: sem porta própria nem lista de IPs, valem as regras de qualquer rota. Falta só o caso em que estão isoladas: em qual categoria entram e se ficam isentas.
 - **D23.** [~] **`X-Forwarded-For` em `operations.allowed-ips`.** Já definido: por padrão não é confiado. Falta: se pode ser habilitado, com lista de proxies confiáveis, para nós atrás de balanceador.
+- **D46.** [ ] **Métricas dos streams de sincronização** ([11-observabilidade.md](11-observabilidade.md)). As métricas `msg.sync.*` cobrem só blocos. Faltam, por exemplo, streams sem linha final, retomadas por corte, duração e volume da carga de tópicos, e o espelho disso no `recover`. Falta propor nomes e atributos.
 - Valores iniciais: `telemetry.*`, `stats.topics.*` (inclui `telemetry.topics.max-topics`), `stats.disk.free-min`.
 
 ## Referências internas

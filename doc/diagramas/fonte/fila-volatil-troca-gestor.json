@@ -60,11 +60,10 @@
     },
     {
       "id": "tab",
-      "from": "nos",
-      "to": "mud",
+      "from": "mud",
+      "to": "nos",
       "y": 200,
-      "label": "nó novo recebe a tabela de tópicos",
-      "variant": "return"
+      "label": "nó novo puxa a tabela de tópicos (stream)"
     },
     {
       "id": "cons",

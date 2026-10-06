@@ -146,7 +146,7 @@ Como o gestor é o primário do hash do `id` no anel, a lista de tópicos gerenc
 
 | Evento | O que acontece com as QTVs gerenciadas |
 |---|---|
-| **Entrada de nó** (seção 6.2) | O nó novo recebe a **tabela de tópicos** na resposta do bootstrap (já com `id`, `volatile`, `idleTimeout` e `createdAt`). Ao assumir a posição no anel, ele calcula quais QTVs passam a ser suas. Cada nó existente recalcula o seu conjunto no commit do registro e **abandona** as QTVs cuja posição passou ao novo nó. |
+| **Entrada de nó** (seção 6.2) | O nó novo recebe a **tabela de tópicos** por stream logo depois do bootstrap ([02-arquitetura.md](02-arquitetura.md), seção 3.3), já com `id`, `volatile`, `idleTimeout` e `createdAt`. Ao assumir a posição no anel, ele calcula quais QTVs passam a ser suas. Cada nó existente recalcula o seu conjunto no commit do registro e **abandona** as QTVs cuja posição passou ao novo nó. |
 | **Saída de nó** (seção 6.3) | No commit do desregistro, cada nó recalcula o conjunto: quem é o novo primário das posições do nó removido **assume** as QTVs dele. |
 | **Falha no registro de nó** (seção 6.5) | O anel volta a ser calculado sem o nó, e o conjunto de cada nó volta ao anterior. |
 | **Retorno de nó excluído** (seção 6.6) | O nó refaz o bootstrap do zero; vale a linha da entrada de nó. |

@@ -34,6 +34,10 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 | Quórum de votação | `cluster.vote.quorum` | **3** | Votos mínimos concordando com a exclusão para efetivar a remoção do nó. | 6.3 |
 | Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Comportamento durante o freezing ainda em aberto. | 6.7 |
 | Retry de bootstrap | `cluster.bootstrap.retry` | A definir | Comportamento (tentativa imediata, backoff, manual) após exclusão por falha no registro. | 6.5 |
+| Teto de itens por stream de sincronização | `cluster.sync.stream.max-items` | A definir | Itens que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
+| Teto de bytes por stream de sincronização | `cluster.sync.stream.max-bytes` | A definir | Bytes que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
+| Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. | 8.2.1 |
+| Timeout de leitura do stream | `cluster.sync.stream.idle-timeout` | A definir | Tempo sem receber uma linha para o receptor considerar o stream falho e retomar pelo último ID lido. | 8.2.1 |
 
 > Tamanho mínimo do cluster (seção 6.4): 1 nó em desenvolvimento e 3 nós em produção. É uma recomendação de ambiente, não um parâmetro.
 

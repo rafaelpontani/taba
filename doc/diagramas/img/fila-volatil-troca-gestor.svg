@@ -457,11 +457,11 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="176" y="190" class="t-dim" font-size="7">cada nó recalcula suas filas</text>
         </g>
 
-        <g data-edge-from="nos" data-edge-to="mud" data-edge-label="nó novo recebe a tabela de tópicos" data-edge-key="1" data-edge-id="tab">
-          <path data-composition-edge-from="nos" data-composition-edge-to="mud" data-composition-edge-id="tab" data-composition-points="544,200;164,200" d="M 544 200 L 164 200" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="mud" data-edge-to="nos" data-edge-label="nó novo puxa a tabela de tópicos (stream)" data-edge-key="1" data-edge-id="tab">
+          <path data-composition-edge-from="mud" data-composition-edge-to="nos" data-composition-edge-id="tab" data-composition-points="164,200;544,200" d="M 164 200 L 544 200" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="235.8" y="180" width="236.39999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="354" y="190" class="t-muted" font-size="11" text-anchor="middle">nó novo recebe a tabela de tópicos</text>
+          <rect x="212.70000000000002" y="180" width="282.59999999999997" height="18" rx="3" class="c-mask"/>
+          <text x="354" y="190" class="t-muted" font-size="11" text-anchor="middle">nó novo puxa a tabela de tópicos (stream)</text>
         </g>
         </g>
 
@@ -566,6 +566,10 @@ rect.c-bg-rect { fill: var(--bg); }
           <g data-legend-semantic-kind="dashed" data-legend-x="365" data-legend-baseline="426" data-legend-width="98">
             <path d="M 365 423 L 399 423" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
             <text x="408" y="426" class="t-muted" font-size="10" font-weight="500">async trace</text>
+          </g>
+          <g data-legend-semantic-kind="default" data-legend-x="485" data-legend-baseline="426" data-legend-width="78">
+            <path d="M 485 423 L 519 423" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+            <text x="528" y="426" class="t-muted" font-size="10" font-weight="500">message</text>
           </g>
         </g>
       </svg>
