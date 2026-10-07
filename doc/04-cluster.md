@@ -35,7 +35,8 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 1. Cada par de nós mantém um **canal permanente** (seção 6.1), que também carrega um **sinal de vida** leve (keepalive), uma mensagem própria com data e hora, resumo de monitoramento e as mensagens prontas por tópico (seção 12.8 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). O controle de quem está online é feito por esse canal, em malha, sem coordenador — **não há ping separado**.
 2. Quando o canal com um nó **cai ou fica sem sinal de vida**, o nó que detectou **tenta reconectar algumas vezes** (tentativas e intervalo configuráveis) antes de agir.
 3. Se o canal continuar fora após as tentativas, isto é, o nó ficou inacessível por tempo demais, é aberta uma **votação de exclusão** entre os nós do cluster.
-4. **Quórum mínimo padrão: 3 votos** concordando com a exclusão para efetivar a remoção — valor inicial a ser confirmado/ajustado conforme testes em produção.
+4. **Quórum de votação: 51% dos nós saudáveis** (`cluster.vote.quorum-percent`, configurável), com um mínimo de votantes (`cluster.vote.min-voters`, padrão 2). Nó **saudável** é o que o nó que abre a votação enxerga com o canal ativo e que responde ao pedido de voto. Os nós fora do ar, os suspeitos, **não votam e não entram na base**: se vários caem ao mesmo tempo, por exemplo uma zona com problema, a votação segue só entre os saudáveis, e são exigidos `ceil(S × 51%)` votos de S saudáveis (por exemplo, 2 de 3, 3 de 4 ou 5). Se há menos saudáveis que o mínimo de votantes, nenhuma exclusão se efetiva (condição `quorum-lost`). Com várias exclusões pendentes, elas são votadas uma de cada vez (seção 6.8), cada uma sobre os saudáveis do momento. **Risco aceito:** como a base é só quem o votante enxerga, uma partição de rede em que os dois lados têm saudáveis suficientes pode levar cada lado a excluir o outro; o mínimo de votantes impede só que um nó isolado exclua todos os demais. O lado excluído, ao voltar, refaz o bootstrap do zero (seção 6.6).
+   - **Evolução futura (fora do escopo atual):** base na tabela inteira (`total`), como o MongoDB; rota manual de exclusão forçada para quando a maioria se perde; e época na tabela de membros, com desempate ao fim da partição (o grupo maior vence, e o perdedor refaz o bootstrap). Enquanto isso, quem opera muitos nós pode subir `cluster.vote.min-voters` para uma maioria do cluster e assim reduzir o risco de partição.
 5. Atingido o quórum, o desregistro segue o **mesmo protocolo de duas fases**: um pedido de **desregistro (fase 1)** é enviado a todos os nós e, em seguida, um **commit (fase 2)** efetiva a remoção do nó da tabela de membros em todo o cluster. Mesma regra de falha da seção 7.2: antes do commit, rollback; depois de decidido, sem rollback — insiste dentro do teto `write.commit.timeout` até confirmar a remoção em todos.
 > No commit do desregistro, quem passa a ser primário das posições do nó removido assume as **filas voláteis** que ele gerenciava, sem transferir estado ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.6).
 >
@@ -44,7 +45,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 | Ambiente | Nós mínimos | Racional |
 |---|---|---|
 | Teste / desenvolvimento | 1 | Permite rodar localmente sem overhead de cluster. |
-| Produção | 3 | Permite quórum de votação e evita decisão de falha por um único nó. |
+| Produção | 3 | Permite votação com um nó fora do ar (2 votantes saudáveis) e evita decisão de falha por um único nó. |
  
 ### 6.5 Falha no registro de um novo nó
 

@@ -130,7 +130,7 @@ Lado **réplica** (nó responsável pelo bloco):
 |---|---|---|---|---|
 | `msg.cluster.members` | gauge | {node} | `state` (`active`/`frozen`/`suspect`) | Membros na tabela deste nó. |
 | `msg.cluster.members.version` | gauge | 1 | — | Versão/época da tabela de membros; divergência entre nós indica propagação incompleta. |
-| `msg.cluster.quorum.available` | gauge | 1 | — | `1` se há nós suficientes para o quórum de votação (`cluster.vote.quorum`). |
+| `msg.cluster.quorum.available` | gauge | 1 | — | `1` se há nós saudáveis suficientes para votar (`cluster.vote.min-voters`). |
 | `msg.cluster.channel.state` | gauge | 1 | `peer` | `1` se o canal com o peer está conectado, `0` se caído (substitui o ping — seção 6.3). |
 | `msg.cluster.channel.rtt` | histogram | s | `peer` | Latência do sinal de vida do canal, por peer. |
 | `msg.cluster.channel.reconnects` | counter | {attempt} | `peer`, `outcome` | Tentativas de reconexão do canal e resultado; perto do limite de `cluster.channel.reconnect.retries` = votação iminente. |
@@ -179,7 +179,7 @@ Derivada das métricas de nó, exposta em `GET /stats/cluster` e `GET /health/re
 | `syncing` | aviso | Blocos em sincronização; a entrega está suspensa neles (seção 7.3). |
 | `under-replicated` | aviso | Blocos com menos réplicas íntegras que `replication.factor`, mas ainda **no ou acima do `write.quorum`** — estado normal e transitório (réplica alcançando o commit em segundo plano, seção 7.2), escritas continuam respondendo ao cliente normalmente. |
 | `write-quorum-at-risk` | crítica | Blocos com réplicas íntegras **abaixo do `write.quorum`** — escritas podem falhar por não conseguir fechar quórum algum. |
-| `quorum-lost` | crítica | Menos nós ativos que o quórum de votação (`cluster.vote.quorum`); nenhuma exclusão de nó consegue ser efetivada. Não confundir com `write-quorum-at-risk`, que é sobre durabilidade de mensagens, não sobre votação de membros. |
+| `quorum-lost` | crítica | Menos nós saudáveis que o mínimo de votantes (`cluster.vote.min-voters`); nenhuma exclusão de nó consegue ser efetivada. Não confundir com `write-quorum-at-risk`, que é sobre durabilidade de mensagens, não sobre votação de membros. |
 | `membership-divergent` | crítica | Tabelas de membros com versões diferentes entre nós. |
 | `message-loss` | crítica | Um ou mais eventos de perda de mensagem registrados. |
 | `storage-pressure` | aviso | Disco de `storage.dir` abaixo de um limite de espaço livre. |

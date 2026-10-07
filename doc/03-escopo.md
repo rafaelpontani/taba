@@ -22,7 +22,7 @@
 - Comunicação interna entre nós **via API HTTP**.
 - Entrada e saída de nós usando o **mesmo protocolo de registro/commit** das mensagens (ver seção 6.2/6.3), por serem operações pesadas que afetam o roteamento de todo o anel.
 - Falha no registro de um nó **exclui o nó** e dispara **rebalanceamento dos blocos** (ver seção 6.5).
-- Detecção de falhas com **canal permanente entre nós como sinal de vida (reconexão antes de votar)**, quórum mínimo padrão de **3 votos**, e reintegração controlada de nós que voltam (ver seção 6.3/6.6).
+- Detecção de falhas com **canal permanente entre nós como sinal de vida (reconexão antes de votar)**, votação de exclusão por **51% dos nós saudáveis**, e reintegração controlada de nós que voltam (ver seção 6.3/6.6).
 - **Período de freezing configurável** para evitar nós instáveis entrando e saindo repetidamente do cluster (ver seção 6.7).
 - Sincronização de blocos **escopada e distribuída** entre as réplicas existentes, sem bloquear o cluster inteiro (ver seção 7.3).
 - Tamanho mínimo do cluster: **1 nó** (ambiente de teste/dev) ou **3 nós** (produção).

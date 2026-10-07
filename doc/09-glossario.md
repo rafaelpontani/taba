@@ -17,7 +17,7 @@
 | **Nó virtual** | Posição adicional que um nó físico ocupa no anel de hash, para melhorar a distribuição dos blocos. Quantidade configurável. |
 | **Bootstrap** | Processo de um novo nó ingressar no cluster existente. |
 | **Tabela de nós** | Lista de membros conhecidos do cluster (IP/porta de cada nó). |
-| **Quórum** | Número mínimo de confirmações necessário para uma decisão. Dois usos distintos no sistema: **quórum de votação** (`cluster.vote.quorum`, padrão 3) para excluir um nó suspeito de falha (seção 6.3); **quórum de escrita** (`write.quorum`, padrão maioria de `replication.factor`) para decidir o commit de uma mensagem sem esperar todas as réplicas (seção 7.2) — não confundir os dois. |
+| **Quórum** | Número mínimo de confirmações necessário para uma decisão. Dois usos distintos no sistema: **quórum de votação** (`cluster.vote.quorum-percent`, padrão 51% dos nós saudáveis) para excluir um nó suspeito de falha (seção 6.3); **quórum de escrita** (`write.quorum`, padrão maioria de `replication.factor`) para decidir o commit de uma mensagem sem esperar todas as réplicas (seção 7.2) — não confundir os dois. |
 | **Hash circular (consistent hashing)** | Anel de hash usado para mapear cada mensagem a um bloco e, a partir dele, aos nós responsáveis por persisti-la. |
 | **Bloco de mensagens** | Partição do anel de hash pela qual um conjunto de nós (primário + réplicas) é responsável. |
 | **Réplica primária / secundária / terciária** | Ordem de responsabilidade de um nó por um bloco de mensagens; o número de réplicas exigidas é configurável (padrão: 3). |
