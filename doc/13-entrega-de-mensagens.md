@@ -67,6 +67,8 @@ O cliente pode alterar o tempo de invisibilidade de uma mensagem já entregue (`
 
 ### 12.7 Dono da entrega
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): o nó é o dono de todas as mensagens.
+
 As mensagens de um tópico se espalham por vários blocos e nós (seção 7.2), e vários nós têm cópia de cada mensagem. Se todas as réplicas entregassem, elas disputariam o commit de invisibilidade da mesma mensagem, com falhas e retries que aumentariam a latência do `GET` quando há muitos consumidores. Por isso cada mensagem tem **um único dono da entrega: o nó primário do bloco dela**.
 
 **Como o `GET` acha uma mensagem (resumo).** O particionamento é **por ID da mensagem, não por tópico** (seção 7.1): as mensagens de um mesmo tópico ficam espalhadas por todos os nós, e o tópico **não pertence a nenhum nó**. Por isso o `GET` nunca precisa localizar "o nó do tópico". Basta:
@@ -97,6 +99,10 @@ Um exemplo com os três cenários está na seção 12.8.
 **Alternativa descartada — nó controlador por tópico:** um nó eleito com a lista de entrega do tópico daria ordem total, mas todo `GET` do tópico passaria por ele (gargalo em tópico quente), exigiria eleição de líder (o cluster só tem votação de exclusão) e contraria o desenho de nós idênticos, sem mestre fixo (seção 3).
 
 ### 12.8 Long polling e canal entre nós
+
+> **Modo drain** (seção 6.10 de [04-cluster.md](04-cluster.md)): o nó em drain responde `take` vazio e responde vazios os long pollings em andamento. Os pares, avisados por um sinal de estado, deixam de pedir `take` a ele.
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não há canal entre nós, `take` nem avisos de mensagem nova entre nós: o long polling só espera mensagens chegarem no próprio nó.
 
 **Long polling.** O `GET` aceita `waitTime`, em segundos, de **0 a 20** (padrão 0: responde na hora). Com `waitTime > 0`, se não houver mensagem para entregar, a chamada **aguarda novas mensagens** até esse tempo e responde vazia se nenhuma chegar. `GET /topics/{topic}/messages?visibilityTimeout=120&waitTime=20`.
 
@@ -160,6 +166,8 @@ Cada nó mantém em memória, por tópico, quais nós têm ouvintes e quais têm
 **Sinal de vida (decidido):** é uma **mensagem própria**, enviada periodicamente (`cluster.channel.keepalive.interval`), não o ping/pong do WebSocket, para também detectar um nó travado com a conexão ainda aberta. Cada sinal leva a **data e hora** do nó e um **resumo de monitoramento** no estilo do OpenTelemetry (inclui um indicador de carga do nó, como uso de CPU e requisições em andamento), e dentro dele a **quantidade de mensagens prontas por tópico** naquele nó. Quem recebe usa essas quantidades para **orientar o `GET`**: ao pedir mensagens a outros nós (`take`), em vez de sortear com a mesma chance, **sorteia com peso proporcional** às mensagens prontas de cada nó, indo mais vezes aos que têm mais. Para o sinal ficar pequeno, só entram os tópicos com mensagens prontas, até um teto de tópicos por sinal (`cluster.channel.keepalive.max-topics`), e o que não coube segue pelas mudanças de estado já descritas. A quantidade é uma dica e pode estar velha; o `take` continua tentando o próximo nó se o escolhido responder vazio. O sinal de vida **não é confirmado nem reenviado**: o seguinte o substitui.
 
 ### 12.9 Filas do canal, reconexão e exclusão de nó
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não se aplica; não há canal, fila de saída nem exclusão de nó.
 
 Cada nó mantém **em memória**, para cada outro nó, duas filas:
 

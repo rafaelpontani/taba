@@ -106,6 +106,8 @@ GET /topics/{topic}/messages?autoCreate=true&idleTimeout=300&tag.time=financeiro
 
 ### 14.5 Nó gestor
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): o próprio nó é o gestor de todas as filas voláteis, e a verificação final consulta só ele.
+
 O **nó gestor** de uma QTV cuida **só da vida do tópico**: nunca de suas mensagens, e nunca do caminho de entrega. É uma função **administrativa** do nó, não de trabalho. Isso não contraria a decisão de não haver nó controlador por tópico (seção 12.7): aquele descarte tratava de quem controla a **entrega**, que aqui continua sem dono de tópico.
 
 **Como o gestor é escolhido, sem eleição:**
@@ -138,6 +140,8 @@ Qualquer nó chega ao mesmo gestor a partir da tabela de tópicos e da tabela de
 - **Gestor fora do ar** e ainda não desregistrado: nenhuma QTV dele é excluída nesse intervalo. **A fila continua recebendo mensagens e consumidores normalmente.** Quando o nó é desregistrado, o novo gestor assume (seção 14.6).
 
 ### 14.6 Gestor, comissionamento, descomissionamento e rebalanceamento
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não há entrada, saída nem rebalanceamento de nós, então o gestor nunca muda.
 
 Como o gestor é o primário do hash do `id` no anel, a lista de tópicos gerenciados faz parte de cada mudança do anel.
 

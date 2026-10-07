@@ -8,6 +8,19 @@ Lista dos parâmetros configuráveis citados na documentação e seus valores pa
 
 Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: prefixo `TABA_`, chave em maiúsculas com `.` e `-` trocados por `_` (ex.: `topics.distributor.max-targets` vira `TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS`). **Sem limite** significa que o teto não existe enquanto a variável não for definida.
 
+## Modo de execução
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Modo de execução | `mode` | **`production`** | `production` ou `development`. Em `development` o nó é um cluster de um só: sem bootstrap, canal entre nós, votação, freezing, replicação nem sincronização; `replication.factor` e `write.quorum` valem 1; `cluster.entry-address` não é exigido; as rotas `/cluster/*` ficam desabilitadas. Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados** nesse modo (aviso no log). Não é para produção. | 6.4 |
+
+## Parada e modo drain
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Drain ao receber sinal de parada | `drain.on-stop` | **true** | Ao receber `SIGTERM` ou `SIGINT`, o nó entra em modo drain (todas as mensagens vão para o disco, o nó sai da rotação) e só então encerra. `false` encerra na hora, como uma queda. | 6.10 |
+| Prazo do drain | `drain.timeout` | A definir (sugestão: 25 s) | Tempo máximo do drain inteiro: esvaziar a memória no disco e concluir o desregistro voluntário. Inclui esperar as chamadas repassadas terminarem. Esgotado, o nó registra o que sobrou e encerra (se foi por sinal), e o cluster cai na detecção e votação de sempre. Deve ser **menor** que o prazo de parada do orquestrador (`terminationGracePeriodSeconds`, 30 s por padrão no Kubernetes). | 6.10 |
+
 ## Armazenamento e memória
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
@@ -49,7 +62,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Quórum de votação | `cluster.vote.quorum-percent` | **51** (%) | Percentual dos nós **saudáveis** (os que o votante enxerga e que respondem; os fora do ar não votam nem entram na base) que precisa concordar para efetivar a exclusão do nó: `ceil(S × percentual)`. | 6.3 |
 | Mínimo de votantes | `cluster.vote.min-voters` | **2** | Número mínimo de nós saudáveis para uma votação valer; abaixo disso, nenhuma exclusão se efetiva. Impede que um nó isolado exclua todos os demais. | 6.3 |
 | Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Durante o freezing o pedido de ingresso é rejeitado com `Retry-After`. | 6.7 |
-| Endereço do balanceador do cluster | `cluster.entry-address` | **Obrigatório** | Endereço (host:porta) do balanceador à frente do cluster, usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe. | 6.2 |
+| Endereço do balanceador do cluster | `cluster.entry-address` | **Obrigatório** | Endereço (host:porta) do balanceador à frente do cluster, usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe, **exceto em `mode=development`**, em que não é usado. | 6.2 |
 | Primeiro nó do cluster | `cluster.first-node` | `false` | Só no primeiro nó de um cluster novo: se a listagem não encontra nenhum membro, ele inicia o cluster sozinho. Nos demais, a listagem sem resposta é erro e o nó tenta de novo. | 6.2 |
 | Intervalo entre tentativas do bootstrap | `cluster.bootstrap.retry.interval` | A definir | Tempo de espera entre uma tentativa de entrar no cluster e a seguinte, depois de uma falha (listagem, registro, sincronização ou exclusão por falha no registro). | 6.5 |
 | Máximo de tentativas do bootstrap | `cluster.bootstrap.retry.max-attempts` | `0` (sem limite) | Número máximo de tentativas; `0` repete sem parar. Esgotado, o nó encerra com erro. | 6.5 |
@@ -63,7 +76,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Teto do banco de eventos | `cluster.sync.log.max-bytes` | A definir | Tamanho máximo, em disco, do banco de eventos (`sync.db`) de um nó em sincronização. Passou do teto, o nó entra em falha e o cluster fica liberado para votar o desregistro dele. | 7.3 |
 | Prazo da sincronização sem origem | `cluster.sync.timeout` | A definir | Tempo que o nó em sincronização tenta de novo quando nenhum nó serve uma carga; esgotado, entra em falha como no disco cheio. | 7.3 |
 
-> Tamanho mínimo do cluster (seção 6.4): 1 nó em desenvolvimento e 3 nós em produção. É uma recomendação de ambiente, não um parâmetro.
+> Tamanho mínimo do cluster (seção 6.4): 1 nó em desenvolvimento (`mode=development`) e 3 nós em produção. O tamanho é uma recomendação de ambiente; o `mode` é o parâmetro que desliga o cluster (seção "Modo de execução").
 
 ## Entrega de mensagens
 

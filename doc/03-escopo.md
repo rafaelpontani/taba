@@ -25,7 +25,7 @@
 - Detecção de falhas com **canal permanente entre nós como sinal de vida (reconexão antes de votar)**, votação de exclusão por **51% dos nós saudáveis**, e reintegração controlada de nós que voltam (ver seção 6.3/6.6).
 - **Período de freezing configurável** para evitar nós instáveis entrando e saindo repetidamente do cluster (ver seção 6.7).
 - Sincronização de blocos **escopada e distribuída** entre as réplicas existentes, sem bloquear o cluster inteiro (ver seção 7.3).
-- Tamanho mínimo do cluster: **1 nó** (ambiente de teste/dev) ou **3 nós** (produção).
+- Tamanho mínimo do cluster: **1 nó** (ambiente de teste/dev, no **modo desenvolvimento**, em que votação, quórum, canal entre nós e replicação ficam desabilitados; seção 6.4) ou **3 nós** (produção).
 - Particionamento das mensagens por **hash circular**, com nós virtuais configuráveis (ver seção 7).
 ### 4.4 Distribuição e operação
 - Imagem Docker única e leve.

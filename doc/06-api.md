@@ -33,12 +33,15 @@
  
 ### 8.1.1 API de operação (observabilidade)
 
-Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e métricas em [11-observabilidade.md](11-observabilidade.md). Opcionalmente podem ser servidas em **porta própria** e/ou restritas a uma **lista de IPs/faixas** (`operations.port`, `operations.allowed-ips`); sem essa configuração, ficam na porta da API de cliente e são tratadas como qualquer outra rota ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
+Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e métricas em [11-observabilidade.md](11-observabilidade.md). As rotas `/node/drain` valem só para o nó que recebe a chamada, por isso o operador as chama no nó, e não pelo balanceador. Opcionalmente podem ser servidas em **porta própria** e/ou restritas a uma **lista de IPs/faixas** (`operations.port`, `operations.allowed-ips`); sem essa configuração, ficam na porta da API de cliente e são tratadas como qualquer outra rota ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
 
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `GET` | `/metrics` | Métricas do cluster inteiro (padrão, uma série por nó) ou só deste nó (`scope=node`), no formato Prometheus. Alvo único de scrape: o balanceador. Lê só uma cópia em memória, atualizada por uma thread (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). |
-| `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local). |
+| `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local), incluindo `mode` e `drainState`. |
+| `POST` | `/node/drain` | Põe **este nó** em modo drain: sai da rotação (`/health/ready` `503`), grava todas as mensagens em disco, repassa as chamadas de cliente ao nó mais livre e **sai do cluster por desregistro voluntário**, sem votação, sem encerrar o processo ([04-cluster.md](04-cluster.md), seção 6.10). Responde `202`, e o andamento fica em `GET /node/drain`. Já em drain, responde `200` sem efeito. |
+| `GET` | `/node/drain` | Estado do drain deste nó: `drainState` (`active`, `draining`, `drained`), início, quem o disparou (`signal` ou `api`) e mensagens ainda em memória. |
+| `DELETE` | `/node/drain` | Antes da saída, cancela o drain (`200`, o nó segue no cluster). Depois da saída (`drained`), o nó **volta como nó novo**, com ID novo e bootstrap completo (`202`). `409` durante o desregistro ou se o processo já está parando por sinal. |
 | `GET` | `/stats/cluster` | Métricas de todos os nós e condição geral do cluster (consulta todos os nós, *best-effort*). |
 | `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`), **sem `sort`**: a ordem é sempre por nome do tópico. Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
 | `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
@@ -69,6 +72,8 @@ Por isso nenhuma rota ordena por valor que muda: `GET /stats/topics` não tem `s
 
 ### 8.2 API interna (cluster)
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): todas as rotas `/cluster/*` ficam **desabilitadas** (`404`). Um nó em modo produção não consegue ingressar num nó em desenvolvimento.
+
 > Cada rota `rollback` só descarta um registro (fase 1) **pendente, sem commit** — falha ou timeout de retries antes de fechar o quórum. Uma falha na chamada de `commit` (fase 2) numa réplica fora do quórum, já decidido, nunca aciona `rollback`: o coordenador insiste no commit dentro do teto `write.commit.timeout` até confirmar em todas as réplicas ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2).
 >
 > **Mensagens (rotas abaixo com `messages/{id}`, `visibility` e `ack`) decidem o commit por quórum** (`write.quorum`, sempre incluindo o primário do bloco) — a chamada de `register` ainda vai a todas as réplicas, mas o `commit` é decidido e respondido ao cliente assim que o quórum confirma, sem esperar as demais. **Nó e tópico (`nodes`, `topics`) continuam exigindo confirmação de todos os nós**, sem quórum reduzido (seção 7.2).
@@ -78,6 +83,7 @@ Por isso nenhuma rota ordena por valor que muda: `GET /stats/topics` não tem `s
 | `GET` | `/cluster/nodes` | Lista a tabela de membros (ID, IPs internos, porta, estado). É a primeira chamada de um nó ao iniciar, feita pelo endereço do balanceador (`cluster.entry-address`); qualquer nó a responde. |
 | `POST` | `/cluster/nodes/join` | Pedido de ingresso do nó novo, com seus IPs e porta, feito a um membro da lista. O membro testa os IPs e coordena o registro + commit (seção 6.2 de [04-cluster.md](04-cluster.md)); responde com a tabela de nós. |
 | `POST` | `/cluster/nodes/register` | Fase 1 (registro) de um novo nó: propaga os dados do novo nó (IP/porta) a todos os nós. |
+| `POST` | `/cluster/nodes/unregister` | Fase 1 (registro) do **desregistro voluntário** de um nó em drain, enviada por ele a todos os nós; sem votação. O commit usa `/cluster/nodes/commit` ([04-cluster.md](04-cluster.md), seção 6.10). |
 | `POST` | `/cluster/nodes/commit` | Fase 2 (commit) de registro **ou** desregistro de nó: efetiva a operação na tabela de membros de todos os nós. |
 | `POST` | `/cluster/topics/register` | Fase 1 (registro) de uma criação, alteração ou remoção de tópico: propaga a definição a todos os nós ([02-arquitetura.md](02-arquitetura.md), seção 3.3). |
 | `POST` | `/cluster/topics/commit` | Fase 2 (commit): efetiva a definição na tabela de tópicos de todos os nós, e cada um grava/atualiza/remove o `${topico}.json` local. |

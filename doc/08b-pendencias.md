@@ -16,3 +16,4 @@ Legenda:
 
 - **D10.** [ ] **Linguagem e runtime.** Preferência pessoal avançada em C#, porém Rust parece mais adequado aos requisitos de performance, baixo overhead e concorrência. Precisa estar decidida antes de escrever código; também define o que `msg.node.threads` mede.
 
+- **D51.** [ ] **Partida depois de um drain.** Hoje todo início é de **nó novo**: no cluster o disco só serve ao retorno de um nó excluído (seção 6.6) e depois é limpo; no modo desenvolvimento não há de onde recuperar. Proposta: no modo desenvolvimento, o nó **retoma do disco** o que encontrar (corpos, metadados e definições de tópico), para o drain valer como reinício sem perda; no cluster, nada muda.

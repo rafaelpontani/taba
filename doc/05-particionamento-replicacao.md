@@ -6,6 +6,8 @@
  
 ### 7.1 Hash circular (consistent hashing)
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): o anel tem um nó só, primário de todos os blocos. `ring.virtual-nodes` não tem efeito prático e não há rebalanceamento.
+
 ![Anel de hash circular: blocos e papéis](diagramas/img/anel-hash.svg)
 
 *Como uma mensagem chega ao primário, ao secundário e ao terciário. Fonte: [gerar-hash.mjs](diagramas/scripts/gerar-hash.mjs).*
@@ -21,6 +23,8 @@
 
 *O tópico `pedidos` em 4 nós, fator 3: os papéis de cada nó em cada mensagem (m1 e m2 são as do diagrama do anel). Fonte: [gerar-hash.mjs](diagramas/scripts/gerar-hash.mjs).*
 ### 7.2 Procedimento de recebimento de uma mensagem (registro + commit, quórum mínimo)
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): quórum de 1 (o próprio primário). `replication.factor` e `write.quorum` configurados são ignorados, com aviso no log. Sem réplicas, perder o nó ou o disco é perder as mensagens.
 
 ![Sequência da recepção de uma mensagem](diagramas/img/recepcao.svg)
 
@@ -40,6 +44,8 @@
 **Quórum de escrita (decidido).** `write.quorum` é um **valor único** para escrita, entrega (invisibilidade) e ack, com padrão `floor(replication.factor / 2) + 1` e sempre incluindo o primário. O valor único é intencional: as três operações precisam enxergar a mesma verdade sobre a mensagem, e um quórum menor para o ack deixaria um ack confirmado num nó ainda invisível ao que decide a entrega, reentregando mensagem já confirmada. É validado entre 1 e `replication.factor`. Sem nós suficientes para o quórum, a operação falha antes de decidir (rollback do registro) e a API responde `503` com `Retry-After`. Quórum fixo independente do fator de replicação e quórum por operação ficaram de fora; entram depois, se o uso pedir.
  
 ### 7.3 Entrada de um nó e sincronização distribuída de blocos
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não há entrada de nó, sincronização de blocos, banco de eventos (`sync.db`) nem recuperação de perdas.
  
 Quando um nó novo assume responsabilidade sobre um ou mais blocos do anel (como primário, secundário etc.), a sincronização é **escopada apenas aos blocos afetados** — o restante do cluster continua operando normalmente, sem bloqueio global.
  

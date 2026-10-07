@@ -14,6 +14,8 @@
 | **Verificação final (ociosidade)** | Consulta do gestor a todos os nós, antes de excluir uma fila volátil, sobre há quanto tempo foi o último `GET` do tópico em cada um (seção 14.5). |
 | **`id` do tópico** | GUID v7 gerado na criação do tópico; identifica a encarnação (recriar o mesmo nome gera outro `id`) e define o nó gestor pelo hash no anel (seção 14.3). |
 | **Nó (node)** | Instância do sistema que participa do cluster. |
+| **Modo desenvolvimento** | `mode=development`: o nó é um cluster de um só, com votação, quórum, canal entre nós, replicação e sincronização desabilitados (seção 6.4). Para teste e desenvolvimento, nunca produção. |
+| **Modo drain** | Estado do nó (`draining`, `drained`) em que todas as mensagens vão para o disco e o nó sai da rotação; entra sozinho ao receber `SIGTERM`/`SIGINT` ou por `POST /node/drain`, repassa as chamadas de cliente ao nó mais livre, e termina com o **desregistro voluntário** do nó, sem votação. Quem volta do drain pela API entra como nó novo (seção 6.10). |
 | **Nó virtual** | Posição adicional que um nó físico ocupa no anel de hash, para melhorar a distribuição dos blocos. Quantidade configurável. |
 | **Bootstrap** | Processo de um novo nó ingressar no cluster existente. |
 | **Tabela de nós** | Lista de membros conhecidos do cluster (IP/porta de cada nó). |

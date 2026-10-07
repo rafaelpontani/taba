@@ -140,12 +140,14 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.cluster.channel.queue.in` | gauge | {signal} | `peer` | Sinais recebidos do peer ainda a processar; crescimento contínuo indica processamento mais lento que a chegada. |
 | `msg.cluster.channel.queue.dropped` | counter | {signal} | `peer`, `reason` (`coalesced`/`expired`/`overflow`) | Sinais substituídos, descartados por idade ou descartados por estouro do limite da fila de saída (o estouro abre a votação de exclusão do peer). |
 | `msg.cluster.vote` | counter | {vote} | `role` (`opened`/`cast`), `outcome` | Votações de exclusão abertas/votadas e seu resultado. |
-| `msg.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
+| `msg.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `reason` (`vote`/`drain`, no desregistro), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
 | `msg.cluster.bootstrap.failures` | counter | {failure} | `reason` | Falhas de bootstrap (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
 | `msg.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
 | `msg.cluster.node.scrape_up` | gauge | 1 | `node` | `1` se a última atualização das métricas desse nó (thread de refresh, `telemetry.prometheus.node-timeout`) teve sucesso, `0` se falhou. Só existe na resposta de cluster. |
 | `msg.cluster.node.metrics_age` | gauge | s | `node` | Idade dos valores mostrados para o nó na resposta de cluster. |
 | `msg.cluster.node.state` | gauge | 1 | `state` (`joining`/`active`/`syncing`/`returning`) | Estado deste nó (incluindo retorno após exclusão — seção 6.6). |
+| `msg.node.drain.state` | gauge | 1 | `state` (`active`/`draining`/`drained`) | Estado do drain deste nó (seção 6.10 de [04-cluster.md](04-cluster.md)). |
+| `msg.node.drain.pending` | gauge | {message} | — | Mensagens ainda em memória durante o drain; chega a 0 quando o nó está `drained`. |
 
 ### Anel, blocos e sincronização (seção 7)
 
@@ -176,6 +178,8 @@ Lado **réplica** (nó responsável pelo bloco):
 - Toda resposta traz `collectedAt` (instante da coleta).
 
 ## Condição do cluster
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): há um só nó; `/stats/cluster` e `scope=cluster` devolvem o mesmo que `scope=node`, e as métricas `msg.cluster.*` (canal, votação, membros, freezing) não existem.
 
 Derivada das métricas de nó, exposta em `GET /stats/cluster` e `GET /health/ready`. **Condições, não um estado único** — o cluster pode ter mais de uma ao mesmo tempo:
 
@@ -300,6 +304,8 @@ Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métrica
 
 ### Modelo: um único alvo de scrape para o cluster
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): o Prometheus lê o próprio nó, com uma série só, sem agregação entre nós.
+
 ![Métricas do cluster em memória e coleta do Prometheus](diagramas/img/metricas-cluster.svg)
 
 *Fonte: [metricas-cluster.json](diagramas/fonte/metricas-cluster.json).*
@@ -401,6 +407,8 @@ Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id
 | Teto de commit esgotado numa réplica fora do quórum, sem rollback — retry continua em segundo plano | `warn` | Escrita (seção 7.2) |
 | Canal com um nó caiu, reconectou ou esgotou as tentativas; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
 | Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
+| Drain iniciado (por sinal ou API), concluído, cancelado, ou nó que volta do drain como novo | `info` | Cluster (seção 6.10) |
+| Drain que estourou `drain.timeout`, com o que sobrou em memória, ou com erro de I/O | `error` | Cluster (seção 6.10) |
 | Falha de bootstrap do nó | `error` | Cluster (seção 6.5) |
 | Início e fim de sincronização de bloco | `info` | Sincronização (seção 7.3) |
 | **Perda de mensagem** (ID, bloco, nós consultados) | `error` | Sincronização (seção 7.3) |
@@ -417,7 +425,7 @@ Rotas leves para orquestradores e balanceadores, **sem** fan-out para outros nó
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `GET` | `/health/live` | O processo está de pé e respondendo. Falha → reiniciar o processo. |
-| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **sincronização concluída** (tabela de tópicos, todos os blocos e o banco de eventos já processados, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
+| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **sincronização concluída** (tabela de tópicos, todos os blocos e o banco de eventos já processados, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) e não em bootstrap nem em retorno pós-exclusão. **Em drain (`draining` ou `drained`, seção 6.10 de [04-cluster.md](04-cluster.md)) também responde `503`**, para o balanceador tirar o nó da rotação. Falha → o balanceador deve tirar o nó da rotação. |
 
 `/health/ready` só passa a responder com sucesso quando o nó termina a sincronização inteira: enquanto sincroniza, o nó apenas guarda os eventos no banco de eventos e repassa as chamadas de cliente a outro nó (seção 6.9 de [04-cluster.md](04-cluster.md)); mesmo assim deve ficar fora da rotação do balanceador, para não gastar o salto extra à toa. Depois de pronto, ele volta a atender normalmente.
 

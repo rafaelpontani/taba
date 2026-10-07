@@ -11,7 +11,7 @@ Parte da seção 10. Cada passo lista o que cobre e as dúvidas que precisam est
 |---|---|---|
 | 1 — Contrato da API (OpenAPI) | Endpoints de registro/descoberta de nós, mensagens, sincronização e recuperação (seções 6, 7 e 8). | — |
 | 2 — Arquitetura do cluster e fluxo em camadas | O fluxo de escrita está definido (seção 3.1). | — |
-| 3 — Protótipo de nó único (memória + disco) | O overflow por tópico (seção 3.2). | D10 |
+| 3 — Protótipo de nó único (memória + disco) | O overflow por tópico (seção 3.2) e o modo drain (seção 6.10). | D10, D51 |
 | 4 — Protocolo genérico de registro/commit | Reutilizado em nós, mensagens e recuperação. O rollback só é seguro **antes** do quórum decidir; depois, o coordenador insiste dentro de um teto configurável. Mensagens decidem o commit por quórum mínimo (com o primário); registro/desregistro de nó e definição de tópico exigem todos os nós ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2). | — |
 | 5 — Anel de hash circular | Blocos, nós virtuais e papéis (seção 7.1). | — |
 | 6 — Sincronização distribuída de blocos | Entrada de novos nós, incluindo o evento de perda de mensagem. | — |

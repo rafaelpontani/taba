@@ -46,6 +46,8 @@ Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora a
 
 ### 13.3 Propagação
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): o registro e o commit da invisibilidade acontecem só no próprio nó (quórum de 1); nada é propagado.
+
 A invisibilidade se propaga por **registro + commit decidido por quórum**, o mesmo protocolo da escrita ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2). Há duas operações que a alteram; a terceira ocorrência, o vencimento do prazo, **não** se propaga.
 
 | Operação | Quando | O que se propaga | `deliveryCount` | Lista de prontos | Lista de invisíveis do dono |
@@ -116,6 +118,8 @@ Uma thread do dono (pode ser a mesma da lista de prontos, seção 12.6) cuida do
 Se a lista de invisíveis esvazia e ainda há linhas na tabela de expiração, a thread faz a **recarga** (seção 13.5) antes de dormir.
 
 ### 13.7 Mudança de dono, reinício e reconstrução
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não há mudança de dono. Só vale o caso do reinício, sem blocos a assumir de outro nó.
 
 As estruturas do dono são derivadas; três situações as refazem a partir dos metadados:
 

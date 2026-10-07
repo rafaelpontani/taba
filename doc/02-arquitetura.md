@@ -19,6 +19,8 @@ O sistema é composto por **nós** (nodes) idênticos entre si (sem nó "mestre"
 
 ### 3.1 Fluxo de escrita de uma mensagem
 
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): o nó é um cluster de um só: `replication.factor` e `write.quorum` valem 1, e o registro e o commit acontecem só nele. Não há réplica, retry entre nós nem rollback por falta de quórum.
+
 ![Arquitetura da escrita de uma mensagem no cluster](diagramas/img/arquitetura-escrita.svg)
 
 *Fonte: [arquitetura-escrita.json](diagramas/fonte/arquitetura-escrita.json). A sequência detalhada está na seção 7.2 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).*
@@ -51,6 +53,7 @@ O espaço em memória destinado às mensagens em cada nó é **configurável** (
 - **Consultas que o banco responde:** a mensagem mais antiga do tópico (`MIN(id)`, para `oldestMessageAt`, somada à mais antiga em memória, que também é mantida ordenada por ID), os próximos a vencer (índice por `invisibleUntil`), as mensagens de um bloco (faixa pela posição no anel, para os streams da seção 7.3 e para a limpeza de blocos perdidos) e as contagens do tópico.
 - **Banco do nó:** além dos bancos por tópico, o nó tem `${storage.dir}/_node.db`, também estritamente local, com a tabela `perdas` (`topico`, `id`, `bloco`, `detectado_em`) das mensagens declaradas perdidas na sincronização, consultada pelo nó que volta de uma exclusão (seção 6.6 de [04-cluster.md](04-cluster.md)). A escrita também passa por uma thread única.
 - **Banco corrompido:** o nó entra em **falha**, o mesmo estado da falha de disco da seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md): ele sinaliza ao cluster, que fica liberado para votar o desregistro dele (seção 6.3 de [04-cluster.md](04-cluster.md)). Não há tentativa de reparo.
+- **Modo drain:** o limite de memória efetivo cai a zero e todas as mensagens em memória vão para o disco (seção 6.10 de [04-cluster.md](04-cluster.md)).
 - A **lista de prontos e as mensagens em memória não mudam**: a prioridade é velocidade e integridade, e o banco só cuida do que está em disco.
 - Parâmetro: `storage.db.synchronous` (modo de durabilidade do SQLite; padrão `NORMAL` com WAL, já que a durabilidade vem da replicação entre nós).
 
@@ -65,6 +68,8 @@ O espaço em memória destinado às mensagens em cada nó é **configurável** (
 - **O que sai da memória:** quando a memória enche, as mensagens que ficam são as da **lista de prontos** (as próximas a serem entregues, seção 12.6 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) e as **recém-chegadas**. O resto é candidato a ir para disco, começando pelo tópico de **menor taxa de leitura**. Não se usa LRU/LFU: cada mensagem é lida uma única vez e depois apagada pelo ack, então histórico de acesso não prediz nada, e a ordem de entrega já diz o que será lido em breve.
 
 ### 3.3 Definição de tópicos: propagação e persistência
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): a definição é aplicada só no próprio nó, sem esperar outros nós. Não há bootstrap nem carga de tópicos de outro nó.
 
 A **definição de um tópico** (nome, `id` GUID v7, tipo, tags; `prefixes` no Tópico Distribuidor; `volatile` e `idleTimeout` na fila — [15-topicos-distribuidor.md](15-topicos-distribuidor.md); `maxMessageBytes`, `ttl` e `maxDeliveries` opcionais, [12-limites-api.md](12-limites-api.md) e seção 12.10 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) é um dado diferente da mensagem: pequeno, de baixa frequência de alteração, e do interesse do **cluster inteiro** — não é particionado pelo hash circular como as mensagens (seção 7). Por isso segue o mesmo tratamento da tabela de membros (seção 6): **todo nó conhece a definição de todos os tópicos.**
 

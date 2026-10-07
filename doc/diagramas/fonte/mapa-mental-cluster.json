@@ -308,11 +308,207 @@
       "sublabel": "área 5",
       "pos": [
         20,
-        334
+        549
       ],
       "size": [
         170,
         60
+      ]
+    },
+    {
+      "id": "cluster-d3-0",
+      "type": "security",
+      "label": "Tudo em disco",
+      "sublabel": "decisão 4.1",
+      "pos": [
+        450,
+        664
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-0x",
+      "type": "database",
+      "label": "limite de memória a zero",
+      "sublabel": "detalhe 4.1.1",
+      "pos": [
+        745,
+        664
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-1",
+      "type": "security",
+      "label": "Saída voluntária",
+      "sublabel": "decisão 4.2",
+      "pos": [
+        450,
+        730
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-1x",
+      "type": "database",
+      "label": "desregistro sem votação",
+      "sublabel": "detalhe 4.2.1",
+      "pos": [
+        745,
+        730
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-2",
+      "type": "security",
+      "label": "Repasse de chamadas",
+      "sublabel": "decisão 4.3",
+      "pos": [
+        450,
+        796
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-2x",
+      "type": "database",
+      "label": "ao nó mais livre",
+      "sublabel": "detalhe 4.3.1",
+      "pos": [
+        745,
+        796
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-3",
+      "type": "security",
+      "label": "Volta como nó novo",
+      "sublabel": "decisão 4.4",
+      "pos": [
+        450,
+        862
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-3x",
+      "type": "database",
+      "label": "ID novo, bootstrap completo",
+      "sublabel": "detalhe 4.4.1",
+      "pos": [
+        745,
+        862
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t3",
+      "type": "cloud",
+      "label": "Parada e drain",
+      "sublabel": "tema 4",
+      "pos": [
+        225,
+        763
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-0",
+      "type": "security",
+      "label": "Nó único",
+      "sublabel": "decisão 5.1",
+      "pos": [
+        450,
+        928
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-0x",
+      "type": "database",
+      "label": "mode=development",
+      "sublabel": "detalhe 5.1.1",
+      "pos": [
+        745,
+        928
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-1",
+      "type": "security",
+      "label": "Sem votação nem quórum",
+      "sublabel": "decisão 5.2",
+      "pos": [
+        450,
+        994
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-1x",
+      "type": "database",
+      "label": "replicação e quórum valem 1",
+      "sublabel": "detalhe 5.2.1",
+      "pos": [
+        745,
+        994
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t4",
+      "type": "cloud",
+      "label": "Modo desenvolvimento",
+      "sublabel": "tema 5",
+      "pos": [
+        225,
+        961
+      ],
+      "size": [
+        190,
+        52
       ]
     }
   ],
@@ -441,6 +637,90 @@
       "id": "c2-cluster-t2",
       "from": "cluster",
       "to": "cluster-t2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-cluster-d3-0",
+      "from": "cluster-d3-0",
+      "to": "cluster-d3-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-0",
+      "from": "cluster-t3",
+      "to": "cluster-d3-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d3-1",
+      "from": "cluster-d3-1",
+      "to": "cluster-d3-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-1",
+      "from": "cluster-t3",
+      "to": "cluster-d3-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d3-2",
+      "from": "cluster-d3-2",
+      "to": "cluster-d3-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-2",
+      "from": "cluster-t3",
+      "to": "cluster-d3-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d3-3",
+      "from": "cluster-d3-3",
+      "to": "cluster-d3-3x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-3",
+      "from": "cluster-t3",
+      "to": "cluster-d3-3",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-cluster-t3",
+      "from": "cluster",
+      "to": "cluster-t3",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-cluster-d4-0",
+      "from": "cluster-d4-0",
+      "to": "cluster-d4-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t4-0",
+      "from": "cluster-t4",
+      "to": "cluster-d4-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d4-1",
+      "from": "cluster-d4-1",
+      "to": "cluster-d4-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t4-1",
+      "from": "cluster-t4",
+      "to": "cluster-d4-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-cluster-t4",
+      "from": "cluster",
+      "to": "cluster-t4",
       "variant": "emphasis"
     }
   ]

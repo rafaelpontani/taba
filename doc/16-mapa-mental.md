@@ -162,7 +162,7 @@ Fila, Tópico Distribuidor (copia por prefixo) e fila volátil com nó gestor.
 
 ### 5. Cluster e membros
 
-Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão, freezing e uma mudança por vez.
+Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão, freezing e uma mudança por vez; parada com drain e saída voluntária; modo desenvolvimento com nó único.
 
 ![Mapa mental: Cluster e membros](diagramas/img/mapa-mental-cluster.svg)
 
@@ -192,6 +192,20 @@ Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão
 | `5.3.2.1` | ingresso rejeitado com Retry-After (detalhe) | [04-cluster.md](04-cluster.md), seção 6.7 |
 | `5.3.3` | Retry do bootstrap (decisão) | [04-cluster.md](04-cluster.md), seção 6.5 |
 | `5.3.3.1` | retry.interval configurável (detalhe) | [10-configuracao.md](10-configuracao.md) |
+| `5.4` | Parada e drain (tema) | [04-cluster.md](04-cluster.md), seção 6.10 |
+| `5.4.1` | Tudo em disco (decisão) | [04-cluster.md](04-cluster.md), seção 6.10; [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
+| `5.4.1.1` | limite de memória a zero (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10 |
+| `5.4.2` | Saída voluntária (decisão) | [04-cluster.md](04-cluster.md), seções 6.10 e 6.3 |
+| `5.4.2.1` | desregistro sem votação (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10; [06-api.md](06-api.md), seção 8.2 |
+| `5.4.3` | Repasse de chamadas (decisão) | [04-cluster.md](04-cluster.md), seções 6.9 e 6.10 |
+| `5.4.3.1` | ao nó mais livre (detalhe) | [04-cluster.md](04-cluster.md), seção 6.9 |
+| `5.4.4` | Volta como nó novo (decisão) | [04-cluster.md](04-cluster.md), seção 6.10; [06-api.md](06-api.md), seção 8.1.1 |
+| `5.4.4.1` | ID novo, bootstrap completo (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10 |
+| `5.5` | Modo desenvolvimento (tema) | [04-cluster.md](04-cluster.md), seção 6.4 |
+| `5.5.1` | Nó único (decisão) | [04-cluster.md](04-cluster.md), seção 6.4 |
+| `5.5.1.1` | mode=development (detalhe) | [10-configuracao.md](10-configuracao.md) |
+| `5.5.2` | Sem votação nem quórum (decisão) | [04-cluster.md](04-cluster.md), seção 6.4 |
+| `5.5.2.1` | replicação e quórum valem 1 (detalhe) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2 |
 
 ### 6. Sincronização
 
