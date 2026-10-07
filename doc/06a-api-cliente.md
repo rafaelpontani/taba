@@ -35,7 +35,7 @@ A coluna "Permissão" só vale com a autenticação ligada; desligada, nenhuma �
 
 ### Regras de nome, tags e limites
 
-**Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.json`):
+**Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.body`):
 
 - de 1 a 100 caracteres na criação. Nome terminado no sufixo de dead-letter (`-dead-letter`) é **reservado** e rejeitado com `400` `validation.reserved-name`. A fila de dead-letter, de nome `{fila}` + sufixo, pode passar de 100 (até 112 com o sufixo padrão), e o `{topic}` das rotas a aceita;
 - apenas letras ASCII (`a-z`, `A-Z`), dígitos (`0-9`), hífen (`-`) e sublinhado (`_`): regex `^[A-Za-z0-9_-]{1,100}$`;
@@ -90,7 +90,7 @@ Um campo que não vale para o tipo (`prefixes` numa fila, `fifo` num distribuido
 | `401` / `403` | `auth.unauthorized` / `auth.forbidden`, `auth.out-of-scope` | Sem token válido, sem `create`, ou nome (ou `prefixes`) fora dos prefixos do token. |
 | `409` | `topic.already-exists` | Já existe um tópico com o nome. |
 | `422` | `topic.fifo-needs-replication` | Fila FIFO com `replication.factor` abaixo de 2. |
-| `429` | `rate-limit.exceeded` | Limite administrativo do IP. |
+| `429` | `rate-limit.exceeded` | Limite administrativo do token (ou do IP, sem token válido). |
 | `503` | `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing` | Algum nó não confirmou o registro (nada foi criado), ou o commit está se completando em segundo plano ([06d](06d-api-convencoes.md), seção 8.3.5). |
 
 **Exemplo:**
@@ -218,7 +218,20 @@ Remove o tópico e **todas** as suas mensagens, mesmo as pendentes (não entregu
 
 ### O corpo da mensagem
 
-O corpo de uma mensagem é **um documento JSON qualquer** (objeto, lista, texto, número, booleano ou `null`). O Taba o guarda **como veio** e o devolve no campo `body` da entrega, sem interpretá-lo. O tamanho que conta é o do JSON enviado, limitado por `maxMessageBytes` do tópico (ou, sem ele, `message.max-bytes`, 5 MB); acima disso, `413`. Um corpo que não seja JSON válido responde `400` `validation.invalid-body`. (A decisão sobre aceitar texto e binário está em aberto: [08b-pendencias.md](08b-pendencias.md), D66.)
+O corpo de uma mensagem pode ter **qualquer formato**: JSON, texto ou binário. O corpo da requisição de publicação são os **bytes da mensagem**, e o `Content-Type` da requisição diz o que eles são. O Taba guarda os **bytes como vieram** (sem reserializar) e o `Content-Type` como o metadado imutável `contentType` da mensagem, replicado e devolvido na entrega.
+
+- **Sem `Content-Type`**, vale `application/json`. O valor é um media type de 1 a 255 caracteres; um valor inválido responde `400` `validation.invalid-content-type`. Os parâmetros (como `charset`) são guardados e devolvidos.
+- **Como o `body` aparece na entrega** (e só aí; no disco ficam sempre os bytes crus):
+
+| `contentType` | `body` na resposta | `bodyEncoding` |
+|---|---|---|
+| `application/json` ou `*/*+json` | O **JSON nativo**, exatamente como foi enviado (objeto, lista, texto, número, booleano ou `null`). | ausente |
+| `text/*`, em UTF-8 (ou sem `charset`) | Uma **string** JSON com o texto. | ausente |
+| Qualquer outro, incluindo `text/*` com outro `charset` | Os bytes em **base64** (uma string). | `base64` |
+
+- **Validação na publicação:** um corpo `application/json` que não seja JSON válido, ou `text/*` que não seja UTF-8 válido, responde `400` `validation.invalid-body`. Para os demais tipos não há validação.
+- **Tamanho:** o que conta são os **bytes enviados** (os originais, não a forma em base64), limitados por `maxMessageBytes` do tópico (ou, sem ele, `message.max-bytes`, 5 MB); acima disso, `413`. Na resposta, o binário em base64 ocupa cerca de 33% a mais, e isso pesa num lote de `maxMessages` grandes.
+- **Entre nós** (`MessageRecord`, [06c-api-cluster.md](06c-api-cluster.md)): só há duas formas, o JSON nativo e o base64, para o limite de linha dos streams ser previsível.
 
 ### `POST /topics/{topic}/messages`: publicar
 
@@ -231,7 +244,7 @@ Publica uma mensagem. O nó que recebe a chamada é o **coordenador**: gera o `i
 | `groupId` | texto (1 a 128, `A-Za-z0-9_-.:`) | só na fila FIFO | O grupo da mensagem. Fora da FIFO, faz a entrega dar preferência aos grupos com menos mensagens ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11). Na FIFO, ordena a entrega. |
 | `deduplicationId` | texto (1 a 128, `A-Za-z0-9_-.:`) | não, **só na fila FIFO** | Chave de deduplicação dentro do grupo. Sem ele, vale o SHA-256 do corpo. Fora da FIFO, `400` `validation.not-applicable`. |
 
-**Corpo:** o documento JSON da mensagem (seção anterior).
+**Corpo:** os bytes da mensagem, com o `Content-Type` correspondente (seção anterior). Esta é a única rota de cliente que aceita um `Content-Type` diferente de `application/json`.
 
 **Resposta de sucesso numa fila: `PublishResponse`**
 
@@ -256,12 +269,12 @@ Status de sucesso: **`201`** quando a mensagem foi criada, **`200`** quando é u
 | Status | Código | Quando |
 |---|---|---|
 | `201` / `200` | — | Criada / duplicata na FIFO, ou resposta de um distribuidor. |
-| `400` | `validation.group-id-required`, `validation.invalid-body`, `validation.not-applicable`, `validation.failed` | `groupId` ausente na FIFO ou inválido, corpo não JSON, `deduplicationId` fora da FIFO. |
+| `400` | `validation.group-id-required`, `validation.invalid-body`, `validation.invalid-content-type`, `validation.not-applicable`, `validation.failed` | `groupId` ausente na FIFO ou inválido, corpo que não confere com o `Content-Type` (JSON inválido, texto que não é UTF-8), `Content-Type` inválido, `deduplicationId` fora da FIFO. |
 | `401` / `403` | `auth.unauthorized` / `auth.forbidden`, `auth.out-of-scope` | Exige `publish`. Num distribuidor, só ele é conferido, não as filas destino. |
 | `404` | `topic.not-found` | — |
 | `413` | `message.too-large` | Corpo acima do limite do tópico. |
 | `422` | `distributor.too-many-targets` | Só num distribuidor, com `topics.distributor.max-targets` definido: a publicação é recusada **inteira**, sem nenhuma cópia. |
-| `429` | `rate-limit.exceeded` | Limite de publicação do IP. |
+| `429` | `rate-limit.exceeded` | Limite de publicação do token (ou do IP, sem token válido). |
 | `502` / `504` | `forward.bad-gateway`, `forward.timeout` | O repasse falhou depois de enviado o corpo. **Fora da FIFO a chamada não é repetida** (repetir duplicaria a mensagem): o cliente decide. Na FIFO é seguro repetir, pois o primário deduplica. |
 | `503` | `cluster.quorum-unavailable`, `fifo.primary-unavailable`, `cluster.node-syncing`, `cluster.node-draining` | Sem quórum, ou o primário do grupo não pode coordenar agora. A mensagem não foi aceita. |
 
@@ -337,7 +350,7 @@ Qualquer `GET` conta como consumidor para a ociosidade de uma fila volátil, com
 | `404` | `topic.not-found` | O tópico não existe e não há `autoCreate`. |
 | `409` | `topic.wrong-type` | O tópico é um distribuidor (nunca é consumido). |
 | `422` | `topic.volatile-limit`, `topic.fifo-needs-replication` | O `autoCreate` esbarra em `topics.volatile.max-count`, ou pede uma FIFO com fator de replicação abaixo de 2. |
-| `429` | `rate-limit.exceeded` | Limite de consumo do IP. |
+| `429` | `rate-limit.exceeded` | Limite de consumo do token (ou do IP, sem token válido). |
 | `503` | `delivery.unavailable`, `cluster.quorum-unavailable`, `cluster.node-syncing` | **Nenhuma** mensagem foi capturada e houve falha no registro de invisibilidade: nunca responde vazio nesse caso, que o cliente leria como fila sem mensagens. Se ao menos uma foi capturada, responde `200` com as que conseguiu. |
 
 **Exemplo:**
@@ -352,6 +365,7 @@ GET /topics/pedidos/messages?maxMessages=2&visibilityTimeout=60&waitTime=20
     {
       "id": "01927f3c-2b30-7a44-9d55-6e7f8091a2b3",
       "body": { "pedido": 9001, "valor": 129.90, "itens": ["a", "b"] },
+      "contentType": "application/json",
       "groupId": "cliente-42",
       "deduplicationId": "pedido-9001",
       "receiptToken": "01927f3d-5c60-7e77-b188-92a3b4c5d6e7",
@@ -362,6 +376,72 @@ GET /topics/pedidos/messages?maxMessages=2&visibilityTimeout=60&waitTime=20
   ]
 }
 ```
+
+**Exemplo com corpo que não é JSON.** O `body` depende do `contentType` com que cada mensagem foi publicada (seção "O corpo da mensagem"). Aqui a fila recebeu três publicações:
+
+```http
+POST /topics/arquivos/messages
+Content-Type: text/plain; charset=utf-8
+
+Pedido 9001 aprovado
+```
+
+```http
+POST /topics/arquivos/messages
+Content-Type: image/png
+
+<bytes do arquivo PNG>
+```
+
+```http
+POST /topics/arquivos/messages
+Content-Type: application/json
+
+{ "pedido": 9001 }
+```
+
+```http
+GET /topics/arquivos/messages?maxMessages=3
+```
+
+```json
+{
+  "messages": [
+    {
+      "id": "01927f40-1a00-7c10-8a01-1b2c3d4e5f60",
+      "body": "Pedido 9001 aprovado",
+      "contentType": "text/plain; charset=utf-8",
+      "receiptToken": "01927f41-0001-7a00-9b00-aaaaaaaaaaa1",
+      "deliveryCount": 1,
+      "publishedAt": "2026-10-06T12:10:00.000Z",
+      "invisibleUntil": "2026-10-06T12:12:00.000Z"
+    },
+    {
+      "id": "01927f40-1a05-7c10-8a02-1b2c3d4e5f61",
+      "body": "iVBORw0KGgo=",
+      "contentType": "image/png",
+      "bodyEncoding": "base64",
+      "receiptToken": "01927f41-0002-7a00-9b00-aaaaaaaaaaa2",
+      "deliveryCount": 1,
+      "publishedAt": "2026-10-06T12:10:01.000Z",
+      "invisibleUntil": "2026-10-06T12:12:00.000Z"
+    },
+    {
+      "id": "01927f40-1a09-7c10-8a03-1b2c3d4e5f62",
+      "body": { "pedido": 9001 },
+      "contentType": "application/json",
+      "receiptToken": "01927f41-0003-7a00-9b00-aaaaaaaaaaa3",
+      "deliveryCount": 1,
+      "publishedAt": "2026-10-06T12:10:02.000Z",
+      "invisibleUntil": "2026-10-06T12:12:00.000Z"
+    }
+  ]
+}
+```
+
+- **Texto:** `body` é uma string e não há `bodyEncoding`.
+- **Binário:** `body` é a string em base64 dos bytes (no exemplo, os 8 primeiros bytes de um PNG), e `bodyEncoding` vale `base64`. O cliente decodifica e usa o `contentType` para saber o que é.
+- **JSON:** `body` é o JSON nativo, como nos exemplos anteriores.
 
 ### `PUT /topics/{topic}/messages/{id}/visibility`: definir a invisibilidade
 
@@ -482,7 +562,9 @@ Revoga o token: vale em **todos** os nós no commit, e as chamadas seguintes com
 | Campo | Tipo | Presente em | Descrição |
 |---|---|---|---|
 | `id` | texto | sempre | GUID v7 da mensagem (a ordem do `id` acompanha a da publicação). |
-| `body` | qualquer JSON | sempre | O corpo como foi publicado. |
+| `body` | qualquer JSON | sempre | O corpo, na forma que o `contentType` manda (seção "O corpo da mensagem"): JSON nativo, string de texto ou string em base64. |
+| `contentType` | texto | sempre | O `Content-Type` da publicação (`application/json` se não veio). Imutável. |
+| `bodyEncoding` | texto | só binário | `base64`, quando o `body` é a string em base64 dos bytes. **Ausente** nos demais casos. |
 | `receiptToken` | texto | sempre | Exigido no ack e na definição da invisibilidade, na query. Muda a **cada entrega**. |
 | `deliveryCount` | inteiro | sempre | Quantas vezes a mensagem foi entregue, contando esta (começa em 1). |
 | `publishedAt` | data | sempre | Instante da publicação (o do GUID v7). |

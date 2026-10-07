@@ -52,7 +52,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.node.uptime` | gauge | s | Tempo desde o início do processo. |
 | `msg.node.cpu.utilization` | gauge | 1 | Uso de CPU do processo. |
 | `msg.node.process.memory` | gauge | By | Memória total do processo (inclui a parcela fora do limite de mensagens). |
-| `msg.node.threads` | gauge | {thread} | Threads/tarefas ativas (conforme o runtime — ver [pendências](08b-pendencias.md)). |
+| `msg.node.threads` | gauge | {thread} | Threads do sistema operacional do processo (runtime, pool de bloqueio e escritores SQLite; as tasks do tokio não entram — [18-estrutura-codigo.md](18-estrutura-codigo.md), seção 17.6). |
 | `msg.node.open_files` | gauge | {file} | Descritores/arquivos abertos (relevante pelo overflow em disco: um arquivo por mensagem). |
 | `msg.node.connections` | gauge | {connection} | Conexões HTTP abertas (cliente e interna, separadas por atributo). |
 
@@ -80,7 +80,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.api.duration` | histogram | s | `route`, `method` | Latência das requisições. |
 | `msg.api.in_flight` | gauge | {request} | `route` | Requisições em andamento. |
 | `msg.api.request.size` / `msg.api.response.size` | histogram | By | `route` | Tamanho de corpo de requisição/resposta. |
-| `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`) | Requisições rejeitadas com `429` ([12-limites-api.md](12-limites-api.md)). |
+| `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`), `key` (`token`/`ip`) | Requisições rejeitadas com `429` ([12-limites-api.md](12-limites-api.md)). `key` diz se o contador que estourou era o do token ou o do IP; o `id` do token nunca é atributo de métrica. |
 | `msg.auth.requests` | counter | {request} | `outcome` (`ok`/`unauthorized`/`forbidden`) | Autenticação por token ([06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3): requisições aceitas, recusadas com `401` e recusadas com `403`. Só existe com a autenticação ligada. O `id` do token é atributo de trace e de log, nunca de métrica. |
 | `msg.auth.tokens` | gauge | {token} | — | Tokens de acesso que este nó conhece (devem ser iguais em todos os nós). |
 

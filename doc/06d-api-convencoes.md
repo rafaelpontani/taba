@@ -31,7 +31,7 @@ Este arquivo define o que **todas** as rotas das três APIs ([cliente](06a-api-c
 | Cabeçalho | Quando | Descrição |
 |---|---|---|
 | `Authorization: Bearer <token>` | API de cliente com a autenticação ligada ([06a](06a-api-cliente.md), seção 8.1.3) | Token de acesso. Não vale nas APIs de operação e do cluster. |
-| `Content-Type` | Requisição com corpo | `application/json`. Outro valor responde `415`. |
+| `Content-Type` | Requisição com corpo | `application/json`. Outro valor responde `415`. **Exceção:** `POST /topics/{topic}/messages` aceita qualquer media type, que vira o `contentType` da mensagem ([06a](06a-api-cliente.md), "O corpo da mensagem"). |
 | `Accept` | Opcional | `application/json` (padrão). No `/metrics`, `application/openmetrics-text` pede OpenMetrics. |
 | `traceparent` | Opcional | Contexto de trace W3C. Se vier, as operações do nó entram no mesmo trace ([11-observabilidade.md](11-observabilidade.md), seção "Traces"). |
 | `X-Request-Id` | Opcional | Identificador da requisição escolhido pelo cliente (1 a 128 caracteres, `A-Za-z0-9_-.:`). Sem ele, o nó gera um GUID v7. |
@@ -123,10 +123,10 @@ Parâmetros de query comuns: `limit` (inteiro, padrão e máximo em [10-configur
 | `404 Not Found` | O tópico, a mensagem ou o token não existe, ou a rota não existe naquela porta. | `ErrorResponse`. |
 | `409 Conflict` | O estado atual do recurso impede a operação (nome já existe, `receiptToken` obsoleto, tópico de tipo errado, dead-letter somente leitura). | `ErrorResponse`. |
 | `413 Content Too Large` | Corpo da mensagem acima do limite do tópico. | `ErrorResponse`. |
-| `415 Unsupported Media Type` | `Content-Type` diferente de `application/json` numa rota com corpo. | `ErrorResponse`. |
+| `415 Unsupported Media Type` | `Content-Type` diferente de `application/json` numa rota com corpo JSON (todas, menos a publicação de mensagem). | `ErrorResponse`. |
 | `421 Misdirected Request` | **Só entre nós:** o nó que recebeu uma publicação FIFO já não é o primário do grupo. Nunca chega ao cliente ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.4). | `ErrorResponse`. |
 | `422 Unprocessable Content` | O pedido é válido, mas o cluster não pode atendê-lo nesta configuração (fila FIFO com `replication.factor` abaixo de 2, teto de destinos ou de filas voláteis). | `ErrorResponse`. |
-| `429 Too Many Requests` | Rate limit do IP do cliente excedido ([12-limites-api.md](12-limites-api.md)). | `ErrorResponse`, com `Retry-After`. |
+| `429 Too Many Requests` | Rate limit do token, ou do IP do cliente quando não há token válido, excedido ([12-limites-api.md](12-limites-api.md)). | `ErrorResponse`, com `Retry-After`. |
 | `500 Internal Server Error` | Falha inesperada do nó. | `ErrorResponse`. |
 | `502 Bad Gateway` / `504 Gateway Timeout` | Um repasse a outro nó falhou depois de o corpo ter sido enviado, e a chamada **não foi repetida** (seção 6.9 de [04-cluster.md](04-cluster.md)). O cliente decide se repete. | `ErrorResponse`. |
 | `503 Service Unavailable` | O cluster não pôde fechar a operação **agora** (sem quórum, nó em sincronização ou em drain, registro de tópico sem confirmação). Tente de novo depois de `Retry-After`. | `ErrorResponse`, com `Retry-After`. |
@@ -149,7 +149,8 @@ Os códigos são estáveis dentro de uma versão do contrato. Uma coluna mostra 
 | `validation.reserved-name` | Nome terminado no sufixo de dead-letter (`-dead-letter`), na criação e no `autoCreate`. |
 | `validation.immutable-field` | `PATCH` que tenta mudar nome, `id`, tipo, `volatile`, `fifo` ou, num token, permissões e prefixos. |
 | `validation.not-applicable` | Campo que não vale para o tipo do tópico (`prefixes` numa fila, `ttl` num distribuidor, `deduplicationId` fora da FIFO, `fifo` num distribuidor). |
-| `validation.invalid-body` | O corpo de uma mensagem não é JSON válido. |
+| `validation.invalid-body` | O corpo de uma mensagem não confere com o `Content-Type`: JSON inválido em `application/json`, ou texto que não é UTF-8 em `text/*`. |
+| `validation.invalid-content-type` | O `Content-Type` da publicação de uma mensagem não é um media type válido (1 a 255 caracteres). |
 | `validation.group-id-required` | Publicação numa fila FIFO sem `groupId`. |
 | `validation.invalid-cursor` | `cursor` malformado, ou usado com `sort` ou filtros diferentes dos que o geraram. |
 | `validation.max-bytes-above-hard-limit` | `maxMessageBytes` acima de `message.max-bytes.hard-limit`. |
@@ -190,12 +191,12 @@ Os códigos são estáveis dentro de uma versão do contrato. Uma coluna mostra 
 | Código | Status | Quando |
 |---|---|---|
 | `message.too-large` | `413` | Corpo acima de `maxMessageBytes` do tópico (ou de `message.max-bytes`). |
-| `media.unsupported` | `415` | `Content-Type` diferente de `application/json`. |
+| `media.unsupported` | `415` | `Content-Type` diferente de `application/json` numa rota com corpo JSON (não vale na publicação de mensagem). |
 | `topic.fifo-needs-replication` | `422` | Criar fila FIFO com `replication.factor` abaixo de 2. |
 | `distributor.too-many-targets` | `422` | A publicação casaria mais filas que `topics.distributor.max-targets`. Nenhuma cópia é feita. |
 | `topic.volatile-limit` | `422` | O `autoCreate` esbarra em `topics.volatile.max-count`. |
 | `cluster.join-unreachable` | `422` | Entre nós: o nó que coordena o ingresso não conseguiu conectar de volta ao nó novo. |
-| `rate-limit.exceeded` | `429` | Rate limit do IP excedido. |
+| `rate-limit.exceeded` | `429` | Rate limit do token (ou do IP, sem token válido) excedido. |
 
 **Disponibilidade e falhas (`5xx`):**
 

@@ -33,6 +33,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [17-topicos-fifo.md](17-topicos-fifo.md) | 16 | Fila FIFO (QTF): ordem por grupo, colocação do grupo no anel pelo `id` do tópico e `groupId`, publicação coordenada pelo primário do grupo, quórum com primário e secundário, entrega de uma mensagem por grupo, deduplicação (`deduplicationId`, exclusão lógica `deleteAt`), limites e observabilidade. |
 | [14-invisibilidade.md](14-invisibilidade.md) | 13 | Invisibilidade: metadados, propagação entre nós, lista de invisíveis em memória, excedente em disco (índice de expiração), vencimento e reconstrução. |
 | [16-mapa-mental.md](16-mapa-mental.md) | 15 | Mapa mental do projeto em cinco níveis: o mapa geral e um mapa por área, com decisões e parâmetros. |
+| [18-estrutura-codigo.md](18-estrutura-codigo.md) | 17 | Linguagem (Rust, tokio), bibliotecas de partida, estrutura do workspace (um crate com módulos, crates-alvo), regras de código e o que fica atrás de traits para testes. |
 
 ## Diagramas
 

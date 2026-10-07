@@ -41,7 +41,7 @@ Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora a
 
 - **Fila FIFO:** a mensagem ganha também `deduplicationId` e, depois do ack, `deleteAt` (exclusão lógica, sem corpo nem metadados de entrega); detalhes em [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7.
 - **Mensagem em memória:** os metadados ficam em memória junto dela.
-- **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): o corpo fica em `${topico}/${id}.json` e os metadados ficam no **banco SQLite local do tópico** naquele nó, na tabela `mensagens` (`id`, posição no anel, `deliveryCount`, `invisibleUntil`, `receiptToken`). Não há mais arquivo de metadados.
+- **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): o corpo fica em `${topico}/${id}.body` e os metadados ficam no **banco SQLite local do tópico** naquele nó, na tabela `mensagens` (`id`, posição no anel, `grupo`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`). Não há mais arquivo de metadados.
 - A linha é atualizada no **commit** de cada entrega ou alteração e removida junto com a mensagem no ack. Alterar a invisibilidade de uma mensagem em disco atualiza só a linha, sem tocar no corpo.
 - `invisibleUntil` é sempre **data absoluta**, calculada pelo **dono** (`agora + visibilityTimeout`, pelo relógio dele): as réplicas guardam o valor pronto e nunca recalculam a partir de duração.
 

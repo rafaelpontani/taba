@@ -589,27 +589,27 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe 7.2.1.1</text>
         </g>
 
-        <g id="node-disco-d1-1" data-node-id="disco-d1-1" data-node-label="Corpo em arquivo JSON" tabindex="0" role="button" aria-label="Focus Corpo em arquivo JSON, decisão 7.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 7.2.2" data-node-context="Architecture component">
-          <title>Corpo em arquivo JSON · decisão 7.2.2 · Architecture component</title>
+        <g id="node-disco-d1-1" data-node-id="disco-d1-1" data-node-label="Corpo em arquivo, bytes crus" tabindex="0" role="button" aria-label="Focus Corpo em arquivo, bytes crus, decisão 7.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 7.2.2" data-node-context="Architecture component">
+          <title>Corpo em arquivo, bytes crus · decisão 7.2.2 · Architecture component</title>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 274) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Corpo em arquivo JSON</text>
+          <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Corpo em arquivo, bytes crus</text>
         <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão 7.2.2</text>
         </g>
 
-        <g id="node-disco-d1-1x" data-node-id="disco-d1-1x" data-node-label="tópico/id.json" tabindex="0" role="button" aria-label="Focus tópico/id.json, detalhe 7.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 7.2.2.1" data-node-context="Architecture component">
-          <title>tópico/id.json · detalhe 7.2.2.1 · Architecture component</title>
+        <g id="node-disco-d1-1x" data-node-id="disco-d1-1x" data-node-label="tópico/id.body" tabindex="0" role="button" aria-label="Focus tópico/id.body, detalhe 7.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 7.2.2.1" data-node-context="Architecture component">
+          <title>tópico/id.body · detalhe 7.2.2.1 · Architecture component</title>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 274) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">tópico/id.json</text>
+          <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">tópico/id.body</text>
         <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe 7.2.2.1</text>
         </g>
 

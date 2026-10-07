@@ -59,13 +59,13 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Limite de memória por nó | `memory.limit` | A definir | Espaço em memória destinado às mensagens (ex.: MB/GB). Ao atingir o limite, as mensagens excedentes vão para disco (overflow). | 3.2 |
 | Janela da taxa de leitura | `memory.rate.window` | **5 minutos** | Janela da média móvel de `consumeRate` e `publishRate`, que decide a divisão da memória entre tópicos. | 3.2 |
 | Reserva mínima de memória por tópico | `memory.topic.reserve` | **1000 mensagens** (o tamanho da lista de prontos) | Memória garantida a cada tópico, fora da divisão por taxa de leitura. | 3.2 |
-| Diretório raiz de disco | `storage.dir` | **`/var/lib/taba`** (Linux) | Raiz local do nó, onde ficam os arquivos `${topico}/${id}.json` do overflow, `_topics/${topico}.json` da definição do tópico e o banco de eventos da sincronização (`_sync/sync.db`). Cada nó tem a sua; nada é compartilhado. A última pasta deve se chamar `taba`. Se não existir, o nó a **cria ao iniciar**; se não conseguir criar ou gravar, o nó não sobe. | 3.2, 3.3 |
+| Diretório raiz de disco | `storage.dir` | **`/var/lib/taba`** (Linux) | Raiz local do nó, onde ficam os arquivos `${topico}/${id}.body` do overflow, `_topics/${topico}.json` da definição do tópico e o banco de eventos da sincronização (`_sync/sync.db`). Cada nó tem a sua; nada é compartilhado. A última pasta deve se chamar `taba`. Se não existir, o nó a **cria ao iniciar**; se não conseguir criar ou gravar, o nó não sobe. | 3.2, 3.3 |
 
 ## Mensagens
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
-| Tamanho máximo da mensagem (geral) | `message.max-bytes` | **5 MB** (5.242.880 bytes) | Tamanho máximo do corpo de uma mensagem publicada. Vale para todo tópico que não define o seu próprio `maxMessageBytes`. Acima disso, `POST /topics/{topic}/messages` responde `413`. | 8.1 |
+| Tamanho máximo da mensagem (geral) | `message.max-bytes` | **5 MB** (5.242.880 bytes) | Tamanho máximo do corpo de uma mensagem publicada, medido nos **bytes enviados** (não na forma em base64). Vale para todo tópico que não define o seu próprio `maxMessageBytes`. Acima disso, `POST /topics/{topic}/messages` responde `413`. | 8.1 |
 | Tamanho máximo da mensagem (por tópico) | `maxMessageBytes` (campo da definição do tópico) | Vazio (usa `message.max-bytes`) | Substitui o geral naquele tópico e **pode ser maior que ele**. Definido na criação e alterável por `PATCH`; não pode passar de `message.max-bytes.hard-limit`, senão `400`. | 8.1 |
 | Limite rígido da mensagem | `message.max-bytes.hard-limit` | A definir | Teto absoluto para o `maxMessageBytes` de qualquer tópico, contra abuso de quem configura. O geral (`message.max-bytes`) também não pode passar dele. | 8.1 |
 
@@ -101,7 +101,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Prazo da recuperação | `cluster.recovery.timeout` | A definir | Tempo máximo que um nó que retorna tenta consultar todos os nós da lista de perdas antes de limpar o estado local e refazer o bootstrap. | 6.6 |
 | Teto de itens por stream de sincronização | `cluster.sync.stream.max-items` | A definir | Itens que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
 | Teto de bytes por stream de sincronização | `cluster.sync.stream.max-bytes` | A definir | Bytes que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
-| Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir (maior que `message.max-bytes.hard-limit` mais a margem do envelope JSON) | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. Precisa caber a maior mensagem possível. | 8.2.1 |
+| Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir (maior que `message.max-bytes.hard-limit` × 4/3, o base64, mais a margem do envelope JSON) | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. Precisa caber a maior mensagem possível. | 8.2.1 |
 | Timeout de leitura do stream | `cluster.sync.stream.idle-timeout` | A definir | Tempo sem receber uma linha para o receptor considerar o stream falho e retomar pelo último ID lido. | 8.2.1 |
 | Tamanho da faixa de sincronização | `cluster.sync.range.size` | A definir | Tamanho de cada faixa de IDs pedida a uma origem na sincronização de conteúdo de um bloco; relaciona-se com `cluster.sync.stream.max-items`. | 7.3 |
 | Teto do banco de eventos | `cluster.sync.log.max-bytes` | A definir | Tamanho máximo, em disco, do banco de eventos (`sync.db`) de um nó em sincronização. Passou do teto, o nó entra em falha e o cluster fica liberado para votar o desregistro dele. | 7.3 |
@@ -192,16 +192,16 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 
 | Parâmetro | Chave sugerida | Padrão | Descrição |
 |---|---|---|---|
-| Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST /topics/{topic}/messages`. |
-| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por IP do cliente, para `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
-| Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
+| Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, **por token** (ou por IP do cliente, sem token válido), para `POST /topics/{topic}/messages`. |
+| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por token (ou por IP, sem token válido), para `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
+| Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por token (ou por IP, sem token válido), para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`, e `/tokens`. |
 | Rate limit das consultas de operação | `ratelimit.ops.rps` | A definir (sugestão: 2) | Requisições por segundo, por IP, para `/stats/cluster` e `/stats/topics`. `/health/*`, `/metrics` e `/stats/node` são isentos. |
-| Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. |
-| IP do cliente por cabeçalho | `client-ip.headers.enabled` | **true** | Usa os cabeçalhos abaixo para achar o IP do cliente atrás de balanceador; `false` usa só o endereço da conexão. |
+| Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. Vale para cada contador, de token ou de IP. |
+| IP do cliente por cabeçalho | `client-ip.headers.enabled` | **true** | Usa os cabeçalhos abaixo para achar o IP do cliente atrás de balanceador; `false` usa só o endereço da conexão. Só importa para as chamadas contadas por IP (sem token válido) e para `operations.allowed-ips`. |
 | Cabeçalhos do IP do cliente | `client-ip.headers` | `X-Forwarded-For` | Lista, em ordem, de cabeçalhos consultados; vale o primeiro presente e, nele, o primeiro endereço. |
 | Proxies confiáveis do IP do cliente | `client-ip.trusted-proxies` | Vazia | Lista de IPs/CIDR dos balanceadores ou proxies cujos cabeçalhos de IP são aceitos. Vazia: aceita de qualquer origem (o serviço deve ficar em camada segura). Vale para o rate limit e para `operations.allowed-ips`. |
 
-> Explicação do tema, incluindo a resposta ao exceder o limite e a identificação do cliente por IP: [12-limites-api.md](12-limites-api.md).
+> Explicação do tema, incluindo a resposta ao exceder o limite e a identificação do cliente por token ou por IP: [12-limites-api.md](12-limites-api.md).
 
 ## Limites fixos da API
 
@@ -216,6 +216,7 @@ Não são configuráveis; são regras de validação da API de cliente ([06a-api
 | Chave de tag | 1 a 64 caracteres, `A-Za-z0-9_-.:` |
 | Valor de tag | 0 a 128 caracteres, `A-Za-z0-9_-.:` |
 | Espera do long polling (`waitTime`) | 0 a 20 segundos (padrão 0) |
+| `contentType` da mensagem | Media type válido de 1 a 255 caracteres (padrão `application/json`) |
 | Nome do token | 1 a 100 caracteres, `A-Za-z0-9_-.:` |
 | Permissões do token | Ao menos uma de `publish`, `consume`, `create`, `admin` |
 | Prefixos de tópico do token | Até 20, de 1 a 100 caracteres cada, `A-Za-z0-9_-` |

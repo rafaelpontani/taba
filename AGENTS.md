@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repositório de documentação (em português) do Sistema de Mensagens. Não há código de aplicação ainda: o conteúdo está em `doc/`, começando por [doc/README.md](doc/README.md).
+Repositório de documentação (em português) do Sistema de Mensagens. Não há código de aplicação ainda: o conteúdo está em `doc/`, começando por [doc/README.md](doc/README.md). A aplicação será escrita em Rust; a estrutura prevista está em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
 
 ## Decisões e pendências
 

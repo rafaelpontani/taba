@@ -108,7 +108,7 @@
     {
       "id": "disco-d1-1",
       "type": "security",
-      "label": "Corpo em arquivo JSON",
+      "label": "Corpo em arquivo, bytes crus",
       "sublabel": "decisão 7.2.2",
       "pos": [
         450,
@@ -122,7 +122,7 @@
     {
       "id": "disco-d1-1x",
       "type": "database",
-      "label": "tópico/id.json",
+      "label": "tópico/id.body",
       "sublabel": "detalhe 7.2.2.1",
       "pos": [
         745,

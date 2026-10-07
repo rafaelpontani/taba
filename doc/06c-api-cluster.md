@@ -253,7 +253,7 @@ Repassa uma chamada de cliente a outro nó: de quem está **sincronizando** ou *
 
 - `{caminho}` é o caminho original da API de cliente (`/cluster/forward/topics/pedidos/messages`). **Método, query, corpo e cabeçalhos seguem como vieram**, e a resposta volta **como o destino a deu**, inclusive `409`, `413` e `429`.
 - Com a autenticação ligada, o destino **confere o token de novo**: o `Authorization` segue como veio, e um nó em sincronização ainda não tem a tabela de tokens ([06a](06a-api-cliente.md), seção 8.1.3).
-- O IP do cliente já resolvido segue num cabeçalho interno, e o destino não conta o rate limit de novo.
+- O IP do cliente já resolvido segue num cabeçalho interno, e o destino não conta o rate limit de novo (o nó que repassa contou por IP, pois não valida o token; [12-limites-api.md](12-limites-api.md)).
 - Aceita só de membros da tabela e de nós que saíram por drain. A própria rota é o marcador de repasse: **quem a recebe nunca repassa de novo**; se estiver sincronizando, responde `503` `cluster.node-syncing`.
 - **Falha do destino:** antes de o corpo ser enviado, o nó tenta outro destino, até um teto pequeno de tentativas. **Depois de enviado, não repete** (repetir um `POST` de mensagem a duplicaria, pois o `id` é gerado no coordenador): responde `502` `forward.bad-gateway` ou `504` `forward.timeout`. Na fila FIFO a repetição é segura, porque o primário deduplica.
 - Sem nenhum destino disponível: `503` com `Retry-After` (`cluster.node-syncing` ou `cluster.node-draining`).
@@ -309,7 +309,9 @@ A mensagem **completa**, como os nós a trocam (nos streams e no registro): o co
 |---|---|---|---|
 | `id` | texto | sempre | GUID v7. |
 | `topic` | texto | sempre | O tópico. |
-| `body` | qualquer JSON | exceto exclusão lógica | O corpo. **Ausente** na mensagem da fila FIFO com `deleteAt`. |
+| `body` | qualquer JSON | exceto exclusão lógica | O corpo: o **JSON nativo** quando `contentType` é `application/json` ou `*/*+json`; nos demais casos (texto e binário), os bytes em **base64** numa string, com `bodyEncoding: "base64"`. Entre nós não há a forma de string de texto da API de cliente, para o limite de linha ser previsível. **Ausente** na mensagem da fila FIFO com `deleteAt`. |
+| `contentType` | texto | exceto exclusão lógica | O `Content-Type` da publicação. |
+| `bodyEncoding` | texto | só binário e texto | `base64`, quando o `body` está em base64. |
 | `groupId` | texto | se tem grupo | — |
 | `deduplicationId` | texto | fila FIFO | — |
 | `deliveryCount` | inteiro | sempre | Entregas até agora. |

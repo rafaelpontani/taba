@@ -14,7 +14,7 @@
 - **Autenticação por token** (opcional: liga sozinha quando há um token raiz): tokens de acesso criados e revogados por API, com as permissões `publish`, `consume`, `create` e `admin` e prefixos de tópico, replicados em todos os nós — ver [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3.
 - Controle de entrega por **invisibilidade temporária** (padrão 120 s, ajustável no `GET` e depois por `PUT .../visibility`), com contador de entregas e reentrega se não houver ack, e **long polling** de até 20 s, com aviso entre nós por canal permanente — ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 ### 4.2 Armazenamento e durabilidade
-- Recebimento inicial da mensagem em memória, com **espaço configurável** e **overflow para disco** (`${topico}/${id}.json`) quando o limite é atingido — ver seção 3.2.
+- Recebimento inicial da mensagem em memória, com **espaço configurável** e **overflow para disco** (`${topico}/${id}.body`) quando o limite é atingido — ver seção 3.2.
 - Espaço de memória dividido **dinamicamente entre tópicos**, priorizando os de maior fluxo de leitura (seção 3.2).
 - Replicação/confirmação nos nós responsáveis pelo bloco de mensagens (primário, secundário, terciário...).
 - Retry configurável do registro e do commit; esgotado o retry sem o **quórum mínimo** fechado, erro ao cliente + rollback nos nós responsáveis; esgotado o teto do commit nas réplicas fora do quórum (`write.commit.timeout`), sem rollback — o commit já decidido continua sendo tentado em segundo plano (seção 3.1/7.2).

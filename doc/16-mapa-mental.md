@@ -254,7 +254,7 @@ Carga direta no armazenamento, banco de eventos por cima, e recuperação de men
 
 ### 7. Armazenamento
 
-Memória primeiro; em disco, um banco SQLite por tópico e o corpo em arquivo JSON.
+Memória primeiro; em disco, um banco SQLite por tópico e o corpo em arquivo, em bytes crus.
 
 ![Mapa mental: Armazenamento](diagramas/img/mapa-mental-disco.svg)
 
@@ -271,8 +271,8 @@ Memória primeiro; em disco, um banco SQLite por tópico e o corpo em arquivo JS
 | `7.2` | Disco (tema) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | `7.2.1` | SQLite por nó e tópico (decisão) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | `7.2.1.1` | escritor único por tópico (detalhe) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
-| `7.2.2` | Corpo em arquivo JSON (decisão) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
-| `7.2.2.1` | tópico/id.json (detalhe) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
+| `7.2.2` | Corpo em arquivo, bytes crus (decisão) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
+| `7.2.2.1` | tópico/id.body (detalhe) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | `7.2.3` | Raiz configurável (decisão) | [10-configuracao.md](10-configuracao.md) |
 | `7.2.3.1` | /var/lib/taba por padrão (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `7.3` | Integridade (tema) | [02-arquitetura.md](02-arquitetura.md), seção 3.2; [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
@@ -283,7 +283,7 @@ Memória primeiro; em disco, um banco SQLite por tópico e o corpo em arquivo JS
 
 ### 8. API e observabilidade
 
-API HTTP com paginação por chave e rate limit por IP; métricas em memória e um único alvo para o Prometheus.
+API HTTP com paginação por chave e rate limit por token (ou por IP, sem token); métricas em memória e um único alvo para o Prometheus.
 
 ![Mapa mental: API e observabilidade](diagramas/img/mapa-mental-obs.svg)
 
@@ -297,7 +297,7 @@ API HTTP com paginação por chave e rate limit por IP; métricas em memória e 
 | `8.1.1.1` | limit, cursor e sort (detalhe) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.2 |
 | `8.1.2` | Mensagem máxima (decisão) | [12-limites-api.md](12-limites-api.md); [10-configuracao.md](10-configuracao.md) |
 | `8.1.2.1` | 5 MB; limite rígido (detalhe) | [10-configuracao.md](10-configuracao.md) |
-| `8.1.3` | Rate limit por IP (decisão) | [12-limites-api.md](12-limites-api.md) |
+| `8.1.3` | Rate limit por token ou IP (decisão) | [12-limites-api.md](12-limites-api.md) |
 | `8.1.3.1` | cabeçalho do balanceador (detalhe) | [10-configuracao.md](10-configuracao.md); [12-limites-api.md](12-limites-api.md) |
 | `8.2` | Métricas (tema) | [11-observabilidade.md](11-observabilidade.md) |
 | `8.2.1` | Alvo único do Prometheus (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
