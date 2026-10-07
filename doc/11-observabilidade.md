@@ -8,12 +8,12 @@
 
 ## Visão geral
 
-A saída de monitoramento do sistema é feita via **OpenTelemetry** (métricas, traces e logs), exportada (*push*) para um endpoint OTLP configurável (`telemetry.otlp.endpoint`). Cada nó expõe também um endpoint **`GET /metrics`** no formato de texto do **Prometheus** (*pull*), e **rotas de consulta** (`/stats/...`) para inspeção direta, sem depender de um backend de observabilidade.
+A saída de monitoramento do sistema é feita via **OpenTelemetry** (métricas, traces e logs), exportada (*push*) para um endpoint OTLP configurável (`telemetry.otlp.endpoint`). O cluster expõe também um endpoint **`GET /metrics`** no formato de texto do **Prometheus** (*pull*, um único alvo, com a visão de todos os nós), e **rotas de consulta** (`/stats/...`) para inspeção direta, sem depender de um backend de observabilidade.
 
 | Saída | Modelo | Conteúdo | Uso típico |
 |---|---|---|---|
 | OTLP | push | Métricas, traces e logs | Backend compatível com OpenTelemetry |
-| `GET /metrics` | pull, por nó | Somente métricas | Prometheus (e compatíveis: VictoriaMetrics, Grafana Agent, Mimir) |
+| `GET /metrics` | pull, cluster inteiro (ou `scope=node`) | Somente métricas | Prometheus (e compatíveis: VictoriaMetrics, Grafana Agent, Mimir) |
 | `GET /stats/*` | sob demanda | Métricas com visão de cluster e condições | Operador, scripts, diagnóstico sem backend |
 
 OTLP e `/metrics` são alimentados pelos **mesmos instrumentos** (uma única instrumentação, dois exportadores): as métricas são as mesmas nas duas saídas, mudando só o formato de nomes (seção [Endpoint Prometheus](#endpoint-prometheus)).
@@ -141,6 +141,8 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
 | `msg.cluster.bootstrap.failures` | counter | {failure} | `reason` | Falhas de bootstrap (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
 | `msg.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
+| `msg.cluster.node.scrape_up` | gauge | 1 | `node` | `1` se a última atualização das métricas desse nó (thread de refresh, `telemetry.prometheus.node-timeout`) teve sucesso, `0` se falhou. Só existe na resposta de cluster. |
+| `msg.cluster.node.metrics_age` | gauge | s | `node` | Idade dos valores mostrados para o nó na resposta de cluster. |
 | `msg.cluster.node.state` | gauge | 1 | `state` (`joining`/`active`/`syncing`/`returning`) | Estado deste nó (incluindo retorno após exclusão — seção 6.6). |
 
 ### Anel, blocos e sincronização (seção 7)
@@ -157,14 +159,18 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.sync.log.events` | gauge | {event} | — | Eventos no banco de eventos (`sync.db`) ainda por processar durante a sincronização. |
 | `msg.sync.log.bytes` | gauge | By | — | Tamanho do banco de eventos em disco. |
 | `msg.sync.phase` | gauge | 1 | `phase` (`topicos`/`blocos`/`replay`/`verificacao`/`pronto`) | Fase atual da sincronização do nó. |
+| `msg.sync.streams` | counter | {stream} | `kind` (`topics`/`ids`/`messages`/`recover`), `direction` (`sent`/`received`), `outcome` (`complete`/`truncated`/`error`) | Streams NDJSON de sincronização e recuperação (seção 8.2.1 de [06-api.md](06-api.md)); `truncated` é o que fechou sem a linha final. |
+| `msg.sync.stream.resumes` | counter | {resume} | `kind` | Retomadas depois de um corte (não conta a paginação normal por `hasMore`). |
+| `msg.sync.stream.duration` | histogram | s | `kind` | Duração de cada stream. |
+| `msg.sync.stream.bytes` | counter | By | `kind`, `direction` | Volume trafegado nos streams. |
+| `msg.recover.messages` | counter | {message} | `outcome` (`sent`/`applied`/`skipped`) | Mensagens enviadas, aplicadas ou ignoradas (já existentes) pela recuperação da seção 6.6 de [04-cluster.md](04-cluster.md). |
 | `msg.sync.failures` | counter | {failure} | `reason` | Falhas de sincronização de bloco. |
-| `msg.cluster.message_loss` | counter | {event} | — | **Eventos de perda de mensagem** (seção 7.3). Qualquer valor acima de zero merece alerta. |
 | `msg.cluster.recover` | counter | {message} | `direction` (`sent`/`received`) | Mensagens recuperadas na volta de um nó (seção 6.6). |
 
 ### Consulta
 
 - `GET /stats/node` — métricas do **nó que atende a chamada**, leitura local, sem consulta a outros nós.
-- `GET /stats/cluster` — visão do cluster: consulta **todos os nós** (pela rota interna `GET /cluster/stats/node`) e devolve a lista de métricas por nó mais um resumo (membros, quórum, blocos em sincronização, eventos de perda, condição geral). Nós que não respondem aparecem como `unreachable` em vez de falhar a chamada inteira (*best-effort*).
+- `GET /stats/cluster` — visão do cluster: consulta **todos os nós** (pela rota interna `GET /cluster/stats/node`) e devolve a lista de métricas por nó mais um resumo (membros, quórum, blocos em sincronização, condição geral). Nós que não respondem aparecem como `unreachable` em vez de falhar a chamada inteira (*best-effort*).
 - Toda resposta traz `collectedAt` (instante da coleta).
 
 ## Condição do cluster
@@ -181,7 +187,6 @@ Derivada das métricas de nó, exposta em `GET /stats/cluster` e `GET /health/re
 | `write-quorum-at-risk` | crítica | Blocos com réplicas íntegras **abaixo do `write.quorum`** — escritas podem falhar por não conseguir fechar quórum algum. |
 | `quorum-lost` | crítica | Menos nós saudáveis que o mínimo de votantes (`cluster.vote.min-voters`); nenhuma exclusão de nó consegue ser efetivada. Não confundir com `write-quorum-at-risk`, que é sobre durabilidade de mensagens, não sobre votação de membros. |
 | `membership-divergent` | crítica | Tabelas de membros com versões diferentes entre nós. |
-| `message-loss` | crítica | Um ou mais eventos de perda de mensagem registrados. |
 | `storage-pressure` | aviso | Disco de `storage.dir` abaixo de um limite de espaço livre. |
 
 > **Degradação de replicação é propriedade do cluster, não do tópico.** Os blocos são definidos pelo **ID da mensagem** (seção 7.2), não pelo tópico: as mensagens de um mesmo tópico se espalham por todos os blocos. Por isso `under-replicated` e `syncing` aparecem aqui e não na condição de tópico.
@@ -230,7 +235,6 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |
 | | `memoryBytes` / `diskBytes` | Bytes em memória e em disco. |
 | | `memoryShare` | Parcela da memória do cluster que o tópico ocupa (resultado da divisão dinâmica). |
-| **Perda** | `lossEvents` | Eventos de perda de mensagem atribuíveis ao tópico (*depende de o evento identificar o tópico — ver [Ainda em aberto](#ainda-em-aberto)*). |
 | **Identificação** | `type`, `tags`, `createdAt` | Tipo (`queue`/`distributor`), `id`, tags e criação; em fila volátil, também `volatile` e `idleTimeout`. |
 
 Um Tópico Distribuidor não guarda mensagens: as métricas de fila (profundidade, idade, armazenamento) se aplicam às **filas destino**, e o distribuidor expõe apenas publicações recebidas, cópias geradas e falhas por fila. Não há métricas por assinante. Ver [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.7.
@@ -246,7 +250,6 @@ Também uma **lista de condições**, com o campo `status` sendo a de maior seve
 | `backlog` | aviso | `depth` ou `oldestAge` acima do limite. |
 | `stalled` | aviso | Há mensagens (`depth > 0`) mas **nenhum consumo** há `stats.topics.stalled-after` — consumidor parado ou ausente. |
 | `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` >> `memoryMessages`): leituras mais lentas. |
-| `message-loss` | crítica | O tópico tem eventos de perda de mensagem registrados. |
 
 ### Visão do nó e visão do cluster
 
@@ -289,14 +292,23 @@ Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métrica
 
 | Verbo | Recurso | Descrição |
 |---|---|---|
-| `GET` | `/metrics` | Métricas **locais deste nó** no formato de texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics quando pedido via `Accept`). |
+| `GET` | `/metrics` | Métricas do **cluster inteiro** (padrão, `scope=cluster`) ou **só deste nó** (`scope=node`), no formato de texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics quando pedido via `Accept`). |
 
-### Modelo: um alvo de scrape por nó
+### Modelo: um único alvo de scrape para o cluster
 
-- Cada nó é um **alvo de scrape** independente; o Prometheus consulta **todos os nós** (descoberta de serviço estática, DNS ou a própria tabela de membros) e agrega com PromQL.
-- `/metrics` devolve só valores **locais**, **sem fan-out** — diferente de `/stats/cluster`. A resposta é barata e não depende de outros nós estarem de pé, o que é essencial para monitorar justamente o cluster degradado.
-- A agregação entre nós é feita pelo Prometheus. Para isso funcionar, os contadores de tópico contam **apenas as mensagens em que o nó é primário** (mesma regra de [Como o valor é calculado](#como-o-valor-é-calculado-custo)): `sum(msg_topic_visible) by (topic)` e `sum(msg_topic_invisible) by (topic)` dão os valores do cluster, sem multiplicar pelo fator de replicação, e `min(msg_topic_oldest_timestamp_seconds) by (topic)` dá a data da mensagem mais antiga do cluster.
-- O rótulo de identificação do nó (`instance`, ou `node_id` via `service.instance.id`) é o que distingue as séries entre nós.
+![Métricas do cluster em memória e coleta do Prometheus](diagramas/img/metricas-cluster.svg)
+
+*Fonte: [metricas-cluster.json](diagramas/fonte/metricas-cluster.json).*
+
+Seguindo o princípio do projeto (implementação simples e gestão automatizada), o Prometheus tem **um alvo só**: o **endereço do balanceador do cluster** (`cluster.entry-address`). Não é preciso descobrir nós nem manter lista de alvos; nós que entram ou saem aparecem e somem sozinhos.
+
+- **Métricas do cluster em memória:** todo nó mantém em **memória** a última visão das métricas de todos os nós, e uma **thread dedicada** a mantém atualizada: a cada `telemetry.prometheus.refresh-interval` ela consulta **todos os nós em paralelo** (rota interna `GET /cluster/metrics`, que devolve as métricas locais de cada um) e troca o instantâneo inteiro de uma vez. O `GET /metrics` **só lê essa memória**: não faz fan-out no momento do scrape, e responde rápido mesmo com nós lentos ou fora do ar. Cada chamada do Prometheus pode cair num nó diferente do balanceador, e o resultado é praticamente o mesmo em qualquer um (a diferença é a defasagem de até um intervalo).
+- **Uma série por nó, sem somar:** as séries de cada nó são mantidas separadas, com o rótulo `node` (o ID do nó), e a **soma é feita no PromQL**. Somar no servidor quebraria os contadores: se um nó falta numa chamada, a soma cai e o `rate()` lê um reinício falso.
+- **Nó que não responde:** a thread espera cada nó por `telemetry.prometheus.node-timeout`. Se um nó falha, o instantâneo mantém os **últimos valores dele** por até `telemetry.prometheus.max-age`; passado esse prazo, as séries dele somem da resposta. A métrica `msg_cluster_node_scrape_up{node="..."}` vale `0` quando a última atualização desse nó falhou, e `msg_cluster_node_metrics_age_seconds{node="..."}` diz a idade do que está sendo mostrado. Assim se vê qual nó caiu, mesmo com o cluster degradado. Cluster inteiro fora do ar: o alvo único fica `down`.
+- **Custo:** cada nó consulta todos os outros a cada intervalo, ou seja, **N × N chamadas por intervalo** no cluster, independente de haver scrape ou não; com poucos nós é irrelevante, e em clusters grandes o intervalo deve subir. Um nó que acaba de subir mostra só as métricas locais até a primeira atualização completa.
+- **Métricas individuais por nó** continuam disponíveis com `scope=node`. Quem quiser um alvo por nó (por exemplo, com um *sidecar* ou agente ao lado de cada instância) usa essa chamada; é uma **escolha de implementação** da operação, não o caminho recomendado.
+- **OTLP não muda:** cada nó continua enviando por *push* as suas próprias métricas, sem fan-out.
+- A agregação de tópicos continua válida: os contadores de tópico contam **apenas as mensagens em que o nó é primário** (mesma regra de [Como o valor é calculado](#como-o-valor-é-calculado-custo)), então `sum(msg_topic_visible) by (topic)` e `sum(msg_topic_invisible) by (topic)` dão os valores do cluster sem multiplicar pelo fator de replicação, e `min(msg_topic_oldest_timestamp_seconds) by (topic)` dá a data da mensagem mais antiga.
 
 ### Conteúdo
 
@@ -329,7 +341,6 @@ Sugestões de partida, a calibrar em produção:
 
 | Alerta | Expressão |
 |---|---|
-| Perda de mensagem | `increase(msg_cluster_message_loss_total[5m]) > 0` |
 | Nó fora do ar | `up{job="mensageria"} == 0` |
 | Cluster sem quórum | `min(msg_cluster_quorum_available) == 0` |
 | Tabelas de membros divergentes | `count(count by (version) (msg_cluster_members_version)) > 1` |
@@ -350,7 +361,7 @@ As duas podem ser combinadas (porta própria **e** lista de IPs), usadas isolada
 
 | Configuração | Comportamento |
 |---|---|
-| Nenhuma (padrão) | As rotas ficam na **mesma porta da API de cliente**, sem restrição de origem, e são **tratadas como qualquer outra rota** — inclusive para rate limit ([12-limites-api.md](12-limites-api.md)) e para qualquer autenticação que venha a existir. |
+| Nenhuma (padrão) | As rotas ficam na **mesma porta da API de cliente**, sem restrição de origem, e seguem as regras de rate limit próprias das rotas de operação ([12-limites-api.md](12-limites-api.md): `/health`, `/metrics` e `/stats/node` isentos, `/stats/cluster` e `/stats/topics` em categoria própria) e qualquer autenticação que venha a existir. |
 | Só `operations.port` | Porta separada, sem filtro por IP: quem alcança a porta acessa. |
 | Só `operations.allowed-ips` | Mesma porta da API, mas só os IPs da lista acessam essas rotas; a API de cliente segue aberta. |
 | Ambas | Porta separada, acessível apenas pelos IPs/faixas listados. |
@@ -359,7 +370,7 @@ Detalhes:
 
 - Recomendação para produção: ao menos a lista de IPs (Prometheus, balanceadores, faixa dos operadores); idealmente também a porta própria, pois o `/metrics` e o `/stats/topics` expõem nomes de tópicos e tags, e o `/stats/cluster` expõe a topologia do cluster.
 - A lista deve incluir os IPs do **balanceador** que chama `/health/ready` e do **Prometheus** que faz o scrape.
-- O IP avaliado é o **endereço de origem da conexão**. Atrás de proxy/balanceador ele será o do proxy, e cabeçalhos como `X-Forwarded-For` **não são confiados** por padrão (ver [Ainda em aberto](#ainda-em-aberto)).
+- O IP avaliado é o **IP do cliente resolvido** pela mesma regra do rate limit ([12-limites-api.md](12-limites-api.md)): o endereço da conexão ou, com `client-ip.headers.enabled`, o cabeçalho (`X-Forwarded-For`), aceito só de quem estiver em `client-ip.trusted-proxies`. **Sem a lista configurada, o cabeçalho é aceito de qualquer origem**, então um cliente com acesso direto ao nó consegue forjá-lo e burlar a lista de IPs. Como o sistema não tem autenticação, essas rotas devem ficar numa **camada de rede segura** (rede privada, porta própria atrás de firewall); a lista de IPs é uma restrição a mais, não a proteção principal.
 - As rotas internas entre nós (`/cluster/...`, inclusive `/cluster/stats/*`) **não** são rotas de operação: têm mecanismo próprio e não são afetadas por essas configurações.
 - O nó **não sobe** se `operations.port` estiver ocupada ou se a lista tiver entrada inválida — falha explícita no início, em vez de expor as rotas sem restrição por engano.
 
@@ -408,13 +419,7 @@ Rotas leves para orquestradores e balanceadores, **sem** fan-out para outros nó
 
 ## Eventos de perda de mensagem (seção 7.3)
 
-Proposta para o ponto em aberto sobre o formato/canal do evento:
-
-1. **Log estruturado** em nível `error` (ID da mensagem, bloco, nós consultados) — o registro detalhado para investigação.
-2. **Métrica** `msg.cluster.message_loss` (contador) — permite alerta no backend de observabilidade por uma regra simples (`> 0`).
-3. **Lista consultável** dos eventos, usada também pelo procedimento de retorno de nó (seção 6.6), que precisa reconhecer IDs registrados como perdidos.
-
-O **alerta ativo** (e-mail, chat, plantão) fica a cargo do backend de observabilidade, sobre a métrica; o sistema não envia notificações por conta própria.
+Decidido: o evento de perda gera uma linha no log da aplicação, em nível `error`, com o **nome do tópico**, o **ID da mensagem**, o bloco e os nós consultados, e um registro na tabela `perdas` do banco do nó, consultada pelo nó que volta de uma exclusão (seção 6.6 de [04-cluster.md](04-cluster.md)). Não há métrica nem condição de saúde por enquanto; quem quiser alertar usa a busca no log. O sistema não envia notificações por conta própria.
 
 ## Eventos de distribuidor e de fila volátil (seção 14)
 
@@ -429,4 +434,4 @@ Eventos pontuais, não condições de saúde do nó nem do cluster ([15-topicos-
 
 ## Ainda em aberto
 
-As pendências desta área (nomes de métricas, descoberta pelo Prometheus, rate limit e `X-Forwarded-For` nas rotas de operação, identificação do tópico no evento de perda) ficam em [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md), nos passos 1, 6 e 10.
+As pendências desta área ficam em [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md), no passo 10.

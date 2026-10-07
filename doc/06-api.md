@@ -37,7 +37,7 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 
 | Verbo | Recurso | Descrição |
 |---|---|---|
-| `GET` | `/metrics` | Métricas locais do nó no formato Prometheus (um alvo de scrape por nó, sem fan-out). |
+| `GET` | `/metrics` | Métricas do cluster inteiro (padrão, uma série por nó) ou só deste nó (`scope=node`), no formato Prometheus. Alvo único de scrape: o balanceador. Lê só uma cópia em memória, atualizada por uma thread (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). |
 | `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local). |
 | `GET` | `/stats/cluster` | Métricas de todos os nós e condição geral do cluster (consulta todos os nós, *best-effort*). |
 | `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`), **sem `sort`**: a ordem é sempre por nome do tópico. Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
@@ -96,10 +96,12 @@ Por isso nenhuma rota ordena por valor que muda: `GET /stats/topics` não tem `s
 | `POST` | `/cluster/topics/{topic}/messages/{id}/ack/commit` | Fase 2 (commit): remove a mensagem (e seus metadados); decidido por quórum (primário incluso), replicado às demais réplicas em segundo plano. Sem tombstone: a ausência do ID já basta para a sincronização (seção 7.3). |
 | `POST` | `/cluster/topics/{topic}/messages/{id}/ack/rollback` | Descarta o registro de ack pendente após esgotar os retries; a mensagem permanece disponível. |
 | `GET` | `/cluster/topics` | **Stream** (NDJSON, seção 8.2.1) com as definições de tópico que o nó possui, ordenadas por `id`; `from`/`to` opcionais. Usado pelo nó novo para montar a tabela de tópicos depois do registro, inclusive na verificação final (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). |
-| `GET` | `/cluster/blocks/{id}/ids` | **Stream** (NDJSON) com os IDs de mensagens que o nó possui para o bloco, ordenados; `from`/`to` opcionais. Usado na sincronização distribuída, inclusive na verificação final (seção 7.3). |
+| `GET` | `/cluster/metrics` | Métricas **locais** do nó, no formato Prometheus. É o que a thread de atualização das métricas do cluster consulta em cada nó (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). |
+| `GET` | `/cluster/blocks/{id}/ids` | **Stream** (NDJSON) com os IDs de mensagens que o nó possui para o bloco, cada um com o nome do tópico, ordenados por ID; `from`/`to` opcionais. Usado na sincronização distribuída, inclusive na verificação final (seção 7.3). |
 | `GET` | `/cluster/blocks/{id}/messages` | **Stream** (NDJSON) com as mensagens do bloco que o nó possui na faixa `from`–`to` (IDs, inclusivos). É a chamada balanceada da sincronização: o nó novo divide a lista unida de IDs em faixas e pede cada faixa a um nó de origem. |
 | `GET` | `/cluster/blocks/{id}/messages/{messageId}` | Retorna o conteúdo de **uma** mensagem do bloco. Mantida por consistência REST e para análise individual quando há problema com uma mensagem; também serve de reforço para uma mensagem que faltou numa faixa. |
-| `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar aos novos donos mensagens que estavam registradas como perdidas. O **corpo da requisição** é um stream NDJSON (seção 8.2.1). |
+| `GET` | `/cluster/message-loss` | **Stream** (NDJSON) com a tabela `perdas` do nó: os pares (`topic`, `id`) declarados perdidos na sincronização, ordenados por ID; `from`/`to` opcionais. Consultada em todos os nós por um nó que retorna (seção 6.6). Aceita chamadas de nó que ainda não é membro. |
+| `POST` | `/cluster/messages/recover` | Usado por um nó que retorna ao cluster (seção 6.6) para enviar ao responsável pelo bloco as mensagens que encontrou na lista de perdas (corpo e `deliveryCount`). O **corpo da requisição** é um stream NDJSON (seção 8.2.1). O nó que recebe grava **direto nos nós responsáveis pelo bloco**, idempotente pelo ID, sem fase de registro pendente nem rollback; a linha conta como aplicada quando `write.quorum` nós confirmam. Quem aceita apaga o registro de perda e avisa os demais nós. Aceita chamadas de nó que ainda não é membro. |
 | `GET` | `/cluster/stats/node` | Métricas locais do nó, para a agregação de `/stats/cluster`. |
 | `GET` | `/cluster/stats/topics` | Contadores locais por tópico (apenas mensagens em que o nó é primário: visíveis, invisíveis e data da mais antiga), agregados por quem atende `/stats/topics` (soma das quantidades, menor data). |
 
@@ -123,10 +125,11 @@ Cada rota usa o mesmo formato com linhas diferentes:
 | Rota | Linha de dados |
 |---|---|
 | `/cluster/topics` | A definição do tópico (a mesma de `_topics/${topico}.json`). |
-| `/cluster/blocks/{id}/ids` | `{"id":"<id>"}` |
+| `/cluster/blocks/{id}/ids` | `{"id":"<id>","topic":"<topico>"}` |
+| `/cluster/message-loss` | `{"id":"<id>","topic":"<topico>"}` |
 | `/cluster/blocks/{id}/messages` | A mensagem completa (`id`, conteúdo e metadados). |
 
-Quando faltar mensagem numa faixa (o `count` é menor que os IDs pedidos), o receptor busca só as que faltaram em outro nó de origem, e a rota por ID único serve de último recurso. Se nenhum nó a tem, vale o evento de perda da seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).
+Quando faltar mensagem numa faixa (o `count` é menor que os IDs pedidos), o receptor busca só as que faltaram em outro nó de origem, e a rota por ID único serve de último recurso. Se nenhum nó a tem, vale o evento de perda da seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md), registrado no log com o tópico e o ID.
 
 Esse contrato **não cria tombstone nem log novo**: a remoção continua por ausência do ID, e a janela residual da seção 7.3 continua tratada como lá.
 

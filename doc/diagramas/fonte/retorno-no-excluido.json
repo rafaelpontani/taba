@@ -22,7 +22,7 @@
       "id": "donos",
       "type": "database",
       "label": "Novos donos",
-      "sublabel": "blocos reatribuídos"
+      "sublabel": "outros nós e donos dos blocos"
     },
     {
       "id": "contato",
@@ -49,16 +49,16 @@
       "from": "volta",
       "to": "donos",
       "y": 172,
-      "label": "mensagens de eventos de perda (registro)",
+      "label": "GET /cluster/message-loss (todos os nós)",
       "variant": "emphasis",
-      "note": "confere IDs localmente antes"
+      "note": "une as listas de perdas"
     },
     {
       "id": "envia-ok",
       "from": "donos",
       "to": "volta",
       "y": 200,
-      "label": "todos confirmam",
+      "label": "pares (tópico, ID) perdidos",
       "variant": "return"
     },
     {
@@ -66,8 +66,9 @@
       "from": "volta",
       "to": "donos",
       "y": 228,
-      "label": "commit",
-      "variant": "emphasis"
+      "label": "POST /recover: mensagens que o nó achou",
+      "variant": "emphasis",
+      "note": "confronta com disco e memória"
     },
     {
       "id": "boot",
@@ -100,14 +101,16 @@
       "dot": "cyan",
       "title": "Sem mensagens perdidas",
       "items": [
-        "Nada a enviar: limpa o estado e refaz o bootstrap"
+        "Nada a enviar: limpa o estado e refaz o bootstrap",
+        "Dados antigos ficam em quarentena até a recuperação acabar"
       ]
     },
     {
       "dot": "rose",
       "title": "Freezing opcional",
       "items": [
-        "Pode impedir o novo registro até o período expirar"
+        "Pode atrasar o novo registro até o período expirar",
+        "A recuperação das mensagens não depende dele"
       ]
     },
     {

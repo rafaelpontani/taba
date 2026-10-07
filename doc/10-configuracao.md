@@ -48,10 +48,13 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Limite da fila do canal | `cluster.channel.queue.max-size`, `cluster.channel.queue.max-age` | A definir | Tamanho e idade máximos da fila de saída para um nó com canal fora; ao passar, o nó com canal fora é tratado como falho e a votação de exclusão é aberta. | 12.9 |
 | Quórum de votação | `cluster.vote.quorum-percent` | **51** (%) | Percentual dos nós **saudáveis** (os que o votante enxerga e que respondem; os fora do ar não votam nem entram na base) que precisa concordar para efetivar a exclusão do nó: `ceil(S × percentual)`. | 6.3 |
 | Mínimo de votantes | `cluster.vote.min-voters` | **2** | Número mínimo de nós saudáveis para uma votação valer; abaixo disso, nenhuma exclusão se efetiva. Impede que um nó isolado exclua todos os demais. | 6.3 |
-| Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Comportamento durante o freezing ainda em aberto. | 6.7 |
+| Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Durante o freezing o pedido de ingresso é rejeitado com `Retry-After`. | 6.7 |
 | Endereço do balanceador do cluster | `cluster.entry-address` | **Obrigatório** | Endereço (host:porta) do balanceador à frente do cluster, usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe. | 6.2 |
 | Primeiro nó do cluster | `cluster.first-node` | `false` | Só no primeiro nó de um cluster novo: se a listagem não encontra nenhum membro, ele inicia o cluster sozinho. Nos demais, a listagem sem resposta é erro e o nó tenta de novo. | 6.2 |
-| Retry de bootstrap | `cluster.bootstrap.retry` | A definir | Comportamento (tentativa imediata, backoff, manual) após exclusão por falha no registro. | 6.5 |
+| Intervalo entre tentativas do bootstrap | `cluster.bootstrap.retry.interval` | A definir | Tempo de espera entre uma tentativa de entrar no cluster e a seguinte, depois de uma falha (listagem, registro, sincronização ou exclusão por falha no registro). | 6.5 |
+| Máximo de tentativas do bootstrap | `cluster.bootstrap.retry.max-attempts` | `0` (sem limite) | Número máximo de tentativas; `0` repete sem parar. Esgotado, o nó encerra com erro. | 6.5 |
+| Validade dos registros de perda | `cluster.message-loss.ttl` | A definir | Tempo depois do qual um registro da tabela `perdas` expira; um nó que volta depois disso já não consegue recuperar a mensagem. | 6.6 |
+| Prazo da recuperação | `cluster.recovery.timeout` | A definir | Tempo máximo que um nó que retorna tenta consultar todos os nós da lista de perdas antes de limpar o estado local e refazer o bootstrap. | 6.6 |
 | Teto de itens por stream de sincronização | `cluster.sync.stream.max-items` | A definir | Itens que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
 | Teto de bytes por stream de sincronização | `cluster.sync.stream.max-bytes` | A definir | Bytes que um stream NDJSON entre nós envia antes de fechar com `hasMore: true`. | 7.3, 8.2.1 |
 | Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir (maior que `message.max-bytes.hard-limit` mais a margem do envelope JSON) | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. Precisa caber a maior mensagem possível. | 8.2.1 |
@@ -95,7 +98,10 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 |---|---|---|---|---|
 | Endpoint OTLP | `telemetry.otlp.endpoint` | A definir | Destino da exportação OpenTelemetry (métricas, traces, logs). | 8.1 |
 | Tags do tópico | `tags` (por tópico) | Nenhuma | Pares chave/valor enviados como atributos nos traces e logs do tópico (e nas métricas de tópico, conforme `telemetry.topics.mode`). Definidas na criação do tópico e alteradas via `PATCH`. | 8.1 |
-| Endpoint Prometheus | `telemetry.prometheus.enabled` | A definir | Liga/desliga `GET /metrics` (formato Prometheus, local por nó). | 8.1.1 |
+| Endpoint Prometheus | `telemetry.prometheus.enabled` | A definir | Liga/desliga `GET /metrics` (formato Prometheus; cluster inteiro por padrão, `scope=node` para só o nó). | 8.1.1 |
+| Prazo por nó no refresh do `/metrics` | `telemetry.prometheus.node-timeout` | A definir | Tempo que a thread de atualização espera cada nó. Quem não responde fica com `msg_cluster_node_scrape_up = 0`. | 8.1.1 |
+| Intervalo de atualização do `/metrics` | `telemetry.prometheus.refresh-interval` | A definir (sugestão: 15 s) | Periodicidade com que cada nó atualiza em memória as métricas de todos os nós; o `/metrics` de cluster só lê essa memória. | 8.1.1 |
+| Validade dos valores de um nó | `telemetry.prometheus.max-age` | A definir | Quanto tempo o instantâneo mantém os últimos valores de um nó que não responde; depois disso as séries dele somem. | 8.1.1 |
 | Porta das rotas de operação | `operations.port` | Vazio (mesma porta da API) | Porta própria para `/metrics`, `/stats/*` e `/health/*`. Opcional; se definida, essas rotas deixam de existir na porta da API de cliente. | 8.1.1 |
 | IPs autorizados nas rotas de operação | `operations.allowed-ips` | Vazio (sem restrição) | Lista de IPs/faixas CIDR com acesso a `/metrics`, `/stats/*` e `/health/*`; os demais recebem `403`. Opcional. Sem porta nem lista, essas rotas são tratadas como qualquer outra. | 8.1.1 |
 | Modo de exportação de métricas de tópico | `telemetry.topics.mode` | `off` | Vale para OTLP e `/metrics`: `off` (só rotas `/stats/topics`), `by-tags` (agregado por tags) ou `per-topic` (uma série por tópico, com teto). | 8.1.1 |
@@ -118,9 +124,11 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST /topics/{topic}/messages`. |
 | Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por IP do cliente, para `GET /topics/{topic}/messages`, `PATCH /topics/{topic}/messages/{id}` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
 | Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
+| Rate limit das consultas de operação | `ratelimit.ops.rps` | A definir (sugestão: 2) | Requisições por segundo, por IP, para `/stats/cluster` e `/stats/topics`. `/health/*`, `/metrics` e `/stats/node` são isentos. |
 | Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. |
 | IP do cliente por cabeçalho | `client-ip.headers.enabled` | **true** | Usa os cabeçalhos abaixo para achar o IP do cliente atrás de balanceador; `false` usa só o endereço da conexão. |
 | Cabeçalhos do IP do cliente | `client-ip.headers` | `X-Forwarded-For` | Lista, em ordem, de cabeçalhos consultados; vale o primeiro presente e, nele, o primeiro endereço. |
+| Proxies confiáveis do IP do cliente | `client-ip.trusted-proxies` | Vazia | Lista de IPs/CIDR dos balanceadores ou proxies cujos cabeçalhos de IP são aceitos. Vazia: aceita de qualquer origem (o serviço deve ficar em camada segura). Vale para o rate limit e para `operations.allowed-ips`. |
 
 > Explicação do tema, incluindo a resposta ao exceder o limite e a identificação do cliente por IP: [12-limites-api.md](12-limites-api.md).
 

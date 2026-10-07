@@ -49,5 +49,6 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | Criação automática de fila volátil | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.4 |
 | Exclusão de fila volátil pelo gestor | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5 |
 | Troca de gestor nas mudanças do anel | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.6 |
+| Métricas do cluster em memória e coleta do Prometheus | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
 
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

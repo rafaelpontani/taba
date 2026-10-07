@@ -17,7 +17,7 @@ Registro e desregistro de nó são operações **pesadas** (afetam o roteamento 
 
 *Fonte: [ingresso-no.json](diagramas/fonte/ingresso-no.json). A sincronização do bloco está na seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md).*
 
-1. **Descoberta.** A configuração exige o **endereço do balanceador do cluster** (`cluster.entry-address`, obrigatório e sem padrão; se faltar, o nó não sobe). A primeira coisa que o nó faz ao iniciar é chamar, por esse endereço, a listagem de nós (`GET /cluster/nodes`), que devolve a tabela de membros com os **IPs internos** de cada um. Com a lista, o nó escolhe um membro ao acaso e envia a ele, **numa única requisição síncrona** (`POST /cluster/nodes/join`), o pedido de registro com **seus próprios IPs e porta**; esse nó passa a coordenar o registro dos passos 2 a 5. Se o membro não responde, tenta outro da lista. Vale também para o reinício de um nó, que volta como nó novo (seção 6.8). Se a listagem falha, o nó tenta de novo conforme `cluster.bootstrap.retry`; só o **primeiro nó** de um cluster novo (`cluster.first-node=true`, padrão `false`), quando a listagem não encontra ninguém, inicia o cluster sozinho como único membro.
+1. **Descoberta.** A configuração exige o **endereço do balanceador do cluster** (`cluster.entry-address`, obrigatório e sem padrão; se faltar, o nó não sobe). A primeira coisa que o nó faz ao iniciar é chamar, por esse endereço, a listagem de nós (`GET /cluster/nodes`), que devolve a tabela de membros com os **IPs internos** de cada um. Com a lista, o nó escolhe um membro ao acaso e envia a ele, **numa única requisição síncrona** (`POST /cluster/nodes/join`), o pedido de registro com **seus próprios IPs e porta**; esse nó passa a coordenar o registro dos passos 2 a 5. Se o membro não responde, tenta outro da lista. Vale também para o reinício de um nó, que volta como nó novo (seção 6.8). Se a listagem falha, o nó tenta de novo conforme `cluster.bootstrap.retry.interval`; só o **primeiro nó** de um cluster novo (`cluster.first-node=true`, padrão `false`), quando a listagem não encontra ninguém, inicia o cluster sozinho como único membro.
 2. O nó que recebe a chamada **testa os IPs** informados, tentando estabelecer conexão de volta com o novo nó.
 3. Se a conexão for bem-sucedida, o nó que recebeu envia a **todos os nós do cluster** um pedido de **registro (fase 1)** com os dados do novo nó.
 4. Após todos confirmarem a fase de registro, o nó que recebeu envia a **todos os nós** uma chamada de **commit (fase 2)**, efetivando o novo nó na tabela de membros.
@@ -57,7 +57,7 @@ Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bo
  
 1. O nó é **excluído** do cluster — não chega a ser efetivado na tabela de membros.
 2. Os **blocos** que seriam assumidos por ele são **rebalanceados** entre os nós restantes do cluster (o anel de hash é recalculado sem esse nó).
-3. Comportamento de retry (o cliente/nó tenta novamente o bootstrap, com que backoff, etc.): a definir (ver seção 10).
+3. **Nova tentativa:** o nó repete o bootstrap do começo (seção 6.2) a cada `cluster.bootstrap.retry.interval`, até `cluster.bootstrap.retry.max-attempts` tentativas (padrão sem limite). O mesmo intervalo vale quando a listagem de nós, o pedido de ingresso ou a sincronização falham.
 > Diferente da falha descrita na seção 7.3 (mensagem não encontrada durante a sincronização de um bloco), a falha de registro é sobre o **nó como um todo** não conseguir entrar no cluster — por isso o efeito é exclusão + rebalanceamento, e não apenas um alerta.
  
 ### 6.6 Retorno de um nó excluído
@@ -66,18 +66,26 @@ Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bo
 
 *Fonte: [retorno-no-excluido.json](diagramas/fonte/retorno-no-excluido.json).*
  
-Quando um nó que foi **desregistrado por falha do canal** (seção 6.3) volta a ficar disponível, ele não simplesmente retoma seu lugar antigo no anel — os blocos que ele atendia já podem ter sido reatribuídos a outros nós. O procedimento:
- 
-1. Ao voltar, o nó **confere localmente** se possui mensagens cujo ID conste como registrado em algum **evento de perda de mensagem** (seção 7.3) — ou seja, mensagens que ele detinha e que, na sua ausência, podem não ter sido encontradas por outras réplicas.
-2. Se encontrar mensagens nessa condição, ele **envia essas mensagens aos nós que são atualmente os novos donos** do bloco correspondente (via o mesmo procedimento de registro/commit da seção 7.2), recuperando dados que estariam perdidos.
-3. Concluído esse envio, o nó **limpa seu estado local** (dados dos blocos antigos) e **inicia um novo registro no cluster do zero** — ou seja, refaz o bootstrap completo da seção 6.2, como se fosse um nó novo, e recebe uma nova posição no anel.
+Quando um nó que foi **desregistrado por falha do canal** (seção 6.3) volta a ficar disponível, ele não simplesmente retoma seu lugar antigo no anel — os blocos que ele atendia já podem ter sido reatribuídos a outros nós. O procedimento recupera primeiro o que o nó tem e pode ajudar, e só depois refaz a entrada:
+
+1. **Lista de perdas.** O nó consulta **todos os nós que consegue alcançar** (`GET /cluster/message-loss`, um stream NDJSON) e une as respostas. Cada nó responde com a sua tabela `perdas` (abaixo): os pares (tópico, ID) que alguma sincronização declarou perdidos (seção 7.3). Essas rotas aceitam chamadas de um nó que **ainda não é membro**, já que ele foi excluído.
+2. **Confronto com o que o nó tem.** Para cada par, o nó procura o ID no que guarda localmente: no disco (`${topico}/${id}.json` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o que está em disco conta.
+3. **Envio.** Para cada mensagem encontrada, o nó a envia ao nó responsável pelo bloco do ID, pela rota de mensagens recuperadas (`POST /cluster/messages/recover`, um stream NDJSON). Quem recebe grava **direto nos nós responsáveis**, idempotente pelo ID e sem as duas fases (a mensagem não existe nos donos, ninguém concorre por ela), e confirma a linha quando `write.quorum` nós gravaram. Vai o corpo e o `deliveryCount`; a invisibilidade é zerada, e a mensagem volta a ficar pronta para entrega.
+4. **Baixa do registro.** O nó que aceita a mensagem apaga o par da sua tabela `perdas` e avisa os demais para apagarem o deles (melhor esforço), para que um segundo nó que volte com a mesma mensagem não a reenvie depois de ela já ter sido entregue e confirmada.
+5. **Estado local em quarentena.** Enquanto a recuperação não termina, o nó **não apaga** os dados antigos. Se algum nó não respondeu na consulta do passo 1, o nó tenta de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout`; só então segue.
+6. **Limpeza e novo registro.** Concluída a recuperação (ou esgotado o prazo), o nó **limpa seu estado local** e **inicia um novo registro no cluster do zero** — o bootstrap completo da seção 6.2, como se fosse um nó novo, com uma nova posição no anel. O freezing (seção 6.7) só atrasa este passo; a recuperação dos passos 1 a 5 não depende dele.
+
+**Tabela de perdas.** Cada nó guarda no banco do nó (`${storage.dir}/_node.db`, SQLite, seção 3.2 de [02-arquitetura.md](02-arquitetura.md)) a tabela `perdas` (`topico`, `id`, `bloco`, `detectado_em`), com chave (`topico`, `id`). O nó que detecta a perda na sincronização grava o registro e o envia também aos nós responsáveis pelo bloco (idempotente pela chave), para a informação sobreviver à queda do detector. Os registros expiram depois de `cluster.message-loss.ttl`.
+
 ### 6.7 Período de freezing (anti-flapping)
  
-Para evitar que um nó instável/defeituoso entre e saia repetidamente do cluster (flapping), pode ser configurado um **período de freezing**:
+Para evitar que um nó instável/defeituoso entre e saia repetidamente do cluster (flapping), existe um **período de freezing**:
  
-- Após um nó ser desregistrado por falha (seção 6.3), ele fica **impedido de se registrar novamente** no cluster até esse período expirar.
-- A **duração do período de freezing é configurável**.
-> O comportamento exato durante o freezing (o nó é rejeitado no bootstrap? fica em uma "lista de espera"?) e o valor padrão sugerido ainda não foram definidos (ver seção 10).
+- Após um nó ser desregistrado por falha (seção 6.3), ele fica **impedido de se registrar novamente** no cluster até esse período expirar. A **duração é configurável** (`cluster.freezing.duration`).
+- **Identidade do nó:** ao nascer (a cada início do processo), o nó se **auto-nomeia com um ID GUID v7**, guardado só em memória, e é por esse ID que se identifica perante os outros nós, inclusive no pedido de ingresso. O cluster guarda o ID e o instante do desregistro de cada nó em freezing.
+- **A quem se aplica:** ao nó que foi excluído pela votação mas **continua o mesmo processo**, com a mesma memória e o mesmo ID, e fica caindo e voltando (por exemplo, por falha de rede), tentando se reconectar e se registrar sem reiniciar. Um **reinício** do processo é outra coisa: o nó nasce com um ID novo e entra como **nó novo**, sem freezing, e só aproveita o que está em disco para ajudar a recuperar mensagens perdidas (seção 6.6).
+
+- **Durante o freezing, o pedido de ingresso é rejeitado** (não há lista de espera, e o cluster não guarda o pedido). A resposta traz `Retry-After` com o tempo que falta, e o nó volta a tentar depois desse prazo, dentro do laço de nova tentativa do bootstrap (`cluster.bootstrap.retry.interval`, seção 6.5). A rejeição é registrada no log ("rejeitado (freezing)").
 
 ### 6.8 Concorrência entre registro e desregistro
 

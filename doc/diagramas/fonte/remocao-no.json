@@ -84,7 +84,7 @@
       "from": "demais",
       "to": "detector",
       "y": 280,
-      "label": "votos (quórum padrão: 3)",
+      "label": "votos (51% dos saudáveis)",
       "variant": "return"
     },
     {
@@ -124,7 +124,7 @@
       "from": "falho",
       "to": "demais",
       "y": 468,
-      "label": "envia mensagens perdidas aos novos donos",
+      "label": "consulta perdas e envia o que achar",
       "variant": "emphasis"
     },
     {

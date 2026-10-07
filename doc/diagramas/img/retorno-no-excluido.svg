@@ -446,29 +446,30 @@ rect.c-bg-rect { fill: var(--bg); }
 
 
         <!-- Messages -->
-        <g data-edge-from="volta" data-edge-to="donos" data-edge-label="mensagens de eventos de perda (registro)" data-edge-key="0" data-edge-id="envia">
+        <g data-edge-from="volta" data-edge-to="donos" data-edge-label="GET /cluster/message-loss (todos os nós)" data-edge-key="0" data-edge-id="envia">
           <path data-composition-edge-from="volta" data-composition-edge-to="donos" data-composition-edge-id="envia" data-composition-points="164,172;544,172" d="M 164 172 L 544 172" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g>
           <rect x="216" y="152" width="276" height="18" rx="3" class="c-mask"/>
-          <text x="354" y="162" class="t-edge-emphasis" font-size="11" text-anchor="middle">mensagens de eventos de perda (registro)</text>
+          <text x="354" y="162" class="t-edge-emphasis" font-size="11" text-anchor="middle">GET /cluster/message-loss (todos os nós)</text>
         </g>
-        <text x="176" y="190" class="t-dim" font-size="7">confere IDs localmente antes</text>
+        <text x="176" y="190" class="t-dim" font-size="7">une as listas de perdas</text>
         </g>
 
-        <g data-edge-from="donos" data-edge-to="volta" data-edge-label="todos confirmam" data-edge-key="1" data-edge-id="envia-ok">
+        <g data-edge-from="donos" data-edge-to="volta" data-edge-label="pares (tópico, ID) perdidos" data-edge-key="1" data-edge-id="envia-ok">
           <path data-composition-edge-from="donos" data-composition-edge-to="volta" data-composition-edge-id="envia-ok" data-composition-points="544,200;164,200" d="M 544 200 L 164 200" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="298.5" y="180" width="111" height="18" rx="3" class="c-mask"/>
-          <text x="354" y="190" class="t-muted" font-size="11" text-anchor="middle">todos confirmam</text>
+          <rect x="258.9" y="180" width="190.2" height="18" rx="3" class="c-mask"/>
+          <text x="354" y="190" class="t-muted" font-size="11" text-anchor="middle">pares (tópico, ID) perdidos</text>
         </g>
         </g>
 
-        <g data-edge-from="volta" data-edge-to="donos" data-edge-label="commit" data-edge-key="2" data-edge-id="envia-com">
+        <g data-edge-from="volta" data-edge-to="donos" data-edge-label="POST /recover: mensagens que o nó achou" data-edge-key="2" data-edge-id="envia-com">
           <path data-composition-edge-from="volta" data-composition-edge-to="donos" data-composition-edge-id="envia-com" data-composition-points="164,228;544,228" d="M 164 228 L 544 228" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g>
-          <rect x="328.2" y="208" width="51.599999999999994" height="18" rx="3" class="c-mask"/>
-          <text x="354" y="218" class="t-edge-emphasis" font-size="11" text-anchor="middle">commit</text>
+          <rect x="219.3" y="208" width="269.4" height="18" rx="3" class="c-mask"/>
+          <text x="354" y="218" class="t-edge-emphasis" font-size="11" text-anchor="middle">POST /recover: mensagens que o nó achou</text>
         </g>
+        <text x="176" y="246" class="t-dim" font-size="7">confronta com disco e memória</text>
         </g>
 
         <g data-edge-from="volta" data-edge-to="contato" data-edge-label="registro: IPs e porta" data-edge-key="3" data-edge-id="boot">
@@ -520,8 +521,8 @@ rect.c-bg-rect { fill: var(--bg); }
           <text x="157" y="122" class="t-muted" font-size="7" text-anchor="middle">excluído por falha</text>
         </g>
 
-        <g id="node-donos" data-node-id="donos" data-node-label="Novos donos" tabindex="0" role="button" aria-label="Focus Novos donos, blocos reatribuídos, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="blocos reatribuídos" data-node-context="Sequence participant">
-          <title>Novos donos · blocos reatribuídos · Sequence participant</title>
+        <g id="node-donos" data-node-id="donos" data-node-label="Novos donos" tabindex="0" role="button" aria-label="Focus Novos donos, outros nós e donos dos blocos, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="outros nós e donos dos blocos" data-node-context="Sequence participant">
+          <title>Novos donos · outros nós e donos dos blocos · Sequence participant</title>
           <rect x="456" y="72" width="190" height="60" rx="6" class="c-mask"/>
           <rect x="456" y="72" width="190" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(462 78) scale(0.6875)">
@@ -529,7 +530,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="551" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Novos donos</text>
-          <text x="551" y="122" class="t-muted" font-size="7" text-anchor="middle">blocos reatribuídos</text>
+          <text x="551" y="122" class="t-muted" font-size="7" text-anchor="middle">outros nós e donos dos blocos</text>
         </g>
 
         <g id="node-contato" data-node-id="contato" data-node-label="Nó de contato" tabindex="0" role="button" aria-label="Focus Nó de contato, coordena o registro, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="coordena o registro" data-node-context="Sequence participant">
