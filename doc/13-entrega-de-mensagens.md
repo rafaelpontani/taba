@@ -15,7 +15,7 @@ A entrega segue o modelo de **invisibilidade temporária**, como o *visibility t
 | **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor ([14-invisibilidade.md](14-invisibilidade.md)). Propagada ao **quórum** de nós responsáveis (`write.quorum`, sempre incluindo o primário) antes de ela ser entregue; réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). |
 | **Contador de entregas** | `deliveryCount`, incrementado a cada entrega. Base para reentrega e para o limite de entregas, que manda a mensagem ao dead-letter (seção 12.10). |
 | **Grupo** | `groupId` opcional da mensagem; chave da entrega justa entre remetentes (seção 12.11). Na fila FIFO é obrigatório e é a chave da ordem ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16). |
-| **Metadados da mensagem** | `deliveryCount`, `invisibleUntil` e `receiptToken` (devolvido ao cliente na entrega e exigido no ack e no `PATCH`), guardados junto da mensagem em memória ou em disco (seção 12.5). |
+| **Metadados da mensagem** | `deliveryCount`, `invisibleUntil` e `receiptToken` (devolvido ao cliente na entrega e exigido no ack e na alteração da invisibilidade), guardados junto da mensagem em memória ou em disco (seção 12.5). |
 | **Dono da entrega** | O nó primário do bloco da mensagem: só ele a coloca na sua lista de prontos (seção 12.7). |
 | **Lista de prontos** | Por tópico, em cada nó: IDs prontos para serem entregues, mantida por uma thread (seção 12.6). |
 
@@ -45,7 +45,7 @@ A mensagem só chega ao cliente depois de a invisibilidade estar marcada no **qu
 
 ### 12.3 Alteração da invisibilidade
 
-O cliente pode alterar o tempo de invisibilidade de uma mensagem já entregue (`PATCH /topics/{topic}/messages/{id}`, `{"visibilityTimeout": 300, "receiptToken": "..."}`, com `409` se o token estiver obsoleto), com o mesmo registro + commit por quórum da entrega, sem incrementar `deliveryCount` e sem mexer na lista de prontos. O valor é o **novo tempo a partir de agora** (`invisibleUntil = agora + visibilityTimeout`), não um acréscimo ao prazo atual, e respeita `delivery.visibility-timeout.max`. **`0` libera a mensagem na hora**: o prazo passa a ser o instante atual e o dono a recoloca na lista de prontos como num vencimento (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). Detalhes em [14-invisibilidade.md](14-invisibilidade.md), seção 13.3.
+O cliente pode alterar o tempo de invisibilidade de uma mensagem já entregue (`PUT /topics/{topic}/messages/{id}/visibility?receiptToken=...`, com o corpo `{"visibilityTimeout": 300}`, e `409` se o token estiver obsoleto), com o mesmo registro + commit por quórum da entrega, sem incrementar `deliveryCount` e sem mexer na lista de prontos. O valor é o **novo tempo a partir de agora** (`invisibleUntil = agora + visibilityTimeout`), não um acréscimo ao prazo atual, e respeita `delivery.visibility-timeout.max`. **`0` libera a mensagem na hora**: o prazo passa a ser o instante atual e o dono a recoloca na lista de prontos como num vencimento (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). Detalhes em [14-invisibilidade.md](14-invisibilidade.md), seção 13.3.
 
 ### 12.4 Confirmação (ack) e reentrega
 
@@ -222,7 +222,7 @@ O padrão vale **na hora da conferência**, não na da criação: quem não defi
 - A expiração vale mesmo para mensagem **invisível** (em processamento): ela some, e o ack que chegar depois recebe a resposta de mensagem inexistente.
 - Mensagem expirada é **excluída, não vai para o dead-letter**: o dead-letter guarda o que falhou no consumo, e a expiração é a regra de que "acabou o prazo de interesse". Cada exclusão gera a métrica `msg.retention.expired` e o evento `message-expired`.
 
-**Limite de entregas (`maxDeliveries`).** `deliveryCount` sobe a cada entrega (seção 12.1). Quando o prazo de invisibilidade de uma mensagem vence sem ack e `deliveryCount ≥ maxDeliveries`, ela **não** volta à lista de prontos: o dono a manda ao dead-letter (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). O mesmo vale para o `PATCH` com `visibilityTimeout: 0`. Assim, `maxDeliveries: 10` significa **no máximo 10 entregas**; a décima primeira nunca acontece. Isso para um consumidor que baixa a mesma mensagem sem nunca apagá-la (ack que falha, erro no processamento, consumidor que morre): em vez de ela circular para sempre, ela sai da fila.
+**Limite de entregas (`maxDeliveries`).** `deliveryCount` sobe a cada entrega (seção 12.1). Quando o prazo de invisibilidade de uma mensagem vence sem ack e `deliveryCount ≥ maxDeliveries`, ela **não** volta à lista de prontos: o dono a manda ao dead-letter (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). O mesmo vale para a alteração com `visibilityTimeout: 0`. Assim, `maxDeliveries: 10` significa **no máximo 10 entregas**; a décima primeira nunca acontece. Isso para um consumidor que baixa a mesma mensagem sem nunca apagá-la (ack que falha, erro no processamento, consumidor que morre): em vez de ela circular para sempre, ela sai da fila.
 
 **Dead-letter.**
 
@@ -250,7 +250,7 @@ Quando um produtor despeja muitas mensagens de uma vez, ele **atrasa as dos outr
 
 **Contagem, por nó.** Cada **dono da entrega** (seção 12.7) mantém, por tópico, **dois contadores por grupo**, das mensagens que ele possui e que ainda existem: as **prontas** e as **em processamento** (invisíveis, já entregues e sem ack). O **tamanho do grupo** mistura os dois: `tamanho = em processamento + peso × prontas`, com o `peso` em `delivery.fair.ready-weight` (padrão **0,1**).
 
-- A publicação soma uma pronta. A entrega move uma de pronta para em processamento. O vencimento da invisibilidade (e o `PATCH` com `0`) a devolve a pronta. O ack, a expiração por `ttl` (seção 12.10) e o movimento para o dead-letter a descontam.
+- A publicação soma uma pronta. A entrega move uma de pronta para em processamento. O vencimento da invisibilidade (e a alteração com `0`) a devolve a pronta. O ack, a expiração por `ttl` (seção 12.10) e o movimento para o dead-letter a descontam.
 - **Por que o peso.** Contar só o que está em processamento, como o SQS faz, reage tarde a uma rajada: o grupo que acabou de publicar milhares de mensagens parece pequeno até os consumidores o puxarem. Contar todo o backlog penaliza um grupo grande e inofensivo, de consumidor lento e sem pressa. O peso fica no meio: `0` equivale ao SQS (só o que está em processamento) e `1` ao backlog inteiro. Com `0,1`, 100 mil prontas valem 10 mil, e cada mensagem puxada pelo consumidor **sobe** o tamanho do grupo em `1 − peso`.
 - É **local**, sem troca entre nós. Como o ID decide o bloco, as mensagens de um grupo se espalham pelos donos de forma aproximadamente proporcional, então cada nó enxerga uma amostra fiel do tamanho de cada grupo. A justiça é, por isso, aproximada no cluster, e exata no modo desenvolvimento (seção 6.4 de [04-cluster.md](04-cluster.md)).
 - Fica em memória e é **derivada**: refeita dos metadados quando o nó assume blocos ou reinicia (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)), contando a coluna `grupo` do banco e as mensagens em memória.

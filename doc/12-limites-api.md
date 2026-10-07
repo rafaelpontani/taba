@@ -40,7 +40,7 @@ Definidos por variável de ambiente ([10-configuracao.md](10-configuracao.md)); 
 Limite de requisições por cliente, aplicado no nó que recebe a chamada, separado por tipo de operação — publicação tende a ter um limite mais alto que operações administrativas de tópico:
 
 - **Publicação** (`POST /topics/{topic}/messages`).
-- **Consumo** (`GET /topics/{topic}/messages`, `PATCH /topics/{topic}/messages/{id}`, a alteração de invisibilidade, e `DELETE /topics/{topic}/messages/{id}`, o ack).
+- **Consumo** (`GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility`, a alteração de invisibilidade, e `DELETE /topics/{topic}/messages/{id}`, o ack).
 - **Administrativo** (`POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`, e `/tokens`) — tende a ser o mais restritivo dos três.
 
 Cada limite é do tipo taxa + estouro (`ratelimit.burst`, ex.: token bucket), para absorver picos curtos sem rejeitar requisições.

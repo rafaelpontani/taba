@@ -37,7 +37,7 @@ Só os **metadados** são replicados. As três estruturas do dono são um **índ
 
 Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora absoluta) e `receiptToken` (token opaco gerado pelo dono a cada entrega, por exemplo um GUID). O `receiptToken` é guardado e replicado **exatamente como a invisibilidade**: no mesmo registro + commit da entrega, nos mesmos metadados, em memória ou no banco local do tópico.
 
-**Uso do `receiptToken`** (como o `ReceiptHandle` do SQS): a entrega devolve o token ao cliente junto da mensagem, e o ack (`DELETE`) e o `PATCH` o enviam (`receiptToken` na query string do `DELETE`, no corpo do `PATCH`). O nó compara com o token dos metadados e, se for diferente, responde `409`, sem alterar nada. Assim, um consumidor lento cujo prazo venceu e cuja mensagem foi reentregue a outro não consegue confirmá-la nem alterá-la: o token dele ficou obsoleto. Se o prazo venceu mas a mensagem **ainda não foi reentregue**, o token continua válido e o ack vale. O `PATCH` mantém o mesmo token; só uma nova entrega gera outro.
+**Uso do `receiptToken`** (como o `ReceiptHandle` do SQS): a entrega devolve o token ao cliente junto da mensagem, e o ack (`DELETE`) e a alteração da invisibilidade (`PUT .../visibility`) o enviam (`receiptToken` na query string, nas duas rotas). O nó compara com o token dos metadados e, se for diferente, responde `409`, sem alterar nada. Assim, um consumidor lento cujo prazo venceu e cuja mensagem foi reentregue a outro não consegue confirmá-la nem alterá-la: o token dele ficou obsoleto. Se o prazo venceu mas a mensagem **ainda não foi reentregue**, o token continua válido e o ack vale. A alteração mantém o mesmo token; só uma nova entrega gera outro.
 
 - **Fila FIFO:** a mensagem ganha também `deduplicationId` e, depois do ack, `deleteAt` (exclusão lógica, sem corpo nem metadados de entrega); detalhes em [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7.
 - **Mensagem em memória:** os metadados ficam em memória junto dela.
@@ -54,7 +54,7 @@ A invisibilidade se propaga por **registro + commit decidido por quórum**, o me
 | Operação | Quando | O que se propaga | `deliveryCount` | Lista de prontos | Lista de invisíveis do dono |
 |---|---|---|---|---|---|
 | **Entrega** (`GET` ou `take`) | Uma mensagem pronta é entregue | Novo `invisibleUntil` = `agora + visibilityTimeout` e novo `receiptToken` | +1 | Remove o ID | Insere ID e prazo |
-| **Alteração** (`PATCH`) | O consumidor pede mais (ou menos) tempo | Novo `invisibleUntil` = `agora + visibilityTimeout` (não é acréscimo); com `0`, a mensagem é liberada na hora | Não muda | Não muda (com `0`, o dono insere o ID, como num vencimento) | Substitui o prazo da entrada (com `0`, remove) |
+| **Alteração** (`PUT .../visibility`) | O consumidor pede mais (ou menos) tempo | Novo `invisibleUntil` = `agora + visibilityTimeout` (não é acréscimo); com `0`, a mensagem é liberada na hora | Não muda | Não muda (com `0`, o dono insere o ID, como num vencimento) | Substitui o prazo da entrada (com `0`, remove) |
 | **Ack** (`DELETE`) | O consumidor confirma | Remoção da mensagem e dos metadados | — | — | Remove a entrada |
 | **Vencimento do prazo** | `invisibleUntil` chega ao passado sem ack | **Nada** | Não muda | Insere o ID | Remove a entrada |
 
@@ -62,8 +62,8 @@ A invisibilidade se propaga por **registro + commit decidido por quórum**, o me
 
 1. O **dono** é sempre o coordenador: no `GET` local ele mesmo; num `take` (seção 12.8), o nó que atende o cliente pede ao dono, que coordena. Assim o relógio que fixa `invisibleUntil` é o do dono.
 2. O dono calcula os nós responsáveis pelo ID (primário + réplicas) e envia a todos o **registro** do novo `invisibleUntil` (e de `deliveryCount + 1`, na entrega). Cada nó grava como **pendente** e confirma.
-3. Não há disputa em condições normais: só o primário entrega e só IDs prontos (seção 12.7 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Por segurança, o registro continua **exclusivo**: um nó rejeita o pedido se já há outro pendente para a mensagem ou, numa entrega, se ela já está invisível, e o `GET` tenta outro ID. No `PATCH` e no ack, o registro também é rejeitado se o `receiptToken` não confere.
-4. Com o **quórum** confirmando (`write.quorum`, sempre incluindo o primário), o dono decide o **commit**. Cada nó do quórum efetiva os metadados; no **dono**, o commit também atualiza as listas da tabela acima (remove da de prontos e insere na de invisíveis, ou substitui a entrada, no `PATCH`).
+3. Não há disputa em condições normais: só o primário entrega e só IDs prontos (seção 12.7 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Por segurança, o registro continua **exclusivo**: um nó rejeita o pedido se já há outro pendente para a mensagem ou, numa entrega, se ela já está invisível, e o `GET` tenta outro ID. Na alteração e no ack, o registro também é rejeitado se o `receiptToken` não confere.
+4. Com o **quórum** confirmando (`write.quorum`, sempre incluindo o primário), o dono decide o **commit**. Cada nó do quórum efetiva os metadados; no **dono**, o commit também atualiza as listas da tabela acima (remove da de prontos e insere na de invisíveis, ou substitui a entrada, na alteração).
 5. Só então a chamada **responde ao cliente**. As réplicas fora do quórum recebem o commit em segundo plano, dentro de `write.commit.timeout`.
 6. **Falha antes do quórum:** retry e, esgotado, rollback do pendente (`write.retry.*`, `write.pending.ttl`); as listas do dono **não** são tocadas, e a mensagem segue como estava. **Falha nas réplicas fora do quórum:** sem rollback, o dono insiste até o teto.
 
@@ -79,8 +79,8 @@ O dono mantém, **por tópico**, uma **lista de invisíveis**: as mensagens de q
 
 - **Tamanho limitado:** no máximo `delivery.invisible-list.size` entradas por tópico (memória, como a lista de prontos, é finita).
 - **Só o dono a tem.** Réplicas guardam apenas os metadados.
-- **Operações**, todas dentro do commit do dono (seção 13.3): a entrega **insere**, o `PATCH` **substitui** o prazo, o ack **remove** e o vencimento **remove** (seção 13.6).
-- **Estrutura:** ordenada por prazo com busca por ID, para que o `PATCH` e o ack achem a entrada sem percorrer a lista. Um par de estruturas (ordenada por prazo e por ID) ou uma árvore com índice servem; a escolha é de implementação.
+- **Operações**, todas dentro do commit do dono (seção 13.3): a entrega **insere**, a alteração **substitui** o prazo, o ack **remove** e o vencimento **remove** (seção 13.6).
+- **Estrutura:** ordenada por prazo com busca por ID, para que a alteração e o ack achem a entrada sem percorrer a lista. Um par de estruturas (ordenada por prazo e por ID) ou uma árvore com índice servem; a escolha é de implementação.
 
 Enquanto todas as mensagens invisíveis do dono cabem na lista, ela é a única estrutura necessária. O problema é quando não cabem.
 
@@ -99,7 +99,7 @@ Isso mantém uma **invariante**: **tudo o que está na lista vence antes de tudo
 
 **Recarga.** Quando a lista cai abaixo de um limiar (`delivery.invisible.reload-threshold`) ou esvazia, a thread lê da tabela os pares de menor `invisibleUntil`, move-os para a lista (apagando as linhas lidas) e segue.
 
-**Sem entradas velhas.** Como a tabela é transacional e indexada por `id`, o ack, o `PATCH` e a nova entrega **apagam ou atualizam a linha** na hora, no mesmo commit que atualiza a lista em memória. Não há remoção preguiçosa, nem conferência de linhas velhas na leitura (a conferência de dono da seção 13.6 continua valendo).
+**Sem entradas velhas.** Como a tabela é transacional e indexada por `id`, o ack, a alteração e a nova entrega **apagam ou atualizam a linha** na hora, no mesmo commit que atualiza a lista em memória. Não há remoção preguiçosa, nem conferência de linhas velhas na leitura (a conferência de dono da seção 13.6 continua valendo).
 
 **Durabilidade.** A gravação na tabela faz parte do **commit no dono** (seção 13.3, passo 4): se falhar, o commit não se completa e a entrega é desfeita antes da resposta ao cliente. Como a tabela é derivada dos metadados, perdê-la é coberto pela reconstrução (seção 13.7).
 
@@ -109,7 +109,7 @@ Isso mantém uma **invariante**: **tudo o que está na lista vence antes de tudo
 
 Uma thread do dono (pode ser a mesma da lista de prontos, seção 12.6) cuida do vencimento:
 
-1. Olha a **cabeça** da lista de invisíveis do tópico e dorme até o prazo dela (com um teto curto, para reagir a `PATCH`, entregas e chegadas de entradas mais cedo).
+1. Olha a **cabeça** da lista de invisíveis do tópico e dorme até o prazo dela (com um teto curto, para reagir a alterações, entregas e chegadas de entradas mais cedo).
 2. Quando `invisibleUntil ≤ agora`, **remove** a entrada e **confere** nos metadados: a mensagem ainda existe, o nó ainda é dono, e o prazo ainda é o da entrada. Se não, descarta e segue.
    **Limite de entregas:** se a conferência passa e `deliveryCount ≥ maxDeliveries` do tópico (seção 12.10 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)), a mensagem **não** segue para o passo 3: o dono a manda ao dead-letter da fila e segue. Uma mensagem já vencida pelo `ttl` também é descartada aqui, sem voltar à lista.
    **Fila FIFO:** a mensagem que volta é a cabeça do seu grupo; o grupo deixa de estar ocupado e entra na lista de prontos pela posição do ID, sem a regra do meio da lista abaixo ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.6). Atingido `maxDeliveries`, a mensagem vai ao dead-letter e o grupo segue com a próxima.

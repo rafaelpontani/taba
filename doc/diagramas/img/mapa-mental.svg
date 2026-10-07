@@ -505,8 +505,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="165" y="221" class="t-muted" font-size="9" text-anchor="middle">só o primário, sanfona, 1000 IDs</text>
         </g>
 
-        <g id="node-invis" data-node-id="invis" data-node-label="3. Invisibilidade" tabindex="0" role="button" aria-label="Focus 3. Invisibilidade, ReceiptToken, PATCH, expiração, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="ReceiptToken, PATCH, expiração" data-node-context="Architecture component">
-          <title>3. Invisibilidade · ReceiptToken, PATCH, expiração · Architecture component</title>
+        <g id="node-invis" data-node-id="invis" data-node-label="3. Invisibilidade" tabindex="0" role="button" aria-label="Focus 3. Invisibilidade, ReceiptToken, PUT, expiração, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="ReceiptToken, PUT, expiração" data-node-context="Architecture component">
+          <title>3. Invisibilidade · ReceiptToken, PUT, expiração · Architecture component</title>
           <rect x="40" y="285" width="250" height="64" rx="6" class="c-mask"/>
           <rect x="40" y="285" width="250" height="64" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(46 291) scale(0.6875)">
@@ -514,7 +514,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="165" y="315" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">3. Invisibilidade</text>
-        <text x="165" y="331" class="t-muted" font-size="9" text-anchor="middle">ReceiptToken, PATCH, expiração</text>
+        <text x="165" y="331" class="t-muted" font-size="9" text-anchor="middle">ReceiptToken, PUT, expiração</text>
         </g>
 
         <g id="node-topicos" data-node-id="topicos" data-node-label="4. Tópicos" tabindex="0" role="button" aria-label="Focus 4. Tópicos, fila, FIFO, distribuidor e volátil, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="fila, FIFO, distribuidor e volátil" data-node-context="Architecture component">

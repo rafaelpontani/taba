@@ -146,10 +146,10 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Ack ou PATCH",
+      "title": "Ack ou PUT visibility",
       "items": [
         "Registro + commit no quórum, exigem o receiptToken",
-        "PATCH define o novo prazo a partir de agora; 0 libera"
+        "PUT define o novo prazo a partir de agora; 0 libera"
       ]
     },
     {
@@ -165,7 +165,7 @@
       "title": "Tabela é derivada",
       "items": [
         "A fonte de verdade são os metadados",
-        "Ack, PATCH e entrega atualizam a linha na hora"
+        "Ack, PUT e entrega atualizam a linha na hora"
       ]
     }
   ]

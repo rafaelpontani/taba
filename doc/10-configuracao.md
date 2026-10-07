@@ -114,7 +114,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
 | Invisibilidade padrão | `delivery.visibility-timeout.default` | **120 s** | Tempo em que a mensagem entregue fica invisível a outros consumidores quando o `GET` não informa `visibilityTimeout`. | 12.2 |
-| Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PATCH`. | 12.3 |
+| Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PUT .../visibility`. | 12.3 |
 | Tamanho da lista de prontos | `delivery.ready-list.size` | **1000** | Número de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
 | Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para a tabela de expiração do banco local. | 13.4 |
 | Limiar de recarga da lista de invisíveis | `delivery.invisible.reload-threshold` | A definir | Quando a lista de invisíveis em memória cai abaixo deste tamanho, a thread a recarrega com os próximos a vencer da tabela de expiração. | 13.5 |
@@ -193,7 +193,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Parâmetro | Chave sugerida | Padrão | Descrição |
 |---|---|---|---|
 | Rate limit de publicação | `ratelimit.publish.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST /topics/{topic}/messages`. |
-| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por IP do cliente, para `GET /topics/{topic}/messages`, `PATCH /topics/{topic}/messages/{id}` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
+| Rate limit de consumo | `ratelimit.consume.rps` | A definir | Requisições por segundo, por IP do cliente, para `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
 | Rate limit administrativo | `ratelimit.admin.rps` | A definir | Requisições por segundo, por IP do cliente, para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`. |
 | Rate limit das consultas de operação | `ratelimit.ops.rps` | A definir (sugestão: 2) | Requisições por segundo, por IP, para `/stats/cluster` e `/stats/topics`. `/health/*`, `/metrics` e `/stats/node` são isentos. |
 | Burst | `ratelimit.burst` | A definir | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. |

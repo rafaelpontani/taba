@@ -1,23 +1,258 @@
 # API de operação
 
-[← Índice](README.md) · [Visão geral das APIs](06-api.md)
+[← Índice](README.md) · [Visão geral das APIs](06-api.md) · [Convenções e DTOs padronizados](06d-api-convencoes.md)
 
 ## 8.1.1 API de operação (observabilidade)
 
-> **Porta:** `operations.port` ou, se não for definida, `api.port` ([06-api.md](06-api.md), seção 8.0). **Autenticação:** nenhuma; a proteção é de rede (porta própria, grupo de segurança, `operations.allowed-ips`). Detalhes em [06-api.md](06-api.md), seção 8.0.1.
+Manual das rotas para **operadores, Prometheus e orquestradores**: métricas, estatísticas do nó, do cluster e dos tópicos, saúde e drain. Não são rotas para aplicações clientes. Detalhes, parâmetros e o significado de cada métrica estão em [11-observabilidade.md](11-observabilidade.md).
 
-Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e métricas em [11-observabilidade.md](11-observabilidade.md). As rotas `/node/drain` valem só para o nó que recebe a chamada, por isso o operador as chama no nó, e não pelo balanceador. Opcionalmente podem ser servidas em **porta própria** e/ou restritas a uma **lista de IPs/faixas** (`operations.port`, `operations.allowed-ips`); sem essa configuração, ficam na porta da API de cliente e são tratadas como qualquer outra rota ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)). As rotas que devolvem listas seguem a paginação da seção 8.1.2 ([06a-api-cliente.md](06a-api-cliente.md)).
+> **Porta:** `operations.port` ou, se não for definida, `api.port` ([06-api.md](06-api.md), seção 8.0). **Autenticação:** nenhuma; a proteção é de rede (porta própria, grupo de segurança) e, em complemento, `operations.allowed-ips`, e as rotas devem ficar numa camada de rede segura ([06-api.md](06-api.md), seção 8.0.1). Um IP fora da lista recebe `403` `ops.ip-not-allowed`. Sem `operations.port`, as rotas ficam na porta da API de cliente e, nesse caso, **não usam o token de acesso** ([06a](06a-api-cliente.md), seção 8.1.3).
+>
+> **Formato, cabeçalhos, `ErrorResponse`, `Page<T>`, códigos de status e catálogo de erros:** [06d-api-convencoes.md](06d-api-convencoes.md). As rotas `/node/drain` valem **só para o nó que recebe a chamada**, por isso o operador as chama no nó e não pelo balanceador.
 
-| Verbo | Recurso | Descrição |
+### Resumo das rotas
+
+| Verbo | Recurso | Rate limit | Sucesso |
+|---|---|---|---|
+| `GET` | `/metrics` | isenta | `200` texto Prometheus |
+| `GET` | `/stats/node` | isenta | `200` `NodeStats` |
+| `GET` | `/stats/cluster` | `ratelimit.ops.rps` | `200` `ClusterStats` |
+| `GET` | `/stats/topics` | `ratelimit.ops.rps` | `200` `Page<TopicStats>` (ou `Page<TopicStatsGroup>`) |
+| `GET` | `/stats/topics/{topic}` | `ratelimit.ops.rps` | `200` `TopicStatsDetail` |
+| `GET` | `/stats/topics/{topic}/groups` | `ratelimit.ops.rps` | `200` `Page<GroupStats>` |
+| `POST` | `/node/drain` | admin | `202` `DrainStatus` (ou `200`) |
+| `GET` | `/node/drain` | admin | `200` `DrainStatus` |
+| `DELETE` | `/node/drain` | admin | `200` ou `202` `DrainStatus` |
+| `GET` | `/health/live` | isenta | `200` `HealthResponse` |
+| `GET` | `/health/ready` | isenta | `200` `HealthResponse` |
+
+"Isenta" significa que a rota nunca responde `429`: são leves e chamadas por máquina em intervalo fixo, e um `429` no `/health/ready` faria o balanceador tirar o nó da rotação por engano ([12-limites-api.md](12-limites-api.md)).
+
+## Métricas
+
+### `GET /metrics`: endpoint Prometheus
+
+Devolve as métricas no formato de texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics com `Accept: application/openmetrics-text`). Por padrão traz o **cluster inteiro**, uma série por nó (rótulo `node`); o `/metrics` **só lê uma cópia em memória**, atualizada por uma thread, e responde rápido mesmo com nós lentos ou fora do ar (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). É o **alvo único** de scrape: o balanceador.
+
+**Parâmetros de query:**
+
+| Parâmetro | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `scope` | texto | `cluster` | `cluster` (uma série por nó) ou `node` (só as métricas **deste** nó). |
+
+| Status | Código | Quando |
 |---|---|---|
-| `GET` | `/metrics` | Métricas do cluster inteiro (padrão, uma série por nó) ou só deste nó (`scope=node`), no formato Prometheus. Alvo único de scrape: o balanceador. Lê só uma cópia em memória, atualizada por uma thread (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). |
-| `GET` | `/stats/node` | Métricas do nó que atende a chamada (leitura local), incluindo `mode` e `drainState`. |
-| `POST` | `/node/drain` | Põe **este nó** em modo drain: sai da rotação (`/health/ready` `503`), grava todas as mensagens em disco, repassa as chamadas de cliente ao nó mais livre e **sai do cluster por desregistro voluntário**, sem votação, sem encerrar o processo ([04-cluster.md](04-cluster.md), seção 6.10). Responde `202`, e o andamento fica em `GET /node/drain`. Já em drain, responde `200` sem efeito. |
-| `GET` | `/node/drain` | Estado do drain deste nó: `drainState` (`active`, `draining`, `drained`), início, quem o disparou (`signal` ou `api`) e mensagens ainda em memória. |
-| `DELETE` | `/node/drain` | Antes da saída, cancela o drain (`200`, o nó segue no cluster). Depois da saída (`drained`), o nó **volta como nó novo**, com ID novo e bootstrap completo (`202`). `409` durante o desregistro ou se o processo já está parando por sinal. |
-| `GET` | `/stats/cluster` | Métricas de todos os nós e condição geral do cluster (consulta todos os nós, *best-effort*). |
-| `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`), **sem `sort`**: a ordem é sempre por nome do tópico. Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
-| `GET` | `/stats/topics/{topic}/groups` | Métricas por `groupId` de um tópico com grupos: mensagens (prontas e invisíveis), parcela, mais antiga e taxas, com `groupId`, `top` e `scope` ([11-observabilidade.md](11-observabilidade.md), "Métricas por grupo"). |
-| `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
-| `GET` | `/health/live` | O processo está de pé. |
-| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster e com toda a sincronização concluída: tópicos, blocos e banco de eventos; seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). |
+| `200` | — | Corpo em texto; **não** é JSON. |
+| `400` | `validation.failed` | `scope` desconhecido. |
+| `403` | `ops.ip-not-allowed` | IP fora de `operations.allowed-ips`. |
+| `404` | `route.not-found` | `telemetry.prometheus.enabled` desligado. |
+
+## Estatísticas
+
+### `GET /stats/node`: o nó que atende
+
+Métricas do nó que atende a chamada, em **leitura local**, sem consultar outros nós. Resposta: `200`, `NodeStats`.
+
+### `GET /stats/cluster`: o cluster inteiro
+
+Consulta **todos os nós** (pela rota interna `GET /cluster/stats/node`, [06c](06c-api-cluster.md)) e devolve as métricas de cada um mais um resumo e a condição geral. É *best-effort*: um nó que não responde aparece com `reachable: false` em vez de falhar a chamada inteira. No modo desenvolvimento devolve o mesmo que `/stats/node`, em formato de cluster de um nó só. Resposta: `200`, `ClusterStats`.
+
+### `GET /stats/topics`: métricas de tópicos, paginada
+
+Lista **paginada** ([06a](06a-api-cliente.md), seção 8.1.2) com as métricas de cada tópico. A ordem é **sempre por nome**, e **não há `sort`**: as métricas mudam a todo instante e a paginação por chave não se sustentaria. Para achar os tópicos com problema, use `condition`.
+
+**Parâmetros de query:**
+
+| Parâmetro | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `limit` / `cursor` | — | — | Paginação por cursor. |
+| `scope` | texto | `cluster` | `cluster` (consulta todos os nós e agrega, [11-observabilidade.md](11-observabilidade.md), "Visão do nó e visão do cluster") ou `node` (só os valores deste nó). |
+| `tag.<chave>` | texto | — | Filtra por tag (`tag.time=financeiro`). |
+| `condition` | texto | — | Filtra por condição do tópico (`backlog`, `stalled`...). É o caso de uso principal: "quais tópicos estão com problema?". |
+| `fields` | lista separada por vírgula | todos | Restringe os campos de `TopicStats` devolvidos (`fields=name,depth,oldestAge`). `name` e `id` vêm sempre. |
+| `groupBy` | texto | — | Nome de uma tag (`groupBy=time`). Devolve **uma linha por valor da tag**, em vez de uma por tópico (`TopicStatsGroup`). |
+
+Resposta: `200`, `Page<TopicStats>` (ou `Page<TopicStatsGroup>` com `groupBy`). O resultado fica em cache por `stats.topics.cache-ttl` (a resposta traz `collectedAt`), e o filtro e o `limit` são aplicados **depois** do merge entre nós.
+
+| Status | Código | Quando |
+|---|---|---|
+| `200` | — | — |
+| `400` | `validation.invalid-cursor`, `validation.out-of-range`, `validation.failed`, `validation.unknown-field` | Inclusive `sort`, que a rota não aceita. |
+| `403` / `429` | `ops.ip-not-allowed` / `rate-limit.exceeded` | — |
+
+### `GET /stats/topics/{topic}`: um tópico
+
+Métricas detalhadas e condição de **um** tópico, pedindo aos nós só aquele tópico. Parâmetro: `scope` (`cluster` ou `node`). Resposta: `200`, `TopicStatsDetail`. Erros: `404` `topic.not-found`, `400`, `403`, `429`. Num Tópico Distribuidor, devolve só as métricas do distribuidor (`TopicStats.distributor`); as de fila se aplicam às filas destino ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.7).
+
+### `GET /stats/topics/{topic}/groups`: métricas por grupo
+
+Métricas de **cada `groupId`** de um tópico, para achar o produtor barulhento ([11-observabilidade.md](11-observabilidade.md), "Métricas por grupo"). Cada nó conta só as mensagens de que é dono, então a soma entre nós é exata.
+
+**Parâmetros de query:**
+
+| Parâmetro | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `limit` / `cursor` | — | — | Paginação por cursor, ordenada por `groupId`, **sem `sort`**. |
+| `groupId` | texto | — | Devolve só esse grupo. |
+| `top` | inteiro | — | Os `N` maiores grupos por `messages`, **sem paginação** (resposta sem `nextCursor`). Não combina com `cursor`. |
+| `scope` | texto | `cluster` | `cluster` ou `node`. |
+
+Resposta: `200`, `Page<GroupStats>`. Erros: `404` `topic.not-found`, `400` (`validation.failed` em `top` com `cursor`), `403`, `429`. Um grupo sem mensagens e sem atividade na janela deixa de ser acompanhado e some da resposta.
+
+## Drain
+
+O **modo drain** prepara o nó para sair do cluster: grava todas as mensagens em disco, tira o nó da rotação e o **desregistra por conta própria**, sem votação ([04-cluster.md](04-cluster.md), seção 6.10). Estados (`drainState`): `active` → `draining` → `drained`.
+
+### `POST /node/drain`: iniciar
+
+Põe **este nó** em drain, sem encerrar o processo. O andamento fica em `GET /node/drain`. Já em drain (`draining` ou `drained`), responde `200` sem efeito.
+
+| Status | Código | Quando |
+|---|---|---|
+| `202` | — | Drain iniciado. Corpo `DrainStatus` com `trigger: "api"`. |
+| `200` | — | O nó já estava em drain; nada mudou. |
+| `403` | `ops.ip-not-allowed` | — |
+
+### `GET /node/drain`: consultar
+
+Resposta: `200`, `DrainStatus`.
+
+### `DELETE /node/drain`: cancelar ou voltar
+
+Depende do estado:
+
+| Estado do nó | Efeito | Status |
+|---|---|---|
+| `draining`, **antes** da saída do cluster | Cancela o drain. O nó volta a `active`, a gravar em memória, e continua membro. | `200` `DrainStatus` |
+| `drained`, **depois** da saída | O nó **volta como nó novo**: ID novo, bootstrap completo, nova posição no anel. Antes de limpar o estado local, recupera as mensagens perdidas (seção 6.6 de [04-cluster.md](04-cluster.md)). `drainState` volta a `active`, e o estado do nó passa por `joining` e `syncing`. | `202` `DrainStatus` |
+| `active` | Nada a cancelar. | `200` `DrainStatus` |
+| Durante o desregistro | — | `409` `drain.conflict` (tente de novo quando estiver `drained`) |
+| Processo já parando por sinal | — | `409` `drain.conflict` |
+
+## Saúde
+
+### `GET /health/live`
+
+O processo está de pé e respondendo. Falhou, o orquestrador reinicia o processo. Resposta: `200`, `HealthResponse` com `health: "live"`.
+
+### `GET /health/ready`
+
+O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado) e com **toda a sincronização concluída** (tópicos, tokens, blocos e banco de eventos, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). Em **drain** (`draining` ou `drained`) responde `503`, para o balanceador tirar o nó da rotação. Falhou, o balanceador deve tirar o nó da rotação.
+
+| Status | Corpo | Quando |
+|---|---|---|
+| `200` | `HealthResponse` `{ "health": "ready" }` | Apto. |
+| `503` | `HealthResponse` `{ "health": "not-ready", "reason": "..." }` | Não apto. `reason` diz por quê (abaixo). |
+
+As rotas de saúde **não** devolvem `ErrorResponse`: o corpo é sempre `HealthResponse`, para o orquestrador poder ler o motivo sem tratar erros.
+
+## DTOs da API de operação
+
+### `HealthResponse`
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `health` | texto | `live`, `ready` ou `not-ready`. |
+| `reason` | texto | Só com `not-ready`: `bootstrapping` (ingresso em andamento), `syncing` (sincronização), `returning` (volta pós-exclusão), `draining`, `drained` ou `failed` (disco cheio ou banco corrompido, [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3). |
+
+### `DrainStatus`
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `drainState` | texto | `active`, `draining` ou `drained`. |
+| `trigger` | texto ou `null` | `signal` (`SIGTERM`/`SIGINT`) ou `api`; `null` em `active`. |
+| `startedAt` | data ou `null` | Início do drain; `null` em `active`. |
+| `pendingMessages` | inteiro | Mensagens **ainda em memória**. Chega a 0 quando o nó está `drained`. |
+
+### `NodeStats`
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `nodeId` | texto | ID do nó (GUID v7 gerado a cada início). |
+| `version` | texto | Versão do Taba. |
+| `clusterName` / `environment` | texto | Atributos de recurso, quando configurados. |
+| `mode` | texto | `production` ou `development`. |
+| `state` | texto | `joining`, `active`, `syncing` ou `returning` (`msg.cluster.node.state`). Sempre `active` em desenvolvimento. |
+| `drainState` | texto | `active`, `draining` ou `drained`. |
+| `startedAt` | data | Início do processo. |
+| `collectedAt` | data | Instante da coleta. |
+| `metrics` | objeto | **Todas as métricas de nó** de [11-observabilidade.md](11-observabilidade.md), indexadas pelo nome OpenTelemetry (`msg.storage.memory.used`). Valor numérico para gauge e contador; lista de `{ "attributes": {...}, "value": n }` para métrica com atributos (`msg.api.requests`); `{ "count", "sum", "buckets": [{ "le", "count" }] }` para histograma. |
+
+```json
+{
+  "nodeId": "01927f3a-0001-7000-8000-00000000000a",
+  "version": "0.9.0",
+  "mode": "production",
+  "state": "active",
+  "drainState": "active",
+  "startedAt": "2026-10-06T08:00:00.000Z",
+  "collectedAt": "2026-10-06T12:00:00.000Z",
+  "metrics": {
+    "msg.storage.memory.used": 734003200,
+    "msg.storage.memory.limit": 1073741824,
+    "msg.api.requests": [
+      { "attributes": { "route": "/topics/{topic}/messages", "method": "POST", "status_class": "2xx" }, "value": 120394 }
+    ]
+  }
+}
+```
+
+### `ClusterStats`
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `collectedAt` | data | Instante da coleta. |
+| `partial` | booleano | `true` se algum nó não respondeu. |
+| `worstCondition` | texto | A condição de **maior severidade** (`ok` se nenhuma). |
+| `conditions` | lista de `ConditionEntry` | Todas as condições vigentes ([06d](06d-api-convencoes.md), seção 8.3.7; lista completa em [11-observabilidade.md](11-observabilidade.md), "Condição do cluster"). |
+| `summary` | objeto | `members` (contagem por estado: `active`, `syncing`, `draining`, `suspect`), `membersVersion`, `quorumAvailable` (booleano) e `syncingBlocks`. |
+| `nodes` | lista | Um item por membro: `nodeId`, `reachable` (booleano) e `stats` (`NodeStats`, ou `null` se `reachable` é `false`). |
+
+### `TopicStats`
+
+Os campos de cada grupo de [11-observabilidade.md](11-observabilidade.md), "Métricas por tópico". Os campos de fila **não** aparecem num distribuidor, e o inverso vale para `distributor`.
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `id`, `name`, `type`, `tags`, `createdAt` | — | Identificação. Em fila volátil, também `volatile` e `idleTimeout`. |
+| `published`, `publishedBytes`, `publishErrors` | inteiro | Totais de publicação. |
+| `publishRate` | número | Mensagens publicadas por segundo, na janela `memory.rate.window`. |
+| `publishLatency`, `consumeLatency` | `{ p50, p95, p99 }` | Latências, em segundos. |
+| `consumed`, `acked` | inteiro | Totais de entrega e de confirmação. |
+| `consumeRate`, `ackRate` | número | Por segundo. |
+| `visibleMessages`, `invisibleMessages` | inteiro | Prontas e em processamento. |
+| `depth` | inteiro | `visibleMessages + invisibleMessages`. |
+| `oldestMessageAt` | data | A mensagem mais antiga ainda não confirmada. **Ausente** se o tópico não tem mensagens. |
+| `oldestAge` | número (s) | `agora − oldestMessageAt`. Ausente com `oldestMessageAt`. |
+| `bytes` | inteiro | Volume acumulado. |
+| `memoryMessages`, `diskMessages`, `memoryBytes`, `diskBytes`, `memoryShare` | número | Armazenamento. |
+| `groups`, `noisyShare` | número | Grupos acompanhados e a parcela do maior. |
+| `distributor` | objeto | **Só distribuidor:** `received` (publicações recebidas), `copies` (cópias geradas) e `copyErrors` (cópias que falharam). |
+| `worstCondition` | texto | A condição do tópico de maior severidade (`ok`, `idle`, `backlog`, `stalled`, `noisy-group`, `group-stalled`, `memory-pressure`). |
+| `conditions` | lista de `ConditionEntry` | Todas as condições vigentes. |
+| `partial` | booleano | `true` se algum nó não respondeu: as somas viram **piso**. |
+| `collectedAt` | data | Instante da coleta. |
+
+### `TopicStatsDetail`
+
+`TopicStats` mais `topGroups`: lista de `GroupStats` com os maiores grupos, até `stats.topics.top-groups` (padrão 10). Só em `GET /stats/topics/{topic}`.
+
+### `TopicStatsGroup` (resposta com `groupBy`)
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `tag` | texto | A chave usada em `groupBy`. |
+| `value` | texto | O valor da tag que esta linha representa. |
+| `topics` | inteiro | Quantidade de tópicos nesse valor. |
+| demais campos de `TopicStats` | — | Quantidades **somadas** e datas pelo **menor** valor, como na visão do cluster. |
+
+### `GroupStats`
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `groupId` | texto | O grupo. O contador compartilhado dos grupos acima de `delivery.fair.max-groups` aparece **sem** `groupId` e com `overflow: true`. |
+| `messages`, `visibleMessages`, `invisibleMessages` | inteiro | Não confirmadas, prontas e em processamento. |
+| `share` | número | Parcela do `depth` do tópico. |
+| `band` | inteiro | Faixa de tamanho do grupo ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11). **Só** com `scope=node`. |
+| `oldestMessageAt`, `oldestAge` | data, número | A mais antiga do grupo. |
+| `publishRate`, `consumeRate`, `ackRate` | número | Taxas do grupo, na janela `memory.rate.window`. |

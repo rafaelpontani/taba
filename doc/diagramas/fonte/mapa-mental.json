@@ -54,7 +54,7 @@
       "id": "invis",
       "type": "security",
       "label": "3. Invisibilidade",
-      "sublabel": "ReceiptToken, PATCH, expiração",
+      "sublabel": "ReceiptToken, PUT, expiração",
       "pos": [
         40,
         285

@@ -30,7 +30,7 @@ Garantias da QTF:
   - `deduplicationId` é opcional (mesmos caracteres, 1 a 128). Ausente, vale o hash do conteúdo (seção 16.7). Numa fila que não é FIFO, o parâmetro é recusado com `400`.
   - A resposta traz o `id` da mensagem. Numa publicação **duplicada**, traz o `id` da original e `duplicate: true`.
 - **Consumo:** o `GET` é o mesmo. Cada mensagem volta com `groupId` e `deduplicationId`. `autoCreate=true` aceita `fifo=true` ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.4).
-- **Ack e `PATCH` de invisibilidade:** iguais aos da fila comum.
+- **Ack e alteração da invisibilidade (`PUT .../visibility`):** iguais aos da fila comum.
 
 ### 16.3 Colocação: o grupo decide o bloco
 
@@ -96,7 +96,7 @@ Consequências:
 - **Entrega.** O `GET` (e o `take`, seção 12.8) tira da lista a cabeça mais antiga, com o mesmo registro + commit de invisibilidade da seção 12.2. No commit, o grupo passa a **ocupado** e sai da lista.
 - **Entre grupos livres vale a cabeça mais antiga.** A entrega justa por faixas da seção 12.11 **não vale** na QTF: a justiça entre remetentes vem de cada grupo ocupar no máximo um lugar na entrega. As contagens por grupo continuam existindo para as métricas (`/stats/topics/{topic}/groups`).
 - **`maxMessages`.** Cada mensagem do lote vem de um grupo **diferente**. O lote traz o que estiver pronto, até `maxMessages`. Várias mensagens do mesmo grupo no mesmo `GET` não são suportadas (uma por grupo).
-- **Reentrega.** Vencida a invisibilidade sem ack, a **mesma** mensagem volta como cabeça do grupo, que volta a ser livre (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). O `PATCH` com `visibilityTimeout: 0` faz o mesmo.
+- **Reentrega.** Vencida a invisibilidade sem ack, a **mesma** mensagem volta como cabeça do grupo, que volta a ser livre (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). A alteração com `visibilityTimeout: 0` faz o mesmo.
 - **Ack.** O ack da cabeça libera o grupo, e a mensagem seguinte entra na lista.
 - **Limite de entregas (`maxDeliveries`).** A mensagem que o atinge sem ack vai para o dead-letter e **o grupo segue** com a próxima, como no SQS. Gera o evento `message-dead-lettered`. Quando o grupo segue, a ordem do grupo é mantida para as mensagens restantes; a que saiu fica de fora.
 - **Expiração (`ttl`).** Uma mensagem vencida por `ttl` é descartada onde estiver, e se era a cabeça, o grupo é **liberado** e segue com a próxima.
@@ -117,7 +117,7 @@ A QTF não duplica publicações repetidas dentro de uma **janela** (`fifo.dedup
 - O ack grava o metadado `deleteAt` (data absoluta, `instante do ID + fifo.dedup.window`) e apaga só o **corpo** (`${topico}/${id}.json` e a cópia em memória) e os metadados de entrega (`invisibleUntil`, `receiptToken`, `deliveryCount`). Fica a linha curta: `id`, posição no anel, `grupo`, `deduplicationId` e `deleteAt`. Se `deleteAt` já passou no ack, a linha é apagada na hora, como no ack comum. O mesmo vale para a mensagem que vai ao dead-letter.
 - **Existe em todos os nós.** A linha é replicada pelos mesmos caminhos da mensagem: o `deduplicationId` no registro + commit da publicação, e o `deleteAt` no registro + commit do ack, decididos por quórum. Com o secundário sempre no quórum (seção 16.5), um novo primário por falha **herda a deduplicação sem perda**.
 - **Varredura.** Cada nó apaga as linhas vencidas pelo índice de `deleteAt`, a cada `retention.sweep.interval`, sem propagar nada, como no `ttl` (seção 12.10).
-- **Quem ignora a linha com `deleteAt`:** a lista de prontos, os contadores de fila e de grupo, `depth`, o `ttl`, o `MIN(id)` de `oldestMessageAt`, a reposição, o `GET`, o `PATCH` e um segundo ack (que respondem como mensagem inexistente). Só a checagem de deduplicação e a varredura a enxergam.
+- **Quem ignora a linha com `deleteAt`:** a lista de prontos, os contadores de fila e de grupo, `depth`, o `ttl`, o `MIN(id)` de `oldestMessageAt`, a reposição, o `GET`, a alteração da invisibilidade e um segundo ack (que respondem como mensagem inexistente). Só a checagem de deduplicação e a varredura a enxergam.
 - **Exceção ao "sem tombstone"** (seção 12.4 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)): é um registro com prazo, só na QTF. A fila comum continua apagando no ack.
 - **Sincronização.** Como é uma linha comum, a listagem de IDs (`/cluster/blocks/{id}/ids`) e o stream de mensagens (`/cluster/blocks/{id}/messages`) a incluem, sem corpo e com `deleteAt`, e o banco de eventos grava o `deleteAt` de forma idempotente (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). Não há rota nova.
 

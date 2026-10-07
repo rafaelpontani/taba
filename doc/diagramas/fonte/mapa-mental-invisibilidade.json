@@ -38,7 +38,7 @@
     {
       "id": "invisibilidade-d0-1",
       "type": "security",
-      "label": "PATCH",
+      "label": "PUT /visibility",
       "sublabel": "decisão 3.1.2",
       "pos": [
         450,
@@ -108,7 +108,7 @@
     {
       "id": "invisibilidade-d1-1",
       "type": "security",
-      "label": "Exigido no ack e no PATCH",
+      "label": "Exigido no ack e no PUT",
       "sublabel": "decisão 3.2.2",
       "pos": [
         450,

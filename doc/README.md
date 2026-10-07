@@ -18,7 +18,8 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [06-api.md](06-api.md) | 8, 8.0 | Visão geral das três APIs: as portas (cliente, cluster e operação) e a segurança da porta do cluster (certificados, rotação, exemplo com Docker). |
 | [06a-api-cliente.md](06a-api-cliente.md) | 8.1, 8.1.2, 8.1.3 | API de cliente: tópicos, mensagens, tags, paginação e autenticação por token. |
 | [06b-api-operacao.md](06b-api-operacao.md) | 8.1.1 | API de operação: métricas, estatísticas, saúde e drain. |
-| [06c-api-cluster.md](06c-api-cluster.md) | 8.2, 8.2.1 | API do cluster: rotas entre nós e streams NDJSON de sincronização. |
+| [06c-api-cluster.md](06c-api-cluster.md) | 8.2, 8.2.1 | API do cluster: rotas entre nós, DTOs e streams NDJSON de sincronização. |
+| [06d-api-convencoes.md](06d-api-convencoes.md) | 8.3 | Convenções comuns às três APIs: formato, cabeçalhos, DTO de erro, envelope de paginação, códigos de status e catálogo de códigos de erro. |
 | [07-principios-design.md](07-principios-design.md) | 9 | Princípios de design. |
 | [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md) | 10.1 | Decisões já tomadas, por tema, com o código da dúvida e onde estão registradas. |
 | [08b-pendencias.md](08b-pendencias.md) | 10.2 | Pendências em aberto. |

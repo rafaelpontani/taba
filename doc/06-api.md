@@ -13,6 +13,9 @@ O Taba expõe **três APIs HTTP**, cada uma em sua porta e para um público. Cad
 | **API de cliente** | [06a-api-cliente.md](06a-api-cliente.md) | 8.1 (tópicos, mensagens, tokens), 8.1.2 (paginação), 8.1.3 (autenticação por token) | `api.port` | Aplicações |
 | **API de operação** | [06b-api-operacao.md](06b-api-operacao.md) | 8.1.1 (métricas, estatísticas, saúde, drain) | `operations.port`, ou `api.port` | Operadores, Prometheus, orquestrador |
 | **API do cluster** | [06c-api-cluster.md](06c-api-cluster.md) | 8.2 (rotas entre nós), 8.2.1 (streams NDJSON) | `cluster.port` | Os outros nós |
+| **Convenções e DTOs padronizados** | [06d-api-convencoes.md](06d-api-convencoes.md) | 8.3 (formato, cabeçalhos, `ErrorResponse`, `Page<T>`, códigos de status e de erro) | — | Vale para as três APIs |
+
+Cada arquivo é um **manual**: para cada rota traz a permissão, os parâmetros, o DTO de entrada, o DTO de saída, os códigos de status com o código de erro de cada um, e um exemplo. Os códigos de status são os do **HTTP**: nenhum DTO os repete no corpo.
 
 ### 8.0 Portas: cliente, cluster e operação
 

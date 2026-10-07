@@ -276,7 +276,7 @@ Parâmetros: `limit` e `cursor` (paginação por cursor, ordenada por `groupId`,
 
 ### Condição do tópico
 
-Também uma **lista de condições**, com o campo `status` sendo a de maior severidade. Limites configuráveis ([10-configuracao.md](10-configuracao.md#observabilidade)):
+Também uma **lista de condições**, com o campo `worstCondition` (na API, [06b-api-operacao.md](06b-api-operacao.md)) sendo a de maior severidade. Limites configuráveis ([10-configuracao.md](10-configuracao.md#observabilidade)):
 
 | Condição | Severidade | Quando |
 |---|---|---|

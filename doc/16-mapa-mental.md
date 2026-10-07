@@ -125,12 +125,12 @@ A mensagem entregue fica invisível por um prazo; o `ReceiptToken` evita confirm
 | `3.1` | Prazo (tema) | [14-invisibilidade.md](14-invisibilidade.md), seções 13.2 e 13.3 |
 | `3.1.1` | invisibleUntil absoluto (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.1.1.1` | calculado pelo dono (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.3 |
-| `3.1.2` | PATCH (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.3 |
+| `3.1.2` | PUT /visibility (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.3 |
 | `3.1.2.1` | novo tempo a partir de agora; 0 libera (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.3; [06a-api-cliente.md](06a-api-cliente.md), seção 8.1 |
 | `3.2` | ReceiptToken (tema) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.2.1` | Gerado a cada entrega (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.2.1.1` | guardado com a invisibilidade (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
-| `3.2.2` | Exigido no ack e no PATCH (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.4 e 12.3 |
+| `3.2.2` | Exigido no ack e no PUT (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.4 e 12.3 |
 | `3.2.2.1` | token velho recebe 409 (detalhe) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1 |
 | `3.3` | Expiração (tema) | [14-invisibilidade.md](14-invisibilidade.md), seções 13.4, 13.5 e 13.6 |
 | `3.3.1` | Lista de invisíveis (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.4 |

@@ -52,7 +52,7 @@ Exemplo de resposta de `POST /topics/pedidos-dist/messages` com dois destinos:
   "matched": 2,
   "deliveries": [
     { "topic": "pedidos-eu", "id": "01927f3a-..." },
-    { "topic": "pedidos-us", "error": "quorum-not-reached" }
+    { "topic": "pedidos-us", "error": { "code": "cluster.quorum-unavailable", "message": "Quórum de escrita indisponível." } }
   ]
 }
 ```
