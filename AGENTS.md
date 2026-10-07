@@ -2,6 +2,12 @@
 
 Repositório de documentação (em português) do Sistema de Mensagens. Não há código de aplicação ainda: o conteúdo está em `doc/`, começando por [doc/README.md](doc/README.md).
 
+## Decisões e pendências
+
+- [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) guarda **tudo o que já foi decidido**; [doc/08b-pendencias.md](doc/08b-pendencias.md) guarda **só o que continua em aberto**. Nunca deixe em `08b` uma anotação do que já está definido: ela vai para `08a`, em linha própria, com o código da dúvida e o link para onde a definição está.
+- Dúvida parcialmente resolvida: a parte decidida entra em `08a` (com o mesmo código, ex.: D13.1), e `08b` mantém só as perguntas que faltam, cada uma com seu sub-código.
+- Ao fechar uma pendência: registre a decisão no documento técnico, o valor padrão em [doc/10-configuracao.md](doc/10-configuracao.md), a linha em `08a`, e **apague** a entrada de `08b` e a referência em [doc/08c-proximos-passos.md](doc/08c-proximos-passos.md). Os códigos não são reaproveitados.
+
 ## Diagramas
 
 Os diagramas são gerados com o [Archify](https://github.com/tt-a1i/archify) a partir de JSON. **A fonte da verdade é o JSON**; o SVG e o HTML são saídas geradas.

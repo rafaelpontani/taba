@@ -12,7 +12,7 @@ Legenda:
 
 - **D10, D13…** — código da dúvida, para responder por número (ex.: "D10: Rust"). Uma dúvida com mais de uma pergunta em aberto é dividida em **sub-códigos** (**D13.1**, **D13.2**…), que podem ser respondidos separadamente. Os códigos e sub-códigos não são reaproveitados.
 - `[ ]` — em aberto, sem proposta.
-- `[~]` — parcialmente resolvida: o texto diz **o que já está definido**, e cada pergunta que falta tem seu sub-código.
+- `[~]` — parcialmente resolvida: o texto traz **só as perguntas que faltam**, cada uma com seu sub-código. A parte já decidida vai para [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md), nunca fica aqui.
 
 - **D10.** [ ] **Linguagem e runtime.** Preferência pessoal avançada em C#, porém Rust parece mais adequado aos requisitos de performance, baixo overhead e concorrência. Precisa estar decidida antes de escrever código; também define o que `msg.node.threads` mede.
 
