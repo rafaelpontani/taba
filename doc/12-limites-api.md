@@ -4,7 +4,7 @@
 
 > Valores dos parâmetros e padrões: [10-configuracao.md](10-configuracao.md#rate-limits) e [10-configuracao.md](10-configuracao.md#limites-fixos-da-api).
 
-Dois tipos de limite na API de cliente ([06-api.md](06-api.md)): os **limites fixos** de validação (não configuráveis) e os **rate limits** (limites de taxa, configuráveis).
+Dois tipos de limite na API de cliente ([06a-api-cliente.md](06a-api-cliente.md)): os **limites fixos** de validação (não configuráveis) e os **rate limits** (limites de taxa, configuráveis).
 
 ## Limites fixos (validação)
 
@@ -21,7 +21,7 @@ Regras de formato, aplicadas na criação/alteração de recursos, sem relação
 - **`groupId` na fila FIFO**: obrigatório; ausente, `400` ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.2).
 - **`deduplicationId`** (só em fila FIFO): de 1 a 128 caracteres, `A-Za-z0-9_-.:`; fora disso, ou numa fila que não é FIFO, `400` (seção 16.2).
 - **Fila FIFO e fator de replicação**: criar uma fila FIFO com `replication.factor` abaixo de 2 é recusado com `422` (seção 16.2).
-- **Token de acesso** ([06-api.md](06-api.md), seção 8.1.3): `name` de 1 a 100 caracteres (`A-Za-z0-9_-.:`); `permissions` com ao menos uma de `publish`, `consume`, `create` e `admin`; até 20 `topicPrefixes` de 1 a 100 caracteres (`A-Za-z0-9_-`); `expiresAt` no futuro. Fora disso, `400`.
+- **Token de acesso** ([06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3): `name` de 1 a 100 caracteres (`A-Za-z0-9_-.:`); `permissions` com ao menos uma de `publish`, `consume`, `create` e `admin`; até 20 `topicPrefixes` de 1 a 100 caracteres (`A-Za-z0-9_-`); `expiresAt` no futuro. Fora disso, `400`.
 - **Long polling** (`waitTime` no `GET /topics/{topic}/messages`): de 0 a 20 segundos, padrão 0 (responde na hora). Valor fora da faixa é rejeitado com `400`. Ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
 ## Limites configuráveis, sem teto por padrão
@@ -47,7 +47,7 @@ Cada limite é do tipo taxa + estouro (`ratelimit.burst`, ex.: token bucket), pa
 
 **Resposta ao exceder o limite:** `429 Too Many Requests` com cabeçalho `Retry-After`.
 
-**Identificação do cliente:** a autenticação por token é opcional ([06-api.md](06-api.md), seção 8.1.3) e, por ora, **não muda a identificação**: o rate limit é **por IP do cliente** (contar por token é a pendência D65 de [08b-pendencias.md](08b-pendencias.md)), contado **localmente em cada nó**, sem compartilhar contadores entre nós (um cliente que se espalha por N nós pode chegar a N vezes o limite, o que é aceito). Para nós atrás de balanceador, o IP do cliente pode vir de **cabeçalhos HTTP**:
+**Identificação do cliente:** a autenticação por token é opcional ([06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3) e, por ora, **não muda a identificação**: o rate limit é **por IP do cliente** (contar por token é a pendência D65 de [08b-pendencias.md](08b-pendencias.md)), contado **localmente em cada nó**, sem compartilhar contadores entre nós (um cliente que se espalha por N nós pode chegar a N vezes o limite, o que é aceito). Para nós atrás de balanceador, o IP do cliente pode vir de **cabeçalhos HTTP**:
 
 - `client-ip.headers.enabled` (bool, padrão `true`): liga ou desliga o uso dos cabeçalhos. Desligado, vale sempre o endereço da conexão.
 - `client-ip.headers` (lista, padrão `X-Forwarded-For`): cabeçalhos consultados, em ordem; vale o primeiro presente. Em listas separadas por vírgula (`X-Forwarded-For: cliente, proxy1`), vale o **primeiro** endereço, o do cliente original. Cabeçalho ausente ou com endereço inválido: cai no endereço da conexão.

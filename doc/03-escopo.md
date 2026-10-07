@@ -11,7 +11,7 @@
 - Enviar mensagem para um tópico (`POST`).
 - Receber mensagens de um tópico (`GET`).
 - Confirmar o consumo de uma mensagem (ack).
-- **Autenticação por token** (opcional: liga sozinha quando há um token raiz): tokens de acesso criados e revogados por API, com as permissões `publish`, `consume`, `create` e `admin` e prefixos de tópico, replicados em todos os nós — ver [06-api.md](06-api.md), seção 8.1.3.
+- **Autenticação por token** (opcional: liga sozinha quando há um token raiz): tokens de acesso criados e revogados por API, com as permissões `publish`, `consume`, `create` e `admin` e prefixos de tópico, replicados em todos os nós — ver [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3.
 - Controle de entrega por **invisibilidade temporária** (padrão 120 s, ajustável no `GET` e depois via `PATCH`), com contador de entregas e reentrega se não houver ack, e **long polling** de até 20 s, com aviso entre nós por canal permanente — ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 ### 4.2 Armazenamento e durabilidade
 - Recebimento inicial da mensagem em memória, com **espaço configurável** e **overflow para disco** (`${topico}/${id}.json`) quando o limite é atingido — ver seção 3.2.

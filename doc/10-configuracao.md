@@ -205,7 +205,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 
 ## Limites fixos da API
 
-Não são configuráveis; são regras de validação da API de cliente ([06-api.md](06-api.md)).
+Não são configuráveis; são regras de validação da API de cliente ([06a-api-cliente.md](06a-api-cliente.md)).
 
 | Limite | Valor |
 |---|---|

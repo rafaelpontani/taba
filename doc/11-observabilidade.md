@@ -29,7 +29,7 @@ A telemetria se divide em **dois níveis**, tratados de forma diferente:
 
 ## Tags de tópico como atributos
 
-Cada tópico pode ter **tags**: pares chave/valor definidos na criação (`POST /topics`) e alterados depois via `PATCH /topics/{topic}` (ver [06-api.md](06-api.md)).
+Cada tópico pode ter **tags**: pares chave/valor definidos na criação (`POST /topics`) e alterados depois via `PATCH /topics/{topic}` (ver [06a-api-cliente.md](06a-api-cliente.md)).
 
 - Nos **traces e logs** das operações daquele tópico (publicação, consumo, ack), as tags são enviadas como **atributos**. Traces e logs são eventos, não séries: não sofrem o mesmo problema de cardinalidade.
 - Nas **métricas**, as tags só aparecem nas **métricas de tópico** e conforme a configuração de exportação (seção [Exportação das métricas de tópico](#exportação-das-métricas-de-tópico-otlp-e-prometheus)). As métricas de **nó nunca carregam tags nem o nome do tópico**.
@@ -81,7 +81,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.api.in_flight` | gauge | {request} | `route` | Requisições em andamento. |
 | `msg.api.request.size` / `msg.api.response.size` | histogram | By | `route` | Tamanho de corpo de requisição/resposta. |
 | `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`) | Requisições rejeitadas com `429` ([12-limites-api.md](12-limites-api.md)). |
-| `msg.auth.requests` | counter | {request} | `outcome` (`ok`/`unauthorized`/`forbidden`) | Autenticação por token ([06-api.md](06-api.md), seção 8.1.3): requisições aceitas, recusadas com `401` e recusadas com `403`. Só existe com a autenticação ligada. O `id` do token é atributo de trace e de log, nunca de métrica. |
+| `msg.auth.requests` | counter | {request} | `outcome` (`ok`/`unauthorized`/`forbidden`) | Autenticação por token ([06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3): requisições aceitas, recusadas com `401` e recusadas com `403`. Só existe com a autenticação ligada. O `id` do token é atributo de trace e de log, nunca de métrica. |
 | `msg.auth.tokens` | gauge | {token} | — | Tokens de acesso que este nó conhece (devem ser iguais em todos os nós). |
 
 ### API interna (cluster)
@@ -170,7 +170,7 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.sync.log.events` | gauge | {event} | — | Eventos no banco de eventos (`sync.db`) ainda por processar durante a sincronização. |
 | `msg.sync.log.bytes` | gauge | By | — | Tamanho do banco de eventos em disco. |
 | `msg.sync.phase` | gauge | 1 | `phase` (`topicos`/`blocos`/`replay`/`verificacao`/`pronto`) | Fase atual da sincronização do nó. |
-| `msg.sync.streams` | counter | {stream} | `kind` (`topics`/`ids`/`messages`/`recover`), `direction` (`sent`/`received`), `outcome` (`complete`/`truncated`/`error`) | Streams NDJSON de sincronização e recuperação (seção 8.2.1 de [06-api.md](06-api.md)); `truncated` é o que fechou sem a linha final. |
+| `msg.sync.streams` | counter | {stream} | `kind` (`topics`/`ids`/`messages`/`recover`), `direction` (`sent`/`received`), `outcome` (`complete`/`truncated`/`error`) | Streams NDJSON de sincronização e recuperação (seção 8.2.1 de [06c-api-cluster.md](06c-api-cluster.md)); `truncated` é o que fechou sem a linha final. |
 | `msg.sync.stream.resumes` | counter | {resume} | `kind` | Retomadas depois de um corte (não conta a paginação normal por `hasMore`). |
 | `msg.sync.stream.duration` | histogram | s | `kind` | Duração de cada stream. |
 | `msg.sync.stream.bytes` | counter | By | `kind`, `direction` | Volume trafegado nos streams. |
@@ -436,7 +436,7 @@ Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id
 | Teto de commit esgotado numa réplica fora do quórum, sem rollback — retry continua em segundo plano | `warn` | Escrita (seção 7.2) |
 | Canal com um nó caiu, reconectou ou esgotou as tentativas; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
 | Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
-| Token criado, alterado ou revogado (com o `id`, nunca o segredo) | `info` | API de cliente (seção 8.1.3 de [06-api.md](06-api.md)) |
+| Token criado, alterado ou revogado (com o `id`, nunca o segredo) | `info` | API de cliente (seção 8.1.3 de [06a-api-cliente.md](06a-api-cliente.md)) |
 | Chamada recusada por falta ou excesso de permissão (`401`/`403`), com o `id` do token quando houver; em volume, amostrada | `warn` / `debug` | API de cliente (seção 8.1.3) |
 | Drain iniciado (por sinal ou API), concluído, cancelado, ou nó que volta do drain como novo | `info` | Cluster (seção 6.10) |
 | Partida em modo desenvolvimento: retomada do disco (e se havia save concluído) ou limpeza de `storage.dir` | `info` / `warn` | Cluster (seção 6.10) |

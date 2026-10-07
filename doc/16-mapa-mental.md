@@ -33,7 +33,7 @@ Taba é uma mensageria distribuída de **nós idênticos, sem mestre**, inspirad
 | 5 | [Cluster e membros](#5-cluster-e-membros) | [04-cluster.md](04-cluster.md), seção 6 |
 | 6 | [Sincronização](#6-sincronização) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3; [04-cluster.md](04-cluster.md), seção 6.6 |
 | 7 | [Armazenamento](#7-armazenamento) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
-| 8 | [API e observabilidade](#8-api-e-observabilidade) | [06-api.md](06-api.md); [11-observabilidade.md](11-observabilidade.md); [12-limites-api.md](12-limites-api.md) |
+| 8 | [API e observabilidade](#8-api-e-observabilidade) | [06-api.md](06-api.md), [06a-api-cliente.md](06a-api-cliente.md), [06b-api-operacao.md](06b-api-operacao.md), [06c-api-cluster.md](06c-api-cluster.md); [11-observabilidade.md](11-observabilidade.md); [12-limites-api.md](12-limites-api.md) |
 
 ### 1. Escrita e quórum
 
@@ -79,7 +79,7 @@ Só o primário entrega; a lista de prontos fica em memória e o coordenador com
 | `2.1.1` | Só o primário (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.7 |
 | `2.1.1.1` | demais nós: cópias de segurança (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.7 |
 | `2.1.2` | Coordenador do GET (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.2 e 12.8 |
-| `2.1.2.1` | completa com outros nós (take) (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8; [06-api.md](06-api.md), seção 8.2 |
+| `2.1.2.1` | completa com outros nós (take) (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8; [06c-api-cluster.md](06c-api-cluster.md), seção 8.2 |
 | `2.2` | Lista de prontos (tema) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.6 |
 | `2.2.1` | Em memória, por tópico (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.6 |
 | `2.2.1.1` | 1000 IDs (ready-list.size) (detalhe) | [10-configuracao.md](10-configuracao.md) |
@@ -102,7 +102,7 @@ Só o primário entrega; a lista de prontos fica em memória e o coordenador com
 | `2.4.3` | Dead-letter por fila (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10 |
 | `2.4.3.1` | sufixo -dead-letter, só leitura (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10; [10-configuracao.md](10-configuracao.md) |
 | `2.5` | Entrega justa por grupos (tema) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
-| `2.5.1` | Grupo da mensagem (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11; [06-api.md](06-api.md), seção 8.1 |
+| `2.5.1` | Grupo da mensagem (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11; [06a-api-cliente.md](06a-api-cliente.md), seção 8.1 |
 | `2.5.1.1` | groupId, até 128 caracteres (detalhe) | [12-limites-api.md](12-limites-api.md) |
 | `2.5.2` | Contagem por nó (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
 | `2.5.2.1` | prontas + em processamento, peso 0,1 (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.7 e 12.11 |
@@ -126,12 +126,12 @@ A mensagem entregue fica invisível por um prazo; o `ReceiptToken` evita confirm
 | `3.1.1` | invisibleUntil absoluto (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.1.1.1` | calculado pelo dono (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.3 |
 | `3.1.2` | PATCH (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.3 |
-| `3.1.2.1` | novo tempo a partir de agora; 0 libera (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.3; [06-api.md](06-api.md), seção 8.1 |
+| `3.1.2.1` | novo tempo a partir de agora; 0 libera (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.3; [06a-api-cliente.md](06a-api-cliente.md), seção 8.1 |
 | `3.2` | ReceiptToken (tema) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.2.1` | Gerado a cada entrega (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.2.1.1` | guardado com a invisibilidade (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.2 |
 | `3.2.2` | Exigido no ack e no PATCH (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.4 e 12.3 |
-| `3.2.2.1` | token velho recebe 409 (detalhe) | [06-api.md](06-api.md), seção 8.1 |
+| `3.2.2.1` | token velho recebe 409 (detalhe) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1 |
 | `3.3` | Expiração (tema) | [14-invisibilidade.md](14-invisibilidade.md), seções 13.4, 13.5 e 13.6 |
 | `3.3.1` | Lista de invisíveis (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.4 |
 | `3.3.1.1` | em memória (invisible-list.size) (detalhe) | [10-configuracao.md](10-configuracao.md) |
@@ -166,7 +166,7 @@ Fila, fila FIFO (ordem por grupo, atrelado a um primário, com deduplicação), 
 | `4.3` | Limites (tema) | [12-limites-api.md](12-limites-api.md) |
 | `4.3.1` | Destinos por publicação (decisão) | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2; [10-configuracao.md](10-configuracao.md) |
 | `4.3.1.1` | sem limite por padrão; 422 (detalhe) | [12-limites-api.md](12-limites-api.md) |
-| `4.3.2` | Nome do tópico (decisão) | [06-api.md](06-api.md), seção 8.1; [12-limites-api.md](12-limites-api.md) |
+| `4.3.2` | Nome do tópico (decisão) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1; [12-limites-api.md](12-limites-api.md) |
 | `4.3.2.1` | 1 a 100, A-Za-z0-9_- (detalhe) | [12-limites-api.md](12-limites-api.md) |
 | `4.4` | Fila FIFO (tema) | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16 |
 | `4.4.1` | Grupo atrelado a um primário (decisão) | [17-topicos-fifo.md](17-topicos-fifo.md), seções 16.3 e 16.4 |
@@ -210,10 +210,10 @@ Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão
 | `5.4.1` | Tudo em disco (decisão) | [04-cluster.md](04-cluster.md), seção 6.10; [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | `5.4.1.1` | limite de memória a zero (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10 |
 | `5.4.2` | Saída voluntária (decisão) | [04-cluster.md](04-cluster.md), seções 6.10 e 6.3 |
-| `5.4.2.1` | desregistro sem votação (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10; [06-api.md](06-api.md), seção 8.2 |
+| `5.4.2.1` | desregistro sem votação (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10; [06c-api-cluster.md](06c-api-cluster.md), seção 8.2 |
 | `5.4.3` | Repasse de chamadas (decisão) | [04-cluster.md](04-cluster.md), seções 6.9 e 6.10 |
 | `5.4.3.1` | ao nó mais livre (detalhe) | [04-cluster.md](04-cluster.md), seção 6.9 |
-| `5.4.4` | Volta como nó novo (decisão) | [04-cluster.md](04-cluster.md), seção 6.10; [06-api.md](06-api.md), seção 8.1.1 |
+| `5.4.4` | Volta como nó novo (decisão) | [04-cluster.md](04-cluster.md), seção 6.10; [06b-api-operacao.md](06b-api-operacao.md), seção 8.1.1 |
 | `5.4.4.1` | ID novo, bootstrap completo (detalhe) | [04-cluster.md](04-cluster.md), seção 6.10 |
 | `5.5` | Modo desenvolvimento (tema) | [04-cluster.md](04-cluster.md), seção 6.4 |
 | `5.5.1` | Nó único (decisão) | [04-cluster.md](04-cluster.md), seção 6.4 |
@@ -238,7 +238,7 @@ Carga direta no armazenamento, banco de eventos por cima, e recuperação de men
 | `6.1.1` | Tópicos primeiro (decisão) | [02-arquitetura.md](02-arquitetura.md), seção 3.3 |
 | `6.1.1.1` | origem: nó de menor carga (detalhe) | [02-arquitetura.md](02-arquitetura.md), seção 3.3 |
 | `6.1.2` | Blocos por faixas (decisão) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
-| `6.1.2.1` | streams NDJSON retomáveis (detalhe) | [06-api.md](06-api.md), seção 8.2.1 |
+| `6.1.2.1` | streams NDJSON retomáveis (detalhe) | [06c-api-cluster.md](06c-api-cluster.md), seção 8.2.1 |
 | `6.2` | Eventos (tema) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
 | `6.2.1` | Banco de eventos SQLite (decisão) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
 | `6.2.1.1` | lê a mais antiga e apaga (detalhe) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
@@ -249,8 +249,8 @@ Carga direta no armazenamento, banco de eventos por cima, e recuperação de men
 | `6.3.1.1` | tópico e ID, com validade (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `6.3.2` | Nó que volta recupera (decisão) | [04-cluster.md](04-cluster.md), seção 6.6 |
 | `6.3.2.1` | quarentena até terminar (detalhe) | [04-cluster.md](04-cluster.md), seção 6.6 |
-| `6.3.3` | Recover (decisão) | [06-api.md](06-api.md), seção 8.2 |
-| `6.3.3.1` | grava direto, idempotente por ID (detalhe) | [06-api.md](06-api.md), seção 8.2.1; [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md) |
+| `6.3.3` | Recover (decisão) | [06c-api-cluster.md](06c-api-cluster.md), seção 8.2 |
+| `6.3.3.1` | grava direto, idempotente por ID (detalhe) | [06c-api-cluster.md](06c-api-cluster.md), seção 8.2.1; [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md) |
 
 ### 7. Armazenamento
 
@@ -291,10 +291,10 @@ API HTTP com paginação por chave e rate limit por IP; métricas em memória e 
 
 | Nº | Item | Definição |
 |---|---|---|
-| `8` | **API e observabilidade** (área) | [06-api.md](06-api.md); [11-observabilidade.md](11-observabilidade.md); [12-limites-api.md](12-limites-api.md) |
-| `8.1` | API de cliente (tema) | [06-api.md](06-api.md), seção 8.1; [12-limites-api.md](12-limites-api.md) |
-| `8.1.1` | Paginação por chave (decisão) | [06-api.md](06-api.md), seção 8.1.2 |
-| `8.1.1.1` | limit, cursor e sort (detalhe) | [06-api.md](06-api.md), seção 8.1.2 |
+| `8` | **API e observabilidade** (área) | [06-api.md](06-api.md), [06a-api-cliente.md](06a-api-cliente.md), [06b-api-operacao.md](06b-api-operacao.md), [06c-api-cluster.md](06c-api-cluster.md); [11-observabilidade.md](11-observabilidade.md); [12-limites-api.md](12-limites-api.md) |
+| `8.1` | API de cliente (tema) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1; [12-limites-api.md](12-limites-api.md) |
+| `8.1.1` | Paginação por chave (decisão) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.2 |
+| `8.1.1.1` | limit, cursor e sort (detalhe) | [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.2 |
 | `8.1.2` | Mensagem máxima (decisão) | [12-limites-api.md](12-limites-api.md); [10-configuracao.md](10-configuracao.md) |
 | `8.1.2.1` | 5 MB; limite rígido (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `8.1.3` | Rate limit por IP (decisão) | [12-limites-api.md](12-limites-api.md) |
