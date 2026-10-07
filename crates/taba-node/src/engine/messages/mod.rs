@@ -1,16 +1,24 @@
-//! Publicar e consumir mensagens (doc 06a, "Mensagens"; doc 13). Por enquanto as
-//! mensagens vivem só em memória, numa fila ordenada por `id` (que é o instante da
-//! publicação) por tópico; o disco e o SQLite entram depois (doc 02, seção 3.2).
+//! Publicar e consumir mensagens (doc 06a, "Mensagens"; doc 13).
 //!
-//! Entrega: `GET` pega as mensagens prontas em ordem de `id`, incrementa o
+//! **Onde a mensagem mora.** Em memória, enquanto couber em `memory.limit`; o que passa do
+//! limite (ou chega durante o drain) vai para o disco: o corpo em `${topico}/${id}.body` e o
+//! resto numa linha do banco do tópico (doc 02, seção 3.2, `storage::messages`). Cada
+//! mensagem está em **um só** lugar, e as operações (entrega, ack, invisibilidade, `ttl`,
+//! dead-letter) funcionam igual nos dois: a entrega junta as duas origens em ordem de `id`.
+//!
+//! **Entrega.** O `GET` pega as mensagens prontas em ordem de `id`, incrementa o
 //! `deliveryCount`, troca o `receiptToken` e as deixa invisíveis por `visibilityTimeout`.
-//! Passado o prazo a mensagem volta a ser entregável, e é por isso que ela não some se
-//! ninguém a confirmar (*at-least-once*). O ack e o `PUT visibility` conferem o `receiptToken`
-//! da última entrega. O `ttl` e o `maxDeliveries` (com a dead-letter) são aplicados por `settle`,
-//! antes de cada operação e pela varredura de fundo. Ainda não há ordem FIFO, deduplicação,
-//! nem a lista de prontos: cada `GET` varre a fila.
+//! Passado o prazo a mensagem volta a ser entregável (*at-least-once*). O ack e o `PUT
+//! visibility` conferem o `receiptToken` da última entrega. O `ttl` e o `maxDeliveries` (com
+//! a dead-letter) são aplicados por `settle`, antes de cada operação e pela varredura de fundo.
+//!
+//! Ainda não há ordem FIFO, deduplicação, lista de prontos nem de invisíveis: as mensagens em
+//! memória são varridas a cada operação, e as em disco são achadas pelos índices do banco.
+//! Os métodos são síncronos e bloqueiam no disco: quem chama de código assíncrono usa
+//! `spawn_blocking`.
 
 use std::collections::{BTreeMap, HashMap};
+use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -23,6 +31,7 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::core::id::IdGenerator;
 use crate::core::validation;
 use crate::engine::topics::{TopicView, Topics};
+use crate::storage::messages::{MessageMeta, MessageStore};
 
 /// `waitTime` do `GET`: de 0 a 20 segundos (doc 12).
 const WAIT_TIME_SECS: (u64, u64) = (0, 20);
@@ -42,6 +51,8 @@ pub struct MessageRules {
     pub distributor_max_targets: Option<u64>,
     /// `retention.sweep.interval`: de quanto em quanto tempo a varredura apaga o vencido.
     pub sweep_interval: Duration,
+    /// `memory.limit`: bytes de corpo em memória; sem ele, nada vai para o disco por overflow.
+    pub memory_limit: Option<u64>,
 }
 
 impl MessageRules {
@@ -54,6 +65,7 @@ impl MessageRules {
             visibility_max_secs: config.delivery.visibility_timeout_max.map(|d| d.as_secs()),
             distributor_max_targets: config.topics.distributor_max_targets.map(u64::from),
             sweep_interval: config.retention.sweep_interval,
+            memory_limit: config.storage.memory_limit,
         }
     }
 }
@@ -108,50 +120,7 @@ pub struct Delivered {
     pub invisible_until_ms: u64,
     /// Só na dead-letter: quando a mensagem entrou nela e por quê.
     pub dead_lettered_ms: Option<u64>,
-    pub dead_letter_reason: Option<&'static str>,
-}
-
-struct Stored {
-    body: Vec<u8>,
-    content_type: ContentType,
-    group_id: Option<String>,
-    published_ms: u64,
-    delivery_count: u32,
-    /// Instante a partir do qual a mensagem é entregável. `0`: nunca foi entregue.
-    invisible_until_ms: u64,
-    receipt_token: Option<String>,
-    /// Quando a mensagem entrou na dead-letter (e por quê). Dali em diante o `ttl` conta
-    /// deste instante, e não do `id` (doc 13, seção 12.10).
-    dead_lettered_ms: Option<u64>,
-    dead_letter_reason: Option<&'static str>,
-}
-
-impl Stored {
-    /// O instante de onde o `ttl` conta.
-    fn age_base_ms(&self) -> u64 {
-        self.dead_lettered_ms.unwrap_or(self.published_ms)
-    }
-}
-
-#[derive(Default)]
-struct Queue {
-    /// Pela ordem do `id`: GUID v7 em minúsculas ordena pelo instante da publicação.
-    messages: BTreeMap<String, Stored>,
-}
-
-impl Queue {
-    /// Confere que a mensagem existe e que o token é o da última entrega. O vencimento por
-    /// `ttl` e por `maxDeliveries` já foi aplicado por `settle`.
-    fn check(&self, id: &str, receipt_token: &str) -> Result<(), TabaError> {
-        let message = self.messages.get(id).ok_or_else(message_not_found)?;
-        if message.receipt_token.as_deref() != Some(receipt_token) {
-            return Err(TabaError::new(
-                ErrorCode::MessageStaleReceipt,
-                "O receiptToken não é o da última entrega desta mensagem.",
-            ));
-        }
-        Ok(())
-    }
+    pub dead_letter_reason: Option<String>,
 }
 
 /// O resultado de `PUT .../visibility`.
@@ -161,8 +130,81 @@ pub struct VisibilityUpdated {
     pub invisible_until_ms: u64,
 }
 
+/// O que o drain fez (doc 04, seção 6.10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DrainReport {
+    /// Mensagens que saíram da memória para o disco.
+    pub moved: u64,
+    /// Mensagens que ficaram em memória por erro de disco.
+    pub failed: u64,
+}
+
+/// Uma mensagem em memória: os metadados são os mesmos da linha do banco.
+struct Stored {
+    meta: MessageMeta,
+    body: Vec<u8>,
+}
+
+/// Onde uma mensagem está.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Place {
+    Memory,
+    Disk,
+}
+
+#[derive(Default)]
+struct State {
+    /// Por tópico, em ordem de `id`: o GUID v7 em minúsculas ordena pelo instante da
+    /// publicação.
+    memory: HashMap<String, BTreeMap<String, Stored>>,
+    /// Bytes de corpo em memória, contra `memory.limit`.
+    memory_bytes: u64,
+    /// No drain o limite de memória efetivo é zero: toda mensagem nova vai para o disco.
+    draining: bool,
+}
+
+impl State {
+    fn insert(&mut self, topic: &str, stored: Stored) {
+        self.memory_bytes += stored.body.len() as u64;
+        let previous = self
+            .memory
+            .entry(topic.to_owned())
+            .or_default()
+            .insert(stored.meta.id.clone(), stored);
+        if let Some(previous) = previous {
+            self.memory_bytes -= previous.body.len() as u64;
+        }
+    }
+
+    fn remove(&mut self, topic: &str, id: &str) -> Option<Stored> {
+        let stored = self.memory.get_mut(topic)?.remove(id)?;
+        self.memory_bytes -= stored.body.len() as u64;
+        Some(stored)
+    }
+
+    fn drop_topic(&mut self, topic: &str) {
+        if let Some(messages) = self.memory.remove(topic) {
+            let bytes: u64 = messages.values().map(|s| s.body.len() as u64).sum();
+            self.memory_bytes -= bytes;
+        }
+    }
+}
+
 fn message_not_found() -> TabaError {
     TabaError::new(ErrorCode::MessageNotFound, "A mensagem não existe.")
+}
+
+fn stale_receipt() -> TabaError {
+    TabaError::new(
+        ErrorCode::MessageStaleReceipt,
+        "O receiptToken não é o da última entrega desta mensagem.",
+    )
+}
+
+/// Erro de disco: vira `500`, e o detalhe vai para o log.
+fn disk_error(what: &str, e: &io::Error) -> TabaError {
+    tracing::error!(error = %e, "{what}");
+    TabaError::internal()
 }
 
 /// `validation.required`, com cada campo que falta em `details`.
@@ -175,16 +217,6 @@ fn required(fields: &[&str]) -> TabaError {
     )
 }
 
-pub struct Messages {
-    topics: Arc<Topics>,
-    clock: Arc<dyn Clock>,
-    rules: MessageRules,
-    ids: IdGenerator,
-    queues: Mutex<HashMap<String, Queue>>,
-    /// Acorda os `GET` em espera (long polling) quando chega mensagem ou o tópico some.
-    notifiers: Mutex<HashMap<String, Arc<Notify>>>,
-}
-
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -193,6 +225,13 @@ fn wrong_type() -> TabaError {
     TabaError::new(
         ErrorCode::TopicWrongType,
         "Um tópico distribuidor não é consumido.",
+    )
+}
+
+fn too_large(limit: u64) -> TabaError {
+    TabaError::new(
+        ErrorCode::MessageTooLarge,
+        format!("O corpo passa do limite de {limit} bytes do tópico."),
     )
 }
 
@@ -210,14 +249,49 @@ fn query_number(field: &str, text: &str, range: (u64, u64)) -> Result<u64, TabaE
     validation::in_range_signed(field, value, range)
 }
 
+pub struct Messages {
+    topics: Arc<Topics>,
+    clock: Arc<dyn Clock>,
+    rules: MessageRules,
+    ids: IdGenerator,
+    store: Arc<MessageStore>,
+    state: Mutex<State>,
+    /// Acorda os `GET` em espera (long polling) quando chega mensagem ou o tópico some.
+    notifiers: Mutex<HashMap<String, Arc<Notify>>>,
+}
+
 impl Messages {
-    pub fn new(topics: Arc<Topics>, clock: Arc<dyn Clock>, rules: MessageRules) -> Arc<Self> {
+    /// `resume`: retoma as mensagens que estão em disco (desenvolvimento com
+    /// `development.resume-on-start`). Sem ele, o que sobrou em disco de uma execução
+    /// anterior é apagado: o nó começa vazio. Pastas de tópicos que não existem mais também
+    /// são apagadas, para um tópico recriado com o mesmo nome não ressuscitar mensagens.
+    pub fn new(
+        topics: Arc<Topics>,
+        clock: Arc<dyn Clock>,
+        rules: MessageRules,
+        store: Arc<MessageStore>,
+        resume: bool,
+    ) -> Arc<Self> {
+        match store.topics_on_disk() {
+            Ok(on_disk) => {
+                for name in on_disk {
+                    if !resume || topics.get(&name).is_err() {
+                        tracing::info!(topic = %name, "apagando mensagens antigas do disco");
+                        if let Err(e) = store.drop_topic(&name) {
+                            tracing::warn!(topic = %name, error = %e, "não foi possível apagar");
+                        }
+                    }
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "não foi possível listar as mensagens do disco"),
+        }
         let messages = Arc::new(Self {
             topics: topics.clone(),
             clock,
             rules,
             ids: IdGenerator::new(),
-            queues: Mutex::new(HashMap::new()),
+            store,
+            state: Mutex::new(State::default()),
             notifiers: Mutex::new(HashMap::new()),
         });
         // As mensagens saem junto com o tópico (doc 02, seção 3.3).
@@ -233,7 +307,10 @@ impl Messages {
     }
 
     fn drop_topic(&self, name: &str) {
-        lock(&self.queues).remove(name);
+        lock(&self.state).drop_topic(name);
+        if let Err(e) = self.store.drop_topic(name) {
+            tracing::warn!(topic = %name, error = %e, "não foi possível apagar o disco do tópico");
+        }
         if let Some(notify) = lock(&self.notifiers).get(name) {
             notify.notify_waiters();
         }
@@ -270,7 +347,8 @@ impl Messages {
             .map(|id| Published::Queue { id })
     }
 
-    /// Valida os campos da publicação que dependem do tipo da fila e guarda a mensagem.
+    /// Valida os campos da publicação que dependem do tipo da fila e guarda a mensagem, em
+    /// memória ou, se não couber, em disco (primeiro o corpo, depois a linha).
     fn store(
         &self,
         view: &TopicView,
@@ -303,24 +381,39 @@ impl Messages {
         let now = self.clock.now_millis();
         let id = self.ids.new_at(now);
         let name = view.definition.name.clone();
-        lock(&self.queues)
-            .entry(name.clone())
-            .or_default()
-            .messages
-            .insert(
-                id.clone(),
-                Stored {
-                    body: request.body.clone(),
-                    content_type: prepared.content_type.clone(),
-                    group_id: request.group_id.clone(),
-                    published_ms: now,
-                    delivery_count: 0,
-                    invisible_until_ms: 0,
-                    receipt_token: None,
-                    dead_lettered_ms: None,
-                    dead_letter_reason: None,
-                },
-            );
+        let meta = MessageMeta {
+            id: id.clone(),
+            content_type: prepared.content_type.as_str().to_owned(),
+            group_id: request.group_id.clone(),
+            published_ms: now,
+            delivery_count: 0,
+            invisible_until_ms: 0,
+            receipt_token: None,
+            dead_lettered_ms: None,
+            dead_letter_reason: None,
+        };
+        let size = request.body.len() as u64;
+        {
+            let mut state = lock(&self.state);
+            let fits = !state.draining
+                && self
+                    .rules
+                    .memory_limit
+                    .is_none_or(|limit| state.memory_bytes + size <= limit);
+            if fits {
+                state.insert(
+                    &name,
+                    Stored {
+                        meta,
+                        body: request.body.clone(),
+                    },
+                );
+            } else {
+                self.store
+                    .put(&name, &meta, &request.body)
+                    .map_err(|e| disk_error("falha ao gravar a mensagem em disco", &e))?;
+            }
+        }
         self.notifier(&name).notify_waiters();
         Ok(id)
     }
@@ -362,21 +455,87 @@ impl Messages {
         Ok(view)
     }
 
+    /// Acha a mensagem, na memória ou no disco, e confere o `receiptToken`: um token que não
+    /// é o da última entrega é `409`.
+    fn locate(
+        &self,
+        state: &State,
+        topic: &str,
+        id: &str,
+        receipt_token: &str,
+    ) -> Result<(MessageMeta, Place), TabaError> {
+        let found = match state.memory.get(topic).and_then(|m| m.get(id)) {
+            Some(stored) => Some((stored.meta.clone(), Place::Memory)),
+            None => self
+                .store
+                .get(topic, id)
+                .map_err(|e| disk_error("falha ao ler a mensagem em disco", &e))?
+                .map(|meta| (meta, Place::Disk)),
+        };
+        let (meta, place) = found.ok_or_else(message_not_found)?;
+        if meta.receipt_token.as_deref() != Some(receipt_token) {
+            return Err(stale_receipt());
+        }
+        Ok((meta, place))
+    }
+
     /// Confirma o consumo e remove a mensagem (doc 13, seção 12.4). O `receiptToken` é o da
     /// **última** entrega; um token antigo é `409` e nada muda. Passado o prazo de
-    /// invisibilidade, mas antes de uma nova entrega, o token ainda vale.
+    /// invisibilidade, mas antes de uma nova entrega, o token ainda vale. Em disco remove a
+    /// linha e depois o arquivo.
     pub fn ack(&self, topic: &str, id: &str, receipt_token: Option<&str>) -> Result<(), TabaError> {
         let view = self.queue_view(topic)?;
         let receipt_token = receipt_token.ok_or_else(|| required(&["receiptToken"]))?;
         let now = self.clock.now_millis();
-        let mut queues = lock(&self.queues);
-        self.settle(&mut queues, &view, now);
-        let queue = queues
-            .get_mut(&view.definition.name)
-            .ok_or_else(message_not_found)?;
-        queue.check(id, receipt_token)?;
-        queue.messages.remove(id);
-        Ok(())
+        let mut state = lock(&self.state);
+        self.settle(&mut state, &view, now);
+        let (_, place) = self.locate(&state, &view.definition.name, id, receipt_token)?;
+        self.remove_message(&mut state, &view.definition.name, id, place)
+    }
+
+    fn remove_message(
+        &self,
+        state: &mut State,
+        topic: &str,
+        id: &str,
+        place: Place,
+    ) -> Result<(), TabaError> {
+        match place {
+            Place::Memory => {
+                state.remove(topic, id);
+                Ok(())
+            }
+            Place::Disk => self
+                .store
+                .remove(topic, id)
+                .map_err(|e| disk_error("falha ao remover a mensagem do disco", &e)),
+        }
+    }
+
+    /// Grava a mensagem de volta onde ela está, depois de mudar os metadados de entrega.
+    fn save_meta(
+        &self,
+        state: &mut State,
+        topic: &str,
+        meta: &MessageMeta,
+        place: Place,
+    ) -> Result<(), TabaError> {
+        match place {
+            Place::Memory => {
+                if let Some(stored) = state
+                    .memory
+                    .get_mut(topic)
+                    .and_then(|m| m.get_mut(&meta.id))
+                {
+                    stored.meta = meta.clone();
+                }
+                Ok(())
+            }
+            Place::Disk => self
+                .store
+                .update_delivery(topic, meta)
+                .map_err(|e| disk_error("falha ao gravar a entrega em disco", &e)),
+        }
     }
 
     /// Define a invisibilidade a partir de agora (doc 06a, `PUT .../visibility`): substitui o
@@ -406,36 +565,33 @@ impl Messages {
             visibility_timeout,
             (0, self.rules.visibility_max_secs.unwrap_or(u64::MAX)),
         )?;
+        let name = &view.definition.name;
         let now = self.clock.now_millis();
-        let mut queues = lock(&self.queues);
-        self.settle(&mut queues, &view, now);
-        let queue = queues
-            .get_mut(&view.definition.name)
-            .ok_or_else(message_not_found)?;
-        queue.check(id, receipt_token)?;
-        let message = queue.messages.get_mut(id).ok_or_else(message_not_found)?;
-        message.invisible_until_ms = now + secs * 1000;
-        let invisible_until_ms = message.invisible_until_ms;
+        let mut state = lock(&self.state);
+        self.settle(&mut state, &view, now);
+        let (mut meta, place) = self.locate(&state, name, id, receipt_token)?;
+        meta.invisible_until_ms = now + secs * 1000;
+        self.save_meta(&mut state, name, &meta, place)?;
         // Liberar uma mensagem que já gastou as entregas a manda à dead-letter, em vez de
         // devolvê-la à fila (doc 13, seção 12.10).
-        let exhausted = secs == 0 && self.exhausted(&view, message.delivery_count);
+        let exhausted = secs == 0 && self.exhausted(&view, meta.delivery_count);
         if exhausted {
-            self.move_to_dead_letter(&mut queues, &view, vec![id.to_owned()], now);
+            self.move_to_dead_letter(&mut state, &view, vec![id.to_owned()], now);
         }
-        drop(queues);
+        drop(state);
         if secs == 0 && !exhausted {
-            self.notifier(&view.definition.name).notify_waiters();
+            self.notifier(name).notify_waiters();
         }
         Ok(VisibilityUpdated {
             id: id.to_owned(),
-            invisible_until_ms,
+            invisible_until_ms: meta.invisible_until_ms,
         })
     }
 
     /// Entrega até `maxMessages` mensagens prontas. Com `waitTime` maior que zero e nada
     /// pronto, espera por mensagem nova (long polling) e devolve a primeira que chegar.
     pub async fn consume(
-        &self,
+        self: &Arc<Self>,
         topic: &str,
         query: ConsumeQuery,
     ) -> Result<Vec<Delivered>, TabaError> {
@@ -475,7 +631,12 @@ impl Messages {
             notified.as_mut().enable();
 
             let view = self.topics.get(&name)?;
-            let (delivered, next_visible_ms) = self.take(&view, max_messages as usize, visibility);
+            let this = self.clone();
+            let (delivered, next_visible_ms) = tokio::task::spawn_blocking(move || {
+                this.take(&view, max_messages as usize, visibility)
+            })
+            .await
+            .map_err(|_| TabaError::internal())??;
             if !delivered.is_empty() || tokio::time::Instant::now() >= deadline {
                 return Ok(delivered);
             }
@@ -503,91 +664,127 @@ impl Messages {
     /// mensagem cuja invisibilidade acabou depois de gastar as entregas. A dead-letter de uma
     /// fila é acertada junto, porque é lá que as mensagens aparecem (doc 13, seção 12.10, e
     /// doc 14, seção 13.6).
-    fn settle(&self, queues: &mut HashMap<String, Queue>, view: &TopicView, now: u64) {
+    fn settle(&self, state: &mut State, view: &TopicView, now: u64) {
         if let Some(source) = &view.dead_letter_of
             && let Ok(source_view) = self.topics.get(source)
         {
-            self.settle_one(queues, &source_view, now);
+            self.settle_one(state, &source_view, now);
         }
-        self.settle_one(queues, view, now);
+        self.settle_one(state, view, now);
     }
 
-    fn settle_one(&self, queues: &mut HashMap<String, Queue>, view: &TopicView, now: u64) {
+    fn settle_one(&self, state: &mut State, view: &TopicView, now: u64) {
         let name = &view.definition.name;
         let ttl_ms = view.ttl_secs().unwrap_or(u64::MAX).saturating_mul(1000);
-        let Some(queue) = queues.get_mut(name) else {
-            return;
-        };
         let (mut expired, mut exhausted) = (Vec::new(), Vec::new());
-        for (id, message) in &queue.messages {
-            if message.age_base_ms().saturating_add(ttl_ms) <= now {
-                expired.push(id.clone());
-            } else if message.delivery_count > 0
-                && message.invisible_until_ms <= now
-                && self.exhausted(view, message.delivery_count)
-            {
-                exhausted.push(id.clone());
+        if let Some(messages) = state.memory.get(name) {
+            for (id, stored) in messages {
+                let meta = &stored.meta;
+                if meta.age_base_ms().saturating_add(ttl_ms) <= now {
+                    expired.push(id.clone());
+                } else if meta.delivery_count > 0
+                    && meta.invisible_until_ms <= now
+                    && self.exhausted(view, meta.delivery_count)
+                {
+                    exhausted.push(id.clone());
+                }
+            }
+        }
+        match self.store.expired_ids(name, now, ttl_ms) {
+            Ok(ids) => expired.extend(ids),
+            Err(e) => tracing::error!(error = %e, topic = %name, "falha ao procurar vencidas"),
+        }
+        if !view.dead_letter_of.is_some()
+            && let Some(max) = view.max_deliveries()
+        {
+            match self.store.exhausted_ids(name, now, max) {
+                Ok(ids) => exhausted.extend(ids),
+                Err(e) => tracing::error!(error = %e, topic = %name, "falha ao procurar esgotadas"),
             }
         }
         for id in expired {
-            queue.messages.remove(&id);
+            if state.remove(name, &id).is_none()
+                && let Err(e) = self.store.remove(name, &id)
+            {
+                tracing::error!(error = %e, topic = %name, id = %id, "falha ao apagar vencida");
+                continue;
+            }
             tracing::info!(event = "taba.message.expired", topic = %name, id = %id);
         }
+        // O que venceu já saiu: uma esgotada que também venceu não vai à dead-letter.
+        exhausted.retain(|id| {
+            state.memory.get(name).is_some_and(|m| m.contains_key(id))
+                || self.store.get(name, id).ok().flatten().is_some()
+        });
         if !exhausted.is_empty() {
-            self.move_to_dead_letter(queues, view, exhausted, now);
+            self.move_to_dead_letter(state, view, exhausted, now);
         }
     }
 
     /// Move as mensagens para a dead-letter da fila: o mesmo `id`, `deliveryCount` e prazo
-    /// zerados, e `deadLetteredAt` e `deadLetterReason` preenchidos (doc 13, seção 12.10).
-    fn move_to_dead_letter(
-        &self,
-        queues: &mut HashMap<String, Queue>,
-        view: &TopicView,
-        ids: Vec<String>,
-        now: u64,
-    ) {
+    /// zerados, e `deadLetteredAt` e `deadLetterReason` preenchidos (doc 13, seção 12.10). A
+    /// mensagem continua onde estava (memória ou disco); em disco o arquivo só é renomeado
+    /// para a pasta da dead-letter.
+    fn move_to_dead_letter(&self, state: &mut State, view: &TopicView, ids: Vec<String>, now: u64) {
         let source = &view.definition.name;
-        let target_name = format!("{source}{}", self.topics.rules().dead_letter_suffix);
-        let Some(queue) = queues.get_mut(source) else {
-            return;
-        };
-        let moved: Vec<(String, Stored)> = ids
-            .into_iter()
-            .filter_map(|id| queue.messages.remove(&id).map(|message| (id, message)))
-            .collect();
-        if moved.is_empty() {
-            return;
+        let target = format!("{source}{}", self.topics.rules().dead_letter_suffix);
+        let mut moved_any = false;
+        for id in ids {
+            let reset = |mut meta: MessageMeta| {
+                tracing::info!(
+                    event = "taba.message.dead_lettered",
+                    topic = %source,
+                    id = %id,
+                    delivery_count = meta.delivery_count
+                );
+                meta.delivery_count = 0;
+                meta.invisible_until_ms = 0;
+                meta.receipt_token = None;
+                meta.dead_lettered_ms = Some(now);
+                meta.dead_letter_reason = Some("max-deliveries".to_owned());
+                meta
+            };
+            if let Some(mut stored) = state.remove(source, &id) {
+                stored.meta = reset(stored.meta);
+                state.insert(&target, stored);
+                moved_any = true;
+                continue;
+            }
+            match self.store.get(source, &id) {
+                Ok(Some(meta)) => {
+                    let meta = reset(meta);
+                    match self.store.move_to(source, &target, &meta) {
+                        Ok(()) => moved_any = true,
+                        Err(e) => tracing::error!(
+                            error = %e, topic = %source, id = %id,
+                            "falha ao mover para a dead-letter"
+                        ),
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => tracing::error!(error = %e, topic = %source, "falha ao ler a mensagem"),
+            }
         }
-        let target = queues.entry(target_name.clone()).or_default();
-        for (id, mut message) in moved {
-            tracing::info!(
-                event = "taba.message.dead_lettered",
-                topic = %source,
-                id = %id,
-                delivery_count = message.delivery_count
-            );
-            message.delivery_count = 0;
-            message.invisible_until_ms = 0;
-            message.receipt_token = None;
-            message.dead_lettered_ms = Some(now);
-            message.dead_letter_reason = Some("max-deliveries");
-            target.messages.insert(id, message);
+        if moved_any {
+            self.notifier(&target).notify_waiters();
         }
-        self.notifier(&target_name).notify_waiters();
     }
 
     /// Uma passada da varredura sobre todas as filas: apaga o que venceu por `ttl` e manda
     /// à dead-letter o que gastou as entregas. Cada nó faz a sua, sem propagar nada.
     pub fn sweep(&self) {
         let now = self.clock.now_millis();
-        let names: Vec<String> = lock(&self.queues).keys().cloned().collect();
+        let mut names: Vec<String> = lock(&self.state).memory.keys().cloned().collect();
+        match self.store.topics_on_disk() {
+            Ok(on_disk) => names.extend(on_disk),
+            Err(e) => tracing::error!(error = %e, "falha ao listar o disco na varredura"),
+        }
+        names.sort();
+        names.dedup();
         for name in names {
             match self.topics.get(&name) {
-                Ok(view) => self.settle(&mut lock(&self.queues), &view, now),
-                Err(_) => {
-                    lock(&self.queues).remove(&name);
-                }
+                Ok(view) => self.settle(&mut lock(&self.state), &view, now),
+                Err(_) => self.drop_topic(&name),
             }
         }
     }
@@ -595,69 +792,159 @@ impl Messages {
     /// A tarefa da varredura, até `cancel`. O intervalo é `retention.sweep.interval`, mas
     /// nunca passa de 1 s: a mesma passada leva à dead-letter a mensagem cuja invisibilidade
     /// venceu, e quem consome a dead-letter não deve esperar o intervalo inteiro.
-    pub async fn run_sweeper(&self, cancel: tokio_util::sync::CancellationToken) {
+    pub async fn run_sweeper(self: Arc<Self>, cancel: tokio_util::sync::CancellationToken) {
         let period = self.rules.sweep_interval.min(Duration::from_secs(1));
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
-                _ = ticker.tick() => self.sweep(),
+                _ = ticker.tick() => {
+                    let this = self.clone();
+                    let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                }
             }
         }
     }
 
-    /// Pega as mensagens prontas, em ordem de `id`. Devolve também o instante em que a
-    /// próxima invisível volta a ser entregável, para o long polling saber até quando dormir.
+    /// O drain local, que no desenvolvimento serve de *save* (doc 04, seção 6.10): o limite
+    /// de memória cai a zero, então toda mensagem nova vai direto para o disco, e as que
+    /// estão em memória são gravadas com os metadados (`deliveryCount`, `invisibleUntil`,
+    /// `receiptToken`, `groupId`, `contentType`) e saem da memória. Erro de disco numa
+    /// mensagem não interrompe o resto: ela fica em memória e entra no relatório.
+    pub fn drain(&self) -> DrainReport {
+        let mut state = lock(&self.state);
+        state.draining = true;
+        let mut report = DrainReport {
+            moved: 0,
+            failed: 0,
+        };
+        let topics: Vec<String> = state.memory.keys().cloned().collect();
+        for topic in topics {
+            let ids: Vec<String> = state
+                .memory
+                .get(&topic)
+                .map(|m| m.keys().cloned().collect())
+                .unwrap_or_default();
+            for id in ids {
+                let Some(stored) = state.remove(&topic, &id) else {
+                    continue;
+                };
+                match self.store.put(&topic, &stored.meta, &stored.body) {
+                    Ok(()) => report.moved += 1,
+                    Err(e) => {
+                        tracing::error!(error = %e, topic = %topic, id = %id, "falha no drain");
+                        report.failed += 1;
+                        state.insert(&topic, stored);
+                    }
+                }
+            }
+        }
+        report
+    }
+
+    /// Bytes de corpo em memória e mensagens em disco de um tópico (para testes e métricas).
+    pub fn usage(&self, topic: &str) -> (u64, u64) {
+        let state = lock(&self.state);
+        let memory = state
+            .memory
+            .get(topic)
+            .map_or(0, |m| m.values().map(|s| s.body.len() as u64).sum());
+        drop(state);
+        (memory, self.store.count(topic).unwrap_or(0))
+    }
+
+    /// Pega as mensagens prontas, em ordem de `id`, juntando a memória e o disco. Devolve
+    /// também o instante em que a próxima invisível volta a ser entregável, para o long polling
+    /// saber até quando dormir.
     fn take(
         &self,
         view: &TopicView,
         max: usize,
         visibility_secs: u64,
-    ) -> (Vec<Delivered>, Option<u64>) {
+    ) -> Result<(Vec<Delivered>, Option<u64>), TabaError> {
+        let name = &view.definition.name;
         let now = self.clock.now_millis();
-        let mut queues = lock(&self.queues);
-        self.settle(&mut queues, view, now);
-        let Some(queue) = queues.get_mut(&view.definition.name) else {
-            return (Vec::new(), None);
-        };
-        let (mut delivered, mut next_visible) = (Vec::new(), None);
-        for (id, message) in &mut queue.messages {
-            if delivered.len() >= max {
-                break;
+        let mut state = lock(&self.state);
+        self.settle(&mut state, view, now);
+
+        let mut candidates: Vec<(String, Place)> = Vec::new();
+        let mut next_visible: Option<u64> = None;
+        if let Some(messages) = state.memory.get(name) {
+            for (id, stored) in messages {
+                let until = stored.meta.invisible_until_ms;
+                if until > now {
+                    next_visible = Some(next_visible.map_or(until, |n| n.min(until)));
+                } else if candidates.len() < max {
+                    candidates.push((id.clone(), Place::Memory));
+                }
             }
-            if message.invisible_until_ms > now {
-                next_visible = Some(next_visible.map_or(message.invisible_until_ms, |n: u64| {
-                    n.min(message.invisible_until_ms)
-                }));
-                continue;
-            }
-            message.delivery_count += 1;
-            message.invisible_until_ms = now + visibility_secs * 1000;
+        }
+        let on_disk = self
+            .store
+            .ready_ids(name, now, max)
+            .map_err(|e| disk_error("falha ao ler as prontas do disco", &e))?;
+        candidates.extend(on_disk.into_iter().map(|id| (id, Place::Disk)));
+        if let Some(at) = self
+            .store
+            .next_invisible_until(name, now)
+            .map_err(|e| disk_error("falha ao ler o próximo prazo do disco", &e))?
+        {
+            next_visible = Some(next_visible.map_or(at, |n| n.min(at)));
+        }
+        candidates.sort();
+        candidates.truncate(max);
+
+        let mut delivered = Vec::new();
+        for (id, place) in candidates {
+            let (mut meta, body) = match place {
+                Place::Memory => {
+                    let stored = &state.memory[name][&id];
+                    (stored.meta.clone(), stored.body.clone())
+                }
+                Place::Disk => {
+                    let Some(meta) = self
+                        .store
+                        .get(name, &id)
+                        .map_err(|e| disk_error("falha ao ler a mensagem em disco", &e))?
+                    else {
+                        continue;
+                    };
+                    match self.store.body(name, &id) {
+                        Ok(body) => (meta, body),
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                            // Linha sem arquivo (uma queda no meio da gravação): perdida.
+                            tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
+                            let _ = self.store.remove(name, &id);
+                            continue;
+                        }
+                        Err(e) => return Err(disk_error("falha ao ler o corpo em disco", &e)),
+                    }
+                }
+            };
+            meta.delivery_count += 1;
+            meta.invisible_until_ms = now + visibility_secs * 1000;
             let receipt_token = self.ids.new_at(now);
-            message.receipt_token = Some(receipt_token.clone());
+            meta.receipt_token = Some(receipt_token.clone());
+            self.save_meta(&mut state, name, &meta, place)?;
+            let content_type = ContentType::parse(&meta.content_type).unwrap_or_else(|_| {
+                ContentType::parse("application/octet-stream").expect("válido")
+            });
             delivered.push(Delivered {
-                id: id.clone(),
-                body: Body::render(&message.content_type, &message.body),
-                content_type: message.content_type.as_str().to_owned(),
-                group_id: message.group_id.clone(),
+                id,
+                body: Body::render(&content_type, &body),
+                content_type: meta.content_type,
+                group_id: meta.group_id,
                 receipt_token,
-                delivery_count: message.delivery_count,
-                published_ms: message.published_ms,
-                invisible_until_ms: message.invisible_until_ms,
-                dead_lettered_ms: message.dead_lettered_ms,
-                dead_letter_reason: message.dead_letter_reason,
+                delivery_count: meta.delivery_count,
+                published_ms: meta.published_ms,
+                invisible_until_ms: meta.invisible_until_ms,
+                dead_lettered_ms: meta.dead_lettered_ms,
+                dead_letter_reason: meta.dead_letter_reason,
             });
         }
-        (delivered, next_visible)
+        Ok((delivered, next_visible))
     }
-}
-
-fn too_large(limit: u64) -> TabaError {
-    TabaError::new(
-        ErrorCode::MessageTooLarge,
-        format!("O corpo passa do limite de {limit} bytes do tópico."),
-    )
 }
 
 /// O que se valida na publicação antes de saber o tipo do tópico.

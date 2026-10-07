@@ -83,7 +83,7 @@ pub fn to_io(e: rusqlite::Error) -> io::Error {
     io::Error::other(e)
 }
 
-fn synchronous_name(s: DbSynchronous) -> &'static str {
+pub(super) fn synchronous_name(s: DbSynchronous) -> &'static str {
     match s {
         DbSynchronous::Off => "OFF",
         DbSynchronous::Normal => "NORMAL",

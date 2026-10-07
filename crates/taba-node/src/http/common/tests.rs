@@ -5,11 +5,13 @@ use tower::ServiceExt;
 
 use super::*;
 use crate::cluster::state::NodeShared;
+use crate::config::DbSynchronous;
 use crate::config::{Config, MapEnv, Mode};
 use crate::core::clock::SystemClock;
 use crate::core::error::ErrorCode;
 use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::topics::{TopicRules, Topics};
+use crate::storage::messages::MessageStore;
 use crate::storage::topics::MemoryTopicStore;
 
 async fn boom() -> &'static str {
@@ -26,10 +28,13 @@ fn app() -> Router {
         Vec::new(),
     );
     let topics = Arc::new(topics);
+    let dir = tempfile::tempdir().unwrap();
     let messages = Messages::new(
         topics.clone(),
         clock.clone(),
         MessageRules::from_config(&config),
+        Arc::new(MessageStore::new(dir.path(), DbSynchronous::Normal)),
+        false,
     );
     let state = AppState {
         clock,

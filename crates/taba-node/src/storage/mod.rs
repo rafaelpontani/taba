@@ -1,9 +1,10 @@
-//! Memória, overflow em disco, SQLite por tópico, `sync.db` e `_node.db` (doc 02, seção 3.2).
+//! Memória, overflow em disco, SQLite por tópico, `sync.db` e `_node.db` (doc 02, seção 3.2): o
+//! banco do nó (`db`), as definições de tópico (`topics`) e as mensagens em disco (`messages`).
 //!
-//! Por enquanto: a raiz de disco e as definições de tópico (`topics`). Os traits
-//! ficam aqui, na camada mais baixa de que o `engine` precisa.
+//! Os traits ficam aqui, na camada mais baixa de que o `engine` precisa.
 
 pub mod db;
+pub mod messages;
 pub mod topics;
 
 use std::io;

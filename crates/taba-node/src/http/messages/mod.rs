@@ -20,7 +20,7 @@ use crate::core::content;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time;
 use crate::engine::messages::{
-    ConsumeQuery, Delivered, DistributorDelivery, PublishRequest, Published,
+    ConsumeQuery, Delivered, DistributorDelivery, Messages, PublishRequest, Published,
 };
 
 pub fn routes() -> Router<AppState> {
@@ -72,15 +72,13 @@ async fn publish(
     // O tópico é conferido (`404`) e o limite descoberto antes de ler o corpo.
     let limit = state.messages.publish_limit(&topic)?;
     let body = read_body(body, limit).await?;
-    let published = state.messages.publish(
-        &topic,
-        PublishRequest {
-            body,
-            content_type: content_type(&headers),
-            group_id: params.get("groupId").cloned(),
-            deduplication_id: params.get("deduplicationId").cloned(),
-        },
-    )?;
+    let request = PublishRequest {
+        body,
+        content_type: content_type(&headers),
+        group_id: params.get("groupId").cloned(),
+        deduplication_id: params.get("deduplicationId").cloned(),
+    };
+    let published = blocking(&state, move |messages| messages.publish(&topic, request)).await?;
     Ok(match published {
         Published::Queue { id } => (StatusCode::CREATED, Json(json!({ "id": id }))).into_response(),
         Published::Distributor { deliveries } => Json(json!({
@@ -122,7 +120,7 @@ struct MessageDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     dead_lettered_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    dead_letter_reason: Option<&'static str>,
+    dead_letter_reason: Option<String>,
 }
 
 /// `ConsumeResponse`: serializado direto, para o `body` JSON não passar por um `Value` e perder
@@ -176,9 +174,11 @@ async fn ack(
     Path((topic, id)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<StatusCode, ApiError> {
-    state
-        .messages
-        .ack(&topic, &id, params.get("receiptToken").map(String::as_str))?;
+    let receipt = params.get("receiptToken").cloned();
+    blocking(&state, move |messages| {
+        messages.ack(&topic, &id, receipt.as_deref())
+    })
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -191,14 +191,28 @@ async fn visibility(
 ) -> Result<Json<Value>, ApiError> {
     let fields = json::object(&headers, &body)?;
     fields.reject_unknown(&["visibilityTimeout"])?;
-    let updated = state.messages.set_visibility(
-        &topic,
-        &id,
-        params.get("receiptToken").map(String::as_str),
-        fields.integer("visibilityTimeout")?,
-    )?;
+    let receipt = params.get("receiptToken").cloned();
+    let timeout = fields.integer("visibilityTimeout")?;
+    let updated = blocking(&state, move |messages| {
+        messages.set_visibility(&topic, &id, receipt.as_deref(), timeout)
+    })
+    .await?;
     Ok(Json(json!({
         "id": updated.id,
         "invisibleUntil": time::format_ms(updated.invisible_until_ms),
     })))
+}
+
+/// Roda uma operação de mensagem fora do executor assíncrono: ela bloqueia no disco (doc 18,
+/// seção 17.6).
+async fn blocking<T, F>(state: &AppState, operation: F) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Messages) -> Result<T, TabaError> + Send + 'static,
+{
+    let messages = state.messages.clone();
+    tokio::task::spawn_blocking(move || operation(&messages))
+        .await
+        .map_err(|_| ApiError(TabaError::internal()))?
+        .map_err(ApiError)
 }

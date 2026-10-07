@@ -19,6 +19,7 @@ use crate::engine::topics::{TopicRules, Topics};
 use crate::http::{self, AppState};
 use crate::storage;
 use crate::storage::db::NodeDb;
+use crate::storage::messages::MessageStore;
 use crate::storage::topics::SqliteTopicStore;
 
 #[derive(Debug, thiserror::Error)]
@@ -59,6 +60,9 @@ pub struct RunningNode {
     cluster_addr: Option<SocketAddr>,
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
+    messages: Arc<Messages>,
+    /// `drain.on-stop`: ao parar, as mensagens em memória vão para o disco.
+    drain_on_stop: bool,
 }
 
 impl RunningNode {
@@ -85,8 +89,21 @@ impl RunningNode {
         self.cluster_addr
     }
 
-    /// Para os listeners e espera as chamadas em andamento terminarem.
+    /// Faz o drain local (se `drain.on-stop`), para os listeners e espera as chamadas em
+    /// andamento terminarem. No desenvolvimento o drain é o *save*: a partida seguinte
+    /// retoma do disco (doc 04, seção 6.10).
     pub async fn shutdown(mut self) {
+        if self.drain_on_stop {
+            let messages = self.messages.clone();
+            match tokio::task::spawn_blocking(move || messages.drain()).await {
+                Ok(report) => tracing::info!(
+                    moved = report.moved,
+                    failed = report.failed,
+                    "drain: mensagens da memória gravadas em disco"
+                ),
+                Err(e) => tracing::error!(error = %e, "o drain falhou"),
+            }
+        }
         self.cancel.cancel();
         while let Some(result) = self.tasks.join_next().await {
             match result {
@@ -165,6 +182,11 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         topics.clone(),
         deps.clock.clone(),
         MessageRules::from_config(&config),
+        Arc::new(MessageStore::new(
+            &config.storage.dir,
+            config.storage.db_synchronous,
+        )),
+        dev && config.resume_on_start,
     );
     let state = AppState {
         clock: deps.clock.clone(),
@@ -202,6 +224,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
     let sweeper = state.messages.clone();
+    let state_messages = state.messages.clone();
     let mut serve = |listener: TcpListener, router: axum::Router| {
         let cancel = cancel.clone();
         tasks.spawn(async move {
@@ -245,5 +268,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         cluster_addr,
         cancel,
         tasks,
+        messages: state_messages,
+        drain_on_stop: config.drain.on_stop,
     })
 }

@@ -6,12 +6,15 @@ use crate::config::{Config, MapEnv};
 use crate::core::clock::ManualClock;
 use crate::core::id;
 use crate::engine::topics::{CreateTopic, Kind, TopicRules};
+use crate::storage::messages::MessageStore;
 use crate::storage::topics::MemoryTopicStore;
 
 struct Harness {
     topics: Arc<Topics>,
     messages: Arc<Messages>,
     clock: Arc<ManualClock>,
+    store: Arc<MessageStore>,
+    dir: tempfile::TempDir,
 }
 
 fn harness_with(env: &[(&str, &str)]) -> Harness {
@@ -33,15 +36,21 @@ fn harness_with(env: &[(&str, &str)]) -> Harness {
         clock.clone(),
         Vec::new(),
     ));
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(MessageStore::new(dir.path(), config.storage.db_synchronous));
     let messages = Messages::new(
         topics.clone(),
         clock.clone(),
         MessageRules::from_config(&config),
+        store.clone(),
+        false,
     );
     Harness {
         topics,
         messages,
         clock,
+        store,
+        dir,
     }
 }
 
@@ -926,7 +935,7 @@ async fn after_max_deliveries_the_message_goes_to_the_dead_letter_with_the_same_
         "voltou a zero e esta é a primeira entrega lá"
     );
     assert_eq!(m.dead_lettered_ms, Some(h.clock.now_millis()));
-    assert_eq!(m.dead_letter_reason, Some("max-deliveries"));
+    assert_eq!(m.dead_letter_reason.as_deref(), Some("max-deliveries"));
     assert_eq!(m.invisible_until_ms, h.clock.now_millis() + 120_000);
 }
 
@@ -1175,4 +1184,385 @@ async fn the_background_sweeper_moves_messages_without_anyone_consuming() {
     assert_eq!(got.len(), 1);
     cancel.cancel();
     sweeper.await.unwrap();
+}
+
+fn reopen(h: &Harness, resume: bool) -> Arc<Messages> {
+    reopen_with(h, resume, &[])
+}
+
+fn reopen_with(h: &Harness, resume: bool, env: &[(&str, &str)]) -> Arc<Messages> {
+    let config = Config::parse(
+        None,
+        &MapEnv(
+            [("TABA_MODE", "development")]
+                .into_iter()
+                .chain(env.iter().copied())
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect(),
+        ),
+    )
+    .unwrap();
+    Messages::new(
+        h.topics.clone(),
+        h.clock.clone(),
+        MessageRules::from_config(&config),
+        Arc::new(MessageStore::new(
+            h.dir.path(),
+            config.storage.db_synchronous,
+        )),
+        resume,
+    )
+}
+
+/// Memória para um corpo de 3 bytes (`"1"` tem 3 com as aspas): o seguinte vai ao disco.
+fn tiny_memory() -> Harness {
+    harness_with(&[("TABA_MEMORY_LIMIT", "3")])
+}
+
+fn raw(body: &[u8], content_type: &str) -> PublishRequest {
+    PublishRequest {
+        body: body.to_vec(),
+        content_type: Some(content_type.into()),
+        ..Default::default()
+    }
+}
+
+/// UC: UC-ARM-001, UC-ARM-002
+#[tokio::test]
+async fn what_does_not_fit_in_memory_overflows_to_disk() {
+    let h = tiny_memory();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    publish_ok(&h, "pedidos", "\"a\"");
+    assert_eq!(h.messages.usage("pedidos"), (3, 0), "coube em memória");
+    publish_ok(&h, "pedidos", "\"b\"");
+    publish_ok(&h, "pedidos", "\"c\"");
+    assert_eq!(
+        h.messages.usage("pedidos"),
+        (3, 2),
+        "o excedente foi para o disco"
+    );
+    assert!(
+        h.dir
+            .path()
+            .join("pedidos")
+            .join(crate::storage::messages::TOPIC_DB_FILE)
+            .is_file()
+    );
+}
+
+/// UC: UC-ARM-003
+#[tokio::test]
+async fn delivery_merges_memory_and_disk_in_id_order_with_the_exact_bytes() {
+    let h = tiny_memory();
+    h.topics.create(queue("arquivos")).await.unwrap();
+    let all_bytes: Vec<u8> = (0..=255).collect();
+    let first = published_id(
+        h.messages
+            .publish("arquivos", raw(b"abc", "text/plain"))
+            .unwrap(),
+    );
+    let second = published_id(
+        h.messages
+            .publish("arquivos", raw(&all_bytes, "image/png"))
+            .unwrap(),
+    );
+    let third = published_id(
+        h.messages
+            .publish("arquivos", raw(b"{ \"x\": 1.50 }", "application/json"))
+            .unwrap(),
+    );
+    assert_eq!(h.messages.usage("arquivos").1, 2);
+
+    let got = consume(&h, "arquivos", ConsumeQuery::default()).await;
+    let ids: Vec<&str> = got.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, [first.as_str(), second.as_str(), third.as_str()]);
+    assert_eq!(serde_json::to_string(&got[0].body).unwrap(), "\"abc\"");
+    let png = serde_json::to_string(&got[1].body).unwrap();
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(png.trim_matches('"'))
+        .unwrap();
+    assert_eq!(
+        decoded, all_bytes,
+        "o corpo em disco sai igual ao que entrou"
+    );
+    assert_eq!(
+        serde_json::to_string(&got[2].body).unwrap(),
+        "{ \"x\": 1.50 }"
+    );
+    assert_eq!(got[1].content_type, "image/png");
+}
+
+/// UC: UC-ACK-013, UC-ARM-014
+#[tokio::test]
+async fn a_message_on_disk_is_delivered_again_and_acked_like_any_other() {
+    let h = tiny_memory();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    publish_ok(&h, "pedidos", "\"a\"");
+    let id = publish_ok(&h, "pedidos", "\"b\"");
+    let first = consume(&h, "pedidos", q(Some("2"), Some("10"), None)).await;
+    let on_disk = first.iter().find(|m| m.id == id).unwrap();
+    assert_eq!(on_disk.delivery_count, 1);
+    assert!(
+        consume(&h, "pedidos", ConsumeQuery::default())
+            .await
+            .is_empty()
+    );
+
+    h.clock.advance(Duration::from_secs(10));
+    let again = consume(&h, "pedidos", q(Some("2"), Some("30"), None)).await;
+    let again = again.iter().find(|m| m.id == id).unwrap();
+    assert_eq!(again.delivery_count, 2);
+    assert_ne!(again.receipt_token, on_disk.receipt_token);
+    let stale = h
+        .messages
+        .ack("pedidos", &id, Some(&on_disk.receipt_token))
+        .unwrap_err();
+    assert_eq!(stale.code, ErrorCode::MessageStaleReceipt);
+
+    h.messages
+        .ack("pedidos", &id, Some(&again.receipt_token))
+        .unwrap();
+    assert!(
+        !h.dir
+            .path()
+            .join("pedidos")
+            .join(format!("{id}.body"))
+            .exists()
+    );
+    assert_eq!(h.store.get("pedidos", &id).unwrap(), None);
+    assert_eq!(
+        h.messages
+            .ack("pedidos", &id, Some(&again.receipt_token))
+            .unwrap_err()
+            .code,
+        ErrorCode::MessageNotFound
+    );
+}
+
+/// UC: UC-VIS-001
+#[tokio::test]
+async fn visibility_works_on_a_message_on_disk() {
+    let h = tiny_memory();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    publish_ok(&h, "pedidos", "\"a\"");
+    let id = publish_ok(&h, "pedidos", "\"b\"");
+    let got = consume(&h, "pedidos", q(Some("2"), Some("600"), None)).await;
+    let m = got.iter().find(|m| m.id == id).unwrap();
+
+    let up = h
+        .messages
+        .set_visibility("pedidos", &id, Some(&m.receipt_token), Some(0))
+        .unwrap();
+    assert_eq!(up.invisible_until_ms, h.clock.now_millis());
+    let back = consume(&h, "pedidos", ConsumeQuery::default()).await;
+    assert_eq!(back[0].id, id);
+    assert_eq!(back[0].delivery_count, 2);
+}
+
+/// UC: UC-RET-001, UC-RET-008
+#[tokio::test]
+async fn ttl_and_the_dead_letter_work_on_messages_on_disk() {
+    let h = tiny_memory();
+    let mut topic = limited("pedidos", 1);
+    topic.ttl = Some(600);
+    h.topics.create(topic).await.unwrap();
+    publish_ok(&h, "pedidos", "\"a\""); // ocupa a memória
+    let moving = publish_ok(&h, "pedidos", "\"b\"");
+    let doomed = publish_ok(&h, "pedidos", "\"c\"");
+    assert_eq!(h.messages.usage("pedidos"), (3, 2));
+
+    let got = consume(&h, "pedidos", q(Some("3"), Some("10"), None)).await;
+    assert_eq!(got.len(), 3);
+    for m in &got {
+        if m.id != doomed {
+            h.messages
+                .ack("pedidos", &m.id, Some(&m.receipt_token))
+                .ok();
+        }
+    }
+    // `moving` foi confirmada acima; republica uma que vai falhar de verdade.
+    let _ = moving;
+    publish_ok(&h, "pedidos", "\"e\""); // volta a ocupar a memória
+    let failing = publish_ok(&h, "pedidos", "\"d\"");
+    h.clock.advance(Duration::from_secs(20));
+    let d = consume(&h, "pedidos", q(Some("5"), Some("10"), None)).await;
+    assert!(d.iter().any(|m| m.id == failing));
+    h.clock.advance(Duration::from_secs(10));
+    h.messages.sweep();
+
+    let dead = consume(&h, "pedidos-dead-letter", ConsumeQuery::default()).await;
+    assert!(
+        dead.iter().any(|m| m.id == failing),
+        "mesmo id na dead-letter"
+    );
+    assert!(
+        dead.iter()
+            .all(|m| m.dead_letter_reason.as_deref() == Some("max-deliveries"))
+    );
+    assert_eq!(h.store.get("pedidos", &failing).unwrap(), None);
+    assert!(
+        h.dir
+            .path()
+            .join("pedidos-dead-letter")
+            .join(format!("{failing}.body"))
+            .exists()
+    );
+
+    // `ttl`: o que venceu some do disco, inclusive o corpo.
+    h.clock.advance(Duration::from_secs(3600));
+    h.messages.sweep();
+    assert_eq!(h.messages.usage("pedidos"), (0, 0));
+    assert_eq!(h.messages.usage("pedidos-dead-letter"), (0, 0));
+    assert!(
+        consume(&h, "pedidos-dead-letter", ConsumeQuery::default())
+            .await
+            .is_empty()
+    );
+}
+
+/// UC: UC-DRN-010, UC-DRN-022, UC-DRN-024, UC-ARM-024
+#[tokio::test]
+async fn drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    let mut grouped = raw(b"\"x\"", "application/json");
+    grouped.group_id = Some("g1".into());
+    let in_flight = published_id(h.messages.publish("pedidos", grouped).unwrap());
+    let ready = publish_ok(&h, "pedidos", "\"y\"");
+    let m = consume(&h, "pedidos", q(Some("1"), Some("600"), None))
+        .await
+        .remove(0);
+    assert_eq!(m.id, in_flight);
+    assert_eq!(
+        h.messages.usage("pedidos").1,
+        0,
+        "sem limite, nada foi ao disco"
+    );
+
+    let report = h.messages.drain();
+    assert_eq!(
+        report,
+        DrainReport {
+            moved: 2,
+            failed: 0
+        }
+    );
+    assert_eq!(h.messages.usage("pedidos"), (0, 2));
+    let late = publish_ok(&h, "pedidos", "\"z\"");
+    assert_eq!(
+        h.messages.usage("pedidos"),
+        (0, 3),
+        "no drain tudo novo vai direto ao disco"
+    );
+
+    // A partida seguinte retoma do disco: a mesma mensagem em processamento, com o mesmo
+    // token, e as prontas.
+    let restarted = reopen(&h, true);
+    restarted
+        .ack("pedidos", &in_flight, Some(&m.receipt_token))
+        .expect("o receiptToken sobreviveu ao save");
+    let got = restarted
+        .consume("pedidos", ConsumeQuery::default())
+        .await
+        .unwrap();
+    let ids: Vec<&str> = got.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, [ready.as_str(), late.as_str()]);
+}
+
+/// UC: UC-DRN-010, UC-DRN-022
+#[tokio::test]
+async fn drain_keeps_the_group_and_the_delivery_count() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    let mut grouped = raw(b"\"x\"", "text/plain");
+    grouped.group_id = Some("g1".into());
+    h.messages.publish("pedidos", grouped).unwrap();
+    delivered_one(&h, "pedidos", "10").await;
+    h.messages.drain();
+    h.clock.advance(Duration::from_secs(10));
+
+    let restarted = reopen(&h, true);
+    let got = restarted
+        .consume("pedidos", ConsumeQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(got[0].delivery_count, 2);
+    assert_eq!(got[0].group_id.as_deref(), Some("g1"));
+    assert_eq!(got[0].content_type, "text/plain");
+}
+
+/// UC: UC-DRN-027
+#[tokio::test]
+async fn without_resume_the_disk_is_cleaned_and_orphan_folders_never_come_back() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("outra")).await.unwrap();
+    // A "execução anterior": um nó com pouca memória, que deixa mensagens em disco.
+    let first = reopen_with(&h, true, &[("TABA_MEMORY_LIMIT", "3")]);
+    for topic in ["pedidos", "outra"] {
+        for body in ["\"a\"", "\"b\""] {
+            first.publish(topic, json_body(body)).unwrap();
+        }
+    }
+    assert_eq!(first.usage("pedidos").1, 1);
+    assert_eq!(
+        first.usage("outra").1,
+        2,
+        "o limite de memória é do nó: a memória já estava cheia"
+    );
+    drop(first); // o processo anterior terminou
+
+    let restarted = reopen(&h, true);
+    assert_eq!(restarted.usage("pedidos").1, 1, "retomou");
+    h.topics.delete("outra").await.unwrap(); // a pasta sai junto com o tópico
+    assert!(!h.dir.path().join("outra").exists());
+    drop(restarted);
+
+    let wiped = reopen(&h, false);
+    assert_eq!(wiped.usage("pedidos").1, 0, "sem resume começa vazio");
+    assert!(consume_with(&wiped, "pedidos").await.is_empty());
+}
+
+async fn consume_with(messages: &Arc<Messages>, topic: &str) -> Vec<Delivered> {
+    messages
+        .consume(topic, ConsumeQuery::default())
+        .await
+        .unwrap()
+}
+
+/// UC: UC-TOP-039
+#[tokio::test]
+async fn removing_a_topic_removes_its_folder_with_database_and_bodies() {
+    let h = tiny_memory();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    publish_ok(&h, "pedidos", "\"a\"");
+    publish_ok(&h, "pedidos", "\"b\"");
+    assert!(h.dir.path().join("pedidos").is_dir());
+
+    h.topics.delete("pedidos").await.unwrap();
+    assert!(!h.dir.path().join("pedidos").exists());
+    h.topics.create(queue("pedidos")).await.unwrap();
+    assert!(
+        consume(&h, "pedidos", ConsumeQuery::default())
+            .await
+            .is_empty()
+    );
+    assert_eq!(h.messages.usage("pedidos"), (0, 0));
+}
+
+/// UC: UC-DEF-024
+#[tokio::test]
+async fn topics_that_differ_only_in_case_keep_separate_folders() {
+    let h = tiny_memory();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("Pedidos")).await.unwrap();
+    for topic in ["pedidos", "Pedidos"] {
+        publish_ok(&h, topic, "\"a\"");
+        publish_ok(&h, topic, "\"b\"");
+    }
+    assert!(h.dir.path().join("pedidos").is_dir());
+    assert!(h.dir.path().join("~pedidos").is_dir());
+    h.topics.delete("Pedidos").await.unwrap();
+    assert_eq!(h.messages.usage("pedidos").1, 1, "a outra não foi tocada");
 }

@@ -1037,3 +1037,226 @@ async fn the_background_sweeper_moves_it_even_if_nobody_touches_the_source_queue
     );
     node.shutdown().await;
 }
+
+fn body_files(node: &TestNode, topic: &str) -> usize {
+    std::fs::read_dir(node.storage_dir().join(topic))
+        .map(|dir| {
+            dir.filter_map(Result::ok)
+                .filter(|e| e.path().extension().is_some_and(|x| x == "body"))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+/// UC: UC-ARM-001, UC-ARM-002, UC-ARM-003, UC-ARM-010, UC-ARM-014
+#[tokio::test]
+async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() {
+    let node = TestNode::builder()
+        .env("TABA_MEMORY_LIMIT", "10")
+        .start()
+        .await;
+    queue(&node, "arquivos").await;
+    let all_bytes: Vec<u8> = (0..=255).collect();
+
+    let small = publish_raw(&node, "arquivos", "", Some("text/plain"), b"curta".to_vec()).await;
+    assert_eq!(small.status(), 201);
+    assert_eq!(body_files(&node, "arquivos"), 0, "coube em memória");
+    let big = publish_raw(&node, "arquivos", "", Some("image/png"), all_bytes.clone()).await;
+    assert_eq!(big.status(), 201);
+    assert_eq!(
+        body_files(&node, "arquivos"),
+        1,
+        "o excedente virou um .body"
+    );
+    assert!(
+        node.storage_dir()
+            .join("arquivos")
+            .join("_topico.db")
+            .is_file()
+    );
+
+    // O arquivo guarda só os bytes, sem reserializar nem codificar.
+    let id = big.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let on_disk = std::fs::read(
+        node.storage_dir()
+            .join("arquivos")
+            .join(format!("{id}.body")),
+    )
+    .unwrap();
+    assert_eq!(on_disk, all_bytes);
+
+    let messages = consume(&node, "arquivos", "?maxMessages=10&visibilityTimeout=30").await;
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0]["body"], "curta");
+    assert_eq!(messages[1]["id"], id.as_str());
+    assert_eq!(messages[1]["contentType"], "image/png");
+    assert_eq!(
+        STANDARD
+            .decode(messages[1]["body"].as_str().unwrap())
+            .unwrap(),
+        all_bytes
+    );
+
+    // O ack remove a linha e o arquivo.
+    let response = ack_raw(
+        &node,
+        "arquivos",
+        &id,
+        &format!(
+            "?receiptToken={}",
+            messages[1]["receiptToken"].as_str().unwrap()
+        ),
+    )
+    .await;
+    assert_eq!(response.status(), 204);
+    assert_eq!(body_files(&node, "arquivos"), 0);
+    node.shutdown().await;
+}
+
+/// UC: UC-ARM-001
+#[tokio::test]
+async fn without_a_memory_limit_nothing_goes_to_disk_by_overflow() {
+    let node = TestNode::development().await;
+    queue(&node, "pedidos").await;
+    for i in 0..20 {
+        publish(&node, "pedidos", &i.to_string()).await;
+    }
+    assert!(!node.storage_dir().join("pedidos").exists());
+    node.shutdown().await;
+}
+
+/// UC: UC-DRN-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024
+#[tokio::test]
+async fn stopping_saves_memory_to_disk_and_the_next_start_resumes_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let storage = tmp.path().join("taba").display().to_string();
+    let start = || {
+        TestNode::builder()
+            .env("TABA_STORAGE_DIR", &storage)
+            .try_start()
+    };
+
+    let node = start().await.unwrap();
+    queue(&node, "pedidos").await;
+    let mut grouped = publish_raw(
+        &node,
+        "pedidos",
+        "?groupId=g1",
+        Some("text/plain"),
+        b"em processamento".to_vec(),
+    )
+    .await
+    .json::<Value>()
+    .await
+    .unwrap();
+    let ready = publish(&node, "pedidos", r#"{ "pronta": true }"#).await;
+    let in_flight = consume(&node, "pedidos", "?maxMessages=1&visibilityTimeout=600").await;
+    assert_eq!(in_flight[0]["id"], grouped["id"]);
+    assert_eq!(body_files(&node, "pedidos"), 0, "tudo em memória até aqui");
+    node.shutdown().await; // o drain grava tudo em disco
+    grouped = in_flight[0].clone();
+
+    let node = start().await.unwrap();
+    // O que estava em processamento segue invisível, e o mesmo token ainda confirma.
+    let pending = consume(&node, "pedidos", "?maxMessages=10&visibilityTimeout=30").await;
+    assert_eq!(pending.len(), 1, "só a pronta");
+    assert_eq!(pending[0]["id"], ready["id"]);
+    assert_eq!(pending[0]["body"], json!({ "pronta": true }));
+    let id = grouped["id"].as_str().unwrap();
+    let token = grouped["receiptToken"].as_str().unwrap();
+    let response = ack_raw(&node, "pedidos", id, &format!("?receiptToken={token}")).await;
+    assert_eq!(response.status(), 204, "o receiptToken sobreviveu ao save");
+
+    // O prazo é um instante absoluto: passado o tempo, a mensagem volta com o contador certo.
+    node.clock.advance(Duration::from_secs(60));
+    let again = consume(&node, "pedidos", "").await;
+    assert_eq!(again[0]["id"], ready["id"]);
+    assert_eq!(again[0]["deliveryCount"], 2);
+    node.shutdown().await;
+}
+
+/// UC: UC-DRN-003, UC-DRN-026
+#[tokio::test]
+async fn without_drain_on_stop_what_was_only_in_memory_is_lost() {
+    let tmp = tempfile::tempdir().unwrap();
+    let storage = tmp.path().join("taba").display().to_string();
+    let start = || {
+        TestNode::builder()
+            .env("TABA_STORAGE_DIR", &storage)
+            .env("TABA_DRAIN_ON_STOP", "false")
+            .try_start()
+    };
+    let node = start().await.unwrap();
+    queue(&node, "pedidos").await;
+    publish(&node, "pedidos", "1").await;
+    node.shutdown().await;
+
+    let node = start().await.unwrap();
+    assert_eq!(
+        node.client_get("/topics/pedidos").await.status(),
+        200,
+        "o tópico sobreviveu"
+    );
+    assert!(
+        consume(&node, "pedidos", "").await.is_empty(),
+        "a mensagem só em memória se perdeu"
+    );
+    node.shutdown().await;
+}
+
+/// UC: UC-DRN-027
+#[tokio::test]
+async fn without_resume_on_start_the_messages_on_disk_are_erased() {
+    let tmp = tempfile::tempdir().unwrap();
+    let storage = tmp.path().join("taba").display().to_string();
+    let node = TestNode::builder()
+        .env("TABA_STORAGE_DIR", &storage)
+        .start()
+        .await;
+    queue(&node, "pedidos").await;
+    publish(&node, "pedidos", "1").await;
+    node.shutdown().await;
+    assert!(
+        tmp.path().join("taba").join("pedidos").is_dir(),
+        "o drain deixou em disco"
+    );
+
+    let node = TestNode::builder()
+        .env("TABA_STORAGE_DIR", &storage)
+        .env("TABA_DEVELOPMENT_RESUME_ON_START", "false")
+        .start()
+        .await;
+    assert!(!tmp.path().join("taba").join("pedidos").exists());
+    queue(&node, "pedidos").await;
+    assert!(consume(&node, "pedidos", "").await.is_empty());
+    node.shutdown().await;
+}
+
+/// UC: UC-RET-008, UC-ACK-013
+#[tokio::test]
+async fn the_dead_letter_receives_the_body_file_of_a_message_on_disk() {
+    let node = TestNode::builder()
+        .env("TABA_MEMORY_LIMIT", "1")
+        .start()
+        .await;
+    create_topic(
+        &node,
+        json!({ "name": "pedidos", "type": "queue", "maxDeliveries": 1 }),
+    )
+    .await;
+    let id = publish(&node, "pedidos", r#"{ "d": 1 }"#).await["id"].clone();
+    assert_eq!(body_files(&node, "pedidos"), 1);
+    one_delivered(&node, 10).await;
+    node.clock.advance(Duration::from_secs(10));
+
+    let dead = consume_from(&node, "pedidos-dead-letter", "?waitTime=5").await;
+    assert_eq!(dead[0]["id"], id);
+    assert_eq!(dead[0]["body"], json!({ "d": 1 }));
+    assert_eq!(dead[0]["deadLetterReason"], "max-deliveries");
+    assert_eq!(body_files(&node, "pedidos"), 0);
+    assert_eq!(body_files(&node, "pedidos-dead-letter"), 1);
+    node.shutdown().await;
+}
