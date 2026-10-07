@@ -26,6 +26,13 @@ cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
 - Dúvida parcialmente resolvida: a parte decidida entra em `08a` (com o mesmo código, ex.: D13.1), e `08b` mantém só as perguntas que faltam, cada uma com seu sub-código.
 - Ao fechar uma pendência: registre a decisão no documento técnico, o valor padrão em [doc/10-configuracao.md](doc/10-configuracao.md), a linha em `08a`, e **apague** a entrada de `08b` e a referência em [doc/08c-proximos-passos.md](doc/08c-proximos-passos.md). Os códigos não são reaproveitados.
 
+## Idioma
+
+- **Documentação:** em português do Brasil. No fim ela será traduzida e ficará em duas pastas, uma por idioma.
+- **Código:** nomes de variáveis, funções, tipos, módulos, campos, testes, chaves de configuração, rotas, códigos de erro e eventos em **inglês**, para facilitar a colaboração internacional. Nada de identificador em português, mesmo em teste.
+- **Comentários e mensagens para o usuário** (erro da API, log, ajuda da linha de comando): em **português** durante o desenvolvimento; serão traduzidos junto com a documentação.
+- O que o contrato dos documentos define em disco (tabelas e colunas do SQLite, `_topico.db`, nome das pastas) ainda está em português; ver a seção 5 de [doc/21-historico-implementacao.md](doc/21-historico-implementacao.md).
+
 ## Histórico da implementação
 
 [doc/21-historico-implementacao.md](doc/21-historico-implementacao.md) registra, **na ordem em que aconteceu**, tudo o que já foi implementado, os desvios em relação à documentação e o que ainda falta. Serve para conferir o código contra os documentos. **Toda nova implementação o atualiza na mesma mudança**:
