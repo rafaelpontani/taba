@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mapa mental: 7. Armazenamento",
+    "output": "doc/diagramas/html/mapa-mental-disco.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "disco-d0-0",
+      "type": "security",
+      "label": "Divisão por taxa de leitura",
+      "sublabel": "decisão 7.1.1",
+      "pos": [
+        450,
+        70
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d0-0x",
+      "type": "database",
+      "label": "janela de 5 minutos",
+      "sublabel": "detalhe 7.1.1.1",
+      "pos": [
+        745,
+        70
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-d0-1",
+      "type": "security",
+      "label": "Reserva por tópico",
+      "sublabel": "decisão 7.1.2",
+      "pos": [
+        450,
+        136
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d0-1x",
+      "type": "database",
+      "label": "1000 mensagens",
+      "sublabel": "detalhe 7.1.2.1",
+      "pos": [
+        745,
+        136
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-t0",
+      "type": "cloud",
+      "label": "Memória",
+      "sublabel": "tema 7.1",
+      "pos": [
+        225,
+        103
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "disco-d1-0",
+      "type": "security",
+      "label": "SQLite por nó e tópico",
+      "sublabel": "decisão 7.2.1",
+      "pos": [
+        450,
+        202
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d1-0x",
+      "type": "database",
+      "label": "escritor único por tópico",
+      "sublabel": "detalhe 7.2.1.1",
+      "pos": [
+        745,
+        202
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-d1-1",
+      "type": "security",
+      "label": "Corpo em arquivo JSON",
+      "sublabel": "decisão 7.2.2",
+      "pos": [
+        450,
+        268
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d1-1x",
+      "type": "database",
+      "label": "tópico/id.json",
+      "sublabel": "detalhe 7.2.2.1",
+      "pos": [
+        745,
+        268
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-d1-2",
+      "type": "security",
+      "label": "Raiz configurável",
+      "sublabel": "decisão 7.2.3",
+      "pos": [
+        450,
+        334
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d1-2x",
+      "type": "database",
+      "label": "/var/lib/taba por padrão",
+      "sublabel": "detalhe 7.2.3.1",
+      "pos": [
+        745,
+        334
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-t1",
+      "type": "cloud",
+      "label": "Disco",
+      "sublabel": "tema 7.2",
+      "pos": [
+        225,
+        268
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "disco-d2-0",
+      "type": "security",
+      "label": "Banco corrompido",
+      "sublabel": "decisão 7.3.1",
+      "pos": [
+        450,
+        400
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d2-0x",
+      "type": "database",
+      "label": "nó em falha; cluster vota",
+      "sublabel": "detalhe 7.3.1.1",
+      "pos": [
+        745,
+        400
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-d2-1",
+      "type": "security",
+      "label": "Bloco que o nó perdeu",
+      "sublabel": "decisão 7.3.2",
+      "pos": [
+        450,
+        466
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "disco-d2-1x",
+      "type": "database",
+      "label": "só apaga com cluster íntegro",
+      "sublabel": "detalhe 7.3.2.1",
+      "pos": [
+        745,
+        466
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "disco-t2",
+      "type": "cloud",
+      "label": "Integridade",
+      "sublabel": "tema 7.3",
+      "pos": [
+        225,
+        433
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "disco",
+      "type": "backend",
+      "label": "Armazenamento",
+      "sublabel": "área 7",
+      "pos": [
+        20,
+        268
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c4-disco-d0-0",
+      "from": "disco-d0-0",
+      "to": "disco-d0-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-disco-d0-1",
+      "from": "disco-d0-1",
+      "to": "disco-d0-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t0-0",
+      "from": "disco-t0",
+      "to": "disco-d0-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t0-1",
+      "from": "disco-t0",
+      "to": "disco-d0-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-disco-d1-0",
+      "from": "disco-d1-0",
+      "to": "disco-d1-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-disco-d1-1",
+      "from": "disco-d1-1",
+      "to": "disco-d1-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-disco-d1-2",
+      "from": "disco-d1-2",
+      "to": "disco-d1-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t1-0",
+      "from": "disco-t1",
+      "to": "disco-d1-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t1-1",
+      "from": "disco-t1",
+      "to": "disco-d1-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t1-2",
+      "from": "disco-t1",
+      "to": "disco-d1-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-disco-d2-0",
+      "from": "disco-d2-0",
+      "to": "disco-d2-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-disco-d2-1",
+      "from": "disco-d2-1",
+      "to": "disco-d2-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t2-0",
+      "from": "disco-t2",
+      "to": "disco-d2-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-disco-t2-1",
+      "from": "disco-t2",
+      "to": "disco-d2-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-disco-t0",
+      "from": "disco",
+      "to": "disco-t0",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-disco-t1",
+      "from": "disco",
+      "to": "disco-t1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-disco-t2",
+      "from": "disco",
+      "to": "disco-t2",
+      "variant": "emphasis"
+    }
+  ]
+}

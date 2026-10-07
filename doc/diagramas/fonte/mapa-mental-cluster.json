@@ -1,0 +1,447 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mapa mental: 5. Cluster e membros",
+    "output": "doc/diagramas/html/mapa-mental-cluster.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "cluster-d0-0",
+      "type": "security",
+      "label": "Endereço do balanceador",
+      "sublabel": "decisão 5.1.1",
+      "pos": [
+        450,
+        70
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-0x",
+      "type": "database",
+      "label": "cluster.entry-address, obrigatório",
+      "sublabel": "detalhe 5.1.1.1",
+      "pos": [
+        745,
+        70
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-1",
+      "type": "security",
+      "label": "Uma mudança por vez",
+      "sublabel": "decisão 5.1.2",
+      "pos": [
+        450,
+        136
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-1x",
+      "type": "database",
+      "label": "até o nó ficar pronto",
+      "sublabel": "detalhe 5.1.2.1",
+      "pos": [
+        745,
+        136
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-2",
+      "type": "security",
+      "label": "Repasse de chamadas",
+      "sublabel": "decisão 5.1.3",
+      "pos": [
+        450,
+        202
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-2x",
+      "type": "database",
+      "label": "enquanto o nó sincroniza",
+      "sublabel": "detalhe 5.1.3.1",
+      "pos": [
+        745,
+        202
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t0",
+      "type": "cloud",
+      "label": "Entrada",
+      "sublabel": "tema 5.1",
+      "pos": [
+        225,
+        136
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-0",
+      "type": "security",
+      "label": "WebSocket permanente",
+      "sublabel": "decisão 5.2.1",
+      "pos": [
+        450,
+        268
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-0x",
+      "type": "database",
+      "label": "malha completa entre os nós",
+      "sublabel": "detalhe 5.2.1.1",
+      "pos": [
+        745,
+        268
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-1",
+      "type": "security",
+      "label": "Sinal de vida próprio",
+      "sublabel": "decisão 5.2.2",
+      "pos": [
+        450,
+        334
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-1x",
+      "type": "database",
+      "label": "data, monitoramento, prontas",
+      "sublabel": "detalhe 5.2.2.1",
+      "pos": [
+        745,
+        334
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-2",
+      "type": "security",
+      "label": "Sinais com identificador",
+      "sublabel": "decisão 5.2.3",
+      "pos": [
+        450,
+        400
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-2x",
+      "type": "database",
+      "label": "confirmado após processar",
+      "sublabel": "detalhe 5.2.3.1",
+      "pos": [
+        745,
+        400
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t1",
+      "type": "cloud",
+      "label": "Canal",
+      "sublabel": "tema 5.2",
+      "pos": [
+        225,
+        334
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-0",
+      "type": "security",
+      "label": "Votação de exclusão",
+      "sublabel": "decisão 5.3.1",
+      "pos": [
+        450,
+        466
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-0x",
+      "type": "database",
+      "label": "51% dos saudáveis, mínimo 2",
+      "sublabel": "detalhe 5.3.1.1",
+      "pos": [
+        745,
+        466
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-1",
+      "type": "security",
+      "label": "Freezing",
+      "sublabel": "decisão 5.3.2",
+      "pos": [
+        450,
+        532
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-1x",
+      "type": "database",
+      "label": "ingresso rejeitado com Retry-After",
+      "sublabel": "detalhe 5.3.2.1",
+      "pos": [
+        745,
+        532
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-2",
+      "type": "security",
+      "label": "Retry do bootstrap",
+      "sublabel": "decisão 5.3.3",
+      "pos": [
+        450,
+        598
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-2x",
+      "type": "database",
+      "label": "retry.interval configurável",
+      "sublabel": "detalhe 5.3.3.1",
+      "pos": [
+        745,
+        598
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t2",
+      "type": "cloud",
+      "label": "Falhas",
+      "sublabel": "tema 5.3",
+      "pos": [
+        225,
+        532
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster",
+      "type": "backend",
+      "label": "Cluster e membros",
+      "sublabel": "área 5",
+      "pos": [
+        20,
+        334
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c4-cluster-d0-0",
+      "from": "cluster-d0-0",
+      "to": "cluster-d0-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d0-1",
+      "from": "cluster-d0-1",
+      "to": "cluster-d0-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d0-2",
+      "from": "cluster-d0-2",
+      "to": "cluster-d0-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t0-0",
+      "from": "cluster-t0",
+      "to": "cluster-d0-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t0-1",
+      "from": "cluster-t0",
+      "to": "cluster-d0-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t0-2",
+      "from": "cluster-t0",
+      "to": "cluster-d0-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d1-0",
+      "from": "cluster-d1-0",
+      "to": "cluster-d1-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d1-1",
+      "from": "cluster-d1-1",
+      "to": "cluster-d1-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d1-2",
+      "from": "cluster-d1-2",
+      "to": "cluster-d1-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t1-0",
+      "from": "cluster-t1",
+      "to": "cluster-d1-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t1-1",
+      "from": "cluster-t1",
+      "to": "cluster-d1-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t1-2",
+      "from": "cluster-t1",
+      "to": "cluster-d1-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d2-0",
+      "from": "cluster-d2-0",
+      "to": "cluster-d2-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d2-1",
+      "from": "cluster-d2-1",
+      "to": "cluster-d2-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d2-2",
+      "from": "cluster-d2-2",
+      "to": "cluster-d2-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t2-0",
+      "from": "cluster-t2",
+      "to": "cluster-d2-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t2-1",
+      "from": "cluster-t2",
+      "to": "cluster-d2-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t2-2",
+      "from": "cluster-t2",
+      "to": "cluster-d2-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-cluster-t0",
+      "from": "cluster",
+      "to": "cluster-t0",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-cluster-t1",
+      "from": "cluster",
+      "to": "cluster-t1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-cluster-t2",
+      "from": "cluster",
+      "to": "cluster-t2",
+      "variant": "emphasis"
+    }
+  ]
+}

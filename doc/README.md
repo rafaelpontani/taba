@@ -17,7 +17,9 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [05-particionamento-replicacao.md](05-particionamento-replicacao.md) | 7 | Hash circular, registro + commit de mensagens, sincronização distribuída de blocos. |
 | [06-api.md](06-api.md) | 8 | API de cliente (tópicos, mensagens, tags) e API interna do cluster. |
 | [07-principios-design.md](07-principios-design.md) | 9 | Princípios de design. |
-| [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) | 10 | Decisões em aberto, organizadas pelos próximos passos que dependem delas. |
+| [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md) | 10.1 | Decisões já tomadas, por tema, com o código da dúvida e onde estão registradas. |
+| [08b-pendencias.md](08b-pendencias.md) | 10.2 | Pendências em aberto. |
+| [08c-proximos-passos.md](08c-proximos-passos.md) | 10.3 | Os passos do trabalho e as dúvidas de cada um. |
 | [09-glossario.md](09-glossario.md) | 11 | Termos do projeto. |
 | [10-configuracao.md](10-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
 | [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
@@ -25,6 +27,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: contador de entregas, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit. |
 | [15-topicos-distribuidor.md](15-topicos-distribuidor.md) | 14 | Nomenclatura (QT, DT, QTV; análogos ao SQS e ao SNS), Tópico Distribuidor por prefixos, fila volátil, criação automática pelo `GET`, nó gestor e sua relação com entrada, saída e rebalanceamento de nós. |
 | [14-invisibilidade.md](14-invisibilidade.md) | 13 | Invisibilidade: metadados, propagação entre nós, lista de invisíveis em memória, excedente em disco (índice de expiração), vencimento e reconstrução. |
+| [16-mapa-mental.md](16-mapa-mental.md) | 15 | Mapa mental do projeto em cinco níveis: o mapa geral e um mapa por área, com decisões e parâmetros. |
 
 ## Diagramas
 
@@ -50,5 +53,6 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | Exclusão de fila volátil pelo gestor | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5 |
 | Troca de gestor nas mudanças do anel | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.6 |
 | Métricas do cluster em memória e coleta do Prometheus | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
+| Mapa mental do Taba (geral e oito áreas) | [16-mapa-mental.md](16-mapa-mental.md), seção 15 |
 
 > A numeração das seções é contínua entre os arquivos: uma referência como "seção 7.2" está sempre no arquivo cujo índice lista o número 7.

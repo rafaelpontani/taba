@@ -6,7 +6,7 @@
 
 A entrega segue o modelo de **invisibilidade temporária**, como o *visibility timeout* do SQS: ao entregar uma mensagem, o sistema a torna **invisível** por um tempo. Se o consumidor a confirma (ack) nesse prazo, ela é removida; se não confirma, o prazo expira e a mensagem volta a ficar disponível para entrega. A semântica resultante é **at-least-once**: uma mensagem pode ser entregue mais de uma vez, mas não se perde por falta de confirmação.
 
-> A invisibilidade em si (metadados, propagação, lista de invisíveis, excedente em disco e vencimento) está reunida em [14-invisibilidade.md](14-invisibilidade.md). Os nomes de parâmetros, rotas e arquivos abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [10-configuracao.md](10-configuracao.md)). Pendências deste tema: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md).
+> A invisibilidade em si (metadados, propagação, lista de invisíveis, excedente em disco e vencimento) está reunida em [14-invisibilidade.md](14-invisibilidade.md). Os nomes de parâmetros, rotas e arquivos abaixo são **propostas**; ainda não há contrato definido (mesma ressalva de [10-configuracao.md](10-configuracao.md)). Pendências deste tema: [08b-pendencias.md](08b-pendencias.md).
 
 ### 12.1 Peças do controle
 

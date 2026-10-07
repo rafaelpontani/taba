@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mapa mental do Taba",
+    "output": "doc/diagramas/html/mapa-mental.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "taba",
+      "type": "backend",
+      "label": "Taba",
+      "sublabel": "mensageria distribuída",
+      "pos": [
+        420,
+        230
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "tag": "nível 1 · cada ramo (nível 2) tem seu mapa"
+    },
+    {
+      "id": "escrita",
+      "type": "database",
+      "label": "1. Escrita e quórum",
+      "sublabel": "quórum 2 de 3, com o primário",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "entrega",
+      "type": "backend",
+      "label": "2. Entrega",
+      "sublabel": "só o primário, sanfona, 1000 IDs",
+      "pos": [
+        40,
+        175
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "invis",
+      "type": "security",
+      "label": "3. Invisibilidade",
+      "sublabel": "ReceiptToken, PATCH, expiração",
+      "pos": [
+        40,
+        285
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "topicos",
+      "type": "cloud",
+      "label": "4. Tópicos",
+      "sublabel": "fila, distribuidor e volátil",
+      "pos": [
+        40,
+        395
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "cluster",
+      "type": "cloud",
+      "label": "5. Cluster e membros",
+      "sublabel": "balanceador, canal, voto 51%",
+      "pos": [
+        790,
+        70
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "backend",
+      "label": "6. Sincronização",
+      "sublabel": "carga + banco de eventos",
+      "pos": [
+        790,
+        175
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "disco",
+      "type": "database",
+      "label": "7. Armazenamento",
+      "sublabel": "SQLite por tópico + corpo .json",
+      "pos": [
+        790,
+        285
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "external",
+      "label": "8. API e observabilidade",
+      "sublabel": "1 alvo Prometheus, limite por IP",
+      "pos": [
+        790,
+        395
+      ],
+      "size": [
+        250,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c-escrita",
+      "from": "taba",
+      "to": "escrita",
+      "label": "escrita",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-entrega",
+      "from": "taba",
+      "to": "entrega",
+      "label": "entrega",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-invis",
+      "from": "taba",
+      "to": "invis",
+      "label": "invisibilidade",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-topicos",
+      "from": "taba",
+      "to": "topicos",
+      "label": "tópicos",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-cluster",
+      "from": "taba",
+      "to": "cluster",
+      "label": "cluster",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c-sync",
+      "from": "taba",
+      "to": "sync",
+      "label": "sincronização",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c-disco",
+      "from": "taba",
+      "to": "disco",
+      "label": "armazenamento",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c-obs",
+      "from": "taba",
+      "to": "obs",
+      "label": "api",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Dados e consistência",
+      "items": [
+        "Quórum de escrita único: maioria de replication.factor",
+        "Registro + commit; sem rollback depois do quórum",
+        "Ack sem tombstone; verificação final na sincronização"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Entrega",
+      "items": [
+        "Long polling de até 20 s; maxMessages 10",
+        "Lista de prontos em memória por tópico",
+        "Invisibilidade com ReceiptToken, at-least-once"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Operação",
+      "items": [
+        "Entrada de nó: uma mudança por vez, nó só pronto ao fim",
+        "Freezing, retry do bootstrap e retorno com recuperação",
+        "Métricas em memória, rate limit por IP, rotas de operação isentas"
+      ]
+    }
+  ]
+}

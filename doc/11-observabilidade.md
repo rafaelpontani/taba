@@ -52,7 +52,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.node.uptime` | gauge | s | Tempo desde o início do processo. |
 | `msg.node.cpu.utilization` | gauge | 1 | Uso de CPU do processo. |
 | `msg.node.process.memory` | gauge | By | Memória total do processo (inclui a parcela fora do limite de mensagens). |
-| `msg.node.threads` | gauge | {thread} | Threads/tarefas ativas (conforme o runtime — ver [pendências](08-pendencias-e-proximos-passos.md)). |
+| `msg.node.threads` | gauge | {thread} | Threads/tarefas ativas (conforme o runtime — ver [pendências](08b-pendencias.md)). |
 | `msg.node.open_files` | gauge | {file} | Descritores/arquivos abertos (relevante pelo overflow em disco: um arquivo por mensagem). |
 | `msg.node.connections` | gauge | {connection} | Conexões HTTP abertas (cliente e interna, separadas por atributo). |
 
@@ -264,7 +264,7 @@ Os valores de fila (`visibleMessages`, `invisibleMessages`, `depth`, `oldestMess
 | `oldestAge` | `agora − oldestMessageAt` do nó | `agora − oldestMessageAt` do cluster (é a maior idade entre os nós) |
 
 - **Só o primário conta**, como no restante desta seção; senão a soma seria multiplicada pelo fator de replicação.
-- Cada nó mantém **contadores** dessas quantidades, atualizados nas transições (publicação: +1 visível; entrega: −1 visível, +1 invisível; vencimento do prazo: −1 invisível, +1 visível; ack: −1 no estado em que estava), sem varrer mensagens a cada consulta. A data mais antiga é a menor entre a mais antiga das visíveis e a mais antiga das invisíveis; como achá-la sem varredura é o D35 ([08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md)).
+- Cada nó mantém **contadores** dessas quantidades, atualizados nas transições (publicação: +1 visível; entrega: −1 visível, +1 invisível; vencimento do prazo: −1 invisível, +1 visível; ack: −1 no estado em que estava), sem varrer mensagens a cada consulta. A data mais antiga é a menor entre a mais antiga das visíveis e a mais antiga das invisíveis; como achá-la sem varredura é o D35 ([08b-pendencias.md](08b-pendencias.md)).
 - **Nó sem mensagens do tópico:** `oldestMessageAt` fica **ausente** (sem valor), nunca zero — um zero venceria o "mais antigo" do cluster.
 - **Nó que não responde** fica de fora e o resultado é marcado `partial`: as somas viram **piso** (o cluster tem ao menos aquilo) e a data mais antiga pode ser mais recente que a real.
 - **Como consultar cada visão:** `GET /stats/topics` e `GET /stats/topics/{topic}` devolvem a visão do **cluster** por padrão; com `scope=node` devolvem a visão **só do nó que atende**, sem consulta a outros nós. `groupBy` por tag aplica as mesmas regras (soma das quantidades, menor data) sobre os tópicos do grupo.
@@ -434,4 +434,4 @@ Eventos pontuais, não condições de saúde do nó nem do cluster ([15-topicos-
 
 ## Ainda em aberto
 
-As pendências desta área ficam em [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md), no passo 10.
+As pendências desta área ficam em [08b-pendencias.md](08b-pendencias.md), no passo 10.

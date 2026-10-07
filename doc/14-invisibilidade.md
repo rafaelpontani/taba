@@ -6,7 +6,7 @@
 
 Uma mensagem **entregue** fica **invisível** por um prazo (`invisibleUntil`): nesse tempo nenhum outro consumidor a recebe. Se o consumidor a confirma (ack) dentro do prazo, ela é removida; se não confirma, o prazo vence e a mensagem **volta a ser entregável**. Esta seção reúne tudo sobre o tema: o que é guardado e onde, como a informação se propaga entre os nós, como o dono da mensagem controla a volta à visibilidade e o que acontece quando a memória não comporta todas as mensagens invisíveis. A entrega em si (o `GET`, o long polling e o canal entre nós) continua em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
-> Nomes de parâmetros, rotas e arquivos são **propostas**, como em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md). Pendências: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) (D34).
+> Nomes de parâmetros, rotas e arquivos são **propostas**, como em [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
 ### 13.1 Visão geral
 

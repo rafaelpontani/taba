@@ -51,4 +51,4 @@ Cada limite é do tipo taxa + estouro (`ratelimit.burst`, ex.: token bucket), pa
 
 **Não confundir com:** o retry de registro/commit entre nós do cluster ([04-cluster.md](04-cluster.md), [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) é comunicação interna e não tem relação com o rate limit da API de cliente — um protege a durabilidade, o outro protege a disponibilidade do nó contra uso excessivo de um cliente.
 
-Pendências: [08-pendencias-e-proximos-passos.md](08-pendencias-e-proximos-passos.md) (passo 1).
+Pendências e decisões: [08b-pendencias.md](08b-pendencias.md) e [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md).

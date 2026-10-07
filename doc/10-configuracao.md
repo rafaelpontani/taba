@@ -2,7 +2,7 @@
 
 [← Índice](README.md)
 
-Lista dos parâmetros configuráveis citados na documentação e seus valores padrão. **A definir** significa que o parâmetro é configurável, mas o padrão ainda não foi decidido (ver [pendências](08-pendencias-e-proximos-passos.md)).
+Lista dos parâmetros configuráveis citados na documentação e seus valores padrão. **A definir** significa que o parâmetro é configurável, mas o padrão ainda não foi decidido (ver [pendências](08b-pendencias.md)).
 
 > Os nomes da coluna "Chave sugerida" são propostas; ainda não há contrato de configuração definido.
 
