@@ -1,0 +1,455 @@
+# Casos de uso: o nó e o cluster
+
+[← Índice](README.md) · [Convenções e níveis de teste](20-casos-de-uso.md)
+
+## 19.C Casos de uso do nó e do cluster
+
+A vida do cluster: um nó entra, sincroniza, falha, é excluído por votação, volta, é repassado, sai por drain; e como o cluster é configurado, protegido e observado. Quase tudo é `C` (cluster simulado, com `Transport` e `Clock` de teste, [18-estrutura-codigo.md](18-estrutura-codigo.md), seção 17.5); o modo desenvolvimento é `I`. Convenções: [20-casos-de-uso.md](20-casos-de-uso.md). O caminho da mensagem (escrita, entrega, invisibilidade, armazenamento) está em [20b-casos-de-uso-no-dados.md](20b-casos-de-uso-no-dados.md).
+
+### ING: entrada de um nó (bootstrap)
+
+Regras: [04-cluster.md](04-cluster.md), seções 6.2 e 6.5, e [06c-api-cluster.md](06c-api-cluster.md).
+
+#### Descoberta e pedido de ingresso
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-ING-001 | Em `mode=production`, sem `cluster.entry-address` o nó **não sobe**. | 04 §6.2, 10 | I |
+| UC-ING-002 | Ao iniciar, o nó chama `GET /cluster/nodes` pelo endereço do balanceador (porta do cluster) e recebe a `MemberTable` (`version` e `members` com `nodeId`, `addresses`, `port`, `state`). Qualquer nó responde; um chamador que ainda não é membro é aceito. | 04 §6.2, 06c | C |
+| UC-ING-003 | O nó escolhe um membro **ao acaso** da lista e envia `POST /cluster/nodes/join` (`JoinRequest`: `nodeId`, `addresses`, `port`, `version`), numa única requisição síncrona; esse membro coordena o registro. Se o membro não responde, tenta outro da lista. | 04 §6.2, 06c | C |
+| UC-ING-004 | Se a listagem falha, o nó tenta de novo a cada `cluster.bootstrap.retry.interval`. | 04 §6.2 | C |
+| UC-ING-005 | Só o **primeiro nó** de um cluster novo (`cluster.first-node=true`), quando a listagem não encontra ninguém, inicia o cluster sozinho como único membro. Sem a flag, a listagem sem resposta é erro e o nó tenta de novo. | 04 §6.2 | C |
+| UC-ING-006 | `GET /cluster/nodes` num nó que ainda não tem a tabela (sincronizando): `503` `cluster.node-syncing`. | 06c | C |
+| UC-ING-007 | O nó se auto-nomeia com um **GUID v7** a cada início do processo, só em memória, e se identifica por ele, inclusive no pedido de ingresso. | 04 §6.7 | U, C |
+| UC-ING-008 | A tabela de membros guarda o IP e a **porta do cluster** de cada nó, e toda chamada entre nós vai direto a eles, sem balanceador (só o `GET /cluster/nodes` inicial passa por ele). | 06 §8.0 | C |
+
+#### Registro e commit
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-ING-009 | O membro que recebe o `join` **testa os IPs** informados, conectando de volta à porta do cluster. Falha: `422` `cluster.join-unreachable`, o nó é excluído e repete o bootstrap. | 04 §6.2, 06c | C |
+| UC-ING-010 | Conexão bem-sucedida: o membro envia a **todos os nós** o pedido de registro (`POST /cluster/nodes/register`, fase 1); com todos confirmando, envia o commit (`POST /cluster/nodes/commit`, fase 2), e só então responde ao nó novo com a tabela, já efetivada em todo o cluster. | 04 §6.2, 06c | C |
+| UC-ING-011 | O nó novo recebe só a tabela de nós; a tabela de tópicos (e a de tokens) ele puxa depois por stream de um nó do cluster. | 04 §6.2, 06c | C |
+| UC-ING-012 | Ao final, o nó novo conhece todos os demais membros e vice-versa, e abre ativamente o canal permanente com cada nó da tabela. | 04 §6.2 | C |
+| UC-ING-013 | Confirmação de **todos** os nós, sem quórum reduzido: com um nó sem confirmar o registro, o ingresso não se efetiva. | 04 §6, 05 §7.2 | C |
+| UC-ING-014 | `POST /cluster/nodes/register` com outra operação pendente: `409` `cluster.conflict`; `commit` de operação desconhecida: `404` `cluster.operation-unknown`. | 06c | C |
+
+#### Falha no registro
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-ING-015 | Falha **antes do commit** (teste de conexão, ou fase de registro sem confirmação de todos): rollback do registro pendente, o nó é excluído (não chega à tabela), e o `join` responde `503` `cluster.registration-failed`. | 04 §6.2 e 6.5, 06c | C |
+| UC-ING-016 | Os blocos que o nó assumiria são rebalanceados entre os restantes: o anel é recalculado sem esse nó. | 04 §6.5 | C |
+| UC-ING-017 | Nova tentativa: o nó repete o bootstrap do começo a cada `cluster.bootstrap.retry.interval` até `cluster.bootstrap.retry.max-attempts` (`0` = sem limite); esgotado, o nó encerra com erro. O mesmo intervalo vale para falha na listagem, no ingresso e na sincronização. | 04 §6.5, 10 | C |
+| UC-ING-018 | Falha **no commit** (registro já confirmado por todos): não é desfeita; o membro insiste até `write.commit.timeout`, não aborta o nó novo, e o `join` responde `503` `cluster.commit-timeout` (o nó foi aceito). Antes de repetir, o nó consulta `GET /cluster/nodes`. | 04 §6.2, 06c | C |
+| UC-ING-019 | A falha de registro do nó (o nó como um todo não entra) tem efeito de exclusão + rebalanceamento; já a perda de uma mensagem na sincronização gera só alerta. | 04 §6.5, 07 | C |
+| UC-ING-020 | `msg.cluster.bootstrap.failures` conta as falhas por `reason` (teste de conexão, fase 1, fase 2); falha de bootstrap gera log `error`. | 11 | C |
+
+#### Depois do registro
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-ING-021 | Ao assumir a posição no anel, o nó passa a ser responsável por blocos como primário, secundário, terciário etc., e inicia a sincronização (casos `SIN`). | 04 §6.2 | C |
+| UC-ING-022 | Prontidão: o nó só fica pronto (`/health/ready` `200`) quando termina toda a sincronização. Até lá consta na tabela e confirma registros gravando-os no banco de eventos, mas **não atende clientes, não coordena e não entrega**. | 04 §6.2 | C |
+| UC-ING-023 | Depois de pronto, o nó passa a ser também nó gestor das filas voláteis cujo `id` cai na sua faixa do anel. | 04 §6.2, 15 §14.6 | C |
+| UC-ING-024 | O estado do nó passa por `joining` e `syncing` até `active` (`msg.cluster.node.state`); `/health/ready` informa `bootstrapping` e `syncing` como motivo. | 06b, 11 | C |
+| UC-ING-025 | Em modo desenvolvimento não há bootstrap: o nó sobe sozinho, e outro nó não consegue ingressar (a porta do cluster não é aberta). Um nó em produção que tenta ingressar num nó em desenvolvimento não consegue. | 04 §6.4, 06c | I |
+| UC-ING-026 | A tabela de membros **não** é persistida: o reinício do processo perde a tabela e o nó volta como nó novo. | 13 §12.9 | C |
+| UC-ING-027 | Uma versão (época) da tabela de membros diferente entre nós indica propagação incompleta (condição `membership-divergent`, `msg.cluster.members.version`). | 06c, 11 | C |
+
+### FAL: detecção de falhas, votação de exclusão e saída por falha
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.3.
+
+#### Detecção
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-FAL-001 | O controle de quem está online é feito pelo canal permanente em malha, sem coordenador; **não há ping separado**. | 04 §6.3 | C |
+| UC-FAL-002 | Canal que cai ou fica sem sinal de vida: o nó que detectou **tenta reconectar** (`cluster.channel.reconnect.retries` e `backoff`) antes de agir. Um nó travado com a conexão aberta é detectado pela falta do `keepalive`. | 04 §6.3 | C |
+| UC-FAL-003 | Reconexão antes de esgotar as tentativas: nada muda (nenhuma votação é aberta). | 04 §6.3, 13 §12.9 | C |
+| UC-FAL-004 | Canal ainda fora depois das tentativas: é aberta a votação de exclusão entre os nós do cluster. | 04 §6.3 | C |
+| UC-FAL-005 | A votação também é aberta quando a fila de saída do canal estoura o limite (`reason: queue-overflow`) e quando o nó entra em falha (`reason: node-failed`); o motivo normal é `channel-down`. | 04 §6.3, 06c | C |
+| UC-FAL-006 | Enquanto a votação não conclui, os sinais para o nó ficam acumulados em memória; reconectando antes, o envio é retomado. | 04 §6.3 | C |
+
+#### Votação
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-FAL-007 | A exclusão exige `ceil(S × 51%)` votos de S saudáveis (`cluster.vote.quorum-percent`): 2 de 3, 3 de 4, 3 de 5. | 04 §6.3, 10 | U |
+| UC-FAL-008 | Nó **saudável** é o que quem abre a votação enxerga com o canal ativo e que responde ao pedido de voto. Os suspeitos (fora do ar) **não votam e não entram na base**. | 04 §6.3 | C |
+| UC-FAL-009 | Se vários nós caem ao mesmo tempo (por exemplo, uma zona), a votação segue só entre os saudáveis. | 04 §6.3 | C |
+| UC-FAL-010 | Com menos saudáveis que `cluster.vote.min-voters` (padrão 2), nenhuma exclusão se efetiva e a condição `quorum-lost` aparece; o mínimo impede que um nó isolado exclua todos os demais. | 04 §6.3, 11 | C |
+| UC-FAL-011 | `POST /cluster/vote-remove` (`VoteRequest`: `voteId`, `candidateNodeId`, `openedBy`, `reason`) responde `VoteResponse` com `vote` `yes` ou `no`, conforme o que o votante enxerga do candidato (por exemplo, `no` se ele enxerga o canal ativo). Quem não responde não entra na base. | 06c | C |
+| UC-FAL-012 | Com várias exclusões pendentes, elas são votadas uma de cada vez, cada uma sobre os saudáveis do momento. | 04 §6.3 | C |
+| UC-FAL-013 | Risco aceito: numa partição de rede em que os dois lados têm saudáveis suficientes, cada lado pode excluir o outro; o lado excluído, ao voltar, refaz o bootstrap do zero. | 04 §6.3 | C |
+| UC-FAL-014 | Cluster de 3 nós com um fora do ar: os 2 saudáveis votam e o quórum de 2 se atinge. | 04 §6.4 | C |
+| UC-FAL-015 | Votação e resultado são registrados (`msg.cluster.vote` por `role` e `outcome`; logs `warn` e `info`). | 11 | C |
+
+#### Desregistro
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-FAL-016 | Atingido o quórum, o desregistro segue o protocolo de duas fases: `POST /cluster/nodes/unregister` (`reason: vote`) a todos os nós e `POST /cluster/nodes/commit`, que remove o nó da tabela em todo o cluster. | 04 §6.3, 06c | C |
+| UC-FAL-017 | Falha antes do commit: rollback. Depois de decidido: sem rollback, o coordenador insiste dentro de `write.commit.timeout` até confirmar a remoção em todos. | 04 §6.3 | C |
+| UC-FAL-018 | No commit, o anel é recalculado e os blocos do nó removido são **rebalanceados** entre os restantes; os novos primários das posições dele assumem as filas voláteis que ele gerenciava, sem transferir estado. | 04 §6.3, 15 §14.6 | C |
+| UC-FAL-019 | `msg.cluster.membership.changes` conta por `operation`, `reason` (`vote`, `drain`), `phase` e `outcome`. | 11 | C |
+| UC-FAL-020 | Concluída a exclusão, todos os nós descartam as filas de sinais para aquele nó. | 04 §6.3, 13 §12.9 | C |
+
+#### Efeito sobre as mensagens e a saúde
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-FAL-021 | Entre a queda e o desregistro, as mensagens de que o nó era dono ficam sem entrega; depois do desregistro, o novo primário (herdeiro do bloco) as entrega. | 13 §12.7 | C |
+| UC-FAL-022 | Depois da exclusão, cada mensagem do nó removido continua em pelo menos `replication.factor − 1` nós. | 05 §7.1 | C |
+| UC-FAL-023 | Nó em **falha** (disco cheio, banco corrompido, banco de eventos acima de `cluster.sync.log.max-bytes`, ou sem origem de carga até `cluster.sync.timeout`) sinaliza isso ao cluster, e os demais ficam liberados para votar o desregistro dele. | 05 §7.3, 04 §6.8 | C |
+| UC-FAL-024 | As condições do cluster (lista, não estado único), cada uma com severidade: `member-unreachable`, `node-frozen`, `syncing`, `under-replicated`, `write-quorum-at-risk` (réplicas íntegras abaixo de `write.quorum`), `quorum-lost`, `membership-divergent`, `storage-pressure`; `ok` quando nenhuma. | 11 | C |
+| UC-FAL-025 | `under-replicated` (réplicas abaixo de `replication.factor`, mas **no ou acima** do quórum) é aviso transitório: as escritas continuam respondendo. `write-quorum-at-risk` é crítica: as escritas podem falhar por não fechar quórum. | 11 | C |
+
+### FRZ: período de freezing
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.7.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-FRZ-001 | Um nó desregistrado por falha que **continua o mesmo processo** (mesmo ID, mesma memória) e tenta se registrar de novo durante `cluster.freezing.duration`: o pedido de ingresso é rejeitado com `403` `cluster.node-frozen` e `Retry-After` com o tempo que falta. | 04 §6.7, 06c | C |
+| UC-FRZ-002 | O cluster guarda o ID e o instante do desregistro de cada nó em freezing. | 04 §6.7 | C |
+| UC-FRZ-003 | Passado o freezing, o nó entra normalmente: ele volta a tentar depois do `Retry-After`, dentro do laço de nova tentativa do bootstrap. | 04 §6.7 | C |
+| UC-FRZ-004 | Não há lista de espera: o cluster não guarda o pedido rejeitado. A rejeição é registrada no log ("rejeitado (freezing)"). | 04 §6.7 | C |
+| UC-FRZ-005 | Um **reinício** do processo gera um ID novo: o nó entra como nó novo, **sem freezing**. | 04 §6.7 | C |
+| UC-FRZ-006 | A saída por **drain** não gera freezing (é voluntária e o retorno é com ID novo). | 04 §6.7, 6.10 | C |
+| UC-FRZ-007 | `msg.cluster.freezing` e a condição `node-frozen` refletem os nós em freezing. | 11 | C |
+| UC-FRZ-008 | Em modo desenvolvimento o freezing não se aplica (`cluster.freezing.*` é ignorado). | 04 §6.4 | I |
+
+### CNC: concorrência entre mudanças de membros
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.8.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-CNC-001 | Depois que um nó entra (commit do registro), nenhuma outra entrada, saída ou rebalanceamento é efetivada até ele ficar **pronto**; pedidos de bootstrap e votações de exclusão que chegarem nesse intervalo **esperam**. Só há uma mudança de membros por vez. | 04 §6.8 | C |
+| UC-CNC-002 | Enquanto uma votação de exclusão está em andamento (da abertura até o commit do desregistro), um novo pedido de bootstrap fica em espera; só é processado quando a votação termina, com ou sem exclusão efetivada. | 04 §6.8 | C |
+| UC-CNC-003 | O desregistro voluntário (drain) conta como saída de membro: espera outra mudança em curso e, enquanto corre, bloqueia novos pedidos de bootstrap. | 04 §6.8 | C |
+| UC-CNC-004 | Exceção: o **próprio nó que está se sincronizando**: se ele entra em falha, a votação do desregistro dele é liberada. | 04 §6.8 | C |
+| UC-CNC-005 | Um nó que cai durante a sincronização de outro só é desregistrado depois que esta termina ou falha. | 04 §6.8 | C |
+| UC-CNC-006 | Os blocos de um nó em sincronização não mudam no meio da carga (o cluster não aceita outra entrada, saída ou rebalanceamento), e o banco de eventos não traz mudanças da tabela de membros. | 04 §6.8, 05 §7.3 | C |
+| UC-CNC-007 | Um nó que reinicia sem memória (mesmo IP e porta) antes de a votação concluir: o pedido de bootstrap entra na fila e espera; concluída a votação (o nó antigo removido), é processado como registro comum de nó novo, sem tratamento especial pelo endereço repetido. | 04 §6.8 | C |
+| UC-CNC-008 | Em modo desenvolvimento não há mudança de membros a coordenar. | 04 §6.4 | I |
+
+### SIN: sincronização distribuída de blocos
+
+Regras: [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3.
+
+#### Listar e puxar
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SIN-001 | A sincronização é **escopada aos blocos afetados**: o restante do cluster continua operando, sem bloqueio global. | 05 §7.3 | C |
+| UC-SIN-002 | O nó novo pede a **todos os nós responsáveis** pelo bloco a lista de IDs (`GET /cluster/blocks/{id}/ids`, NDJSON ordenado por ID). | 05 §7.3, 06c | C |
+| UC-SIN-003 | Uma mensagem já confirmada (ack) antes da listagem não aparece em nenhuma lista e **não é caso especial**: não há tombstone permanente. | 05 §7.3 | C |
+| UC-SIN-004 | Consolida as listas pela **união** (não a interseção: uma réplica pode ter recebido uma mensagem que outra não), por *merge* ordenado dos streams, sem materializar todas as listas em memória. | 05 §7.3 | U, C |
+| UC-SIN-005 | Divide a lista unida em faixas e **balanceia** as chamadas `GET /cluster/blocks/{id}/messages?from=&to=` entre os nós de origem (sem concentrar a carga num só); o que faltar numa faixa é buscado em outro nó; a rota de ID único é o último recurso; um stream cortado é retomado pelo último ID lido. | 05 §7.3, 06c | C |
+| UC-SIN-006 | As linhas dos streams (tópicos e mensagens) são aplicadas **direto no armazenamento final** do nó, em lotes, sem gravar duas vezes (a carga não passa pelo banco de eventos). | 05 §7.3 | C |
+| UC-SIN-007 | A sincronização aplica a mensagem com o arquivo e a linha no banco do tópico, e uma mensagem de tópico ainda desconhecido espera os tópicos (a carga de tópicos vem antes). | 05 §7.3 | C |
+| UC-SIN-008 | A mensagem já vencida por `ttl` é descartada na sincronização, em vez de copiada. | 05 §7.3, 13 §12.10 | C |
+| UC-SIN-009 | `GET /cluster/blocks/{id}/messages/{messageId}`: `200` `MessageRecord`, ou `404` `message.not-found`. | 06c | C |
+
+#### Banco de eventos
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SIN-010 | Durante a sincronização o nó já consta na tabela e continua recebendo o protocolo normal, mas **não processa** os eventos: grava cada um no banco SQLite local `${storage.dir}/_sync/sync.db` (tabela `eventos`, número de sequência crescente) na ordem de chegada. Os eventos são registro, commit e rollback de tópicos, de tokens, de mensagens, de invisibilidade e de acks. | 05 §7.3 | C |
+| UC-SIN-011 | O nó **confirma o registro depois de gravar o evento** no banco (e por isso conta para o quórum normalmente). A gravação passa por uma thread única. | 05 §7.3 | C |
+| UC-SIN-012 | Processamento em sequência: carga de tópicos e tokens, carga de blocos, processamento do banco de eventos, verificação final e troca para o modo normal. | 05 §7.3 | C |
+| UC-SIN-013 | Processamento do banco de eventos **por cima** da carga: lê sempre a linha mais antiga, aplica o evento e **apaga a linha**, até esvaziar; não há posição guardada. | 05 §7.3 | U, C |
+| UC-SIN-014 | O processamento é idempotente e o evento vence a carga: criar o que existe pelo `id`, gravar o mesmo `invisibleUntil`, apagar o que não existe não muda nada; um ack ou remoção no banco apaga o que a carga trouxe velho. | 05 §7.3 | U, C |
+| UC-SIN-015 | Novos eventos continuam chegando ao banco enquanto ele é processado. | 05 §7.3 | C |
+| UC-SIN-016 | **Verificação final:** com a tabela de eventos quase vazia, o nó repete as listagens só para o que pretende manter e descarta o que já não aparece em nenhum nó de origem (cobre um ack cujo pedido nunca chegou ao nó). | 05 §7.3 | C |
+| UC-SIN-017 | **Troca para o modo normal (*cutover*):** quando a tabela `eventos` fica vazia, sob o mesmo controle que a recepção usa para decidir o destino de cada evento (nenhum evento cai entre os dois modos), o nó passa a processar em tempo real e nada mais é gravado no banco; o `sync.db` é descartado e o nó fica íntegro. | 05 §7.3 | C |
+| UC-SIN-018 | Um ack que chega durante a sincronização não "ressuscita" a mensagem: o evento é aplicado por cima da carga e a mensagem some. | 05 §7.3 | C |
+
+#### Pronto, falha e limpeza
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SIN-019 | Pronto: cargas aplicadas, banco de eventos processado e descartado, verificação final feita. O nó reconstrói as listas de prontos e de invisíveis dos blocos de que é primário, recebe o instantâneo do canal, assume as filas voláteis e `/health/ready` responde `200`. Até lá não coordena nem entrega, e as chamadas de cliente são repassadas. | 05 §7.3 | C |
+| UC-SIN-020 | **Falha da sincronização:** disco cheio ou com falha, banco de eventos acima de `cluster.sync.log.max-bytes`, ou banco local corrompido: o nó entra em falha e sinaliza ao cluster. Sem nó de origem para uma carga, tenta de novo e, esgotado `cluster.sync.timeout`, cai no mesmo caminho. | 05 §7.3 | C |
+| UC-SIN-021 | Limpeza dos nós que perderam o bloco: ver UC-ARM-022 e UC-ARM-023. | 05 §7.3 | C |
+| UC-SIN-022 | Na FIFO, as publicações de um grupo cujo primário está sincronizando respondem `503` (UC-FIF-029); a sincronização leva as linhas com `deleteAt` sem rota nova. | 05 §7.3, 17 §16.4 e 16.7 | C |
+| UC-SIN-023 | Métricas: `msg.sync.blocks.active`, `duration`, `ids.listed`, `messages.pulled` por `peer`, `bytes`, `log.events`, `log.bytes`, `phase` (`topicos`, `blocos`, `replay`, `verificacao`, `pronto`) e `failures` por `reason`. Logs de início e fim da sincronização de bloco (`info`). | 11 | C |
+| UC-SIN-024 | Em modo desenvolvimento não há entrada de nó, sincronização, banco de eventos nem recuperação de perdas. | 05 §7.3 | I |
+
+#### Perda de mensagem
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SIN-025 | Uma mensagem listada que não pode ser obtida **não é declarada perdida de imediato** (pode ter sido confirmada e apagada enquanto o nó sincronizava): tenta (1) a faixa em outro nó, (2) a rota de ID único, (3) relista os IDs só dos que falharam. | 05 §7.3 | C |
+| UC-SIN-026 | Se o ID não aparece mais em nenhum nó, foi um ack: o caso é **descartado em silêncio** (sem log, sem registro). | 05 §7.3 | C |
+| UC-SIN-027 | Só o que continua listado e sem conteúdo em nenhum nó é **perda**: uma linha de log `error` com o nome do tópico, o ID, o bloco e os nós consultados, e um registro na tabela `perdas` do nó e dos nós responsáveis pelo bloco (idempotente pela chave). | 05 §7.3, 04 §6.6 | C |
+| UC-SIN-028 | A perda **não compromete a saúde** do nó nem interrompe a sincronização, que segue para as demais mensagens. Não há métrica nem condição de saúde. | 05 §7.3, 11 | C |
+| UC-SIN-029 | A janela residual (um ack cujo pedido nunca chegou ao nó nem ao banco de eventos, por ter sido calculado antes de ele assumir a posição no anel) é tratada como o mesmo tipo de exceção rara: evento observável, não falha de saúde. | 05 §7.3 | C |
+
+### STR: streams NDJSON entre nós
+
+Contrato: [06c-api-cluster.md](06c-api-cluster.md), seção 8.2.1. Vale para `/cluster/topics`, `/cluster/tokens`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/messages`, `/cluster/message-loss` e o corpo do `/cluster/messages/recover`.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-STR-001 | `Content-Type: application/x-ndjson`, um objeto JSON por linha; emissor e receptor trabalham com um buffer por linha, sem montar a resposta inteira em memória. | 06c §8.2.1 | U, C |
+| UC-STR-002 | A ordem é por **ID ascendente** (GUID v7 comparado como texto na forma canônica em minúsculas). | 06c §8.2.1 | U |
+| UC-STR-003 | `from` e `to` (ambos inclusivos e opcionais) delimitam a faixa; `limit` opcional reduz o teto de itens. | 06c §8.2.1 | U, C |
+| UC-STR-004 | O stream termina com a linha `StreamEnd` (`end: true`, `count`, `last`, `hasMore`); sem essa linha o trecho é considerado **falho**, mesmo que a conexão tenha fechado limpa. | 06c §8.2.1, 06d | U, C |
+| UC-STR-005 | Teto por stream: o emissor fecha ao atingir `cluster.sync.stream.max-items` ou `max-bytes`, com `hasMore: true`; o receptor abre outro com `from=<last>`. | 06c §8.2.1 | C |
+| UC-STR-006 | Retomada depois de um corte ou de `hasMore`: o receptor repete com `from=<último ID lido>`; o emissor devolve de novo essa linha e o receptor a **ignora** (aplicação idempotente por ID). Sem token nem estado no servidor. | 06c §8.2.1 | U, C |
+| UC-STR-007 | Erro depois do `200`: o emissor escreve `{"error":"..."}` (que não é `ErrorResponse`) e fecha, ou apenas fecha sem a linha final; nos dois casos o receptor retoma. | 06c §8.2.1 | C |
+| UC-STR-008 | Timeout de leitura **por linha** (`cluster.sync.stream.idle-timeout`), não um teto para o stream inteiro; sem *heartbeat*. | 06c §8.2.1 | C |
+| UC-STR-009 | Limite do tamanho da linha (`cluster.sync.stream.max-line-bytes`): precisa caber a maior mensagem possível (hard-limit em base64 mais o envelope). | 06c §8.2.1, 10 | U |
+| UC-STR-010 | Contrapressão: o receptor lê no próprio ritmo e o emissor não mantém transação nem lista congelada aberta; lê o armazenamento em blocos pequenos. | 06c §8.2.1 | C |
+| UC-STR-011 | Linhas de cada rota: `TopicDefinition`, `TokenRecord`, `{id, topic}` (e `deleteAt` na FIFO), `{id, topic}` das perdas e `MessageRecord` (sem `body` e com `deleteAt` na FIFO com exclusão lógica). | 06c §8.2.1 | U |
+| UC-STR-012 | O `MessageRecord` entre nós só tem duas formas de `body`: JSON nativo (`application/json`, `*/*+json`) ou base64 com `bodyEncoding: "base64"` (texto também vai em base64). | 06c | U |
+| UC-STR-013 | `POST /cluster/messages/recover`: corpo NDJSON de `MessageRecord` terminado por `StreamEnd`; a resposta é `RecoverResult` (`end: true`, `count` aplicadas); se a conexão cair, quem envia reenvia tudo e as já aplicadas são ignoradas. | 06c | C |
+| UC-STR-014 | O contrato não cria tombstone nem log novo: a remoção continua por ausência do ID. | 06c §8.2.1 | C |
+| UC-STR-015 | Métricas: `msg.sync.streams` por `kind`, `direction`, `outcome` (`complete`, `truncated`, `error`), `msg.sync.stream.resumes`, `duration` e `bytes`. | 11 | C |
+
+### RTN: retorno de nó excluído e recuperação de perdas
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.6.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-RTN-001 | Um nó desregistrado por falha do canal que volta consulta **todos** os nós que consegue alcançar (`GET /cluster/message-loss`, NDJSON) e une as respostas (cada nó responde com a sua tabela `perdas`). Essas rotas aceitam chamadas de um nó que ainda não é membro. | 04 §6.6, 06c | C |
+| UC-RTN-002 | Para cada par (tópico, ID), o nó procura a mensagem localmente: no disco (`${topico}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o disco conta. | 04 §6.6 | C |
+| UC-RTN-003 | Para cada mensagem encontrada, o nó a envia ao responsável pelo bloco por `POST /cluster/messages/recover`; quem recebe grava **direto nos nós responsáveis**, idempotente pelo ID, sem as duas fases (nem registro pendente nem rollback), e confirma a linha quando `write.quorum` nós gravaram. | 04 §6.6, 06c | C |
+| UC-RTN-004 | Vai o corpo e o `deliveryCount`; a invisibilidade é **zerada** e a mensagem volta a ficar pronta para entrega. | 04 §6.6 | C |
+| UC-RTN-005 | Baixa do registro: o nó que aceita a mensagem apaga o par da sua tabela `perdas` e avisa os demais (melhor esforço), para um segundo nó que volte com a mesma mensagem não a reenviar depois de ela já ter sido entregue e confirmada. | 04 §6.6 | C |
+| UC-RTN-006 | Quarentena: enquanto a recuperação não termina, o nó **não apaga** os dados antigos. Se algum nó não respondeu à consulta, tenta de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout`; só então segue. | 04 §6.6 | C |
+| UC-RTN-007 | Concluída a recuperação (ou esgotado o prazo), o nó limpa seu estado local e inicia um **novo registro do zero**, o bootstrap completo, como nó novo e com nova posição no anel. O freezing só atrasa este passo. | 04 §6.6 | C |
+| UC-RTN-008 | Tabela `perdas`: chave (`topico`, `id`), campos `bloco` e `detectado_em`; o nó que detecta grava e envia também aos nós responsáveis pelo bloco (a informação sobrevive à queda do detector); os registros expiram depois de `cluster.message-loss.ttl`. | 04 §6.6 | U, C |
+| UC-RTN-009 | Mensagens já aplicadas num reenvio do `recover` são ignoradas (`msg.recover.messages` com `outcome` `sent`, `applied`, `skipped`). | 06c, 11 | C |
+| UC-RTN-010 | O estado do nó durante a volta é `returning` (`msg.cluster.node.state`, `/health/ready` com `reason: returning`); registro em log das mensagens recuperadas (`info`). | 06b, 11 | C |
+| UC-RTN-011 | Em modo desenvolvimento não se aplica: um reinício retoma do disco. | 04 §6.6 | I |
+
+### FWD: repasse de chamadas de cliente
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.9, e [06c-api-cluster.md](06c-api-cluster.md), `* /cluster/forward/{caminho}`.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-FWD-001 | Um nó que ainda não está íntegro (sincronizando) **repassa** a chamada de cliente a outro nó em vez de devolver erro. Vale só para rotas de cliente; `/health/*`, `/metrics`, `/stats/*`, `/node/drain` e as de comunicação entre nós não são repassadas. | 04 §6.9 | C |
+| UC-FWD-002 | Destino na sincronização: um membro da tabela com canal ativo, escolhido ao acaso (só há um nó em sincronização por vez). | 04 §6.9 | C |
+| UC-FWD-003 | Destino no drain: o **nó mais livre** (menor carga pelo sinal de vida, mais as chamadas já repassadas e em andamento por aquele destino), com empate sorteado; só entram nós prontos e fora de drain; a escolha é feita **a cada chamada**. Depois que o canal fecha, vale o último indicador e a última tabela conhecida. | 04 §6.9 | U, C |
+| UC-FWD-004 | Repasse **transparente**: método, caminho, query, corpo e cabeçalhos seguem como vieram, e a resposta volta como o destino a deu (inclusive `409`, `413`, `429`); vale para todas as rotas de cliente, também o `GET` com long polling e `autoCreate`. | 04 §6.9, 06c | C |
+| UC-FWD-005 | O repasse vai à **porta do cluster** do destino, pela rota `/cluster/forward/{caminho}`; a API de cliente não aceita marcador interno de repasse. | 04 §6.9, 06c | C |
+| UC-FWD-006 | Com autenticação ligada, o `Authorization` segue como veio e o **destino confere** o token (o nó em sincronização ainda não tem a tabela de tokens). | 04 §6.9, 06c | C |
+| UC-FWD-007 | Sem laço: a rota `/cluster/forward` é o marcador; quem a recebe nunca repassa de novo, e se estiver sincronizando responde `503` `cluster.node-syncing`. Aceita só de membros e de nós que saíram por drain (lista em memória preenchida no commit do desregistro voluntário e esvaziada quando um nó novo se registra com o mesmo endereço). | 04 §6.9, 06c | C |
+| UC-FWD-008 | Falha do destino **antes** de o corpo ser enviado (conexão recusada): tenta outro nó, até um teto pequeno. **Depois** de enviado: **não repete** (um `POST` de mensagem repetido duplicaria) e responde `502` `forward.bad-gateway` ou `504` `forward.timeout`. | 04 §6.9 | C |
+| UC-FWD-009 | Rate limit: aplicado uma vez, no nó que recebeu, por IP do cliente (o nó não valida o token); o destino não conta de novo, e a porta do cluster não tem rate limit. O IP do cliente já resolvido segue em cabeçalho interno. | 04 §6.9, 12 | C |
+| UC-FWD-010 | Sem nenhum destino respondendo: `503` com `Retry-After` (`cluster.node-syncing` ou `cluster.node-draining`). | 04 §6.9, 06c | C |
+| UC-FWD-011 | Publicação em fila FIFO: mesmo com o nó pronto, é repassada ao **primário do grupo** (o destino é o dono, não o nó mais livre); o primário confere (`421` se não for o dono) e a repetição depois do corpo é segura. | 04 §6.9, 06c, 17 §16.4 | C |
+| UC-FWD-012 | Em modo desenvolvimento nenhuma chamada é repassada. | 04 §6.4 e 6.9 | I |
+
+### DRN: parada e modo drain
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.10, e [06b-api-operacao.md](06b-api-operacao.md), "Drain".
+
+#### Como entra
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-DRN-001 | Os estados são `active` → `draining` → `drained` (`drainState`). | 04 §6.10, 06b | U |
+| UC-DRN-002 | `SIGTERM` ou `SIGINT` com `drain.on-stop` ligado (padrão): o nó entra em drain sozinho e, terminado o drain, **encerra com código 0**. Um segundo sinal durante o drain encerra na hora, sem terminar. | 04 §6.10 | C |
+| UC-DRN-003 | Com `drain.on-stop=false` o sinal encerra o processo na hora, como uma queda. | 04 §6.10, 10 | C |
+| UC-DRN-004 | `POST /node/drain`: `202` `DrainStatus` com `trigger: "api"`, **sem encerrar** o processo; o nó fica em `drained`, fora do cluster e da rotação. Já em drain (`draining` ou `drained`): `200` sem efeito. | 06b | C |
+| UC-DRN-005 | `GET /node/drain` devolve `DrainStatus` (`drainState`, `trigger` `signal` ou `api` ou `null`, `startedAt`, `pendingMessages`, que chega a 0 quando `drained`). | 06b | C |
+| UC-DRN-006 | As rotas de drain valem só para o nó que recebe a chamada; um IP fora de `operations.allowed-ips`: `403` `ops.ip-not-allowed`. | 06b | I |
+
+#### O que o nó faz, em ordem
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-DRN-007 | Passo 1: `/health/ready` passa a `503` na hora e `/health/live` segue `200`. O nó continua recebendo chamadas de cliente mas **não atende nenhuma**: repassa todas ao nó mais livre até o processo encerrar. Os long pollings em andamento são respondidos vazios; os novos, repassados. | 04 §6.10 | C |
+| UC-DRN-008 | Passo 2: avisa os outros nós pelo canal com o sinal de estado "em drain" (idempotente): os pares deixam de pedir `take` a ele e de escolhê-lo como origem de carga; um `take` que ainda chegue é respondido vazio. | 04 §6.10 | C |
+| UC-DRN-009 | Passo 3: o limite de memória efetivo cai a **zero**: toda mensagem nova, publicada ou recebida como réplica, vai direto para disco (arquivo e depois a linha). Os pares **continuam** mandando registros e commits ao nó até a saída. | 04 §6.10 | C |
+| UC-DRN-010 | Passo 4: uma thread move para o disco as mensagens em memória **com os metadados** (`deliveryCount`, `invisibleUntil`, `receiptToken`), pelas threads de escrita de cada tópico, em paralelo entre tópicos, na ordem do overflow (primeiro os tópicos de menor taxa de leitura). As listas de prontos e de invisíveis são derivadas e refeitas depois. | 04 §6.10 | C |
+| UC-DRN-011 | Passo 5: com a memória vazia, o nó coordena o **desregistro de si mesmo** pelo protocolo de duas fases (`POST /cluster/nodes/unregister` com `reason: drain` e `commit`), com a mesma regra de falha, **sem votação nem quórum de votação**. O commit tira o nó da tabela, recalcula o anel e rebalanceia os blocos; os novos primários assumem as filas voláteis dele. | 04 §6.10, 06c | C |
+| UC-DRN-012 | Passo 6: fecha o canal com os pares (já com o nó fora da tabela: ninguém reconecta nem abre votação) e o estado vira `drained`. Por sinal, o processo espera as chamadas repassadas em andamento (dentro de `drain.timeout`) e encerra; pela API, segue repassando as chamadas que receber. | 04 §6.10 | C |
+| UC-DRN-013 | O desregistro voluntário segue a regra de uma mudança por vez: se há outra entrada, saída ou votação em curso, o pedido espera a vez, dentro de `drain.timeout`. Não há freezing. | 04 §6.10 e 6.8 | C |
+| UC-DRN-014 | Prazo estourado ou falha: o `drain.timeout` cobre o drain inteiro (passos 1 a 6); estourado, o nó registra o que sobrou em memória e a etapa em que parou (`error`) e encerra mesmo assim (se foi por sinal), caindo na detecção e votação de sempre. Erro de I/O ou disco cheio no passo 4 não interrompe: o nó segue, conta o erro e o inclui no resultado. | 04 §6.10 | C |
+| UC-DRN-015 | `drain.timeout` precisa ser menor que o prazo de parada do orquestrador (`terminationGracePeriodSeconds`, 30 s por padrão no Kubernetes). | 04 §6.10, 10 | I |
+
+#### Voltar do drain (`DELETE /node/drain`)
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-DRN-016 | Antes da saída (`draining` até o início do passo 5): cancela o drain, o nó volta a `active`, a gravar em memória, continua membro; `200` `DrainStatus`. | 04 §6.10, 06b | C |
+| UC-DRN-017 | Durante o desregistro (passo 5 em andamento): `409` `drain.conflict`; tente de novo quando estiver `drained`. Com o processo já parando por sinal: `409` `drain.conflict`. | 04 §6.10, 06b | C |
+| UC-DRN-018 | Depois da saída (`drained`): o nó entra como **nó novo**, com **ID novo**, bootstrap completo e nova posição no anel; responde `202`, `drainState` volta a `active`, e o estado do nó passa por `joining` e `syncing`. Antes de limpar o estado local faz a recuperação de mensagens perdidas (UC-RTN-001 a UC-RTN-006). Sem freezing. | 04 §6.10, 06b | C |
+| UC-DRN-019 | `DELETE /node/drain` em `active`: `200`, nada a cancelar. | 06b | C |
+| UC-DRN-020 | Métricas e logs do drain: `msg.node.drain.state`, `msg.node.drain.pending`; log `info` (iniciado por sinal ou API, concluído, cancelado, volta como novo) e `error` (estouro de `drain.timeout` com o que sobrou, erro de I/O). | 11 | C |
+
+#### O drain como save (modo desenvolvimento)
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-DRN-021 | Em modo desenvolvimento o drain vale a parte local: tudo o que está em memória vai para o disco, **sem** desregistro, canal nem rebalanceamento; `DELETE /node/drain` volta a `active` direto. | 04 §6.10 | I |
+| UC-DRN-022 | O save grava em `storage.dir`: mensagens (corpo e metadados `deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`), as definições de tópico (já em disco: o save confere que estão em dia) e o estado do nó na tabela `estado` do `_node.db` (o instante do último `GET` de cada fila volátil e a marca `save_concluido` com o instante do fim). Não grava o que se refaz (listas de prontos e de invisíveis, contagem por grupo, taxas). | 04 §6.10 | I |
+| UC-DRN-023 | Partida em desenvolvimento com `development.resume-on-start` ligado (padrão): carrega as definições (mantendo `id` e data de criação), lê o banco de cada tópico e reconstrói as listas e contagens, refaz o relógio de ociosidade das filas voláteis (o instante do último `GET` salvo vale como se fosse o instante da partida; sem o dado, vale a criação mais `idleTimeout`, também contada da partida), e fica pronto só ao terminar. A marca `save_concluido` é **apagada** nesse momento. | 04 §6.10 | I |
+| UC-DRN-024 | Na retomada, a invisibilidade é um instante absoluto: a mensagem cujo prazo passou durante a parada volta a ficar pronta; as ainda invisíveis seguem assim, e o `receiptToken` continua valendo para o ack. | 04 §6.10 | I |
+| UC-DRN-025 | O `ttl` conta do ID, então o tempo parado conta: o que venceu enquanto o nó estava fora é descartado na primeira varredura. | 04 §6.10 | I |
+| UC-DRN-026 | Sem save concluído (queda, `kill -9`, drain interrompido por `drain.timeout`): o nó retoma o que está em disco e registra `warn` de que o que estava só em memória se perdeu. | 04 §6.10 | I |
+| UC-DRN-027 | Com `development.resume-on-start=false`, o nó **apaga** o conteúdo de `storage.dir` na partida e começa limpo, com um aviso no log. | 04 §6.10, 10 | I |
+| UC-DRN-028 | Em modo desenvolvimento, as chamadas de cliente durante o drain respondem `503` com `Retry-After` (não há outro nó para repassar). | 04 §6.4 e 6.10 | I |
+
+### DEV: modo desenvolvimento
+
+Regras: [04-cluster.md](04-cluster.md), seção 6.4.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-DEV-001 | `mode` vale `production` por padrão; `development` (`TABA_MODE`) faz o nó ser um cluster de um só. O modo não muda em execução. | 04 §6.4, 10 | I |
+| UC-DEV-002 | Em desenvolvimento o nó sobe sozinho, sem bootstrap; `cluster.entry-address` **não é exigido**; a porta do cluster **não é aberta** (`cluster.port` é ignorado) e nenhuma rota `/cluster/*` responde. | 04 §6.4, 06c | I |
+| UC-DEV-003 | `replication.factor` e `write.quorum` valem **1**; os valores configurados são ignorados, com aviso no log. O registro e o commit acontecem só no próprio nó, sem réplica, retry entre nós nem rollback por falta de quórum. | 04 §6.4, 05 §7.2 | I |
+| UC-DEV-004 | Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são ignorados, com aviso no log. | 10 | I |
+| UC-DEV-005 | Ao subir o nó registra `warn` informando o modo, e `/stats/node` traz o campo `mode`. | 04 §6.4, 06b | I |
+| UC-DEV-006 | O comportamento de cliente é o mesmo do cluster: API, overflow, entrega e invisibilidade, `ttl`, `maxDeliveries`, dead-letter, distribuidores e filas voláteis, limites e rate limit (a mesma bateria de casos `I` roda aqui). | 04 §6.4 | I |
+| UC-DEV-007 | O nó é dono de todas as mensagens: não há `take` nem avisos entre nós, e o long polling é só local. | 04 §6.4, 13 §12.7 | I |
+| UC-DEV-008 | O nó é o gestor de todas as filas voláteis, e a verificação final consulta só ele. | 04 §6.4, 15 §14.5 | I |
+| UC-DEV-009 | A entrega justa por grupos vale igual, com contagem exata. | 04 §6.4, 13 §12.11 | I |
+| UC-DEV-010 | A autenticação nunca é exigida e as rotas `/tokens` respondem `404` `route.not-found` (UC-AUT-007 e UC-AUT-025). | 04 §6.4 | I |
+| UC-DEV-011 | `/stats/cluster` e `scope=cluster` devolvem o mesmo que `scope=node`, em formato de cluster de um nó só; as métricas `msg.cluster.*` não existem; o Prometheus lê o nó, com uma série só. | 04 §6.4, 06b, 11 | I |
+| UC-DEV-012 | A definição de tópicos é aplicada só no próprio nó; não há bootstrap nem carga de tópicos de outro nó. | 02 §3.3 | I |
+| UC-DEV-013 | Sem réplicas, perder o nó ou o disco é perder as mensagens (exceto pelo drain como save, UC-DRN-021 a UC-DRN-027). | 04 §6.4 | I |
+
+### SEG: portas, TLS mútuo e certificados do cluster
+
+Regras: [06-api.md](06-api.md), seções 8.0 e 8.0.1.
+
+#### Portas
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SEG-001 | O nó atende em três listeners separados: cliente (`api.port`), cluster (`cluster.port`) e operação (`operations.port`, opcional). As três portas precisam ser diferentes; valores repetidos ou uma porta ocupada impedem o nó de subir. | 06 §8.0 | I |
+| UC-SEG-002 | A porta de cliente responde `404` a `/cluster/*`; a porta do cluster responde `404` a tudo que não seja `/cluster/*`. | 06 §8.0 | I, C |
+| UC-SEG-003 | Sem `operations.port`, as rotas de operação ficam na `api.port`; com ela, **deixam de existir** na `api.port` (`404`). | 06 §8.0, 11 | I |
+| UC-SEG-004 | A porta do cluster não tem rate limit nem leitura de IP do cliente: os cabeçalhos de `client-ip.headers` são ignorados nela. | 06 §8.0, 12 | C |
+| UC-SEG-005 | Em desenvolvimento a porta do cluster não é aberta e o TLS é ignorado. | 06 §8.0 e 8.0.1 | I |
+| UC-SEG-006 | As rotas de operação não têm autenticação; a proteção é de rede (porta própria e `operations.allowed-ips`). | 06 §8.0 | I |
+
+#### TLS mútuo e certificados
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SEG-007 | Com a pasta de certificados (`cluster.tls.dir`, padrão `<secrets.dir>/tls`) existente, o TLS mútuo liga **sozinho** e a porta do cluster passa a exigir TLS; sem a pasta (padrão não existe e `cluster.tls.dir` não definido), atende em HTTP puro com aviso (`warn`) no log. | 06 §8.0.1 | C |
+| UC-SEG-008 | Pasta existente sem ao menos um par válido (`.crt` + `.key`): o nó **não sobe**. `cluster.tls.dir` definido que não existe: o nó não sobe. | 06 §8.0.1 | I |
+| UC-SEG-009 | O nó **aceita** quem apresentar um certificado igual a um da pasta, ou emitido por um deles, desde que ainda não tenha expirado (`notAfter`); a data de início não conta para a confiança. | 06 §8.0.1 | U, C |
+| UC-SEG-010 | O nó **apresenta** o par de início mais recente que já começou a valer (`notBefore` ≤ agora) e ainda não expirou, ao receber e ao abrir uma conexão (HTTP e WebSocket `/cluster/channel`). | 06 §8.0.1 | U, C |
+| UC-SEG-011 | Cada lado exige que o outro apresente um certificado aceito; sem isso o handshake falha **antes** de qualquer resposta HTTP e nenhuma rota é alcançada. O nome do host não é verificado (os nós se conectam por IP). | 06 §8.0.1, 06c | C |
+| UC-SEG-012 | Um `.crt` sem `.key` serve só para confiar; um par é `<nome>.crt` mais `<nome>.key` de mesmo nome. A pasta pode ter vários pares ao mesmo tempo. | 06 §8.0.1 | U |
+| UC-SEG-013 | A pasta é recarregada sozinha a cada `cluster.tls.reload-interval` (padrão 60 s), sem reiniciar. Recarga com arquivo ilegível, par incompleto ou certificado inválido: o nó **mantém o conjunto anterior** e registra `error`; o conjunto só muda quando a pasta inteira é válida. | 06 §8.0.1, 10 | C |
+| UC-SEG-014 | Rotação sem reiniciar: (1) gerar o certificado com início no futuro (`--starts-in`), (2) acrescentá-lo à pasta: cada nó o percebe em até `reload-interval` e passa a **confiar** nele, mas segue apresentando o antigo, (3) quando a data de início chega, todos passam a apresentar o novo sozinhos, (4) o antigo deixa de ser aceito quando expira. | 06 §8.0.1 | C |
+| UC-SEG-015 | Conexões já abertas (como o canal WebSocket) seguem com o certificado antigo até caírem, o que é inofensivo porque ele continua aceito até expirar. | 06 §8.0.1 | C |
+| UC-SEG-016 | Um certificado expirado deixa de ser aceito e de ser apresentado. A partir de `cluster.tls.expiry-warning` (30 dias) antes do `notAfter` do certificado em uso, o nó registra `warn` e expõe `msg.cluster.tls.expires_in`. | 06 §8.0.1, 11 | C |
+| UC-SEG-017 | Uma CA na pasta (`.crt` de CA para confiar mais o par do próprio nó para apresentar): os certificados emitidos por ela são aceitos. | 06 §8.0.1 | C |
+| UC-SEG-018 | Um chamador que não consta na tabela de membros recebe `403` `cluster.not-member` em qualquer rota `/cluster/*`, **exceto** as que aceitam quem ainda não é membro (`GET /cluster/nodes`, `POST /cluster/nodes/join`, `GET /cluster/message-loss`, `POST /cluster/messages/recover`); o repasse aceita também os nós que saíram por drain. | 06c | C |
+
+#### Ferramentas de segredos
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-SEG-019 | `taba init --out <pasta>` cria de uma vez o primeiro certificado em `tls/` e o token raiz em `root-token` (mínimo 32 caracteres). | 06 §8.0.1, 06a §8.1.3 | I |
+| UC-SEG-020 | `taba cert generate --days <n> [--starts-in <duração>] --out <pasta>` cria um par `cluster-<data de início>.crt` e `.key` (gerações sucessivas não se sobrescrevem), autoassinado e válido para servidor e cliente; `--starts-in` define o `notBefore` no futuro (padrão: agora, com folga de alguns minutos). | 06 §8.0.1 | I |
+| UC-SEG-021 | `taba token generate` imprime um segredo aleatório de 256 bits avulso. | 06a §8.1.3 | I |
+
+### OPS: observabilidade, estatísticas, métricas e saúde
+
+Regras: [11-observabilidade.md](11-observabilidade.md) e [06b-api-operacao.md](06b-api-operacao.md).
+
+#### Saúde
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-OPS-001 | `GET /health/live`: `200` `HealthResponse` com `health: "live"` enquanto o processo responde. | 06b | I |
+| UC-OPS-002 | `GET /health/ready`: `200` com `health: "ready"` quando o nó está registrado (commit confirmado) e com **toda a sincronização concluída**; `503` com `health: "not-ready"` e `reason` (`bootstrapping`, `syncing`, `returning`, `draining`, `drained` ou `failed`) caso contrário. | 06b, 11 | C |
+| UC-OPS-003 | As rotas de saúde **não** devolvem `ErrorResponse`: o corpo é sempre `HealthResponse`. As rotas de saúde não consultam outros nós. | 06b, 11 | I |
+| UC-OPS-004 | Em drain (`draining` ou `drained`) `/health/ready` responde `503` e `/health/live` segue `200`. | 06b | C |
+| UC-OPS-005 | `/health/*`, `/metrics` e `/stats/node` nunca respondem `429`. | 06b, 12 | I |
+
+#### Métricas e Prometheus
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-OPS-006 | `GET /metrics` devolve texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics com `Accept: application/openmetrics-text`), por padrão com o cluster inteiro (uma série por nó, rótulo `node`); `scope=node` devolve só as métricas deste nó; `scope` desconhecido: `400` `validation.failed`. | 06b, 11 | I, C |
+| UC-OPS-007 | `/metrics` com `telemetry.prometheus.enabled` desligado: `404` `route.not-found`; IP fora de `operations.allowed-ips`: `403` `ops.ip-not-allowed`. | 06b | I |
+| UC-OPS-008 | O `/metrics` **só lê uma cópia em memória**, mantida por uma thread que, a cada `telemetry.prometheus.refresh-interval`, consulta todos os nós em paralelo (`GET /cluster/metrics`) e troca o instantâneo inteiro de uma vez; responde rápido mesmo com nós lentos ou fora do ar. | 06b, 11 | C |
+| UC-OPS-009 | As séries de cada nó ficam separadas (rótulo `node`), sem somar no servidor (a soma é do PromQL). | 11 | C |
+| UC-OPS-010 | Nó que não responde: a thread espera `telemetry.prometheus.node-timeout`; o instantâneo mantém os últimos valores dele por até `telemetry.prometheus.max-age`, e depois as séries somem. `msg_cluster_node_scrape_up{node}` vale `0` e `msg_cluster_node_metrics_age_seconds{node}` diz a idade. | 11 | C |
+| UC-OPS-011 | Mapeamento de nomes OTel → Prometheus: pontos viram `_`, a unidade vira sufixo (`_seconds`, `_bytes`, `_ratio`), contadores ganham `_total`, histogramas viram `_bucket`/`_sum`/`_count`, atributos viram rótulos; `target_info` com os atributos de recurso. | 11 | U |
+| UC-OPS-012 | Métricas de nó: cardinalidade limitada; **nunca** carregam tags nem o nome do tópico; `route` é sempre o **template** (`/topics/{topic}/messages`), nunca o caminho real; o ID da mensagem nunca é rótulo. | 11 | U, I |
+| UC-OPS-013 | OTLP e `/metrics` são alimentados pelos mesmos instrumentos: as métricas são as mesmas nas duas saídas; o OTLP envia por *push* as métricas do próprio nó, sem fan-out. | 11 | I |
+| UC-OPS-014 | Métricas de tópico exportadas por `telemetry.topics.mode`: `off` (padrão: nenhuma), `by-tags` (agregado pelas tags de `telemetry.topics.group-by-tags`) e `per-topic` (uma série por tópico até `telemetry.topics.max-topics`, o excedente agregado em `topic="_other"`). `msg.topic.oldest_timestamp` não tem série no nó sem mensagens do tópico. | 11 | U, I |
+| UC-OPS-015 | As condições aparecem como gauges `0/1` (`msg_cluster_condition{condition=...}`). | 11 | I |
+| UC-OPS-016 | Métricas de processo e host: `msg.node.uptime`, `cpu.utilization`, `process.memory`, `threads` (threads do SO, sem as tasks do tokio), `open_files`, `connections`. | 11, 18 §17.6 | I |
+
+#### Estatísticas
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-OPS-017 | `GET /stats/node`: leitura local, `200` `NodeStats` (`nodeId`, `version`, `mode`, `state`, `drainState`, `startedAt`, `collectedAt`, `metrics` indexadas pelo nome OpenTelemetry). | 06b | I |
+| UC-OPS-018 | `GET /stats/cluster`: consulta todos os nós (`GET /cluster/stats/node`) e devolve `ClusterStats` (`collectedAt`, `partial`, `worstCondition`, `conditions`, `summary` com `members` por estado, `membersVersion`, `quorumAvailable`, `syncingBlocks`, e `nodes`). Um nó que não responde aparece com `reachable: false` e `stats: null`, sem falhar a chamada. | 06b | C |
+| UC-OPS-019 | `GET /stats/topics`: `Page<TopicStats>` paginada **sempre por nome**, com `scope` (`cluster` ou `node`), `tag.<chave>`, `condition`, `fields` (`name` e `id` vêm sempre) e `groupBy` (uma linha por valor da tag, `TopicStatsGroup`, com as quantidades somadas e as datas pelo menor valor). | 06b, 11 | I, C |
+| UC-OPS-020 | O resultado de `/stats/topics` fica em cache por `stats.topics.cache-ttl` (com `collectedAt`); o filtro e o `limit` são aplicados **depois** do merge entre nós; sem `sort` (`400`). | 06b, 11 | C |
+| UC-OPS-021 | `GET /stats/topics/{topic}`: `TopicStatsDetail` (`TopicStats` mais `topGroups`, até `stats.topics.top-groups`); `404` `topic.not-found`; num distribuidor devolve só `distributor`. | 06b | I |
+| UC-OPS-022 | `GET /stats/topics/{topic}/groups`: `Page<GroupStats>` por `groupId` (UC-GRP-015); `top` e `cursor` juntos: `400` `validation.failed`. | 06b | I |
+| UC-OPS-023 | Visão do nó × visão do cluster: **só o primário conta** (senão a soma seria multiplicada pelo fator de replicação); o cluster soma `visibleMessages`, `invisibleMessages` e `depth`, e `oldestMessageAt` é a **menor** data entre os nós; `oldestAge = agora − oldestMessageAt`. | 11 | U, C |
+| UC-OPS-024 | Um nó sem mensagens do tópico tem `oldestMessageAt` **ausente**, nunca zero (um zero venceria o "mais antigo"). | 11 | U, C |
+| UC-OPS-025 | Nó que não responde fica de fora e o resultado é marcado `partial`: as somas viram piso. | 11 | C |
+| UC-OPS-026 | Cada nó mantém contadores locais por tópico, atualizados nas **transições** (publicação +1 visível; entrega −1 visível +1 invisível; vencimento −1 invisível +1 visível; ack −1 no estado em que estava), sem varrer mensagens a cada consulta. | 11 | U |
+| UC-OPS-027 | `GET /cluster/stats/topics` devolve `TopicCounters` (`collectedAt` e `topics` com `visibleMessages`, `invisibleMessages`, `oldestMessageAt`), só das mensagens em que o nó é primário; o parâmetro `topic` pede só um tópico. | 06c, 11 | C |
+| UC-OPS-028 | Condições do tópico: `idle` (sem publicação nem consumo há `stats.topics.idle-after`), `backlog` (`depth` ou `oldestAge` acima do limite), `stalled` (há mensagens mas nenhum consumo há `stats.topics.stalled-after`), `noisy-group`, `group-stalled` (só FIFO), `memory-pressure` (a maior parte em disco); `worstCondition` é a de maior severidade. | 11, 06b | U, I |
+| UC-OPS-029 | A dead-letter aparece em `/stats/topics` e em `/topics`, com `deadLetter: true`, `source` e as `tags` da fila de origem. | 11 | I |
+| UC-OPS-030 | Degradação de replicação (`under-replicated`, `syncing`) é propriedade do **cluster**, não do tópico: aparece na condição do cluster, não na do tópico. | 11 | C |
+
+#### Traces, logs, eventos e acesso
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-OPS-031 | Traces: um por operação de cliente (publicação, consumo, ack), por bloco sincronizado (um span por lote, com o nó de origem), por registro e desregistro de nó e votação (um span por nó consultado); atributos: tags do tópico, ID da mensagem, bloco, nós, número da tentativa. O ID da mensagem vai em trace e log, nunca em métrica. | 11 | C |
+| UC-OPS-032 | Logs estruturados (JSON) com `trace_id` e `span_id` e as tags do tópico; o nível é `telemetry.logs.level`; logs por mensagem no caminho quente ficam em `debug`. | 11 | I |
+| UC-OPS-033 | Eventos pontuais (não condições de saúde): `distributor-no-target`, `distributor-partial`, `volatile-deleted`, `volatile-check-blocked`, `message-dead-lettered`, `message-deduplicated`, `message-expired`. | 11, 15 §14.7 | I, C |
+| UC-OPS-034 | Overflow para disco: log `info` com **resumo periódico**, não por mensagem; erro de I/O: `error`. | 11 | I |
+| UC-OPS-035 | Acesso às rotas de operação: sem `operations.port` nem `operations.allowed-ips`, ficam na `api.port` sem restrição de origem; só `operations.port`: porta separada sem filtro; só `allowed-ips`: mesma porta, só os IPs/CIDR da lista acessam (os demais: `403`); ambas: porta separada e filtro. | 11 | I |
+| UC-OPS-036 | O nó não sobe se `operations.port` estiver ocupada ou se `operations.allowed-ips` tiver entrada inválida. | 11 | I |
+| UC-OPS-037 | As rotas `/cluster/*` não são rotas de operação: ficam na porta do cluster e não são afetadas por `operations.*`. | 11, 06 §8.0 | I |
+| UC-OPS-038 | Perda de mensagem não gera métrica nem condição (só log e a tabela `perdas`): ver UC-SIN-027 e UC-SIN-028. | 11 | C |
+
+### CLR: contrato das rotas do cluster
+
+Regras: [06c-api-cluster.md](06c-api-cluster.md). As rotas específicas estão nos casos das áreas (`ESC`, `DEF`, `ING`, `FAL`, `CAN`, `INV`, `SIN`, `STR`, `RTN`, `FWD`, `OPS`). Aqui, o que vale para todas.
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-CLR-001 | Toda rota `/cluster/*` só aceita quem consta na tabela de membros (`403` `cluster.not-member`), salvo as quatro exceções (UC-SEG-018). | 06c | C |
+| UC-CLR-002 | Todo `register`, `commit` e `rollback` leva o `operationId` (GUID v7 do coordenador) e é idempotente por ele. Um registro sem commit nem rollback expira após `write.pending.ttl`. | 06c | U, C |
+| UC-CLR-003 | A resposta de `register`, `commit` e `rollback` é `Ack` (`operationId`, `accepted`). | 06c, 06d §8.3.7 | U |
+| UC-CLR-004 | Corpo inválido nas rotas do cluster: `400` `validation.failed`, `validation.required` ou `validation.unknown-field`. | 06c | U, C |
+| UC-CLR-005 | Os DTOs do cluster (`Member`, `MemberTable`, `JoinRequest`, `NodeRegisterRequest`, `NodeUnregisterRequest`, `OperationRef`, `VoteRequest`, `VoteResponse`, `TopicRegisterRequest`, `TopicDefinition`, `TokenRegisterRequest`, `TokenRecord`, `MessageRegisterRequest`, `VisibilityRegisterRequest`, `AckRegisterRequest`, `TakeRequest`, `TakeResponse`, `MessageRecord`, `IdleResponse`, `RecoverResult`, `TopicCounters`) serializam e desserializam com os campos e tipos documentados, e os valores `null` de `ttl`, `maxDeliveries` e `maxMessageBytes` da `TopicDefinition` são enviados como `null`. | 06c | U |
+| UC-CLR-006 | O DTO `TopicDefinition` é igual ao arquivo `_topics/${topico}.json`: os campos de `Topic` sem `effective`, `deadLetter` e `source`. | 06c, 02 §3.3 | U |
+| UC-CLR-007 | `GET /cluster/topics/{id}/idle` responde `IdleResponse` (`topicId`, `idleSeconds`, `sinceStart`); tópico desconhecido: `404` `topic.not-found`. | 06c | C |
+| UC-CLR-008 | Nó em sincronização ou em drain devolve `503` `cluster.node-syncing` ou `cluster.node-draining` nas rotas que não pode atender. Um nó em sincronização confirma `register` gravando no banco de eventos (UC-ESC-031). | 06c | C |
+| UC-CLR-009 | `GET /cluster/metrics` devolve as métricas locais no formato Prometheus (`text/plain`); `GET /cluster/stats/node` devolve `NodeStats`. | 06c | C |
+| UC-CLR-010 | Códigos só do cluster: `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `fifo.misdirected` e `cluster.operation-unknown`. | 06d §8.3.6 | U, C |
+
+### CFG: configuração e validações de partida
+
+Regras: [10-configuracao.md](10-configuracao.md).
+
+| Código | Caso de uso | Fonte | Nível |
+|---|---|---|---|
+| UC-CFG-001 | Todo parâmetro pode ser definido por variável de ambiente com o prefixo `TABA_` e a chave em maiúsculas com `.` e `-` trocados por `_` (`topics.distributor.max-targets` → `TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS`). | 10 | U |
+| UC-CFG-002 | Os valores padrão documentados valem quando o parâmetro não é definido (por exemplo `replication.factor` 3, `write.quorum` 2 em rf 3, `delivery.visibility-timeout.default` 120, `delivery.max-messages.default` 10, `retention.ttl.default` 14 dias, `retention.max-deliveries.default` 10, `fifo.dedup.window` 300 s, `cluster.vote.quorum-percent` 51, `cluster.vote.min-voters` 2). | 10 | U |
+| UC-CFG-003 | **Sem limite** significa que o teto não existe enquanto a variável não for definida (`topics.distributor.max-targets`, `topics.volatile.max-count`). | 10 | U, I |
+| UC-CFG-004 | O nó não sobe, com mensagem explícita, em cada um destes casos: portas repetidas ou ocupadas; `cluster.entry-address` ausente em produção; `auth.enabled=true` sem token raiz, ou token raiz curto; `auth.root-token-file` ou `cluster.tls.dir` definido que não existe; pasta de certificados sem par válido; `operations.port` ocupada ou `operations.allowed-ips` inválida; `write.quorum` fora de 1 a `replication.factor` (recusado na validação); `storage.dir` que não pode ser criado ou gravado. | 10, 06, 11 | I |
+| UC-CFG-005 | `message.max-bytes` não pode passar de `message.max-bytes.hard-limit`, e `cluster.sync.stream.max-line-bytes` precisa caber o limite rígido em base64 mais o envelope. | 10, 12 | U |
+| UC-CFG-006 | Todos os nós rodam a **mesma imagem**; o papel de cada um vem só da configuração (`cluster.first-node`, `mode`). | 01, 06 §8.0.1 | I |
+| UC-CFG-007 | `mode=development` ignora `cluster.*`, `ring.*`, `replication.*` e `write.quorum` com aviso (UC-DEV-004). | 10 | I |
+| UC-CFG-008 | Valor de configuração com tipo inválido (texto onde se espera número, por exemplo) impede a partida com mensagem que nomeia o parâmetro. | 10 | U |

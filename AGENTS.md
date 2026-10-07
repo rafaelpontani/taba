@@ -8,6 +8,14 @@ Repositório de documentação (em português) do Sistema de Mensagens. Não há
 - Dúvida parcialmente resolvida: a parte decidida entra em `08a` (com o mesmo código, ex.: D13.1), e `08b` mantém só as perguntas que faltam, cada uma com seu sub-código.
 - Ao fechar uma pendência: registre a decisão no documento técnico, o valor padrão em [doc/10-configuracao.md](doc/10-configuracao.md), a linha em `08a`, e **apague** a entrada de `08b` e a referência em [doc/08c-proximos-passos.md](doc/08c-proximos-passos.md). Os códigos não são reaproveitados.
 
+## Casos de uso
+
+Os casos de uso que orientam os testes estão em [doc/20-casos-de-uso.md](doc/20-casos-de-uso.md) (e `20a`, `20b`, `20c`), cada um com um código `UC-<ÁREA>-<NNN>` que os testes citam numa linha `/// UC: UC-MSG-003`.
+
+- Os códigos **não são reaproveitados**: um caso que deixa de existir fica na tabela como `(retirado)`; um caso novo ganha o próximo número livre da área.
+- Ao mudar o comportamento descrito em um `.md` técnico, atualize os casos de uso correspondentes **no mesmo commit** (e o total do índice em `20-casos-de-uso.md`).
+- Um caso só vale como coberto com ao menos um teste que o cite, no nível da coluna "Nível".
+
 ## Diagramas
 
 Os diagramas são gerados com o [Archify](https://github.com/tt-a1i/archify) a partir de JSON. **A fonte da verdade é o JSON**; o SVG e o HTML são saídas geradas.
