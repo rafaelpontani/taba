@@ -52,7 +52,7 @@ Regras: [05-particionamento-replicacao.md](05-particionamento-replicacao.md), se
 |---|---|---|---|
 | UC-ESC-020 | Falha de registro ou commit numa réplica **fora do quórum**, depois da decisão: **nunca há rollback**; o coordenador insiste, dentro de `write.commit.timeout`. | 05 §7.2, 02 §3.1 | C |
 | UC-ESC-021 | A réplica confirma dentro do teto: passa a contar como durável, sem novo aviso ao cliente (a resposta já foi dada). | 05 §7.2 | C |
-| UC-ESC-022 | O teto esgota sem confirmação: o bloco fica abaixo do fator pleno (nunca abaixo do quórum), o evento `under-replicated` (não crítico) é gerado, `msg.write.commit_timeouts` sobe, o coordenador **continua tentando** em segundo plano, e a saúde do nó não muda. | 05 §7.2, 11 | C |
+| UC-ESC-022 | O teto esgota sem confirmação: o bloco fica abaixo do fator pleno (nunca abaixo do quórum), o evento `under-replicated` (não crítico) é gerado, `taba.write.commit_timeouts` sobe, o coordenador **continua tentando** em segundo plano, e a saúde do nó não muda. | 05 §7.2, 11 | C |
 | UC-ESC-023 | O commit é idempotente: repeti-lo numa réplica que já o aplicou não tem efeito. | 05 §7.2 | U, C |
 | UC-ESC-024 | Quando a réplica atrasada volta, o commit em segundo plano a alcança e o bloco volta ao fator pleno (a condição `under-replicated` some). | 05 §7.2, 11 | C |
 
@@ -73,8 +73,8 @@ Regras: [05-particionamento-replicacao.md](05-particionamento-replicacao.md), se
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-ESC-033 | Coordenador: `msg.write.coordinated` (`committed` e `failed`), `msg.write.duration` por fase, `msg.write.retries`, `msg.write.rollbacks` (só por falha de quórum), `msg.write.replicas_confirmed` (na resposta e eventualmente) e `msg.write.quorum_latency`. | 11 | C |
-| UC-ESC-034 | Réplica: `msg.write.received` por fase, `msg.write.pending`, `msg.write.pending.oldest_age` e `msg.write.pending.expired`. | 11 | C |
+| UC-ESC-033 | Coordenador: `taba.write.coordinated` (`committed` e `failed`), `taba.write.duration` por fase, `taba.write.retries`, `taba.write.rollbacks` (só por falha de quórum), `taba.write.replicas_confirmed` (por `stage`: `response` e `eventual`) e `taba.write.quorum_latency`. | 11 | C |
+| UC-ESC-034 | Réplica: `taba.write.received` por fase, `taba.write.pending`, `taba.write.pending.oldest_age` e `taba.write.pending.expired`. | 11 | C |
 | UC-ESC-035 | O trace da publicação tem o span raiz, o registro e o commit por nó de destino e, se for o caso, o rollback; o span raiz termina quando o quórum confirma; o `traceparent` é propagado entre os nós. Falhas e eventos de durabilidade são sempre mantidos na amostragem. | 11 | C |
 | UC-ESC-036 | Os logs: falha de registro ou commit por tentativa (`warn`), escrita abortada com rollback (`error`), registro pendente expirado (`warn`), teto de commit esgotado numa réplica (`warn`). | 11 | C |
 
@@ -95,7 +95,7 @@ Regras: [05-particionamento-replicacao.md](05-particionamento-replicacao.md), se
 | UC-ANE-009 | Numa fila FIFO a posição é o hash de `id do tópico + ":" + groupId`, não o do ID da mensagem (UC-FIF-023). | 05 §7.1, 17 §16.3 | U |
 | UC-ANE-010 | Quando a tabela de membros muda (entrada, saída, falha de registro), o anel é recalculado e os papéis de cada bloco mudam de acordo; sem o nó que falhou, o anel volta a ser o anterior. | 04 §6.5, 05 §7.1 | U, C |
 | UC-ANE-011 | Com um nó só (modo desenvolvimento) o nó é primário de todos os blocos, sem rebalanceamento. | 05 §7.1 | I |
-| UC-ANE-012 | As métricas do anel: `msg.ring.virtual_nodes`, e `msg.ring.blocks` por papel (`primary`, `secondary`, `tertiary`) e estado (`healthy`, `syncing`). | 11 | C |
+| UC-ANE-012 | As métricas do anel: `taba.ring.virtual_nodes`, e `taba.ring.blocks` por papel (`primary`, `secondary`, `tertiary`) e estado (`healthy`, `syncing`). | 11 | C |
 
 ### DEF: definição de tópicos e de tokens no cluster
 
@@ -202,7 +202,7 @@ Regras: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.2 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-ENT-030 | Trade-off aceito: o primário cai entre o commit local da invisibilidade e a replicação às réplicas fora do quórum; o novo primário herda o `invisibleUntil` de quem sobreviveu e a mensagem pode ser entregue antes do prazo prometido, sem quebrar o at-least-once. | 13 §12.2 | C |
-| UC-ENT-031 | Métricas da entrega: `msg.delivery.ready`, `msg.delivery.redeliveries`, `msg.delivery.longpoll.waiting`, `msg.delivery.longpoll.outcome` (`delivered`, `empty`, `disconnected`) e `msg.delivery.take` (`in` e `out`; `delivered`, `empty`, `error`). | 11 | C |
+| UC-ENT-031 | Métricas da entrega: `taba.delivery.ready`, `taba.delivery.redeliveries`, `taba.delivery.longpoll.waiting`, `taba.delivery.longpoll.outcome` (`delivered`, `empty`, `disconnected`) e `taba.delivery.take` (`in` e `out`; `delivered`, `empty`, `error`). | 11 | C |
 
 ### CAN: canal permanente entre nós
 
@@ -212,7 +212,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.1, [13-entrega-de-mensagens.md
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-CAN-001 | Há um canal WebSocket por par de nós (malha completa), compartilhado por todos os tópicos: N nós têm N−1 canais cada (`msg.cluster.channel.connections`). | 04 §6.1, 13 §12.8 | C |
+| UC-CAN-001 | Há um canal WebSocket por par de nós (malha completa), compartilhado por todos os tópicos: N nós têm N−1 canais cada (`taba.cluster.channel.connections`). | 04 §6.1, 13 §12.8 | C |
 | UC-CAN-002 | O canal carrega só sinais pequenos, nunca o conteúdo das mensagens nem listas longas. | 04 §6.1, 13 §12.8 | C |
 | UC-CAN-003 | `GET /cluster/channel` faz o upgrade para WebSocket (`101`) só para quem consta na tabela de membros; quem não consta recebe `403` `cluster.not-member` **antes** do upgrade. | 06c | C |
 | UC-CAN-004 | Os quadros são JSON com o campo `type`: `keepalive`, `listeners`, `ready`, `notify`, `node-state` e `confirm`, cada um com os campos definidos. | 06c | U, C |
@@ -243,19 +243,19 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.1, [13-entrega-de-mensagens.md
 |---|---|---|---|
 | UC-CAN-015 | Em cada nó dono há um responsável por tópico (ativo só enquanto há ouvintes em algum nó e mensagens novas a avisar). As mensagens que ficam prontas são acumuladas por `cluster.notify.window` (padrão 100 ms) e viram **um** aviso, com a quantidade. | 13 §12.8 | U, C |
 | UC-CAN-016 | O aviso vai a **um** nó com ouvinte por vez, revezando entre os que têm; o responsável espera `cluster.notify.wait` que o nó venha buscar (`take`). Se não vem, passa ao próximo nó com ouvinte e repete o ciclo, até acabarem as mensagens avisadas ou os nós com ouvinte. | 13 §12.8 | C |
-| UC-CAN-017 | O aviso é uma dica: quem o recebe vai buscar e pode não encontrar nada (`msg.cluster.channel.notifications` com `outcome` `fetched` ou `empty`). | 13 §12.8 | C |
+| UC-CAN-017 | O aviso é uma dica: quem o recebe vai buscar e pode não encontrar nada (`taba.cluster.channel.notifications` com `outcome` `fetched` ou `empty`). | 13 §12.8 | C |
 
 #### Filas de saída e de entrada
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-CAN-018 | Há uma fila de saída por nó de destino (uma thread de escrita a esvazia sem bloquear quem produz) e uma fila de entrada por nó de origem (processamento separado da leitura do socket). | 13 §12.9 | U, C |
-| UC-CAN-019 | Com o canal fora, sinais de **estado** do mesmo tópico se substituem na fila (só o último importa); avisos antigos são descartados (`msg.cluster.channel.queue.dropped` com `coalesced` e `expired`). | 13 §12.9 | U |
+| UC-CAN-019 | Com o canal fora, sinais de **estado** do mesmo tópico se substituem na fila (só o último importa); avisos antigos são descartados (`taba.cluster.channel.queue.dropped` com `coalesced` e `expired`). | 13 §12.9 | U |
 | UC-CAN-020 | A fila de saída estoura `cluster.channel.queue.max-size` ou `cluster.channel.queue.max-age`: o nó com quem o canal está fora é tratado como **falho** e a votação de exclusão é aberta, sem esperar o fim das reconexões (`dropped` com `overflow`). | 13 §12.9, 04 §6.3 | C |
 | UC-CAN-021 | Reconexão **antes** de a votação concluir: nada muda, os nós retomam o envio dos sinais pendentes de onde pararam. | 13 §12.9, 04 §6.3 | C |
 | UC-CAN-022 | Votação concluída: todos os nós descartam as filas (de saída e de entrada) para o nó excluído e param de acumular. Se o nó voltar, refaz o bootstrap com filas novas e vazias. | 13 §12.9 | C |
 | UC-CAN-023 | O sinal `node-state` com `state: draining`: os pares deixam de pedir `take` a esse nó e de escolhê-lo como origem de carga. | 06c, 04 §6.10 | C |
-| UC-CAN-024 | Métricas do canal: `msg.cluster.channel.state` por peer, `rtt`, `reconnects`, `queue.out`, `queue.in`. | 11 | C |
+| UC-CAN-024 | Métricas do canal: `taba.cluster.channel.state` por peer, `rtt`, `reconnects`, `queue.out`, `queue.in`. | 11 | C |
 
 ### INV: invisibilidade no dono e nas réplicas
 
@@ -334,7 +334,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seção 3.2.
 | UC-ARM-006 | Cada tópico tem uma reserva em memória (`memory.topic.reserve`, 1000 mensagens), **independente da taxa**: um tópico novo, sem histórico de leitura, não começa jogando as primeiras mensagens em disco. A divisão pela taxa vale só acima das reservas. | 02 §3.2 | U |
 | UC-ARM-007 | O que permanece em memória são as mensagens da lista de prontos e as recém-chegadas; o resto é candidato a disco, começando pelo tópico de menor taxa. Não se usa LRU/LFU. | 02 §3.2 | U |
 | UC-ARM-008 | A lista de prontos e as mensagens em memória não mudam por causa do banco: ele só cuida do que está em disco. | 02 §3.2 | U |
-| UC-ARM-009 | `msg.storage.*`: memória usada e limite, mensagens em memória e em disco, disco usado e livre, overflow, leituras de disco e de memória, duração e erros de disco. | 11 | I |
+| UC-ARM-009 | `taba.storage.*`: memória usada e limite, mensagens em memória e em disco, disco usado e livre, overflow, leituras de disco e de memória, duração e erros de disco. | 11 | I |
 
 #### Banco SQLite local
 
@@ -355,7 +355,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seção 3.2.
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-ARM-019 | Banco corrompido: o nó entra em **falha**, sinaliza ao cluster (que fica liberado para votar o desregistro dele) e não tenta reparar. `/health/ready` passa a `503` com `reason: failed`. | 02 §3.2, 05 §7.3 | C |
-| UC-ARM-020 | Disco cheio ou falha de I/O: o nó entra em falha, como no banco corrompido; o erro conta em `msg.storage.disk.errors` e gera log `error`. | 05 §7.3, 11 | C |
+| UC-ARM-020 | Disco cheio ou falha de I/O: o nó entra em falha, como no banco corrompido; o erro conta em `taba.storage.disk.errors` e gera log `error`. | 05 §7.3, 11 | C |
 | UC-ARM-021 | O nó cria `storage.dir` (padrão `/var/lib/taba`, a última pasta se chama `taba`) ao iniciar; se não conseguir criar ou gravar, não sobe. | 10 | I |
 | UC-ARM-022 | Um nó que perde um bloco (mudança do anel) **não apaga nada na hora**: continua guardando as mensagens do bloco e pode servir de origem de sincronização. Só apaga (memória, `.body` e linhas do banco, por faixa da posição no anel) quando **todo o cluster está íntegro**. | 05 §7.3 | C |
 | UC-ARM-023 | Se o nó novo não chega a ficar saudável, o anel volta ao anterior e o nó antigo volta a ser o responsável, com as mensagens intactas, sem nada a refazer. Se o anel mudar de novo antes da limpeza, o nó recalcula quais blocos ainda não são dele. | 05 §7.3 | C |

@@ -74,11 +74,11 @@ O modo é escolhido na partida, por `mode` (`TABA_MODE`): **`production`** (padr
 | Entrega justa por grupos (12.11) | Vale igual, com contagem exata. |
 | Fila FIFO ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16) | Funciona igual: o nó é o primário de todos os grupos, sem repasse, e o quórum vale 1 (não se exige secundário nem `replication.factor` 2). Ordem, entrega por grupo e deduplicação são as mesmas. |
 | Modo drain (6.10) | Vale a parte local. Sem outro nó, as chamadas de cliente durante o drain respondem `503`. O drain serve de **save**: na partida seguinte o nó retoma do disco (ver "Modo desenvolvimento: o drain como save", seção 6.10). |
-| Observabilidade | `/stats/cluster` e `scope=cluster` devolvem o mesmo que `scope=node`; as métricas `msg.cluster.*` não existem; o Prometheus lê o nó, com uma série só. |
+| Observabilidade | `GET /health/cluster` devolve o mesmo com `scope=cluster` e `scope=node`; as métricas `taba.cluster.*` não existem; o Prometheus lê o nó, com uma série só. |
 
 **O que continua igual:** a API de cliente, o armazenamento com overflow para disco, a entrega e a invisibilidade, `ttl`, `maxDeliveries` e a dead-letter, os tópicos distribuidores e voláteis, os limites e o rate limit. Quem desenvolve contra o modo desenvolvimento vê o mesmo comportamento de cliente do cluster, **menos** o que depende de falha de nó, de réplica ou de quórum.
 
-**Aviso:** ao subir, o nó registra um aviso (`warn`) informando o modo, e `/stats/node` traz o campo `mode`. O modo não muda em execução.
+**Aviso:** ao subir, o nó registra um aviso (`warn`) informando o modo, e `GET /health/cluster` traz o campo `mode` de cada nó. O modo não muda em execução.
  
 ### 6.5 Falha no registro de um novo nó
 
@@ -144,7 +144,7 @@ Registro (bootstrap) e desregistro (votação de exclusão) são as duas operaç
 
 > **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não se aplica; nenhuma chamada é repassada.
 
-Enquanto um nó que entrou ainda não está íntegro (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)), ele não tem a tabela de tópicos completa nem coordena nada, mas pode receber chamadas de cliente (antes de o `/health/ready` tirá-lo da rotação, ou de quem fala direto com ele). Em vez de devolver erro, ele **repassa a chamada a outro nó**. Vale só para as **rotas de cliente**; as rotas de sincronização, de comunicação entre nós e de operação (`/health/*`, `/metrics`, `/stats/*`, `/node/drain`) não são repassadas: cada nó responde as suas. Como a API não tem estado preso a um nó, o resultado é o mesmo em qualquer um, e o repasse dura só o tempo da sincronização, que é de um nó por vez (seção 6.8).
+Enquanto um nó que entrou ainda não está íntegro (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)), ele não tem a tabela de tópicos completa nem coordena nada, mas pode receber chamadas de cliente (antes de o `/health/ready` tirá-lo da rotação, ou de quem fala direto com ele). Em vez de devolver erro, ele **repassa a chamada a outro nó**. Vale só para as **rotas de cliente**; as rotas de sincronização, de comunicação entre nós e de operação (`/health/*`, `/metrics`, `/metrics/topics/*`, `/node/drain`) não são repassadas: cada nó responde as suas. Como a API não tem estado preso a um nó, o resultado é o mesmo em qualquer um, e o repasse dura só o tempo da sincronização, que é de um nó por vez (seção 6.8).
 
 O **nó em drain** (seção 6.10) faz o mesmo repasse: segue recebendo chamadas de cliente, de quem ainda fala com ele, e repassa **todas** a outro nó, desde que o drain começa até o processo encerrar, mesmo depois de ter saído do cluster. O que muda é o destino (primeiro item).
 
@@ -186,7 +186,7 @@ O desregistro voluntário segue a regra de concorrência da seção 6.8 (uma mud
 
 - **Antes da saída** (estados `draining` até o início do passo 5): cancela o drain, o nó volta a `active` e a gravar em memória, e continua membro do cluster. Responde `200`.
 - **Durante o desregistro** (passo 5 em andamento): responde `409`; tente de novo quando o nó estiver `drained`.
-- **Depois da saída** (`drained`): o nó entra **como nó novo**. Gera um **ID novo** (GUID v7), refaz o bootstrap completo da seção 6.2, com nova posição no anel, e responde `202`; `drainState` volta a `active`, e o estado do nó no cluster passa por `joining` e `syncing` até ficar pronto (`msg.cluster.node.state`). Antes de limpar o estado local, o nó faz a **recuperação de mensagens perdidas** da seção 6.6 (passos 1 a 5), já que o disco tem **tudo** o que ele tinha. Não há freezing, pois o ID é outro e a saída foi voluntária.
+- **Depois da saída** (`drained`): o nó entra **como nó novo**. Gera um **ID novo** (GUID v7), refaz o bootstrap completo da seção 6.2, com nova posição no anel, e responde `202`; `drainState` volta a `active`, e o estado do nó no cluster passa por `joining` e `syncing` até ficar pronto (`taba.node.state`). Antes de limpar o estado local, o nó faz a **recuperação de mensagens perdidas** da seção 6.6 (passos 1 a 5), já que o disco tem **tudo** o que ele tinha. Não há freezing, pois o ID é outro e a saída foi voluntária.
 
 #### Modo desenvolvimento: o drain como save
 

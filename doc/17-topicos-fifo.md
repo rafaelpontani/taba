@@ -94,11 +94,11 @@ Consequências:
 
 - **Lista de prontos.** Em vez da sanfona por ID (seção 12.6), a lista da QTF tem **uma entrada por grupo livre**: o ID da mensagem mais antiga do grupo (a cabeça). Fica ordenada pela cabeça mais antiga, isto é, pelo ID. A thread de reposição acha as cabeças pelo índice `(grupo, id)` do banco do tópico (e pelo índice em memória, para as mensagens em memória). Mensagens com `deleteAt` (seção 16.7) não entram.
 - **Entrega.** O `GET` (e o `take`, seção 12.8) tira da lista a cabeça mais antiga, com o mesmo registro + commit de invisibilidade da seção 12.2. No commit, o grupo passa a **ocupado** e sai da lista.
-- **Entre grupos livres vale a cabeça mais antiga.** A entrega justa por faixas da seção 12.11 **não vale** na QTF: a justiça entre remetentes vem de cada grupo ocupar no máximo um lugar na entrega. As contagens por grupo continuam existindo para as métricas (`/stats/topics/{topic}/groups`).
+- **Entre grupos livres vale a cabeça mais antiga.** A entrega justa por faixas da seção 12.11 **não vale** na QTF: a justiça entre remetentes vem de cada grupo ocupar no máximo um lugar na entrega. As contagens por grupo continuam existindo para as métricas (`/metrics/topics/{topic}/groups`).
 - **`maxMessages`.** Cada mensagem do lote vem de um grupo **diferente**. O lote traz o que estiver pronto, até `maxMessages`. Várias mensagens do mesmo grupo no mesmo `GET` não são suportadas (uma por grupo).
 - **Reentrega.** Vencida a invisibilidade sem ack, a **mesma** mensagem volta como cabeça do grupo, que volta a ser livre (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). A alteração com `visibilityTimeout: 0` faz o mesmo.
 - **Ack.** O ack da cabeça libera o grupo, e a mensagem seguinte entra na lista.
-- **Limite de entregas (`maxDeliveries`).** A mensagem que o atinge sem ack vai para o dead-letter e **o grupo segue** com a próxima, como no SQS. Gera o evento `message-dead-lettered`. Quando o grupo segue, a ordem do grupo é mantida para as mensagens restantes; a que saiu fica de fora.
+- **Limite de entregas (`maxDeliveries`).** A mensagem que o atinge sem ack vai para o dead-letter e **o grupo segue** com a próxima, como no SQS. Gera o evento `taba.message.dead_lettered`. Quando o grupo segue, a ordem do grupo é mantida para as mensagens restantes; a que saiu fica de fora.
 - **Expiração (`ttl`).** Uma mensagem vencida por `ttl` é descartada onde estiver, e se era a cabeça, o grupo é **liberado** e segue com a próxima.
 - **Mudança de dono.** Ao assumir um bloco, o novo primário refaz a lista a partir dos metadados e do índice `(grupo, id)`. Um grupo com mensagem invisível no futuro entra como **ocupado**, com o vencimento na lista de invisíveis (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)).
 
@@ -125,7 +125,7 @@ A QTF não duplica publicações repetidas dentro de uma **janela** (`fifo.dedup
 
 ### 16.8 Tópico Distribuidor, fila volátil e dead-letter
 
-- **Distribuidor.** Um DT pode ter filas FIFO entre os destinos. O `groupId` e o `deduplicationId` informados vão para **todas** as cópias (seção 14.2 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)). Cópia **sem `groupId`** para uma fila FIFO falha **só naquela fila** (`distributor-partial`, `400` no item), sem desfazer as demais. Sem `deduplicationId`, cada cópia usa o hash do corpo; a deduplicação é por fila e grupo. Como cada cópia é coordenada pelo primário do grupo da fila de destino, a ordem por grupo se mantém em cada fila.
+- **Distribuidor.** Um DT pode ter filas FIFO entre os destinos. O `groupId` e o `deduplicationId` informados vão para **todas** as cópias (seção 14.2 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)). Cópia **sem `groupId`** para uma fila FIFO falha **só naquela fila** (`taba.distributor.partial`, `400` no item), sem desfazer as demais. Sem `deduplicationId`, cada cópia usa o hash do corpo; a deduplicação é por fila e grupo. Como cada cópia é coordenada pelo primário do grupo da fila de destino, a ordem por grupo se mantém em cada fila.
 - **Fila volátil.** A QTF pode ser volátil, com as regras da seção 14.3.
 - **Dead-letter.** Nasce e morre com a fila, como na seção 12.10, mas **não é FIFO**: é uma fila comum, para consulta e reprocessamento. Reaproveita o `id` da fila de origem só para a posição no anel (seção 16.3).
 
@@ -154,9 +154,9 @@ Detalhes em [11-observabilidade.md](11-observabilidade.md).
 
 | Item | Descrição |
 |---|---|
-| `msg.fifo.deduplicated` (métrica) | Publicações descartadas por deduplicação. |
-| `msg.fifo.forward` (métrica) | Publicações repassadas ao primário do grupo, por resultado (`ok`, `misdirected`, `error`). |
-| `msg.fifo.groups.busy` (métrica) | Grupos com mensagem em voo neste nó. |
+| `taba.fifo.deduplicated` (métrica) | Publicações descartadas por deduplicação. |
+| `taba.fifo.forward` (métrica) | Publicações repassadas ao primário do grupo, por resultado (`ok`, `misdirected`, `error`). |
+| `taba.fifo.groups.busy` (métrica) | Grupos com mensagem em voo neste nó. |
 | `group-stalled` (condição do tópico) | Um grupo cuja cabeça já foi entregue mais de `stats.topics.group-stalled-deliveries` vezes: o grupo está preso numa mensagem que ninguém confirma. |
 
 ### 16.12 Modo desenvolvimento

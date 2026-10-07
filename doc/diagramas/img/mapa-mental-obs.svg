@@ -597,51 +597,51 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="320" y="176" class="t-muted" font-size="9" text-anchor="middle">tema 8.1</text>
         </g>
 
-        <g id="node-obs-d1-0" data-node-id="obs-d1-0" data-node-label="Alvo único do Prometheus" tabindex="0" role="button" aria-label="Focus Alvo único do Prometheus, decisão 8.2.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.1" data-node-context="Architecture component">
-          <title>Alvo único do Prometheus · decisão 8.2.1 · Architecture component</title>
+        <g id="node-obs-d1-0" data-node-id="obs-d1-0" data-node-label="Um alvo por nó" tabindex="0" role="button" aria-label="Focus Um alvo por nó, decisão 8.2.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.1" data-node-context="Architecture component">
+          <title>Um alvo por nó · decisão 8.2.1 · Architecture component</title>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 274) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Alvo único do Prometheus</text>
+          <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Um alvo por nó</text>
         <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão 8.2.1</text>
         </g>
 
-        <g id="node-obs-d1-0x" data-node-id="obs-d1-0x" data-node-label="uma série por nó" tabindex="0" role="button" aria-label="Focus uma série por nó, detalhe 8.2.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.1.1" data-node-context="Architecture component">
-          <title>uma série por nó · detalhe 8.2.1.1 · Architecture component</title>
+        <g id="node-obs-d1-0x" data-node-id="obs-d1-0x" data-node-label="total feito no PromQL" tabindex="0" role="button" aria-label="Focus total feito no PromQL, detalhe 8.2.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.1.1" data-node-context="Architecture component">
+          <title>total feito no PromQL · detalhe 8.2.1.1 · Architecture component</title>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 274) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">uma série por nó</text>
+          <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">total feito no PromQL</text>
         <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.2.1.1</text>
         </g>
 
-        <g id="node-obs-d1-1" data-node-id="obs-d1-1" data-node-label="Cópia em memória" tabindex="0" role="button" aria-label="Focus Cópia em memória, decisão 8.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.2" data-node-context="Architecture component">
-          <title>Cópia em memória · decisão 8.2.2 · Architecture component</title>
+        <g id="node-obs-d1-1" data-node-id="obs-d1-1" data-node-label="OTLP padrão" tabindex="0" role="button" aria-label="Focus OTLP padrão, decisão 8.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.2" data-node-context="Architecture component">
+          <title>OTLP padrão · decisão 8.2.2 · Architecture component</title>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 340) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="580" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cópia em memória</text>
+          <text data-node-label="" x="580" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">OTLP padrão</text>
         <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão 8.2.2</text>
         </g>
 
-        <g id="node-obs-d1-1x" data-node-id="obs-d1-1x" data-node-label="thread de atualização" tabindex="0" role="button" aria-label="Focus thread de atualização, detalhe 8.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.2.1" data-node-context="Architecture component">
-          <title>thread de atualização · detalhe 8.2.2.1 · Architecture component</title>
+        <g id="node-obs-d1-1x" data-node-id="obs-d1-1x" data-node-label="variáveis OTEL_*" tabindex="0" role="button" aria-label="Focus variáveis OTEL_*, detalhe 8.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.2.1" data-node-context="Architecture component">
+          <title>variáveis OTEL_* · detalhe 8.2.2.1 · Architecture component</title>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 340) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">thread de atualização</text>
+          <text data-node-label="" x="892.5" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">variáveis OTEL_*</text>
         <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.2.2.1</text>
         </g>
 
@@ -692,15 +692,15 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão 8.3.1</text>
         </g>
 
-        <g id="node-obs-d2-0x" data-node-id="obs-d2-0x" data-node-label="health, metrics, stats/node" tabindex="0" role="button" aria-label="Focus health, metrics, stats/node, detalhe 8.3.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.3.1.1" data-node-context="Architecture component">
-          <title>health, metrics, stats/node · detalhe 8.3.1.1 · Architecture component</title>
+        <g id="node-obs-d2-0x" data-node-id="obs-d2-0x" data-node-label="health, metrics, health/cluster?scope=node" tabindex="0" role="button" aria-label="Focus health, metrics, health/cluster?scope=node, detalhe 8.3.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.3.1.1" data-node-context="Architecture component">
+          <title>health, metrics, health/cluster?scope=node · detalhe 8.3.1.1 · Architecture component</title>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 472) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">health, metrics, stats/node</text>
+          <text data-node-label="" x="892.5" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">health, metrics, health/cluster?scope=node</text>
         <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.3.1.1</text>
         </g>
 

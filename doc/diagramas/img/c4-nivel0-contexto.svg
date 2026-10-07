@@ -446,7 +446,7 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         <g data-graph-role="automatic-crossover" style="--step:2">
           <path data-graph-role="automatic-crossover-underlay" d="M 670 228 L 787 228 Q 795 228 795 220 L 795 150 Q 795 142 803 142 L 920 142" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="sistema" data-edge-to="obs" data-edge-label="OTLP push · /metrics pull (alvo único)" data-edge-key="2" data-edge-id="telemetria" data-composition-points="670,228;795,228;795,142;920,142" data-composition-crossover="halo" data-composition-independent="true" d="M 670 228 L 787 228 Q 795 228 795 220 L 795 150 Q 795 142 803 142 L 920 142" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-edge-from="sistema" data-edge-to="obs" data-edge-label="OTLP push · /metrics pull (por nó)" data-edge-key="2" data-edge-id="telemetria" data-composition-points="670,228;795,228;795,142;920,142" data-composition-crossover="halo" data-composition-independent="true" d="M 670 228 L 787 228 Q 795 228 795 220 L 795 150 Q 795 142 803 142 L 920 142" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
           <path data-graph-role="automatic-crossover-underlay" d="M 920 322 L 803 322 Q 795 322 795 314 L 795 250 Q 795 242 787 242 L 670 242" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -538,9 +538,9 @@ rect.c-bg-rect { fill: var(--bg); }
           <rect x="272" y="263.05" width="106" height="14" rx="3" class="c-mask"/>
           <text x="325" y="273.05" class="t-edge-emphasis" font-size="8" text-anchor="middle">consome e ack (HTTP)</text>
         </g>
-        <g data-edge-from="sistema" data-edge-to="obs" data-edge-label="OTLP push · /metrics pull (alvo único)" data-edge-key="2" data-edge-id="telemetria">
-          <rect x="698.8" y="165" width="192.4" height="14" rx="3" class="c-mask"/>
-          <text x="795" y="175" class="t-edge-default" font-size="8" text-anchor="middle">OTLP push · /metrics pull (alvo único)</text>
+        <g data-edge-from="sistema" data-edge-to="obs" data-edge-label="OTLP push · /metrics pull (por nó)" data-edge-key="2" data-edge-id="telemetria">
+          <rect x="708.4" y="165" width="173.2" height="14" rx="3" class="c-mask"/>
+          <text x="795" y="175" class="t-edge-default" font-size="8" text-anchor="middle">OTLP push · /metrics pull (por nó)</text>
         </g>
         <g data-edge-from="operador" data-edge-to="sistema" data-edge-label="tópicos e /stats" data-edge-key="3" data-edge-id="stats">
           <rect x="751.6" y="262" width="86.8" height="14" rx="3" class="c-mask"/>

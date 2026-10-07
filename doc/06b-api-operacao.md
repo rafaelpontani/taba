@@ -4,7 +4,7 @@
 
 ## 8.1.1 API de operação (observabilidade)
 
-Manual das rotas para **operadores, Prometheus e orquestradores**: métricas, estatísticas do nó, do cluster e dos tópicos, saúde e drain. Não são rotas para aplicações clientes. Detalhes, parâmetros e o significado de cada métrica estão em [11-observabilidade.md](11-observabilidade.md).
+Manual das rotas para **operadores, Prometheus e orquestradores**: métricas do nó, estado e condições do cluster, métricas dos tópicos, saúde e drain. Não são rotas para aplicações clientes. Detalhes, parâmetros e o significado de cada métrica estão em [11-observabilidade.md](11-observabilidade.md).
 
 > **Porta:** `operations.port` ou, se não for definida, `api.port` ([06-api.md](06-api.md), seção 8.0). **Autenticação:** nenhuma; a proteção é de rede (porta própria, grupo de segurança) e, em complemento, `operations.allowed-ips`, e as rotas devem ficar numa camada de rede segura ([06-api.md](06-api.md), seção 8.0.1). Um IP fora da lista recebe `403` `ops.ip-not-allowed`. Sem `operations.port`, as rotas ficam na porta da API de cliente e, nesse caso, **não usam o token de acesso** ([06a](06a-api-cliente.md), seção 8.1.3).
 >
@@ -14,12 +14,11 @@ Manual das rotas para **operadores, Prometheus e orquestradores**: métricas, es
 
 | Verbo | Recurso | Rate limit | Sucesso |
 |---|---|---|---|
-| `GET` | `/metrics` | isenta | `200` texto Prometheus |
-| `GET` | `/stats/node` | isenta | `200` `NodeStats` |
-| `GET` | `/stats/cluster` | `ratelimit.ops.rps` | `200` `ClusterStats` |
-| `GET` | `/stats/topics` | `ratelimit.ops.rps` | `200` `Page<TopicStats>` (ou `Page<TopicStatsGroup>`) |
-| `GET` | `/stats/topics/{topic}` | `ratelimit.ops.rps` | `200` `TopicStatsDetail` |
-| `GET` | `/stats/topics/{topic}/groups` | `ratelimit.ops.rps` | `200` `Page<GroupStats>` |
+| `GET` | `/metrics` | isenta | `200` texto Prometheus (só este nó) |
+| `GET` | `/health/cluster` | isenta com `scope=node`; `ratelimit.ops.rps` com `scope=cluster` | `200` `ClusterStatus` |
+| `GET` | `/metrics/topics` | `ratelimit.ops.rps` | `200` `Page<TopicStats>` (ou `Page<TopicStatsGroup>`) |
+| `GET` | `/metrics/topics/{topic}` | `ratelimit.ops.rps` | `200` `TopicStatsDetail` |
+| `GET` | `/metrics/topics/{topic}/groups` | `ratelimit.ops.rps` | `200` `Page<GroupStats>` |
 | `POST` | `/node/drain` | admin | `202` `DrainStatus` (ou `200`) |
 | `GET` | `/node/drain` | admin | `200` `DrainStatus` |
 | `DELETE` | `/node/drain` | admin | `200` ou `202` `DrainStatus` |
@@ -32,32 +31,15 @@ Manual das rotas para **operadores, Prometheus e orquestradores**: métricas, es
 
 ### `GET /metrics`: endpoint Prometheus
 
-Devolve as métricas no formato de texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics com `Accept: application/openmetrics-text`). Por padrão traz o **cluster inteiro**, uma série por nó (rótulo `node`); o `/metrics` **só lê uma cópia em memória**, atualizada por uma thread, e responde rápido mesmo com nós lentos ou fora do ar (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). É o **alvo único** de scrape: o balanceador.
-
-**Parâmetros de query:**
-
-| Parâmetro | Tipo | Padrão | Descrição |
-|---|---|---|---|
-| `scope` | texto | `cluster` | `cluster` (uma série por nó) ou `node` (só as métricas **deste** nó). |
+Devolve as métricas **deste nó** no formato de texto do Prometheus (`text/plain; version=0.0.4`; OpenMetrics com `Accept: application/openmetrics-text`). É o modelo padrão de exporter: um alvo por nó, e o Prometheus ou o Collector descobre os nós (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)). O nó não consulta outros nós, e o total do cluster é feito pelo consumidor. As mesmas métricas saem por OTLP, que dispensa descoberta. Não há parâmetros.
 
 | Status | Código | Quando |
 |---|---|---|
 | `200` | — | Corpo em texto; **não** é JSON. |
-| `400` | `validation.failed` | `scope` desconhecido. |
 | `403` | `ops.ip-not-allowed` | IP fora de `operations.allowed-ips`. |
 | `404` | `route.not-found` | `telemetry.prometheus.enabled` desligado. |
 
-## Estatísticas
-
-### `GET /stats/node`: o nó que atende
-
-Métricas do nó que atende a chamada, em **leitura local**, sem consultar outros nós. Resposta: `200`, `NodeStats`.
-
-### `GET /stats/cluster`: o cluster inteiro
-
-Consulta **todos os nós** (pela rota interna `GET /cluster/stats/node`, [06c](06c-api-cluster.md)) e devolve as métricas de cada um mais um resumo e a condição geral. É *best-effort*: um nó que não responde aparece com `reachable: false` em vez de falhar a chamada inteira. No modo desenvolvimento devolve o mesmo que `/stats/node`, em formato de cluster de um nó só. Resposta: `200`, `ClusterStats`.
-
-### `GET /stats/topics`: métricas de tópicos, paginada
+### `GET /metrics/topics`: métricas de tópicos, paginada
 
 Lista **paginada** ([06a](06a-api-cliente.md), seção 8.1.2) com as métricas de cada tópico. A ordem é **sempre por nome**, e **não há `sort`**: as métricas mudam a todo instante e a paginação por chave não se sustentaria. Para achar os tópicos com problema, use `condition`.
 
@@ -80,11 +62,11 @@ Resposta: `200`, `Page<TopicStats>` (ou `Page<TopicStatsGroup>` com `groupBy`). 
 | `400` | `validation.invalid-cursor`, `validation.out-of-range`, `validation.failed`, `validation.unknown-field` | Inclusive `sort`, que a rota não aceita. |
 | `403` / `429` | `ops.ip-not-allowed` / `rate-limit.exceeded` | — |
 
-### `GET /stats/topics/{topic}`: um tópico
+### `GET /metrics/topics/{topic}`: um tópico
 
 Métricas detalhadas e condição de **um** tópico, pedindo aos nós só aquele tópico. Parâmetro: `scope` (`cluster` ou `node`). Resposta: `200`, `TopicStatsDetail`. Erros: `404` `topic.not-found`, `400`, `403`, `429`. Num Tópico Distribuidor, devolve só as métricas do distribuidor (`TopicStats.distributor`); as de fila se aplicam às filas destino ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.7).
 
-### `GET /stats/topics/{topic}/groups`: métricas por grupo
+### `GET /metrics/topics/{topic}/groups`: métricas por grupo
 
 Métricas de **cada `groupId`** de um tópico, para achar o produtor barulhento ([11-observabilidade.md](11-observabilidade.md), "Métricas por grupo"). Cada nó conta só as mensagens de que é dono, então a soma entre nós é exata.
 
@@ -144,7 +126,23 @@ O nó está **apto a receber tráfego**: registrado no cluster (commit confirmad
 | `200` | `HealthResponse` `{ "health": "ready" }` | Apto. |
 | `503` | `HealthResponse` `{ "health": "not-ready", "reason": "..." }` | Não apto. `reason` diz por quê (abaixo). |
 
-As rotas de saúde **não** devolvem `ErrorResponse`: o corpo é sempre `HealthResponse`, para o orquestrador poder ler o motivo sem tratar erros.
+`/health/live` e `/health/ready` **não** devolvem `ErrorResponse`: o corpo é sempre `HealthResponse`, para o orquestrador poder ler o motivo sem tratar erros.
+
+### `GET /health/cluster`: estado e condições
+
+Estado do cluster, na família `/health`, para **pessoas e scripts**: condições, resumo e o estado de cada nó. **Não repete as métricas**, que se leem em `/metrics` e no OTLP.
+
+| Parâmetro | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `scope` | texto | `cluster` | `cluster`: consulta **todos os nós** (pela rota interna `GET /cluster/status`, [06c](06c-api-cluster.md)) e deriva as condições do cluster. É *best-effort*: um nó que não responde aparece com `reachable: false` em vez de falhar a chamada inteira. `node`: leitura **local**, sem consultar outros nós, com as condições que o nó consegue derivar sozinho. |
+
+No modo desenvolvimento devolve o mesmo nos dois `scope`, em formato de cluster de um nó só. Resposta: `200`, `ClusterStatus`.
+
+| Status | Código | Quando |
+|---|---|---|
+| `200` | — | — |
+| `400` | `validation.failed` | `scope` desconhecido. |
+| `403` / `429` | `ops.ip-not-allowed` / `rate-limit.exceeded` | O `429` só vale com `scope=cluster`. |
 
 ## DTOs da API de operação
 
@@ -164,49 +162,62 @@ As rotas de saúde **não** devolvem `ErrorResponse`: o corpo é sempre `HealthR
 | `startedAt` | data ou `null` | Início do drain; `null` em `active`. |
 | `pendingMessages` | inteiro | Mensagens **ainda em memória**. Chega a 0 quando o nó está `drained`. |
 
-### `NodeStats`
+### `ClusterStatus`
+
+Resposta de `GET /health/cluster`.
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `nodeId` | texto | ID do nó (GUID v7 gerado a cada início). |
-| `version` | texto | Versão do Taba. |
-| `clusterName` / `environment` | texto | Atributos de recurso, quando configurados. |
-| `mode` | texto | `production` ou `development`. |
-| `state` | texto | `joining`, `active`, `syncing` ou `returning` (`msg.cluster.node.state`). Sempre `active` em desenvolvimento. |
-| `drainState` | texto | `active`, `draining` ou `drained`. |
-| `startedAt` | data | Início do processo. |
+| `scope` | texto | `cluster` ou `node`, como pedido. |
 | `collectedAt` | data | Instante da coleta. |
-| `metrics` | objeto | **Todas as métricas de nó** de [11-observabilidade.md](11-observabilidade.md), indexadas pelo nome OpenTelemetry (`msg.storage.memory.used`). Valor numérico para gauge e contador; lista de `{ "attributes": {...}, "value": n }` para métrica com atributos (`msg.api.requests`); `{ "count", "sum", "buckets": [{ "le", "count" }] }` para histograma. |
+| `partial` | booleano | `true` se algum nó não respondeu (só em `scope=cluster`). |
+| `worstCondition` | texto | A condição de **maior severidade** (`ok` se nenhuma). |
+| `conditions` | lista de `ConditionEntry` | Todas as condições vigentes ([06d](06d-api-convencoes.md), seção 8.3.7; lista completa em [11-observabilidade.md](11-observabilidade.md), "Condição do cluster"). |
+| `summary` | objeto | `members` (contagem por estado: `active`, `syncing`, `draining`, `suspect`), `membersVersion`, `quorumAvailable` (booleano) e `syncingBlocks`. Em `scope=node`, a visão deste nó. |
+| `nodes` | lista | Um item por membro (um só em `scope=node`): `nodeId`, `reachable` (booleano) e `status` (`NodeStatus`, ou `null` se `reachable` é `false`). |
+
+### `NodeStatus`
+
+O estado de um nó, sem as métricas (essas ficam em `/metrics` e no OTLP). É também a resposta da rota interna `GET /cluster/status` ([06c](06c-api-cluster.md)), com a qual o cluster deriva as condições.
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `nodeId` | texto | ID do nó (GUID v7 gerado a cada início), o `service.instance.id` da telemetria. |
+| `version` | texto | Versão do Taba. |
+| `clusterName` / `environment` | texto | `service.namespace` e `deployment.environment.name` do recurso OpenTelemetry, quando configurados. |
+| `mode` | texto | `production` ou `development`. |
+| `state` | texto | `joining`, `active`, `syncing` ou `returning` (`taba.node.state`). Sempre `active` em desenvolvimento. |
+| `drainState` | texto | `active`, `draining` ou `drained`. |
+| `startedAt`, `collectedAt` | data | Início do processo e instante da coleta. |
+| `storage` | objeto | `memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`. |
+| `signals` | objeto | O que as condições do cluster precisam: `membersVersion`, `quorumAvailable`, `channels` (mapa `peer` → conectado, booleano), `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum` e `frozenNodes`. |
 
 ```json
 {
-  "nodeId": "01927f3a-0001-7000-8000-00000000000a",
-  "version": "0.9.0",
-  "mode": "production",
-  "state": "active",
-  "drainState": "active",
-  "startedAt": "2026-10-06T08:00:00.000Z",
+  "scope": "cluster",
   "collectedAt": "2026-10-06T12:00:00.000Z",
-  "metrics": {
-    "msg.storage.memory.used": 734003200,
-    "msg.storage.memory.limit": 1073741824,
-    "msg.api.requests": [
-      { "attributes": { "route": "/topics/{topic}/messages", "method": "POST", "status_class": "2xx" }, "value": 120394 }
-    ]
-  }
+  "partial": false,
+  "worstCondition": "under-replicated",
+  "conditions": [ { "condition": "under-replicated", "severity": "warning" } ],
+  "summary": { "members": { "active": 3 }, "membersVersion": 7, "quorumAvailable": true, "syncingBlocks": 0 },
+  "nodes": [
+    {
+      "nodeId": "01927f3a-0001-7000-8000-00000000000a",
+      "reachable": true,
+      "status": {
+        "nodeId": "01927f3a-0001-7000-8000-00000000000a",
+        "version": "0.9.0",
+        "mode": "production",
+        "state": "active",
+        "drainState": "active",
+        "startedAt": "2026-10-06T08:00:00.000Z",
+        "collectedAt": "2026-10-06T12:00:00.000Z",
+        "storage": { "memoryUsedBytes": 734003200, "memoryLimitBytes": 1073741824, "memoryMessages": 52110, "diskMessages": 0, "diskFreeBytes": 90194313216 }
+      }
+    }
+  ]
 }
 ```
-
-### `ClusterStats`
-
-| Campo | Tipo | Descrição |
-|---|---|---|
-| `collectedAt` | data | Instante da coleta. |
-| `partial` | booleano | `true` se algum nó não respondeu. |
-| `worstCondition` | texto | A condição de **maior severidade** (`ok` se nenhuma). |
-| `conditions` | lista de `ConditionEntry` | Todas as condições vigentes ([06d](06d-api-convencoes.md), seção 8.3.7; lista completa em [11-observabilidade.md](11-observabilidade.md), "Condição do cluster"). |
-| `summary` | objeto | `members` (contagem por estado: `active`, `syncing`, `draining`, `suspect`), `membersVersion`, `quorumAvailable` (booleano) e `syncingBlocks`. |
-| `nodes` | lista | Um item por membro: `nodeId`, `reachable` (booleano) e `stats` (`NodeStats`, ou `null` se `reachable` é `false`). |
 
 ### `TopicStats`
 
@@ -235,7 +246,7 @@ Os campos de cada grupo de [11-observabilidade.md](11-observabilidade.md), "Mét
 
 ### `TopicStatsDetail`
 
-`TopicStats` mais `topGroups`: lista de `GroupStats` com os maiores grupos, até `stats.topics.top-groups` (padrão 10). Só em `GET /stats/topics/{topic}`.
+`TopicStats` mais `topGroups`: lista de `GroupStats` com os maiores grupos, até `stats.topics.top-groups` (padrão 10). Só em `GET /metrics/topics/{topic}`.
 
 ### `TopicStatsGroup` (resposta com `groupBy`)
 

@@ -104,6 +104,6 @@ Com eles, `tests/` cobre quórum, rollback antes e depois da decisão, freezing,
 
 ### 17.6 Impacto em outros pontos da documentação
 
-- **`msg.node.threads`** ([11-observabilidade.md](11-observabilidade.md)): mede as **threads do sistema operacional** do processo (as do runtime, do pool de bloqueio e as dos escritores SQLite). As tasks do tokio não entram.
+- **`process.thread.count`** ([11-observabilidade.md](11-observabilidade.md)): mede as **threads do sistema operacional** do processo (as do runtime, do pool de bloqueio e as dos escritores SQLite). As tasks do tokio não entram.
 - **Imagem Docker:** binário único, em imagem mínima ([01-visao-geral.md](01-visao-geral.md), objetivo 7).
 - **Conectores:** ficam em `connectors/`, fora do workspace do servidor, uma pasta por linguagem. O `taba-client` em Rust é o conector `connectors/rust/`, independente do `taba-protocol` ([19-conectores.md](19-conectores.md), seção 18).

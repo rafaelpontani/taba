@@ -112,7 +112,7 @@
       "id": "telemetria",
       "from": "sistema",
       "to": "obs",
-      "label": "OTLP push · /metrics pull (alvo único)"
+      "label": "OTLP push · /metrics pull (por nó)"
     },
     {
       "id": "stats",

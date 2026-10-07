@@ -100,7 +100,7 @@ Content-Type: application/json
 
 ### 8.3.4 Envelope de paginação: `Page<T>`
 
-As rotas que devolvem listas ilimitadas (`GET /topics`, `GET /tokens`, `GET /stats/topics` e `GET /stats/topics/{topic}/groups` sem `top`) respondem com:
+As rotas que devolvem listas ilimitadas (`GET /topics`, `GET /tokens`, `GET /metrics/topics` e `GET /metrics/topics/{topic}/groups` sem `top`) respondem com:
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|

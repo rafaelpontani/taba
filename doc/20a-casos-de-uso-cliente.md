@@ -211,7 +211,7 @@ Regras: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10.
 | UC-RET-004 | A expiração vale também para mensagem **invisível** (em processamento): ela some, e o ack seguinte recebe `404`. | 13 §12.10 | I |
 | UC-RET-005 | O dono não entrega mensagem vencida entre duas varreduras. | 13 §12.10 | I |
 | UC-RET-006 | A varredura de cada nó (`retention.sweep.interval`) apaga as cópias vencidas em memória e em disco, sem propagar nada. | 13 §12.10 | C |
-| UC-RET-007 | Cada mensagem expirada gera o evento `message-expired` e conta em `msg.retention.expired`. | 13 §12.10, 11 | I |
+| UC-RET-007 | Cada mensagem expirada gera o evento `taba.message.expired` e conta em `taba.retention.expired`. | 13 §12.10, 11 | I |
 | UC-RET-008 | `maxDeliveries: N`: ao vencer a invisibilidade da N-ésima entrega sem ack, a mensagem vai para a dead-letter e a (N+1)-ésima entrega **nunca acontece**. | 13 §12.10 | I |
 | UC-RET-009 | Na dead-letter a mensagem mantém o **mesmo `id`**, com `deliveryCount: 0`, `invisibleUntil` zerado, `deadLetteredAt` e `deadLetterReason: max-deliveries`. | 13 §12.10 | I |
 | UC-RET-010 | A mensagem na dead-letter cai no mesmo bloco e nos mesmos nós da mensagem original (mesmo `id`). | 13 §12.10 | U, C |
@@ -222,7 +222,7 @@ Regras: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10.
 | UC-RET-015 | O sufixo da dead-letter é configurável (`topics.dead-letter.suffix`) e passa a ser o nome reservado. | 10 | U, I |
 | UC-RET-016 | A dead-letter nunca é destino de um distribuidor, mesmo que o nome comece com o prefixo. | 13 §12.10, 15 §14.2 | I |
 | UC-RET-017 | O `GET` na dead-letter não conta como consumidor da fila volátil de origem. | 13 §12.10, 15 §14.3 | I |
-| UC-RET-018 | Cada mensagem enviada à dead-letter gera o evento `message-dead-lettered` (fila, ID, `deliveryCount`) e conta em `msg.delivery.dead_lettered`. | 13 §12.10, 11 | I |
+| UC-RET-018 | Cada mensagem enviada à dead-letter gera o evento `taba.message.dead_lettered` (fila, ID, `deliveryCount`) e conta em `taba.delivery.dead_lettered`. | 13 §12.10, 11 | I |
 | UC-RET-019 | Na fila FIFO, a mensagem que atinge `maxDeliveries` vai para a dead-letter e o grupo segue com a próxima; a vencida por `ttl` na cabeça também libera o grupo (casos `FIF`). | 13 §12.10, 17 §16.6 | I |
 | UC-RET-020 | A sincronização de bloco descarta o que já venceu por `ttl` em vez de copiar. | 13 §12.10, 05 §7.3 | C |
 
@@ -232,12 +232,12 @@ Regras: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10.
 |---|---|---|---|
 | UC-DST-001 | Publicar num distribuidor copia a mensagem para **cada** fila cujo nome começa com um dos prefixos: `200` `DistributorPublishResponse` com `matched` e uma entrada em `deliveries` por fila, cada cópia com `id` próprio. | 06a, 15 §14.2 | I |
 | UC-DST-002 | Cada cópia é independente: o mesmo conteúdo e `contentType`, `id` diferente, e consumo e ack de uma não afetam as outras. | 15 §14.2 | I |
-| UC-DST-003 | Nenhuma fila casa: `200` com `matched: 0` e `deliveries: []`, a mensagem é descartada, e o evento `distributor-no-target` é registrado. | 06a, 15 §14.2 | I |
+| UC-DST-003 | Nenhuma fila casa: `200` com `matched: 0` e `deliveries: []`, a mensagem é descartada, e o evento `taba.distributor.no_target` é registrado. | 06a, 15 §14.2 | I |
 | UC-DST-004 | Uma fila que casa com **dois ou mais prefixos do mesmo** distribuidor recebe **uma** cópia. | 15 §14.2 | I |
 | UC-DST-005 | Uma fila que casa com prefixos de **distribuidores diferentes** recebe uma cópia de cada publicação em cada um. | 15 §14.2 | I |
 | UC-DST-006 | Só filas são destino: um distribuidor nunca recebe cópia (sem laços). | 15 §14.2 | I |
 | UC-DST-007 | O casamento é feito na hora da publicação: uma fila criada depois só recebe o que for publicado depois. | 15 §14.2 | I |
-| UC-DST-008 | Falha parcial: uma cópia falha (por exemplo, sem quórum) e as outras seguem; a resposta é `200`, com `error` (`code`, `message`) no item que falhou e `id` nos demais, e o evento `distributor-partial`. Nada é desfeito. | 06a, 15 §14.2 | C |
+| UC-DST-008 | Falha parcial: uma cópia falha (por exemplo, sem quórum) e as outras seguem; a resposta é `200`, com `error` (`code`, `message`) no item que falhou e `id` nos demais, e o evento `taba.distributor.partial`. Nada é desfeito. | 06a, 15 §14.2 | C |
 | UC-DST-009 | Cópia sem `groupId` para uma fila FIFO falha só naquela fila, com `validation.group-id-required` no item; as outras cópias seguem. | 06a, 15 §14.2, 17 §16.8 | I |
 | UC-DST-010 | O `groupId` e o `deduplicationId` informados vão para todas as cópias; sem `deduplicationId`, cada cópia usa o hash do corpo. | 15 §14.2, 17 §16.8 | I |
 | UC-DST-011 | Com `topics.distributor.max-targets` definido e a publicação casando mais filas: `422` `distributor.too-many-targets`, e **nenhuma** cópia é feita. Sem o teto, não há limite. | 06a, 15 §14.2 | I |
@@ -255,7 +255,7 @@ Os casos com mais de um nó pedem `C`. No modo desenvolvimento o próprio nó é
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-VOL-001 | Fila volátil sem nenhum `GET` por `idleTimeout` segundos é excluída, com as mensagens e a dead-letter, e o evento `volatile-deleted` é registrado. | 15 §14.3 e 14.5 | I, C |
+| UC-VOL-001 | Fila volátil sem nenhum `GET` por `idleTimeout` segundos é excluída, com as mensagens e a dead-letter, e o evento `taba.volatile.deleted` é registrado. | 15 §14.3 e 14.5 | I, C |
 | UC-VOL-002 | O relógio começa na **criação**: o prazo é `max(createdAt, último GET em qualquer nó) + idleTimeout`. | 15 §14.3 | U, I |
 | UC-VOL-003 | **Qualquer** `GET` conta como consumidor (com ou sem mensagem, com ou sem long polling), e o instante é registrado no **início** da chamada. | 15 §14.3 | I |
 | UC-VOL-004 | Publicar **não** conta como consumidor: uma fila volátil só com produtores é excluída, e as mensagens se perdem. | 15 §14.3 | I |
@@ -264,7 +264,7 @@ Os casos com mais de um nó pedem `C`. No modo desenvolvimento o próprio nó é
 | UC-VOL-007 | A lista de tópicos gerenciados é derivada, não guardada: cada nó a calcula localmente e ela muda sozinha com a tabela de membros ou de tópicos. | 15 §14.5 | U, C |
 | UC-VOL-008 | No vencimento o gestor pergunta a **todos os nós** (`GET /cluster/topics/{id}/idle`) há quanto tempo foi o último `GET`; cada nó responde uma duração decorrida, não um instante. | 15 §14.5, 06c | C |
 | UC-VOL-009 | Se algum nó teve `GET` mais recente que o `idleTimeout`, a fila **não** é excluída: o gestor reagenda para `idleTimeout` menos a menor duração recebida. | 15 §14.5 | C |
-| UC-VOL-010 | Se algum nó não responde, o gestor **não exclui** e tenta de novo depois de `topics.volatile.idle-check.retry-interval`; o evento `volatile-check-blocked` é registrado. | 15 §14.5 | C |
+| UC-VOL-010 | Se algum nó não responde, o gestor **não exclui** e tenta de novo depois de `topics.volatile.idle-check.retry-interval`; o evento `taba.volatile.check_blocked` é registrado. | 15 §14.5 | C |
 | UC-VOL-011 | Um nó sem registro de `GET` para o tópico (subiu agora ou reiniciou) responde o tempo desde que subiu, com `sinceStart: true`: um reinício só pode **adiar** a exclusão. | 15 §14.5, 06c | C |
 | UC-VOL-012 | A exclusão usa o registro + commit de todos os nós com o `id` do tópico (`expectedId`): uma fila excluída e **recriada** no meio do caminho não é apagada por engano. | 15 §14.5, 06c | C |
 | UC-VOL-013 | Corrida residual: um `GET` depois da verificação final e antes do commit recebe `404`, ou recria a fila (com `autoCreate`) com `id` novo e sem as mensagens antigas. | 15 §14.5 | C |
@@ -350,7 +350,7 @@ Regras: [17-topicos-fifo.md](17-topicos-fifo.md). A parte de sincronização e f
 |---|---|---|---|
 | UC-FIF-042 | `autoCreate` aceita `fifo=true`; vale a exigência de `replication.factor` 2 (UC-CNS-037). | 17 §16.2, 15 §14.4 | I, C |
 | UC-FIF-043 | Um distribuidor com FIFO entre os destinos mantém a ordem por grupo em cada fila (cada cópia é coordenada pelo primário do grupo da fila destino). | 17 §16.8 | C |
-| UC-FIF-044 | Métricas e condições da FIFO: `msg.fifo.deduplicated`, `msg.fifo.forward` (`ok`, `misdirected`, `error`), `msg.fifo.groups.busy`, evento `message-deduplicated`, e a condição `group-stalled` quando a cabeça passa de `stats.topics.group-stalled-deliveries` entregas sem ack. | 17 §16.11, 11 | I, C |
+| UC-FIF-044 | Métricas e condições da FIFO: `taba.fifo.deduplicated`, `taba.fifo.forward` (`ok`, `misdirected`, `error`), `taba.fifo.groups.busy`, evento `taba.message.deduplicated`, e a condição `group-stalled` quando a cabeça passa de `stats.topics.group-stalled-deliveries` entregas sem ack. | 17 §16.11, 11 | I, C |
 | UC-FIF-045 | A condição `noisy-group` indica o grupo quente de uma FIFO. | 17 §16.10, 11 | I |
 | UC-FIF-046 | Em modo desenvolvimento a FIFO funciona igual: o nó é o primário de todos os grupos (sem repasse), o quórum vale 1 e `replication.factor` 1 é aceito. | 17 §16.12 | I |
 
@@ -374,9 +374,9 @@ Vale nas filas comuns. Na FIFO o `groupId` ordena e a entrega justa não se apli
 | UC-GRP-012 | Acima de `delivery.fair.max-groups`, os grupos novos compartilham um contador único (tratados como um grupo só), que aparece em `GroupStats` com `overflow: true` e sem `groupId`. | 13 §12.11, 06b | U |
 | UC-GRP-013 | As contagens por grupo são derivadas: refeitas dos metadados e da coluna `grupo` quando o nó assume blocos ou reinicia. | 13 §12.11 | C |
 | UC-GRP-014 | Num distribuidor, o `groupId` é repassado a todas as cópias. | 13 §12.11, 15 §14.2 | I |
-| UC-GRP-015 | `GET /stats/topics/{topic}/groups` devolve mensagens, parcela, idade e taxas por `groupId`; `top=N` devolve os `N` maiores sem paginação; `groupId=` devolve só esse; um grupo sem mensagens e sem atividade some. | 06b, 11 | I |
+| UC-GRP-015 | `GET /metrics/topics/{topic}/groups` devolve mensagens, parcela, idade e taxas por `groupId`; `top=N` devolve os `N` maiores sem paginação; `groupId=` devolve só esse; um grupo sem mensagens e sem atividade some. | 06b, 11 | I |
 | UC-GRP-016 | A condição `noisy-group` dispara quando há dois ou mais grupos e o maior ocupa mais de `stats.topics.noisy-group-share` do `depth`. | 11 | U, I |
-| UC-GRP-017 | A métrica `msg.delivery.fair.wait` mede a espera por faixa: as faixas baixas esperam menos que as altas. | 11 | I |
+| UC-GRP-017 | A métrica `taba.delivery.fair.wait` mede a espera por faixa: as faixas baixas esperam menos que as altas. | 11 | I |
 
 ### AUT: autenticação e tokens de acesso
 
@@ -431,7 +431,7 @@ Regras: [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3, e [02-arquitetu
 | UC-AUT-033 | Um nó que entra puxa os tokens (`GET /cluster/tokens`) junto com a tabela de tópicos; até a carga terminar o nó não atende rotas de cliente, então nunca valida com a tabela incompleta. | 02 §3.4 | C |
 | UC-AUT-034 | Uma chamada repassada (nó em sincronização ou drain) leva o `Authorization` como veio, e o **destino** confere o token de novo. | 06a, 04 §6.9 | C |
 | UC-AUT-035 | As rotas de operação e do cluster não usam o token de acesso. | 06a, 06 §8.0 | I |
-| UC-AUT-036 | Eventos: token criado, alterado e revogado (`info`, com o `id`); chamada recusada por `401`/`403` (`warn`, amostrada em volume). `msg.auth.requests` conta por `outcome` (`ok`, `unauthorized`, `forbidden`) e `msg.auth.tokens` traz quantos o nó conhece. | 11 | I |
+| UC-AUT-036 | Eventos: token criado, alterado e revogado (`info`, com o `id`); chamada recusada por `401`/`403` (`warn`, amostrada em volume). `taba.auth.requests` conta por `outcome` (`ok`, `unauthorized`, `forbidden`) e `taba.auth.tokens` traz quantos o nó conhece. | 11 | I |
 
 ### LIM: limites e rate limit
 
@@ -447,17 +447,17 @@ Limites fixos de validação estão nos casos de cada área (`TOP`, `MSG`, `AUT`
 | UC-LIM-006 | A autenticação vem antes do rate limit, e um token só vira chave **depois de validado** (ninguém esgota o limite de outro citando o `id` dele). | 12 | U, I |
 | UC-LIM-007 | Todos os tokens têm o mesmo limite; não há limite próprio por token. | 12 | I |
 | UC-LIM-008 | Os contadores são locais a cada nó, sem troca entre nós. | 12 | C |
-| UC-LIM-009 | `/health/live`, `/health/ready`, `/metrics` e `/stats/node` nunca respondem `429`. | 12, 06b | I |
-| UC-LIM-010 | `/stats/cluster` e `/stats/topics` têm categoria própria (`ratelimit.ops.rps`, por IP, com o mesmo burst). | 12, 06b | I |
+| UC-LIM-009 | `/health/live`, `/health/ready`, `/metrics` e `/health/cluster?scope=node` nunca respondem `429`. | 12, 06b | I |
+| UC-LIM-010 | `/health/cluster?scope=cluster` e `/metrics/topics` têm categoria própria (`ratelimit.ops.rps`, por IP, com o mesmo burst). | 12, 06b | I |
 | UC-LIM-011 | O IP do cliente vem do primeiro endereço do primeiro cabeçalho presente de `client-ip.headers` (padrão `X-Forwarded-For`), só se a conexão vier de `client-ip.trusted-proxies` (vazia: aceita de qualquer origem). Cabeçalho ausente ou inválido: vale o endereço da conexão. | 12 | U, I |
 | UC-LIM-012 | Com `client-ip.headers.enabled=false` vale sempre o endereço da conexão. | 12, 10 | U, I |
 | UC-LIM-013 | O IP resolvido vale também para `operations.allowed-ips`. | 12, 11 | I |
 | UC-LIM-014 | Nó em sincronização ou drain: conta a chamada por IP e a repassa; o destino não conta de novo. A porta do cluster não tem rate limit. | 12, 04 §6.9 | C |
-| UC-LIM-015 | `msg.api.rate_limited` conta as rejeições por `limit` (`publish`, `consume`, `admin`) e `key` (`token` ou `ip`). | 11 | I |
+| UC-LIM-015 | `taba.ratelimit.rejected` conta as rejeições por `category` (`publish`, `consume`, `admin`, `ops`) e `key` (`token` ou `ip`). | 11 | I |
 
 ### PAG: paginação
 
-Regras: [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.2, e [06d-api-convencoes.md](06d-api-convencoes.md), seção 8.3.4. Vale para `GET /topics`, `GET /tokens`, `GET /stats/topics` e `GET /stats/topics/{topic}/groups`.
+Regras: [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.2, e [06d-api-convencoes.md](06d-api-convencoes.md), seção 8.3.4. Vale para `GET /topics`, `GET /tokens`, `GET /metrics/topics` e `GET /metrics/topics/{topic}/groups`.
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
@@ -469,7 +469,7 @@ Regras: [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.2, e [06d-api-conv
 | UC-PAG-006 | Repetir um cursor devolve a mesma página enquanto os dados não mudarem, e o cursor não expira. | 06a §8.1.2 | I |
 | UC-PAG-007 | A ordem é total e estável: toda ordenação termina num campo único e imutável (nome ou `id`); `sort=-createdAt` vale `(createdAt desc, id asc)`; itens com o mesmo `createdAt` não se perdem entre páginas. | 06a §8.1.2 | U, I |
 | UC-PAG-008 | Não há `page`, `offset` nem `total`. | 06a §8.1.2 | I |
-| UC-PAG-009 | `GET /stats/topics` não aceita `sort` (`400`) e pagina sempre por nome. | 06b, 11 | I |
+| UC-PAG-009 | `GET /metrics/topics` não aceita `sort` (`400`) e pagina sempre por nome. | 06b, 11 | I |
 
 ### CNV: convenções comuns da API
 

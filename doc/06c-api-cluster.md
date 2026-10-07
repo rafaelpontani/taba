@@ -44,7 +44,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 | **Tópicos e tokens** | `POST /cluster/topics/register`, `commit`, `rollback`; `GET /cluster/topics`; `POST /cluster/tokens/register`, `commit`, `rollback`; `GET /cluster/tokens`; `GET /cluster/topics/{id}/idle` |
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/messages/recover` |
-| **Observabilidade** | `GET /cluster/metrics`, `GET /cluster/stats/node`, `GET /cluster/stats/topics` |
+| **Observabilidade** | `GET /cluster/status`, `GET /cluster/metrics/topics` |
 | **Repasse** | `* /cluster/forward/{caminho}` |
 
 ## Membros e canal
@@ -231,17 +231,13 @@ Usado por um nó que **retorna** ao cluster (seção 6.6) para enviar ao respons
 
 ## Observabilidade
 
-### `GET /cluster/metrics`
+### `GET /cluster/status`
 
-Métricas **locais** do nó, no formato Prometheus (`text/plain`). É o que a thread de atualização consulta em cada nó, a cada `telemetry.prometheus.refresh-interval` (seção "Endpoint Prometheus" de [11-observabilidade.md](11-observabilidade.md)).
+Estado local do nó, para a agregação de `GET /health/cluster` com `scope=cluster`. **Resposta: `200`, `NodeStatus`** ([06b](06b-api-operacao.md)). As métricas não passam por aqui: cada nó as expõe no próprio `/metrics` e no OTLP.
 
-### `GET /cluster/stats/node`
+### `GET /cluster/metrics/topics`
 
-Métricas locais do nó, para a agregação de `GET /stats/cluster`. **Resposta: `200`, `NodeStats`** ([06b](06b-api-operacao.md)).
-
-### `GET /cluster/stats/topics`
-
-Contadores locais por tópico, **só das mensagens em que o nó é primário**, agregados por quem atende `/stats/topics` (soma das quantidades, menor data). Parâmetro: `topic` (nome), opcional, para pedir só um tópico.
+Contadores locais por tópico, **só das mensagens em que o nó é primário**, agregados por quem atende `/metrics/topics` (soma das quantidades, menor data). Parâmetro: `topic` (nome), opcional, para pedir só um tópico.
 
 **Resposta: `200`, `TopicCounters`**: `collectedAt` (data) e `topics`, uma lista de `{ "topic", "visibleMessages", "invisibleMessages", "oldestMessageAt" }`. `oldestMessageAt` fica **ausente**, nunca zero, num tópico sem mensagens neste nó.
 

@@ -124,7 +124,7 @@ X-Request-Id: 01927f3a-7c1e-7d2b-9f10-3a5b6c7d8e9f
 
 ### `GET /topics`: listar tópicos
 
-Lista os tópicos, **paginada** (seção 8.1.2). Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), ao contrário de `/stats/topics`, que faz fan-out. Com a autenticação ligada, devolve só os tópicos dentro dos prefixos do token. Inclui as filas de dead-letter.
+Lista os tópicos, **paginada** (seção 8.1.2). Respondida **localmente**, sem consultar outros nós: a definição do tópico é replicada em todo nó (seção 3.3), ao contrário de `/metrics/topics`, que faz fan-out. Com a autenticação ligada, devolve só os tópicos dentro dos prefixos do token. Inclui as filas de dead-letter.
 
 **Parâmetros de query:**
 
@@ -605,7 +605,7 @@ A resposta traz os itens e `nextCursor`; sem `nextCursor`, acabou. Não há `pag
 
 A garantia é a de quem percorre tudo: recebe todo item que existia durante o percurso inteiro, sem repetição. Itens criados ou removidos durante o percurso podem ou não aparecer. É consistência fraca, suficiente para consulta; as rotas entre nós usam outro mecanismo (seção 8.2.1, [06c-api-cluster.md](06c-api-cluster.md)).
 
-Por isso nenhuma rota ordena por valor que muda: `GET /stats/topics` não tem `sort` e pagina sempre por nome.
+Por isso nenhuma rota ordena por valor que muda: `GET /metrics/topics` não tem `sort` e pagina sempre por nome.
 
 ### 8.1.3 Autenticação por token
 

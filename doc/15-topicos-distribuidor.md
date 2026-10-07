@@ -38,11 +38,11 @@ Um DT é só uma **definição** (seção 3.3): nome, tipo, tags e a lista de **
 **Regras:**
 
 - Uma fila que casa com **dois ou mais prefixos do mesmo DT** recebe **uma cópia só**. Uma fila que casa com prefixos de **DTs diferentes** recebe uma cópia de cada publicação em cada DT.
-- **Sem fila casando** não é erro: o DT fez o trabalho dele, que é receber. A resposta é sucesso, com lista vazia, e a mensagem é descartada. O nó registra o evento `distributor-no-target` ([11-observabilidade.md](11-observabilidade.md)).
+- **Sem fila casando** não é erro: o DT fez o trabalho dele, que é receber. A resposta é sucesso, com lista vazia, e a mensagem é descartada. O nó registra o evento `taba.distributor.no_target` ([11-observabilidade.md](11-observabilidade.md)).
 - O casamento é feito **na hora da publicação**, sobre as filas que existem naquele instante. Uma fila criada depois só recebe o que for publicado depois; não há retroativo.
 - **Falha parcial** não é erro do DT: a resposta é `200` e cada item da lista traz o `id` da cópia ou o `error` daquela fila. Quem quiser reenviar para uma fila específica publica direto nela.
 - Não há ordem entre as filas destino.
-- O `groupId` informado na publicação (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) vai em **todas as cópias**, e o `deduplicationId` também, para as filas FIFO. Cópia **sem `groupId`** para uma **fila FIFO** falha só naquela fila (item com erro `400`, evento `distributor-partial`), sem desfazer as outras ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.8).
+- O `groupId` informado na publicação (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) vai em **todas as cópias**, e o `deduplicationId` também, para as filas FIFO. Cópia **sem `groupId`** para uma **fila FIFO** falha só naquela fila (item com erro `400`, evento `taba.distributor.partial`), sem desfazer as outras ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.8).
 - **Prefixos:** de 1 a 100 caracteres, mesmo conjunto do nome de tópico (`A-Za-z0-9_-`); **prefixo vazio é rejeitado** (casaria com tudo). Máximo de 20 prefixos por DT (limite fixo, [12-limites-api.md](12-limites-api.md)). São definidos na criação e podem ser alterados por `PATCH`; a alteração vale a partir do commit e só afeta publicações posteriores.
 
 Exemplo de resposta de `POST /topics/pedidos-dist/messages` com dois destinos:
@@ -170,10 +170,10 @@ Eventos e métricas novos (detalhes em [11-observabilidade.md](11-observabilidad
 
 | Evento | Quando |
 |---|---|
-| `distributor-no-target` | Uma publicação em um DT não casou nenhuma fila. Não é erro, e não é falha de saúde. |
-| `distributor-partial` | Ao menos uma cópia de uma publicação em DT falhou. Atributos: DT, fila, causa. |
-| `volatile-deleted` | Uma QTV foi excluída por ociosidade. Atributos: nome, `id`, tempo de vida, mensagens descartadas (por nó, no commit). |
-| `volatile-check-blocked` | O gestor não pôde concluir a verificação final porque algum nó não respondeu. |
+| `taba.distributor.no_target` | Uma publicação em um DT não casou nenhuma fila. Não é erro, e não é falha de saúde. |
+| `taba.distributor.partial` | Ao menos uma cópia de uma publicação em DT falhou. Atributos: DT, fila, causa. |
+| `taba.volatile.deleted` | Uma QTV foi excluída por ociosidade. Atributos: nome, `id`, tempo de vida, mensagens descartadas (por nó, no commit). |
+| `taba.volatile.check_blocked` | O gestor não pôde concluir a verificação final porque algum nó não respondeu. |
 
 ### 14.8 Parâmetros
 

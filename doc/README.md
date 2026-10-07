@@ -17,7 +17,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [05-particionamento-replicacao.md](05-particionamento-replicacao.md) | 7 | Hash circular, registro + commit de mensagens, sincronização distribuída de blocos. |
 | [06-api.md](06-api.md) | 8, 8.0 | Visão geral das três APIs: as portas (cliente, cluster e operação) e a segurança da porta do cluster (certificados, rotação, exemplo com Docker). |
 | [06a-api-cliente.md](06a-api-cliente.md) | 8.1, 8.1.2, 8.1.3 | API de cliente: tópicos, mensagens, tags, paginação e autenticação por token. |
-| [06b-api-operacao.md](06b-api-operacao.md) | 8.1.1 | API de operação: métricas, estatísticas, saúde e drain. |
+| [06b-api-operacao.md](06b-api-operacao.md) | 8.1.1 | API de operação: `/metrics` (nó e tópicos), `/health` (nó e cluster) e drain. |
 | [06c-api-cluster.md](06c-api-cluster.md) | 8.2, 8.2.1 | API do cluster: rotas entre nós, DTOs e streams NDJSON de sincronização. |
 | [06d-api-convencoes.md](06d-api-convencoes.md) | 8.3 | Convenções comuns às três APIs: formato, cabeçalhos, DTO de erro, envelope de paginação, códigos de status e catálogo de códigos de erro. |
 | [07-principios-design.md](07-principios-design.md) | 9 | Princípios de design. |
@@ -26,7 +26,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [08c-proximos-passos.md](08c-proximos-passos.md) | 10.3 | Os passos do trabalho e as dúvidas de cada um. |
 | [09-glossario.md](09-glossario.md) | 11 | Termos do projeto. |
 | [10-configuracao.md](10-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
-| [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
+| [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade em OpenTelemetry: como ligar um coletor (OTLP e variáveis `OTEL_*`), métricas `taba.*` e `http.*`/`process.*` por nó, `/metrics` de cada nó, estado e condições (`/health/cluster`), métricas e condição de tópicos (rotas próprias), traces, logs, eventos, health checks. |
 | [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
 | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: contador de entregas, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit; expiração (TTL), limite de entregas e dead-letter (12.10); grupos de mensagens e entrega justa (12.11). |
 | [15-topicos-distribuidor.md](15-topicos-distribuidor.md) | 14 | Nomenclatura (QT, DT, QTV; análogos ao SQS e ao SNS), Tópico Distribuidor por prefixos, fila volátil, criação automática pelo `GET`, nó gestor e sua relação com entrada, saída e rebalanceamento de nós. |
@@ -64,7 +64,6 @@ Os diagramas ficam em [diagramas/](diagramas/): a fonte é o JSON em `diagramas/
 | Criação automática de fila volátil | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.4 |
 | Exclusão de fila volátil pelo gestor | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5 |
 | Troca de gestor nas mudanças do anel | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.6 |
-| Métricas do cluster em memória e coleta do Prometheus | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
 | Grupos de uma fila FIFO no anel | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.3 |
 | Publicação numa fila FIFO | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.4 |
 | Mapa mental do Taba (geral e oito áreas) | [16-mapa-mental.md](16-mapa-mental.md), seção 15 |

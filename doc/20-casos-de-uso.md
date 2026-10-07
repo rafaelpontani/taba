@@ -129,11 +129,11 @@ O script ainda não existe: entra no passo 3 de [08c-proximos-passos.md](08c-pro
 | `DRN` | Parada e modo drain (inclui o drain como save) | [04 §6.10](04-cluster.md) | 28 |
 | `DEV` | Modo desenvolvimento | [04 §6.4](04-cluster.md) | 13 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | [06 §8.0](06-api.md) | 21 |
-| `OPS` | Observabilidade, estatísticas, métricas e saúde | [11](11-observabilidade.md), [06b](06b-api-operacao.md) | 38 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | [11](11-observabilidade.md), [06b](06b-api-operacao.md) | 42 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 8 |
 
-**Total: 796 casos de uso.**
+**Total: 800 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 

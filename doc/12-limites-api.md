@@ -59,7 +59,7 @@ Cada limite é do tipo taxa + estouro (`ratelimit.burst`, ex.: token bucket), pa
 - **Todos os tokens têm o mesmo limite** (`ratelimit.*` e `ratelimit.burst`). Limite próprio por token não existe por ora; entra depois, se o uso pedir.
 - **`Retry-After`** vem do contador que estourou, como antes.
 - **Nó em sincronização ou em drain** (seção 6.9 de [04-cluster.md](04-cluster.md)): não tem a tabela de tokens completa e não valida o token, então conta a chamada **por IP** e a repassa; o destino não conta de novo. Um token só vira chave depois de validado, para ninguém esgotar o limite de outro token citando o `id` dele.
-- **Observabilidade:** `msg.api.rate_limited` ganha o atributo `key` (`token` ou `ip`). O `id` do token vai nos logs e traces, nunca em métrica ([11-observabilidade.md](11-observabilidade.md)).
+- **Observabilidade:** `taba.ratelimit.rejected` ganha o atributo `key` (`token` ou `ip`). O `id` do token vai nos logs e traces, nunca em métrica ([11-observabilidade.md](11-observabilidade.md)).
 
 Para as chamadas contadas **por IP**, o IP do cliente pode vir de **cabeçalhos HTTP**, o que importa atrás de balanceador:
 
@@ -69,7 +69,7 @@ Para as chamadas contadas **por IP**, o IP do cliente pode vir de **cabeçalhos 
 - `client-ip.trusted-proxies` (lista de IPs ou CIDR, padrão vazia): os cabeçalhos só valem se a conexão vier de um endereço da lista. **Vazia, os cabeçalhos são aceitos de qualquer origem**: o serviço deve ficar numa camada de rede segura, já que as rotas de operação não têm autenticação.
 - Nas chamadas repassadas durante a sincronização e o drain (seção 6.9 de [04-cluster.md](04-cluster.md)), o IP resolvido segue num cabeçalho interno.
 
-**Rotas de operação:** `/health/live`, `/health/ready`, `/metrics` e `/stats/node` são **isentas** de rate limit: são leves e chamadas por máquina em intervalo fixo, e um `429` no `/health/ready` faria o balanceador tirar o nó da rotação por engano. `/stats/cluster` e `/stats/topics`, que consultam outros nós, têm uma **categoria própria** (`ratelimit.ops.rps`, por IP, com o `ratelimit.burst` comum). Valem em qualquer configuração, com ou sem porta própria ou lista de IPs ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
+**Rotas de operação:** `/health/live`, `/health/ready`, `/metrics` e `/health/cluster?scope=node` são **isentas** de rate limit: são leves e chamadas por máquina em intervalo fixo, e um `429` no `/health/ready` faria o balanceador tirar o nó da rotação por engano. `/health/cluster?scope=cluster` e `/metrics/topics`, que consultam outros nós, têm uma **categoria própria** (`ratelimit.ops.rps`, por IP, com o `ratelimit.burst` comum). Valem em qualquer configuração, com ou sem porta própria ou lista de IPs ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
 
 **Não confundir com:** o retry de registro/commit entre nós do cluster ([04-cluster.md](04-cluster.md), [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) é comunicação interna e não tem relação com o rate limit da API de cliente — um protege a durabilidade, o outro protege a disponibilidade do nó contra uso excessivo de um cliente.
 

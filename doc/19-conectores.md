@@ -82,7 +82,7 @@ A superfície é a **mesma** em todas as linguagens, com os nomes adaptados à c
 **Fora da superfície (de propósito):**
 
 - **Tokens (`/tokens`).** Quem cria e revoga tokens é o operador, com o `curl` ou o `taba token`, não a aplicação. Entra depois, se houver demanda.
-- **API de operação** (`/stats`, `/metrics`, `/health`, `/node`) e **API do cluster**: não são de aplicação.
+- **API de operação** (`/metrics`, `/health`, `/node`) e **API do cluster**: não são de aplicação.
 - **Loop de consumo (`subscribe(handler)`)**, que faz long polling, chama o `handler` e confirma sozinho. É um **adicional** opcional, de poucas linhas sobre o `consume` + `ack`, e entra por linguagem quando ela tem uma forma natural de expressá-lo (D71).
 
 **`publish`** recebe os **bytes** da mensagem e o `Content-Type`; os atalhos `publishJson(topic, textoJson)` e `publishText(topic, texto)` só escolhem o `Content-Type`. As opções são `groupId`, `deduplicationId`, `contentType` e `requestId`. O conector não valida o corpo: quem valida é o servidor (`400` `validation.invalid-body`).

@@ -11,7 +11,7 @@ O Taba expõe **três APIs HTTP**, cada uma em sua porta e para um público. Cad
 | API | Arquivo | Seções | Porta | Quem usa |
 |---|---|---|---|---|
 | **API de cliente** | [06a-api-cliente.md](06a-api-cliente.md) | 8.1 (tópicos, mensagens, tokens), 8.1.2 (paginação), 8.1.3 (autenticação por token) | `api.port` | Aplicações |
-| **API de operação** | [06b-api-operacao.md](06b-api-operacao.md) | 8.1.1 (métricas, estatísticas, saúde, drain) | `operations.port`, ou `api.port` | Operadores, Prometheus, orquestrador |
+| **API de operação** | [06b-api-operacao.md](06b-api-operacao.md) | 8.1.1 (métricas, saúde, drain) | `operations.port`, ou `api.port` | Operadores, Prometheus, orquestrador |
 | **API do cluster** | [06c-api-cluster.md](06c-api-cluster.md) | 8.2 (rotas entre nós), 8.2.1 (streams NDJSON) | `cluster.port` | Os outros nós |
 | **Convenções e DTOs padronizados** | [06d-api-convencoes.md](06d-api-convencoes.md) | 8.3 (formato, cabeçalhos, `ErrorResponse`, `Page<T>`, códigos de status e de erro) | — | Vale para as três APIs |
 
@@ -25,7 +25,7 @@ O nó atende em **portas separadas, uma por público**. Assim cada porta é libe
 |---|---|---|---|---|
 | **API de cliente** | `api.port` | A definir (sugestão: 8080) | Aplicações clientes, em geral pelo balanceador | As rotas da seção 8.1 ([06a](06a-api-cliente.md)). Sem `operations.port`, também as rotas de operação (seção 8.1.1, [06b](06b-api-operacao.md)). |
 | **Cluster** | `cluster.port` | A definir (sugestão: 8081) | **Só os outros nós** (mais o balanceador interno do bootstrap, abaixo) | As rotas `/cluster/*` da seção 8.2 ([06c](06c-api-cluster.md)) e o canal WebSocket `/cluster/channel`. |
-| **Operação** (opcional) | `operations.port` | Vazia (usa `api.port`) | Prometheus, orquestrador, operadores | `/metrics`, `/stats/*`, `/health/*` e `/node/drain` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)). |
+| **Operação** (opcional) | `operations.port` | Vazia (usa `api.port`) | Prometheus, orquestrador, operadores | `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)). |
 
 - **Separação por porta, não só por caminho.** São listeners diferentes do mesmo processo. A porta de cliente responde `404` a `/cluster/*`; a porta do cluster responde `404` a tudo que não seja `/cluster/*`. As três portas precisam ser diferentes entre si; valores repetidos, ou uma porta ocupada, impedem o nó de subir (a mesma falha explícita de `operations.port`).
 - **A tabela de membros guarda o IP e a `cluster.port` de cada nó** (seção 6.2 de [04-cluster.md](04-cluster.md)). Toda chamada entre nós vai **direto** ao IP e à porta do cluster do par, sem balanceador no caminho (seção 8.2.1, [06c](06c-api-cluster.md)). A única chamada que passa por um balanceador é a primeira do bootstrap, `GET /cluster/nodes`, e por isso `cluster.entry-address` é o endereço da **porta do cluster** do balanceador.
@@ -52,10 +52,10 @@ A comunicação entre nós usa **TLS mútuo com certificados do cluster**, gerad
 
   O prazo de `--starts-in` precisa ser maior que o tempo de o par novo chegar a **todos** os nós (a propagação do Secret e o `reload-interval`): um nó que ainda não tem o novo, quando a data chega, passa a rejeitar quem o apresenta. Os relógios dos nós devem estar em NTP (seção 13.3 de [14-invisibilidade.md](14-invisibilidade.md)). Conexões já abertas, como o canal WebSocket, seguem com o certificado antigo até caírem, o que é inofensivo porque ele continua aceito até expirar.
 - **Recarga.** Se uma recarga encontra arquivo ilegível, par incompleto ou certificado inválido, o nó **mantém o conjunto anterior** e registra `error` no log. O conjunto só muda quando a pasta inteira é válida.
-- **Expiração.** Um certificado expirado deixa de ser aceito e de ser apresentado. Para não chegar lá, o nó registra `warn` no log a partir de `cluster.tls.expiry-warning` (padrão 30 dias) antes do `notAfter` do certificado em uso, e expõe a métrica `msg.cluster.tls.expires_in` ([11-observabilidade.md](11-observabilidade.md)), para alertar no Prometheus.
+- **Expiração.** Um certificado expirado deixa de ser aceito e de ser apresentado. Para não chegar lá, o nó registra `warn` no log a partir de `cluster.tls.expiry-warning` (padrão 30 dias) antes do `notAfter` do certificado em uso, e expõe a métrica `taba.cluster.tls.expires_in` ([11-observabilidade.md](11-observabilidade.md)), para alertar no Prometheus.
 - **Limite aceito.** Quem obtiver a chave de **um** nó pode se passar por qualquer nó, o mesmo nível de risco de um segredo compartilhado, mas com tráfego cifrado. Quem quiser um certificado por nó, emitido por uma CA (cert-manager, malha de serviço), pode colocar na pasta o `.crt` da CA para confiar nela e o par do próprio nó para apresentar.
 
-**Rotas de operação:** `/metrics`, `/stats/*`, `/health/*` e `/node/drain` ficam **sem autenticação**, por decisão. Quem instala protege com a porta própria (`operations.port`) e com a rede (grupo de segurança, `NetworkPolicy`) e, em complemento, com `operations.allowed-ips` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
+**Rotas de operação:** `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain` ficam **sem autenticação**, por decisão. Quem instala protege com a porta própria (`operations.port`) e com a rede (grupo de segurança, `NetworkPolicy`) e, em complemento, com `operations.allowed-ips` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)).
 
 **Exemplo com Docker.** Uma vez, o operador cria a pasta de segredos e a entrega a todos os nós:
 

@@ -283,7 +283,7 @@ Memória primeiro; em disco, um banco SQLite por tópico e o corpo em arquivo, e
 
 ### 8. API e observabilidade
 
-API HTTP com paginação por chave e rate limit por token (ou por IP, sem token); métricas em memória e um único alvo para o Prometheus.
+API HTTP com paginação por chave e rate limit por token (ou por IP, sem token); métricas OpenTelemetry (OTLP e um `/metrics` por nó).
 
 ![Mapa mental: API e observabilidade](diagramas/img/mapa-mental-obs.svg)
 
@@ -300,15 +300,15 @@ API HTTP com paginação por chave e rate limit por token (ou por IP, sem token)
 | `8.1.3` | Rate limit por token ou IP (decisão) | [12-limites-api.md](12-limites-api.md) |
 | `8.1.3.1` | cabeçalho do balanceador (detalhe) | [10-configuracao.md](10-configuracao.md); [12-limites-api.md](12-limites-api.md) |
 | `8.2` | Métricas (tema) | [11-observabilidade.md](11-observabilidade.md) |
-| `8.2.1` | Alvo único do Prometheus (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
-| `8.2.1.1` | uma série por nó (detalhe) | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
-| `8.2.2` | Cópia em memória (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
-| `8.2.2.1` | thread de atualização (detalhe) | [10-configuracao.md](10-configuracao.md) |
+| `8.2.1` | Um alvo por nó (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
+| `8.2.1.1` | total feito no PromQL (detalhe) | [11-observabilidade.md](11-observabilidade.md), seção "Endpoint Prometheus" |
+| `8.2.2` | OTLP padrão (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Como ligar um coletor" |
+| `8.2.2.1` | variáveis OTEL_* (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `8.2.3` | Streams de sincronização (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Anel, blocos e sincronização" |
-| `8.2.3.1` | msg.sync.streams (detalhe) | [11-observabilidade.md](11-observabilidade.md) |
+| `8.2.3.1` | taba.sync.streams (detalhe) | [11-observabilidade.md](11-observabilidade.md) |
 | `8.3` | Operação (tema) | [11-observabilidade.md](11-observabilidade.md); [12-limites-api.md](12-limites-api.md) |
 | `8.3.1` | Rotas isentas de limite (decisão) | [12-limites-api.md](12-limites-api.md) |
-| `8.3.1.1` | health, metrics, stats/node (detalhe) | [10-configuracao.md](10-configuracao.md) |
+| `8.3.1.1` | health, metrics, health/cluster?scope=node (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `8.3.2` | IPs autorizados (decisão) | [11-observabilidade.md](11-observabilidade.md), seção "Acesso às rotas de operação" |
 | `8.3.2.1` | proxies confiáveis; rede segura (detalhe) | [10-configuracao.md](10-configuracao.md); [12-limites-api.md](12-limites-api.md) |
 
