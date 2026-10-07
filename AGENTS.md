@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó e tópicos); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
+Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó, tópicos e publicação e consumo em memória); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
 
 ## Código
 
@@ -25,6 +25,17 @@ cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
 - [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) guarda **tudo o que já foi decidido**; [doc/08b-pendencias.md](doc/08b-pendencias.md) guarda **só o que continua em aberto**. Nunca deixe em `08b` uma anotação do que já está definido: ela vai para `08a`, em linha própria, com o código da dúvida e o link para onde a definição está.
 - Dúvida parcialmente resolvida: a parte decidida entra em `08a` (com o mesmo código, ex.: D13.1), e `08b` mantém só as perguntas que faltam, cada uma com seu sub-código.
 - Ao fechar uma pendência: registre a decisão no documento técnico, o valor padrão em [doc/10-configuracao.md](doc/10-configuracao.md), a linha em `08a`, e **apague** a entrada de `08b` e a referência em [doc/08c-proximos-passos.md](doc/08c-proximos-passos.md). Os códigos não são reaproveitados.
+
+## Histórico da implementação
+
+[doc/21-historico-implementacao.md](doc/21-historico-implementacao.md) registra, **na ordem em que aconteceu**, tudo o que já foi implementado, os desvios em relação à documentação e o que ainda falta. Serve para conferir o código contra os documentos. **Toda nova implementação o atualiza na mesma mudança**:
+
+1. Acrescente uma entrada na seção 1 ("Linha do tempo"), ao final: o que foi feito, onde está no código, os desvios e o que ficou de fora.
+2. Registre na seção 2 cada decisão que a implementação tomou e que o documento não dizia ou contraria, e corrija o `.md` técnico. Quando virar decisão firme, ela vai para [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md).
+3. Mova na seção 3 as áreas que mudaram de `Falta` para `Parcial` ou `Feito`, e ajuste a seção 4 ("Próximas etapas").
+4. Atualize a linha "Último registro" e o placar de casos de uso com teste (`cargo test --test uc_coverage -- --nocapture`).
+
+Nunca reescreva as entradas antigas para parecerem melhores: se algo mudou, acrescente uma entrada nova que diz o que mudou.
 
 ## Casos de uso
 

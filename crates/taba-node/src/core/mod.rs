@@ -3,6 +3,7 @@
 //! Não conhece nenhum outro módulo do nó (doc 18, seção 17.3).
 
 pub mod clock;
+pub mod content;
 pub mod error;
 pub mod id;
 pub mod pagination;

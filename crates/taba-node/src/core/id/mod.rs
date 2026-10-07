@@ -10,6 +10,35 @@ pub fn new_at(unix_millis: u64) -> String {
     Uuid::new_v7(Timestamp::from_unix(uuid::NoContext, secs, nanos)).to_string()
 }
 
+/// Gerador de IDs que **nunca repete nem volta atrás**, nem para o mesmo milissegundo: dois
+/// IDs gerados em sequência saem em ordem crescente (UC-MSG-013). O `new_at` sozinho sorteia
+/// os bits finais, e dois IDs do mesmo milissegundo ficariam em ordem aleatória.
+#[derive(Debug)]
+pub struct IdGenerator {
+    context: std::sync::Mutex<uuid::ContextV7>,
+}
+
+impl Default for IdGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IdGenerator {
+    pub fn new() -> Self {
+        Self {
+            context: std::sync::Mutex::new(uuid::ContextV7::new()),
+        }
+    }
+
+    pub fn new_at(&self, unix_millis: u64) -> String {
+        let secs = unix_millis / 1000;
+        let nanos = ((unix_millis % 1000) * 1_000_000) as u32;
+        let context = self.context.lock().unwrap_or_else(|e| e.into_inner());
+        Uuid::new_v7(Timestamp::from_unix(&*context, secs, nanos)).to_string()
+    }
+}
+
 /// `true` se `s` é um GUID v7 na forma canônica, em minúsculas.
 pub fn is_guid_v7(s: &str) -> bool {
     s == s.to_ascii_lowercase()

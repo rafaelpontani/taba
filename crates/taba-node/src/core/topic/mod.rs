@@ -1,5 +1,5 @@
 //! A definição de um tópico (doc 02, seção 3.3): o que é replicado a todos os nós e
-//! gravado em `_topics/${topico}.json`. O mesmo JSON é a base da resposta da API.
+//! gravado na tabela `topicos` do `_node.db`. O mesmo JSON é a base da resposta da API.
 
 use std::collections::BTreeMap;
 
@@ -43,6 +43,14 @@ impl TopicDefinition {
         }
     }
 
+    /// Os prefixos de um distribuidor; `None` numa fila.
+    pub fn prefixes(&self) -> Option<&[String]> {
+        match &self.spec {
+            Spec::Distributor { prefixes } => Some(prefixes),
+            Spec::Queue(_) => None,
+        }
+    }
+
     pub fn type_name(&self) -> &'static str {
         match self.spec {
             Spec::Queue(_) => "queue",
@@ -50,7 +58,7 @@ impl TopicDefinition {
         }
     }
 
-    /// O JSON do arquivo `_topics/${topico}.json`. Campo ausente = não se aplica ao tipo;
+    /// O JSON da definição, o mesmo que a tabela `topicos` guarda. Campo ausente = não se aplica ao tipo;
     /// `null` = aplica-se e vale o padrão (doc 06d, seção 8.3.1).
     pub fn to_json(&self) -> Value {
         let mut m = Map::new();

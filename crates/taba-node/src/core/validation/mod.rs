@@ -11,6 +11,7 @@ pub const TAG_KEY_MAX: usize = 64;
 pub const TAG_VALUE_MAX: usize = 128;
 pub const PREFIXES_MAX: usize = 20;
 pub const PREFIX_MAX: usize = 100;
+pub const KEY_MAX: usize = 128;
 pub const IDLE_TIMEOUT_SECS: (u64, u64) = (60, 604_800);
 pub const TTL_SECS: (u64, u64) = (60, 31_536_000);
 pub const MAX_DELIVERIES: (u64, u64) = (1, 1000);
@@ -113,12 +114,42 @@ pub fn prefixes(prefixes: &[String]) -> Result<(), TabaError> {
     }
 }
 
+/// `groupId` e `deduplicationId` da mensagem: de 1 a 128 caracteres de `A-Za-z0-9_-.:`.
+/// Inválido: `400` `validation.failed`, com o campo em `details`.
+pub fn message_key(field: &str, value: &str) -> Result<(), TabaError> {
+    if !value.is_empty() && value.chars().count() <= KEY_MAX && value.chars().all(is_tag_char) {
+        return Ok(());
+    }
+    Err(TabaError::new(
+        ErrorCode::ValidationFailed,
+        "A requisição tem campos inválidos.",
+    )
+    .with_detail(
+        field,
+        ErrorCode::ValidationFailed,
+        "Use de 1 a 128 caracteres entre A-Za-z0-9_-.:",
+    ))
+}
+
 /// Número dentro de uma faixa inclusiva (`ttl`, `idleTimeout`, `maxDeliveries`...).
 pub fn in_range(field: &str, value: u64, (min, max): (u64, u64)) -> Result<(), TabaError> {
     if (min..=max).contains(&value) {
         return Ok(());
     }
-    Err(TabaError::new(
+    Err(out_of_range(field, (min, max)))
+}
+
+/// Como `in_range`, para um número que pode vir negativo (negativo está fora de qualquer
+/// faixa). Devolve o valor já como `u64`.
+pub fn in_range_signed(field: &str, value: i64, range: (u64, u64)) -> Result<u64, TabaError> {
+    match u64::try_from(value) {
+        Ok(v) => in_range(field, v, range).map(|()| v),
+        Err(_) => Err(out_of_range(field, range)),
+    }
+}
+
+fn out_of_range(field: &str, (min, max): (u64, u64)) -> TabaError {
+    TabaError::new(
         ErrorCode::ValidationOutOfRange,
         format!("{field} deve estar entre {min} e {max}."),
     )
@@ -126,7 +157,7 @@ pub fn in_range(field: &str, value: u64, (min, max): (u64, u64)) -> Result<(), T
         field,
         ErrorCode::ValidationOutOfRange,
         format!("Entre {min} e {max}."),
-    ))
+    )
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ use crate::cluster::state::NodeShared;
 use crate::config::Config;
 use crate::core::clock::{Clock, SystemClock};
 use crate::core::id;
+use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::topics::{TopicRules, Topics};
 use crate::http::{self, AppState};
 use crate::storage;
@@ -159,10 +160,17 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     )
     .await
     .map_err(storage_error)?;
+    let topics = Arc::new(topics);
+    let messages = Messages::new(
+        topics.clone(),
+        deps.clock.clone(),
+        MessageRules::from_config(&config),
+    );
     let state = AppState {
         clock: deps.clock.clone(),
         node: shared.clone(),
-        topics: Arc::new(topics),
+        topics,
+        messages,
     };
 
     if dev {
@@ -193,6 +201,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
 
     let cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
+    let sweeper = state.messages.clone();
     let mut serve = |listener: TcpListener, router: axum::Router| {
         let cancel = cancel.clone();
         tasks.spawn(async move {
@@ -213,6 +222,13 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     }
     if let Some(listener) = cluster {
         serve(listener, http::cluster_router(state));
+    }
+    {
+        let cancel = cancel.clone();
+        tasks.spawn(async move {
+            sweeper.run_sweeper(cancel).await;
+            Ok(())
+        });
     }
 
     tracing::info!(

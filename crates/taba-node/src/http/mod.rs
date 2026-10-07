@@ -4,6 +4,7 @@
 
 mod common;
 mod json;
+pub mod messages;
 pub mod operations;
 pub mod topics;
 
@@ -13,6 +14,7 @@ use axum::Router;
 
 use crate::cluster::state::NodeShared;
 use crate::core::clock::Clock;
+use crate::engine::messages::Messages;
 use crate::engine::topics::Topics;
 
 /// O que os handlers compartilham.
@@ -21,11 +23,14 @@ pub struct AppState {
     pub clock: Arc<dyn Clock>,
     pub node: Arc<NodeShared>,
     pub topics: Arc<Topics>,
+    pub messages: Arc<Messages>,
 }
 
 /// API de cliente. Sem `operations.port`, serve também as rotas de operação.
 pub fn client_router(state: AppState, with_operations: bool) -> Router {
-    let routes = Router::new().merge(topics::routes());
+    let routes = Router::new()
+        .merge(topics::routes())
+        .merge(messages::routes());
     let routes = if with_operations {
         routes.merge(operations::routes())
     } else {

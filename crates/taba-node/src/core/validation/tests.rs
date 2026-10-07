@@ -130,3 +130,29 @@ fn ranges_are_inclusive_at_both_ends() {
         );
     }
 }
+
+/// UC: UC-MSG-011
+#[test]
+fn message_keys_accept_1_to_128_chars_of_the_tag_set() {
+    for ok in ["a", "cliente-42", "A_b.c:d", &"x".repeat(128)] {
+        assert!(message_key("groupId", ok).is_ok(), "{ok}");
+    }
+    for bad in ["", "com espaço", "a/b", "ç", &"x".repeat(129)] {
+        let err = message_key("groupId", bad).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationFailed, "{bad}");
+        assert_eq!(err.details[0].field, "groupId");
+    }
+}
+
+#[test]
+fn signed_numbers_below_zero_are_out_of_range_even_with_no_ceiling() {
+    assert_eq!(in_range_signed("x", 5, (0, u64::MAX)).unwrap(), 5);
+    assert_eq!(
+        in_range_signed("x", -1, (0, u64::MAX)).unwrap_err().code,
+        ErrorCode::ValidationOutOfRange
+    );
+    assert_eq!(
+        in_range_signed("x", 0, (1, 10)).unwrap_err().code,
+        ErrorCode::ValidationOutOfRange
+    );
+}

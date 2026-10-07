@@ -11,7 +11,7 @@ mod rules;
 
 use std::collections::BTreeMap;
 use std::io;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use serde_json::{Value, json};
 
@@ -36,6 +36,21 @@ pub struct TopicView {
 }
 
 impl TopicView {
+    /// `maxMessageBytes` em vigor; `None` num distribuidor.
+    pub fn max_message_bytes(&self) -> Option<u64> {
+        self.effective.map(|e| e[0])
+    }
+
+    /// `maxDeliveries` em vigor; `None` num distribuidor.
+    pub fn max_deliveries(&self) -> Option<u64> {
+        self.effective.map(|e| e[2])
+    }
+
+    /// `ttl` em vigor, em segundos; `None` num distribuidor.
+    pub fn ttl_secs(&self) -> Option<u64> {
+        self.effective.map(|e| e[1])
+    }
+
     /// O `Topic` da API (doc 06a, "DTOs").
     pub fn to_json(&self) -> Value {
         let mut json = self.definition.to_json();
@@ -62,7 +77,11 @@ pub struct Topics {
     map: RwLock<BTreeMap<String, TopicDefinition>>,
     /// Uma alteração por vez: valida, grava em disco e só então aplica em memória.
     writer: tokio::sync::Mutex<()>,
+    removed_hooks: Mutex<Vec<RemovedHook>>,
 }
+
+/// Chamada depois que uma fila é removida, com o nome dela e o da sua dead-letter.
+pub type RemovedHook = Arc<dyn Fn(&[String]) + Send + Sync>;
 
 fn field_error(code: ErrorCode, field: &str, message: &str) -> TabaError {
     TabaError::new(code, message).with_detail(field, code, message)
@@ -118,6 +137,7 @@ impl Topics {
             clock,
             map: RwLock::new(map),
             writer: tokio::sync::Mutex::new(()),
+            removed_hooks: Mutex::new(Vec::new()),
         }
     }
 
@@ -137,6 +157,14 @@ impl Topics {
             Vec::new()
         };
         Ok(Self::new(rules, store, clock, definitions))
+    }
+
+    /// Registra quem precisa saber quando um tópico some (as mensagens saem junto).
+    pub fn on_removed(&self, hook: RemovedHook) {
+        self.removed_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(hook);
     }
 
     pub fn rules(&self) -> &TopicRules {
@@ -235,6 +263,17 @@ impl Topics {
             .ok_or_else(Self::not_found)
     }
 
+    /// As filas que um distribuidor com estes prefixos alcança: as que têm um deles no
+    /// começo do nome, em ordem de nome. A dead-letter não tem definição guardada, então
+    /// nunca entra aqui, como manda o doc 13, seção 12.10.
+    pub fn queues_with_prefix(&self, prefixes: &[String]) -> Vec<TopicView> {
+        self.read()
+            .values()
+            .filter(|d| d.queue().is_some() && prefixes.iter().any(|p| d.name.starts_with(p)))
+            .map(|d| self.view(d))
+            .collect()
+    }
+
     pub async fn create(&self, request: CreateTopic) -> Result<TopicView, TabaError> {
         let (spec, tags) = self.validate_create(&request)?;
         let _writer = self.writer.lock().await;
@@ -274,10 +313,23 @@ impl Topics {
     pub async fn delete(&self, name: &str) -> Result<(), TabaError> {
         let _writer = self.writer.lock().await;
         let current = self.writable(name)?;
+        let is_queue = current.queue().is_some();
         let name = current.name;
         let to_delete = name.clone();
         self.persist(move |store| store.delete(&to_delete)).await?;
         self.write().remove(&name);
+        let mut gone = vec![name.clone()];
+        if is_queue {
+            gone.push(format!("{name}{}", self.rules.dead_letter_suffix));
+        }
+        let hooks = self
+            .removed_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for hook in hooks {
+            hook(&gone);
+        }
         Ok(())
     }
 

@@ -28,3 +28,14 @@ fn ids_sort_by_creation_time() {
     let b = new_at(1_000_001);
     assert!(a < b);
 }
+
+/// UC: UC-MSG-013
+#[test]
+fn generator_is_strictly_increasing_even_within_the_same_millisecond() {
+    let generator = IdGenerator::new();
+    let ids: Vec<String> = (0..1000)
+        .map(|_| generator.new_at(1_791_288_000_000))
+        .collect();
+    assert!(ids.windows(2).all(|w| w[0] < w[1]), "fora de ordem");
+    assert!(ids.iter().all(|id| is_guid_v7(id)));
+}

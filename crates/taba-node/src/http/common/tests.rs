@@ -8,6 +8,7 @@ use crate::cluster::state::NodeShared;
 use crate::config::{Config, MapEnv, Mode};
 use crate::core::clock::SystemClock;
 use crate::core::error::ErrorCode;
+use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::topics::{TopicRules, Topics};
 use crate::storage::topics::MemoryTopicStore;
 
@@ -24,9 +25,16 @@ fn app() -> Router {
         clock.clone(),
         Vec::new(),
     );
+    let topics = Arc::new(topics);
+    let messages = Messages::new(
+        topics.clone(),
+        clock.clone(),
+        MessageRules::from_config(&config),
+    );
     let state = AppState {
         clock,
-        topics: Arc::new(topics),
+        topics,
+        messages,
         node: Arc::new(NodeShared::new(
             "n".into(),
             Mode::Development,
