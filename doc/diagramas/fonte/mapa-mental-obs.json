@@ -178,7 +178,7 @@
     {
       "id": "obs-d1-2x",
       "type": "database",
-      "label": "msg.sync.streams",
+      "label": "taba.sync.streams",
       "sublabel": "detalhe 8.2.3.1",
       "pos": [
         745,

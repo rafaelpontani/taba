@@ -562,8 +562,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="915" y="331" class="t-muted" font-size="9" text-anchor="middle">SQLite por tópico + corpo .json</text>
         </g>
 
-        <g id="node-obs" data-node-id="obs" data-node-label="8. API e observabilidade" tabindex="0" role="button" aria-label="Focus 8. API e observabilidade, 1 alvo Prometheus, limite por IP, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="1 alvo Prometheus, limite por IP" data-node-context="Architecture component">
-          <title>8. API e observabilidade · 1 alvo Prometheus, limite por IP · Architecture component</title>
+        <g id="node-obs" data-node-id="obs" data-node-label="8. API e observabilidade" tabindex="0" role="button" aria-label="Focus 8. API e observabilidade, OTLP, /metrics por nó, limite por IP, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="OTLP, /metrics por nó, limite por IP" data-node-context="Architecture component">
+          <title>8. API e observabilidade · OTLP, /metrics por nó, limite por IP · Architecture component</title>
           <rect x="790" y="395" width="250" height="64" rx="6" class="c-mask"/>
           <rect x="790" y="395" width="250" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(796 401) scale(0.6875)">
@@ -571,7 +571,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
           <text data-node-label="" x="915" y="425" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">8. API e observabilidade</text>
-        <text x="915" y="441" class="t-muted" font-size="9" text-anchor="middle">1 alvo Prometheus, limite por IP</text>
+        <text x="915" y="441" class="t-muted" font-size="9" text-anchor="middle">OTLP, /metrics por nó, limite por IP</text>
         </g>
 
         <!-- Connection labels -->

@@ -124,7 +124,7 @@
       "id": "obs",
       "type": "external",
       "label": "8. API e observabilidade",
-      "sublabel": "1 alvo Prometheus, limite por IP",
+      "sublabel": "OTLP, /metrics por nó, limite por IP",
       "pos": [
         790,
         395

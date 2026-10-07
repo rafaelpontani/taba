@@ -180,7 +180,7 @@
       "id": "stats",
       "from": "operador",
       "to": "api-cli",
-      "label": "/stats, /topics",
+      "label": "/topics, /metrics, /health",
       "variant": "dashed"
     },
     {
