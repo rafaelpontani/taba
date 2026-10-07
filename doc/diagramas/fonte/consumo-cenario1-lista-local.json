@@ -78,7 +78,7 @@
       "y": 366,
       "from": "a",
       "to": "consumidor",
-      "label": "200 m1",
+      "label": "200 m1 + receiptToken",
       "variant": "return"
     }
   ],

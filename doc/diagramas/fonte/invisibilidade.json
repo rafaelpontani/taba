@@ -39,8 +39,8 @@
     {
       "id": "disco",
       "type": "database",
-      "label": "Índice em disco",
-      "sublabel": "excedente de invisíveis"
+      "label": "Tabela de expiração",
+      "sublabel": "SQLite local, excedente"
     }
   ],
   "segments": [
@@ -74,7 +74,7 @@
       "from": "dono",
       "to": "replicas",
       "y": 200,
-      "label": "registro: invisibleUntil, entrega + 1"
+      "label": "registro: invisibleUntil, token, entrega + 1"
     },
     {
       "id": "reg-ok",
@@ -131,7 +131,7 @@
       "from": "dono",
       "to": "disco",
       "y": 412,
-      "label": "lista esvazia: lê a janela mais próxima",
+      "label": "lista esvazia: lê os próximos a vencer",
       "variant": "dashed"
     },
     {
@@ -148,8 +148,8 @@
       "dot": "cyan",
       "title": "Ack ou PATCH",
       "items": [
-        "Registro + commit no quórum, como a entrega",
-        "O dono remove ou atualiza a entrada na lista"
+        "Registro + commit no quórum, exigem o receiptToken",
+        "PATCH define o novo prazo a partir de agora; 0 libera"
       ]
     },
     {
@@ -162,10 +162,10 @@
     },
     {
       "dot": "emerald",
-      "title": "Índice é derivado",
+      "title": "Tabela é derivada",
       "items": [
         "A fonte de verdade são os metadados",
-        "Entradas velhas são conferidas e descartadas ao ler"
+        "Ack, PATCH e entrega atualizam a linha na hora"
       ]
     }
   ]

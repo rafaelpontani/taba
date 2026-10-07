@@ -123,7 +123,7 @@
       "id": "disk",
       "type": "database",
       "label": "Disco",
-      "sublabel": "[Volume] topico/id.json",
+      "sublabel": "[Volume] SQLite + corpos .json",
       "pos": [
         620,
         480

@@ -13,7 +13,9 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
 | Limite de memória por nó | `memory.limit` | A definir | Espaço em memória destinado às mensagens (ex.: MB/GB). Ao atingir o limite, as mensagens excedentes vão para disco (overflow). | 3.2 |
-| Diretório raiz de disco | `storage.dir` | A definir | Raiz onde ficam os arquivos `${topico}/${id}.json` do overflow (relativo a quê: nó? bloco? ainda em aberto) e `_topics/${topico}.json` da definição do tópico. | 3.2, 3.3 |
+| Janela da taxa de leitura | `memory.rate.window` | **5 minutos** | Janela da média móvel de `consumeRate` e `publishRate`, que decide a divisão da memória entre tópicos. | 3.2 |
+| Reserva mínima de memória por tópico | `memory.topic.reserve` | **1000 mensagens** (o tamanho da lista de prontos) | Memória garantida a cada tópico, fora da divisão por taxa de leitura. | 3.2 |
+| Diretório raiz de disco | `storage.dir` | **`/var/lib/taba`** (Linux) | Raiz local do nó, onde ficam os arquivos `${topico}/${id}.json` do overflow, `_topics/${topico}.json` da definição do tópico e o banco de eventos da sincronização (`_sync/sync.db`). Cada nó tem a sua; nada é compartilhado. A última pasta deve se chamar `taba`. Se não existir, o nó a **cria ao iniciar**; se não conseguir criar ou gravar, o nó não sobe. | 3.2, 3.3 |
 
 ## Mensagens
 
@@ -54,7 +56,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Tamanho máximo de linha do stream | `cluster.sync.stream.max-line-bytes` | A definir (maior que `message.max-bytes.hard-limit` mais a margem do envelope JSON) | Limite de uma linha (uma mensagem ou definição de tópico), que define o buffer de cada lado. Precisa caber a maior mensagem possível. | 8.2.1 |
 | Timeout de leitura do stream | `cluster.sync.stream.idle-timeout` | A definir | Tempo sem receber uma linha para o receptor considerar o stream falho e retomar pelo último ID lido. | 8.2.1 |
 | Tamanho da faixa de sincronização | `cluster.sync.range.size` | A definir | Tamanho de cada faixa de IDs pedida a uma origem na sincronização de conteúdo de um bloco; relaciona-se com `cluster.sync.stream.max-items`. | 7.3 |
-| Teto dos logs de sincronização | `cluster.sync.log.max-bytes` | A definir | Tamanho máximo, em disco, do log de carga e do log de eventos de um nó em sincronização. Passou do teto, o nó entra em falha e o cluster fica liberado para votar o desregistro dele. | 7.3 |
+| Teto do banco de eventos | `cluster.sync.log.max-bytes` | A definir | Tamanho máximo, em disco, do banco de eventos (`sync.db`) de um nó em sincronização. Passou do teto, o nó entra em falha e o cluster fica liberado para votar o desregistro dele. | 7.3 |
 | Prazo da sincronização sem origem | `cluster.sync.timeout` | A definir | Tempo que o nó em sincronização tenta de novo quando nenhum nó serve uma carga; esgotado, entra em falha como no disco cheio. | 7.3 |
 
 > Tamanho mínimo do cluster (seção 6.4): 1 nó em desenvolvimento e 3 nós em produção. É uma recomendação de ambiente, não um parâmetro.
@@ -66,8 +68,9 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Invisibilidade padrão | `delivery.visibility-timeout.default` | **120 s** | Tempo em que a mensagem entregue fica invisível a outros consumidores quando o `GET` não informa `visibilityTimeout`. | 12.2 |
 | Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir | Teto aceito em `visibilityTimeout` no `GET` e no `PATCH`. | 12.3 |
 | Tamanho da lista de prontos | `delivery.ready-list.size` | **1000** | Número de IDs prontos que a thread mantém, por tópico, em cada nó. | 12.6 |
-| Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para o índice de expiração em disco. | 13.4 |
-| Janela do índice de expiração | `delivery.invisible.spill.window` | A definir (sugestão: 60 s) | Intervalo de tempo coberto por cada arquivo do índice de expiração em disco (`${topico}/_expiracao/${janela}.jsonl`). | 13.5 |
+| Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para a tabela de expiração do banco local. | 13.4 |
+| Limiar de recarga da lista de invisíveis | `delivery.invisible.reload-threshold` | A definir | Quando a lista de invisíveis em memória cai abaixo deste tamanho, a thread a recarrega com os próximos a vencer da tabela de expiração. | 13.5 |
+| Durabilidade do banco local | `storage.db.synchronous` | `NORMAL` (com WAL) | Modo de sincronização do SQLite. A durabilidade vem da replicação entre nós, então `NORMAL` basta. | 3.2 |
 | Mensagens por `GET` (padrão) | `delivery.max-messages.default` | **10** | Quantidade de mensagens do `GET` quando o cliente não informa `maxMessages`. | 12.2 |
 | Mensagens por `GET` (teto) | `delivery.max-messages.max` | A definir | Maior `maxMessages` aceito. Não vale para os streams de sincronização entre nós (`cluster.sync.stream.*`). | 12.2 |
 | Tentativas de IDs no `GET` | `delivery.get.max-attempts` | A definir | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. | 12.2 |

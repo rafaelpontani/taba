@@ -524,8 +524,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="595" y="384" class="t-muted" font-size="9" text-anchor="middle">memória com overflow</text>
         </g>
 
-        <g id="node-disk" data-node-id="disk" data-node-label="Disco" tabindex="0" role="button" aria-label="Focus Disco, topico/id.json, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="database" data-node-sublabel="topico/id.json" data-node-context="Nó do cluster (idêntico, sem mestre)">
-          <title>Disco · topico/id.json · Nó do cluster (idêntico, sem mestre)</title>
+        <g id="node-disk" data-node-id="disk" data-node-label="Disco" tabindex="0" role="button" aria-label="Focus Disco, SQLite + corpos .json, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite + corpos .json" data-node-context="Nó do cluster (idêntico, sem mestre)">
+          <title>Disco · SQLite + corpos .json · Nó do cluster (idêntico, sem mestre)</title>
           <rect x="520" y="480" width="150" height="60" rx="6" class="c-mask"/>
           <rect x="520" y="480" width="150" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(526 486) scale(0.6875)">
@@ -533,7 +533,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="595" y="508" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Disco</text>
-        <text x="595" y="524" class="t-muted" font-size="9" text-anchor="middle">topico/id.json</text>
+        <text x="595" y="524" class="t-muted" font-size="9" text-anchor="middle">SQLite + corpos .json</text>
         </g>
 
         <g id="node-peers" data-node-id="peers" data-node-label="Nós responsáveis" tabindex="0" role="button" aria-label="Focus Nós responsáveis, primário + réplicas, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="primário + réplicas" data-node-tag="mesma arquitetura" data-node-context="Architecture component">

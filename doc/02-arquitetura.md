@@ -33,20 +33,35 @@ O sistema é composto por **nós** (nodes) idênticos entre si (sem nó "mestre"
 ### 3.2 Gerenciamento de memória e overflow para disco
  
 O espaço em memória destinado às mensagens em cada nó é **configurável** (ex.: um limite de MB/GB total por nó).
- 
+
 **Overflow para disco:**
-- Ao atingir o limite de memória configurado, as mensagens excedentes são **persistidas em disco**, um arquivo por mensagem, no formato:
+- Ao atingir o limite de memória configurado, as mensagens excedentes são **persistidas em disco**: o corpo em um arquivo por mensagem, no formato:
   ```
   ${topico}/${id}.json
   ```
-  (uma pasta por tópico, um arquivo JSON por mensagem).
+  (uma pasta por tópico, um arquivo JSON por mensagem, só com o corpo).
 - Ao ler (`GET`) uma mensagem que não está mais em memória, ela é buscada no disco pelo mesmo caminho.
-- Os metadados de entrega (contador de entregas e invisibilidade) ficam em um arquivo ao lado, `${topico}/${id}.meta.json` — ver [14-invisibilidade.md](14-invisibilidade.md). O excedente da lista de mensagens invisíveis também vai a disco, em `${topico}/_expiracao/${janela}.jsonl`.
+- Os metadados de entrega (contador de entregas, invisibilidade e `receiptToken`) **não ficam em arquivo ao lado**: ficam no **banco SQLite local do tópico** (abaixo) — ver [14-invisibilidade.md](14-invisibilidade.md).
+
+**Banco SQLite local, por nó e por tópico:**
+- Cada nó mantém, para cada tópico, um banco SQLite em `${topico}/_topico.db`. É **estritamente local**: serve só como gerenciador de disco daquele nó, **nunca é copiado, enviado nem sincronizado** com outros nós (o que se replica entre nós são as mensagens e os metadados pelo protocolo de registro + commit, não o arquivo).
+- O **corpo** da mensagem continua fora do banco, em `${topico}/${id}.json`. O banco guarda o resto: a tabela `mensagens` (uma linha por mensagem em disco: `id`, posição no anel, `deliveryCount`, `invisibleUntil`, `receiptToken`) e a tabela `expiracao` (excedente da lista de invisíveis, [14-invisibilidade.md](14-invisibilidade.md), seção 13.5), com índices por `id`, por `invisibleUntil` e pela posição no anel.
+- **Escritor único:** toda **escrita** no banco de um tópico passa por **uma única thread** (na prática, uma fila de comandos por tópico, executada uma de cada vez, sem exigir uma thread de sistema por tópico). Leituras longas, como os streams de sincronização, usam conexões de leitura próprias (modo WAL) e não bloqueiam o escritor.
+- **Ordem de gravação:** na escrita, primeiro o arquivo do corpo, depois a linha; no ack, primeiro a linha, depois o arquivo. Uma queda deixa no máximo arquivo sem linha ou linha sem arquivo, e o nó que reinicia volta como novo e refaz a partir do cluster (seção 6.6 de [04-cluster.md](04-cluster.md)).
+- **Consultas que o banco responde:** a mensagem mais antiga do tópico (`MIN(id)`, para `oldestMessageAt`, somada à mais antiga em memória, que também é mantida ordenada por ID), os próximos a vencer (índice por `invisibleUntil`), as mensagens de um bloco (faixa pela posição no anel, para os streams da seção 7.3 e para a limpeza de blocos perdidos) e as contagens do tópico.
+- **Banco corrompido:** o nó entra em **falha**, o mesmo estado da falha de disco da seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md): ele sinaliza ao cluster, que fica liberado para votar o desregistro dele (seção 6.3 de [04-cluster.md](04-cluster.md)). Não há tentativa de reparo.
+- A **lista de prontos e as mensagens em memória não mudam**: a prioridade é velocidade e integridade, e o banco só cuida do que está em disco.
+- Parâmetro: `storage.db.synchronous` (modo de durabilidade do SQLite; padrão `NORMAL` com WAL, já que a durabilidade vem da replicação entre nós).
+
+
 **Divisão do espaço entre tópicos:**
 - O espaço de memória **não é dividido de forma fixa e igual** entre os tópicos do nó.
 - A divisão é **dinâmica**, priorizando os tópicos com **maior fluxo de saída/leitura** (consumo) — ou seja, tópicos mais lidos mantêm mais mensagens "quentes" em memória, enquanto tópicos com menor atividade de leitura têm suas mensagens movidas para disco primeiro quando o espaço fica escasso.
 - Na prática, cada tópico tem uma métrica de **taxa de leitura** (mensagens consumidas por período), usada para decidir, no momento em que a memória está cheia, quais mensagens (de quais tópicos) devem ser movidas para disco para abrir espaço às novas.
-> O algoritmo exato de priorização (ex.: janela de tempo para calcular a taxa de leitura, política de despejo tipo LRU/LFU por tópico, como tratar tópicos novos sem histórico) ainda não foi definido (ver seção 10).
+**Algoritmo de priorização (decidido):**
+- **Taxa de leitura:** média móvel das mensagens consumidas por segundo numa janela de **5 minutos** (`memory.rate.window`, configurável). A mesma janela calcula `publishRate` e `consumeRate` ([11-observabilidade.md](11-observabilidade.md)).
+- **Reserva mínima por tópico:** cada tópico tem direito a uma reserva em memória (`memory.topic.reserve`, por padrão o tamanho da lista de prontos, 1000 mensagens), **independente da taxa**. Assim um tópico novo, sem histórico de leitura, não começa jogando as primeiras mensagens em disco. A divisão pela taxa de leitura vale só para o resto da memória, acima das reservas.
+- **O que sai da memória:** quando a memória enche, as mensagens que ficam são as da **lista de prontos** (as próximas a serem entregues, seção 12.6 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) e as **recém-chegadas**. O resto é candidato a ir para disco, começando pelo tópico de **menor taxa de leitura**. Não se usa LRU/LFU: cada mensagem é lida uma única vez e depois apagada pelo ack, então histórico de acesso não prediz nada, e a ordem de entrega já diz o que será lido em breve.
 
 ### 3.3 Definição de tópicos: propagação e persistência
 
@@ -57,8 +72,8 @@ A **definição de um tópico** (nome, `id` GUID v7, tipo, tags; `prefixes` no T
 - **Persistência:** ao contrário das mensagens (que só vão a disco por overflow, acima), a definição do tópico é **sempre persistida**, por ser dado de configuração e não de fila — um arquivo por tópico, `${storage.dir}/_topics/${topico}.json`, gravado no commit em cada nó.
 - **Volátil vs. persistente:** o arquivo do tópico guarda só a **definição**. Dados de **consumo** — profundidade de fila, mensagens visíveis/invisíveis, taxas (`publishRate`, `consumeRate`), histogramas de latência etc. — nunca vão a esse arquivo; ficam só em memória, específicos de cada nó (ver [11-observabilidade.md](11-observabilidade.md)).
 - **Bootstrap:** um nó novo recebe a tabela de membros na resposta do registro (seção 6.2) e **puxa a tabela de tópicos** de um nó do cluster (a origem é o nó de **menor carga** segundo o indicador do sinal de vida, seção 12.8 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md); empatados ou sem dado de carga ainda, um nó **sorteado**) por `GET /cluster/topics`, um stream NDJSON ordenado por `id` ([06-api.md](06-api.md), seção 8.2.1). Como o nó já está na tabela de membros, ele recebe normalmente o registro e o commit de qualquer criação, alteração ou remoção que ocorra durante a carga, e para isso valem estas regras:
-  - A carga vai para o **log de carga**, e tudo o que chega por registro e commit (criação, alteração ou remoção de tópico) vai para o **log de eventos**, na ordem de chegada; o nó confirma o registro depois de gravar no log. Nada é aplicado na hora ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3).
-  - Depois da carga, o log de eventos é aplicado **por cima**, em sequência: o evento vence a carga, e reaplicar um evento que a carga já refletia não muda nada. Por isso o `commit` não precisa carregar a definição completa nem há um registro de remoções pendentes: a remoção no log apaga o que a carga trouxe. Uma mensagem de um tópico ainda desconhecido espera no mesmo log.
+  - A carga é aplicada direto no armazenamento final, e tudo o que chega por registro e commit (criação, alteração ou remoção de tópico) vai para o **banco de eventos** (SQLite local), na ordem de chegada; o nó confirma o registro depois de gravar. Nada é aplicado na hora ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3).
+  - Depois da carga, o banco de eventos é processado **por cima**, linha a linha, apagando as processadas: o evento vence a carga, e reaplicar um evento que a carga já refletia não muda nada. Por isso o `commit` não precisa carregar a definição completa nem há um registro de remoções pendentes: a remoção no banco apaga o que a carga trouxe. Uma mensagem de um tópico ainda desconhecido espera no mesmo banco.
   - **Verificação final**, como na seção 7.3: ao terminar, o nó repete a listagem e descarta o que não aparece mais na origem, cobrindo a remoção cujo commit não chegou a ele.
   - Se o nó de origem falhar no meio, a carga continua em outro nó, a partir do último `id` lido.
   - Até a sincronização inteira terminar (tópicos, blocos e logs) o nó **não atende rotas de cliente** (`/health/ready` falha, [11-observabilidade.md](11-observabilidade.md)): `GET /topics`, o casamento de prefixos do distribuidor e o cálculo do nó gestor dependem da tabela completa.

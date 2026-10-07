@@ -52,7 +52,7 @@
       "y": 214,
       "from": "a",
       "to": "b",
-      "label": "take: entregue uma mensagem",
+      "label": "take: entregue até N mensagens",
       "note": "sorteia um peer que tem: B"
     },
     {

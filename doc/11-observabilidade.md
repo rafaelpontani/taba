@@ -154,8 +154,8 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.sync.ids.listed` | counter | {id} | — | IDs consolidados (união) nas listas de origem. |
 | `msg.sync.messages.pulled` | counter | {message} | `peer` | Mensagens obtidas por nó de origem — mostra se o balanceamento entre origens está uniforme. |
 | `msg.sync.bytes` | counter | By | `peer` | Volume transferido na sincronização. |
-| `msg.sync.log.events` | gauge | {event} | — | Eventos no log de eventos ainda por aplicar durante a sincronização. |
-| `msg.sync.log.bytes` | gauge | By | `log` (`carga`/`eventos`) | Tamanho dos logs de sincronização em disco. |
+| `msg.sync.log.events` | gauge | {event} | — | Eventos no banco de eventos (`sync.db`) ainda por processar durante a sincronização. |
+| `msg.sync.log.bytes` | gauge | By | — | Tamanho do banco de eventos em disco. |
 | `msg.sync.phase` | gauge | 1 | `phase` (`topicos`/`blocos`/`replay`/`verificacao`/`pronto`) | Fase atual da sincronização do nó. |
 | `msg.sync.failures` | counter | {failure} | `reason` | Falhas de sincronização de bloco. |
 | `msg.cluster.message_loss` | counter | {event} | — | **Eventos de perda de mensagem** (seção 7.3). Qualquer valor acima de zero merece alerta. |
@@ -402,9 +402,9 @@ Rotas leves para orquestradores e balanceadores, **sem** fan-out para outros nó
 | Verbo | Recurso | Descrição |
 |---|---|---|
 | `GET` | `/health/live` | O processo está de pé e respondendo. Falha → reiniciar o processo. |
-| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **sincronização concluída** (tabela de tópicos, todos os blocos e o log de eventos já aplicados, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
+| `GET` | `/health/ready` | O nó está **apto a receber tráfego**: registrado no cluster (commit confirmado), com a **sincronização concluída** (tabela de tópicos, todos os blocos e o banco de eventos já processados, seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) e não em bootstrap nem em retorno pós-exclusão. Falha → o balanceador deve tirar o nó da rotação. |
 
-`/health/ready` só passa a responder com sucesso quando o nó termina a sincronização inteira: enquanto sincroniza, o nó apenas grava no log de eventos e repassa as chamadas de cliente a outro nó (seção 6.9 de [04-cluster.md](04-cluster.md)); mesmo assim deve ficar fora da rotação do balanceador, para não gastar o salto extra à toa. Depois de pronto, ele volta a atender normalmente.
+`/health/ready` só passa a responder com sucesso quando o nó termina a sincronização inteira: enquanto sincroniza, o nó apenas guarda os eventos no banco de eventos e repassa as chamadas de cliente a outro nó (seção 6.9 de [04-cluster.md](04-cluster.md)); mesmo assim deve ficar fora da rotação do balanceador, para não gastar o salto extra à toa. Depois de pronto, ele volta a atender normalmente.
 
 ## Eventos de perda de mensagem (seção 7.3)
 

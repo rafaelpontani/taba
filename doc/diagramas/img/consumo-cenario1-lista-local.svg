@@ -486,11 +486,11 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         </g>
 
-        <g data-edge-from="a" data-edge-to="consumidor" data-edge-label="200 m1" data-edge-key="5" data-edge-id="m6">
+        <g data-edge-from="a" data-edge-to="consumidor" data-edge-label="200 m1 + receiptToken" data-edge-key="5" data-edge-id="m6">
           <path data-composition-edge-from="a" data-composition-edge-to="consumidor" data-composition-edge-id="m6" data-composition-points="544,366;164,366" d="M 544 366 L 164 366" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="328.2" y="346" width="51.599999999999994" height="18" rx="3" class="c-mask"/>
-          <text x="354" y="356" class="t-muted" font-size="11" text-anchor="middle">200 m1</text>
+          <rect x="278.7" y="346" width="150.6" height="18" rx="3" class="c-mask"/>
+          <text x="354" y="356" class="t-muted" font-size="11" text-anchor="middle">200 m1 + receiptToken</text>
         </g>
         </g>
 

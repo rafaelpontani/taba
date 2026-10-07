@@ -54,7 +54,7 @@ O cliente pode alterar o tempo de invisibilidade de uma mensagem já entregue (`
 
 ### 12.5 Metadados em memória e em disco
 
-`deliveryCount`, `invisibleUntil` e `receiptToken` ficam junto da mensagem em memória ou em `${topico}/${id}.meta.json`, ao lado do arquivo dela. Detalhes em [14-invisibilidade.md](14-invisibilidade.md), seção 13.2.
+`deliveryCount`, `invisibleUntil` e `receiptToken` ficam junto da mensagem em memória ou, se ela está em disco, no banco SQLite local do tópico (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)); não há arquivo de metadados. Detalhes em [14-invisibilidade.md](14-invisibilidade.md), seção 13.2.
 
 ### 12.6 Lista de prontos
 

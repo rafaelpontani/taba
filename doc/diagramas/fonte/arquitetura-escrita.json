@@ -81,7 +81,7 @@
       "id": "disk",
       "type": "database",
       "label": "Disco",
-      "sublabel": "topico/id.json",
+      "sublabel": "SQLite + corpos .json",
       "pos": [
         520,
         480

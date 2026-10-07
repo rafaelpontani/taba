@@ -130,10 +130,11 @@
     },
     {
       "dot": "emerald",
-      "title": "Sem destino",
+      "title": "Sem destino ou acima do teto",
       "items": [
         "Não é erro: o distribuidor recebeu",
-        "Mensagem descartada e evento registrado"
+        "Mensagem descartada e evento registrado",
+        "Acima do teto de destinos (se definido): 422"
       ]
     }
   ]

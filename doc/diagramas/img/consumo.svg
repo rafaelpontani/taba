@@ -447,20 +447,20 @@ rect.c-bg-rect { fill: var(--bg); }
 
 
         <!-- Messages -->
-        <g data-edge-from="consumidor" data-edge-to="no" data-edge-label="GET .../messages?visibilityTimeout=120" data-edge-key="0" data-edge-id="get">
+        <g data-edge-from="consumidor" data-edge-to="no" data-edge-label="GET .../messages?maxMessages=10" data-edge-key="0" data-edge-id="get">
           <path data-composition-edge-from="consumidor" data-composition-edge-to="no" data-composition-edge-id="get" data-composition-points="164,170;412.6666666666667,170" d="M 164 170 L 412.6666666666667 170" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g>
-          <rect x="156.9333333333334" y="150" width="262.79999999999995" height="18" rx="3" class="c-mask"/>
-          <text x="288.33333333333337" y="160" class="t-edge-emphasis" font-size="11" text-anchor="middle">GET .../messages?visibilityTimeout=120</text>
+          <rect x="180.03333333333336" y="150" width="216.6" height="18" rx="3" class="c-mask"/>
+          <text x="288.33333333333337" y="160" class="t-edge-emphasis" font-size="11" text-anchor="middle">GET .../messages?maxMessages=10</text>
         </g>
         <text x="176" y="188" class="t-dim" font-size="7">escolhe um ID da lista de prontos</text>
         </g>
 
-        <g data-edge-from="no" data-edge-to="replica" data-edge-label="registro: invisível até T, count+1" data-edge-key="1" data-edge-id="reg-r">
+        <g data-edge-from="no" data-edge-to="replica" data-edge-label="registro: invisível até T, count+1, token" data-edge-key="1" data-edge-id="reg-r">
           <path data-composition-edge-from="no" data-composition-edge-to="replica" data-composition-edge-id="reg-r" data-composition-points="426.6666666666667,198;675.3333333333334,198" d="M 426.6666666666667 198 L 675.3333333333334 198" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="432.8" y="178" width="236.39999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="551" y="188" class="t-muted" font-size="11" text-anchor="middle">registro: invisível até T, count+1</text>
+          <rect x="409.70000000000005" y="178" width="282.59999999999997" height="18" rx="3" class="c-mask"/>
+          <text x="551" y="188" class="t-muted" font-size="11" text-anchor="middle">registro: invisível até T, count+1, token</text>
         </g>
         </g>
 
@@ -489,11 +489,11 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="438.6666666666667" y="300" class="t-dim" font-size="7">remove o ID da lista de prontos</text>
         </g>
 
-        <g data-edge-from="no" data-edge-to="consumidor" data-edge-label="200 mensagem" data-edge-key="5" data-edge-id="resp-get">
+        <g data-edge-from="no" data-edge-to="consumidor" data-edge-label="200 mensagens + receiptToken" data-edge-key="5" data-edge-id="resp-get">
           <path data-composition-edge-from="no" data-composition-edge-to="consumidor" data-composition-edge-id="resp-get" data-composition-points="412.6666666666667,310;164,310" d="M 412.6666666666667 310 L 164 310" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="242.73333333333338" y="290" width="91.19999999999999" height="18" rx="3" class="c-mask"/>
-          <text x="288.33333333333337" y="300" class="t-muted" font-size="11" text-anchor="middle">200 mensagem</text>
+          <rect x="189.9333333333334" y="290" width="196.79999999999998" height="18" rx="3" class="c-mask"/>
+          <text x="288.33333333333337" y="300" class="t-muted" font-size="11" text-anchor="middle">200 mensagens + receiptToken</text>
         </g>
         </g>
 
@@ -505,11 +505,11 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         </g>
 
-        <g data-edge-from="consumidor" data-edge-to="no" data-edge-label="DELETE .../messages/{id}" data-edge-key="7" data-edge-id="ack">
+        <g data-edge-from="consumidor" data-edge-to="no" data-edge-label="DELETE .../{id}?receiptToken" data-edge-key="7" data-edge-id="ack">
           <path data-composition-edge-from="consumidor" data-composition-edge-to="no" data-composition-edge-id="ack" data-composition-points="164,374;412.6666666666667,374" d="M 164 374 L 412.6666666666667 374" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g>
-          <rect x="203.13333333333338" y="354" width="170.39999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="288.33333333333337" y="364" class="t-edge-emphasis" font-size="11" text-anchor="middle">DELETE .../messages/{id}</text>
+          <rect x="189.9333333333334" y="354" width="196.79999999999998" height="18" rx="3" class="c-mask"/>
+          <text x="288.33333333333337" y="364" class="t-edge-emphasis" font-size="11" text-anchor="middle">DELETE .../{id}?receiptToken</text>
         </g>
         <text x="176" y="392" class="t-dim" font-size="7">antes de invisibleUntil expirar</text>
         </g>
@@ -530,11 +530,11 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         </g>
 
-        <g data-edge-from="no" data-edge-to="replica" data-edge-label="commit: apaga msg e meta" data-edge-key="10" data-edge-id="ack-com">
+        <g data-edge-from="no" data-edge-to="replica" data-edge-label="commit: apaga mensagem" data-edge-key="10" data-edge-id="ack-com">
           <path data-composition-edge-from="no" data-composition-edge-to="replica" data-composition-edge-id="ack-com" data-composition-points="426.6666666666667,458;675.3333333333334,458" d="M 426.6666666666667 458 L 675.3333333333334 458" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g>
-          <rect x="465.8" y="438" width="170.39999999999998" height="18" rx="3" class="c-mask"/>
-          <text x="551" y="448" class="t-edge-emphasis" font-size="11" text-anchor="middle">commit: apaga msg e meta</text>
+          <rect x="472.4" y="438" width="157.2" height="18" rx="3" class="c-mask"/>
+          <text x="551" y="448" class="t-edge-emphasis" font-size="11" text-anchor="middle">commit: apaga mensagem</text>
         </g>
         </g>
 

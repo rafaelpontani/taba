@@ -43,7 +43,7 @@ Rotas para operadores, não para aplicações clientes. Detalhes, parâmetros e 
 | `GET` | `/stats/topics` | Métricas de tópicos, **paginada** (`limit`, `cursor`, `tag.*`, `condition`, `fields`, `groupBy`, `scope`), **sem `sort`**: a ordem é sempre por nome do tópico. Visão do cluster por padrão; `scope=node` devolve só os valores do nó. |
 | `GET` | `/stats/topics/{topic}` | Métricas detalhadas e condição de um tópico. |
 | `GET` | `/health/live` | O processo está de pé. |
-| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster e com toda a sincronização concluída: tópicos, blocos e log de eventos; seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). |
+| `GET` | `/health/ready` | O nó está apto a receber tráfego (registrado no cluster e com toda a sincronização concluída: tópicos, blocos e banco de eventos; seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). |
 
 ### 8.1.2 Paginação
 

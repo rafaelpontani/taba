@@ -132,8 +132,8 @@
       "dot": "rose",
       "title": "Erros",
       "items": [
-        "Nome inválido: 400",
-        "Nome de Distribuidor: 409",
+        "Nome inválido: 400; Distribuidor: 409",
+        "Teto de filas voláteis atingido: 422",
         "Sem autoCreate e sem fila: 404"
       ]
     }

@@ -70,7 +70,7 @@
       "y": 290,
       "from": "b",
       "to": "a",
-      "label": "aviso: mensagem nova pronta",
+      "label": "aviso (agrupado, 100 ms)",
       "variant": "dashed"
     },
     {

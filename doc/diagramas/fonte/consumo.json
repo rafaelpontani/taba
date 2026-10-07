@@ -55,7 +55,7 @@
       "from": "consumidor",
       "to": "no",
       "y": 170,
-      "label": "GET .../messages?visibilityTimeout=120",
+      "label": "GET .../messages?maxMessages=10",
       "variant": "emphasis",
       "note": "escolhe um ID da lista de prontos"
     },
@@ -64,7 +64,7 @@
       "from": "no",
       "to": "replica",
       "y": 198,
-      "label": "registro: invisível até T, count+1"
+      "label": "registro: invisível até T, count+1, token"
     },
     {
       "id": "reg-f",
@@ -95,7 +95,7 @@
       "from": "no",
       "to": "consumidor",
       "y": 310,
-      "label": "200 mensagem",
+      "label": "200 mensagens + receiptToken",
       "variant": "return"
     },
     {
@@ -111,7 +111,7 @@
       "from": "consumidor",
       "to": "no",
       "y": 374,
-      "label": "DELETE .../messages/{id}",
+      "label": "DELETE .../{id}?receiptToken",
       "variant": "emphasis",
       "note": "antes de invisibleUntil expirar"
     },
@@ -135,7 +135,7 @@
       "from": "no",
       "to": "replica",
       "y": 458,
-      "label": "commit: apaga msg e meta",
+      "label": "commit: apaga mensagem",
       "variant": "emphasis"
     },
     {
@@ -166,10 +166,10 @@
     },
     {
       "dot": "cyan",
-      "title": "Lista de prontos vazia",
+      "title": "Lista local não completa",
       "items": [
-        "Pede ao dono em outro nó (rota interna take), uma vez",
-        "Senão vira ouvinte local até waitTime (0 a 20 s)"
+        "Completa com outros nós (rota interna take) até maxMessages",
+        "Sem nenhuma, vira ouvinte local até waitTime (0 a 20 s)"
       ]
     },
     {

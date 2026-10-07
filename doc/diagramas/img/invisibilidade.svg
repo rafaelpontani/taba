@@ -458,11 +458,11 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         </g>
 
-        <g data-edge-from="dono" data-edge-to="replicas" data-edge-label="registro: invisibleUntil, entrega + 1" data-edge-key="1" data-edge-id="reg">
+        <g data-edge-from="dono" data-edge-to="replicas" data-edge-label="registro: invisibleUntil, token, entrega + 1" data-edge-key="1" data-edge-id="reg">
           <path data-composition-edge-from="dono" data-composition-edge-to="replicas" data-composition-edge-id="reg" data-composition-points="355.25,200;544,200" d="M 355.25 200 L 544 200" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="321.525" y="180" width="256.2" height="18" rx="3" class="c-mask"/>
-          <text x="449.625" y="190" class="t-muted" font-size="11" text-anchor="middle">registro: invisibleUntil, entrega + 1</text>
+          <rect x="298.425" y="180" width="302.4" height="18" rx="3" class="c-mask"/>
+          <text x="449.625" y="190" class="t-muted" font-size="11" text-anchor="middle">registro: invisibleUntil, token, entrega + 1</text>
         </g>
         </g>
 
@@ -516,11 +516,11 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="367.25" y="402" class="t-dim" font-size="7">sem tráfego entre nós</text>
         </g>
 
-        <g data-edge-from="dono" data-edge-to="disco" data-edge-label="lista esvazia: lê a janela mais próxima" data-edge-key="8" data-edge-id="janela">
+        <g data-edge-from="dono" data-edge-to="disco" data-edge-label="lista esvazia: lê os próximos a vencer" data-edge-key="8" data-edge-id="janela">
           <path data-composition-edge-from="dono" data-composition-edge-to="disco" data-composition-edge-id="janela" data-composition-points="355.25,412;949.5,412" d="M 355.25 412 L 949.5 412" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g>
-          <rect x="517.675" y="392" width="269.4" height="18" rx="3" class="c-mask"/>
-          <text x="652.375" y="402" class="t-edge-dashed" font-size="11" text-anchor="middle">lista esvazia: lê a janela mais próxima</text>
+          <rect x="520.975" y="392" width="262.79999999999995" height="18" rx="3" class="c-mask"/>
+          <text x="652.375" y="402" class="t-edge-dashed" font-size="11" text-anchor="middle">lista esvazia: lê os próximos a vencer</text>
         </g>
         </g>
 
@@ -595,16 +595,16 @@ rect.c-bg-rect { fill: var(--bg); }
           <text x="753.75" y="122" class="t-muted" font-size="7" text-anchor="middle">memória do dono</text>
         </g>
 
-        <g id="node-disco" data-node-id="disco" data-node-label="Índice em disco" tabindex="0" role="button" aria-label="Focus Índice em disco, excedente de invisíveis, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="excedente de invisíveis" data-node-context="Sequence participant">
-          <title>Índice em disco · excedente de invisíveis · Sequence participant</title>
+        <g id="node-disco" data-node-id="disco" data-node-label="Tabela de expiração" tabindex="0" role="button" aria-label="Focus Tabela de expiração, SQLite local, excedente, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite local, excedente" data-node-context="Sequence participant">
+          <title>Tabela de expiração · SQLite local, excedente · Sequence participant</title>
           <rect x="873" y="72" width="167" height="60" rx="6" class="c-mask"/>
           <rect x="873" y="72" width="167" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(879 78) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="956.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Índice em disco</text>
-          <text x="956.5" y="122" class="t-muted" font-size="7" text-anchor="middle">excedente de invisíveis</text>
+          <text data-node-label="" x="956.5" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Tabela de expiração</text>
+          <text x="956.5" y="122" class="t-muted" font-size="7" text-anchor="middle">SQLite local, excedente</text>
         </g>
 
         <!-- Legend -->

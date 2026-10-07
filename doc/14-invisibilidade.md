@@ -19,36 +19,29 @@ Uma mensagem está sempre em um destes estados, do ponto de vista do **dono da e
 | Estado | Como se reconhece | Onde o dono a controla |
 |---|---|---|
 | **Pronta** | `invisibleUntil` ausente ou no passado | Lista de prontos (seção 12.6), até o limite `delivery.ready-list.size`; o resto é reposto por uma thread |
-| **Invisível** | `invisibleUntil` no futuro | Lista de invisíveis em memória (seção 13.4) ou, se não coube, índice de expiração em disco (seção 13.5) |
+| **Invisível** | `invisibleUntil` no futuro | Lista de invisíveis em memória (seção 13.4) ou, se não coube, tabela de expiração no banco local (seção 13.5) |
 | **Removida** | Ack confirmado (seção 12.4) | Em lugar nenhum: mensagem e metadados apagados |
 
 Quem guarda o quê:
 
 | Informação | Onde vive | Quem guarda |
 |---|---|---|
-| `invisibleUntil` e `deliveryCount` (**fonte de verdade**) | Metadados da mensagem, em memória ou em `${id}.meta.json` (seção 13.2) | **Todos** os nós responsáveis pelo bloco |
+| `invisibleUntil` e `deliveryCount` (**fonte de verdade**) | Metadados da mensagem, em memória ou no banco SQLite local do tópico (seção 13.2) | **Todos** os nós responsáveis pelo bloco |
 | Lista de prontos | Memória | Só o dono |
 | Lista de invisíveis (ID e prazo, ordenada por prazo) | Memória | Só o dono |
-| Índice de expiração (excedente da lista de invisíveis) | Disco | Só o dono |
+| Tabela de expiração (excedente da lista de invisíveis) | Banco local, em disco | Só o dono |
 
 Só os **metadados** são replicados. As três estruturas do dono são um **índice derivado** dos metadados: servem para achar rápido o que expira e o que está pronto, e podem ser reconstruídas a qualquer momento (seção 13.7). Por isso a perda de uma delas nunca perde uma mensagem.
 
 ### 13.2 Metadados
 
-Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora absoluta) e `receiptToken` (token opaco gerado pelo dono a cada entrega, por exemplo um GUID). O `receiptToken` é guardado e replicado **exatamente como a invisibilidade**: no mesmo registro + commit da entrega, nos mesmos metadados em memória ou em `${id}.meta.json`.
+Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora absoluta) e `receiptToken` (token opaco gerado pelo dono a cada entrega, por exemplo um GUID). O `receiptToken` é guardado e replicado **exatamente como a invisibilidade**: no mesmo registro + commit da entrega, nos mesmos metadados, em memória ou no banco local do tópico.
 
 **Uso do `receiptToken`** (como o `ReceiptHandle` do SQS): a entrega devolve o token ao cliente junto da mensagem, e o ack (`DELETE`) e o `PATCH` o enviam (`receiptToken` na query string do `DELETE`, no corpo do `PATCH`). O nó compara com o token dos metadados e, se for diferente, responde `409`, sem alterar nada. Assim, um consumidor lento cujo prazo venceu e cuja mensagem foi reentregue a outro não consegue confirmá-la nem alterá-la: o token dele ficou obsoleto. Se o prazo venceu mas a mensagem **ainda não foi reentregue**, o token continua válido e o ack vale. O `PATCH` mantém o mesmo token; só uma nova entrega gera outro.
 
 - **Mensagem em memória:** os metadados ficam em memória junto dela.
-- **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): ficam em **outro arquivo, com quase o mesmo nome e sufixo de metadado**, ao lado do arquivo da mensagem:
-
-  ```
-  ${topico}/${id}.json          # a mensagem
-  ${topico}/${id}.meta.json     # metadados de entrega
-  ```
-
-- O arquivo de metadados é atualizado no **commit** de cada entrega ou alteração e removido junto com a mensagem no ack.
-- Alterar a invisibilidade de uma mensagem em disco reescreve só o arquivo pequeno de metadados, sem tocar no conteúdo da mensagem.
+- **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): o corpo fica em `${topico}/${id}.json` e os metadados ficam no **banco SQLite local do tópico** naquele nó, na tabela `mensagens` (`id`, posição no anel, `deliveryCount`, `invisibleUntil`, `receiptToken`). Não há mais arquivo de metadados.
+- A linha é atualizada no **commit** de cada entrega ou alteração e removida junto com a mensagem no ack. Alterar a invisibilidade de uma mensagem em disco atualiza só a linha, sem tocar no corpo.
 - `invisibleUntil` é sempre **data absoluta**, calculada pelo **dono** (`agora + visibilityTimeout`, pelo relógio dele): as réplicas guardam o valor pronto e nunca recalculam a partir de duração.
 
 ### 13.3 Propagação
@@ -88,32 +81,26 @@ O dono mantém, **por tópico**, uma **lista de invisíveis**: as mensagens de q
 
 Enquanto todas as mensagens invisíveis do dono cabem na lista, ela é a única estrutura necessária. O problema é quando não cabem.
 
-### 13.5 Excedente em disco: o índice de expiração
+### 13.5 Excedente da lista de invisíveis: a tabela de expiração
 
-**Por que não basta anotar o tempo.** Se a mensagem que não coube na lista ficasse só com o `invisibleUntil` nos metadados, ninguém saberia que ela precisa voltar: o dono teria de **varrer os metadados de todas as mensagens** (memória e arquivos `.meta.json`) para descobrir quais venceram, e essa varredura custa proporcional ao total de mensagens, não ao número de vencimentos. Até a varredura passar, a mensagem ficaria indisponível, além do prazo. Por isso o excedente precisa de uma estrutura própria, **em disco**, ordenada por tempo.
+**Por que não basta anotar o tempo.** Se a mensagem que não coube na lista ficasse só com o `invisibleUntil` nos metadados, ninguém saberia que ela precisa voltar: o dono teria de **varrer os metadados de todas as mensagens** para descobrir quais venceram. Por isso o excedente precisa de uma estrutura própria, ordenada por tempo.
 
-**Índice de expiração.** Arquivos append-only por tópico, um por **janela de tempo** do prazo (`delivery.invisible.spill.window`):
-
-```
-${topico}/_expiracao/${janela}.jsonl     # JSON Lines: {"id":"...","invisibleUntil":"..."}
-```
-
-A `janela` é o prazo truncado ao intervalo (por exemplo, ao minuto). Anexar uma linha é uma escrita sequencial barata; ler o que vence primeiro é abrir o arquivo da janela mais antiga.
+**Tabela de expiração.** No banco SQLite local do tópico (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)), a tabela `expiracao` guarda os pares (`id`, `invisibleUntil`) que não couberam na lista em memória, com **índice por `invisibleUntil`**. Ler o que vence primeiro é uma consulta ordenada com limite, sem janelas de tempo nem arquivos de apoio.
 
 **Regra de inclusão** (quando o dono insere um par (ID, prazo) e a lista está cheia):
 
-1. Se o prazo novo é **anterior** ao último da lista, o par novo entra na lista e o **último** (o de prazo mais distante) é gravado no índice em disco.
-2. Senão, o par novo é gravado direto no índice.
+1. Se o prazo novo é **anterior** ao último da lista, o par novo entra na lista e o **último** (o de prazo mais distante) é gravado na tabela.
+2. Senão, o par novo é gravado direto na tabela.
 
-Isso mantém uma **invariante**: **tudo o que está na lista vence antes de tudo o que está no disco.** Logo a cabeça da lista é sempre o próximo a vencer de fato, e a thread nunca precisa olhar o disco enquanto a lista não esvazia.
+Isso mantém uma **invariante**: **tudo o que está na lista vence antes de tudo o que está na tabela.** Logo a cabeça da lista é sempre o próximo a vencer de fato, e a thread nunca precisa consultar a tabela enquanto a lista não esvazia.
 
-**Recarga.** Quando a lista cai abaixo de um limiar (ou esvazia) e há arquivos no índice, a thread lê a janela mais antiga, ordena e insere os pares pela mesma regra de inclusão; o arquivo **nunca é editado**: depois de lido inteiro, é apagado, e o que não coube volta ao índice como **novas linhas anexadas** (que recriam o arquivo só com as sobras). A janela é lida por inteiro na memória, de forma transitória, então a duração dela deve ser pequena o bastante para isso (D34.1). Prazos já vencidos no índice (por exemplo, o dono ficou parado) são tratados como vencimento na hora.
+**Recarga.** Quando a lista cai abaixo de um limiar (`delivery.invisible.reload-threshold`) ou esvazia, a thread lê da tabela os pares de menor `invisibleUntil`, move-os para a lista (apagando as linhas lidas) e segue.
 
-**Entradas velhas (remoção preguiçosa).** Ack, `PATCH` e nova entrega **não** procuram a linha no índice: só a lista em memória é atualizada. Ao ler uma linha, a thread a **confere nos metadados**: só vale se a mensagem ainda existe, o nó ainda é o dono e o `invisibleUntil` dos metadados é igual ao da linha (senão foi alterada ou reentregue e já tem outra entrada). Linha que não passa na conferência é descartada. O custo é uma leitura de metadado por linha lida, sem escrever em disco a cada ack.
+**Sem entradas velhas.** Como a tabela é transacional e indexada por `id`, o ack, o `PATCH` e a nova entrega **apagam ou atualizam a linha** na hora, no mesmo commit que atualiza a lista em memória. Não há remoção preguiçosa, nem conferência de linhas velhas na leitura (a conferência de dono da seção 13.6 continua valendo).
 
-**Durabilidade.** A gravação no índice faz parte do **commit no dono** (seção 13.3, passo 4): se falhar, o commit não se completa e a entrega é desfeita antes da resposta ao cliente, como uma falha de disco em qualquer escrita. Como o índice é derivado dos metadados, **não precisa de `fsync` a cada linha** para ser correto (ver D34.2): perdê-lo em uma queda é coberto pela reconstrução (seção 13.7).
+**Durabilidade.** A gravação na tabela faz parte do **commit no dono** (seção 13.3, passo 4): se falhar, o commit não se completa e a entrega é desfeita antes da resposta ao cliente. Como a tabela é derivada dos metadados, perdê-la é coberto pela reconstrução (seção 13.7).
 
-**Custo.** Com a lista com espaço, nenhuma escrita em disco além dos metadados. Só o excedente vai ao índice: uma escrita sequencial curta na entrega, e uma leitura por janela na recarga.
+**Custo.** Com a lista com espaço, nenhuma escrita além dos metadados. Só o excedente vai à tabela: uma escrita indexada na entrega e uma consulta ordenada na recarga.
 
 ### 13.6 Vencimento e volta à lista de prontos
 
@@ -125,15 +112,15 @@ Uma thread do dono (pode ser a mesma da lista de prontos, seção 12.6) cuida do
 4. Se a lista de prontos **estava vazia**, envia o sinal "tem mensagens prontas" aos outros nós (seção 12.8); se há **ouvinte local** (long polling), a mensagem vai direto a ele, sem tráfego entre nós, como qualquer mensagem pronta no próprio dono.
 5. Nada é escrito nos metadados nem enviado às réplicas (seção 13.3): `deliveryCount` só sobe na **próxima entrega**.
 
-Se a lista de invisíveis esvazia e ainda há índice em disco, a thread faz a **recarga** (seção 13.5) antes de dormir.
+Se a lista de invisíveis esvazia e ainda há linhas na tabela de expiração, a thread faz a **recarga** (seção 13.5) antes de dormir.
 
 ### 13.7 Mudança de dono, reinício e reconstrução
 
 As estruturas do dono são derivadas; três situações as refazem a partir dos metadados:
 
-- **Novo dono de um bloco** (entrada, saída ou rebalanceamento do anel, [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3): ao terminar a sincronização do bloco, a thread percorre os metadados das mensagens em que agora é primário, uma vez por mudança de anel: as com `invisibleUntil` no futuro entram na lista de invisíveis (ou no índice, pela regra da seção 13.5) e as demais viram candidatas da lista de prontos. Como as réplicas guardam o `invisibleUntil` absoluto, o novo dono só precisa do relógio para compará-lo com `agora`.
-- **Quem deixa de ser dono:** não precisa limpar nada de imediato. As entradas que restarem na lista ou no índice falham na conferência de dono (seção 13.5, passo 2 da seção 13.6) e são descartadas quando lidas.
-- **Reinício do processo:** o nó perde a memória e volta como **nó novo** ([04-cluster.md](04-cluster.md), seções 6.2 e 6.6): o índice em disco é descartado junto com o estado antigo, e as listas são reconstruídas quando ele assumir blocos, como no primeiro caso.
+- **Novo dono de um bloco** (entrada, saída ou rebalanceamento do anel, [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3): ao terminar a sincronização do bloco, a thread percorre os metadados das mensagens em que agora é primário, uma vez por mudança de anel: as com `invisibleUntil` no futuro entram na lista de invisíveis (ou na tabela de expiração, pela regra da seção 13.5) e as demais viram candidatas da lista de prontos. Como as réplicas guardam o `invisibleUntil` absoluto, o novo dono só precisa do relógio para compará-lo com `agora`.
+- **Quem deixa de ser dono:** não precisa limpar nada de imediato. As entradas que restarem na lista ou na tabela falham na conferência de dono (passo 2 da seção 13.6) e são descartadas quando lidas.
+- **Reinício do processo:** o nó perde a memória e volta como **nó novo** ([04-cluster.md](04-cluster.md), seções 6.2 e 6.6): a tabela de expiração é descartada junto com o estado antigo, e as listas são reconstruídas quando ele assumir blocos, como no primeiro caso.
 
 ### 13.8 Parâmetros
 
@@ -143,6 +130,6 @@ As estruturas do dono são derivadas; três situações as refazem a partir dos 
 | Invisibilidade máxima | `delivery.visibility-timeout.max` | A definir |
 | Tamanho da lista de prontos | `delivery.ready-list.size` | 1000 |
 | Tamanho da lista de invisíveis | `delivery.invisible-list.size` | A definir |
-| Janela do índice de expiração | `delivery.invisible.spill.window` | A definir (sugestão: 60 s) |
+| Limiar de recarga da lista de invisíveis | `delivery.invisible.reload-threshold` | A definir |
 
 Detalhes em [10-configuracao.md](10-configuracao.md).
