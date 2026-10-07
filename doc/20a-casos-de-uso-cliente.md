@@ -522,13 +522,14 @@ Regras: [19-conectores.md](19-conectores.md) e [19a-conectores-linguagens.md](19
 | UC-CNT-019 | HTTP/1.1 com conexão persistente quando a biblioteca HTTP oferece sem custo; sem HTTP/2. | 19 §18.4 | K |
 | UC-CNT-020 | Segurança de thread: o cliente é seguro para uso concorrente em Java, C#, Go, Rust e Node; em C, C++, Python, PHP e Ruby vale um cliente por thread, e o README de cada pasta diz como. | 19 §18.4 | K |
 | UC-CNT-021 | O leitor de JSON mínimo passa o conjunto comum de documentos de `contrato/fixtures/` (escapes, Unicode e pares substitutos, números grandes, aninhamento profundo, espaços e quebras de linha, valores vazios) e entrega o `body` como trecho de texto sem reserializar. | 19 §18.5 | K |
-| UC-CNT-022 | O base64 próprio (Java 6, C, C++, Rust) codifica e decodifica como o padrão, inclusive com preenchimento (`=`) e bytes arbitrários. | 19 §18.5 | K |
+| UC-CNT-022 | O base64 próprio (C, C++, Rust) codifica e decodifica como o padrão, inclusive com preenchimento (`=`) e bytes arbitrários. | 19 §18.5 | K |
 | UC-CNT-023 | Sem dependências externas além da biblioteca-padrão da linguagem (no C, só a `libcurl`); no C++ o cabeçalho único embrulha a `libtaba`. | 19 §18.5 | K |
 | UC-CNT-024 | O código compila e passa os testes **na versão-base e na mais recente** da linguagem, sem usar recurso posterior à versão-base. | 19 §18.6 e 18.7 | K |
 | UC-CNT-025 | O texto vai e volta sempre em UTF-8, de forma explícita, qualquer que seja o *charset* local. | 19 §18.6 | K |
 | UC-CNT-026 | As fixtures de cada rota conferem a requisição montada e a leitura de uma resposta pronta: `ErrorResponse`, `Page<T>`, corpo JSON, texto e base64, e o `Retry-After`. | 19 §18.7 | K |
 | UC-CNT-027 | Os cenários de integração passam contra um Taba em modo desenvolvimento: criar tópico, publicar, consumir com long polling, ack, invisibilidade, fila FIFO com duplicata, distribuidor com falha parcial e token sem permissão. | 19 §18.7 | K |
 | UC-CNT-028 | Cada conector declara a versão do contrato da API que implementa, e ignora campos novos que o servidor acrescente. | 19 §18.7 | K |
-| UC-CNT-029 | `updateTopic` e a alteração de tokens funcionam em clientes HTTP que não fazem `PATCH` (Java 6, proxies antigos). **(pendente: D72)** | 19 §18.10.3, 08b | K |
-| UC-CNT-030 | O conector alcança o Taba em plataformas sem TLS 1.2 (Java 6, .NET 3.5, Python 2.6, Ruby 1.8.7) sem trazer pilha de TLS própria. **(pendente: D69)** | 19 §18.6, 08b | K |
-| UC-CNT-031 | O `subscribe(handler)` (long polling, chamada do handler e ack automático) e as variantes assíncronas, quando existirem. **(pendente: D71)** | 19 §18.3, 08b | K |
+| UC-CNT-029 | `updateTopic` sai como `PATCH` de verdade, sem `X-HTTP-Method-Override`, em cada conector, e o conector não faz conexão HTTP própria para esse verbo. | 19 §18.6, 08a D72 | K |
+| UC-CNT-030 | O conector usa a TLS da plataforma, sem pilha de TLS própria (no Rust, o `rustls`), exige TLS 1.2 como mínimo (onde a biblioteca permite configurar) e **nunca** desliga a verificação do certificado. | 19 §18.6, 08a D69 | K |
+| UC-CNT-031 | O `subscribe(handler)` (long polling, chamada do handler e ack automático). **(pendente: D71.1)** | 19 §18.3, 08b | K |
+| UC-CNT-032 | Nas linguagens com modelo assíncrono (C#, Java, Python 3.5+, Node.js, Go e Rust), as nove operações têm a forma assíncrona, com a mesma montagem de requisição, a mesma repetição de chamadas, o mesmo tempo limite do `consume` e os mesmos erros da síncrona. C, C++, PHP e Ruby só têm a síncrona. | 19 §18.3, 08a D71 | K |

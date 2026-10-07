@@ -100,7 +100,7 @@ O script ainda não existe: entra no passo 3 de [08c-proximos-passos.md](08c-pro
 | `LIM` | Rate limit e IP do cliente | [12](12-limites-api.md) | 15 |
 | `PAG` | Paginação | [06a §8.1.2](06a-api-cliente.md), [06d §8.3.4](06d-api-convencoes.md) | 9 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | [06d](06d-api-convencoes.md) | 17 |
-| `CNT` | Conectores | [19](19-conectores.md), [19a](19a-conectores-linguagens.md) | 31 |
+| `CNT` | Conectores | [19](19-conectores.md), [19a](19a-conectores-linguagens.md) | 32 |
 
 #### Nó: o caminho da mensagem ([20b-casos-de-uso-no-dados.md](20b-casos-de-uso-no-dados.md))
 
@@ -133,11 +133,11 @@ O script ainda não existe: entra no passo 3 de [08c-proximos-passos.md](08c-pro
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 8 |
 
-**Total: 800 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 801 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 
 - Os parâmetros marcados **"A definir"** em [10-configuracao.md](10-configuracao.md) (retries, intervalos, tetos) não têm valor fixo: os testes configuram o valor de que precisam, em vez de depender de um padrão.
-- Os casos que dependem de pendência em aberto ([08b-pendencias.md](08b-pendencias.md), D68 a D72, conectores) estão marcados com **(pendente: D##)**. O caso existe, mas o resultado esperado pode mudar quando a dúvida for decidida.
+- Os casos que dependem de pendência em aberto ([08b-pendencias.md](08b-pendencias.md), D68, D70.1, D70.2 e D71.1, conectores) estão marcados com **(pendente: D##)**. O caso existe, mas o resultado esperado pode mudar quando a dúvida for decidida.
 - Os nomes de rotas, campos e códigos de erro são os do rascunho da API ([06-api.md](06-api.md)) e acompanham o contrato OpenAPI quando ele existir.
 - Estes casos não cobrem desempenho (as metas de velocidade e custo ainda não têm benchmark, [README](../README.md#status-e-limites)) nem o conteúdo do contrato OpenAPI.

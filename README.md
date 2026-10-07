@@ -45,18 +45,18 @@ Se o consumidor não confirmar a tempo, a mensagem volta a ficar disponível e �
 
 ## Conectores
 
-A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP que ela tem. Além disso, o projeto prevê **conectores simples de usar** nas principais linguagens, para você publicar e consumir mensagens em poucas linhas. Eles não têm dependências externas e rodam em versões antigas, de até 15 anos (veja a [versão-base](doc/19a-conectores-linguagens.md) de cada uma):
+A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP que ela tem. Além disso, o projeto prevê **conectores simples de usar** nas principais linguagens, para você publicar e consumir mensagens em poucas linhas. Eles não têm dependências externas e rodam em versões antigas, de até 15 anos, desde que a plataforma fale **TLS 1.2 ou superior** (veja a [versão-base](doc/19a-conectores-linguagens.md) de cada uma):
 
 | Linguagem | Pasta | Versão-base | Estado | Exemplo de uso |
 |---|---|---|---|---|
-| Java | `connectors/java/` | Java 6 | planejado | TODO |
-| C# | `connectors/csharp/` | .NET Framework 3.5 | planejado | TODO |
-| Python | `connectors/python/` | 2.6 | planejado | TODO |
-| PHP | `connectors/php/` | 5.3 | planejado | TODO |
-| Ruby | `connectors/ruby/` | 1.8.7 | planejado | TODO |
-| Node.js | `connectors/node/` | 0.10 | planejado | TODO |
-| Go | `connectors/go/` | 1.4 | planejado | TODO |
-| Rust | `connectors/rust/` | 1.31 | planejado | TODO |
+| Java | `connectors/java/` | Java 11 | planejado | TODO |
+| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5 | planejado | TODO |
+| Python | `connectors/python/` | 2.7.9 e 3.4.3 | planejado | TODO |
+| PHP | `connectors/php/` | 5.6 | planejado | TODO |
+| Ruby | `connectors/ruby/` | 2.0 | planejado | TODO |
+| Node.js | `connectors/node/` | 0.12 | planejado | TODO |
+| Go | `connectors/go/` | 1.7 | planejado | TODO |
+| Rust | `connectors/rust/` | 1.70 | planejado | TODO |
 | C | `connectors/c/` | C89 | planejado | TODO |
 | C++ | `connectors/cpp/` | C++03 | planejado | TODO |
 

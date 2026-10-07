@@ -19,7 +19,7 @@ Parte da seção 10. Cada passo lista o que cobre e as dúvidas que precisam est
 | 8 — Sinal de vida pelo canal, votação com quórum e freezing anti-flapping | Detecção de falhas, exclusão por votação e período de freezing. | — |
 | 9 — Retorno de nó | Recuperação de mensagens perdidas e novo bootstrap. | — |
 | 10 — Empacotamento em Docker e validação em Kubernetes | Observabilidade e rotas de operação. | — |
-| 11 — Conectores | O contrato comum e os dez conectores, em fases ([19-conectores.md](19-conectores.md), seção 18.8). A fase 0 espera o contrato OpenAPI (passo 1); a fase 5, o protótipo de nó único do passo 3. | D68, D69, D70, D71, D72 |
+| 11 — Conectores | O contrato comum e os dez conectores, em fases ([19-conectores.md](19-conectores.md), seção 18.8). A fase 0 espera o contrato OpenAPI (passo 1); a fase 5, o protótipo de nó único do passo 3. | D68, D70.1, D70.2, D71.1 |
 
 ## Referências internas
 

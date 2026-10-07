@@ -6,7 +6,7 @@
 
 Os **conectores** são as bibliotecas que deixam uma aplicação publicar e consumir mensagens do Taba em poucas linhas, nas principais linguagens. Eles falam a API de cliente ([06a-api-cliente.md](06a-api-cliente.md)) e não acrescentam protocolo nenhum.
 
-> Os nomes de pacotes, as versões-base e as faixas abaixo são **propostas**, como no restante da documentação. A decisão firme é a lista de linguagens, a regra de simplicidade e a janela de 15 anos (seção 18.1). As versões-base de cada linguagem estão em [19a-conectores-linguagens.md](19a-conectores-linguagens.md), e o que ainda depende de confirmação está em [08b-pendencias.md](08b-pendencias.md) (D68 a D72).
+> Os nomes de pacotes e as versões-base abaixo são **propostas**, como no restante da documentação. A decisão firme é a lista de linguagens, a regra de simplicidade, a janela de 15 anos (seção 18.1), o TLS 1.2 como mínimo (D69), os lugares de publicação (seção 18.2, D70), o assíncrono onde a linguagem tem (D71) e a exclusão de plataformas sem `PATCH` (D72). As versões-base de cada linguagem estão em [19a-conectores-linguagens.md](19a-conectores-linguagens.md), e o que ainda depende de confirmação está em [08b-pendencias.md](08b-pendencias.md) (D68, D70.1, D70.2 e D71.1).
 
 ### 18.1 Objetivos e regras
 
@@ -16,7 +16,7 @@ Três regras valem para todos os conectores e desempatam qualquer dúvida de des
 
 1. **Simples de usar.** Publicar, consumir e confirmar cabem em poucas linhas, sem configuração obrigatória além do endereço (e do token, se a autenticação estiver ligada).
 2. **Simples de implementar.** Cada conector é pequeno o bastante para uma pessoa entender o código inteiro numa tarde e para um conector novo nascer em poucos dias. Por isso a superfície é mínima (seção 18.3), **não há dependência externa** (seção 18.5) e o comportamento é o mesmo em todas as linguagens (seção 18.4).
-3. **Funciona em versões antigas.** O conector roda em linguagens e plataformas com até **15 anos** (a janela é de 2011 em diante), no estilo de suporte de longo prazo das distribuições Linux daquela época (RHEL 6, Ubuntu 10.04 e 12.04 LTS). Código novo não pode quebrar a versão-base de cada linguagem, e o conector não exige o que só as versões novas têm (seção 18.6).
+3. **Funciona em versões antigas, até onde o TLS 1.2 permite.** O conector roda em linguagens e plataformas com até **15 anos** (a janela é de 2011 em diante), mas **só nas que falam TLS 1.2 ou superior** (D69), que atendem ao `PATCH` (D72) e conferem o certificado. O que não cumpre isso **não é suportado**: o Taba não abre porta HTTP simples nem TLS antigo para essas plataformas. Código novo não pode quebrar a versão-base de cada linguagem, e o conector não exige o que só as versões novas têm (seção 18.6).
 
 Fora das três regras, o conector **não tenta ser esperto**: não guarda estado, não faz buffer de publicações, não reordena. O servidor é quem decide (quórum, FIFO, entrega justa).
 
@@ -34,15 +34,15 @@ taba/
       fixtures/             pares requisição/resposta HTTP, em arquivos de texto
       cenarios/             roteiros da suíte de conformidade (seção 18.7)
       docker-compose.yml    sobe um Taba em modo desenvolvimento para os testes de integração
-    csharp/                 Taba.Client       (NuGet)
+    csharp/                 Taba.Client       (nuget.org)
     java/                   taba-client       (Maven Central)
     rust/                   taba-client       (crates.io)
-    c/                      libtaba           (fonte C89 + Makefile + CMake)
-    cpp/                    taba.hpp          (cabeçalho C++03 sobre a libtaba)
+    c/                      libtaba           (fonte C89 + Makefile + CMake, nos Releases)
+    cpp/                    taba.hpp          (cabeçalho C++03 sobre a libtaba, nos Releases)
     python/                 taba              (PyPI)
     php/                    taba/taba-client  (Packagist)
-    ruby/                   taba-client       (RubyGems)
-    go/                     taba-go           (módulo Go)
+    ruby/                   taba-client       (RubyGems.org)
+    go/                     taba-go           (módulo Go, pelo proxy)
     node/                   taba-client       (npm)
 ```
 
@@ -61,7 +61,20 @@ connectors/<linguagem>/
 
 **Relação com o `taba-client` de [18-estrutura-codigo.md](18-estrutura-codigo.md).** O `taba-client` em Rust passa a ser o conector `connectors/rust/`. Como o conector não tem dependências e precisa compilar em Rust antigo (seção 18.5), ele **não reaproveita** o `taba-protocol` do servidor, que usa `serde` e o `tokio`. O contrato entre os dois é o da API, garantido pela suíte de conformidade, não por código compartilhado.
 
-**Publicação.** O repositório é a fonte. Cada conector sai para o registro da sua linguagem (nome entre parênteses acima) a partir da pasta, com uma tag própria (`connectors/python/v1.2.0`). Duas linguagens exigem cuidado: o **Packagist** (PHP) espera o `composer.json` na raiz do repositório, e o **Go** aceita módulo em subpasta, mas só com a tag prefixada. A solução proposta para o PHP é um espelho somente leitura (`git subtree split`), e está em aberto em D70.
+**Publicação (D70).** O repositório é a fonte. Cada conector sai para o registro da sua linguagem, a partir da pasta, com uma tag própria (`connectors/python/v1.2.0`). A regra é publicar **no lugar mais usado e popular de cada tecnologia**, e ele precisa ser **gratuito**: uma linguagem cujo registro principal fosse pago não teria conector por ora.
+
+| Linguagem | Onde é publicado | Observação |
+|---|---|---|
+| Java | **Maven Central** (Sonatype Central Portal) | Gratuito. Exige um *namespace* (*groupId*) verificado (D70.1). |
+| C# | **nuget.org** | Gratuito. |
+| Python | **PyPI** | Gratuito. |
+| PHP | **Packagist** | Gratuito. Pede o `composer.json` na raiz do repositório: a pasta sai por um espelho somente leitura, `git subtree split` (D70.2). |
+| Ruby | **RubyGems.org** | Gratuito. |
+| Node.js | **npm** (registro público) | Gratuito para pacotes públicos. |
+| Go | **Proxy de módulos** (`proxy.golang.org`), lido do repositório Git | Sem *upload*: basta a tag, que no módulo em subpasta precisa do prefixo (`connectors/go/v1.2.0`). A documentação aparece em `pkg.go.dev`. |
+| Rust | **crates.io** | Gratuito. |
+| C | **Releases do repositório** (GitHub): o pacote com o fonte, o `Makefile` e o `CMakeLists.txt` | O C não tem um registro dominante; o fonte nos *Releases* é o lugar neutro. Depois, se houver demanda, o Conan Center e o vcpkg (os dois gratuitos). |
+| C++ | **Releases do repositório** (GitHub): o cabeçalho junto com a `libtaba` | Igual ao C. |
 
 ### 18.3 Superfície: o que cada conector oferece
 
@@ -83,7 +96,9 @@ A superfície é a **mesma** em todas as linguagens, com os nomes adaptados à c
 
 - **Tokens (`/tokens`).** Quem cria e revoga tokens é o operador, com o `curl` ou o `taba token`, não a aplicação. Entra depois, se houver demanda.
 - **API de operação** (`/metrics`, `/health`, `/node`) e **API do cluster**: não são de aplicação.
-- **Loop de consumo (`subscribe(handler)`)**, que faz long polling, chama o `handler` e confirma sozinho. É um **adicional** opcional, de poucas linhas sobre o `consume` + `ack`, e entra por linguagem quando ela tem uma forma natural de expressá-lo (D71).
+- **Loop de consumo (`subscribe(handler)`)**, que faz long polling, chama o `handler` e confirma sozinho. É um **adicional** opcional, de poucas linhas sobre o `consume` + `ack`, e entra por linguagem quando ela tem uma forma natural de expressá-lo (D71.1).
+
+**Assíncrono (D71).** Onde a linguagem tem um modelo assíncrono, o conector oferece as nove operações também de forma assíncrona (`Task` no C#, `CompletableFuture` no Java, `Promise` no Node, `async`/`await` no Python 3.5+ e no Rust, `context.Context` no Go), com o mesmo contrato da forma síncrona. C, C++, PHP e Ruby só têm a síncrona. O que cada linguagem usa está em [19a](19a-conectores-linguagens.md), seção 18.10.2.
 
 **`publish`** recebe os **bytes** da mensagem e o `Content-Type`; os atalhos `publishJson(topic, textoJson)` e `publishText(topic, texto)` só escolhem o `Content-Type`. As opções são `groupId`, `deduplicationId`, `contentType` e `requestId`. O conector não valida o corpo: quem valida é o servidor (`400` `validation.invalid-body`).
 
@@ -138,7 +153,7 @@ Além do `body`, a `Message` tem `id`, `contentType`, `receiptToken`, `deliveryC
 
 Uma dependência externa (uma biblioteca de JSON ou de HTTP) quase sempre é o que quebra numa versão antiga, e é o que mais encarece a manutenção. A regra é: **só a biblioteca-padrão da linguagem**, salvo as exceções abaixo.
 
-**HTTP.** Cada conector usa o cliente HTTP que a linguagem traz (`HttpURLConnection`, `HttpWebRequest`, `http.client`, `Net::HTTP`, `net/http`, `http` do Node, `libcurl` no C). Três linguagens não trazem: o **Rust** (implementação mínima de HTTP/1.1 sobre `std::net::TcpStream`, com a TLS plugável, [19a](19a-conectores-linguagens.md)), o **C++** (usa a `libtaba`) e o **C** (`libcurl`, que é a exceção única: está em todas as distribuições, desde muito antes de 2011).
+**HTTP.** Cada conector usa o cliente HTTP que a linguagem traz (`java.net.http.HttpClient`, `HttpClient` do .NET, `http.client`, `Net::HTTP`, `net/http`, `http` do Node, `libcurl` no C). Três linguagens não trazem: o **Rust** (implementação mínima de HTTP/1.1 sobre `std::net::TcpStream`, com o `rustls` para o TLS, [19a](19a-conectores-linguagens.md)), o **C++** (usa a `libtaba`) e o **C** (`libcurl`, que está em todas as distribuições). O `libcurl` no C e o `rustls` (e o `tokio`, no assíncrono) no Rust são as **únicas exceções** à regra de não ter dependências.
 
 **JSON.** O que o conector lê é **pequeno e fixo**: os DTOs de [06a](06a-api-cliente.md) e o `ErrorResponse`. O que escreve é mais simples ainda (um objeto plano, com mapas de texto em `tags`). Em vez de depender de uma biblioteca de JSON (que nas versões antigas ou não existe, ou muda de API entre versões), cada conector leva um **leitor de JSON mínimo**, de umas 150 a 250 linhas, que:
 
@@ -146,9 +161,9 @@ Uma dependência externa (uma biblioteca de JSON ou de HTTP) quase sempre é o q
 - entrega os campos de um objeto como pares **nome → trecho do texto**, sem montar uma árvore;
 - decodifica uma *string* JSON (escapes, `\uXXXX` com pares substitutos) quando o campo é texto.
 
-Isso resolve de uma vez o campo `body`, que é um **JSON qualquer**: o conector devolve o **trecho de texto** do `body` sem interpretá-lo (seção 18.4). Nas linguagens em que a versão-base **já tem JSON na biblioteca-padrão** (Python, PHP, Node e Go), vale o mais simples: usar o da linguagem para os DTOs e o leitor mínimo apenas para extrair o trecho do `body`. Nas demais (Java, C#, Rust, C, C++ e Ruby 1.8), o leitor mínimo faz tudo. A decisão por linguagem está em [19a](19a-conectores-linguagens.md).
+Isso resolve de uma vez o campo `body`, que é um **JSON qualquer**: o conector devolve o **trecho de texto** do `body` sem interpretá-lo (seção 18.4). Nas linguagens em que a versão-base **já tem JSON na biblioteca-padrão** (Python, PHP, Ruby, Node e Go), vale o mais simples: usar o da linguagem para os DTOs e o leitor mínimo apenas para extrair o trecho do `body`. Nas demais (Java, C#, Rust, C e C++), o leitor mínimo faz tudo. A decisão por linguagem está em [19a](19a-conectores-linguagens.md).
 
-**Base64.** O mesmo vale: a biblioteca-padrão, ou umas 30 linhas onde ela não tem (Java 6, C, C++, Rust).
+**Base64.** O mesmo vale: a biblioteca-padrão, ou umas 30 linhas onde ela não tem (C, C++, Rust).
 
 **Teste do leitor.** O leitor mínimo é a única parte "perigosa" copiada em dez linguagens. Por isso a pasta `contrato/fixtures/` tem um conjunto de documentos JSON de teste (escapes, Unicode, números grandes, aninhamento profundo, espaços e quebras de linha, valores vazios) e **todo conector roda o mesmo conjunto**.
 
@@ -158,10 +173,11 @@ Isso resolve de uma vez o campo `body`, que é um **JSON qualquer**: o conector 
 
 A janela de 15 anos não é só "compilar": é **não usar o que a versão-base não tem**. Cada pasta de linguagem tem, no README, a versão-base e a lista do que é proibido. As regras gerais:
 
-- **Nada de sintaxe ou biblioteca posterior à versão-base.** Sem *lambdas* no Java 6, sem `async/await` no C# 3, sem `{a: 1}` no Ruby 1.8, sem `[]` para listas no PHP 5.3, sem *f-strings* no Python 2.6.
+- **Nada de sintaxe ou biblioteca posterior à versão-base.** Sem `record` e `switch` com seta no Java 11, sem `?.` e `??` no C# 7.3 (a linguagem fixa dos dois alvos), sem *f-strings* no Python 2.7.9 e 3.4.3, sem `??` no PHP 5.6, sem `&.` no Ruby 2.0, sem `let` e `const` no Node 0.12.
 - **A compilação roda nas duas pontas.** O CI compila e testa **na versão-base** e **na mais recente** de cada linguagem (seção 18.7). Compilar só na recente deixa passar o uso acidental de recurso novo.
-- **Compilador novo, alvo antigo.** Onde a ferramenta atual ainda gera código para a versão antiga (Java com `-source 1.6` num JDK 8, .NET com vários alvos), gera-se o artefato antigo. Onde não gera mais (JDK 9 em diante não compila para 6), usa-se a ferramenta antiga no CI.
-- **TLS antigo.** A pilha de TLS das plataformas antigas não fala TLS 1.2 ou 1.3. O conector usa a TLS da plataforma e **não** traz uma própria. Para esses ambientes, o caminho é o balanceador do Taba aceitar uma conexão simples dentro da rede privada (D69).
+- **Compilador novo, alvo antigo.** Onde a ferramenta atual ainda gera código para a versão-base (Java com `--release 11`, .NET com os alvos `net461` e `net5.0` no SDK 10, Rust com `rust-version` no `Cargo.toml`), gera-se o artefato para a base. Onde não gera, usa-se a ferramenta da época no CI.
+- **TLS 1.2 ou superior (D69).** O conector usa a TLS da plataforma e **não** traz uma própria (a exceção é o Rust, com o `rustls`). Plataformas que não falam TLS 1.2 não são suportadas, e o Taba não oferece porta HTTP simples nem TLS antigo para elas. O conector **não** desliga a verificação do certificado.
+- **`PATCH` (D72).** O cliente HTTP da versão-base precisa fazer `PATCH`. O Taba **não** aceita `X-HTTP-Method-Override`, e o conector não faz conexão HTTP própria só para esse verbo.
 - **Texto em UTF-8, sempre.** Várias plataformas antigas assumem o *charset* local. O conector converte sempre de e para UTF-8 de forma explícita.
 - **Relógio e datas.** O conector não depende do relógio local, e só converte datas se a linguagem tiver um tipo simples para isso.
 
@@ -174,6 +190,8 @@ Com dez conectores, o risco é o comportamento **divergir** entre eles. A defesa
 | **Fixtures** (unitário, sem rede) | Cada rota: a requisição que o conector monta (verbo, caminho, query, cabeçalhos, corpo) e a leitura de uma resposta pronta, incluindo `ErrorResponse`, `Page<T>`, corpo JSON, texto e base64, e o `Retry-After`. Os arquivos ficam em `contrato/fixtures/` e **todo** conector os lê. | Na máquina da pessoa e no CI, na versão-base e na mais recente. |
 | **Leitor de JSON** | O conjunto de documentos da seção 18.5. | Idem. |
 | **Integração** (contra o Taba de verdade) | Os `cenarios/` de `contrato/`: criar tópico, publicar, consumir com long polling, ack, invisibilidade, fila FIFO com duplicata, distribuidor com falha parcial, token sem permissão. Rodam contra um Taba em **modo desenvolvimento** ([04-cluster.md](04-cluster.md), seção 6.4), de um nó só, subido pelo `docker-compose.yml` de `contrato/`. | No CI, depois que existir um Taba em modo desenvolvimento; antes dele, só as fixtures. |
+
+As imagens Docker de compilação e de teste de cada linguagem, na versão-base e na mais recente, estão em [19a](19a-conectores-linguagens.md), seção 18.10.5.
 
 O contrato fica **congelado por versão** da API: uma mudança em [06a](06a-api-cliente.md) ou [06d](06d-api-convencoes.md) atualiza as fixtures e os cenários no mesmo commit, e o CI mostra quais conectores precisam acompanhar.
 
