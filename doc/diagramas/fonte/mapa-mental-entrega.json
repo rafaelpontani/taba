@@ -280,11 +280,109 @@
       "sublabel": "área 2",
       "pos": [
         20,
-        285
+        384
       ],
       "size": [
         170,
         60
+      ]
+    },
+    {
+      "id": "entrega-d3-0",
+      "type": "security",
+      "label": "TTL da mensagem",
+      "sublabel": "decisão 2.4.1",
+      "pos": [
+        450,
+        598
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d3-0x",
+      "type": "database",
+      "label": "padrão 14 dias (ttl.default)",
+      "sublabel": "detalhe 2.4.1.1",
+      "pos": [
+        745,
+        598
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d3-1",
+      "type": "security",
+      "label": "Limite de entregas",
+      "sublabel": "decisão 2.4.2",
+      "pos": [
+        450,
+        664
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d3-1x",
+      "type": "database",
+      "label": "padrão 10 (max-deliveries.default)",
+      "sublabel": "detalhe 2.4.2.1",
+      "pos": [
+        745,
+        664
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d3-2",
+      "type": "security",
+      "label": "Dead-letter por fila",
+      "sublabel": "decisão 2.4.3",
+      "pos": [
+        450,
+        730
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d3-2x",
+      "type": "database",
+      "label": "sufixo -dead-letter, só leitura",
+      "sublabel": "detalhe 2.4.3.1",
+      "pos": [
+        745,
+        730
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-t3",
+      "type": "cloud",
+      "label": "Retenção e dead-letter",
+      "sublabel": "tema 2.4",
+      "pos": [
+        225,
+        664
+      ],
+      "size": [
+        190,
+        52
       ]
     }
   ],
@@ -401,6 +499,48 @@
       "id": "c2-entrega-t2",
       "from": "entrega",
       "to": "entrega-t2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-entrega-d3-0",
+      "from": "entrega-d3-0",
+      "to": "entrega-d3-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t3-0",
+      "from": "entrega-t3",
+      "to": "entrega-d3-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-entrega-d3-1",
+      "from": "entrega-d3-1",
+      "to": "entrega-d3-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t3-1",
+      "from": "entrega-t3",
+      "to": "entrega-d3-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-entrega-d3-2",
+      "from": "entrega-d3-2",
+      "to": "entrega-d3-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t3-2",
+      "from": "entrega-t3",
+      "to": "entrega-d3-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-entrega-t3",
+      "from": "entrega",
+      "to": "entrega-t3",
       "variant": "emphasis"
     }
   ]

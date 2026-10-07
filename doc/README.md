@@ -24,7 +24,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [10-configuracao.md](10-configuracao.md) | — | Parâmetros de configuração e valores padrão (inclui observabilidade e rate limits). |
 | [11-observabilidade.md](11-observabilidade.md) | — | Observabilidade: métricas por nó, métricas e condição de tópicos (rotas próprias), endpoint Prometheus (`/metrics`), traces, logs, health checks. |
 | [12-limites-api.md](12-limites-api.md) | — | Limites fixos da API e definição dos rate limits. |
-| [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: contador de entregas, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit. |
+| [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) | 12 | Controle de entrega: contador de entregas, lista de prontos, dono da entrega, long polling e canal entre nós; ack por registro + commit; expiração (TTL), limite de entregas e dead-letter (12.10). |
 | [15-topicos-distribuidor.md](15-topicos-distribuidor.md) | 14 | Nomenclatura (QT, DT, QTV; análogos ao SQS e ao SNS), Tópico Distribuidor por prefixos, fila volátil, criação automática pelo `GET`, nó gestor e sua relação com entrada, saída e rebalanceamento de nós. |
 | [14-invisibilidade.md](14-invisibilidade.md) | 13 | Invisibilidade: metadados, propagação entre nós, lista de invisíveis em memória, excedente em disco (índice de expiração), vencimento e reconstrução. |
 | [16-mapa-mental.md](16-mapa-mental.md) | 15 | Mapa mental do projeto em cinco níveis: o mapa geral e um mapa por área, com decisões e parâmetros. |

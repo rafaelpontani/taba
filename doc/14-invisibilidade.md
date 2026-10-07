@@ -108,6 +108,7 @@ Uma thread do dono (pode ser a mesma da lista de prontos, seção 12.6) cuida do
 
 1. Olha a **cabeça** da lista de invisíveis do tópico e dorme até o prazo dela (com um teto curto, para reagir a `PATCH`, entregas e chegadas de entradas mais cedo).
 2. Quando `invisibleUntil ≤ agora`, **remove** a entrada e **confere** nos metadados: a mensagem ainda existe, o nó ainda é dono, e o prazo ainda é o da entrada. Se não, descarta e segue.
+   **Limite de entregas:** se a conferência passa e `deliveryCount ≥ maxDeliveries` do tópico (seção 12.10 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)), a mensagem **não** segue para o passo 3: o dono a manda ao dead-letter da fila e segue. Uma mensagem já vencida pelo `ttl` também é descartada aqui, sem voltar à lista.
 3. Insere o ID na **lista de prontos**, pela posição do GUID v7: uma mensagem que volta é antiga, e por isso tende a ficar perto da ponta antiga, a primeira da sanfona. Se a lista de prontos está cheia, o ID do **meio** da lista (o último que a entrega intercalada pelas duas pontas alcançaria, seção 12.6) sai para dar lugar (ele continua visível e é reposto depois pela thread); a mensagem que venceu não se perde.
 4. Se a lista de prontos **estava vazia**, envia o sinal "tem mensagens prontas" aos outros nós (seção 12.8); se há **ouvinte local** (long polling), a mensagem vai direto a ele, sem tráfego entre nós, como qualquer mensagem pronta no próprio dono.
 5. Nada é escrito nos metadados nem enviado às réplicas (seção 13.3): `deliveryCount` só sobe na **próxima entrega**.

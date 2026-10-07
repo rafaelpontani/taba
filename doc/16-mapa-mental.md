@@ -66,7 +66,7 @@ O coordenador calcula o bloco pelo hash do ID (GUID v7) e faz registro + commit,
 
 ### 2. Entrega
 
-Só o primário entrega; a lista de prontos fica em memória e o coordenador completa com outros nós.
+Só o primário entrega; a lista de prontos fica em memória e o coordenador completa com outros nós. Cada fila tem TTL, limite de entregas e uma dead-letter.
 
 ![Mapa mental: Entrega](diagramas/img/mapa-mental-entrega.svg)
 
@@ -94,6 +94,13 @@ Só o primário entrega; a lista de prontos fica em memória e o coordenador com
 | `2.3.2.1` | padrão 10 (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `2.3.3` | Avisos de mensagem nova (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8 |
 | `2.3.3.1` | janela de 100 ms, um nó por vez (detalhe) | [10-configuracao.md](10-configuracao.md); [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.8 |
+| `2.4` | Retenção e dead-letter (tema) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10 |
+| `2.4.1` | TTL da mensagem (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10 |
+| `2.4.1.1` | padrão 14 dias, por tópico (detalhe) | [10-configuracao.md](10-configuracao.md) |
+| `2.4.2` | Limite de entregas (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10 |
+| `2.4.2.1` | padrão 10, por tópico (detalhe) | [10-configuracao.md](10-configuracao.md) |
+| `2.4.3` | Dead-letter por fila (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10 |
+| `2.4.3.1` | sufixo -dead-letter, só leitura (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10; [10-configuracao.md](10-configuracao.md) |
 
 ### 3. Invisibilidade
 
@@ -151,7 +158,7 @@ Fila, Tópico Distribuidor (copia por prefixo) e fila volátil com nó gestor.
 | `4.3.1` | Destinos por publicação (decisão) | [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2; [10-configuracao.md](10-configuracao.md) |
 | `4.3.1.1` | sem limite por padrão; 422 (detalhe) | [12-limites-api.md](12-limites-api.md) |
 | `4.3.2` | Nome do tópico (decisão) | [06-api.md](06-api.md), seção 8.1; [12-limites-api.md](12-limites-api.md) |
-| `4.3.2.1` | 1 a 80, A-Za-z0-9_- (detalhe) | [12-limites-api.md](12-limites-api.md) |
+| `4.3.2.1` | 1 a 100, A-Za-z0-9_- (detalhe) | [12-limites-api.md](12-limites-api.md) |
 
 ### 5. Cluster e membros
 

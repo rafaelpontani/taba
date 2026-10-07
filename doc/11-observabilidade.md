@@ -118,6 +118,8 @@ Lado **réplica** (nó responsável pelo bloco):
 |---|---|---|---|---|
 | `msg.delivery.ready` | gauge | {message} | — | IDs nas listas de prontos deste nó (todos os tópicos). |
 | `msg.delivery.redeliveries` | counter | {message} | — | Entregas de mensagens já entregues antes (`deliveryCount` > 1). |
+| `msg.delivery.dead_lettered` | counter | {message} | — | Mensagens enviadas ao dead-letter por terem atingido `maxDeliveries` (seção 12.10). Crescimento contínuo indica mensagem que nenhum consumidor consegue confirmar. |
+| `msg.retention.expired` | counter | {message} | — | Mensagens descartadas por `ttl` (varredura local, ou descartadas na entrega ou na sincronização). |
 | `msg.delivery.longpoll.waiting` | gauge | {request} | — | Chamadas de long polling aguardando neste nó. |
 | `msg.delivery.longpoll.outcome` | counter | {request} | `outcome` (`delivered`/`empty`/`disconnected`) | Como terminaram as chamadas de long polling. |
 | `msg.delivery.take` | counter | {request} | `direction` (`in`/`out`), `outcome` (`delivered`/`empty`/`error`) | Pedidos de entrega a outro dono (`/messages/take`). |
@@ -199,6 +201,8 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 |---|---|---|
 | `GET` | `/stats/topics` | Lista **paginada** com as métricas resumidas de cada tópico. |
 | `GET` | `/stats/topics/{topic}` | Métricas detalhadas de **um** tópico. |
+
+> A fila de dead-letter de cada fila é um tópico comum para monitoramento: aparece aqui e em `/topics`, com `deadLetter: true` e `source`, e herda as `tags` da fila de origem (seção 12.10 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
 
 > Prefixo `/stats` (e não `/metrics`) porque `/metrics` é o endpoint Prometheus (seção [Endpoint Prometheus](#endpoint-prometheus)), que tem formato e semântica próprios.
 
@@ -431,6 +435,8 @@ Eventos pontuais, não condições de saúde do nó nem do cluster ([15-topicos-
 | `distributor-partial` | Ao menos uma cópia de uma publicação em DT falhou. |
 | `volatile-deleted` | Fila volátil excluída por ociosidade. |
 | `volatile-check-blocked` | O gestor não concluiu a verificação final porque algum nó não respondeu. |
+| `message-dead-lettered` | Mensagem enviada ao dead-letter ao atingir `maxDeliveries`. Atributos: fila, ID, `deliveryCount`. |
+| `message-expired` | Mensagem descartada por `ttl`. Atributos: fila, ID, idade. Em volume, pode ser amostrado ou agregado pela métrica `msg.retention.expired`. |
 
 ## Ainda em aberto
 

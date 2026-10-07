@@ -13,7 +13,7 @@ A entrega segue o modelo de **invisibilidade temporária**, como o *visibility t
 | Peça | Papel |
 |---|---|
 | **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor ([14-invisibilidade.md](14-invisibilidade.md)). Propagada ao **quórum** de nós responsáveis (`write.quorum`, sempre incluindo o primário) antes de ela ser entregue; réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). |
-| **Contador de entregas** | `deliveryCount`, incrementado a cada entrega. Base para reentrega e, futuramente, dead-letter. |
+| **Contador de entregas** | `deliveryCount`, incrementado a cada entrega. Base para reentrega e para o limite de entregas, que manda a mensagem ao dead-letter (seção 12.10). |
 | **Metadados da mensagem** | `deliveryCount`, `invisibleUntil` e `receiptToken` (devolvido ao cliente na entrega e exigido no ack e no `PATCH`), guardados junto da mensagem em memória ou em disco (seção 12.5). |
 | **Dono da entrega** | O nó primário do bloco da mensagem: só ele a coloca na sua lista de prontos (seção 12.7). |
 | **Lista de prontos** | Por tópico, em cada nó: IDs prontos para serem entregues, mantida por uma thread (seção 12.6). |
@@ -190,3 +190,36 @@ Cada nó mantém **em memória**, para cada outro nó, duas filas:
 - **Avisos** de mensagem nova antigos são **descartados**: perderam o sentido e o ouvinte já foi atendido ou expirou.
 - A fila tem **tamanho e idade máximos** (`cluster.channel.queue.max-size`, `cluster.channel.queue.max-age`). Se mesmo assim passar do limite, o nó com quem o canal está fora é tratado como **falho**: abre-se a votação de exclusão (seção 6.3), sem esperar o fim das tentativas de reconexão. Não há ressincronização do estado do canal — o nó excluído, ao voltar, faz um **novo registro** e sincroniza do zero.
 - A **fila de entrada** de um nó excluído é descartada junto com a de saída.
+
+### 12.10 Expiração (TTL), limite de entregas e dead-letter
+
+Três regras de retenção valem para toda fila (QT). Cada uma tem um **padrão do cluster**, configurável, e pode ser **definida por tópico**, na criação (`POST /topics`) e no `PATCH`, nos campos `ttl` e `maxDeliveries` da definição do tópico (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). Campo ausente significa "usa o padrão". Um Tópico Distribuidor não guarda mensagens e não tem esses campos.
+
+| Regra | Campo do tópico | Padrão (chave) | Efeito |
+|---|---|---|---|
+| **Expiração** | `ttl` (segundos) | **14 dias** (`retention.ttl.default`) | A mensagem com mais de `ttl` desde a publicação é **descartada**, entregue ou não. |
+| **Limite de entregas** | `maxDeliveries` | **10** (`retention.max-deliveries.default`) | A mensagem que chega a `maxDeliveries` entregas sem ack vai para o dead-letter. |
+| **Dead-letter** | — (derivado da fila) | Sufixo **`-dead-letter`** (`topics.dead-letter.suffix`) | Fila que recebe as mensagens que estouraram `maxDeliveries` (abaixo). |
+
+O padrão vale **na hora da conferência**, não na da criação: quem não definiu o campo acompanha uma mudança futura do padrão do cluster; quem definiu mantém o seu valor. Faixas aceitas em [12-limites-api.md](12-limites-api.md).
+
+**Expiração (`ttl`).**
+
+- A idade vem do próprio ID: o GUID v7 já carrega o instante da publicação (na fila de dead-letter, do instante em que a mensagem entrou nela, gravado em `deadLetteredAt`). O prazo de uma mensagem é `instante + ttl`, calculado com o `ttl` **atual** do tópico: um `PATCH` em `ttl` vale também para as mensagens já guardadas.
+- A conferência é **determinística e local**, sem propagação: o dono não entrega mensagem vencida, e uma thread de cada nó varre as suas próprias cópias (memória e disco) e as apaga, a cada `retention.sweep.interval`. Como todos aplicam a mesma regra ao mesmo ID, não há rodada de registro + commit por mensagem, como no vencimento da invisibilidade (seção 13.3 de [14-invisibilidade.md](14-invisibilidade.md)). A sincronização de bloco (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)) também descarta o que já venceu em vez de copiar.
+- A expiração vale mesmo para mensagem **invisível** (em processamento): ela some, e o ack que chegar depois recebe a resposta de mensagem inexistente.
+- Mensagem expirada é **excluída, não vai para o dead-letter**: o dead-letter guarda o que falhou no consumo, e a expiração é a regra de que "acabou o prazo de interesse". Cada exclusão gera a métrica `msg.retention.expired` e o evento `message-expired`.
+
+**Limite de entregas (`maxDeliveries`).** `deliveryCount` sobe a cada entrega (seção 12.1). Quando o prazo de invisibilidade de uma mensagem vence sem ack e `deliveryCount ≥ maxDeliveries`, ela **não** volta à lista de prontos: o dono a manda ao dead-letter (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)). O mesmo vale para o `PATCH` com `visibilityTimeout: 0`. Assim, `maxDeliveries: 10` significa **no máximo 10 entregas**; a décima primeira nunca acontece. Isso para um consumidor que baixa a mesma mensagem sem nunca apagá-la (ack que falha, erro no processamento, consumidor que morre): em vez de ela circular para sempre, ela sai da fila.
+
+**Dead-letter.**
+
+- Toda **fila** tem uma fila de dead-letter, de nome `{fila}` + sufixo, por padrão `{fila}-dead-letter`. Ela nasce **com a fila**, na mesma operação de registro + commit da criação, e é **excluída com ela**, com as mensagens que tiver. Também sai junto uma fila volátil excluída por ociosidade.
+- **Sem definição própria.** Todas as configurações (`ttl`, `maxMessageBytes`, `tags`) ficam na **fila de origem**; a dead-letter as deriva e **não tem arquivo de definição** em `_topics/`. Perguntada diretamente (`GET /topics/{fila}-dead-letter`), traz essas informações como **somente leitura**, com `deadLetter: true` e `source` (o nome da fila). `PATCH` e `DELETE` nela respondem `409`; muda-se a fila de origem. O `maxDeliveries` não se aplica a ela: **não há dead-letter da dead-letter**, e a mensagem só sai por ack ou por `ttl`.
+- **No mais, é um tópico comum.** Entra em `GET /topics`, nas métricas e nas rotas `/stats/topics`, na lista de prontos, no overflow para disco, na invisibilidade e no ack. Dá para consumir (`GET`), confirmar, e também publicar (por exemplo, devolver à fila de origem uma mensagem corrigida). O prefixo do nome não a distingue de uma fila comum para nenhum desses mecanismos; as exceções estão na lista abaixo.
+- **O movimento** é **uma única operação de registro + commit** sobre os nós responsáveis, que cria a mensagem na dead-letter e a remove da fila de origem. A mensagem **mantém o mesmo ID**, e por isso cai no **mesmo bloco e nos mesmos nós**, o que dispensa coordenar blocos diferentes e torna a repetição idempotente. `deliveryCount` volta a `0`, `invisibleUntil` é zerado, e os metadados ganham `deadLetteredAt` e `deadLetterReason` (`max-deliveries`). A falha antes do quórum faz rollback e a mensagem segue na fila, e o dono tenta de novo na próxima volta da thread de vencimento.
+- **Exceções ao tópico comum:**
+  - A dead-letter **nunca é destino de um Tópico Distribuidor**: o casamento por prefixo (seção 14.2 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) a ignora, para a publicação no distribuidor não cair nela.
+  - O `GET` nela **não conta como consumidor** da fila volátil de origem (seção 14.3), e `autoCreate` com nome terminado no sufixo é recusado com `400`.
+  - **Nome reservado:** um tópico não pode ser criado com nome terminado no sufixo (`400`). O nome da dead-letter passa do limite de 100 do nome criado (até **112** com o sufixo padrão); só ela pode ser assim, e as rotas a aceitam.
+- **Eventos:** `message-dead-lettered` e a métrica `msg.delivery.dead_lettered`, por fila de origem ([11-observabilidade.md](11-observabilidade.md)). A dead-letter crescendo é o sinal de que há mensagem que ninguém consegue processar.

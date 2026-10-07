@@ -82,6 +82,17 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 
 > Quórum, retry, expiração de pendente e teto de commit da invisibilidade reutilizam `write.quorum`, `write.retry.*`, `write.pending.ttl` e `write.commit.timeout`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) e [14-invisibilidade.md](14-invisibilidade.md).
 
+## Retenção e dead-letter
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| TTL padrão da mensagem | `retention.ttl.default` | **14 dias** (1209600 s) | `ttl` usado pelas filas que não definem o seu. Vale na hora da conferência: mudar o padrão afeta as filas sem `ttl` próprio. A mensagem mais velha que o TTL é descartada. | 12.10 |
+| TTL por tópico | `ttl` (campo da definição da fila) | Vazio (usa `retention.ttl.default`) | Substitui o padrão naquela fila (60 s a 365 dias). Definido na criação e alterável por `PATCH`; vale também para as mensagens já guardadas. | 12.10 |
+| Limite de entregas padrão | `retention.max-deliveries.default` | **10** | `maxDeliveries` usado pelas filas que não definem o seu. Atingido sem ack, a mensagem vai para o dead-letter. | 12.10 |
+| Limite de entregas por tópico | `maxDeliveries` (campo da definição da fila) | Vazio (usa `retention.max-deliveries.default`) | Substitui o padrão naquela fila (1 a 1000). Definido na criação e alterável por `PATCH`. | 12.10 |
+| Sufixo da fila de dead-letter | `topics.dead-letter.suffix` | **`-dead-letter`** | Sufixo do nome da fila de dead-letter de cada fila. Reservado: tópico com nome terminado nele não pode ser criado (`400`). Mudar o sufixo com filas existentes exige migração; vale definir antes de criar tópicos. | 12.10 |
+| Intervalo da varredura de expiração | `retention.sweep.interval` | **60 s** | De quanto em quanto tempo cada nó varre as próprias mensagens e apaga as vencidas pelo `ttl`. O dono já não entrega mensagem vencida entre uma varredura e outra. | 12.10 |
+
 ## Tópicos voláteis e distribuidores
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
@@ -138,7 +149,9 @@ Não são configuráveis; são regras de validação da API de cliente ([06-api.
 
 | Limite | Valor |
 |---|---|
-| Nome do tópico | 1 a 80 caracteres, regex `^[A-Za-z0-9_-]{1,80}$`, diferencia maiúsculas de minúsculas |
+| Nome do tópico | 1 a 100 caracteres, regex `^[A-Za-z0-9_-]{1,100}$`, diferencia maiúsculas de minúsculas; nome terminado no sufixo de dead-letter é reservado (a dead-letter, `{fila}` + sufixo, passa de 100: até 112 por padrão) |
+| `ttl` de fila | 60 s a 365 dias |
+| `maxDeliveries` de fila | 1 a 1000 |
 | Tags por tópico | máximo de 20 |
 | Chave de tag | 1 a 64 caracteres, `A-Za-z0-9_-.:` |
 | Valor de tag | 0 a 128 caracteres, `A-Za-z0-9_-.:` |

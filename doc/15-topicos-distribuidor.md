@@ -29,7 +29,7 @@ Um DT é só uma **definição** (seção 3.3): nome, tipo, tags e a lista de **
 
 **Publicação** (`POST /topics/{td}/messages`):
 
-1. O nó que recebe a chamada **casa os prefixos** do DT com a tabela de tópicos, que todo nó tem (seção 3.3). Casam **somente QTs** cujo nome começa com algum prefixo; um DT nunca é destino, o que evita laços.
+1. O nó que recebe a chamada **casa os prefixos** do DT com a tabela de tópicos, que todo nó tem (seção 3.3). Casam **somente QTs** cujo nome começa com algum prefixo; um DT nunca é destino, o que evita laços, e a **fila de dead-letter** de uma fila (seção 12.10 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) também não, mesmo que o nome comece com o prefixo.
 2. Para cada fila que casou, o nó gera uma **cópia independente**, com **ID próprio** (GUID v7) e o mesmo conteúdo, e a publica com o procedimento normal de mensagem daquela fila: registro + commit por quórum, primário sempre incluso (seção 7.2). O ID decide o bloco, então cada cópia cai em blocos e nós diferentes.
 3. As cópias são **independentes entre si**: a falha de uma (por exemplo, quórum não atingido) não desfaz as outras e não há rollback global.
 4. O DT **responde** depois que todas as cópias terminaram, com o resultado por fila (ID da cópia ou erro).
@@ -41,7 +41,7 @@ Um DT é só uma **definição** (seção 3.3): nome, tipo, tags e a lista de **
 - O casamento é feito **na hora da publicação**, sobre as filas que existem naquele instante. Uma fila criada depois só recebe o que for publicado depois; não há retroativo.
 - **Falha parcial** não é erro do DT: a resposta é `200` e cada item da lista traz o `id` da cópia ou o `error` daquela fila. Quem quiser reenviar para uma fila específica publica direto nela.
 - Não há ordem entre as filas destino.
-- **Prefixos:** de 1 a 80 caracteres, mesmo conjunto do nome de tópico (`A-Za-z0-9_-`); **prefixo vazio é rejeitado** (casaria com tudo). Máximo de 20 prefixos por DT (limite fixo, [12-limites-api.md](12-limites-api.md)). São definidos na criação e podem ser alterados por `PATCH`; a alteração vale a partir do commit e só afeta publicações posteriores.
+- **Prefixos:** de 1 a 100 caracteres, mesmo conjunto do nome de tópico (`A-Za-z0-9_-`); **prefixo vazio é rejeitado** (casaria com tudo). Máximo de 20 prefixos por DT (limite fixo, [12-limites-api.md](12-limites-api.md)). São definidos na criação e podem ser alterados por `PATCH`; a alteração vale a partir do commit e só afeta publicações posteriores.
 
 Exemplo de resposta de `POST /topics/pedidos-dist/messages` com dois destinos:
 
@@ -68,7 +68,7 @@ Uma QTV é um QT com dois metadados extras na definição do tópico:
 
 Além disso, todo tópico passa a ter um **`id` (GUID v7)**, gerado pelo nó coordenador antes da fase de registro da criação e gravado na definição (`_topics/${topico}.json`). O nome continua sendo a chave da API; o `id` é interno (aparece nas leituras de tópico e na observabilidade). Recriar um tópico com o mesmo nome produz um `id` novo, e é por isso que a exclusão da seção 14.5 carrega o `id`.
 
-**O que conta como consumidor:** **qualquer** `GET /topics/{topic}/messages`, com ou sem mensagem para entregar, com ou sem long polling. O nó que recebe o `GET` registra o instante **no começo da chamada**; num long polling de 20 s, a data já vale desde o primeiro instante, não só ao final. **Publicar não conta:** uma QTV só com produtores e sem consumidores é excluída e as mensagens se perdem. Isso é intencional.
+**O que conta como consumidor:** **qualquer** `GET /topics/{topic}/messages`, com ou sem mensagem para entregar, com ou sem long polling. O `GET` na fila de dead-letter da QTV **não conta**. A dead-letter é excluída junto com a QTV. O nó que recebe o `GET` registra o instante **no começo da chamada**; num long polling de 20 s, a data já vale desde o primeiro instante, não só ao final. **Publicar não conta:** uma QTV só com produtores e sem consumidores é excluída e as mensagens se perdem. Isso é intencional.
 
 **Quando o relógio começa:** na **criação** da fila. O prazo de exclusão é `max(createdAt, último GET em qualquer nó) + idleTimeout`.
 

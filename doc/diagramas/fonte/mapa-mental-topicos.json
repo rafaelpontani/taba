@@ -220,7 +220,7 @@
     {
       "id": "topicos-d2-1x",
       "type": "database",
-      "label": "1 a 80, A-Za-z0-9_-",
+      "label": "1 a 100, A-Za-z0-9_-",
       "sublabel": "detalhe 4.3.2.1",
       "pos": [
         745,
