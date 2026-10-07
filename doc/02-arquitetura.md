@@ -8,8 +8,8 @@ O sistema é composto por **nós** (nodes) idênticos entre si (sem nó "mestre"
  
 | Camada | Responsabilidade |
 |---|---|
-| **API HTTP (cliente)** | Recebe publicações e entregas de mensagens dos clientes. |
-| **API HTTP (interna/cluster)** | Comunicação entre nós: registro, propagação de tabela de membros, replicação de mensagens; mais o canal permanente entre nós (sinal de vida e sinais de entrega). |
+| **API HTTP (cliente)** | Recebe publicações e entregas de mensagens dos clientes, na porta `api.port`. |
+| **API HTTP (interna/cluster)** | Comunicação entre nós: registro, propagação de tabela de membros, replicação de mensagens; mais o canal permanente entre nós (sinal de vida e sinais de entrega). Fica numa **porta própria** (`cluster.port`), separada da API de cliente, para o acesso ser restrito na rede ([06-api.md](06-api.md), seção 8.0). |
 | **Storage engine** | Armazenamento em memória com overflow para disco (seção 3.2). |
 | **Cluster manager** | Descoberta, registro, detecção de falhas, votação de membros e particionamento (hash circular). |
  
@@ -87,4 +87,16 @@ A **definição de um tópico** (nome, `id` GUID v7, tipo, tags; `prefixes` no T
   - Se o nó de origem falhar no meio, a carga continua em outro nó, a partir do último `id` lido.
   - Até a sincronização inteira terminar (tópicos, blocos e logs) o nó **não atende rotas de cliente** (`/health/ready` falha, [11-observabilidade.md](11-observabilidade.md)): `GET /topics`, o casamento de prefixos do distribuidor e o cálculo do nó gestor dependem da tabela completa.
 - **Remoção com mensagens pendentes:** o `DELETE /topics/{topic}` **sempre funciona**, mesmo com mensagens ainda não entregues ou não confirmadas (ack) no tópico. Cada nó, no commit da remoção, apaga **todas as mensagens do tópico** que tem localmente — em memória, em disco (`${topico}/`) e seus metadados — sem checar se estão pendentes.
+
+### 3.4 Tokens de acesso: propagação e persistência
+
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): a autenticação fica desligada e não há tokens.
+
+Com a autenticação ligada (há um token raiz), o **token de acesso** da API de cliente ([06-api.md](06-api.md), seção 8.1.3) é, como a definição de tópico, um dado pequeno, de baixa frequência de alteração e do interesse do cluster inteiro. Segue **o mesmo tratamento da seção 3.3**:
+
+- **Todo nó conhece todos os tokens**, para validar uma chamada por consulta local em memória, sem rede.
+- **Propagação:** criação, alteração e revogação usam o registro + commit com confirmação de **todos** os nós (`/cluster/tokens/register`, `commit` e `rollback`), com as mesmas regras de falha da seção 3.3. Revogado o token no commit, nenhum nó o aceita mais.
+- **Persistência:** um arquivo por token, `${storage.dir}/_tokens/${id}.json`, gravado no commit em cada nó. Guarda `id`, `name`, permissões, prefixos, datas e o **hash SHA-256 do segredo**; o segredo nunca é guardado nem trafega entre nós (só o criador o recebe, na resposta da criação, do nó que coordenou).
+- **Bootstrap:** o nó novo puxa os tokens por `GET /cluster/tokens` (stream NDJSON ordenado por `id`, seção 8.2.1 de [06-api.md](06-api.md)) **junto com a tabela de tópicos**, da mesma origem e com as mesmas regras: carga aplicada direto, eventos que chegam no meio guardados no banco de eventos e processados por cima, verificação final ao terminar ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3). Até a carga terminar o nó não atende rotas de cliente, então nunca valida um token com a tabela incompleta.
+- **Expiração:** `expiresAt` é conferido localmente, e cada nó apaga os vencidos na varredura (`retention.sweep.interval`), sem propagar.
 

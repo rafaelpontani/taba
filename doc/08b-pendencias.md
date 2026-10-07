@@ -14,5 +14,6 @@ Legenda:
 - `[ ]` — em aberto, sem proposta.
 - `[~]` — parcialmente resolvida: o texto traz **só as perguntas que faltam**, cada uma com seu sub-código. A parte já decidida vai para [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md), nunca fica aqui.
 
+- **D65.** [ ] **Rate limit por token.** Com a autenticação por token (D64), o limite continua por IP do cliente, contado em cada nó. Passar a contar por token (também local, com o `ratelimit.burst` comum) resolveria o IP escondido atrás do balanceador e daria a cada aplicação o seu limite. Decidir se vale já: se o limite de uma chamada autenticada passa a ser do token e o IP fica só para as sem token; se cada token pode ter um limite próprio; e como fica o `Retry-After`.
 - **D10.** [ ] **Linguagem e runtime.** Preferência pessoal avançada em C#, porém Rust parece mais adequado aos requisitos de performance, baixo overhead e concorrência. Precisa estar decidida antes de escrever código; também define o que `msg.node.threads` mede.
 

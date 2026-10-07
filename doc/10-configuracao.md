@@ -13,7 +13,37 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
 | Retomada do disco (desenvolvimento) | `development.resume-on-start` | **true** | Só em `mode=development`: na partida, o nó retoma mensagens, tópicos e estado salvos em `storage.dir` (o drain serve de save). `false` **apaga** o conteúdo de `storage.dir` e começa limpo. Ignorado em `production`. | 6.10 |
-| Modo de execução | `mode` | **`production`** | `production` ou `development`. Em `development` o nó é um cluster de um só: sem bootstrap, canal entre nós, votação, freezing, replicação nem sincronização; `replication.factor` e `write.quorum` valem 1; `cluster.entry-address` não é exigido; as rotas `/cluster/*` ficam desabilitadas. Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados** nesse modo (aviso no log). Não é para produção. | 6.4 |
+| Modo de execução | `mode` | **`production`** | `production` ou `development`. Em `development` o nó é um cluster de um só: sem bootstrap, canal entre nós, votação, freezing, replicação nem sincronização; `replication.factor` e `write.quorum` valem 1; `cluster.entry-address` não é exigido; a porta do cluster não é aberta. Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados** nesse modo (aviso no log). Não é para produção. | 6.4 |
+
+## Portas
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Porta da API de cliente | `api.port` | A definir (sugestão: 8080) | Porta das rotas da API de cliente (seção 8.1). Sem `operations.port`, serve também as rotas de operação. Responde `404` a `/cluster/*`. | 8.0 |
+| Porta do cluster | `cluster.port` | A definir (sugestão: 8081) | Porta das rotas `/cluster/*` e do canal WebSocket entre nós. É a que a tabela de membros guarda e a que o `cluster.entry-address` aponta. Só os outros nós devem alcançá-la; **não publicar** no balanceador de clientes. Ignorada em `mode=development`, em que não é aberta. | 8.0, 8.2 |
+| Porta das rotas de operação | `operations.port` | Vazio (mesma porta da API) | Ver a seção "Observabilidade" abaixo. | 8.0, 8.1.1 |
+
+### Segurança da porta do cluster
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Pasta de segredos | `secrets.dir` | **`/etc/taba/secrets`** | Pasta que o operador cria uma vez com `taba init --out <pasta>` e monta em todos os nós, como segredo da plataforma. Tem `tls/` (certificados do cluster) e `root-token` (token raiz). Os dois parâmetros abaixo derivam dela, e quem quiser outros caminhos os define à parte. | 8.0.1, 8.1.3 |
+| Pasta dos certificados do cluster | `cluster.tls.dir` | **`<secrets.dir>/tls`** | Pasta com os certificados do cluster, em pares `<nome>.crt` (PEM) e `<nome>.key`, gerados por `taba init` ou `taba cert generate`. O nó confia em todo certificado não expirado da pasta e apresenta o par de início mais recente que já começou a valer. O TLS mútuo liga **sozinho** quando a pasta existe, e o nó não sobe sem ao menos um par válido; se ela não existe, a porta atende em HTTP puro com aviso no log. Um valor definido que não existe impede a subida. Ignorado em `mode=development`. | 8.0.1 |
+| Intervalo de recarga dos certificados | `cluster.tls.reload-interval` | **60 s** | De quanto em quanto tempo a pasta é conferida. Mudanças valem sem reiniciar o nó; pasta inválida mantém o conjunto anterior e registra `error`. | 8.0.1 |
+| Aviso de expiração do certificado | `cluster.tls.expiry-warning` | **30 dias** | Antecedência com que o nó registra `warn` no log para o certificado em uso que está para expirar. | 8.0.1 |
+
+> As três portas precisam ser diferentes entre si. Valor repetido ou porta ocupada impede o nó de subir. Explicação: [06-api.md](06-api.md), seção 8.0.
+
+## Autenticação da API de cliente
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Autenticação por token | `auth.enabled` | **`auto`** | `auto`: liga **sozinha** quando existe um token raiz (o `root-token` da pasta de segredos, `auth.root-token-file` ou `auth.root-token`) e fica desligada sem ele. `false` força desligada, mesmo com a pasta montada. `true` exige o token raiz (o nó não sobe sem ele). Ligada, as rotas de cliente exigem `Authorization: Bearer`. Ignorada (sempre desligada) em `mode=development`. | 8.1.3 |
+| Token raiz | `auth.root-token` | Vazio | Segredo, igual em todos os nós, com **acesso total** à API de cliente (todas as permissões e o único que gerencia `/tokens`). Criado pelo `taba init` (ou avulso, por `taba token generate`); no mínimo 32 caracteres. A existência de um token raiz (este, `auth.root-token-file` ou o `root-token` da pasta de segredos) é o que liga a autenticação em `auth.enabled=auto`. | 8.1.3 |
+| Arquivo do token raiz | `auth.root-token-file` | **`<secrets.dir>/root-token`** | Caminho de um arquivo com o token raiz, entregue como segredo da plataforma. Aceita **duas linhas** (a atual e a anterior), para trocar o segredo sem reiniciar. Prevalece sobre `auth.root-token`. | 8.1.3 |
+| Intervalo de recarga do token raiz | `auth.reload-interval` | **60 s** | De quanto em quanto tempo `auth.root-token-file` é relido. | 8.1.3 |
+
+> Os tokens de trabalho não são configuração: são criados por `POST /tokens` e replicados em `${storage.dir}/_tokens/` (seção 3.4 de [02-arquitetura.md](02-arquitetura.md)). A expiração usa `retention.sweep.interval`.
 
 ## Parada e modo drain
 
@@ -63,7 +93,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Quórum de votação | `cluster.vote.quorum-percent` | **51** (%) | Percentual dos nós **saudáveis** (os que o votante enxerga e que respondem; os fora do ar não votam nem entram na base) que precisa concordar para efetivar a exclusão do nó: `ceil(S × percentual)`. | 6.3 |
 | Mínimo de votantes | `cluster.vote.min-voters` | **2** | Número mínimo de nós saudáveis para uma votação valer; abaixo disso, nenhuma exclusão se efetiva. Impede que um nó isolado exclua todos os demais. | 6.3 |
 | Período de freezing | `cluster.freezing.duration` | A definir | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Durante o freezing o pedido de ingresso é rejeitado com `Retry-After`. | 6.7 |
-| Endereço do balanceador do cluster | `cluster.entry-address` | **Obrigatório** | Endereço (host:porta) do balanceador à frente do cluster, usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe, **exceto em `mode=development`**, em que não é usado. | 6.2 |
+| Endereço do balanceador do cluster | `cluster.entry-address` | **Obrigatório** | Endereço (host:porta) do balanceador à frente do cluster, **na porta do cluster** (`cluster.port`, não a da API de cliente), usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe, **exceto em `mode=development`**, em que não é usado. | 6.2 |
 | Primeiro nó do cluster | `cluster.first-node` | `false` | Só no primeiro nó de um cluster novo: se a listagem não encontra nenhum membro, ele inicia o cluster sozinho. Nos demais, a listagem sem resposta é erro e o nó tenta de novo. | 6.2 |
 | Intervalo entre tentativas do bootstrap | `cluster.bootstrap.retry.interval` | A definir | Tempo de espera entre uma tentativa de entrar no cluster e a seguinte, depois de uma falha (listagem, registro, sincronização ou exclusão por falha no registro). | 6.5 |
 | Máximo de tentativas do bootstrap | `cluster.bootstrap.retry.max-attempts` | `0` (sem limite) | Número máximo de tentativas; `0` repete sem parar. Esgotado, o nó encerra com erro. | 6.5 |
@@ -140,8 +170,8 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Prazo por nó no refresh do `/metrics` | `telemetry.prometheus.node-timeout` | A definir | Tempo que a thread de atualização espera cada nó. Quem não responde fica com `msg_cluster_node_scrape_up = 0`. | 8.1.1 |
 | Intervalo de atualização do `/metrics` | `telemetry.prometheus.refresh-interval` | A definir (sugestão: 15 s) | Periodicidade com que cada nó atualiza em memória as métricas de todos os nós; o `/metrics` de cluster só lê essa memória. | 8.1.1 |
 | Validade dos valores de um nó | `telemetry.prometheus.max-age` | A definir | Quanto tempo o instantâneo mantém os últimos valores de um nó que não responde; depois disso as séries dele somem. | 8.1.1 |
-| Porta das rotas de operação | `operations.port` | Vazio (mesma porta da API) | Porta própria para `/metrics`, `/stats/*` e `/health/*`. Opcional; se definida, essas rotas deixam de existir na porta da API de cliente. | 8.1.1 |
-| IPs autorizados nas rotas de operação | `operations.allowed-ips` | Vazio (sem restrição) | Lista de IPs/faixas CIDR com acesso a `/metrics`, `/stats/*` e `/health/*`; os demais recebem `403`. Opcional. Sem porta nem lista, essas rotas são tratadas como qualquer outra. | 8.1.1 |
+| Porta das rotas de operação | `operations.port` | Vazio (mesma porta da API) | Porta própria para `/metrics`, `/stats/*`, `/health/*` e `/node/drain`. Opcional; se definida, essas rotas deixam de existir na porta da API de cliente. Deve ser diferente de `api.port` e de `cluster.port`. | 8.0, 8.1.1 |
+| IPs autorizados nas rotas de operação | `operations.allowed-ips` | Vazio (sem restrição) | Lista de IPs/faixas CIDR com acesso a `/metrics`, `/stats/*`, `/health/*` e `/node/drain`; os demais recebem `403`. Opcional. Sem porta nem lista, essas rotas são tratadas como qualquer outra. | 8.1.1 |
 | Modo de exportação de métricas de tópico | `telemetry.topics.mode` | `off` | Vale para OTLP e `/metrics`: `off` (só rotas `/stats/topics`), `by-tags` (agregado por tags) ou `per-topic` (uma série por tópico, com teto). | 8.1.1 |
 | Tags de agrupamento | `telemetry.topics.group-by-tags` | Nenhuma | Chaves de tag usadas para agregar no modo `by-tags`. | 8.1.1 |
 | Teto de tópicos exportados | `telemetry.topics.max-topics` | A definir | Máximo de séries por tópico no modo `per-topic`; o excedente é agregado em `topic="_other"`. | 8.1.1 |
@@ -186,5 +216,9 @@ Não são configuráveis; são regras de validação da API de cliente ([06-api.
 | Chave de tag | 1 a 64 caracteres, `A-Za-z0-9_-.:` |
 | Valor de tag | 0 a 128 caracteres, `A-Za-z0-9_-.:` |
 | Espera do long polling (`waitTime`) | 0 a 20 segundos (padrão 0) |
+| Nome do token | 1 a 100 caracteres, `A-Za-z0-9_-.:` |
+| Permissões do token | Ao menos uma de `publish`, `consume`, `create`, `admin` |
+| Prefixos de tópico do token | Até 20, de 1 a 100 caracteres cada, `A-Za-z0-9_-` |
+| `expiresAt` do token | Data futura (opcional) |
 
 > Explicação do tema: [12-limites-api.md](12-limites-api.md).

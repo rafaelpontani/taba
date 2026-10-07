@@ -81,6 +81,8 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 | `msg.api.in_flight` | gauge | {request} | `route` | Requisições em andamento. |
 | `msg.api.request.size` / `msg.api.response.size` | histogram | By | `route` | Tamanho de corpo de requisição/resposta. |
 | `msg.api.rate_limited` | counter | {request} | `limit` (`publish`/`consume`/`admin`) | Requisições rejeitadas com `429` ([12-limites-api.md](12-limites-api.md)). |
+| `msg.auth.requests` | counter | {request} | `outcome` (`ok`/`unauthorized`/`forbidden`) | Autenticação por token ([06-api.md](06-api.md), seção 8.1.3): requisições aceitas, recusadas com `401` e recusadas com `403`. Só existe com a autenticação ligada. O `id` do token é atributo de trace e de log, nunca de métrica. |
+| `msg.auth.tokens` | gauge | {token} | — | Tokens de acesso que este nó conhece (devem ser iguais em todos os nós). |
 
 ### API interna (cluster)
 
@@ -88,6 +90,7 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`, e consultáve
 |---|---|---|---|---|
 | `msg.cluster.rpc.requests` | counter | {request} | `route`, `peer`, `direction` (`in`/`out`), `outcome` | Chamadas entre nós. |
 | `msg.cluster.rpc.duration` | histogram | s | `route`, `peer`, `direction` | Latência das chamadas entre nós. |
+| `msg.cluster.tls.expires_in` | gauge | s | — | Tempo até a expiração (`notAfter`) do certificado do cluster em uso. Só existe com `cluster.tls.dir` definido. Alerte antes de chegar a zero ([06-api.md](06-api.md), seção 8.0.1). |
 
 ### Escrita de mensagens (seção 3.1 e 7.2)
 
@@ -336,7 +339,7 @@ Métricas exportadas nos modos `by-tags` e `per-topic` (subconjunto das métrica
 
 *Fonte: [metricas-cluster.json](diagramas/fonte/metricas-cluster.json).*
 
-Seguindo o princípio do projeto (implementação simples e gestão automatizada), o Prometheus tem **um alvo só**: o **endereço do balanceador do cluster** (`cluster.entry-address`). Não é preciso descobrir nós nem manter lista de alvos; nós que entram ou saem aparecem e somem sozinhos.
+Seguindo o princípio do projeto (implementação simples e gestão automatizada), o Prometheus tem **um alvo só**: o **balanceador do cluster**, na porta que serve o `/metrics` (`operations.port`, ou `api.port` se não houver porta de operação; [06-api.md](06-api.md), seção 8.0). Não é o `cluster.entry-address`, que aponta para a porta do cluster. Não é preciso descobrir nós nem manter lista de alvos; nós que entram ou saem aparecem e somem sozinhos.
 
 - **Métricas do cluster em memória:** todo nó mantém em **memória** a última visão das métricas de todos os nós, e uma **thread dedicada** a mantém atualizada: a cada `telemetry.prometheus.refresh-interval` ela consulta **todos os nós em paralelo** (rota interna `GET /cluster/metrics`, que devolve as métricas locais de cada um) e troca o instantâneo inteiro de uma vez. O `GET /metrics` **só lê essa memória**: não faz fan-out no momento do scrape, e responde rápido mesmo com nós lentos ou fora do ar. Cada chamada do Prometheus pode cair num nó diferente do balanceador, e o resultado é praticamente o mesmo em qualquer um (a diferença é a defasagem de até um intervalo).
 - **Uma série por nó, sem somar:** as séries de cada nó são mantidas separadas, com o rótulo `node` (o ID do nó), e a **soma é feita no PromQL**. Somar no servidor quebraria os contadores: se um nó falta numa chamada, a soma cai e o `rate()` lê um reinício falso.
@@ -386,7 +389,7 @@ Sugestões de partida, a calibrar em produção:
 
 ## Acesso às rotas de operação
 
-As **rotas de operação** são `GET /metrics`, `GET /stats/*` e `GET /health/*`. Ao contrário da API de cliente, são destinadas a operadores, ao Prometheus e a orquestradores/balanceadores. Duas restrições **opcionais e independentes** podem ser configuradas para elas:
+As **rotas de operação** são `GET /metrics`, `GET /stats/*`, `GET /health/*` e `/node/drain` (`POST`, `GET` e `DELETE`). Ao contrário da API de cliente, são destinadas a operadores, ao Prometheus e a orquestradores/balanceadores. Duas restrições **opcionais e independentes** podem ser configuradas para elas:
 
 | Parâmetro | Efeito |
 |---|---|
@@ -406,8 +409,8 @@ Detalhes:
 
 - Recomendação para produção: ao menos a lista de IPs (Prometheus, balanceadores, faixa dos operadores); idealmente também a porta própria, pois o `/metrics` e o `/stats/topics` expõem nomes de tópicos e tags, e o `/stats/cluster` expõe a topologia do cluster.
 - A lista deve incluir os IPs do **balanceador** que chama `/health/ready` e do **Prometheus** que faz o scrape.
-- O IP avaliado é o **IP do cliente resolvido** pela mesma regra do rate limit ([12-limites-api.md](12-limites-api.md)): o endereço da conexão ou, com `client-ip.headers.enabled`, o cabeçalho (`X-Forwarded-For`), aceito só de quem estiver em `client-ip.trusted-proxies`. **Sem a lista configurada, o cabeçalho é aceito de qualquer origem**, então um cliente com acesso direto ao nó consegue forjá-lo e burlar a lista de IPs. Como o sistema não tem autenticação, essas rotas devem ficar numa **camada de rede segura** (rede privada, porta própria atrás de firewall); a lista de IPs é uma restrição a mais, não a proteção principal.
-- As rotas internas entre nós (`/cluster/...`, inclusive `/cluster/stats/*`) **não** são rotas de operação: têm mecanismo próprio e não são afetadas por essas configurações.
+- O IP avaliado é o **IP do cliente resolvido** pela mesma regra do rate limit ([12-limites-api.md](12-limites-api.md)): o endereço da conexão ou, com `client-ip.headers.enabled`, o cabeçalho (`X-Forwarded-For`), aceito só de quem estiver em `client-ip.trusted-proxies`. **Sem a lista configurada, o cabeçalho é aceito de qualquer origem**, então um cliente com acesso direto ao nó consegue forjá-lo e burlar a lista de IPs. Essas rotas **não têm autenticação** (decisão D63): quem instala as protege com a porta própria e a rede (grupo de segurança). Elas devem ficar numa **camada de rede segura** (rede privada, porta própria atrás de firewall); a lista de IPs é uma restrição a mais, não a proteção principal.
+- As rotas internas entre nós (`/cluster/...`, inclusive `/cluster/stats/*`) **não** são rotas de operação: ficam na **porta do cluster** (`cluster.port`, [06-api.md](06-api.md), seção 8.0), que é separada da API de cliente e da porta de operação, e não são afetadas por essas configurações.
 - O nó **não sobe** se `operations.port` estiver ocupada ou se a lista tiver entrada inválida — falha explícita no início, em vez de expor as rotas sem restrição por engano.
 
 ## Traces
@@ -433,6 +436,8 @@ Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id
 | Teto de commit esgotado numa réplica fora do quórum, sem rollback — retry continua em segundo plano | `warn` | Escrita (seção 7.2) |
 | Canal com um nó caiu, reconectou ou esgotou as tentativas; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
 | Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
+| Token criado, alterado ou revogado (com o `id`, nunca o segredo) | `info` | API de cliente (seção 8.1.3 de [06-api.md](06-api.md)) |
+| Chamada recusada por falta ou excesso de permissão (`401`/`403`), com o `id` do token quando houver; em volume, amostrada | `warn` / `debug` | API de cliente (seção 8.1.3) |
 | Drain iniciado (por sinal ou API), concluído, cancelado, ou nó que volta do drain como novo | `info` | Cluster (seção 6.10) |
 | Partida em modo desenvolvimento: retomada do disco (e se havia save concluído) ou limpeza de `storage.dir` | `info` / `warn` | Cluster (seção 6.10) |
 | Drain que estourou `drain.timeout`, com o que sobrou em memória, ou com erro de I/O | `error` | Cluster (seção 6.10) |

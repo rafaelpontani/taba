@@ -15,7 +15,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [03-escopo.md](03-escopo.md) | 4, 5 | O que está dentro e fora do escopo inicial. |
 | [04-cluster.md](04-cluster.md) | 6 | Descoberta, registro de nós, detecção de falhas, votação, retorno de nó, freezing; tamanho mínimo e modo desenvolvimento (1 nó, sem votação nem quórum); parada e modo drain. |
 | [05-particionamento-replicacao.md](05-particionamento-replicacao.md) | 7 | Hash circular, registro + commit de mensagens, sincronização distribuída de blocos. |
-| [06-api.md](06-api.md) | 8 | API de cliente (tópicos, mensagens, tags) e API interna do cluster. |
+| [06-api.md](06-api.md) | 8 | Portas (cliente, cluster e operação), API de cliente (tópicos, mensagens, tags) e API interna do cluster. |
 | [07-principios-design.md](07-principios-design.md) | 9 | Princípios de design. |
 | [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md) | 10.1 | Decisões já tomadas, por tema, com o código da dúvida e onde estão registradas. |
 | [08b-pendencias.md](08b-pendencias.md) | 10.2 | Pendências em aberto. |
