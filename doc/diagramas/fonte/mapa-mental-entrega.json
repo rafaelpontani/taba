@@ -280,7 +280,7 @@
       "sublabel": "área 2",
       "pos": [
         20,
-        384
+        499
       ],
       "size": [
         170,
@@ -379,6 +379,132 @@
       "pos": [
         225,
         664
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-0",
+      "type": "security",
+      "label": "Grupo da mensagem",
+      "sublabel": "decisão 2.5.1",
+      "pos": [
+        450,
+        796
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-0x",
+      "type": "database",
+      "label": "groupId, até 128 caracteres",
+      "sublabel": "detalhe 2.5.1.1",
+      "pos": [
+        745,
+        796
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-1",
+      "type": "security",
+      "label": "Contagem por nó",
+      "sublabel": "decisão 2.5.2",
+      "pos": [
+        450,
+        862
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-1x",
+      "type": "database",
+      "label": "prontas + em processamento, peso 0,1",
+      "sublabel": "detalhe 2.5.2.1",
+      "pos": [
+        745,
+        862
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-2",
+      "type": "security",
+      "label": "Grupos menores primeiro",
+      "sublabel": "decisão 2.5.3",
+      "pos": [
+        450,
+        928
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-2x",
+      "type": "database",
+      "label": "faixas por potência de 2",
+      "sublabel": "detalhe 2.5.3.1",
+      "pos": [
+        745,
+        928
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-3",
+      "type": "security",
+      "label": "Progresso garantido",
+      "sublabel": "decisão 2.5.4",
+      "pos": [
+        450,
+        994
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "entrega-d4-3x",
+      "type": "database",
+      "label": "1 em 10 pela ordem normal",
+      "sublabel": "detalhe 2.5.4.1",
+      "pos": [
+        745,
+        994
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "entrega-t4",
+      "type": "cloud",
+      "label": "Entrega justa por grupos",
+      "sublabel": "tema 2.5",
+      "pos": [
+        225,
+        895
       ],
       "size": [
         190,
@@ -541,6 +667,60 @@
       "id": "c2-entrega-t3",
       "from": "entrega",
       "to": "entrega-t3",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-entrega-d4-0",
+      "from": "entrega-d4-0",
+      "to": "entrega-d4-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t4-0",
+      "from": "entrega-t4",
+      "to": "entrega-d4-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-entrega-d4-1",
+      "from": "entrega-d4-1",
+      "to": "entrega-d4-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t4-1",
+      "from": "entrega-t4",
+      "to": "entrega-d4-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-entrega-d4-2",
+      "from": "entrega-d4-2",
+      "to": "entrega-d4-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t4-2",
+      "from": "entrega-t4",
+      "to": "entrega-d4-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-entrega-d4-3",
+      "from": "entrega-d4-3",
+      "to": "entrega-d4-3x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-entrega-t4-3",
+      "from": "entrega-t4",
+      "to": "entrega-d4-3",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-entrega-t4",
+      "from": "entrega",
+      "to": "entrega-t4",
       "variant": "emphasis"
     }
   ]

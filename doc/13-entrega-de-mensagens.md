@@ -14,6 +14,7 @@ A entrega segue o modelo de **invisibilidade temporária**, como o *visibility t
 |---|---|
 | **Invisibilidade** | Prazo (`invisibleUntil`) até o qual a mensagem não é entregue a outro consumidor ([14-invisibilidade.md](14-invisibilidade.md)). Propagada ao **quórum** de nós responsáveis (`write.quorum`, sempre incluindo o primário) antes de ela ser entregue; réplicas fora do quórum recebem em segundo plano (`write.commit.timeout`). |
 | **Contador de entregas** | `deliveryCount`, incrementado a cada entrega. Base para reentrega e para o limite de entregas, que manda a mensagem ao dead-letter (seção 12.10). |
+| **Grupo** | `groupId` opcional da mensagem; chave da entrega justa entre remetentes (seção 12.11). |
 | **Metadados da mensagem** | `deliveryCount`, `invisibleUntil` e `receiptToken` (devolvido ao cliente na entrega e exigido no ack e no `PATCH`), guardados junto da mensagem em memória ou em disco (seção 12.5). |
 | **Dono da entrega** | O nó primário do bloco da mensagem: só ele a coloca na sua lista de prontos (seção 12.7). |
 | **Lista de prontos** | Por tópico, em cada nó: IDs prontos para serem entregues, mantida por uma thread (seção 12.6). |
@@ -61,6 +62,7 @@ O cliente pode alterar o tempo de invisibilidade de uma mensagem já entregue (`
 - Cada nó mantém, **por tópico**, uma lista de **IDs de mensagens prontas para entrega** — somente as de que ele é o **dono da entrega** (seção 12.7).
 - Uma **thread** dedicada mantém a lista **cheia** (`delivery.ready-list.size`, **padrão 1000 IDs por tópico**, em memória). Ela fica parada num **semáforo** (o "farol"): cada vez que a lista libera lugar — uma entrega commitada, ou um ID que sai —, o semáforo é liberado e a thread repõe a quantidade de IDs que abriu, sem ficar consultando à toa. A reposição segue o efeito sanfona: a thread guarda dois cursores sobre as mensagens de que o nó é dono (da mais antiga para a frente e da mais nova para trás, por GUID v7, em memória e em disco) e repõe alternando as duas pontas. Uma mensagem nova que chega ao dono entra direto na lista se há lugar e o cursor da ponta nova está no fim; senão é encontrada pela thread depois. As mensagens de invisibilidade vencida voltam pela lista de invisíveis (seção 13.6 de [14-invisibilidade.md](14-invisibilidade.md)), não pela varredura.
 - **Ordem de entrega: efeito sanfona.** A lista é mantida ordenada pelo GUID v7 (ordem de publicação) e a entrega consome **as duas pontas de forma intercalada**: a mais antiga, depois a mais nova, depois a segunda mais antiga, a segunda mais nova, e assim por diante. A thread de reposição também repõe a lista pelas duas pontas — as mais antigas e as mais novas ainda não listadas das mensagens de que o nó é dono —, para que as duas pontas estejam sempre disponíveis. Não há garantia de ordem ao cliente (seção 12.7).
+- **Tópico com grupos:** a ordem e a reposição seguem a entrega justa da seção 12.11; sem `groupId`, vale o que está aqui.
 - Ao receber o **commit** de uma entrega (seção 12.2, passo 4), o nó remove o ID da lista automaticamente.
 - Mensagens cuja invisibilidade vence voltam à lista pela thread de vencimento ([14-invisibilidade.md](14-invisibilidade.md), seção 13.6), pela posição do GUID v7; se a lista está cheia, o ID do **meio** da lista (o último que a sanfona alcançaria) sai para dar lugar e é reposto depois.
 - O `GET` só consulta a lista, sem varrer memória e disco a cada chamada; o custo da busca fica na thread de reposição, fora do caminho crítico da entrega.
@@ -231,3 +233,33 @@ O padrão vale **na hora da conferência**, não na da criação: quem não defi
   - O `GET` nela **não conta como consumidor** da fila volátil de origem (seção 14.3), e `autoCreate` com nome terminado no sufixo é recusado com `400`.
   - **Nome reservado:** um tópico não pode ser criado com nome terminado no sufixo (`400`). O nome da dead-letter passa do limite de 100 do nome criado (até **112** com o sufixo padrão); só ela pode ser assim, e as rotas a aceitam.
 - **Eventos:** `message-dead-lettered` e a métrica `msg.delivery.dead_lettered`, por fila de origem ([11-observabilidade.md](11-observabilidade.md)). A dead-letter crescendo é o sinal de que há mensagem que ninguém consegue processar.
+
+### 12.11 Grupos de mensagens e entrega justa (filas barulhentas)
+
+Quando um produtor despeja muitas mensagens de uma vez, ele **atrasa as dos outros**: as mensagens de quem manda poucas ficam atrás de um monte do mesmo remetente. Para evitar isso (o "vizinho barulhento"), a mensagem pode levar um **grupo** (`groupId`, texto), e a entrega dá **preferência aos grupos que têm menos mensagens**. Os grupos pequenos andam rápido, e o grupo grande é atendido com o que sobra de capacidade, sem ficar parado para sempre.
+
+**Grupo da mensagem.**
+
+- Opcional, informado na publicação: `POST /topics/{topic}/messages?groupId=...` ([06-api.md](06-api.md)). De 1 a 128 caracteres, `A-Za-z0-9_-.:` (limite fixo, [12-limites-api.md](12-limites-api.md)). Imutável, guardado com a mensagem (em memória ou na coluna `grupo` do banco do tópico, seção 3.2 de [02-arquitetura.md](02-arquitetura.md)) e devolvido no `GET`.
+- A mensagem **sem grupo** pertence a um grupo vazio, que conta como qualquer outro. Um tópico em que ninguém usa `groupId` tem **um grupo só** e se comporta exatamente como na seção 12.6.
+- Num Tópico Distribuidor, o `groupId` é repassado a todas as cópias (seção 14.2 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)). Na dead-letter (seção 12.10), a mensagem mantém o grupo.
+- O grupo **não** ordena nem serializa a entrega, como acontece nas filas FIFO do SQS. Serve só de chave para a justiça entre remetentes.
+
+**Contagem, por nó.** Cada **dono da entrega** (seção 12.7) mantém, por tópico, **dois contadores por grupo**, das mensagens que ele possui e que ainda existem: as **prontas** e as **em processamento** (invisíveis, já entregues e sem ack). O **tamanho do grupo** mistura os dois: `tamanho = em processamento + peso × prontas`, com o `peso` em `delivery.fair.ready-weight` (padrão **0,1**).
+
+- A publicação soma uma pronta. A entrega move uma de pronta para em processamento. O vencimento da invisibilidade (e o `PATCH` com `0`) a devolve a pronta. O ack, a expiração por `ttl` (seção 12.10) e o movimento para o dead-letter a descontam.
+- **Por que o peso.** Contar só o que está em processamento, como o SQS faz, reage tarde a uma rajada: o grupo que acabou de publicar milhares de mensagens parece pequeno até os consumidores o puxarem. Contar todo o backlog penaliza um grupo grande e inofensivo, de consumidor lento e sem pressa. O peso fica no meio: `0` equivale ao SQS (só o que está em processamento) e `1` ao backlog inteiro. Com `0,1`, 100 mil prontas valem 10 mil, e cada mensagem puxada pelo consumidor **sobe** o tamanho do grupo em `1 − peso`.
+- É **local**, sem troca entre nós. Como o ID decide o bloco, as mensagens de um grupo se espalham pelos donos de forma aproximadamente proporcional, então cada nó enxerga uma amostra fiel do tamanho de cada grupo. A justiça é, por isso, aproximada no cluster, e exata no modo desenvolvimento (seção 6.4 de [04-cluster.md](04-cluster.md)).
+- Fica em memória e é **derivada**: refeita dos metadados quando o nó assume blocos ou reinicia (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)), contando a coluna `grupo` do banco e as mensagens em memória.
+- O número de grupos acompanhados é limitado (`delivery.fair.max-groups`, por tópico e por nó). Passando do limite, os grupos novos **compartilham um contador único**, tratados como um só grupo.
+
+**Preferência na entrega.** O tamanho do grupo (acima) é medido por uma **faixa**, `⌊log2(tamanho)⌋`, com tamanho menor que 1 contado como 1: tamanho 1 é a faixa 0, de 2 a 3 a faixa 1, de 4 a 7 a faixa 2, e assim por diante. Faixas por potência de 2 evitam reordenar a lista a cada mensagem que entra ou sai.
+
+1. **Reposição.** A thread da lista de prontos (seção 12.6), em vez de repor só pelas pontas por ID, percorre os grupos **do menor para o maior** e toma de cada um as mensagens prontas mais antigas, **uma por grupo a cada rodada**, até encher a lista. Os grupos são achados por um **índice por grupo**: em memória para as mensagens em memória, e no banco, por `(grupo, id)`, para as em disco.
+2. **Ordem da lista.** A lista de prontos fica ordenada pela **faixa** do grupo e, dentro da faixa, pela ordem normal (efeito sanfona, seção 12.6). Uma mensagem que chega ao dono entra na lista **na posição da faixa do seu grupo**, à frente das de grupos maiores.
+3. **Entrega.** O `GET` tira do início da lista, isto é, da menor faixa com mensagens. Ao tirar, confere a faixa atual do grupo: se mudou desde que o ID entrou, o ID é reposicionado e o próximo é considerado.
+4. **Progresso garantido.** A cada `delivery.fair.normal-every` entregas (padrão **10**), uma delas pega **a mensagem mais antiga da lista, de qualquer grupo**, ignorando a faixa. Os grupos grandes nunca esperam sem limite, mesmo que grupos pequenos cheguem sem parar.
+
+O `take` (seção 12.8) e o sorteio com peso entre nós não mudam: a justiça é aplicada por cada dono, na hora de escolher o ID. A invisibilidade, o ack, a reentrega e o dead-letter também não mudam.
+
+**Observabilidade.** As métricas consideram o grupo: `GET /stats/topics/{topic}/groups` traz mensagens, parcela, idade e taxas **por `groupId`**, com `top=N` para achar o barulhento; `GET /stats/topics/{topic}` traz `groups`, `topGroups` e `noisyShare`, e a condição `noisy-group`; e a métrica `msg.delivery.fair.wait` mede a espera por faixa. Não há série por grupo no OTLP nem no Prometheus, pela cardinalidade ([11-observabilidade.md](11-observabilidade.md)).

@@ -66,7 +66,7 @@ O coordenador calcula o bloco pelo hash do ID (GUID v7) e faz registro + commit,
 
 ### 2. Entrega
 
-Só o primário entrega; a lista de prontos fica em memória e o coordenador completa com outros nós. Cada fila tem TTL, limite de entregas e uma dead-letter.
+Só o primário entrega; a lista de prontos fica em memória e o coordenador completa com outros nós. Cada fila tem TTL, limite de entregas e uma dead-letter, e a entrega prefere os grupos menores.
 
 ![Mapa mental: Entrega](diagramas/img/mapa-mental-entrega.svg)
 
@@ -101,6 +101,15 @@ Só o primário entrega; a lista de prontos fica em memória e o coordenador com
 | `2.4.2.1` | padrão 10, por tópico (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `2.4.3` | Dead-letter por fila (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10 |
 | `2.4.3.1` | sufixo -dead-letter, só leitura (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10; [10-configuracao.md](10-configuracao.md) |
+| `2.5` | Entrega justa por grupos (tema) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
+| `2.5.1` | Grupo da mensagem (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11; [06-api.md](06-api.md), seção 8.1 |
+| `2.5.1.1` | groupId, até 128 caracteres (detalhe) | [12-limites-api.md](12-limites-api.md) |
+| `2.5.2` | Contagem por nó (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
+| `2.5.2.1` | prontas + em processamento, peso 0,1 (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.7 e 12.11 |
+| `2.5.3` | Grupos menores primeiro (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
+| `2.5.3.1` | faixas por potência de 2 (detalhe) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
+| `2.5.4` | Progresso garantido (decisão) | [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11 |
+| `2.5.4.1` | 1 em 10 pela ordem normal (detalhe) | [10-configuracao.md](10-configuracao.md) |
 
 ### 3. Invisibilidade
 
@@ -162,7 +171,7 @@ Fila, Tópico Distribuidor (copia por prefixo) e fila volátil com nó gestor.
 
 ### 5. Cluster e membros
 
-Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão, freezing e uma mudança por vez; parada com drain e saída voluntária; modo desenvolvimento com nó único.
+Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão, freezing e uma mudança por vez; parada com drain e saída voluntária; modo desenvolvimento com nó único, em que o drain serve de save.
 
 ![Mapa mental: Cluster e membros](diagramas/img/mapa-mental-cluster.svg)
 
@@ -206,6 +215,8 @@ Entrada pelo balanceador, canal permanente entre os nós, votação de exclusão
 | `5.5.1.1` | mode=development (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `5.5.2` | Sem votação nem quórum (decisão) | [04-cluster.md](04-cluster.md), seção 6.4 |
 | `5.5.2.1` | replicação e quórum valem 1 (detalhe) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2 |
+| `5.5.3` | Drain como save (decisão) | [04-cluster.md](04-cluster.md), seção 6.10 |
+| `5.5.3.1` | retoma do disco na partida (detalhe) | [10-configuracao.md](10-configuracao.md); [04-cluster.md](04-cluster.md), seção 6.10 |
 
 ### 6. Sincronização
 

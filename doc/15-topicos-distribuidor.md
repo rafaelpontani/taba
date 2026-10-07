@@ -41,6 +41,7 @@ Um DT é só uma **definição** (seção 3.3): nome, tipo, tags e a lista de **
 - O casamento é feito **na hora da publicação**, sobre as filas que existem naquele instante. Uma fila criada depois só recebe o que for publicado depois; não há retroativo.
 - **Falha parcial** não é erro do DT: a resposta é `200` e cada item da lista traz o `id` da cópia ou o `error` daquela fila. Quem quiser reenviar para uma fila específica publica direto nela.
 - Não há ordem entre as filas destino.
+- O `groupId` informado na publicação (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) vai em **todas as cópias**.
 - **Prefixos:** de 1 a 100 caracteres, mesmo conjunto do nome de tópico (`A-Za-z0-9_-`); **prefixo vazio é rejeitado** (casaria com tudo). Máximo de 20 prefixos por DT (limite fixo, [12-limites-api.md](12-limites-api.md)). São definidos na criação e podem ser alterados por `PATCH`; a alteração vale a partir do commit e só afeta publicações posteriores.
 
 Exemplo de resposta de `POST /topics/pedidos-dist/messages` com dois destinos:

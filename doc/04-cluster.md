@@ -71,7 +71,8 @@ O modo é escolhido na partida, por `mode` (`TABA_MODE`): **`production`** (padr
 | Entrega (12) | O nó é dono de todas as mensagens. Não há `take` nem avisos entre nós; o long polling é só local. |
 | Definição de tópicos e filas voláteis (3.3, 14) | Aplicada só no nó; o nó é o gestor de todas as filas voláteis. |
 | Rotas `/cluster/*` | Desabilitadas (`404`). Outro nó não consegue ingressar. |
-| Modo drain (6.10) | Vale a parte local. Sem outro nó, as chamadas de cliente durante o drain respondem `503`. O que o nó faz com o disco na partida seguinte está em aberto (D51). |
+| Entrega justa por grupos (12.11) | Vale igual, com contagem exata. |
+| Modo drain (6.10) | Vale a parte local. Sem outro nó, as chamadas de cliente durante o drain respondem `503`. O drain serve de **save**: na partida seguinte o nó retoma do disco (ver "Modo desenvolvimento: o drain como save", seção 6.10). |
 | Observabilidade | `/stats/cluster` e `scope=cluster` devolvem o mesmo que `scope=node`; as métricas `msg.cluster.*` não existem; o Prometheus lê o nó, com uma série só. |
 
 **O que continua igual:** a API de cliente, o armazenamento com overflow para disco, a entrega e a invisibilidade, `ttl`, `maxDeliveries` e a dead-letter, os tópicos distribuidores e voláteis, os limites e o rate limit. Quem desenvolve contra o modo desenvolvimento vê o mesmo comportamento de cliente do cluster, **menos** o que depende de falha de nó, de réplica ou de quórum.
@@ -95,7 +96,7 @@ Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bo
  
 ### 6.6 Retorno de um nó excluído
 
-> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não se aplica. Um reinício não tem de onde recuperar: o que estava só em memória se perde, e a tabela `perdas` não é usada.
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não se aplica; a tabela `perdas` não é usada. Um reinício retoma do disco (o drain serve de save; seção 6.10), e o que estava só em memória e não foi salvo se perde.
 
 ![Sequência do retorno de um nó excluído](diagramas/img/retorno-no-excluido.svg)
 
@@ -183,4 +184,29 @@ O desregistro voluntário segue a regra de concorrência da seção 6.8 (uma mud
 - **Durante o desregistro** (passo 5 em andamento): responde `409`; tente de novo quando o nó estiver `drained`.
 - **Depois da saída** (`drained`): o nó entra **como nó novo**. Gera um **ID novo** (GUID v7), refaz o bootstrap completo da seção 6.2, com nova posição no anel, e responde `202`; `drainState` volta a `active`, e o estado do nó no cluster passa por `joining` e `syncing` até ficar pronto (`msg.cluster.node.state`). Antes de limpar o estado local, o nó faz a **recuperação de mensagens perdidas** da seção 6.6 (passos 1 a 5), já que o disco tem **tudo** o que ele tinha. Não há freezing, pois o ID é outro e a saída foi voluntária.
 
-> **Modo desenvolvimento:** vale a parte local, com drain por sinal ou por API (não há desregistro, canal nem rebalanceamento) e `DELETE` voltando a `active` direto. Sem outro nó para receber o repasse, as chamadas de cliente durante o drain respondem `503` com `Retry-After`. O que o nó faz com o disco **na partida seguinte** está em aberto (D51 em [08b-pendencias.md](08b-pendencias.md)).
+#### Modo desenvolvimento: o drain como save
+
+Sem outro nó para recuperar dados e sem cluster para limpar, o drain do modo desenvolvimento vale como um **save**: tudo o que está em memória vai para o disco, e a **partida seguinte retoma do disco**. Assim dá para parar e subir o nó (Ctrl+C, `docker stop`, troca de versão) sem perder o trabalho. Vale a parte local do drain (por sinal, com `drain.on-stop` ligado por padrão, ou por API); não há desregistro, canal nem rebalanceamento, e `DELETE /node/drain` volta a `active` direto. Sem outro nó para receber o repasse, as chamadas de cliente durante o drain respondem `503` com `Retry-After`.
+
+**O que o save grava** (em `storage.dir`):
+
+- **Mensagens:** corpo (`${topico}/${id}.json`) e metadados (`deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`) no banco do tópico, como no drain comum (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)).
+- **Definições de tópico:** já ficam sempre em disco (`_topics/${topico}.json`, seção 3.3). O save confere que estão em dia.
+- **Estado do nó:** na tabela `estado` do `_node.db`, o instante do último `GET` de cada fila volátil (para o relógio de ociosidade, seção 14.3 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) e uma marca `save_concluido` com o instante do fim do drain.
+- **Não grava o que se refaz:** a lista de prontos, a de invisíveis, a contagem por grupo e as taxas são derivadas e reconstruídas na partida (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)).
+
+**Na partida**, em `mode=development` e com `development.resume-on-start` ligado (padrão), o nó **retoma o que encontra em `storage.dir`**, em vez de começar do zero:
+
+1. Carrega as definições de tópico, mantendo o `id` e a data de criação de cada uma.
+2. Lê o banco de cada tópico e reconstrói as listas e as contagens a partir dos metadados.
+3. Refaz o relógio de ociosidade das filas voláteis: o instante do último `GET` salvo vale como se fosse **o instante da partida**, para a fila não expirar por causa do tempo em que o nó esteve parado. Sem o dado, vale a data de criação mais o `idleTimeout`, também contada da partida.
+4. Fica pronto (`/health/ready`) só ao terminar. A marca `save_concluido` é **apagada** nesse momento, para que uma queda depois da partida não passe por save limpo.
+
+**Detalhes da retomada:**
+
+- A invisibilidade é um instante absoluto: a mensagem cujo prazo passou durante a parada volta a ficar pronta. As que ainda estão invisíveis seguem assim, e o `receiptToken` continua valendo para o ack.
+- O `ttl` conta do ID (seção 12.10 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)), então o **tempo parado conta**: o que venceu enquanto o nó estava fora é descartado na primeira varredura.
+- **Sem save concluído** (queda, `kill -9`, drain interrompido por `drain.timeout`): o nó retoma mesmo assim o que está em disco e registra um aviso (`warn`) de que o que estava só em memória se perdeu.
+- Com `development.resume-on-start=false`, o nó **apaga** o conteúdo de `storage.dir` na partida e começa limpo (útil em teste automatizado), com um aviso no log.
+
+O **cluster** (`mode=production`) não muda: toda partida é de nó novo, e o disco só serve ao retorno de um nó excluído (seção 6.6).

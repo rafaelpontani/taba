@@ -308,7 +308,7 @@
       "sublabel": "área 5",
       "pos": [
         20,
-        549
+        565
       ],
       "size": [
         170,
@@ -504,10 +504,38 @@
       "sublabel": "tema 5",
       "pos": [
         225,
-        961
+        994
       ],
       "size": [
         190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-2",
+      "type": "security",
+      "label": "Drain como save",
+      "sublabel": "decisão 5.5.3",
+      "pos": [
+        450,
+        1060
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-2x",
+      "type": "database",
+      "label": "retoma do disco na partida",
+      "sublabel": "detalhe 5.5.3.1",
+      "pos": [
+        745,
+        1060
+      ],
+      "size": [
+        295,
         52
       ]
     }
@@ -722,6 +750,18 @@
       "from": "cluster",
       "to": "cluster-t4",
       "variant": "emphasis"
+    },
+    {
+      "id": "c4-cluster-d4-2",
+      "from": "cluster-d4-2",
+      "to": "cluster-d4-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t4-2",
+      "from": "cluster-t4",
+      "to": "cluster-d4-2",
+      "variant": "dashed"
     }
   ]
 }

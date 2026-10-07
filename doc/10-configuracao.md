@@ -12,6 +12,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
+| Retomada do disco (desenvolvimento) | `development.resume-on-start` | **true** | Só em `mode=development`: na partida, o nó retoma mensagens, tópicos e estado salvos em `storage.dir` (o drain serve de save). `false` **apaga** o conteúdo de `storage.dir` e começa limpo. Ignorado em `production`. | 6.10 |
 | Modo de execução | `mode` | **`production`** | `production` ou `development`. Em `development` o nó é um cluster de um só: sem bootstrap, canal entre nós, votação, freezing, replicação nem sincronização; `replication.factor` e `write.quorum` valem 1; `cluster.entry-address` não é exigido; as rotas `/cluster/*` ficam desabilitadas. Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados** nesse modo (aviso no log). Não é para produção. | 6.4 |
 
 ## Parada e modo drain
@@ -91,6 +92,9 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Mensagens por `GET` (padrão) | `delivery.max-messages.default` | **10** | Quantidade de mensagens do `GET` quando o cliente não informa `maxMessages`. | 12.2 |
 | Mensagens por `GET` (teto) | `delivery.max-messages.max` | A definir | Maior `maxMessages` aceito. Não vale para os streams de sincronização entre nós (`cluster.sync.stream.*`). | 12.2 |
 | Tentativas de IDs no `GET` | `delivery.get.max-attempts` | A definir | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. | 12.2 |
+| Peso das prontas no tamanho do grupo | `delivery.fair.ready-weight` | **0,1** | Quanto cada mensagem pronta pesa no tamanho do grupo, frente a uma em processamento (`tamanho = em processamento + peso × prontas`). De `0` a `1`: `0` equivale ao SQS (só o que está em processamento), `1` conta o backlog inteiro. | 12.11 |
+| Grupos acompanhados | `delivery.fair.max-groups` | A definir (sugestão: 100000) | Máximo de grupos de mensagens que cada dono acompanha, por tópico. Os grupos novos acima disso compartilham um contador único (seção 12.11). | 12.11 |
+| Entrega pela ordem normal | `delivery.fair.normal-every` | **10** | A cada tantas entregas, uma pega a mensagem mais antiga da lista, de qualquer grupo, para os grupos grandes não esperarem sem limite. `0` desliga a garantia. | 12.11 |
 | Tentativas de `take` | `delivery.take.max-attempts` | A definir | Teto de peers consultados, um por vez, quando a lista de prontos local está vazia (cada um escolhido ao acaso entre os que a tabela marca com mensagens prontas). Esgotado, o `GET` vira ouvinte local. | 12.8 |
 
 > Quórum, retry, expiração de pendente e teto de commit da invisibilidade reutilizam `write.quorum`, `write.retry.*`, `write.pending.ttl` e `write.commit.timeout`. Explicação do tema: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) e [14-invisibilidade.md](14-invisibilidade.md).
@@ -133,8 +137,10 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Teto de tópicos exportados | `telemetry.topics.max-topics` | A definir | Máximo de séries por tópico no modo `per-topic`; o excedente é agregado em `topic="_other"`. | 8.1.1 |
 | Amostragem de traces | `telemetry.traces.sample-ratio` | A definir | Fração de traces mantidos; falhas são sempre mantidas. | 8.1.1 |
 | Nível de log | `telemetry.logs.level` | A definir | Nível mínimo dos logs estruturados. | 8.1.1 |
+| Maiores grupos no detalhe do tópico | `stats.topics.top-groups` | **10** | Quantos grupos (`topGroups`) o `GET /stats/topics/{topic}` devolve. | 8.1.1 |
 | Cache das métricas de tópico | `stats.topics.cache-ttl` | A definir | Validade do resultado agregado de `/stats/topics` (evita repetir a consulta a todos os nós). | 8.1.1 |
 | Limiar de `backlog` | `stats.topics.backlog.depth`, `stats.topics.backlog.age` | A definir | `depth` e `oldestAge` acima dos quais o tópico entra na condição `backlog`. | 8.1.1 |
+| Parcela do grupo barulhento | `stats.topics.noisy-group-share` | **50** (%) | Parcela do `depth` do tópico acima da qual o maior grupo dispara a condição `noisy-group`. | 8.1.1 |
 | Limiar de `stalled` | `stats.topics.stalled-after` | A definir | Tempo sem consumo, com mensagens acumuladas, para a condição `stalled`. | 8.1.1 |
 | Limiar de `idle` | `stats.topics.idle-after` | A definir | Tempo sem publicação nem consumo para a condição `idle`. | 8.1.1 |
 | Espaço livre mínimo em disco | `stats.disk.free-min` | A definir | Abaixo disso o cluster entra na condição `storage-pressure`. | 8.1.1 |

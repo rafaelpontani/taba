@@ -117,6 +117,7 @@ Lado **réplica** (nó responsável pelo bloco):
 | Métrica | Tipo | Unidade | Atributos | Descrição |
 |---|---|---|---|---|
 | `msg.delivery.ready` | gauge | {message} | — | IDs nas listas de prontos deste nó (todos os tópicos). |
+| `msg.delivery.fair.wait` | histogram | s | `band` (`0` a `14`, e `15+`) | Tempo entre a publicação e a **primeira entrega**, por faixa de tamanho do grupo da mensagem na hora da entrega (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). É a prova de que a entrega justa funciona: as faixas baixas devem esperar menos que as altas. |
 | `msg.delivery.redeliveries` | counter | {message} | — | Entregas de mensagens já entregues antes (`deliveryCount` > 1). |
 | `msg.delivery.dead_lettered` | counter | {message} | — | Mensagens enviadas ao dead-letter por terem atingido `maxDeliveries` (seção 12.10). Crescimento contínuo indica mensagem que nenhum consumidor consegue confirmar. |
 | `msg.retention.expired` | counter | {message} | — | Mensagens descartadas por `ttl` (varredura local, ou descartadas na entrega ou na sincronização). |
@@ -243,9 +244,29 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |
 | | `memoryBytes` / `diskBytes` | Bytes em memória e em disco. |
 | | `memoryShare` | Parcela da memória do cluster que o tópico ocupa (resultado da divisão dinâmica). |
+| **Grupos** | `groups` | Grupos de mensagens acompanhados (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Na visão do cluster, é a soma dos nós, um limite superior (o mesmo grupo pode ter mensagens em vários nós). |
+| | `topGroups` | Os maiores grupos, com os campos de grupo abaixo, até `stats.topics.top-groups`. Só em `GET /stats/topics/{topic}`. |
+| | `noisyShare` | Parcela de `depth` que o maior grupo ocupa. Base da condição `noisy-group`. |
 | **Identificação** | `type`, `tags`, `createdAt` | Tipo (`queue`/`distributor`), `id`, tags e criação; em fila volátil, também `volatile` e `idleTimeout`. |
 
 Um Tópico Distribuidor não guarda mensagens: as métricas de fila (profundidade, idade, armazenamento) se aplicam às **filas destino**, e o distribuidor expõe apenas publicações recebidas, cópias geradas e falhas por fila. Não há métricas por assinante. Ver [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.7.
+
+### Métricas por grupo
+
+Para tópicos com `groupId` (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)), a rota `GET /stats/topics/{topic}/groups` devolve as métricas **de cada grupo**. Cada nó conta só as mensagens de que é dono, e os donos de um tópico não se repetem, então a **soma dos nós é exata** para as contagens e as taxas, e a data mais antiga é a menor entre os nós.
+
+| Campo | Descrição |
+|---|---|
+| `groupId` | O grupo. O contador compartilhado dos grupos acima de `delivery.fair.max-groups` aparece como uma linha sem `groupId` e com `overflow: true`. |
+| `messages`, `visibleMessages`, `invisibleMessages` | Mensagens do grupo ainda não confirmadas, prontas e em processamento. |
+| `share` | Parcela do `depth` do tópico que o grupo ocupa. |
+| `band` | Faixa de tamanho do grupo (seção 12.11); só na visão `scope=node`, pois a faixa é local de cada dono. |
+| `oldestMessageAt`, `oldestAge` | Data e idade da mensagem mais antiga do grupo. |
+| `publishRate`, `consumeRate`, `ackRate` | Taxas do grupo, na janela `memory.rate.window`. |
+
+Parâmetros: `limit` e `cursor` (paginação por cursor, ordenada por `groupId`, sem `sort`, pelo mesmo motivo de `/stats/topics`), `groupId` (um grupo exato), `top=N` (os `N` maiores por `messages`, **sem paginação**, é a forma de achar o barulhento), `scope` (`cluster` por padrão, ou `node`). Um grupo sem mensagens e sem atividade na janela deixa de ser acompanhado e some da resposta.
+
+**Sem série por grupo no OTLP nem no Prometheus:** o número de grupos é ilimitado, e uma série por grupo estouraria a cardinalidade (mesmo motivo da seção "Exportação das métricas de tópico"). A justiça é medida por faixa, que tem cardinalidade pequena: `msg.delivery.fair.wait`, abaixo.
 
 ### Condição do tópico
 
@@ -257,6 +278,7 @@ Também uma **lista de condições**, com o campo `status` sendo a de maior seve
 | `idle` | info | Sem publicação nem consumo há `stats.topics.idle-after`. |
 | `backlog` | aviso | `depth` ou `oldestAge` acima do limite. |
 | `stalled` | aviso | Há mensagens (`depth > 0`) mas **nenhum consumo** há `stats.topics.stalled-after` — consumidor parado ou ausente. |
+| `noisy-group` | info | Há dois ou mais grupos e o maior ocupa mais de `stats.topics.noisy-group-share` do `depth` (padrão 50%). O grupo está em `topGroups`. |
 | `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` >> `memoryMessages`): leituras mais lentas. |
 
 ### Visão do nó e visão do cluster
@@ -408,6 +430,7 @@ Logs **estruturados** (JSON) com o mesmo contexto do trace (`trace_id`, `span_id
 | Canal com um nó caiu, reconectou ou esgotou as tentativas; votação aberta, voto e resultado | `warn` / `info` | Cluster (seção 6.3) |
 | Nó registrado, desregistrado, rejeitado (freezing) | `info` | Cluster (seções 6.2, 6.7) |
 | Drain iniciado (por sinal ou API), concluído, cancelado, ou nó que volta do drain como novo | `info` | Cluster (seção 6.10) |
+| Partida em modo desenvolvimento: retomada do disco (e se havia save concluído) ou limpeza de `storage.dir` | `info` / `warn` | Cluster (seção 6.10) |
 | Drain que estourou `drain.timeout`, com o que sobrou em memória, ou com erro de I/O | `error` | Cluster (seção 6.10) |
 | Falha de bootstrap do nó | `error` | Cluster (seção 6.5) |
 | Início e fim de sincronização de bloco | `info` | Sincronização (seção 7.3) |
