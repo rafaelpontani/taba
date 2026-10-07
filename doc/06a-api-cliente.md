@@ -55,7 +55,7 @@ A coluna "Permissão" só vale com a autenticação ligada; desligada, nenhuma �
 | `idleTimeout` | 60 a 604800 s (7 dias) |
 | `ttl` | 60 a 31536000 s (365 dias) |
 | `maxDeliveries` | 1 a 1000 |
-| `maxMessageBytes` | 1 até `message.max-bytes.hard-limit` |
+| `maxMessageBytes` | 1 até `message.hard-limit` |
 | `prefixes` (distribuidor) | até 20 prefixos de 1 a 100 caracteres (`A-Za-z0-9_-`); prefixo vazio é rejeitado |
 
 ### `POST /topics`: criar um tópico
@@ -73,7 +73,7 @@ Cria um tópico (fila ou distribuidor). Gera o `id` (GUID v7). A definição é 
 | `volatile` | booleano | só `queue` | `false` | Fila volátil: excluída sozinha, com as mensagens, se ficar sem consumidor por `idleTimeout`. |
 | `idleTimeout` | inteiro (s) | só `queue` com `volatile` | `600` (`topics.volatile.idle-timeout.default`) | Tempo sem consumidor até a exclusão da fila volátil. |
 | `fifo` | booleano | só `queue` | `false` | Fila FIFO: ordem por grupo e deduplicação ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16). **Imutável.** Exige `replication.factor` de pelo menos 2. |
-| `maxMessageBytes` | inteiro (bytes) | só `queue` | `null` (vale `message.max-bytes`, 5 MB) | Tamanho máximo da mensagem **deste** tópico. Pode ser maior que o geral, até `message.max-bytes.hard-limit`. |
+| `maxMessageBytes` | inteiro (bytes) | só `queue` | `null` (vale `message.max-bytes`, 5 MB) | Tamanho máximo da mensagem **deste** tópico. Pode ser maior que o geral, até `message.hard-limit`. |
 | `ttl` | inteiro (s) | só `queue` | `null` (vale `retention.ttl.default`, 14 dias) | Tempo de vida da mensagem desde a publicação. |
 | `maxDeliveries` | inteiro | só `queue` | `null` (vale `retention.max-deliveries.default`, 10) | Entregas sem ack até a mensagem ir ao dead-letter. |
 

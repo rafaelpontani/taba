@@ -28,7 +28,7 @@ Criar, listar, ler, alterar e remover. Rotas e regras: [06a-api-cliente.md](06a-
 | UC-TOP-012 | Criar com nome que já existe: `409` `topic.already-exists`. | 06a | I |
 | UC-TOP-013 | Campo que não vale para o tipo (`prefixes` numa fila, `fifo`, `volatile`, `ttl`, `maxDeliveries` ou `maxMessageBytes` num distribuidor): `400` `validation.not-applicable`. | 06a | U, I |
 | UC-TOP-014 | `idleTimeout` fora de 60 a 604800, `ttl` fora de 60 a 31536000 ou `maxDeliveries` fora de 1 a 1000: `400` `validation.out-of-range`. Os limites exatos (59 e 60, 604800 e 604801 etc.) são aceitos e recusados como definido. | 06a, 12 | U, I |
-| UC-TOP-015 | `maxMessageBytes` acima de `message.max-bytes.hard-limit`: `400` `validation.max-bytes-above-hard-limit`. Acima do geral (5 MB) e dentro do limite rígido: aceito. | 06a, 12 | U, I |
+| UC-TOP-015 | `maxMessageBytes` acima de `message.hard-limit`: `400` `validation.max-bytes-above-hard-limit`. Acima do geral (5 MB) e dentro do limite rígido: aceito. | 06a, 12 | U, I |
 | UC-TOP-016 | Distribuidor com mais de 20 prefixos, prefixo vazio, de mais de 100 caracteres ou com caractere fora de `A-Za-z0-9_-`: `400`. | 06a, 12, 15 §14.2 | U, I |
 | UC-TOP-017 | Distribuidor com `prefixes` vazio é aceito: não copia a publicação para ninguém. | 06a | I |
 | UC-TOP-018 | Corpo com campo desconhecido: `400` `validation.unknown-field`. Sem `name` ou sem `type`: `400` `validation.required`, com o campo em `details`. | 06a, 06d | U, I |

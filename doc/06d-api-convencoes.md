@@ -153,7 +153,7 @@ Os códigos são estáveis dentro de uma versão do contrato. Uma coluna mostra 
 | `validation.invalid-content-type` | O `Content-Type` da publicação de uma mensagem não é um media type válido (1 a 255 caracteres). |
 | `validation.group-id-required` | Publicação numa fila FIFO sem `groupId`. |
 | `validation.invalid-cursor` | `cursor` malformado, ou usado com `sort` ou filtros diferentes dos que o geraram. |
-| `validation.max-bytes-above-hard-limit` | `maxMessageBytes` acima de `message.max-bytes.hard-limit`. |
+| `validation.max-bytes-above-hard-limit` | `maxMessageBytes` acima de `message.hard-limit`. |
 
 **Autenticação e autorização (`401` e `403`):**
 
