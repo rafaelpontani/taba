@@ -61,6 +61,19 @@ Parte da seção 10, junto de [08b-pendencias.md](08b-pendencias.md) e [08c-prox
 | D45 | O `recover` grava direto nos nós responsáveis, idempotente pelo ID, sem registro + commit, confirmando a linha quando `write.quorum` nós gravaram. | [04-cluster.md](04-cluster.md) 6.6, [06-api.md](06-api.md) |
 | D48 | O nó que volta consulta a tabela `perdas` de todos os nós, confronta com o que tem e envia o que achar ao responsável. Os dados antigos ficam em quarentena até a recuperação terminar. | [04-cluster.md](04-cluster.md) 6.6, [02-arquitetura.md](02-arquitetura.md) 3.2 |
 
+### Filas FIFO
+
+| Código | Decisão | Onde |
+|---|---|---|
+| D54 | A fila FIFO é o atributo `fifo: true` de uma fila, imutável, combinável com volátil e com dead-letter. Alternativas descartadas: a fila inteira num bloco só e o sequenciador por grupo com dados espalhados por ID. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.2 e 16.13 |
+| D55 | A posição no anel é o hash do `id` do tópico mais o `groupId`: o grupo fica atrelado a um primário, que ordena. O nó que recebe a publicação a repassa ao primário, que gera o ID monotônico (`max(agora, último + 1)`). | [17-topicos-fifo.md](17-topicos-fifo.md) 16.3 e 16.4, [05-particionamento-replicacao.md](05-particionamento-replicacao.md) 7.1 |
+| D56 | O quórum da FIFO sempre inclui o primário e o secundário (herdeiro do bloco), e `replication.factor` mínimo é 2. Evita a reentrega fora de ordem depois do failover. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.5 |
+| D57 | `groupId` é obrigatório na FIFO (`400` sem ele); a cópia de um distribuidor sem `groupId` para uma fila FIFO falha só naquela fila. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.2 e 16.8, [15-topicos-distribuidor.md](15-topicos-distribuidor.md) 14.2 |
+| D58 | Um grupo, uma mensagem em voo: a lista de prontos tem uma entrada por grupo livre, a cabeça mais antiga vence (sem entrega justa por faixas) e o lote do `GET` traz grupos diferentes. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.6, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) 12.6 e 12.11 |
+| D59 | Na FIFO, a mensagem que atinge `maxDeliveries` vai ao dead-letter e o grupo segue; a vencida por `ttl` na cabeça também libera o grupo. A dead-letter de uma FIFO não é FIFO e usa o `id` da fila de origem para a posição. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.6 e 16.8, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) 12.10 |
+| D60 | Deduplicação por grupo: `deduplicationId` é metadado da mensagem (sem ele, SHA-256 do corpo), janela de 5 minutos. O ack não apaga a linha: grava `deleteAt` e apaga o corpo, e a linha, replicada em todos os nós, sai por varredura. O novo primário herda a deduplicação, e a sincronização leva as linhas sem rota nova. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.7, [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md) 12.4, [10-configuracao.md](10-configuracao.md) |
+| D61 | Publicação FIFO durante a sincronização do novo primário ou com o primário fora do ar: `503`. O primário recalcula o dono do grupo e responde `421` se não for ele, e o repasse tenta de novo até `fifo.forward.max-attempts`. A repetição de uma publicação FIFO é segura. | [17-topicos-fifo.md](17-topicos-fifo.md) 16.4, [04-cluster.md](04-cluster.md) 6.9 |
+
 ### API, tópicos e limites
 
 | Código | Decisão | Onde |

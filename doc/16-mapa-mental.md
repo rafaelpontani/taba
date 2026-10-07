@@ -142,7 +142,7 @@ A mensagem entregue fica invisível por um prazo; o `ReceiptToken` evita confirm
 
 ### 4. Tópicos
 
-Fila, Tópico Distribuidor (copia por prefixo) e fila volátil com nó gestor.
+Fila, fila FIFO (ordem por grupo, atrelado a um primário, com deduplicação), Tópico Distribuidor (copia por prefixo) e fila volátil com nó gestor.
 
 ![Mapa mental: Tópicos](diagramas/img/mapa-mental-topicos.svg)
 
@@ -168,6 +168,11 @@ Fila, Tópico Distribuidor (copia por prefixo) e fila volátil com nó gestor.
 | `4.3.1.1` | sem limite por padrão; 422 (detalhe) | [12-limites-api.md](12-limites-api.md) |
 | `4.3.2` | Nome do tópico (decisão) | [06-api.md](06-api.md), seção 8.1; [12-limites-api.md](12-limites-api.md) |
 | `4.3.2.1` | 1 a 100, A-Za-z0-9_- (detalhe) | [12-limites-api.md](12-limites-api.md) |
+| `4.4` | Fila FIFO (tema) | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16 |
+| `4.4.1` | Grupo atrelado a um primário (decisão) | [17-topicos-fifo.md](17-topicos-fifo.md), seções 16.3 e 16.4 |
+| `4.4.1.1` | hash do id do tópico + groupId; o primário ordena (detalhe) | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.3 |
+| `4.4.2` | Deduplicação (decisão) | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7 |
+| `4.4.2.1` | deduplicationId ou hash do corpo; ack grava deleteAt (detalhe) | [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7; [10-configuracao.md](10-configuracao.md) |
 
 ### 5. Cluster e membros
 

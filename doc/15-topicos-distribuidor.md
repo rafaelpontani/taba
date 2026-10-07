@@ -4,7 +4,7 @@
 
 ## 14. Tópico Distribuidor, fila volátil e nó gestor
 
-O Taba tem dois **tipos de tópico** e um **atributo** de ciclo de vida.
+O Taba tem dois **tipos de tópico** e dois **atributos** da fila: o ciclo de vida (volátil) e a ordem por grupo (FIFO, [17-topicos-fifo.md](17-topicos-fifo.md)).
 
 > **Análogos ao SQS e ao SNS.** O **Queue Topic (QT)** é o análogo do Amazon SQS, e o **Distributor Topic (DT)** é o análogo do Amazon SNS. São análogos, **não equivalentes**: o Taba usa nomes próprios para não misturar o seu comportamento com o desses serviços. Em particular, o DT não tem assinantes nem protocolos de entrega (HTTP, e-mail etc.): ele só copia a publicação para os QTs cujo nome começa com um de seus prefixos.
 
@@ -14,6 +14,7 @@ O Taba tem dois **tipos de tópico** e um **atributo** de ciclo de vida.
 |---|---|---|---|
 | **Tópico Fila** (*Queue Topic*) | **QT** | `queue` | Guarda mensagens e as entrega a consumidores, uma mensagem para um consumidor (seções 12 e 13). Substitui o antigo tipo `single`. |
 | **Tópico Distribuidor** (*Distributor Topic*) | **DT** | `distributor` | Não guarda mensagens. Recebe uma publicação e a **copia para os QTs** cujo nome começa com algum dos seus prefixos (seção 14.2). Substitui o antigo tipo `broadcast`. |
+| **Fila FIFO** (*Queue Topic FIFO*) | **QTF** | `queue` com `fifo: true` | Um QT que entrega cada grupo (`groupId`) em ordem, uma mensagem por vez, e deduplica as publicações ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16). |
 | **Fila volátil** (*Queue Topic Volatile*) | **QTV** | `queue` com `volatile: true` | Um QT que é **excluído sozinho**, com suas mensagens, se ficar sem consumidor por mais de `idleTimeout` (seção 14.3). |
 | **Nó gestor** | — | — | Nó administrativo que cuida da vida de uma QTV: decide quando ela expirou (seção 14.5). Não participa do caminho de dados. |
 
@@ -41,7 +42,7 @@ Um DT é só uma **definição** (seção 3.3): nome, tipo, tags e a lista de **
 - O casamento é feito **na hora da publicação**, sobre as filas que existem naquele instante. Uma fila criada depois só recebe o que for publicado depois; não há retroativo.
 - **Falha parcial** não é erro do DT: a resposta é `200` e cada item da lista traz o `id` da cópia ou o `error` daquela fila. Quem quiser reenviar para uma fila específica publica direto nela.
 - Não há ordem entre as filas destino.
-- O `groupId` informado na publicação (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) vai em **todas as cópias**.
+- O `groupId` informado na publicação (seção 12.11 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)) vai em **todas as cópias**, e o `deduplicationId` também, para as filas FIFO. Cópia **sem `groupId`** para uma **fila FIFO** falha só naquela fila (item com erro `400`, evento `distributor-partial`), sem desfazer as outras ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.8).
 - **Prefixos:** de 1 a 100 caracteres, mesmo conjunto do nome de tópico (`A-Za-z0-9_-`); **prefixo vazio é rejeitado** (casaria com tudo). Máximo de 20 prefixos por DT (limite fixo, [12-limites-api.md](12-limites-api.md)). São definidos na criação e podem ser alterados por `PATCH`; a alteração vale a partir do commit e só afeta publicações posteriores.
 
 Exemplo de resposta de `POST /topics/pedidos-dist/messages` com dois destinos:
@@ -64,7 +65,7 @@ Uma QTV é um QT com dois metadados extras na definição do tópico:
 
 | Campo | Descrição |
 |---|---|
-| `volatile` | `true` para QTV. Só QT pode ser volátil. |
+| `volatile` | `true` para QTV. Só QT pode ser volátil (uma fila FIFO pode). |
 | `idleTimeout` | Tempo **sem consumidor** depois do qual a fila é excluída. Em segundos. Padrão **600** (10 minutos), configurável na criação. |
 
 Além disso, todo tópico passa a ter um **`id` (GUID v7)**, gerado pelo nó coordenador antes da fase de registro da criação e gravado na definição (`_topics/${topico}.json`). O nome continua sendo a chave da API; o `id` é interno (aparece nas leituras de tópico e na observabilidade). Recriar um tópico com o mesmo nome produz um `id` novo, e é por isso que a exclusão da seção 14.5 carrega o `id`.
@@ -91,6 +92,7 @@ GET /topics/{topic}/messages?autoCreate=true&idleTimeout=300&tag.time=financeiro
 |---|---|
 | `autoCreate` | `true` cria a fila se ela não existir. |
 | `volatile` | Padrão **`true`** quando `autoCreate` cria a fila. `false` cria um QT persistente. |
+| `fifo` | `true` cria uma fila FIFO (padrão `false`); vale a exigência de `replication.factor` de pelo menos 2 ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.2). |
 | `idleTimeout` | Segundos. Padrão **600** (`topics.volatile.idle-timeout.default`). |
 | `tag.<chave>` | Tags da fila (mesmas regras da seção 8.1). |
 

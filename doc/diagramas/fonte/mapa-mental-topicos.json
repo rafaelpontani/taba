@@ -246,6 +246,76 @@
       ]
     },
     {
+      "id": "topicos-d3-0",
+      "type": "security",
+      "label": "Grupo atrelado a um primário",
+      "sublabel": "decisão 4.4.1",
+      "pos": [
+        450,
+        532
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "topicos-d3-0x",
+      "type": "database",
+      "label": "hash do id + groupId; ordena",
+      "sublabel": "detalhe 4.4.1.1",
+      "pos": [
+        745,
+        532
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "topicos-d3-1",
+      "type": "security",
+      "label": "Deduplicação",
+      "sublabel": "decisão 4.4.2",
+      "pos": [
+        450,
+        598
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "topicos-d3-1x",
+      "type": "database",
+      "label": "deduplicationId ou hash; deleteAt",
+      "sublabel": "detalhe 4.4.2.1",
+      "pos": [
+        745,
+        598
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "topicos-t3",
+      "type": "cloud",
+      "label": "Fila FIFO (QTF)",
+      "sublabel": "tema 4.4",
+      "pos": [
+        225,
+        565
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
       "id": "topicos",
       "type": "backend",
       "label": "Tópicos",
@@ -346,6 +416,30 @@
       "variant": "dashed"
     },
     {
+      "id": "c4-topicos-d3-0",
+      "from": "topicos-d3-0",
+      "to": "topicos-d3-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-topicos-d3-1",
+      "from": "topicos-d3-1",
+      "to": "topicos-d3-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-topicos-t3-0",
+      "from": "topicos-t3",
+      "to": "topicos-d3-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-topicos-t3-1",
+      "from": "topicos-t3",
+      "to": "topicos-d3-1",
+      "variant": "dashed"
+    },
+    {
       "id": "c2-topicos-t0",
       "from": "topicos",
       "to": "topicos-t0",
@@ -361,6 +455,12 @@
       "id": "c2-topicos-t2",
       "from": "topicos",
       "to": "topicos-t2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-topicos-t3",
+      "from": "topicos",
+      "to": "topicos-t3",
       "variant": "emphasis"
     }
   ]

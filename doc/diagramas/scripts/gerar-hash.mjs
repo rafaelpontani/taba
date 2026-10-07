@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Gera à mão os dois diagramas do hash circular (não passam pelo Archify, que não desenha anéis
-// nem matrizes): doc/diagramas/img/anel-hash.svg e doc/diagramas/img/topico-espalhado.svg.
+// Gera à mão os três diagramas do hash circular (não passam pelo Archify, que não desenha anéis
+// nem matrizes): doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg e
+// doc/diagramas/img/fifo-grupos.svg.
 // Esta é a fonte: para mudar o desenho, edite as constantes abaixo e rode
 //   node doc/diagramas/scripts/gerar-hash.mjs
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -298,6 +299,110 @@ function topico() {
     'Matriz com as mensagens m1 a m6 do tópico pedidos nas linhas e os nós A, B, C e D nas colunas. Cada mensagem tem um primário e duas réplicas em nós distintos, e nenhum nó guarda todas as mensagens.', s);
 }
 
+// ---------- diagrama C: os grupos de uma fila FIFO ----------
+// fila FIFO `pedidos-fifo`: cada grupo tem uma posição no anel (hash do id do tópico + groupId),
+// logo um só bloco; as mensagens do grupo (na ordem de publicação) vivem todas nesse bloco
+const GRUPOS = [
+  { id: 'g1', msgs: ['m1', 'm3', 'm5'], A: 'P', C: 'S', B: 'T' },
+  { id: 'g2', msgs: ['m2', 'm4'], B: 'P', C: 'S', D: 'T' },
+  { id: 'g3', msgs: ['m6'], C: 'P', D: 'S', A: 'T' },
+  { id: 'g4', msgs: ['m7', 'm8'], D: 'P', A: 'S', C: 'T' },
+];
+
+function fifo() {
+  const W = 1080, H = 640;
+  const nos = Object.keys(NOS);
+  const x0 = 200, larg = 118, y0 = 150, alt = 54, cw = 92, ch = 38;
+
+  let s = '';
+  s += texto(40, 44, 'Os grupos de uma fila FIFO no anel', { tam: 20, peso: 700 });
+  s += texto(40, 66, 'fila `pedidos-fifo`: 4 grupos em 4 nós, fator de replicação 3; o grupo decide o bloco, e não o ID da mensagem', { tam: 12, cor: SUAVE });
+
+  s += texto(60, y0 - 26, 'grupo', { tam: 12, peso: 700, cor: SUAVE });
+  nos.forEach((no, j) => {
+    const cx = x0 + j * larg + larg / 2;
+    s += `<circle cx="${cx}" cy="${y0 - 34}" r="15" fill="${NOS[no].tom}" stroke="${NOS[no].cor}" stroke-width="2.5"/>`;
+    s += texto(cx, y0 - 29, no, { tam: 15, peso: 700, ancora: 'middle' });
+  });
+
+  const totais = Object.fromEntries(nos.map((no) => [no, { P: 0, S: 0, T: 0 }]));
+
+  GRUPOS.forEach((lin, i) => {
+    const y = y0 + i * alt;
+    s += `<rect x="40" y="${y - 6}" width="${x0 - 40 + nos.length * larg + 10}" height="${alt - 6}" rx="10" fill="${i % 2 ? 'none' : PAINEL}"/>`;
+    s += texto(60, y + 18, lin.id, { tam: 15, peso: 700 });
+    s += texto(60, y + 34, lin.msgs.join(' → '), { tam: 11, cor: SUAVE });
+    nos.forEach((no, j) => {
+      const papel = lin[no];
+      const cx = x0 + j * larg + (larg - cw) / 2;
+      if (!papel) {
+        s += `<rect x="${cx}" y="${y}" width="${cw}" height="${ch}" rx="9" fill="none" stroke="${LINHA}" stroke-dasharray="3 4"/>`;
+        return;
+      }
+      totais[no][papel]++;
+      const cor = NOS[no].cor;
+      const cheio = papel === 'P';
+      s += `<rect x="${cx}" y="${y}" width="${cw}" height="${ch}" rx="9" fill="${cheio ? cor : papel === 'S' ? NOS[no].tom : BG}" stroke="${cor}" stroke-width="2.5"/>`;
+      s += texto(cx + cw / 2, y + 24, papel, { tam: 12, peso: 700, cor: cheio ? BG : TINTA, ancora: 'middle' });
+    });
+  });
+
+  const yt = y0 + GRUPOS.length * alt + 6;
+  s += `<line x1="40" y1="${yt}" x2="${x0 + nos.length * larg + 10}" y2="${yt}" stroke="${LINHA}" stroke-width="1.5"/>`;
+  s += texto(60, yt + 24, 'cada nó é primário de', { tam: 12, peso: 700, cor: SUAVE });
+  nos.forEach((no, j) => {
+    const t = totais[no];
+    const cx = x0 + j * larg + larg / 2;
+    s += texto(cx, yt + 22, `${t.P} grupo${t.P === 1 ? '' : 's'}`, { tam: 14, peso: 700, ancora: 'middle' });
+    s += texto(cx, yt + 40, `${t.P}P ${t.S}S ${t.T}T`, { tam: 11, cor: SUAVE, ancora: 'middle' });
+  });
+
+  const yl = yt + 78;
+  const leg = [
+    ['P', 'primário: ordena e entrega', 'cheio', 60],
+    ['S', 'secundário: no quórum', 'meio', 290],
+    ['T', 'terciário', 'vazio', 510],
+  ];
+  leg.forEach(([l, d, tipo, x]) => {
+    s += `<rect x="${x}" y="${yl - 14}" width="30" height="22" rx="6" fill="${tipo === 'cheio' ? '#94a3b8' : tipo === 'meio' ? '#1e293b' : BG}" stroke="#94a3b8" stroke-width="2"/>`;
+    s += texto(x + 15, yl + 2, l, { tam: 12, peso: 700, cor: tipo === 'cheio' ? BG : TINTA, ancora: 'middle' });
+    s += texto(x + 40, yl + 2, d, { tam: 11, cor: SUAVE });
+  });
+
+  const px = 770, cw2 = 270;
+  const cartao = (y, titulo, cor, itens) => {
+    let g = '';
+    const linhas = itens.map((t) => quebrar(t, 33));
+    const altura = 44 + linhas.reduce((a, l) => a + l.length * 17 + 8, 0);
+    g += `<rect x="${px}" y="${y}" width="${cw2}" height="${altura}" rx="12" fill="${PAINEL}" stroke="${LINHA}"/>`;
+    g += `<circle cx="${px + 20}" cy="${y + 24}" r="6" fill="${cor}"/>`;
+    g += texto(px + 34, y + 29, titulo, { tam: 14, peso: 700 });
+    let yy = y + 52;
+    linhas.forEach((ls) => {
+      ls.forEach((l, i) => { g += texto(px + 20, yy + i * 17, (i === 0 ? '• ' : '  ') + l, { tam: 12 }); });
+      yy += ls.length * 17 + 8;
+    });
+    return { g, fim: y + altura };
+  };
+  const c1 = cartao(112, 'Um grupo, um bloco', '#22d3ee', [
+    'O hash do id do tópico mais o groupId decide o bloco: todas as mensagens do grupo ficam nos mesmos 3 nós.',
+    'O primário gera os IDs em ordem crescente e entrega uma mensagem do grupo por vez.',
+  ]);
+  const c2 = cartao(c1.fim + 16, 'Espalhado entre grupos', '#34d399', [
+    'Grupos diferentes caem em blocos diferentes: os primários se revezam.',
+    'Um grupo grande não passa de um primário (grupo quente).',
+  ]);
+  const c3 = cartao(c2.fim + 16, 'Se o primário de g1 cair', '#fb7185', [
+    'O secundário C assume g1 já em dia, pois o quórum sempre o incluiu.',
+    'A ordem de g1 e a deduplicação seguem sem perda.',
+  ]);
+  s += c1.g + c2.g + c3.g;
+
+  return envolver(W, Math.max(H, c3.fim + 30), 'Os grupos de uma fila FIFO no anel',
+    'Matriz com os grupos g1 a g4 da fila pedidos-fifo nas linhas e os nós A, B, C e D nas colunas. Cada grupo tem um primário, um secundário e um terciário, e todas as mensagens de um grupo ficam nos mesmos nós.', s);
+}
+
 writeFileSync(saida('anel-hash.svg'), anel());
 writeFileSync(saida('topico-espalhado.svg'), topico());
-console.log('gerados: doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg');
+writeFileSync(saida('fifo-grupos.svg'), fifo());
+console.log('gerados: doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg, doc/diagramas/img/fifo-grupos.svg');

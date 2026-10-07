@@ -517,15 +517,15 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="165" y="331" class="t-muted" font-size="9" text-anchor="middle">ReceiptToken, PATCH, expiração</text>
         </g>
 
-        <g id="node-topicos" data-node-id="topicos" data-node-label="4. Tópicos" tabindex="0" role="button" aria-label="Focus 4. Tópicos, fila, distribuidor e volátil, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="fila, distribuidor e volátil" data-node-context="Architecture component">
-          <title>4. Tópicos · fila, distribuidor e volátil · Architecture component</title>
+        <g id="node-topicos" data-node-id="topicos" data-node-label="4. Tópicos" tabindex="0" role="button" aria-label="Focus 4. Tópicos, fila, FIFO, distribuidor e volátil, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="fila, FIFO, distribuidor e volátil" data-node-context="Architecture component">
+          <title>4. Tópicos · fila, FIFO, distribuidor e volátil · Architecture component</title>
           <rect x="40" y="395" width="250" height="64" rx="6" class="c-mask"/>
           <rect x="40" y="395" width="250" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(46 401) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="165" y="425" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">4. Tópicos</text>
-        <text x="165" y="441" class="t-muted" font-size="9" text-anchor="middle">fila, distribuidor e volátil</text>
+        <text x="165" y="441" class="t-muted" font-size="9" text-anchor="middle">fila, FIFO, distribuidor e volátil</text>
         </g>
 
         <g id="node-cluster" data-node-id="cluster" data-node-label="5. Cluster e membros" tabindex="0" role="button" aria-label="Focus 5. Cluster e membros, balanceador, canal, voto 51%, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="balanceador, canal, voto 51%" data-node-context="Architecture component">

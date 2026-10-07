@@ -125,7 +125,8 @@
       "items": [
         "Cada cópia é independente",
         "Sem rollback global entre filas",
-        "Erro por fila na resposta, não no distribuidor"
+        "Erro por fila na resposta, não no distribuidor",
+        "Fila FIFO sem groupId: erro só nessa fila"
       ]
     },
     {

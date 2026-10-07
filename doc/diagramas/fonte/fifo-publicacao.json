@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Publicação numa fila FIFO",
+    "output": "doc/diagramas/html/fifo-publicacao.html",
+    "viewBox": [
+      1080,
+      556
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "prod",
+      "type": "external",
+      "label": "Produtor",
+      "sublabel": "cliente"
+    },
+    {
+      "id": "recv",
+      "type": "backend",
+      "label": "Nó que recebe",
+      "sublabel": "qualquer nó"
+    },
+    {
+      "id": "prim",
+      "type": "security",
+      "label": "Primário do grupo",
+      "sublabel": "coordena e ordena"
+    },
+    {
+      "id": "reps",
+      "type": "cloud",
+      "label": "Secundário e réplicas",
+      "sublabel": "mesmo bloco do grupo"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 214,
+      "label": "Repasse"
+    },
+    {
+      "from": 222,
+      "to": 334,
+      "label": "Primário coordena"
+    },
+    {
+      "from": 342,
+      "to": 426,
+      "label": "Resposta"
+    }
+  ],
+  "messages": [
+    {
+      "id": "pub",
+      "from": "prod",
+      "to": "recv",
+      "y": 172,
+      "label": "POST com groupId",
+      "variant": "security",
+      "note": "hash(id do tópico + groupId)"
+    },
+    {
+      "id": "fwd",
+      "from": "recv",
+      "to": "prim",
+      "y": 200,
+      "label": "repassa ao primário do grupo",
+      "note": "421 se não for o dono"
+    },
+    {
+      "id": "reg",
+      "from": "prim",
+      "to": "reps",
+      "y": 236,
+      "label": "registro (ID monotônico, deduplicationId)"
+    },
+    {
+      "id": "ok",
+      "from": "reps",
+      "to": "prim",
+      "y": 264,
+      "label": "quórum: primário + secundário",
+      "variant": "return"
+    },
+    {
+      "id": "com",
+      "from": "prim",
+      "to": "reps",
+      "y": 292,
+      "label": "commit por quórum",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bg",
+      "from": "prim",
+      "to": "reps",
+      "y": 320,
+      "label": "demais réplicas em segundo plano",
+      "variant": "dashed"
+    },
+    {
+      "id": "r1",
+      "from": "prim",
+      "to": "recv",
+      "y": 356,
+      "label": "201 com o ID",
+      "variant": "return"
+    },
+    {
+      "id": "r2",
+      "from": "recv",
+      "to": "prod",
+      "y": 384,
+      "label": "201 com o ID da mensagem",
+      "variant": "return"
+    },
+    {
+      "id": "dup",
+      "from": "prim",
+      "to": "recv",
+      "y": 412,
+      "label": "duplicada: 200, ID da original",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Colocação",
+      "items": [
+        "Posição no anel: id do tópico + groupId",
+        "Um grupo, um bloco, um primário",
+        "O primário gera o ID: max(agora, último + 1)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Quórum",
+      "items": [
+        "Sempre o primário e o secundário",
+        "O secundário é o herdeiro do bloco",
+        "replication.factor mínimo de 2"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Falhas",
+      "items": [
+        "Primário sincronizando ou fora do ar: 503",
+        "Repasse e cliente podem repetir: o primário deduplica",
+        "Tabela velha no repasse: 421 e nova tentativa"
+      ]
+    }
+  ]
+}

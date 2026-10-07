@@ -8,7 +8,7 @@ Sistema de mensageria **altamente escalável, rápido e simples**, inspirado no 
  
 A aplicação expõe uma API enxuta em que o cliente envia mensagens para um **tópico**, que pode ser de dois tipos:
  
-- **Tópico Fila (QT, *Queue Topic*):** guarda as mensagens, e cada uma é consumida por apenas um consumidor. Pode ser **volátil**: some sozinho se ficar sem consumidor por um tempo configurável.
+- **Tópico Fila (QT, *Queue Topic*):** guarda as mensagens, e cada uma é consumida por apenas um consumidor. Pode ser **volátil**: some sozinho se ficar sem consumidor por um tempo configurável. Pode ser **FIFO**: entrega cada grupo de mensagens (`groupId`) em ordem, uma por vez, e deduplica as publicações ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16).
 - **Tópico Distribuidor (DT, *Distributor Topic*):** não guarda mensagens; copia cada publicação para todas as filas cujo nome começa com um dos prefixos que ele distribui.
 
 O QT é o análogo do Amazon SQS e o DT é o análogo do Amazon SNS (análogos, não equivalentes). Nomenclatura e siglas em [15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.

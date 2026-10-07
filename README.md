@@ -13,6 +13,7 @@ Se você quer sair da cobrança por mensagem, de um cluster de brokers para oper
 - **Sempre disponível:** cada tópico é espalhado e replicado. Se um nó cai, o cluster segue de pé, e o nó volta sozinho quando se recupera.
 - **Escala sem esforço:** um nó novo entra no cluster, se descobre sozinho e assume a sua parte. Não há coordenador para configurar.
 - **Custo quase zero:** sem cobrança por mensagem e sem obrigação de nuvem. Você paga só pela máquina em que roda.
+- **Filas FIFO:** ordem de entrega por grupo e deduplicação de publicações, para quando a sequência importa.
 - **API simples:** poucas rotas HTTP, sem SDK obrigatório e sem protocolo novo para aprender.
 - **Clientes simples nas principais linguagens:** Java, C#, C++, Rust, Python, Ruby, PHP e outras (veja [Clientes](#clientes)).
 - **Open source (AGPLv3):** o código é aberto e, se alguém oferecer o Taba como serviço com modificações, precisa compartilhá-las sob a mesma licença.

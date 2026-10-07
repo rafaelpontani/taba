@@ -43,8 +43,8 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
 |---|---|---|---|---|
-| Fator de replicação | `replication.factor` | **3** | Número total de nós responsáveis (primário + réplicas) que devem acabar recebendo a mensagem — a durabilidade "plena", alcançada em segundo plano quando o quórum é menor que o total. | 3.1, 7.1, 7.2 |
-| Quórum mínimo de escrita | `write.quorum` | `floor(replication.factor / 2) + 1` (**2** em 3, **3** em 5, **1** com fator 1) | Número de confirmações — **sempre incluindo o primário do bloco** (nunca um quórum só de réplicas) — suficiente para decidir o commit e responder ao cliente, sem esperar as demais réplicas. Só vale para **mensagens** (escrita, entrega/invisibilidade, ack); registro de nó e definição de tópico continuam exigindo todos os nós, sem quórum reduzido. | 3.1, 7.2 | **Valor único** para escrita, entrega e ack. Validação: de 1 até `replication.factor`; abaixo da maioria é aceito, mas permite perder dados se o primário e a réplica confirmada caírem juntos. Sem nós suficientes respondendo para o quórum, a operação falha antes de decidir e a API responde `503` com `Retry-After`.
+| Fator de replicação | `replication.factor` | **3** | Número total de nós responsáveis (primário + réplicas) que devem acabar recebendo a mensagem — a durabilidade "plena", alcançada em segundo plano quando o quórum é menor que o total. Uma fila FIFO exige pelo menos **2** (seção 16.2 de [17-topicos-fifo.md](17-topicos-fifo.md)). | 3.1, 7.1, 7.2 |
+| Quórum mínimo de escrita | `write.quorum` | `floor(replication.factor / 2) + 1` (**2** em 3, **3** em 5, **1** com fator 1) | Número de confirmações — **sempre incluindo o primário do bloco** (nunca um quórum só de réplicas) — suficiente para decidir o commit e responder ao cliente, sem esperar as demais réplicas. Só vale para **mensagens** (escrita, entrega/invisibilidade, ack); na fila FIFO inclui também o **secundário** (seção 16.5 de [17-topicos-fifo.md](17-topicos-fifo.md)); registro de nó e definição de tópico continuam exigindo todos os nós, sem quórum reduzido. | 3.1, 7.2 | **Valor único** para escrita, entrega e ack. Validação: de 1 até `replication.factor`; abaixo da maioria é aceito, mas permite perder dados se o primário e a réplica confirmada caírem juntos. Sem nós suficientes respondendo para o quórum, a operação falha antes de decidir e a API responde `503` com `Retry-After`.
 | Retry de registro/commit de mensagem | `write.retry.attempts`, `write.retry.backoff` | A definir | Tentativas (e intervalo/backoff) ao repetir a chamada ao nó que falhou, tanto no registro quanto no commit. | 3.1, 7.2 |
 | Expiração de registro pendente | `write.pending.ttl` | A definir | Tempo após o qual um registro (fase 1) sem commit é descartado sozinho, se ainda não chegou rollback. Só se aplica **antes** do quórum decidir; depois disso não há mais descarte. | 3.1 |
 | Teto do commit (fase 2) | `write.commit.timeout` | A definir | Tempo máximo que o coordenador insiste no commit **nas réplicas fora do quórum**, depois de já ter respondido ao cliente. Esgotado o teto sem confirmação em alguma réplica, o coordenador **não faz rollback** (o quórum, com o primário, já efetivou a mensagem) e continua tentando em segundo plano — o bloco fica temporariamente abaixo do fator de replicação pleno, mas nunca abaixo do quórum. | 3.1, 7.2 |
@@ -110,6 +110,16 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Sufixo da fila de dead-letter | `topics.dead-letter.suffix` | **`-dead-letter`** | Sufixo do nome da fila de dead-letter de cada fila. Reservado: tópico com nome terminado nele não pode ser criado (`400`). Mudar o sufixo com filas existentes exige migração; vale definir antes de criar tópicos. | 12.10 |
 | Intervalo da varredura de expiração | `retention.sweep.interval` | **60 s** | De quanto em quanto tempo cada nó varre as próprias mensagens e apaga as vencidas pelo `ttl`. O dono já não entrega mensagem vencida entre uma varredura e outra. | 12.10 |
 
+## Filas FIFO
+
+| Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
+|---|---|---|---|---|
+| Janela de deduplicação | `fifo.dedup.window` | **300 s** (5 min) | Tempo, a partir do instante do ID, em que uma publicação com o mesmo `deduplicationId` (ou o mesmo hash do corpo) no mesmo grupo é descartada como duplicata. Também é o prazo do `deleteAt` da mensagem confirmada. | 16.7 |
+| Índice de deduplicação em memória | `fifo.dedup.index.max-entries` | A definir | Máximo de chaves da janela mantidas em memória, por tópico; o excedente é consultado no banco do tópico. | 16.7 |
+| Tentativas do repasse ao primário | `fifo.forward.max-attempts` | A definir | Quantas vezes o nó que recebeu a publicação a repassa de novo, com a tabela de membros atualizada, quando o primário responde `421`. Esgotado, `503` com `Retry-After`. | 16.4 |
+
+> A fila FIFO exige `replication.factor` de pelo menos 2 e usa `write.quorum` sempre com o primário e o secundário (seção 16.5). A varredura do `deleteAt` usa `retention.sweep.interval`.
+
 ## Tópicos voláteis e distribuidores
 
 | Parâmetro | Chave sugerida | Padrão | Descrição | Seção |
@@ -141,6 +151,7 @@ Todo parâmetro pode ser definido por **variável de ambiente**. Convenção: pr
 | Cache das métricas de tópico | `stats.topics.cache-ttl` | A definir | Validade do resultado agregado de `/stats/topics` (evita repetir a consulta a todos os nós). | 8.1.1 |
 | Limiar de `backlog` | `stats.topics.backlog.depth`, `stats.topics.backlog.age` | A definir | `depth` e `oldestAge` acima dos quais o tópico entra na condição `backlog`. | 8.1.1 |
 | Parcela do grupo barulhento | `stats.topics.noisy-group-share` | **50** (%) | Parcela do `depth` do tópico acima da qual o maior grupo dispara a condição `noisy-group`. | 8.1.1 |
+| Entregas para `group-stalled` | `stats.topics.group-stalled-deliveries` | A definir (sugestão: 5) | Número de entregas da cabeça de um grupo de fila FIFO, sem ack, acima do qual dispara a condição `group-stalled`. | 8.1.1 |
 | Limiar de `stalled` | `stats.topics.stalled-after` | A definir | Tempo sem consumo, com mensagens acumuladas, para a condição `stalled`. | 8.1.1 |
 | Limiar de `idle` | `stats.topics.idle-after` | A definir | Tempo sem publicação nem consumo para a condição `idle`. | 8.1.1 |
 | Espaço livre mínimo em disco | `stats.disk.free-min` | A definir | Abaixo disso o cluster entra na condição `storage-pressure`. | 8.1.1 |

@@ -72,6 +72,7 @@ O modo é escolhido na partida, por `mode` (`TABA_MODE`): **`production`** (padr
 | Definição de tópicos e filas voláteis (3.3, 14) | Aplicada só no nó; o nó é o gestor de todas as filas voláteis. |
 | Rotas `/cluster/*` | Desabilitadas (`404`). Outro nó não consegue ingressar. |
 | Entrega justa por grupos (12.11) | Vale igual, com contagem exata. |
+| Fila FIFO ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16) | Funciona igual: o nó é o primário de todos os grupos, sem repasse, e o quórum vale 1 (não se exige secundário nem `replication.factor` 2). Ordem, entrega por grupo e deduplicação são as mesmas. |
 | Modo drain (6.10) | Vale a parte local. Sem outro nó, as chamadas de cliente durante o drain respondem `503`. O drain serve de **save**: na partida seguinte o nó retoma do disco (ver "Modo desenvolvimento: o drain como save", seção 6.10). |
 | Observabilidade | `/stats/cluster` e `scope=cluster` devolvem o mesmo que `scope=node`; as métricas `msg.cluster.*` não existem; o Prometheus lê o nó, com uma série só. |
 
@@ -153,6 +154,7 @@ O **nó em drain** (seção 6.10) faz o mesmo repasse: segue recebendo chamadas 
 - **Falha do destino:** antes de o corpo ser enviado (conexão recusada), tenta outro nó, até um teto pequeno de tentativas. Depois de enviado, **não repete**: um `POST` de mensagem repetido duplicaria a publicação, já que o ID é gerado no coordenador. Responde `502` ou `504` e o cliente decide.
 - **Rate limit e IP:** o limite é aplicado uma vez, no nó que recebeu a chamada, por IP do cliente ([12-limites-api.md](12-limites-api.md)); o destino não conta de novo a chamada marcada. O IP do cliente já resolvido segue em cabeçalho interno.
 - **Sem destino:** se nenhum outro nó responde, `503` com `Retry-After`.
+- **Publicação em fila FIFO:** mesmo com o nó pronto, a publicação numa fila FIFO é **repassada ao primário do grupo** (o destino é o dono do grupo, não o nó mais livre). O primário confere se é o dono (`421` se não for), e na FIFO a repetição depois de enviado o corpo é segura, porque o primário deduplica ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.4).
 
 ### 6.10 Parada e manutenção: modo drain
 

@@ -68,7 +68,7 @@
       "id": "topicos",
       "type": "cloud",
       "label": "4. Tópicos",
-      "sublabel": "fila, distribuidor e volátil",
+      "sublabel": "fila, FIFO, distribuidor e volátil",
       "pos": [
         40,
         395

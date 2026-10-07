@@ -121,6 +121,9 @@ Lado **réplica** (nó responsável pelo bloco):
 | `msg.delivery.redeliveries` | counter | {message} | — | Entregas de mensagens já entregues antes (`deliveryCount` > 1). |
 | `msg.delivery.dead_lettered` | counter | {message} | — | Mensagens enviadas ao dead-letter por terem atingido `maxDeliveries` (seção 12.10). Crescimento contínuo indica mensagem que nenhum consumidor consegue confirmar. |
 | `msg.retention.expired` | counter | {message} | — | Mensagens descartadas por `ttl` (varredura local, ou descartadas na entrega ou na sincronização). |
+| `msg.fifo.deduplicated` | counter | {message} | — | Publicações em fila FIFO descartadas por deduplicação ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7). |
+| `msg.fifo.forward` | counter | {request} | `outcome` (`ok`/`misdirected`/`error`) | Publicações FIFO repassadas ao primário do grupo (seção 16.4). `misdirected` é o `421` do primário que não é mais o dono. |
+| `msg.fifo.groups.busy` | gauge | {group} | — | Grupos de filas FIFO com mensagem em voo neste nó (seção 16.6). |
 | `msg.delivery.longpoll.waiting` | gauge | {request} | — | Chamadas de long polling aguardando neste nó. |
 | `msg.delivery.longpoll.outcome` | counter | {request} | `outcome` (`delivered`/`empty`/`disconnected`) | Como terminaram as chamadas de long polling. |
 | `msg.delivery.take` | counter | {request} | `direction` (`in`/`out`), `outcome` (`delivered`/`empty`/`error`) | Pedidos de entrega a outro dono (`/messages/take`). |
@@ -278,7 +281,8 @@ Também uma **lista de condições**, com o campo `status` sendo a de maior seve
 | `idle` | info | Sem publicação nem consumo há `stats.topics.idle-after`. |
 | `backlog` | aviso | `depth` ou `oldestAge` acima do limite. |
 | `stalled` | aviso | Há mensagens (`depth > 0`) mas **nenhum consumo** há `stats.topics.stalled-after` — consumidor parado ou ausente. |
-| `noisy-group` | info | Há dois ou mais grupos e o maior ocupa mais de `stats.topics.noisy-group-share` do `depth` (padrão 50%). O grupo está em `topGroups`. |
+| `noisy-group` | info | Há dois ou mais grupos e o maior ocupa mais de `stats.topics.noisy-group-share` do `depth` (padrão 50%). O grupo está em `topGroups`. Numa fila FIFO indica também o **grupo quente**, que concentra a fila num só primário ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.10). |
+| `group-stalled` | aviso | Só em fila FIFO: a cabeça de algum grupo já foi entregue mais de `stats.topics.group-stalled-deliveries` vezes sem ack, travando o grupo. O grupo está em `topGroups`. |
 | `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` >> `memoryMessages`): leituras mais lentas. |
 
 ### Visão do nó e visão do cluster
@@ -467,6 +471,7 @@ Eventos pontuais, não condições de saúde do nó nem do cluster ([15-topicos-
 | `volatile-deleted` | Fila volátil excluída por ociosidade. |
 | `volatile-check-blocked` | O gestor não concluiu a verificação final porque algum nó não respondeu. |
 | `message-dead-lettered` | Mensagem enviada ao dead-letter ao atingir `maxDeliveries`. Atributos: fila, ID, `deliveryCount`. |
+| `message-deduplicated` | Publicação em fila FIFO descartada por deduplicação. Atributos: fila, `groupId`, `deduplicationId`, ID da mensagem original. Em volume, use a métrica `msg.fifo.deduplicated`. |
 | `message-expired` | Mensagem descartada por `ttl`. Atributos: fila, ID, idade. Em volume, pode ser amostrado ou agregado pela métrica `msg.retention.expired`. |
 
 ## Ainda em aberto

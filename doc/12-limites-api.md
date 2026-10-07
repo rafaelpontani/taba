@@ -18,6 +18,9 @@ Regras de formato, aplicadas na criação/alteração de recursos, sem relação
 - **`maxDeliveries` de fila**: de 1 a 1000; fora da faixa, `400` (seção 12.10).
 - **Nome de fila com dead-letter**: a fila de dead-letter acrescenta o sufixo ao nome (até 112 caracteres com `-dead-letter`), e o `{topic}` das rotas a aceita; nome criado terminado no sufixo é reservado, `400`.
 - **`groupId` da mensagem**: de 1 a 128 caracteres, `A-Za-z0-9_-.:`; fora disso, `400` ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.11).
+- **`groupId` na fila FIFO**: obrigatório; ausente, `400` ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.2).
+- **`deduplicationId`** (só em fila FIFO): de 1 a 128 caracteres, `A-Za-z0-9_-.:`; fora disso, ou numa fila que não é FIFO, `400` (seção 16.2).
+- **Fila FIFO e fator de replicação**: criar uma fila FIFO com `replication.factor` abaixo de 2 é recusado com `422` (seção 16.2).
 - **Long polling** (`waitTime` no `GET /topics/{topic}/messages`): de 0 a 20 segundos, padrão 0 (responde na hora). Valor fora da faixa é rejeitado com `400`. Ver [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md).
 
 ## Limites configuráveis, sem teto por padrão
