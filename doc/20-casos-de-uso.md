@@ -72,13 +72,13 @@ Regras:
 - Um teste pode cobrir vários casos, e um caso pode ter vários testes. Um caso só está **coberto** quando existe ao menos um teste no nível indicado na coluna "Nível". Quando o nível lista mais de um (`U, I`), deve haver um teste em cada.
 - Não se cita um código que não existe nestes arquivos.
 
-**Verificação de cobertura (a fazer).** Um script, rodado no CI, deve ler os códigos destes arquivos e os códigos citados nos testes e falhar quando:
+**Verificação de cobertura.** O teste `crates/taba-node/tests/uc_coverage.rs` lê os códigos destes arquivos (as linhas de tabela que começam por `| UC-`) e os códigos citados em `crates/taba-node/src/` e `crates/taba-node/tests/`, e falha quando:
 
-1. algum código documentado (que não esteja `(retirado)`) não aparece em nenhum teste;
-2. algum teste cita um código que não existe;
-3. algum código aparece duas vezes na documentação.
+1. algum teste cita um código que não existe, ou que está `(retirado)`;
+2. algum código aparece duas vezes na documentação;
+3. algum código documentado (que não esteja `(retirado)`) não aparece em nenhum teste. Esta regra só falha com `TABA_UC_STRICT=1`: enquanto a implementação está no começo, o teste só imprime o placar (`cargo test --test uc_coverage -- --nocapture`). Ela passa a valer sempre, no CI, quando o protótipo de nó único (passo 3 de [08c-proximos-passos.md](08c-proximos-passos.md)) cobrir os casos de nível `I`.
 
-O script ainda não existe: entra no passo 3 de [08c-proximos-passos.md](08c-proximos-passos.md), junto do protótipo de nó único.
+A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código num teste unitário não prova o caso de nível `I`, e quem revisa precisa olhar a coluna "Nível".
 
 ### 19.6 Índice de áreas
 
@@ -108,7 +108,7 @@ O script ainda não existe: entra no passo 3 de [08c-proximos-passos.md](08c-pro
 |---|---|---|---:|
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | [05 §7.2](05-particionamento-replicacao.md), [02 §3.1](02-arquitetura.md) | 36 |
 | `ANE` | Anel de hash, blocos e papéis | [05 §7.1](05-particionamento-replicacao.md) | 12 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | [02 §3.3 e 3.4](02-arquitetura.md) | 23 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | [02 §3.3 e 3.4](02-arquitetura.md) | 24 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | [13 §12.6 a 12.8](13-entrega-de-mensagens.md) | 31 |
 | `CAN` | Canal permanente entre nós e filas de sinais | [13 §12.8 e 12.9](13-entrega-de-mensagens.md), [06c](06c-api-cluster.md) | 24 |
 | `INV` | Invisibilidade no dono e nas réplicas | [14](14-invisibilidade.md) | 32 |
@@ -131,9 +131,9 @@ O script ainda não existe: entra no passo 3 de [08c-proximos-passos.md](08c-pro
 | `SEG` | Portas, TLS mútuo e certificados do cluster | [06 §8.0](06-api.md) | 21 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | [11](11-observabilidade.md), [06b](06b-api-operacao.md) | 42 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
-| `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 8 |
+| `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 801 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 806 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 

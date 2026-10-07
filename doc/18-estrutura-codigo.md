@@ -29,12 +29,12 @@ Escolhas iniciais, trocáveis sem mexer no desenho:
 | HTTP (três listeners) | `axum` + `hyper` | Portas de cliente, cluster e operação ([06-api.md](06-api.md), seção 8.0) |
 | TLS mútuo com recarga | `rustls` (verifier e resolver próprios) | [06-api.md](06-api.md), seção 8.0.1 |
 | WebSocket do canal | `axum` (ws) / `tokio-tungstenite` | [04-cluster.md](04-cluster.md), seção 6.1 |
-| SQLite por tópico | `rusqlite` (síncrono, em thread dedicada) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
+| SQLite (`_node.db` e um banco por tópico) | `rusqlite` com a SQLite embutida (`bundled`: o build precisa de um compilador C) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | JSON e NDJSON | `serde`, `serde_json` | [06d-api-convencoes.md](06d-api-convencoes.md), [06c-api-cluster.md](06c-api-cluster.md), seção 8.2.1 |
 | GUID v7 | `uuid` (feature `v7`) | IDs de mensagem, tópico, nó e token |
 | Logs e traces | `tracing` | [11-observabilidade.md](11-observabilidade.md) |
 | OTLP e Prometheus | `opentelemetry` + exportador de texto Prometheus | Uma instrumentação, dois exportadores |
-| Configuração | `serde` + variáveis `TABA_*` | [10-configuracao.md](10-configuracao.md) |
+| Configuração | `serde` + `serde_norway` (YAML) + variáveis `TABA_*`; `ipnet` para IPs e faixas CIDR | [10-configuracao.md](10-configuracao.md) |
 
 ### 17.3 Estrutura: um workspace, começando por um crate
 
@@ -49,18 +49,26 @@ taba/
   Cargo.toml                workspace
   doc/                      documentação
   crates/
-    taba-node/              binário `taba`
+    taba-node/              biblioteca `taba_node` e binário `taba`
       Cargo.toml
       src/
-        main.rs             composition root: config, criação das peças, sinais
-        core/               tipos de domínio, anel de hash, GUID v7, erros   (sem I/O)
+        main.rs             composition root: linha de comando, configuração, sinais
+        lib.rs              os módulos abaixo; os testes de integração usam a biblioteca
+        cli.rs              argumentos do binário
+        node.rs             subida do nó: disco, estado, listeners
+        config/             arquivo .yml, variáveis TABA_*, tabela de parâmetros, validações
+        core/               tipos de domínio, relógio, GUID v7, erros, validações   (sem I/O)
         storage/            memória, overflow em disco, SQLite, sync.db, _node.db
         engine/             tópicos, listas de prontos e invisíveis, entrega justa, FIFO, dead-letter
         cluster/            membros, votação, freezing, canal, registro + commit, sincronização, drain
         http/               as três APIs, autenticação, rate limit, mTLS
         telemetry/          métricas, traces, logs
-  tests/                    testes de integração (cluster simulado, seção 17.5)
+      tests/                testes de integração (um nó real, seção 17.5; o cluster simulado entra com o `Transport`)
+        common/mod.rs       `TestNode`: nó em portas livres, disco numa pasta temporária
+        uc_coverage.rs      confere os códigos de caso de uso citados nos testes (doc 20, seção 19.5)
 ```
+
+Os testes unitários ficam num arquivo irmão do módulo (o módulo `foo` é a pasta `foo/`, com `mod.rs` e `tests.rs` lado a lado; o `mod.rs` termina com `#[cfg(test)] mod tests;`). Assim o código fica limpo e os testes continuam enxergando os itens privados do módulo. Os de integração ficam em `crates/taba-node/tests/`, pois o Cargo só os acha dentro do crate; o `main.rs` é fino justamente para a biblioteca poder ser subida pelos testes.
 
 **Crates-alvo.** Quando o motivo existir, o módulo vira crate com este nome:
 
@@ -78,9 +86,9 @@ taba/
 core  ←  storage  ←  engine  ←  cluster  ←  http  ←  node (main)
 ```
 
-Cada camada conhece só as da esquerda. O `core` não conhece nada.
+Cada camada conhece só as da esquerda. O `core` não conhece nada. O `config` fica ao lado da cadeia: só depende do `core`, e o `main` e o `node` o entregam às demais camadas, que usam os tipos dele (`Mode`, por exemplo) mas nunca o leem do arquivo nem do ambiente.
 
-**Traits ficam no lado de quem os usa**, não num crate de abstrações central: o `engine` define o trait de que precisa do storage, e o `storage` o implementa.
+**Traits ficam na camada mais baixa de que o chamador precisa**, não num crate de abstrações central. Como as dependências só andam para a direita, o trait de armazenamento que o `engine` usa mora no `storage` (por exemplo, `TopicStore`), junto das implementações real (`FileTopicStore`) e de teste (`MemoryTopicStore`); o `main` escolhe qual entregar.
 
 ### 17.4 Regras de código
 
@@ -100,7 +108,9 @@ Num sistema distribuído, o teste mais valioso sobe vários nós no mesmo proces
 | `Clock` | Relógio do sistema | Relógio manual (invisibilidade, `ttl`, freezing, votação) |
 | `Storage` | SQLite + arquivos | Memória |
 
-Com eles, `tests/` cobre quórum, rollback antes e depois da decisão, freezing, votação, sincronização com o banco de eventos e o retorno de nó excluído, sem rede real e de forma determinística.
+Estado atual: o `Clock` existe (`core/clock.rs`, com `SystemClock` e `ManualClock`). O `Transport` e o `Storage` entram com o primeiro comportamento que os usa, no lado de quem os usa (seção 17.3), para o trait nascer do que o chamador precisa e não de um palpite.
+
+Com eles, os testes de integração (`crates/taba-node/tests/`) cobrem quórum, rollback antes e depois da decisão, freezing, votação, sincronização com o banco de eventos e o retorno de nó excluído, sem rede real e de forma determinística.
 
 ### 17.6 Impacto em outros pontos da documentação
 

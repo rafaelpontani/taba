@@ -216,7 +216,7 @@ Regras: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10.
 | UC-RET-009 | Na dead-letter a mensagem mantém o **mesmo `id`**, com `deliveryCount: 0`, `invisibleUntil` zerado, `deadLetteredAt` e `deadLetterReason: max-deliveries`. | 13 §12.10 | I |
 | UC-RET-010 | A mensagem na dead-letter cai no mesmo bloco e nos mesmos nós da mensagem original (mesmo `id`). | 13 §12.10 | U, C |
 | UC-RET-011 | O movimento para a dead-letter é **uma operação** de registro + commit (cria na dead-letter e remove da fila de origem). Falha antes do quórum: rollback, a mensagem segue na fila e o dono tenta de novo na próxima volta. | 13 §12.10 | C |
-| UC-RET-012 | A dead-letter não tem definição própria: não há arquivo em `_topics/` e as configurações são as da fila de origem. | 13 §12.10, 02 §3.3 | I |
+| UC-RET-012 | A dead-letter não tem definição própria: não há linha na tabela `topicos` e as configurações são as da fila de origem. | 13 §12.10, 02 §3.3 | I |
 | UC-RET-013 | A dead-letter não tem dead-letter: a mensagem lá só sai por ack ou por `ttl` (contado de `deadLetteredAt`). | 13 §12.10 | I |
 | UC-RET-014 | A dead-letter é um tópico comum para consumo, ack e publicação: dá para devolver uma mensagem corrigida à fila de origem. | 13 §12.10 | I |
 | UC-RET-015 | O sufixo da dead-letter é configurável (`topics.dead-letter.suffix`) e passa a ser o nome reservado. | 10 | U, I |

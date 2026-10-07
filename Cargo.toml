@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["crates/taba-node"]
+
+[workspace.package]
+version = "0.9.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+repository = "https://github.com/rafaelpontani/taba"

@@ -19,11 +19,11 @@ Podem ser usadas juntas. Ordem de precedência, da maior para a menor:
 2. arquivo `.yml`;
 3. valor padrão da tabela.
 
-**Arquivo.** O caminho vem de `--config <caminho>` ou da variável `TABA_CONFIG_FILE` (sugestão de padrão: `/etc/taba/taba.yml`). Sem o arquivo, o nó usa só as variáveis e os padrões. Um caminho informado que não existe impede a subida.
+**Arquivo.** O caminho vem de `--config <caminho>` ou da variável `TABA_CONFIG_FILE` (padrão: `/etc/taba/taba.yml`). Sem o arquivo, o nó usa só as variáveis e os padrões. Um caminho informado que não existe impede a subida, e o padrão ausente, não. Uma chave que não é parâmetro (um erro de digitação) impede a subida, com o nome dela na mensagem; uma variável `TABA_*` que não é parâmetro só gera um aviso no log.
 
 **Nome da variável.** Prefixo `TABA_`, chave em maiúsculas com `.` e `-` trocados por `_` (ex.: `topics.distributor.max-targets` vira `TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS`). As exceções são as variáveis padrão do OpenTelemetry (`OTEL_*`), que não levam o prefixo e não têm chave no YAML (ver "Observabilidade").
 
-**Valores.** Listas (`operations.allowed-ips`, `client-ip.headers`, `client-ip.trusted-proxies`) são YAML nativo no arquivo e texto separado por vírgula na variável. Durações e tamanhos usam a mesma forma nos dois (ex.: `60s`, `5MB`). **Sem limite** significa que o teto não existe enquanto o parâmetro não for definido.
+**Valores.** Listas (`operations.allowed-ips`, `client-ip.headers`, `client-ip.trusted-proxies`) são YAML nativo no arquivo e texto separado por vírgula na variável. Durações e tamanhos usam a mesma forma nos dois (ex.: `60s`, `5MB`). Toda duração leva unidade (`ms`, `s`, `m`, `h` ou `d`; `60` sozinho é recusado), e os tamanhos usam unidades binárias (`KB`, `MB`, `GB` e `TB`; `5MB` são 5.242.880 bytes, e um número sozinho são bytes). Uma variável vazia vale como não definida. **Sem limite** significa que o teto não existe enquanto o parâmetro não for definido.
 
 **Exemplo.** A mesma configuração nos dois formatos:
 
@@ -65,8 +65,8 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 
 | Parâmetro | Variável de ambiente | Chave no YAML | Padrão | Descrição | Seção |
 |---|---|---|---|---|---|
-| Porta da API de cliente | `TABA_API_PORT` | `api.port` | A definir (sugestão: 8080) | Porta das rotas da API de cliente (seção 8.1). Sem `operations.port`, serve também as rotas de operação. Responde `404` a `/cluster/*`. | 8.0 |
-| Porta do cluster | `TABA_CLUSTER_PORT` | `cluster.port` | A definir (sugestão: 8081) | Porta das rotas `/cluster/*` e do canal WebSocket entre nós. É a que a tabela de membros guarda e a que o `cluster.entry-address` aponta. Só os outros nós devem alcançá-la; **não publicar** no balanceador de clientes. Ignorada em `mode=development`, em que não é aberta. | 8.0, 8.2 |
+| Porta da API de cliente | `TABA_API_PORT` | `api.port` | **8080** | Porta das rotas da API de cliente (seção 8.1). Sem `operations.port`, serve também as rotas de operação. Responde `404` a `/cluster/*`. | 8.0 |
+| Porta do cluster | `TABA_CLUSTER_PORT` | `cluster.port` | **8081** | Porta das rotas `/cluster/*` e do canal WebSocket entre nós. É a que a tabela de membros guarda e a que o `cluster.entry-address` aponta. Só os outros nós devem alcançá-la; **não publicar** no balanceador de clientes. Ignorada em `mode=development`, em que não é aberta. | 8.0, 8.2 |
 | Porta das rotas de operação | `TABA_OPERATIONS_PORT` | `operations.port` | Vazio (mesma porta da API) | Ver a seção "Observabilidade" abaixo. | 8.0, 8.1.1 |
 
 ### Segurança da porta do cluster
@@ -96,7 +96,7 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 | Parâmetro | Variável de ambiente | Chave no YAML | Padrão | Descrição | Seção |
 |---|---|---|---|---|---|
 | Drain ao receber sinal de parada | `TABA_DRAIN_ON_STOP` | `drain.on-stop` | **true** | Ao receber `SIGTERM` ou `SIGINT`, o nó entra em modo drain (todas as mensagens vão para o disco, o nó sai da rotação) e só então encerra. `false` encerra na hora, como uma queda. | 6.10 |
-| Prazo do drain | `TABA_DRAIN_TIMEOUT` | `drain.timeout` | A definir (sugestão: 25 s) | Tempo máximo do drain inteiro: esvaziar a memória no disco e concluir o desregistro voluntário. Inclui esperar as chamadas repassadas terminarem. Esgotado, o nó registra o que sobrou e encerra (se foi por sinal), e o cluster cai na detecção e votação de sempre. Deve ser **menor** que o prazo de parada do orquestrador (`terminationGracePeriodSeconds`, 30 s por padrão no Kubernetes). | 6.10 |
+| Prazo do drain | `TABA_DRAIN_TIMEOUT` | `drain.timeout` | **25 s** | Tempo máximo do drain inteiro: esvaziar a memória no disco e concluir o desregistro voluntário. Inclui esperar as chamadas repassadas terminarem. Esgotado, o nó registra o que sobrou e encerra (se foi por sinal), e o cluster cai na detecção e votação de sempre. Deve ser **menor** que o prazo de parada do orquestrador (`terminationGracePeriodSeconds`, 30 s por padrão no Kubernetes). | 6.10 |
 
 ## Armazenamento e memória
 
@@ -105,7 +105,14 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 | Limite de memória por nó | `TABA_MEMORY_LIMIT` | `memory.limit` | A definir | Espaço em memória destinado às mensagens (ex.: MB/GB). Ao atingir o limite, as mensagens excedentes vão para disco (overflow). | 3.2 |
 | Janela da taxa de leitura | `TABA_MEMORY_RATE_WINDOW` | `memory.rate.window` | **5 minutos** | Janela da média móvel de `consumeRate` e `publishRate`, que decide a divisão da memória entre tópicos. | 3.2 |
 | Reserva mínima de memória por tópico | `TABA_MEMORY_TOPIC_RESERVE` | `memory.topic.reserve` | **1000 mensagens** (o tamanho da lista de prontos) | Memória garantida a cada tópico, fora da divisão por taxa de leitura. | 3.2 |
-| Diretório raiz de disco | `TABA_STORAGE_DIR` | `storage.dir` | **`/var/lib/taba`** (Linux) | Raiz local do nó, onde ficam os arquivos `${topico}/${id}.body` do overflow, `_topics/${topico}.json` da definição do tópico e o banco de eventos da sincronização (`_sync/sync.db`). Cada nó tem a sua; nada é compartilhado. A última pasta deve se chamar `taba`. Se não existir, o nó a **cria ao iniciar**; se não conseguir criar ou gravar, o nó não sobe. | 3.2, 3.3 |
+| Diretório raiz de disco | `TABA_STORAGE_DIR` | `storage.dir` | **`/var/lib/taba`** (Linux) | Raiz local do nó, onde ficam os arquivos `${topico}/${id}.body` do overflow, o banco do nó `_node.db` (definições de tópico, entre outras tabelas) e o banco de eventos da sincronização (`_sync/sync.db`). Cada nó tem a sua; nada é compartilhado. A última pasta deve se chamar `taba`. Se não existir, o nó a **cria ao iniciar**; se não conseguir criar ou gravar, o nó não sobe. | 3.2, 3.3 |
+
+## Paginação
+
+| Parâmetro | Variável de ambiente | Chave no YAML | Padrão | Descrição | Seção |
+|---|---|---|---|---|---|
+| `limit` padrão | `TABA_API_PAGINATION_DEFAULT_LIMIT` | `api.pagination.default-limit` | **100** | Itens por página quando a rota paginada não recebe `limit`. | 8.1.2 |
+| `limit` máximo | `TABA_API_PAGINATION_MAX_LIMIT` | `api.pagination.max-limit` | **1000** | Maior `limit` aceito; acima disso, `400` `validation.out-of-range`. O padrão não pode passar dele. | 8.1.2 |
 
 ## Mensagens
 
@@ -220,7 +227,7 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 | Tags de agrupamento | `TABA_TELEMETRY_TOPICS_GROUP_BY_TAGS` | `telemetry.topics.group-by-tags` | Nenhuma | Chaves de tag usadas para agregar no modo `by-tags`. | 8.1.1 |
 | Teto de tópicos exportados | `TABA_TELEMETRY_TOPICS_MAX_TOPICS` | `telemetry.topics.max-topics` | A definir | Máximo de séries por tópico no modo `per-topic`; o excedente é agregado em `topic="_other"`. | 8.1.1 |
 | Amostragem de traces | `OTEL_TRACES_SAMPLER`<br>`OTEL_TRACES_SAMPLER_ARG` | — | `parentbased_traceidratio`, fração a definir | Amostragem por fração no SDK. Manter sempre as falhas é amostragem por cauda, feita no Collector ([11-observabilidade.md](11-observabilidade.md), "Como ligar um coletor"). | 8.1.1 |
-| Nível de log | `TABA_TELEMETRY_LOGS_LEVEL` | `telemetry.logs.level` | A definir | Nível mínimo dos logs estruturados. | 8.1.1 |
+| Nível de log | `TABA_TELEMETRY_LOGS_LEVEL` | `telemetry.logs.level` | A definir (até lá, `info`) | Nível mínimo dos logs estruturados: `trace`, `debug`, `info`, `warn` ou `error`. | 8.1.1 |
 | Maiores grupos no detalhe do tópico | `TABA_STATS_TOPICS_TOP_GROUPS` | `stats.topics.top-groups` | **10** | Quantos grupos (`topGroups`) o `GET /metrics/topics/{topic}` devolve. | 8.1.1 |
 | Cache das métricas de tópico | `TABA_STATS_TOPICS_CACHE_TTL` | `stats.topics.cache-ttl` | A definir | Validade do resultado agregado de `/metrics/topics` (evita repetir a consulta a todos os nós). | 8.1.1 |
 | Limiar de `backlog` | `TABA_STATS_TOPICS_BACKLOG_DEPTH`<br>`TABA_STATS_TOPICS_BACKLOG_AGE` | `stats.topics.backlog.depth`<br>`stats.topics.backlog.age` | A definir | `depth` e `oldestAge` acima dos quais o tópico entra na condição `backlog`. | 8.1.1 |

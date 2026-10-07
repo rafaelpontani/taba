@@ -23,8 +23,8 @@ O nó atende em **portas separadas, uma por público**. Assim cada porta é libe
 
 | Porta | Parâmetro | Padrão | Quem acessa | O que serve |
 |---|---|---|---|---|
-| **API de cliente** | `api.port` | A definir (sugestão: 8080) | Aplicações clientes, em geral pelo balanceador | As rotas da seção 8.1 ([06a](06a-api-cliente.md)). Sem `operations.port`, também as rotas de operação (seção 8.1.1, [06b](06b-api-operacao.md)). |
-| **Cluster** | `cluster.port` | A definir (sugestão: 8081) | **Só os outros nós** (mais o balanceador interno do bootstrap, abaixo) | As rotas `/cluster/*` da seção 8.2 ([06c](06c-api-cluster.md)) e o canal WebSocket `/cluster/channel`. |
+| **API de cliente** | `api.port` | **8080** | Aplicações clientes, em geral pelo balanceador | As rotas da seção 8.1 ([06a](06a-api-cliente.md)). Sem `operations.port`, também as rotas de operação (seção 8.1.1, [06b](06b-api-operacao.md)). |
+| **Cluster** | `cluster.port` | **8081** | **Só os outros nós** (mais o balanceador interno do bootstrap, abaixo) | As rotas `/cluster/*` da seção 8.2 ([06c](06c-api-cluster.md)) e o canal WebSocket `/cluster/channel`. |
 | **Operação** (opcional) | `operations.port` | Vazia (usa `api.port`) | Prometheus, orquestrador, operadores | `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain` ([11-observabilidade.md](11-observabilidade.md#acesso-às-rotas-de-operação)). |
 
 - **Separação por porta, não só por caminho.** São listeners diferentes do mesmo processo. A porta de cliente responde `404` a `/cluster/*`; a porta do cluster responde `404` a tudo que não seja `/cluster/*`. As três portas precisam ser diferentes entre si; valores repetidos, ou uma porta ocupada, impedem o nó de subir (a mesma falha explícita de `operations.port`).

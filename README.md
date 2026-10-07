@@ -68,7 +68,7 @@ Outras linguagens usam o cliente HTTP delas ou a biblioteca em C. O desenho est�
 
 ## Status e limites
 
-- **Em fase de documentação:** o projeto ainda não tem código de aplicação. O que existe é o desenho completo, em [doc/](doc/README.md).
+- **Em fase inicial de código:** o desenho completo está em [doc/](doc/README.md) e a aplicação em Rust começou: esqueleto do nó, configuração, os três listeners e a saúde do nó. Ainda não publica nem consome mensagens, e não há protocolo de cluster.
 - **Não é um substituto de protocolo:** o Taba fala HTTP. Não há compatibilidade com AMQP, MQTT ou o protocolo do Kafka, então trocar de broker significa trocar o cliente.
 - **Não é uma plataforma de streaming:** processamento de streams e reprocessamento do histórico de mensagens estão fora do escopo. Para filas e pub/sub, sim; para reler o passado, não.
 - **Fora do escopo por enquanto:** interface gráfica, autenticação avançada e multi-região.

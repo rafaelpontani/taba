@@ -68,7 +68,7 @@ Uma QTV é um QT com dois metadados extras na definição do tópico:
 | `volatile` | `true` para QTV. Só QT pode ser volátil (uma fila FIFO pode). |
 | `idleTimeout` | Tempo **sem consumidor** depois do qual a fila é excluída. Em segundos. Padrão **600** (10 minutos), configurável na criação. |
 
-Além disso, todo tópico passa a ter um **`id` (GUID v7)**, gerado pelo nó coordenador antes da fase de registro da criação e gravado na definição (`_topics/${topico}.json`). O nome continua sendo a chave da API; o `id` é interno (aparece nas leituras de tópico e na observabilidade). Recriar um tópico com o mesmo nome produz um `id` novo, e é por isso que a exclusão da seção 14.5 carrega o `id`.
+Além disso, todo tópico passa a ter um **`id` (GUID v7)**, gerado pelo nó coordenador antes da fase de registro da criação e gravado na definição (tabela `topicos` do `_node.db`). O nome continua sendo a chave da API; o `id` é interno (aparece nas leituras de tópico e na observabilidade). Recriar um tópico com o mesmo nome produz um `id` novo, e é por isso que a exclusão da seção 14.5 carrega o `id`.
 
 **O que conta como consumidor:** **qualquer** `GET /topics/{topic}/messages`, com ou sem mensagem para entregar, com ou sem long polling. O `GET` na fila de dead-letter da QTV **não conta**. A dead-letter é excluída junto com a QTV. O nó que recebe o `GET` registra o instante **no começo da chamada**; num long polling de 20 s, a data já vale desde o primeiro instante, não só ao final. **Publicar não conta:** uma QTV só com produtores e sem consumidores é excluída e as mensagens se perdem. Isso é intencional.
 

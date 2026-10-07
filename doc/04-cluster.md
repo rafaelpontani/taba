@@ -195,7 +195,7 @@ Sem outro nó para recuperar dados e sem cluster para limpar, o drain do modo de
 **O que o save grava** (em `storage.dir`):
 
 - **Mensagens:** corpo (`${topico}/${id}.body`) e metadados (`deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`) no banco do tópico, como no drain comum (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)).
-- **Definições de tópico:** já ficam sempre em disco (`_topics/${topico}.json`, seção 3.3). O save confere que estão em dia.
+- **Definições de tópico:** já ficam sempre em disco (tabela `topicos` do `_node.db`, seção 3.3). O save confere que estão em dia.
 - **Estado do nó:** na tabela `estado` do `_node.db`, o instante do último `GET` de cada fila volátil (para o relógio de ociosidade, seção 14.3 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) e uma marca `save_concluido` com o instante do fim do drain.
 - **Não grava o que se refaz:** a lista de prontos, a de invisíveis, a contagem por grupo e as taxas são derivadas e reconstruídas na partida (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)).
 

@@ -118,11 +118,11 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seções 3.3 e 3.4. A API de cli
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-DEF-009 | A definição do tópico é sempre persistida em `${storage.dir}/_topics/${topico}.json`, gravada no commit em cada nó, e atualizada ou removida com a definição. | 02 §3.3 | I, C |
+| UC-DEF-009 | A definição do tópico é sempre persistida na tabela `topicos` do `${storage.dir}/_node.db` (uma linha por tópico, sem arquivo por tópico), gravada no commit em cada nó, e atualizada ou removida com a definição. | 02 §3.3 | I, C |
 | UC-DEF-010 | O arquivo guarda **só a definição**: dados de consumo (profundidade, taxas, histogramas) nunca vão para ele. | 02 §3.3 | I |
-| UC-DEF-011 | A dead-letter não tem arquivo de definição em `_topics/`: é derivada da fila de origem, criada e excluída na mesma operação. | 02 §3.3 | I |
+| UC-DEF-011 | A dead-letter não tem linha de definição na tabela `topicos`: é derivada da fila de origem, criada e excluída na mesma operação. | 02 §3.3 | I |
 | UC-DEF-012 | Cada token é persistido em `${storage.dir}/_tokens/${id}.json` (com `id`, `name`, permissões, prefixos, datas e o hash do segredo, nunca o segredo). | 02 §3.4 | I |
-| UC-DEF-013 | Na partida, o nó (em desenvolvimento, retomando do disco) carrega as definições de `_topics/`, preservando o `id` e a data de criação de cada uma. | 04 §6.10 | I |
+| UC-DEF-013 | Na partida, o nó (em desenvolvimento, retomando do disco) carrega as definições da tabela `topicos` do `_node.db`, preservando o `id` e a data de criação de cada uma. | 04 §6.10 | I |
 
 #### Remoção com mensagens pendentes
 
@@ -143,6 +143,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seções 3.3 e 3.4. A API de cli
 | UC-DEF-021 | Até a sincronização inteira terminar, o nó não atende rotas de cliente (`/health/ready` falha): `GET /topics`, o casamento de prefixos e o cálculo do nó gestor dependem da tabela completa. | 02 §3.3 | C |
 | UC-DEF-022 | Os tokens são puxados por `GET /cluster/tokens` junto com a tabela de tópicos, da mesma origem e com as mesmas regras (carga direta, eventos no banco, verificação final). | 02 §3.4 | C |
 | UC-DEF-023 | Em modo desenvolvimento a definição é aplicada só no próprio nó, sem esperar outros, sem bootstrap nem carga. | 02 §3.3 | I |
+| UC-DEF-024 | A definição de cada tópico é gravada na tabela `topicos` do `_node.db` numa transação (nunca uma linha pela metade), e nomes que só diferem em maiúsculas (`Pedidos` e `pedidos`) são tópicos diferentes, em qualquer disco. | 02 §3.3 | U, I |
 
 ### ENT: entrega no dono, lista de prontos, `take` e long polling
 
@@ -348,7 +349,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seção 3.2.
 | UC-ARM-015 | O nó que reinicia depois de uma queda volta como novo e refaz a partir do cluster. | 02 §3.2, 04 §6.6 | C |
 | UC-ARM-016 | O banco responde: a mensagem mais antiga do tópico (`MIN(id)`, somada à mais antiga em memória, mantida ordenada por ID), os próximos a vencer (índice por `invisibleUntil`), as mensagens de um bloco (faixa pela posição no anel) e as contagens do tópico. | 02 §3.2 | I |
 | UC-ARM-017 | `storage.db.synchronous` (padrão `NORMAL` com WAL) é aplicado ao abrir o banco. | 02 §3.2, 10 | I |
-| UC-ARM-018 | O banco do nó, `${storage.dir}/_node.db`, é estritamente local, com a tabela `perdas` (`topico`, `id`, `bloco`, `detectado_em`), escrita por uma thread única. | 02 §3.2 | I |
+| UC-ARM-018 | O banco do nó, `${storage.dir}/_node.db`, é estritamente local, com as tabelas `topicos` (as definições de tópico) e `perdas` (`topico`, `id`, `bloco`, `detectado_em`), escrita por uma thread única. | 02 §3.2 | I |
 
 #### Integridade e falha
 
