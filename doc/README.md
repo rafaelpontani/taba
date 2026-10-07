@@ -34,6 +34,8 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [14-invisibilidade.md](14-invisibilidade.md) | 13 | Invisibilidade: metadados, propagação entre nós, lista de invisíveis em memória, excedente em disco (índice de expiração), vencimento e reconstrução. |
 | [16-mapa-mental.md](16-mapa-mental.md) | 15 | Mapa mental do projeto em cinco níveis: o mapa geral e um mapa por área, com decisões e parâmetros. |
 | [18-estrutura-codigo.md](18-estrutura-codigo.md) | 17 | Linguagem (Rust, tokio), bibliotecas de partida, estrutura do workspace (um crate com módulos, crates-alvo), regras de código e o que fica atrás de traits para testes. |
+| [19-conectores.md](19-conectores.md) | 18 | Conectores (bibliotecas de cliente) em dez linguagens: pastas em `connectors/`, superfície mínima, contrato comum (long polling, repetição, erros), sem dependências, regras para versões de até 15 anos, suíte de conformidade e plano de entrega. |
+| [19a-conectores-linguagens.md](19a-conectores-linguagens.md) | 18.10 | Versão-base, tecnologia (HTTP, JSON, base64) e particularidades de cada linguagem. |
 
 ## Diagramas
 

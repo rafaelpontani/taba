@@ -15,7 +15,7 @@ Se você quer sair da cobrança por mensagem, de um cluster de brokers para oper
 - **Custo quase zero:** sem cobrança por mensagem e sem obrigação de nuvem. Você paga só pela máquina em que roda.
 - **Filas FIFO:** ordem de entrega por grupo e deduplicação de publicações, para quando a sequência importa.
 - **API simples:** poucas rotas HTTP, sem SDK obrigatório e sem protocolo novo para aprender.
-- **Clientes simples nas principais linguagens:** Java, C#, C++, Rust, Python, Ruby, PHP e outras (veja [Clientes](#clientes)).
+- **Conectores simples nas principais linguagens:** C#, Java, Rust, C, C++, Python, PHP, Ruby, Go e Node.js, inclusive em versões antigas (veja [Conectores](#conectores)).
 - **Open source (AGPLv3):** o código é aberto e, se alguém oferecer o Taba como serviço com modificações, precisa compartilhá-las sob a mesma licença.
 
 > Velocidade e custo são **metas do projeto**. Ainda não há benchmarks publicados, e o Taba está em fase de documentação (veja [Status e limites](#status-e-limites)).
@@ -43,22 +43,28 @@ Tudo é HTTP. O contrato completo (OpenAPI) ainda está em definição; os verbo
 
 Se o consumidor não confirmar a tempo, a mensagem volta a ficar disponível e é entregue de novo, como no SQS (a invisibilidade padrão é de 120 s e pode ser ajustada).
 
-## Clientes
+## Conectores
 
-A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP que ela tem. Além disso, o projeto prevê **clientes simples de usar** nas principais linguagens, para você publicar e consumir mensagens em poucas linhas:
+A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP que ela tem. Além disso, o projeto prevê **conectores simples de usar** nas principais linguagens, para você publicar e consumir mensagens em poucas linhas. Eles não têm dependências externas e rodam em versões antigas, de até 15 anos (veja a [versão-base](doc/19a-conectores-linguagens.md) de cada uma):
 
-| Linguagem | Cliente | Exemplo de uso |
-|---|---|---|
-| Java | planejado | TODO |
-| C# | planejado | TODO |
-| C++ | planejado | TODO |
-| Rust | planejado | TODO |
-| Python | planejado | TODO |
-| Ruby | planejado | TODO |
-| PHP | planejado | TODO |
-| Outras | planejado | TODO |
+| Linguagem | Pasta | Versão-base | Estado | Exemplo de uso |
+|---|---|---|---|---|
+| Java | `connectors/java/` | Java 6 | planejado | TODO |
+| C# | `connectors/csharp/` | .NET Framework 3.5 | planejado | TODO |
+| Python | `connectors/python/` | 2.6 | planejado | TODO |
+| PHP | `connectors/php/` | 5.3 | planejado | TODO |
+| Ruby | `connectors/ruby/` | 1.8.7 | planejado | TODO |
+| Node.js | `connectors/node/` | 0.10 | planejado | TODO |
+| Go | `connectors/go/` | 1.4 | planejado | TODO |
+| Rust | `connectors/rust/` | 1.31 | planejado | TODO |
+| C | `connectors/c/` | C89 | planejado | TODO |
+| C++ | `connectors/cpp/` | C++03 | planejado | TODO |
 
-<!-- TODO: adicionar exemplos de uso (criar tópico, publicar, consumir com long polling e ack) em cada linguagem, quando os clientes existirem. -->
+Outras linguagens usam o cliente HTTP delas ou a biblioteca em C. O desenho está em [doc/19-conectores.md](doc/19-conectores.md).
+
+<!-- TODO: adicionar exemplos de uso (criar tópico, publicar, consumir com long polling e ack) em cada linguagem, quando os conectores existirem. -->
+
+> As versões-base são propostas e podem mudar até a confirmação ([08b-pendencias.md](doc/08b-pendencias.md), D68).
 
 ## Status e limites
 

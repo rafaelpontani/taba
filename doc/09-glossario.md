@@ -17,6 +17,8 @@
 | **Nó gestor** | Nó primário do hash do `id` de uma fila volátil no anel; cuida só da vida do tópico (decide a exclusão por ociosidade), nunca das mensagens (seção 14.5). |
 | **Verificação final (ociosidade)** | Consulta do gestor a todos os nós, antes de excluir uma fila volátil, sobre há quanto tempo foi o último `GET` do tópico em cada um (seção 14.5). |
 | **`id` do tópico** | GUID v7 gerado na criação do tópico; identifica a encarnação (recriar o mesmo nome gera outro `id`) e define o nó gestor pelo hash no anel (seção 14.3). |
+| **Conector** | Biblioteca de cliente do Taba para uma linguagem (`connectors/<linguagem>/`): nove operações sobre a API de cliente, sem dependências externas, com o mesmo contrato em todas e suporte a versões de até 15 anos. Não é um protocolo novo (seção 18). |
+| **Versão-base** | A versão mais antiga de uma linguagem que um conector suporta (por exemplo, Java 6 e Python 2.6). O CI compila e testa na versão-base e na mais recente (seção 18.10). |
 | **Nó (node)** | Instância do sistema que participa do cluster. |
 | **Modo desenvolvimento** | `mode=development`: o nó é um cluster de um só, com votação, quórum, canal entre nós, replicação e sincronização desabilitados (seção 6.4). Para teste e desenvolvimento, nunca produção. |
 | **Modo drain** | Estado do nó (`draining`, `drained`) em que todas as mensagens vão para o disco e o nó sai da rotação; entra sozinho ao receber `SIGTERM`/`SIGINT` ou por `POST /node/drain`, repassa as chamadas de cliente ao nó mais livre, e termina com o **desregistro voluntário** do nó, sem votação. Quem volta do drain pela API entra como nó novo (seção 6.10). No modo desenvolvimento serve de **save**: a partida seguinte retoma do disco. |

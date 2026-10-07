@@ -32,6 +32,7 @@
 ### 4.4 Distribuição e operação
 - Imagem Docker única e leve.
 - Integração nativa com Kubernetes (descoberta de nós, health checks, manifestos/Helm).
+- **Conectores** simples, sem dependências e com suporte a versões de até 15 anos, em C#, Java, Rust, C, C++, Python, PHP, Ruby, Go e Node.js, na pasta `connectors/` — ver [19-conectores.md](19-conectores.md).
 ## 5. Fora do escopo (por enquanto)
  
 - Interface gráfica de administração.

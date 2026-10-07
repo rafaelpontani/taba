@@ -67,7 +67,7 @@ taba/
 | Crate | Vem do módulo | Motivo para extrair |
 |---|---|---|
 | `taba-core` | `core/` | Já é lógica pura. Pode virar crate logo, sem custo, e ser testado sozinho. |
-| `taba-protocol` | DTOs de `http/` e frames do canal | Quando existir um cliente Rust (`taba-client`) que reaproveite os DTOs. |
+| `taba-protocol` | DTOs de `http/` e frames do canal | Só se algo além do servidor precisar dos DTOs. O conector Rust (`connectors/rust/`) **não** o usa: não tem dependências e compila em Rust antigo ([19-conectores.md](19-conectores.md), seção 18.2). |
 | `taba-storage` | `storage/` | Quando houver mais de uma implementação (memória, SQLite) ou o tempo de compilação pesar. |
 | `taba-cluster` | `cluster/` + `engine/` | Só se a fronteira entre os dois se firmar. Até lá ficam juntos. |
 | `taba-http` | `http/` | Se um segundo binário (por exemplo, ferramentas de operação) precisar das rotas. |
@@ -106,4 +106,4 @@ Com eles, `tests/` cobre quórum, rollback antes e depois da decisão, freezing,
 
 - **`msg.node.threads`** ([11-observabilidade.md](11-observabilidade.md)): mede as **threads do sistema operacional** do processo (as do runtime, do pool de bloqueio e as dos escritores SQLite). As tasks do tokio não entram.
 - **Imagem Docker:** binário único, em imagem mínima ([01-visao-geral.md](01-visao-geral.md), objetivo 7).
-- **Clientes:** o `taba-client` em Rust, previsto no [README](../README.md), nasce do `taba-protocol` (seção 17.3).
+- **Conectores:** ficam em `connectors/`, fora do workspace do servidor, uma pasta por linguagem. O `taba-client` em Rust é o conector `connectors/rust/`, independente do `taba-protocol` ([19-conectores.md](19-conectores.md), seção 18).

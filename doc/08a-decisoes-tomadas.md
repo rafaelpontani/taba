@@ -100,6 +100,12 @@ Parte da seção 10, junto de [08b-pendencias.md](08b-pendencias.md) e [08c-prox
 |---|---|---|
 | D10 | O Taba é escrito em **Rust**, com o runtime tokio, pela latência previsível (sem coletor de lixo), pelo binário único e leve e pela concorrência checada na compilação. O repositório é um Cargo workspace que **começa com um único crate** (`taba-node`) organizado em módulos (`core`, `storage`, `engine`, `cluster`, `http`, `telemetry`); um módulo só vira crate quando houver motivo. Sem container de injeção de dependência: traits nas fronteiras e ligação manual no `main`. `msg.node.threads` mede as threads do sistema operacional. | [18-estrutura-codigo.md](18-estrutura-codigo.md) 17, [11-observabilidade.md](11-observabilidade.md) |
 
+### Conectores
+
+| Código | Decisão | Onde |
+|---|---|---|
+| D67 | O Taba terá **conectores** em C#, Java, Rust, C, C++, Python, PHP, Ruby, Go e Node.js, **simples de usar e de implementar** e com suporte a versões de até **15 anos**. Ficam no mesmo repositório, em `connectors/<linguagem>/` (uma pasta autônoma por linguagem), com um contrato comum (`connectors/contrato/`) que todos testam. O `taba-client` em Rust é o conector `connectors/rust/`. As versões-base e o restante do desenho são propostas ([08b-pendencias.md](08b-pendencias.md), D68 a D72). | [19-conectores.md](19-conectores.md) 18.1 e 18.2, [19a-conectores-linguagens.md](19a-conectores-linguagens.md), [03-escopo.md](03-escopo.md) 4.4 |
+
 ### Observabilidade
 
 | Código | Decisão | Onde |
