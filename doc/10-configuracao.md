@@ -89,7 +89,7 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 | Arquivo do token raiz | `TABA_AUTH_ROOT_TOKEN_FILE` | `auth.root-token-file` | **`<secrets.dir>/root-token`** | Caminho de um arquivo com o token raiz, entregue como segredo da plataforma. Aceita **duas linhas** (a atual e a anterior), para trocar o segredo sem reiniciar. Prevalece sobre `auth.root-token`. | 8.1.3 |
 | Intervalo de recarga do token raiz | `TABA_AUTH_RELOAD_INTERVAL` | `auth.reload-interval` | **60 s** | De quanto em quanto tempo `auth.root-token-file` é relido. | 8.1.3 |
 
-> Os tokens de trabalho não são configuração: são criados por `POST /tokens` e replicados em `${storage.dir}/_tokens/` (seção 3.4 de [02-arquitetura.md](02-arquitetura.md)). A expiração usa `retention.sweep.interval`.
+> Os tokens de trabalho não são configuração: são criados por `POST /tokens` e replicados na tabela `tokens` do `_node.db` (seção 3.4 de [02-arquitetura.md](02-arquitetura.md)). A expiração usa `retention.sweep.interval`.
 
 ## Parada e modo drain
 

@@ -18,6 +18,11 @@ pub use params::{PARAMS, env_name};
 use source::{Bytes, List, NetList, Parse, Source};
 pub use source::{EnvSource, MapEnv, ProcessEnv};
 
+/// Uma duração com unidade (`100ms`, `60s`, `5m`, `2h`, `30d`), a mesma forma dos parâmetros.
+pub fn parse_duration(text: &str) -> Option<Duration> {
+    <Duration as Parse>::parse(text)
+}
+
 use crate::core::validation;
 
 /// Caminho que o `.yml` tem se nada for informado. Se não existe, o nó segue só

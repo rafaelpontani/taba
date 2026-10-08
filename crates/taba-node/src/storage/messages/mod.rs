@@ -29,6 +29,9 @@ pub struct MessageMeta {
     pub id: String,
     pub content_type: String,
     pub group_id: Option<String>,
+    /// Só na fila FIFO: a chave de deduplicação dentro do grupo (a informada, ou o SHA-256 do
+    /// corpo em hexadecimal).
+    pub deduplication_id: Option<String>,
     pub published_ms: u64,
     pub delivery_count: u32,
     /// Instante a partir do qual a mensagem é entregável. `0`: nunca foi entregue.
@@ -46,6 +49,21 @@ impl MessageMeta {
     }
 }
 
+/// Uma linha de [`MessageStore::scan`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanRow {
+    pub id: String,
+    pub group_id: Option<String>,
+    pub deduplication_id: Option<String>,
+    pub published_ms: u64,
+    /// A linha curta que o ack da fila FIFO deixa para a deduplicação (`deleteAt`): sem corpo, sem
+    /// entrega e fora do índice.
+    pub delete_at_ms: Option<u64>,
+    pub age_ms: u64,
+    pub delivery_count: u32,
+    pub invisible_until_ms: u64,
+}
+
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS messages (
         id                 TEXT PRIMARY KEY NOT NULL,
@@ -57,14 +75,38 @@ const SCHEMA: &str = "
         receipt_token      TEXT,
         dead_lettered_at   INTEGER,
         dead_letter_reason TEXT,
-        age_base           INTEGER NOT NULL
+        age_base           INTEGER NOT NULL,
+        deduplication_id   TEXT,
+        delete_at          INTEGER
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS messages_invisible_until ON messages (invisible_until);
     CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
 ";
 
+/// Os índices das colunas da fila FIFO, criados depois de `migrate` (um banco de antes delas
+/// ainda não as tem).
+const FIFO_INDEXES: &str = "
+    CREATE INDEX IF NOT EXISTS messages_group_dedup ON messages (group_id, deduplication_id);
+    CREATE INDEX IF NOT EXISTS messages_delete_at ON messages (delete_at);
+";
+
+/// Acrescenta ao banco de uma versão anterior as colunas que ele não tem.
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('messages')")?;
+    let have: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    drop(stmt);
+    for (name, kind) in [("deduplication_id", "TEXT"), ("delete_at", "INTEGER")] {
+        if !have.iter().any(|c| c == name) {
+            conn.execute_batch(&format!("ALTER TABLE messages ADD COLUMN {name} {kind}"))?;
+        }
+    }
+    Ok(())
+}
+
 const COLUMNS: &str = "id, content_type, group_id, published_at, delivery_count, invisible_until, \
-                       receipt_token, dead_lettered_at, dead_letter_reason";
+                       receipt_token, dead_lettered_at, dead_letter_reason, deduplication_id";
 
 fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
     Ok(MessageMeta {
@@ -77,6 +119,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
         receipt_token: row.get(6)?,
         dead_lettered_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
         dead_letter_reason: row.get(8)?,
+        deduplication_id: row.get(9)?,
     })
 }
 
@@ -172,6 +215,8 @@ impl MessageStore {
         )
         .map_err(to_io)?;
         conn.execute_batch(SCHEMA).map_err(to_io)?;
+        migrate(&conn).map_err(to_io)?;
+        conn.execute_batch(FIFO_INDEXES).map_err(to_io)?;
         let disk = Arc::new(TopicDisk {
             dir,
             conn: Mutex::new(conn),
@@ -195,7 +240,8 @@ impl MessageStore {
             .execute(
                 "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
                  delivery_count, invisible_until, receipt_token, dead_lettered_at, \
-                 dead_letter_reason, age_base) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 dead_letter_reason, age_base, deduplication_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     meta.id,
                     meta.content_type,
@@ -207,6 +253,7 @@ impl MessageStore {
                     meta.dead_lettered_ms.map(|v| v as i64),
                     meta.dead_letter_reason,
                     meta.age_base_ms() as i64,
+                    meta.deduplication_id,
                 ],
             )
             .map_err(to_io)?;
@@ -281,6 +328,36 @@ impl MessageStore {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
+    /// O que o índice do tópico precisa de cada mensagem em disco (sem o corpo), para refazê-lo
+    /// quando o tópico é aberto: `id`, grupo, idade, entregas e fim da invisibilidade.
+    pub fn scan(&self, topic: &str) -> io::Result<Vec<ScanRow>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(Vec::new());
+        };
+        let conn = disk.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id, \
+                 published_at, delete_at FROM messages ORDER BY id",
+            )
+            .map_err(to_io)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ScanRow {
+                    id: row.get(0)?,
+                    group_id: row.get(1)?,
+                    age_ms: row.get::<_, i64>(2)? as u64,
+                    delivery_count: row.get::<_, i64>(3)? as u32,
+                    invisible_until_ms: row.get::<_, i64>(4)? as u64,
+                    deduplication_id: row.get(5)?,
+                    published_ms: row.get::<_, i64>(6)? as u64,
+                    delete_at_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
+                })
+            })
+            .map_err(to_io)?;
+        rows.collect::<Result<_, _>>().map_err(to_io)
+    }
+
     /// Os `limit` primeiros ids entregáveis (prazo vencido), em ordem de `id`.
     pub fn ready_ids(&self, topic: &str, now_ms: u64, limit: usize) -> io::Result<Vec<String>> {
         self.ids(
@@ -343,13 +420,59 @@ impl MessageStore {
         Ok(())
     }
 
+    /// O ack da fila FIFO: a mensagem vira uma linha curta com `delete_at` (doc 17, seção 16.7).
+    /// Ficam `id`, grupo, `deduplicationId` e as datas; saem o corpo e os metadados de entrega. A
+    /// linha vale mesmo que a mensagem estivesse só em memória. Primeiro a linha, depois o arquivo.
+    pub fn tombstone(&self, topic: &str, meta: &MessageMeta, delete_at_ms: u64) -> io::Result<()> {
+        let disk = self.disk(topic, true)?.expect("criado");
+        disk.conn()
+            .execute(
+                "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
+                 delivery_count, invisible_until, receipt_token, dead_lettered_at, \
+                 dead_letter_reason, age_base, deduplication_id, delete_at) \
+                 VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6)",
+                params![
+                    meta.id,
+                    meta.group_id,
+                    meta.published_ms as i64,
+                    meta.published_ms as i64,
+                    meta.deduplication_id,
+                    delete_at_ms as i64,
+                ],
+            )
+            .map_err(to_io)?;
+        match std::fs::remove_file(disk.body_path(&meta.id)) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// Apaga as linhas curtas cujo `delete_at` passou, pelo índice, e devolve quantas.
+    pub fn sweep_tombstones(&self, topic: &str, now_ms: u64) -> io::Result<u64> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(0);
+        };
+        let removed = disk
+            .conn()
+            .execute(
+                "DELETE FROM messages WHERE delete_at IS NOT NULL AND delete_at <= ?1",
+                params![now_ms as i64],
+            )
+            .map_err(to_io)?;
+        Ok(removed as u64)
+    }
+
     pub fn count(&self, topic: &str) -> io::Result<u64> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(0);
         };
         let n: i64 = disk
             .conn()
-            .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE delete_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
             .map_err(to_io)?;
         Ok(n as u64)
     }

@@ -410,7 +410,7 @@ Regras: [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3, e [02-arquitetu
 | UC-AUT-017 | O token raiz tem acesso total (todas as permissões, sem prefixos) e é o único que usa `/tokens`; nos logs e traces aparece como `token.id=root`. | 06a §8.1.3 | I |
 | UC-AUT-018 | Token com `expiresAt` vencido é recusado com `401`; cada nó o ignora e o apaga na varredura local (`retention.sweep.interval`), sem propagar. | 06a §8.1.3, 02 §3.4 | C |
 | UC-AUT-019 | A validação é uma consulta local em memória, sem chamada de rede: com os outros nós fora do ar, um token válido continua aceito. | 06a §8.1.3, 02 §3.4 | C |
-| UC-AUT-020 | O formato do token é `tb_<id>.<segredo>`, com `id` GUID v7 e segredo de 256 bits aleatórios; o cluster guarda só o SHA-256 do segredo. | 06a §8.1.3 | U |
+| UC-AUT-020 | O formato do token é `tb_<id>.<segredo>`, com `id` GUID v7 e segredo de 256 bits aleatórios; o cluster guarda só o hash salgado do segredo (`SHA-256(sal ‖ segredo)`, sal aleatório por token). | 06a §8.1.3 | U |
 | UC-AUT-021 | O token completo e o segredo nunca vão para logs nem traces; só o `id` (`token.id`). O `id` do token nunca é atributo de métrica. | 06a §8.1.3, 11 | I |
 
 #### Rotas `/tokens`
@@ -426,8 +426,8 @@ Regras: [06a-api-cliente.md](06a-api-cliente.md), seção 8.1.3, e [02-arquitetu
 | UC-AUT-028 | `PATCH /tokens/{id}` altera só `name` e `expiresAt` (`null` remove o prazo); permissões e prefixos são imutáveis (`400` `validation.immutable-field`). | 06a | I |
 | UC-AUT-029 | `DELETE /tokens/{id}`: `204`; as chamadas seguintes com o token respondem `401`, em **todos** os nós, a partir do commit; um segundo `DELETE`: `404`. | 06a | I, C |
 | UC-AUT-030 | Criar, alterar e revogar usam o registro + commit com confirmação de **todos** os nós; com algum nó fora do ar: `503` `cluster.registration-failed` (e `cluster.commit-timeout` conforme o caso). | 06a, 02 §3.4 | C |
-| UC-AUT-031 | O segredo nunca trafega entre nós: o `register` leva só o `secretHash`. | 06c, 02 §3.4 | C |
-| UC-AUT-032 | Cada token é persistido em `${storage.dir}/_tokens/${id}.json`, gravado no commit em cada nó, com o hash do segredo. | 02 §3.4 | I, C |
+| UC-AUT-031 | O segredo nunca trafega entre nós: o `register` leva só o `salt` e o `secretHash`. | 06c, 02 §3.4 | C |
+| UC-AUT-032 | Cada token é uma linha da tabela `tokens` do `_node.db`, gravada no commit em cada nó, com o sal e o hash do segredo (nunca o segredo). | 02 §3.4 | I, C |
 | UC-AUT-033 | Um nó que entra puxa os tokens (`GET /cluster/tokens`) junto com a tabela de tópicos; até a carga terminar o nó não atende rotas de cliente, então nunca valida com a tabela incompleta. | 02 §3.4 | C |
 | UC-AUT-034 | Uma chamada repassada (nó em sincronização ou drain) leva o `Authorization` como veio, e o **destino** confere o token de novo. | 06a, 04 §6.9 | C |
 | UC-AUT-035 | As rotas de operação e do cluster não usam o token de acesso. | 06a, 06 §8.0 | I |

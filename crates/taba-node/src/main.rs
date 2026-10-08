@@ -3,6 +3,7 @@
 
 use std::process::ExitCode;
 
+use taba_node::cli::Command;
 use taba_node::config::Config;
 use taba_node::node::{self, Deps};
 use taba_node::{cli, telemetry};
@@ -16,6 +17,10 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    match &args.command {
+        Command::Run => {}
+        other => return run_secrets_command(other),
+    }
     if args.help {
         println!("{}", cli::USAGE);
         return ExitCode::SUCCESS;
@@ -76,5 +81,50 @@ async fn wait_for_stop() {
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// Os subcomandos da pasta de segredos: criam arquivos, imprimem o que fizeram e saem.
+fn run_secrets_command(command: &Command) -> ExitCode {
+    use taba_node::secrets;
+    let now = time::OffsetDateTime::now_utc();
+    let result = match command {
+        Command::Init { out, days } => secrets::init(out, now, *days).map(|files| {
+            println!("Pasta de segredos criada em {}", out.display());
+            println!(
+                "  certificado do cluster: {}",
+                files.certificate.certificate.display()
+            );
+            println!(
+                "  chave do certificado:   {}",
+                files.certificate.key.display()
+            );
+            println!("  token raiz:             {}", files.root_token.display());
+            println!();
+            println!("Monte a pasta em todos os nós (secrets.dir, padrão /etc/taba/secrets):");
+            println!(
+                "a autenticação e o TLS do cluster ligam sozinhos. Guarde o token raiz num cofre."
+            );
+        }),
+        Command::CertGenerate {
+            out,
+            days,
+            starts_in,
+        } => secrets::generate_cert(out, now, *days, *starts_in).map(|files| {
+            println!("{}", files.certificate.display());
+            println!("{}", files.key.display());
+        }),
+        Command::TokenGenerate => {
+            println!("{}", secrets::generate_root_token());
+            Ok(())
+        }
+        Command::Run => Ok(()),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("taba: {e}");
+            ExitCode::FAILURE
+        }
     }
 }

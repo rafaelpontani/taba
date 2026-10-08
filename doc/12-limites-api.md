@@ -36,7 +36,7 @@ Definidos por variável de ambiente ([10-configuracao.md](10-configuracao.md)); 
 
 ## Rate limits
 
-> Ainda não fazem parte do escopo documentado ([03-escopo.md](03-escopo.md)) — esta seção propõe uma estrutura inicial, a ser validada.
+> O rate limit está implementado por nó, com a chave por `id` do token válido e, sem ele, por IP do cliente. Os valores padrão e o estouro sem `ratelimit.burst` estão em D84 e D85 de [08b-pendencias.md](08b-pendencias.md).
 
 Limite de requisições por cliente, aplicado no nó que recebe a chamada, separado por tipo de operação — publicação tende a ter um limite mais alto que operações administrativas de tópico:
 

@@ -12,11 +12,13 @@ cargo test                                   # unitários (nos módulos) e de in
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
+cargo run -- init --out ./secrets             # certificado do cluster e token raiz (taba init)
 ```
 
 - **Configuração:** `crates/taba-node/src/config/params.rs` é a tabela de chaves e padrões de [doc/10-configuracao.md](doc/10-configuracao.md). Parâmetro novo entra na tabela **e** no `Config`; um teste confere que todo parâmetro da tabela é lido.
 - **Testes:** os unitários ficam em arquivo irmão do módulo (`foo/mod.rs` e `foo/tests.rs` lado a lado, ligados por `#[cfg(test)] mod tests;`), não dentro do código. Cada teste cita os casos de uso que cobre numa linha `/// UC: UC-XXX-NNN` logo acima do `#[test]`. O `tests/uc_coverage.rs` falha se o código não existir (regras em [doc/20-casos-de-uso.md](doc/20-casos-de-uso.md)). Testes de integração usam `tests/common/mod.rs` (`TestNode`: nó em portas livres, disco numa pasta temporária).
 - **Erros:** todo erro de API é um `ErrorCode` do catálogo (`core/error.rs`), com o status fixo de [doc/06d-api-convencoes.md](doc/06d-api-convencoes.md). Código novo no catálogo exige a linha no doc e o caso na tabela de teste.
+- **Disco:** o `target/` cresce rápido (símbolos de depuração). Com pouco espaço, rode o cargo com `CARGO_INCREMENTAL=0` ou apague `target/debug/incremental`; "no space on device" do `rustc` é isso.
 - **SQLite:** o `rusqlite` compila a SQLite embutida (`bundled`), então o build precisa de um compilador C (MSVC, `gcc` ou `clang`). No alvo `-gnu` do Windows o `cc` não pode achar o `gcc` do Cygwin.
 - **Windows com Git Bash:** o `link.exe` do coreutils esconde o do MSVC, e o MSVC desta máquina está incompleto. Se o `cargo build` falhar no link, use `cargo +stable-x86_64-pc-windows-gnu ...` (`rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal`).
 

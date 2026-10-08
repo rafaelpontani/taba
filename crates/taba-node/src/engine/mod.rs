@@ -4,4 +4,5 @@
 //! publicação e o consumo em memória (`messages`).
 
 pub mod messages;
+pub mod tokens;
 pub mod topics;

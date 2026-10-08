@@ -166,6 +166,25 @@ impl Fields {
         }
     }
 
+    /// Data no formato da API (`2026-10-06T12:00:00.000Z`), em milissegundos desde a época.
+    pub fn date(&self, field: &str) -> Result<Option<u64>, TabaError> {
+        match self.string(field)? {
+            None => Ok(None),
+            Some(text) => crate::core::time::parse_ms(&text)
+                .map(Some)
+                .ok_or_else(|| wrong_type(field, "uma data como 2026-10-06T12:00:00.000Z")),
+        }
+    }
+
+    /// Data num `PATCH`: ausente, `null` (remove) ou uma data.
+    pub fn patch_date(&self, field: &str) -> Result<Patch<u64>, TabaError> {
+        match self.0.get(field) {
+            None => Ok(Patch::Absent),
+            Some(Value::Null) => Ok(Patch::Null),
+            Some(_) => Ok(self.date(field)?.map_or(Patch::Absent, Patch::Value)),
+        }
+    }
+
     /// Campo de um `PATCH`: ausente, `null` (volta ao padrão) ou um inteiro.
     pub fn patch_integer(&self, field: &str) -> Result<Patch<i64>, TabaError> {
         match self.0.get(field) {

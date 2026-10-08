@@ -11,10 +11,15 @@ use crate::config::{Config, MapEnv, Mode};
 use crate::core::clock::SystemClock;
 use crate::core::error::ErrorCode;
 use crate::engine::messages::{MessageRules, Messages};
+use crate::engine::tokens::{TokenRules, Tokens};
 use crate::engine::topics::{TopicRules, Topics};
+use crate::http::auth::Auth;
+use crate::http::client_ip::ClientIpRules;
+use crate::http::ratelimit::RateLimiter;
 use crate::storage::db::NodeDb;
 use crate::storage::messages::MessageStore;
 use crate::storage::state::NodeStateStore;
+use crate::storage::tokens::MemoryTokenStore;
 use crate::storage::topics::MemoryTopicStore;
 
 async fn boom() -> &'static str {
@@ -53,12 +58,23 @@ fn app() -> Router {
         std::time::Duration::from_secs(25),
     );
     let state = AppState {
-        clock,
+        clock: clock.clone(),
         topics,
         messages,
         node,
         drain,
         allowed_ips: Arc::new(Vec::new()),
+        client_ip: Arc::new(ClientIpRules::from_config(&config.client_ip)),
+        auth: Arc::new(Auth::new(
+            &config.auth,
+            Arc::new(Tokens::new(
+                TokenRules::from_config(&config),
+                Arc::new(MemoryTokenStore::default()),
+                clock.clone(),
+                Vec::new(),
+            )),
+        )),
+        rate_limiter: Arc::new(RateLimiter::from_config(&config.rate_limit, clock.clone())),
     };
     let routes = Router::new()
         .route("/boom", get(boom))

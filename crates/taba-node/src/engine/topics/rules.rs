@@ -19,6 +19,8 @@ pub struct TopicRules {
     pub max_deliveries_default: u64,
     /// `topics.volatile.idle-timeout.default`, em segundos.
     pub idle_timeout_default: u64,
+    /// `topics.volatile.max-count`: o teto de filas voláteis para o `autoCreate`; `None`, sem teto.
+    pub volatile_max_count: Option<u32>,
     /// Fila FIFO exige `replication.factor` de pelo menos 2; em desenvolvimento não vale.
     pub fifo_needs_replication: bool,
     /// `api.pagination.default-limit` e `max-limit`.
@@ -35,6 +37,7 @@ impl TopicRules {
             ttl_default: config.retention.ttl_default.as_secs(),
             max_deliveries_default: u64::from(config.retention.max_deliveries_default),
             idle_timeout_default: config.topics.volatile_idle_timeout_default.as_secs(),
+            volatile_max_count: config.topics.volatile_max_count,
             fifo_needs_replication: !config.is_development() && config.write.replication_factor < 2,
             default_limit: config.pagination.default_limit,
             max_limit: config.pagination.max_limit,
@@ -93,4 +96,6 @@ pub struct ListQuery {
     pub cursor: Option<String>,
     pub sort: Option<String>,
     pub name: Option<String>,
+    /// Só os tópicos cujo nome começa com algum destes prefixos (os do token); vazio, todos.
+    pub scope: Vec<String>,
 }

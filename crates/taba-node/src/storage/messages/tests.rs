@@ -5,6 +5,7 @@ fn meta(id: &str) -> MessageMeta {
         id: id.into(),
         content_type: "application/json".into(),
         group_id: None,
+        deduplication_id: None,
         published_ms: 1_000,
         delivery_count: 0,
         invisible_until_ms: 0,
@@ -176,4 +177,81 @@ fn dropping_a_topic_removes_its_folder_and_survives_a_reopen() {
     store.drop_topic("pedidos").unwrap();
     assert_eq!(store.count("pedidos").unwrap(), 0);
     assert!(!tmp.path().join("pedidos").exists());
+}
+
+/// UC: UC-FIF-036
+#[test]
+fn a_tombstone_keeps_a_short_row_and_drops_the_body() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    let mut m = meta("a1");
+    m.group_id = Some("g".into());
+    m.deduplication_id = Some("k".into());
+    store.put("f", &m, b"corpo").unwrap();
+    assert_eq!(store.count("f").unwrap(), 1);
+
+    store.tombstone("f", &m, 9_000).unwrap();
+    assert!(store.body("f", "a1").is_err(), "o corpo saiu");
+    assert_eq!(store.count("f").unwrap(), 0, "a linha curta não conta");
+    let rows = store.scan("f").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].delete_at_ms, Some(9_000));
+    assert_eq!(rows[0].deduplication_id.as_deref(), Some("k"));
+    assert_eq!(rows[0].group_id.as_deref(), Some("g"));
+    assert_eq!(rows[0].published_ms, 1_000);
+}
+
+/// UC: UC-FIF-036
+#[test]
+fn a_tombstone_works_for_a_message_that_had_no_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    store.tombstone("f", &meta("so-memoria"), 5_000).unwrap();
+    assert_eq!(store.scan("f").unwrap().len(), 1);
+    assert_eq!(store.count("f").unwrap(), 0);
+}
+
+/// UC: UC-FIF-039
+#[test]
+fn sweeping_deletes_only_the_rows_whose_delete_at_passed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    store.tombstone("f", &meta("velha"), 1_000).unwrap();
+    store.tombstone("f", &meta("nova"), 9_000).unwrap();
+    store.put("f", &meta("viva"), b"x").unwrap();
+    assert_eq!(store.sweep_tombstones("f", 5_000).unwrap(), 1);
+    let ids: Vec<String> = store.scan("f").unwrap().into_iter().map(|r| r.id).collect();
+    assert_eq!(ids, ["nova", "viva"]);
+    assert_eq!(store.sweep_tombstones("missing", 5_000).unwrap(), 0);
+}
+
+/// UC: UC-ARM-011
+#[test]
+fn a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("antigo");
+    std::fs::create_dir_all(&dir).unwrap();
+    {
+        let conn = rusqlite::Connection::open(dir.join(TOPIC_DB_FILE)).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (
+                id TEXT PRIMARY KEY NOT NULL, content_type TEXT NOT NULL, group_id TEXT,
+                published_at INTEGER NOT NULL, delivery_count INTEGER NOT NULL DEFAULT 0,
+                invisible_until INTEGER NOT NULL DEFAULT 0, receipt_token TEXT,
+                dead_lettered_at INTEGER, dead_letter_reason TEXT, age_base INTEGER NOT NULL
+             ) WITHOUT ROWID;
+             INSERT INTO messages (id, content_type, published_at, age_base)
+                VALUES ('velha', 'text/plain', 7, 7);",
+        )
+        .unwrap();
+    }
+    let store = store(tmp.path());
+    let rows = store.scan("antigo").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (rows[0].deduplication_id.clone(), rows[0].delete_at_ms),
+        (None, None)
+    );
+    assert_eq!(store.count("antigo").unwrap(), 1);
+    store.tombstone("antigo", &meta("nova"), 100).unwrap();
 }

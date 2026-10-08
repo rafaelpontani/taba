@@ -44,6 +44,22 @@ pub fn topic_name(name: &str, dead_letter_suffix: &str) -> Result<(), TabaError>
     Ok(())
 }
 
+/// Nome do token: de 1 a 100 caracteres de `A-Za-z0-9_-.:` (não precisa ser único).
+pub fn token_name(name: &str) -> Result<(), TabaError> {
+    if !name.is_empty() && name.chars().count() <= TOPIC_NAME_MAX && name.chars().all(is_tag_char) {
+        return Ok(());
+    }
+    Err(TabaError::new(
+        ErrorCode::ValidationInvalidName,
+        "Use de 1 a 100 caracteres entre A-Za-z0-9_-.:",
+    )
+    .with_detail(
+        "name",
+        ErrorCode::ValidationInvalidName,
+        "Use de 1 a 100 caracteres entre A-Za-z0-9_-.:",
+    ))
+}
+
 /// Tags do tópico: até 20; chave de 1 a 64 e valor de 0 a 128 caracteres de `A-Za-z0-9_-.:`.
 pub fn tags(tags: &BTreeMap<String, String>) -> Result<(), TabaError> {
     let mut err = TabaError::new(
@@ -84,13 +100,18 @@ pub fn tags(tags: &BTreeMap<String, String>) -> Result<(), TabaError> {
 /// Prefixos de um distribuidor: até 20, de 1 a 100 caracteres de `A-Za-z0-9_-`.
 /// Prefixo vazio é recusado (casaria com tudo).
 pub fn prefixes(prefixes: &[String]) -> Result<(), TabaError> {
+    prefixes_of("prefixes", prefixes)
+}
+
+/// A mesma regra para o campo `field` (`topicPrefixes` do token).
+pub fn prefixes_of(field: &str, prefixes: &[String]) -> Result<(), TabaError> {
     let mut err = TabaError::new(
         ErrorCode::ValidationFailed,
         "A requisição tem campos inválidos.",
     );
     if prefixes.len() > PREFIXES_MAX {
         err = err.with_detail(
-            "prefixes",
+            field,
             ErrorCode::ValidationOutOfRange,
             "No máximo 20 prefixos.",
         );
@@ -101,7 +122,7 @@ pub fn prefixes(prefixes: &[String]) -> Result<(), TabaError> {
             || !prefix.chars().all(is_name_char)
         {
             err = err.with_detail(
-                format!("prefixes[{i}]"),
+                format!("{field}[{i}]"),
                 ErrorCode::ValidationInvalidName,
                 "Use de 1 a 100 caracteres entre A-Za-z0-9_-.",
             );

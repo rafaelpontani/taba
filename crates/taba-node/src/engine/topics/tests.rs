@@ -718,6 +718,7 @@ async fn a_cursor_only_works_with_the_sort_and_filter_that_made_it() {
         cursor: Some(cursor.clone()),
         sort: sort.map(str::to_owned),
         name: name.map(str::to_owned),
+        ..Default::default()
     };
     for query in [other(Some("-name"), None), other(None, Some("a"))] {
         assert_eq!(

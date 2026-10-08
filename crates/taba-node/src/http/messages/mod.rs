@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, put};
@@ -14,11 +14,13 @@ use http_body_util::LengthLimitError;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
+use super::auth::Principal;
 use super::common::ApiError;
 use super::{AppState, json};
 use crate::core::content;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time;
+use crate::core::token::Permission;
 use crate::engine::messages::{
     ConsumeQuery, Delivered, DistributorDelivery, Messages, PublishRequest, Published,
 };
@@ -80,7 +82,23 @@ async fn publish(
     };
     let published = blocking(&state, move |messages| messages.publish(&topic, request)).await?;
     Ok(match published {
-        Published::Queue { id } => (StatusCode::CREATED, Json(json!({ "id": id }))).into_response(),
+        // Só a fila FIFO traz `duplicate`; a duplicata é `200` e a mensagem criada, `201`.
+        Published::Queue {
+            id,
+            duplicate: None,
+        } => (StatusCode::CREATED, Json(json!({ "id": id }))).into_response(),
+        Published::Queue {
+            id,
+            duplicate: Some(duplicate),
+        } => (
+            if duplicate {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            },
+            Json(json!({ "id": id, "duplicate": duplicate })),
+        )
+            .into_response(),
         Published::Distributor { deliveries } => Json(json!({
             "matched": deliveries.len(),
             "deliveries": deliveries.iter().map(delivery_json).collect::<Vec<_>>(),
@@ -118,6 +136,8 @@ struct MessageDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     group_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    deduplication_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     dead_lettered_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dead_letter_reason: Option<String>,
@@ -142,6 +162,7 @@ impl From<Delivered> for MessageDto {
             published_at: time::format_ms(m.published_ms),
             invisible_until: time::format_ms(m.invisible_until_ms),
             group_id: m.group_id,
+            deduplication_id: m.deduplication_id,
             dead_lettered_at: m.dead_lettered_ms.map(time::format_ms),
             dead_letter_reason: m.dead_letter_reason,
         }
@@ -150,6 +171,7 @@ impl From<Delivered> for MessageDto {
 
 async fn consume(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     Path(topic): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<ConsumeResponse>, ApiError> {
@@ -161,6 +183,15 @@ async fn consume(
                 max_messages: params.get("maxMessages").cloned(),
                 visibility_timeout: params.get("visibilityTimeout").cloned(),
                 wait_time: params.get("waitTime").cloned(),
+                auto_create: params.get("autoCreate").cloned(),
+                volatile: params.get("volatile").cloned(),
+                idle_timeout: params.get("idleTimeout").cloned(),
+                fifo: params.get("fifo").cloned(),
+                tags: params
+                    .iter()
+                    .filter_map(|(k, v)| Some((k.strip_prefix("tag.")?.to_owned(), v.clone())))
+                    .collect(),
+                can_create: principal.allows(Permission::Create),
             },
         )
         .await?;

@@ -7,13 +7,14 @@ mod request;
 use std::collections::HashMap;
 
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Map, Value};
 
+use super::auth::{Principal, out_of_scope};
 use super::common::ApiError;
 use super::{AppState, json};
 use crate::engine::topics::ListQuery;
@@ -24,13 +25,33 @@ pub fn routes() -> Router<AppState> {
         .route("/topics/{topic}", get(read).patch(update).delete(remove))
 }
 
+/// O token só cria tópico dentro dos seus prefixos; num distribuidor, também cada prefixo de
+/// distribuição (senão ele injetaria mensagens em filas fora do alcance).
+fn check_scope(
+    principal: &Principal,
+    name: Option<&str>,
+    prefixes: Option<&[String]>,
+) -> Result<(), ApiError> {
+    let name_ok = name.is_none_or(|n| principal.reaches(n));
+    let prefixes_ok =
+        prefixes.is_none_or(|list| list.iter().all(|p| principal.covers_distribution_prefix(p)));
+    if name_ok && prefixes_ok {
+        Ok(())
+    } else {
+        Err(out_of_scope().into())
+    }
+}
+
 async fn create(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, ApiError> {
     let fields = json::object(&headers, &body)?;
-    let view = state.topics.create(request::create(&fields)?).await?;
+    let request = request::create(&fields)?;
+    check_scope(&principal, Some(&request.name), request.prefixes.as_deref())?;
+    let view = state.topics.create(request).await?;
     let location = format!("/topics/{}", view.definition.name);
     Ok((
         StatusCode::CREATED,
@@ -42,6 +63,7 @@ async fn create(
 
 async fn list(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     let result = state.topics.list(ListQuery {
@@ -49,6 +71,7 @@ async fn list(
         cursor: params.get("cursor").cloned(),
         sort: params.get("sort").cloned(),
         name: params.get("name").cloned(),
+        scope: principal.prefixes().to_vec(),
     })?;
     let mut page = Map::new();
     page.insert(
@@ -70,15 +93,15 @@ async fn read(
 
 async fn update(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     Path(topic): Path<String>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<Value>, ApiError> {
     let fields = json::object(&headers, &body)?;
-    let view = state
-        .topics
-        .update(&topic, request::update(&fields)?)
-        .await?;
+    let request = request::update(&fields)?;
+    check_scope(&principal, None, request.prefixes.as_deref())?;
+    let view = state.topics.update(&topic, request).await?;
     Ok(Json(view.to_json()))
 }
 

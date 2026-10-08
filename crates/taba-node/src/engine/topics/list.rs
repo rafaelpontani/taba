@@ -148,6 +148,9 @@ impl Topics {
                 items.push((key, view));
             }
         }
+        if !query.scope.is_empty() {
+            items.retain(|(key, _)| crate::core::token::reaches(&query.scope, &key.n));
+        }
         if let Some(filter) = &query.name {
             items.retain(|(key, _)| key.n.contains(filter.as_str()));
         }

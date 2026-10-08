@@ -5,6 +5,7 @@
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::net::TcpListener;
 use tokio::task::JoinSet;
@@ -16,12 +17,17 @@ use crate::config::Config;
 use crate::core::clock::{Clock, SystemClock};
 use crate::core::id;
 use crate::engine::messages::{MessageRules, Messages};
+use crate::engine::tokens::{TokenRules, Tokens};
 use crate::engine::topics::{TopicRules, Topics};
+use crate::http::auth::Auth;
+use crate::http::client_ip::ClientIpRules;
+use crate::http::ratelimit::RateLimiter;
 use crate::http::{self, AppState};
 use crate::storage;
 use crate::storage::db::NodeDb;
 use crate::storage::messages::MessageStore;
 use crate::storage::state::NodeStateStore;
+use crate::storage::tokens::SqliteTokenStore;
 use crate::storage::topics::SqliteTopicStore;
 
 #[derive(Debug, thiserror::Error)]
@@ -166,13 +172,22 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let saves = NodeStateStore::new(node_db.clone());
     let topics = Topics::open(
         TopicRules::from_config(&config),
-        Arc::new(SqliteTopicStore::new(node_db)),
+        Arc::new(SqliteTopicStore::new(node_db.clone())),
         deps.clock.clone(),
         dev && config.resume_on_start,
     )
     .await
     .map_err(storage_error)?;
     let topics = Arc::new(topics);
+    let tokens = Tokens::open(
+        TokenRules::from_config(&config),
+        Arc::new(SqliteTokenStore::new(node_db)),
+        deps.clock.clone(),
+        dev && config.resume_on_start,
+    )
+    .await
+    .map_err(storage_error)?;
+    let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
     let messages = Messages::new(
         topics.clone(),
         deps.clock.clone(),
@@ -205,6 +220,12 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         messages,
         drain: drain.clone(),
         allowed_ips: Arc::new(config.operations_allowed_ips.clone()),
+        client_ip: Arc::new(ClientIpRules::from_config(&config.client_ip)),
+        rate_limiter: Arc::new(RateLimiter::from_config(
+            &config.rate_limit,
+            deps.clock.clone(),
+        )),
+        auth: auth.clone(),
     };
 
     if dev {
@@ -236,6 +257,9 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
     let sweeper = state.messages.clone();
+    let state_messages = state.messages.clone();
+    let token_sweep_interval = config.retention.sweep_interval.min(Duration::from_secs(1));
+    let reload_interval = config.auth.reload_interval;
     let mut serve = |listener: TcpListener, router: axum::Router| {
         let cancel = cancel.clone();
         tasks.spawn(async move {
@@ -262,6 +286,44 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         tasks.spawn(async move {
             sweeper.run_sweeper(cancel).await;
             Ok(())
+        });
+    }
+
+    {
+        // A fila volátil sem consumidor há `idleTimeout` é excluída (doc 15, seção 14.3).
+        let cancel = cancel.clone();
+        let messages = state_messages.clone();
+        tasks.spawn(async move {
+            messages.run_idle_sweeper(cancel).await;
+            Ok(())
+        });
+    }
+    {
+        // Cada nó apaga por conta própria os tokens vencidos, sem propagar (doc 06a).
+        let (cancel, auth) = (cancel.clone(), auth.clone());
+        tasks.spawn(async move {
+            let mut ticker = tokio::time::interval(token_sweep_interval);
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    () = cancel.cancelled() => return Ok(()),
+                    _ = ticker.tick() => { auth.tokens.sweep().await; }
+                }
+            }
+        });
+    }
+    if auth.root.has_file() {
+        // O arquivo do token raiz é relido, para trocar o segredo sem reiniciar.
+        let (cancel, auth) = (cancel.clone(), auth.clone());
+        tasks.spawn(async move {
+            let mut ticker = tokio::time::interval(reload_interval);
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    () = cancel.cancelled() => return Ok(()),
+                    _ = ticker.tick() => auth.root.reload(),
+                }
+            }
         });
     }
 

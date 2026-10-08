@@ -112,7 +112,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seções 3.3 e 3.4. A API de cli
 | UC-DEF-005 | `POST /cluster/topics/register` com `operation` `create`, `update` e `delete` e `TopicDefinition` completa (em `delete`, só `name` e `id` são lidos). | 06c | C |
 | UC-DEF-006 | `register` de `create` com nome existente: `409` `topic.already-exists`; de `update` ou `delete` com nome desconhecido: `404` `topic.not-found`; outra operação pendente no mesmo tópico: `409` `cluster.conflict`. | 06c | C |
 | UC-DEF-007 | `delete` com `expectedId` (só do nó gestor de fila volátil): cada nó só aceita se o tópico atual ainda tiver aquele `id`; diferente: `409` `cluster.conflict`. | 06c, 15 §14.5 | C |
-| UC-DEF-008 | `POST /cluster/tokens/register` com `create`, `update` e `revoke`, levando só o `secretHash`; erros `409` `cluster.conflict` e `404` `token.not-found`. | 06c, 02 §3.4 | C |
+| UC-DEF-008 | `POST /cluster/tokens/register` com `create`, `update` e `revoke`, levando só o `salt` e o `secretHash`; erros `409` `cluster.conflict` e `404` `token.not-found`. | 06c, 02 §3.4 | C |
 
 #### Persistência
 
@@ -121,7 +121,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seções 3.3 e 3.4. A API de cli
 | UC-DEF-009 | A definição do tópico é sempre persistida na tabela `topics` do `${storage.dir}/_node.db` (uma linha por tópico, sem arquivo por tópico), gravada no commit em cada nó, e atualizada ou removida com a definição. | 02 §3.3 | I, C |
 | UC-DEF-010 | O arquivo guarda **só a definição**: dados de consumo (profundidade, taxas, histogramas) nunca vão para ele. | 02 §3.3 | I |
 | UC-DEF-011 | A dead-letter não tem linha de definição na tabela `topics`: é derivada da fila de origem, criada e excluída na mesma operação. | 02 §3.3 | I |
-| UC-DEF-012 | Cada token é persistido em `${storage.dir}/_tokens/${id}.json` (com `id`, `name`, permissões, prefixos, datas e o hash do segredo, nunca o segredo). | 02 §3.4 | I |
+| UC-DEF-012 | Cada token é uma linha da tabela `tokens` do `_node.db` (com `id`, `name`, permissões, prefixos, datas, o sal e o hash salgado do segredo, nunca o segredo). | 02 §3.4 | I |
 | UC-DEF-013 | Na partida, o nó (em desenvolvimento, retomando do disco) carrega as definições da tabela `topics` do `_node.db`, preservando o `id` e a data de criação de cada uma. | 04 §6.10 | I |
 
 #### Remoção com mensagens pendentes

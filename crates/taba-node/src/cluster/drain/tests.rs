@@ -269,6 +269,7 @@ async fn a_long_poll_waiting_when_the_drain_starts_answers_empty() {
                 max_messages: Some("10".into()),
                 visibility_timeout: Some("600".into()),
                 wait_time: None,
+                ..Default::default()
             },
         )
         .await
@@ -282,6 +283,7 @@ async fn a_long_poll_waiting_when_the_drain_starts_answers_empty() {
                     max_messages: None,
                     visibility_timeout: None,
                     wait_time: Some("20".into()),
+                    ..Default::default()
                 },
             )
             .await

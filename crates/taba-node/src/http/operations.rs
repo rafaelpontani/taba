@@ -2,11 +2,10 @@
 //! `/metrics` e `/metrics/topics/*` entram com a observabilidade.
 //!
 //! Estas rotas não usam token e só aceitam os IPs de `operations.allowed-ips` (lista vazia:
-//! sem restrição). O IP é o da conexão; o cabeçalho de IP do cliente entra com o rate limit.
+//! sem restrição). O IP é o do cliente resolvido (`client-ip.*`, doc 12).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{ConnectInfo, Query, Request, State};
@@ -15,12 +14,11 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use ipnet::IpNet;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::AppState;
 use super::common::ApiError;
+use super::{AppState, ratelimit};
 use crate::cluster::drain::{Cancelled, DrainStatus, Started};
 use crate::cluster::state::{DrainState, NodeState};
 use crate::core::error::{ErrorCode, TabaError};
@@ -62,7 +60,7 @@ fn unix_ms(at: SystemTime) -> u64 {
 }
 
 /// As rotas de operação, já com o filtro de `operations.allowed-ips`.
-pub fn routes(allowed_ips: Arc<Vec<IpNet>>) -> Router<AppState> {
+pub fn routes(state: &AppState) -> Router<AppState> {
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
@@ -71,19 +69,20 @@ pub fn routes(allowed_ips: Arc<Vec<IpNet>>) -> Router<AppState> {
             "/node/drain",
             get(drain_status).post(drain_start).delete(drain_cancel),
         )
-        .route_layer(middleware::from_fn_with_state(allowed_ips, ip_filter))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            ratelimit::rate_limit,
+        ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), ip_filter))
 }
 
 /// `403 ops.ip-not-allowed` para o IP fora de `operations.allowed-ips`.
-async fn ip_filter(
-    State(allowed): State<Arc<Vec<IpNet>>>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn ip_filter(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let allowed = &state.allowed_ips;
     let ip = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|ConnectInfo(addr)| addr.ip().to_canonical());
+        .map(|ConnectInfo(peer)| state.client_ip.resolve(*peer, request.headers()));
     let permitted =
         allowed.is_empty() || ip.is_some_and(|ip| allowed.iter().any(|n| n.contains(&ip)));
     if permitted {

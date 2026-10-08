@@ -12,5 +12,6 @@ pub mod core;
 pub mod engine;
 pub mod http;
 pub mod node;
+pub mod secrets;
 pub mod storage;
 pub mod telemetry;

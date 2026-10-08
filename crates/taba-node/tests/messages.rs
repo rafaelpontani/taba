@@ -143,7 +143,9 @@ async fn a_mixed_batch_keeps_each_content_type_and_the_exact_bytes() {
         assert_eq!(response.status(), 201, "{content_type}");
     }
 
-    let messages = consume(&node, "arquivos", "?maxMessages=10").await;
+    // Sem garantia de ordem na fila comum (UC-CNS-013): compara em ordem de `id`.
+    let mut messages = consume(&node, "arquivos", "?maxMessages=10").await;
+    messages.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
     assert_eq!(messages.len(), 5);
     assert_eq!(messages[0]["body"], "Pedido 9001 aprovado");
     assert_eq!(messages[0]["contentType"], "text/plain; charset=utf-8");
@@ -1258,5 +1260,48 @@ async fn the_dead_letter_receives_the_body_file_of_a_message_on_disk() {
     assert_eq!(dead[0]["deadLetterReason"], "max-deliveries");
     assert_eq!(body_files(&node, "pedidos"), 0);
     assert_eq!(body_files(&node, "pedidos-dead-letter"), 1);
+    node.shutdown().await;
+}
+
+/// UC: UC-GRP-010, UC-GRP-002, UC-GRP-003
+#[tokio::test]
+async fn a_noisy_producer_does_not_delay_a_small_one_over_http() {
+    let node = TestNode::development().await;
+    queue(&node, "pedidos").await;
+    for i in 0..100 {
+        let r = publish_raw(
+            &node,
+            "pedidos",
+            "?groupId=barulhento",
+            None,
+            i.to_string().into_bytes(),
+        )
+        .await;
+        assert_eq!(r.status(), 201);
+    }
+    for i in 0..3 {
+        let r = publish_raw(
+            &node,
+            "pedidos",
+            "?groupId=pequeno",
+            None,
+            i.to_string().into_bytes(),
+        )
+        .await;
+        assert_eq!(r.status(), 201);
+    }
+    let first = consume(&node, "pedidos", "?maxMessages=3&visibilityTimeout=600").await;
+    let groups: Vec<&str> = first
+        .iter()
+        .map(|m| m["groupId"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        groups,
+        ["pequeno", "pequeno", "pequeno"],
+        "o grupo vai junto com a mensagem"
+    );
+    // Numa fila comum o grupo não serializa: várias do mesmo grupo vão juntas.
+    let more = consume(&node, "pedidos", "?maxMessages=4&visibilityTimeout=600").await;
+    assert_eq!(more.len(), 4);
     node.shutdown().await;
 }

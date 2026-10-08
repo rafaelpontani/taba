@@ -196,14 +196,14 @@ Sem outro nó para recuperar dados e sem cluster para limpar, o drain do modo de
 
 - **Mensagens:** corpo (`${topic}/${id}.body`) e metadados (`deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`) no banco do tópico, como no drain comum (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)).
 - **Definições de tópico:** já ficam sempre em disco (tabela `topics` do `_node.db`, seção 3.3). O save confere que estão em dia.
-- **Estado do nó:** na tabela `state` do `_node.db`, o instante do último `GET` de cada fila volátil (para o relógio de ociosidade, seção 14.3 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) e uma marca `save_completed` com o instante do fim do drain.
+- **Estado do nó:** na tabela `state` do `_node.db`, uma marca `save_completed` com o instante do fim do drain. O instante do último `GET` das filas voláteis **não** é gravado: o relógio de ociosidade (seção 14.3 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) recomeça na partida, então o dado não mudaria o resultado.
 - **Não grava o que se refaz:** a lista de prontos, a de invisíveis, a contagem por grupo e as taxas são derivadas e reconstruídas na partida (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)).
 
 **Na partida**, em `mode=development` e com `development.resume-on-start` ligado (padrão), o nó **retoma o que encontra em `storage.dir`**, em vez de começar do zero:
 
 1. Carrega as definições de tópico, mantendo o `id` e a data de criação de cada uma.
 2. Lê o banco de cada tópico e reconstrói as listas e as contagens a partir dos metadados.
-3. Refaz o relógio de ociosidade das filas voláteis: o instante do último `GET` salvo vale como se fosse **o instante da partida**, para a fila não expirar por causa do tempo em que o nó esteve parado. Sem o dado, vale a data de criação mais o `idleTimeout`, também contada da partida.
+3. Refaz o relógio de ociosidade das filas voláteis: o prazo de cada uma conta a partir **da partida** (o prazo é `max(criação, partida, último GET) + idleTimeout`), para a fila não expirar por causa do tempo em que o nó esteve parado.
 4. Fica pronto (`/health/ready`) só ao terminar. A marca `save_completed` é **apagada** nesse momento, para que uma queda depois da partida não passe por save limpo.
 
 **Detalhes da retomada:**

@@ -140,7 +140,7 @@ Propagam a criação, alteração ou remoção de um tópico a **todos** os nós
 
 ### `POST /cluster/tokens/register`, `commit` e `rollback`
 
-O mesmo para os **tokens de acesso** ([02-arquitetura.md](02-arquitetura.md), seção 3.4): `_tokens/${id}.json` em cada nó. `register` leva o **hash** do segredo, **nunca o segredo**.
+O mesmo para os **tokens de acesso** ([02-arquitetura.md](02-arquitetura.md), seção 3.4): a tabela `tokens` do `_node.db` em cada nó. `register` leva o **sal** e o **hash salgado** do segredo, **nunca o segredo**.
 
 **`register`, corpo: `TokenRegisterRequest`**: `operationId`, `coordinatorId`, `operation` (`create`, `update` ou `revoke`) e `token` (`TokenRecord`). `commit` e `rollback`: `OperationRef`. Resposta: `200`, `Ack`. Erros: `409` `cluster.conflict`, `404` `token.not-found` (`update` ou `revoke` de um token desconhecido) e `404` `cluster.operation-unknown`.
 
@@ -295,7 +295,8 @@ A definição do tópico, **igual ao JSON guardado** na tabela `topics` do `_nod
 | `topicPrefixes` | lista de texto | Os prefixos. |
 | `createdAt` | data | Criação. |
 | `expiresAt` | data ou `null` | Vencimento. |
-| `secretHash` | texto | **SHA-256 do segredo**, em hexadecimal. O segredo nunca trafega entre nós. |
+| `salt` | texto | O sal do token (128 bits aleatórios, base64 sem preenchimento). |
+| `secretHash` | texto | `SHA-256(sal ‖ segredo)`, em base64 sem preenchimento. O segredo nunca trafega entre nós. |
 
 ### `MessageRecord`
 
@@ -336,7 +337,7 @@ Cada rota usa o mesmo formato com linhas diferentes:
 | Rota | Linha de dados |
 |---|---|
 | `/cluster/topics` | `TopicDefinition`: a definição do tópico (a mesma guardada na tabela `topics`). |
-| `/cluster/tokens` | `TokenRecord`: o token (o mesmo de `_tokens/${id}.json`, com o hash do segredo). |
+| `/cluster/tokens` | `TokenRecord`: o token (o mesmo da tabela `tokens`, com o sal e o hash do segredo). |
 | `/cluster/blocks/{id}/ids` | `{"id":"<id>","topic":"<topico>"}`; na fila FIFO, a linha de uma mensagem com exclusão lógica traz também `"deleteAt"` (seção 16.7 de [17-topicos-fifo.md](17-topicos-fifo.md)). |
 | `/cluster/message-loss` | `{"id":"<id>","topic":"<topico>"}` |
 | `/cluster/blocks/{id}/messages` | `MessageRecord`: a mensagem completa (`id`, conteúdo e metadados). Na fila FIFO, a mensagem com exclusão lógica vem **sem conteúdo** e com `"deleteAt"`. |

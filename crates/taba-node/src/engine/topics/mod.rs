@@ -9,6 +9,15 @@
 mod list;
 mod rules;
 
+/// Uma fila volátil e o que o relógio de ociosidade precisa dela.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VolatileQueue {
+    pub name: String,
+    pub id: String,
+    pub created_ms: u64,
+    pub idle_timeout_secs: u64,
+}
+
 use std::collections::BTreeMap;
 use std::io;
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -167,6 +176,24 @@ impl Topics {
             .push(hook);
     }
 
+    /// As filas voláteis, para o relógio de ociosidade.
+    pub fn volatile_queues(&self) -> Vec<VolatileQueue> {
+        self.read()
+            .values()
+            .filter_map(|d| {
+                let queue = d.queue()?;
+                queue.volatile.then(|| VolatileQueue {
+                    name: d.name.clone(),
+                    id: d.id.clone(),
+                    created_ms: d.created_ms,
+                    idle_timeout_secs: queue
+                        .idle_timeout
+                        .unwrap_or(self.rules.idle_timeout_default),
+                })
+            })
+            .collect()
+    }
+
     pub fn rules(&self) -> &TopicRules {
         &self.rules
     }
@@ -280,8 +307,29 @@ impl Topics {
     }
 
     pub async fn create(&self, request: CreateTopic) -> Result<TopicView, TabaError> {
+        self.create_checked(request, false).await
+    }
+
+    /// Como `create`; com `enforce_volatile_limit` (o `autoCreate`), recusa a fila volátil que
+    /// passaria de `topics.volatile.max-count` (`422`). A conta é local e feita sob a trava de
+    /// escrita (doc 15, seção 14.4).
+    pub async fn create_checked(
+        &self,
+        request: CreateTopic,
+        enforce_volatile_limit: bool,
+    ) -> Result<TopicView, TabaError> {
         let (spec, tags) = self.validate_create(&request)?;
         let _writer = self.writer.lock().await;
+        if enforce_volatile_limit
+            && matches!(&spec, Spec::Queue(queue) if queue.volatile)
+            && let Some(max) = self.rules.volatile_max_count
+            && self.volatile_queues().len() >= max as usize
+        {
+            return Err(TabaError::new(
+                ErrorCode::TopicVolatileLimit,
+                "O teto de filas voláteis (topics.volatile.max-count) foi atingido.",
+            ));
+        }
         if self.read().contains_key(&request.name) {
             return Err(TabaError::new(
                 ErrorCode::TopicAlreadyExists,
@@ -316,8 +364,21 @@ impl Topics {
     /// Remove o tópico. As mensagens saem junto, quando existirem. Sempre funciona,
     /// sem checar mensagens pendentes (doc 02, seção 3.3).
     pub async fn delete(&self, name: &str) -> Result<(), TabaError> {
+        self.delete_checked(name, None).await
+    }
+
+    /// Como `delete`, mas só apaga se o tópico ainda tem o `id` esperado: uma fila excluída e
+    /// **recriada** no meio do caminho não é apagada por engano (doc 15, seção 14.5).
+    pub async fn delete_expected(&self, name: &str, expected_id: &str) -> Result<(), TabaError> {
+        self.delete_checked(name, Some(expected_id)).await
+    }
+
+    async fn delete_checked(&self, name: &str, expected_id: Option<&str>) -> Result<(), TabaError> {
         let _writer = self.writer.lock().await;
         let current = self.writable(name)?;
+        if expected_id.is_some_and(|id| id != current.id) {
+            return Err(Self::not_found());
+        }
         let is_queue = current.queue().is_some();
         let name = current.name;
         let to_delete = name.clone();

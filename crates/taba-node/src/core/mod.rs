@@ -8,5 +8,6 @@ pub mod error;
 pub mod id;
 pub mod pagination;
 pub mod time;
+pub mod token;
 pub mod topic;
 pub mod validation;

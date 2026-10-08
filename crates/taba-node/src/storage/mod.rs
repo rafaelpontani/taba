@@ -6,6 +6,7 @@
 pub mod db;
 pub mod messages;
 pub mod state;
+pub mod tokens;
 pub mod topics;
 
 use std::io;

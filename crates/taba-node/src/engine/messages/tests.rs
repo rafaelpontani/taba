@@ -90,7 +90,7 @@ fn json_body(text: &str) -> PublishRequest {
 
 fn published_id(published: Published) -> String {
     match published {
-        Published::Queue { id } => id,
+        Published::Queue { id, .. } => id,
         Published::Distributor { .. } => panic!("esperava uma fila"),
     }
 }
@@ -116,6 +116,7 @@ fn q(max: Option<&str>, visibility: Option<&str>, wait: Option<&str>) -> Consume
         max_messages: max.map(Into::into),
         visibility_timeout: visibility.map(Into::into),
         wait_time: wait.map(Into::into),
+        ..Default::default()
     }
 }
 
@@ -413,7 +414,9 @@ async fn each_message_keeps_its_content_type_and_group_in_a_mixed_batch() {
     publish("image/png", &[0x89, b'P', b'N', b'G'], Some("g1"));
     publish("application/json", br#"{ "pedido": 9001 }"#, None);
 
-    let got = consume(&h, "arquivos", ConsumeQuery::default()).await;
+    // Sem garantia de ordem (UC-CNS-013): compara em ordem de `id`.
+    let mut got = consume(&h, "arquivos", ConsumeQuery::default()).await;
+    got.sort_by(|a, b| a.id.cmp(&b.id));
     let bodies: Vec<String> = got
         .iter()
         .map(|m| serde_json::to_string(&m.body).unwrap())
@@ -1273,7 +1276,9 @@ async fn delivery_merges_memory_and_disk_in_id_order_with_the_exact_bytes() {
     );
     assert_eq!(h.messages.usage("arquivos").1, 2);
 
-    let got = consume(&h, "arquivos", ConsumeQuery::default()).await;
+    // Sem garantia de ordem (UC-CNS-013): compara em ordem de `id`.
+    let mut got = consume(&h, "arquivos", ConsumeQuery::default()).await;
+    got.sort_by(|a, b| a.id.cmp(&b.id));
     let ids: Vec<&str> = got.iter().map(|m| m.id.as_str()).collect();
     assert_eq!(ids, [first.as_str(), second.as_str(), third.as_str()]);
     assert_eq!(serde_json::to_string(&got[0].body).unwrap(), "\"abc\"");
@@ -1566,4 +1571,1342 @@ async fn topics_that_differ_only_in_case_keep_separate_folders() {
     assert!(h.dir.path().join("~pedidos").is_dir());
     h.topics.delete("Pedidos").await.unwrap();
     assert_eq!(h.messages.usage("pedidos").1, 1, "a outra não foi tocada");
+}
+
+fn auto(h: &Harness, name: &str, f: impl FnOnce(&mut ConsumeQuery)) -> ConsumeQuery {
+    let _ = (h, name);
+    let mut query = ConsumeQuery {
+        auto_create: Some("true".into()),
+        can_create: true,
+        ..Default::default()
+    };
+    f(&mut query);
+    query
+}
+
+fn volatile_queue(name: &str, idle_secs: i64) -> CreateTopic {
+    CreateTopic {
+        volatile: Some(true),
+        idle_timeout: Some(idle_secs),
+        ..queue(name)
+    }
+}
+
+/// UC: UC-CNS-031
+#[tokio::test]
+async fn auto_create_makes_a_volatile_queue_with_the_default_idle_timeout() {
+    let h = harness();
+    let got = h
+        .messages
+        .consume("nova", auto(&h, "nova", |_| {}))
+        .await
+        .unwrap();
+    assert!(got.is_empty());
+    let view = h.topics.get("nova").unwrap();
+    let queue = view.definition.queue().unwrap();
+    assert!(queue.volatile);
+    assert_eq!(queue.idle_timeout, Some(600));
+    assert!(!queue.fifo);
+}
+
+/// UC: UC-CNS-032
+#[tokio::test]
+async fn auto_create_takes_the_creation_attributes_from_the_query() {
+    let h = harness();
+    h.messages
+        .consume(
+            "persistente",
+            auto(&h, "persistente", |q| {
+                q.volatile = Some("false".into());
+                q.fifo = Some("true".into());
+                q.tags.insert("time".into(), "financeiro".into());
+            }),
+        )
+        .await
+        .unwrap();
+    let view = h.topics.get("persistente").unwrap();
+    let queue = view.definition.queue().unwrap();
+    assert!(!queue.volatile && queue.fifo);
+    assert_eq!(view.definition.tags["time"], "financeiro");
+
+    h.messages
+        .consume(
+            "curta",
+            auto(&h, "curta", |q| q.idle_timeout = Some("120".into())),
+        )
+        .await
+        .unwrap();
+    let view = h.topics.get("curta").unwrap();
+    assert_eq!(view.definition.queue().unwrap().idle_timeout, Some(120));
+
+    // `idleTimeout` numa fila que não é volátil não se aplica; fora da faixa é `400`.
+    for (volatile, idle, code) in [
+        ("false", "120", ErrorCode::ValidationNotApplicable),
+        ("true", "5", ErrorCode::ValidationOutOfRange),
+        ("true", "muito", ErrorCode::ValidationFailed),
+    ] {
+        let query = auto(&h, "x", |q| {
+            q.volatile = Some(volatile.into());
+            q.idle_timeout = Some(idle.into());
+        });
+        assert_eq!(consume_err(&h, "x", query).await, code, "{volatile} {idle}");
+    }
+    assert!(h.topics.get("x").is_err(), "nenhuma delas criou a fila");
+}
+
+/// UC: UC-CNS-033
+#[tokio::test]
+async fn auto_create_on_an_existing_queue_ignores_the_creation_parameters() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    publish_ok(&h, "pedidos", "1");
+    let query = auto(&h, "pedidos", |q| {
+        q.volatile = Some("true".into());
+        q.idle_timeout = Some("60".into());
+        q.fifo = Some("true".into());
+        q.tags.insert("a".into(), "b".into());
+    });
+    let got = h.messages.consume("pedidos", query).await.unwrap();
+    assert_eq!(got.len(), 1, "é um consumo normal");
+    let view = h.topics.get("pedidos").unwrap();
+    assert!(
+        !view.definition.queue().unwrap().volatile,
+        "a fila não mudou"
+    );
+    assert!(view.definition.tags.is_empty());
+}
+
+/// UC: UC-CNS-034, UC-CNS-035
+#[tokio::test]
+async fn auto_create_never_makes_a_distributor_and_refuses_bad_names() {
+    let h = harness();
+    h.topics.create(distributor("dist", &["a-"])).await.unwrap();
+    assert_eq!(
+        consume_err(&h, "dist", auto(&h, "dist", |_| {})).await,
+        ErrorCode::TopicWrongType
+    );
+    assert_eq!(
+        consume_err(&h, "x-dead-letter", auto(&h, "x", |_| {})).await,
+        ErrorCode::ValidationReservedName
+    );
+    assert_eq!(
+        consume_err(&h, "com espaço", auto(&h, "x", |_| {})).await,
+        ErrorCode::ValidationInvalidName
+    );
+}
+
+/// UC: UC-CNS-031
+#[tokio::test]
+async fn without_auto_create_a_missing_topic_is_404_and_a_bad_flag_is_400() {
+    let h = harness();
+    let plain = ConsumeQuery {
+        can_create: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        consume_err(&h, "nada", plain).await,
+        ErrorCode::TopicNotFound
+    );
+    let off = auto(&h, "nada", |q| q.auto_create = Some("false".into()));
+    assert_eq!(consume_err(&h, "nada", off).await, ErrorCode::TopicNotFound);
+    let bad = auto(&h, "nada", |q| q.auto_create = Some("sim".into()));
+    assert_eq!(
+        consume_err(&h, "nada", bad).await,
+        ErrorCode::ValidationFailed
+    );
+}
+
+/// UC: UC-CNS-040
+#[tokio::test]
+async fn creating_by_auto_create_needs_the_create_permission_but_consuming_does_not() {
+    let h = harness();
+    let no_create = auto(&h, "nova", |q| q.can_create = false);
+    assert_eq!(
+        consume_err(&h, "nova", no_create).await,
+        ErrorCode::AuthForbidden
+    );
+    assert!(h.topics.get("nova").is_err());
+
+    h.topics.create(queue("existe")).await.unwrap();
+    let query = auto(&h, "existe", |q| q.can_create = false);
+    assert!(
+        h.messages
+            .consume("existe", query)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// UC: UC-CNS-036
+#[tokio::test]
+async fn auto_create_stops_at_the_volatile_ceiling_but_post_does_not() {
+    let h = harness_with(&[("TABA_TOPICS_VOLATILE_MAX_COUNT", "2")]);
+    for name in ["a", "b"] {
+        h.messages
+            .consume(name, auto(&h, name, |_| {}))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        consume_err(&h, "c", auto(&h, "c", |_| {})).await,
+        ErrorCode::TopicVolatileLimit
+    );
+    assert!(h.topics.get("c").is_err());
+    // Uma fila que não é volátil não entra na conta, e uma já existente segue consumível.
+    let persistent = auto(&h, "p", |q| q.volatile = Some("false".into()));
+    h.messages.consume("p", persistent).await.unwrap();
+    h.messages
+        .consume("a", auto(&h, "a", |_| {}))
+        .await
+        .unwrap();
+    // O teto vale para o `autoCreate`; a criação normal não é barrada.
+    h.topics.create(volatile_queue("d", 60)).await.unwrap();
+    assert_eq!(h.topics.volatile_queues().len(), 3);
+
+    // Sem o teto não há limite.
+    let free = harness();
+    for n in 0..20 {
+        let name = format!("q{n}");
+        free.messages
+            .consume(&name, auto(&free, &name, |_| {}))
+            .await
+            .unwrap();
+    }
+}
+
+/// UC: UC-CNS-038
+#[tokio::test]
+async fn consumers_racing_to_auto_create_the_same_name_all_succeed() {
+    let h = harness();
+    let results = futures_join(
+        (0..8)
+            .map(|_| {
+                let messages = h.messages.clone();
+                let query = auto(&h, "corrida", |_| {});
+                tokio::spawn(async move { messages.consume("corrida", query).await })
+            })
+            .collect(),
+    )
+    .await;
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    assert_eq!(h.topics.volatile_queues().len(), 1);
+}
+
+async fn futures_join<T: Send + 'static>(handles: Vec<tokio::task::JoinHandle<T>>) -> Vec<T> {
+    let mut out = Vec::new();
+    for handle in handles {
+        out.push(handle.await.unwrap());
+    }
+    out
+}
+
+/// UC: UC-VOL-001, UC-VOL-002
+#[tokio::test]
+async fn an_idle_volatile_queue_is_deleted_with_its_messages_and_dead_letter() {
+    let h = harness();
+    h.topics
+        .create(volatile_queue("efemera", 60))
+        .await
+        .unwrap();
+    publish_ok(&h, "efemera", "1");
+    publish_ok(&h, "efemera", "2");
+    delivered_one(&h, "efemera", "5").await; // o relógio já contou este `GET`
+    h.clock.advance(Duration::from_secs(10));
+
+    h.clock.advance(Duration::from_secs(49));
+    assert!(h.messages.expire_idle().await.is_empty(), "faltam 1 s");
+    h.clock.advance(Duration::from_secs(1));
+    assert_eq!(h.messages.expire_idle().await, ["efemera"]);
+    assert!(h.topics.get("efemera").is_err());
+    assert!(h.topics.get("efemera-dead-letter").is_err());
+    assert_eq!(
+        h.messages.usage("efemera"),
+        (0, 0),
+        "as mensagens saíram junto"
+    );
+    assert!(h.messages.expire_idle().await.is_empty());
+}
+
+/// UC: UC-VOL-002
+#[tokio::test]
+async fn the_clock_runs_from_the_creation_and_is_reset_by_each_get() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(59));
+    consume(&h, "fila", q(None, None, None)).await; // reinicia o prazo
+    h.clock.advance(Duration::from_secs(59));
+    assert!(h.messages.expire_idle().await.is_empty());
+    h.clock.advance(Duration::from_secs(1));
+    assert_eq!(h.messages.expire_idle().await, ["fila"]);
+}
+
+/// UC: UC-VOL-003
+#[tokio::test]
+async fn any_get_counts_with_or_without_messages_and_a_long_poll_counts_from_its_start() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(30));
+    let messages = h.messages.clone();
+    let poll =
+        tokio::spawn(async move { messages.consume("fila", q(None, None, Some("2"))).await });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    // O `GET` ainda espera, e o instante já foi registrado no começo.
+    h.clock.advance(Duration::from_secs(40));
+    assert!(
+        h.messages.expire_idle().await.is_empty(),
+        "30 s + 60 s ainda não chegou: o GET em andamento já contou"
+    );
+    poll.await.unwrap().unwrap();
+}
+
+/// UC: UC-VOL-004
+#[tokio::test]
+async fn publishing_does_not_count_as_a_consumer() {
+    let h = harness();
+    h.topics
+        .create(volatile_queue("so-produtor", 60))
+        .await
+        .unwrap();
+    h.clock.advance(Duration::from_secs(40));
+    publish_ok(&h, "so-produtor", "1");
+    h.clock.advance(Duration::from_secs(20));
+    assert_eq!(h.messages.expire_idle().await, ["so-produtor"]);
+}
+
+/// UC: UC-VOL-005, UC-RET-017
+#[tokio::test]
+async fn a_get_on_the_dead_letter_does_not_count_as_a_consumer() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(40));
+    consume(&h, "fila-dead-letter", q(None, None, None)).await;
+    h.clock.advance(Duration::from_secs(20));
+    assert_eq!(h.messages.expire_idle().await, ["fila"]);
+}
+
+/// UC: UC-VOL-021
+#[tokio::test]
+async fn patching_the_idle_timeout_applies_to_the_next_check() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(40));
+    h.topics
+        .update(
+            "fila",
+            crate::engine::topics::UpdateTopic {
+                idle_timeout: Some(300),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    h.clock.advance(Duration::from_secs(100));
+    assert!(h.messages.expire_idle().await.is_empty());
+    h.clock.advance(Duration::from_secs(160));
+    assert_eq!(h.messages.expire_idle().await, ["fila"]);
+}
+
+/// UC: UC-VOL-001
+#[tokio::test]
+async fn persistent_queues_and_distributors_are_never_deleted_for_idleness() {
+    let h = harness();
+    h.topics.create(queue("persistente")).await.unwrap();
+    h.topics.create(distributor("dist", &["a-"])).await.unwrap();
+    h.clock.advance(Duration::from_secs(10 * 86_400));
+    assert!(h.messages.expire_idle().await.is_empty());
+    assert!(h.topics.get("persistente").is_ok() && h.topics.get("dist").is_ok());
+}
+
+/// UC: UC-VOL-022
+#[tokio::test]
+async fn a_fifo_queue_can_be_volatile() {
+    let h = harness();
+    h.topics
+        .create(CreateTopic {
+            fifo: Some(true),
+            ..volatile_queue("fifo", 60)
+        })
+        .await
+        .unwrap();
+    h.clock.advance(Duration::from_secs(60));
+    assert_eq!(h.messages.expire_idle().await, ["fifo"]);
+}
+
+/// UC: UC-DRN-023
+#[tokio::test]
+async fn a_restart_does_not_count_the_time_the_node_was_stopped() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(3600)); // o nó ficou parado uma hora
+    let restarted = reopen(&h, true);
+    assert!(
+        restarted.expire_idle().await.is_empty(),
+        "o prazo conta da partida, não da criação"
+    );
+    h.clock.advance(Duration::from_secs(59));
+    assert!(restarted.expire_idle().await.is_empty());
+    h.clock.advance(Duration::from_secs(1));
+    assert_eq!(restarted.expire_idle().await, ["fila"]);
+}
+
+/// UC: UC-VOL-014
+#[tokio::test]
+async fn an_ack_after_the_queue_was_deleted_is_not_found() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    publish_ok(&h, "fila", "1");
+    let m = delivered_one(&h, "fila", "600").await;
+    h.clock.advance(Duration::from_secs(60));
+    assert_eq!(h.messages.expire_idle().await, ["fila"]);
+    let error = h
+        .messages
+        .ack("fila", &m.id, Some(&m.receipt_token))
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::TopicNotFound);
+}
+
+/// UC: UC-VOL-012
+#[tokio::test]
+async fn a_recreated_queue_is_not_deleted_by_the_old_deadline() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    let old = h.topics.volatile_queues().remove(0);
+    h.topics.delete("fila").await.unwrap();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    let error = h.topics.delete_expected("fila", &old.id).await.unwrap_err();
+    assert_eq!(error.code, ErrorCode::TopicNotFound);
+    assert!(h.topics.get("fila").is_ok(), "a fila nova ficou");
+}
+
+/// UC: UC-VOL-002
+#[tokio::test]
+async fn a_recreated_queue_does_not_inherit_the_last_get_of_the_old_one() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(50));
+    consume(&h, "fila", q(None, None, None)).await;
+    h.topics.delete("fila").await.unwrap();
+    h.clock.advance(Duration::from_secs(5));
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    h.clock.advance(Duration::from_secs(60));
+    assert_eq!(
+        h.messages.expire_idle().await,
+        ["fila"],
+        "conta da criação nova"
+    );
+}
+
+fn publish_grouped(h: &Harness, topic: &str, group: Option<&str>, body: &str) -> String {
+    let mut request = json_body(body);
+    request.group_id = group.map(Into::into);
+    published_id(h.messages.publish(topic, request).unwrap())
+}
+
+fn groups_of(messages: &[Delivered]) -> Vec<String> {
+    messages
+        .iter()
+        .map(|m| m.group_id.clone().unwrap_or_default())
+        .collect()
+}
+
+/// UC: UC-GRP-010, UC-GRP-003
+#[tokio::test]
+async fn a_small_group_is_delivered_before_the_big_one_is_exhausted() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    for n in 0..100 {
+        publish_grouped(&h, "pedidos", Some("barulhento"), &n.to_string());
+    }
+    for n in 0..3 {
+        publish_grouped(&h, "pedidos", Some("pequeno"), &n.to_string());
+    }
+    let first = consume(&h, "pedidos", q(Some("3"), Some("600"), None)).await;
+    assert_eq!(
+        groups_of(&first),
+        ["pequeno", "pequeno", "pequeno"],
+        "as 3 do grupo pequeno saem antes de qualquer do grande, mesmo publicadas depois"
+    );
+    // Numa fila comum o grupo não serializa: várias do mesmo grupo vão juntas, em voo.
+    let more = consume(&h, "pedidos", q(Some("5"), Some("600"), None)).await;
+    assert_eq!(more.len(), 5);
+}
+
+/// UC: UC-GRP-011
+#[tokio::test]
+async fn every_nth_delivery_takes_the_oldest_message_so_the_big_group_never_starves() {
+    let h = harness_with(&[("TABA_DELIVERY_FAIR_NORMAL_EVERY", "5")]);
+    h.topics.create(queue("pedidos")).await.unwrap();
+    let oldest = publish_grouped(&h, "pedidos", Some("grande"), "0");
+    for n in 1..50 {
+        publish_grouped(&h, "pedidos", Some("grande"), &n.to_string());
+    }
+    for n in 0..20 {
+        publish_grouped(&h, "pedidos", Some("pequeno"), &n.to_string());
+    }
+    let got = consume(&h, "pedidos", q(Some("5"), Some("600"), None)).await;
+    assert!(
+        got.iter().any(|m| m.id == oldest),
+        "a 5ª entrega leva a mais antiga de todas, do grupo grande"
+    );
+    assert!(groups_of(&got).iter().filter(|g| *g == "pequeno").count() >= 3);
+
+    // Com `normal-every` zero a garantia some: só o pequeno sai enquanto tiver mensagem.
+    let off = harness_with(&[("TABA_DELIVERY_FAIR_NORMAL_EVERY", "0")]);
+    off.topics.create(queue("pedidos")).await.unwrap();
+    let old = publish_grouped(&off, "pedidos", Some("grande"), "0");
+    for n in 1..50 {
+        publish_grouped(&off, "pedidos", Some("grande"), &n.to_string());
+    }
+    for n in 0..4 {
+        publish_grouped(&off, "pedidos", Some("pequeno"), &n.to_string());
+    }
+    let got = consume(&off, "pedidos", q(Some("4"), Some("600"), None)).await;
+    assert!(groups_of(&got).iter().all(|g| g == "pequeno"));
+    assert!(got.iter().all(|m| m.id != old));
+}
+
+/// UC: UC-GRP-013, UC-DRN-023
+#[tokio::test]
+async fn the_index_is_rebuilt_from_the_disk_after_a_restart() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    for n in 0..20 {
+        publish_grouped(&h, "pedidos", Some("grande"), &n.to_string());
+    }
+    for n in 0..2 {
+        publish_grouped(&h, "pedidos", Some("pequeno"), &n.to_string());
+    }
+    let in_flight = consume(&h, "pedidos", q(Some("1"), Some("600"), None)).await;
+    assert_eq!(groups_of(&in_flight), ["pequeno"]);
+    h.messages.drain();
+
+    let restarted = reopen(&h, true);
+    // O que estava em processamento segue invisível; o grupo pequeno ainda tem a vez.
+    let got = restarted
+        .consume("pedidos", q(Some("2"), Some("600"), None))
+        .await
+        .unwrap();
+    assert_eq!(groups_of(&got), ["pequeno", "grande"]);
+    assert_ne!(got[0].id, in_flight[0].id);
+    let again = restarted
+        .consume("pedidos", q(Some("100"), Some("600"), None))
+        .await
+        .unwrap();
+    assert_eq!(again.len(), 19, "20 + 2 menos as 3 já em voo");
+}
+
+/// UC: UC-RET-006
+#[tokio::test]
+async fn an_exhausted_message_that_waited_out_the_downtime_goes_to_the_dead_letter() {
+    let h = harness();
+    h.topics
+        .create(CreateTopic {
+            max_deliveries: Some(1),
+            ..queue("pedidos")
+        })
+        .await
+        .unwrap();
+    let id = publish_ok(&h, "pedidos", "1");
+    delivered_one(&h, "pedidos", "10").await;
+    h.messages.drain();
+    h.clock.advance(Duration::from_secs(60)); // o prazo venceu com o nó parado
+
+    let restarted = reopen(&h, true);
+    assert!(
+        restarted
+            .consume("pedidos", ConsumeQuery::default())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let dead = restarted
+        .consume("pedidos-dead-letter", ConsumeQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(dead[0].id, id);
+}
+
+/// UC: UC-RET-006
+#[tokio::test]
+async fn lowering_max_deliveries_sends_the_ready_messages_over_the_new_limit_to_the_dead_letter() {
+    let h = harness();
+    h.topics
+        .create(CreateTopic {
+            max_deliveries: Some(5),
+            ..queue("pedidos")
+        })
+        .await
+        .unwrap();
+    let id = publish_ok(&h, "pedidos", "1");
+    for _ in 0..2 {
+        delivered_one(&h, "pedidos", "0").await; // volta na hora, com 1 e depois 2 entregas
+    }
+    h.topics
+        .update(
+            "pedidos",
+            crate::engine::topics::UpdateTopic {
+                max_deliveries: crate::engine::topics::Patch::Value(2),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        consume(&h, "pedidos", ConsumeQuery::default())
+            .await
+            .is_empty()
+    );
+    let dead = consume(&h, "pedidos-dead-letter", ConsumeQuery::default()).await;
+    assert_eq!(dead[0].id, id);
+}
+
+/// UC: UC-ARM-013
+#[tokio::test]
+async fn a_slow_topic_never_blocks_the_other_topics() {
+    let h = harness();
+    h.topics.create(queue("lento")).await.unwrap();
+    h.topics.create(queue("rapido")).await.unwrap();
+    publish_ok(&h, "lento", "1");
+
+    // Segura a trava do tópico lento, como uma gravação demorada em disco.
+    let slow = h.messages.state_of("lento");
+    let held = lock(&slow);
+    let messages = h.messages.clone();
+    let worker = std::thread::spawn(move || {
+        let id = published_id(messages.publish("rapido", json_body("2")).unwrap());
+        let got = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(messages.consume("rapido", ConsumeQuery::default()))
+            .unwrap();
+        assert_eq!(got[0].id, id);
+        messages
+            .ack("rapido", &got[0].id, Some(&got[0].receipt_token))
+            .unwrap();
+    });
+    // O outro tópico anda inteiro com o lento travado.
+    worker.join().expect("o tópico rápido não esperou o lento");
+    drop(held);
+    assert_eq!(consume(&h, "lento", ConsumeQuery::default()).await.len(), 1);
+}
+
+/// UC: UC-ARM-006, UC-ARM-004
+#[tokio::test]
+async fn a_new_topic_keeps_its_reserve_by_pushing_the_excess_of_a_low_rate_topic_to_disk() {
+    let h = harness_with(&[
+        ("TABA_MEMORY_LIMIT", "4"),
+        ("TABA_MEMORY_TOPIC_RESERVE", "1"),
+    ]);
+    h.topics.create(queue("velho")).await.unwrap();
+    h.topics.create(queue("novo")).await.unwrap();
+    for n in 0..4 {
+        publish_ok(&h, "velho", &n.to_string());
+    }
+    assert_eq!(h.messages.usage("velho"), (4, 0), "a memória está cheia");
+
+    // O tópico novo ainda não tem nada em memória: a reserva dele vale mais que o excesso do velho.
+    publish_ok(&h, "novo", "9");
+    assert_eq!(
+        h.messages.usage("novo"),
+        (1, 0),
+        "a primeira mensagem não foi para o disco"
+    );
+    assert_eq!(
+        h.messages.usage("velho"),
+        (3, 1),
+        "o velho cedeu uma ao disco"
+    );
+}
+
+/// UC: UC-ARM-004, UC-ARM-005
+#[tokio::test]
+async fn above_its_reserve_a_topic_only_takes_memory_from_topics_that_are_read_less() {
+    let h = harness_with(&[
+        ("TABA_MEMORY_LIMIT", "4"),
+        ("TABA_MEMORY_TOPIC_RESERVE", "1"),
+    ]);
+    h.topics.create(queue("a")).await.unwrap();
+    h.topics.create(queue("b")).await.unwrap();
+    for n in 0..4 {
+        publish_ok(&h, "b", &n.to_string());
+    }
+    publish_ok(&h, "a", "1"); // dentro da reserva: tira uma do b
+    assert_eq!(h.messages.usage("a"), (1, 0));
+
+    // Passou da reserva e ninguém lê menos que o a: a nova vai para o disco.
+    publish_ok(&h, "a", "2");
+    assert_eq!(h.messages.usage("a"), (1, 1));
+    assert_eq!(h.messages.usage("b"), (3, 1));
+
+    // O a passa a ser lido: a taxa dele sobe acima da do b, e ele ganha memória do b.
+    let got = consume(&h, "a", q(Some("1"), Some("600"), None)).await;
+    assert_eq!(got.len(), 1);
+    let (_, rate_a) = h.messages.rates("a");
+    let (_, rate_b) = h.messages.rates("b");
+    assert!(rate_a > rate_b, "{rate_a} > {rate_b}");
+    publish_ok(&h, "a", "3");
+    assert_eq!(h.messages.usage("a").0, 2, "o a ganhou memória");
+    assert_eq!(h.messages.usage("b"), (2, 2), "o b cedeu mais uma ao disco");
+}
+
+/// UC: UC-ARM-004
+#[tokio::test]
+async fn a_topic_that_is_read_more_is_never_demoted_by_one_that_is_read_less() {
+    let h = harness_with(&[
+        ("TABA_MEMORY_LIMIT", "3"),
+        ("TABA_MEMORY_TOPIC_RESERVE", "1"),
+    ]);
+    h.topics.create(queue("quente")).await.unwrap();
+    h.topics.create(queue("frio")).await.unwrap();
+    for n in 0..3 {
+        publish_ok(&h, "quente", &n.to_string());
+    }
+    consume(&h, "quente", q(Some("1"), Some("0"), None)).await; // dá taxa de leitura ao quente
+    publish_ok(&h, "frio", "1"); // dentro da reserva: o quente cede uma
+    assert_eq!(h.messages.usage("frio"), (1, 0));
+    publish_ok(&h, "frio", "2"); // passou da reserva e lê menos: vai para o disco
+    assert_eq!(h.messages.usage("frio"), (1, 1));
+    assert_eq!(
+        h.messages.usage("quente"),
+        (2, 1),
+        "o quente não cedeu mais nada"
+    );
+}
+
+/// UC: UC-ARM-007
+#[tokio::test]
+async fn demotion_takes_the_middle_of_the_ready_list_and_keeps_the_ends() {
+    let h = harness_with(&[
+        ("TABA_MEMORY_LIMIT", "5"),
+        ("TABA_MEMORY_TOPIC_RESERVE", "1"),
+    ]);
+    h.topics.create(queue("velho")).await.unwrap();
+    h.topics.create(queue("novo")).await.unwrap();
+    let ids: Vec<String> = (0..5)
+        .map(|n| publish_ok(&h, "velho", &n.to_string()))
+        .collect();
+    publish_ok(&h, "novo", "1");
+    // A mais antiga e a mais nova (as pontas da sanfona) seguem em memória; o meio foi ao disco.
+    assert_eq!(
+        h.store.get("velho", &ids[2]).unwrap().map(|m| m.id),
+        Some(ids[2].clone())
+    );
+    for end in [&ids[0], &ids[4]] {
+        assert_eq!(
+            h.store.get("velho", end).unwrap(),
+            None,
+            "as pontas ficam em memória"
+        );
+    }
+}
+
+/// UC: UC-ARM-007
+#[tokio::test]
+async fn messages_in_processing_are_demoted_before_the_ready_ones() {
+    let h = harness_with(&[
+        ("TABA_MEMORY_LIMIT", "4"),
+        ("TABA_MEMORY_TOPIC_RESERVE", "1"),
+    ]);
+    h.topics.create(queue("velho")).await.unwrap();
+    h.topics.create(queue("novo")).await.unwrap();
+    for n in 0..4 {
+        publish_ok(&h, "velho", &n.to_string());
+    }
+    let in_flight = consume(&h, "velho", q(Some("1"), Some("600"), None)).await;
+    publish_ok(&h, "novo", "1");
+    assert!(
+        h.store.get("velho", &in_flight[0].id).unwrap().is_some(),
+        "a que estava em processamento foi a rebaixada"
+    );
+}
+
+/// UC: UC-ARM-005
+#[tokio::test]
+async fn publish_and_consume_rates_are_tracked_per_topic() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    for n in 0..30 {
+        publish_ok(&h, "pedidos", &n.to_string());
+    }
+    consume(&h, "pedidos", q(Some("10"), Some("600"), None)).await;
+    let (published, consumed) = h.messages.rates("pedidos");
+    assert!((published - 30.0 / 300.0).abs() < 1e-9, "{published}");
+    assert!((consumed - 10.0 / 300.0).abs() < 1e-9, "{consumed}");
+    h.clock.advance(Duration::from_secs(301));
+    assert_eq!(h.messages.rates("pedidos"), (0.0, 0.0), "saiu da janela");
+}
+
+/// UC: UC-CNS-029
+#[tokio::test]
+async fn waiting_gets_are_served_in_the_order_they_arrived() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    let spawn_wait = |h: &Harness| {
+        let messages = h.messages.clone();
+        tokio::spawn(async move {
+            messages
+                .consume("pedidos", q(Some("1"), Some("600"), Some("5")))
+                .await
+        })
+    };
+    let first = spawn_wait(&h);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let second = spawn_wait(&h);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let third = spawn_wait(&h);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+
+    let a = publish_ok(&h, "pedidos", "1");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        first.is_finished(),
+        "o primeiro da fila de ouvintes leva a mensagem"
+    );
+    assert!(!second.is_finished() && !third.is_finished());
+    assert_eq!(first.await.unwrap().unwrap()[0].id, a);
+
+    let b = publish_ok(&h, "pedidos", "2");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(second.is_finished() && !third.is_finished());
+    assert_eq!(second.await.unwrap().unwrap()[0].id, b);
+
+    let c = publish_ok(&h, "pedidos", "3");
+    assert_eq!(third.await.unwrap().unwrap()[0].id, c);
+}
+
+/// UC: UC-CNS-029
+#[tokio::test]
+async fn one_publish_with_several_messages_wakes_the_next_waiting_get_too() {
+    let h = harness();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    let spawn_wait = |h: &Harness| {
+        let messages = h.messages.clone();
+        tokio::spawn(async move {
+            messages
+                .consume("pedidos", q(Some("1"), Some("600"), Some("5")))
+                .await
+        })
+    };
+    let first = spawn_wait(&h);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let second = spawn_wait(&h);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    publish_ok(&h, "pedidos", "1");
+    publish_ok(&h, "pedidos", "2");
+    let got_first = tokio::time::timeout(Duration::from_secs(2), first)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let got_second = tokio::time::timeout(Duration::from_secs(2), second)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(got_first.len() + got_second.len(), 2);
+    assert_ne!(got_first[0].id, got_second[0].id);
+}
+
+fn fifo(name: &str) -> CreateTopic {
+    CreateTopic {
+        fifo: Some(true),
+        ..queue(name)
+    }
+}
+
+fn fifo_publish(
+    h: &Harness,
+    topic: &str,
+    group: &str,
+    dedup: Option<&str>,
+    body: &str,
+) -> (String, Option<bool>) {
+    let request = PublishRequest {
+        body: body.as_bytes().to_vec(),
+        group_id: Some(group.into()),
+        deduplication_id: dedup.map(Into::into),
+        ..Default::default()
+    };
+    match h.messages.publish(topic, request).unwrap() {
+        Published::Queue { id, duplicate } => (id, duplicate),
+        Published::Distributor { .. } => panic!("esperava uma fila"),
+    }
+}
+
+async fn fifo_get(h: &Harness, topic: &str, max: &str) -> Vec<Delivered> {
+    consume(h, topic, q(Some(max), Some("600"), None)).await
+}
+
+fn ack(h: &Harness, topic: &str, m: &Delivered) {
+    h.messages
+        .ack(topic, &m.id, Some(&m.receipt_token))
+        .unwrap();
+}
+
+/// UC: UC-FIF-002, UC-FIF-003
+#[tokio::test]
+async fn a_fifo_publish_needs_a_group_and_says_whether_it_was_a_duplicate() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    assert_eq!(
+        publish_err(&h, "f", json_body("1")),
+        ErrorCode::ValidationGroupIdRequired
+    );
+    let (_, duplicate) = fifo_publish(&h, "f", "g1", None, "1");
+    assert_eq!(duplicate, Some(false));
+    // Fora da FIFO não há `duplicate`.
+    h.topics.create(queue("comum")).await.unwrap();
+    assert!(matches!(
+        h.messages.publish("comum", json_body("1")).unwrap(),
+        Published::Queue {
+            duplicate: None,
+            ..
+        }
+    ));
+}
+
+/// UC: UC-FIF-004, UC-FIF-006
+#[tokio::test]
+async fn a_repeated_publish_in_the_window_returns_the_original_and_creates_nothing() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (original, _) = fifo_publish(&h, "f", "g1", Some("pedido-9001"), "1");
+    let (again, duplicate) = fifo_publish(&h, "f", "g1", Some("pedido-9001"), "2");
+    assert_eq!((again.as_str(), duplicate), (original.as_str(), Some(true)));
+
+    let got = fifo_get(&h, "f", "10").await;
+    assert_eq!(got.len(), 1, "nenhuma mensagem nova");
+    assert_eq!(got[0].id, original);
+    assert_eq!(got[0].deduplication_id.as_deref(), Some("pedido-9001"));
+}
+
+/// UC: UC-FIF-005
+#[tokio::test]
+async fn without_a_deduplication_id_the_sha256_of_the_body_is_the_key() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (first, _) = fifo_publish(&h, "f", "g1", None, "{ \"a\": 1 }");
+    // O mesmo corpo é duplicata, mesmo com outro `Content-Type`.
+    let request = PublishRequest {
+        body: b"{ \"a\": 1 }".to_vec(),
+        content_type: Some("text/plain".into()),
+        group_id: Some("g1".into()),
+        ..Default::default()
+    };
+    let Published::Queue { id, duplicate } = h.messages.publish("f", request).unwrap() else {
+        panic!("esperava uma fila");
+    };
+    assert_eq!((id, duplicate), (first.clone(), Some(true)));
+    // Outro corpo, outra mensagem.
+    let (second, duplicate) = fifo_publish(&h, "f", "g1", None, "{ \"a\": 2 }");
+    assert_eq!(duplicate, Some(false));
+    assert_ne!(second, first);
+
+    let got = fifo_get(&h, "f", "10").await;
+    let hash = got[0].deduplication_id.clone().unwrap();
+    assert_eq!(hash.len(), 64);
+    assert!(
+        hash.chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    );
+    // O SHA-256 de `{ "a": 1 }`, calculado fora do código.
+    assert_eq!(hash, body_hash(b"{ \"a\": 1 }"));
+    assert_eq!(
+        body_hash(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}
+
+/// UC: UC-FIF-007, UC-FIF-008
+#[tokio::test]
+async fn the_window_ends_and_the_scope_is_the_group() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (original, _) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    let (other_group, duplicate) = fifo_publish(&h, "f", "g2", Some("k"), "1");
+    assert_eq!(duplicate, Some(false), "outro grupo não é duplicata");
+    assert_ne!(other_group, original);
+
+    h.clock.advance(Duration::from_secs(299));
+    assert_eq!(fifo_publish(&h, "f", "g1", Some("k"), "1").1, Some(true));
+    h.clock.advance(Duration::from_secs(2));
+    let (renewed, duplicate) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    assert_eq!(duplicate, Some(false), "a janela conta do id da original");
+    assert_ne!(renewed, original);
+}
+
+/// UC: UC-FIF-011, UC-FIF-036, UC-FIF-040
+#[tokio::test]
+async fn an_ack_leaves_a_short_row_that_keeps_deduplicating_and_is_invisible_to_everything_else() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (id, _) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    let m = fifo_get(&h, "f", "1").await.remove(0);
+    ack(&h, "f", &m);
+
+    // A linha curta existe, sem corpo nem metadados de entrega.
+    let row = h.store.get("f", &id).unwrap().expect("a linha ficou");
+    assert_eq!(row.deduplication_id.as_deref(), Some("k"));
+    assert_eq!(row.group_id.as_deref(), Some("g1"));
+    assert_eq!((row.delivery_count, row.receipt_token), (0, None));
+    assert!(h.store.body("f", &id).is_err(), "o corpo saiu");
+    assert_eq!(h.messages.usage("f"), (0, 0), "a linha curta não conta");
+
+    // A deduplicação segue valendo depois do ack.
+    let (again, duplicate) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    assert_eq!((again.as_str(), duplicate), (id.as_str(), Some(true)));
+
+    // E o resto da fila não a enxerga.
+    assert!(fifo_get(&h, "f", "10").await.is_empty());
+    assert_eq!(
+        h.messages
+            .ack("f", &id, Some(&m.receipt_token))
+            .unwrap_err()
+            .code,
+        ErrorCode::MessageNotFound
+    );
+    assert_eq!(
+        h.messages
+            .set_visibility("f", &id, Some(&m.receipt_token), Some(30))
+            .unwrap_err()
+            .code,
+        ErrorCode::MessageNotFound
+    );
+}
+
+/// UC: UC-FIF-037
+#[tokio::test]
+async fn an_ack_after_the_window_deletes_the_row_at_once() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (id, _) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    let m = fifo_get(&h, "f", "1").await.remove(0);
+    h.clock.advance(Duration::from_secs(301));
+    ack(&h, "f", &m);
+    assert!(h.store.get("f", &id).unwrap().is_none());
+}
+
+/// UC: UC-FIF-039
+#[tokio::test]
+async fn the_sweep_deletes_the_rows_whose_delete_at_passed() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (id, _) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    let m = fifo_get(&h, "f", "1").await.remove(0);
+    ack(&h, "f", &m);
+    h.messages.sweep();
+    assert!(
+        h.store.get("f", &id).unwrap().is_some(),
+        "ainda dentro da janela"
+    );
+
+    h.clock.advance(Duration::from_secs(300));
+    h.messages.sweep();
+    assert!(h.store.get("f", &id).unwrap().is_none());
+    let (_, duplicate) = fifo_publish(&h, "f", "g1", Some("k"), "1");
+    assert_eq!(duplicate, Some(false));
+}
+
+/// UC: UC-FIF-012, UC-FIF-018
+#[tokio::test]
+async fn the_next_message_of_a_group_waits_for_the_ack_of_the_previous_one() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (a, _) = fifo_publish(&h, "f", "g1", Some("a"), "1");
+    let (b, _) = fifo_publish(&h, "f", "g1", Some("b"), "2");
+    let first = fifo_get(&h, "f", "10").await;
+    assert_eq!(
+        first.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+        [a.as_str()]
+    );
+    assert!(
+        fifo_get(&h, "f", "10").await.is_empty(),
+        "o grupo está ocupado"
+    );
+    ack(&h, "f", &first[0]);
+    let second = fifo_get(&h, "f", "10").await;
+    assert_eq!(second[0].id, b);
+}
+
+/// UC: UC-FIF-013, UC-FIF-014
+#[tokio::test]
+async fn different_groups_go_in_parallel_and_a_batch_never_has_two_of_the_same_group() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    for n in 0..3 {
+        fifo_publish(&h, "f", "g1", Some(&format!("a{n}")), "1");
+        fifo_publish(&h, "f", "g2", Some(&format!("b{n}")), "1");
+        fifo_publish(&h, "f", "g3", Some(&format!("c{n}")), "1");
+    }
+    let batch = fifo_get(&h, "f", "10").await;
+    assert_eq!(batch.len(), 3);
+    let mut groups = groups_of(&batch);
+    groups.sort();
+    assert_eq!(groups, ["g1", "g2", "g3"]);
+}
+
+/// UC: UC-FIF-015, UC-FIF-019, UC-FIF-020
+#[tokio::test]
+async fn inside_a_group_the_order_is_the_id_and_among_free_groups_the_oldest_head_wins() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (a1, _) = fifo_publish(&h, "f", "a", Some("1"), "1");
+    let (b1, _) = fifo_publish(&h, "f", "b", Some("1"), "1");
+    let (a2, _) = fifo_publish(&h, "f", "a", Some("2"), "1");
+    let (b2, _) = fifo_publish(&h, "f", "b", Some("2"), "1");
+
+    // As cabeças são a1 e b1; sai a mais antiga primeiro, sem faixa nem sanfona.
+    let one = fifo_get(&h, "f", "1").await;
+    assert_eq!(one[0].id, a1);
+    let two = fifo_get(&h, "f", "1").await;
+    assert_eq!(two[0].id, b1);
+    ack(&h, "f", &one[0]);
+    ack(&h, "f", &two[0]);
+    let order: Vec<String> = fifo_get(&h, "f", "10")
+        .await
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(
+        order,
+        [a2, b2],
+        "a próxima de cada grupo, pela cabeça mais antiga"
+    );
+}
+
+/// UC: UC-FIF-016, UC-FIF-017
+#[tokio::test]
+async fn an_expired_or_released_head_comes_back_first_and_the_order_holds() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (a, _) = fifo_publish(&h, "f", "g", Some("a"), "1");
+    let (b, _) = fifo_publish(&h, "f", "g", Some("b"), "2");
+    let first = h
+        .messages
+        .consume("f", q(Some("1"), Some("10"), None))
+        .await
+        .unwrap();
+    assert_eq!(first[0].id, a);
+
+    h.clock.advance(Duration::from_secs(10));
+    let again = h
+        .messages
+        .consume("f", q(Some("1"), Some("10"), None))
+        .await
+        .unwrap();
+    assert_eq!(
+        (again[0].id.as_str(), again[0].delivery_count),
+        (a.as_str(), 2)
+    );
+
+    // `PUT visibility` com 0 na cabeça libera o grupo como um vencimento.
+    h.messages
+        .set_visibility("f", &a, Some(&again[0].receipt_token), Some(0))
+        .unwrap();
+    let third = h
+        .messages
+        .consume("f", q(Some("1"), Some("600"), None))
+        .await
+        .unwrap();
+    assert_eq!(
+        (third[0].id.as_str(), third[0].delivery_count),
+        (a.as_str(), 3)
+    );
+    ack(&h, "f", &third[0]);
+    assert_eq!(fifo_get(&h, "f", "1").await[0].id, b);
+}
+
+/// UC: UC-FIF-021
+#[tokio::test]
+async fn the_head_over_max_deliveries_goes_to_the_dead_letter_and_the_group_goes_on() {
+    let h = harness();
+    h.topics
+        .create(CreateTopic {
+            max_deliveries: Some(1),
+            ..fifo("f")
+        })
+        .await
+        .unwrap();
+    let (a, _) = fifo_publish(&h, "f", "g", Some("a"), "1");
+    let (b, _) = fifo_publish(&h, "f", "g", Some("b"), "2");
+    let (c, _) = fifo_publish(&h, "f", "g", Some("c"), "3");
+    let first = h
+        .messages
+        .consume("f", q(Some("1"), Some("5"), None))
+        .await
+        .unwrap();
+    assert_eq!(first[0].id, a);
+    h.clock.advance(Duration::from_secs(5));
+
+    // A cabeça gastou a única entrega: vai à dead-letter e o grupo segue com a próxima.
+    let next = h
+        .messages
+        .consume("f", q(Some("1"), Some("600"), None))
+        .await
+        .unwrap();
+    assert_eq!(next[0].id, b);
+    ack(&h, "f", &next[0]);
+    assert_eq!(
+        fifo_get(&h, "f", "1").await[0].id,
+        c,
+        "a ordem das restantes se mantém"
+    );
+
+    // A dead-letter não é FIFO: aceita publicação sem grupo e entrega sem serializar.
+    let dead = consume(&h, "f-dead-letter", q(Some("10"), Some("600"), None)).await;
+    assert_eq!(dead.len(), 1);
+    assert_eq!(dead[0].id, a);
+    assert_eq!(dead[0].deduplication_id, None);
+    h.messages.publish("f-dead-letter", json_body("9")).unwrap();
+}
+
+/// UC: UC-FIF-021
+#[tokio::test]
+async fn a_message_that_went_to_the_dead_letter_still_deduplicates_in_the_window() {
+    let h = harness();
+    h.topics
+        .create(CreateTopic {
+            max_deliveries: Some(1),
+            ..fifo("f")
+        })
+        .await
+        .unwrap();
+    let (a, _) = fifo_publish(&h, "f", "g", Some("a"), "1");
+    h.messages
+        .consume("f", q(Some("1"), Some("5"), None))
+        .await
+        .unwrap();
+    h.clock.advance(Duration::from_secs(5));
+    h.messages.sweep();
+    assert!(
+        h.store.get("f-dead-letter", &a).unwrap().is_some()
+            || h.messages.usage("f-dead-letter").0 > 0
+    );
+    let (again, duplicate) = fifo_publish(&h, "f", "g", Some("a"), "1");
+    assert_eq!((again.as_str(), duplicate), (a.as_str(), Some(true)));
+}
+
+/// UC: UC-FIF-022
+#[tokio::test]
+async fn a_head_past_its_ttl_is_dropped_and_the_group_is_freed() {
+    let h = harness();
+    h.topics
+        .create(CreateTopic {
+            ttl: Some(60),
+            ..fifo("f")
+        })
+        .await
+        .unwrap();
+    let (a, _) = fifo_publish(&h, "f", "g", Some("a"), "1");
+    let first = h
+        .messages
+        .consume("f", q(Some("1"), Some("600"), None))
+        .await
+        .unwrap();
+    assert_eq!(first[0].id, a);
+    h.clock.advance(Duration::from_secs(30));
+    let (b, _) = fifo_publish(&h, "f", "g", Some("b"), "2");
+    assert!(
+        fifo_get(&h, "f", "1").await.is_empty(),
+        "a cabeça segue em voo"
+    );
+    h.clock.advance(Duration::from_secs(31));
+    assert_eq!(
+        fifo_get(&h, "f", "1").await[0].id,
+        b,
+        "a cabeça venceu e o grupo seguiu"
+    );
+}
+
+/// UC: UC-FIF-046
+#[tokio::test]
+async fn groups_busy_state_and_deduplication_survive_a_restart() {
+    let h = harness();
+    h.topics.create(fifo("f")).await.unwrap();
+    let (a, _) = fifo_publish(&h, "f", "g1", Some("a"), "1");
+    fifo_publish(&h, "f", "g1", Some("b"), "2");
+    let (c, _) = fifo_publish(&h, "f", "g2", Some("c"), "3");
+    let in_flight = fifo_get(&h, "f", "1").await;
+    assert_eq!(in_flight[0].id, a);
+    let done = fifo_get(&h, "f", "1").await;
+    assert_eq!(done[0].id, c);
+    ack(&h, "f", &done[0]);
+    h.messages.drain();
+
+    let restarted = reopen(&h, true);
+    // O grupo g1 segue ocupado pela mensagem em voo (o mesmo `receiptToken` ainda vale).
+    assert!(
+        restarted
+            .consume("f", q(Some("10"), Some("600"), None))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    // E a deduplicação do que já tinha sido confirmado sobrevive à retomada.
+    let request = PublishRequest {
+        body: b"3".to_vec(),
+        group_id: Some("g2".into()),
+        deduplication_id: Some("c".into()),
+        ..Default::default()
+    };
+    let Published::Queue { id, duplicate } = restarted.publish("f", request).unwrap() else {
+        panic!("esperava uma fila");
+    };
+    assert_eq!((id.as_str(), duplicate), (c.as_str(), Some(true)));
+    restarted
+        .ack("f", &a, Some(&in_flight[0].receipt_token))
+        .unwrap();
+    let next = restarted
+        .consume("f", q(Some("10"), Some("600"), None))
+        .await
+        .unwrap();
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].deduplication_id.as_deref(), Some("b"));
+}
+
+/// UC: UC-FIF-043
+#[tokio::test]
+async fn a_distributor_copy_without_a_group_fails_only_that_fifo_queue() {
+    let h = harness();
+    h.topics.create(fifo("ordem-a")).await.unwrap();
+    h.topics.create(queue("ordem-b")).await.unwrap();
+    h.topics
+        .create(distributor("dist", &["ordem-"]))
+        .await
+        .unwrap();
+    let Published::Distributor { deliveries } = h.messages.publish("dist", json_body("1")).unwrap()
+    else {
+        panic!("esperava um distribuidor");
+    };
+    let by_topic: std::collections::HashMap<_, _> = deliveries
+        .into_iter()
+        .map(|d| (d.topic, d.result))
+        .collect();
+    assert_eq!(
+        by_topic["ordem-a"].as_ref().unwrap_err().code,
+        ErrorCode::ValidationGroupIdRequired
+    );
+    assert!(by_topic["ordem-b"].is_ok());
+
+    // Com o grupo, a cópia vai a todas, e cada FIFO deduplica a sua.
+    let request = PublishRequest {
+        body: b"2".to_vec(),
+        group_id: Some("g".into()),
+        deduplication_id: Some("k".into()),
+        ..Default::default()
+    };
+    let Published::Distributor { deliveries } =
+        h.messages.publish("dist", request.clone()).unwrap()
+    else {
+        panic!("esperava um distribuidor");
+    };
+    assert!(deliveries.iter().all(|d| d.result.is_ok()));
+    h.messages.publish("dist", request).unwrap();
+    assert_eq!(
+        fifo_get(&h, "ordem-a", "10").await.len(),
+        1,
+        "a segunda foi duplicata"
+    );
 }
