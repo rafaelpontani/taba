@@ -11,7 +11,7 @@ use crate::core::ring::message_position;
 struct Responsible(Mutex<Option<HashSet<u64>>>);
 
 impl Placement for Responsible {
-    fn is_owner(&self, _topic: &str, _id: &str, _group: Option<&str>) -> bool {
+    fn is_owner(&self, _topic: &str, _id: &str, _group: Option<&str>, _position: u64) -> bool {
         false
     }
 

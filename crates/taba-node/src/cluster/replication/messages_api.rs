@@ -6,7 +6,8 @@
 //! próprio nó tem como dono e, se faltar, pede ao dono de outras mensagens (`take`); sem nada,
 //! espera como ouvinte (long polling).
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::value::RawValue;
@@ -16,25 +17,42 @@ use super::coordinator::{self, Plan};
 use super::signals::Signals;
 use crate::cluster::members::Member;
 use crate::cluster::protocol::{
-    AckRegisterRequest, MessageRecord, MessageRegisterRequest, OperationRef, Request, Step,
-    TakeRequest, TakeResponse, VisibilityKind, VisibilityRegisterRequest, WriteKind,
+    AckRegisterRequest, FIFO_PLACEHOLDER_ID, FifoPublished, MessageRecord, MessageRegisterRequest,
+    OperationRef, Request, Response, Step, TakeRequest, TakeResponse, VisibilityKind,
+    VisibilityRegisterRequest, WriteKind,
 };
 use crate::cluster::service::ClusterService;
-use crate::core::content::{Body, ContentType};
+use crate::cluster::state::{DrainState, NodeState};
+use crate::cluster::transport::CallError;
+use crate::core::content::{Body, ContentType, DEFAULT_CONTENT_TYPE};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::ring::message_position;
 use crate::engine::messages::{
-    Candidate, ConsumeQuery, Delivered, DistributorDelivery, Messages, PublishRequest, Published,
-    VisibilityUpdated,
+    Candidate, ConsumeQuery, Delivered, DistributorDelivery, Draft, Messages, PublishRequest,
+    Published, VisibilityUpdated,
 };
 use crate::engine::topics::{TopicView, Topics};
-use crate::telemetry::metrics::DELIVERY_TAKE;
+use crate::telemetry::metrics::{DELIVERY_TAKE, FIFO_FORWARD};
+
+/// Uma trava por (tópico, grupo) FIFO.
+type GroupLocks = Mutex<HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>>;
 
 pub struct ClusterMessages {
     service: Arc<ClusterService>,
     messages: Arc<Messages>,
     topics: Arc<Topics>,
     signals: Arc<Signals>,
+    /// Uma publicação por vez em cada grupo FIFO deste nó (o primário): é o que ordena o grupo e
+    /// serializa a deduplicação (doc 17, seções 16.4 e 16.7).
+    group_locks: GroupLocks,
+}
+
+fn primary_unavailable() -> TabaError {
+    TabaError::new(
+        ErrorCode::FifoPrimaryUnavailable,
+        "O primário do grupo não está disponível para coordenar a publicação.",
+    )
+    .with_retry_after(5)
 }
 
 fn delivery_unavailable() -> TabaError {
@@ -57,6 +75,7 @@ impl ClusterMessages {
             messages,
             topics,
             signals,
+            group_locks: Mutex::new(HashMap::new()),
         })
     }
 
@@ -68,26 +87,54 @@ impl ClusterMessages {
         &self.signals
     }
 
+    /// Onde a operação vai: a posição no anel e quantos dos primeiros responsáveis o quórum
+    /// precisa incluir (1 na fila comum; na FIFO, o primário e o secundário).
     fn operation_plan(
         &self,
         topic: &str,
-        id: &str,
+        route: (u64, usize),
         make: impl Fn(&str) -> Request,
         commit: impl Fn(&str, OperationRef) -> Request,
         rollback: impl Fn(&str, OperationRef) -> Request,
         operation_id: &str,
     ) -> Result<Plan, TabaError> {
-        let owners = self.service.owners_of(message_position(id))?;
+        let owners = self.service.owners_of(route.0)?;
         let op = || OperationRef {
             operation_id: operation_id.to_owned(),
         };
         Ok(Plan {
             owners,
             quorum: self.service.rules().quorum as usize,
+            required: route.1,
             register: make(operation_id),
             commit: commit(topic, op()),
             rollback: rollback(topic, op()),
         })
+    }
+
+    /// A posição e os papéis obrigatórios de um ack ou de uma alteração de invisibilidade. Na FIFO
+    /// a posição é a do grupo, que o recibo carrega (`{posição}-{guid}`); recibo malformado é
+    /// `409 message.stale-receipt`.
+    fn route_of(
+        &self,
+        view: &TopicView,
+        id: &str,
+        receipt_token: &str,
+    ) -> Result<(u64, usize), TabaError> {
+        if !view.definition.queue().is_some_and(|q| q.fifo) {
+            return Ok((message_position(id), 1));
+        }
+        receipt_token
+            .split_once('-')
+            .filter(|(position, _)| position.len() == 16)
+            .and_then(|(position, _)| u64::from_str_radix(position, 16).ok())
+            .map(|position| (position, 2))
+            .ok_or_else(|| {
+                TabaError::new(
+                    ErrorCode::MessageStaleReceipt,
+                    "O receiptToken não é o da última entrega desta mensagem.",
+                )
+            })
     }
 
     // ---- Publicar ----
@@ -116,10 +163,7 @@ impl ClusterMessages {
         }
         self.publish_queue(&view, &request)
             .await
-            .map(|id| Published::Queue {
-                id,
-                duplicate: None,
-            })
+            .map(|(id, duplicate)| Published::Queue { id, duplicate })
     }
 
     /// Uma mensagem numa fila: registro em todos os nós responsáveis e commit por quórum.
@@ -127,7 +171,13 @@ impl ClusterMessages {
         self: &Arc<Self>,
         view: &TopicView,
         request: &PublishRequest,
-    ) -> Result<String, TabaError> {
+    ) -> Result<(String, Option<bool>), TabaError> {
+        if view.definition.queue().is_some_and(|q| q.fifo) {
+            return self
+                .publish_fifo(view, request)
+                .await
+                .map(|(id, duplicate)| (id, Some(duplicate)));
+        }
         let (meta, body) = self.messages.draft_publish(view, request)?;
         let topic = view.definition.name.clone();
         let id = meta.id.clone();
@@ -143,12 +193,13 @@ impl ClusterMessages {
             receipt_token: None,
             dead_lettered_ms: None,
             dead_letter_reason: None,
+            delete_at_ms: None,
         };
         let operation_id = self.service.new_operation_id();
         let coordinator_id = self.service.node_id().to_owned();
         let plan = self.operation_plan(
             &topic,
-            &id,
+            (message_position(&id), 1),
             |op| Request::Write {
                 topic: topic.clone(),
                 id: id.clone(),
@@ -173,7 +224,219 @@ impl ClusterMessages {
             &operation_id,
         )?;
         coordinator::run(&self.service, plan).await?;
-        Ok(id)
+        Ok((id, None))
+    }
+
+    // ---- Publicar na fila FIFO ----
+
+    /// Publica numa fila FIFO a partir de qualquer nó: acha o primário do grupo e repassa a ele,
+    /// ou coordena aqui se for o próprio (doc 17, seção 16.4). O primário que já não é o dono
+    /// responde `421` e a tabela de membros é relida, até `fifo.forward.max-attempts`.
+    async fn publish_fifo(
+        self: &Arc<Self>,
+        view: &TopicView,
+        request: &PublishRequest,
+    ) -> Result<(String, bool), TabaError> {
+        let (_, group) = self.messages.check_fifo_request(view, request)?;
+        let topic = view.definition.name.clone();
+        let position = self
+            .messages
+            .position_for(&topic, FIFO_PLACEHOLDER_ID, Some(&group));
+        let record = MessageRecord {
+            id: FIFO_PLACEHOLDER_ID.to_owned(),
+            topic: topic.clone(),
+            body: request.body.clone(),
+            content_type: request
+                .content_type
+                .clone()
+                .unwrap_or_else(|| DEFAULT_CONTENT_TYPE.to_owned()),
+            group_id: Some(group),
+            deduplication_id: request.deduplication_id.clone(),
+            delivery_count: 0,
+            invisible_until_ms: None,
+            receipt_token: None,
+            dead_lettered_ms: None,
+            dead_letter_reason: None,
+            delete_at_ms: None,
+        };
+        let count = |outcome: &str| {
+            self.service
+                .telemetry()
+                .registry
+                .add(&FIFO_FORWARD, &[("taba.outcome", outcome)], 1.0);
+        };
+        for attempt in 1..=self.service.rules().fifo_forward_max_attempts {
+            let owners = self.service.owners_of(position)?;
+            let Some(primary) = owners.into_iter().next() else {
+                return Err(primary_unavailable());
+            };
+            let outcome = if self.service.is_self(&primary) {
+                self.coordinate_fifo(view, request).await
+            } else {
+                match self
+                    .service
+                    .call_member(
+                        &primary,
+                        Request::FifoPublish {
+                            topic: topic.clone(),
+                            record: record.clone(),
+                        },
+                    )
+                    .await
+                {
+                    Ok(Response::FifoPublished(FifoPublished { id, duplicate })) => {
+                        count("ok");
+                        return Ok((id, duplicate));
+                    }
+                    Ok(_) => return Err(primary_unavailable()),
+                    Err(CallError::Remote(error)) => Err(error),
+                    Err(_) => {
+                        count("error");
+                        return Err(primary_unavailable());
+                    }
+                }
+            };
+            match outcome {
+                Ok(done) => return Ok(done),
+                Err(error) if error.code == ErrorCode::FifoMisdirected => {
+                    count("misdirected");
+                    if attempt < self.service.rules().fifo_forward_max_attempts {
+                        tokio::time::sleep(self.service.rules().retry_backoff).await;
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ErrorCode::ClusterNodeSyncing | ErrorCode::ClusterNodeDraining
+                    ) =>
+                {
+                    count("error");
+                    return Err(primary_unavailable());
+                }
+                Err(error) => {
+                    if error.status() >= 500 {
+                        count("error");
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        Err(primary_unavailable())
+    }
+
+    /// `POST /cluster/topics/{topic}/fifo/publish`: este nó, o primário do grupo, coordena.
+    pub async fn publish_fifo_for_peer(
+        self: &Arc<Self>,
+        topic: &str,
+        record: MessageRecord,
+    ) -> Result<FifoPublished, TabaError> {
+        let view = self.messages.queue_view(topic)?;
+        let request = PublishRequest {
+            body: record.body,
+            content_type: Some(record.content_type),
+            group_id: record.group_id,
+            deduplication_id: record.deduplication_id,
+        };
+        self.coordinate_fifo(&view, &request)
+            .await
+            .map(|(id, duplicate)| FifoPublished { id, duplicate })
+    }
+
+    fn group_lock(&self, topic: &str, group: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self.group_locks.lock().unwrap_or_else(|e| e.into_inner());
+        // Os grupos ociosos saem do mapa: só sobra quem alguém ainda segura.
+        locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+        locks
+            .entry((topic.to_owned(), group.to_owned()))
+            .or_default()
+            .clone()
+    }
+
+    /// O que só o primário do grupo faz: conferir que é o dono (`421` se não for), que está pronto,
+    /// e então deduplicar, gerar o `id` e fazer o registro + commit com o primário e o secundário no
+    /// quórum. Uma publicação por vez no grupo.
+    async fn coordinate_fifo(
+        self: &Arc<Self>,
+        view: &TopicView,
+        request: &PublishRequest,
+    ) -> Result<(String, bool), TabaError> {
+        let (_, group) = self.messages.check_fifo_request(view, request)?;
+        let topic = view.definition.name.clone();
+        let position = self
+            .messages
+            .position_for(&topic, FIFO_PLACEHOLDER_ID, Some(&group));
+        let owners = self.service.owners_of(position)?;
+        if !owners.first().is_some_and(|m| self.service.is_self(m)) {
+            return Err(TabaError::new(
+                ErrorCode::FifoMisdirected,
+                "Este nó não é o primário do grupo.",
+            ));
+        }
+        if self.service.node_state() != NodeState::Active {
+            return Err(TabaError::new(
+                ErrorCode::ClusterNodeSyncing,
+                "O primário do grupo ainda está em sincronização.",
+            )
+            .with_retry_after(5));
+        }
+        if self.service.drain_state() != DrainState::Active {
+            return Err(TabaError::new(
+                ErrorCode::ClusterNodeDraining,
+                "O primário do grupo está em drain.",
+            )
+            .with_retry_after(5));
+        }
+        let lock = self.group_lock(&topic, &group);
+        let _turn = lock.lock().await;
+        let (meta, body) = match self.messages.draft_fifo_publish(view, request)? {
+            Draft::Duplicate { id } => return Ok((id, true)),
+            Draft::New { meta, body } => (meta, body),
+        };
+        let id = meta.id.clone();
+        let record = MessageRecord {
+            id: id.clone(),
+            topic: topic.clone(),
+            body,
+            content_type: meta.content_type.clone(),
+            group_id: meta.group_id.clone(),
+            deduplication_id: meta.deduplication_id.clone(),
+            delivery_count: 0,
+            invisible_until_ms: None,
+            receipt_token: None,
+            dead_lettered_ms: None,
+            dead_letter_reason: None,
+            delete_at_ms: None,
+        };
+        let operation_id = self.service.new_operation_id();
+        let coordinator_id = self.service.node_id().to_owned();
+        let plan = self.operation_plan(
+            &topic,
+            (meta.position, 2),
+            |op| Request::Write {
+                topic: topic.clone(),
+                id: id.clone(),
+                step: Step::Register(MessageRegisterRequest {
+                    operation_id: op.to_owned(),
+                    coordinator_id: coordinator_id.clone(),
+                    kind: WriteKind::Publish,
+                    message: record.clone(),
+                    source_topic: None,
+                }),
+            },
+            |t, op| Request::Write {
+                topic: t.to_owned(),
+                id: id.clone(),
+                step: Step::Commit(op),
+            },
+            |t, op| Request::Write {
+                topic: t.to_owned(),
+                id: id.clone(),
+                step: Step::Rollback(op),
+            },
+            &operation_id,
+        )?;
+        coordinator::run(&self.service, plan).await?;
+        Ok((id, false))
     }
 
     /// Uma cópia independente em cada fila que casa com um prefixo (doc 15, seção 14.2).
@@ -196,7 +459,7 @@ impl ClusterMessages {
         for (position, view) in targets.into_iter().enumerate() {
             let (me, request) = (self.clone(), request.clone());
             set.spawn(async move {
-                let result = me.publish_queue(&view, &request).await;
+                let result = me.publish_queue(&view, &request).await.map(|(id, _)| id);
                 (position, view.definition.name.clone(), result)
             });
         }
@@ -227,11 +490,13 @@ impl ClusterMessages {
         let view = self.messages.queue_view(topic)?;
         let receipt = self.messages.ack_params(receipt_token)?;
         let topic = view.definition.name.clone();
+        let route = self.route_of(&view, id, &receipt)?;
+        let delete_at_ms = (route.1 > 1).then(|| self.messages.fifo_delete_at(id));
         let operation_id = self.service.new_operation_id();
         let coordinator_id = self.service.node_id().to_owned();
         let plan = self.operation_plan(
             &topic,
-            id,
+            route,
             |op| Request::Ack {
                 topic: topic.clone(),
                 id: id.to_owned(),
@@ -239,7 +504,7 @@ impl ClusterMessages {
                     operation_id: op.to_owned(),
                     coordinator_id: coordinator_id.clone(),
                     receipt_token: receipt.clone(),
-                    delete_at_ms: None,
+                    delete_at_ms,
                 }),
             },
             |t, op| Request::Ack {
@@ -270,9 +535,11 @@ impl ClusterMessages {
             .messages
             .visibility_params(receipt_token, visibility_timeout)?;
         let until_ms = self.messages.now_millis() + secs * 1000;
+        let route = self.route_of(&view, id, &receipt)?;
         self.replicate_visibility(
             view.definition.name.as_str(),
             id,
+            route,
             VisibilityKind::Change,
             until_ms,
             &receipt,
@@ -286,10 +553,12 @@ impl ClusterMessages {
     }
 
     /// Registro + commit da invisibilidade de uma mensagem (entrega ou alteração).
+    #[allow(clippy::too_many_arguments)]
     async fn replicate_visibility(
         self: &Arc<Self>,
         topic: &str,
         id: &str,
+        route: (u64, usize),
         kind: VisibilityKind,
         until_ms: u64,
         receipt_token: &str,
@@ -299,7 +568,7 @@ impl ClusterMessages {
         let coordinator_id = self.service.node_id().to_owned();
         let plan = self.operation_plan(
             topic,
-            id,
+            route,
             |op| Request::Visibility {
                 topic: topic.to_owned(),
                 id: id.to_owned(),
@@ -348,6 +617,16 @@ impl ClusterMessages {
         };
         let target = format!("{source}{}", self.topics.rules().dead_letter_suffix);
         let at_ms = self.messages.now_millis();
+        // A dead-letter de uma FIFO fica no bloco do grupo da fila de origem (doc 17, seção 16.3).
+        let fifo = self
+            .topics
+            .get(source)
+            .is_ok_and(|v| v.definition.queue().is_some_and(|q| q.fifo));
+        let route = if fifo {
+            (meta.position, 2)
+        } else {
+            (message_position(id), 1)
+        };
         let record = MessageRecord {
             id: id.to_owned(),
             topic: target.clone(),
@@ -360,12 +639,13 @@ impl ClusterMessages {
             receipt_token: None,
             dead_lettered_ms: Some(at_ms),
             dead_letter_reason: Some("max-deliveries".to_owned()),
+            delete_at_ms: None,
         };
         let operation_id = self.service.new_operation_id();
         let coordinator_id = self.service.node_id().to_owned();
         let plan = self.operation_plan(
             &target,
-            id,
+            route,
             |op| Request::Write {
                 topic: target.clone(),
                 id: id.to_owned(),
@@ -510,6 +790,7 @@ impl ClusterMessages {
     ) -> Result<(Vec<Candidate>, usize), TabaError> {
         let started = std::time::Instant::now();
         let topic = view.definition.name.clone();
+        let fifo = view.definition.queue().is_some_and(|q| q.fifo);
         let candidates = {
             let (messages, view) = (self.messages.clone(), view.clone());
             tokio::task::spawn_blocking(move || {
@@ -529,11 +810,13 @@ impl ClusterMessages {
             let until = candidate.meta.invisible_until_ms;
             let token = candidate.meta.receipt_token.clone().unwrap_or_default();
             let count = candidate.meta.delivery_count;
+            let route = (candidate.meta.position, if fifo { 2 } else { 1 });
             set.spawn(async move {
                 let result = me
                     .replicate_visibility(
                         &topic,
                         &id,
+                        route,
                         VisibilityKind::Delivery,
                         until,
                         &token,
@@ -671,6 +954,7 @@ impl ClusterMessages {
                     receipt_token: c.meta.receipt_token,
                     dead_lettered_ms: c.meta.dead_lettered_ms,
                     dead_letter_reason: c.meta.dead_letter_reason,
+                    delete_at_ms: None,
                 })
                 .collect(),
         })

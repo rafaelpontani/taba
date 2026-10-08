@@ -9,11 +9,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::{
-    AckRegisterRequest, ChannelBatch, Confirm, ForwardRequest, ForwardResponse, JoinRequest,
-    MessageRecord, MessageRegisterRequest, NodeRegisterRequest, NodeUnregisterRequest,
-    OperationRef, Request, Response, Step, StreamPage, StreamQuery, TakeRequest, TakeResponse,
-    TokenRegisterRequest, TopicRegisterRequest, VisibilityRegisterRequest, VoteRequest,
-    VoteResponse,
+    AckRegisterRequest, ChannelBatch, Confirm, FifoPublished, ForwardRequest, ForwardResponse,
+    JoinRequest, LossAck, LossRecord, MessageRecord, MessageRegisterRequest, NodeRegisterRequest,
+    NodeUnregisterRequest, OperationRef, RecoverResult, Request, Response, Step, StreamPage,
+    StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest, TopicRegisterRequest,
+    VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body, recover_body,
 };
 use crate::cluster::members::MemberTable;
 use crate::core::error::{ErrorCode, ErrorDetail, TabaError};
@@ -149,6 +149,40 @@ fn parse_step<R: DeserializeOwned>(
     })
 }
 
+/// `replicate` da query do `recover` (`true` se ausente); qualquer outro parâmetro é recusado.
+fn parse_replicate(query: &str) -> Result<bool, TabaError> {
+    let mut replicate = true;
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        match pair.split_once('=').unwrap_or((pair, "")) {
+            ("replicate", "true") => replicate = true,
+            ("replicate", "false") => replicate = false,
+            ("replicate", _) => {
+                return Err(TabaError::new(
+                    ErrorCode::ValidationFailed,
+                    "`replicate` deve ser `true` ou `false`.",
+                )
+                .with_detail(
+                    "replicate",
+                    ErrorCode::ValidationFailed,
+                    "Esperado true ou false.",
+                ));
+            }
+            (other, _) => {
+                return Err(TabaError::new(
+                    ErrorCode::ValidationUnknownField,
+                    format!("O parâmetro `{other}` não existe nesta rota."),
+                )
+                .with_detail(
+                    other,
+                    ErrorCode::ValidationUnknownField,
+                    "Parâmetro desconhecido.",
+                ));
+            }
+        }
+    }
+    Ok(replicate)
+}
+
 /// `from`, `to` e `limit` da query de um stream; qualquer outro parâmetro é recusado.
 fn parse_stream_query(query: &str) -> Result<StreamQuery, TabaError> {
     let mut out = StreamQuery::default();
@@ -227,6 +261,31 @@ impl Request {
             Request::BlockMessage { block, id } => {
                 get_call(format!("/cluster/blocks/{block}/messages/{id}"))
             }
+            Request::MessageLoss(query) => get_call(stream_path("/cluster/message-loss", query)),
+            Request::LossRegister(loss) => {
+                json_call("POST", "/cluster/message-loss".to_owned(), loss)
+            }
+            Request::LossRemove { topic, id } => HttpCall {
+                method: "DELETE".to_owned(),
+                path: format!("/cluster/message-loss/{topic}/{id}"),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+            Request::FifoPublish { topic, record } => json_call(
+                "POST",
+                format!("/cluster/topics/{topic}/fifo/publish"),
+                record,
+            ),
+            Request::Recover { records, replicate } => HttpCall {
+                method: "POST".to_owned(),
+                path: if *replicate {
+                    "/cluster/messages/recover".to_owned()
+                } else {
+                    "/cluster/messages/recover?replicate=false".to_owned()
+                },
+                headers: vec![("content-type".to_owned(), NDJSON.to_owned())],
+                body: recover_body(records),
+            },
             Request::Forward(forward) => {
                 let mut headers = forward.headers.clone();
                 if let Some(ip) = &forward.client_ip {
@@ -321,6 +380,10 @@ impl Request {
                     phase, headers, body,
                 )?))
             }
+            ["cluster", "topics", topic, "fifo", "publish"] if post() => Ok(Request::FifoPublish {
+                topic: (*topic).to_owned(),
+                record: parse_body::<MessageRecord>(headers, body)?,
+            }),
             ["cluster", "topics", topic, "messages", "take"] if post() => Ok(Request::Take {
                 topic: (*topic).to_owned(),
                 request: parse_body::<TakeRequest>(headers, body)?,
@@ -369,6 +432,35 @@ impl Request {
                 Ok(Request::BlockMessage {
                     block: (*block).to_owned(),
                     id: (*id).to_owned(),
+                })
+            }
+            ["cluster", "message-loss"] if is("GET") => {
+                Ok(Request::MessageLoss(parse_stream_query(query)?))
+            }
+            ["cluster", "message-loss"] if post() => {
+                Ok(Request::LossRegister(parse_body::<LossRecord>(
+                    headers, body,
+                )?))
+            }
+            ["cluster", "message-loss", topic, id] if is("DELETE") => Ok(Request::LossRemove {
+                topic: (*topic).to_owned(),
+                id: (*id).to_owned(),
+            }),
+            ["cluster", "messages", "recover"] if post() => {
+                let media = headers
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+                    .and_then(|(_, value)| value.split(';').next())
+                    .map(|value| value.trim().to_ascii_lowercase());
+                if media.as_deref() != Some(NDJSON) {
+                    return Err(TabaError::new(
+                        ErrorCode::MediaUnsupported,
+                        "Use `Content-Type: application/x-ndjson`.",
+                    ));
+                }
+                Ok(Request::Recover {
+                    records: parse_recover_body(body)?,
+                    replicate: parse_replicate(query)?,
                 })
             }
             _ => Err(not_found()),
@@ -432,6 +524,25 @@ impl Request {
                 Ok(Response::Vote(vote))
             }
             Request::Status => Ok(Response::Status(json(&reply)?)),
+            Request::MessageLoss(_) => {
+                let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;
+                StreamPage::from_ndjson(&text).map(Response::Stream)
+            }
+            Request::LossRegister(_) | Request::LossRemove { .. } => {
+                let ack: LossAck =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Loss(ack))
+            }
+            Request::FifoPublish { .. } => {
+                let published: FifoPublished =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::FifoPublished(published))
+            }
+            Request::Recover { .. } => {
+                let result: RecoverResult =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Recovered(result))
+            }
             Request::Forward(_) => unreachable!("tratado acima"),
             _ => {
                 let ack =
@@ -514,6 +625,9 @@ impl Response {
             Response::Record(record) => json(&record),
             Response::Confirm(confirm) => json(&confirm),
             Response::Vote(vote) => json(&vote),
+            Response::Loss(ack) => json(&ack),
+            Response::FifoPublished(published) => json(&published),
+            Response::Recovered(result) => json(&result),
             Response::Status(status) => json(&status),
             Response::Stream(page) => HttpReply {
                 status: 200,

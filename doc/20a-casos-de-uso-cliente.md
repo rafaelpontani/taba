@@ -324,7 +324,7 @@ Regras: [17-topicos-fifo.md](17-topicos-fifo.md). A parte de sincronização e f
 | UC-FIF-025 | A dead-letter de uma FIFO usa o `id` da fila de origem (e o `groupId`) para a posição, para o movimento continuar sendo uma operação só. | 17 §16.3 | U, C |
 | UC-FIF-026 | O nó que recebe a publicação a repassa ao **primário do grupo**, que coordena (gera o ID, confere a deduplicação, faz o registro + commit). Se o próprio nó é o primário, não há repasse. | 17 §16.4 | C |
 | UC-FIF-027 | ID monotônico por grupo: `max(agora, último ID do grupo + 1)`, usando os bits de contador do GUID v7 no mesmo milissegundo; com o relógio do primário atrasado, os IDs ainda crescem. | 17 §16.4 | U |
-| UC-FIF-028 | O primário recalcula o dono do grupo ao receber a publicação repassada: se não for ele, responde `421` `fifo.misdirected`; o nó que repassa tenta de novo com a tabela atualizada, até `fifo.forward.max-attempts`, e esgotado o cliente recebe `503` `fifo.primary-unavailable` com `Retry-After`. | 17 §16.4, 06c | C |
+| UC-FIF-028 | O primário recalcula o dono do grupo ao receber a publicação repassada: se não for ele, responde `421` `fifo.misdirected`; o nó que repassa tenta de novo (relê a própria tabela), até `fifo.forward.max-attempts`, e esgotado o cliente recebe `503` `fifo.primary-unavailable` com `Retry-After`. | 17 §16.4, 06c | C |
 | UC-FIF-029 | O primário do grupo ainda em sincronização (nó novo): as publicações do grupo respondem `503` com `Retry-After`; o primário antigo **não** coordena. | 17 §16.4 | C |
 | UC-FIF-030 | Primário fora do ar e ainda não desregistrado: as publicações do grupo respondem `503` até o desregistro. | 17 §16.4 | C |
 | UC-FIF-031 | O quórum de escrita, de entrega e de ack **sempre inclui o primário e o secundário**, e nunca fica abaixo de 2; `write.quorum` maior que 2 também os inclui. | 17 §16.5 | U, C |
@@ -352,6 +352,7 @@ Regras: [17-topicos-fifo.md](17-topicos-fifo.md). A parte de sincronização e f
 | UC-FIF-043 | Um distribuidor com FIFO entre os destinos mantém a ordem por grupo em cada fila (cada cópia é coordenada pelo primário do grupo da fila destino). | 17 §16.8 | C |
 | UC-FIF-044 | Métricas e condições da FIFO: `taba.fifo.deduplicated`, `taba.fifo.forward` (`ok`, `misdirected`, `error`), `taba.fifo.groups.busy`, evento `taba.message.deduplicated`, e a condição `group-stalled` quando a cabeça passa de `stats.topics.group-stalled-deliveries` entregas sem ack. | 17 §16.11, 11 | I, C |
 | UC-FIF-045 | A condição `noisy-group` indica o grupo quente de uma FIFO. | 17 §16.10, 11 | I |
+| UC-FIF-047 | O `receiptToken` de uma mensagem FIFO leva a posição do grupo (`{posição}-{guid}`): o ack e a alteração da invisibilidade, de qualquer nó, acham o bloco sem saber o grupo; recibo malformado é `409` `message.stale-receipt`. | 17 §16.5 | C |
 | UC-FIF-046 | Em modo desenvolvimento a FIFO funciona igual: o nó é o primário de todos os grupos (sem repasse), o quórum vale 1 e `replication.factor` 1 é aceito. | 17 §16.12 | I |
 
 ### GRP: grupos de mensagens e entrega justa

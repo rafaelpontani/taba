@@ -256,7 +256,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.1, [13-entrega-de-mensagens.md
 | UC-CAN-021 | Reconexão **antes** de a votação concluir: nada muda, os nós retomam o envio dos sinais pendentes de onde pararam. | 13 §12.9, 04 §6.3 | C |
 | UC-CAN-022 | Votação concluída: todos os nós descartam as filas (de saída e de entrada) para o nó excluído e param de acumular. Se o nó voltar, refaz o bootstrap com filas novas e vazias. | 13 §12.9 | C |
 | UC-CAN-023 | O sinal `node-state` com `state: draining`: os pares deixam de pedir `take` a esse nó e de escolhê-lo como origem de carga. | 06c, 04 §6.10 | C |
-| UC-CAN-024 | Métricas do canal: `taba.cluster.channel.state` por peer, `rtt`, `reconnects`, `queue.out`, `queue.in`. | 11 | C |
+| UC-CAN-024 | Métricas do canal: `taba.cluster.channel.state` por peer, `rtt`, `reconnects`, `queue.out` (não há fila de entrada, então não há `queue.in`: desvio 89). | 11 | C |
 
 ### INV: invisibilidade no dono e nas réplicas
 

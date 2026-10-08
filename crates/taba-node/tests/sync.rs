@@ -339,6 +339,27 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
     assert_eq!(losses.len(), 1, "{losses:?}");
     assert_eq!(losses[0].id, target);
     assert_eq!(losses[0].topic, "pedidos");
+
+    // Quem detecta a perda a manda também aos outros responsáveis pelo bloco, para a informação
+    // sobreviver à queda dele (doc 04, seção 6.6, "Tabela de perdas").
+    for other in 1..=2 {
+        let recovery = cluster
+            .node(other)
+            .node
+            .cluster()
+            .and_then(|c| c.replication())
+            .map(|r| r.recovery.clone())
+            .expect("o nó está no cluster");
+        eventually("a perda chegar ao outro responsável", || {
+            recovery
+                .losses()
+                .list(None, 10)
+                .unwrap()
+                .iter()
+                .any(|l| l.id == target && l.topic == "pedidos")
+        })
+        .await;
+    }
     cluster.shutdown().await;
 }
 
@@ -379,7 +400,8 @@ async fn a_node_with_no_source_for_a_load_fails_after_the_timeout() {
 /// UC: UC-SIN-002, UC-SIN-009, UC-SIN-003, UC-SIN-004
 #[tokio::test]
 async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages() {
-    let (cluster, ids) = two_nodes_with_messages(30, &[]).await;
+    // Mensagens de sobra: com poucas, o sorteio dos IDs podia não pôr duas no mesmo bloco.
+    let (cluster, ids) = two_nodes_with_messages(150, &[]).await;
     let service = cluster.node(1).node.cluster().unwrap().clone();
     let ring = service.membership().ring();
     let caller = host_of(2);

@@ -148,6 +148,7 @@ fn record(content_type: &str, body: &[u8]) -> MessageRecord {
         receipt_token: Some(guid(11)),
         dead_lettered_ms: None,
         dead_letter_reason: None,
+        delete_at_ms: None,
     }
 }
 
@@ -400,10 +401,40 @@ fn requests() -> Vec<Request> {
             block: "00000000000000ab".into(),
             id: guid(4),
         },
+        Request::MessageLoss(StreamQuery {
+            from: Some(guid(4)),
+            to: None,
+            limit: Some(10),
+        }),
+        Request::LossRegister(LossRecord {
+            topic: "pedidos".into(),
+            id: guid(4),
+            block: "00000000000000ab".into(),
+            detected_at: "2026-10-07T12:00:00.000Z".into(),
+        }),
+        Request::LossRemove {
+            topic: "pedidos".into(),
+            id: guid(4),
+        },
+        Request::Recover {
+            records: vec![
+                record("application/json", br#"{"a":1}"#),
+                record("application/octet-stream", &[0, 1, 2]),
+            ],
+            replicate: true,
+        },
+        Request::Recover {
+            records: vec![record("text/plain", b"oi")],
+            replicate: false,
+        },
+        Request::FifoPublish {
+            topic: "pedidos".into(),
+            record: record("application/json", br#"{"a":1}"#),
+        },
     ]
 }
 
-/// UC: UC-ESC-025, UC-INV-013, UC-DEF-005, UC-DEF-008
+/// UC: UC-ESC-025, UC-INV-013, UC-DEF-005, UC-DEF-008, UC-RTN-001, UC-RTN-003, UC-FIF-026
 #[test]
 fn every_request_survives_the_trip_to_http_and_back() {
     for request in requests() {
@@ -475,6 +506,87 @@ fn the_routes_are_the_ones_of_the_document() {
         &format!("/cluster/blocks/00000000000000ab/messages/{id}")
     ));
     assert!(has("POST", "/cluster/forward/topics/pedidos/messages"));
+    assert!(has("GET", "/cluster/message-loss"));
+    assert!(has("POST", "/cluster/message-loss"));
+    assert!(has(
+        "DELETE",
+        &format!("/cluster/message-loss/pedidos/{id}")
+    ));
+    assert!(has("POST", "/cluster/messages/recover"));
+    assert!(has("POST", "/cluster/topics/pedidos/fifo/publish"));
+}
+
+/// A linha curta da FIFO (mensagem confirmada) viaja sem corpo e com `deleteAt`.
+///
+/// UC: UC-FIF-041
+#[test]
+fn the_short_line_of_a_confirmed_fifo_message_travels_without_a_body() {
+    let mut line = record("application/json", b"");
+    line.delete_at_ms = Some(1_791_288_300_000);
+    let text = serde_json::to_string(&line).unwrap();
+    assert!(!text.contains("\"body\""), "{text}");
+    assert!(text.contains("\"deleteAt\""), "{text}");
+    let back: MessageRecord = serde_json::from_str(&text).unwrap();
+    assert_eq!(back, line);
+    assert!(back.body.is_empty());
+}
+
+/// O corpo do `recover` é um stream NDJSON: sem a linha final, com a contagem errada ou com outro
+/// `Content-Type`, a requisição é recusada e quem envia reenvia tudo.
+///
+/// UC: UC-RTN-003, UC-RTN-009
+#[test]
+fn the_recover_body_is_a_stream_with_a_mandatory_last_line() {
+    let ndjson = vec![("content-type".to_owned(), "application/x-ndjson".to_owned())];
+    let records = vec![record("text/plain", b"oi"), record("text/plain", b"ola")];
+    let body = recover_body(&records);
+    let text = String::from_utf8(body.clone()).unwrap();
+    assert_eq!(text.lines().count(), 3, "duas linhas de dados e a final");
+    assert!(text.lines().last().unwrap().contains(r#""end":true"#));
+    assert_eq!(parse_recover_body(&body).unwrap(), records);
+
+    let refused = |headers: &[(String, String)], path: &str, body: &[u8]| {
+        Request::from_http("POST", path, headers, body)
+            .unwrap_err()
+            .code
+    };
+    let without_end: String = text.lines().take(2).collect::<Vec<_>>().join("\n");
+    assert_eq!(
+        refused(&ndjson, "/cluster/messages/recover", without_end.as_bytes()),
+        ErrorCode::ValidationFailed,
+        "um corte entre duas linhas não se distingue de um fim normal sem a linha final"
+    );
+    let wrong_count = text.replace(r#""count":2"#, r#""count":3"#);
+    assert_eq!(
+        refused(&ndjson, "/cluster/messages/recover", wrong_count.as_bytes()),
+        ErrorCode::ValidationFailed
+    );
+    assert_eq!(
+        refused(&[], "/cluster/messages/recover", &body),
+        ErrorCode::MediaUnsupported
+    );
+    assert_eq!(
+        refused(&ndjson, "/cluster/messages/recover?replicate=talvez", &body),
+        ErrorCode::ValidationFailed
+    );
+    assert_eq!(
+        refused(&ndjson, "/cluster/messages/recover?outro=1", &body),
+        ErrorCode::ValidationUnknownField
+    );
+    let local = Request::from_http(
+        "POST",
+        "/cluster/messages/recover?replicate=false",
+        &ndjson,
+        &body,
+    )
+    .unwrap();
+    assert!(matches!(
+        local,
+        Request::Recover {
+            replicate: false,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -652,6 +764,27 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
         query: StreamQuery::default(),
     };
     assert_eq!(ids.parse_reply(page.clone().into_http()).unwrap(), page);
+
+    // A lista de perdas é um stream; o registro e a baixa devolvem `changed`; o `recover`, a contagem.
+    let loss = Request::MessageLoss(StreamQuery::default());
+    assert_eq!(loss.parse_reply(page.clone().into_http()).unwrap(), page);
+    let register = Request::LossRegister(LossRecord {
+        topic: "pedidos".into(),
+        id: guid(4),
+        block: "00000000000000ab".into(),
+        detected_at: "2026-10-07T12:00:00.000Z".into(),
+    });
+    let changed = Response::Loss(LossAck { changed: true });
+    assert_eq!(
+        register.parse_reply(changed.clone().into_http()).unwrap(),
+        changed
+    );
+    let recover = Request::Recover {
+        records: vec![],
+        replicate: true,
+    };
+    let done = Response::Recovered(RecoverResult::new(2));
+    assert_eq!(recover.parse_reply(done.clone().into_http()).unwrap(), done);
 }
 
 /// UC: UC-FWD-004

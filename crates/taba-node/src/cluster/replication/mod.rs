@@ -27,13 +27,13 @@ pub use signals::{ListenerGuard, Signals};
 
 use super::channel::Channels;
 use super::protocol::{Request, Response};
+use super::recovery::Recovery;
 use super::service::ClusterService;
 use super::state::NodeState;
 use super::sync::{BlockSource, SyncRules, Syncer};
 use super::vote::Voting;
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
-use crate::core::ring::message_position;
 use crate::engine::messages::{ClusterHooks, DeadLetterJob, Messages, Placement};
 use crate::engine::tokens::Tokens;
 use crate::engine::topics::Topics;
@@ -46,13 +46,13 @@ struct RingPlacement(Arc<ClusterService>);
 impl Placement for RingPlacement {
     /// Um nó que ainda sincroniza não é dono de nada: as mensagens dos blocos dele só são entregues
     /// quando ele fica pronto (doc 13, seção 12.7).
-    fn is_owner(&self, _topic: &str, id: &str, _group: Option<&str>) -> bool {
+    fn is_owner(&self, _topic: &str, _id: &str, _group: Option<&str>, position: u64) -> bool {
         self.0.node_state() == NodeState::Active
             && self
                 .0
                 .membership()
                 .ring()
-                .primary(message_position(id))
+                .primary(position)
                 .is_some_and(|primary| primary == self.0.node_id())
     }
 
@@ -102,6 +102,12 @@ pub fn attach(
         signals.clone(),
     );
     let definitions = Definitions::new(service.clone(), topics.clone(), tokens.clone());
+    let recovery = Recovery::new(
+        service.clone(),
+        messages.clone(),
+        losses.clone(),
+        sync_rules.max_items,
+    );
     topics.set_replicator(definitions.clone());
     tokens.set_replicator(definitions.clone());
     let forwarder = Forwarder::new(service.clone(), signals.clone());
@@ -142,6 +148,7 @@ pub fn attach(
         source,
         channels,
         voting,
+        recovery,
     );
     service.set_replication(replication.clone());
 
@@ -179,6 +186,7 @@ pub struct Replication {
     pub source: BlockSource,
     pub channels: Arc<Channels>,
     pub voting: Arc<Voting>,
+    pub recovery: Arc<Recovery>,
 }
 
 impl Replication {
@@ -194,6 +202,7 @@ impl Replication {
         source: BlockSource,
         channels: Arc<Channels>,
         voting: Arc<Voting>,
+        recovery: Arc<Recovery>,
     ) -> Arc<Self> {
         Arc::new(Self {
             service,
@@ -206,6 +215,7 @@ impl Replication {
             source,
             channels,
             voting,
+            recovery,
         })
     }
 
@@ -274,6 +284,17 @@ impl Replication {
             | Request::BlockMessage { .. }) => self.source.handle(request).await,
             Request::Channel(batch) => Ok(Response::Confirm(self.channels.receive(batch))),
             Request::Vote(vote) => self.voting.cast(vote).await,
+            Request::FifoPublish { topic, record } => self
+                .messages
+                .publish_fifo_for_peer(&topic, record)
+                .await
+                .map(Response::FifoPublished),
+            Request::MessageLoss(query) => self.recovery.serve_losses(&query),
+            Request::LossRegister(record) => self.recovery.register_loss(record),
+            Request::LossRemove { topic, id } => self.recovery.remove_loss(&topic, &id),
+            Request::Recover { records, replicate } => {
+                self.recovery.accept(records, replicate).await
+            }
             _ => Err(TabaError::route_not_found()),
         }
     }

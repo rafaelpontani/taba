@@ -87,6 +87,12 @@ pub struct ClusterRules {
     pub vote_min_voters: u32,
     /// `cluster.freezing.duration`.
     pub freezing_duration: Duration,
+    /// `cluster.message-loss.ttl` (a definir: 14 dias, o `ttl` padrão da mensagem).
+    pub message_loss_ttl: Duration,
+    /// `cluster.recovery.timeout` (a definir: 5 minutos).
+    pub recovery_timeout: Duration,
+    /// `fifo.forward.max-attempts` (a definir: 3).
+    pub fifo_forward_max_attempts: u32,
 }
 
 impl ClusterRules {
@@ -134,6 +140,15 @@ impl ClusterRules {
                 .cluster
                 .freezing_duration
                 .unwrap_or(Duration::from_secs(300)),
+            message_loss_ttl: config
+                .cluster
+                .message_loss_ttl
+                .unwrap_or(Duration::from_secs(1_209_600)),
+            recovery_timeout: config
+                .cluster
+                .recovery_timeout
+                .unwrap_or(Duration::from_secs(300)),
+            fifo_forward_max_attempts: config.fifo.forward_max_attempts.map_or(3, |n| n.max(1)),
         }
     }
 }
@@ -572,7 +587,11 @@ impl ClusterService {
                 let Some(replication) = self.replication.get().cloned() else {
                     return Err(TabaError::route_not_found());
                 };
-                self.require_member(caller)?;
+                // A lista de perdas e as mensagens recuperadas aceitam quem acabou de ser excluído
+                // (doc 04, seção 6.6): o nó que volta ainda não consta na tabela.
+                if !matches!(other, Request::MessageLoss(_) | Request::Recover { .. }) {
+                    self.require_member(caller)?;
+                }
                 replication.handle(caller, other).await
             }
         }
@@ -1082,7 +1101,8 @@ impl ClusterService {
         {
             return;
         }
-        tracing::warn!(node_id = %self.node_id(), "este nó foi excluído do cluster: refazendo o ingresso do zero");
+        tracing::warn!(node_id = %self.node_id(), "este nó foi excluído do cluster: recuperando as perdas e refazendo o ingresso do zero");
+        self.recover_losses().await;
         if let Some(replication) = self.replication.get().cloned() {
             replication.reset_local().await;
         }
@@ -1101,10 +1121,34 @@ impl ClusterService {
         });
     }
 
+    /// Antes de apagar o estado local, o nó que volta (excluído ou saído por drain) recupera o que
+    /// só ele tem das mensagens declaradas perdidas (doc 04, seção 6.6, passos 1 a 5). Fica em
+    /// `returning` enquanto isso. Os pares são os da última tabela que o nó conheceu.
+    async fn recover_losses(self: &Arc<Self>) {
+        let Some(replication) = self.replication.get().cloned() else {
+            return;
+        };
+        let me = self.node_id();
+        let peers: Vec<Member> = self
+            .membership
+            .table()
+            .map(|table| {
+                table
+                    .members
+                    .into_iter()
+                    .filter(|m| m.node_id != me)
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.node.set_state(NodeState::Returning);
+        replication.recovery.run(peers).await;
+    }
+
     /// Volta do drain **como nó novo** (doc 04, seção 6.10): ID novo, estado local limpo e o
     /// bootstrap completo, com nova posição no anel. Não há freezing: o ID é outro e a saída foi
     /// voluntária.
     pub async fn rejoin_as_new(self: &Arc<Self>) {
+        self.recover_losses().await;
         let new_id = id::new_at(self.clock.now_millis());
         if let Some(replication) = self.replication.get().cloned() {
             replication.reset_local().await;

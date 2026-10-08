@@ -104,7 +104,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.3.
 | UC-FAL-022 | Depois da exclusão, cada mensagem do nó removido continua em pelo menos `replication.factor − 1` nós. | 05 §7.1 | C |
 | UC-FAL-023 | Nó em **falha** (disco cheio, banco corrompido, banco de eventos acima de `cluster.sync.log.max-bytes`, ou sem origem de carga até `cluster.sync.timeout`) sinaliza isso ao cluster, e os demais ficam liberados para votar o desregistro dele. | 05 §7.3, 04 §6.8 | C |
 | UC-FAL-024 | As condições do cluster (lista, não estado único), cada uma com severidade: `member-unreachable`, `node-frozen`, `syncing`, `under-replicated`, `write-quorum-at-risk` (réplicas íntegras abaixo de `write.quorum`), `quorum-lost`, `membership-divergent`, `storage-pressure`; `ok` quando nenhuma. | 11 | C |
-| UC-FAL-025 | `under-replicated` (réplicas abaixo de `replication.factor`, mas **no ou acima** do quórum) é aviso transitório: as escritas continuam respondendo. `write-quorum-at-risk` é crítica: as escritas podem falhar por não fechar quórum. | 11 | C |
+| UC-FAL-025 | `under-replicated` (réplicas abaixo de `replication.factor`, mas **no ou acima** do quórum) é aviso transitório: as escritas continuam respondendo (menos as dos blocos cujo primário está fora do ar, até a exclusão: PRB-044). `write-quorum-at-risk` é crítica: as escritas podem falhar por não fechar quórum. | 11 | C |
 
 ### FRZ: período de freezing
 
@@ -218,7 +218,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.6.
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-RTN-001 | Um nó desregistrado por falha do canal que volta consulta **todos** os nós que consegue alcançar (`GET /cluster/message-loss`, NDJSON) e une as respostas (cada nó responde com a sua tabela `losses`). Essas rotas aceitam chamadas de um nó que ainda não é membro. | 04 §6.6, 06c | C |
-| UC-RTN-002 | Para cada par (tópico, ID), o nó procura a mensagem localmente: no disco (`${topic}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o disco conta. | 04 §6.6 | C |
+| UC-RTN-002 | Para cada par (tópico, ID), o nó procura a mensagem localmente: no disco (`${topic}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o disco conta (o reinício ainda não passa por este procedimento: PRB-046). | 04 §6.6 | C |
 | UC-RTN-003 | Para cada mensagem encontrada, o nó a envia ao responsável pelo bloco por `POST /cluster/messages/recover`; quem recebe grava **direto nos nós responsáveis**, idempotente pelo ID, sem as duas fases (nem registro pendente nem rollback), e confirma a linha quando `write.quorum` nós gravaram. | 04 §6.6, 06c | C |
 | UC-RTN-004 | Vai o corpo e o `deliveryCount`; a invisibilidade é **zerada** e a mensagem volta a ficar pronta para entrega. | 04 §6.6 | C |
 | UC-RTN-005 | Baixa do registro: o nó que aceita a mensagem apaga o par da sua tabela `losses` e avisa os demais (melhor esforço), para um segundo nó que volte com a mesma mensagem não a reenviar depois de ela já ter sido entregue e confirmada. | 04 §6.6 | C |
@@ -228,6 +228,8 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.6.
 | UC-RTN-009 | Mensagens já aplicadas num reenvio do `recover` são ignoradas (`taba.recover.messages` com `outcome` `sent`, `applied`, `skipped`). | 06c, 11 | C |
 | UC-RTN-010 | O estado do nó durante a volta é `returning` (`taba.node.state`, `/health/ready` com `reason: returning`); registro em log das mensagens recuperadas (`info`). | 06b, 11 | C |
 | UC-RTN-011 | Em modo desenvolvimento não se aplica: um reinício retoma do disco. | 04 §6.6 | I |
+| UC-RTN-012 | `GET /cluster/message-loss` e `POST /cluster/messages/recover` aceitam quem ainda não é membro; `POST /cluster/message-loss` (registro) e `DELETE /cluster/message-loss/{topic}/{id}` (baixa) só aceitam membros (`403 cluster.not-member`). Registro e baixa são idempotentes (`changed`), e o registro expira depois de `cluster.message-loss.ttl`. | 06c | C |
+| UC-RTN-013 | O nó que saiu da tabela (drain) não faz a limpeza dos blocos que perdeu: as réplicas que ele guarda ficam para a recuperação procurar quando voltar. | 04 §6.6, 05 §7.3 | C |
 
 ### FWD: repasse de chamadas de cliente
 
@@ -245,7 +247,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.9, e [06c-api-cluster.md](06c-
 | UC-FWD-008 | Falha do destino **antes** de o corpo ser enviado (conexão recusada): tenta outro nó, até um teto pequeno. **Depois** de enviado: **não repete** (um `POST` de mensagem repetido duplicaria) e responde `502` `forward.bad-gateway` ou `504` `forward.timeout`. | 04 §6.9 | C |
 | UC-FWD-009 | Rate limit: aplicado uma vez, no nó que recebeu, por IP do cliente (o nó não valida o token); o destino não conta de novo, e a porta do cluster não tem rate limit. O IP do cliente já resolvido segue em cabeçalho interno. | 04 §6.9, 12 | C |
 | UC-FWD-010 | Sem nenhum destino respondendo: `503` com `Retry-After` (`cluster.node-syncing` ou `cluster.node-draining`). | 04 §6.9, 06c | C |
-| UC-FWD-011 | Publicação em fila FIFO: mesmo com o nó pronto, é repassada ao **primário do grupo** (o destino é o dono, não o nó mais livre); o primário confere (`421` se não for o dono) e a repetição depois do corpo é segura. | 04 §6.9, 06c, 17 §16.4 | C |
+| UC-FWD-011 | Publicação em fila FIFO: mesmo com o nó pronto, é repassada ao **primário do grupo** (o destino é o dono, não o nó mais livre), por `POST /cluster/topics/{topic}/fifo/publish`; o primário confere (`421` se não for o dono) e a repetição depois do corpo é segura. | 04 §6.9, 06c, 17 §16.4 | C |
 | UC-FWD-012 | Em modo desenvolvimento nenhuma chamada é repassada. | 04 §6.4 e 6.9 | I |
 
 ### DRN: parada e modo drain

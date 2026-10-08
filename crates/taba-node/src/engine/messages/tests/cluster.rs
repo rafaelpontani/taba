@@ -11,7 +11,7 @@ use super::*;
 struct Owners(Mutex<HashSet<String>>);
 
 impl Placement for Owners {
-    fn is_owner(&self, _topic: &str, id: &str, _group: Option<&str>) -> bool {
+    fn is_owner(&self, _topic: &str, id: &str, _group: Option<&str>, _position: u64) -> bool {
         self.0.lock().unwrap().contains(id)
     }
 }
@@ -436,4 +436,45 @@ async fn applying_a_commit_twice_changes_nothing() {
             .topic_snapshot("pedidos", &StatsRules::from_config(&config()))
             .unwrap();
     assert_eq!(snapshot.counters.published, 1);
+}
+
+/// UC: UC-FIF-027
+#[tokio::test]
+async fn the_id_of_a_group_keeps_growing_even_if_the_clock_of_the_new_primary_is_behind() {
+    let c = clustered();
+    c.h.topics.create(fifo("f")).await.unwrap();
+    let view = c.view("f");
+    let request = |key: &str| PublishRequest {
+        body: b"{}".to_vec(),
+        content_type: Some("application/json".into()),
+        group_id: Some("g".into()),
+        deduplication_id: Some(key.to_owned()),
+    };
+    let Draft::New { mut meta, body } =
+        c.h.messages
+            .draft_fifo_publish(&view, &request("k0"))
+            .unwrap()
+    else {
+        panic!("esperava uma mensagem nova");
+    };
+    // Um primário anterior, com o relógio adiantado, já deu um `id` de um minuto à frente.
+    let ahead = c.h.clock.now_millis() + 60_000;
+    meta.id = id::new_at(ahead);
+    meta.published_ms = ahead;
+    let ahead_id = meta.id.clone();
+    c.h.messages.apply_publish("f", meta, body).unwrap();
+
+    // Este nó, com o relógio atrasado, ainda gera `id` maiores; no mesmo milissegundo também.
+    let mut last = ahead_id;
+    for key in ["k1", "k2", "k3"] {
+        let Draft::New { meta, .. } =
+            c.h.messages
+                .draft_fifo_publish(&view, &request(key))
+                .unwrap()
+        else {
+            panic!("esperava uma mensagem nova");
+        };
+        assert!(meta.id > last, "{} deveria vir depois de {last}", meta.id);
+        last = meta.id;
+    }
 }

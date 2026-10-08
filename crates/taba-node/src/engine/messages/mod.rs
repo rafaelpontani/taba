@@ -262,6 +262,10 @@ struct TopicState {
     /// Só na fila FIFO: `(grupo, deduplicationId)` → `(id da original, instante do id)`. Vale até
     /// a janela passar, inclusive depois do ack.
     dedup: HashMap<(String, String), (String, u64)>,
+    /// Só na fila FIFO: o instante (ms) do `id` mais recente de cada grupo que este nó conhece, em
+    /// qualquer papel. O novo primário de um grupo parte daqui para o `id` continuar crescendo
+    /// (doc 17, seção 16.4, passo 3).
+    group_ms: HashMap<String, u64>,
     /// O `maxDeliveries` com que as prontas foram conferidas por último: se o `PATCH` o mudar,
     /// as que já passam do novo limite vão à dead-letter.
     checked_max_deliveries: Option<Option<u64>>,
@@ -373,10 +377,21 @@ pub struct ConsumeParams {
     pub wait_secs: u64,
 }
 
+/// O que o primário do grupo decide ao receber uma publicação FIFO.
+#[derive(Debug, Clone)]
+pub enum Draft {
+    /// Uma mensagem nova, com `id` e posição já definidos.
+    New { meta: MessageMeta, body: Vec<u8> },
+    /// A chave já existe no grupo dentro da janela: vale o `id` da original.
+    Duplicate { id: String },
+}
+
 /// Quem diz se este nó é o **dono da entrega** de uma mensagem (doc 13, seção 12.7): o primário do
 /// bloco dela no anel. Sem ele (`mode=development`) o nó é dono de tudo.
 pub trait Placement: Send + Sync + 'static {
-    fn is_owner(&self, topic: &str, id: &str, group: Option<&str>) -> bool;
+    /// `position` é a posição de colocação da mensagem no anel: o hash do `id` ou, na fila FIFO,
+    /// o do grupo (doc 17, seção 16.3).
+    fn is_owner(&self, topic: &str, id: &str, group: Option<&str>, position: u64) -> bool;
 
     /// O nó é um dos nós responsáveis (primário ou réplica) pelo bloco da posição? A cópia de uma
     /// mensagem de que ele deixou de ser responsável pode ser apagada (doc 05, seção 7.3, passo 7).
@@ -623,9 +638,14 @@ impl Messages {
             .is_ok_and(|view| view.definition.queue().is_some_and(|q| q.fifo));
         let mut index = TopicIndex::new(self.rules.index_rules(fifo));
         let mut dedup = HashMap::new();
+        let mut group_ms: HashMap<String, u64> = HashMap::new();
         match self.store.scan(name) {
             Ok(rows) => {
                 for row in rows {
+                    if fifo && let Some(group) = &row.group_id {
+                        let last = group_ms.entry(group.clone()).or_default();
+                        *last = (*last).max(row.published_ms);
+                    }
                     if fifo
                         && row
                             .published_ms
@@ -661,6 +681,7 @@ impl Messages {
             index,
             rates: Rates::default(),
             dedup,
+            group_ms,
             checked_max_deliveries: None,
             stats: TopicCounters::new(),
             replicas: ReplicaSet::default(),
@@ -966,20 +987,7 @@ impl Messages {
             let mut state = lock(&state);
             // O primário do grupo (aqui, este nó) confere a duplicata antes de criar qualquer coisa.
             if let Some(key) = &dedup_key {
-                if let Some((original, at)) = state.dedup.get(key)
-                    && at.saturating_add(self.rules.fifo_dedup_window_ms) > now
-                {
-                    let original = original.clone();
-                    state.stats.deduplicated += 1;
-                    NodeCounters::add(&self.counters.deduplicated, 1);
-                    tracing::debug!(
-                        event.name = "taba.message.deduplicated",
-                        messaging.destination.name = %name,
-                        group_id = %key.0,
-                        deduplication_id = %key.1,
-                        message.id = %original,
-                        "publicação descartada por deduplicação"
-                    );
+                if let Some(original) = self.duplicate_of(&mut state, &name, key, now) {
                     return Ok((original, Some(true)));
                 }
                 if state.dedup.len() > DEDUP_PRUNE_ABOVE {
@@ -1026,6 +1034,33 @@ impl Messages {
         }
         self.wake(&name, 1);
         Ok((id, fifo.then_some(false)))
+    }
+
+    /// Se a chave de deduplicação já existe no grupo dentro da janela, conta a duplicata e devolve
+    /// o `id` da original (doc 17, seção 16.7).
+    fn duplicate_of(
+        &self,
+        state: &mut TopicState,
+        name: &str,
+        key: &(String, String),
+        now: u64,
+    ) -> Option<String> {
+        let (original, at) = state.dedup.get(key)?;
+        if at.saturating_add(self.rules.fifo_dedup_window_ms) <= now {
+            return None;
+        }
+        let original = original.clone();
+        state.stats.deduplicated += 1;
+        NodeCounters::add(&self.counters.deduplicated, 1);
+        tracing::debug!(
+            event.name = "taba.message.deduplicated",
+            messaging.destination.name = %name,
+            group_id = %key.0,
+            deduplication_id = %key.1,
+            message.id = %original,
+            "publicação descartada por deduplicação"
+        );
+        Some(original)
     }
 
     /// Uma cópia independente, com `id` próprio, em cada fila que casa com um prefixo. Zero
@@ -2235,9 +2270,11 @@ impl Messages {
 
     /// O nó é o dono da entrega da mensagem? Sem cluster, sempre.
     fn owns(&self, topic: &str, id: &str, group: Option<&str>) -> bool {
-        self.cluster
-            .get()
-            .is_none_or(|hooks| hooks.placement.is_owner(topic, id, group))
+        self.cluster.get().is_none_or(|hooks| {
+            hooks
+                .placement
+                .is_owner(topic, id, group, self.position_for(topic, id, group))
+        })
     }
 
     /// Avisa o cluster quando o tópico passa a ter (ou deixa de ter) mensagens prontas aqui.
@@ -2358,8 +2395,8 @@ impl Messages {
         }
         if view.definition.queue().is_some_and(|q| q.fifo) {
             return Err(TabaError::new(
-                ErrorCode::FifoPrimaryUnavailable,
-                "A fila FIFO no cluster precisa do primário do grupo e ainda não está disponível.",
+                ErrorCode::InternalError,
+                "A fila FIFO tem o seu rascunho (`draft_fifo_publish`).",
             ));
         }
         if request.deduplication_id.is_some() {
@@ -2393,6 +2430,89 @@ impl Messages {
         Ok((meta, request.body.clone()))
     }
 
+    /// O que qualquer nó confere antes de repassar a publicação FIFO ao primário: corpo, tipo,
+    /// tamanho e `groupId` (obrigatório). Devolve o conteúdo conferido e o grupo.
+    pub fn check_fifo_request(
+        &self,
+        view: &TopicView,
+        request: &PublishRequest,
+    ) -> Result<(Prepared, String), TabaError> {
+        let prepared = Prepared::new(request)?;
+        let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
+        if request.body.len() as u64 > limit {
+            return Err(too_large(limit));
+        }
+        let Some(group) = request.group_id.clone() else {
+            return Err(TabaError::new(
+                ErrorCode::ValidationGroupIdRequired,
+                "A fila FIFO exige `groupId`.",
+            )
+            .with_detail(
+                "groupId",
+                ErrorCode::ValidationGroupIdRequired,
+                "Obrigatório numa fila FIFO.",
+            ));
+        };
+        Ok((prepared, group))
+    }
+
+    /// O `deleteAt` da linha de deduplicação de uma mensagem FIFO: o instante do `id` mais a janela
+    /// (doc 17, seção 16.7).
+    pub fn fifo_delete_at(&self, id: &str) -> u64 {
+        crate::core::id::unix_millis_of(id)
+            .unwrap_or(0)
+            .saturating_add(self.rules.fifo_dedup_window_ms)
+    }
+
+    /// O rascunho de uma publicação na fila FIFO, feito pelo **primário do grupo** (doc 17, seção
+    /// 16.4): confere o `groupId`, a deduplicação (uma duplicata devolve o `id` da original, sem
+    /// registro nem commit) e gera o `id` como `max(agora, último do grupo + 1)`, para a ordem do
+    /// grupo ser a do `id` mesmo que o relógio de um primário anterior estivesse adiantado.
+    pub fn draft_fifo_publish(
+        &self,
+        view: &TopicView,
+        request: &PublishRequest,
+    ) -> Result<Draft, TabaError> {
+        let (prepared, group) = self.check_fifo_request(view, request)?;
+        let now = self.clock.now_millis();
+        let key = (
+            group.clone(),
+            request
+                .deduplication_id
+                .clone()
+                .unwrap_or_else(|| body_hash(&request.body)),
+        );
+        let name = view.definition.name.clone();
+        let state = self.state_of(&name);
+        let mut state = lock(&state);
+        if let Some(original) = self.duplicate_of(&mut state, &name, &key, now) {
+            return Ok(Draft::Duplicate { id: original });
+        }
+        let at = now.max(state.group_ms.get(&group).map_or(0, |last| last + 1));
+        let id = self.ids.new_at(at);
+        let published_ms = crate::core::id::unix_millis_of(&id).unwrap_or(at);
+        // Reserva o instante já: a próxima publicação do grupo parte de depois dele, mesmo que esta
+        // ainda não tenha feito o commit.
+        state.group_ms.insert(group.clone(), published_ms);
+        let meta = MessageMeta {
+            position: self.position_of(view, &id, Some(&group)),
+            id,
+            content_type: prepared.content_type.as_str().to_owned(),
+            group_id: Some(group),
+            deduplication_id: Some(key.1),
+            published_ms,
+            delivery_count: 0,
+            invisible_until_ms: 0,
+            receipt_token: None,
+            dead_lettered_ms: None,
+            dead_letter_reason: None,
+        };
+        Ok(Draft::New {
+            meta,
+            body: request.body.clone(),
+        })
+    }
+
     /// Guarda a mensagem no commit da publicação. O dono a põe no índice e acorda os `GET` em
     /// espera; a réplica só a guarda. Repetir o commit não faz nada.
     pub fn apply_publish(
@@ -2409,6 +2529,20 @@ impl Messages {
             let mut state = lock(&state);
             if state.index.contains(&meta.id) || state.replicas.contains(&meta.id) {
                 return Ok(());
+            }
+            // Na FIFO toda cópia lembra a chave de deduplicação e o instante do último `id` do grupo:
+            // quem assumir o grupo herda os dois sem perda (doc 17, seções 16.5 e 16.7).
+            if state.index.is_fifo()
+                && let Some(group) = &meta.group_id
+            {
+                let last = state.group_ms.entry(group.clone()).or_default();
+                *last = (*last).max(meta.published_ms);
+                if let Some(key) = &meta.deduplication_id {
+                    state
+                        .dedup
+                        .entry((group.clone(), key.clone()))
+                        .or_insert((meta.id.clone(), meta.published_ms));
+                }
             }
             let size = body.len() as u64;
             let id = meta.id.clone();
@@ -2547,7 +2681,23 @@ impl Messages {
         } else {
             Place::Disk
         };
-        self.remove_message(&mut state, topic, id, place)?;
+        if state.index.is_fifo() {
+            // Na FIFO o ack não apaga a linha: deixa a de deduplicação até o `deleteAt`.
+            let meta = match state.memory.get(id) {
+                Some(stored) => Some(stored.meta.clone()),
+                None => self
+                    .store
+                    .get(topic, id)
+                    .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?,
+            };
+            match meta {
+                Some(meta) => self.fifo_ack(&mut state, topic, meta, place, now)?,
+                None => self.remove_message(&mut state, topic, id, place)?,
+            }
+        } else {
+            self.remove_message(&mut state, topic, id, place)?;
+        }
+        state.replicas.remove(id);
         if owned {
             state.stats.acked += 1;
             state.stats.last_consumed_ms = Some(now);
@@ -2637,7 +2787,14 @@ impl Messages {
             let previous_deliveries = meta.delivery_count;
             meta.delivery_count += 1;
             meta.invisible_until_ms = until;
-            meta.receipt_token = Some(self.ids.new_at(now));
+            // Na FIFO o recibo leva a posição do grupo: quem recebe o ack ou a alteração de qualquer
+            // nó acha o bloco sem saber o grupo (doc 17, seção 16.3).
+            let token = self.ids.new_at(now);
+            meta.receipt_token = Some(if state.index.is_fifo() {
+                format!("{:016x}-{token}", meta.position)
+            } else {
+                token
+            });
             state
                 .index
                 .deliver(&id, until.max(now + 1), now, meta.delivery_count);
@@ -2706,17 +2863,21 @@ impl Messages {
             let mut woke = false;
             {
                 let mut state = lock(&state);
+                let fifo = state.index.is_fifo();
                 for id in state.index.ids() {
-                    if !self.owns(&name, &id, None) {
+                    // Na FIFO o dono vem do grupo, que só os metadados dizem.
+                    let group = if fifo {
+                        self.held_meta(&state, &name, &id).and_then(|m| m.group_id)
+                    } else {
+                        None
+                    };
+                    if !self.owns(&name, &id, group.as_deref()) {
                         let age = state.index.age_of(&id).unwrap_or(now);
                         state.index.remove(&id);
                         state.replicas.insert(&id, age);
                     }
                 }
                 for id in state.replicas.ids() {
-                    if !self.owns(&name, &id, None) {
-                        continue;
-                    }
                     let meta = match state.memory.get(&id) {
                         Some(stored) => Some(stored.meta.clone()),
                         None => self.store.get(&name, &id).ok().flatten(),
@@ -2725,6 +2886,9 @@ impl Messages {
                         state.replicas.remove(&id);
                         continue;
                     };
+                    if !self.owns(&name, &id, meta.group_id.as_deref()) {
+                        continue;
+                    }
                     state.replicas.remove(&id);
                     state.index.insert(
                         &id,
@@ -2813,7 +2977,7 @@ impl Messages {
 }
 
 /// O que se valida na publicação antes de saber o tipo do tópico.
-struct Prepared {
+pub struct Prepared {
     content_type: ContentType,
 }
 

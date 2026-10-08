@@ -57,6 +57,8 @@ Todas as mensagens de um grupo caem **no mesmo bloco**: o mesmo primário, o mes
 
 *Fonte: [fifo-publicacao.json](diagramas/fonte/fifo-publicacao.json).*
 
+> **Como está feito (etapa 15d).** O repasse é a chamada entre nós `POST /cluster/topics/{topic}/fifo/publish` ([06c](06c-api-cluster.md)), no lugar do `* /cluster/forward`: assim a mesma chamada serve ao distribuidor (que não tem requisição HTTP de cliente para repassar) e o primário não precisa conferir o token de novo (D112). O primário atende uma publicação por vez em cada grupo (uma trava por grupo), o que ordena o grupo e serializa a deduplicação. O `421` faz o nó que repassa esperar `write.retry.backoff` e reler a **própria** tabela (ela só muda por commit); `fifo.forward.max-attempts` vale 3 (D112).
+
 1. O cliente publica em **qualquer nó**, como sempre. Esse nó calcula a posição do grupo (seção 16.3), acha o **primário** e **repassa a publicação a ele**, no mecanismo de repasse da seção 6.9 de [04-cluster.md](04-cluster.md). Se o próprio nó é o primário, não há repasse.
 2. O **primário coordena**: é ele quem gera o ID, confere a deduplicação (seção 16.7) e faz o registro + commit da seção 7.2, com o quórum da seção 16.5.
 3. **ID monotônico por grupo.** O primário gera o GUID v7 como `max(agora, último ID do grupo + 1)`, usando os bits de contador do GUID v7 quando duas publicações caem no mesmo milissegundo. Dentro do grupo, os IDs crescem na ordem em que o primário aceitou as publicações, mesmo que o relógio dele esteja atrasado em relação ao de um primário anterior. A **ordem de entrega do grupo é a ordem do ID**.
@@ -81,6 +83,10 @@ Na QTF, o quórum de escrita, de entrega e de ack (`write.quorum`) **sempre incl
 4. O B assume e, na visão dele, `m1` ainda é a cabeça do grupo. Entrega `m1` de novo, depois de `m2`: o consumidor vê `m1, m2, m1`.
 
 Com o secundário sempre no quórum, o B já tem o ack de `m1` quando o A libera `m2`, então o novo primário nunca está defasado. O mesmo vale para a deduplicação: o novo primário herda os registros (seção 16.7).
+
+O `Plan` do coordenador (`required`) diz quantos dos primeiros responsáveis o quórum precisa incluir: 1 na fila comum, 2 na FIFO. A escrita, a invisibilidade (entrega e alteração), o ack e o movimento para a dead-letter usam a posição do grupo.
+
+**O recibo carrega a posição (etapa 15d, D113).** O ack e a alteração de invisibilidade chegam a qualquer nó, que só tem o `id` da mensagem e o `receiptToken`, mas o bloco vem do grupo. Por isso o `receiptToken` de uma mensagem FIFO é `{posição em 16 dígitos hexadecimais}-{guid}`: quem coordena acha os responsáveis sem saber o grupo. Para o cliente o recibo continua opaco; um recibo malformado é `409` `message.stale-receipt`.
 
 Consequências:
 
@@ -119,6 +125,7 @@ A QTF não duplica publicações repetidas dentro de uma **janela** (`fifo.dedup
 - **Varredura.** Cada nó apaga as linhas vencidas pelo índice de `deleteAt`, a cada `retention.sweep.interval`, sem propagar nada, como no `ttl` (seção 12.10).
 - **Quem ignora a linha com `deleteAt`:** a lista de prontos, os contadores de fila e de grupo, `depth`, o `ttl`, o `MIN(id)` de `oldestMessageAt`, a reposição, o `GET`, a alteração da invisibilidade e um segundo ack (que respondem como mensagem inexistente). Só a checagem de deduplicação e a varredura a enxergam.
 - **Exceção ao "sem tombstone"** (seção 12.4 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)): é um registro com prazo, só na QTF. A fila comum continua apagando no ack.
+- **Id monotônico.** Todo nó guarda, por grupo, o instante do `id` mais novo que conhece (inclusive o das linhas curtas), para o novo primário gerar `max(agora, último + 1)`.
 - **Sincronização.** Como é uma linha comum, a listagem de IDs (`/cluster/blocks/{id}/ids`) e o stream de mensagens (`/cluster/blocks/{id}/messages`) a incluem, sem corpo e com `deleteAt`, e o banco de eventos grava o `deleteAt` de forma idempotente (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)). Não há rota nova.
 
 **Cuidado com o hash padrão.** Duas mensagens legítimas e idênticas, no mesmo grupo e dentro da janela, viram uma só, em silêncio. Quem precisa de mensagens iguais em sequência deve enviar um `deduplicationId` próprio.

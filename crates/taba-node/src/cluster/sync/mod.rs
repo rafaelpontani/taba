@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::members::{Member, MemberState};
-use super::protocol::{Ack, MessageRecord, Request, Response, Step, StreamQuery};
+use super::protocol::{Ack, LossRecord, MessageRecord, Request, Response, Step, StreamQuery};
 use super::replication::{Definitions, Pulled, Replica};
 use super::service::ClusterService;
 use super::state::NodeState;
@@ -146,7 +146,6 @@ fn operation_of(request: &Request) -> String {
 struct IdLine {
     id: String,
     topic: String,
-    delete_at_ms: Option<u64>,
 }
 
 /// Um ID da união das listas, com as origens que o têm (índices na lista de origens).
@@ -232,10 +231,6 @@ impl<'a> MergedIds<'a> {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_owned(),
-                delete_at_ms: item
-                    .get("deleteAt")
-                    .and_then(|v| v.as_str())
-                    .and_then(time::parse_ms),
             });
         }
         cursor.more = page.end.has_more && page.end.last != cursor.last && !page.items.is_empty();
@@ -609,10 +604,7 @@ impl Syncer {
         batch: &[Merged],
         log: &SyncLog,
     ) -> Result<Vec<Merged>, SyncError> {
-        let wanted: Vec<&Merged> = batch
-            .iter()
-            .filter(|m| m.line.delete_at_ms.is_none())
-            .collect();
+        let wanted: Vec<&Merged> = batch.iter().collect();
         let (Some(first), Some(last)) = (wanted.first(), wanted.last()) else {
             return Ok(Vec::new());
         };
@@ -734,6 +726,7 @@ impl Syncer {
     ) {
         let (topic, id) = (record.topic.clone(), record.id.clone());
         let size = record.body.len() as f64;
+        // A linha curta da FIFO é levada sem corpo; não há o que perder se ela faltar.
         let mut outcome = self.load(&record).await;
         if matches!(outcome, Ok(Loaded::UnknownTopic)) {
             self.refresh_definitions(source).await;
@@ -766,6 +759,13 @@ impl Syncer {
     async fn load(&self, record: &MessageRecord) -> Result<Loaded, TabaError> {
         let (messages, topic) = (self.messages.clone(), record.topic.clone());
         let (meta, body) = (record.to_meta(), record.body.clone());
+        if let Some(delete_at_ms) = record.delete_at_ms {
+            return tokio::task::spawn_blocking(move || {
+                messages.apply_tombstone(&topic, meta, delete_at_ms)
+            })
+            .await
+            .map_err(|_| TabaError::internal())?;
+        }
         tokio::task::spawn_blocking(move || messages.apply_load(&topic, meta, body))
             .await
             .map_err(|_| TabaError::internal())?
@@ -840,8 +840,44 @@ impl Syncer {
             if let Err(e) = self.losses.record(&loss) {
                 tracing::error!(error = %e, "falha ao registrar a perda");
             }
+            self.share_loss(&loss);
         }
         Ok(())
+    }
+
+    /// Manda a perda aos outros nós responsáveis pelo bloco, sem esperar (melhor esforço): a
+    /// informação sobrevive à queda de quem a detectou (doc 04, seção 6.6, "Tabela de perdas").
+    fn share_loss(&self, loss: &Loss) {
+        let Ok(block) = loss.block.parse::<BlockId>() else {
+            return;
+        };
+        let factor = self.service.rules().replication_factor.max(1) as usize;
+        let me = self.service.node_id();
+        let (Some(table), Some(owners)) = (
+            self.service.membership().table(),
+            self.service
+                .membership()
+                .ring()
+                .block_owners(block, factor)
+                .map(|owners| owners.into_iter().map(str::to_owned).collect::<Vec<_>>()),
+        ) else {
+            return;
+        };
+        let record = LossRecord {
+            topic: loss.topic.clone(),
+            id: loss.id.clone(),
+            block: loss.block.clone(),
+            detected_at: time::format_ms(loss.detected_ms),
+        };
+        for owner in owners.into_iter().filter(|owner| *owner != me) {
+            let Some(member) = table.member(&owner).cloned() else {
+                continue;
+            };
+            let (service, request) = (self.service.clone(), Request::LossRegister(record.clone()));
+            tokio::spawn(async move {
+                let _ = service.call_member(&member, request).await;
+            });
+        }
     }
 
     // ---- Eventos ----
@@ -971,6 +1007,11 @@ impl Syncer {
         let Some(table) = self.service.membership().table() else {
             return;
         };
+        // Quem saiu da tabela (drain) guarda o que tem: é o que a recuperação de perdas procura ao
+        // voltar (doc 04, seção 6.6), e nenhum bloco é mais dele para limpar.
+        if table.member(&self.service.node_id()).is_none() {
+            return;
+        }
         if table.members.iter().any(|m| m.state != MemberState::Active)
             || self.service.membership().has_pending(self.service.now())
         {

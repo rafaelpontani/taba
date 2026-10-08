@@ -34,6 +34,9 @@ pub struct Plan {
     pub owners: Vec<Member>,
     /// `write.quorum`: o primário e mais `quorum − 1` nós.
     pub quorum: usize,
+    /// Quantos dos primeiros responsáveis o quórum precisa incluir: 1 (o primário) na fila comum;
+    /// 2 (o primário e o secundário) na fila FIFO (doc 17, seção 16.5).
+    pub required: usize,
     pub register: Request,
     pub commit: Request,
     pub rollback: Request,
@@ -90,7 +93,8 @@ pub async fn run(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaEr
 
 async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaError> {
     let total = plan.owners.len();
-    let quorum = plan.quorum.max(1);
+    let required = plan.required.max(1);
+    let quorum = plan.quorum.max(required);
     if total == 0 || total < quorum {
         return Err(quorum_unavailable());
     }
@@ -111,6 +115,7 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
     let mut confirmed: Vec<usize> = Vec::new();
     let mut remaining = total;
     let mut primary_error: Option<CallError> = None;
+    let mut required_failed = false;
     let mut committed: Vec<usize> = Vec::new();
     let mut quorum_set: Vec<usize> = Vec::new();
     let mut decided = false;
@@ -124,6 +129,8 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
                 remaining -= 1;
                 if index == 0 {
                     primary_error = Some(error);
+                } else if index < required {
+                    required_failed = true;
                 }
             }
             Event::Committed(index) => committed.push(index),
@@ -140,18 +147,21 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
             }
         }
         if !decided {
-            if confirmed.contains(&0) && confirmed.len() >= quorum {
+            if (0..required).all(|i| confirmed.contains(&i)) && confirmed.len() >= quorum {
                 decided = true;
-                quorum_set.push(0);
+                quorum_set.extend(0..required);
                 quorum_set.extend(
                     confirmed
                         .iter()
                         .copied()
-                        .filter(|i| *i != 0)
-                        .take(quorum - 1),
+                        .filter(|i| *i >= required)
+                        .take(quorum - required),
                 );
                 let _ = decision_tx.send(Decision::Commit);
-            } else if primary_error.is_some() || confirmed.len() + remaining < quorum {
+            } else if primary_error.is_some()
+                || required_failed
+                || confirmed.len() + remaining < quorum
+            {
                 let _ = decision_tx.send(Decision::Abort);
                 service.telemetry().registry.add(&WRITE_ROLLBACKS, &[], 1.0);
                 tracing::error!(

@@ -410,6 +410,18 @@ pub static CLUSTER_FREEZING: Def = def(
     "{node}",
     "Nós atualmente em período de freezing.",
 );
+pub static FIFO_FORWARD: Def = def(
+    "taba.fifo.forward",
+    Kind::Counter,
+    "{request}",
+    "Publicações FIFO repassadas ao primário do grupo.",
+);
+pub static CLUSTER_QUORUM_AVAILABLE: Def = def(
+    "taba.cluster.quorum.available",
+    Kind::Gauge,
+    "{flag}",
+    "1 se há nós saudáveis suficientes para votar (cluster.vote.min-voters).",
+);
 pub static CLUSTER_CONDITION: Def = def(
     "taba.cluster.condition",
     Kind::Gauge,
@@ -472,6 +484,21 @@ pub static SYNC_FAILURES: Def = def(
     Kind::Counter,
     "{failure}",
     "Falhas de sincronização.",
+);
+
+// ---- Recuperação de perdas (doc 04, seção 6.6) ----
+
+pub static RECOVER_MESSAGES: Def = def(
+    "taba.recover.messages",
+    Kind::Counter,
+    "{message}",
+    "Mensagens enviadas, aplicadas ou ignoradas pela recuperação do nó que volta.",
+);
+pub static CLUSTER_RECOVER: Def = def(
+    "taba.cluster.recover",
+    Kind::Counter,
+    "{message}",
+    "Mensagens recuperadas na volta de um nó, por direção.",
 );
 
 // ---- Métricas de tópico (só nos modos by-tags e per-topic) ----

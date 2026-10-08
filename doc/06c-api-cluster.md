@@ -40,12 +40,11 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 
 | Grupo | Rotas |
 |---|---|
-| **Membros e canal** | `GET /cluster/nodes`, `POST /cluster/nodes/join`, `POST /cluster/nodes/register`, `POST /cluster/nodes/unregister`, `POST /cluster/nodes/commit`, `POST /cluster/nodes/rollback`, `POST /cluster/vote-remove`, `GET /cluster/channel` |
+| **Membros e canal** | `GET /cluster/nodes`, `POST /cluster/nodes/join`, `POST /cluster/nodes/register`, `POST /cluster/nodes/unregister`, `POST /cluster/nodes/commit`, `POST /cluster/nodes/rollback`, `POST /cluster/vote-remove`, `GET /cluster/channel` (WebSocket, o alvo), `POST /cluster/channel` (provisória, a que o código usa) |
 | **Tópicos e tokens** | `POST /cluster/topics/register`, `commit`, `rollback`; `GET /cluster/topics`; `POST /cluster/tokens/register`, `commit`, `rollback`; `GET /cluster/tokens`; `GET /cluster/topics/{id}/idle` |
-| **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take` |
-| **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/messages/recover` |
+| **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`, `POST /cluster/topics/{topic}/fifo/publish` |
+| **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/message-loss`, `DELETE /cluster/message-loss/{topic}/{id}`, `POST /cluster/messages/recover` |
 | **Observabilidade** | `GET /cluster/status`, `GET /cluster/metrics/topics` |
-| **Sinais** | `POST /cluster/signals` |
 | **Repasse** | `* /cluster/forward/{caminho}` |
 
 ## Membros e canal
@@ -97,11 +96,11 @@ Descarta o registro ou o desregistro **pendente**, antes do commit. É o que o c
 
 ### `POST /cluster/vote-remove`: voto de exclusão
 
-Pedido de voto para excluir um nó suspeito de falha, aberto quando o canal com ele fica fora após as tentativas de reconexão, ou quando a fila de saída estoura, ou quando o nó entra em falha (seção 6.3). Exige 51% dos nós saudáveis, com o mínimo de votantes.
+Pedido de voto para excluir um nó suspeito de falha, aberto quando o canal com ele fica fora após as tentativas de reconexão, ou quando a fila de saída estoura, ou quando o nó entra em falha (seção 6.3). Exige 51% dos nós saudáveis, com o mínimo de votantes. O desregistro que a votação decide é coordenado pelo menor ID entre os saudáveis que votaram (seção 6.3 de [04-cluster.md](04-cluster.md), D98).
 
 **Corpo: `VoteRequest`**: `voteId` (GUID v7), `candidateNodeId` (o nó a excluir), `openedBy` (quem abriu) e `reason` (`channel-down`, `queue-overflow` ou `node-failed`).
 
-**Resposta: `200`, `VoteResponse`**: `vote` (`yes` ou `no`, conforme o que o votante enxerga do candidato). Quem não responde não entra na base do quórum.
+**Resposta: `200`, `VoteResponse`**: `vote` (`yes` ou `no`, conforme o que o votante enxerga do candidato: `yes` se também não o alcança; com `reason: node-failed`, `yes` se o canal do votante recebeu o `node-state failed` do candidato, D99). Quem não responde não entra na base do quórum.
 
 ### `GET /cluster/channel`: canal permanente (WebSocket)
 
@@ -111,18 +110,18 @@ Cada quadro é um objeto JSON em texto com o campo `type`:
 
 | `type` | Campos | Descrição |
 |---|---|---|
-| `keepalive` | `at` (data), `load` (indicador de carga do nó), `monitoring` (resumo no estilo OpenTelemetry), `ready` (lista de `{ topic, count }`, até `cluster.channel.keepalive.max-topics`) | **Sinal de vida.** Sem `seq`, não é confirmado nem reenviado: o seguinte o substitui. |
+| `keepalive` | `at` (data), `load` (indicador de carga do nó: as chamadas de cliente repassadas em andamento), `version` (a versão da tabela de membros, `0` sem tabela), `state` (o estado do nó: `active`, `syncing`, `draining`, `failed`...), `monitoring` (resumo no estilo OpenTelemetry; **ainda não enviado**), `ready` (lista de `{ topic, count }`, até `cluster.channel.keepalive.max-topics`) | **Sinal de vida.** Sem `seq`, não é confirmado nem reenviado: o seguinte o substitui. |
 | `listeners` | `seq`, `topic`, `hasListeners` | O tópico passou a ter (ou deixou de ter) ouvintes de long polling neste nó. |
 | `ready` | `seq`, `topic`, `hasReady` | O nó passou a ter (ou deixou de ter) mensagens prontas do tópico. |
 | `notify` | `seq`, `topic`, `count` | Aviso de mensagem nova: há `count` mensagens prontas; venha buscar com `take`. É uma dica. |
-| `node-state` | `seq`, `state` (`draining` ou `active`) | O nó entrou em drain (os pares deixam de pedir `take` a ele), ou ficou **pronto** depois de sincronizar, ou voltou a `active` (o drain foi cancelado). Quem recebe `active` troca o `state` desse membro de `syncing` para `active` na própria tabela, **sem subir a `version`**. |
+| `node-state` | `seq`, `state` (`draining`, `active` ou `failed`) | O nó entrou em falha (`failed`: os pares ficam liberados para votar a exclusão dele), entrou em drain (os pares deixam de pedir `take` a ele), ou ficou **pronto** depois de sincronizar, ou voltou a `active` (o drain foi cancelado). Quem recebe `active` troca o `state` desse membro de `syncing` para `active` na própria tabela, **sem subir a `version`**. |
 | `confirm` | `seqs` (lista de inteiros) | Confirma sinais **já processados**. Pode agrupar vários. |
 
 Todo quadro, exceto `keepalive` e `confirm`, leva um `seq` crescente por canal e por sentido; o emissor só o tira da fila de saída ao receber o `confirm`, e **reenvia na reconexão** o que ficou sem confirmação (o receptor ignora um `seq` que já processou). Ao abrir o canal, cada lado envia primeiro um **instantâneo**: um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro, e só depois as mudanças (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
 
-### `POST /cluster/signals`: sinais enquanto não há canal
+### `POST /cluster/channel`: o canal enquanto não há WebSocket
 
-Carrega, como uma chamada comum, o mesmo quadro JSON do canal (inclusive o `node-state` `active` de um nó que acabou de sincronizar, que o nó envia **a todos com tentativas** antes de ficar ativo) (`type` e os campos da tabela acima, mais `from`, o `nodeId` de quem envia), **sem** `seq`, confirmação nem fila de saída: um sinal perdido custa só uma dica velha, que o `take` confere, e cada nó **repete** o seu estado (prontas e ouvintes) a cada `cluster.channel.keepalive.interval`, no lugar do sinal de vida. Resposta: `200`, `{}`. É provisória: some quando o canal WebSocket existir.
+O que o código usa até o `Transport` real (etapa 16): cada nó tem, para cada par, uma tarefa que **chama** o outro. Uma chamada leva o sinal de vida (`keepalive`, quando é hora) e os quadros ainda sem confirmação, no corpo `{ "from": nodeId, "keepalive": {...}, "frames": [ { "seq", "type", ... } ] }`, e a resposta é o `confirm` (`{ "type": "confirm", "seqs": [...] }`), só depois de processar. Os dois sentidos de um par são independentes (não há conexão dupla a desempatar). Só aceita quem consta na tabela de membros: `403` `cluster.not-member`, e o nó que o recebe três vezes seguidas confere se foi excluído (seção 6.3 de [04-cluster.md](04-cluster.md)). Quadros, `seq`, instantâneo ao abrir e reenvio são os de `GET /cluster/channel` acima. Some quando o WebSocket existir.
 
 ## Tópicos e tokens
 
@@ -204,6 +203,12 @@ Fase 1, 2 e abortar do ack (seção 12.4 de [13-entrega-de-mensagens.md](13-entr
 
 **`register`, corpo: `AckRegisterRequest`**: `operationId`, `coordinatorId`, `receiptToken` (deve conferir) e `deleteAt` (data, **só na fila FIFO**). Erros: `404` `message.not-found`, `409` `message.stale-receipt`, `409` `cluster.conflict`.
 
+### `POST /cluster/topics/{topic}/fifo/publish`: publicação FIFO no primário do grupo
+
+O nó que recebeu a publicação numa fila FIFO (ou que copia uma publicação de distribuidor para ela) repassa-a ao **primário do grupo** (seção 16.4 de [17](17-topicos-fifo.md)). **Corpo: `MessageRecord`**, com o conteúdo, o `contentType`, o `groupId` e o `deduplicationId` (opcional); o `id` é um marcador (`00000000-0000-7000-8000-000000000000`), porque quem gera o `id` é o primário. **Resposta: `200`, `FifoPublished`**: `id` (o da mensagem criada, ou o da original numa duplicata) e `duplicate`.
+
+O primário recalcula o dono do grupo pela própria tabela: se não for ele, `421` `fifo.misdirected`; o nó que repassa espera `write.retry.backoff` e tenta de novo, até `fifo.forward.max-attempts`, e esgotado o cliente recebe `503` `fifo.primary-unavailable` com `Retry-After`. Um primário que ainda sincroniza ou está em drain responde `503` (`cluster.node-syncing`, `cluster.node-draining`), que o nó que repassa também devolve ao cliente como `503` `fifo.primary-unavailable`. O primário atende **uma publicação por vez em cada grupo**, e o quórum inclui o primário e o secundário; sem ele, `503` `cluster.quorum-unavailable`. Só membros chamam.
+
 ### `POST /cluster/topics/{topic}/messages/take`: entrega pelo dono
 
 Pede ao nó **dono** que entregue até `maxMessages` mensagens prontas do tópico (a quantidade que ainda falta ao `GET` do cliente): ele faz o registro + commit de invisibilidade e devolve as mensagens ao nó que pediu (seção 12.8 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
@@ -222,7 +227,7 @@ Stream NDJSON com os IDs de mensagens que o nó possui para o bloco, cada um com
 
 ### `GET /cluster/blocks/{id}/messages`: mensagens do bloco
 
-Stream NDJSON com as mensagens do bloco que o nó possui na faixa `from`–`to` (IDs, **inclusivos**). É a chamada **balanceada** da sincronização: o nó novo divide a lista unida de IDs em faixas e pede cada faixa a um nó de origem. Linha de dados: `MessageRecord`. Na fila FIFO, a mensagem com exclusão lógica vem **sem `body`** e com `deleteAt`.
+Stream NDJSON com as mensagens do bloco que o nó possui na faixa `from`–`to` (IDs, **inclusivos**). É a chamada **balanceada** da sincronização: o nó novo divide a lista unida de IDs em faixas e pede cada faixa a um nó de origem. Linha de dados: `MessageRecord`. Na fila FIFO, a mensagem com exclusão lógica vem **sem `body`** e com `deleteAt`; o nó que sincroniza grava só a linha curta, para a deduplicação, e a ignora se já tem a mensagem.
 
 ### `GET /cluster/blocks/{id}/messages/{messageId}`: uma mensagem
 
@@ -236,7 +241,17 @@ Stream NDJSON com a tabela `losses` do nó: os pares (`topic`, `id`) declarados 
 
 Usado por um nó que **retorna** ao cluster (seção 6.6) para enviar ao responsável pelo bloco as mensagens que encontrou na lista de perdas. O **corpo da requisição** é um stream NDJSON (`Content-Type: application/x-ndjson`) de `MessageRecord`, terminado pela linha `StreamEnd` ([06d](06d-api-convencoes.md), seção 8.3.7). O nó que recebe grava **direto nos nós responsáveis pelo bloco**, idempotente pelo ID, **sem registro pendente nem rollback**; a linha conta como aplicada quando `write.quorum` nós confirmam. A invisibilidade é zerada, e a mensagem volta a ficar pronta. Quem aceita apaga o registro de perda e avisa os demais. Aceita chamador que ainda não é membro.
 
-**Resposta: `200`**, um objeto `RecoverResult`: `end` (`true`) e `count` (quantas linhas foram **aplicadas**). Se a conexão cair, quem envia **reenvia tudo**; mensagens já aplicadas são ignoradas.
+**Parâmetro:** `replicate` (`true` por padrão). Com `replicate=false` o nó só grava no próprio disco e não manda a mensagem a mais ninguém; é o pedido que o responsável faz aos outros responsáveis. Valor que não seja `true` ou `false` é `400` `validation.failed`. Corpo sem a linha final, ou com a contagem errada, é `400` `validation.failed`; `Content-Type` diferente de `application/x-ndjson` é `415`. Um nó que ainda sincroniza responde `503` `cluster.node-syncing`.
+
+**Resposta: `200`**, um objeto `RecoverResult`: `end` (`true`) e `count` (quantas linhas foram **aplicadas**: com `replicate`, as que chegaram a `write.quorum` nós; sem ele, as gravadas ou já existentes aqui). Se a conexão cair, quem envia **reenvia tudo**; mensagens já aplicadas são ignoradas.
+
+### `POST /cluster/message-loss`: registrar uma perda
+
+Quem detecta uma perda na sincronização (seção 7.3 de [05](05-particionamento-replicacao.md)) a manda aos outros nós responsáveis pelo bloco, para a informação sobreviver à queda dele. **Corpo: `LossRecord`**: `topic`, `id` (GUID v7), `block` (16 dígitos hexadecimais) e `detectedAt` (data). **Resposta: `200`, `LossAck`**: `changed` (`true` se a perda era nova; repetir não muda nada). Só membros chamam: quem não consta na tabela recebe `403` `cluster.not-member`.
+
+### `DELETE /cluster/message-loss/{topic}/{id}`: dar baixa numa perda
+
+O nó que aceitou a mensagem recuperada avisa os demais para apagarem o registro. **Resposta: `200`, `LossAck`**: `changed` é `true` se o registro existia. Só membros chamam.
 
 ## Observabilidade
 
@@ -263,7 +278,7 @@ Repassa uma chamada de cliente a outro nó: de quem está **sincronizando** ou *
 - **Falha do destino:** antes de o corpo ser enviado, o nó tenta outro destino, até um teto pequeno de tentativas. **Depois de enviado, não repete** (repetir um `POST` de mensagem a duplicaria, pois o `id` é gerado no coordenador): responde `502` `forward.bad-gateway` ou `504` `forward.timeout`. Na fila FIFO a repetição é segura, porque o primário deduplica.
 - O destino roda a chamada **em processo**, contra a própria API de cliente, marcada como repassada (sem rate limit, que o nó que repassou já contou). O IP do cliente já resolvido vai no cabeçalho interno `x-taba-client-ip`. O prazo do repasse é de 60 s, o suficiente para um long polling.
 - Sem nenhum destino disponível: `503` com `Retry-After` (`cluster.node-syncing` ou `cluster.node-draining`).
-- Na fila FIFO, o primário recalcula o dono do grupo e responde `421` `fifo.misdirected` se não for ele; o nó repassador tenta de novo, com a tabela atualizada, até `fifo.forward.max-attempts`, e esgotado responde `503` `fifo.primary-unavailable`.
+- Na fila FIFO a publicação **não** usa este repasse: vai pela chamada própria `POST /cluster/topics/{topic}/fifo/publish` (abaixo, em "Mensagens"), que tem a regra do `421`.
 
 ## DTOs da API do cluster
 

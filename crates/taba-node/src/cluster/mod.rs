@@ -8,6 +8,7 @@ pub mod drain;
 pub mod health;
 pub mod members;
 pub mod protocol;
+pub mod recovery;
 pub mod replication;
 pub mod service;
 pub mod state;

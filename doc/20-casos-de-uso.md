@@ -94,7 +94,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | [13 §12.10](13-entrega-de-mensagens.md) | 20 |
 | `DST` | Tópico Distribuidor | [15 §14.2](15-topicos-distribuidor.md) | 18 |
 | `VOL` | Fila volátil e nó gestor | [15 §14.3 a 14.6](15-topicos-distribuidor.md) | 23 |
-| `FIF` | Fila FIFO | [17](17-topicos-fifo.md) | 46 |
+| `FIF` | Fila FIFO | [17](17-topicos-fifo.md) | 47 |
 | `GRP` | Grupos de mensagens e entrega justa | [13 §12.11](13-entrega-de-mensagens.md) | 17 |
 | `AUT` | Autenticação e tokens de acesso | [06a §8.1.3](06a-api-cliente.md), [02 §3.4](02-arquitetura.md) | 36 |
 | `LIM` | Rate limit e IP do cliente | [12](12-limites-api.md) | 15 |
@@ -124,7 +124,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CNC` | Concorrência entre mudanças de membros | [04 §6.8](04-cluster.md) | 8 |
 | `SIN` | Sincronização distribuída de blocos | [05 §7.3](05-particionamento-replicacao.md) | 29 |
 | `STR` | Streams NDJSON entre nós | [06c §8.2.1](06c-api-cluster.md) | 15 |
-| `RTN` | Retorno de nó excluído e recuperação de perdas | [04 §6.6](04-cluster.md) | 11 |
+| `RTN` | Retorno de nó excluído e recuperação de perdas | [04 §6.6](04-cluster.md) | 13 |
 | `FWD` | Repasse de chamadas de cliente | [04 §6.9](04-cluster.md) | 12 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | [04 §6.10](04-cluster.md) | 28 |
 | `DEV` | Modo desenvolvimento | [04 §6.4](04-cluster.md) | 13 |
@@ -133,7 +133,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 806 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 809 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 

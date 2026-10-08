@@ -163,6 +163,11 @@ fn collect_cluster(state: &AppState) {
     // Os nós em freezing e as condições do cluster que este nó enxerga (doc 11).
     if let Some(signals) = health::collect(cluster) {
         registry.set(&CLUSTER_FREEZING, &[], signals.frozen_nodes as f64);
+        registry.set(
+            &CLUSTER_QUORUM_AVAILABLE,
+            &[],
+            f64::from(u8::from(signals.quorum_available)),
+        );
         let pressure = StatusParts::of(state).storage_pressure();
         let current = signals.conditions(pressure);
         for condition in Condition::ALL {

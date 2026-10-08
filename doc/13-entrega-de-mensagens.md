@@ -167,7 +167,7 @@ Cada nó mantém em memória, por tópico, quais nós têm ouvintes e quais têm
 - **Custo de conexões:** uma conexão por par de nós, a mesma malha usada para o sinal de vida (seção 6.3), independente do número de tópicos e de consumidores.
 - O canal é usado só para **sinais**: sinal de vida, estado de ouvintes e de mensagens prontas, e avisos. **Nunca** trafega o conteúdo das mensagens nem listas longas, para ficar livre e rápido; o conteúdo continua indo pelas rotas internas, com registro e commit (seções 12.2 e 7.2). O estado é enviado em **mudanças pontuais** (tópico X ganhou ou perdeu ouvinte), não como listas completas.
 
-**Sinal de vida (decidido):** é uma **mensagem própria**, enviada periodicamente (`cluster.channel.keepalive.interval`), não o ping/pong do WebSocket, para também detectar um nó travado com a conexão ainda aberta. Cada sinal leva a **data e hora** do nó e um **resumo de monitoramento** no estilo do OpenTelemetry (inclui um indicador de carga do nó, como uso de CPU e requisições em andamento), e dentro dele a **quantidade de mensagens prontas por tópico** naquele nó. Quem recebe usa essas quantidades para **orientar o `GET`**: ao pedir mensagens a outros nós (`take`), em vez de sortear com a mesma chance, **sorteia com peso proporcional** às mensagens prontas de cada nó, indo mais vezes aos que têm mais. Para o sinal ficar pequeno, só entram os tópicos com mensagens prontas, até um teto de tópicos por sinal (`cluster.channel.keepalive.max-topics`), e o que não coube segue pelas mudanças de estado já descritas. A quantidade é uma dica e pode estar velha; o `take` continua tentando o próximo nó se o escolhido responder vazio. O sinal de vida **não é confirmado nem reenviado**: o seguinte o substitui.
+**Sinal de vida (decidido):** é uma **mensagem própria**, enviada periodicamente (`cluster.channel.keepalive.interval`), não o ping/pong do WebSocket, para também detectar um nó travado com a conexão ainda aberta. Cada sinal leva a **data e hora** do nó e um **resumo de monitoramento** no estilo do OpenTelemetry (inclui um indicador de carga do nó, como uso de CPU e requisições em andamento), e dentro dele a **quantidade de mensagens prontas por tópico** naquele nó. Quem recebe usa essas quantidades para **orientar o `GET`**: ao pedir mensagens a outros nós (`take`), em vez de sortear com a mesma chance, **sorteia com peso proporcional** às mensagens prontas de cada nó, indo mais vezes aos que têm mais. Para o sinal ficar pequeno, só entram os tópicos com mensagens prontas, até um teto de tópicos por sinal (`cluster.channel.keepalive.max-topics`), e o que não coube segue pelas mudanças de estado já descritas. A quantidade é uma dica e pode estar velha; o `take` continua tentando o próximo nó se o escolhido responder vazio. O sinal de vida **não é confirmado nem reenviado**: o seguinte o substitui. Por isso ele também **repete o estado do nó** (`state`: `active`, `syncing`, `draining` ou `failed`) e a versão da tabela de membros: se um `node-state` se perdeu, o sinal de vida seguinte o corrige.
 
 ### 12.9 Filas do canal, reconexão e exclusão de nó
 
@@ -178,7 +178,7 @@ Cada nó mantém **em memória**, para cada outro nó, duas filas:
 | Fila | Conteúdo |
 |---|---|
 | **Fila de saída** (por nó de destino) | Sinais a enviar ao outro nó: sinal de vida, mudanças de estado (ouvintes, mensagens prontas) e avisos. Uma thread de escrita esvazia a fila pelo WebSocket, sem bloquear quem produz os sinais. |
-| **Fila de entrada** (por nó de origem) | Sinais recebidos, ainda a processar. O processamento é separado da leitura do socket, para o canal nunca esperar por trabalho lento. |
+| **Fila de entrada** (por nó de origem) | **Não existe no código** (desvio 89). A chamada do canal processa os quadros e só então devolve o `confirm`; o trabalho lento aparece como `rtt` maior, e não há métrica `queue.in`. |
 
 **Queda e reconexão:**
 
@@ -194,14 +194,16 @@ Cada nó mantém **em memória**, para cada outro nó, duas filas:
 - **Queda com os dois nós vivos** (falha de rede, sem reinício): o nó que **detectar primeiro** tenta reconectar. Se os dois acabarem abrindo uma conexão ao mesmo tempo, **o nó de menor hash do ID fecha a conexão que ele abriu** e fica com a aberta pelo outro: regra de desempate, para haver sempre um só canal por par.
 - **Reinício do processo:** o nó perde a memória, inclusive a tabela de membros (ela **não é persistida**), e volta como **nó novo**, passando pelo registro (seção 6.2). Os dados que estavam em disco seguem o procedimento de retorno da seção 6.6: as mensagens são enviadas a quem as perdeu.
 
+> **Como está no código (provisório, até o `Transport` real, etapa 16).** Cada nó mantém, para cada par, uma tarefa que **chama** o outro (`POST /cluster/channel`: o sinal de vida e os quadros sem confirmação; a resposta é o `confirm`), então são dois sentidos independentes por par e não há conexão dupla a desempatar. Uma chamada que falha marca o canal como caído; as seguintes, a cada `cluster.channel.reconnect.backoff`, são as tentativas. O WebSocket entra com o `Transport` HTTP real.
+
 **Estado inicial ao abrir o canal:** os sinais acima só são enviados nas **mudanças**, então um nó que acaba de ficar pronto (ou que reconectou depois de perder a fila) não saberia o estado atual dos outros. Por isso, ao abrir um canal, cada lado envia primeiro um **instantâneo** dos seus sinais — tópicos com ouvintes e tópicos com mensagens prontas —, em sinais pequenos, e só depois passa às mudanças. Um nó em sincronização ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3) só consome o instantâneo quando fica pronto, e antes disso não entrega nem avisa.
 
 **Limite e juntada dos sinais na fila de saída:** enquanto o canal está fora e a votação não conclui, a fila de saída é mantida pequena assim:
 
 - Sinais de **estado** são idempotentes (ex.: "o tópico X tem ouvintes"): só o **último de cada tópico** importa, então um novo sinal **substitui** o anterior ainda na fila em vez de se acumular.
-- **Avisos** de mensagem nova antigos são **descartados**: perderam o sentido e o ouvinte já foi atendido ou expirou.
+- **Avisos** de mensagem nova antigos são **descartados** (depois de 10 s, fixo no código, D109): perderam o sentido e o ouvinte já foi atendido ou expirou.
 - A fila tem **tamanho e idade máximos** (`cluster.channel.queue.max-size`, `cluster.channel.queue.max-age`). Se mesmo assim passar do limite, o nó com quem o canal está fora é tratado como **falho**: abre-se a votação de exclusão (seção 6.3), sem esperar o fim das tentativas de reconexão. Não há ressincronização do estado do canal — o nó excluído, ao voltar, faz um **novo registro** e sincroniza do zero.
-- A **fila de entrada** de um nó excluído é descartada junto com a de saída.
+- A fila de saída de um nó excluído é descartada (a de entrada não existe).
 
 ### 12.10 Expiração (TTL), limite de entregas e dead-letter
 

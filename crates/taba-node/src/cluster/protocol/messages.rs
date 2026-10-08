@@ -34,6 +34,9 @@ pub struct MessageRecord {
     pub receipt_token: Option<String>,
     pub dead_lettered_ms: Option<u64>,
     pub dead_letter_reason: Option<String>,
+    /// Só na fila FIFO: a linha curta de uma mensagem confirmada (sem corpo), que vale para a
+    /// deduplicação até esta data (doc 17, seção 16.7).
+    pub delete_at_ms: Option<u64>,
 }
 
 impl MessageRecord {
@@ -73,6 +76,7 @@ impl MessageRecord {
             receipt_token: meta.receipt_token,
             dead_lettered_ms: meta.dead_lettered_ms,
             dead_letter_reason: meta.dead_letter_reason,
+            delete_at_ms: None,
         }
     }
 }
@@ -100,6 +104,8 @@ struct RecordWire {
     dead_lettered_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     dead_letter_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    delete_at: Option<String>,
 }
 
 impl Serialize for MessageRecord {
@@ -112,12 +118,14 @@ impl Serialize for MessageRecord {
             .and_then(|text| RawValue::from_string(text.to_owned()).ok())
             .filter(|raw| raw.get().as_bytes() == self.body.as_slice());
         let (body, body_encoding) = match json_body {
-            Some(raw) => (raw, None),
+            // A linha curta da FIFO não tem corpo.
+            _ if self.delete_at_ms.is_some() => (None, None),
+            Some(raw) => (Some(raw), None),
             None => {
                 let text = serde_json::to_string(&STANDARD.encode(&self.body))
                     .map_err(serde::ser::Error::custom)?;
                 (
-                    RawValue::from_string(text).map_err(serde::ser::Error::custom)?,
+                    Some(RawValue::from_string(text).map_err(serde::ser::Error::custom)?),
                     Some("base64".to_owned()),
                 )
             }
@@ -125,7 +133,7 @@ impl Serialize for MessageRecord {
         RecordWire {
             id: self.id.clone(),
             topic: self.topic.clone(),
-            body: Some(body),
+            body,
             content_type: self.content_type.clone(),
             body_encoding,
             group_id: self.group_id.clone(),
@@ -135,6 +143,7 @@ impl Serialize for MessageRecord {
             receipt_token: self.receipt_token.clone(),
             dead_lettered_at: self.dead_lettered_ms.map(time::format_ms),
             dead_letter_reason: self.dead_letter_reason.clone(),
+            delete_at: self.delete_at_ms.map(time::format_ms),
         }
         .serialize(serializer)
     }
@@ -177,6 +186,7 @@ impl<'de> Deserialize<'de> for MessageRecord {
             receipt_token: wire.receipt_token,
             dead_lettered_ms: date("deadLetteredAt", wire.dead_lettered_at)?,
             dead_letter_reason: wire.dead_letter_reason,
+            delete_at_ms: date("deleteAt", wire.delete_at)?,
         })
     }
 }
@@ -326,6 +336,18 @@ pub struct TakeRequest {
 pub struct TakeResponse {
     pub messages: Vec<MessageRecord>,
 }
+
+/// `FifoPublished` (doc 06c, `POST /cluster/topics/{topic}/fifo/publish`): o primário do grupo
+/// responde com o `id` da mensagem criada, ou o da original numa duplicata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FifoPublished {
+    pub id: String,
+    pub duplicate: bool,
+}
+
+/// O `id` do `MessageRecord` de uma publicação FIFO repassada: o primário é quem gera o verdadeiro.
+pub const FIFO_PLACEHOLDER_ID: &str = "00000000-0000-7000-8000-000000000000";
 
 /// Os campos obrigatórios de um GUID v7 do `id` da mensagem na URL.
 pub fn validate_message_path(topic: &str, id: &str) -> Result<(), TabaError> {

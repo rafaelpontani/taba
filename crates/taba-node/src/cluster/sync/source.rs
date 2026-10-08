@@ -112,8 +112,9 @@ impl BlockSource {
                 let items: Vec<Value> = found
                     .into_iter()
                     .map(|m| {
-                        serde_json::to_value(MessageRecord::from_stored(&m.topic, m.meta, m.body))
-                            .unwrap_or(Value::Null)
+                        let mut record = MessageRecord::from_stored(&m.topic, m.meta, m.body);
+                        record.delete_at_ms = m.delete_at_ms;
+                        serde_json::to_value(record).unwrap_or(Value::Null)
                     })
                     .collect();
                 Ok(Response::Stream(StreamPage::new(items, more)))

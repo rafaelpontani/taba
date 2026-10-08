@@ -5,6 +5,7 @@
 mod definitions;
 pub mod http;
 mod messages;
+mod recovery;
 mod signals;
 mod vote;
 
@@ -13,9 +14,11 @@ pub use definitions::{
     TopicRegisterRequest, token_from_json, token_to_json,
 };
 pub use messages::{
-    AckRegisterRequest, MessageRecord, MessageRegisterRequest, TakeRequest, TakeResponse,
-    VisibilityKind, VisibilityRegisterRequest, WriteKind, validate_message_path,
+    AckRegisterRequest, FIFO_PLACEHOLDER_ID, FifoPublished, MessageRecord, MessageRegisterRequest,
+    TakeRequest, TakeResponse, VisibilityKind, VisibilityRegisterRequest, WriteKind,
+    validate_message_path,
 };
+pub use recovery::{LossAck, LossRecord, RecoverResult, parse_recover_body, recover_body};
 pub use signals::{
     ChannelBatch, ChannelFrame, Confirm, ForwardRequest, ForwardResponse, Keepalive, ReadyCount,
     Signal, SignalFrame,
@@ -158,6 +161,26 @@ pub enum Request {
     BlockMessages { block: String, query: StreamQuery },
     /// `GET /cluster/blocks/{id}/messages/{messageId}`
     BlockMessage { block: String, id: String },
+    /// `GET /cluster/message-loss`: a tabela `losses` do nó (aceita quem ainda não é membro).
+    MessageLoss(StreamQuery),
+    /// `POST /cluster/message-loss`: registra uma perda declarada por outro nó.
+    LossRegister(LossRecord),
+    /// `DELETE /cluster/message-loss/{topic}/{id}`: dá baixa numa perda recuperada.
+    LossRemove { topic: String, id: String },
+    /// `POST /cluster/topics/{topic}/fifo/publish`: o repasse de uma publicação FIFO ao primário
+    /// do grupo. O `MessageRecord` leva o conteúdo, o `groupId` e o `deduplicationId`; o `id` é um
+    /// marcador (`FIFO_PLACEHOLDER_ID`), porque quem gera o `id` é o primário.
+    FifoPublish {
+        topic: String,
+        record: MessageRecord,
+    },
+    /// `POST /cluster/messages/recover`: as mensagens que o nó que volta encontrou (aceita quem
+    /// ainda não é membro). Com `replicate`, quem recebe grava também nos outros responsáveis;
+    /// sem ele (`?replicate=false`), só grava no próprio disco.
+    Recover {
+        records: Vec<MessageRecord>,
+        replicate: bool,
+    },
 }
 
 impl Request {
@@ -222,6 +245,11 @@ impl Request {
             Request::BlockIds { .. } => "block-ids",
             Request::BlockMessages { .. } => "block-messages",
             Request::BlockMessage { .. } => "block-message",
+            Request::MessageLoss(_) => "message-loss",
+            Request::LossRegister(_) => "loss-register",
+            Request::LossRemove { .. } => "loss-remove",
+            Request::Recover { .. } => "recover",
+            Request::FifoPublish { .. } => "fifo-publish",
         }
     }
 }
@@ -244,6 +272,12 @@ pub enum Response {
     Forwarded(ForwardResponse),
     /// Uma mensagem inteira (`GET /cluster/blocks/{id}/messages/{messageId}`).
     Record(MessageRecord),
+    /// O registro ou a baixa de uma perda.
+    Loss(LossAck),
+    /// O resultado do `recover`.
+    Recovered(RecoverResult),
+    /// A resposta do primário a uma publicação FIFO repassada.
+    FifoPublished(FifoPublished),
 }
 
 fn invalid(field: &str, code: ErrorCode, message: &str) -> TabaError {

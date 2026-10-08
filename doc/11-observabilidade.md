@@ -175,7 +175,7 @@ Lado **réplica** (nó responsável pelo bloco):
 | `taba.delivery.dead_lettered` | counter | {message} | — | Mensagens enviadas ao dead-letter por terem atingido `maxDeliveries` (seção 12.10). Crescimento contínuo indica mensagem que nenhum consumidor consegue confirmar. |
 | `taba.retention.expired` | counter | {message} | — | Mensagens descartadas por `ttl` (varredura local, ou descartadas na entrega ou na sincronização). |
 | `taba.fifo.deduplicated` | counter | {message} | — | Publicações em fila FIFO descartadas por deduplicação ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7). |
-| `taba.fifo.forward` | counter | {request} | `outcome` (`ok`/`misdirected`/`error`) | Publicações FIFO repassadas ao primário do grupo (seção 16.4). `misdirected` é o `421` do primário que não é mais o dono. |
+| `taba.fifo.forward` | counter | {request} | `outcome` (`ok`/`misdirected`/`error`) | Publicações FIFO repassadas ao primário do grupo (seção 16.4). `misdirected` é o `421` do primário que não é mais o dono; `error` é o primário que não respondeu. Conta no nó que repassa, uma vez por tentativa. Existe desde a etapa 15d. |
 | `taba.fifo.groups.busy` | updowncounter | {group} | — | Grupos de filas FIFO com mensagem em voo neste nó (seção 16.6). |
 | `taba.delivery.longpoll.waiting` | updowncounter | {request} | — | Chamadas de long polling aguardando neste nó. |
 | `taba.delivery.longpoll.outcome` | counter | {request} | `outcome` (`delivered`/`empty`/`disconnected`) | Como terminaram as chamadas de long polling. |
@@ -196,13 +196,13 @@ Visão do cluster: **todos os nós reportam a mesma coisa** (ou a sua visão del
 | `taba.cluster.channel.state` | gauge | {flag} | `peer` | `1` se o canal com o peer está conectado, `0` se caído (substitui o ping — seção 6.3). |
 | `taba.cluster.channel.rtt` | histogram | s | `peer` | Latência do sinal de vida do canal, por peer. |
 | `taba.cluster.channel.reconnects` | counter | {attempt} | `peer`, `outcome` | Tentativas de reconexão do canal e resultado; perto do limite de `cluster.channel.reconnect.retries` = votação iminente. |
-| `taba.cluster.channel.queue.out` | updowncounter | {signal} | `peer` | Sinais na fila de saída para o peer; cresce enquanto o canal está fora (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
-| `taba.cluster.channel.queue.in` | updowncounter | {signal} | `peer` | Sinais recebidos do peer ainda a processar; crescimento contínuo indica processamento mais lento que a chegada. |
+| `taba.cluster.channel.queue.out` | updowncounter | {signal} | `peer` | Sinais na fila de saída para o peer; cresce enquanto o canal está fora (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Não há fila de entrada: a chamada do canal processa os quadros e só então devolve o `confirm`, então o trabalho lento aparece em `rtt`. |
 | `taba.cluster.channel.queue.dropped` | counter | {signal} | `peer`, `reason` (`coalesced`/`expired`/`overflow`) | Sinais substituídos, descartados por idade ou descartados por estouro do limite da fila de saída (o estouro abre a votação de exclusão do peer). |
 | `taba.cluster.vote` | counter | {vote} | `role` (`opened`/`cast`), `outcome` | Votações de exclusão abertas/votadas e seu resultado. |
 | `taba.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `reason` (`vote`/`drain`, no desregistro), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
 | `taba.cluster.bootstrap.failures` | counter | {failure} | `reason` (`connectivity`, `phase1`, `phase2`, `frozen`; e `list`, `join` e `config`, do lado do nó que tenta entrar) | Falhas de bootstrap deste nó (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
 | `taba.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
+| `taba.cluster.condition` | gauge | {flag} | `taba.condition` | `1` para cada condição vigente na visão **deste nó** (uma série por condição, `0` quando não vigora). `membership-divergent` só se vê comparando nós (`scope=cluster`), então aqui fica sempre `0` (D104). |
 | `taba.node.state` | gauge | {flag} | `state` (`joining`/`active`/`syncing`/`returning`/`failed`) | `1` no estado atual **deste nó** (incluindo retorno após exclusão — seção 6.6, e `failed`: disco cheio ou banco corrompido, seção 7.3 de [05](05-particionamento-replicacao.md)). |
 | `taba.node.drain.state` | gauge | {flag} | `state` (`active`/`draining`/`drained`) | `1` no estado do drain deste nó (seção 6.10 de [04-cluster.md](04-cluster.md)). |
 | `taba.node.drain.pending` | updowncounter | {message} | — | Mensagens ainda em memória durante o drain; chega a 0 quando o nó está `drained`. |
@@ -227,9 +227,9 @@ A saúde de **cada nó** se vê pelas métricas do próprio nó (`up` no modo *p
 | `taba.sync.stream.resumes` | counter | {resume} | `kind` | Retomadas depois de um corte (não conta a paginação normal por `hasMore`). |
 | `taba.sync.stream.duration` | histogram | s | `kind` | Duração de cada stream. |
 | `taba.sync.stream.bytes` | counter | By | `kind`, `direction` | Volume trafegado nos streams. |
-| `taba.recover.messages` | counter | {message} | `outcome` (`sent`/`applied`/`skipped`) | Mensagens enviadas, aplicadas ou ignoradas (já existentes) pela recuperação da seção 6.6 de [04-cluster.md](04-cluster.md). |
+| `taba.recover.messages` | counter | {message} | `outcome` (`sent`/`applied`/`skipped`) | Mensagens enviadas, aplicadas ou ignoradas (já existentes) pela recuperação da seção 6.6 de [04-cluster.md](04-cluster.md). `sent` conta no nó que volta; `applied` e `skipped`, em cada nó que grava. Existe desde a etapa 15c. |
 | `taba.sync.failures` | counter | {failure} | `reason` | Falhas de sincronização de bloco. |
-| `taba.cluster.recover` | counter | {message} | `direction` (`sent`/`received`) | Mensagens recuperadas na volta de um nó (seção 6.6). |
+| `taba.cluster.recover` | counter | {message} | `direction` (`sent`/`received`) | Mensagens recuperadas na volta de um nó (seção 6.6). `received` conta as aplicadas e as ignoradas. Existe desde a etapa 15c. |
 
 ### Equivalência com os nomes anteriores
 
@@ -262,7 +262,7 @@ As métricas acima **não têm rota JSON própria**: leem-se em `GET /metrics` (
 
 > **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): há um só nó; `GET /health/cluster` devolve a mesma coisa nos dois `scope`, e as métricas `taba.cluster.*` (canal, votação, membros, freezing) não existem.
 
-Derivada do estado de cada nó, exposta em `GET /health/cluster` e `GET /health/ready`, e também como métrica `taba.cluster.condition` ([Endpoint Prometheus](#endpoint-prometheus)). **Condições, não um estado único** — o cluster pode ter mais de uma ao mesmo tempo:
+Derivada do estado de cada nó, exposta em `GET /health/cluster` (não em `GET /health/ready`, que segue o [doc 06b](06b-api-operacao.md)) e também como métrica `taba.cluster.condition` ([Endpoint Prometheus](#endpoint-prometheus)). **Condições, não um estado único** — o cluster pode ter mais de uma ao mesmo tempo:
 
 | Condição | Severidade | Quando |
 |---|---|---|
@@ -275,6 +275,8 @@ Derivada do estado de cada nó, exposta em `GET /health/cluster` e `GET /health/
 | `quorum-lost` | crítica | Menos nós saudáveis que o mínimo de votantes (`cluster.vote.min-voters`); nenhuma exclusão de nó consegue ser efetivada. Não confundir com `write-quorum-at-risk`, que é sobre durabilidade de mensagens, não sobre votação de membros. |
 | `membership-divergent` | crítica | Tabelas de membros com versões diferentes entre nós. |
 | `storage-pressure` | aviso | Disco de `storage.dir` abaixo de um limite de espaço livre. |
+
+> **Como o nó calcula (provisório, D102 a D104).** *Saudável* é este nó mais os pares com o canal conectado. `quorum-lost` vale quando os saudáveis não alcançam `min(cluster.vote.min-voters, membros)` (com um nó só não há quem excluir, então não é `quorum-lost`). Uma réplica é *íntegra* quando o dono do bloco está `active` na tabela e o canal com ele está de pé (o próprio nó conta); o esperado é o número de donos que o anel dá, `min(replication.factor, membros)`. `under-replicated` aparece quando há mais blocos abaixo da replicação que abaixo do `write.quorum`, e `syncing`, quando algum dono de bloco está `syncing`. `membership-divergent` compara a versão da tabela de cada nó em `GET /health/cluster?scope=cluster`: o sinal de vida chega com até `keepalive.interval` de atraso e faria a condição piscar a cada mudança de membros. **Limite conhecido:** o quórum de escrita sempre inclui o primário, então os blocos cujo primário está fora do ar (e ainda não foi excluído) não escrevem, mas a condição só diz `under-replicated` (PRB-044, D107).
 
 > **Degradação de replicação é propriedade do cluster, não do tópico.** Os blocos são definidos pelo **ID da mensagem** (seção 7.2), não pelo tópico: as mensagens de um mesmo tópico se espalham por todos os blocos. Por isso `under-replicated` e `syncing` aparecem aqui e não na condição de tópico.
 

@@ -301,3 +301,17 @@ fn a_node_syncs_only_the_blocks_it_is_responsible_for() {
         Some(vec![(0, u64::MAX)])
     );
 }
+
+/// UC: UC-FIF-024
+#[test]
+fn recreating_a_fifo_topic_moves_its_groups_in_the_ring() {
+    let old = crate::core::id::new_at(1_791_288_000_000);
+    let new = crate::core::id::new_at(1_791_288_000_001);
+    let moved = (0..64)
+        .filter(|n| fifo_position(&old, &format!("g{n}")) != fifo_position(&new, &format!("g{n}")))
+        .count();
+    assert_eq!(
+        moved, 64,
+        "outro `id` de tópico, outra posição para todo grupo"
+    );
+}

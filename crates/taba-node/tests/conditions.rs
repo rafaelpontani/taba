@@ -169,16 +169,32 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_cluster_is_only_unde
     assert_eq!(view["worstCondition"], "member-unreachable");
     assert_eq!(view["summary"]["quorumAvailable"], true);
 
-    // As escritas seguem respondendo (UC-FAL-025).
-    let response = cluster
-        .node(1)
-        .client
-        .post(cluster.node(1).client_url("/topics/pedidos/messages"))
-        .json(&json!({"n": 1}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 201);
+    // As escritas seguem respondendo (UC-FAL-025), menos as dos blocos cujo primário é o nó fora:
+    // o quórum sempre inclui o primário, então elas falham até a exclusão (PRB-044). O ID é
+    // sorteado, então o teste manda várias e confere que as dos outros blocos fecham.
+    let mut accepted = 0;
+    for n in 0..16 {
+        let response = cluster
+            .node(1)
+            .client
+            .post(cluster.node(1).client_url("/topics/pedidos/messages"))
+            .json(&json!({ "n": n }))
+            .send()
+            .await
+            .unwrap();
+        match response.status().as_u16() {
+            201 => accepted += 1,
+            503 => {
+                let body: Value = response.json().await.unwrap();
+                assert_eq!(body["code"], "cluster.quorum-unavailable");
+            }
+            other => panic!("status inesperado: {other}"),
+        }
+    }
+    assert!(
+        accepted > 0,
+        "as escritas dos blocos com primário vivo fecham"
+    );
 
     // A métrica tem as mesmas condições.
     eventually_async("a métrica da condição", || async {
@@ -269,12 +285,15 @@ async fn the_quorum_is_lost_only_for_who_sees_fewer_healthy_nodes_than_the_minim
     let view = node_view(lonely).await;
     assert_eq!(severity_of(&view, "quorum-lost"), "critical");
     assert_eq!(view["summary"]["quorumAvailable"], false);
+    let metric = |text: &str| total(text, "taba_cluster_quorum_available", "");
+    assert_eq!(metric(&lonely.metrics().await), 0.0);
 
     // Os outros dois somam o mínimo de votantes: o quórum existe para eles.
     for number in [1, 2] {
         let view = node_view(cluster.node(number)).await;
         assert!(!names(&view).contains(&"quorum-lost".to_owned()));
         assert_eq!(view["summary"]["quorumAvailable"], true);
+        assert_eq!(metric(&cluster.node(number).metrics().await), 1.0);
     }
     cluster.shutdown().await;
 }
