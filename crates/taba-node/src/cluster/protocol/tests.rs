@@ -373,6 +373,7 @@ fn requests() -> Vec<Request> {
             opened_by: guid(22),
             reason: VoteReason::QueueOverflow,
         }),
+        Request::Status,
         Request::Forward(ForwardRequest {
             method: "POST".into(),
             path_and_query: "/topics/pedidos/messages?groupId=g1".into(),
@@ -466,6 +467,7 @@ fn the_routes_are_the_ones_of_the_document() {
     assert!(has("POST", "/cluster/topics/pedidos/messages/take"));
     assert!(has("POST", "/cluster/channel"));
     assert!(has("POST", "/cluster/vote-remove"));
+    assert!(has("GET", "/cluster/status"));
     assert!(has("GET", "/cluster/blocks/00000000000000ab/ids"));
     assert!(has("GET", "/cluster/blocks/00000000000000ab/messages"));
     assert!(has(
@@ -628,6 +630,15 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     });
     let yes = Response::Vote(VoteResponse { vote: Ballot::Yes });
     assert_eq!(vote.parse_reply(yes.clone().into_http()).unwrap(), yes);
+
+    // O estado do nó é o JSON do `NodeStatus`, sem forma própria no protocolo.
+    let status = Response::Status(serde_json::json!({ "nodeId": guid(1), "state": "active" }));
+    assert_eq!(
+        Request::Status
+            .parse_reply(status.clone().into_http())
+            .unwrap(),
+        status
+    );
 
     // Uma mensagem do bloco volta inteira; as listas do bloco são streams.
     let single = Request::BlockMessage {

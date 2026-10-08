@@ -401,3 +401,41 @@ async fn a_channel_that_returns_before_the_retries_end_changes_nothing() {
     waiting.await.unwrap();
     cluster.shutdown().await;
 }
+
+/// O envio com confirmação (o que o nó que acabou de ficar pronto usa): volta quando todos os pares
+/// confirmaram e desiste no prazo se algum não confirma, deixando o sinal na fila dele.
+#[tokio::test]
+async fn a_broadcast_with_confirm_returns_when_every_peer_confirmed_and_gives_up_at_the_deadline() {
+    let cluster = TestCluster::start_with(3, &[MANY_RETRIES]).await;
+    settled(&cluster).await;
+    let channels = channels_of(&cluster, 1);
+    let state = || Signal::NodeState {
+        state: "active".to_owned(),
+    };
+
+    let started = std::time::Instant::now();
+    channels
+        .broadcast_confirmed(state(), Duration::from_secs(5))
+        .await;
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "todos confirmaram: não espera o prazo"
+    );
+    assert!(channels.peers().iter().all(|p| p.queue == 0));
+
+    // O nó 2 não confirma: o envio espera o prazo inteiro e o sinal continua na fila dele.
+    cluster.network.partition(&host_of(1), &host_of(2));
+    let started = std::time::Instant::now();
+    channels
+        .broadcast_confirmed(state(), Duration::from_millis(600))
+        .await;
+    assert!(started.elapsed() >= Duration::from_millis(600));
+    let node2 = cluster.node_id(2);
+    let waiting = channels
+        .peers()
+        .into_iter()
+        .find(|p| p.node_id == node2)
+        .unwrap();
+    assert!(waiting.queue >= 1, "o sinal sem confirmação fica na fila");
+    cluster.shutdown().await;
+}

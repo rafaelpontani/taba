@@ -5,6 +5,7 @@
 
 pub mod channel;
 pub mod drain;
+pub mod health;
 pub mod members;
 pub mod protocol;
 pub mod replication;

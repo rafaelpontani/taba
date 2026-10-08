@@ -216,6 +216,7 @@ impl Request {
             ),
             Request::Channel(batch) => json_call("POST", "/cluster/channel".to_owned(), batch),
             Request::Vote(vote) => json_call("POST", "/cluster/vote-remove".to_owned(), vote),
+            Request::Status => get_call("/cluster/status".to_owned()),
             Request::BlockIds { block, query } => {
                 get_call(stream_path(&format!("/cluster/blocks/{block}/ids"), query))
             }
@@ -355,6 +356,7 @@ impl Request {
             ["cluster", "vote-remove"] if post() => {
                 Ok(Request::Vote(parse_body::<VoteRequest>(headers, body)?))
             }
+            ["cluster", "status"] if is("GET") => Ok(Request::Status),
             ["cluster", "blocks", block, "ids"] if is("GET") => Ok(Request::BlockIds {
                 block: (*block).to_owned(),
                 query: parse_stream_query(query)?,
@@ -429,6 +431,7 @@ impl Request {
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Vote(vote))
             }
+            Request::Status => Ok(Response::Status(json(&reply)?)),
             Request::Forward(_) => unreachable!("tratado acima"),
             _ => {
                 let ack =
@@ -511,6 +514,7 @@ impl Response {
             Response::Record(record) => json(&record),
             Response::Confirm(confirm) => json(&confirm),
             Response::Vote(vote) => json(&vote),
+            Response::Status(status) => json(&status),
             Response::Stream(page) => HttpReply {
                 status: 200,
                 headers: vec![("content-type".to_owned(), NDJSON.to_owned())],

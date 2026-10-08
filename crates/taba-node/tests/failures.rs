@@ -20,6 +20,7 @@ use taba_node::cluster::members::MemberTable;
 use taba_node::cluster::protocol::{Ballot, Request, Response, VoteReason, VoteRequest};
 use taba_node::cluster::state::NodeState;
 use taba_node::cluster::transport::{PeerAddr, Transport};
+use taba_node::core::clock::Clock;
 use taba_node::core::id;
 use taba_node::core::ring::message_position;
 
@@ -589,7 +590,7 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
     cluster.shutdown().await;
 }
 
-/// UC: UC-CNC-002, UC-CNC-007
+/// UC: UC-CNC-002, UC-CNC-007, UC-FRZ-005
 #[tokio::test]
 async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins_as_a_new_node() {
     let mut cluster = TestCluster::start_with(3, &[("TABA_DRAIN_ON_STOP", "false")]).await;
@@ -641,6 +642,20 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     assert!(!both, "o pedido do nó novo esperou o fim da votação");
+    // O reinício é outro ID: só o antigo, excluído, fica em freezing, e o novo entrou sem esperar.
+    let membership = cluster.node(1).node.cluster().unwrap().membership();
+    let freezing = Duration::from_secs(300);
+    let now = cluster.clock.now();
+    assert!(
+        membership
+            .frozen_remaining(&old_id, now, freezing)
+            .is_some()
+    );
+    assert!(
+        membership
+            .frozen_remaining(&new_id, now, freezing)
+            .is_none()
+    );
     // O balanceador também repete o pedido ao próprio nó novo (mesmo endereço): só vale o ingresso
     // que chegou a um membro, e ele chegou depois da votação aberta e antes do commit da exclusão.
     let calls = cluster.network.calls();

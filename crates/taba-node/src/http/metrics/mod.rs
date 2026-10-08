@@ -12,6 +12,8 @@ use axum::response::{IntoResponse, Response};
 
 use super::AppState;
 use super::common::ApiError;
+use super::operations::StatusParts;
+use crate::cluster::health::{self, Condition};
 use crate::cluster::members::MemberState;
 use crate::cluster::state::{DrainState, NodeState};
 use crate::config::TopicsMetricsMode;
@@ -157,6 +159,19 @@ fn collect_cluster(state: &AppState) {
     }
     if let Some(replication) = cluster.replication() {
         registry.set(&WRITE_PENDING, &[], replication.replica.pending() as f64);
+    }
+    // Os nós em freezing e as condições do cluster que este nó enxerga (doc 11).
+    if let Some(signals) = health::collect(cluster) {
+        registry.set(&CLUSTER_FREEZING, &[], signals.frozen_nodes as f64);
+        let pressure = StatusParts::of(state).storage_pressure();
+        let current = signals.conditions(pressure);
+        for condition in Condition::ALL {
+            registry.set(
+                &CLUSTER_CONDITION,
+                &[("taba.condition", condition.as_str())],
+                f64::from(u8::from(current.contains(&condition))),
+            );
+        }
     }
     let rules = cluster.rules();
     registry.set(&RING_VIRTUAL_NODES, &[], f64::from(rules.virtual_nodes));

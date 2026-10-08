@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{ConnectInfo, Query, Request, State};
@@ -20,9 +21,16 @@ use serde_json::{Value, json};
 use super::common::ApiError;
 use super::{AppState, ratelimit};
 use crate::cluster::drain::{Cancelled, DrainStatus, Started};
-use crate::cluster::state::{DrainState, NodeState};
+use crate::cluster::health::{self, HealthSignals};
+use crate::cluster::members::Member;
+use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse};
+use crate::cluster::service::ClusterService;
+use crate::cluster::state::{DrainState, NodeShared, NodeState};
+use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time::format_ms;
+use crate::engine::messages::Messages;
+use crate::engine::messages::stats::StatsRules;
 
 /// Corpo de `/health/live` e `/health/ready`. Essas rotas nunca devolvem `ErrorResponse`
 /// (doc 06b), para o orquestrador poder ler o motivo sem tratar erros.
@@ -128,9 +136,77 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthRespons
     }
 }
 
-/// `GET /health/cluster`. Ainda sem a consulta aos outros nós (`GET /cluster/status`), o cluster é
-/// este nó: `scope=cluster` e `scope=node` devolvem o mesmo, com os membros e a época da tabela
-/// quando o nó já a tem.
+/// O que o `NodeStatus` lê do nó. Fica separado do `AppState` porque o serviço do cluster guarda a
+/// fonte do `GET /cluster/status`, e o `AppState` guarda o serviço: um ciclo de referências.
+#[derive(Clone)]
+pub struct StatusParts {
+    clock: Arc<dyn Clock>,
+    node: Arc<NodeShared>,
+    messages: Arc<Messages>,
+    stats_rules: Arc<StatsRules>,
+}
+
+impl StatusParts {
+    pub fn of(state: &AppState) -> Self {
+        Self {
+            clock: state.clock.clone(),
+            node: state.node.clone(),
+            messages: state.messages.clone(),
+            stats_rules: state.stats_rules.clone(),
+        }
+    }
+
+    /// O espaço livre em `storage.dir` caiu abaixo de `stats.disk.free-min`?
+    pub fn storage_pressure(&self) -> bool {
+        matches!(
+            (self.messages.disk_free_bytes(), self.stats_rules.disk_free_min),
+            (Some(free), Some(min)) if free < min
+        )
+    }
+}
+
+/// O `NodeStatus` deste nó (doc 06b), sem as métricas. Com a tabela de membros, os sinais vêm do
+/// cluster; antes dela (ou no desenvolvimento) o nó é um cluster de um só.
+pub fn node_status(parts: &StatusParts, cluster: Option<&ClusterService>) -> Value {
+    let node = &parts.node;
+    let storage = parts.messages.storage_stats();
+    let disk_free = parts.messages.disk_free_bytes();
+    let mut storage_json = json!({
+        "memoryUsedBytes": storage.memory_bytes,
+        "memoryLimitBytes": storage.memory_limit_bytes,
+        "memoryMessages": storage.memory_messages,
+        "diskMessages": storage.disk_messages,
+    });
+    if let (Some(free), Some(object)) = (disk_free, storage_json.as_object_mut()) {
+        object.insert("diskFreeBytes".into(), json!(free));
+    }
+    let signals = cluster
+        .and_then(health::collect)
+        .unwrap_or_else(|| HealthSignals {
+            quorum_available: true,
+            ..HealthSignals::default()
+        });
+    let now = format_ms(parts.clock.now_millis());
+    json!({
+        "nodeId": node.node_id(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "mode": node.mode.as_str(),
+        "state": node.state().as_str(),
+        "drainState": node.drain_state().as_str(),
+        "startedAt": format_ms(unix_ms(node.started_at)),
+        "collectedAt": now,
+        "storage": storage_json,
+        "signals": signals,
+    })
+}
+
+/// Um nó na resposta de `GET /health/cluster`: o `NodeStatus`, ou `None` se não respondeu.
+type Reported = (String, Option<Value>);
+
+/// `GET /health/cluster`. Com `scope=cluster` (o padrão) pergunta a todos os membros pelo
+/// `GET /cluster/status` e junta as condições; um que não responde aparece com `reachable: false`.
+/// Com `scope=node`, ou sem a tabela de membros (nó em desenvolvimento, ou que ainda não entrou),
+/// o cluster é este nó.
 async fn cluster_health(
     State(state): State<AppState>,
     Query(query): Query<HashMap<String, String>>,
@@ -151,11 +227,16 @@ async fn cluster_health(
             .into());
         }
     };
-    let now = format_ms(state.clock.now_millis());
-    let node = &state.node;
-    let storage = state.messages.storage_stats();
-    // Com a tabela de membros (nó em produção que já entrou), os membros e a época vêm dela.
+    let parts = StatusParts::of(&state);
+    let local = node_status(&parts, state.cluster.as_deref());
     let table = state.cluster.as_ref().and_then(|c| c.membership().table());
+    let reported: Vec<Reported> = match (&state.cluster, &table) {
+        (Some(cluster), Some(table)) if scope == "cluster" => {
+            ask_members(cluster, &table.members).await
+        }
+        _ => vec![(state.node.node_id(), Some(local.clone()))],
+    };
+
     let (members, members_version) = match &table {
         Some(table) => {
             let mut counts = serde_json::Map::new();
@@ -168,7 +249,7 @@ async fn cluster_health(
             (Value::Object(counts), table.version)
         }
         None => (
-            match (node.drain_state(), node.state()) {
+            match (state.node.drain_state(), state.node.state()) {
                 (DrainState::Draining, _) => json!({ "draining": 1 }),
                 (DrainState::Drained, _) => json!({}),
                 (_, NodeState::Active) => json!({ "active": 1 }),
@@ -178,62 +259,71 @@ async fn cluster_health(
             0,
         ),
     };
-    let disk_free = state.messages.disk_free_bytes();
-    let mut storage_json = json!({
-        "memoryUsedBytes": storage.memory_bytes,
-        "memoryLimitBytes": storage.memory_limit_bytes,
-        "memoryMessages": storage.memory_messages,
-        "diskMessages": storage.disk_messages,
-    });
-    if let (Some(free), Some(object)) = (disk_free, storage_json.as_object_mut()) {
-        object.insert("diskFreeBytes".into(), json!(free));
+
+    // As condições: as de cada nó que respondeu, mais as que só aparecem comparando os nós.
+    let disk_free_min = state.stats_rules.disk_free_min;
+    let unreachable = reported.iter().any(|(_, status)| status.is_none());
+    let mut per_node = Vec::new();
+    let (mut quorum_available, mut syncing_blocks) = (true, 0u64);
+    for (_, status) in &reported {
+        let Some(status) = status else { continue };
+        let signals = status
+            .get("signals")
+            .and_then(|s| serde_json::from_value::<HealthSignals>(s.clone()).ok())
+            .unwrap_or_else(|| HealthSignals {
+                quorum_available: true,
+                ..HealthSignals::default()
+            });
+        let free = status["storage"]["diskFreeBytes"].as_u64();
+        let pressure = matches!((free, disk_free_min), (Some(free), Some(min)) if free < min);
+        quorum_available &= signals.quorum_available;
+        syncing_blocks = syncing_blocks.max(signals.syncing_blocks);
+        per_node.push((signals.members_version, signals.conditions(pressure)));
     }
-    // `storage-pressure`: o espaço livre em `storage.dir` caiu abaixo de `stats.disk.free-min`.
-    let pressure = matches!(
-        (disk_free, state.stats_rules.disk_free_min),
-        (Some(free), Some(min)) if free < min
-    );
-    let (worst, conditions) = if pressure {
-        (
-            "storage-pressure",
-            json!([{ "condition": "storage-pressure", "severity": "warning" }]),
-        )
-    } else {
-        ("ok", json!([]))
-    };
-    let status = json!({
-        "nodeId": node.node_id(),
-        "version": env!("CARGO_PKG_VERSION"),
-        "mode": node.mode.as_str(),
-        "state": node.state().as_str(),
-        "drainState": node.drain_state().as_str(),
-        "startedAt": format_ms(unix_ms(node.started_at)),
-        "collectedAt": now,
-        "storage": storage_json,
-        "signals": {
-            "membersVersion": members_version,
-            "quorumAvailable": true,
-            "channels": {},
-            "syncingBlocks": 0,
-            "blocksBelowReplication": 0,
-            "blocksBelowQuorum": 0,
-            "frozenNodes": 0,
-        },
-    });
+    let conditions = health::merge(per_node, unreachable);
+    let worst = conditions.first().map_or("ok", |c| c.as_str());
+    let nodes: Vec<Value> = reported
+        .iter()
+        .map(|(node_id, status)| {
+            json!({ "nodeId": node_id, "reachable": status.is_some(), "status": status })
+        })
+        .collect();
     Ok(Json(json!({
         "scope": scope,
-        "collectedAt": now,
-        "partial": false,
+        "collectedAt": format_ms(state.clock.now_millis()),
+        "partial": unreachable,
         "worstCondition": worst,
-        "conditions": conditions,
+        "conditions": conditions.iter().map(|c| c.entry()).collect::<Vec<_>>(),
         "summary": {
             "members": members,
             "membersVersion": members_version,
-            "quorumAvailable": true,
-            "syncingBlocks": 0,
+            "quorumAvailable": quorum_available,
+            "syncingBlocks": syncing_blocks,
         },
-        "nodes": [{ "nodeId": node.node_id(), "reachable": true, "status": status }],
+        "nodes": nodes,
     })))
+}
+
+/// Pergunta o `NodeStatus` a cada membro (a si mesmo sem rede), todos ao mesmo tempo, e devolve
+/// na ordem da tabela.
+async fn ask_members(cluster: &Arc<ClusterService>, members: &[Member]) -> Vec<Reported> {
+    let mut set = tokio::task::JoinSet::new();
+    for (index, member) in members.iter().enumerate() {
+        let (cluster, member) = (cluster.clone(), member.clone());
+        set.spawn(async move {
+            let status = match cluster.call_member(&member, PeerRequest::Status).await {
+                Ok(PeerResponse::Status(status)) => Some(status),
+                _ => None,
+            };
+            (index, (member.node_id, status))
+        });
+    }
+    let mut answers = Vec::with_capacity(members.len());
+    while let Some(Ok(answer)) = set.join_next().await {
+        answers.push(answer);
+    }
+    answers.sort_by_key(|(index, _)| *index);
+    answers.into_iter().map(|(_, reported)| reported).collect()
 }
 
 async fn drain_status(State(state): State<AppState>) -> Json<DrainStatusDto> {

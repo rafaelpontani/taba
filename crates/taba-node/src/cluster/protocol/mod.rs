@@ -148,6 +148,8 @@ pub enum Request {
     Channel(ChannelBatch),
     /// `POST /cluster/vote-remove`
     Vote(VoteRequest),
+    /// `GET /cluster/status`: o `NodeStatus` do nó, para o `GET /health/cluster` do cluster.
+    Status,
     /// `* /cluster/forward/{caminho}`
     Forward(ForwardRequest),
     /// `GET /cluster/blocks/{id}/ids`
@@ -215,6 +217,7 @@ impl Request {
             Request::Take { .. } => "take",
             Request::Channel(_) => "channel",
             Request::Vote(_) => "vote",
+            Request::Status => "status",
             Request::Forward(_) => "forward",
             Request::BlockIds { .. } => "block-ids",
             Request::BlockMessages { .. } => "block-messages",
@@ -235,6 +238,8 @@ pub enum Response {
     Confirm(Confirm),
     /// O voto de exclusão.
     Vote(VoteResponse),
+    /// O `NodeStatus` (doc 06b), como JSON: quem o monta é a camada de operação.
+    Status(serde_json::Value),
     /// A resposta de uma chamada de cliente repassada, como o destino a deu.
     Forwarded(ForwardResponse),
     /// Uma mensagem inteira (`GET /cluster/blocks/{id}/messages/{messageId}`).

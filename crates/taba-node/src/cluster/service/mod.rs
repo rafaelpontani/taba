@@ -173,7 +173,12 @@ pub struct ClusterService {
     open_votes: StdMutex<HashMap<String, Instant>>,
     /// O nó está refazendo o ingresso por ter sido excluído.
     excluded: AtomicBool,
+    /// Quem monta o `NodeStatus` deste nó (a camada de operação; `GET /cluster/status`).
+    status_source: OnceLock<StatusSource>,
 }
+
+/// Devolve o `NodeStatus` (doc 06b) deste nó, como JSON.
+pub type StatusSource = Arc<dyn Fn() -> serde_json::Value + Send + Sync>;
 
 /// O `Handler` do nó: o que as rotas `/cluster/*` e a rede em memória chamam.
 pub struct ClusterHandler(pub Arc<ClusterService>);
@@ -247,7 +252,13 @@ impl ClusterService {
             on_change: OnceLock::new(),
             open_votes: StdMutex::new(HashMap::new()),
             excluded: AtomicBool::new(false),
+            status_source: OnceLock::new(),
         })
+    }
+
+    /// Liga quem monta o `NodeStatus`, para o `GET /cluster/status` responder.
+    pub fn set_status_source(&self, source: StatusSource) {
+        let _ = self.status_source.set(source);
     }
 
     /// Liga a replicação (definições, mensagens, sinais e repasse) ao serviço.
@@ -521,6 +532,14 @@ impl ClusterService {
                 );
                 result.map_err(from_membership)?;
                 Ok(ack(request.operation_id))
+            }
+            Request::Status => {
+                self.require_member(caller)?;
+                let source = self
+                    .status_source
+                    .get()
+                    .ok_or_else(TabaError::route_not_found)?;
+                Ok(Response::Status(source()))
             }
             // O repasse de uma chamada de cliente também vale para quem saiu por drain (doc 04,
             // seção 6.9); quem o recebe nunca repassa de novo.

@@ -369,6 +369,13 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     }
     if let Some(cluster) = &state.cluster {
         drain.set_cluster(cluster.clone());
+        // O `GET /cluster/status` responde com o mesmo `NodeStatus` do `/health/cluster`.
+        let parts = http::operations::StatusParts::of(&state);
+        let weak = Arc::downgrade(cluster);
+        cluster.set_status_source(Arc::new(move || {
+            let cluster = weak.upgrade();
+            http::operations::node_status(&parts, cluster.as_deref())
+        }));
     }
     serve(client, client_router, client_addr.port());
     if let (Some(listener), Some(addr)) = (operations, operations_addr) {
