@@ -136,7 +136,7 @@ A mensagem entregue fica invisível por um prazo; o `ReceiptToken` evita confirm
 | `3.3.1` | Lista de invisíveis (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.4 |
 | `3.3.1.1` | em memória (invisible-list.size) (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `3.3.2` | Excedente no SQLite (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.5 |
-| `3.3.2.1` | tabela expiracao, por prazo (detalhe) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
+| `3.3.2.1` | tabela expiry, por prazo (detalhe) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | `3.3.3` | Vencimento não se propaga (decisão) | [14-invisibilidade.md](14-invisibilidade.md), seções 13.3 e 13.6 |
 | `3.3.3.1` | dono recoloca na lista de prontos (detalhe) | [14-invisibilidade.md](14-invisibilidade.md), seção 13.6 |
 
@@ -245,7 +245,7 @@ Carga direta no armazenamento, banco de eventos por cima, e recuperação de men
 | `6.2.2` | Troca para tempo real (decisão) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
 | `6.2.2.1` | quando a tabela esvazia (detalhe) | [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
 | `6.3` | Perdas (tema) | [04-cluster.md](04-cluster.md), seção 6.6; [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3 |
-| `6.3.1` | Tabela perdas (decisão) | [04-cluster.md](04-cluster.md), seção 6.6; [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
+| `6.3.1` | Tabela losses (decisão) | [04-cluster.md](04-cluster.md), seção 6.6; [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | `6.3.1.1` | tópico e ID, com validade (detalhe) | [10-configuracao.md](10-configuracao.md) |
 | `6.3.2` | Nó que volta recupera (decisão) | [04-cluster.md](04-cluster.md), seção 6.6 |
 | `6.3.2.1` | quarentena até terminar (detalhe) | [04-cluster.md](04-cluster.md), seção 6.6 |

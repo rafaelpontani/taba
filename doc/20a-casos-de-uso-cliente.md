@@ -216,7 +216,7 @@ Regras: [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seção 12.10.
 | UC-RET-009 | Na dead-letter a mensagem mantém o **mesmo `id`**, com `deliveryCount: 0`, `invisibleUntil` zerado, `deadLetteredAt` e `deadLetterReason: max-deliveries`. | 13 §12.10 | I |
 | UC-RET-010 | A mensagem na dead-letter cai no mesmo bloco e nos mesmos nós da mensagem original (mesmo `id`). | 13 §12.10 | U, C |
 | UC-RET-011 | O movimento para a dead-letter é **uma operação** de registro + commit (cria na dead-letter e remove da fila de origem). Falha antes do quórum: rollback, a mensagem segue na fila e o dono tenta de novo na próxima volta. | 13 §12.10 | C |
-| UC-RET-012 | A dead-letter não tem definição própria: não há linha na tabela `topicos` e as configurações são as da fila de origem. | 13 §12.10, 02 §3.3 | I |
+| UC-RET-012 | A dead-letter não tem definição própria: não há linha na tabela `topics` e as configurações são as da fila de origem. | 13 §12.10, 02 §3.3 | I |
 | UC-RET-013 | A dead-letter não tem dead-letter: a mensagem lá só sai por ack ou por `ttl` (contado de `deadLetteredAt`). | 13 §12.10 | I |
 | UC-RET-014 | A dead-letter é um tópico comum para consumo, ack e publicação: dá para devolver uma mensagem corrigida à fila de origem. | 13 §12.10 | I |
 | UC-RET-015 | O sufixo da dead-letter é configurável (`topics.dead-letter.suffix`) e passa a ser o nome reservado. | 10 | U, I |
@@ -337,7 +337,7 @@ Regras: [17-topicos-fifo.md](17-topicos-fifo.md). A parte de sincronização e f
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-FIF-036 | O ack na FIFO **não apaga a linha**: grava `deleteAt` (= instante do ID + `fifo.dedup.window`) e apaga o corpo (`.body` e a cópia em memória) e os metadados de entrega; a linha curta mantém `id`, posição, `grupo`, `deduplicationId` e `deleteAt`. | 17 §16.7 | I |
+| UC-FIF-036 | O ack na FIFO **não apaga a linha**: grava `deleteAt` (= instante do ID + `fifo.dedup.window`) e apaga o corpo (`.body` e a cópia em memória) e os metadados de entrega; a linha curta mantém `id`, posição, `group_id`, `deduplicationId` e `deleteAt`. | 17 §16.7 | I |
 | UC-FIF-037 | Se `deleteAt` já passou no ack, a linha é apagada na hora, como na fila comum. O mesmo vale para a mensagem que vai à dead-letter. | 17 §16.7 | I |
 | UC-FIF-038 | A linha com `deleteAt` existe em todos os nós, replicada pelo registro + commit do ack, decidido por quórum. | 17 §16.7 | C |
 | UC-FIF-039 | A varredura de cada nó apaga as linhas vencidas pelo índice de `deleteAt` a cada `retention.sweep.interval`, sem propagar nada. | 17 §16.7 | I |
@@ -361,7 +361,7 @@ Vale nas filas comuns. Na FIFO o `groupId` ordena e a entrega justa não se apli
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-GRP-001 | O `groupId` é opcional; a mensagem sem grupo pertence a um grupo vazio. Um tópico em que ninguém usa `groupId` tem um grupo só e se comporta como a lista de prontos simples. | 13 §12.11 | U, I |
-| UC-GRP-002 | O `groupId` é imutável, guardado com a mensagem (memória ou coluna `grupo`) e devolvido no `GET`; na dead-letter a mensagem mantém o grupo. | 13 §12.11 | I |
+| UC-GRP-002 | O `groupId` é imutável, guardado com a mensagem (memória ou coluna `group_id`) e devolvido no `GET`; na dead-letter a mensagem mantém o grupo. | 13 §12.11 | I |
 | UC-GRP-003 | Numa fila comum o grupo **não** ordena nem serializa a entrega: duas mensagens do mesmo grupo podem estar em voo ao mesmo tempo. | 13 §12.11 | I |
 | UC-GRP-004 | Cada dono mantém por grupo os contadores de **prontas** e **em processamento**. Publicação: +1 pronta. Entrega: pronta vira em processamento. Vencimento da invisibilidade (e `PUT` com `0`): volta a pronta. Ack, expiração por `ttl` e dead-letter descontam. | 13 §12.11 | U |
 | UC-GRP-005 | `tamanho = em processamento + peso × prontas` com o peso de `delivery.fair.ready-weight` (padrão 0,1). Com peso `0` só conta o que está em processamento; com `1` conta o backlog inteiro. | 13 §12.11 | U |
@@ -372,7 +372,7 @@ Vale nas filas comuns. Na FIFO o `groupId` ordena e a entrega justa não se apli
 | UC-GRP-010 | Efeito observável: um grupo com 10 mil mensagens e outro com 5 mensagens publicados juntos: as 5 do grupo pequeno são entregues antes de o grande ser esgotado. | 13 §12.11 | I |
 | UC-GRP-011 | Progresso garantido: a cada `delivery.fair.normal-every` entregas (padrão 10), uma pega a mensagem mais antiga da lista, de qualquer grupo; o grupo grande nunca espera sem limite. Com `0`, a garantia é desligada. | 13 §12.11 | U, I |
 | UC-GRP-012 | Acima de `delivery.fair.max-groups`, os grupos novos compartilham um contador único (tratados como um grupo só), que aparece em `GroupStats` com `overflow: true` e sem `groupId`. | 13 §12.11, 06b | U |
-| UC-GRP-013 | As contagens por grupo são derivadas: refeitas dos metadados e da coluna `grupo` quando o nó assume blocos ou reinicia. | 13 §12.11 | C |
+| UC-GRP-013 | As contagens por grupo são derivadas: refeitas dos metadados e da coluna `group_id` quando o nó assume blocos ou reinicia. | 13 §12.11 | C |
 | UC-GRP-014 | Num distribuidor, o `groupId` é repassado a todas as cópias. | 13 §12.11, 15 §14.2 | I |
 | UC-GRP-015 | `GET /metrics/topics/{topic}/groups` devolve mensagens, parcela, idade e taxas por `groupId`; `top=N` devolve os `N` maiores sem paginação; `groupId=` devolve só esse; um grupo sem mensagens e sem atividade some. | 06b, 11 | I |
 | UC-GRP-016 | A condição `noisy-group` dispara quando há dois ou mais grupos e o maior ocupa mais de `stats.topics.noisy-group-share` do `depth`. | 11 | U, I |

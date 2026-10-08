@@ -1071,7 +1071,7 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
     assert!(
         node.storage_dir()
             .join("arquivos")
-            .join("_topico.db")
+            .join("_topic.db")
             .is_file()
     );
 

@@ -1,7 +1,7 @@
 //! Publicar e consumir mensagens (doc 06a, "Mensagens"; doc 13).
 //!
 //! **Onde a mensagem mora.** Em memória, enquanto couber em `memory.limit`; o que passa do
-//! limite (ou chega durante o drain) vai para o disco: o corpo em `${topico}/${id}.body` e o
+//! limite (ou chega durante o drain) vai para o disco: o corpo em `${topic}/${id}.body` e o
 //! resto numa linha do banco do tópico (doc 02, seção 3.2, `storage::messages`). Cada
 //! mensagem está em **um só** lugar, e as operações (entrega, ack, invisibilidade, `ttl`,
 //! dead-letter) funcionam igual nos dois: a entrega junta as duas origens em ordem de `id`.
@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::io;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::Notify;
@@ -31,6 +31,7 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::core::id::IdGenerator;
 use crate::core::validation;
 use crate::engine::topics::{TopicView, Topics};
+use crate::storage;
 use crate::storage::messages::{MessageMeta, MessageStore};
 
 /// `waitTime` do `GET`: de 0 a 20 segundos (doc 12).
@@ -137,6 +138,18 @@ pub struct DrainReport {
     pub moved: u64,
     /// Mensagens que ficaram em memória por erro de disco.
     pub failed: u64,
+    /// Mensagens ainda em memória ao terminar (as `failed` e as que a parada antecipada deixou).
+    pub remaining: u64,
+}
+
+/// O que `NodeStatus.storage` mostra do disco e da memória (doc 06b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StorageStats {
+    pub memory_bytes: u64,
+    /// `memory.limit`; `None` sem limite.
+    pub memory_limit_bytes: Option<u64>,
+    pub memory_messages: u64,
+    pub disk_messages: u64,
 }
 
 /// Uma mensagem em memória: os metadados são os mesmos da linha do banco.
@@ -201,11 +214,8 @@ fn stale_receipt() -> TabaError {
     )
 }
 
-/// Erro de disco: vira `500`, e o detalhe vai para o log.
-fn disk_error(what: &str, e: &io::Error) -> TabaError {
-    tracing::error!(error = %e, "{what}");
-    TabaError::internal()
-}
+/// Chamado quando um erro de disco derruba o nó (disco cheio, banco corrompido).
+pub type FailureHook = Arc<dyn Fn() + Send + Sync>;
 
 /// `validation.required`, com cada campo que falta em `details`.
 fn required(fields: &[&str]) -> TabaError {
@@ -258,9 +268,32 @@ pub struct Messages {
     state: Mutex<State>,
     /// Acorda os `GET` em espera (long polling) quando chega mensagem ou o tópico some.
     notifiers: Mutex<HashMap<String, Arc<Notify>>>,
+    /// Avisa o nó de que o disco falhou de um jeito que o derruba (estado `failed`).
+    on_failure: OnceLock<FailureHook>,
 }
 
 impl Messages {
+    /// Registra quem é avisado de um erro de disco fatal. Vale só a primeira chamada.
+    pub fn on_failure(&self, hook: FailureHook) {
+        let _ = self.on_failure.set(hook);
+    }
+
+    /// Erro de disco: vira `500`, e o detalhe vai para o log. Disco cheio ou banco corrompido
+    /// também avisam o nó, que passa a `failed` (doc 05, seção 7.3).
+    fn disk_error(&self, what: &str, e: &io::Error) -> TabaError {
+        tracing::error!(error = %e, "{what}");
+        if storage::is_fatal(e) {
+            self.fail();
+        }
+        TabaError::internal()
+    }
+
+    fn fail(&self) {
+        if let Some(hook) = self.on_failure.get() {
+            hook();
+        }
+    }
+
     /// `resume`: retoma as mensagens que estão em disco (desenvolvimento com
     /// `development.resume-on-start`). Sem ele, o que sobrou em disco de uma execução
     /// anterior é apagado: o nó começa vazio. Pastas de tópicos que não existem mais também
@@ -293,6 +326,7 @@ impl Messages {
             store,
             state: Mutex::new(State::default()),
             notifiers: Mutex::new(HashMap::new()),
+            on_failure: OnceLock::new(),
         });
         // As mensagens saem junto com o tópico (doc 02, seção 3.3).
         let weak = Arc::downgrade(&messages);
@@ -411,7 +445,7 @@ impl Messages {
             } else {
                 self.store
                     .put(&name, &meta, &request.body)
-                    .map_err(|e| disk_error("falha ao gravar a mensagem em disco", &e))?;
+                    .map_err(|e| self.disk_error("falha ao gravar a mensagem em disco", &e))?;
             }
         }
         self.notifier(&name).notify_waiters();
@@ -469,7 +503,7 @@ impl Messages {
             None => self
                 .store
                 .get(topic, id)
-                .map_err(|e| disk_error("falha ao ler a mensagem em disco", &e))?
+                .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
                 .map(|meta| (meta, Place::Disk)),
         };
         let (meta, place) = found.ok_or_else(message_not_found)?;
@@ -508,7 +542,7 @@ impl Messages {
             Place::Disk => self
                 .store
                 .remove(topic, id)
-                .map_err(|e| disk_error("falha ao remover a mensagem do disco", &e)),
+                .map_err(|e| self.disk_error("falha ao remover a mensagem do disco", &e)),
         }
     }
 
@@ -534,7 +568,7 @@ impl Messages {
             Place::Disk => self
                 .store
                 .update_delivery(topic, meta)
-                .map_err(|e| disk_error("falha ao gravar a entrega em disco", &e)),
+                .map_err(|e| self.disk_error("falha ao gravar a entrega em disco", &e)),
         }
     }
 
@@ -637,7 +671,11 @@ impl Messages {
             })
             .await
             .map_err(|_| TabaError::internal())??;
-            if !delivered.is_empty() || tokio::time::Instant::now() >= deadline {
+            // Em drain o `GET` em espera responde vazio na hora, para o cliente reconectar.
+            if !delivered.is_empty()
+                || tokio::time::Instant::now() >= deadline
+                || self.is_draining()
+            {
                 return Ok(delivered);
             }
             // Dorme até chegar mensagem, o prazo acabar ou a próxima invisível vencer.
@@ -813,20 +851,51 @@ impl Messages {
     /// `receiptToken`, `groupId`, `contentType`) e saem da memória. Erro de disco numa
     /// mensagem não interrompe o resto: ela fica em memória e entra no relatório.
     pub fn drain(&self) -> DrainReport {
-        let mut state = lock(&self.state);
-        state.draining = true;
+        self.begin_drain();
+        self.drain_until(|| false)
+    }
+
+    /// Entra em drain: o limite de memória efetivo cai a zero (toda mensagem nova vai para o
+    /// disco) e os `GET` em espera são acordados, para responderem vazios e o cliente
+    /// reconectar (doc 04, seção 6.10, passo 1).
+    pub fn begin_drain(&self) {
+        lock(&self.state).draining = true;
+        for notify in lock(&self.notifiers).values() {
+            notify.notify_waiters();
+        }
+    }
+
+    /// Cancela o drain: o nó volta a gravar em memória (`DELETE /node/drain`).
+    pub fn cancel_drain(&self) {
+        lock(&self.state).draining = false;
+    }
+
+    pub fn is_draining(&self) -> bool {
+        lock(&self.state).draining
+    }
+
+    /// Move a memória para o disco, uma mensagem por vez (o bloqueio não segura as outras
+    /// chamadas), até acabar ou `stop` devolver `true` (cancelamento ou `drain.timeout`).
+    /// Um tópico de cada vez, em ordem de nome: ainda não há taxa de leitura para ordenar
+    /// como o overflow.
+    pub fn drain_until(&self, stop: impl Fn() -> bool) -> DrainReport {
         let mut report = DrainReport {
             moved: 0,
             failed: 0,
+            remaining: 0,
         };
-        let topics: Vec<String> = state.memory.keys().cloned().collect();
-        for topic in topics {
-            let ids: Vec<String> = state
-                .memory
-                .get(&topic)
-                .map(|m| m.keys().cloned().collect())
-                .unwrap_or_default();
+        let mut plan: Vec<(String, Vec<String>)> = lock(&self.state)
+            .memory
+            .iter()
+            .map(|(topic, messages)| (topic.clone(), messages.keys().cloned().collect()))
+            .collect();
+        plan.sort();
+        'topics: for (topic, ids) in plan {
             for id in ids {
+                if stop() {
+                    break 'topics;
+                }
+                let mut state = lock(&self.state);
                 let Some(stored) = state.remove(&topic, &id) else {
                     continue;
                 };
@@ -836,11 +905,49 @@ impl Messages {
                         tracing::error!(error = %e, topic = %topic, id = %id, "falha no drain");
                         report.failed += 1;
                         state.insert(&topic, stored);
+                        if storage::is_fatal(&e) {
+                            self.fail();
+                        }
                     }
                 }
             }
         }
+        report.remaining = self.pending();
         report
+    }
+
+    /// Mensagens que ainda estão em memória (`pendingMessages` do `DrainStatus`).
+    pub fn pending(&self) -> u64 {
+        lock(&self.state)
+            .memory
+            .values()
+            .map(|m| m.len() as u64)
+            .sum()
+    }
+
+    /// Armazenamento do nó (`NodeStatus.storage`): corpos e mensagens em memória, e
+    /// mensagens em disco.
+    pub fn storage_stats(&self) -> StorageStats {
+        let (memory_bytes, memory_messages) = {
+            let state = lock(&self.state);
+            (
+                state.memory_bytes,
+                state.memory.values().map(|m| m.len() as u64).sum(),
+            )
+        };
+        let disk_messages = self
+            .store
+            .topics_on_disk()
+            .unwrap_or_default()
+            .iter()
+            .map(|topic| self.store.count(topic).unwrap_or(0))
+            .sum();
+        StorageStats {
+            memory_bytes,
+            memory_limit_bytes: self.rules.memory_limit,
+            memory_messages,
+            disk_messages,
+        }
     }
 
     /// Bytes de corpo em memória e mensagens em disco de um tópico (para testes e métricas).
@@ -883,12 +990,12 @@ impl Messages {
         let on_disk = self
             .store
             .ready_ids(name, now, max)
-            .map_err(|e| disk_error("falha ao ler as prontas do disco", &e))?;
+            .map_err(|e| self.disk_error("falha ao ler as prontas do disco", &e))?;
         candidates.extend(on_disk.into_iter().map(|id| (id, Place::Disk)));
         if let Some(at) = self
             .store
             .next_invisible_until(name, now)
-            .map_err(|e| disk_error("falha ao ler o próximo prazo do disco", &e))?
+            .map_err(|e| self.disk_error("falha ao ler o próximo prazo do disco", &e))?
         {
             next_visible = Some(next_visible.map_or(at, |n| n.min(at)));
         }
@@ -906,7 +1013,7 @@ impl Messages {
                     let Some(meta) = self
                         .store
                         .get(name, &id)
-                        .map_err(|e| disk_error("falha ao ler a mensagem em disco", &e))?
+                        .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
                     else {
                         continue;
                     };
@@ -918,7 +1025,7 @@ impl Messages {
                             let _ = self.store.remove(name, &id);
                             continue;
                         }
-                        Err(e) => return Err(disk_error("falha ao ler o corpo em disco", &e)),
+                        Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
                     }
                 }
             };

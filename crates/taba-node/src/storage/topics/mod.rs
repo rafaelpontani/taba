@@ -1,4 +1,4 @@
-//! Persistência das definições de tópico: a tabela `topicos` do `_node.db`, uma linha por
+//! Persistência das definições de tópico: a tabela `topics` do `_node.db`, uma linha por
 //! tópico, gravada no commit (doc 02, seções 3.2 e 3.3).
 //!
 //! O trait mora aqui, na camada mais baixa de que o `engine` precisa, porque as
@@ -44,7 +44,7 @@ impl TopicStore for SqliteTopicStore {
     fn load_all(&self) -> io::Result<Vec<TopicDefinition>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT nome, definicao FROM topicos ORDER BY nome")
+            .prepare("SELECT name, definition FROM topics ORDER BY name")
             .map_err(to_io)?;
         let rows = stmt
             .query_map([], |row| {
@@ -71,8 +71,8 @@ impl TopicStore for SqliteTopicStore {
         self.db
             .conn()
             .execute(
-                "INSERT INTO topicos (nome, definicao) VALUES (?1, ?2)
-                 ON CONFLICT(nome) DO UPDATE SET definicao = excluded.definicao",
+                "INSERT INTO topics (name, definition) VALUES (?1, ?2)
+                 ON CONFLICT(name) DO UPDATE SET definition = excluded.definition",
                 params![definition.name, text],
             )
             .map_err(to_io)?;
@@ -82,7 +82,7 @@ impl TopicStore for SqliteTopicStore {
     fn delete(&self, name: &str) -> io::Result<()> {
         self.db
             .conn()
-            .execute("DELETE FROM topicos WHERE nome = ?1", params![name])
+            .execute("DELETE FROM topics WHERE name = ?1", params![name])
             .map_err(to_io)?;
         Ok(())
     }

@@ -119,7 +119,7 @@ Todo quadro, exceto `keepalive` e `confirm`, leva um `seq` crescente por canal e
 
 ### `POST /cluster/topics/register`, `commit` e `rollback`
 
-Propagam a criação, alteração ou remoção de um tópico a **todos** os nós ([02-arquitetura.md](02-arquitetura.md), seção 3.3). O `commit` efetiva a definição na tabela de tópicos, e cada nó grava, atualiza ou remove a linha da tabela `topicos` do `_node.db` local. O `rollback` descarta a alteração pendente (sem commit) após esgotar os retries.
+Propagam a criação, alteração ou remoção de um tópico a **todos** os nós ([02-arquitetura.md](02-arquitetura.md), seção 3.3). O `commit` efetiva a definição na tabela de tópicos, e cada nó grava, atualiza ou remove a linha da tabela `topics` do `_node.db` local. O `rollback` descarta a alteração pendente (sem commit) após esgotar os retries.
 
 **`register`, corpo: `TopicRegisterRequest`**
 
@@ -221,7 +221,7 @@ Retorna o conteúdo de **uma** mensagem do bloco. Existe por consistência REST,
 
 ### `GET /cluster/message-loss`: tabela de perdas
 
-Stream NDJSON com a tabela `perdas` do nó: os pares (`topic`, `id`) declarados perdidos na sincronização, **ordenados por ID**. Consultada em **todos** os nós por um nó que retorna (seção 6.6). Aceita chamador que ainda não é membro. Linha de dados: `LossLine`: `id` e `topic`.
+Stream NDJSON com a tabela `losses` do nó: os pares (`topic`, `id`) declarados perdidos na sincronização, **ordenados por ID**. Consultada em **todos** os nós por um nó que retorna (seção 6.6). Aceita chamador que ainda não é membro. Linha de dados: `LossLine`: `id` e `topic`.
 
 ### `POST /cluster/messages/recover`: recuperar mensagens
 
@@ -283,7 +283,7 @@ Repassa uma chamada de cliente a outro nó: de quem está **sincronizando** ou *
 
 ### `TopicDefinition`
 
-A definição do tópico, **igual ao JSON guardado** na tabela `topicos` do `_node.db` ([02-arquitetura.md](02-arquitetura.md), seção 3.3): os campos de `Topic` ([06a](06a-api-cliente.md)) **sem** `effective`, `deadLetter` e `source` (a dead-letter não tem definição própria). Os valores `null` de `maxMessageBytes`, `ttl` e `maxDeliveries` são enviados como `null`, e cada nó aplica o padrão **na hora da conferência**.
+A definição do tópico, **igual ao JSON guardado** na tabela `topics` do `_node.db` ([02-arquitetura.md](02-arquitetura.md), seção 3.3): os campos de `Topic` ([06a](06a-api-cliente.md)) **sem** `effective`, `deadLetter` e `source` (a dead-letter não tem definição própria). Os valores `null` de `maxMessageBytes`, `ttl` e `maxDeliveries` são enviados como `null`, e cada nó aplica o padrão **na hora da conferência**.
 
 ### `TokenRecord`
 
@@ -335,7 +335,7 @@ Cada rota usa o mesmo formato com linhas diferentes:
 
 | Rota | Linha de dados |
 |---|---|
-| `/cluster/topics` | `TopicDefinition`: a definição do tópico (a mesma guardada na tabela `topicos`). |
+| `/cluster/topics` | `TopicDefinition`: a definição do tópico (a mesma guardada na tabela `topics`). |
 | `/cluster/tokens` | `TokenRecord`: o token (o mesmo de `_tokens/${id}.json`, com o hash do segredo). |
 | `/cluster/blocks/{id}/ids` | `{"id":"<id>","topic":"<topico>"}`; na fila FIFO, a linha de uma mensagem com exclusão lógica traz também `"deleteAt"` (seção 16.7 de [17-topicos-fifo.md](17-topicos-fifo.md)). |
 | `/cluster/message-loss` | `{"id":"<id>","topic":"<topico>"}` |

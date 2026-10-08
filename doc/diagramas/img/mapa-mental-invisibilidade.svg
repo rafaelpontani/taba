@@ -660,15 +660,15 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão 3.3.2</text>
         </g>
 
-        <g id="node-invisibilidade-d2-1x" data-node-id="invisibilidade-d2-1x" data-node-label="tabela expiracao, por prazo" tabindex="0" role="button" aria-label="Focus tabela expiracao, por prazo, detalhe 3.3.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.3.2.1" data-node-context="Architecture component">
-          <title>tabela expiracao, por prazo · detalhe 3.3.2.1 · Architecture component</title>
+        <g id="node-invisibilidade-d2-1x" data-node-id="invisibilidade-d2-1x" data-node-label="tabela expiry, por prazo" tabindex="0" role="button" aria-label="Focus tabela expiry, por prazo, detalhe 3.3.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.3.2.1" data-node-context="Architecture component">
+          <title>tabela expiry, por prazo · detalhe 3.3.2.1 · Architecture component</title>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 406) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">tabela expiracao, por prazo</text>
+          <text data-node-label="" x="892.5" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">tabela expiry, por prazo</text>
         <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.3.2.1</text>
         </g>
 

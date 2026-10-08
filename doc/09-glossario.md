@@ -6,7 +6,7 @@
  
 | Termo | Significado |
 |---|---|
-| **Tópico** | Canal nomeado para o qual mensagens são publicadas. Pode ter tags, enviadas como atributos ao OpenTelemetry. A definição é replicada em todos os nós por registro + commit e persistida em `${topico}.json` (seção 3.3). |
+| **Tópico** | Canal nomeado para o qual mensagens são publicadas. Pode ter tags, enviadas como atributos ao OpenTelemetry. A definição é replicada em todos os nós por registro + commit e persistida em `${topic}.json` (seção 3.3). |
 | **Tópico Fila (QT, *Queue Topic*)** | Análogo do SQS. Tipo de tópico (`queue`) que guarda mensagens e as entrega a consumidores, uma mensagem para um consumidor (seção 14.1). |
 | **Tópico Distribuidor (DT, *Distributor Topic*)** | Análogo do SNS. Tipo de tópico (`distributor`) que não guarda mensagens: copia cada publicação para os QTs cujo nome começa com um de seus `prefixes` (seção 14.2). |
 | **Fila FIFO (QTF, *Queue Topic FIFO*)** | QT com `fifo: true`: entrega cada grupo (`groupId`) em ordem, uma mensagem por vez, e deduplica as publicações. A posição no anel vem do `id` do tópico mais o `groupId`, e o primário do grupo ordena (seção 16). |
@@ -42,10 +42,10 @@
 | **Rebalanceamento** | Redistribuição dos blocos do anel de hash entre os nós restantes, disparada quando um registro de nó falha (seção 6.5) ou quando um nó é desregistrado (seção 6.3). |
 | **Evento de perda de mensagem** | Registro, só no log da aplicação (nível `error`, com tópico e ID), gerado quando uma mensagem listada não é encontrada em nenhuma réplica durante a sincronização de bloco, depois de tentar outro nó, a rota de ID único e uma relistagem (seção 7.3). |
 | **Período de freezing** | Intervalo de tempo configurável em que um nó desregistrado por falha fica impedido de se registrar novamente, para evitar flapping. |
-| **Overflow para disco** | Persistência em disco (`${topico}/${id}.body`) das mensagens que excedem o espaço de memória configurado para o nó (seção 3.2). |
+| **Overflow para disco** | Persistência em disco (`${topic}/${id}.body`) das mensagens que excedem o espaço de memória configurado para o nó (seção 3.2). |
 | **Invisibilidade** | Prazo (`invisibleUntil`) em que uma mensagem já entregue não é entregue a outro consumidor; se não houver ack até lá, ela volta a ser entregável (seções 12 e 13). Padrão: 120 s. |
 | **Lista de invisíveis** | Lista, por tópico e só no dono da entrega, dos pares (ID, `invisibleUntil`) das mensagens invisíveis, ordenada por prazo e de tamanho limitado; a thread de vencimento a usa para devolver mensagens à lista de prontos (seções 13.4 e 13.6). |
-| **Tabela de expiração** | Tabela `expiracao` do banco SQLite local do tópico, com os pares (ID, prazo) que não couberam na lista de invisíveis; indexada por prazo e derivada dos metadados (seção 13.5). |
+| **Tabela de expiração** | Tabela `expiry` do banco SQLite local do tópico, com os pares (ID, prazo) que não couberam na lista de invisíveis; indexada por prazo e derivada dos metadados (seção 13.5). |
 | **Contador de entregas** | `deliveryCount`: quantas vezes a mensagem foi entregue; guardado nos metadados (no banco SQLite local do tópico quando a mensagem está em disco). |
 | **Dead-letter** | Fila `{fila}-dead-letter` (sufixo configurável) que toda fila tem, criada e excluída com ela. Recebe a mensagem que atinge `maxDeliveries` sem ack. Sem definição própria: as configurações são as da fila de origem, somente leitura; no mais, é um tópico comum (seção 12.10). |
 | **TTL (`ttl`)** | Tempo de vida da mensagem, por fila (padrão 14 dias, `retention.ttl.default`). Vencida, a mensagem é descartada, sem ir ao dead-letter (seção 12.10). |

@@ -4,6 +4,7 @@ use axum::routing::get;
 use tower::ServiceExt;
 
 use super::*;
+use crate::cluster::drain::DrainController;
 use crate::cluster::state::NodeShared;
 use crate::config::DbSynchronous;
 use crate::config::{Config, MapEnv, Mode};
@@ -11,7 +12,9 @@ use crate::core::clock::SystemClock;
 use crate::core::error::ErrorCode;
 use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::topics::{TopicRules, Topics};
+use crate::storage::db::NodeDb;
 use crate::storage::messages::MessageStore;
+use crate::storage::state::NodeStateStore;
 use crate::storage::topics::MemoryTopicStore;
 
 async fn boom() -> &'static str {
@@ -36,15 +39,26 @@ fn app() -> Router {
         Arc::new(MessageStore::new(dir.path(), DbSynchronous::Normal)),
         false,
     );
+    let node = Arc::new(NodeShared::new(
+        "n".into(),
+        Mode::Development,
+        std::time::SystemTime::now(),
+    ));
+    let db = Arc::new(NodeDb::open(&dir.path().join("db"), DbSynchronous::Normal).unwrap());
+    let drain = DrainController::new(
+        node.clone(),
+        messages.clone(),
+        NodeStateStore::new(db),
+        clock.clone(),
+        std::time::Duration::from_secs(25),
+    );
     let state = AppState {
         clock,
         topics,
         messages,
-        node: Arc::new(NodeShared::new(
-            "n".into(),
-            Mode::Development,
-            std::time::SystemTime::now(),
-        )),
+        node,
+        drain,
+        allowed_ips: Arc::new(Vec::new()),
     };
     let routes = Router::new()
         .route("/boom", get(boom))

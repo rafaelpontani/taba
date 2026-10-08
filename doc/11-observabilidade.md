@@ -247,7 +247,7 @@ Os nomes `msg.*` da primeira versão da proposta foram substituídos. Ao ler um 
 | `msg.cluster.node.state` | `taba.node.state` |
 | `msg.<área>.*` (demais) | `taba.<área>.*`; as de visão do cluster ficam em `taba.cluster.*` |
 | atributos `route`, `method`, `status_class` | `http.route`, `http.request.method`, `http.response.status_code` |
-| `msg.sync.phase` com `topicos`, `blocos`, `verificacao`, `pronto` | `taba.sync.phase` com `topics`, `blocks`, `verification`, `ready` |
+| `msg.sync.phase` com `topics`, `blocos`, `verificacao`, `pronto` | `taba.sync.phase` com `topics`, `blocks`, `verification`, `ready` |
 
 ### Consulta
 
@@ -546,7 +546,7 @@ Eventos pontuais, **não** condições de saúde do nó nem do cluster. São **l
 | `taba.message.dead_lettered` | Mensagem enviada ao dead-letter ao atingir `maxDeliveries`. Atributos: fila, ID, `deliveryCount`. |
 | `taba.message.deduplicated` | Publicação em fila FIFO descartada por deduplicação. Atributos: fila, `groupId`, `deduplicationId`, ID da mensagem original. Em volume, use a métrica `taba.fifo.deduplicated`. |
 | `taba.message.expired` | Mensagem descartada por `ttl`. Atributos: fila, ID, idade. Em volume, pode ser amostrado ou agregado pela métrica `taba.retention.expired`. |
-| `taba.message.lost` | **Perda de mensagem** (seção 7.3): decidido que vai para o log em `error`, com o **nome do tópico**, o **ID da mensagem**, o bloco e os nós consultados, e para a tabela `perdas` do banco do nó, consultada pelo nó que volta de uma exclusão (seção 6.6 de [04-cluster.md](04-cluster.md)). Não há métrica nem condição de saúde por enquanto; quem quiser alertar usa o evento no backend de logs. O sistema não envia notificações por conta própria. |
+| `taba.message.lost` | **Perda de mensagem** (seção 7.3): decidido que vai para o log em `error`, com o **nome do tópico**, o **ID da mensagem**, o bloco e os nós consultados, e para a tabela `losses` do banco do nó, consultada pelo nó que volta de uma exclusão (seção 6.6 de [04-cluster.md](04-cluster.md)). Não há métrica nem condição de saúde por enquanto; quem quiser alertar usa o evento no backend de logs. O sistema não envia notificações por conta própria. |
 
 ## Ainda em aberto
 

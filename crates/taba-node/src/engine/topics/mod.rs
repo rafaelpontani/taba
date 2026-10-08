@@ -171,6 +171,11 @@ impl Topics {
         &self.rules
     }
 
+    /// Quantos tópicos (filas e distribuidores) existem; as dead-letters não contam.
+    pub fn count(&self) -> usize {
+        self.read().len()
+    }
+
     fn read(&self) -> RwLockReadGuard<'_, BTreeMap<String, TopicDefinition>> {
         self.map.read().unwrap_or_else(|e| e.into_inner())
     }

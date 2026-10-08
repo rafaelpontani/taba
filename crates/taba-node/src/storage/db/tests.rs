@@ -19,7 +19,7 @@ fn creates_the_directory_and_the_file_and_reopens_keeping_the_data() {
     let dir = tmp.path().join("a").join("taba");
     let db = NodeDb::open(&dir, DbSynchronous::Normal).unwrap();
     db.conn()
-        .execute("INSERT INTO topicos VALUES ('x', '{}')", [])
+        .execute("INSERT INTO topics VALUES ('x', '{}')", [])
         .unwrap();
     drop(db);
     assert!(dir.join(NODE_DB_FILE).is_file());
@@ -27,7 +27,7 @@ fn creates_the_directory_and_the_file_and_reopens_keeping_the_data() {
     let db = NodeDb::open(&dir, DbSynchronous::Normal).unwrap();
     let n: i64 = db
         .conn()
-        .query_row("SELECT COUNT(*) FROM topicos", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM topics", [], |r| r.get(0))
         .unwrap();
     assert_eq!(n, 1);
 }

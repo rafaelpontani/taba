@@ -35,7 +35,7 @@ A coluna "Permissão" só vale com a autenticação ligada; desligada, nenhuma �
 
 ### Regras de nome, tags e limites
 
-**Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.body`):
+**Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topic}/${id}.body`):
 
 - de 1 a 100 caracteres na criação. Nome terminado no sufixo de dead-letter (`-dead-letter`) é **reservado** e rejeitado com `400` `validation.reserved-name`. A fila de dead-letter, de nome `{fila}` + sufixo, pode passar de 100 (até 112 com o sufixo padrão), e o `{topic}` das rotas a aceita;
 - apenas letras ASCII (`a-z`, `A-Z`), dígitos (`0-9`), hífen (`-`) e sublinhado (`_`): regex `^[A-Za-z0-9_-]{1,100}$`;

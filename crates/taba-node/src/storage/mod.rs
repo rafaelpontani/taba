@@ -5,10 +5,28 @@
 
 pub mod db;
 pub mod messages;
+pub mod state;
 pub mod topics;
 
 use std::io;
 use std::path::Path;
+
+/// `true` para o erro de disco que derruba o nó (doc 05, seção 7.3): disco cheio ou banco
+/// corrompido. Os demais (um arquivo que sumiu, por exemplo) valem só para a operação.
+pub fn is_fatal(e: &io::Error) -> bool {
+    use rusqlite::ErrorCode;
+    if e.kind() == io::ErrorKind::StorageFull {
+        return true;
+    }
+    e.get_ref()
+        .and_then(|inner| inner.downcast_ref::<rusqlite::Error>())
+        .is_some_and(|inner| {
+            matches!(
+                inner.sqlite_error_code(),
+                Some(ErrorCode::DiskFull | ErrorCode::DatabaseCorrupt | ErrorCode::NotADatabase)
+            )
+        })
+}
 
 /// Apaga o que há **dentro** de `dir`, mantendo a pasta. É o `development.resume-on-start=false`
 /// (doc 10): o nó começa limpo.

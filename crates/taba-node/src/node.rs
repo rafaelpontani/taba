@@ -10,6 +10,7 @@ use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::cluster::drain::DrainController;
 use crate::cluster::state::NodeShared;
 use crate::config::Config;
 use crate::core::clock::{Clock, SystemClock};
@@ -20,6 +21,7 @@ use crate::http::{self, AppState};
 use crate::storage;
 use crate::storage::db::NodeDb;
 use crate::storage::messages::MessageStore;
+use crate::storage::state::NodeStateStore;
 use crate::storage::topics::SqliteTopicStore;
 
 #[derive(Debug, thiserror::Error)]
@@ -60,7 +62,7 @@ pub struct RunningNode {
     cluster_addr: Option<SocketAddr>,
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
-    messages: Arc<Messages>,
+    drain: Arc<DrainController>,
     /// `drain.on-stop`: ao parar, as mensagens em memória vão para o disco.
     drain_on_stop: bool,
 }
@@ -94,15 +96,7 @@ impl RunningNode {
     /// retoma do disco (doc 04, seção 6.10).
     pub async fn shutdown(mut self) {
         if self.drain_on_stop {
-            let messages = self.messages.clone();
-            match tokio::task::spawn_blocking(move || messages.drain()).await {
-                Ok(report) => tracing::info!(
-                    moved = report.moved,
-                    failed = report.failed,
-                    "drain: mensagens da memória gravadas em disco"
-                ),
-                Err(e) => tracing::error!(error = %e, "o drain falhou"),
-            }
+            self.drain.stop_by_signal().await;
         }
         self.cancel.cancel();
         while let Some(result) = self.tasks.join_next().await {
@@ -169,6 +163,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let node_db = Arc::new(
         NodeDb::open(&config.storage.dir, config.storage.db_synchronous).map_err(storage_error)?,
     );
+    let saves = NodeStateStore::new(node_db.clone());
     let topics = Topics::open(
         TopicRules::from_config(&config),
         Arc::new(SqliteTopicStore::new(node_db)),
@@ -188,11 +183,28 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         )),
         dev && config.resume_on_start,
     );
+    check_save_mark(&saves, dev && config.resume_on_start, topics.count());
+    {
+        let shared = shared.clone();
+        messages.on_failure(Arc::new(move || {
+            tracing::error!("disco cheio ou banco corrompido: o nó passa a `failed`");
+            shared.set_failed();
+        }));
+    }
+    let drain = DrainController::new(
+        shared.clone(),
+        messages.clone(),
+        saves,
+        deps.clock.clone(),
+        config.drain.timeout,
+    );
     let state = AppState {
         clock: deps.clock.clone(),
         node: shared.clone(),
         topics,
         messages,
+        drain: drain.clone(),
+        allowed_ips: Arc::new(config.operations_allowed_ips.clone()),
     };
 
     if dev {
@@ -224,7 +236,6 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let cancel = CancellationToken::new();
     let mut tasks = JoinSet::new();
     let sweeper = state.messages.clone();
-    let state_messages = state.messages.clone();
     let mut serve = |listener: TcpListener, router: axum::Router| {
         let cancel = cancel.clone();
         tasks.spawn(async move {
@@ -268,7 +279,27 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         cluster_addr,
         cancel,
         tasks,
-        messages: state_messages,
+        drain,
         drain_on_stop: config.drain.on_stop,
     })
+}
+
+/// Consome a marca do save (a partida a apaga, para uma queda depois dela não passar por save
+/// limpo). Retomando e com tópicos em disco, sem a marca o nó avisa que o que só estava em
+/// memória se perdeu (doc 04, seção 6.10).
+fn check_save_mark(saves: &NodeStateStore, resuming: bool, topics: usize) {
+    match saves.take_save_mark() {
+        Ok(Some(at_ms)) if resuming => {
+            tracing::info!(
+                save_completed_at_ms = at_ms,
+                "retomando do disco: o save anterior foi concluído"
+            );
+        }
+        Ok(None) if resuming && topics > 0 => tracing::warn!(
+            "o nó anterior não concluiu o save (queda ou drain interrompido): \
+             o que estava só em memória se perdeu"
+        ),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "não foi possível ler a marca do save"),
+    }
 }

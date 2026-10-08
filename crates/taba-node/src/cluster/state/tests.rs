@@ -40,3 +40,21 @@ fn state_names_are_the_ones_of_the_metrics() {
     assert_eq!(NodeState::Joining.as_str(), "joining");
     assert_eq!(DrainState::Drained.as_str(), "drained");
 }
+
+/// UC: UC-OPS-002
+#[test]
+fn a_failed_node_is_not_ready() {
+    let node = shared(Mode::Development);
+    node.set_failed();
+    assert_eq!(node.state(), NodeState::Failed);
+    assert_eq!(node.not_ready_reason(), Some("failed"));
+    assert_eq!(NodeState::Failed.as_str(), "failed");
+}
+
+#[test]
+fn a_drain_transition_only_happens_from_the_expected_state() {
+    let node = shared(Mode::Development);
+    assert!(node.transition_drain(DrainState::Active, DrainState::Draining));
+    assert!(!node.transition_drain(DrainState::Active, DrainState::Draining));
+    assert_eq!(node.drain_state(), DrainState::Draining);
+}

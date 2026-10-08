@@ -1445,7 +1445,8 @@ async fn drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resume
         report,
         DrainReport {
             moved: 2,
-            failed: 0
+            failed: 0,
+            remaining: 0
         }
     );
     assert_eq!(h.messages.usage("pedidos"), (0, 2));

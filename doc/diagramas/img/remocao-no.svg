@@ -516,11 +516,11 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         </g>
 
-        <g data-edge-from="falho" data-edge-to="demais" data-edge-label="consulta perdas e envia o que achar" data-edge-key="8" data-edge-id="volta">
+        <g data-edge-from="falho" data-edge-to="demais" data-edge-label="consulta losses e envia o que achar" data-edge-key="8" data-edge-id="volta">
           <path data-composition-edge-from="falho" data-composition-edge-to="demais" data-composition-edge-id="volta" data-composition-points="164,468;938,468" d="M 164 468 L 938 468" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g>
           <rect x="429.5" y="448" width="243" height="18" rx="3" class="c-mask"/>
-          <text x="551" y="458" class="t-edge-emphasis" font-size="11" text-anchor="middle">consulta perdas e envia o que achar</text>
+          <text x="551" y="458" class="t-edge-emphasis" font-size="11" text-anchor="middle">consulta losses e envia o que achar</text>
         </g>
         </g>
 

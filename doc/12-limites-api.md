@@ -10,7 +10,7 @@ Dois tipos de limite na API de cliente ([06a-api-cliente.md](06a-api-cliente.md)
 
 Regras de formato, aplicadas na criação/alteração de recursos, sem relação com taxa de requisições:
 
-- **Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topico}/${id}.body`) — 1 a 100 caracteres, regex `^[A-Za-z0-9_-]{1,100}$`, diferencia maiúsculas de minúsculas. Nome inválido é rejeitado na criação (`POST /topics`) com `400`.
+- **Nome do tópico** (`{topic}`): restritivo, no estilo do SQS, para ser sempre seguro em URL e como nome de pasta em disco (`${topic}/${id}.body`) — 1 a 100 caracteres, regex `^[A-Za-z0-9_-]{1,100}$`, diferencia maiúsculas de minúsculas. Nome inválido é rejeitado na criação (`POST /topics`) com `400`.
 - **Tags de tópico**: até 20 tags por tópico; chave de 1 a 64 caracteres e valor de 0 a 128, restritos a `A-Za-z0-9_-.:` (seguros como atributo OTel e em URL — ver [11-observabilidade.md](11-observabilidade.md)).
 - **Prefixos de Tópico Distribuidor** (`prefixes`): até 20 por tópico, de 1 a 100 caracteres cada, mesmo conjunto do nome de tópico (`A-Za-z0-9_-`). Prefixo vazio é rejeitado com `400` ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.2).
 - **`idleTimeout` de fila volátil**: de 60 s a 7 dias (604800 s); fora da faixa, `400` (seção 14.3).

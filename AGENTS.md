@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó, tópicos, publicação e consumo com disco); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
+Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó, tópicos, publicação e consumo com disco, drain local e rotas de operação); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
 
 ## Código
 
@@ -31,7 +31,7 @@ cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
 - **Documentação:** em português do Brasil. No fim ela será traduzida e ficará em duas pastas, uma por idioma.
 - **Código:** nomes de variáveis, funções, tipos, módulos, campos, testes, chaves de configuração, rotas, códigos de erro e eventos em **inglês**, para facilitar a colaboração internacional. Nada de identificador em português, mesmo em teste.
 - **Comentários e mensagens para o usuário** (erro da API, log, ajuda da linha de comando): em **português** durante o desenvolvimento; serão traduzidos junto com a documentação.
-- O que o contrato dos documentos define em disco (tabelas e colunas do SQLite, `_topico.db`, nome das pastas) ainda está em português; ver a seção 5 de [doc/21-historico-implementacao.md](doc/21-historico-implementacao.md).
+- Os nomes em disco (tabelas e colunas do SQLite, `_topic.db`, `${topic}` nas pastas, chaves do `state`) também são em inglês, nos documentos e no código.
 
 ## Histórico da implementação
 
@@ -43,6 +43,14 @@ cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
 4. Atualize a linha "Último registro" e o placar de casos de uso com teste (`cargo test --test uc_coverage -- --nocapture`).
 
 Nunca reescreva as entradas antigas para parecerem melhores: se algo mudou, acrescente uma entrada nova que diz o que mudou.
+
+## Pendências e problemas descobertos na implementação
+
+Toda implementação que descobre algo em aberto o registra **na mesma mudança**:
+
+- **Pergunta de design** (o documento não define, ou há duas saídas): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo código `D` livre e uma proposta. Quando for decidida, vai para `08a` (regras da seção "Decisões e pendências").
+- **Problema de lógica, risco ou limite** (o código se comporta de um jeito furado, injusto ou incompleto): entra em [doc/22-problemas-em-aberto.md](doc/22-problemas-em-aberto.md) com o próximo `PRB-NNN`, dizendo o efeito e apontando a dúvida `D` ou a etapa que o resolve. Resolvido, a linha vai para "Resolvidos" com a data; o código não é reaproveitado.
+- O desvio em relação ao documento continua em [doc/21-historico-implementacao.md](doc/21-historico-implementacao.md); os três arquivos se apontam entre si.
 
 ## Casos de uso
 

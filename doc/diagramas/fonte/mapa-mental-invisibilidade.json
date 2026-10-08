@@ -192,7 +192,7 @@
     {
       "id": "invisibilidade-d2-1x",
       "type": "database",
-      "label": "tabela expiracao, por prazo",
+      "label": "tabela expiry, por prazo",
       "sublabel": "detalhe 3.3.2.1",
       "pos": [
         745,

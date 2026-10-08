@@ -12,6 +12,8 @@ pub enum NodeState {
     Active,
     Syncing,
     Returning,
+    /// Disco cheio ou banco corrompido (doc 05, seção 7.3): só uma nova partida resolve.
+    Failed,
 }
 
 impl NodeState {
@@ -21,6 +23,7 @@ impl NodeState {
             NodeState::Active => "active",
             NodeState::Syncing => "syncing",
             NodeState::Returning => "returning",
+            NodeState::Failed => "failed",
         }
     }
 }
@@ -83,8 +86,24 @@ impl NodeShared {
         self.state.write().unwrap_or_else(|e| e.into_inner()).1 = drain;
     }
 
+    /// Muda o `drainState` de `from` para `to` só se ele estiver em `from`; devolve se mudou.
+    pub fn transition_drain(&self, from: DrainState, to: DrainState) -> bool {
+        let mut guard = self.state.write().unwrap_or_else(|e| e.into_inner());
+        if guard.1 == from {
+            guard.1 = to;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// O nó falhou (disco cheio, banco corrompido): `/health/ready` passa a `503` `failed`.
+    pub fn set_failed(&self) {
+        self.set_state(NodeState::Failed);
+    }
+
     /// `None` quando o nó está apto a receber tráfego; senão o `reason` do `HealthResponse`
-    /// (`bootstrapping`, `syncing`, `returning`, `draining` ou `drained`). O drain vem
+    /// (`bootstrapping`, `syncing`, `returning`, `failed`, `draining` ou `drained`). O drain vem
     /// primeiro, pois tira o nó da rotação seja qual for o estado no cluster.
     pub fn not_ready_reason(&self) -> Option<&'static str> {
         let (state, drain) = *self.state.read().unwrap_or_else(|e| e.into_inner());
@@ -94,6 +113,7 @@ impl NodeShared {
             (DrainState::Active, NodeState::Joining) => Some("bootstrapping"),
             (DrainState::Active, NodeState::Syncing) => Some("syncing"),
             (DrainState::Active, NodeState::Returning) => Some("returning"),
+            (DrainState::Active, NodeState::Failed) => Some("failed"),
             (DrainState::Active, NodeState::Active) => None,
         }
     }

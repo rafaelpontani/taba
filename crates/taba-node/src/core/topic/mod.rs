@@ -1,5 +1,5 @@
 //! A definição de um tópico (doc 02, seção 3.3): o que é replicado a todos os nós e
-//! gravado na tabela `topicos` do `_node.db`. O mesmo JSON é a base da resposta da API.
+//! gravado na tabela `topics` do `_node.db`. O mesmo JSON é a base da resposta da API.
 
 use std::collections::BTreeMap;
 
@@ -58,7 +58,7 @@ impl TopicDefinition {
         }
     }
 
-    /// O JSON da definição, o mesmo que a tabela `topicos` guarda. Campo ausente = não se aplica ao tipo;
+    /// O JSON da definição, o mesmo que a tabela `topics` guarda. Campo ausente = não se aplica ao tipo;
     /// `null` = aplica-se e vale o padrão (doc 06d, seção 8.3.1).
     pub fn to_json(&self) -> Value {
         let mut m = Map::new();

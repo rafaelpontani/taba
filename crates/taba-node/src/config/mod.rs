@@ -37,6 +37,15 @@ pub enum Mode {
     Development,
 }
 
+impl Mode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Mode::Production => "production",
+            Mode::Development => "development",
+        }
+    }
+}
+
 impl Parse for Mode {
     const EXPECTED: &'static str = "`production` ou `development`";
     fn parse(s: &str) -> Option<Self> {

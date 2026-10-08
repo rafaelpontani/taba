@@ -1,0 +1,299 @@
+use std::time::Duration;
+
+use super::*;
+use crate::config::{Config, DbSynchronous, MapEnv};
+use crate::core::clock::ManualClock;
+use crate::engine::messages::{MessageRules, PublishRequest};
+use crate::engine::topics::{CreateTopic, Kind, TopicRules, Topics};
+use crate::storage::db::NodeDb;
+use crate::storage::messages::MessageStore;
+use crate::storage::topics::MemoryTopicStore;
+
+struct Harness {
+    controller: Arc<DrainController>,
+    messages: Arc<Messages>,
+    shared: Arc<NodeShared>,
+    saves: NodeStateStore,
+    _dir: tempfile::TempDir,
+}
+
+async fn harness(mode: Mode, timeout: Duration) -> Harness {
+    let config = Config::parse(
+        None,
+        &MapEnv(
+            [("TABA_MODE".to_owned(), "development".to_owned())]
+                .into_iter()
+                .collect(),
+        ),
+    )
+    .unwrap();
+    let clock = Arc::new(ManualClock::at_doc_epoch());
+    let topics = Arc::new(Topics::new(
+        TopicRules::from_config(&config),
+        Arc::new(MemoryTopicStore::default()),
+        clock.clone(),
+        Vec::new(),
+    ));
+    let dir = tempfile::tempdir().unwrap();
+    let messages = Messages::new(
+        topics.clone(),
+        clock.clone(),
+        MessageRules::from_config(&config),
+        Arc::new(MessageStore::new(
+            &dir.path().join("msgs"),
+            DbSynchronous::Normal,
+        )),
+        false,
+    );
+    topics
+        .create(CreateTopic {
+            name: "pedidos".into(),
+            kind: Kind::Queue,
+            tags: None,
+            prefixes: None,
+            volatile: None,
+            idle_timeout: None,
+            fifo: None,
+            max_message_bytes: None,
+            ttl: None,
+            max_deliveries: None,
+        })
+        .await
+        .unwrap();
+    for body in ["\"a\"", "\"b\""] {
+        messages
+            .publish(
+                "pedidos",
+                PublishRequest {
+                    body: body.as_bytes().to_vec(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+    let db = Arc::new(NodeDb::open(&dir.path().join("db"), DbSynchronous::Normal).unwrap());
+    let saves = NodeStateStore::new(db);
+    let shared = Arc::new(NodeShared::new("no".into(), mode, SystemTime::UNIX_EPOCH));
+    let controller = DrainController::new(
+        shared.clone(),
+        messages.clone(),
+        saves.clone(),
+        clock,
+        timeout,
+    );
+    Harness {
+        controller,
+        messages,
+        shared,
+        saves,
+        _dir: dir,
+    }
+}
+
+async fn wait_for(h: &Harness, state: DrainState) {
+    for _ in 0..200 {
+        if h.shared.drain_state() == state {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("o drain não chegou a {state:?}");
+}
+
+/// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-010
+#[tokio::test]
+async fn the_api_drain_moves_memory_to_disk_and_ends_drained() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    assert_eq!(h.controller.status().state, DrainState::Active);
+    assert_eq!(h.controller.status().trigger, None);
+    assert_eq!(h.controller.status().pending_messages, 2);
+
+    let Started::Started(status) = h.controller.start_api() else {
+        panic!("esperava Started");
+    };
+    assert_eq!(status.trigger, Some(Trigger::Api));
+    assert!(status.started_at.is_some());
+    wait_for(&h, DrainState::Drained).await;
+
+    let status = h.controller.status();
+    assert_eq!(status.pending_messages, 0, "chega a 0 quando drained");
+    assert_eq!(status.trigger, Some(Trigger::Api));
+    assert_eq!(h.messages.usage("pedidos"), (0, 2));
+    assert!(h.saves.take_save_mark().unwrap().is_some());
+}
+
+/// UC: UC-DRN-004
+#[tokio::test]
+async fn starting_a_drain_twice_changes_nothing() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    assert!(matches!(h.controller.start_api(), Started::Started(_)));
+    assert!(matches!(
+        h.controller.start_api(),
+        Started::AlreadyDraining(_)
+    ));
+    wait_for(&h, DrainState::Drained).await;
+    assert!(matches!(
+        h.controller.start_api(),
+        Started::AlreadyDraining(status) if status.state == DrainState::Drained
+    ));
+}
+
+/// UC: UC-DRN-019
+#[tokio::test]
+async fn canceling_without_a_drain_has_nothing_to_cancel() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let Cancelled::Nothing(status) = h.controller.cancel().unwrap() else {
+        panic!("esperava Nothing");
+    };
+    assert_eq!(status.state, DrainState::Active);
+}
+
+/// UC: UC-DRN-016, UC-DRN-021
+#[tokio::test]
+async fn canceling_a_finished_drain_in_development_goes_straight_back_to_active() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    h.controller.start_api();
+    wait_for(&h, DrainState::Drained).await;
+
+    let Cancelled::Cancelled(status) = h.controller.cancel().unwrap() else {
+        panic!("esperava Cancelled");
+    };
+    assert_eq!(status.state, DrainState::Active);
+    assert_eq!(status.trigger, None);
+    assert_eq!(
+        h.saves.take_save_mark().unwrap(),
+        None,
+        "a marca foi apagada"
+    );
+    assert!(!h.messages.is_draining(), "volta a gravar em memória");
+    h.messages
+        .publish(
+            "pedidos",
+            PublishRequest {
+                body: b"\"c\"".to_vec(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(h.messages.pending(), 1);
+}
+
+/// UC: UC-DRN-016
+#[tokio::test]
+async fn canceling_while_draining_stops_the_move() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    // Segura o drain no começo: o nó entra em `draining` sem a tarefa que esvazia.
+    let stop = h.controller.begin(Trigger::Api).unwrap();
+    assert_eq!(h.shared.drain_state(), DrainState::Draining);
+
+    let Cancelled::Cancelled(status) = h.controller.cancel().unwrap() else {
+        panic!("esperava Cancelled");
+    };
+    assert_eq!(status.state, DrainState::Active);
+    assert!(
+        stop.load(Ordering::Relaxed),
+        "o drain em andamento foi avisado"
+    );
+
+    // A tarefa que acordar depois do cancelamento não conclui nada.
+    h.controller.clone().run_drain(stop).await;
+    assert_eq!(h.shared.drain_state(), DrainState::Active);
+    assert_eq!(h.saves.take_save_mark().unwrap(), None);
+}
+
+/// UC: UC-DRN-018
+#[tokio::test]
+async fn in_production_leaving_the_drained_state_returns_as_a_new_node() {
+    let h = harness(Mode::Production, Duration::from_secs(25)).await;
+    h.controller.start_api();
+    wait_for(&h, DrainState::Drained).await;
+    assert!(matches!(
+        h.controller.cancel().unwrap(),
+        Cancelled::Returned(status) if status.state == DrainState::Active
+    ));
+}
+
+/// UC: UC-DRN-002, UC-DRN-012
+#[tokio::test]
+async fn the_signal_drain_waits_for_the_save_and_marks_the_trigger() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    assert!(h.controller.stop_by_signal().await);
+    let status = h.controller.status();
+    assert_eq!(status.state, DrainState::Drained);
+    assert_eq!(status.trigger, Some(Trigger::Signal));
+    assert_eq!(h.messages.usage("pedidos"), (0, 2));
+    assert!(h.saves.take_save_mark().unwrap().is_some());
+}
+
+/// UC: UC-DRN-002
+#[tokio::test]
+async fn the_signal_waits_for_a_drain_the_api_already_started() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    h.controller.start_api();
+    assert!(h.controller.stop_by_signal().await);
+    assert_eq!(h.controller.status().trigger, Some(Trigger::Api));
+}
+
+/// UC: UC-DRN-017
+#[tokio::test]
+async fn with_the_process_stopping_by_signal_cancel_is_a_conflict() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    h.controller.stop_by_signal().await;
+    let error = h.controller.cancel().unwrap_err();
+    assert_eq!(error.code, ErrorCode::DrainConflict);
+}
+
+/// UC: UC-DRN-014, UC-DRN-026
+#[tokio::test]
+async fn an_expired_timeout_leaves_the_node_draining_without_a_save_mark() {
+    let h = harness(Mode::Development, Duration::ZERO).await;
+    assert!(!h.controller.stop_by_signal().await);
+    assert_eq!(h.shared.drain_state(), DrainState::Draining);
+    assert_eq!(h.messages.pending(), 2, "o que sobrou fica em memória");
+    assert_eq!(
+        h.saves.take_save_mark().unwrap(),
+        None,
+        "sem save concluído"
+    );
+}
+
+/// UC: UC-DRN-007
+#[tokio::test]
+async fn a_long_poll_waiting_when_the_drain_starts_answers_empty() {
+    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    // Esvazia a fila para o `GET` ficar esperando.
+    h.messages
+        .consume(
+            "pedidos",
+            crate::engine::messages::ConsumeQuery {
+                max_messages: Some("10".into()),
+                visibility_timeout: Some("600".into()),
+                wait_time: None,
+            },
+        )
+        .await
+        .unwrap();
+    let messages = h.messages.clone();
+    let poll = tokio::spawn(async move {
+        messages
+            .consume(
+                "pedidos",
+                crate::engine::messages::ConsumeQuery {
+                    max_messages: None,
+                    visibility_timeout: None,
+                    wait_time: Some("20".into()),
+                },
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!poll.is_finished(), "ainda esperando mensagem");
+
+    h.controller.start_api();
+    let result = tokio::time::timeout(Duration::from_secs(5), poll)
+        .await
+        .expect("o drain acorda o long polling")
+        .unwrap()
+        .unwrap();
+    assert!(result.is_empty());
+}

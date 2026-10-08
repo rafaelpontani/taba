@@ -1,6 +1,6 @@
-//! As mensagens em disco (doc 02, seção 3.2): o corpo em `${topico}/${id}.body`, só os bytes
-//! como vieram, e o resto numa linha da tabela `mensagens` do banco do tópico,
-//! `${topico}/_topico.db`, estritamente local ao nó.
+//! As mensagens em disco (doc 02, seção 3.2): o corpo em `${topic}/${id}.body`, só os bytes
+//! como vieram, e o resto numa linha da tabela `messages` do banco do tópico,
+//! `${topic}/_topic.db`, estritamente local ao nó.
 //!
 //! **Ordem de gravação:** na escrita, primeiro o arquivo e depois a linha; na remoção,
 //! primeiro a linha e depois o arquivo. Uma queda deixa no máximo arquivo sem linha (lixo
@@ -20,7 +20,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::db::to_io;
 use crate::config::DbSynchronous;
 
-pub const TOPIC_DB_FILE: &str = "_topico.db";
+pub const TOPIC_DB_FILE: &str = "_topic.db";
 const BODY_EXT: &str = "body";
 
 /// Tudo o que se sabe de uma mensagem menos o corpo: é o que vai para a linha do banco.
@@ -47,24 +47,24 @@ impl MessageMeta {
 }
 
 const SCHEMA: &str = "
-    CREATE TABLE IF NOT EXISTS mensagens (
+    CREATE TABLE IF NOT EXISTS messages (
         id                 TEXT PRIMARY KEY NOT NULL,
         content_type       TEXT NOT NULL,
-        grupo              TEXT,
-        publicada_em       INTEGER NOT NULL,
+        group_id              TEXT,
+        published_at       INTEGER NOT NULL,
         delivery_count     INTEGER NOT NULL DEFAULT 0,
         invisible_until    INTEGER NOT NULL DEFAULT 0,
         receipt_token      TEXT,
-        dead_lettered_em   INTEGER,
+        dead_lettered_at   INTEGER,
         dead_letter_reason TEXT,
         age_base           INTEGER NOT NULL
     ) WITHOUT ROWID;
-    CREATE INDEX IF NOT EXISTS mensagens_invisible_until ON mensagens (invisible_until);
-    CREATE INDEX IF NOT EXISTS mensagens_age_base ON mensagens (age_base);
+    CREATE INDEX IF NOT EXISTS messages_invisible_until ON messages (invisible_until);
+    CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
 ";
 
-const COLUMNS: &str = "id, content_type, grupo, publicada_em, delivery_count, invisible_until, \
-                       receipt_token, dead_lettered_em, dead_letter_reason";
+const COLUMNS: &str = "id, content_type, group_id, published_at, delivery_count, invisible_until, \
+                       receipt_token, dead_lettered_at, dead_letter_reason";
 
 fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
     Ok(MessageMeta {
@@ -193,8 +193,8 @@ impl MessageStore {
     fn insert_row(disk: &TopicDisk, meta: &MessageMeta) -> io::Result<()> {
         disk.conn()
             .execute(
-                "INSERT OR REPLACE INTO mensagens (id, content_type, grupo, publicada_em, \
-                 delivery_count, invisible_until, receipt_token, dead_lettered_em, \
+                "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
+                 delivery_count, invisible_until, receipt_token, dead_lettered_at, \
                  dead_letter_reason, age_base) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     meta.id,
@@ -219,7 +219,7 @@ impl MessageStore {
         };
         disk.conn()
             .query_row(
-                &format!("SELECT {COLUMNS} FROM mensagens WHERE id = ?1"),
+                &format!("SELECT {COLUMNS} FROM messages WHERE id = ?1"),
                 params![id],
                 from_row,
             )
@@ -234,7 +234,7 @@ impl MessageStore {
         };
         disk.conn()
             .execute(
-                "UPDATE mensagens SET delivery_count = ?2, invisible_until = ?3, \
+                "UPDATE messages SET delivery_count = ?2, invisible_until = ?3, \
                  receipt_token = ?4 WHERE id = ?1",
                 params![
                     meta.id,
@@ -261,7 +261,7 @@ impl MessageStore {
             return Ok(());
         };
         disk.conn()
-            .execute("DELETE FROM mensagens WHERE id = ?1", params![id])
+            .execute("DELETE FROM messages WHERE id = ?1", params![id])
             .map_err(to_io)?;
         match std::fs::remove_file(disk.body_path(id)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
@@ -285,7 +285,7 @@ impl MessageStore {
     pub fn ready_ids(&self, topic: &str, now_ms: u64, limit: usize) -> io::Result<Vec<String>> {
         self.ids(
             topic,
-            "SELECT id FROM mensagens WHERE invisible_until <= ?1 ORDER BY id LIMIT ?2",
+            "SELECT id FROM messages WHERE invisible_until <= ?1 ORDER BY id LIMIT ?2",
             &[now_ms as i64, limit as i64],
         )
     }
@@ -298,7 +298,7 @@ impl MessageStore {
         let next: Option<i64> = disk
             .conn()
             .query_row(
-                "SELECT MIN(invisible_until) FROM mensagens WHERE invisible_until > ?1",
+                "SELECT MIN(invisible_until) FROM messages WHERE invisible_until > ?1",
                 params![now_ms as i64],
                 |row| row.get(0),
             )
@@ -314,7 +314,7 @@ impl MessageStore {
         }
         self.ids(
             topic,
-            "SELECT id FROM mensagens WHERE age_base <= ?1",
+            "SELECT id FROM messages WHERE age_base <= ?1",
             &[limit],
         )
     }
@@ -323,7 +323,7 @@ impl MessageStore {
     pub fn exhausted_ids(&self, topic: &str, now_ms: u64, max: u64) -> io::Result<Vec<String>> {
         self.ids(
             topic,
-            "SELECT id FROM mensagens WHERE delivery_count > 0 AND delivery_count >= ?1 \
+            "SELECT id FROM messages WHERE delivery_count > 0 AND delivery_count >= ?1 \
              AND invisible_until <= ?2",
             &[i64::try_from(max).unwrap_or(i64::MAX), now_ms as i64],
         )
@@ -338,7 +338,7 @@ impl MessageStore {
         Self::insert_row(&target, meta)?;
         source
             .conn()
-            .execute("DELETE FROM mensagens WHERE id = ?1", params![meta.id])
+            .execute("DELETE FROM messages WHERE id = ?1", params![meta.id])
             .map_err(to_io)?;
         Ok(())
     }
@@ -349,7 +349,7 @@ impl MessageStore {
         };
         let n: i64 = disk
             .conn()
-            .query_row("SELECT COUNT(*) FROM mensagens", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
             .map_err(to_io)?;
         Ok(n as u64)
     }

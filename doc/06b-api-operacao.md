@@ -186,7 +186,7 @@ O estado de um nó, sem as métricas (essas ficam em `/metrics` e no OTLP). É t
 | `version` | texto | Versão do Taba. |
 | `clusterName` / `environment` | texto | `service.namespace` e `deployment.environment.name` do recurso OpenTelemetry, quando configurados. |
 | `mode` | texto | `production` ou `development`. |
-| `state` | texto | `joining`, `active`, `syncing` ou `returning` (`taba.node.state`). Sempre `active` em desenvolvimento. |
+| `state` | texto | `joining`, `active`, `syncing`, `returning` ou `failed` (disco cheio ou banco corrompido; `taba.node.state`). Sempre `active` em desenvolvimento, salvo `failed`. |
 | `drainState` | texto | `active`, `draining` ou `drained`. |
 | `startedAt`, `collectedAt` | data | Início do processo e instante da coleta. |
 | `storage` | objeto | `memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`. |

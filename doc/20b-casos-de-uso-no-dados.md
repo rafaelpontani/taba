@@ -118,17 +118,17 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seções 3.3 e 3.4. A API de cli
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-DEF-009 | A definição do tópico é sempre persistida na tabela `topicos` do `${storage.dir}/_node.db` (uma linha por tópico, sem arquivo por tópico), gravada no commit em cada nó, e atualizada ou removida com a definição. | 02 §3.3 | I, C |
+| UC-DEF-009 | A definição do tópico é sempre persistida na tabela `topics` do `${storage.dir}/_node.db` (uma linha por tópico, sem arquivo por tópico), gravada no commit em cada nó, e atualizada ou removida com a definição. | 02 §3.3 | I, C |
 | UC-DEF-010 | O arquivo guarda **só a definição**: dados de consumo (profundidade, taxas, histogramas) nunca vão para ele. | 02 §3.3 | I |
-| UC-DEF-011 | A dead-letter não tem linha de definição na tabela `topicos`: é derivada da fila de origem, criada e excluída na mesma operação. | 02 §3.3 | I |
+| UC-DEF-011 | A dead-letter não tem linha de definição na tabela `topics`: é derivada da fila de origem, criada e excluída na mesma operação. | 02 §3.3 | I |
 | UC-DEF-012 | Cada token é persistido em `${storage.dir}/_tokens/${id}.json` (com `id`, `name`, permissões, prefixos, datas e o hash do segredo, nunca o segredo). | 02 §3.4 | I |
-| UC-DEF-013 | Na partida, o nó (em desenvolvimento, retomando do disco) carrega as definições da tabela `topicos` do `_node.db`, preservando o `id` e a data de criação de cada uma. | 04 §6.10 | I |
+| UC-DEF-013 | Na partida, o nó (em desenvolvimento, retomando do disco) carrega as definições da tabela `topics` do `_node.db`, preservando o `id` e a data de criação de cada uma. | 04 §6.10 | I |
 
 #### Remoção com mensagens pendentes
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-DEF-014 | O `DELETE` sempre funciona, mesmo com mensagens não entregues ou não confirmadas. No commit, cada nó apaga todas as mensagens do tópico que tem localmente (memória, `${topico}/` em disco e metadados), sem checar se estão pendentes. | 02 §3.3 | C |
+| UC-DEF-014 | O `DELETE` sempre funciona, mesmo com mensagens não entregues ou não confirmadas. No commit, cada nó apaga todas as mensagens do tópico que tem localmente (memória, `${topic}/` em disco e metadados), sem checar se estão pendentes. | 02 §3.3 | C |
 
 #### Bootstrap das tabelas (nó novo)
 
@@ -143,7 +143,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seções 3.3 e 3.4. A API de cli
 | UC-DEF-021 | Até a sincronização inteira terminar, o nó não atende rotas de cliente (`/health/ready` falha): `GET /topics`, o casamento de prefixos e o cálculo do nó gestor dependem da tabela completa. | 02 §3.3 | C |
 | UC-DEF-022 | Os tokens são puxados por `GET /cluster/tokens` junto com a tabela de tópicos, da mesma origem e com as mesmas regras (carga direta, eventos no banco, verificação final). | 02 §3.4 | C |
 | UC-DEF-023 | Em modo desenvolvimento a definição é aplicada só no próprio nó, sem esperar outros, sem bootstrap nem carga. | 02 §3.3 | I |
-| UC-DEF-024 | A definição de cada tópico é gravada na tabela `topicos` do `_node.db` numa transação (nunca uma linha pela metade), e nomes que só diferem em maiúsculas (`Pedidos` e `pedidos`) são tópicos diferentes, em qualquer disco. | 02 §3.3 | U, I |
+| UC-DEF-024 | A definição de cada tópico é gravada na tabela `topics` do `_node.db` numa transação (nunca uma linha pela metade), e nomes que só diferem em maiúsculas (`Pedidos` e `pedidos`) são tópicos diferentes, em qualquer disco. | 02 §3.3 | U, I |
 
 ### ENT: entrega no dono, lista de prontos, `take` e long polling
 
@@ -269,7 +269,7 @@ Regras: [14-invisibilidade.md](14-invisibilidade.md). O que o cliente enxerga: `
 | UC-INV-001 | Os metadados são `deliveryCount`, `invisibleUntil` (data absoluta) e `receiptToken`, guardados e replicados juntos: no mesmo registro + commit, em memória ou no banco local do tópico. | 14 §13.2 | U, C |
 | UC-INV-002 | `invisibleUntil` é calculado pelo **dono** (`agora + visibilityTimeout`, pelo relógio dele); as réplicas guardam o valor pronto e nunca recalculam a partir de duração. | 14 §13.2 e 13.3 | C |
 | UC-INV-003 | O `receiptToken` é gerado pelo dono a cada entrega; o nó compara com o dos metadados no ack e no `PUT`, e responde `409` se for diferente, sem alterar nada. A alteração mantém o mesmo token. | 14 §13.2 | U, C |
-| UC-INV-004 | Mensagem em memória: metadados em memória. Mensagem em disco: linha na tabela `mensagens` do banco do tópico (`id`, posição, `grupo`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`), atualizada no commit e removida com a mensagem no ack. Alterar a invisibilidade de uma mensagem em disco atualiza só a linha, sem tocar no corpo. | 14 §13.2 | I |
+| UC-INV-004 | Mensagem em memória: metadados em memória. Mensagem em disco: linha na tabela `messages` do banco do tópico (`id`, posição, `group_id`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`), atualizada no commit e removida com a mensagem no ack. Alterar a invisibilidade de uma mensagem em disco atualiza só a linha, sem tocar no corpo. | 14 §13.2 | I |
 | UC-INV-005 | Os estados da mensagem para o dono: **pronta** (`invisibleUntil` ausente ou no passado), **invisível** (no futuro) e **removida** (ack). | 14 §13.1 | U |
 
 #### Propagação (entrega, alteração, ack)
@@ -328,7 +328,7 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seção 3.2.
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-ARM-001 | A mensagem é gravada primeiro em memória; ao atingir `memory.limit`, as excedentes são persistidas em disco. | 02 §3.2 | U, I |
-| UC-ARM-002 | O corpo vai para `${topico}/${id}.body` (uma pasta por tópico, um arquivo por mensagem), com os **bytes crus**, sem reserializar nem codificar; o `contentType` fica no metadado. | 02 §3.2 | I |
+| UC-ARM-002 | O corpo vai para `${topic}/${id}.body` (uma pasta por tópico, um arquivo por mensagem), com os **bytes crus**, sem reserializar nem codificar; o `contentType` fica no metadado. | 02 §3.2 | I |
 | UC-ARM-003 | Ao ler uma mensagem que não está em memória, ela é buscada no disco pelo mesmo caminho. | 02 §3.2 | I |
 | UC-ARM-004 | A memória não é dividida de forma fixa entre os tópicos: tópicos de maior taxa de leitura ficam com mais mensagens em memória; os de menor taxa vão para disco primeiro. | 02 §3.2 | U |
 | UC-ARM-005 | A taxa de leitura é a média móvel das mensagens consumidas por segundo na janela `memory.rate.window` (5 minutos), a mesma de `publishRate` e `consumeRate`. | 02 §3.2 | U |
@@ -341,15 +341,15 @@ Regras: [02-arquitetura.md](02-arquitetura.md), seção 3.2.
 
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
-| UC-ARM-010 | Cada nó mantém um banco por tópico, `${topico}/_topico.db`, estritamente local: nunca é copiado, enviado nem sincronizado com outros nós. | 02 §3.2 | I |
-| UC-ARM-011 | A tabela `mensagens` tem uma linha por mensagem em disco (`id`, posição no anel, `grupo`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`; na FIFO, `deduplicationId` e `deleteAt`) com índices por `id`, `invisibleUntil`, posição, `(grupo, id)`, `(grupo, deduplicationId)` e `deleteAt`. | 02 §3.2, 17 §16.7 | I |
-| UC-ARM-012 | A tabela `expiracao` guarda os pares que não couberam na lista de invisíveis, com índice por prazo. | 02 §3.2, 14 §13.5 | I |
+| UC-ARM-010 | Cada nó mantém um banco por tópico, `${topic}/_topic.db`, estritamente local: nunca é copiado, enviado nem sincronizado com outros nós. | 02 §3.2 | I |
+| UC-ARM-011 | A tabela `messages` tem uma linha por mensagem em disco (`id`, posição no anel, `group_id`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`; na FIFO, `deduplicationId` e `deleteAt`) com índices por `id`, `invisibleUntil`, posição, `(group_id, id)`, `(group_id, deduplicationId)` e `deleteAt`. | 02 §3.2, 17 §16.7 | I |
+| UC-ARM-012 | A tabela `expiry` guarda os pares que não couberam na lista de invisíveis, com índice por prazo. | 02 §3.2, 14 §13.5 | I |
 | UC-ARM-013 | Toda **escrita** no banco de um tópico passa por um **escritor único** (uma fila de comandos por tópico, executada uma de cada vez); leituras longas usam conexões próprias em modo WAL e não bloqueiam o escritor. | 02 §3.2, 18 §17.4 | U, I |
 | UC-ARM-014 | Ordem de gravação: na escrita, primeiro o arquivo do corpo, depois a linha; no ack, primeiro a linha, depois o arquivo. Uma queda deixa no máximo arquivo sem linha ou linha sem arquivo. | 02 §3.2 | I |
 | UC-ARM-015 | O nó que reinicia depois de uma queda volta como novo e refaz a partir do cluster. | 02 §3.2, 04 §6.6 | C |
 | UC-ARM-016 | O banco responde: a mensagem mais antiga do tópico (`MIN(id)`, somada à mais antiga em memória, mantida ordenada por ID), os próximos a vencer (índice por `invisibleUntil`), as mensagens de um bloco (faixa pela posição no anel) e as contagens do tópico. | 02 §3.2 | I |
 | UC-ARM-017 | `storage.db.synchronous` (padrão `NORMAL` com WAL) é aplicado ao abrir o banco. | 02 §3.2, 10 | I |
-| UC-ARM-018 | O banco do nó, `${storage.dir}/_node.db`, é estritamente local, com as tabelas `topicos` (as definições de tópico) e `perdas` (`topico`, `id`, `bloco`, `detectado_em`), escrita por uma thread única. | 02 §3.2 | I |
+| UC-ARM-018 | O banco do nó, `${storage.dir}/_node.db`, é estritamente local, com as tabelas `topics` (as definições de tópico) e `losses` (`topic`, `id`, `block`, `detected_at`), escrita por uma thread única. | 02 §3.2 | I |
 
 #### Integridade e falha
 

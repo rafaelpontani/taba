@@ -45,12 +45,18 @@ async fn main() -> ExitCode {
 
     wait_for_stop().await;
     tracing::info!("sinal de parada recebido; encerrando");
-    running.shutdown().await;
-    ExitCode::SUCCESS
+    // Um segundo sinal durante o drain encerra na hora, sem terminar (doc 04, seção 6.10).
+    tokio::select! {
+        () = running.shutdown() => ExitCode::SUCCESS,
+        () = wait_for_stop() => {
+            tracing::warn!("segundo sinal durante o drain: encerrando na hora");
+            ExitCode::FAILURE
+        }
+    }
 }
 
-/// `SIGINT` (Ctrl+C) em qualquer plataforma e `SIGTERM` onde existe. O drain ao
-/// receber o sinal (`drain.on-stop`) entra com o modo drain.
+/// `SIGINT` (Ctrl+C) em qualquer plataforma e `SIGTERM` onde existe. O drain ao receber o
+/// sinal (`drain.on-stop`) está em `RunningNode::shutdown`.
 async fn wait_for_stop() {
     #[cfg(unix)]
     {

@@ -77,7 +77,7 @@ fn a_corrupt_row_is_an_error_naming_the_topic() {
     let (store, db) = store(tmp.path());
     store.save(&definition("bom")).unwrap();
     db.conn()
-        .execute("INSERT INTO topicos VALUES ('ruim', '{ não é json')", [])
+        .execute("INSERT INTO topics VALUES ('ruim', '{ não é json')", [])
         .unwrap();
 
     let err = store.load_all().unwrap_err();

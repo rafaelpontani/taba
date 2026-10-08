@@ -64,7 +64,7 @@ O modo é escolhido na partida, por `mode` (`TABA_MODE`): **`production`** (padr
 | Bootstrap e registro de nó (6.2, 6.5) | Não há. O nó sobe sozinho, e `cluster.entry-address` **não é exigido**. |
 | Canal entre nós, sinal de vida e reconexão (6.3, 12.8, 12.9) | Não existem. |
 | Votação de exclusão e quórum de votação (6.3) | Desabilitados; `cluster.vote.*` é ignorado. |
-| Freezing, retorno de nó, tabela `perdas`, concorrência de registro e desregistro, repasse durante a sincronização (6.6 a 6.9) | Não se aplicam. |
+| Freezing, retorno de nó, tabela `losses`, concorrência de registro e desregistro, repasse durante a sincronização (6.6 a 6.9) | Não se aplicam. |
 | Anel de hash (7.1) | Um nó só, primário de todos os blocos. Não há rebalanceamento. |
 | Replicação e quórum de escrita (7.2) | `replication.factor` e `write.quorum` valem **1**; valores configurados são ignorados, com aviso no log. O registro e o commit acontecem só no próprio nó. |
 | Sincronização de blocos e banco de eventos (7.3) | Não há. |
@@ -97,7 +97,7 @@ Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bo
  
 ### 6.6 Retorno de um nó excluído
 
-> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não se aplica; a tabela `perdas` não é usada. Um reinício retoma do disco (o drain serve de save; seção 6.10), e o que estava só em memória e não foi salvo se perde.
+> **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não se aplica; a tabela `losses` não é usada. Um reinício retoma do disco (o drain serve de save; seção 6.10), e o que estava só em memória e não foi salvo se perde.
 
 ![Sequência do retorno de um nó excluído](diagramas/img/retorno-no-excluido.svg)
 
@@ -105,14 +105,14 @@ Se o registro de um novo nó **falhar antes do commit** (teste de conexão do bo
  
 Quando um nó que foi **desregistrado por falha do canal** (seção 6.3) volta a ficar disponível, ele não simplesmente retoma seu lugar antigo no anel — os blocos que ele atendia já podem ter sido reatribuídos a outros nós. O procedimento recupera primeiro o que o nó tem e pode ajudar, e só depois refaz a entrada:
 
-1. **Lista de perdas.** O nó consulta **todos os nós que consegue alcançar** (`GET /cluster/message-loss`, um stream NDJSON) e une as respostas. Cada nó responde com a sua tabela `perdas` (abaixo): os pares (tópico, ID) que alguma sincronização declarou perdidos (seção 7.3). Essas rotas aceitam chamadas de um nó que **ainda não é membro**, já que ele foi excluído.
-2. **Confronto com o que o nó tem.** Para cada par, o nó procura o ID no que guarda localmente: no disco (`${topico}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o que está em disco conta.
+1. **Lista de perdas.** O nó consulta **todos os nós que consegue alcançar** (`GET /cluster/message-loss`, um stream NDJSON) e une as respostas. Cada nó responde com a sua tabela `losses` (abaixo): os pares (tópico, ID) que alguma sincronização declarou perdidos (seção 7.3). Essas rotas aceitam chamadas de um nó que **ainda não é membro**, já que ele foi excluído.
+2. **Confronto com o que o nó tem.** Para cada par, o nó procura o ID no que guarda localmente: no disco (`${topic}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o que está em disco conta.
 3. **Envio.** Para cada mensagem encontrada, o nó a envia ao nó responsável pelo bloco do ID, pela rota de mensagens recuperadas (`POST /cluster/messages/recover`, um stream NDJSON). Quem recebe grava **direto nos nós responsáveis**, idempotente pelo ID e sem as duas fases (a mensagem não existe nos donos, ninguém concorre por ela), e confirma a linha quando `write.quorum` nós gravaram. Vai o corpo e o `deliveryCount`; a invisibilidade é zerada, e a mensagem volta a ficar pronta para entrega.
-4. **Baixa do registro.** O nó que aceita a mensagem apaga o par da sua tabela `perdas` e avisa os demais para apagarem o deles (melhor esforço), para que um segundo nó que volte com a mesma mensagem não a reenvie depois de ela já ter sido entregue e confirmada.
+4. **Baixa do registro.** O nó que aceita a mensagem apaga o par da sua tabela `losses` e avisa os demais para apagarem o deles (melhor esforço), para que um segundo nó que volte com a mesma mensagem não a reenvie depois de ela já ter sido entregue e confirmada.
 5. **Estado local em quarentena.** Enquanto a recuperação não termina, o nó **não apaga** os dados antigos. Se algum nó não respondeu na consulta do passo 1, o nó tenta de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout`; só então segue.
 6. **Limpeza e novo registro.** Concluída a recuperação (ou esgotado o prazo), o nó **limpa seu estado local** e **inicia um novo registro no cluster do zero** — o bootstrap completo da seção 6.2, como se fosse um nó novo, com uma nova posição no anel. O freezing (seção 6.7) só atrasa este passo; a recuperação dos passos 1 a 5 não depende dele.
 
-**Tabela de perdas.** Cada nó guarda no banco do nó (`${storage.dir}/_node.db`, SQLite, seção 3.2 de [02-arquitetura.md](02-arquitetura.md)) a tabela `perdas` (`topico`, `id`, `bloco`, `detectado_em`), com chave (`topico`, `id`). O nó que detecta a perda na sincronização grava o registro e o envia também aos nós responsáveis pelo bloco (idempotente pela chave), para a informação sobreviver à queda do detector. Os registros expiram depois de `cluster.message-loss.ttl`.
+**Tabela de perdas.** Cada nó guarda no banco do nó (`${storage.dir}/_node.db`, SQLite, seção 3.2 de [02-arquitetura.md](02-arquitetura.md)) a tabela `losses` (`topic`, `id`, `block`, `detected_at`), com chave (`topic`, `id`). O nó que detecta a perda na sincronização grava o registro e o envia também aos nós responsáveis pelo bloco (idempotente pela chave), para a informação sobreviver à queda do detector. Os registros expiram depois de `cluster.message-loss.ttl`.
 
 ### 6.7 Período de freezing (anti-flapping)
 
@@ -173,7 +173,7 @@ O **modo drain** prepara o nó para **sair do cluster** com o mínimo de estrago
 
 1. **Sai da rotação.** `/health/ready` passa a responder `503` na hora (seção "Health checks" de [11-observabilidade.md](11-observabilidade.md)); `/health/live` segue `200`. O nó **continua recebendo chamadas de cliente** (o balanceador demora a perceber, e há quem fale direto com ele), mas **não atende nenhuma**: repassa todas ao **nó mais livre**, como no repasse da seção 6.9, até o processo encerrar. Os long pollings que já estavam em andamento são respondidos vazios, para o cliente reconectar; os novos são repassados.
 2. **Avisa os outros nós** pelo canal, com um sinal de estado "em drain" (idempotente, como os demais, seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Os pares **deixam de pedir `take` a ele** e de escolhê-lo como origem de carga de sincronização. Um `take` que ainda chegue é respondido vazio.
-3. **Passa a gravar tudo em disco.** O limite de memória efetivo cai a **zero**: toda mensagem nova, publicada ou recebida como réplica, vai direto para disco (`${topico}/${id}.body` mais a linha no banco do tópico, nessa ordem, seção 3.2 de [02-arquitetura.md](02-arquitetura.md)). Os pares **continuam** mandando registros e commits a ele até a saída, como réplica.
+3. **Passa a gravar tudo em disco.** O limite de memória efetivo cai a **zero**: toda mensagem nova, publicada ou recebida como réplica, vai direto para disco (`${topic}/${id}.body` mais a linha no banco do tópico, nessa ordem, seção 3.2 de [02-arquitetura.md](02-arquitetura.md)). Os pares **continuam** mandando registros e commits a ele até a saída, como réplica.
 4. **Esvazia a memória.** Uma thread move para o disco as mensagens que estão em memória, **com os metadados** (`deliveryCount`, `invisibleUntil` e `receiptToken`), pelas threads de escrita de cada tópico, em paralelo entre tópicos. A ordem segue o critério do overflow: primeiro os tópicos de menor taxa de leitura. A lista de prontos e a de invisíveis são só índices em memória, derivados dos metadados, e são refeitas quando o nó assumir blocos (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)).
 5. **Sai do cluster (desregistro voluntário).** Com a memória vazia, o nó coordena o **desregistro de si mesmo** pelo mesmo protocolo de duas fases do desregistro por votação (passo 5 da seção 6.3): fase 1 a todos os nós (`POST /cluster/nodes/unregister`), commit por `POST /cluster/nodes/commit`, com a mesma regra de falha (antes do commit, rollback; depois, o coordenador insiste dentro de `write.commit.timeout`). **Não há votação nem quórum de votação**: quem pede é o próprio nó, que está saindo por vontade. O commit tira o nó da tabela de membros, recalcula o anel e **rebalanceia** os blocos dele entre os que ficam, como no desregistro por falha (seção 6.3). Os novos primários assumem as filas voláteis que ele gerenciava (seção 14.6 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)).
 6. **Fecha o canal** com os pares, já com o nó fora da tabela de membros: ninguém tenta reconectar nem abre votação. O estado vira `drained`. Se foi por sinal, o processo **espera as chamadas repassadas em andamento terminarem** (dentro de `drain.timeout`) e encerra; se foi pela API, o nó segue repassando as chamadas que receber.
@@ -194,9 +194,9 @@ Sem outro nó para recuperar dados e sem cluster para limpar, o drain do modo de
 
 **O que o save grava** (em `storage.dir`):
 
-- **Mensagens:** corpo (`${topico}/${id}.body`) e metadados (`deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`) no banco do tópico, como no drain comum (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)).
-- **Definições de tópico:** já ficam sempre em disco (tabela `topicos` do `_node.db`, seção 3.3). O save confere que estão em dia.
-- **Estado do nó:** na tabela `estado` do `_node.db`, o instante do último `GET` de cada fila volátil (para o relógio de ociosidade, seção 14.3 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) e uma marca `save_concluido` com o instante do fim do drain.
+- **Mensagens:** corpo (`${topic}/${id}.body`) e metadados (`deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`) no banco do tópico, como no drain comum (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)).
+- **Definições de tópico:** já ficam sempre em disco (tabela `topics` do `_node.db`, seção 3.3). O save confere que estão em dia.
+- **Estado do nó:** na tabela `state` do `_node.db`, o instante do último `GET` de cada fila volátil (para o relógio de ociosidade, seção 14.3 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)) e uma marca `save_completed` com o instante do fim do drain.
 - **Não grava o que se refaz:** a lista de prontos, a de invisíveis, a contagem por grupo e as taxas são derivadas e reconstruídas na partida (seção 13.7 de [14-invisibilidade.md](14-invisibilidade.md)).
 
 **Na partida**, em `mode=development` e com `development.resume-on-start` ligado (padrão), o nó **retoma o que encontra em `storage.dir`**, em vez de começar do zero:
@@ -204,7 +204,7 @@ Sem outro nó para recuperar dados e sem cluster para limpar, o drain do modo de
 1. Carrega as definições de tópico, mantendo o `id` e a data de criação de cada uma.
 2. Lê o banco de cada tópico e reconstrói as listas e as contagens a partir dos metadados.
 3. Refaz o relógio de ociosidade das filas voláteis: o instante do último `GET` salvo vale como se fosse **o instante da partida**, para a fila não expirar por causa do tempo em que o nó esteve parado. Sem o dado, vale a data de criação mais o `idleTimeout`, também contada da partida.
-4. Fica pronto (`/health/ready`) só ao terminar. A marca `save_concluido` é **apagada** nesse momento, para que uma queda depois da partida não passe por save limpo.
+4. Fica pronto (`/health/ready`) só ao terminar. A marca `save_completed` é **apagada** nesse momento, para que uma queda depois da partida não passe por save limpo.
 
 **Detalhes da retomada:**
 

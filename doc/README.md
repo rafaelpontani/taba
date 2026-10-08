@@ -41,6 +41,7 @@ Taba é uma mensageria altamente escalável, rápida e simples, inspirada no Ama
 | [20b-casos-de-uso-no-dados.md](20b-casos-de-uso-no-dados.md) | 19.B | Casos de uso do nó e do caminho da mensagem: escrita e quórum, anel de hash, definição de tópicos no cluster, entrega entre nós, canal, invisibilidade e armazenamento. |
 | [20c-casos-de-uso-no-cluster.md](20c-casos-de-uso-no-cluster.md) | 19.C | Casos de uso do nó e do cluster: entrada, falhas e votação, freezing, concorrência de membros, sincronização, streams, retorno de nó, repasse, drain, modo desenvolvimento, segurança, observabilidade, rotas do cluster e configuração. |
 | [21-historico-implementacao.md](21-historico-implementacao.md) | — | Histórico da implementação em `crates/`: o que foi feito em cada etapa, os desvios em relação à documentação e o que ainda falta, para conferir o código contra os documentos. |
+| [22-problemas-em-aberto.md](22-problemas-em-aberto.md) | — | Problemas de lógica e de falta de definição descobertos na implementação e ainda sem solução (`PRB-NNN`), com a dúvida de [08b](08b-pendencias.md) que os resolve. |
 
 ## Diagramas
 

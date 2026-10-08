@@ -1,7 +1,7 @@
 //! O banco do nó: `${storage.dir}/_node.db`, SQLite estritamente local (doc 02, seção 3.2).
 //!
-//! Hoje guarda a tabela `topicos` (as definições); `perdas` e `estado` entram com o
-//! cluster e o drain. Uma única conexão atrás de um `Mutex` é o escritor único do
+//! Guarda a tabela `topics` (as definições) e a `state` (chave e valor do estado do nó,
+//! como a marca do save); `losses` entra com o cluster. Uma única conexão atrás de um `Mutex` é o escritor único do
 //! banco: quem grava espera a vez, e o SQLite nunca vê duas escritas ao mesmo tempo.
 //! Os métodos são síncronos: o `engine` os chama fora do executor assíncrono.
 
@@ -17,12 +17,16 @@ pub const NODE_DB_FILE: &str = "_node.db";
 
 /// Versão do esquema, guardada em `PRAGMA user_version`. Um banco de versão maior é de um
 /// nó mais novo: não se mexe nele.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA: &str = "
-    CREATE TABLE IF NOT EXISTS topicos (
-        nome      TEXT PRIMARY KEY NOT NULL,
-        definicao TEXT NOT NULL
+    CREATE TABLE IF NOT EXISTS topics (
+        name      TEXT PRIMARY KEY NOT NULL,
+        definition TEXT NOT NULL
+    ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS state (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
     ) WITHOUT ROWID;
 ";
 

@@ -41,7 +41,7 @@ Os metadados são `deliveryCount` (incremental), `invisibleUntil` (data e hora a
 
 - **Fila FIFO:** a mensagem ganha também `deduplicationId` e, depois do ack, `deleteAt` (exclusão lógica, sem corpo nem metadados de entrega); detalhes em [17-topicos-fifo.md](17-topicos-fifo.md), seção 16.7.
 - **Mensagem em memória:** os metadados ficam em memória junto dela.
-- **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): o corpo fica em `${topico}/${id}.body` e os metadados ficam no **banco SQLite local do tópico** naquele nó, na tabela `mensagens` (`id`, posição no anel, `grupo`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`). Não há mais arquivo de metadados.
+- **Mensagem em disco** (overflow, [02-arquitetura.md](02-arquitetura.md), seção 3.2): o corpo fica em `${topic}/${id}.body` e os metadados ficam no **banco SQLite local do tópico** naquele nó, na tabela `messages` (`id`, posição no anel, `group_id`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`). Não há mais arquivo de metadados.
 - A linha é atualizada no **commit** de cada entrega ou alteração e removida junto com a mensagem no ack. Alterar a invisibilidade de uma mensagem em disco atualiza só a linha, sem tocar no corpo.
 - `invisibleUntil` é sempre **data absoluta**, calculada pelo **dono** (`agora + visibilityTimeout`, pelo relógio dele): as réplicas guardam o valor pronto e nunca recalculam a partir de duração.
 
@@ -88,7 +88,7 @@ Enquanto todas as mensagens invisíveis do dono cabem na lista, ela é a única 
 
 **Por que não basta anotar o tempo.** Se a mensagem que não coube na lista ficasse só com o `invisibleUntil` nos metadados, ninguém saberia que ela precisa voltar: o dono teria de **varrer os metadados de todas as mensagens** para descobrir quais venceram. Por isso o excedente precisa de uma estrutura própria, ordenada por tempo.
 
-**Tabela de expiração.** No banco SQLite local do tópico (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)), a tabela `expiracao` guarda os pares (`id`, `invisibleUntil`) que não couberam na lista em memória, com **índice por `invisibleUntil`**. Ler o que vence primeiro é uma consulta ordenada com limite, sem janelas de tempo nem arquivos de apoio.
+**Tabela de expiração.** No banco SQLite local do tópico (seção 3.2 de [02-arquitetura.md](02-arquitetura.md)), a tabela `expiry` guarda os pares (`id`, `invisibleUntil`) que não couberam na lista em memória, com **índice por `invisibleUntil`**. Ler o que vence primeiro é uma consulta ordenada com limite, sem janelas de tempo nem arquivos de apoio.
 
 **Regra de inclusão** (quando o dono insere um par (ID, prazo) e a lista está cheia):
 
