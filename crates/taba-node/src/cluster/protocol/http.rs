@@ -9,10 +9,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::{
-    AckRegisterRequest, ForwardRequest, ForwardResponse, JoinRequest, MessageRegisterRequest,
-    NodeRegisterRequest, NodeUnregisterRequest, OperationRef, Request, Response, SignalFrame, Step,
-    StreamPage, StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest, TopicRegisterRequest,
-    VisibilityRegisterRequest,
+    AckRegisterRequest, ChannelBatch, Confirm, ForwardRequest, ForwardResponse, JoinRequest,
+    MessageRecord, MessageRegisterRequest, NodeRegisterRequest, NodeUnregisterRequest,
+    OperationRef, Request, Response, Step, StreamPage, StreamQuery, TakeRequest, TakeResponse,
+    TokenRegisterRequest, TopicRegisterRequest, VisibilityRegisterRequest, VoteRequest,
+    VoteResponse,
 };
 use crate::cluster::members::MemberTable;
 use crate::core::error::{ErrorCode, ErrorDetail, TabaError};
@@ -213,7 +214,18 @@ impl Request {
                 format!("/cluster/topics/{topic}/messages/take"),
                 request,
             ),
-            Request::Signal(frame) => json_call("POST", "/cluster/signals".to_owned(), frame),
+            Request::Channel(batch) => json_call("POST", "/cluster/channel".to_owned(), batch),
+            Request::Vote(vote) => json_call("POST", "/cluster/vote-remove".to_owned(), vote),
+            Request::BlockIds { block, query } => {
+                get_call(stream_path(&format!("/cluster/blocks/{block}/ids"), query))
+            }
+            Request::BlockMessages { block, query } => get_call(stream_path(
+                &format!("/cluster/blocks/{block}/messages"),
+                query,
+            )),
+            Request::BlockMessage { block, id } => {
+                get_call(format!("/cluster/blocks/{block}/messages/{id}"))
+            }
             Request::Forward(forward) => {
                 let mut headers = forward.headers.clone();
                 if let Some(ip) = &forward.client_ip {
@@ -337,8 +349,25 @@ impl Request {
                     step: parse_step::<AckRegisterRequest>(phase, headers, body)?,
                 })
             }
-            ["cluster", "signals"] if post() => {
-                Ok(Request::Signal(parse_body::<SignalFrame>(headers, body)?))
+            ["cluster", "channel"] if post() => {
+                Ok(Request::Channel(parse_body::<ChannelBatch>(headers, body)?))
+            }
+            ["cluster", "vote-remove"] if post() => {
+                Ok(Request::Vote(parse_body::<VoteRequest>(headers, body)?))
+            }
+            ["cluster", "blocks", block, "ids"] if is("GET") => Ok(Request::BlockIds {
+                block: (*block).to_owned(),
+                query: parse_stream_query(query)?,
+            }),
+            ["cluster", "blocks", block, "messages"] if is("GET") => Ok(Request::BlockMessages {
+                block: (*block).to_owned(),
+                query: parse_stream_query(query)?,
+            }),
+            ["cluster", "blocks", block, "messages", id] if is("GET") => {
+                Ok(Request::BlockMessage {
+                    block: (*block).to_owned(),
+                    id: (*id).to_owned(),
+                })
             }
             _ => Err(not_found()),
         }
@@ -373,7 +402,10 @@ impl Request {
                     .map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Members(table))
             }
-            Request::ListTopics(_) | Request::ListTokens(_) => {
+            Request::ListTopics(_)
+            | Request::ListTokens(_)
+            | Request::BlockIds { .. }
+            | Request::BlockMessages { .. } => {
                 let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
             }
@@ -382,7 +414,21 @@ impl Request {
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Taken(response))
             }
-            Request::Signal(_) => Ok(Response::Empty),
+            Request::BlockMessage { .. } => {
+                let record: MessageRecord =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Record(record))
+            }
+            Request::Channel(_) => {
+                let confirm: Confirm =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Confirm(confirm))
+            }
+            Request::Vote(_) => {
+                let vote: VoteResponse =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Vote(vote))
+            }
             Request::Forward(_) => unreachable!("tratado acima"),
             _ => {
                 let ack =
@@ -462,11 +508,9 @@ impl Response {
             Response::Members(table) => json(&table),
             Response::Ack(ack) => json(&ack),
             Response::Taken(taken) => json(&taken),
-            Response::Empty => HttpReply {
-                status: 200,
-                headers: json_headers(),
-                body: b"{}".to_vec(),
-            },
+            Response::Record(record) => json(&record),
+            Response::Confirm(confirm) => json(&confirm),
+            Response::Vote(vote) => json(&vote),
             Response::Stream(page) => HttpReply {
                 status: 200,
                 headers: vec![("content-type".to_owned(), NDJSON.to_owned())],

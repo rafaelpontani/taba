@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use common::cluster::{TestCluster, eventually};
+use common::cluster::{NO_VOTE, TestCluster, eventually};
 use common::{TestNode, error_code};
 use taba_node::core::clock::Clock;
 use taba_node::core::ring::message_position;
@@ -355,7 +355,7 @@ async fn an_ack_on_any_node_removes_the_message_everywhere_and_a_stale_token_is_
 /// UC: UC-MSG-016, UC-ESC-010, UC-ESC-013, UC-ESC-014, UC-ESC-016, UC-ESC-019, UC-ESC-020, UC-ESC-022, UC-ESC-024
 #[tokio::test]
 async fn with_a_node_down_only_the_publications_it_owns_fail_and_the_replica_catches_up() {
-    let cluster = TestCluster::start(3).await;
+    let cluster = TestCluster::start_with(3, NO_VOTE).await;
     create_queue(cluster.node(1), "pedidos").await;
     // O nó 3 cai da rede (isolado): rf 3 e quórum 2 aguentam um nó fora, mas só se não for o
     // primário da mensagem.
@@ -460,7 +460,7 @@ async fn a_lost_call_is_retried_before_the_quorum_gives_up() {
 /// UC: UC-ACK-008, UC-ACK-009, UC-INV-012
 #[tokio::test]
 async fn an_ack_that_cannot_reach_the_primary_fails_and_the_message_stays() {
-    let cluster = TestCluster::start(3).await;
+    let cluster = TestCluster::start_with(3, NO_VOTE).await;
     create_queue(cluster.node(1), "pedidos").await;
     let id = publish(cluster.node(1), "pedidos", json!({"x": 1})).await;
     let mut got = Vec::new();
@@ -670,7 +670,7 @@ async fn a_long_poll_on_one_node_is_woken_by_a_message_that_arrives_at_another()
     };
     // O interesse do nó 2 chega aos outros por sinal, uma vez só.
     let calls = cluster.network.clone();
-    eventually("o sinal de ouvinte", move || calls.count("signal") >= 2).await;
+    eventually("o sinal de ouvinte", move || calls.count("channel") >= 2).await;
     let id = publish(cluster.node(1), "pedidos", json!({"x": 1})).await;
 
     let body = tokio::time::timeout(Duration::from_secs(5), waiter)
@@ -851,7 +851,7 @@ async fn the_answer_comes_only_after_the_quorum_committed_whichever_node_took_th
 /// UC: UC-ACK-010, UC-ESC-020, UC-ESC-021, UC-ESC-024
 #[tokio::test]
 async fn an_ack_decided_by_the_quorum_is_not_undone_by_a_replica_that_is_down() {
-    let cluster = TestCluster::start(3).await;
+    let cluster = TestCluster::start_with(3, NO_VOTE).await;
     create_queue(cluster.node(1), "pedidos").await;
     let id = publish(cluster.node(1), "pedidos", json!({"x": 1})).await;
     let owners = owners_of(&cluster, &id);
@@ -1043,7 +1043,7 @@ async fn a_lost_ready_signal_is_corrected_by_the_periodic_repeat() {
     for number in 1..=3 {
         cluster
             .network
-            .lose_kind(&host(number), "signal", 1_000_000);
+            .lose_kind(&host(number), "channel", 1_000_000);
     }
     let mut published = Vec::new();
     for n in 0..9 {
@@ -1051,7 +1051,7 @@ async fn a_lost_ready_signal_is_corrected_by_the_periodic_repeat() {
     }
     // O nó 2 só conhece as próprias; o resto aparece quando o estado é repetido.
     for number in 1..=3 {
-        cluster.network.lose_kind(&host(number), "signal", 0);
+        cluster.network.lose_kind(&host(number), "channel", 0);
     }
     let mut got: Vec<Value> = Vec::new();
     for _ in 0..200 {

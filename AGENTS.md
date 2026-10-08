@@ -41,7 +41,7 @@ cargo run -- init --out ./secrets             # certificado do cluster e token r
 
 1. Acrescente uma entrada na seção 1 ("Linha do tempo"), ao final: o que foi feito, onde está no código, os desvios e o que ficou de fora.
 2. Registre na seção 2 cada decisão que a implementação tomou e que o documento não dizia ou contraria, e corrija o `.md` técnico. Quando virar decisão firme, ela vai para [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md).
-3. Mova na seção 3 as áreas que mudaram de `Falta` para `Parcial` ou `Feito`, e ajuste a seção 4 ("Próximas etapas").
+3. Mova na seção 3 as áreas que mudaram de `Falta` para `Parcial` ou `Feito`, e troque a situação da etapa em "Próximas etapas" (no início do documento, antes da seção 1).
 4. Atualize a linha "Último registro" e o placar de casos de uso com teste (`cargo test --test uc_coverage -- --nocapture`).
 
 Nunca reescreva as entradas antigas para parecerem melhores: se algo mudou, acrescente uma entrada nova que diz o que mudou.

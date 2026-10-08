@@ -16,6 +16,7 @@ use crate::cluster::members::{Member, MemberState};
 use crate::cluster::replication::{self, Attached};
 use crate::cluster::service::{BootstrapError, ClusterHandler, ClusterRules, ClusterService};
 use crate::cluster::state::NodeShared;
+use crate::cluster::sync::SyncRules;
 use crate::cluster::transport::{Handler, PeerAddr, Transport};
 use crate::config::Config;
 use crate::core::clock::{Clock, SystemClock};
@@ -31,6 +32,7 @@ use crate::http::ratelimit::RateLimiter;
 use crate::http::{self, AppState};
 use crate::storage;
 use crate::storage::db::NodeDb;
+use crate::storage::losses::LossStore;
 use crate::storage::messages::MessageStore;
 use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::SqliteTokenStore;
@@ -213,6 +215,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         NodeDb::open(&config.storage.dir, config.storage.db_synchronous).map_err(storage_error)?,
     );
     let saves = NodeStateStore::new(node_db.clone());
+    let losses = LossStore::new(node_db.clone());
     let topics = Topics::open(
         TopicRules::from_config(&config),
         Arc::new(SqliteTopicStore::new(node_db.clone())),
@@ -224,7 +227,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let topics = Arc::new(topics);
     let tokens = Tokens::open(
         TokenRules::from_config(&config),
-        Arc::new(SqliteTokenStore::new(node_db)),
+        Arc::new(SqliteTokenStore::new(node_db.clone())),
         deps.clock.clone(),
         dev && config.resume_on_start,
     )
@@ -302,6 +305,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             &auth.tokens,
             deps.clock.clone(),
             telemetry.clone(),
+            losses,
+            SyncRules::from_config(&config),
         )
     });
     let state = AppState {
@@ -409,6 +414,11 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         let messages = replication.messages.clone();
         tasks.spawn(async move {
             messages.run_dead_letters(dead_letters).await;
+            Ok(())
+        });
+        let syncer = replication.syncer.clone();
+        tasks.spawn(async move {
+            syncer.run_cleanup().await;
             Ok(())
         });
     }

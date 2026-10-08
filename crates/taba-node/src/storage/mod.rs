@@ -4,8 +4,10 @@
 //! Os traits ficam aqui, na camada mais baixa de que o `engine` precisa.
 
 pub mod db;
+pub mod losses;
 pub mod messages;
 pub mod state;
+pub mod synclog;
 pub mod tokens;
 pub mod topics;
 

@@ -360,6 +360,120 @@ pub static CLUSTER_FORWARDED: Def = def(
     "Chamadas de cliente repassadas a outro nó (drain), por resultado.",
 );
 
+// ---- Canal entre nós, votação e freezing (doc 04, seções 6.3 e 6.7; doc 13, seção 12.9) ----
+
+pub static CHANNEL_CONNECTIONS: Def = def(
+    "taba.cluster.channel.connections",
+    Kind::UpDownCounter,
+    "{connection}",
+    "Canais abertos com outros nós (esperado: nós do cluster − 1).",
+);
+pub static CHANNEL_STATE: Def = def(
+    "taba.cluster.channel.state",
+    Kind::Gauge,
+    "{flag}",
+    "1 se o canal com o peer está conectado, 0 se caído.",
+);
+pub static CHANNEL_RTT: Def = histogram(
+    "taba.cluster.channel.rtt",
+    "s",
+    "Latência da chamada do canal (sinal de vida e quadros), por peer.",
+    WAIT_SECONDS,
+);
+pub static CHANNEL_RECONNECTS: Def = def(
+    "taba.cluster.channel.reconnects",
+    Kind::Counter,
+    "{attempt}",
+    "Tentativas de reconexão do canal e resultado.",
+);
+pub static CHANNEL_QUEUE_OUT: Def = def(
+    "taba.cluster.channel.queue.out",
+    Kind::UpDownCounter,
+    "{signal}",
+    "Quadros na fila de saída para o peer.",
+);
+pub static CHANNEL_QUEUE_DROPPED: Def = def(
+    "taba.cluster.channel.queue.dropped",
+    Kind::Counter,
+    "{signal}",
+    "Quadros substituídos, descartados por idade ou por estouro da fila de saída.",
+);
+pub static CLUSTER_VOTE: Def = def(
+    "taba.cluster.vote",
+    Kind::Counter,
+    "{vote}",
+    "Votações de exclusão abertas ou votadas e o resultado.",
+);
+pub static CLUSTER_FREEZING: Def = def(
+    "taba.cluster.freezing",
+    Kind::Gauge,
+    "{node}",
+    "Nós atualmente em período de freezing.",
+);
+pub static CLUSTER_CONDITION: Def = def(
+    "taba.cluster.condition",
+    Kind::Gauge,
+    "{flag}",
+    "1 para cada condição vigente do cluster.",
+);
+
+// ---- Sincronização de blocos (doc 05, seção 7.3) ----
+
+pub static SYNC_BLOCKS_ACTIVE: Def = def(
+    "taba.sync.blocks.active",
+    Kind::UpDownCounter,
+    "{block}",
+    "Blocos em sincronização agora (entrega suspensa nesses blocos).",
+);
+pub static SYNC_DURATION: Def = histogram(
+    "taba.sync.duration",
+    "s",
+    "Tempo para tornar um bloco íntegro.",
+    WAIT_SECONDS,
+);
+pub static SYNC_IDS_LISTED: Def = def(
+    "taba.sync.ids.listed",
+    Kind::Counter,
+    "{id}",
+    "IDs consolidados (união) nas listas de origem.",
+);
+pub static SYNC_MESSAGES_PULLED: Def = def(
+    "taba.sync.messages.pulled",
+    Kind::Counter,
+    "{message}",
+    "Mensagens obtidas por nó de origem.",
+);
+pub static SYNC_BYTES: Def = def(
+    "taba.sync.bytes",
+    Kind::Counter,
+    "By",
+    "Volume de corpo transferido na sincronização.",
+);
+pub static SYNC_LOG_EVENTS: Def = def(
+    "taba.sync.log.events",
+    Kind::UpDownCounter,
+    "{event}",
+    "Eventos no banco de eventos (sync.db) ainda por processar.",
+);
+pub static SYNC_LOG_BYTES: Def = def(
+    "taba.sync.log.bytes",
+    Kind::Gauge,
+    "By",
+    "Tamanho do banco de eventos em disco.",
+);
+pub static SYNC_PHASE: Def = def(
+    "taba.sync.phase",
+    Kind::Gauge,
+    "{flag}",
+    "1 na fase atual da sincronização do nó.",
+);
+pub static SYNC_FAILURES: Def = def(
+    "taba.sync.failures",
+    Kind::Counter,
+    "{failure}",
+    "Falhas de sincronização.",
+);
+
 // ---- Métricas de tópico (só nos modos by-tags e per-topic) ----
 
 pub static TOPIC_PUBLISHED: Def = def(

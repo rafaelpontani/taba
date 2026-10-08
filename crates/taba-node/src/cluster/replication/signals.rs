@@ -3,18 +3,21 @@
 //! manda sinal nas **mudanças** de estado; com a tabela, a decisão de a quem pedir um `take` ou
 //! avisar é local.
 //!
-//! Enquanto o canal WebSocket não existe, os sinais vão como chamadas comuns do `Transport`, sem
-//! `seq`, confirmação nem fila de saída (`protocol::Signal`): um sinal perdido custa só uma dica
-//! velha, que o `take` confere.
+//! Os sinais viajam pelo canal entre nós (`cluster::channel`): fila de saída com `seq`,
+//! confirmação e reenvio, mais o sinal de vida, que repete os tópicos com mensagens prontas e o
+//! estado do nó (o que corrige um sinal que se perdeu).
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tokio::sync::mpsc;
 
-use crate::cluster::members::Member;
-use crate::cluster::protocol::{Request, Signal, SignalFrame};
+use crate::cluster::channel::Channels;
+use crate::cluster::members::MemberState;
+use crate::cluster::protocol::{Keepalive, ReadyCount, Signal, SignalFrame, VoteReason};
 use crate::cluster::service::ClusterService;
+use crate::cluster::state::{DrainState, NodeState};
+use crate::core::time;
 use crate::engine::messages::Messages;
 use crate::telemetry::metrics::CLUSTER_NOTIFICATIONS;
 
@@ -32,13 +35,12 @@ struct Tables {
     hints: HashMap<String, String>,
     /// O último nó avisado de cada tópico, para revezar entre os que têm ouvinte.
     last_notified: HashMap<String, String>,
-    /// Os membros que este nó já conhecia, para mandar o instantâneo só aos novos.
-    known: HashSet<String>,
 }
 
 pub struct Signals {
     service: Arc<ClusterService>,
     messages: Arc<Messages>,
+    channels: OnceLock<Arc<Channels>>,
     tables: Mutex<Tables>,
     /// O motor avisa aqui (sem bloquear) quando o tópico passa a ter ou deixa de ter prontas.
     ready_tx: mpsc::UnboundedSender<(String, bool)>,
@@ -63,10 +65,20 @@ impl Signals {
         Arc::new(Self {
             service,
             messages,
+            channels: OnceLock::new(),
             tables: Mutex::new(Tables::default()),
             ready_tx,
             ready_rx: Mutex::new(Some(ready_rx)),
         })
+    }
+
+    /// Liga os sinais ao canal que os leva.
+    pub fn set_channels(&self, channels: Arc<Channels>) {
+        let _ = self.channels.set(channels);
+    }
+
+    pub fn channels(&self) -> Option<&Arc<Channels>> {
+        self.channels.get()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Tables> {
@@ -89,13 +101,9 @@ impl Signals {
             return;
         };
         let cancel = self.service.cancel_token().clone();
-        // Sem o canal, o estado é repetido de tempos em tempos: um sinal perdido se corrige sozinho.
-        let mut ticker = tokio::time::interval(self.service.rules().keepalive_interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
-                _ = ticker.tick() => self.repeat_state(),
                 item = rx.recv() => {
                     let Some((topic, has_ready)) = item else { return };
                     self.local_ready_changed(&topic, has_ready);
@@ -104,57 +112,115 @@ impl Signals {
         }
     }
 
-    /// Repete a todos os outros o que este nó tem: os tópicos com mensagens prontas e os com
-    /// ouvintes (o que o sinal de vida do canal carrega, doc 13, seção 12.8).
-    fn repeat_state(&self) {
-        let listeners: Vec<String> = self.lock().local_listeners.keys().cloned().collect();
+    fn me(&self) -> String {
+        self.service.node_id()
+    }
+
+    /// Manda o sinal a todos os outros membros pela fila do canal.
+    fn broadcast(&self, signal: Signal) {
+        if let Some(channels) = self.channels() {
+            channels.broadcast(signal);
+        }
+    }
+
+    // ---- O sinal de vida e o instantâneo ----
+
+    /// O estado do nó como os pares o veem.
+    fn state_name(&self) -> &'static str {
+        match (self.service.node_state(), self.service.drain_state()) {
+            (_, DrainState::Draining | DrainState::Drained) => "draining",
+            (NodeState::Active, _) => "active",
+            (NodeState::Failed, _) => "failed",
+            (NodeState::Syncing, _) => "syncing",
+            (NodeState::Returning, _) => "returning",
+            (NodeState::Joining, _) => "joining",
+        }
+    }
+
+    /// O sinal de vida (doc 06c): data, carga, versão da tabela, estado e os tópicos com mensagens
+    /// prontas (até `max_topics`).
+    pub fn keepalive(&self, max_topics: usize) -> Keepalive {
+        let load: usize = self.lock().local_listeners.values().sum();
+        let mut ready: Vec<ReadyCount> = self
+            .messages
+            .ready_counts()
+            .into_iter()
+            .map(|(topic, count)| ReadyCount { topic, count })
+            .collect();
+        ready.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.topic.cmp(&b.topic)));
+        ready.truncate(max_topics);
+        Keepalive {
+            at: time::format_ms(self.service.clock().now_millis()),
+            load: load as u64,
+            version: self.service.membership().version().unwrap_or(0),
+            state: self.state_name().to_owned(),
+            ready,
+        }
+    }
+
+    /// O instantâneo que se manda a um canal novo ou que voltou (doc 13, seção 12.9): o estado do
+    /// nó, um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro.
+    pub fn snapshot(&self) -> Vec<Signal> {
+        let mut out = vec![Signal::NodeState {
+            state: self.state_name().to_owned(),
+        }];
         for topic in self.messages.ready_topics() {
-            self.broadcast(Signal::Ready {
+            out.push(Signal::Ready {
                 topic,
                 has_ready: true,
             });
         }
+        let listeners: Vec<String> = self.lock().local_listeners.keys().cloned().collect();
         for topic in listeners {
-            self.broadcast(Signal::Listeners {
+            out.push(Signal::Listeners {
                 topic,
                 has_listeners: true,
             });
         }
+        out
     }
 
-    fn me(&self) -> String {
-        self.service.node_id().to_owned()
-    }
-
-    fn others(&self) -> Vec<Member> {
-        self.service
-            .membership()
-            .table()
-            .map(|t| {
-                t.members
-                    .into_iter()
-                    .filter(|m| !self.service.is_self(m))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// Manda o sinal a todos os outros membros, sem esperar (melhor esforço).
-    fn broadcast(&self, signal: Signal) {
-        let frame = SignalFrame {
-            from: self.me(),
-            signal,
-        };
-        for member in self.others() {
-            self.send_to(member, frame.clone());
+    /// Aplica o sinal de vida de um par: os tópicos com prontas dele (a lista é o estado completo,
+    /// então o que não está nela deixa de valer) e o estado do nó.
+    pub fn apply_keepalive(&self, from: &str, keepalive: &Keepalive) {
+        {
+            let mut tables = self.lock();
+            let listed: HashSet<&str> = keepalive.ready.iter().map(|r| r.topic.as_str()).collect();
+            for (topic, nodes) in &mut tables.ready {
+                if !listed.contains(topic.as_str()) {
+                    nodes.remove(from);
+                }
+            }
+            for ready in &keepalive.ready {
+                tables
+                    .ready
+                    .entry(ready.topic.clone())
+                    .or_default()
+                    .insert(from.to_owned());
+            }
         }
+        self.apply_state(from, &keepalive.state);
     }
 
-    fn send_to(&self, member: Member, frame: SignalFrame) {
-        let service = self.service.clone();
-        tokio::spawn(async move {
-            let _ = service.call_member(&member, Request::Signal(frame)).await;
-        });
+    fn apply_state(&self, from: &str, state: &str) {
+        match state {
+            "active" => {
+                // O nó que sincronizava ficou pronto: a mudança de membros que esperava pode seguir.
+                self.service
+                    .membership()
+                    .set_state(from, MemberState::Active);
+                self.lock().draining.remove(from);
+            }
+            "draining" => {
+                self.lock().draining.insert(from.to_owned());
+            }
+            "failed" => {
+                if let Some(channels) = self.channels() {
+                    channels.report_failed(from, VoteReason::NodeFailed);
+                }
+            }
+            _ => {}
+        }
     }
 
     // ---- O que este nó diz ----
@@ -184,7 +250,7 @@ impl Signals {
                 .unwrap_or_default();
             nodes.sort();
             nodes
-                .retain(|n| self.service.membership().is_member(n) && !tables.draining.contains(n));
+                .retain(|n| self.service.membership().is_active(n) && !tables.draining.contains(n));
             if nodes.is_empty() {
                 None
             } else {
@@ -199,29 +265,20 @@ impl Signals {
             }
         };
         let Some(node) = target else { return };
-        let Some(member) = self
-            .service
-            .membership()
-            .table()
-            .and_then(|t| t.member(&node).cloned())
-        else {
-            return;
-        };
         self.service.telemetry().registry.add(
             &CLUSTER_NOTIFICATIONS,
             &[("taba.direction", "out"), ("taba.outcome", "sent")],
             1.0,
         );
-        self.send_to(
-            member,
-            SignalFrame {
-                from: self.me(),
-                signal: Signal::Notify {
+        if let Some(channels) = self.channels() {
+            channels.send(
+                &node,
+                Signal::Notify {
                     topic: topic.to_owned(),
                     count: 1,
                 },
-            },
-        );
+            );
+        }
     }
 
     /// Um `GET` começou a esperar mensagem do tópico neste nó. Na primeira (0 → 1) avisa os outros
@@ -278,16 +335,39 @@ impl Signals {
         });
     }
 
-    /// Esquece o que se sabe dos outros nós (o nó volta como nó novo).
-    pub fn reset(&self) {
-        *self.lock() = Tables::default();
-    }
-
     /// Este nó entrou em drain: os pares deixam de pedir `take` a ele.
     pub fn announce_draining(&self) {
         self.broadcast(Signal::NodeState {
             state: "draining".to_owned(),
         });
+    }
+
+    /// Este nó entrou em falha: os outros ficam liberados para votar a exclusão dele.
+    pub fn announce_failed(&self) {
+        self.broadcast(Signal::NodeState {
+            state: "failed".to_owned(),
+        });
+    }
+
+    /// Avisa **todos** os pares do estado deste nó e espera os `confirm` (o nó que ficou pronto
+    /// precisa que os outros saibam, para voltarem a aceitar mudanças de membros e o escolherem como
+    /// destino).
+    pub async fn announce_state_reliably(&self, state: &str) {
+        if let Some(channels) = self.channels() {
+            channels
+                .broadcast_confirmed(
+                    Signal::NodeState {
+                        state: state.to_owned(),
+                    },
+                    self.service.rules().commit_timeout,
+                )
+                .await;
+        }
+    }
+
+    /// Esquece o que se sabe dos outros nós (o nó volta como nó novo).
+    pub fn reset(&self) {
+        *self.lock() = Tables::default();
     }
 
     // ---- O que os outros dizem ----
@@ -337,14 +417,7 @@ impl Signals {
                     self.messages.wake_listeners(&topic, wake);
                 }
             }
-            Signal::NodeState { state } => {
-                let mut tables = self.lock();
-                if state == "draining" {
-                    tables.draining.insert(from);
-                } else {
-                    tables.draining.remove(&from);
-                }
-            }
+            Signal::NodeState { state } => self.apply_state(&from, &state),
         }
     }
 
@@ -361,13 +434,13 @@ impl Signals {
                     .filter(|n| {
                         **n != me
                             && !tables.draining.contains(*n)
-                            && self.service.membership().is_member(n)
+                            && self.service.membership().is_active(n)
                     })
                     .cloned()
                     .collect()
             })
             .unwrap_or_default();
-        // Sem a quantidade de prontas de cada nó (que o sinal de vida traria), o sorteio é uniforme.
+        // O sorteio entre os nós é uniforme: o sinal de vida só diz que há prontas.
         for i in (1..peers.len()).rev() {
             let mut bytes = [0u8; 8];
             getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
@@ -400,23 +473,15 @@ impl Signals {
 
     // ---- Membros ----
 
-    /// A tabela de membros mudou: manda o instantâneo dos sinais aos membros que este nó ainda não
-    /// conhecia (o que o canal faria ao abrir, doc 13, seção 12.9) e esquece o que se sabia dos que
-    /// saíram.
+    /// A tabela de membros mudou: esquece o que se sabia dos que saíram e acerta os canais (o de
+    /// quem entrou abre com o instantâneo; o de quem saiu é descartado com as filas).
     pub fn membership_changed(&self) {
         let Some(table) = self.service.membership().table() else {
             return;
         };
         let current: HashSet<String> = table.members.iter().map(|m| m.node_id.clone()).collect();
-        let (newcomers, listener_topics) = {
+        {
             let mut tables = self.lock();
-            let newcomers: Vec<Member> = table
-                .members
-                .iter()
-                .filter(|m| !tables.known.contains(&m.node_id) && !self.service.is_self(m))
-                .cloned()
-                .collect();
-            tables.known = current.clone();
             for set in tables.ready.values_mut() {
                 set.retain(|n| current.contains(n));
             }
@@ -424,38 +489,9 @@ impl Signals {
                 set.retain(|n| current.contains(n));
             }
             tables.draining.retain(|n| current.contains(n));
-            let listener_topics: Vec<String> = tables.local_listeners.keys().cloned().collect();
-            (newcomers, listener_topics)
-        };
-        if newcomers.is_empty() {
-            return;
         }
-        let ready_topics = self.messages.ready_topics();
-        for member in newcomers {
-            for topic in &ready_topics {
-                self.send_to(
-                    member.clone(),
-                    SignalFrame {
-                        from: self.me(),
-                        signal: Signal::Ready {
-                            topic: topic.clone(),
-                            has_ready: true,
-                        },
-                    },
-                );
-            }
-            for topic in &listener_topics {
-                self.send_to(
-                    member.clone(),
-                    SignalFrame {
-                        from: self.me(),
-                        signal: Signal::Listeners {
-                            topic: topic.clone(),
-                            has_listeners: true,
-                        },
-                    },
-                );
-            }
+        if let Some(channels) = self.channels() {
+            channels.sync_members();
         }
     }
 }

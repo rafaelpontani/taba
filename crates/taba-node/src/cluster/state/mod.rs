@@ -1,7 +1,7 @@
 //! O estado do nó dentro do cluster (`taba.node.state`, `drainState`) e o que ele
 //! diz sobre a prontidão (`/health/ready`, doc 06b).
 
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 
 use crate::config::Mode;
@@ -53,6 +53,17 @@ pub struct NodeShared {
     pub mode: Mode,
     pub started_at: SystemTime,
     state: RwLock<(NodeState, DrainState)>,
+    /// Chamado quando o nó entra em falha (o cluster avisa os pares).
+    failed_hook: OnceLock<FailedHook>,
+}
+
+/// O gancho de falha do nó (sem `Debug`: é uma função).
+pub struct FailedHook(Box<dyn Fn() + Send + Sync>);
+
+impl std::fmt::Debug for FailedHook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FailedHook")
+    }
 }
 
 impl NodeShared {
@@ -68,6 +79,7 @@ impl NodeShared {
             mode,
             started_at,
             state: RwLock::new((initial, DrainState::Active)),
+            failed_hook: OnceLock::new(),
         }
     }
 
@@ -111,7 +123,20 @@ impl NodeShared {
 
     /// O nó falhou (disco cheio, banco corrompido): `/health/ready` passa a `503` `failed`.
     pub fn set_failed(&self) {
-        self.set_state(NodeState::Failed);
+        let changed = {
+            let mut guard = self.state.write().unwrap_or_else(|e| e.into_inner());
+            let changed = guard.0 != NodeState::Failed;
+            guard.0 = NodeState::Failed;
+            changed
+        };
+        if changed && let Some(hook) = self.failed_hook.get() {
+            (hook.0)();
+        }
+    }
+
+    /// Quem é avisado quando o nó entra em falha. Vale só a primeira chamada.
+    pub fn on_failed(&self, hook: Box<dyn Fn() + Send + Sync>) {
+        let _ = self.failed_hook.set(FailedHook(hook));
     }
 
     /// `None` quando o nó está apto a receber tráfego; senão o `reason` do `HealthResponse`

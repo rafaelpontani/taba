@@ -5,8 +5,10 @@
 //! **todos** os nós, sem quórum reduzido. Antes do commit a operação pode ser abortada (rollback);
 //! depois de decidida não volta atrás, e o coordenador insiste até o teto `write.commit.timeout`.
 
-use std::sync::{Arc, OnceLock, RwLock};
-use std::time::{Duration, SystemTime};
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock};
+use std::time::{Duration, Instant, SystemTime};
 
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
@@ -19,6 +21,7 @@ use super::protocol::{
 };
 use super::replication::Replication;
 use super::state::{NodeShared, NodeState};
+use super::sync::SyncError;
 use super::transport::{BoxFuture, CallError, Handler, PeerAddr, Transport};
 use crate::config::Config;
 use crate::core::clock::Clock;
@@ -67,6 +70,23 @@ pub struct ClusterRules {
     pub keepalive_interval: Duration,
     pub call_timeout: Duration,
     pub join_timeout: Duration,
+    /// `cluster.channel.reconnect.retries`: chamadas seguidas ao canal que falham antes de o nó
+    /// abrir a votação de exclusão do peer.
+    pub reconnect_retries: u32,
+    /// `cluster.channel.reconnect.backoff`.
+    pub reconnect_backoff: Duration,
+    /// `cluster.channel.queue.max-size`.
+    pub queue_max_size: usize,
+    /// `cluster.channel.queue.max-age`.
+    pub queue_max_age: Duration,
+    /// `cluster.channel.keepalive.max-topics`.
+    pub keepalive_max_topics: usize,
+    /// `cluster.vote.quorum-percent`.
+    pub vote_quorum_percent: u32,
+    /// `cluster.vote.min-voters`.
+    pub vote_min_voters: u32,
+    /// `cluster.freezing.duration`.
+    pub freezing_duration: Duration,
 }
 
 impl ClusterRules {
@@ -94,6 +114,26 @@ impl ClusterRules {
                 .unwrap_or(Duration::from_secs(2)),
             call_timeout: CALL_TIMEOUT,
             join_timeout: JOIN_TIMEOUT,
+            reconnect_retries: config.cluster.reconnect_retries.map_or(3, |n| n.max(1)),
+            reconnect_backoff: config
+                .cluster
+                .reconnect_backoff
+                .unwrap_or(Duration::from_secs(1)),
+            queue_max_size: config.cluster.queue_max_size.map_or(10_000, |n| n as usize),
+            queue_max_age: config
+                .cluster
+                .queue_max_age
+                .unwrap_or(Duration::from_secs(60)),
+            keepalive_max_topics: config
+                .cluster
+                .keepalive_max_topics
+                .map_or(1000, |n| n as usize),
+            vote_quorum_percent: config.cluster.vote_quorum_percent,
+            vote_min_voters: config.cluster.vote_min_voters,
+            freezing_duration: config
+                .cluster
+                .freezing_duration
+                .unwrap_or(Duration::from_secs(300)),
         }
     }
 }
@@ -128,6 +168,11 @@ pub struct ClusterService {
     replication: OnceLock<Arc<Replication>>,
     /// Chamado quando a tabela de membros muda (o motor reavalia quem é o dono).
     on_change: OnceLock<Arc<dyn Fn() + Send + Sync>>,
+    /// As votações de exclusão em andamento (candidato → quando abriu), neste nó e nas que ele
+    /// ajudou a votar: enquanto houver uma, nenhuma entrada de nó é efetivada (doc 04, 6.8).
+    open_votes: StdMutex<HashMap<String, Instant>>,
+    /// O nó está refazendo o ingresso por ter sido excluído.
+    excluded: AtomicBool,
 }
 
 /// O `Handler` do nó: o que as rotas `/cluster/*` e a rede em memória chamam.
@@ -190,6 +235,8 @@ impl ClusterService {
             cancel,
             replication: OnceLock::new(),
             on_change: OnceLock::new(),
+            open_votes: StdMutex::new(HashMap::new()),
+            excluded: AtomicBool::new(false),
         })
     }
 
@@ -302,6 +349,46 @@ impl ClusterService {
             .clone()
     }
 
+    /// Anota que há uma votação de exclusão do nó em andamento.
+    pub(crate) fn mark_vote(&self, candidate: &str) {
+        self.open_votes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(candidate.to_owned(), Instant::now());
+    }
+
+    pub(crate) fn clear_vote(&self, candidate: &str) {
+        self.open_votes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(candidate);
+    }
+
+    /// Os candidatos de votações em andamento. A que passa de `write.pending.ttl` é esquecida e a
+    /// de um nó que já saiu da tabela também.
+    pub fn open_votes(&self) -> Vec<String> {
+        let mut votes = self.open_votes.lock().unwrap_or_else(|e| e.into_inner());
+        votes.retain(|candidate, at| {
+            at.elapsed() < self.rules.pending_ttl && self.membership.is_member(candidate)
+        });
+        votes.keys().cloned().collect()
+    }
+
+    /// Chamado pelo canal quando um par cai ou avisa que falhou: abre a votação de exclusão.
+    pub(crate) fn on_node_failed_hook(&self, hook: Box<dyn Fn() + Send + Sync>) {
+        self.node.on_failed(hook);
+    }
+
+    /// O estado de drain do nó.
+    pub fn drain_state(&self) -> super::state::DrainState {
+        self.node.drain_state()
+    }
+
+    /// O estado do nó no cluster (`joining`, `syncing`, `active`...).
+    pub fn node_state(&self) -> NodeState {
+        self.node.state()
+    }
+
     pub fn membership(&self) -> &Membership {
         &self.membership
     }
@@ -354,6 +441,7 @@ impl ClusterService {
             Request::Register(request) => {
                 request.validate()?;
                 self.require_member(caller)?;
+                self.refuse_while_busy(None)?;
                 let id = request.operation_id.clone();
                 let result = self
                     .membership
@@ -365,15 +453,19 @@ impl ClusterService {
             Request::Unregister(request) => {
                 request.validate()?;
                 self.require_member(caller)?;
+                // A saída do próprio nó que sincroniza (ele falhou) é a exceção (doc 04, 6.8).
+                self.refuse_while_busy_unregistering(Some(&request.node_id))?;
                 let id = request.operation_id.clone();
+                let change = match request.reason {
+                    UnregisterReason::Vote => Change::Exclude {
+                        node_id: request.node_id,
+                    },
+                    UnregisterReason::Drain => Change::Remove {
+                        node_id: request.node_id,
+                    },
+                };
                 self.membership
-                    .register(
-                        &id,
-                        Change::Remove {
-                            node_id: request.node_id,
-                        },
-                        self.now(),
-                    )
+                    .register(&id, change, self.now())
                     .map_err(from_membership)?;
                 Ok(ack(id))
             }
@@ -431,6 +523,60 @@ impl ClusterService {
         }
     }
 
+    /// Uma mudança de membros por vez, até o nó que entrou ficar pronto (doc 04, seção 6.8): com
+    /// um nó em sincronização, o registro de outra mudança é um conflito, e quem coordena espera.
+    /// `except` é o nó cuja saída é permitida mesmo assim.
+    fn refuse_while_busy_unregistering(&self, except: Option<&str>) -> Result<(), TabaError> {
+        self.refuse_while_syncing(except)
+    }
+
+    /// O registro de uma entrada também espera as votações de exclusão em andamento.
+    fn refuse_while_busy(&self, except: Option<&str>) -> Result<(), TabaError> {
+        self.refuse_while_syncing(except)?;
+        if self.open_votes().is_empty() {
+            Ok(())
+        } else {
+            Err(TabaError::new(
+                ErrorCode::ClusterConflict,
+                "Há uma votação de exclusão em andamento: nenhuma entrada de nó é efetivada até ela acabar.",
+            ))
+        }
+    }
+
+    fn refuse_while_syncing(&self, except: Option<&str>) -> Result<(), TabaError> {
+        let busy = self
+            .membership
+            .syncing()
+            .into_iter()
+            .any(|node| except != Some(node.as_str()));
+        if busy {
+            Err(TabaError::new(
+                ErrorCode::ClusterConflict,
+                "Há um nó em sincronização: nenhuma outra mudança de membros é efetivada até ele ficar pronto.",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// O coordenador de um ingresso espera o nó que sincroniza ficar pronto (ou sair).
+    async fn wait_for_sync_turn(&self, joining: &str) -> Result<(), TabaError> {
+        let deadline = tokio::time::Instant::now() + self.rules.join_timeout;
+        while self.membership.syncing().iter().any(|n| n != joining)
+            || !self.open_votes().is_empty()
+        {
+            if tokio::time::Instant::now() >= deadline || self.cancel.is_cancelled() {
+                return Err(TabaError::new(
+                    ErrorCode::ClusterRegistrationFailed,
+                    "Há um nó em sincronização e o pedido de ingresso esperou o prazo.",
+                )
+                .with_retry_after(SYNCING_RETRY_AFTER_SECS));
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        Ok(())
+    }
+
     /// Só quem consta na tabela de membros chama as rotas de fase (doc 06c): o nó que ainda
     /// não tem a tabela não sabe quem é membro e responde `503`.
     pub(crate) fn require_member(&self, caller: &str) -> Result<(), TabaError> {
@@ -463,6 +609,21 @@ impl ClusterService {
             // O mesmo nó repetindo o pedido (o anterior foi aceito e a resposta se perdeu).
             return Ok(Response::Members(table));
         }
+        // Um nó excluído por votação não volta antes do fim do freezing (doc 04, seção 6.7).
+        if let Some(left) = self.membership.frozen_remaining(
+            &request.node_id,
+            self.now(),
+            self.rules.freezing_duration,
+        ) {
+            tracing::warn!(node_id = %request.node_id, left_secs = left.as_secs(), "ingresso rejeitado (freezing)");
+            return Err(TabaError::new(
+                ErrorCode::ClusterNodeFrozen,
+                "O nó foi excluído do cluster e está em período de freezing.",
+            )
+            .with_retry_after(left.as_secs().max(1)));
+        }
+        self.wait_for_sync_turn(&request.node_id).await?;
+        let table = self.membership.table().ok_or_else(node_syncing)?;
 
         self.probe(&request).await?;
 
@@ -470,7 +631,8 @@ impl ClusterService {
             node_id: request.node_id.clone(),
             addresses: request.addresses.clone(),
             port: request.port,
-            state: MemberState::Active,
+            // O nó novo só fica ativo quando termina a sincronização (doc 05, seção 7.3).
+            state: MemberState::Syncing,
         };
         let operation_id = self.new_operation_id();
         let peers: Vec<Member> = table
@@ -723,21 +885,49 @@ impl ClusterService {
     /// saída pelo protocolo de duas fases, **sem votação**, e espera a vez de outras mudanças de
     /// membros. Antes do commit, rollback; depois, o commit é insistido até `write.commit.timeout`.
     pub async fn leave(self: &Arc<Self>) -> Result<(), TabaError> {
+        let me = self.node_id();
+        self.unregister_node(&me, UnregisterReason::Drain).await
+    }
+
+    /// O desregistro de `target` pelo protocolo de duas fases (doc 04, seção 6.3): o próprio nó que
+    /// sai (`drain`) ou o nó excluído por votação (`vote`, que ganha freezing). Exige a confirmação
+    /// de todos os nós que sobram, menos os que este nó enxerga fora do ar: eles são excluídos por
+    /// votação própria, e esperá-los travaria a exclusão de quem já caiu.
+    pub async fn unregister_node(
+        self: &Arc<Self>,
+        target: &str,
+        reason: UnregisterReason,
+    ) -> Result<(), TabaError> {
         let _turn = self.change_turn.lock().await;
         let table = self.membership.table().ok_or_else(node_syncing)?;
         let me = self.node_id();
-        if table.member(&me).is_none() {
+        if table.member(target).is_none() {
             return Ok(());
         }
+        let down: HashSet<String> = match (reason, self.replication.get()) {
+            (UnregisterReason::Vote, Some(replication)) => replication
+                .channels
+                .peers()
+                .into_iter()
+                .filter(|p| !p.up)
+                .map(|p| p.node_id)
+                .collect(),
+            _ => HashSet::new(),
+        };
         let peers: Vec<Member> = table
             .members
             .iter()
-            .filter(|m| m.node_id != me)
+            .filter(|m| m.node_id != me && m.node_id != target && !down.contains(&m.node_id))
             .cloned()
             .collect();
         let operation_id = self.new_operation_id();
-        let change = Change::Remove {
-            node_id: me.clone(),
+        let change = match reason {
+            UnregisterReason::Drain => Change::Remove {
+                node_id: target.to_owned(),
+            },
+            UnregisterReason::Vote => Change::Exclude {
+                node_id: target.to_owned(),
+            },
         };
         self.membership
             .register(&operation_id, change, self.now())
@@ -748,8 +938,8 @@ impl ClusterService {
                 Request::Unregister(NodeUnregisterRequest {
                     operation_id: operation_id.clone(),
                     coordinator_id: me.clone(),
-                    node_id: me.clone(),
-                    reason: UnregisterReason::Drain,
+                    node_id: target.to_owned(),
+                    reason,
                 }),
             )
             .await;
@@ -758,7 +948,7 @@ impl ClusterService {
                 tracing::warn!(peer = %peer, %error, "desregistro sem confirmação");
             }
             self.rollback_everywhere(&confirmed, &operation_id).await;
-            tracing::error!("saída do cluster abortada (rollback): a fase 1 não fechou em todos");
+            tracing::error!("desregistro abortado (rollback): a fase 1 não fechou em todos");
             // Outra mudança pendente num par: quem pede a saída espera a vez e tenta de novo.
             let contended = failures.iter().any(
                 |(_, e)| matches!(e, CallError::Remote(r) if r.code == ErrorCode::ClusterConflict),
@@ -777,15 +967,67 @@ impl ClusterService {
             .map_err(from_membership)?;
         self.membership_changed();
         if self.commit_on_peers(&peers, &operation_id).await {
-            tracing::info!(node_id = %me, "nó fora do cluster (drain)");
+            tracing::info!(node_id = %target, ?reason, "nó fora do cluster");
             Ok(())
         } else {
-            tracing::warn!("o commit da saída segue em segundo plano em algum nó");
+            tracing::warn!("o commit do desregistro segue em segundo plano em algum nó");
             Err(TabaError::new(
                 ErrorCode::ClusterCommitTimeout,
-                "A saída foi decidida e o commit segue em segundo plano.",
+                "O desregistro foi decidido e o commit segue em segundo plano.",
             ))
         }
+    }
+
+    /// Um par disse várias vezes que este nó não é membro. Pode ser que o commit do ingresso ainda
+    /// não tenha chegado a ele (a tabela dele é mais velha) ou que este nó tenha sido excluído (a
+    /// tabela dele é mais nova e não o tem): só neste caso o nó refaz o ingresso.
+    pub async fn check_exclusion(self: &Arc<Self>, peer_id: &str) {
+        let Some(member) = self
+            .membership
+            .table()
+            .and_then(|t| t.member(peer_id).cloned())
+        else {
+            return;
+        };
+        let (Some(mine), Ok(Response::Members(theirs))) = (
+            self.membership.version(),
+            self.call_peer(&member, Request::ListNodes, self.rules.call_timeout)
+                .await,
+        ) else {
+            return;
+        };
+        if theirs.member(&self.node_id()).is_none() && theirs.version > mine {
+            self.handle_exclusion().await;
+        }
+    }
+
+    /// O nó descobriu que foi excluído (os pares não o têm mais na tabela): apaga o estado local
+    /// e refaz o ingresso do zero (doc 04, seção 6.6, passo 6), com o mesmo ID. O freezing atrasa o
+    /// novo registro: o pedido é rejeitado até o período acabar e o laço do bootstrap repete.
+    pub async fn handle_exclusion(self: &Arc<Self>) {
+        if self.node.state() != NodeState::Active
+            || self.node.drain_state() != super::state::DrainState::Active
+            || self.excluded.swap(true, Ordering::SeqCst)
+        {
+            return;
+        }
+        tracing::warn!(node_id = %self.node_id(), "este nó foi excluído do cluster: refazendo o ingresso do zero");
+        if let Some(replication) = self.replication.get().cloned() {
+            replication.reset_local().await;
+        }
+        self.membership.clear();
+        self.node.set_state(NodeState::Joining);
+        if let Some(replication) = self.replication.get().cloned() {
+            replication.channels.sync_members();
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            let result = me.bootstrap().await;
+            me.excluded.store(false, Ordering::SeqCst);
+            if let Err(e) = result {
+                tracing::error!(error = %e, "o nó não conseguiu voltar ao cluster");
+            }
+        });
     }
 
     /// Volta do drain **como nó novo** (doc 04, seção 6.10): ID novo, estado local limpo e o
@@ -823,48 +1065,77 @@ impl ClusterService {
         tracing::info!(node_id = %self.node_id(), "primeiro nó: o cluster começa só com ele");
     }
 
-    /// A tabela chegou: instala, puxa de um membro as definições de tópico e os tokens (doc 02,
-    /// seções 3.3 e 3.4) e só então o nó fica ativo.
-    async fn finish_join(&self, table: MemberTable, via: &Member) -> Result<(), Failure> {
+    /// A tabela chegou: o nó instala, passa a gravar os eventos no banco de eventos e sincroniza
+    /// (definições, blocos, eventos, verificação final; doc 05, seção 7.3). Só ao fim fica ativo.
+    /// Se a sincronização falha de um jeito que não se repara (disco, banco de eventos cheio, nenhuma
+    /// origem), o nó vai a `failed`.
+    async fn finish_join(
+        self: &Arc<Self>,
+        table: MemberTable,
+        via: &Member,
+    ) -> Result<(), Failure> {
         // O membro que coordenou o ingresso já tem o nó novo na tabela; os outros podem ainda não
-        // ter (o commit chega a eles em seguida), então as definições se puxam dele primeiro.
+        // ter (o commit chega a eles em seguida), então ele vem primeiro.
         let mut sources = vec![via.clone()];
         sources.extend(
             table
                 .members
                 .iter()
-                .filter(|m| m.node_id != self.node_id() && m.node_id != via.node_id)
+                .filter(|m| {
+                    m.node_id != self.node_id()
+                        && m.node_id != via.node_id
+                        && m.state == MemberState::Active
+                })
                 .cloned(),
         );
+        let Some(replication) = self.replication.get().cloned() else {
+            self.membership.install(table.clone());
+            self.activate(&table).await;
+            return Ok(());
+        };
+        let syncer = replication.syncer.clone();
+        syncer.begin().map_err(|e| Failure {
+            reason: "sync",
+            message: format!("não foi possível abrir o banco de eventos: {e}"),
+        })?;
         self.membership.install(table.clone());
-        if let Some(replication) = self.replication.get().cloned() {
-            let mut last = None;
-            for source in &sources {
-                match replication.definitions.pull(source).await {
-                    Ok(()) => {
-                        last = None;
-                        break;
-                    }
-                    Err(e) => last = Some((source.node_id.clone(), e)),
-                }
+        self.node.set_state(NodeState::Syncing);
+        replication.channels.sync_members();
+        match syncer.run(&sources).await {
+            Ok(()) => {
+                self.activate(&table).await;
+                Ok(())
             }
-            if let Some((source, e)) = last {
-                return Err(Failure {
+            Err(SyncError::Cancelled) => {
+                syncer.abandon();
+                Err(Failure {
                     reason: "sync",
-                    message: format!("não foi possível puxar as definições de {source}: {e}"),
-                });
+                    message: "o nó parou durante a sincronização".into(),
+                })
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "a sincronização falhou: o nó passa a `failed`");
+                syncer.abandon();
+                self.node.set_failed();
+                Ok(())
             }
         }
-        self.activate(&table);
-        Ok(())
     }
 
-    fn activate(&self, table: &MemberTable) {
+    /// O nó está íntegro: o estado dele na tabela vira `active`, os pares ficam sabendo (com
+    /// tentativas) e só então ele passa a atender e a ser dono das mensagens dos blocos dele.
+    async fn activate(&self, table: &MemberTable) {
+        let me = self.node_id();
+        self.membership.set_state(&me, MemberState::Active);
+        self.local.write().unwrap_or_else(|e| e.into_inner()).state = MemberState::Active;
+        if let Some(replication) = self.replication.get().cloned() {
+            replication.signals.announce_state_reliably("active").await;
+        }
         let version = table.version;
         let members = table.members.len();
         self.node.set_state(NodeState::Active);
         self.membership_changed();
-        tracing::info!(node_id = %self.node_id(), version, members, "nó no cluster");
+        tracing::info!(node_id = %me, version, members, "nó no cluster");
     }
 
     /// O bootstrap (doc 04, seção 6.2): lista os membros pelo balanceador, pede o ingresso a

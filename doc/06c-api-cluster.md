@@ -115,14 +115,14 @@ Cada quadro é um objeto JSON em texto com o campo `type`:
 | `listeners` | `seq`, `topic`, `hasListeners` | O tópico passou a ter (ou deixou de ter) ouvintes de long polling neste nó. |
 | `ready` | `seq`, `topic`, `hasReady` | O nó passou a ter (ou deixou de ter) mensagens prontas do tópico. |
 | `notify` | `seq`, `topic`, `count` | Aviso de mensagem nova: há `count` mensagens prontas; venha buscar com `take`. É uma dica. |
-| `node-state` | `seq`, `state` (`draining`) | O nó entrou em drain: os pares deixam de pedir `take` a ele. |
+| `node-state` | `seq`, `state` (`draining` ou `active`) | O nó entrou em drain (os pares deixam de pedir `take` a ele), ou ficou **pronto** depois de sincronizar, ou voltou a `active` (o drain foi cancelado). Quem recebe `active` troca o `state` desse membro de `syncing` para `active` na própria tabela, **sem subir a `version`**. |
 | `confirm` | `seqs` (lista de inteiros) | Confirma sinais **já processados**. Pode agrupar vários. |
 
 Todo quadro, exceto `keepalive` e `confirm`, leva um `seq` crescente por canal e por sentido; o emissor só o tira da fila de saída ao receber o `confirm`, e **reenvia na reconexão** o que ficou sem confirmação (o receptor ignora um `seq` que já processou). Ao abrir o canal, cada lado envia primeiro um **instantâneo**: um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro, e só depois as mudanças (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
 
 ### `POST /cluster/signals`: sinais enquanto não há canal
 
-Carrega, como uma chamada comum, o mesmo quadro JSON do canal (`type` e os campos da tabela acima, mais `from`, o `nodeId` de quem envia), **sem** `seq`, confirmação nem fila de saída: um sinal perdido custa só uma dica velha, que o `take` confere, e cada nó **repete** o seu estado (prontas e ouvintes) a cada `cluster.channel.keepalive.interval`, no lugar do sinal de vida. Resposta: `200`, `{}`. É provisória: some quando o canal WebSocket existir.
+Carrega, como uma chamada comum, o mesmo quadro JSON do canal (inclusive o `node-state` `active` de um nó que acabou de sincronizar, que o nó envia **a todos com tentativas** antes de ficar ativo) (`type` e os campos da tabela acima, mais `from`, o `nodeId` de quem envia), **sem** `seq`, confirmação nem fila de saída: um sinal perdido custa só uma dica velha, que o `take` confere, e cada nó **repete** o seu estado (prontas e ouvintes) a cada `cluster.channel.keepalive.interval`, no lugar do sinal de vida. Resposta: `200`, `{}`. É provisória: some quando o canal WebSocket existir.
 
 ## Tópicos e tokens
 
@@ -218,7 +218,7 @@ Todos os streams seguem o contrato da seção 8.2.1 (linha final obrigatória, t
 
 ### `GET /cluster/blocks/{id}/ids`: IDs do bloco
 
-Stream NDJSON com os IDs de mensagens que o nó possui para o bloco, cada um com o nome do tópico, **ordenados por ID**. É o primeiro passo da sincronização distribuída, inclusive na verificação final (seção 7.3). Linha de dados: `BlockIdLine`: `id`, `topic` e, na fila FIFO, `deleteAt` para uma mensagem com exclusão lógica.
+Stream NDJSON com os IDs de mensagens que o nó possui para o bloco, cada um com o nome do tópico, **ordenados por ID**. É o primeiro passo da sincronização distribuída, inclusive na verificação final (seção 7.3). Linha de dados: `BlockIdLine`: `id`, `topic` e, na fila FIFO, `deleteAt` para uma mensagem com exclusão lógica. Vale para as três rotas de bloco: `{id}` malformado é `400 validation.failed`; um bloco que o anel **deste nó** não tem (a tabela de membros dele é outra) é `409 cluster.conflict`, e quem pediu repete; um nó que ainda sincroniza responde `503 cluster.node-syncing`. A listagem e as mensagens saem da memória e do disco do tópico (a coluna `position` da tabela `messages` responde pela faixa do bloco).
 
 ### `GET /cluster/blocks/{id}/messages`: mensagens do bloco
 

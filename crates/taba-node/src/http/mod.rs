@@ -28,7 +28,7 @@ use ipnet::IpNet;
 use crate::cluster::drain::DrainController;
 use crate::cluster::replication::ClusterMessages;
 use crate::cluster::service::ClusterService;
-use crate::cluster::state::{DrainState, NodeShared};
+use crate::cluster::state::{DrainState, NodeShared, NodeState};
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::messages::Messages;
@@ -68,11 +68,23 @@ pub struct AppState {
 /// ao nó mais livre, e a resposta volta como o destino a deu. Sem outro nó (ou numa chamada que já
 /// chegou por repasse, que nunca é repassada de novo) responde `503` com `Retry-After`.
 async fn drain_guard(State(state): State<AppState>, request: Request, next: Next) -> Response {
-    if state.node.drain_state() == DrainState::Active {
+    // Um nó que ainda sincroniza também não atende: repassa a chamada a outro (doc 04, seção 6.9).
+    let syncing = state.cluster.is_some() && state.node.state() == NodeState::Syncing;
+    if state.node.drain_state() == DrainState::Active && !syncing {
         return next.run(request).await;
     }
     if state.cluster.is_some() && request.extensions().get::<forward::Forwarded>().is_none() {
         return forward::forward_call(&state, request).await;
+    }
+    if syncing {
+        return common::ApiError(
+            TabaError::new(
+                ErrorCode::ClusterNodeSyncing,
+                "O nó ainda está em sincronização.",
+            )
+            .with_retry_after(DRAIN_RETRY_AFTER_SECS),
+        )
+        .into_response();
     }
     common::ApiError(
         TabaError::new(

@@ -12,6 +12,7 @@ fn meta(id: &str) -> MessageMeta {
         receipt_token: None,
         dead_lettered_ms: None,
         dead_letter_reason: None,
+        position: 0,
     }
 }
 
@@ -254,4 +255,62 @@ fn a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place() {
     );
     assert_eq!(store.count("antigo").unwrap(), 1);
     store.tombstone("antigo", &meta("nova"), 100).unwrap();
+}
+
+/// UC: UC-SIN-002, UC-ARM-005
+#[test]
+fn the_rows_of_a_block_come_by_position_in_id_order_with_range_and_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    for (id, position) in [
+        ("a", 5u64),
+        ("b", 50),
+        ("c", 500),
+        ("d", u64::MAX),
+        ("e", 0),
+        ("f", 51),
+    ] {
+        let mut m = meta(id);
+        m.position = position;
+        store.put("t", &m, b"x").unwrap();
+    }
+    let ids = |ranges: &[(u64, u64)], from: Option<&str>, to: Option<&str>, limit| {
+        store
+            .block_rows("t", ranges, from, to, limit)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&[(0, 60)], None, None, 10), ["a", "b", "e", "f"]);
+    // Um bloco que dá a volta no anel tem duas faixas, e os extremos contam.
+    assert_eq!(
+        ids(&[(0, 5), (u64::MAX - 1, u64::MAX)], None, None, 10),
+        ["a", "d", "e"]
+    );
+    assert_eq!(ids(&[(0, 60)], Some("b"), Some("e"), 10), ["b", "e"]);
+    assert_eq!(ids(&[(0, 60)], None, None, 2), ["a", "b"]);
+    assert!(ids(&[(100, 400)], None, None, 10).is_empty());
+    assert!(
+        store
+            .block_rows("sem-pasta", &[(0, u64::MAX)], None, None, 10)
+            .unwrap()
+            .is_empty()
+    );
+    // A posição volta como foi gravada.
+    assert_eq!(store.get("t", "d").unwrap().unwrap().position, u64::MAX);
+    assert_eq!(store.get("t", "e").unwrap().unwrap().position, 0);
+}
+
+/// UC: UC-FIF-041
+#[test]
+fn the_short_fifo_row_is_listed_with_its_delete_at() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let mut m = meta("a");
+    m.position = 7;
+    store.tombstone("f", &m, 9_000).unwrap();
+    let rows = store.block_rows("f", &[(0, 10)], None, None, 10).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].delete_at_ms, Some(9_000));
 }

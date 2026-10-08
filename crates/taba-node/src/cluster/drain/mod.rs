@@ -18,6 +18,16 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::messages::Messages;
 use crate::storage::state::NodeStateStore;
 
+/// A espera entre duas tentativas de sair do cluster quando outra mudança de membros está em curso:
+/// 100 a 200 ms. Com o prazo fixo, dois nós que saem juntos repetiam o registro no mesmo instante,
+/// um recusava o outro de novo e só paravam no `drain.timeout`; o sorteio desfaz o compasso (a
+/// ordem deterministicamente justa é a D94).
+fn conflict_wait() -> Duration {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
+    Duration::from_millis(100 + u64::from_le_bytes(bytes) % 100)
+}
+
 /// Quem pediu o drain (`DrainStatus.trigger`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trigger {
@@ -203,7 +213,7 @@ impl DrainController {
                 loop {
                     match cluster.leave().await {
                         Err(e) if e.code == ErrorCode::ClusterConflict => {
-                            tokio::time::sleep(Duration::from_millis(100)).await;
+                            tokio::time::sleep(conflict_wait()).await;
                         }
                         other => return other,
                     }

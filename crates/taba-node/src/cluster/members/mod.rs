@@ -7,7 +7,7 @@
 //! (seção 6.8): um segundo `register` com outro `operationId` é um conflito. Os três passos são
 //! idempotentes pelo `operationId`.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -74,7 +74,14 @@ impl MemberTable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
     Add(Member),
-    Remove { node_id: String },
+    /// A saída voluntária (drain): sem freezing.
+    Remove {
+        node_id: String,
+    },
+    /// A exclusão por votação: o nó entra em freezing (doc 04, seção 6.7).
+    Exclude {
+        node_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +116,8 @@ struct Inner {
     /// Os nós que saíram por drain: ainda podem repassar chamadas de cliente a quem está no
     /// cluster (doc 04, seção 6.9). Só em memória; sai quando um nó novo entra no mesmo endereço.
     departed: Vec<Member>,
+    /// Os nós excluídos por votação e quando, para o período de freezing (doc 04, seção 6.7).
+    frozen: HashMap<String, SystemTime>,
 }
 
 /// A tabela de membros de um nó, com a mudança pendente e o anel derivado dela.
@@ -178,6 +187,46 @@ impl Membership {
             .is_some_and(|t| t.member(node_id).is_some())
     }
 
+    /// O membro está na tabela e `active`? (Um nó em sincronização ainda não atende nada.)
+    pub fn is_active(&self, node_id: &str) -> bool {
+        self.lock().table.as_ref().is_some_and(|t| {
+            t.member(node_id)
+                .is_some_and(|m| m.state == MemberState::Active)
+        })
+    }
+
+    /// Algum membro está em sincronização? Enquanto houver, nenhuma outra entrada, saída ou
+    /// rebalanceamento é efetivada (doc 04, seção 6.8).
+    pub fn syncing(&self) -> Vec<String> {
+        self.lock()
+            .table
+            .as_ref()
+            .map(|t| {
+                t.members
+                    .iter()
+                    .filter(|m| m.state == MemberState::Syncing)
+                    .map(|m| m.node_id.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Muda o estado de um membro na tabela, sem subir a `version` (não é uma mudança de membros:
+    /// é o nó dizendo em que pé está). `true` se mudou.
+    pub fn set_state(&self, node_id: &str, state: MemberState) -> bool {
+        let mut inner = self.lock();
+        let Some(member) = inner
+            .table
+            .as_mut()
+            .and_then(|t| t.members.iter_mut().find(|m| m.node_id == node_id))
+        else {
+            return false;
+        };
+        let changed = member.state != state;
+        member.state = state;
+        changed
+    }
+
     /// Algum membro tem este endereço? É como a porta do cluster reconhece quem chama.
     pub fn is_member_address(&self, address: &str) -> bool {
         self.lock().table.as_ref().is_some_and(|t| {
@@ -193,6 +242,28 @@ impl Membership {
             .departed
             .iter()
             .any(|m| m.addresses.iter().any(|a| a == address))
+    }
+
+    /// Quanto falta do freezing do nó (excluído por votação), ou `None` se ele não está em freezing.
+    pub fn frozen_remaining(
+        &self,
+        node_id: &str,
+        now: SystemTime,
+        duration: Duration,
+    ) -> Option<Duration> {
+        let inner = self.lock();
+        let at = inner.frozen.get(node_id)?;
+        let elapsed = now.duration_since(*at).unwrap_or_default();
+        duration.checked_sub(elapsed).filter(|left| !left.is_zero())
+    }
+
+    /// Quantos nós estão em freezing agora (os vencidos são esquecidos).
+    pub fn frozen_count(&self, now: SystemTime, duration: Duration) -> usize {
+        let mut inner = self.lock();
+        inner
+            .frozen
+            .retain(|_, at| now.duration_since(*at).unwrap_or_default() < duration);
+        inner.frozen.len()
     }
 
     /// Há uma mudança pendente (e ainda não vencida)?
@@ -259,7 +330,9 @@ impl Membership {
                     member.node_id
                 )));
             }
-            Change::Remove { node_id } if table.member(node_id).is_none() => {
+            Change::Remove { node_id } | Change::Exclude { node_id }
+                if table.member(node_id).is_none() =>
+            {
                 return Err(MembershipError::Conflict(format!(
                     "O nó {node_id} não é membro."
                 )));
@@ -298,9 +371,12 @@ impl Membership {
             };
         }
         let pending = inner.pending.take().expect("conferido acima");
+        let excluded = matches!(pending.change, Change::Exclude { .. });
+        let mut frozen = std::mem::take(&mut inner.frozen);
         let mut inner_departed = std::mem::take(&mut inner.departed);
         let Some(table) = inner.table.as_mut() else {
             inner.departed = inner_departed;
+            inner.frozen = frozen;
             return Err(MembershipError::NoTable);
         };
         match pending.change {
@@ -308,7 +384,10 @@ impl Membership {
                 inner_departed.retain(|d| d.addresses != member.addresses || d.port != member.port);
                 table.members.push(member);
             }
-            Change::Remove { node_id } => {
+            Change::Remove { node_id } | Change::Exclude { node_id } => {
+                if excluded {
+                    frozen.insert(node_id.clone(), now);
+                }
                 if let Some(left) = table.members.iter().find(|m| m.node_id == node_id) {
                     inner_departed.push(left.clone());
                     if inner_departed.len() > 64 {
@@ -322,6 +401,7 @@ impl Membership {
         table.sort();
         let table = table.clone();
         inner.departed = inner_departed;
+        inner.frozen = frozen;
         Self::remember(&mut inner, operation_id.to_owned(), Finished::Committed);
         self.rebuild_ring(&mut inner);
         Ok(table)

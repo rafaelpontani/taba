@@ -12,6 +12,7 @@ use crate::core::content::{BodyKind, ContentType};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::id;
 use crate::core::time;
+use crate::storage::messages::MessageMeta;
 
 /// A mensagem **completa** entre nós: o conteúdo e os metadados (`MessageRecord`, doc 06c).
 ///
@@ -39,6 +40,40 @@ impl MessageRecord {
     /// O instante da publicação, que o `id` (GUID v7) carrega.
     pub fn published_ms(&self) -> u64 {
         id::unix_millis_of(&self.id).unwrap_or(0)
+    }
+
+    /// A mensagem como o nó a guarda. A posição no anel fica `0`: quem grava a calcula.
+    pub fn to_meta(&self) -> MessageMeta {
+        MessageMeta {
+            id: self.id.clone(),
+            content_type: self.content_type.clone(),
+            group_id: self.group_id.clone(),
+            deduplication_id: self.deduplication_id.clone(),
+            published_ms: self.published_ms(),
+            delivery_count: self.delivery_count,
+            invisible_until_ms: self.invisible_until_ms.unwrap_or(0),
+            receipt_token: self.receipt_token.clone(),
+            dead_lettered_ms: self.dead_lettered_ms,
+            dead_letter_reason: self.dead_letter_reason.clone(),
+            position: 0,
+        }
+    }
+
+    /// O inverso de [`to_meta`](Self::to_meta): a mensagem de um tópico com o corpo.
+    pub fn from_stored(topic: &str, meta: MessageMeta, body: Vec<u8>) -> Self {
+        Self {
+            id: meta.id,
+            topic: topic.to_owned(),
+            body,
+            content_type: meta.content_type,
+            group_id: meta.group_id,
+            deduplication_id: meta.deduplication_id,
+            delivery_count: meta.delivery_count,
+            invisible_until_ms: (meta.invisible_until_ms > 0).then_some(meta.invisible_until_ms),
+            receipt_token: meta.receipt_token,
+            dead_lettered_ms: meta.dead_lettered_ms,
+            dead_letter_reason: meta.dead_letter_reason,
+        }
     }
 }
 

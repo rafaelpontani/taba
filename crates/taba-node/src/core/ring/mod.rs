@@ -190,6 +190,38 @@ impl Ring {
         self.owners(position, 1).into_iter().next()
     }
 
+    /// Os blocos de que o nó é responsável em algum papel (um dos `count` primeiros nós
+    /// responsáveis): o que ele precisa sincronizar ao entrar (doc 05, seção 7.3).
+    pub fn blocks_of(&self, node_id: &str, count: usize) -> Vec<BlockId> {
+        (0..self.points.len())
+            .filter(|start| self.owners_from(*start, count).contains(&node_id))
+            .map(|start| BlockId(self.points[start].position))
+            .collect()
+    }
+
+    /// As posições que o bloco cobre, como faixas inclusivas `(início, fim)`: o arco entre o ponto
+    /// anterior (exclusive) e o ponto do bloco (inclusive). O primeiro bloco do anel dá a volta e
+    /// ganha duas faixas. `None` se o bloco não existe neste anel.
+    pub fn block_ranges(&self, block: BlockId) -> Option<Vec<(u64, u64)>> {
+        let index = self
+            .points
+            .binary_search_by_key(&block.0, |p| p.position)
+            .ok()?;
+        let end = self.points[index].position;
+        if self.points.len() == 1 {
+            return Some(vec![(0, u64::MAX)]);
+        }
+        if index == 0 {
+            let last = self.points[self.points.len() - 1].position;
+            let mut ranges = vec![(0, end)];
+            if last < u64::MAX {
+                ranges.push((last + 1, u64::MAX));
+            }
+            return Some(ranges);
+        }
+        Some(vec![(self.points[index - 1].position + 1, end)])
+    }
+
     /// Quantos blocos o nó tem como primário.
     pub fn primary_blocks_of(&self, node_id: &str) -> usize {
         let Ok(index) = self.nodes.binary_search_by(|n| n.as_str().cmp(node_id)) else {

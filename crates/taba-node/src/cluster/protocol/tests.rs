@@ -334,18 +334,44 @@ fn requests() -> Vec<Request> {
                 visibility_timeout: 120,
             },
         },
-        Request::Signal(SignalFrame {
+        Request::Channel(ChannelBatch {
             from: guid(1),
-            signal: Signal::Ready {
-                topic: t(),
-                has_ready: true,
-            },
+            keepalive: Some(Keepalive {
+                at: "2026-10-05T12:00:00.000Z".into(),
+                load: 2,
+                version: 7,
+                state: "active".into(),
+                ready: vec![ReadyCount {
+                    topic: t(),
+                    count: 4,
+                }],
+            }),
+            frames: vec![
+                ChannelFrame {
+                    seq: 1,
+                    signal: Signal::Ready {
+                        topic: t(),
+                        has_ready: true,
+                    },
+                },
+                ChannelFrame {
+                    seq: 2,
+                    signal: Signal::NodeState {
+                        state: "draining".into(),
+                    },
+                },
+            ],
         }),
-        Request::Signal(SignalFrame {
+        Request::Channel(ChannelBatch {
             from: guid(1),
-            signal: Signal::NodeState {
-                state: "draining".into(),
-            },
+            keepalive: None,
+            frames: vec![],
+        }),
+        Request::Vote(VoteRequest {
+            vote_id: guid(20),
+            candidate_node_id: guid(21),
+            opened_by: guid(22),
+            reason: VoteReason::QueueOverflow,
         }),
         Request::Forward(ForwardRequest {
             method: "POST".into(),
@@ -357,6 +383,22 @@ fn requests() -> Vec<Request> {
             body: b"{\"a\":1}".to_vec(),
             client_ip: Some("203.0.113.9".into()),
         }),
+        Request::BlockIds {
+            block: "00000000000000ab".into(),
+            query: StreamQuery {
+                from: Some(guid(1)),
+                to: Some(guid(9)),
+                limit: Some(200),
+            },
+        },
+        Request::BlockMessages {
+            block: "00000000000000ab".into(),
+            query: StreamQuery::default(),
+        },
+        Request::BlockMessage {
+            block: "00000000000000ab".into(),
+            id: guid(4),
+        },
     ]
 }
 
@@ -422,7 +464,14 @@ fn the_routes_are_the_ones_of_the_document() {
         &format!("/cluster/topics/pedidos/messages/{id}/ack/rollback")
     ));
     assert!(has("POST", "/cluster/topics/pedidos/messages/take"));
-    assert!(has("POST", "/cluster/signals"));
+    assert!(has("POST", "/cluster/channel"));
+    assert!(has("POST", "/cluster/vote-remove"));
+    assert!(has("GET", "/cluster/blocks/00000000000000ab/ids"));
+    assert!(has("GET", "/cluster/blocks/00000000000000ab/messages"));
+    assert!(has(
+        "GET",
+        &format!("/cluster/blocks/00000000000000ab/messages/{id}")
+    ));
     assert!(has("POST", "/cluster/forward/topics/pedidos/messages"));
 }
 
@@ -552,17 +601,46 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     };
     assert_eq!(take.parse_reply(taken.clone().into_http()).unwrap(), taken);
 
-    let signal = Request::Signal(SignalFrame {
+    let channel = Request::Channel(ChannelBatch {
         from: guid(1),
-        signal: Signal::Notify {
-            topic: "pedidos".into(),
-            count: 4,
-        },
+        keepalive: None,
+        frames: vec![ChannelFrame {
+            seq: 3,
+            signal: Signal::Notify {
+                topic: "pedidos".into(),
+                count: 4,
+            },
+        }],
     });
+    let confirm = Response::Confirm(Confirm::new(vec![3]));
+    let reply = confirm.clone().into_http();
     assert_eq!(
-        signal.parse_reply(Response::Empty.into_http()).unwrap(),
-        Response::Empty
+        std::str::from_utf8(&reply.body).unwrap(),
+        r#"{"type":"confirm","seqs":[3]}"#
     );
+    assert_eq!(channel.parse_reply(reply).unwrap(), confirm);
+
+    let vote = Request::Vote(VoteRequest {
+        vote_id: guid(20),
+        candidate_node_id: guid(21),
+        opened_by: guid(22),
+        reason: VoteReason::ChannelDown,
+    });
+    let yes = Response::Vote(VoteResponse { vote: Ballot::Yes });
+    assert_eq!(vote.parse_reply(yes.clone().into_http()).unwrap(), yes);
+
+    // Uma mensagem do bloco volta inteira; as listas do bloco são streams.
+    let single = Request::BlockMessage {
+        block: "00000000000000ab".into(),
+        id: guid(4),
+    };
+    let one = Response::Record(record("application/json", br#"{"a":1}"#));
+    assert_eq!(single.parse_reply(one.clone().into_http()).unwrap(), one);
+    let ids = Request::BlockIds {
+        block: "00000000000000ab".into(),
+        query: StreamQuery::default(),
+    };
+    assert_eq!(ids.parse_reply(page.clone().into_http()).unwrap(), page);
 }
 
 /// UC: UC-FWD-004

@@ -33,11 +33,13 @@
 //! Os métodos são síncronos e bloqueiam no disco:
 //! quem chama de código assíncrono usa `spawn_blocking`.
 
+mod blocks;
 mod index;
 mod rates;
 mod replicas;
 pub mod stats;
 
+pub use blocks::{BlockEntry, BlockMessage, Loaded};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -51,6 +53,7 @@ use crate::core::clock::Clock;
 use crate::core::content::{Body, ContentType, DEFAULT_CONTENT_TYPE};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::id::IdGenerator;
+use crate::core::ring::{fifo_position, message_position};
 use crate::core::validation;
 use crate::engine::topics::{CreateTopic, Kind, TopicView, Topics};
 use crate::storage;
@@ -374,6 +377,12 @@ pub struct ConsumeParams {
 /// bloco dela no anel. Sem ele (`mode=development`) o nó é dono de tudo.
 pub trait Placement: Send + Sync + 'static {
     fn is_owner(&self, topic: &str, id: &str, group: Option<&str>) -> bool;
+
+    /// O nó é um dos nós responsáveis (primário ou réplica) pelo bloco da posição? A cópia de uma
+    /// mensagem de que ele deixou de ser responsável pode ser apagada (doc 05, seção 7.3, passo 7).
+    fn is_responsible(&self, _position: u64) -> bool {
+        true
+    }
 }
 
 /// Uma mensagem que o dono mandou para a dead-letter e que os nós responsáveis ainda têm de mover.
@@ -949,6 +958,7 @@ impl Messages {
             receipt_token: None,
             dead_lettered_ms: None,
             dead_letter_reason: None,
+            position: self.position_of(view, &id, request.group_id.as_deref()),
         };
         let size = request.body.len() as u64;
         {
@@ -2205,6 +2215,24 @@ impl Messages {
         let _ = self.cluster.set(hooks);
     }
 
+    /// A posição no anel de uma mensagem do tópico (doc 05, seção 7.1): o hash do `id`; na fila
+    /// FIFO, o do grupo (todas as mensagens de um grupo caem no mesmo bloco).
+    fn position_of(&self, view: &TopicView, id: &str, group: Option<&str>) -> u64 {
+        if view.definition.queue().is_some_and(|q| q.fifo) {
+            fifo_position(&view.definition.id, group.unwrap_or(""))
+        } else {
+            message_position(id)
+        }
+    }
+
+    /// O mesmo, pelo nome do tópico. Tópico que não existe (mais) conta como fila comum.
+    pub fn position_for(&self, topic: &str, id: &str, group: Option<&str>) -> u64 {
+        match self.topics.get(topic) {
+            Ok(view) => self.position_of(&view, id, group),
+            Err(_) => message_position(id),
+        }
+    }
+
     /// O nó é o dono da entrega da mensagem? Sem cluster, sempre.
     fn owns(&self, topic: &str, id: &str, group: Option<&str>) -> bool {
         self.cluster
@@ -2233,6 +2261,17 @@ impl Messages {
             .collect()
     }
 
+    /// Os tópicos com mensagens prontas e quantas (o que o sinal de vida carrega).
+    pub fn ready_counts(&self) -> Vec<(String, u64)> {
+        self.existing_states()
+            .into_iter()
+            .filter_map(|(name, state)| {
+                let count = lock(&state).index.ready_count() as u64;
+                (count > 0).then_some((name, count))
+            })
+            .collect()
+    }
+
     /// Acorda até `count` `GET` em espera neste nó (um aviso de mensagem nova veio de outro).
     pub fn wake_listeners(&self, topic: &str, count: usize) {
         self.wake(topic, count);
@@ -2241,6 +2280,13 @@ impl Messages {
     /// Quem espera mensagem nova do tópico neste nó é avisado por aqui.
     pub fn listener_notify(&self, topic: &str) -> Arc<Notify> {
         self.notifier(topic)
+    }
+
+    /// O nó é responsável pela posição do anel, num papel qualquer? Sem cluster, sempre.
+    pub fn responsible_for(&self, position: u64) -> bool {
+        self.cluster
+            .get()
+            .is_none_or(|hooks| hooks.placement.is_responsible(position))
     }
 
     pub fn is_clustered(&self) -> bool {
@@ -2342,6 +2388,7 @@ impl Messages {
             receipt_token: None,
             dead_lettered_ms: None,
             dead_letter_reason: None,
+            position: 0,
         };
         Ok((meta, request.body.clone()))
     }
@@ -2351,10 +2398,11 @@ impl Messages {
     pub fn apply_publish(
         &self,
         topic: &str,
-        meta: MessageMeta,
+        mut meta: MessageMeta,
         body: Vec<u8>,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
+        meta.position = self.position_for(topic, &meta.id, meta.group_id.as_deref());
         let owned = self.owns(topic, &meta.id, meta.group_id.as_deref());
         {
             let state = self.state_of(topic);

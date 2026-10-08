@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crate::cluster::protocol::{
-    Ack, AckRegisterRequest, MessageRegisterRequest, OperationRef, Step, VisibilityKind,
+    Ack, AckRegisterRequest, MessageRegisterRequest, OperationRef, Request, Step, VisibilityKind,
     VisibilityRegisterRequest, WriteKind,
 };
 use crate::core::clock::Clock;
@@ -275,9 +275,19 @@ impl Replica {
         id: &str,
         step: Step<MessageRegisterRequest>,
     ) -> Result<Ack, TabaError> {
+        self.write_step(topic, id, step, true).await
+    }
+
+    async fn write_step(
+        &self,
+        topic: &str,
+        id: &str,
+        step: Step<MessageRegisterRequest>,
+        checked: bool,
+    ) -> Result<Ack, TabaError> {
         self.count(step.phase());
         match step {
-            Step::Register(request) => self.register_write(topic, id, request).await,
+            Step::Register(request) => self.register_write(topic, id, request, checked).await,
             Step::Commit(OperationRef { operation_id }) => self.commit(&operation_id).await,
             Step::Rollback(OperationRef { operation_id }) => self.rollback(&operation_id),
         }
@@ -288,6 +298,7 @@ impl Replica {
         topic: &str,
         id: &str,
         request: MessageRegisterRequest,
+        checked: bool,
     ) -> Result<Ack, TabaError> {
         let record = request.message;
         if record.id != id || record.topic != topic {
@@ -312,9 +323,12 @@ impl Replica {
                     receipt_token: record.receipt_token.clone(),
                     dead_lettered_ms: None,
                     dead_letter_reason: None,
+                    position: 0,
                 };
                 let body = record.body;
-                let check = {
+                let check = if !checked {
+                    Ok(())
+                } else {
                     let (topic, id) = (topic.clone(), id.clone());
                     let body = body.clone();
                     self.blocking(move |messages, topics| {
@@ -360,7 +374,7 @@ impl Replica {
                 let at_ms = record
                     .dead_lettered_ms
                     .unwrap_or_else(|| self.clock.now_millis());
-                {
+                if checked {
                     let (source, target, id) = (source.clone(), topic.clone(), id.clone());
                     self.blocking(move |messages, topics| {
                         topics.get(&source)?;
@@ -397,6 +411,16 @@ impl Replica {
         id: &str,
         step: Step<VisibilityRegisterRequest>,
     ) -> Result<Ack, TabaError> {
+        self.visibility_step(topic, id, step, true).await
+    }
+
+    async fn visibility_step(
+        &self,
+        topic: &str,
+        id: &str,
+        step: Step<VisibilityRegisterRequest>,
+        checked: bool,
+    ) -> Result<Ack, TabaError> {
         self.count(step.phase());
         match step {
             Step::Register(request) => {
@@ -425,8 +449,12 @@ impl Replica {
                     id.to_owned(),
                     request.receipt_token.clone(),
                 );
-                self.blocking(move |messages, _| messages.check_visibility(&t, &i, check, &token))
+                if checked {
+                    self.blocking(move |messages, _| {
+                        messages.check_visibility(&t, &i, check, &token)
+                    })
                     .await?;
+                }
                 self.register(
                     &request.operation_id,
                     topic,
@@ -449,6 +477,16 @@ impl Replica {
         id: &str,
         step: Step<AckRegisterRequest>,
     ) -> Result<Ack, TabaError> {
+        self.ack_step(topic, id, step, true).await
+    }
+
+    async fn ack_step(
+        &self,
+        topic: &str,
+        id: &str,
+        step: Step<AckRegisterRequest>,
+        checked: bool,
+    ) -> Result<Ack, TabaError> {
         self.count(step.phase());
         match step {
             Step::Register(request) => {
@@ -457,14 +495,36 @@ impl Replica {
                     id.to_owned(),
                     request.receipt_token.clone(),
                 );
-                self.blocking(move |messages, _| {
-                    messages.check_visibility(&t, &i, VisibilityCheck::Receipt, &token)
-                })
-                .await?;
+                if checked {
+                    self.blocking(move |messages, _| {
+                        messages.check_visibility(&t, &i, VisibilityCheck::Receipt, &token)
+                    })
+                    .await?;
+                }
                 self.register(&request.operation_id, topic, id, Action::Ack)
             }
             Step::Commit(OperationRef { operation_id }) => self.commit(&operation_id).await,
             Step::Rollback(OperationRef { operation_id }) => self.rollback(&operation_id),
+        }
+    }
+
+    /// Processa um evento que ficou no banco de eventos durante a sincronização (doc 05, seção
+    /// 7.3, passo 5.3). O registro não confere nada: o evento vence a carga, e aplicar de novo o
+    /// que a carga já trazia não muda nada (a aplicação é idempotente). Só as chamadas de
+    /// mensagem passam por aqui; as de definições seguem o caminho normal.
+    pub async fn replay(&self, request: Request) -> Result<(), TabaError> {
+        match request {
+            Request::Write { topic, id, step } => {
+                self.write_step(&topic, &id, step, false).await.map(|_| ())
+            }
+            Request::Visibility { topic, id, step } => self
+                .visibility_step(&topic, &id, step, false)
+                .await
+                .map(|_| ()),
+            Request::Ack { topic, id, step } => {
+                self.ack_step(&topic, &id, step, false).await.map(|_| ())
+            }
+            _ => Ok(()),
         }
     }
 }

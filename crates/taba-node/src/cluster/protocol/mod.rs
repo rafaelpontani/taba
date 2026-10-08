@@ -6,6 +6,7 @@ mod definitions;
 pub mod http;
 mod messages;
 mod signals;
+mod vote;
 
 pub use definitions::{
     StreamEnd, StreamPage, StreamQuery, TokenOperation, TokenRegisterRequest, TopicOperation,
@@ -15,7 +16,11 @@ pub use messages::{
     AckRegisterRequest, MessageRecord, MessageRegisterRequest, TakeRequest, TakeResponse,
     VisibilityKind, VisibilityRegisterRequest, WriteKind, validate_message_path,
 };
-pub use signals::{ForwardRequest, ForwardResponse, Signal, SignalFrame};
+pub use signals::{
+    ChannelBatch, ChannelFrame, Confirm, ForwardRequest, ForwardResponse, Keepalive, ReadyCount,
+    Signal, SignalFrame,
+};
+pub use vote::{Ballot, VoteReason, VoteRequest, VoteResponse};
 
 use serde::{Deserialize, Serialize};
 
@@ -139,10 +144,18 @@ pub enum Request {
     },
     /// `POST /cluster/topics/{topic}/messages/take`
     Take { topic: String, request: TakeRequest },
-    /// `POST /cluster/signals`
-    Signal(SignalFrame),
+    /// `POST /cluster/channel`: o canal entre nós (sinal de vida e quadros com `seq`).
+    Channel(ChannelBatch),
+    /// `POST /cluster/vote-remove`
+    Vote(VoteRequest),
     /// `* /cluster/forward/{caminho}`
     Forward(ForwardRequest),
+    /// `GET /cluster/blocks/{id}/ids`
+    BlockIds { block: String, query: StreamQuery },
+    /// `GET /cluster/blocks/{id}/messages`
+    BlockMessages { block: String, query: StreamQuery },
+    /// `GET /cluster/blocks/{id}/messages/{messageId}`
+    BlockMessage { block: String, id: String },
 }
 
 impl Request {
@@ -200,8 +213,12 @@ impl Request {
                 ..
             } => "ack-rollback",
             Request::Take { .. } => "take",
-            Request::Signal(_) => "signal",
+            Request::Channel(_) => "channel",
+            Request::Vote(_) => "vote",
             Request::Forward(_) => "forward",
+            Request::BlockIds { .. } => "block-ids",
+            Request::BlockMessages { .. } => "block-messages",
+            Request::BlockMessage { .. } => "block-message",
         }
     }
 }
@@ -214,10 +231,14 @@ pub enum Response {
     /// Um trecho de `GET /cluster/topics` ou `/cluster/tokens`.
     Stream(StreamPage),
     Taken(TakeResponse),
-    /// A resposta de um sinal: nada a dizer.
-    Empty,
+    /// O `confirm` do canal.
+    Confirm(Confirm),
+    /// O voto de exclusão.
+    Vote(VoteResponse),
     /// A resposta de uma chamada de cliente repassada, como o destino a deu.
     Forwarded(ForwardResponse),
+    /// Uma mensagem inteira (`GET /cluster/blocks/{id}/messages/{messageId}`).
+    Record(MessageRecord),
 }
 
 fn invalid(field: &str, code: ErrorCode, message: &str) -> TabaError {

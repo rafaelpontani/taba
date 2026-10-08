@@ -215,7 +215,7 @@ A saúde de **cada nó** se vê pelas métricas do próprio nó (`up` no modo *p
 |---|---|---|---|---|
 | `taba.ring.virtual_nodes` | gauge | {vnode} | — | Nós virtuais deste nó (`ring.virtual-nodes`). |
 | `taba.ring.blocks` | updowncounter | {block} | `role` (`primary`/`secondary`/`tertiary`/...), `state` (`healthy`/`syncing`) | Blocos que o nó atende, por papel e integridade. Desequilíbrio entre nós indica má distribuição do anel. |
-| `taba.sync.blocks.active` | updowncounter | {block} | — | Blocos em sincronização agora (entrega suspensa nesses blocos). |
+| `taba.sync.blocks.active` | updowncounter | {block} | — | Blocos em sincronização agora (entrega suspensa nesses blocos). Existem, desde a etapa 15a: `blocks.active`, `duration`, `ids.listed`, `messages.pulled`, `bytes` (só o corpo), `log.events`, `log.bytes`, `phase` e `failures` (`reason`: `no-source`, `disk`, `log-overflow`, `cancelled`); os `streams`, as retomadas e `taba.recover.*` esperam o `Transport` HTTP e a recuperação. |
 | `taba.sync.duration` | histogram | s | — | Tempo para tornar um bloco íntegro. |
 | `taba.sync.ids.listed` | counter | {id} | — | IDs consolidados (união) nas listas de origem. |
 | `taba.sync.messages.pulled` | counter | {message} | `peer` | Mensagens obtidas por nó de origem — mostra se o balanceamento entre origens está uniforme. |

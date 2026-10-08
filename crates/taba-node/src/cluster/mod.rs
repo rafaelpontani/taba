@@ -3,10 +3,13 @@
 //! nó novo em duas fases, o protocolo (os tipos das chamadas entre nós) e o `Transport`, que
 //! tem só a versão em memória, a dos testes (doc 18, seção 17.5).
 
+pub mod channel;
 pub mod drain;
 pub mod members;
 pub mod protocol;
 pub mod replication;
 pub mod service;
 pub mod state;
+pub mod sync;
 pub mod transport;
+pub mod vote;

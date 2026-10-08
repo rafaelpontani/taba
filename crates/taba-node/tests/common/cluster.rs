@@ -29,6 +29,7 @@ pub const FAST: &[(&str, &str)] = &[
     ("TABA_WRITE_COMMIT_TIMEOUT", "400ms"),
     ("TABA_CLUSTER_BOOTSTRAP_RETRY_INTERVAL", "50ms"),
     ("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "200ms"),
+    ("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "50ms"),
 ];
 
 pub fn host_of(number: usize) -> String {
@@ -202,3 +203,7 @@ pub async fn wait_joined(node: &TestNode) {
     })
     .await;
 }
+
+/// Para os testes que derrubam um nó e querem que ele **continue na tabela**: o canal só dá a nó
+/// por perdido (e abre a votação de exclusão) depois de muito tempo.
+pub const NO_VOTE: &[(&str, &str)] = &[("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "600s")];

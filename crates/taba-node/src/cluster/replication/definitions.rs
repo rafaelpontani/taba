@@ -9,7 +9,7 @@
 //! e a tentativa segue em segundo plano). Do lado de quem recebe: confere, deixa pendente, e só no
 //! commit a definição passa a valer e é gravada em disco.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -26,6 +26,7 @@ use crate::cluster::protocol::{
 use crate::cluster::service::ClusterService;
 use crate::cluster::transport::CallError;
 use crate::core::error::{ErrorCode, TabaError};
+use crate::core::token::TokenRecord;
 use crate::core::topic::TopicDefinition;
 use crate::engine::tokens::{TokenChange, TokenReplicator, Tokens};
 use crate::engine::topics::{TopicChange, TopicReplicator, Topics};
@@ -51,6 +52,13 @@ struct State {
     ops: HashMap<String, Pending>,
     by_key: HashMap<String, String>,
     finished: VecDeque<(String, bool)>,
+}
+
+/// O que a carga de definições trouxe (nomes dos tópicos e IDs dos tokens).
+#[derive(Debug, Clone, Default)]
+pub struct Pulled {
+    pub topics: HashSet<String>,
+    pub tokens: HashSet<String>,
 }
 
 pub struct Definitions {
@@ -423,8 +431,53 @@ impl Definitions {
 
     // ---- Nó novo: puxar as tabelas ----
 
-    /// Puxa de um membro as definições de tópico e os tokens (doc 02, seções 3.3 e 3.4).
-    pub async fn pull(&self, source: &Member) -> Result<(), TabaError> {
+    /// Puxa de um membro as definições de tópico e os tokens (doc 02, seções 3.3 e 3.4) e devolve
+    /// o que veio, para a verificação final conferir.
+    pub async fn pull(&self, source: &Member) -> Result<Pulled, TabaError> {
+        let mut pulled = Pulled::default();
+        for definition in self.list_topics_of(source).await? {
+            pulled.topics.insert(definition.name.clone());
+            self.topics.load_remote(definition).await?;
+        }
+        for record in self.list_tokens_of(source).await? {
+            pulled.tokens.insert(record.id.clone());
+            self.tokens.load_remote(record).await?;
+        }
+        Ok(pulled)
+    }
+
+    /// Verificação final (doc 05, seção 7.3, passo 5.5): repete a listagem de tópicos e de tokens e
+    /// descarta o que a carga trouxe e já não aparece na origem (foi removido sem que o evento
+    /// chegasse a este nó). Só mexe no que veio da carga. Devolve quantos apagou.
+    pub async fn verify(&self, source: &Member, pulled: &Pulled) -> Result<usize, TabaError> {
+        let topics: HashSet<String> = self
+            .list_topics_of(source)
+            .await?
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        let tokens: HashSet<String> = self
+            .list_tokens_of(source)
+            .await?
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        let mut dropped = 0;
+        for name in pulled.topics.difference(&topics) {
+            if self.topics.apply_delete(name).await.is_ok() {
+                dropped += 1;
+            }
+        }
+        for id in pulled.tokens.difference(&tokens) {
+            if self.tokens.apply_revoke(id).await.is_ok() {
+                dropped += 1;
+            }
+        }
+        Ok(dropped)
+    }
+
+    async fn list_topics_of(&self, source: &Member) -> Result<Vec<TopicDefinition>, TabaError> {
+        let mut out = Vec::new();
         let mut from: Option<String> = None;
         loop {
             let request = Request::ListTopics(StreamQuery {
@@ -436,15 +489,21 @@ impl Definitions {
                 return Err(TabaError::internal());
             };
             for item in &page.items {
-                let definition = TopicDefinition::from_json(item)
-                    .map_err(|e| TabaError::new(ErrorCode::ValidationFailed, e))?;
-                self.topics.load_remote(definition).await?;
+                out.push(
+                    TopicDefinition::from_json(item)
+                        .map_err(|e| TabaError::new(ErrorCode::ValidationFailed, e))?,
+                );
             }
             if !page.end.has_more || page.end.last == from {
                 break;
             }
             from = page.end.last;
         }
+        Ok(out)
+    }
+
+    async fn list_tokens_of(&self, source: &Member) -> Result<Vec<TokenRecord>, TabaError> {
+        let mut out = Vec::new();
         let mut from: Option<String> = None;
         loop {
             let request = Request::ListTokens(StreamQuery {
@@ -456,14 +515,14 @@ impl Definitions {
                 return Err(TabaError::internal());
             };
             for item in &page.items {
-                self.tokens.load_remote(token_from_json(item)?).await?;
+                out.push(token_from_json(item)?);
             }
             if !page.end.has_more || page.end.last == from {
                 break;
             }
             from = page.end.last;
         }
-        Ok(())
+        Ok(out)
     }
 
     async fn call(&self, member: &Member, request: Request) -> Result<Response, TabaError> {

@@ -242,3 +242,62 @@ fn a_single_node_owns_every_block_and_an_empty_ring_owns_nothing() {
     assert!(empty.owners(7, 3).is_empty());
     assert_eq!(empty.primary_blocks_of("x"), 0);
 }
+
+/// UC: UC-SIN-001
+#[test]
+fn the_ranges_of_the_blocks_cover_every_position_exactly_once() {
+    let (_, ring) = ring_of(3, 8);
+    let in_ranges = |ranges: &[(u64, u64)], position: u64| {
+        ranges
+            .iter()
+            .any(|(from, to)| (*from..=*to).contains(&position))
+    };
+    for message in message_ids(200) {
+        let position = message_position(&message);
+        let owner = ring.block_of(position).unwrap();
+        for block in ring.blocks() {
+            let ranges = ring.block_ranges(block).unwrap();
+            assert_eq!(
+                in_ranges(&ranges, position),
+                block == owner,
+                "a posição {position} e o bloco {block}"
+            );
+        }
+    }
+    // Os extremos do anel também pertencem a um bloco só.
+    for position in [0, u64::MAX] {
+        let owner = ring.block_of(position).unwrap();
+        let holders = ring
+            .blocks()
+            .filter(|b| in_ranges(&ring.block_ranges(*b).unwrap(), position))
+            .collect::<Vec<_>>();
+        assert_eq!(holders, vec![owner]);
+    }
+    assert!(ring.block_ranges(BlockId(1)).is_none());
+}
+
+/// UC: UC-SIN-001
+#[test]
+fn a_node_syncs_only_the_blocks_it_is_responsible_for() {
+    let (ids, ring) = ring_of(4, 8);
+    let rf = 3;
+    for id in &ids {
+        let mine = ring.blocks_of(id, rf);
+        assert!(!mine.is_empty());
+        for block in ring.blocks() {
+            let owners = ring.block_owners(block, rf).unwrap();
+            assert_eq!(
+                mine.contains(&block),
+                owners.contains(&id.as_str()),
+                "o bloco {block}"
+            );
+        }
+    }
+    let single = Ring::new([ids[0].as_str()], 4);
+    assert_eq!(single.blocks_of(&ids[0], 3).len(), single.block_count());
+    let one_point = Ring::new([ids[0].as_str()], 1);
+    assert_eq!(
+        one_point.block_ranges(one_point.blocks().next().unwrap()),
+        Some(vec![(0, u64::MAX)])
+    );
+}

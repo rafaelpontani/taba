@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use common::cluster::{TestCluster, eventually, eventually_async};
+use common::cluster::{NO_VOTE, TestCluster, eventually, eventually_async};
 use common::{TestNode, error_code};
 
 async fn drain_state(node: &TestNode) -> String {
@@ -153,7 +153,7 @@ async fn a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_
 /// UC: UC-DRN-016
 #[tokio::test]
 async fn canceling_before_the_node_left_keeps_it_in_the_cluster() {
-    let cluster = TestCluster::start(3).await;
+    let cluster = TestCluster::start_with(3, NO_VOTE).await;
     // Os outros não alcançam o nó 3: o desregistro não fecha e o drain fica em `draining`.
     cluster.network.isolate("10.0.0.3");
     let node3 = cluster.node(3);
@@ -291,7 +291,7 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
     assert!(matches!(reply, Response::Taken(t) if t.messages.is_empty()));
 
     // Os pares foram avisados por sinal e não pedem mais `take` a ele.
-    assert!(cluster.network.count("signal") >= 2);
+    assert!(cluster.network.count("channel") >= 2);
     cluster.network.clear_calls();
     let got = consume_all(cluster.node(1), "pedidos", 1).await;
     assert!(!got.is_empty());

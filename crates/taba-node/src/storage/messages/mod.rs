@@ -40,6 +40,19 @@ pub struct MessageMeta {
     /// Quando entrou na dead-letter (e por quê). Dali em diante o `ttl` conta deste instante.
     pub dead_lettered_ms: Option<u64>,
     pub dead_letter_reason: Option<String>,
+    /// A posição no anel de hash (doc 05, seção 7.1): é por ela que se acha o bloco da mensagem.
+    /// Quem guarda a mensagem a calcula (a da fila FIFO é a do grupo).
+    pub position: u64,
+}
+
+/// A posição no anel como o banco a guarda: o `u64` com o bit mais alto trocado, num inteiro com
+/// sinal que mantém a mesma ordem (o SQLite não tem inteiro sem sinal).
+fn position_to_db(position: u64) -> i64 {
+    (position ^ (1 << 63)) as i64
+}
+
+fn position_from_db(stored: i64) -> u64 {
+    (stored as u64) ^ (1 << 63)
 }
 
 impl MessageMeta {
@@ -47,6 +60,15 @@ impl MessageMeta {
     pub fn age_base_ms(&self) -> u64 {
         self.dead_lettered_ms.unwrap_or(self.published_ms)
     }
+}
+
+/// Uma linha de [`MessageStore::block_rows`]: o que a listagem de IDs de um bloco diz de cada
+/// mensagem (doc 06c, `GET /cluster/blocks/{id}/ids`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockRow {
+    pub id: String,
+    /// Só na fila FIFO, na linha curta que o ack deixa.
+    pub delete_at_ms: Option<u64>,
 }
 
 /// Uma linha de [`MessageStore::scan`].
@@ -77,7 +99,8 @@ const SCHEMA: &str = "
         dead_letter_reason TEXT,
         age_base           INTEGER NOT NULL,
         deduplication_id   TEXT,
-        delete_at          INTEGER
+        delete_at          INTEGER,
+        position           INTEGER NOT NULL DEFAULT 0
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS messages_invisible_until ON messages (invisible_until);
     CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
@@ -88,6 +111,7 @@ const SCHEMA: &str = "
 const FIFO_INDEXES: &str = "
     CREATE INDEX IF NOT EXISTS messages_group_dedup ON messages (group_id, deduplication_id);
     CREATE INDEX IF NOT EXISTS messages_delete_at ON messages (delete_at);
+    CREATE INDEX IF NOT EXISTS messages_position ON messages (position);
 ";
 
 /// Acrescenta ao banco de uma versão anterior as colunas que ele não tem.
@@ -97,7 +121,11 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         .query_map([], |row| row.get(0))?
         .collect::<Result<_, _>>()?;
     drop(stmt);
-    for (name, kind) in [("deduplication_id", "TEXT"), ("delete_at", "INTEGER")] {
+    for (name, kind) in [
+        ("deduplication_id", "TEXT"),
+        ("delete_at", "INTEGER"),
+        ("position", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
         if !have.iter().any(|c| c == name) {
             conn.execute_batch(&format!("ALTER TABLE messages ADD COLUMN {name} {kind}"))?;
         }
@@ -106,7 +134,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 const COLUMNS: &str = "id, content_type, group_id, published_at, delivery_count, invisible_until, \
-                       receipt_token, dead_lettered_at, dead_letter_reason, deduplication_id";
+                       receipt_token, dead_lettered_at, dead_letter_reason, deduplication_id, \
+                       position";
 
 fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
     Ok(MessageMeta {
@@ -120,6 +149,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
         dead_lettered_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
         dead_letter_reason: row.get(8)?,
         deduplication_id: row.get(9)?,
+        position: position_from_db(row.get::<_, i64>(10)?),
     })
 }
 
@@ -240,8 +270,8 @@ impl MessageStore {
             .execute(
                 "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
                  delivery_count, invisible_until, receipt_token, dead_lettered_at, \
-                 dead_letter_reason, age_base, deduplication_id) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 dead_letter_reason, age_base, deduplication_id, position) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     meta.id,
                     meta.content_type,
@@ -254,6 +284,7 @@ impl MessageStore {
                     meta.dead_letter_reason,
                     meta.age_base_ms() as i64,
                     meta.deduplication_id,
+                    position_to_db(meta.position),
                 ],
             )
             .map_err(to_io)?;
@@ -358,6 +389,58 @@ impl MessageStore {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
+    /// As mensagens do tópico cuja posição cai em alguma das `ranges` (os arcos de um bloco), com
+    /// `id` entre `from` e `to` (inclusivos), em ordem de `id`, no máximo `limit`. Inclui a linha
+    /// curta da fila FIFO (`delete_at`).
+    pub fn block_rows(
+        &self,
+        topic: &str,
+        ranges: &[(u64, u64)],
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: usize,
+    ) -> io::Result<Vec<BlockRow>> {
+        use rusqlite::types::Value;
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(Vec::new());
+        };
+        if ranges.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut args: Vec<Value> = Vec::new();
+        let mut sql = String::from("SELECT id, delete_at FROM messages WHERE (");
+        for (i, (low, high)) in ranges.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(" OR ");
+            }
+            sql.push_str("position BETWEEN ? AND ?");
+            args.push(Value::Integer(position_to_db(*low)));
+            args.push(Value::Integer(position_to_db(*high)));
+        }
+        sql.push(')');
+        if let Some(from) = from {
+            sql.push_str(" AND id >= ?");
+            args.push(Value::Text(from.to_owned()));
+        }
+        if let Some(to) = to {
+            sql.push_str(" AND id <= ?");
+            args.push(Value::Text(to.to_owned()));
+        }
+        sql.push_str(" ORDER BY id LIMIT ?");
+        args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
+        let conn = disk.conn();
+        let mut stmt = conn.prepare(&sql).map_err(to_io)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(args), |row| {
+                Ok(BlockRow {
+                    id: row.get(0)?,
+                    delete_at_ms: row.get::<_, Option<i64>>(1)?.map(|v| v as u64),
+                })
+            })
+            .map_err(to_io)?;
+        rows.collect::<Result<_, _>>().map_err(to_io)
+    }
+
     /// Os `limit` primeiros ids entregáveis (prazo vencido), em ordem de `id`.
     pub fn ready_ids(&self, topic: &str, now_ms: u64, limit: usize) -> io::Result<Vec<String>> {
         self.ids(
@@ -429,8 +512,8 @@ impl MessageStore {
             .execute(
                 "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
                  delivery_count, invisible_until, receipt_token, dead_lettered_at, \
-                 dead_letter_reason, age_base, deduplication_id, delete_at) \
-                 VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6)",
+                 dead_letter_reason, age_base, deduplication_id, delete_at, position) \
+                 VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6, ?7)",
                 params![
                     meta.id,
                     meta.group_id,
@@ -438,6 +521,7 @@ impl MessageStore {
                     meta.published_ms as i64,
                     meta.deduplication_id,
                     delete_at_ms as i64,
+                    position_to_db(meta.position),
                 ],
             )
             .map_err(to_io)?;
