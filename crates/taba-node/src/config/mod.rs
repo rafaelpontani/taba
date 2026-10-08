@@ -204,10 +204,10 @@ pub struct Write {
     pub replication_factor: u32,
     /// Efetivo: 1 em desenvolvimento; senão `floor(replication.factor / 2) + 1` se não definido.
     pub quorum: u32,
-    pub retry_attempts: Option<u32>,
-    pub retry_backoff: Option<Duration>,
-    pub pending_ttl: Option<Duration>,
-    pub commit_timeout: Option<Duration>,
+    pub retry_attempts: u32,
+    pub retry_backoff: Duration,
+    pub pending_ttl: Duration,
+    pub commit_timeout: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -225,7 +225,7 @@ pub struct ClusterSync {
 pub struct Cluster {
     pub entry_address: Option<String>,
     pub first_node: bool,
-    pub virtual_nodes: Option<u32>,
+    pub virtual_nodes: u32,
     pub keepalive_interval: Option<Duration>,
     pub keepalive_max_topics: Option<u32>,
     pub notify_window: Duration,
@@ -237,7 +237,7 @@ pub struct Cluster {
     pub vote_quorum_percent: u32,
     pub vote_min_voters: u32,
     pub freezing_duration: Option<Duration>,
-    pub bootstrap_retry_interval: Option<Duration>,
+    pub bootstrap_retry_interval: Duration,
     /// `0`: sem limite.
     pub bootstrap_retry_max_attempts: u32,
     pub message_loss_ttl: Option<Duration>,
@@ -535,14 +535,26 @@ impl Config {
 
         // Cluster
         let cluster = cluster_config(s)?;
-        if !dev && cluster.entry_address.is_none() {
-            problems.push("cluster.entry-address é obrigatório em mode=production".into());
+        match (&cluster.entry_address, dev) {
+            (None, false) => {
+                problems.push("cluster.entry-address é obrigatório em mode=production".into());
+            }
+            (Some(address), false) if !is_host_port(address) => problems.push(format!(
+                "cluster.entry-address (`{address}`) deve ser host:porta, na porta do cluster"
+            )),
+            _ => {}
         }
         if !(1..=100).contains(&cluster.vote_quorum_percent) {
             problems.push("cluster.vote.quorum-percent deve estar entre 1 e 100".into());
         }
         if cluster.vote_min_voters == 0 {
             problems.push("cluster.vote.min-voters deve ser de 1 em diante".into());
+        }
+        if cluster.virtual_nodes == 0 {
+            problems.push("ring.virtual-nodes deve ser de 1 em diante".into());
+        }
+        if write.retry_attempts == 0 {
+            problems.push("write.retry.attempts deve ser de 1 em diante".into());
         }
         if let (Some(hard), Some(line)) = (messages.hard_limit, cluster.sync.stream_max_line_bytes)
         {
@@ -725,6 +737,14 @@ fn check_distinct_ports(ports: &Ports, dev: bool, problems: &mut Vec<String>) {
     }
 }
 
+/// `host:porta`, com a porta de 1 a 65535 (o formato de `cluster.entry-address`).
+fn is_host_port(address: &str) -> bool {
+    address
+        .trim()
+        .rsplit_once(':')
+        .is_some_and(|(host, port)| !host.is_empty() && port.parse::<u16>().is_ok_and(|p| p != 0))
+}
+
 /// `cluster.tls.dir`: o definido precisa existir; o padrão (`<secrets.dir>/tls`) só vale
 /// se existir. Com pasta, é preciso ao menos um par `<nome>.crt` + `<nome>.key`.
 fn resolve_tls_dir(
@@ -859,10 +879,10 @@ fn write_rest(s: &Source) -> Result<Write, ConfigError> {
     Ok(Write {
         replication_factor: 0,
         quorum: 0,
-        retry_attempts: s.opt("write.retry.attempts")?,
-        retry_backoff: s.opt("write.retry.backoff")?,
-        pending_ttl: s.opt("write.pending.ttl")?,
-        commit_timeout: s.opt("write.commit.timeout")?,
+        retry_attempts: s.get("write.retry.attempts")?,
+        retry_backoff: s.get("write.retry.backoff")?,
+        pending_ttl: s.get("write.pending.ttl")?,
+        commit_timeout: s.get("write.commit.timeout")?,
     })
 }
 
@@ -870,7 +890,7 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
     Ok(Cluster {
         entry_address: s.opt("cluster.entry-address")?,
         first_node: s.get("cluster.first-node")?,
-        virtual_nodes: s.opt("ring.virtual-nodes")?,
+        virtual_nodes: s.get("ring.virtual-nodes")?,
         keepalive_interval: s.opt("cluster.channel.keepalive.interval")?,
         keepalive_max_topics: s.opt("cluster.channel.keepalive.max-topics")?,
         notify_window: s.get("cluster.notify.window")?,
@@ -882,7 +902,7 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
         vote_quorum_percent: s.get("cluster.vote.quorum-percent")?,
         vote_min_voters: s.get("cluster.vote.min-voters")?,
         freezing_duration: s.opt("cluster.freezing.duration")?,
-        bootstrap_retry_interval: s.opt("cluster.bootstrap.retry.interval")?,
+        bootstrap_retry_interval: s.get("cluster.bootstrap.retry.interval")?,
         bootstrap_retry_max_attempts: s.get("cluster.bootstrap.retry.max-attempts")?,
         message_loss_ttl: s.opt("cluster.message-loss.ttl")?,
         recovery_timeout: s.opt("cluster.recovery.timeout")?,

@@ -189,7 +189,7 @@ Visão do cluster: **todos os nós reportam a mesma coisa** (ou a sua visão del
 
 | Métrica | Tipo | Unidade | Atributos | Descrição |
 |---|---|---|---|---|
-| `taba.cluster.members` | gauge | {node} | `state` (`active`/`frozen`/`suspect`) | Membros na tabela deste nó. |
+| `taba.cluster.members` | gauge | {node} | `state` (`active`/`syncing`/`draining`/`suspect`, os estados do `Member`; os nós em freezing estão em `taba.cluster.freezing`) | Membros na tabela deste nó. |
 | `taba.cluster.members.version` | gauge | {version} | — | Versão/época da tabela de membros; divergência entre nós indica propagação incompleta. |
 | `taba.cluster.quorum.available` | gauge | {flag} | — | `1` se há nós saudáveis suficientes para votar (`cluster.vote.min-voters`). |
 | `taba.cluster.channel.state` | gauge | {flag} | `peer` | `1` se o canal com o peer está conectado, `0` se caído (substitui o ping — seção 6.3). |
@@ -200,7 +200,7 @@ Visão do cluster: **todos os nós reportam a mesma coisa** (ou a sua visão del
 | `taba.cluster.channel.queue.dropped` | counter | {signal} | `peer`, `reason` (`coalesced`/`expired`/`overflow`) | Sinais substituídos, descartados por idade ou descartados por estouro do limite da fila de saída (o estouro abre a votação de exclusão do peer). |
 | `taba.cluster.vote` | counter | {vote} | `role` (`opened`/`cast`), `outcome` | Votações de exclusão abertas/votadas e seu resultado. |
 | `taba.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `reason` (`vote`/`drain`, no desregistro), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
-| `taba.cluster.bootstrap.failures` | counter | {failure} | `reason` | Falhas de bootstrap (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
+| `taba.cluster.bootstrap.failures` | counter | {failure} | `reason` (`connectivity`, `phase1`, `phase2`, `frozen`; e `list`, `join` e `config`, do lado do nó que tenta entrar) | Falhas de bootstrap deste nó (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
 | `taba.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
 | `taba.node.state` | gauge | {flag} | `state` (`joining`/`active`/`syncing`/`returning`/`failed`) | `1` no estado atual **deste nó** (incluindo retorno após exclusão — seção 6.6, e `failed`: disco cheio ou banco corrompido, seção 7.3 de [05](05-particionamento-replicacao.md)). |
 | `taba.node.drain.state` | gauge | {flag} | `state` (`active`/`draining`/`drained`) | `1` no estado do drain deste nó (seção 6.10 de [04-cluster.md](04-cluster.md)). |

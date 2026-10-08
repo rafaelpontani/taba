@@ -128,8 +128,9 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthRespons
     }
 }
 
-/// `GET /health/cluster`. Sem protocolo de cluster, o cluster é este nó: `scope=cluster` e
-/// `scope=node` devolvem o mesmo, em formato de cluster de um nó só (como no desenvolvimento).
+/// `GET /health/cluster`. Ainda sem a consulta aos outros nós (`GET /cluster/status`), o cluster é
+/// este nó: `scope=cluster` e `scope=node` devolvem o mesmo, com os membros e a época da tabela
+/// quando o nó já a tem.
 async fn cluster_health(
     State(state): State<AppState>,
     Query(query): Query<HashMap<String, String>>,
@@ -153,12 +154,29 @@ async fn cluster_health(
     let now = format_ms(state.clock.now_millis());
     let node = &state.node;
     let storage = state.messages.storage_stats();
-    let members = match (node.drain_state(), node.state()) {
-        (DrainState::Draining, _) => json!({ "draining": 1 }),
-        (DrainState::Drained, _) => json!({}),
-        (_, NodeState::Active) => json!({ "active": 1 }),
-        (_, NodeState::Syncing) => json!({ "syncing": 1 }),
-        _ => json!({}),
+    // Com a tabela de membros (nó em produção que já entrou), os membros e a época vêm dela.
+    let table = state.cluster.as_ref().and_then(|c| c.membership().table());
+    let (members, members_version) = match &table {
+        Some(table) => {
+            let mut counts = serde_json::Map::new();
+            for member in &table.members {
+                let entry = counts
+                    .entry(member.state.as_str().to_owned())
+                    .or_insert(json!(0));
+                *entry = json!(entry.as_u64().unwrap_or(0) + 1);
+            }
+            (Value::Object(counts), table.version)
+        }
+        None => (
+            match (node.drain_state(), node.state()) {
+                (DrainState::Draining, _) => json!({ "draining": 1 }),
+                (DrainState::Drained, _) => json!({}),
+                (_, NodeState::Active) => json!({ "active": 1 }),
+                (_, NodeState::Syncing) => json!({ "syncing": 1 }),
+                _ => json!({}),
+            },
+            0,
+        ),
     };
     let disk_free = state.messages.disk_free_bytes();
     let mut storage_json = json!({
@@ -193,7 +211,7 @@ async fn cluster_health(
         "collectedAt": now,
         "storage": storage_json,
         "signals": {
-            "membersVersion": 0,
+            "membersVersion": members_version,
             "quorumAvailable": true,
             "channels": {},
             "syncingBlocks": 0,
@@ -210,7 +228,7 @@ async fn cluster_health(
         "conditions": conditions,
         "summary": {
             "members": members,
-            "membersVersion": 0,
+            "membersVersion": members_version,
             "quorumAvailable": true,
             "syncingBlocks": 0,
         },

@@ -14,7 +14,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 
 ### Regras comuns às rotas do cluster
 
-**Quem pode chamar.** Quem consta na **tabela de membros** do nó. Quem não consta recebe `403` `cluster.not-member`. Aceitam também quem **ainda não é membro**: `GET /cluster/nodes` e `POST /cluster/nodes/join` (o nó que entra), `GET /cluster/message-loss` e `POST /cluster/messages/recover` (o nó excluído que volta, seção 6.6 de [04-cluster.md](04-cluster.md)). O repasse (`/cluster/forward`) aceita também os nós que saíram por drain.
+**Quem pode chamar.** Quem consta na **tabela de membros** do nó. Quem não consta recebe `403` `cluster.not-member`. O chamador é reconhecido pelo **IP de origem** da conexão, que tem de ser um dos `addresses` de algum membro (todos os nós usam o mesmo certificado do cluster, então o certificado não diz quem é). Um nó que ainda não tem a tabela não sabe quem é membro e responde `503` `cluster.node-syncing`, não `403`. Aceitam também quem **ainda não é membro**: `GET /cluster/nodes` e `POST /cluster/nodes/join` (o nó que entra), `GET /cluster/message-loss` e `POST /cluster/messages/recover` (o nó excluído que volta, seção 6.6 de [04-cluster.md](04-cluster.md)). O repasse (`/cluster/forward`) aceita também os nós que saíram por drain.
 
 **Protocolo de duas fases.** As rotas `register`, `commit` e `rollback` implementam o registro + commit ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.2):
 
@@ -40,7 +40,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 
 | Grupo | Rotas |
 |---|---|
-| **Membros e canal** | `GET /cluster/nodes`, `POST /cluster/nodes/join`, `POST /cluster/nodes/register`, `POST /cluster/nodes/unregister`, `POST /cluster/nodes/commit`, `POST /cluster/vote-remove`, `GET /cluster/channel` |
+| **Membros e canal** | `GET /cluster/nodes`, `POST /cluster/nodes/join`, `POST /cluster/nodes/register`, `POST /cluster/nodes/unregister`, `POST /cluster/nodes/commit`, `POST /cluster/nodes/rollback`, `POST /cluster/vote-remove`, `GET /cluster/channel` |
 | **Tópicos e tokens** | `POST /cluster/topics/register`, `commit`, `rollback`; `GET /cluster/topics`; `POST /cluster/tokens/register`, `commit`, `rollback`; `GET /cluster/tokens`; `GET /cluster/topics/{id}/idle` |
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/messages/recover` |
@@ -68,7 +68,7 @@ Feito pelo nó novo a **um membro** da lista. O membro **testa os IPs** informad
 | `port` | inteiro | sim | A **porta do cluster** do nó. |
 | `version` | texto | sim | Versão do Taba. |
 
-**Resposta: `200`, `MemberTable`**, já com o commit confirmado em todo o cluster. A tabela de tópicos e a de tokens **não** vão aqui: o nó as puxa por `GET /cluster/topics` e `GET /cluster/tokens`.
+**Resposta: `200`, `MemberTable`**, já com o commit confirmado em todo o cluster. O **teste de conexão** é um `GET /cluster/nodes` ao nó novo, em cada IP informado, na porta informada: qualquer resposta prova a conexão, inclusive `503` `cluster.node-syncing` (o nó novo ainda não tem a tabela). Se o nó já consta na tabela (o pedido repetido depois de `cluster.commit-timeout`), a resposta é `200` com a tabela, sem novo registro. A tabela de tópicos e a de tokens **não** vão aqui: o nó as puxa por `GET /cluster/topics` e `GET /cluster/tokens`.
 
 | Status | Código | Quando |
 |---|---|---|
@@ -89,6 +89,10 @@ Feito pelo nó novo a **um membro** da lista. O membro **testa os IPs** informad
 ### `POST /cluster/nodes/commit`: fase 2
 
 Efetiva o registro **ou** o desregistro na tabela de membros do nó. Corpo: `OperationRef`. Resposta: `200`, `Ack`. Erros: `404` `cluster.operation-unknown`. Falha de commit não gera rollback (regra comum acima).
+
+### `POST /cluster/nodes/rollback`: abortar a fase 1
+
+Descarta o registro ou o desregistro **pendente**, antes do commit. É o que o coordenador chama nos nós que já tinham confirmado quando a fase 1 não fecha em todos (seção 6.2 de [04-cluster.md](04-cluster.md), passo 7). Corpo: `OperationRef`. Resposta: `200`, `Ack`. Erros: `404` `cluster.operation-unknown` (operação desconhecida ou já expirada) e `409` `cluster.conflict` (a operação já foi efetivada: não há rollback depois do commit).
 
 ### `POST /cluster/vote-remove`: voto de exclusão
 

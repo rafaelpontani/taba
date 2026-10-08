@@ -63,6 +63,7 @@ fn app() -> Router {
         messages,
         node,
         drain,
+        cluster: None,
         allowed_ips: Arc::new(Vec::new()),
         client_ip: Arc::new(ClientIpRules::from_config(&config.client_ip)),
         auth: Arc::new(Auth::new(

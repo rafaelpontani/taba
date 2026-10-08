@@ -58,12 +58,12 @@ pub static PARAMS: &[Param] = &[
     // Escrita e durabilidade
     p("replication.factor", Some("3")),
     p("write.quorum", None), // derivado: floor(replication.factor / 2) + 1
-    p("write.retry.attempts", None),
-    p("write.retry.backoff", None),
-    p("write.pending.ttl", None),
-    p("write.commit.timeout", None),
+    p("write.retry.attempts", Some("3")),
+    p("write.retry.backoff", Some("200ms")),
+    p("write.pending.ttl", Some("30s")),
+    p("write.commit.timeout", Some("10s")),
     // Cluster
-    p("ring.virtual-nodes", None),
+    p("ring.virtual-nodes", Some("128")),
     p("cluster.channel.keepalive.interval", None),
     p("cluster.channel.keepalive.max-topics", None),
     p("cluster.notify.window", Some("100ms")),
@@ -77,7 +77,7 @@ pub static PARAMS: &[Param] = &[
     p("cluster.freezing.duration", None),
     p("cluster.entry-address", None),
     p("cluster.first-node", Some("false")),
-    p("cluster.bootstrap.retry.interval", None),
+    p("cluster.bootstrap.retry.interval", Some("5s")),
     p("cluster.bootstrap.retry.max-attempts", Some("0")),
     p("cluster.message-loss.ttl", None),
     p("cluster.recovery.timeout", None),

@@ -12,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 
 use super::AppState;
 use super::common::ApiError;
+use crate::cluster::members::MemberState;
 use crate::cluster::state::{DrainState, NodeState};
 use crate::config::TopicsMetricsMode;
 use crate::core::error::TabaError;
@@ -59,6 +60,7 @@ pub fn collect(state: &AppState) {
     let registry = &state.telemetry.registry;
     collect_process(state);
     collect_node(state);
+    collect_cluster(state);
     let observation = state.messages.observe_node();
     collect_storage(state, &observation);
     registry.set(&NODE_DRAIN_PENDING, &[], observation.memory_messages as f64);
@@ -122,6 +124,64 @@ fn collect_node(state: &AppState) {
     }
     if state.auth.enabled {
         registry.set(&AUTH_TOKENS, &[], state.auth.tokens.count() as f64);
+    }
+}
+
+/// A tabela de membros e o anel (só em `mode=production` com o nó no cluster): os membros por
+/// estado, a época da tabela e os blocos que este nó atende, por papel (primário, secundário...).
+fn collect_cluster(state: &AppState) {
+    let Some(cluster) = &state.cluster else {
+        return;
+    };
+    let registry = &state.telemetry.registry;
+    let membership = cluster.membership();
+    if let Some(table) = membership.table() {
+        registry.set(&CLUSTER_MEMBERS_VERSION, &[], table.version as f64);
+        for member_state in [
+            MemberState::Active,
+            MemberState::Syncing,
+            MemberState::Draining,
+            MemberState::Suspect,
+        ] {
+            let count = table
+                .members
+                .iter()
+                .filter(|m| m.state == member_state)
+                .count();
+            registry.set(
+                &CLUSTER_MEMBERS,
+                &[("taba.state", member_state.as_str())],
+                count as f64,
+            );
+        }
+    }
+    let rules = cluster.rules();
+    registry.set(&RING_VIRTUAL_NODES, &[], f64::from(rules.virtual_nodes));
+    let ring = membership.ring();
+    let replicas = rules.replication_factor.max(1) as usize;
+    let mut by_role = vec![0u64; replicas];
+    for block in ring.blocks() {
+        let owners = ring.block_owners(block, replicas).unwrap_or_default();
+        if let Some(role) = owners.iter().position(|n| *n == cluster.node_id()) {
+            by_role[role] += 1;
+        }
+    }
+    for (role, count) in by_role.into_iter().enumerate() {
+        registry.set(
+            &RING_BLOCKS,
+            &[("taba.role", &role_label(role)), ("taba.state", "healthy")],
+            count as f64,
+        );
+    }
+}
+
+/// O papel de um nó num bloco, pela posição na ordem das réplicas.
+fn role_label(role: usize) -> String {
+    match role {
+        0 => "primary".to_owned(),
+        1 => "secondary".to_owned(),
+        2 => "tertiary".to_owned(),
+        n => format!("replica-{}", n + 1),
     }
 }
 

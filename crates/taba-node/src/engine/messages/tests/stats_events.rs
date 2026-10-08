@@ -36,25 +36,50 @@ impl tracing::field::Visit for FieldVisitor {
     }
 }
 
-struct Collector(Arc<Mutex<Vec<Captured>>>);
+type Sink = Arc<Mutex<Vec<Captured>>>;
 
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Collector {
+thread_local! {
+    /// Onde os eventos desta thread vão enquanto um `capture` roda nela.
+    static SINK: std::cell::RefCell<Option<Sink>> = const { std::cell::RefCell::new(None) };
+}
+
+/// O coletor global: entrega cada evento ao `capture` da thread que o emitiu e ignora o resto.
+/// Um coletor só, instalado uma vez, evita a corrida do tracing entre testes em threads
+/// diferentes que trocam de coletor (o interesse do ponto de log pode ficar desligado).
+struct Router;
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Router {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        let mut visitor = FieldVisitor::default();
-        event.record(&mut visitor);
-        self.0.lock().unwrap().push(Captured {
-            level: *event.metadata().level(),
-            fields: visitor.0,
+        SINK.with(|sink| {
+            let Some(sink) = sink.borrow().clone() else {
+                return;
+            };
+            let mut visitor = FieldVisitor::default();
+            event.record(&mut visitor);
+            sink.lock().unwrap().push(Captured {
+                level: *event.metadata().level(),
+                fields: visitor.0,
+            });
         });
     }
 }
 
+fn install_router() {
+    use tracing_subscriber::layer::SubscriberExt;
+    static INSTALLED: std::sync::Once = std::sync::Once::new();
+    INSTALLED.call_once(|| {
+        let subscriber = tracing_subscriber::registry().with(Router);
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    });
+}
+
 /// Roda `run` nesta thread com um coletor de eventos de log, de qualquer nível.
 fn capture<T>(run: impl FnOnce() -> T) -> (T, Vec<Captured>) {
-    use tracing_subscriber::layer::SubscriberExt;
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = tracing_subscriber::registry().with(Collector(events.clone()));
-    let out = tracing::subscriber::with_default(subscriber, run);
+    install_router();
+    let events: Sink = Arc::new(Mutex::new(Vec::new()));
+    SINK.with(|sink| *sink.borrow_mut() = Some(events.clone()));
+    let out = run();
+    SINK.with(|sink| *sink.borrow_mut() = None);
     let captured = events.lock().unwrap().clone();
     (out, captured)
 }

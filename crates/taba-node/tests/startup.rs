@@ -6,6 +6,7 @@ mod common;
 use std::net::TcpListener;
 
 use common::TestNode;
+use taba_node::config::{Config, MapEnv};
 use taba_node::node::NodeError;
 
 /// UC: UC-SEG-001, UC-CFG-004
@@ -56,6 +57,18 @@ async fn in_development_the_cluster_port_is_ignored_even_when_occupied() {
         .await;
     assert_eq!(node.node.cluster_addr(), None);
     node.shutdown().await;
+}
+
+/// UC: UC-ING-001
+#[test]
+fn production_without_the_entry_address_does_not_start() {
+    // A configuração é recusada antes de abrir qualquer porta; o `taba` sai com código 2.
+    let env = MapEnv::new([("TABA_MODE", "production"), ("TABA_API_PORT", "0")]);
+    let error = Config::parse(None, &env).unwrap_err();
+    assert!(
+        error.to_string().contains("cluster.entry-address"),
+        "{error}"
+    );
 }
 
 /// UC: UC-CFG-004

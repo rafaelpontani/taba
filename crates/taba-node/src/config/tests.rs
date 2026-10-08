@@ -125,6 +125,46 @@ fn production_needs_the_entry_address_and_development_does_not() {
     assert_eq!(dev.cluster.entry_address, None);
 }
 
+/// UC: UC-ING-001
+#[test]
+fn the_entry_address_must_be_host_and_port() {
+    for bad in [
+        "balancer",
+        "balancer:",
+        ":8081",
+        "balancer:70000",
+        "balancer:0",
+    ] {
+        let found = problems(prod_with(&[("TABA_CLUSTER_ENTRY_ADDRESS", bad)]));
+        assert!(found.contains("cluster.entry-address"), "{bad}: {found}");
+    }
+    let ok = prod_with(&[("TABA_CLUSTER_ENTRY_ADDRESS", "taba-lb.internal:8081")]).unwrap();
+    assert_eq!(
+        ok.cluster.entry_address.as_deref(),
+        Some("taba-lb.internal:8081")
+    );
+}
+
+#[test]
+fn the_cluster_parameters_that_were_to_be_defined_have_working_defaults() {
+    let c = prod_with(&[]).unwrap();
+    assert_eq!(c.cluster.virtual_nodes, 128);
+    assert_eq!(c.write.retry_attempts, 3);
+    assert_eq!(c.write.retry_backoff, std::time::Duration::from_millis(200));
+    assert_eq!(c.write.pending_ttl, std::time::Duration::from_secs(30));
+    assert_eq!(c.write.commit_timeout, std::time::Duration::from_secs(10));
+    assert_eq!(
+        c.cluster.bootstrap_retry_interval,
+        std::time::Duration::from_secs(5)
+    );
+    assert!(
+        problems(prod_with(&[("TABA_RING_VIRTUAL_NODES", "0")])).contains("ring.virtual-nodes")
+    );
+    assert!(
+        problems(prod_with(&[("TABA_WRITE_RETRY_ATTEMPTS", "0")])).contains("write.retry.attempts")
+    );
+}
+
 #[test]
 fn development_forces_a_single_node_and_warns_about_ignored_parameters() {
     let c = parse_env(&[

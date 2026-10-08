@@ -7,6 +7,7 @@ pub mod content;
 pub mod error;
 pub mod id;
 pub mod pagination;
+pub mod ring;
 pub mod time;
 pub mod token;
 pub mod topic;

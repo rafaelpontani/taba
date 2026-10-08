@@ -39,7 +39,7 @@ async fn main() -> ExitCode {
     };
     telemetry::init_logging(config.telemetry.logs_level.as_deref());
 
-    let running = match node::start(config, Deps::default()).await {
+    let mut running = match node::start(config, Deps::default()).await {
         Ok(running) => running,
         Err(e) => {
             tracing::error!("{e}");
@@ -48,11 +48,25 @@ async fn main() -> ExitCode {
         }
     };
 
-    wait_for_stop().await;
-    tracing::info!("sinal de parada recebido; encerrando");
+    // O nó também para sozinho quando o bootstrap esgota as tentativas (doc 04, seção 6.5).
+    let fatal = tokio::select! {
+        () = wait_for_stop() => None,
+        reason = running.fatal() => Some(reason),
+    };
+    if let Some(reason) = &fatal {
+        tracing::error!("{reason}");
+        eprintln!("taba: {reason}");
+    } else {
+        tracing::info!("sinal de parada recebido; encerrando");
+    }
     // Um segundo sinal durante o drain encerra na hora, sem terminar (doc 04, seção 6.10).
+    let success = if fatal.is_some() {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    };
     tokio::select! {
-        () = running.shutdown() => ExitCode::SUCCESS,
+        () = running.shutdown() => success,
         () = wait_for_stop() => {
             tracing::warn!("segundo sinal durante o drain: encerrando na hora");
             ExitCode::FAILURE

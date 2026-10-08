@@ -1,9 +1,10 @@
 //! As três APIs HTTP, cada uma num listener próprio (doc 06, seção 8.0): cliente
 //! (`api.port`), operação (`operations.port`, ou a porta da API) e cluster
-//! (`cluster.port`). Autenticação, rate limit e mTLS entram aqui depois.
+//! (`cluster.port`). O mTLS da porta do cluster entra na etapa 16.
 
 pub mod auth;
 pub mod client_ip;
+pub mod cluster_api;
 mod common;
 mod json;
 pub mod messages;
@@ -24,6 +25,7 @@ use axum::response::{IntoResponse, Response};
 use ipnet::IpNet;
 
 use crate::cluster::drain::DrainController;
+use crate::cluster::service::ClusterService;
 use crate::cluster::state::{DrainState, NodeShared};
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
@@ -46,6 +48,8 @@ pub struct AppState {
     pub topics: Arc<Topics>,
     pub messages: Arc<Messages>,
     pub drain: Arc<DrainController>,
+    /// O nó no cluster; só existe em `mode=production`.
+    pub cluster: Option<Arc<ClusterService>>,
     /// `operations.allowed-ips`; vazia, sem restrição.
     pub allowed_ips: Arc<Vec<IpNet>>,
     pub client_ip: Arc<ClientIpRules>,
@@ -119,7 +123,7 @@ pub fn operations_router(state: AppState) -> Router {
     common::finish(operations::routes(&state), state)
 }
 
-/// API do cluster: só `/cluster/*`. Ainda sem rotas; tudo responde `404`.
+/// API do cluster: só `/cluster/*`; o resto responde `404`.
 pub fn cluster_router(state: AppState) -> Router {
-    common::finish(Router::new(), state)
+    common::finish(cluster_api::routes(), state)
 }

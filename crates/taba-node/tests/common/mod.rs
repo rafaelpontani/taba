@@ -6,9 +6,9 @@
 //! let response = node.client_get("/health/live").await;
 //! ```
 //!
-//! Os testes de cluster (nível **C**) vão acrescentar aqui um harness que sobe vários
-//! nós no mesmo processo, com `Transport` em memória e `Clock` manual (doc 18, seção
-//! 17.5). Ele depende do trait `Transport`, que entra com o protocolo de cluster.
+//! Os testes de cluster (nível **C**) usam `cluster::TestCluster`, que sobe vários nós no mesmo
+//! processo, com o `Transport` em memória e um `Clock` manual compartilhado (doc 18, seção
+//! 17.5).
 
 #![allow(dead_code)] // cada arquivo de teste usa uma parte deste módulo
 
@@ -18,12 +18,18 @@ use std::sync::Arc;
 use reqwest::{Client, Response};
 use tempfile::TempDir;
 
+use taba_node::cluster::transport::memory::MemoryNetwork;
 use taba_node::config::{Config, MapEnv};
 use taba_node::core::clock::ManualClock;
-use taba_node::node::{self, Deps, NodeError, RunningNode};
+use taba_node::node::{self, ClusterDeps, Deps, NodeError, RunningNode};
+
+pub mod cluster;
 
 pub struct TestNodeBuilder {
     env: Vec<(String, String)>,
+    /// A rede em memória e o IP do nó nela (`mode=production` com `Transport`).
+    network: Option<(MemoryNetwork, String)>,
+    clock: Option<Arc<ManualClock>>,
 }
 
 impl TestNodeBuilder {
@@ -34,7 +40,21 @@ impl TestNodeBuilder {
         self
     }
 
-    /// Modo produção. Ainda sem protocolo de cluster, então o nó fica em `bootstrapping`.
+    /// Liga o nó à rede em memória, com o IP `host` (modo produção). Ele tenta entrar no
+    /// cluster pelo balanceador `balancer:8081` da rede (`cluster.entry-address`).
+    pub fn in_network(mut self, network: &MemoryNetwork, host: &str) -> Self {
+        self.network = Some((network.clone(), host.to_owned()));
+        self.env("TABA_MODE", "production")
+            .env("TABA_CLUSTER_ENTRY_ADDRESS", "balancer:8081")
+    }
+
+    /// O relógio do nó; vários nós de um teste compartilham o mesmo.
+    pub fn clock(mut self, clock: Arc<ManualClock>) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
+    /// Modo produção, **sem** `Transport`: o nó fica em `bootstrapping`.
     pub fn production(self) -> Self {
         self.env("TABA_MODE", "production")
             .env("TABA_CLUSTER_ENTRY_ADDRESS", "127.0.0.1:1")
@@ -53,10 +73,23 @@ impl TestNodeBuilder {
             .or_insert_with(|| dir.path().join("secrets").display().to_string());
 
         let config = Config::parse(None, &env).expect("configuração de teste válida");
-        let clock = Arc::new(ManualClock::at_doc_epoch());
+        let clock = self
+            .clock
+            .unwrap_or_else(|| Arc::new(ManualClock::at_doc_epoch()));
+        let cluster = self.network.map(|(network, host)| {
+            let attach_to = network.clone();
+            ClusterDeps {
+                transport: network.transport(host.clone()),
+                addresses: vec![host],
+                attach: Some(Arc::new(move |addr, handler| {
+                    attach_to.register(addr, handler)
+                })),
+            }
+        });
         let deps = Deps {
             clock: clock.clone(),
             bind_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            cluster,
         };
         let node = node::start(config, deps).await?;
         let client = Client::builder().no_proxy().build().expect("cliente HTTP");
@@ -90,6 +123,8 @@ impl TestNode {
                 ("TABA_CLUSTER_PORT".into(), "0".into()),
                 ("TABA_MODE".into(), "development".into()),
             ],
+            network: None,
+            clock: None,
         }
     }
 

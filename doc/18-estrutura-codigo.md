@@ -108,7 +108,7 @@ Num sistema distribuído, o teste mais valioso sobe vários nós no mesmo proces
 | `Clock` | Relógio do sistema | Relógio manual (invisibilidade, `ttl`, freezing, votação) |
 | `Storage` | SQLite + arquivos | Memória |
 
-Estado atual: o `Clock` existe (`core/clock`, com `SystemClock` e `ManualClock`). O `Transport` entra com o primeiro comportamento que o usa, no lado de quem o usa (seção 17.3), para o trait nascer do que o chamador precisa e não de um palpite. As mensagens usam o `MessageStore` concreto (SQLite e arquivos) sem trait: o trait nasce quando houver uma segunda implementação.
+Estado atual: o `Clock` existe (`core/clock`, com `SystemClock` e `ManualClock`). O `Transport` existe em `cluster/transport` e fala em tipos do protocolo (`cluster/protocol`), não em bytes; quem atende a chamada é um `Handler`, o mesmo das rotas `/cluster/*`. Só há a versão em memória (`MemoryNetwork`, com partição, isolamento, perda das próximas chamadas ou de um tipo de chamada, atraso, nó mudo, nó que cai e balanceador); a de HTTP com mTLS entra na etapa 16 (PRB-028). O harness dos testes de cluster está em `tests/common/cluster.rs`. As mensagens usam o `MessageStore` concreto (SQLite e arquivos) sem trait: o trait nasce quando houver uma segunda implementação.
 
 Com eles, os testes de integração (`crates/taba-node/tests/`) cobrem quórum, rollback antes e depois da decisão, freezing, votação, sincronização com o banco de eventos e o retorno de nó excluído, sem rede real e de forma determinística.
 

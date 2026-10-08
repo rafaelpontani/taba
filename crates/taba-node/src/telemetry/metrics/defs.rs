@@ -1,5 +1,5 @@
 //! As métricas de nó que existem (doc 11, "Métricas de nó"), com o nome, o tipo e a unidade da
-//! tabela do documento. O que ainda não existe (cluster, anel, sincronização) não está aqui.
+//! tabela do documento. O que ainda não existe (canal, votação, sincronização) não está aqui.
 
 use super::{Def, Kind};
 
@@ -256,6 +256,45 @@ pub static NODE_DRAIN_PENDING: Def = def(
     Kind::UpDownCounter,
     "{message}",
     "Mensagens ainda em memória (chega a 0 quando o nó está drained).",
+);
+
+// ---- Cluster e anel (só em mode=production) ----
+
+pub static CLUSTER_MEMBERS: Def = def(
+    "taba.cluster.members",
+    Kind::Gauge,
+    "{node}",
+    "Membros na tabela deste nó, por estado.",
+);
+pub static CLUSTER_MEMBERS_VERSION: Def = def(
+    "taba.cluster.members.version",
+    Kind::Gauge,
+    "{version}",
+    "Versão (época) da tabela de membros; divergência entre nós indica propagação incompleta.",
+);
+pub static CLUSTER_MEMBERSHIP_CHANGES: Def = def(
+    "taba.cluster.membership.changes",
+    Kind::Counter,
+    "{change}",
+    "Registros e desregistros de nós, por fase.",
+);
+pub static CLUSTER_BOOTSTRAP_FAILURES: Def = def(
+    "taba.cluster.bootstrap.failures",
+    Kind::Counter,
+    "{failure}",
+    "Falhas de bootstrap deste nó, por motivo.",
+);
+pub static RING_VIRTUAL_NODES: Def = def(
+    "taba.ring.virtual_nodes",
+    Kind::Gauge,
+    "{vnode}",
+    "Nós virtuais deste nó no anel (ring.virtual-nodes).",
+);
+pub static RING_BLOCKS: Def = def(
+    "taba.ring.blocks",
+    Kind::UpDownCounter,
+    "{block}",
+    "Blocos que o nó atende, por papel e integridade.",
 );
 
 // ---- Métricas de tópico (só nos modos by-tags e per-topic) ----
