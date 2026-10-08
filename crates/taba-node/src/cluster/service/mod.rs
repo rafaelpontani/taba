@@ -23,7 +23,9 @@ use super::protocol::{
 use super::replication::Replication;
 use super::state::{NodeShared, NodeState};
 use super::sync::SyncError;
-use super::transport::{BoxFuture, CallError, Handler, PeerAddr, Transport};
+use super::transport::{
+    BoxFuture, CallError, ChannelLink, ChannelOpen, Handler, PeerAddr, Transport,
+};
 use crate::config::Config;
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
@@ -75,6 +77,10 @@ pub struct ClusterRules {
     /// `delivery.take.max-attempts` (a definir no doc 10: 3): quantos nós um `GET` com a lista
     /// local vazia consulta no máximo.
     pub take_max_attempts: usize,
+    /// `cluster.notify.window`: quanto o responsável pelos avisos acumula as mensagens prontas.
+    pub notify_window: Duration,
+    /// `cluster.notify.wait` (a definir: 50 ms): quanto espera o nó avisado vir buscar (`take`).
+    pub notify_wait: Duration,
     /// `cluster.channel.keepalive.interval` (a definir: 2 s): de quanto em quanto tempo o nó repete
     /// os sinais de estado, no lugar do sinal de vida do canal.
     pub keepalive_interval: Duration,
@@ -101,12 +107,19 @@ pub struct ClusterRules {
     pub message_loss_ttl: Duration,
     /// `cluster.recovery.timeout` (a definir: 5 minutos).
     pub recovery_timeout: Duration,
+    /// `cluster.reunion.interval` (a definir: dez vezes o sinal de vida, no mínimo 1 s): de quanto
+    /// em quanto tempo o nó confere se o outro lado de uma partição simétrica voltou (D101).
+    pub reunion_interval: Duration,
     /// `fifo.forward.max-attempts` (a definir: 3).
     pub fifo_forward_max_attempts: u32,
 }
 
 impl ClusterRules {
     pub fn from_config(config: &Config) -> Self {
+        let keepalive_interval = config
+            .cluster
+            .keepalive_interval
+            .unwrap_or(Duration::from_secs(2));
         Self {
             retry_attempts: config.write.retry_attempts,
             retry_backoff: config.write.retry_backoff,
@@ -136,10 +149,12 @@ impl ClusterRules {
                 .get_max_attempts
                 .map_or(3, |n| n.max(1) as usize),
             take_max_attempts: config.delivery.take_max_attempts.map_or(3, |n| n as usize),
-            keepalive_interval: config
+            notify_window: config.cluster.notify_window,
+            notify_wait: config
                 .cluster
-                .keepalive_interval
-                .unwrap_or(Duration::from_secs(2)),
+                .notify_wait
+                .unwrap_or(Duration::from_millis(50)),
+            keepalive_interval,
             call_timeout: CALL_TIMEOUT,
             join_timeout: JOIN_TIMEOUT,
             reconnect_retries: config.cluster.reconnect_retries.map_or(3, |n| n.max(1)),
@@ -170,6 +185,10 @@ impl ClusterRules {
                 .cluster
                 .recovery_timeout
                 .unwrap_or(Duration::from_secs(300)),
+            reunion_interval: config
+                .cluster
+                .reunion_interval
+                .unwrap_or_else(|| (keepalive_interval * 10).max(Duration::from_secs(1))),
             fifo_forward_max_attempts: config.fifo.forward_max_attempts.map_or(3, |n| n.max(1)),
         }
     }
@@ -230,6 +249,14 @@ impl Handler for ClusterHandler {
         request: Request,
     ) -> BoxFuture<'a, Result<Response, TabaError>> {
         Box::pin(async move { self.0.handle(caller, request).await })
+    }
+
+    fn admit_channel(&self, caller: &str, open: &ChannelOpen) -> Result<(), TabaError> {
+        self.0.admit_channel(caller, open)
+    }
+
+    fn accept_channel(&self, open: ChannelOpen, link: ChannelLink) {
+        self.0.accept_channel(open, link);
     }
 }
 
@@ -525,16 +552,6 @@ impl ClusterService {
         caller: &str,
         request: Request,
     ) -> Result<Response, TabaError> {
-        // O canal diz a quem fala: outro processo no mesmo endereço não atende pelo antigo (D100).
-        if let Request::Channel(batch) = &request
-            && !batch.to.is_empty()
-            && batch.to != self.node_id()
-        {
-            return Err(TabaError::new(
-                ErrorCode::ClusterWrongNode,
-                "O nó neste endereço não é o que o canal procura.",
-            ));
-        }
         match request {
             Request::ListNodes => self
                 .membership
@@ -1037,6 +1054,46 @@ impl ClusterService {
 
     // ---- Chamadas a outros nós ----
 
+    /// O canal que `caller` quer abrir é aceito? O canal diz com quem fala: outro processo no mesmo
+    /// endereço não atende pelo antigo (D100); e só membro abre canal.
+    pub fn admit_channel(&self, caller: &str, open: &ChannelOpen) -> Result<(), TabaError> {
+        if !open.to.is_empty() && open.to != self.node_id() {
+            return Err(TabaError::new(
+                ErrorCode::ClusterWrongNode,
+                "O nó neste endereço não é o que o canal procura.",
+            ));
+        }
+        self.require_member(caller)
+    }
+
+    /// O canal foi aberto por outro nó: ele passa a ser o canal do par.
+    pub fn accept_channel(&self, open: ChannelOpen, link: ChannelLink) {
+        if let Some(replication) = self.replication.get() {
+            replication.accept_channel(open, link);
+        }
+    }
+
+    /// Abre o canal com um membro, pelos IPs dele na ordem, até um atender (mesmo que com erro).
+    pub(crate) async fn open_channel_to(
+        &self,
+        peer: &Member,
+        open: ChannelOpen,
+        timeout: Duration,
+    ) -> Result<ChannelLink, CallError> {
+        let mut last = CallError::Unreachable("o nó não tem endereço".into());
+        for address in &peer.addresses {
+            let to = PeerAddr::new(address.clone(), peer.port);
+            match tokio::time::timeout(timeout, self.transport.open_channel(&to, open.clone()))
+                .await
+            {
+                Ok(Err(e)) if e.is_network() => last = e,
+                Ok(other) => return other,
+                Err(_) => last = CallError::Timeout,
+            }
+        }
+        Err(last)
+    }
+
     /// Chama um endereço, com prazo.
     async fn call_addr(
         &self,
@@ -1243,7 +1300,7 @@ impl ClusterService {
     /// comum, e sem este nó) e este lado é o perdedor (menos membros; empate: o lado do menor
     /// `nodeId`), o nó refaz o ingresso do zero, como o excluído que volta.
     pub async fn run_reunion(self: Arc<Self>) {
-        let period = (self.rules.keepalive_interval * 10).max(Duration::from_secs(1));
+        let period = self.rules.reunion_interval;
         loop {
             tokio::select! {
                 () = self.cancel.cancelled() => return,

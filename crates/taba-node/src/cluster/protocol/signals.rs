@@ -1,9 +1,9 @@
 //! Os quadros do canal entre nós (doc 13, seções 12.8 e 12.9; doc 06c, `GET /cluster/channel`) e o
 //! repasse de uma chamada de cliente (`* /cluster/forward/{caminho}`).
 //!
-//! Enquanto o canal WebSocket não existe, o canal viaja como chamadas do `Transport`
-//! (`POST /cluster/channel`): cada chamada leva o sinal de vida e os quadros ainda sem confirmação,
-//! e a resposta é o `confirm`. A fila de saída, o `seq` e o reenvio são os do canal.
+//! O canal é uma conexão WebSocket por par de nós (`GET /cluster/channel`), e cada mensagem de
+//! texto é um [`ChannelMessage`]: um lote (o sinal de vida e os quadros ainda sem confirmação) ou o
+//! `confirm` do que o outro lado processou. A fila de saída, o `seq` e o reenvio são os do canal.
 
 use serde::{Deserialize, Serialize};
 
@@ -85,6 +85,37 @@ pub struct ChannelBatch {
     pub keepalive: Option<Keepalive>,
     #[serde(default)]
     pub frames: Vec<ChannelFrame>,
+}
+
+/// O que viaja pelo canal, em mensagens de texto JSON: o lote de quem envia ou o `confirm` de quem
+/// recebe. O `confirm` se reconhece pelo `"type":"confirm"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelMessage {
+    Batch(ChannelBatch),
+    Confirm(Confirm),
+}
+
+impl ChannelMessage {
+    pub fn to_text(&self) -> String {
+        match self {
+            ChannelMessage::Batch(batch) => serde_json::to_string(batch),
+            ChannelMessage::Confirm(confirm) => serde_json::to_string(confirm),
+        }
+        .expect("o lote do canal sempre vira JSON")
+    }
+
+    pub fn from_text(text: &str) -> Result<Self, String> {
+        let value: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        if value.get("type").and_then(serde_json::Value::as_str) == Some("confirm") {
+            serde_json::from_value(value)
+                .map(ChannelMessage::Confirm)
+                .map_err(|e| e.to_string())
+        } else {
+            serde_json::from_value(value)
+                .map(ChannelMessage::Batch)
+                .map_err(|e| e.to_string())
+        }
+    }
 }
 
 /// O `confirm`: os `seq` já **processados** (inclusive os que já tinham sido, num reenvio).

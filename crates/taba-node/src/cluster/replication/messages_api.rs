@@ -897,8 +897,10 @@ impl ClusterMessages {
                 Ok(crate::cluster::protocol::Response::Taken(TakeResponse { messages })) => {
                     if messages.is_empty() {
                         self.signals.mark_empty(topic, &node);
+                        self.signals.notified_outcome(topic, &node, false);
                         "empty"
                     } else {
+                        self.signals.notified_outcome(topic, &node, true);
                         for record in messages {
                             out.push(delivered_from(record));
                             missing = missing.saturating_sub(1);

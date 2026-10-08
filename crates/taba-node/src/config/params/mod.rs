@@ -82,6 +82,7 @@ pub static PARAMS: &[Param] = &[
     p("cluster.bootstrap.retry.max-attempts", Some("0")),
     p("cluster.message-loss.ttl", None),
     p("cluster.recovery.timeout", None),
+    p("cluster.reunion.interval", None),
     p("cluster.sync.stream.max-items", None),
     p("cluster.sync.stream.max-bytes", None),
     p("cluster.sync.stream.max-line-bytes", None),

@@ -75,10 +75,10 @@ async fn the_cluster_port_serves_only_cluster_routes_and_the_client_port_none() 
         .await
         .unwrap();
     assert_eq!(error_code(response, 404).await, "route.not-found");
-    // Rota do cluster que ainda não existe.
+    // Rota do cluster que não existe.
     let response = node
         .client
-        .get(node.cluster_url("/cluster/channel"))
+        .get(node.cluster_url("/cluster/nada"))
         .send()
         .await
         .unwrap();

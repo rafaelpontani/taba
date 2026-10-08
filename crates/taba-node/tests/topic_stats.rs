@@ -625,3 +625,28 @@ async fn the_json_routes_count_in_the_ops_category_and_metrics_does_not() {
     assert_eq!(node.client_get("/health/live").await.status(), 200);
     node.shutdown().await;
 }
+
+/// UC: UC-FIF-045
+#[tokio::test]
+async fn noisy_group_points_at_the_hot_group_of_a_fifo_queue() {
+    let node = TestNode::development().await;
+    create(
+        &node,
+        json!({ "name": "pedidos", "type": "queue", "fifo": true }),
+    )
+    .await;
+    // Corpos diferentes: na FIFO o mesmo corpo repetido é descartado como duplicado.
+    for n in 0..9 {
+        publish(&node, "pedidos", "?groupId=quente", &format!("m{n}")).await;
+    }
+    publish(&node, "pedidos", "?groupId=frio", "x").await;
+
+    let page = node.stats("/metrics/topics").await;
+    let pedidos = item(&page, "pedidos");
+    assert_eq!(conditions(pedidos), ["noisy-group"]);
+    assert!((pedidos["noisyShare"].as_f64().unwrap() - 0.9).abs() < 1e-9);
+    // O grupo quente aparece primeiro em `topGroups`.
+    let detail = node.stats("/metrics/topics/pedidos").await;
+    assert_eq!(detail["topGroups"][0]["groupId"], "quente");
+    node.shutdown().await;
+}

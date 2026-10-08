@@ -20,8 +20,8 @@ pub use messages::{
 };
 pub use recovery::{LossAck, LossRecord, RecoverResult, parse_recover_body, recover_body};
 pub use signals::{
-    ChannelBatch, ChannelFrame, Confirm, ForwardRequest, ForwardResponse, Keepalive, ReadyCount,
-    Signal, SignalFrame,
+    ChannelBatch, ChannelFrame, ChannelMessage, Confirm, ForwardRequest, ForwardResponse,
+    Keepalive, ReadyCount, Signal, SignalFrame,
 };
 pub use vote::{Ballot, VoteReason, VoteRequest, VoteResponse};
 
@@ -149,8 +149,6 @@ pub enum Request {
     Idle { topic_id: String },
     /// `POST /cluster/topics/{topic}/messages/take`
     Take { topic: String, request: TakeRequest },
-    /// `POST /cluster/channel`: o canal entre nós (sinal de vida e quadros com `seq`).
-    Channel(ChannelBatch),
     /// `POST /cluster/vote-remove`
     Vote(VoteRequest),
     /// `GET /cluster/status`: o `NodeStatus` do nó, para o `GET /health/cluster` do cluster.
@@ -241,7 +239,6 @@ impl Request {
             } => "ack-rollback",
             Request::Idle { .. } => "idle",
             Request::Take { .. } => "take",
-            Request::Channel(_) => "channel",
             Request::Vote(_) => "vote",
             Request::Status => "status",
             Request::Forward(_) => "forward",
@@ -266,8 +263,6 @@ pub enum Response {
     Stream(StreamPage),
     Taken(TakeResponse),
     Idle(IdleResponse),
-    /// O `confirm` do canal.
-    Confirm(Confirm),
     /// O voto de exclusão.
     Vote(VoteResponse),
     /// O `NodeStatus` (doc 06b), como JSON: quem o monta é a camada de operação.

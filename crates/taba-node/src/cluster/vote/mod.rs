@@ -18,8 +18,7 @@ use tracing::Instrument;
 
 use super::channel::Channels;
 use super::protocol::{
-    Ballot, ChannelBatch, Request, Response, UnregisterReason, VoteReason, VoteRequest,
-    VoteResponse,
+    Ballot, Request, Response, UnregisterReason, VoteReason, VoteRequest, VoteResponse,
 };
 use super::service::{ClusterService, conflict_wait};
 use super::state::NodeState;
@@ -80,7 +79,7 @@ impl Voting {
             return;
         }
         // Se o canal voltou enquanto esperava a vez, nada muda (doc 04, seção 6.3).
-        if reason != VoteReason::NodeFailed && self.channels.is_up(&candidate) {
+        if reason != VoteReason::NodeFailed && self.channels.is_live(&candidate) {
             return;
         }
         let me = self.service.node_id();
@@ -231,30 +230,9 @@ impl Voting {
         Ok(Response::Vote(VoteResponse { vote }))
     }
 
-    /// O votante alcança o candidato? Se o canal dele está conectado, confere na hora.
+    /// O votante alcança o candidato? O canal dele está aberto e o par falou há pouco.
     async fn reaches(&self, candidate: &str) -> bool {
-        if !self.channels.is_up(candidate) {
-            return false;
-        }
-        let Some(member) = self
-            .service
-            .membership()
-            .table()
-            .and_then(|t| t.member(candidate).cloned())
-        else {
-            return false;
-        };
-        let probe = Request::Channel(ChannelBatch {
-            from: self.service.node_id(),
-            to: candidate.to_owned(),
-            keepalive: None,
-            frames: Vec::new(),
-        });
-        let timeout = (self.service.rules().keepalive_interval * 2).max(Duration::from_millis(500));
-        self.service
-            .call_peer(&member, probe, timeout)
-            .await
-            .is_ok()
+        self.channels.is_live(candidate)
     }
 }
 

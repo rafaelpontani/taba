@@ -105,24 +105,33 @@ Pedido de voto para excluir um nó suspeito de falha, aberto quando o canal com 
 
 ### `GET /cluster/channel`: canal permanente (WebSocket)
 
-Abre (**upgrade para WebSocket**, `101 Switching Protocols`) o **canal permanente** entre dois nós: um por par, para todos os tópicos, aberto pelo nó que entra, volta ou detecta primeiro a queda. Em conexão dupla, o nó de menor hash do ID fecha a que abriu. Só aceita quem consta na tabela de membros (`403` `cluster.not-member` antes do upgrade). Carrega o **sinal de vida** que substitui o ping (seção 6.3) e os sinais de disponibilidade da entrega (seção 12.8). **Só sinais, nunca conteúdo de mensagens nem listas longas.**
+Abre (**upgrade para WebSocket**, `101 Switching Protocols`) o **canal permanente** entre dois nós: um por par, para todos os tópicos, usado nos dois sentidos. A query leva `from` (o `nodeId` de quem abre) e `to` (o `nodeId` de quem deve atender): um nó de **outro ID** no mesmo endereço (um reinício rápido) responde `421` `cluster.wrong-node` antes de qualquer outra conferência, e quem abre conta o canal como caído (D100). Só aceita quem consta na tabela de membros (`403` `cluster.not-member`, antes do upgrade, e o nó que o recebe três vezes seguidas confere se foi excluído, seção 6.3 de [04-cluster.md](04-cluster.md)).
 
-Cada quadro é um objeto JSON em texto com o campo `type`:
+Quem abre: o nó que **entra ou volta** abre o canal com todos os outros; os que já estavam no cluster só aceitam (e, se o novo não aparece em um intervalo de sinal de vida, abrem eles). Quem detecta primeiro uma queda reabre. Se os dois abrirem ao mesmo tempo, fica a conexão aberta pelo nó de **maior hash do ID**: o de menor hash fecha a que abriu, e o que ficou sem confirmação nela é reenviado na que fica. Se a mesma ponta abre de novo, a conexão antiga está morta e é substituída.
+
+Carrega o **sinal de vida** que substitui o ping (seção 6.3) e os sinais de disponibilidade da entrega (seção 12.8). **Só sinais, nunca conteúdo de mensagens nem listas longas.**
+
+Cada mensagem de texto é um objeto JSON de um de dois tipos:
+
+| Mensagem | Campos | Descrição |
+|---|---|---|
+| **lote** | `from`, `to`, `keepalive` (opcional), `frames` (lista de quadros) | O que um nó manda: o sinal de vida (quando é hora) e os quadros ainda sem confirmação que a conexão não levou. |
+| **`confirm`** (`"type": "confirm"`) | `seqs` (lista de inteiros) | A resposta a **cada** lote, só depois de **processar** os quadros. Pode agrupar vários `seq`; vazia quando o lote só trouxe o sinal de vida. |
+
+O **sinal de vida** (`keepalive`) tem `at` (data), `load` (indicador de carga do nó: as chamadas de cliente repassadas em andamento), `version` (a versão da tabela de membros, `0` sem tabela), `state` (o estado do nó: `active`, `syncing`, `draining`, `failed`...), `monitoring` (resumo no estilo OpenTelemetry; **ainda não enviado**) e `ready` (lista de `{ topic, count }`, até `cluster.channel.keepalive.max-topics`). Não tem `seq`, não é confirmado nem reenviado: o seguinte o substitui.
+
+Cada **quadro** (`frames`) leva `seq` (crescente por canal e por sentido) e `type`:
 
 | `type` | Campos | Descrição |
 |---|---|---|
-| `keepalive` | `at` (data), `load` (indicador de carga do nó: as chamadas de cliente repassadas em andamento), `version` (a versão da tabela de membros, `0` sem tabela), `state` (o estado do nó: `active`, `syncing`, `draining`, `failed`...), `monitoring` (resumo no estilo OpenTelemetry; **ainda não enviado**), `ready` (lista de `{ topic, count }`, até `cluster.channel.keepalive.max-topics`) | **Sinal de vida.** Sem `seq`, não é confirmado nem reenviado: o seguinte o substitui. |
-| `listeners` | `seq`, `topic`, `hasListeners` | O tópico passou a ter (ou deixou de ter) ouvintes de long polling neste nó. |
-| `ready` | `seq`, `topic`, `hasReady` | O nó passou a ter (ou deixou de ter) mensagens prontas do tópico. |
-| `notify` | `seq`, `topic`, `count` | Aviso de mensagem nova: há `count` mensagens prontas; venha buscar com `take`. É uma dica. |
-| `node-state` | `seq`, `state` (`draining`, `active` ou `failed`) | O nó entrou em falha (`failed`: os pares ficam liberados para votar a exclusão dele), entrou em drain (os pares deixam de pedir `take` a ele), ou ficou **pronto** depois de sincronizar, ou voltou a `active` (o drain foi cancelado). Quem recebe `active` troca o `state` desse membro de `syncing` para `active` na própria tabela, **sem subir a `version`**. |
-| `confirm` | `seqs` (lista de inteiros) | Confirma sinais **já processados**. Pode agrupar vários. |
+| `listeners` | `topic`, `hasListeners` | O tópico passou a ter (ou deixou de ter) ouvintes de long polling neste nó. |
+| `ready` | `topic`, `hasReady` | O nó passou a ter (ou deixou de ter) mensagens prontas do tópico. |
+| `notify` | `topic`, `count` | Aviso de mensagem nova: há `count` mensagens prontas; venha buscar com `take`. É uma dica. |
+| `node-state` | `state` (`draining`, `active` ou `failed`) | O nó entrou em falha (`failed`: os pares ficam liberados para votar a exclusão dele), entrou em drain (os pares deixam de pedir `take` a ele), ou ficou **pronto** depois de sincronizar, ou voltou a `active` (o drain foi cancelado). Quem recebe `active` troca o `state` desse membro de `syncing` para `active` na própria tabela, **sem subir a `version`**. |
 
-Todo quadro, exceto `keepalive` e `confirm`, leva um `seq` crescente por canal e por sentido; o emissor só o tira da fila de saída ao receber o `confirm`, e **reenvia na reconexão** o que ficou sem confirmação (o receptor ignora um `seq` que já processou). Ao abrir o canal, cada lado envia primeiro um **instantâneo**: um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro, e só depois as mudanças (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
+O emissor só tira um quadro da fila de saída ao receber o `confirm`, e **reenvia o que ficou sem confirmação** quando abre outra conexão (o receptor ignora um `seq` que já processou). Ao abrir o canal, cada lado envia primeiro um **instantâneo**: um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro, e só depois as mudanças (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
 
-### `POST /cluster/channel`: o canal enquanto não há WebSocket
-
-O que o código usa até o `Transport` real (etapa 16): cada nó tem, para cada par, uma tarefa que **chama** o outro. Uma chamada leva o sinal de vida (`keepalive`, quando é hora) e os quadros ainda sem confirmação, no corpo `{ "from": nodeId, "keepalive": {...}, "frames": [ { "seq", "type", ... } ] }`, e a resposta é o `confirm` (`{ "type": "confirm", "seqs": [...] }`), só depois de processar. Os dois sentidos de um par são independentes (não há conexão dupla a desempatar). Só aceita quem consta na tabela de membros: `403` `cluster.not-member`, e o nó que o recebe três vezes seguidas confere se foi excluído (seção 6.3 de [04-cluster.md](04-cluster.md)). O corpo leva também `to`, o `nodeId` do destino: um nó de **outro ID** no mesmo endereço (um reinício rápido) responde `421` `cluster.wrong-node` antes de qualquer outra conferência, e o emissor conta o canal como caído (D100). O corpo passa a ser `{ "from": nodeId, "to": nodeId, "keepalive": {...}, "frames": [...] }`. Quadros, `seq`, instantâneo ao abrir e reenvio são os de `GET /cluster/channel` acima. Some quando o WebSocket existir.
+A conexão é **dada por caída** quando fecha ou quando nada chega do par por duas vezes `cluster.channel.keepalive.interval` (um nó travado com a conexão aberta também é detectado, porque o sinal de vida é uma mensagem nossa, não o ping do WebSocket). As tentativas de abrir de novo, a cada `cluster.channel.reconnect.backoff`, contam para `cluster.channel.reconnect.retries`.
 
 ## Tópicos e tokens
 

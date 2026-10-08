@@ -392,6 +392,12 @@ pub static CHANNEL_QUEUE_OUT: Def = def(
     "{signal}",
     "Quadros na fila de saída para o peer.",
 );
+pub static CHANNEL_QUEUE_IN: Def = def(
+    "taba.cluster.channel.queue.in",
+    Kind::UpDownCounter,
+    "{batch}",
+    "Mensagens do peer lidas do canal e ainda não processadas (fila de entrada).",
+);
 pub static CHANNEL_QUEUE_DROPPED: Def = def(
     "taba.cluster.channel.queue.dropped",
     Kind::Counter,

@@ -181,7 +181,7 @@ Lado **réplica** (nó responsável pelo bloco):
 | `taba.delivery.longpoll.outcome` | counter | {request} | `outcome` (`delivered`/`empty`/`disconnected`) | Como terminaram as chamadas de long polling. |
 | `taba.delivery.take` | counter | {request} | `direction` (`in`/`out`), `outcome` (`delivered`/`empty`/`error`) | Pedidos de entrega a outro dono (`/messages/take`). |
 | `taba.cluster.channel.connections` | updowncounter | {connection} | — | Canais permanentes abertos com outros nós (esperado: nós do cluster − 1). |
-| `taba.cluster.channel.notifications` | counter | {message} | `direction` (`in`/`out`), `outcome` | Avisos de mensagem nova enviados e recebidos (`outcome`: `sent`/`received` hoje; `fetched`/`empty` no lado que recebe, com o canal). |
+| `taba.cluster.channel.notifications` | counter | {message} | `direction` (`in`/`out`), `outcome` | Avisos de mensagem nova enviados e recebidos (`outcome`: `sent` no lado que avisa, depois da janela e na vez de cada nó; `received`, `fetched` ou `empty` no lado que recebe: o `take` que o aviso provocou trouxe mensagens ou voltou vazio). |
 | `taba.cluster.forwarded` | counter | {request} | `outcome` (`ok`/`timeout`/`error`/`no-destination`) | Chamadas de cliente que este nó, em drain, repassou a outro (seção 6.9 de [04-cluster.md](04-cluster.md)). |
 
 ### Membros do cluster e falhas (seção 6)
@@ -196,7 +196,8 @@ Visão do cluster: **todos os nós reportam a mesma coisa** (ou a sua visão del
 | `taba.cluster.channel.state` | gauge | {flag} | `peer` | `1` se o canal com o peer está conectado, `0` se caído (substitui o ping — seção 6.3). |
 | `taba.cluster.channel.rtt` | histogram | s | `peer` | Latência do sinal de vida do canal, por peer. |
 | `taba.cluster.channel.reconnects` | counter | {attempt} | `peer`, `outcome` | Tentativas de reconexão do canal e resultado; perto do limite de `cluster.channel.reconnect.retries` = votação iminente. |
-| `taba.cluster.channel.queue.out` | updowncounter | {signal} | `peer` | Sinais na fila de saída para o peer; cresce enquanto o canal está fora (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). Não há fila de entrada: a chamada do canal processa os quadros e só então devolve o `confirm`, então o trabalho lento aparece em `rtt`. |
+| `taba.cluster.channel.queue.out` | updowncounter | {signal} | `peer` | Sinais na fila de saída para o peer; cresce enquanto o canal está fora (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
+| `taba.cluster.channel.queue.in` | updowncounter | {batch} | `peer` | Mensagens do peer lidas do canal e ainda não processadas (a fila de entrada por nó de origem, seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
 | `taba.cluster.channel.queue.dropped` | counter | {signal} | `peer`, `reason` (`coalesced`/`expired`/`overflow`) | Sinais substituídos, descartados por idade ou descartados por estouro do limite da fila de saída (o estouro abre a votação de exclusão do peer). |
 | `taba.cluster.vote` | counter | {vote} | `role` (`opened`/`cast`), `outcome` | Votações de exclusão abertas/votadas e seu resultado. |
 | `taba.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `reason` (`vote`/`drain`, no desregistro), `phase`, `outcome` | Registros e desregistros de nós, por fase. |

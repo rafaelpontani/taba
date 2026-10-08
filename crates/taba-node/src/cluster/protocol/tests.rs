@@ -335,41 +335,6 @@ fn requests() -> Vec<Request> {
                 visibility_timeout: 120,
             },
         },
-        Request::Channel(ChannelBatch {
-            to: String::new(),
-            from: guid(1),
-            keepalive: Some(Keepalive {
-                at: "2026-10-05T12:00:00.000Z".into(),
-                load: 2,
-                version: 7,
-                state: "active".into(),
-                ready: vec![ReadyCount {
-                    topic: t(),
-                    count: 4,
-                }],
-            }),
-            frames: vec![
-                ChannelFrame {
-                    seq: 1,
-                    signal: Signal::Ready {
-                        topic: t(),
-                        has_ready: true,
-                    },
-                },
-                ChannelFrame {
-                    seq: 2,
-                    signal: Signal::NodeState {
-                        state: "draining".into(),
-                    },
-                },
-            ],
-        }),
-        Request::Channel(ChannelBatch {
-            to: String::new(),
-            from: guid(1),
-            keepalive: None,
-            frames: vec![],
-        }),
         Request::Vote(VoteRequest {
             vote_id: guid(20),
             candidate_node_id: guid(21),
@@ -498,7 +463,6 @@ fn the_routes_are_the_ones_of_the_document() {
         &format!("/cluster/topics/pedidos/messages/{id}/ack/rollback")
     ));
     assert!(has("POST", "/cluster/topics/pedidos/messages/take"));
-    assert!(has("POST", "/cluster/channel"));
     assert!(has("POST", "/cluster/vote-remove"));
     assert!(has("GET", "/cluster/status"));
     assert!(has("GET", "/cluster/blocks/00000000000000ab/ids"));
@@ -717,26 +681,6 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     };
     assert_eq!(take.parse_reply(taken.clone().into_http()).unwrap(), taken);
 
-    let channel = Request::Channel(ChannelBatch {
-        to: String::new(),
-        from: guid(1),
-        keepalive: None,
-        frames: vec![ChannelFrame {
-            seq: 3,
-            signal: Signal::Notify {
-                topic: "pedidos".into(),
-                count: 4,
-            },
-        }],
-    });
-    let confirm = Response::Confirm(Confirm::new(vec![3]));
-    let reply = confirm.clone().into_http();
-    assert_eq!(
-        std::str::from_utf8(&reply.body).unwrap(),
-        r#"{"type":"confirm","seqs":[3]}"#
-    );
-    assert_eq!(channel.parse_reply(reply).unwrap(), confirm);
-
     let vote = Request::Vote(VoteRequest {
         vote_id: guid(20),
         candidate_node_id: guid(21),
@@ -926,4 +870,51 @@ fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_con
             "ready": [{"topic": "pedidos", "count": 4}]
         })
     );
+}
+
+/// UC: UC-CAN-006
+#[test]
+fn channel_messages_are_json_text_and_the_confirm_is_told_by_its_type() {
+    let batch = ChannelMessage::Batch(ChannelBatch {
+        to: String::new(),
+        from: guid(1),
+        keepalive: Some(Keepalive {
+            at: "2026-10-05T12:00:00.000Z".into(),
+            load: 2,
+            version: 7,
+            state: "active".into(),
+            ready: vec![ReadyCount {
+                topic: "pedidos".into(),
+                count: 4,
+            }],
+        }),
+        frames: vec![
+            ChannelFrame {
+                seq: 1,
+                signal: Signal::Ready {
+                    topic: "pedidos".into(),
+                    has_ready: true,
+                },
+            },
+            ChannelFrame {
+                seq: 2,
+                signal: Signal::Notify {
+                    topic: "pedidos".into(),
+                    count: 4,
+                },
+            },
+        ],
+    });
+    let empty = ChannelMessage::Batch(ChannelBatch {
+        to: String::new(),
+        from: guid(1),
+        keepalive: None,
+        frames: vec![],
+    });
+    let confirm = ChannelMessage::Confirm(Confirm::new(vec![3]));
+    assert_eq!(confirm.to_text(), r#"{"type":"confirm","seqs":[3]}"#);
+    for message in [batch, empty, confirm] {
+        assert_eq!(ChannelMessage::from_text(&message.to_text()), Ok(message));
+    }
+    assert!(ChannelMessage::from_text("não é JSON").is_err());
 }

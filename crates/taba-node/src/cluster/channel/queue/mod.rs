@@ -107,6 +107,20 @@ impl OutQueue {
             .collect()
     }
 
+    /// Os quadros ainda sem confirmação com `seq` maior que `after`, no máximo `limit`: o que uma
+    /// conexão ainda não levou.
+    pub fn pending_after(&self, after: u64, limit: usize) -> Vec<ChannelFrame> {
+        self.items
+            .iter()
+            .filter(|queued| queued.seq > after)
+            .take(limit)
+            .map(|queued| ChannelFrame {
+                seq: queued.seq,
+                signal: queued.signal.clone(),
+            })
+            .collect()
+    }
+
     /// Tira da fila os quadros confirmados. O que foi confirmado nunca se repete.
     pub fn confirm(&mut self, seqs: &[u64]) {
         self.items.retain(|queued| !seqs.contains(&queued.seq));

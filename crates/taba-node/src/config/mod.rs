@@ -246,6 +246,7 @@ pub struct Cluster {
     pub bootstrap_retry_max_attempts: u32,
     pub message_loss_ttl: Option<Duration>,
     pub recovery_timeout: Option<Duration>,
+    pub reunion_interval: Option<Duration>,
     pub sync: ClusterSync,
 }
 
@@ -918,6 +919,7 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
         bootstrap_retry_max_attempts: s.get("cluster.bootstrap.retry.max-attempts")?,
         message_loss_ttl: s.opt("cluster.message-loss.ttl")?,
         recovery_timeout: s.opt("cluster.recovery.timeout")?,
+        reunion_interval: s.opt("cluster.reunion.interval")?,
         sync: ClusterSync {
             stream_max_items: s.opt("cluster.sync.stream.max-items")?,
             stream_max_bytes: s

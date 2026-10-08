@@ -14,7 +14,7 @@ name = "taba"
 path = "src/main.rs"
 
 [dependencies]
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["ws"] }
 base64 = "0.23.1"
 fs4 = "1.1.0"
 getrandom = "0.4.3"
@@ -50,6 +50,8 @@ tracing-opentelemetry = { version = "0.34", default-features = false }
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 x509-parser = { version = "0.18.1", features = ["verify"] }
 uuid = { version = "1.27.0", features = ["v7"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 
 [dev-dependencies]
 reqwest = { version = "0.13.5", default-features = false, features = ["json"] }

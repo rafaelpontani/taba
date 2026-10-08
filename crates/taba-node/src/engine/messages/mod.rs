@@ -2390,6 +2390,14 @@ impl Messages {
             .collect()
     }
 
+    /// Quantas mensagens prontas o tópico tem aqui (o que o aviso informa).
+    pub fn ready_count_of(&self, topic: &str) -> u64 {
+        self.existing_states()
+            .into_iter()
+            .find(|(name, _)| name == topic)
+            .map_or(0, |(_, state)| lock(&state).index.ready_count() as u64)
+    }
+
     /// Acorda até `count` `GET` em espera neste nó (um aviso de mensagem nova veio de outro).
     pub fn wake_listeners(&self, topic: &str, count: usize) {
         self.wake(topic, count);

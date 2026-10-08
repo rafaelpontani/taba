@@ -161,7 +161,7 @@ Cada nó mantém em memória, por tópico, quais nós têm ouvintes e quais têm
 - O aviso é uma **dica**, não uma garantia: quem recebe vai buscar, e pode não encontrar nada. Um aviso perdido só custa espera até o fim do `waitTime` (no máximo 20 s), e o cliente repete o `GET`.
 - **Quem envia os avisos e como (decidido):** em cada nó dono há **um responsável por tópico** (thread ou tarefa, ativo só enquanto o tópico tem ouvintes em algum nó e mensagens novas a avisar) que cuida de todos os avisos daquele tópico:
   - **Agrupamento:** as mensagens que ficam prontas são **acumuladas por uma janela curta** (`cluster.notify.window`, **padrão 100 ms**, configurável) e viram **um aviso só**, com a quantidade de mensagens prontas, em vez de um aviso por mensagem.
-  - **Um nó por vez, em ciclos:** o aviso vai a **um** nó com ouvinte, escolhido revezando entre os que têm. O responsável **espera alguns milissegundos** (`cluster.notify.wait`) para ver se esse nó vem buscar as mensagens (`take`). Se o nó consome, o ciclo termina; se ele **não vem** (já não quer mensagens do tópico, ou foi atendido por outro), o responsável passa ao **próximo nó** com ouvinte e **repete o ciclo**, até acabarem as mensagens avisadas ou os nós com ouvinte.
+  - **Um nó por vez, em ciclos:** o aviso vai a **um** nó com ouvinte, escolhido revezando entre os que têm. O responsável **espera alguns milissegundos** (`cluster.notify.wait`, padrão 50 ms) para ver se esse nó vem buscar as mensagens (`take`). Se o nó consome, o ciclo termina; se ele **não vem** (já não quer mensagens do tópico, ou foi atendido por outro), o responsável passa ao **próximo nó** com ouvinte e **repete o ciclo**, até acabarem as mensagens avisadas ou os nós com ouvinte.
   - Nenhum aviso é um compromisso: o nó que recebe vai buscar o que existir (seção acima), e pode não encontrar nada.
 - **Sem fan-out por chamada:** N ouvintes esperando o mesmo tópico em um nó geram uma única informação de interesse; ao receber um aviso, o nó busca de uma vez tantas mensagens quantos são os ouvintes que estão esperando.
 - **Custo de conexões:** uma conexão por par de nós, a mesma malha usada para o sinal de vida (seção 6.3), independente do número de tópicos e de consumidores.
@@ -178,7 +178,7 @@ Cada nó mantém **em memória**, para cada outro nó, duas filas:
 | Fila | Conteúdo |
 |---|---|
 | **Fila de saída** (por nó de destino) | Sinais a enviar ao outro nó: sinal de vida, mudanças de estado (ouvintes, mensagens prontas) e avisos. Uma thread de escrita esvazia a fila pelo WebSocket, sem bloquear quem produz os sinais. |
-| **Fila de entrada** (por nó de origem) | **Não existe no código** (desvio 89). A chamada do canal processa os quadros e só então devolve o `confirm`; o trabalho lento aparece como `rtt` maior, e não há métrica `queue.in`. |
+| **Fila de entrada** (por nó de origem) | O que chega do par é lido do socket e posto nesta fila, e uma tarefa à parte a processa na ordem e devolve o `confirm`: um processamento lento não esconde o sinal de vida do par, só atrasa o `confirm` (métrica `taba.cluster.channel.queue.in`). |
 
 **Queda e reconexão:**
 
@@ -194,7 +194,7 @@ Cada nó mantém **em memória**, para cada outro nó, duas filas:
 - **Queda com os dois nós vivos** (falha de rede, sem reinício): o nó que **detectar primeiro** tenta reconectar. Se os dois acabarem abrindo uma conexão ao mesmo tempo, **o nó de menor hash do ID fecha a conexão que ele abriu** e fica com a aberta pelo outro: regra de desempate, para haver sempre um só canal por par.
 - **Reinício do processo:** o nó perde a memória, inclusive a tabela de membros (ela **não é persistida**), e volta como **nó novo**, passando pelo registro (seção 6.2). Os dados que estavam em disco seguem o procedimento de retorno da seção 6.6: as mensagens são enviadas a quem as perdeu.
 
-> **Como está no código (provisório, até o `Transport` real, etapa 16).** Cada nó mantém, para cada par, uma tarefa que **chama** o outro (`POST /cluster/channel`: o sinal de vida e os quadros sem confirmação; a resposta é o `confirm`), então são dois sentidos independentes por par e não há conexão dupla a desempatar. Uma chamada que falha marca o canal como caído; as seguintes, a cada `cluster.channel.reconnect.backoff`, são as tentativas. O WebSocket entra com o `Transport` HTTP real.
+> **Como está no código.** O canal é um WebSocket (`GET /cluster/channel`, doc 06c) com lotes de quadros e `confirm`, na rede real, e um par de filas na rede em memória dos testes. Quem entra abre a conexão com todos; os antigos esperam um intervalo de sinal de vida e só então abrem; em conexão dupla, fica a do nó de maior hash. A conexão cai por fechamento ou por silêncio do par (duas vezes o intervalo do sinal de vida).
 
 **Estado inicial ao abrir o canal:** os sinais acima só são enviados nas **mudanças**, então um nó que acaba de ficar pronto (ou que reconectou depois de perder a fila) não saberia o estado atual dos outros. Por isso, ao abrir um canal, cada lado envia primeiro um **instantâneo** dos seus sinais — tópicos com ouvintes e tópicos com mensagens prontas —, em sinais pequenos, e só depois passa às mudanças. Um nó em sincronização ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3) só consome o instantâneo quando fica pronto, e antes disso não entrega nem avisa.
 

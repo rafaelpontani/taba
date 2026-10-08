@@ -9,6 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use tokio::sync::mpsc;
 
@@ -35,6 +36,14 @@ struct Tables {
     hints: HashMap<String, String>,
     /// O último nó avisado de cada tópico, para revezar entre os que têm ouvinte.
     last_notified: HashMap<String, String>,
+    /// Tópicos com um ciclo de avisos em andamento (um responsável por tópico).
+    cycles: HashSet<String>,
+    /// Quantos `take` cada nó fez aqui por tópico: o responsável vê se o avisado veio.
+    takes: HashMap<(String, String), u64>,
+    /// Tópico → nós que avisaram e ainda não tiveram o `take` resultante contado.
+    notified: HashMap<String, HashSet<String>>,
+    /// A quantidade do último aviso recebido de cada tópico.
+    notices: HashMap<String, u64>,
 }
 
 pub struct Signals {
@@ -225,58 +234,132 @@ impl Signals {
 
     // ---- O que este nó diz ----
 
-    /// As prontas do tópico mudaram aqui: avisa os outros e, se chegou mensagem, avisa um nó com
-    /// ouvinte (doc 13, seção 12.8).
-    fn local_ready_changed(&self, topic: &str, has_ready: bool) {
+    /// As prontas do tópico mudaram aqui: avisa os outros e, se chegou mensagem, abre o ciclo de
+    /// avisos aos nós com ouvinte (doc 13, seção 12.8).
+    fn local_ready_changed(self: &Arc<Self>, topic: &str, has_ready: bool) {
         self.broadcast(Signal::Ready {
             topic: topic.to_owned(),
             has_ready,
         });
-        if has_ready {
-            self.notify_one_listener(topic);
+        if has_ready && self.lock().cycles.insert(topic.to_owned()) {
+            let signals = self.clone();
+            let topic = topic.to_owned();
+            tokio::spawn(async move {
+                signals.notify_cycle(&topic).await;
+                signals.lock().cycles.remove(&topic);
+            });
         }
     }
 
-    /// Há mensagem nova pronta neste nó (o dono) e algum outro nó tem ouvinte: avisa **um** deles,
-    /// revezando entre os que têm. Ouvinte local é acordado pelo próprio motor.
-    pub fn notify_one_listener(&self, topic: &str) {
-        let target = {
-            let mut tables = self.lock();
-            let me = self.me();
-            let mut nodes: Vec<String> = tables
-                .listeners
-                .get(topic)
-                .map(|set| set.iter().filter(|n| **n != me).cloned().collect())
-                .unwrap_or_default();
-            nodes.sort();
-            nodes
-                .retain(|n| self.service.membership().is_active(n) && !tables.draining.contains(n));
-            if nodes.is_empty() {
-                None
-            } else {
-                let after = tables.last_notified.get(topic).cloned().unwrap_or_default();
-                let next = nodes
-                    .iter()
-                    .find(|n| **n > after)
-                    .unwrap_or(&nodes[0])
-                    .clone();
-                tables.last_notified.insert(topic.to_owned(), next.clone());
-                Some(next)
+    /// O responsável pelos avisos do tópico (um por tópico, ativo só enquanto há mensagem a avisar e
+    /// ouvinte em algum nó): acumula as prontas por `cluster.notify.window`, manda **um** aviso com a
+    /// quantidade a **um** nó com ouvinte, espera `cluster.notify.wait` que ele venha buscar e, se não
+    /// veio (ou veio e ainda sobrou), passa ao próximo, até acabarem as mensagens ou os nós.
+    async fn notify_cycle(&self, topic: &str) {
+        let rules = self.service.rules();
+        let cancel = self.service.cancel_token().clone();
+        tokio::select! {
+            () = cancel.cancelled() => return,
+            () = tokio::time::sleep(rules.notify_window) => {}
+        }
+        let mut tried: HashSet<String> = HashSet::new();
+        loop {
+            let count = self.messages.ready_count_of(topic);
+            if count == 0 {
+                return;
             }
-        };
-        let Some(node) = target else { return };
-        self.service.telemetry().registry.add(
-            &CLUSTER_NOTIFICATIONS,
-            &[("taba.direction", "out"), ("taba.outcome", "sent")],
-            1.0,
-        );
-        if let Some(channels) = self.channels() {
-            channels.send(
-                &node,
-                Signal::Notify {
-                    topic: topic.to_owned(),
-                    count: 1,
-                },
+            let Some(node) = self.next_listener(topic, &tried) else {
+                return;
+            };
+            tried.insert(node.clone());
+            let before = self.takes_of(topic, &node);
+            self.service.telemetry().registry.add(
+                &CLUSTER_NOTIFICATIONS,
+                &[("taba.direction", "out"), ("taba.outcome", "sent")],
+                1.0,
+            );
+            if let Some(channels) = self.channels() {
+                channels.send(
+                    &node,
+                    Signal::Notify {
+                        topic: topic.to_owned(),
+                        count,
+                    },
+                );
+            }
+            // Espera o nó vir buscar; se não vem a tempo, o próximo da vez.
+            let deadline = tokio::time::Instant::now() + rules.notify_wait;
+            while self.takes_of(topic, &node) == before && tokio::time::Instant::now() < deadline {
+                tokio::select! {
+                    () = cancel.cancelled() => return,
+                    () = tokio::time::sleep(Duration::from_millis(2)) => {}
+                }
+            }
+        }
+    }
+
+    /// O próximo nó com ouvinte a avisar: entre os que ainda não foram tentados neste ciclo,
+    /// revezando a partir do último avisado. Fora os em drain e os que saíram da tabela.
+    fn next_listener(&self, topic: &str, tried: &HashSet<String>) -> Option<String> {
+        let mut tables = self.lock();
+        let me = self.me();
+        let mut nodes: Vec<String> = tables
+            .listeners
+            .get(topic)
+            .map(|set| set.iter().filter(|n| **n != me).cloned().collect())
+            .unwrap_or_default();
+        nodes.sort();
+        nodes.retain(|n| {
+            !tried.contains(n)
+                && self.service.membership().is_active(n)
+                && !tables.draining.contains(n)
+        });
+        if nodes.is_empty() {
+            return None;
+        }
+        let after = tables.last_notified.get(topic).cloned().unwrap_or_default();
+        let next = nodes
+            .iter()
+            .find(|n| **n > after)
+            .unwrap_or(&nodes[0])
+            .clone();
+        tables.last_notified.insert(topic.to_owned(), next.clone());
+        Some(next)
+    }
+
+    fn takes_of(&self, topic: &str, node: &str) -> u64 {
+        self.lock()
+            .takes
+            .get(&(topic.to_owned(), node.to_owned()))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Um nó pediu `take` do tópico aqui: o aviso que se mandou a ele foi atendido.
+    pub fn took(&self, topic: &str, node: &str) {
+        *self
+            .lock()
+            .takes
+            .entry((topic.to_owned(), node.to_owned()))
+            .or_default() += 1;
+    }
+
+    /// O `take` que um aviso recebido provocou terminou: `fetched` se trouxe mensagens, `empty`
+    /// se o aviso era uma dica velha (doc 13, seção 12.8). Conta uma vez por aviso.
+    pub fn notified_outcome(&self, topic: &str, node: &str, fetched: bool) {
+        let was_notified = self
+            .lock()
+            .notified
+            .get_mut(topic)
+            .is_some_and(|nodes| nodes.remove(node));
+        if was_notified {
+            self.service.telemetry().registry.add(
+                &CLUSTER_NOTIFICATIONS,
+                &[
+                    ("taba.direction", "in"),
+                    ("taba.outcome", if fetched { "fetched" } else { "empty" }),
+                ],
+                1.0,
             );
         }
     }
@@ -321,6 +404,23 @@ impl Signals {
                 has_listeners: false,
             });
         }
+    }
+
+    /// Os nós que dizem ter ouvinte do tópico.
+    pub fn listener_nodes(&self, topic: &str) -> Vec<String> {
+        let mut nodes: Vec<String> = self
+            .lock()
+            .listeners
+            .get(topic)
+            .map(|set| set.iter().cloned().collect())
+            .unwrap_or_default();
+        nodes.sort();
+        nodes
+    }
+
+    /// A quantidade de mensagens prontas que o último aviso do tópico trouxe.
+    pub fn last_notice_count(&self, topic: &str) -> Option<u64> {
+        self.lock().notices.get(topic).copied()
     }
 
     /// Quantos `GET` esperam o tópico neste nó.
@@ -407,6 +507,12 @@ impl Signals {
                 // tantos quantos são.
                 let waiting = {
                     let mut tables = self.lock();
+                    tables
+                        .notified
+                        .entry(topic.clone())
+                        .or_default()
+                        .insert(from.clone());
+                    tables.notices.insert(topic.clone(), count);
                     tables.hints.insert(topic.clone(), from);
                     tables.local_listeners.get(&topic).copied().unwrap_or(0)
                 };

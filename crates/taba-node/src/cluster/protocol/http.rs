@@ -9,12 +9,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::{
-    AckRegisterRequest, ChannelBatch, Confirm, FifoPublished, ForwardRequest, ForwardResponse,
-    IdleResponse, JoinRequest, LossAck, LossRecord, MessageRecord, MessageRegisterRequest,
-    NodeRegisterRequest, NodeUnregisterRequest, OperationRef, RecoverResult, Request, Response,
-    Step, StreamPage, StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest,
-    TopicRegisterRequest, VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body,
-    recover_body,
+    AckRegisterRequest, FifoPublished, ForwardRequest, ForwardResponse, IdleResponse, JoinRequest,
+    LossAck, LossRecord, MessageRecord, MessageRegisterRequest, NodeRegisterRequest,
+    NodeUnregisterRequest, OperationRef, RecoverResult, Request, Response, Step, StreamPage,
+    StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest, TopicRegisterRequest,
+    VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body, recover_body,
 };
 use crate::cluster::members::MemberTable;
 use crate::core::error::{ErrorCode, ErrorDetail, TabaError};
@@ -250,7 +249,6 @@ impl Request {
                 format!("/cluster/topics/{topic}/messages/take"),
                 request,
             ),
-            Request::Channel(batch) => json_call("POST", "/cluster/channel".to_owned(), batch),
             Request::Vote(vote) => json_call("POST", "/cluster/vote-remove".to_owned(), vote),
             Request::Status => get_call("/cluster/status".to_owned()),
             Request::BlockIds { block, query } => {
@@ -415,9 +413,6 @@ impl Request {
                     step: parse_step::<AckRegisterRequest>(phase, headers, body)?,
                 })
             }
-            ["cluster", "channel"] if post() => {
-                Ok(Request::Channel(parse_body::<ChannelBatch>(headers, body)?))
-            }
             ["cluster", "vote-remove"] if post() => {
                 Ok(Request::Vote(parse_body::<VoteRequest>(headers, body)?))
             }
@@ -523,11 +518,6 @@ impl Request {
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Record(record))
             }
-            Request::Channel(_) => {
-                let confirm: Confirm =
-                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
-                Ok(Response::Confirm(confirm))
-            }
             Request::Vote(_) => {
                 let vote: VoteResponse =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
@@ -564,7 +554,7 @@ impl Request {
 }
 
 /// O erro de uma resposta `4xx`/`5xx`: o `ErrorResponse` do corpo e o `Retry-After`.
-fn error_from_reply(reply: &HttpReply) -> TabaError {
+pub fn error_from_reply(reply: &HttpReply) -> TabaError {
     let value: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
     let code = value
         .get("code")
@@ -634,7 +624,6 @@ impl Response {
             Response::Taken(taken) => json(&taken),
             Response::Idle(idle) => json(&idle),
             Response::Record(record) => json(&record),
-            Response::Confirm(confirm) => json(&confirm),
             Response::Vote(vote) => json(&vote),
             Response::Loss(ack) => json(&ack),
             Response::FifoPublished(published) => json(&published),

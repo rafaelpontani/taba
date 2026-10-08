@@ -14,10 +14,8 @@ use common::cluster::{
 };
 use common::error_code;
 use taba_node::cluster::channel::Channels;
-use taba_node::cluster::protocol::{
-    ChannelBatch, ChannelFrame, Keepalive, ReadyCount, Request, Response, Signal,
-};
-use taba_node::cluster::transport::{CallError, Transport};
+use taba_node::cluster::protocol::{ChannelBatch, ChannelFrame, Keepalive, ReadyCount, Signal};
+use taba_node::cluster::transport::{CallError, ChannelOpen, Transport};
 use taba_node::core::error::ErrorCode;
 use taba_node::core::id;
 
@@ -36,23 +34,10 @@ fn frame(seq: u64, signal: Signal) -> ChannelFrame {
     ChannelFrame { seq, signal }
 }
 
-/// Uma chamada do canal feita pelo nó `from_number` ao nó 1, como se fosse ele.
-async fn call_channel(
-    cluster: &TestCluster,
-    from_number: usize,
-    batch: ChannelBatch,
-) -> Result<Response, CallError> {
-    let transport = cluster.network.transport(host_of(from_number));
-    transport
-        .call(&address_of(cluster, 1), Request::Channel(batch))
-        .await
-}
-
-fn confirmed(response: Response) -> Vec<u64> {
-    match response {
-        Response::Confirm(confirm) => confirm.seqs,
-        other => panic!("esperava um confirm, veio {other:?}"),
-    }
+/// Entrega um lote ao canal do nó 1 como se tivesse vindo do par (o que a recepção faz com cada
+/// mensagem da conexão) e devolve o `confirm`.
+fn deliver(cluster: &TestCluster, batch: ChannelBatch) -> Vec<u64> {
+    channels_of(cluster, 1).receive(batch).seqs
 }
 
 /// UC: UC-CAN-001, UC-CAN-024
@@ -119,35 +104,43 @@ async fn the_node_that_joins_calls_every_member_and_only_members_are_answered() 
 
     // Quem não consta na tabela é recusado pela rede em memória...
     let outsider = cluster.network.transport("10.0.0.50");
+    let open = ChannelOpen {
+        from: guid(),
+        to: cluster.node_id(1),
+    };
     let batch = ChannelBatch {
         to: String::new(),
         from: guid(),
         keepalive: None,
         frames: vec![frame(1, ready("x", true))],
     };
-    let error = outsider
-        .call(&address_of(&cluster, 1), Request::Channel(batch.clone()))
+    match outsider
+        .open_channel(&address_of(&cluster, 1), open.clone())
         .await
-        .unwrap_err();
-    match error {
-        CallError::Remote(e) => assert_eq!(e.code, ErrorCode::ClusterNotMember),
-        other => panic!("esperava o erro do par, veio {other}"),
+    {
+        Err(CallError::Remote(e)) => assert_eq!(e.code, ErrorCode::ClusterNotMember),
+        Err(other) => panic!("esperava o erro do par, veio {other}"),
+        Ok(_) => panic!("quem não é membro não abre o canal"),
     }
-    assert!(
-        signals_of(&cluster, 1).ready_peers("x").is_empty(),
-        "o quadro de quem não é membro não é processado"
-    );
+    let _ = batch;
 
-    // ...e pela rota HTTP do cluster (o teste chama de 127.0.0.1, que não consta na tabela).
+    // ...e pela rota HTTP do cluster (o teste chama de 127.0.0.1, que não consta na tabela): o
+    // erro sai antes do upgrade, como status.
     let node = cluster.node(1);
-    let response = node
-        .client
-        .post(node.cluster_url("/cluster/channel"))
-        .json(&batch)
-        .send()
-        .await
-        .unwrap();
+    let upgrade = |to: &str| {
+        node.client
+            .get(node.cluster_url(&format!("/cluster/channel?from={}&to={to}", guid())))
+            .header("connection", "Upgrade")
+            .header("upgrade", "websocket")
+            .header("sec-websocket-version", "13")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .send()
+    };
+    let response = upgrade(&cluster.node_id(1)).await.unwrap();
     assert_eq!(error_code(response, 403).await, "cluster.not-member");
+    // Outro processo no endereço (o `to` não é este nó) é recusado antes de olhar quem chama.
+    let response = upgrade(&guid()).await.unwrap();
+    assert_eq!(error_code(response, 421).await, "cluster.wrong-node");
     cluster.shutdown().await;
 }
 
@@ -170,7 +163,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
             frame(base + 2, ready("y", true)),
         ],
     };
-    let confirm = confirmed(call_channel(&cluster, 2, batch).await.unwrap());
+    let confirm = deliver(&cluster, batch);
     assert_eq!(
         confirm,
         vec![base + 1, base + 2],
@@ -188,7 +181,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
         keepalive: None,
         frames: vec![frame(base + 1, ready("x", false))],
     };
-    let confirm = confirmed(call_channel(&cluster, 2, repeated).await.unwrap());
+    let confirm = deliver(&cluster, repeated);
     assert_eq!(confirm, vec![base + 1]);
     assert_eq!(
         signals.ready_peers("x"),
@@ -201,10 +194,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
         keepalive: None,
         frames: vec![frame(base + 3, ready("x", false))],
     };
-    assert_eq!(
-        confirmed(call_channel(&cluster, 2, next).await.unwrap()),
-        vec![base + 3]
-    );
+    assert_eq!(deliver(&cluster, next), vec![base + 3]);
     assert!(signals.ready_peers("x").is_empty(), "o seq novo vale");
 
     // O sinal de vida não tem `seq`: não é confirmado nem fica na fila de ninguém.
@@ -224,7 +214,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
         frames: vec![],
     };
     assert!(
-        confirmed(call_channel(&cluster, 2, alive).await.unwrap()).is_empty(),
+        deliver(&cluster, alive).is_empty(),
         "o sinal de vida não tem confirm"
     );
     let seen = channels_of(&cluster, 1)
@@ -559,6 +549,87 @@ async fn there_is_no_ping_apart_from_the_channel_between_the_nodes() {
         kinds,
         std::collections::BTreeSet::from(["channel"]),
         "em repouso só o canal fala: sem ping nem sonda à parte"
+    );
+    cluster.shutdown().await;
+}
+
+/// UC: UC-CAN-013
+#[tokio::test]
+async fn two_connections_at_once_end_with_a_single_channel_per_pair() {
+    let cluster = TestCluster::start(2).await;
+    settled(&cluster).await;
+    let (id1, id2) = (cluster.node_id(1), cluster.node_id(2));
+
+    // O nó 2 entrou e abriu o canal. O nó 1 abre outro ao mesmo tempo (como quem detectou a queda
+    // primeiro): o nó 2 tem as duas e fica com a aberta pelo nó de maior hash do ID.
+    let mut extra = cluster
+        .network
+        .transport(host_of(1))
+        .open_channel(
+            &address_of(&cluster, 2),
+            ChannelOpen {
+                from: id1.clone(),
+                to: id2.clone(),
+            },
+        )
+        .await
+        .expect("o nó 2 aceita o canal de um membro");
+    let one_wins = taba_node::core::ring::position(id1.as_bytes())
+        > taba_node::core::ring::position(id2.as_bytes());
+
+    // Se o nó 1 tem o maior hash, a conexão dele fica e a do nó 2 cai (o nó 1 a reabre, trocando a
+    // do teste, que é do mesmo lado); senão o nó de menor hash (o 1) fecha a que abriu.
+    if !one_wins {
+        let closed = tokio::time::timeout(Duration::from_secs(2), extra.rx.recv())
+            .await
+            .expect("a conexão do menor hash deveria fechar");
+        assert!(closed.is_none());
+    }
+    // Em qualquer ordem, no fim há um canal só entre os dois, de pé e falando.
+    eventually_async("o canal único restabelecido", || async {
+        settled_pair(&cluster)
+    })
+    .await;
+    assert!(one_wins || extra.rx.recv().await.is_none());
+    cluster.shutdown().await;
+}
+
+fn settled_pair(cluster: &TestCluster) -> bool {
+    (1..=2).all(|n| {
+        let peers = channels_of(cluster, n).peers();
+        peers.len() == 1 && peers[0].up && peers[0].version.is_some()
+    })
+}
+
+/// UC: UC-CAN-018
+#[tokio::test]
+async fn each_peer_has_an_out_queue_and_an_in_queue_that_drain() {
+    let cluster = TestCluster::start(2).await;
+    settled(&cluster).await;
+    // Uma rajada de sinais do nó 1: cada um passa pela fila de saída para o nó 2 e pela fila de
+    // entrada dele, e as duas voltam a zero.
+    let channels = channels_of(&cluster, 1);
+    for n in 0..300 {
+        channels.broadcast(ready(&format!("t{n}"), true));
+    }
+    let signals = signals_of(&cluster, 2);
+    let node1 = cluster.node_id(1);
+    eventually("a rajada chegar ao nó 2", || {
+        signals.ready_peers("t299") == vec![node1.clone()]
+    })
+    .await;
+    eventually_async("as filas esvaziam", || async {
+        let one = cluster.node(1).metrics().await;
+        let two = cluster.node(2).metrics().await;
+        total(&one, "taba_cluster_channel_queue_out", "") == 0.0
+            && total(&two, "taba_cluster_channel_queue_in", "") == 0.0
+    })
+    .await;
+    let text = cluster.node(2).metrics().await;
+    assert!(
+        text.contains("taba_cluster_channel_queue_in{")
+            && text.contains(&format!("taba_peer=\"{node1}\"")),
+        "a fila de entrada é por nó de origem"
     );
     cluster.shutdown().await;
 }

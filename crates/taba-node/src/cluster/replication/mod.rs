@@ -228,8 +228,17 @@ impl Replication {
         self.signals.reset();
     }
 
+    /// Um membro abriu o canal com este nó.
+    pub fn accept_channel(
+        &self,
+        open: crate::cluster::transport::ChannelOpen,
+        link: crate::cluster::transport::ChannelLink,
+    ) {
+        self.channels.accept(&open.from, link);
+    }
+
     /// Atende uma chamada de outro membro (a conferência de membro já foi feita).
-    pub async fn handle(&self, _caller: &str, request: Request) -> Result<Response, TabaError> {
+    pub async fn handle(&self, caller: &str, request: Request) -> Result<Response, TabaError> {
         // Um nó que sincroniza guarda os eventos no banco em vez de processá-los (doc 05, 7.3).
         if let Some(reply) = self.syncer.intercept(&request)? {
             return Ok(reply);
@@ -275,6 +284,8 @@ impl Replication {
                 }))
             }
             Request::Take { topic, request } => {
+                // O nó avisado veio buscar: o responsável pelos avisos do tópico pode parar de esperar.
+                self.signals.took(&topic, caller);
                 if self.service.node_state() != NodeState::Active {
                     return Err(TabaError::new(
                         ErrorCode::ClusterNodeSyncing,
@@ -290,7 +301,6 @@ impl Replication {
             request @ (Request::BlockIds { .. }
             | Request::BlockMessages { .. }
             | Request::BlockMessage { .. }) => self.source.handle(request).await,
-            Request::Channel(batch) => Ok(Response::Confirm(self.channels.receive(batch))),
             Request::Vote(vote) => self.voting.cast(vote).await,
             Request::FifoPublish { topic, record } => self
                 .messages
