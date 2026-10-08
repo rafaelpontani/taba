@@ -62,6 +62,8 @@ pub struct AppState {
     pub telemetry: Arc<Telemetry>,
     /// Os limites das condições dos tópicos (`stats.topics.*`).
     pub stats_rules: Arc<StatsRules>,
+    /// Os certificados do cluster; `None` sem pasta (a porta do cluster atende em HTTP puro).
+    pub tls: Option<Arc<crate::cluster::tls::TlsStore>>,
 }
 
 /// Em drain o nó não atende chamada de cliente (doc 04, seção 6.10): num cluster repassa a chamada

@@ -416,6 +416,12 @@ pub static FIFO_FORWARD: Def = def(
     "{request}",
     "Publicações FIFO repassadas ao primário do grupo.",
 );
+pub static CLUSTER_TLS_EXPIRES_IN: Def = def(
+    "taba.cluster.tls.expires_in",
+    Kind::Gauge,
+    "s",
+    "Tempo até a expiração (notAfter) do certificado do cluster em uso.",
+);
 pub static CLUSTER_QUORUM_AVAILABLE: Def = def(
     "taba.cluster.quorum.available",
     Kind::Gauge,

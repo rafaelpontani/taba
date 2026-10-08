@@ -226,6 +226,8 @@ pub struct ClusterSync {
 #[derive(Debug, Clone)]
 pub struct Cluster {
     pub entry_address: Option<String>,
+    /// `cluster.advertise-addresses`: os IPs que o nó informa aos outros; vazio, ele descobre.
+    pub advertise_addresses: Vec<String>,
     pub first_node: bool,
     pub virtual_nodes: u32,
     pub keepalive_interval: Option<Duration>,
@@ -895,6 +897,10 @@ fn write_rest(s: &Source) -> Result<Write, ConfigError> {
 fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
     Ok(Cluster {
         entry_address: s.opt("cluster.entry-address")?,
+        advertise_addresses: s
+            .opt::<List>("cluster.advertise-addresses")?
+            .map(|l| l.0)
+            .unwrap_or_default(),
         first_node: s.get("cluster.first-node")?,
         virtual_nodes: s.get("ring.virtual-nodes")?,
         keepalive_interval: s.opt("cluster.channel.keepalive.interval")?,

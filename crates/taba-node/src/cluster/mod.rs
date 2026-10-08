@@ -13,6 +13,7 @@ pub mod replication;
 pub mod service;
 pub mod state;
 pub mod sync;
+pub mod tls;
 pub mod transport;
 pub mod volatile;
 pub mod vote;

@@ -632,3 +632,41 @@ async fn an_exclusion_vote_is_one_trace_with_a_span_per_voter() {
         .await;
     cluster.shutdown().await;
 }
+
+/// UC: UC-OPS-031
+#[tokio::test(flavor = "multi_thread")]
+async fn the_trace_context_travels_to_the_other_nodes_of_a_real_cluster() {
+    let _serial = serial().await;
+    let collector = Collector::http().await;
+    let mut cluster = common::real::RealCluster {
+        nodes: Vec::new(),
+        tls_dir: None,
+    };
+    let env = [
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", collector.endpoint.as_str()),
+        ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
+        ("OTEL_TRACES_SAMPLER", "always_on"),
+        ("OTEL_METRIC_EXPORT_INTERVAL", "60000"),
+    ];
+    cluster.add_node(&env).await;
+    cluster.add_node(&env).await;
+    cluster.settled(2).await;
+    common::cluster::create_queue(cluster.node(1), "viagem").await;
+
+    // A publicação entra por um nó; o registro e o commit chegam ao outro por HTTP.
+    publish(cluster.node(2), "viagem", "").await;
+    for node in &cluster.nodes {
+        node.node.flush_otlp().await;
+    }
+    let root = collector.wait_span("POST /topics/{topic}/messages").await;
+    collector
+        .eventually("a chamada recebida pelo outro nó, no mesmo trace", |c| {
+            c.spans().iter().any(|s| {
+                s.name.starts_with("POST /cluster/")
+                    && s.trace_id == root.trace_id
+                    && s.parent_span_id != root.span_id
+            })
+        })
+        .await;
+    cluster.shutdown().await;
+}

@@ -17,6 +17,8 @@ use crate::cluster::replication::{self, Attached};
 use crate::cluster::service::{BootstrapError, ClusterHandler, ClusterRules, ClusterService};
 use crate::cluster::state::NodeShared;
 use crate::cluster::sync::SyncRules;
+use crate::cluster::tls::TlsStore;
+use crate::cluster::transport::http::{HttpTransport, discover_address};
 use crate::cluster::transport::{Handler, PeerAddr, Transport};
 use crate::cluster::volatile::VolatileManager;
 use crate::config::Config;
@@ -58,6 +60,12 @@ pub enum NodeError {
 
     #[error("exportação OTLP: {0}")]
     Otlp(String),
+
+    #[error("certificados do cluster: {0}")]
+    Tls(String),
+
+    #[error("transporte entre nós: {0}")]
+    Transport(String),
 }
 
 /// Registra o nó numa rede (a em memória dos testes): recebe o endereço dele e o `Handler`.
@@ -82,6 +90,53 @@ pub struct Deps {
     pub clock: Arc<dyn Clock>,
     pub bind_ip: IpAddr,
     pub cluster: Option<ClusterDeps>,
+    /// Os certificados do cluster, se quem monta o nó já os abriu (o `Transport` real usa os
+    /// mesmos). Sem eles, o nó abre a pasta de `cluster.tls.dir`, se houver.
+    pub tls: Option<Arc<TlsStore>>,
+}
+
+impl Deps {
+    /// As peças de um nó de verdade (`taba`): o relógio do sistema e, em `mode=production`, o
+    /// `Transport` HTTP (com TLS mútuo se há pasta de certificados) e os IPs que o nó informa aos
+    /// outros: `cluster.advertise-addresses` ou, sem ele, a interface que sai para o
+    /// `cluster.entry-address` (D95). Em desenvolvimento não há cluster.
+    pub fn production(config: &Config) -> Result<Self, NodeError> {
+        let mut deps = Self::default();
+        if config.is_development() {
+            return Ok(deps);
+        }
+        let tls = config
+            .tls
+            .dir
+            .as_deref()
+            .map(TlsStore::open)
+            .transpose()
+            .map_err(NodeError::Tls)?;
+        let transport = HttpTransport::new(tls.as_ref()).map_err(NodeError::Transport)?;
+        let addresses = if config.cluster.advertise_addresses.is_empty() {
+            let entry: PeerAddr = config
+                .cluster
+                .entry_address
+                .as_deref()
+                .unwrap_or_default()
+                .parse()
+                .map_err(NodeError::Transport)?;
+            vec![discover_address(&entry).map_err(|why| {
+                NodeError::Transport(format!(
+                    "{why}; defina cluster.advertise-addresses com os IPs deste nó"
+                ))
+            })?]
+        } else {
+            config.cluster.advertise_addresses.clone()
+        };
+        deps.tls = tls;
+        deps.cluster = Some(ClusterDeps {
+            transport: Arc::new(transport),
+            addresses,
+            attach: None,
+        });
+        Ok(deps)
+    }
 }
 
 impl Default for Deps {
@@ -90,6 +145,7 @@ impl Default for Deps {
             clock: Arc::new(SystemClock),
             bind_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             cluster: None,
+            tls: None,
         }
     }
 }
@@ -215,6 +271,12 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     })?;
 
     let dev = config.is_development();
+    // Os certificados do cluster: ao menos um par válido na pasta, senão o nó não sobe.
+    let tls = match (dev, deps.tls.clone(), config.tls.dir.as_deref()) {
+        (true, ..) | (false, None, None) => None,
+        (false, Some(store), _) => Some(store),
+        (false, None, Some(dir)) => Some(TlsStore::open(dir).map_err(NodeError::Tls)?),
+    };
     let client = bind("da API de cliente", deps.bind_ip, config.ports.api).await?;
     let operations = match config.ports.operations {
         Some(port) => Some(bind("de operação", deps.bind_ip, port).await?),
@@ -372,6 +434,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         auth: auth.clone(),
         telemetry: telemetry.clone(),
         stats_rules: Arc::new(StatsRules::from_config(&config)),
+        tls: tls.clone(),
     };
 
     let otlp = match &config.telemetry.otlp {
@@ -390,15 +453,11 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     } else {
         if cluster_node.is_none() {
             tracing::warn!(
-                "o transporte entre nós ainda não existe: o nó fica em `bootstrapping` e /health/ready responde 503"
+                "sem transporte entre nós: o nó fica em `bootstrapping` e /health/ready responde 503"
             );
         }
-        if config.tls.dir.is_none() {
+        if tls.is_none() {
             tracing::warn!("sem pasta de certificados: a porta do cluster atende em HTTP puro");
-        } else {
-            tracing::warn!(
-                "o TLS mútuo do cluster ainda não existe: a porta do cluster atende em HTTP puro"
-            );
         }
     }
 
@@ -418,13 +477,21 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let token_sweep_interval = config.retention.sweep_interval.min(Duration::from_secs(1));
     let reload_interval = config.auth.reload_interval;
     // Cada listener é medido com a sua porta no atributo `server.port` (doc 11).
-    let mut serve = |listener: TcpListener, router: axum::Router, port: u16| {
+    let mut serve = |listener: TcpListener,
+                     router: axum::Router,
+                     port: u16,
+                     tls: Option<Arc<rustls::ServerConfig>>| {
         let cancel = cancel.clone();
         let observer = Observer {
             telemetry: telemetry.clone(),
             port,
         };
-        tasks.spawn(observe::serve(listener, router, observer, cancel));
+        match tls {
+            Some(config) => tasks.spawn(observe::serve_tls(
+                listener, router, observer, cancel, config,
+            )),
+            None => tasks.spawn(observe::serve(listener, router, observer, cancel)),
+        };
     };
     let client_router = http::client_router(state.clone(), operations.is_none());
     // O repasse recebido de um nó em drain roda contra esta mesma API de cliente.
@@ -443,16 +510,39 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             http::operations::node_status(&parts, cluster.as_deref())
         }));
     }
-    serve(client, client_router, client_addr.port());
+    serve(client, client_router, client_addr.port(), None);
     if let (Some(listener), Some(addr)) = (operations, operations_addr) {
         serve(
             listener,
             http::operations_router(state.clone()),
             addr.port(),
+            None,
         );
     }
     if let (Some(listener), Some(addr)) = (cluster, cluster_addr) {
-        serve(listener, http::cluster_router(state), addr.port());
+        let server_config = tls
+            .as_ref()
+            .map(|store| store.server_config())
+            .transpose()
+            .map_err(NodeError::Tls)?;
+        serve(
+            listener,
+            http::cluster_router(state),
+            addr.port(),
+            server_config,
+        );
+    }
+    if let Some(store) = tls.clone() {
+        // A pasta é relida de tempos em tempos e o certificado em uso é vigiado.
+        let (cancel, interval, warning) = (
+            cancel.clone(),
+            config.tls.reload_interval,
+            config.tls.expiry_warning,
+        );
+        tasks.spawn(async move {
+            store.run(interval, warning, cancel).await;
+            Ok(())
+        });
     }
     if let (Some((service, cluster_deps)), Some(addr)) = (&cluster_node, cluster_addr) {
         if let Some(attach) = &cluster_deps.attach {

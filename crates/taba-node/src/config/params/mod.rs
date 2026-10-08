@@ -76,6 +76,7 @@ pub static PARAMS: &[Param] = &[
     p("cluster.vote.min-voters", Some("2")),
     p("cluster.freezing.duration", None),
     p("cluster.entry-address", None),
+    p("cluster.advertise-addresses", None),
     p("cluster.first-node", Some("false")),
     p("cluster.bootstrap.retry.interval", Some("5s")),
     p("cluster.bootstrap.retry.max-attempts", Some("0")),

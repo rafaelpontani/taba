@@ -144,3 +144,55 @@ pub fn operation_span(name: &'static str, node: &str) -> Span {
         taba.durability_event = tracing::field::Empty,
     )
 }
+
+/// Injeta o contexto do span corrente no cabeçalho `traceparent` de uma chamada a outro nó. Sem
+/// span válido (uma tarefa de fundo, como o sinal de vida) não injeta nada.
+pub fn inject(headers: &mut Vec<(String, String)>) {
+    use opentelemetry::propagation::{Injector, TextMapPropagator};
+    use opentelemetry::trace::TraceContextExt;
+
+    struct Out<'a>(&'a mut Vec<(String, String)>);
+    impl Injector for Out<'_> {
+        fn set(&mut self, key: &str, value: String) {
+            self.0.retain(|(k, _)| k != key);
+            self.0.push((key.to_owned(), value));
+        }
+    }
+    let context = Span::current().context();
+    if context.span().span_context().is_valid() {
+        TraceContextPropagator::new().inject_context(&context, &mut Out(headers));
+    }
+}
+
+/// O span de uma chamada que chegou de outro nó. Só nasce se a chamada trouxe um `traceparent`
+/// (veio de uma operação com trace); as de fundo, como o sinal de vida, não geram span.
+pub fn inbound_span(name: &str, headers: &[(String, String)]) -> Option<Span> {
+    struct In<'a>(&'a [(String, String)]);
+    impl Extractor for In<'_> {
+        fn get(&self, key: &str) -> Option<&str> {
+            self.0
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v.as_str())
+        }
+
+        fn keys(&self) -> Vec<&str> {
+            self.0.iter().map(|(k, _)| k.as_str()).collect()
+        }
+    }
+    if !headers
+        .iter()
+        .any(|(k, _)| k.eq_ignore_ascii_case("traceparent"))
+    {
+        return None;
+    }
+    let span = tracing::info_span!(
+        "cluster.inbound",
+        otel.name = name,
+        otel.kind = "server",
+        otel.status_code = tracing::field::Empty,
+    );
+    let context = TraceContextPropagator::new().extract(&In(headers));
+    let _ = span.set_parent(context);
+    Some(span)
+}

@@ -6,6 +6,7 @@
 //! implementação sabe como levá-los. A parte do nó que **recebe** a chamada é um `Handler`, o
 //! mesmo que as rotas `/cluster/*` usam.
 
+pub mod http;
 pub mod memory;
 
 use std::fmt;

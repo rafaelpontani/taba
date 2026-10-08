@@ -39,7 +39,14 @@ async fn main() -> ExitCode {
     };
     telemetry::init_logging(config.telemetry.logs_level.as_deref());
 
-    let mut running = match node::start(config, Deps::default()).await {
+    let deps = match Deps::production(&config) {
+        Ok(deps) => deps,
+        Err(e) => {
+            eprintln!("taba: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut running = match node::start(config, deps).await {
         Ok(running) => running,
         Err(e) => {
             tracing::error!("{e}");

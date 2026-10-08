@@ -81,6 +81,7 @@ fn app() -> Router {
         stats_rules: Arc::new(crate::engine::messages::stats::StatsRules::from_config(
             &config,
         )),
+        tls: None,
     };
     let routes = Router::new()
         .route("/boom", get(boom))

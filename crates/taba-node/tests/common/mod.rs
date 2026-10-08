@@ -18,6 +18,7 @@ use std::sync::Arc;
 use reqwest::{Client, Response};
 use tempfile::TempDir;
 
+use taba_node::cluster::transport::http::HttpTransport;
 use taba_node::cluster::transport::memory::MemoryNetwork;
 use taba_node::config::{Config, MapEnv};
 use taba_node::core::clock::ManualClock;
@@ -25,12 +26,15 @@ use taba_node::node::{self, ClusterDeps, Deps, NodeError, RunningNode};
 
 pub mod cluster;
 pub mod otlp;
+pub mod real;
 
 pub struct TestNodeBuilder {
     env: Vec<(String, String)>,
     /// A rede em memória e o IP do nó nela (`mode=production` com `Transport`).
     network: Option<(MemoryNetwork, String)>,
     clock: Option<Arc<ManualClock>>,
+    /// O nó usa o `Transport` HTTP de verdade e escuta neste IP (loopback).
+    real_ip: Option<IpAddr>,
 }
 
 impl TestNodeBuilder {
@@ -55,6 +59,17 @@ impl TestNodeBuilder {
         self
     }
 
+    /// O nó de verdade: `Transport` HTTP (com TLS mútuo se `TABA_CLUSTER_TLS_DIR` aponta uma
+    /// pasta) e escuta em `ip` (`127.x.y.z`, um por nó, para o cluster reconhecê-los pelo IP).
+    /// `entry` é o `cluster.entry-address`: o primeiro nó usa um endereço qualquer; os outros, o
+    /// endereço do cluster de um nó que já subiu.
+    pub fn real(mut self, ip: &str, entry: &str) -> Self {
+        self.real_ip = Some(ip.parse().expect("IP de teste"));
+        self.env("TABA_MODE", "production")
+            .env("TABA_CLUSTER_ENTRY_ADDRESS", entry)
+            .env("TABA_CLUSTER_ADVERTISE_ADDRESSES", ip)
+    }
+
     /// Modo produção, **sem** `Transport`: o nó fica em `bootstrapping`.
     pub fn production(self) -> Self {
         self.env("TABA_MODE", "production")
@@ -77,6 +92,7 @@ impl TestNodeBuilder {
         let clock = self
             .clock
             .unwrap_or_else(|| Arc::new(ManualClock::at_doc_epoch()));
+        let real_ip = self.real_ip;
         let cluster = self.network.map(|(network, host)| {
             let attach_to = network.clone();
             ClusterDeps {
@@ -87,10 +103,25 @@ impl TestNodeBuilder {
                 })),
             }
         });
-        let deps = Deps {
-            clock: clock.clone(),
-            bind_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-            cluster,
+        let deps = match real_ip {
+            Some(ip) => {
+                let mut deps = Deps::production(&config)?;
+                deps.clock = clock.clone();
+                deps.bind_ip = ip;
+                // O cluster reconhece o chamador pelo IP: cada nó chama a partir do seu.
+                if let Some(cluster) = deps.cluster.as_mut() {
+                    cluster.transport = Arc::new(
+                        HttpTransport::bound_to(deps.tls.as_ref(), ip).expect("transporte"),
+                    );
+                }
+                deps
+            }
+            None => Deps {
+                clock: clock.clone(),
+                bind_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                cluster,
+                tls: None,
+            },
         };
         let node = node::start(config, deps).await?;
         let client = Client::builder().no_proxy().build().expect("cliente HTTP");
@@ -126,6 +157,7 @@ impl TestNode {
             ],
             network: None,
             clock: None,
+            real_ip: None,
         }
     }
 

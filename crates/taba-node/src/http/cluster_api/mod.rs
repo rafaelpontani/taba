@@ -15,10 +15,13 @@ use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum::response::Response as HttpResponse;
 use axum::routing::any;
 
+use tracing::Instrument;
+
 use super::AppState;
 use super::common::ApiError;
 use crate::cluster::protocol::Request;
 use crate::core::error::{ErrorCode, TabaError};
+use crate::telemetry::trace;
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/cluster/{*caminho}", any(dispatch))
@@ -53,9 +56,14 @@ async fn dispatch(
         ))
     })?;
     let request = Request::from_http(parts.method.as_str(), &path_and_query, &headers, &body)?;
-    let reply = service
-        .handle(&caller.ip().to_string(), request)
-        .await?
+    let caller_ip = caller.ip().to_string();
+    let handled = service.handle(&caller_ip, request);
+    // Uma chamada que veio de uma operação com trace continua o mesmo trace neste nó.
+    let reply =
+        match trace::inbound_span(&format!("{} {}", parts.method, parts.uri.path()), &headers) {
+            Some(span) => handled.instrument(span).await?,
+            None => handled.await?,
+        }
         .into_http();
 
     let mut response = HttpResponse::new(Body::from(reply.body));

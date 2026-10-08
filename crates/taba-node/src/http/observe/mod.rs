@@ -224,6 +224,78 @@ impl Service<IncomingStream<'_, TcpListener>> for MakeConnection {
     }
 }
 
+/// Quanto o handshake TLS de uma conexão pode levar antes de ela ser derrubada.
+const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Quanto a parada espera as conexões abertas terminarem o que estão fazendo.
+const GRACEFUL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Como `serve`, mas com TLS mútuo (a porta do cluster, doc 06 seção 8.0.1): o handshake exige o
+/// certificado do outro lado, e o que falha nele nunca chega a uma rota. Quem chama é reconhecido
+/// pelo IP da conexão (`ConnectInfo`), como na porta em HTTP puro.
+pub async fn serve_tls(
+    listener: TcpListener,
+    router: Router,
+    observer: Observer,
+    cancel: CancellationToken,
+    config: Arc<rustls::ServerConfig>,
+) -> io::Result<()> {
+    use hyper_util::rt::{TokioExecutor, TokioIo};
+    use hyper_util::server::conn::auto::Builder;
+    use hyper_util::server::graceful::GracefulShutdown;
+
+    let router = router.layer(middleware::from_fn_with_state(observer.clone(), observe));
+    let acceptor = tokio_rustls::TlsAcceptor::from(config);
+    let graceful = GracefulShutdown::new();
+    loop {
+        let (stream, peer) = tokio::select! {
+            () = cancel.cancelled() => break,
+            accepted = listener.accept() => match accepted {
+                Ok(accepted) => accepted,
+                Err(e) => {
+                    tracing::warn!(error = %e, "falha ao aceitar uma conexão do cluster");
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    continue;
+                }
+            },
+        };
+        let connection = Connection {
+            router: router.clone(),
+            peer,
+            _guard: ConnectionGuard::open(observer.clone()),
+        };
+        let acceptor = acceptor.clone();
+        let watcher = graceful.watcher();
+        tokio::spawn(async move {
+            let handshake = tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await;
+            let tls = match handshake {
+                Ok(Ok(tls)) => tls,
+                Ok(Err(e)) => {
+                    tracing::debug!(%peer, error = %e, "handshake TLS do cluster recusado");
+                    return;
+                }
+                Err(_) => {
+                    tracing::debug!(%peer, "handshake TLS do cluster não terminou no prazo");
+                    return;
+                }
+            };
+            let service = hyper::service::service_fn(
+                move |request: hyper::Request<hyper::body::Incoming>| {
+                    let mut connection = connection.clone();
+                    async move { connection.call(request.map(axum::body::Body::new)).await }
+                },
+            );
+            let builder = Builder::new(TokioExecutor::new());
+            let served = builder.serve_connection_with_upgrades(TokioIo::new(tls), service);
+            if let Err(e) = watcher.watch(served).await {
+                tracing::debug!(%peer, error = %e, "conexão do cluster encerrada com erro");
+            }
+        });
+    }
+    let _ = tokio::time::timeout(GRACEFUL_TIMEOUT, graceful.shutdown()).await;
+    Ok(())
+}
+
 /// Atende o listener com o roteador, medindo requisições e conexões, até `cancel`. As chamadas em
 /// andamento terminam antes de a função voltar.
 pub async fn serve(

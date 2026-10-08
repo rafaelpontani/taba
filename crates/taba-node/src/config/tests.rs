@@ -653,3 +653,33 @@ fn the_sampler_follows_otel_traces_sampler_and_defaults_to_parentbased_traceidra
     assert!(with(&[("OTEL_TRACES_SAMPLER_ARG", "1.5")]).is_err());
     assert!(with(&[("OTEL_TRACES_SAMPLER_ARG", "metade")]).is_err());
 }
+
+#[test]
+fn advertise_addresses_is_a_list_of_the_ips_the_node_tells_the_others() {
+    let env = |extra: &[(&str, &str)]| {
+        let mut vars = vec![
+            ("TABA_MODE", "production"),
+            ("TABA_CLUSTER_ENTRY_ADDRESS", "lb:8081"),
+        ];
+        vars.extend_from_slice(extra);
+        MapEnv(
+            vars.into_iter()
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect(),
+        )
+    };
+    let none = Config::parse(None, &env(&[])).unwrap();
+    assert!(
+        none.cluster.advertise_addresses.is_empty(),
+        "sem valor, o nó descobre"
+    );
+    let set = Config::parse(
+        None,
+        &env(&[("TABA_CLUSTER_ADVERTISE_ADDRESSES", "10.0.0.5, 192.168.1.5")]),
+    )
+    .unwrap();
+    assert_eq!(
+        set.cluster.advertise_addresses,
+        vec!["10.0.0.5", "192.168.1.5"]
+    );
+}

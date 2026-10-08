@@ -176,6 +176,9 @@ fn collect_cluster(state: &AppState) {
         return;
     };
     let registry = &state.telemetry.registry;
+    if let Some(left) = state.tls.as_ref().and_then(|tls| tls.expires_in()) {
+        registry.set(&CLUSTER_TLS_EXPIRES_IN, &[], left as f64);
+    }
     let membership = cluster.membership();
     if let Some(table) = membership.table() {
         registry.set(&CLUSTER_MEMBERS_VERSION, &[], table.version as f64);
