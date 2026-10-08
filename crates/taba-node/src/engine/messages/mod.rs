@@ -2120,6 +2120,24 @@ impl Messages {
         self.store.free_bytes().ok()
     }
 
+    /// Há quanto tempo foi o último `GET` do tópico **neste nó**, em segundos inteiros, e se a conta
+    /// vem da partida do nó (sem registro de `GET`: o nó subiu agora ou reiniciou), de modo que um
+    /// reinício só pode adiar a exclusão de uma fila volátil (doc 15, seção 14.5).
+    pub fn idle_of(&self, topic_id: &str) -> Result<(u64, bool), TabaError> {
+        if !self.topics.has_id(topic_id) {
+            return Err(TabaError::new(
+                ErrorCode::TopicNotFound,
+                "O tópico não existe.",
+            ));
+        }
+        let now = self.clock.now_millis();
+        let (since, from_start) = match lock(&self.last_get).get(topic_id) {
+            Some(at) => (*at, false),
+            None => (self.started_ms, true),
+        };
+        Ok((now.saturating_sub(since) / 1000, from_start))
+    }
+
     /// A partida do nó, em milissegundos: onde a conta de ociosidade de um tópico sem atividade
     /// começa quando ele é mais velho que o nó.
     pub fn started_ms(&self) -> u64 {

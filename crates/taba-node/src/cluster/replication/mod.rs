@@ -266,6 +266,14 @@ impl Replication {
             }
             Request::ListTopics(query) => Ok(self.definitions.list_topics(&query)),
             Request::ListTokens(query) => Ok(self.definitions.list_tokens(&query)),
+            Request::Idle { topic_id } => {
+                let (idle_seconds, since_start) = self.messages.messages().idle_of(&topic_id)?;
+                Ok(Response::Idle(crate::cluster::protocol::IdleResponse {
+                    topic_id,
+                    idle_seconds,
+                    since_start,
+                }))
+            }
             Request::Take { topic, request } => {
                 if self.service.node_state() != NodeState::Active {
                     return Err(TabaError::new(

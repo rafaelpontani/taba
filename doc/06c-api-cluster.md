@@ -160,7 +160,7 @@ Streams NDJSON (seção 8.2.1) com as definições de tópico e os tokens que o 
 
 Usada pelo **nó gestor** na verificação final da exclusão por ociosidade. Devolve há quanto tempo foi o último `GET` do tópico **neste nó**, como uma **duração decorrida** (não um instante, para não depender de relógios sincronizados). Leitura local, sem estado pendente ([15-topicos-distribuidor.md](15-topicos-distribuidor.md), seção 14.5). `{id}` é o `id` (GUID v7) do tópico.
 
-**Resposta: `200`, `IdleResponse`**: `topicId`, `idleSeconds` (número) e `sinceStart` (booleano: `true` quando o nó **não tem registro** de `GET` para o tópico, e `idleSeconds` é o tempo desde que o nó subiu). Erro: `404` `topic.not-found`.
+**Resposta: `200`, `IdleResponse`**: `topicId`, `idleSeconds` (inteiro, em segundos cheios, arredondado para baixo: o erro só pode adiar a exclusão) e `sinceStart` (booleano: `true` quando o nó **não tem registro** de `GET` para o tópico, e `idleSeconds` é o tempo desde que o nó subiu). Erro: `404` `topic.not-found`.
 
 ## Mensagens
 

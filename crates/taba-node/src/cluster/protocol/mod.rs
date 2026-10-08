@@ -14,9 +14,9 @@ pub use definitions::{
     TopicRegisterRequest, token_from_json, token_to_json,
 };
 pub use messages::{
-    AckRegisterRequest, FIFO_PLACEHOLDER_ID, FifoPublished, MessageRecord, MessageRegisterRequest,
-    TakeRequest, TakeResponse, VisibilityKind, VisibilityRegisterRequest, WriteKind,
-    validate_message_path,
+    AckRegisterRequest, FIFO_PLACEHOLDER_ID, FifoPublished, IdleResponse, MessageRecord,
+    MessageRegisterRequest, TakeRequest, TakeResponse, VisibilityKind, VisibilityRegisterRequest,
+    WriteKind, validate_message_path,
 };
 pub use recovery::{LossAck, LossRecord, RecoverResult, parse_recover_body, recover_body};
 pub use signals::{
@@ -145,6 +145,8 @@ pub enum Request {
         id: String,
         step: Step<AckRegisterRequest>,
     },
+    /// `GET /cluster/topics/{id}/idle`
+    Idle { topic_id: String },
     /// `POST /cluster/topics/{topic}/messages/take`
     Take { topic: String, request: TakeRequest },
     /// `POST /cluster/channel`: o canal entre nós (sinal de vida e quadros com `seq`).
@@ -237,6 +239,7 @@ impl Request {
                 step: Step::Rollback(_),
                 ..
             } => "ack-rollback",
+            Request::Idle { .. } => "idle",
             Request::Take { .. } => "take",
             Request::Channel(_) => "channel",
             Request::Vote(_) => "vote",
@@ -262,6 +265,7 @@ pub enum Response {
     /// Um trecho de `GET /cluster/topics` ou `/cluster/tokens`.
     Stream(StreamPage),
     Taken(TakeResponse),
+    Idle(IdleResponse),
     /// O `confirm` do canal.
     Confirm(Confirm),
     /// O voto de exclusão.

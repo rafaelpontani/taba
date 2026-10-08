@@ -10,10 +10,11 @@ use serde_json::Value;
 
 use super::{
     AckRegisterRequest, ChannelBatch, Confirm, FifoPublished, ForwardRequest, ForwardResponse,
-    JoinRequest, LossAck, LossRecord, MessageRecord, MessageRegisterRequest, NodeRegisterRequest,
-    NodeUnregisterRequest, OperationRef, RecoverResult, Request, Response, Step, StreamPage,
-    StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest, TopicRegisterRequest,
-    VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body, recover_body,
+    IdleResponse, JoinRequest, LossAck, LossRecord, MessageRecord, MessageRegisterRequest,
+    NodeRegisterRequest, NodeUnregisterRequest, OperationRef, RecoverResult, Request, Response,
+    Step, StreamPage, StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest,
+    TopicRegisterRequest, VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body,
+    recover_body,
 };
 use crate::cluster::members::MemberTable;
 use crate::core::error::{ErrorCode, ErrorDetail, TabaError};
@@ -243,6 +244,7 @@ impl Request {
             Request::Ack { topic, id, step } => {
                 step_call(&format!("/cluster/topics/{topic}/messages/{id}/ack"), step)
             }
+            Request::Idle { topic_id } => get_call(format!("/cluster/topics/{topic_id}/idle")),
             Request::Take { topic, request } => json_call(
                 "POST",
                 format!("/cluster/topics/{topic}/messages/take"),
@@ -420,6 +422,9 @@ impl Request {
                 Ok(Request::Vote(parse_body::<VoteRequest>(headers, body)?))
             }
             ["cluster", "status"] if is("GET") => Ok(Request::Status),
+            ["cluster", "topics", id, "idle"] if is("GET") => Ok(Request::Idle {
+                topic_id: (*id).to_owned(),
+            }),
             ["cluster", "blocks", block, "ids"] if is("GET") => Ok(Request::BlockIds {
                 block: (*block).to_owned(),
                 query: parse_stream_query(query)?,
@@ -502,6 +507,11 @@ impl Request {
             | Request::BlockMessages { .. } => {
                 let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
+            }
+            Request::Idle { .. } => {
+                let response: IdleResponse =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Idle(response))
             }
             Request::Take { .. } => {
                 let response: TakeResponse =
@@ -622,6 +632,7 @@ impl Response {
             Response::Members(table) => json(&table),
             Response::Ack(ack) => json(&ack),
             Response::Taken(taken) => json(&taken),
+            Response::Idle(idle) => json(&idle),
             Response::Record(record) => json(&record),
             Response::Confirm(confirm) => json(&confirm),
             Response::Vote(vote) => json(&vote),

@@ -321,6 +321,11 @@ impl Topics {
             .collect()
     }
 
+    /// `true` se existe um tópico com este `id`.
+    pub fn has_id(&self, id: &str) -> bool {
+        self.read().values().any(|d| d.id == id)
+    }
+
     pub fn rules(&self) -> &TopicRules {
         &self.rules
     }

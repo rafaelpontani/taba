@@ -337,6 +337,17 @@ pub struct TakeResponse {
     pub messages: Vec<MessageRecord>,
 }
 
+/// `IdleResponse` (doc 06c, `GET /cluster/topics/{id}/idle`): há quanto tempo foi o último `GET`
+/// do tópico neste nó, como duração (não um instante). `since_start`: o nó não tem registro, e a
+/// duração é o tempo desde que subiu.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IdleResponse {
+    pub topic_id: String,
+    pub idle_seconds: u64,
+    pub since_start: bool,
+}
+
 /// `FifoPublished` (doc 06c, `POST /cluster/topics/{topic}/fifo/publish`): o primário do grupo
 /// responde com o `id` da mensagem criada, ou o da original numa duplicata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

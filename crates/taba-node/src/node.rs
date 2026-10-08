@@ -18,6 +18,7 @@ use crate::cluster::service::{BootstrapError, ClusterHandler, ClusterRules, Clus
 use crate::cluster::state::NodeShared;
 use crate::cluster::sync::SyncRules;
 use crate::cluster::transport::{Handler, PeerAddr, Transport};
+use crate::cluster::volatile::VolatileManager;
 use crate::config::Config;
 use crate::core::clock::{Clock, SystemClock};
 use crate::core::id;
@@ -349,6 +350,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let (fatal_tx, fatal_rx) = tokio::sync::mpsc::unbounded_channel();
     let sweeper = state.messages.clone();
     let state_messages = state.messages.clone();
+    let state_topics = state.topics.clone();
     let token_sweep_interval = config.retention.sweep_interval.min(Duration::from_secs(1));
     let reload_interval = config.auth.reload_interval;
     // Cada listener é medido com a sua porta no atributo `server.port` (doc 11).
@@ -437,8 +439,18 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         });
     }
 
-    {
-        // A fila volátil sem consumidor há `idleTimeout` é excluída (doc 15, seção 14.3).
+    if let Some((service, _)) = &cluster_node {
+        // No cluster, quem exclui a fila volátil ociosa é o nó gestor dela (doc 15, seção 14.5).
+        let (cancel, manager) = (
+            cancel.clone(),
+            VolatileManager::new(service.clone(), state_topics.clone()),
+        );
+        tasks.spawn(async move {
+            manager.run(cancel).await;
+            Ok(())
+        });
+    } else {
+        // Um nó só: a fila volátil sem consumidor há `idleTimeout` é excluída (doc 15, seção 14.3).
         let cancel = cancel.clone();
         let messages = state_messages.clone();
         tasks.spawn(async move {

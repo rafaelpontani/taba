@@ -174,7 +174,7 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 | Durabilidade do banco local | `TABA_STORAGE_DB_SYNCHRONOUS` | `storage.db.synchronous` | `NORMAL` (com WAL) | Modo de sincronização do SQLite. A durabilidade vem da replicação entre nós, então `NORMAL` basta. | 3.2 |
 | Mensagens por `GET` (padrão) | `TABA_DELIVERY_MAX_MESSAGES_DEFAULT` | `delivery.max-messages.default` | **10** | Quantidade de mensagens do `GET` quando o cliente não informa `maxMessages`. | 12.2 |
 | Mensagens por `GET` (teto) | `TABA_DELIVERY_MAX_MESSAGES_MAX` | `delivery.max-messages.max` | A definir | Maior `maxMessages` aceito. Não vale para os streams de sincronização entre nós (`cluster.sync.stream.*`). | 12.2 |
-| Tentativas de IDs no `GET` | `TABA_DELIVERY_GET_MAX_ATTEMPTS` | `delivery.get.max-attempts` | A definir | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. | 12.2 |
+| Tentativas de IDs no `GET` | `TABA_DELIVERY_GET_MAX_ATTEMPTS` | `delivery.get.max-attempts` | **3** (provisório, D114) | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. | 12.2 |
 | Peso das prontas no tamanho do grupo | `TABA_DELIVERY_FAIR_READY_WEIGHT` | `delivery.fair.ready-weight` | **0,1** | Quanto cada mensagem pronta pesa no tamanho do grupo, frente a uma em processamento (`tamanho = em processamento + peso × prontas`). De `0` a `1`: `0` equivale ao SQS (só o que está em processamento), `1` conta o backlog inteiro. | 12.11 |
 | Grupos acompanhados | `TABA_DELIVERY_FAIR_MAX_GROUPS` | `delivery.fair.max-groups` | A definir (sugestão: 100000) | Máximo de grupos de mensagens que cada dono acompanha, por tópico. Os grupos novos acima disso compartilham um contador único (seção 12.11). | 12.11 |
 | Entrega pela ordem normal | `TABA_DELIVERY_FAIR_NORMAL_EVERY` | `delivery.fair.normal-every` | **10** | A cada tantas entregas, uma pega a mensagem mais antiga da lista, de qualquer grupo, para os grupos grandes não esperarem sem limite. `0` desliga a garantia. | 12.11 |
@@ -208,10 +208,10 @@ Nas tabelas abaixo, a coluna **Chave no YAML** mostra o caminho com pontos; `clu
 | Parâmetro | Variável de ambiente | Chave no YAML | Padrão | Descrição | Seção |
 |---|---|---|---|---|---|
 | Ociosidade padrão da fila volátil | `TABA_TOPICS_VOLATILE_IDLE_TIMEOUT_DEFAULT` | `topics.volatile.idle-timeout.default` | **600 s** (10 min) | `idleTimeout` usado quando a fila é criada (por `POST /topics` com `volatile` ou por `autoCreate`) sem informar o valor. | 14.3 |
-| Nova tentativa da verificação | `TABA_TOPICS_VOLATILE_IDLE_CHECK_RETRY_INTERVAL` | `topics.volatile.idle-check.retry-interval` | A definir (sugestão: 30 s) | Intervalo para o nó gestor repetir a verificação final quando algum nó não respondeu. | 14.5 |
+| Nova tentativa da verificação | `TABA_TOPICS_VOLATILE_IDLE_CHECK_RETRY_INTERVAL` | `topics.volatile.idle-check.retry-interval` | **30 s** (provisório, D115) | Intervalo para o nó gestor repetir a verificação final quando algum nó não respondeu. | 14.5 |
 | Teto de destinos por publicação | `TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS` | `topics.distributor.max-targets` | **Sem limite** | Máximo de filas que uma publicação num Tópico Distribuidor pode casar; acima disso a publicação é recusada inteira (`422`). | 14.2 |
 | Teto de filas voláteis | `TABA_TOPICS_VOLATILE_MAX_COUNT` | `topics.volatile.max-count` | **Sem limite** | Máximo de filas voláteis no cluster; atingido, o `autoCreate` é recusado (`422`). | 14.4 |
-| Espalhamento ao assumir tópicos | `TABA_TOPICS_VOLATILE_TAKEOVER_JITTER` | `topics.volatile.takeover.jitter` | A definir | Janela em que o nó que assume filas voláteis (entrada ou saída de nó) espalha suas primeiras consultas de ociosidade. | 14.6 |
+| Espalhamento ao assumir tópicos | `TABA_TOPICS_VOLATILE_TAKEOVER_JITTER` | `topics.volatile.takeover.jitter` | **2 s** (provisório, D115) | Janela em que o nó que assume filas voláteis (entrada ou saída de nó) espalha suas primeiras consultas de ociosidade. | 14.6 |
 
 ## Observabilidade
 

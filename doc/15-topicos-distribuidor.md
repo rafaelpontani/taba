@@ -142,6 +142,8 @@ Qualquer nó chega ao mesmo gestor a partir da tabela de tópicos e da tabela de
 - **Exclusões e mudanças de membros** podem correr em paralelo; não há espera entre elas (diferente da seção 6.8).
 - **Gestor fora do ar** e ainda não desregistrado: nenhuma QTV dele é excluída nesse intervalo. **A fila continua recebendo mensagens e consumidores normalmente.** Quando o nó é desregistrado, o novo gestor assume (seção 14.6).
 
+> **Como está feito (etapa 15e).** O gestor é a tarefa `VolatileManager` (`cluster/volatile`): a cada 200 ms ela deriva o conjunto de filas voláteis cujo `id` tem este nó como primário (`topic_position`) e cria o prazo de cada uma que ainda não tem, para daqui a um atraso estável de 0 a `topics.volatile.takeover.jitter` (D115); só gerencia o nó `active` e fora de drain. No vencimento pergunta a todos os membros da tabela, este inclusive, e usa a **menor** duração, limitada pela idade da fila; se algum nó não responde, `taba.volatile.check_blocked` e nova tentativa depois de `topics.volatile.idle-check.retry-interval`. Num nó só (modo desenvolvimento) continua a passada local de 1 s.
+
 ### 14.6 Gestor, comissionamento, descomissionamento e rebalanceamento
 
 > **Modo desenvolvimento** (seção 6.4 de [04-cluster.md](04-cluster.md)): não há entrada, saída nem rebalanceamento de nós, então o gestor nunca muda.

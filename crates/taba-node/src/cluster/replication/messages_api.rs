@@ -791,55 +791,62 @@ impl ClusterMessages {
         let started = std::time::Instant::now();
         let topic = view.definition.name.clone();
         let fifo = view.definition.queue().is_some_and(|q| q.fifo);
-        let candidates = {
-            let (messages, view) = (self.messages.clone(), view.clone());
-            tokio::task::spawn_blocking(move || {
-                messages.take_candidates(&view, max, visibility_secs)
-            })
-            .await
-            .map_err(|_| TabaError::internal())??
-        };
-        if candidates.is_empty() {
-            return Ok((Vec::new(), 0));
-        }
-        let mut set = JoinSet::new();
-        for (position, candidate) in candidates.iter().enumerate() {
-            let me = self.clone();
-            let topic = topic.clone();
-            let id = candidate.meta.id.clone();
-            let until = candidate.meta.invisible_until_ms;
-            let token = candidate.meta.receipt_token.clone().unwrap_or_default();
-            let count = candidate.meta.delivery_count;
-            let route = (candidate.meta.position, if fifo { 2 } else { 1 });
-            set.spawn(async move {
-                let result = me
-                    .replicate_visibility(
-                        &topic,
-                        &id,
-                        route,
-                        VisibilityKind::Delivery,
-                        until,
-                        &token,
-                        Some(count),
-                    )
-                    .await;
-                (position, result)
-            });
-        }
-        let mut ok = vec![false; candidates.len()];
-        while let Some(joined) = set.join_next().await {
-            if let Ok((position, Ok(()))) = joined {
-                ok[position] = true;
-            }
-        }
+        let attempts = self.service.rules().get_max_attempts;
         let (mut confirmed, mut failed) = (Vec::new(), 0usize);
         let mut aborted = Vec::new();
-        for (candidate, ok) in candidates.into_iter().zip(ok) {
-            if ok {
-                confirmed.push(candidate);
-            } else {
-                failed += 1;
-                aborted.push(candidate);
+        // Uma mensagem que falha fica reservada até o fim do `GET` e o laço segue para o próximo
+        // ID da lista, sem esperar (doc 13, seção 12.2): são tolerados até
+        // `delivery.get.max-attempts` registros que não fecham.
+        while confirmed.len() < max && failed < attempts {
+            let missing = max - confirmed.len();
+            let candidates = {
+                let (messages, view) = (self.messages.clone(), view.clone());
+                tokio::task::spawn_blocking(move || {
+                    messages.take_candidates(&view, missing, visibility_secs)
+                })
+                .await
+                .map_err(|_| TabaError::internal())??
+            };
+            if candidates.is_empty() {
+                break;
+            }
+            let mut set = JoinSet::new();
+            for (position, candidate) in candidates.iter().enumerate() {
+                let me = self.clone();
+                let topic = topic.clone();
+                let id = candidate.meta.id.clone();
+                let until = candidate.meta.invisible_until_ms;
+                let token = candidate.meta.receipt_token.clone().unwrap_or_default();
+                let count = candidate.meta.delivery_count;
+                let route = (candidate.meta.position, if fifo { 2 } else { 1 });
+                set.spawn(async move {
+                    let result = me
+                        .replicate_visibility(
+                            &topic,
+                            &id,
+                            route,
+                            VisibilityKind::Delivery,
+                            until,
+                            &token,
+                            Some(count),
+                        )
+                        .await;
+                    (position, result)
+                });
+            }
+            let mut ok = vec![false; candidates.len()];
+            while let Some(joined) = set.join_next().await {
+                if let Ok((position, Ok(()))) = joined {
+                    ok[position] = true;
+                }
+            }
+            for (candidate, ok) in candidates.into_iter().zip(ok) {
+                if ok {
+                    confirmed.push(candidate);
+                } else {
+                    failed += 1;
+                    aborted.push(candidate);
+                }
             }
         }
         let messages = self.messages.clone();

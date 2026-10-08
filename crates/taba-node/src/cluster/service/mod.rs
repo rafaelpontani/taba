@@ -62,6 +62,15 @@ pub struct ClusterRules {
     pub replication_factor: u32,
     /// `write.quorum`
     pub quorum: u32,
+    /// `topics.volatile.idle-check.retry-interval` (provisório, D114: 30 s): a espera do gestor
+    /// quando algum nó não respondeu à consulta de ociosidade.
+    pub volatile_retry_interval: Duration,
+    /// `topics.volatile.takeover.jitter` (provisório, D114: 2 s): a janela em que o gestor que
+    /// assume uma fila espalha a primeira consulta.
+    pub volatile_jitter: Duration,
+    /// `delivery.get.max-attempts` (provisório, D114: 3): quantos registros de invisibilidade que
+    /// não fecham um `GET` tolera, tentando o ID seguinte da lista, antes de parar.
+    pub get_max_attempts: usize,
     /// `delivery.take.max-attempts` (a definir no doc 10: 3): quantos nós um `GET` com a lista
     /// local vazia consulta no máximo.
     pub take_max_attempts: usize,
@@ -113,6 +122,18 @@ impl ClusterRules {
             virtual_nodes: config.cluster.virtual_nodes,
             replication_factor: config.write.replication_factor,
             quorum: config.write.quorum,
+            volatile_retry_interval: config
+                .topics
+                .volatile_idle_check_retry_interval
+                .unwrap_or(Duration::from_secs(30)),
+            volatile_jitter: config
+                .topics
+                .volatile_takeover_jitter
+                .unwrap_or(Duration::from_secs(2)),
+            get_max_attempts: config
+                .delivery
+                .get_max_attempts
+                .map_or(3, |n| n.max(1) as usize),
             take_max_attempts: config.delivery.take_max_attempts.map_or(3, |n| n as usize),
             keepalive_interval: config
                 .cluster
