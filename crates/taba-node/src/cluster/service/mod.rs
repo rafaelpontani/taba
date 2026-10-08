@@ -5,7 +5,7 @@
 //! **todos** os nós, sem quórum reduzido. Antes do commit a operação pode ser abortada (rollback);
 //! depois de decidida não volta atrás, e o coordenador insiste até o teto `write.commit.timeout`.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime};
 
 use tokio::sync::Mutex;
@@ -13,7 +13,11 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
-use super::protocol::{Ack, JoinRequest, NodeRegisterRequest, OperationRef, Request, Response};
+use super::protocol::{
+    Ack, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef, Request, Response,
+    UnregisterReason,
+};
+use super::replication::Replication;
 use super::state::{NodeShared, NodeState};
 use super::transport::{BoxFuture, CallError, Handler, PeerAddr, Transport};
 use crate::config::Config;
@@ -53,6 +57,14 @@ pub struct ClusterRules {
     pub virtual_nodes: u32,
     /// `replication.factor`
     pub replication_factor: u32,
+    /// `write.quorum`
+    pub quorum: u32,
+    /// `delivery.take.max-attempts` (a definir no doc 10: 3): quantos nós um `GET` com a lista
+    /// local vazia consulta no máximo.
+    pub take_max_attempts: usize,
+    /// `cluster.channel.keepalive.interval` (a definir: 2 s): de quanto em quanto tempo o nó repete
+    /// os sinais de estado, no lugar do sinal de vida do canal.
+    pub keepalive_interval: Duration,
     pub call_timeout: Duration,
     pub join_timeout: Duration,
 }
@@ -74,6 +86,12 @@ impl ClusterRules {
             pending_ttl: config.write.pending_ttl,
             virtual_nodes: config.cluster.virtual_nodes,
             replication_factor: config.write.replication_factor,
+            quorum: config.write.quorum,
+            take_max_attempts: config.delivery.take_max_attempts.map_or(3, |n| n as usize),
+            keepalive_interval: config
+                .cluster
+                .keepalive_interval
+                .unwrap_or(Duration::from_secs(2)),
             call_timeout: CALL_TIMEOUT,
             join_timeout: JOIN_TIMEOUT,
         }
@@ -96,7 +114,7 @@ struct Failure {
 }
 
 pub struct ClusterService {
-    local: Member,
+    local: RwLock<Member>,
     membership: Membership,
     node: Arc<NodeShared>,
     transport: Arc<dyn Transport>,
@@ -106,6 +124,10 @@ pub struct ClusterService {
     /// Uma mudança de membros por vez neste nó (doc 04, seção 6.8): o `join` espera a vez.
     change_turn: Mutex<()>,
     cancel: CancellationToken,
+    /// A replicação de definições e de mensagens, ligada depois da subida do nó.
+    replication: OnceLock<Arc<Replication>>,
+    /// Chamado quando a tabela de membros muda (o motor reavalia quem é o dono).
+    on_change: OnceLock<Arc<dyn Fn() + Send + Sync>>,
 }
 
 /// O `Handler` do nó: o que as rotas `/cluster/*` e a rede em memória chamam.
@@ -157,7 +179,7 @@ impl ClusterService {
         cancel: CancellationToken,
     ) -> Arc<Self> {
         Arc::new(Self {
-            local,
+            local: RwLock::new(local),
             membership: Membership::new(rules.pending_ttl, rules.virtual_nodes),
             node,
             transport,
@@ -166,15 +188,118 @@ impl ClusterService {
             rules,
             change_turn: Mutex::new(()),
             cancel,
+            replication: OnceLock::new(),
+            on_change: OnceLock::new(),
         })
     }
 
-    pub fn local(&self) -> &Member {
-        &self.local
+    /// Liga a replicação (definições, mensagens, sinais e repasse) ao serviço.
+    pub fn set_replication(&self, replication: Arc<Replication>) {
+        let _ = self.replication.set(replication);
     }
 
-    pub fn node_id(&self) -> &str {
-        &self.local.node_id
+    pub fn replication(&self) -> Option<&Arc<Replication>> {
+        self.replication.get()
+    }
+
+    /// Registra quem é avisado quando a tabela de membros muda.
+    pub fn set_on_change(&self, hook: Arc<dyn Fn() + Send + Sync>) {
+        let _ = self.on_change.set(hook);
+    }
+
+    fn membership_changed(&self) {
+        if let Some(hook) = self.on_change.get() {
+            hook();
+        }
+    }
+
+    pub fn cancel_token(&self) -> &CancellationToken {
+        &self.cancel
+    }
+
+    pub fn clock(&self) -> &Arc<dyn Clock> {
+        &self.clock
+    }
+
+    pub fn telemetry(&self) -> &Arc<Telemetry> {
+        &self.telemetry
+    }
+
+    /// Os nós responsáveis pela posição, em ordem (primário primeiro): `replication.factor` nós
+    /// distintos, ou menos se o cluster tem menos. `503` se o nó ainda não tem a tabela.
+    pub fn owners_of(&self, position: u64) -> Result<Vec<Member>, TabaError> {
+        let table = self.membership.table().ok_or_else(node_syncing)?;
+        let ring = self.membership.ring();
+        let wanted = self.rules.replication_factor.max(1) as usize;
+        Ok(ring
+            .owners(position, wanted)
+            .into_iter()
+            .filter_map(|id| table.member(id).cloned())
+            .collect())
+    }
+
+    /// O IP com que este nó se apresenta a si mesmo (uma chamada local passa pela mesma
+    /// conferência de membro que uma que veio da rede).
+    pub fn self_caller(&self) -> String {
+        self.local().addresses.first().cloned().unwrap_or_default()
+    }
+
+    pub fn is_self(&self, member: &Member) -> bool {
+        member.node_id == self.node_id()
+    }
+
+    /// Faz a chamada a um membro: a si mesmo sem rede, aos outros pelo `Transport`.
+    pub(crate) async fn call_member(
+        self: &Arc<Self>,
+        member: &Member,
+        request: Request,
+    ) -> Result<Response, CallError> {
+        if self.is_self(member) {
+            return self
+                .handle(&self.self_caller(), request)
+                .await
+                .map_err(CallError::Remote);
+        }
+        self.call_peer(member, request, self.rules.call_timeout)
+            .await
+    }
+
+    /// `call_member` com as tentativas e o intervalo de `write.retry.*` para falha de rede e
+    /// erro `5xx` do par.
+    pub(crate) async fn call_member_retrying(
+        self: &Arc<Self>,
+        member: &Member,
+        request: Request,
+    ) -> Result<Response, CallError> {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let result = self.call_member(member, request.clone()).await;
+            let retry = match &result {
+                Err(e) if e.is_network() => true,
+                Err(CallError::Remote(e)) => e.status() >= 500,
+                _ => false,
+            };
+            if !retry || attempt >= self.rules.retry_attempts {
+                return result;
+            }
+            tokio::select! {
+                () = self.cancel.cancelled() => return result,
+                () = tokio::time::sleep(self.rules.retry_backoff) => {}
+            }
+        }
+    }
+
+    pub fn local(&self) -> Member {
+        self.local.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn node_id(&self) -> String {
+        self.local
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .node_id
+            .clone()
     }
 
     pub fn membership(&self) -> &Membership {
@@ -185,11 +310,11 @@ impl ClusterService {
         &self.rules
     }
 
-    fn now(&self) -> SystemTime {
+    pub(crate) fn now(&self) -> SystemTime {
         self.clock.now()
     }
 
-    fn new_operation_id(&self) -> String {
+    pub(crate) fn new_operation_id(&self) -> String {
         id::new_at(self.clock.now_millis())
     }
 
@@ -258,6 +383,7 @@ impl ClusterService {
                 let result = self.membership.commit(&request.operation_id, self.now());
                 self.count_change("commit", if result.is_ok() { "ok" } else { "failed" });
                 result.map_err(from_membership)?;
+                self.membership_changed();
                 Ok(ack(request.operation_id))
             }
             Request::Rollback(request) => {
@@ -268,12 +394,46 @@ impl ClusterService {
                 result.map_err(from_membership)?;
                 Ok(ack(request.operation_id))
             }
+            // O repasse de uma chamada de cliente também vale para quem saiu por drain (doc 04,
+            // seção 6.9); quem o recebe nunca repassa de novo.
+            Request::Forward(forward) => {
+                let allowed = self.membership.is_member_address(caller)
+                    || self.membership.is_departed_address(caller);
+                if !allowed {
+                    return Err(TabaError::new(
+                        ErrorCode::ClusterNotMember,
+                        "Quem chama não consta na tabela de membros.",
+                    ));
+                }
+                if self.node.drain_state() != super::state::DrainState::Active {
+                    return Err(TabaError::new(
+                        ErrorCode::ClusterNodeDraining,
+                        "O nó está em drain e não atende o repasse.",
+                    )
+                    .with_retry_after(SYNCING_RETRY_AFTER_SECS));
+                }
+                if self.node.state() != NodeState::Active {
+                    return Err(node_syncing());
+                }
+                let Some(replication) = self.replication.get().cloned() else {
+                    return Err(TabaError::route_not_found());
+                };
+                replication.forwarder.execute(forward).await
+            }
+            // Definições, mensagens, sinais: a replicação atende.
+            other => {
+                let Some(replication) = self.replication.get().cloned() else {
+                    return Err(TabaError::route_not_found());
+                };
+                self.require_member(caller)?;
+                replication.handle(caller, other).await
+            }
         }
     }
 
     /// Só quem consta na tabela de membros chama as rotas de fase (doc 06c): o nó que ainda
     /// não tem a tabela não sabe quem é membro e responde `503`.
-    fn require_member(&self, caller: &str) -> Result<(), TabaError> {
+    pub(crate) fn require_member(&self, caller: &str) -> Result<(), TabaError> {
         if self.membership.table().is_none() {
             return Err(node_syncing());
         }
@@ -316,7 +476,7 @@ impl ClusterService {
         let peers: Vec<Member> = table
             .members
             .iter()
-            .filter(|m| m.node_id != self.local.node_id)
+            .filter(|m| m.node_id != self.node_id())
             .cloned()
             .collect();
 
@@ -329,7 +489,16 @@ impl ClusterService {
             tracing::warn!(node_id = %node.node_id, error = ?e, "ingresso recusado neste nó");
             return Err(registration_failed());
         }
-        let (confirmed, failures) = self.register_on_peers(&peers, &operation_id, &node).await;
+        let (confirmed, failures) = self
+            .register_on_peers(
+                &peers,
+                Request::Register(NodeRegisterRequest {
+                    operation_id: operation_id.clone(),
+                    coordinator_id: self.node_id(),
+                    node: node.clone(),
+                }),
+            )
+            .await;
         if !failures.is_empty() {
             self.count_change("register", "failed");
             for (peer, error) in &failures {
@@ -350,6 +519,7 @@ impl ClusterService {
             .commit(&operation_id, self.now())
             .map_err(from_membership)?;
         self.count_change("commit", "ok");
+        self.membership_changed();
         if self.commit_on_peers(&peers, &operation_id).await {
             tracing::info!(
                 node_id = %node.node_id,
@@ -395,14 +565,8 @@ impl ClusterService {
     async fn register_on_peers(
         self: &Arc<Self>,
         peers: &[Member],
-        operation_id: &str,
-        node: &Member,
+        request: Request,
     ) -> (Vec<Member>, Vec<(String, CallError)>) {
-        let request = Request::Register(NodeRegisterRequest {
-            operation_id: operation_id.to_owned(),
-            coordinator_id: self.local.node_id.clone(),
-            node: node.clone(),
-        });
         let mut set = JoinSet::new();
         for peer in peers {
             let (me, peer, request) = (self.clone(), peer.clone(), request.clone());
@@ -505,7 +669,7 @@ impl ClusterService {
     }
 
     /// Chama um membro pelos IPs dele, na ordem, até um responder (mesmo que com erro).
-    async fn call_peer(
+    pub(crate) async fn call_peer(
         &self,
         peer: &Member,
         request: Request,
@@ -555,22 +719,152 @@ impl ClusterService {
 
     // ---- Entrar num cluster ----
 
+    /// O desregistro voluntário do drain (doc 04, seção 6.10, passo 5): este nó coordena a própria
+    /// saída pelo protocolo de duas fases, **sem votação**, e espera a vez de outras mudanças de
+    /// membros. Antes do commit, rollback; depois, o commit é insistido até `write.commit.timeout`.
+    pub async fn leave(self: &Arc<Self>) -> Result<(), TabaError> {
+        let _turn = self.change_turn.lock().await;
+        let table = self.membership.table().ok_or_else(node_syncing)?;
+        let me = self.node_id();
+        if table.member(&me).is_none() {
+            return Ok(());
+        }
+        let peers: Vec<Member> = table
+            .members
+            .iter()
+            .filter(|m| m.node_id != me)
+            .cloned()
+            .collect();
+        let operation_id = self.new_operation_id();
+        let change = Change::Remove {
+            node_id: me.clone(),
+        };
+        self.membership
+            .register(&operation_id, change, self.now())
+            .map_err(from_membership)?;
+        let (confirmed, failures) = self
+            .register_on_peers(
+                &peers,
+                Request::Unregister(NodeUnregisterRequest {
+                    operation_id: operation_id.clone(),
+                    coordinator_id: me.clone(),
+                    node_id: me.clone(),
+                    reason: UnregisterReason::Drain,
+                }),
+            )
+            .await;
+        if !failures.is_empty() {
+            for (peer, error) in &failures {
+                tracing::warn!(peer = %peer, %error, "desregistro sem confirmação");
+            }
+            self.rollback_everywhere(&confirmed, &operation_id).await;
+            tracing::error!("saída do cluster abortada (rollback): a fase 1 não fechou em todos");
+            // Outra mudança pendente num par: quem pede a saída espera a vez e tenta de novo.
+            let contended = failures.iter().any(
+                |(_, e)| matches!(e, CallError::Remote(r) if r.code == ErrorCode::ClusterConflict),
+            );
+            return Err(if contended {
+                TabaError::new(
+                    ErrorCode::ClusterConflict,
+                    "Há outra mudança de membros em andamento.",
+                )
+            } else {
+                registration_failed()
+            });
+        }
+        self.membership
+            .commit(&operation_id, self.now())
+            .map_err(from_membership)?;
+        self.membership_changed();
+        if self.commit_on_peers(&peers, &operation_id).await {
+            tracing::info!(node_id = %me, "nó fora do cluster (drain)");
+            Ok(())
+        } else {
+            tracing::warn!("o commit da saída segue em segundo plano em algum nó");
+            Err(TabaError::new(
+                ErrorCode::ClusterCommitTimeout,
+                "A saída foi decidida e o commit segue em segundo plano.",
+            ))
+        }
+    }
+
+    /// Volta do drain **como nó novo** (doc 04, seção 6.10): ID novo, estado local limpo e o
+    /// bootstrap completo, com nova posição no anel. Não há freezing: o ID é outro e a saída foi
+    /// voluntária.
+    pub async fn rejoin_as_new(self: &Arc<Self>) {
+        let new_id = id::new_at(self.clock.now_millis());
+        if let Some(replication) = self.replication.get().cloned() {
+            replication.reset_local().await;
+        }
+        self.local
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .node_id = new_id.clone();
+        self.node.set_node_id(new_id.clone());
+        self.membership.clear();
+        self.node.set_state(NodeState::Joining);
+        tracing::info!(node_id = %new_id, "nó voltou do drain como nó novo; refazendo o bootstrap");
+        let me = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = me.bootstrap().await {
+                tracing::error!(error = %e, "o nó não conseguiu voltar ao cluster");
+            }
+        });
+    }
+
     /// O primeiro nó de um cluster novo: a tabela é só ele.
     pub fn start_alone(&self) {
         self.membership.install(MemberTable {
             version: 1,
-            members: vec![self.local.clone()],
+            members: vec![self.local()],
         });
         self.node.set_state(NodeState::Active);
-        tracing::info!(node_id = %self.local.node_id, "primeiro nó: o cluster começa só com ele");
+        self.membership_changed();
+        tracing::info!(node_id = %self.node_id(), "primeiro nó: o cluster começa só com ele");
     }
 
-    fn install(&self, table: MemberTable) {
+    /// A tabela chegou: instala, puxa de um membro as definições de tópico e os tokens (doc 02,
+    /// seções 3.3 e 3.4) e só então o nó fica ativo.
+    async fn finish_join(&self, table: MemberTable, via: &Member) -> Result<(), Failure> {
+        // O membro que coordenou o ingresso já tem o nó novo na tabela; os outros podem ainda não
+        // ter (o commit chega a eles em seguida), então as definições se puxam dele primeiro.
+        let mut sources = vec![via.clone()];
+        sources.extend(
+            table
+                .members
+                .iter()
+                .filter(|m| m.node_id != self.node_id() && m.node_id != via.node_id)
+                .cloned(),
+        );
+        self.membership.install(table.clone());
+        if let Some(replication) = self.replication.get().cloned() {
+            let mut last = None;
+            for source in &sources {
+                match replication.definitions.pull(source).await {
+                    Ok(()) => {
+                        last = None;
+                        break;
+                    }
+                    Err(e) => last = Some((source.node_id.clone(), e)),
+                }
+            }
+            if let Some((source, e)) = last {
+                return Err(Failure {
+                    reason: "sync",
+                    message: format!("não foi possível puxar as definições de {source}: {e}"),
+                });
+            }
+        }
+        self.activate(&table);
+        Ok(())
+    }
+
+    fn activate(&self, table: &MemberTable) {
         let version = table.version;
         let members = table.members.len();
-        self.membership.install(table);
         self.node.set_state(NodeState::Active);
-        tracing::info!(node_id = %self.local.node_id, version, members, "nó no cluster");
+        self.membership_changed();
+        tracing::info!(node_id = %self.node_id(), version, members, "nó no cluster");
     }
 
     /// O bootstrap (doc 04, seção 6.2): lista os membros pelo balanceador, pede o ingresso a
@@ -644,9 +938,9 @@ impl ClusterService {
             shuffled.push(candidates.swap_remove(random_below(candidates.len())));
         }
         let request = Request::Join(JoinRequest {
-            node_id: self.local.node_id.clone(),
-            addresses: self.local.addresses.clone(),
-            port: self.local.port,
+            node_id: self.local().node_id,
+            addresses: self.local().addresses,
+            port: self.local().port,
             version: env!("CARGO_PKG_VERSION").to_owned(),
         });
         let mut last = Failure {
@@ -659,7 +953,7 @@ impl ClusterService {
                 .await
             {
                 Ok(Response::Members(table)) => {
-                    self.install(table);
+                    self.finish_join(table, &member).await?;
                     return Ok(());
                 }
                 Ok(_) => {
@@ -673,9 +967,9 @@ impl ClusterService {
                     if let Ok(Response::Members(table)) = self
                         .call_peer(&member, Request::ListNodes, self.rules.call_timeout)
                         .await
-                        && table.member(&self.local.node_id).is_some()
+                        && table.member(&self.node_id()).is_some()
                     {
-                        self.install(table);
+                        self.finish_join(table, &member).await?;
                         return Ok(());
                     }
                     return Err(Failure {

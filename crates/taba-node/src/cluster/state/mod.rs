@@ -48,7 +48,8 @@ impl DrainState {
 /// O que o nó sabe de si, compartilhado entre os listeners.
 #[derive(Debug)]
 pub struct NodeShared {
-    pub node_id: String,
+    /// Muda quando o nó volta do drain como nó novo (doc 04, seção 6.10).
+    node_id: RwLock<String>,
     pub mode: Mode,
     pub started_at: SystemTime,
     state: RwLock<(NodeState, DrainState)>,
@@ -63,11 +64,22 @@ impl NodeShared {
             Mode::Production => NodeState::Joining,
         };
         Self {
-            node_id,
+            node_id: RwLock::new(node_id),
             mode,
             started_at,
             state: RwLock::new((initial, DrainState::Active)),
         }
+    }
+
+    pub fn node_id(&self) -> String {
+        self.node_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn set_node_id(&self, node_id: String) {
+        *self.node_id.write().unwrap_or_else(|e| e.into_inner()) = node_id;
     }
 
     pub fn state(&self) -> NodeState {

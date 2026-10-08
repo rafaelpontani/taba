@@ -2912,3 +2912,5 @@ async fn a_distributor_copy_without_a_group_fails_only_that_fifo_queue() {
 }
 
 mod stats_events;
+
+mod cluster;

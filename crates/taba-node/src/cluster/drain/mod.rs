@@ -7,9 +7,10 @@
 //! e, se foi por sinal, encerra mesmo assim.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
+use super::service::ClusterService;
 use super::state::{DrainState, NodeShared};
 use crate::config::Mode;
 use crate::core::clock::Clock;
@@ -81,6 +82,10 @@ pub struct DrainController {
     run: Mutex<Option<Run>>,
     /// O processo está parando por sinal: `DELETE /node/drain` responde `409`.
     stopping: AtomicBool,
+    /// Em `mode=production`: o nó no cluster, que avisa os pares, se desregistra e volta.
+    cluster: OnceLock<Arc<ClusterService>>,
+    /// O desregistro (passo 5) está em andamento: `DELETE /node/drain` responde `409`.
+    leaving: AtomicBool,
 }
 
 impl DrainController {
@@ -99,7 +104,21 @@ impl DrainController {
             timeout,
             run: Mutex::new(None),
             stopping: AtomicBool::new(false),
+            cluster: OnceLock::new(),
+            leaving: AtomicBool::new(false),
         })
+    }
+
+    /// Liga o drain ao cluster: o aviso aos pares, o desregistro e a volta como nó novo.
+    pub fn set_cluster(&self, cluster: Arc<ClusterService>) {
+        let _ = self.cluster.set(cluster);
+    }
+
+    fn signals(&self) -> Option<Arc<crate::cluster::replication::Signals>> {
+        self.cluster
+            .get()
+            .and_then(|c| c.replication())
+            .map(|r| r.signals.clone())
     }
 
     fn run(&self) -> MutexGuard<'_, Option<Run>> {
@@ -148,6 +167,10 @@ impl DrainController {
             stop: stop.clone(),
         });
         self.messages.begin_drain();
+        // Os pares deixam de pedir `take` a este nó (doc 04, seção 6.10, passo 2).
+        if let Some(signals) = self.signals() {
+            signals.announce_draining();
+        }
         tracing::info!(trigger = trigger.as_str(), "drain iniciado");
         Some(stop)
     }
@@ -168,6 +191,42 @@ impl DrainController {
                 return;
             }
         };
+        // Com a memória toda em disco, o nó pede a própria saída do cluster, sem votação.
+        if let Some(cluster) = self.cluster.get().cloned()
+            && report.remaining == 0
+            && !stop.load(Ordering::Relaxed)
+        {
+            self.leaving.store(true, Ordering::Relaxed);
+            // Outra mudança de membros em curso: o pedido espera a vez, dentro de `drain.timeout`
+            // (doc 04, seção 6.8).
+            let left = tokio::time::timeout_at(deadline.into(), async {
+                loop {
+                    match cluster.leave().await {
+                        Err(e) if e.code == ErrorCode::ClusterConflict => {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                        }
+                        other => return other,
+                    }
+                }
+            })
+            .await;
+            self.leaving.store(false, Ordering::Relaxed);
+            match left {
+                Ok(Ok(())) => {}
+                // Decidido, mas o commit ainda corre em algum par: o nó já saiu da tabela.
+                Ok(Err(e)) if e.code == ErrorCode::ClusterCommitTimeout => {}
+                Ok(Err(e)) => {
+                    tracing::error!(error = %e, "o drain não conseguiu sair do cluster: o nó segue em draining");
+                    return;
+                }
+                Err(_) => {
+                    tracing::error!(
+                        "drain.timeout estourou antes de o nó sair do cluster: o nó segue em draining"
+                    );
+                    return;
+                }
+            }
+        }
         self.finish(&stop, report.moved, report.failed, report.remaining);
     }
 
@@ -200,6 +259,12 @@ impl DrainController {
     /// `DELETE /node/drain`: cancela o drain (ou, depois da saída, volta). Sem cluster não há
     /// desregistro, então nunca há `409` por esse motivo; só com o processo parando por sinal.
     pub fn cancel(&self) -> Result<Cancelled, TabaError> {
+        if self.leaving.load(Ordering::Relaxed) {
+            return Err(TabaError::new(
+                ErrorCode::DrainConflict,
+                "O nó está se desregistrando do cluster; tente de novo quando estiver drained.",
+            ));
+        }
         if self.stopping.load(Ordering::Relaxed) {
             return Err(TabaError::new(
                 ErrorCode::DrainConflict,
@@ -225,8 +290,19 @@ impl DrainController {
         );
         let status = self.status_of(None);
         Ok(match (before, self.shared.mode) {
-            (DrainState::Drained, Mode::Production) => Cancelled::Returned(status),
-            _ => Cancelled::Cancelled(status),
+            (DrainState::Drained, Mode::Production) => {
+                // Já fora do cluster: volta como nó novo, com ID novo e bootstrap completo.
+                if let Some(cluster) = self.cluster.get().cloned() {
+                    tokio::spawn(async move { cluster.rejoin_as_new().await });
+                }
+                Cancelled::Returned(status)
+            }
+            _ => {
+                if let Some(signals) = self.signals() {
+                    signals.announce_active();
+                }
+                Cancelled::Cancelled(status)
+            }
         })
     }
 

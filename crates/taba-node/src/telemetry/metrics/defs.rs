@@ -297,6 +297,69 @@ pub static RING_BLOCKS: Def = def(
     "Blocos que o nó atende, por papel e integridade.",
 );
 
+// ---- Escrita, entrega e repasse entre nós (só em mode=production) ----
+
+pub static WRITE_COORDINATED: Def = def(
+    "taba.write.coordinated",
+    Kind::Counter,
+    "{message}",
+    "Operações sobre mensagens coordenadas por este nó (publicação, invisibilidade, ack, dead-letter).",
+);
+pub static WRITE_RETRIES: Def = def(
+    "taba.write.retries",
+    Kind::Counter,
+    "{retry}",
+    "Retries por fase e por nó de destino.",
+);
+pub static WRITE_ROLLBACKS: Def = def(
+    "taba.write.rollbacks",
+    Kind::Counter,
+    "{rollback}",
+    "Rollbacks enviados por falha em fechar o quórum (fase 1).",
+);
+pub static WRITE_COMMIT_TIMEOUTS: Def = def(
+    "taba.write.commit_timeouts",
+    Kind::Counter,
+    "{timeout}",
+    "Vezes que write.commit.timeout esgotou sem commit confirmado numa réplica.",
+);
+pub static WRITE_RECEIVED: Def = def(
+    "taba.write.received",
+    Kind::Counter,
+    "{message}",
+    "Registros, commits e rollbacks recebidos.",
+);
+pub static WRITE_PENDING: Def = def(
+    "taba.write.pending",
+    Kind::UpDownCounter,
+    "{message}",
+    "Registros pendentes (sem commit).",
+);
+pub static WRITE_PENDING_EXPIRED: Def = def(
+    "taba.write.pending.expired",
+    Kind::Counter,
+    "{message}",
+    "Registros descartados por expiração (sem commit nem rollback).",
+);
+pub static DELIVERY_TAKE: Def = def(
+    "taba.delivery.take",
+    Kind::Counter,
+    "{request}",
+    "Pedidos de entrega a outro dono (take), enviados e recebidos.",
+);
+pub static CLUSTER_NOTIFICATIONS: Def = def(
+    "taba.cluster.channel.notifications",
+    Kind::Counter,
+    "{message}",
+    "Avisos de mensagem nova enviados e recebidos.",
+);
+pub static CLUSTER_FORWARDED: Def = def(
+    "taba.cluster.forwarded",
+    Kind::Counter,
+    "{request}",
+    "Chamadas de cliente repassadas a outro nó (drain), por resultado.",
+);
+
 // ---- Métricas de tópico (só nos modos by-tags e per-topic) ----
 
 pub static TOPIC_PUBLISHED: Def = def(

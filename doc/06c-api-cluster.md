@@ -45,6 +45,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/messages/recover` |
 | **Observabilidade** | `GET /cluster/status`, `GET /cluster/metrics/topics` |
+| **Sinais** | `POST /cluster/signals` |
 | **Repasse** | `* /cluster/forward/{caminho}` |
 
 ## Membros e canal
@@ -118,6 +119,10 @@ Cada quadro é um objeto JSON em texto com o campo `type`:
 | `confirm` | `seqs` (lista de inteiros) | Confirma sinais **já processados**. Pode agrupar vários. |
 
 Todo quadro, exceto `keepalive` e `confirm`, leva um `seq` crescente por canal e por sentido; o emissor só o tira da fila de saída ao receber o `confirm`, e **reenvia na reconexão** o que ficou sem confirmação (o receptor ignora um `seq` que já processou). Ao abrir o canal, cada lado envia primeiro um **instantâneo**: um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro, e só depois as mudanças (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
+
+### `POST /cluster/signals`: sinais enquanto não há canal
+
+Carrega, como uma chamada comum, o mesmo quadro JSON do canal (`type` e os campos da tabela acima, mais `from`, o `nodeId` de quem envia), **sem** `seq`, confirmação nem fila de saída: um sinal perdido custa só uma dica velha, que o `take` confere, e cada nó **repete** o seu estado (prontas e ouvintes) a cada `cluster.channel.keepalive.interval`, no lugar do sinal de vida. Resposta: `200`, `{}`. É provisória: some quando o canal WebSocket existir.
 
 ## Tópicos e tokens
 
@@ -205,7 +210,7 @@ Pede ao nó **dono** que entregue até `maxMessages` mensagens prontas do tópic
 
 **Corpo: `TakeRequest`**: `maxMessages` (inteiro, o que falta) e `visibilityTimeout` (segundos, o que o cliente pediu).
 
-**Resposta: `200`, `TakeResponse`**: `messages`, uma lista de `Message` (o mesmo DTO da API de cliente, [06a](06a-api-cliente.md), com `receiptToken`). **Lista vazia** quando o estado "tem mensagens prontas" era uma dica desatualizada, **ou quando o nó está em drain** (o pedido é respondido vazio). Um nó em sincronização não entrega: `503` `cluster.node-syncing`.
+**Resposta: `200`, `TakeResponse`**: `messages`, uma lista de `MessageRecord` (a mensagem como os nós a trocam, já com o `receiptToken`, o `deliveryCount` e o `invisibleUntil` novos; quem pediu a converte para o `Message` da API de cliente). **Lista vazia** quando o estado "tem mensagens prontas" era uma dica desatualizada, **ou quando o nó está em drain** (o pedido é respondido vazio). Um nó em sincronização não entrega: `503` `cluster.node-syncing`.
 
 ## Sincronização e recuperação
 
@@ -256,6 +261,7 @@ Repassa uma chamada de cliente a outro nó: de quem está **sincronizando** ou *
 - O IP do cliente já resolvido segue num cabeçalho interno, e o destino não conta o rate limit de novo (o nó que repassa contou por IP, pois não valida o token; [12-limites-api.md](12-limites-api.md)).
 - Aceita só de membros da tabela e de nós que saíram por drain. A própria rota é o marcador de repasse: **quem a recebe nunca repassa de novo**; se estiver sincronizando, responde `503` `cluster.node-syncing`.
 - **Falha do destino:** antes de o corpo ser enviado, o nó tenta outro destino, até um teto pequeno de tentativas. **Depois de enviado, não repete** (repetir um `POST` de mensagem a duplicaria, pois o `id` é gerado no coordenador): responde `502` `forward.bad-gateway` ou `504` `forward.timeout`. Na fila FIFO a repetição é segura, porque o primário deduplica.
+- O destino roda a chamada **em processo**, contra a própria API de cliente, marcada como repassada (sem rate limit, que o nó que repassou já contou). O IP do cliente já resolvido vai no cabeçalho interno `x-taba-client-ip`. O prazo do repasse é de 60 s, o suficiente para um long polling.
 - Sem nenhum destino disponível: `503` com `Retry-After` (`cluster.node-syncing` ou `cluster.node-draining`).
 - Na fila FIFO, o primário recalcula o dono do grupo e responde `421` `fifo.misdirected` se não for ele; o nó repassador tenta de novo, com a tabela atualizada, até `fifo.forward.max-attempts`, e esgotado responde `503` `fifo.primary-unavailable`.
 

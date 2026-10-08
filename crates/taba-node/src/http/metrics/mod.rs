@@ -155,6 +155,9 @@ fn collect_cluster(state: &AppState) {
             );
         }
     }
+    if let Some(replication) = cluster.replication() {
+        registry.set(&WRITE_PENDING, &[], replication.replica.pending() as f64);
+    }
     let rules = cluster.rules();
     registry.set(&RING_VIRTUAL_NODES, &[], f64::from(rules.virtual_nodes));
     let ring = membership.ring();

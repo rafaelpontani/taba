@@ -184,6 +184,14 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
 
 /// O middleware das rotas com limite: acha a categoria, resolve o IP do cliente e conta.
 pub async fn rate_limit(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    // Uma chamada repassada já foi contada por quem repassou (doc 04, seção 6.9).
+    if request
+        .extensions()
+        .get::<super::forward::Forwarded>()
+        .is_some()
+    {
+        return next.run(request).await;
+    }
     let category = request
         .extensions()
         .get::<MatchedPath>()

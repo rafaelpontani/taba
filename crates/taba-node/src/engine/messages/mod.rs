@@ -35,6 +35,7 @@
 
 mod index;
 mod rates;
+mod replicas;
 pub mod stats;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -56,6 +57,7 @@ use crate::storage;
 use crate::storage::messages::{MessageMeta, MessageStore};
 use index::{GroupKey, IndexRules, TopicIndex};
 use rates::Rates;
+use replicas::ReplicaSet;
 use sha2::{Digest, Sha256};
 use stats::{
     DistributorCounters, GroupSnapshot, NodeCounters, NodeObservation, Percentiles, StatsRules,
@@ -262,6 +264,13 @@ struct TopicState {
     checked_max_deliveries: Option<Option<u64>>,
     /// O que o tópico conta desde que o nó o abriu (doc 11).
     stats: TopicCounters,
+    /// No cluster: as mensagens guardadas aqui de que o nó **não** é o dono da entrega. Só o
+    /// primário do bloco as põe no índice (doc 13, seção 12.7).
+    replicas: ReplicaSet,
+    /// No cluster: as mensagens que o dono já mandou para a dead-letter e esperam o commit.
+    dead_letter_inflight: HashSet<String>,
+    /// O último "tem mensagens prontas" avisado aos outros nós.
+    ready_signaled: bool,
 }
 
 fn message_not_found() -> TabaError {
@@ -353,6 +362,86 @@ fn query_number(field: &str, text: &str, range: (u64, u64)) -> Result<u64, TabaE
     validation::in_range_signed(field, value, range)
 }
 
+/// Os parâmetros de um `GET`, já conferidos.
+#[derive(Debug, Clone, Copy)]
+pub struct ConsumeParams {
+    pub max_messages: u64,
+    pub visibility_secs: u64,
+    pub wait_secs: u64,
+}
+
+/// Quem diz se este nó é o **dono da entrega** de uma mensagem (doc 13, seção 12.7): o primário do
+/// bloco dela no anel. Sem ele (`mode=development`) o nó é dono de tudo.
+pub trait Placement: Send + Sync + 'static {
+    fn is_owner(&self, topic: &str, id: &str, group: Option<&str>) -> bool;
+}
+
+/// Uma mensagem que o dono mandou para a dead-letter e que os nós responsáveis ainda têm de mover.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeadLetterJob {
+    pub topic: String,
+    pub id: String,
+}
+
+/// Avisa o cluster quando o tópico passa a ter (ou deixa de ter) mensagens prontas.
+pub type ReadyHook = Arc<dyn Fn(&str, bool) + Send + Sync>;
+
+/// O que o cluster entrega ao motor de mensagens.
+pub struct ClusterHooks {
+    pub placement: Arc<dyn Placement>,
+    /// A fila de movimentos para a dead-letter, esvaziada por quem coordena a escrita.
+    pub dead_letters: tokio::sync::mpsc::UnboundedSender<DeadLetterJob>,
+    /// Chamado quando o tópico passa a ter (ou deixa de ter) mensagens prontas neste nó.
+    pub ready: ReadyHook,
+}
+
+/// O que o nó guarda de uma mensagem: os metadados e se ele é o dono.
+#[derive(Debug, Clone)]
+pub struct MessageInfo {
+    pub meta: MessageMeta,
+    pub owned: bool,
+}
+
+/// Como o registro de uma invisibilidade é conferido (doc 14, seção 13.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisibilityCheck {
+    /// Entrega: a mensagem não pode estar invisível.
+    Delivery,
+    /// Alteração (e ack): o `receiptToken` tem de conferir.
+    Receipt,
+}
+
+/// Uma mensagem escolhida para entrega, já com o contador, o prazo e o token novos, mas ainda não
+/// confirmada pelo quórum: até o commit ela fica reservada (em processamento) no índice do dono.
+pub struct Candidate {
+    /// A mensagem como ficará depois da entrega.
+    pub meta: MessageMeta,
+    pub body: Vec<u8>,
+    previous_deliveries: u32,
+    band: u32,
+}
+
+impl Candidate {
+    /// A mensagem como a API de cliente a mostra.
+    pub fn into_delivered(self) -> Delivered {
+        let content_type = ContentType::parse(&self.meta.content_type)
+            .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("válido"));
+        Delivered {
+            id: self.meta.id,
+            body: Body::render(&content_type, &self.body),
+            content_type: self.meta.content_type,
+            group_id: self.meta.group_id,
+            deduplication_id: self.meta.deduplication_id,
+            receipt_token: self.meta.receipt_token.unwrap_or_default(),
+            delivery_count: self.meta.delivery_count,
+            published_ms: self.meta.published_ms,
+            invisible_until_ms: self.meta.invisible_until_ms,
+            dead_lettered_ms: self.meta.dead_lettered_ms,
+            dead_letter_reason: self.meta.dead_letter_reason,
+        }
+    }
+}
+
 /// O que um `take` devolve.
 struct Taken {
     delivered: Vec<Delivered>,
@@ -388,18 +477,20 @@ pub struct Messages {
     counters: NodeCounters,
     /// O que cada distribuidor conta, por nome.
     distributors: Mutex<HashMap<String, DistributorCounters>>,
+    /// Só em `mode=production`: quem diz se o nó é o dono, onde vão as dead-letters e os sinais.
+    cluster: OnceLock<ClusterHooks>,
 }
 
 /// Fecha a espera de um `GET` em long polling: se o chamador desistiu antes do fim (a conexão
 /// caiu e o futuro foi descartado), conta como `disconnected`.
-struct LongPoll<'a> {
+pub struct LongPoll<'a> {
     counters: &'a NodeCounters,
     /// `Some(true)`: terminou entregando; `Some(false)`: terminou vazio; `None`: foi descartado.
-    delivered: Option<bool>,
+    pub delivered: Option<bool>,
 }
 
 impl<'a> LongPoll<'a> {
-    fn start(counters: &'a NodeCounters) -> Self {
+    pub fn start(counters: &'a NodeCounters) -> Self {
         counters.longpoll_waiting.fetch_add(1, Ordering::Relaxed);
         Self {
             counters,
@@ -485,6 +576,7 @@ impl Messages {
             started_ms,
             counters: NodeCounters::new(),
             distributors: Mutex::new(HashMap::new()),
+            cluster: OnceLock::new(),
         });
         // As mensagens saem junto com o tópico (doc 02, seção 3.3).
         let weak = Arc::downgrade(&messages);
@@ -562,6 +654,9 @@ impl Messages {
             dedup,
             checked_max_deliveries: None,
             stats: TopicCounters::new(),
+            replicas: ReplicaSet::default(),
+            dead_letter_inflight: HashSet::new(),
+            ready_signaled: false,
         }));
         states.insert(name.to_owned(), state.clone());
         state
@@ -994,7 +1089,7 @@ impl Messages {
 
     /// A fila de um tópico que aceita ack e `PUT visibility`: `404` se não existe, `409` se
     /// é um distribuidor.
-    fn queue_view(&self, topic: &str) -> Result<TopicView, TabaError> {
+    pub fn queue_view(&self, topic: &str) -> Result<TopicView, TabaError> {
         let view = self.topics.get(topic)?;
         if view.definition.queue().is_none() {
             return Err(wrong_type());
@@ -1105,6 +1200,7 @@ impl Messages {
                 .map_err(|e| self.disk_error("falha ao remover a mensagem do disco", &e))?,
         }
         state.index.remove(id);
+        state.replicas.remove(id);
         Ok(())
     }
 
@@ -1172,7 +1268,7 @@ impl Messages {
             // devolvê-la à fila (doc 13, seção 12.10).
             if secs == 0 && self.exhausted(&view, meta.delivery_count) {
                 exhausted = true;
-                self.move_to_dead_letter(&mut state, &view, vec![id.to_owned()], now);
+                self.dead_letter(&mut state, &view, vec![id.to_owned()], now);
             }
             meta
         };
@@ -1185,6 +1281,56 @@ impl Messages {
         })
     }
 
+    /// Os parâmetros do `PUT .../visibility`, já conferidos: o `receiptToken` e os segundos.
+    pub fn visibility_params(
+        &self,
+        receipt_token: Option<&str>,
+        visibility_timeout: Option<i64>,
+    ) -> Result<(String, u64), TabaError> {
+        let mut missing = Vec::new();
+        if receipt_token.is_none() {
+            missing.push("receiptToken");
+        }
+        if visibility_timeout.is_none() {
+            missing.push("visibilityTimeout");
+        }
+        let (Some(receipt_token), Some(visibility_timeout)) = (receipt_token, visibility_timeout)
+        else {
+            return Err(required(&missing));
+        };
+        let secs = validation::in_range_signed(
+            "visibilityTimeout",
+            visibility_timeout,
+            (0, self.rules.visibility_max_secs.unwrap_or(u64::MAX)),
+        )?;
+        Ok((receipt_token.to_owned(), secs))
+    }
+
+    /// Falta alguma coisa na query do ack? (o `receiptToken`).
+    pub fn ack_params(&self, receipt_token: Option<&str>) -> Result<String, TabaError> {
+        receipt_token
+            .map(str::to_owned)
+            .ok_or_else(|| required(&["receiptToken"]))
+    }
+
+    /// O `GET` em espera é contado como long polling enquanto esta guarda existir.
+    pub fn begin_long_poll(&self) -> LongPoll<'_> {
+        LongPoll::start(&self.counters)
+    }
+
+    /// Para o long polling saber até quando dormir e se sobrou pronta: quando a próxima invisível
+    /// volta a ser entregável e se o dono ainda tem mensagem pronta.
+    pub fn wait_hints(&self, topic: &str) -> (Option<u64>, bool) {
+        let state = self.state_of(topic);
+        let state = lock(&state);
+        (state.index.next_visible(), state.index.has_ready())
+    }
+
+    /// O instante de agora no relógio do nó.
+    pub fn now_millis(&self) -> u64 {
+        self.clock.now_millis()
+    }
+
     // ---- Consumo ----
 
     /// Entrega até `maxMessages` mensagens prontas. Com `waitTime` maior que zero e nada
@@ -1194,41 +1340,12 @@ impl Messages {
         topic: &str,
         query: ConsumeQuery,
     ) -> Result<Vec<Delivered>, TabaError> {
-        let view = match self.topics.get(topic) {
-            Err(e) if e.code == ErrorCode::TopicNotFound && wants_auto_create(&query)? => {
-                self.auto_create(topic, &query).await?
-            }
-            other => other?,
-        };
-        if view.definition.queue().is_none() {
-            return Err(wrong_type());
-        }
-        // Qualquer `GET` conta como consumidor, no começo da chamada, com ou sem mensagem. O da
-        // dead-letter não conta (doc 15, seção 14.3).
-        if view.dead_letter_of.is_none() {
-            lock(&self.last_get).insert(view.definition.id.clone(), self.clock.now_millis());
-        }
-        let max_messages = match &query.max_messages {
-            Some(text) => query_number(
-                "maxMessages",
-                text,
-                (1, self.rules.max_messages_max.unwrap_or(u64::MAX)),
-            )?,
-            None => self.rules.max_messages_default,
-        };
-        let visibility = match &query.visibility_timeout {
-            Some(text) => query_number(
-                "visibilityTimeout",
-                text,
-                (0, self.rules.visibility_max_secs.unwrap_or(u64::MAX)),
-            )?,
-            None => self.rules.visibility_default_secs,
-        };
-        let wait = match &query.wait_time {
-            Some(text) => query_number("waitTime", text, WAIT_TIME_SECS)?,
-            None => 0,
-        };
-
+        let (view, params) = self.prepare_consume(topic, &query).await?;
+        let ConsumeParams {
+            max_messages,
+            visibility_secs: visibility,
+            wait_secs: wait,
+        } = params;
         let name = view.definition.name.clone();
         let notify = self.notifier(&name);
         let deadline = tokio::time::Instant::now() + Duration::from_secs(wait);
@@ -1271,6 +1388,58 @@ impl Messages {
             }
             let _ = tokio::time::timeout_at(until, notified).await;
         }
+    }
+
+    /// O começo de todo `GET`: acha (ou cria, com `autoCreate`) a fila, conta o consumidor e lê os
+    /// parâmetros da query. Serve ao consumo de um nó só e ao do cluster.
+    pub async fn prepare_consume(
+        &self,
+        topic: &str,
+        query: &ConsumeQuery,
+    ) -> Result<(TopicView, ConsumeParams), TabaError> {
+        let view = match self.topics.get(topic) {
+            Err(e) if e.code == ErrorCode::TopicNotFound && wants_auto_create(query)? => {
+                self.auto_create(topic, query).await?
+            }
+            other => other?,
+        };
+        if view.definition.queue().is_none() {
+            return Err(wrong_type());
+        }
+        // Qualquer `GET` conta como consumidor, no começo da chamada, com ou sem mensagem. O da
+        // dead-letter não conta (doc 15, seção 14.3).
+        if view.dead_letter_of.is_none() {
+            lock(&self.last_get).insert(view.definition.id.clone(), self.clock.now_millis());
+        }
+        let max_messages = match &query.max_messages {
+            Some(text) => query_number(
+                "maxMessages",
+                text,
+                (1, self.rules.max_messages_max.unwrap_or(u64::MAX)),
+            )?,
+            None => self.rules.max_messages_default,
+        };
+        let visibility = match &query.visibility_timeout {
+            Some(text) => query_number(
+                "visibilityTimeout",
+                text,
+                (0, self.rules.visibility_max_secs.unwrap_or(u64::MAX)),
+            )?,
+            None => self.rules.visibility_default_secs,
+        };
+        let wait = match &query.wait_time {
+            Some(text) => query_number("waitTime", text, WAIT_TIME_SECS)?,
+            None => 0,
+        };
+
+        Ok((
+            view,
+            ConsumeParams {
+                max_messages,
+                visibility_secs: visibility,
+                wait_secs: wait,
+            },
+        ))
     }
 
     /// O `autoCreate`: cria a fila (volátil por padrão) e já a devolve. Quem perde a disputa pela
@@ -1406,6 +1575,18 @@ impl Messages {
                 Err(_) => tracing::error!(topic = %name, id = %id, "falha ao apagar vencida"),
             }
         }
+        // Cada nó apaga as próprias cópias pela mesma regra (doc 13, seção 12.10); a réplica não
+        // conta na estatística, que é só do dono.
+        for id in state.replicas.expired(now, ttl_ms) {
+            let place = if state.memory.contains_key(&id) {
+                Place::Memory
+            } else {
+                Place::Disk
+            };
+            if self.remove_message(&mut state, name, &id, place).is_err() {
+                tracing::error!(topic = %name, id = %id, "falha ao apagar a réplica vencida");
+            }
+        }
         // A invisibilidade que venceu devolve a mensagem a pronta; a que já tinha gastado as
         // entregas vai à dead-letter em vez de voltar à fila.
         let released = state.index.release_due(now);
@@ -1433,11 +1614,32 @@ impl Messages {
         let back_to_ready =
             released.len() - released.iter().filter(|id| exhausted.contains(id)).count();
         if !exhausted.is_empty() {
-            self.move_to_dead_letter(&mut state, view, exhausted, now);
+            self.dead_letter(&mut state, view, exhausted, now);
         }
+        self.ready_changed(name, &mut state);
         drop(state);
         if back_to_ready > 0 {
             self.wake(name, back_to_ready);
+        }
+    }
+
+    /// Manda as mensagens à dead-letter. Num nó só o movimento é local e na hora; no cluster o
+    /// dono pede o movimento aos nós responsáveis (registro + commit, doc 13, seção 12.10): aqui
+    /// só entram na fila de trabalho, e a mensagem sai da lista de prontas até o movimento
+    /// terminar, para ninguém a entregar de novo.
+    fn dead_letter(&self, state: &mut TopicState, view: &TopicView, ids: Vec<String>, now: u64) {
+        let Some(hooks) = self.cluster.get() else {
+            self.move_to_dead_letter(state, view, ids, now);
+            return;
+        };
+        for id in ids {
+            if state.dead_letter_inflight.insert(id.clone()) {
+                state.index.set_until(&id, u64::MAX / 2, now);
+                let _ = hooks.dead_letters.send(DeadLetterJob {
+                    topic: view.definition.name.clone(),
+                    id,
+                });
+            }
         }
     }
 
@@ -1460,6 +1662,9 @@ impl Messages {
         let mut moved = 0;
         let fifo = view.definition.queue().is_some_and(|q| q.fifo);
         for id in ids {
+            // No cluster a réplica também faz o movimento, mas só o dono conta e indexa.
+            let owned = source_state.index.contains(&id);
+            source_state.dead_letter_inflight.remove(&id);
             let original: Option<MessageMeta>;
             let reset = |mut meta: MessageMeta| {
                 meta.delivery_count = 0;
@@ -1493,6 +1698,7 @@ impl Messages {
                     }
                     Ok(None) => {
                         source_state.index.remove(&id);
+                        source_state.replicas.remove(&id);
                         continue;
                     }
                     Err(e) => {
@@ -1502,15 +1708,18 @@ impl Messages {
                 }
             }
             source_state.index.remove(&id);
-            source_state.stats.dead_lettered += 1;
-            NodeCounters::add(&self.counters.dead_lettered, 1);
-            tracing::warn!(
-                event.name = "taba.message.dead_lettered",
-                messaging.destination.name = %source,
-                message.id = %id,
-                delivery_count = original.as_ref().map_or(0, |m| m.delivery_count),
-                "mensagem enviada à dead-letter por atingir maxDeliveries"
-            );
+            source_state.replicas.remove(&id);
+            if owned {
+                source_state.stats.dead_lettered += 1;
+                NodeCounters::add(&self.counters.dead_lettered, 1);
+                tracing::warn!(
+                    event.name = "taba.message.dead_lettered",
+                    messaging.destination.name = %source,
+                    message.id = %id,
+                    delivery_count = original.as_ref().map_or(0, |m| m.delivery_count),
+                    "mensagem enviada à dead-letter por atingir maxDeliveries"
+                );
+            }
             // Na FIFO a deduplicação segue valendo depois da saída da mensagem (doc 17, 16.7).
             if fifo
                 && let Some(original) = original
@@ -1522,11 +1731,16 @@ impl Messages {
             {
                 tracing::error!(error = %e, topic = %source, id = %id, "falha ao gravar a linha de deduplicação");
             }
-            target_state
-                .index
-                .insert(&id, group.as_deref(), now, 0, 0, now);
-            moved += 1;
+            if owned {
+                target_state
+                    .index
+                    .insert(&id, group.as_deref(), now, 0, 0, now);
+                moved += 1;
+            } else {
+                target_state.replicas.insert(&id, now);
+            }
         }
+        self.ready_changed(&target, &mut target_state);
         drop(target_state);
         if moved > 0 {
             self.wake(&target, moved);
@@ -1757,7 +1971,8 @@ impl Messages {
                 invisible: state.index.processing_count() as u64,
                 oldest_ms: state.index.oldest_age_ms(),
                 memory_messages,
-                disk_messages: (state.index.message_count() as u64).saturating_sub(memory_messages),
+                disk_messages: ((state.index.message_count() + state.replicas.len()) as u64)
+                    .saturating_sub(memory_messages),
                 memory_bytes: state.memory.values().map(|s| s.body.len() as u64).sum(),
                 disk_bytes: 0,
                 groups: totals.groups,
@@ -1827,7 +2042,8 @@ impl Messages {
             }
             let in_memory = state.memory.len() as u64;
             memory_messages += in_memory;
-            disk_messages += (state.index.message_count() as u64).saturating_sub(in_memory);
+            disk_messages += ((state.index.message_count() + state.replicas.len()) as u64)
+                .saturating_sub(in_memory);
         }
         let c = &self.counters;
         let load = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
@@ -1977,6 +2193,574 @@ impl Messages {
             next_visible_ms: state.index.next_visible(),
             more_ready: state.index.has_ready(),
         })
+    }
+}
+
+/// Os blocos de construção do cluster (doc 05, seção 7.2; doc 13, seção 12.2; doc 14, seção 13.3).
+/// O motor continua síncrono e local: quem fala com os outros nós é o `cluster/replication`, que
+/// chama estes métodos no nó que coordena e nos nós que recebem o registro e o commit.
+impl Messages {
+    /// Liga o nó ao cluster. Vale só a primeira chamada.
+    pub fn enable_cluster(&self, hooks: ClusterHooks) {
+        let _ = self.cluster.set(hooks);
+    }
+
+    /// O nó é o dono da entrega da mensagem? Sem cluster, sempre.
+    fn owns(&self, topic: &str, id: &str, group: Option<&str>) -> bool {
+        self.cluster
+            .get()
+            .is_none_or(|hooks| hooks.placement.is_owner(topic, id, group))
+    }
+
+    /// Avisa o cluster quando o tópico passa a ter (ou deixa de ter) mensagens prontas aqui.
+    fn ready_changed(&self, name: &str, state: &mut TopicState) {
+        let has = state.index.has_ready();
+        if state.ready_signaled != has {
+            state.ready_signaled = has;
+            if let Some(hooks) = self.cluster.get() {
+                (hooks.ready)(name, has);
+            }
+        }
+    }
+
+    /// Os tópicos com estado aberto e, em cada um, se há mensagem pronta (o instantâneo que um nó
+    /// novo recebe dos sinais).
+    pub fn ready_topics(&self) -> Vec<String> {
+        self.existing_states()
+            .into_iter()
+            .filter(|(_, state)| lock(state).index.has_ready())
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    /// Acorda até `count` `GET` em espera neste nó (um aviso de mensagem nova veio de outro).
+    pub fn wake_listeners(&self, topic: &str, count: usize) {
+        self.wake(topic, count);
+    }
+
+    /// Quem espera mensagem nova do tópico neste nó é avisado por aqui.
+    pub fn listener_notify(&self, topic: &str) -> Arc<Notify> {
+        self.notifier(topic)
+    }
+
+    pub fn is_clustered(&self) -> bool {
+        self.cluster.get().is_some()
+    }
+
+    /// O nó guarda esta mensagem? Devolve os metadados e se ele é o dono.
+    pub fn message_info(&self, topic: &str, id: &str) -> Result<Option<MessageInfo>, TabaError> {
+        let state = self.state_of(topic);
+        let state = lock(&state);
+        let owned = state.index.contains(id);
+        if !owned && !state.replicas.contains(id) {
+            return Ok(None);
+        }
+        let meta = match state.memory.get(id) {
+            Some(stored) => stored.meta.clone(),
+            None => match self
+                .store
+                .get(topic, id)
+                .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+            {
+                Some(meta) => meta,
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(MessageInfo { meta, owned }))
+    }
+
+    /// Os metadados e o corpo da mensagem que o nó guarda.
+    pub fn read_message(
+        &self,
+        topic: &str,
+        id: &str,
+    ) -> Result<Option<(MessageMeta, Vec<u8>)>, TabaError> {
+        let state = self.state_of(topic);
+        let state = lock(&state);
+        if let Some(stored) = state.memory.get(id) {
+            return Ok(Some((stored.meta.clone(), stored.body.clone())));
+        }
+        if !state.index.contains(id) && !state.replicas.contains(id) {
+            return Ok(None);
+        }
+        let Some(meta) = self
+            .store
+            .get(topic, id)
+            .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+        else {
+            return Ok(None);
+        };
+        let body = self
+            .store
+            .body(topic, id)
+            .map_err(|e| self.disk_error("falha ao ler o corpo em disco", &e))?;
+        Ok(Some((meta, body)))
+    }
+
+    /// Prepara uma publicação para o cluster: confere tudo o que o nó de uma fila conferiria e
+    /// gera o `id`, mas **não guarda** nada. O coordenador manda o resultado aos nós
+    /// responsáveis. A fila FIFO precisa do primário do grupo e ainda não existe no cluster.
+    pub fn draft_publish(
+        &self,
+        view: &TopicView,
+        request: &PublishRequest,
+    ) -> Result<(MessageMeta, Vec<u8>), TabaError> {
+        let prepared = Prepared::new(request)?;
+        let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
+        if request.body.len() as u64 > limit {
+            return Err(too_large(limit));
+        }
+        if view.definition.queue().is_some_and(|q| q.fifo) {
+            return Err(TabaError::new(
+                ErrorCode::FifoPrimaryUnavailable,
+                "A fila FIFO no cluster precisa do primário do grupo e ainda não está disponível.",
+            ));
+        }
+        if request.deduplication_id.is_some() {
+            return Err(TabaError::new(
+                ErrorCode::ValidationNotApplicable,
+                "`deduplicationId` só vale numa fila FIFO.",
+            )
+            .with_detail(
+                "deduplicationId",
+                ErrorCode::ValidationNotApplicable,
+                "Só vale numa fila FIFO.",
+            ));
+        }
+        let now = self.clock.now_millis();
+        let id = self.ids.new_at(now);
+        // A publicação vale do instante que o `id` guarda: é daí que o `ttl` conta em todo nó.
+        let published_ms = crate::core::id::unix_millis_of(&id).unwrap_or(now);
+        let meta = MessageMeta {
+            id,
+            content_type: prepared.content_type.as_str().to_owned(),
+            group_id: request.group_id.clone(),
+            deduplication_id: None,
+            published_ms,
+            delivery_count: 0,
+            invisible_until_ms: 0,
+            receipt_token: None,
+            dead_lettered_ms: None,
+            dead_letter_reason: None,
+        };
+        Ok((meta, request.body.clone()))
+    }
+
+    /// Guarda a mensagem no commit da publicação. O dono a põe no índice e acorda os `GET` em
+    /// espera; a réplica só a guarda. Repetir o commit não faz nada.
+    pub fn apply_publish(
+        &self,
+        topic: &str,
+        meta: MessageMeta,
+        body: Vec<u8>,
+    ) -> Result<(), TabaError> {
+        let now = self.clock.now_millis();
+        let owned = self.owns(topic, &meta.id, meta.group_id.as_deref());
+        {
+            let state = self.state_of(topic);
+            let mut state = lock(&state);
+            if state.index.contains(&meta.id) || state.replicas.contains(&meta.id) {
+                return Ok(());
+            }
+            let size = body.len() as u64;
+            let id = meta.id.clone();
+            let group = meta.group_id.clone();
+            let age = meta.age_base_ms();
+            let (until, deliveries) = (meta.invisible_until_ms, meta.delivery_count);
+            if self.reserve_memory(&state, topic, size, now) {
+                state.memory.insert(id.clone(), Stored { meta, body });
+            } else {
+                self.store
+                    .put(topic, &meta, &body)
+                    .map_err(|e| self.disk_error("falha ao gravar a mensagem em disco", &e))?;
+                if !self.draining.load(Ordering::SeqCst) {
+                    NodeCounters::add(&self.counters.overflow, 1);
+                }
+            }
+            if owned {
+                state
+                    .index
+                    .insert(&id, group.as_deref(), age, until, deliveries, now);
+                state
+                    .rates
+                    .published
+                    .record(now, 1, self.rules.rate_window_secs);
+                state.stats.published += 1;
+                state.stats.published_bytes += size;
+                state.stats.last_published_ms = Some(now);
+            } else {
+                state.replicas.insert(&id, age);
+            }
+            self.ready_changed(topic, &mut state);
+        }
+        if owned {
+            self.wake(topic, 1);
+        }
+        Ok(())
+    }
+
+    /// Confere o registro de uma invisibilidade (ou de um ack): a mensagem existe, e a entrega
+    /// não pode pegá-la invisível nem a alteração e o ack com o `receiptToken` errado.
+    pub fn check_visibility(
+        &self,
+        topic: &str,
+        id: &str,
+        check: VisibilityCheck,
+        receipt_token: &str,
+    ) -> Result<(), TabaError> {
+        let now = self.clock.now_millis();
+        let info = self
+            .message_info(topic, id)?
+            .ok_or_else(message_not_found)?;
+        match check {
+            VisibilityCheck::Delivery if info.meta.invisible_until_ms > now => Err(TabaError::new(
+                ErrorCode::ClusterConflict,
+                "A mensagem já está invisível.",
+            )),
+            VisibilityCheck::Delivery => Ok(()),
+            VisibilityCheck::Receipt
+                if info.meta.receipt_token.as_deref() != Some(receipt_token) =>
+            {
+                Err(stale_receipt())
+            }
+            VisibilityCheck::Receipt => Ok(()),
+        }
+    }
+
+    /// Grava no commit o prazo (e, numa entrega, o contador e o token) nos metadados; no dono, o
+    /// índice acompanha. O prazo é absoluto e vem pronto do dono.
+    pub fn apply_visibility(
+        &self,
+        topic: &str,
+        id: &str,
+        until_ms: u64,
+        delivery: Option<(u32, &str)>,
+    ) -> Result<(), TabaError> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let owned = state.index.contains(id);
+        if !owned && !state.replicas.contains(id) {
+            return Err(message_not_found());
+        }
+        let place = if state.memory.contains_key(id) {
+            Place::Memory
+        } else {
+            Place::Disk
+        };
+        let mut meta = match place {
+            Place::Memory => state.memory[id].meta.clone(),
+            Place::Disk => self
+                .store
+                .get(topic, id)
+                .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                .ok_or_else(message_not_found)?,
+        };
+        meta.invisible_until_ms = until_ms;
+        if let Some((count, token)) = delivery {
+            meta.delivery_count = count;
+            meta.receipt_token = Some(token.to_owned());
+        }
+        self.save_meta(&mut state, topic, &meta, place)?;
+        if owned {
+            match delivery {
+                Some((count, _)) => state.index.deliver(id, until_ms, now, count),
+                None => state.index.set_until(id, until_ms, now),
+            }
+        }
+        let released = owned && delivery.is_none() && until_ms <= now;
+        // Liberar uma mensagem que já gastou as entregas a manda à dead-letter (doc 13, 12.10).
+        if released
+            && let Ok(view) = self.topics.get(topic)
+            && self.exhausted(&view, meta.delivery_count)
+        {
+            self.dead_letter(&mut state, &view, vec![id.to_owned()], now);
+        }
+        self.ready_changed(topic, &mut state);
+        drop(state);
+        if released {
+            self.wake(topic, 1);
+        }
+        Ok(())
+    }
+
+    /// Remove a mensagem no commit do ack (sem deixar rastro, doc 13, seção 12.4). Só o dono
+    /// conta o ack na estatística. Repetir o commit não faz nada.
+    pub fn apply_ack(&self, topic: &str, id: &str) -> Result<(), TabaError> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let owned = state.index.contains(id);
+        if !owned && !state.replicas.contains(id) {
+            return Ok(());
+        }
+        let place = if state.memory.contains_key(id) {
+            Place::Memory
+        } else {
+            Place::Disk
+        };
+        self.remove_message(&mut state, topic, id, place)?;
+        if owned {
+            state.stats.acked += 1;
+            state.stats.last_consumed_ms = Some(now);
+            state
+                .rates
+                .acked
+                .record(now, 1, self.rules.rate_window_secs);
+        }
+        self.ready_changed(topic, &mut state);
+        Ok(())
+    }
+
+    /// Faz no commit o movimento para a dead-letter da cópia que o nó tem (doc 13, seção 12.10).
+    /// `at_ms` é o instante que o dono fixou: é de onde o `ttl` conta na dead-letter.
+    pub fn apply_dead_letter(&self, source: &str, id: &str, at_ms: u64) -> Result<(), TabaError> {
+        let view = self.topics.get(source)?;
+        let state = self.state_of(source);
+        let mut state = lock(&state);
+        self.move_to_dead_letter(&mut state, &view, vec![id.to_owned()], at_ms);
+        self.ready_changed(source, &mut state);
+        Ok(())
+    }
+
+    /// O movimento para a dead-letter terminou (ou falhou): se falhou, a mensagem volta a ser
+    /// pronta e a próxima passada da varredura tenta de novo.
+    pub fn dead_letter_done(&self, topic: &str, id: &str, moved: bool) {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        state.dead_letter_inflight.remove(id);
+        if !moved {
+            state.index.set_until(id, 0, now);
+            // A próxima acertada confere de novo as prontas que gastaram as entregas e refaz o pedido.
+            state.checked_max_deliveries = None;
+            self.ready_changed(topic, &mut state);
+        }
+    }
+
+    /// Escolhe até `max` mensagens prontas do dono, calcula o contador, o prazo e o token novos e
+    /// as **reserva** no índice (em processamento) sem gravar nada: a entrega só vale depois do
+    /// commit no quórum (`apply_visibility` mais `finish_take`); se o quórum não fecha,
+    /// `abort_take` devolve a mensagem a pronta.
+    pub fn take_candidates(
+        &self,
+        view: &TopicView,
+        max: usize,
+        visibility_secs: u64,
+    ) -> Result<Vec<Candidate>, TabaError> {
+        let name = &view.definition.name;
+        let now = self.clock.now_millis();
+        self.settle(view, now);
+        let state = self.state_of(name);
+        let mut state = lock(&state);
+        let until = now + visibility_secs * 1000;
+        let mut out = Vec::new();
+        while out.len() < max {
+            let Some(id) = state.index.pick() else {
+                break;
+            };
+            let (mut meta, body) = if let Some(stored) = state.memory.get(&id) {
+                NodeCounters::add(&self.counters.reads_memory, 1);
+                (stored.meta.clone(), stored.body.clone())
+            } else {
+                let Some(meta) = self
+                    .store
+                    .get(name, &id)
+                    .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                else {
+                    state.index.remove(&id);
+                    continue;
+                };
+                match self.store.body(name, &id) {
+                    Ok(body) => {
+                        NodeCounters::add(&self.counters.reads_disk, 1);
+                        (meta, body)
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                        tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
+                        let _ = self.store.remove(name, &id);
+                        state.index.remove(&id);
+                        continue;
+                    }
+                    Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+                }
+            };
+            let band = state.index.band_of_entry(&id).unwrap_or(0);
+            let previous_deliveries = meta.delivery_count;
+            meta.delivery_count += 1;
+            meta.invisible_until_ms = until;
+            meta.receipt_token = Some(self.ids.new_at(now));
+            state
+                .index
+                .deliver(&id, until.max(now + 1), now, meta.delivery_count);
+            out.push(Candidate {
+                meta,
+                body,
+                previous_deliveries,
+                band,
+            });
+        }
+        self.ready_changed(name, &mut state);
+        Ok(out)
+    }
+
+    /// O quórum não fechou: a mensagem reservada volta a ser pronta, como estava.
+    pub fn abort_take(&self, topic: &str, candidate: &Candidate) {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        state
+            .index
+            .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
+        self.ready_changed(topic, &mut state);
+        drop(state);
+        self.wake(topic, 1);
+    }
+
+    /// Conta as entregas que o quórum confirmou: consumo, reentregas, espera até a primeira
+    /// entrega e as taxas (só o dono conta, doc 11).
+    pub fn finish_take(&self, topic: &str, delivered: &[&Candidate], started: Instant) {
+        if delivered.is_empty() {
+            return;
+        }
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        for candidate in delivered {
+            if candidate.previous_deliveries == 0 {
+                let waited_ms = now.saturating_sub(candidate.meta.age_base_ms());
+                self.counters
+                    .observe_wait(candidate.band, waited_ms as f64 / 1000.0);
+            } else {
+                state.stats.redelivered += 1;
+                NodeCounters::add(&self.counters.redeliveries, 1);
+            }
+        }
+        state
+            .rates
+            .consumed
+            .record(now, delivered.len() as u64, self.rules.rate_window_secs);
+        state.stats.consumed += delivered.len() as u64;
+        state.stats.last_consumed_ms = Some(now);
+        state
+            .stats
+            .consume_latency
+            .record(started.elapsed().as_secs_f64());
+    }
+
+    /// Reavalia quem é o dono depois de uma mudança de membros (entrada, saída, rebalanceamento):
+    /// as mensagens de que o nó deixou de ser dono saem do índice e viram réplicas, e as réplicas de
+    /// que ele passou a ser dono entram no índice, prontas ou invisíveis conforme os metadados
+    /// (doc 14, seção 13.7).
+    pub fn reown(&self) {
+        let now = self.clock.now_millis();
+        for (name, state) in self.existing_states() {
+            let mut woke = false;
+            {
+                let mut state = lock(&state);
+                for id in state.index.ids() {
+                    if !self.owns(&name, &id, None) {
+                        let age = state.index.age_of(&id).unwrap_or(now);
+                        state.index.remove(&id);
+                        state.replicas.insert(&id, age);
+                    }
+                }
+                for id in state.replicas.ids() {
+                    if !self.owns(&name, &id, None) {
+                        continue;
+                    }
+                    let meta = match state.memory.get(&id) {
+                        Some(stored) => Some(stored.meta.clone()),
+                        None => self.store.get(&name, &id).ok().flatten(),
+                    };
+                    let Some(meta) = meta else {
+                        state.replicas.remove(&id);
+                        continue;
+                    };
+                    state.replicas.remove(&id);
+                    state.index.insert(
+                        &id,
+                        meta.group_id.as_deref(),
+                        meta.age_base_ms(),
+                        meta.invisible_until_ms,
+                        meta.delivery_count,
+                        now,
+                    );
+                    woke |= meta.invisible_until_ms <= now;
+                }
+                self.ready_changed(&name, &mut state);
+            }
+            if woke {
+                self.wake(&name, 1);
+            }
+        }
+    }
+
+    /// Apaga tudo o que o nó guarda de mensagens, em memória e em disco (o nó volta do drain como
+    /// nó novo e não aproveita o que tinha, doc 04, seção 6.10).
+    pub fn reset_all(&self) {
+        let mut names: Vec<String> = self
+            .existing_states()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        if let Ok(on_disk) = self.store.topics_on_disk() {
+            names.extend(on_disk);
+        }
+        names.sort();
+        names.dedup();
+        for name in names {
+            self.drop_topic(&name);
+        }
+    }
+
+    /// O `publish` de um distribuidor, depois de cada cópia ter sido publicada: as contagens e os
+    /// eventos de `no_target` e `partial`.
+    pub fn record_distributor(&self, name: &str, deliveries: &[DistributorDelivery]) {
+        let failed = deliveries.iter().filter(|d| d.result.is_err()).count() as u64;
+        {
+            let mut distributors = lock(&self.distributors);
+            let counters = distributors.entry(name.to_owned()).or_default();
+            counters.received += 1;
+            counters.copies += deliveries.len() as u64 - failed;
+            counters.copy_errors += failed;
+        }
+        if deliveries.is_empty() {
+            tracing::info!(
+                event.name = "taba.distributor.no_target",
+                messaging.destination.name = %name,
+                "publicação sem nenhuma fila que case: a mensagem foi descartada"
+            );
+        } else if failed > 0 {
+            tracing::warn!(
+                event.name = "taba.distributor.partial",
+                messaging.destination.name = %name,
+                failed,
+                copies = deliveries.len(),
+                "ao menos uma cópia da publicação falhou"
+            );
+        }
+    }
+
+    /// O tamanho máximo de corpo que uma publicação no tópico aceita (para quem lê o corpo antes).
+    pub fn message_limit(&self, view: &TopicView) -> u64 {
+        view.max_message_bytes().unwrap_or(self.rules.max_bytes)
+    }
+
+    /// O limite do distribuidor (o geral).
+    pub fn distributor_limit(&self) -> u64 {
+        self.rules.max_bytes
+    }
+
+    /// O teto de destinos de um distribuidor.
+    pub fn distributor_max_targets(&self) -> Option<u64> {
+        self.rules.distributor_max_targets
+    }
+
+    /// Valida o que a publicação traz antes de saber o tipo do tópico (`Content-Type`, corpo,
+    /// `groupId`, `deduplicationId`).
+    pub fn validate_publish(&self, request: &PublishRequest) -> Result<(), TabaError> {
+        Prepared::new(request).map(|_| ())
     }
 }
 

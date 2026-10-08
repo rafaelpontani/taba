@@ -106,6 +106,9 @@ struct Inner {
     ring: Arc<Ring>,
     pending: Option<Pending>,
     finished: VecDeque<(String, Finished)>,
+    /// Os nós que saíram por drain: ainda podem repassar chamadas de cliente a quem está no
+    /// cluster (doc 04, seção 6.9). Só em memória; sai quando um nó novo entra no mesmo endereço.
+    departed: Vec<Member>,
 }
 
 /// A tabela de membros de um nó, com a mudança pendente e o anel derivado dela.
@@ -182,6 +185,14 @@ impl Membership {
                 .iter()
                 .any(|m| m.addresses.iter().any(|a| a == address))
         })
+    }
+
+    /// O endereço é de um nó que saiu por drain e pode ainda repassar chamadas?
+    pub fn is_departed_address(&self, address: &str) -> bool {
+        self.lock()
+            .departed
+            .iter()
+            .any(|m| m.addresses.iter().any(|a| a == address))
     }
 
     /// Há uma mudança pendente (e ainda não vencida)?
@@ -287,14 +298,30 @@ impl Membership {
             };
         }
         let pending = inner.pending.take().expect("conferido acima");
-        let table = inner.table.as_mut().ok_or(MembershipError::NoTable)?;
+        let mut inner_departed = std::mem::take(&mut inner.departed);
+        let Some(table) = inner.table.as_mut() else {
+            inner.departed = inner_departed;
+            return Err(MembershipError::NoTable);
+        };
         match pending.change {
-            Change::Add(member) => table.members.push(member),
-            Change::Remove { node_id } => table.members.retain(|m| m.node_id != node_id),
+            Change::Add(member) => {
+                inner_departed.retain(|d| d.addresses != member.addresses || d.port != member.port);
+                table.members.push(member);
+            }
+            Change::Remove { node_id } => {
+                if let Some(left) = table.members.iter().find(|m| m.node_id == node_id) {
+                    inner_departed.push(left.clone());
+                    if inner_departed.len() > 64 {
+                        inner_departed.remove(0);
+                    }
+                }
+                table.members.retain(|m| m.node_id != node_id);
+            }
         }
         table.version += 1;
         table.sort();
         let table = table.clone();
+        inner.departed = inner_departed;
         Self::remember(&mut inner, operation_id.to_owned(), Finished::Committed);
         self.rebuild_ring(&mut inner);
         Ok(table)

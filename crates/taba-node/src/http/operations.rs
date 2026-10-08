@@ -202,7 +202,7 @@ async fn cluster_health(
         ("ok", json!([]))
     };
     let status = json!({
-        "nodeId": node.node_id,
+        "nodeId": node.node_id(),
         "version": env!("CARGO_PKG_VERSION"),
         "mode": node.mode.as_str(),
         "state": node.state().as_str(),
@@ -232,7 +232,7 @@ async fn cluster_health(
             "quorumAvailable": true,
             "syncingBlocks": 0,
         },
-        "nodes": [{ "nodeId": node.node_id, "reachable": true, "status": status }],
+        "nodes": [{ "nodeId": node.node_id(), "reachable": true, "status": status }],
     })))
 }
 

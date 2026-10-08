@@ -1,5 +1,21 @@
 //! As chamadas entre nós como tipos (doc 06c): o que o `Transport` leva e o que as rotas
-//! `/cluster/*` e a rede em memória entendem. Uma só definição serve às duas pontas.
+//! `/cluster/*` e a rede em memória entendem. Uma só definição serve às duas pontas, e o
+//! [`http`] traduz cada chamada para a rota HTTP do documento e de volta.
+
+mod definitions;
+pub mod http;
+mod messages;
+mod signals;
+
+pub use definitions::{
+    StreamEnd, StreamPage, StreamQuery, TokenOperation, TokenRegisterRequest, TopicOperation,
+    TopicRegisterRequest, token_from_json, token_to_json,
+};
+pub use messages::{
+    AckRegisterRequest, MessageRecord, MessageRegisterRequest, TakeRequest, TakeResponse,
+    VisibilityKind, VisibilityRegisterRequest, WriteKind, validate_message_path,
+};
+pub use signals::{ForwardRequest, ForwardResponse, Signal, SignalFrame};
 
 use serde::{Deserialize, Serialize};
 
@@ -58,8 +74,30 @@ pub struct NodeUnregisterRequest {
     pub reason: UnregisterReason,
 }
 
-/// Uma chamada a outro nó.
+/// As três fases de uma operação em duas fases: `register` (com o corpo da operação), `commit` e
+/// `rollback` (só com o `operationId`).
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step<R> {
+    Register(R),
+    Commit(OperationRef),
+    Rollback(OperationRef),
+}
+
+impl<R> Step<R> {
+    /// `register`, `commit` ou `rollback`.
+    pub const fn phase(&self) -> &'static str {
+        match self {
+            Step::Register(_) => "register",
+            Step::Commit(_) => "commit",
+            Step::Rollback(_) => "rollback",
+        }
+    }
+}
+
+/// Uma chamada a outro nó. A maior variante (o registro de uma mensagem) leva o corpo inteiro; a
+/// enum é montada e consumida sem copiar, então não vale a indireção.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Request {
     /// `GET /cluster/nodes`
     ListNodes,
@@ -73,6 +111,38 @@ pub enum Request {
     Commit(OperationRef),
     /// `POST /cluster/nodes/rollback`
     Rollback(OperationRef),
+    /// `POST /cluster/topics/register|commit|rollback`
+    Topic(Step<TopicRegisterRequest>),
+    /// `GET /cluster/topics`
+    ListTopics(StreamQuery),
+    /// `POST /cluster/tokens/register|commit|rollback`
+    Token(Step<TokenRegisterRequest>),
+    /// `GET /cluster/tokens`
+    ListTokens(StreamQuery),
+    /// `POST /cluster/topics/{topic}/messages/{id}/register|commit|rollback`
+    Write {
+        topic: String,
+        id: String,
+        step: Step<MessageRegisterRequest>,
+    },
+    /// `POST /cluster/topics/{topic}/messages/{id}/visibility/register|commit|rollback`
+    Visibility {
+        topic: String,
+        id: String,
+        step: Step<VisibilityRegisterRequest>,
+    },
+    /// `POST /cluster/topics/{topic}/messages/{id}/ack/register|commit|rollback`
+    Ack {
+        topic: String,
+        id: String,
+        step: Step<AckRegisterRequest>,
+    },
+    /// `POST /cluster/topics/{topic}/messages/take`
+    Take { topic: String, request: TakeRequest },
+    /// `POST /cluster/signals`
+    Signal(SignalFrame),
+    /// `* /cluster/forward/{caminho}`
+    Forward(ForwardRequest),
 }
 
 impl Request {
@@ -85,6 +155,53 @@ impl Request {
             Request::Unregister(_) => "unregister",
             Request::Commit(_) => "commit",
             Request::Rollback(_) => "rollback",
+            Request::Topic(Step::Register(_)) => "topic-register",
+            Request::Topic(Step::Commit(_)) => "topic-commit",
+            Request::Topic(Step::Rollback(_)) => "topic-rollback",
+            Request::ListTopics(_) => "list-topics",
+            Request::Token(Step::Register(_)) => "token-register",
+            Request::Token(Step::Commit(_)) => "token-commit",
+            Request::Token(Step::Rollback(_)) => "token-rollback",
+            Request::ListTokens(_) => "list-tokens",
+            Request::Write {
+                step: Step::Register(_),
+                ..
+            } => "write-register",
+            Request::Write {
+                step: Step::Commit(_),
+                ..
+            } => "write-commit",
+            Request::Write {
+                step: Step::Rollback(_),
+                ..
+            } => "write-rollback",
+            Request::Visibility {
+                step: Step::Register(_),
+                ..
+            } => "visibility-register",
+            Request::Visibility {
+                step: Step::Commit(_),
+                ..
+            } => "visibility-commit",
+            Request::Visibility {
+                step: Step::Rollback(_),
+                ..
+            } => "visibility-rollback",
+            Request::Ack {
+                step: Step::Register(_),
+                ..
+            } => "ack-register",
+            Request::Ack {
+                step: Step::Commit(_),
+                ..
+            } => "ack-commit",
+            Request::Ack {
+                step: Step::Rollback(_),
+                ..
+            } => "ack-rollback",
+            Request::Take { .. } => "take",
+            Request::Signal(_) => "signal",
+            Request::Forward(_) => "forward",
         }
     }
 }
@@ -94,13 +211,20 @@ impl Request {
 pub enum Response {
     Members(MemberTable),
     Ack(Ack),
+    /// Um trecho de `GET /cluster/topics` ou `/cluster/tokens`.
+    Stream(StreamPage),
+    Taken(TakeResponse),
+    /// A resposta de um sinal: nada a dizer.
+    Empty,
+    /// A resposta de uma chamada de cliente repassada, como o destino a deu.
+    Forwarded(ForwardResponse),
 }
 
 fn invalid(field: &str, code: ErrorCode, message: &str) -> TabaError {
     TabaError::new(code, "A requisição tem campos inválidos.").with_detail(field, code, message)
 }
 
-fn require_guid(field: &str, value: &str) -> Result<(), TabaError> {
+pub(crate) fn require_guid(field: &str, value: &str) -> Result<(), TabaError> {
     if id::is_guid_v7(value) {
         Ok(())
     } else {
@@ -170,6 +294,17 @@ impl NodeUnregisterRequest {
 impl OperationRef {
     pub fn validate(&self) -> Result<(), TabaError> {
         require_guid("operationId", &self.operation_id)
+    }
+}
+
+impl<R> Step<R> {
+    /// Valida o `operationId` da fase 2 e do rollback; o corpo do `register` é validado por quem
+    /// o conhece.
+    pub fn validate_reference(&self) -> Result<(), TabaError> {
+        match self {
+            Step::Register(_) => Ok(()),
+            Step::Commit(op) | Step::Rollback(op) => op.validate(),
+        }
     }
 }
 

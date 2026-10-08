@@ -80,7 +80,10 @@ async fn publish(
         group_id: params.get("groupId").cloned(),
         deduplication_id: params.get("deduplicationId").cloned(),
     };
-    let published = blocking(&state, move |messages| messages.publish(&topic, request)).await?;
+    let published = match &state.replicated {
+        Some(cluster) => cluster.publish(&topic, request).await?,
+        None => blocking(&state, move |messages| messages.publish(&topic, request)).await?,
+    };
     Ok(match published {
         // Só a fila FIFO traz `duplicate`; a duplicata é `200` e a mensagem criada, `201`.
         Published::Queue {
@@ -175,26 +178,24 @@ async fn consume(
     Path(topic): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<ConsumeResponse>, ApiError> {
-    let delivered = state
-        .messages
-        .consume(
-            &topic,
-            ConsumeQuery {
-                max_messages: params.get("maxMessages").cloned(),
-                visibility_timeout: params.get("visibilityTimeout").cloned(),
-                wait_time: params.get("waitTime").cloned(),
-                auto_create: params.get("autoCreate").cloned(),
-                volatile: params.get("volatile").cloned(),
-                idle_timeout: params.get("idleTimeout").cloned(),
-                fifo: params.get("fifo").cloned(),
-                tags: params
-                    .iter()
-                    .filter_map(|(k, v)| Some((k.strip_prefix("tag.")?.to_owned(), v.clone())))
-                    .collect(),
-                can_create: principal.allows(Permission::Create),
-            },
-        )
-        .await?;
+    let query = ConsumeQuery {
+        max_messages: params.get("maxMessages").cloned(),
+        visibility_timeout: params.get("visibilityTimeout").cloned(),
+        wait_time: params.get("waitTime").cloned(),
+        auto_create: params.get("autoCreate").cloned(),
+        volatile: params.get("volatile").cloned(),
+        idle_timeout: params.get("idleTimeout").cloned(),
+        fifo: params.get("fifo").cloned(),
+        tags: params
+            .iter()
+            .filter_map(|(k, v)| Some((k.strip_prefix("tag.")?.to_owned(), v.clone())))
+            .collect(),
+        can_create: principal.allows(Permission::Create),
+    };
+    let delivered = match &state.replicated {
+        Some(cluster) => cluster.consume(&topic, query).await?,
+        None => state.messages.consume(&topic, query).await?,
+    };
     Ok(Json(ConsumeResponse {
         messages: delivered.into_iter().map(Into::into).collect(),
     }))
@@ -206,10 +207,15 @@ async fn ack(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<StatusCode, ApiError> {
     let receipt = params.get("receiptToken").cloned();
-    blocking(&state, move |messages| {
-        messages.ack(&topic, &id, receipt.as_deref())
-    })
-    .await?;
+    match &state.replicated {
+        Some(cluster) => cluster.ack(&topic, &id, receipt.as_deref()).await?,
+        None => {
+            blocking(&state, move |messages| {
+                messages.ack(&topic, &id, receipt.as_deref())
+            })
+            .await?;
+        }
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -224,10 +230,19 @@ async fn visibility(
     fields.reject_unknown(&["visibilityTimeout"])?;
     let receipt = params.get("receiptToken").cloned();
     let timeout = fields.integer("visibilityTimeout")?;
-    let updated = blocking(&state, move |messages| {
-        messages.set_visibility(&topic, &id, receipt.as_deref(), timeout)
-    })
-    .await?;
+    let updated = match &state.replicated {
+        Some(cluster) => {
+            cluster
+                .set_visibility(&topic, &id, receipt.as_deref(), timeout)
+                .await?
+        }
+        None => {
+            blocking(&state, move |messages| {
+                messages.set_visibility(&topic, &id, receipt.as_deref(), timeout)
+            })
+            .await?
+        }
+    };
     Ok(Json(json!({
         "id": updated.id,
         "invisibleUntil": time::format_ms(updated.invisible_until_ms),

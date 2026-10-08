@@ -28,6 +28,7 @@ pub const FAST: &[(&str, &str)] = &[
     ("TABA_WRITE_RETRY_BACKOFF", "10ms"),
     ("TABA_WRITE_COMMIT_TIMEOUT", "400ms"),
     ("TABA_CLUSTER_BOOTSTRAP_RETRY_INTERVAL", "50ms"),
+    ("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "200ms"),
 ];
 
 pub fn host_of(number: usize) -> String {
@@ -70,6 +71,8 @@ pub struct TestCluster {
     pub network: MemoryNetwork,
     pub clock: Arc<ManualClock>,
     pub nodes: Vec<TestNode>,
+    /// Parâmetros extras de todos os nós (por exemplo, o token raiz).
+    pub env: Vec<(String, String)>,
 }
 
 impl TestCluster {
@@ -81,13 +84,23 @@ impl TestCluster {
             network,
             clock: Arc::new(ManualClock::at_doc_epoch()),
             nodes: Vec::new(),
+            env: Vec::new(),
         }
     }
 
     /// Sobe `count` nós, um depois do outro, cada um só depois de o anterior estar no cluster.
     /// O primeiro é o `cluster.first-node`.
     pub async fn start(count: usize) -> Self {
+        Self::start_with(count, &[]).await
+    }
+
+    /// Como `start`, com parâmetros `TABA_*` a mais em todos os nós.
+    pub async fn start_with(count: usize, env: &[(&str, &str)]) -> Self {
         let mut cluster = Self::empty();
+        cluster.env = env
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
         for number in 1..=count {
             cluster.add_node(number == 1).await;
         }
@@ -100,6 +113,9 @@ impl TestCluster {
             .in_network(&self.network, &host_of(number))
             .clock(self.clock.clone());
         for (name, value) in FAST {
+            builder = builder.env(name, value);
+        }
+        for (name, value) in &self.env {
             builder = builder.env(name, value);
         }
         if first {

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó, tópicos, publicação e consumo com disco, drain local, rotas de operação, métricas de um nó, e a base do cluster: anel, membros e ingresso de nós); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
+Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó, tópicos, publicação e consumo com disco, drain local, rotas de operação, métricas de um nó, a base do cluster e a replicação: anel, membros, ingresso de nós, escrita, entrega e ack por quórum, repasse e drain); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
 
 ## Código
 

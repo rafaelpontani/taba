@@ -6,6 +6,7 @@ pub mod auth;
 pub mod client_ip;
 pub mod cluster_api;
 mod common;
+pub mod forward;
 mod json;
 pub mod messages;
 pub mod metrics;
@@ -25,6 +26,7 @@ use axum::response::{IntoResponse, Response};
 use ipnet::IpNet;
 
 use crate::cluster::drain::DrainController;
+use crate::cluster::replication::ClusterMessages;
 use crate::cluster::service::ClusterService;
 use crate::cluster::state::{DrainState, NodeShared};
 use crate::core::clock::Clock;
@@ -50,6 +52,8 @@ pub struct AppState {
     pub drain: Arc<DrainController>,
     /// O nó no cluster; só existe em `mode=production`.
     pub cluster: Option<Arc<ClusterService>>,
+    /// As mensagens no cluster (escrita e entrega por quórum); `None` num nó só.
+    pub replicated: Option<Arc<ClusterMessages>>,
     /// `operations.allowed-ips`; vazia, sem restrição.
     pub allowed_ips: Arc<Vec<IpNet>>,
     pub client_ip: Arc<ClientIpRules>,
@@ -60,15 +64,15 @@ pub struct AppState {
     pub stats_rules: Arc<StatsRules>,
 }
 
-/// Em drain o nó não atende chamada de cliente (doc 04, seção 6.10). Sem outro nó para
-/// repassar, responde `503` com `Retry-After`.
-async fn drain_guard(
-    State(node): State<Arc<NodeShared>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    if node.drain_state() == DrainState::Active {
+/// Em drain o nó não atende chamada de cliente (doc 04, seção 6.10): num cluster repassa a chamada
+/// ao nó mais livre, e a resposta volta como o destino a deu. Sem outro nó (ou numa chamada que já
+/// chegou por repasse, que nunca é repassada de novo) responde `503` com `Retry-After`.
+async fn drain_guard(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    if state.node.drain_state() == DrainState::Active {
         return next.run(request).await;
+    }
+    if state.cluster.is_some() && request.extensions().get::<forward::Forwarded>().is_none() {
+        return forward::forward_call(&state, request).await;
     }
     common::ApiError(
         TabaError::new(
@@ -98,10 +102,7 @@ pub fn client_router(state: AppState, with_operations: bool) -> Router {
             state.clone(),
             auth::authorize,
         ))
-        .route_layer(middleware::from_fn_with_state(
-            state.node.clone(),
-            drain_guard,
-        ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), drain_guard))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             ratelimit::rate_limit,

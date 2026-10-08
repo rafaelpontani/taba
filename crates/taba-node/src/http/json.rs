@@ -42,43 +42,6 @@ fn require_json(headers: &HeaderMap) -> Result<(), TabaError> {
     }
 }
 
-/// O corpo como um tipo de campos fixos (as rotas do cluster, doc 06c). Campo que falta vira
-/// `validation.required`, campo que a rota não define vira `validation.unknown-field` e o resto
-/// `validation.failed`. Corpo vazio vale como `{}`.
-pub fn parse<T: serde::de::DeserializeOwned>(
-    headers: &HeaderMap,
-    body: &[u8],
-) -> Result<T, TabaError> {
-    let empty = body.iter().all(u8::is_ascii_whitespace);
-    if !empty {
-        require_json(headers)?;
-    }
-    let source: &[u8] = if empty { b"{}" } else { body };
-    serde_json::from_slice(source).map_err(|e| {
-        let message = e.to_string();
-        let field = message.split('`').nth(1).unwrap_or_default().to_owned();
-        if message.starts_with("missing field") {
-            TabaError::new(ErrorCode::ValidationRequired, "Faltam campos obrigatórios.")
-                .with_detail(field, ErrorCode::ValidationRequired, "Campo obrigatório.")
-        } else if message.starts_with("unknown field") {
-            TabaError::new(
-                ErrorCode::ValidationUnknownField,
-                format!("O campo `{field}` não existe nesta rota."),
-            )
-            .with_detail(
-                field,
-                ErrorCode::ValidationUnknownField,
-                "Campo desconhecido.",
-            )
-        } else {
-            TabaError::new(
-                ErrorCode::ValidationFailed,
-                format!("O corpo não é válido: {message}."),
-            )
-        }
-    })
-}
-
 /// O corpo como objeto JSON. Corpo vazio vale como `{}`: quem exige campos reclama deles.
 pub fn object(headers: &HeaderMap, body: &[u8]) -> Result<Fields, TabaError> {
     if body.iter().all(u8::is_ascii_whitespace) {

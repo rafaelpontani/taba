@@ -181,7 +181,8 @@ Lado **réplica** (nó responsável pelo bloco):
 | `taba.delivery.longpoll.outcome` | counter | {request} | `outcome` (`delivered`/`empty`/`disconnected`) | Como terminaram as chamadas de long polling. |
 | `taba.delivery.take` | counter | {request} | `direction` (`in`/`out`), `outcome` (`delivered`/`empty`/`error`) | Pedidos de entrega a outro dono (`/messages/take`). |
 | `taba.cluster.channel.connections` | updowncounter | {connection} | — | Canais permanentes abertos com outros nós (esperado: nós do cluster − 1). |
-| `taba.cluster.channel.notifications` | counter | {message} | `direction` (`in`/`out`), `outcome` | Avisos de mensagem nova enviados e recebidos (`outcome`: `fetched`/`empty` no lado que recebe). |
+| `taba.cluster.channel.notifications` | counter | {message} | `direction` (`in`/`out`), `outcome` | Avisos de mensagem nova enviados e recebidos (`outcome`: `sent`/`received` hoje; `fetched`/`empty` no lado que recebe, com o canal). |
+| `taba.cluster.forwarded` | counter | {request} | `outcome` (`ok`/`timeout`/`error`/`no-destination`) | Chamadas de cliente que este nó, em drain, repassou a outro (seção 6.9 de [04-cluster.md](04-cluster.md)). |
 
 ### Membros do cluster e falhas (seção 6)
 

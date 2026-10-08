@@ -19,6 +19,11 @@ macro_rules! catalog {
                 match self { $(ErrorCode::$variant => $code),+ }
             }
 
+            /// O inverso de `as_str`: `None` para um texto que não é código do catálogo.
+            pub fn parse(code: &str) -> Option<ErrorCode> {
+                Self::ALL.iter().copied().find(|c| c.as_str() == code)
+            }
+
             /// O status HTTP fixo do código.
             pub const fn status(self) -> u16 {
                 match self { $(ErrorCode::$variant => $status),+ }

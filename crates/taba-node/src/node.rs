@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::cluster::drain::DrainController;
 use crate::cluster::members::{Member, MemberState};
+use crate::cluster::replication::{self, Attached};
 use crate::cluster::service::{BootstrapError, ClusterHandler, ClusterRules, ClusterService};
 use crate::cluster::state::NodeShared;
 use crate::cluster::transport::{Handler, PeerAddr, Transport};
@@ -104,8 +105,8 @@ pub struct RunningNode {
 }
 
 impl RunningNode {
-    pub fn node_id(&self) -> &str {
-        &self.shared.node_id
+    pub fn node_id(&self) -> String {
+        self.shared.node_id()
     }
 
     pub fn shared(&self) -> &Arc<NodeShared> {
@@ -230,7 +231,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     .await
     .map_err(storage_error)?;
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
-    let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id));
+    let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id()));
     let messages = Messages::new(
         topics.clone(),
         deps.clock.clone(),
@@ -274,7 +275,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let cluster_node = match (cluster_addr, deps.cluster) {
         (Some(addr), Some(cluster_deps)) => {
             let local = Member {
-                node_id: shared.node_id.clone(),
+                node_id: shared.node_id(),
                 addresses: cluster_deps.addresses.clone(),
                 port: addr.port(),
                 state: MemberState::Active,
@@ -292,6 +293,17 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         }
         _ => None,
     };
+    // O cluster liga ao motor de mensagens: quem é o dono, os sinais e as dead-letters.
+    let attached = cluster_node.as_ref().map(|(service, _)| {
+        replication::attach(
+            service,
+            &messages,
+            &topics,
+            &auth.tokens,
+            deps.clock.clone(),
+            telemetry.clone(),
+        )
+    });
     let state = AppState {
         clock: deps.clock.clone(),
         node: shared.clone(),
@@ -299,6 +311,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         messages,
         drain: drain.clone(),
         cluster: cluster_node.as_ref().map(|(service, _)| service.clone()),
+        replicated: attached.as_ref().map(|a| a.replication.messages.clone()),
         allowed_ips: Arc::new(config.operations_allowed_ips.clone()),
         client_ip: Arc::new(ClientIpRules::from_config(&config.client_ip)),
         rate_limiter: Arc::new(RateLimiter::from_config(
@@ -311,7 +324,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     };
 
     if dev {
-        tracing::warn!(node_id = %shared.node_id, "mode=development: o nó é um cluster de um só, sem réplicas; não use em produção");
+        tracing::warn!(node_id = %shared.node_id(), "mode=development: o nó é um cluster de um só, sem réplicas; não use em produção");
     } else {
         if cluster_node.is_none() {
             tracing::warn!(
@@ -342,11 +355,17 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         };
         tasks.spawn(observe::serve(listener, router, observer, cancel));
     };
-    serve(
-        client,
-        http::client_router(state.clone(), operations.is_none()),
-        client_addr.port(),
-    );
+    let client_router = http::client_router(state.clone(), operations.is_none());
+    // O repasse recebido de um nó em drain roda contra esta mesma API de cliente.
+    if let Some(replication) = state.cluster.as_ref().and_then(|c| c.replication()) {
+        replication
+            .forwarder
+            .set_executor(http::forward::executor(client_router.clone()));
+    }
+    if let Some(cluster) = &state.cluster {
+        drain.set_cluster(cluster.clone());
+    }
+    serve(client, client_router, client_addr.port());
     if let (Some(listener), Some(addr)) = (operations, operations_addr) {
         serve(
             listener,
@@ -375,6 +394,22 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
                     Err(io::Error::other(e.to_string()))
                 }
             }
+        });
+    }
+    if let Some(Attached {
+        replication,
+        dead_letters,
+    }) = attached
+    {
+        let signals = replication.signals.clone();
+        tasks.spawn(async move {
+            signals.run().await;
+            Ok(())
+        });
+        let messages = replication.messages.clone();
+        tasks.spawn(async move {
+            messages.run_dead_letters(dead_letters).await;
+            Ok(())
         });
     }
     {
@@ -424,7 +459,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     }
 
     tracing::info!(
-        node_id = %shared.node_id,
+        node_id = %shared.node_id(),
         client = %client_addr,
         operations = ?operations_addr,
         cluster = ?cluster_addr,

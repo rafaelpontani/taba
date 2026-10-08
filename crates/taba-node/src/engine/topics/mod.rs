@@ -19,8 +19,10 @@ pub struct VolatileQueue {
 }
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::io;
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::pin::Pin;
+use std::sync::{Arc, Mutex, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use serde_json::{Value, json};
 
@@ -79,6 +81,28 @@ impl TopicView {
     }
 }
 
+/// Uma mudança na tabela de tópicos, como o cluster a propaga a **todos** os nós (doc 02, 3.3).
+#[derive(Debug, Clone)]
+pub enum TopicChange {
+    Create(TopicDefinition),
+    Update(TopicDefinition),
+    Delete {
+        name: String,
+        id: String,
+        /// Só o nó gestor de uma fila volátil: o `id` que o tópico deve ter.
+        expected_id: Option<String>,
+    },
+}
+
+/// Quem propaga uma mudança aos outros nós antes de ela valer (registro + commit com a
+/// confirmação de todos). Ao fim, a mudança já foi aplicada **neste nó** também, pelo commit.
+pub trait TopicReplicator: Send + Sync + 'static {
+    fn replicate(
+        &self,
+        change: TopicChange,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
+}
+
 pub struct Topics {
     rules: TopicRules,
     store: Arc<dyn TopicStore>,
@@ -87,6 +111,8 @@ pub struct Topics {
     /// Uma alteração por vez: valida, grava em disco e só então aplica em memória.
     writer: tokio::sync::Mutex<()>,
     removed_hooks: Mutex<Vec<RemovedHook>>,
+    /// No cluster: a propagação a todos os nós.
+    replicator: OnceLock<Arc<dyn TopicReplicator>>,
 }
 
 /// Chamada depois que uma fila é removida, com o nome dela e o da sua dead-letter.
@@ -147,6 +173,7 @@ impl Topics {
             map: RwLock::new(map),
             writer: tokio::sync::Mutex::new(()),
             removed_hooks: Mutex::new(Vec::new()),
+            replicator: OnceLock::new(),
         }
     }
 
@@ -174,6 +201,106 @@ impl Topics {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(hook);
+    }
+
+    /// Liga a propagação aos outros nós (`mode=production`). Vale só a primeira chamada.
+    pub fn set_replicator(&self, replicator: Arc<dyn TopicReplicator>) {
+        let _ = self.replicator.set(replicator);
+    }
+
+    /// O `register` de uma mudança, no nó que a recebe: ela só pode ser aplicada se o estado atual
+    /// deixa (nome que já existe, tópico que não existe, `id` esperado diferente).
+    pub fn check_change(&self, change: &TopicChange) -> Result<(), TabaError> {
+        let map = self.read();
+        match change {
+            TopicChange::Create(def) if map.contains_key(&def.name) => Err(TabaError::new(
+                ErrorCode::TopicAlreadyExists,
+                "Já existe um tópico com este nome.",
+            )),
+            TopicChange::Update(def) if !map.contains_key(&def.name) => Err(Self::not_found()),
+            TopicChange::Delete {
+                name, expected_id, ..
+            } => match map.get(name) {
+                None => Err(Self::not_found()),
+                Some(current) if expected_id.as_ref().is_some_and(|id| *id != current.id) => {
+                    Err(TabaError::new(
+                        ErrorCode::ClusterConflict,
+                        "O tópico atual tem outro id: foi excluído e recriado.",
+                    ))
+                }
+                Some(_) => Ok(()),
+            },
+            _ => Ok(()),
+        }
+    }
+
+    /// O commit de uma criação ou alteração: grava e passa a valer, sem a trava de escrita (quem
+    /// coordena já a segura). Repetir é inofensivo.
+    pub async fn apply_save(&self, definition: TopicDefinition) -> Result<(), TabaError> {
+        let to_save = definition.clone();
+        self.persist(move |store| store.save(&to_save)).await?;
+        self.write().insert(definition.name.clone(), definition);
+        Ok(())
+    }
+
+    /// O commit de uma remoção: apaga a definição e avisa quem guarda as mensagens do tópico.
+    /// Apagar o que não existe não é erro.
+    pub async fn apply_delete(&self, name: &str) -> Result<(), TabaError> {
+        let Some(current) = self.read().get(name).cloned() else {
+            return Ok(());
+        };
+        let to_delete = name.to_owned();
+        self.persist(move |store| store.delete(&to_delete)).await?;
+        self.write().remove(name);
+        let mut gone = vec![name.to_owned()];
+        if current.queue().is_some() {
+            gone.push(format!("{name}{}", self.rules.dead_letter_suffix));
+        }
+        let hooks = self
+            .removed_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for hook in hooks {
+            hook(&gone);
+        }
+        Ok(())
+    }
+
+    /// As definições com `id` a partir de `from` (inclusive), em ordem de `id`, no máximo
+    /// `limit` mais uma (a que sobra diz se há mais): é o stream `GET /cluster/topics`.
+    pub fn definitions_from(
+        &self,
+        from: Option<&str>,
+        limit: usize,
+    ) -> (Vec<TopicDefinition>, bool) {
+        let mut all: Vec<TopicDefinition> = self
+            .read()
+            .values()
+            .filter(|d| from.is_none_or(|f| d.id.as_str() >= f))
+            .cloned()
+            .collect();
+        all.sort_by(|a, b| a.id.cmp(&b.id));
+        let more = all.len() > limit;
+        all.truncate(limit);
+        (all, more)
+    }
+
+    /// O que o nó novo recebe do stream de tópicos: guarda a definição que ainda não tem.
+    pub async fn load_remote(&self, definition: TopicDefinition) -> Result<(), TabaError> {
+        let same = self
+            .read()
+            .get(&definition.name)
+            .is_some_and(|d| d.id == definition.id);
+        if same {
+            return Ok(());
+        }
+        self.apply_save(definition).await
+    }
+
+    /// Os nomes dos tópicos (filas e distribuidores).
+    pub fn names(&self) -> Vec<String> {
+        self.read().keys().cloned().collect()
     }
 
     /// As filas voláteis, para o relógio de ociosidade.
@@ -344,10 +471,14 @@ impl Topics {
             tags,
             spec,
         };
-        let to_save = definition.clone();
-        self.persist(move |store| store.save(&to_save)).await?;
-        self.write()
-            .insert(definition.name.clone(), definition.clone());
+        match self.replicator.get() {
+            Some(replicator) => {
+                replicator
+                    .replicate(TopicChange::Create(definition.clone()))
+                    .await?;
+            }
+            None => self.apply_save(definition.clone()).await?,
+        }
         Ok(self.view(&definition))
     }
 
@@ -355,9 +486,14 @@ impl Topics {
         let _writer = self.writer.lock().await;
         let current = self.writable(name)?;
         let updated = self.apply_update(current, request)?;
-        let to_save = updated.clone();
-        self.persist(move |store| store.save(&to_save)).await?;
-        self.write().insert(updated.name.clone(), updated.clone());
+        match self.replicator.get() {
+            Some(replicator) => {
+                replicator
+                    .replicate(TopicChange::Update(updated.clone()))
+                    .await?;
+            }
+            None => self.apply_save(updated.clone()).await?,
+        }
         Ok(self.view(&updated))
     }
 
@@ -379,24 +515,19 @@ impl Topics {
         if expected_id.is_some_and(|id| id != current.id) {
             return Err(Self::not_found());
         }
-        let is_queue = current.queue().is_some();
         let name = current.name;
-        let to_delete = name.clone();
-        self.persist(move |store| store.delete(&to_delete)).await?;
-        self.write().remove(&name);
-        let mut gone = vec![name.clone()];
-        if is_queue {
-            gone.push(format!("{name}{}", self.rules.dead_letter_suffix));
+        match self.replicator.get() {
+            Some(replicator) => {
+                replicator
+                    .replicate(TopicChange::Delete {
+                        name,
+                        id: current.id,
+                        expected_id: expected_id.map(str::to_owned),
+                    })
+                    .await
+            }
+            None => self.apply_delete(&name).await,
         }
-        let hooks = self
-            .removed_hooks
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        for hook in hooks {
-            hook(&gone);
-        }
-        Ok(())
     }
 
     fn validate_create(

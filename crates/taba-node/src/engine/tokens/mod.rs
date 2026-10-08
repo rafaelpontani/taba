@@ -7,8 +7,10 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::future::Future;
 use std::io;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::pin::Pin;
+use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +85,23 @@ pub struct ListResult {
     pub next_cursor: Option<String>,
 }
 
+/// Uma mudança na tabela de tokens, como o cluster a propaga a **todos** os nós (doc 02, 3.4).
+#[derive(Debug, Clone)]
+pub enum TokenChange {
+    Create(TokenRecord),
+    Update(TokenRecord),
+    Revoke(String),
+}
+
+/// Quem propaga uma mudança aos outros nós antes de ela valer. Ao fim, a mudança já foi aplicada
+/// **neste nó** também, pelo commit.
+pub trait TokenReplicator: Send + Sync + 'static {
+    fn replicate(
+        &self,
+        change: TokenChange,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
+}
+
 pub struct Tokens {
     rules: TokenRules,
     store: Arc<dyn TokenStore>,
@@ -91,6 +110,8 @@ pub struct Tokens {
     map: RwLock<HashMap<String, TokenRecord>>,
     /// Uma escrita por vez: grava no disco e só então aplica em memória.
     writer: tokio::sync::Mutex<()>,
+    /// No cluster: a propagação a todos os nós.
+    replicator: OnceLock<Arc<dyn TokenReplicator>>,
 }
 
 fn not_found() -> TabaError {
@@ -120,6 +141,7 @@ impl Tokens {
             ids: IdGenerator::new(),
             map: RwLock::new(tokens.into_iter().map(|t| (t.id.clone(), t)).collect()),
             writer: tokio::sync::Mutex::new(()),
+            replicator: OnceLock::new(),
         }
     }
 
@@ -156,6 +178,72 @@ impl Tokens {
             .await
             .map_err(|_| TabaError::internal())?
             .map_err(|e| disk_error("falha ao gravar o token", &e))
+    }
+
+    /// Liga a propagação aos outros nós (`mode=production`). Vale só a primeira chamada.
+    pub fn set_replicator(&self, replicator: Arc<dyn TokenReplicator>) {
+        let _ = self.replicator.set(replicator);
+    }
+
+    /// O `register` de uma mudança no nó que a recebe.
+    pub fn check_change(&self, change: &TokenChange) -> Result<(), TabaError> {
+        let map = self.read();
+        match change {
+            TokenChange::Create(record) if map.contains_key(&record.id) => Err(TabaError::new(
+                ErrorCode::ClusterConflict,
+                "Já existe um token com este id.",
+            )),
+            TokenChange::Update(record) if !map.contains_key(&record.id) => Err(not_found()),
+            TokenChange::Revoke(id) if !map.contains_key(id) => Err(not_found()),
+            _ => Ok(()),
+        }
+    }
+
+    /// O commit de uma criação ou alteração: grava e passa a valer.
+    pub async fn apply_save(&self, record: TokenRecord) -> Result<(), TabaError> {
+        self.save(record.clone()).await?;
+        self.write().insert(record.id.clone(), record);
+        Ok(())
+    }
+
+    /// O commit de uma revogação. Revogar o que não existe não é erro.
+    pub async fn apply_revoke(&self, id: &str) -> Result<(), TabaError> {
+        let store = self.store.clone();
+        let owned = id.to_owned();
+        tokio::task::spawn_blocking(move || store.delete(&owned))
+            .await
+            .map_err(|_| TabaError::internal())?
+            .map_err(|e| disk_error("falha ao apagar o token", &e))?;
+        self.write().remove(id);
+        Ok(())
+    }
+
+    /// Os tokens com `id` a partir de `from` (inclusive), em ordem de `id`: o stream
+    /// `GET /cluster/tokens`. A segunda parte diz se há mais.
+    pub fn records_from(&self, from: Option<&str>, limit: usize) -> (Vec<TokenRecord>, bool) {
+        let mut all: Vec<TokenRecord> = self
+            .read()
+            .values()
+            .filter(|t| from.is_none_or(|f| t.id.as_str() >= f))
+            .cloned()
+            .collect();
+        all.sort_by(|a, b| a.id.cmp(&b.id));
+        let more = all.len() > limit;
+        all.truncate(limit);
+        (all, more)
+    }
+
+    /// O que o nó novo recebe do stream de tokens.
+    pub async fn load_remote(&self, record: TokenRecord) -> Result<(), TabaError> {
+        if self.read().get(&record.id) == Some(&record) {
+            return Ok(());
+        }
+        self.apply_save(record).await
+    }
+
+    /// Os `id` dos tokens.
+    pub fn ids(&self) -> Vec<String> {
+        self.read().keys().cloned().collect()
     }
 
     /// Quantos tokens o nó conhece (`taba.auth.tokens`).
@@ -227,9 +315,14 @@ impl Tokens {
             request.expires_ms,
         );
         // Grava antes de valer: uma falha de disco não deixa token visível.
-        self.save(new.record.clone()).await?;
-        self.write()
-            .insert(new.record.id.clone(), new.record.clone());
+        match self.replicator.get() {
+            Some(replicator) => {
+                replicator
+                    .replicate(TokenChange::Create(new.record.clone()))
+                    .await?;
+            }
+            None => self.apply_save(new.record.clone()).await?,
+        }
         tracing::info!(token.id = %new.record.id, "token criado");
         Ok(Created {
             record: new.record,
@@ -277,8 +370,14 @@ impl Tokens {
             Patch::Null => record.expires_ms = None,
             Patch::Value(at) => record.expires_ms = Some(at),
         }
-        self.save(record.clone()).await?;
-        self.write().insert(record.id.clone(), record.clone());
+        match self.replicator.get() {
+            Some(replicator) => {
+                replicator
+                    .replicate(TokenChange::Update(record.clone()))
+                    .await?;
+            }
+            None => self.apply_save(record.clone()).await?,
+        }
         tracing::info!(token.id = %record.id, "token alterado");
         Ok(record)
     }
@@ -287,13 +386,14 @@ impl Tokens {
     pub async fn revoke(&self, id: &str) -> Result<(), TabaError> {
         let _writer = self.writer.lock().await;
         self.get(id)?;
-        let store = self.store.clone();
-        let owned = id.to_owned();
-        tokio::task::spawn_blocking(move || store.delete(&owned))
-            .await
-            .map_err(|_| TabaError::internal())?
-            .map_err(|e| disk_error("falha ao apagar o token", &e))?;
-        self.write().remove(id);
+        match self.replicator.get() {
+            Some(replicator) => {
+                replicator
+                    .replicate(TokenChange::Revoke(id.to_owned()))
+                    .await?;
+            }
+            None => self.apply_revoke(id).await?,
+        }
         tracing::info!(token.id = %id, "token revogado");
         Ok(())
     }

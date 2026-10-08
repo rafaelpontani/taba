@@ -410,7 +410,16 @@ async fn a_second_pending_registration_conflicts_and_unknown_operations_are_refu
         )
         .await
         .unwrap();
-    member.call(&target, register(guid())).await.unwrap();
+    let last = guid();
+    member.call(&target, register(last.clone())).await.unwrap();
+    // Desfaz a pendência: o nó 2 não conseguiria sair do cluster na parada do teste com ela.
+    member
+        .call(
+            &target,
+            Request::Rollback(OperationRef { operation_id: last }),
+        )
+        .await
+        .unwrap();
     assert_eq!(cluster.table(2).unwrap().version, 2);
     cluster.shutdown().await;
 }

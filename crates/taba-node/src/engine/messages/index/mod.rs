@@ -157,6 +157,16 @@ impl TopicIndex {
         self.entries.get(id).map(|e| &e.group)
     }
 
+    /// Todos os `id` que o índice conhece.
+    pub fn ids(&self) -> Vec<String> {
+        self.entries.keys().cloned().collect()
+    }
+
+    /// O instante de onde o `ttl` conta para a mensagem.
+    pub fn age_of(&self, id: &str) -> Option<u64> {
+        self.entries.get(id).map(|e| e.age_ms)
+    }
+
     pub fn deliveries(&self, id: &str) -> Option<u32> {
         self.entries.get(id).map(|e| e.deliveries)
     }

@@ -6,6 +6,7 @@
 pub mod drain;
 pub mod members;
 pub mod protocol;
+pub mod replication;
 pub mod service;
 pub mod state;
 pub mod transport;

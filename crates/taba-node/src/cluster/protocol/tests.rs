@@ -128,3 +128,516 @@ fn the_ack_carries_the_operation_id() {
         json!({"operationId": ack.operation_id, "accepted": true})
     );
 }
+
+// ---- O codec HTTP e os corpos das mensagens ----
+
+use serde_json::Value;
+
+use super::http::{HttpReply, error_reply};
+
+fn record(content_type: &str, body: &[u8]) -> MessageRecord {
+    MessageRecord {
+        id: guid(10),
+        topic: "pedidos".into(),
+        body: body.to_vec(),
+        content_type: content_type.into(),
+        group_id: Some("g1".into()),
+        deduplication_id: None,
+        delivery_count: 2,
+        invisible_until_ms: Some(1_791_288_060_000),
+        receipt_token: Some(guid(11)),
+        dead_lettered_ms: None,
+        dead_letter_reason: None,
+    }
+}
+
+/// UC: UC-STR-012
+#[test]
+fn a_json_body_goes_native_and_the_rest_goes_in_base64() {
+    let json = record("application/json", br#"{"a": 1}"#);
+    let text = serde_json::to_string(&json).unwrap();
+    assert!(text.contains(r#""body":{"a": 1}"#), "{text}");
+    assert!(!text.contains("bodyEncoding"));
+    assert_eq!(serde_json::from_str::<MessageRecord>(&text).unwrap(), json);
+
+    let plus_json = record("application/vnd.api+json", b"[1,2]");
+    let text = serde_json::to_string(&plus_json).unwrap();
+    assert!(text.contains(r#""body":[1,2]"#), "{text}");
+
+    // Texto e binário vão em base64, com `bodyEncoding`.
+    for (content_type, body) in [
+        ("text/plain", "olá".as_bytes()),
+        ("application/octet-stream", &[0u8, 255, 7][..]),
+    ] {
+        let original = record(content_type, body);
+        let text = serde_json::to_string(&original).unwrap();
+        assert!(text.contains(r#""bodyEncoding":"base64""#), "{text}");
+        assert_eq!(
+            serde_json::from_str::<MessageRecord>(&text).unwrap(),
+            original
+        );
+    }
+
+    // JSON com espaços nas pontas não pode mudar os bytes: vai em base64 se não sobrevive intacto.
+    let padded = record("application/json", b"  {\"a\":1}  ");
+    let text = serde_json::to_string(&padded).unwrap();
+    assert_eq!(
+        serde_json::from_str::<MessageRecord>(&text).unwrap(),
+        padded
+    );
+}
+
+#[test]
+fn the_dates_of_a_record_travel_as_text_and_come_back() {
+    let mut original = record("application/json", b"1");
+    original.dead_lettered_ms = Some(1_791_288_000_123);
+    original.dead_letter_reason = Some("max-deliveries".into());
+    original.invisible_until_ms = None;
+    let text = serde_json::to_string(&original).unwrap();
+    let value: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["deadLetteredAt"], "2026-10-06T12:00:00.123Z");
+    assert_eq!(value["invisibleUntil"], Value::Null);
+    let back: MessageRecord = serde_json::from_str(&text).unwrap();
+    assert_eq!(back, original);
+    assert_eq!(
+        back.published_ms(),
+        id::unix_millis_of(&original.id).unwrap()
+    );
+}
+
+fn requests() -> Vec<Request> {
+    let op = || OperationRef {
+        operation_id: guid(1),
+    };
+    let message = MessageRegisterRequest {
+        operation_id: guid(2),
+        coordinator_id: guid(3),
+        kind: WriteKind::Publish,
+        message: record("application/json", br#"{"x":true}"#),
+        source_topic: None,
+    };
+    let dead_letter = MessageRegisterRequest {
+        kind: WriteKind::DeadLetter,
+        source_topic: Some("pedidos".into()),
+        ..message.clone()
+    };
+    let visibility = VisibilityRegisterRequest {
+        operation_id: guid(4),
+        coordinator_id: guid(3),
+        kind: VisibilityKind::Delivery,
+        invisible_until_ms: 1_791_288_120_000,
+        receipt_token: guid(5),
+        delivery_count: Some(1),
+    };
+    let ack = AckRegisterRequest {
+        operation_id: guid(6),
+        coordinator_id: guid(3),
+        receipt_token: guid(5),
+        delete_at_ms: Some(1_791_288_300_000),
+    };
+    let topic = TopicRegisterRequest {
+        operation_id: guid(7),
+        coordinator_id: guid(3),
+        operation: TopicOperation::Create,
+        topic: serde_json::json!({"id": guid(8), "name": "pedidos", "type": "queue"}),
+        expected_id: Some(guid(8)),
+    };
+    let token = TokenRegisterRequest {
+        operation_id: guid(9),
+        coordinator_id: guid(3),
+        operation: TokenOperation::Revoke,
+        token: serde_json::json!({"id": guid(12)}),
+    };
+    let t = || "pedidos".to_owned();
+    let id = || guid(10);
+    vec![
+        Request::ListNodes,
+        Request::Join(JoinRequest {
+            node_id: guid(1),
+            addresses: vec!["10.0.0.1".into()],
+            port: 8081,
+            version: "0.9.0".into(),
+        }),
+        Request::Register(NodeRegisterRequest {
+            operation_id: guid(1),
+            coordinator_id: guid(2),
+            node: Member {
+                node_id: guid(3),
+                addresses: vec!["10.0.0.3".into()],
+                port: 8081,
+                state: MemberState::Active,
+            },
+        }),
+        Request::Unregister(NodeUnregisterRequest {
+            operation_id: guid(1),
+            coordinator_id: guid(2),
+            node_id: guid(3),
+            reason: UnregisterReason::Drain,
+        }),
+        Request::Commit(op()),
+        Request::Rollback(op()),
+        Request::Topic(Step::Register(topic)),
+        Request::Topic(Step::Commit(op())),
+        Request::Topic(Step::Rollback(op())),
+        Request::ListTopics(StreamQuery {
+            from: Some(guid(1)),
+            to: None,
+            limit: Some(50),
+        }),
+        Request::Token(Step::Register(token)),
+        Request::Token(Step::Commit(op())),
+        Request::ListTokens(StreamQuery::default()),
+        Request::Write {
+            topic: t(),
+            id: id(),
+            step: Step::Register(message),
+        },
+        Request::Write {
+            topic: t(),
+            id: id(),
+            step: Step::Register(dead_letter),
+        },
+        Request::Write {
+            topic: t(),
+            id: id(),
+            step: Step::Commit(op()),
+        },
+        Request::Write {
+            topic: t(),
+            id: id(),
+            step: Step::Rollback(op()),
+        },
+        Request::Visibility {
+            topic: t(),
+            id: id(),
+            step: Step::Register(visibility),
+        },
+        Request::Visibility {
+            topic: t(),
+            id: id(),
+            step: Step::Commit(op()),
+        },
+        Request::Ack {
+            topic: t(),
+            id: id(),
+            step: Step::Register(ack),
+        },
+        Request::Ack {
+            topic: t(),
+            id: id(),
+            step: Step::Rollback(op()),
+        },
+        Request::Take {
+            topic: t(),
+            request: TakeRequest {
+                max_messages: 3,
+                visibility_timeout: 120,
+            },
+        },
+        Request::Signal(SignalFrame {
+            from: guid(1),
+            signal: Signal::Ready {
+                topic: t(),
+                has_ready: true,
+            },
+        }),
+        Request::Signal(SignalFrame {
+            from: guid(1),
+            signal: Signal::NodeState {
+                state: "draining".into(),
+            },
+        }),
+        Request::Forward(ForwardRequest {
+            method: "POST".into(),
+            path_and_query: "/topics/pedidos/messages?groupId=g1".into(),
+            headers: vec![
+                ("content-type".into(), "application/json".into()),
+                ("authorization".into(), "Bearer x".into()),
+            ],
+            body: b"{\"a\":1}".to_vec(),
+            client_ip: Some("203.0.113.9".into()),
+        }),
+    ]
+}
+
+/// UC: UC-ESC-025, UC-INV-013, UC-DEF-005, UC-DEF-008
+#[test]
+fn every_request_survives_the_trip_to_http_and_back() {
+    for request in requests() {
+        let call = request.to_http();
+        let back = Request::from_http(&call.method, &call.path, &call.headers, &call.body)
+            .unwrap_or_else(|e| panic!("{}: {e}", request.name()));
+        assert_eq!(
+            back,
+            request,
+            "{} em {} {}",
+            request.name(),
+            call.method,
+            call.path
+        );
+    }
+}
+
+#[test]
+fn the_routes_are_the_ones_of_the_document() {
+    let paths: Vec<(String, String)> = requests()
+        .iter()
+        .map(|r| {
+            let call = r.to_http();
+            (
+                call.method,
+                call.path
+                    .split('?')
+                    .next()
+                    .unwrap()
+                    .split('/')
+                    .map(|s| if id::is_guid_v7(s) { "{id}" } else { s })
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            )
+        })
+        .collect();
+    let has = |method: &str, path: &str| paths.iter().any(|(m, p)| m == method && p == path);
+    let id = "{id}";
+    assert!(has("GET", "/cluster/nodes"));
+    assert!(has("POST", "/cluster/nodes/join"));
+    assert!(has("POST", "/cluster/nodes/rollback"));
+    assert!(has("POST", "/cluster/topics/register"));
+    assert!(has("GET", "/cluster/topics"));
+    assert!(has("POST", "/cluster/tokens/register"));
+    assert!(has(
+        "POST",
+        &format!("/cluster/topics/pedidos/messages/{id}/register")
+    ));
+    assert!(has(
+        "POST",
+        &format!("/cluster/topics/pedidos/messages/{id}/commit")
+    ));
+    assert!(has(
+        "POST",
+        &format!("/cluster/topics/pedidos/messages/{id}/visibility/register")
+    ));
+    assert!(has(
+        "POST",
+        &format!("/cluster/topics/pedidos/messages/{id}/ack/rollback")
+    ));
+    assert!(has("POST", "/cluster/topics/pedidos/messages/take"));
+    assert!(has("POST", "/cluster/signals"));
+    assert!(has("POST", "/cluster/forward/topics/pedidos/messages"));
+}
+
+#[test]
+fn unknown_routes_wrong_verbs_and_bad_bodies_are_refused() {
+    let json = vec![("content-type".to_owned(), "application/json".to_owned())];
+    let refused = |method: &str, path: &str, headers: &[(String, String)], body: &[u8]| {
+        Request::from_http(method, path, headers, body)
+            .unwrap_err()
+            .code
+    };
+    assert_eq!(
+        refused("GET", "/topics", &[], b""),
+        ErrorCode::RouteNotFound
+    );
+    assert_eq!(
+        refused("GET", "/cluster/desconhecida", &[], b""),
+        ErrorCode::RouteNotFound
+    );
+    assert_eq!(
+        refused("GET", "/cluster/nodes/join", &[], b""),
+        ErrorCode::RouteNotFound
+    );
+    assert_eq!(
+        refused("POST", "/cluster/nodes", &json, b"{}"),
+        ErrorCode::RouteNotFound
+    );
+    assert_eq!(
+        refused("POST", "/cluster/topics/pedidos", &json, b"{}"),
+        ErrorCode::RouteNotFound
+    );
+    assert_eq!(
+        refused("POST", "/cluster/nodes/join", &json, br#"{"nodeId":"x"}"#),
+        ErrorCode::ValidationRequired
+    );
+    assert_eq!(
+        refused(
+            "POST",
+            "/cluster/nodes/commit",
+            &json,
+            br#"{"operationId":"x","extra":1}"#
+        ),
+        ErrorCode::ValidationUnknownField
+    );
+    assert_eq!(
+        refused(
+            "POST",
+            "/cluster/nodes/commit",
+            &[],
+            b"{\"operationId\":\"x\"}"
+        ),
+        ErrorCode::MediaUnsupported
+    );
+    assert_eq!(
+        refused("GET", "/cluster/topics?cursor=1", &[], b""),
+        ErrorCode::ValidationUnknownField
+    );
+    assert_eq!(
+        refused("GET", "/cluster/topics?limit=abc", &[], b""),
+        ErrorCode::ValidationFailed
+    );
+}
+
+/// UC: UC-STR-004, UC-STR-001
+#[test]
+fn a_stream_ends_with_the_end_line_and_without_it_the_chunk_is_a_failure() {
+    let items = vec![
+        serde_json::json!({"id": guid(1), "name": "a"}),
+        serde_json::json!({"id": guid(2), "name": "b"}),
+    ];
+    let page = StreamPage::new(items, true);
+    assert_eq!(
+        page.end.last.as_deref(),
+        Some(page.items[1]["id"].as_str().unwrap())
+    );
+    let text = page.to_ndjson();
+    assert_eq!(
+        text.lines().count(),
+        3,
+        "um objeto por linha e a linha final"
+    );
+    assert_eq!(StreamPage::from_ndjson(&text).unwrap(), page);
+
+    // Cortado antes da linha final: falho, mesmo que as linhas de dados estejam inteiras.
+    let truncated: String = text.lines().take(2).map(|l| format!("{l}\n")).collect();
+    assert!(StreamPage::from_ndjson(&truncated).is_err());
+    // A contagem da linha final tem de conferir.
+    let wrong = text.replace("\"count\":2", "\"count\":5");
+    assert!(StreamPage::from_ndjson(&wrong).is_err());
+    // Erro depois do `200`: o emissor escreve `{"error":...}`.
+    let failed = format!(
+        "{}\n{{\"error\":\"disco\"}}\n",
+        text.lines().next().unwrap()
+    );
+    assert!(StreamPage::from_ndjson(&failed).is_err());
+}
+
+#[test]
+fn the_replies_are_read_by_the_kind_of_the_request() {
+    let ack = Response::Ack(Ack {
+        operation_id: guid(1),
+        accepted: true,
+    });
+    let commit = Request::Commit(OperationRef {
+        operation_id: guid(1),
+    });
+    assert_eq!(commit.parse_reply(ack.clone().into_http()).unwrap(), ack);
+
+    let page = Response::Stream(StreamPage::new(
+        vec![serde_json::json!({"id": guid(1)})],
+        false,
+    ));
+    let list = Request::ListTopics(StreamQuery::default());
+    let reply = page.clone().into_http();
+    assert_eq!(reply.headers[0].1, "application/x-ndjson");
+    assert_eq!(list.parse_reply(reply).unwrap(), page);
+
+    let taken = Response::Taken(TakeResponse {
+        messages: vec![record("application/json", b"{}")],
+    });
+    let take = Request::Take {
+        topic: "pedidos".into(),
+        request: TakeRequest {
+            max_messages: 1,
+            visibility_timeout: 30,
+        },
+    };
+    assert_eq!(take.parse_reply(taken.clone().into_http()).unwrap(), taken);
+
+    let signal = Request::Signal(SignalFrame {
+        from: guid(1),
+        signal: Signal::Notify {
+            topic: "pedidos".into(),
+            count: 4,
+        },
+    });
+    assert_eq!(
+        signal.parse_reply(Response::Empty.into_http()).unwrap(),
+        Response::Empty
+    );
+}
+
+/// UC: UC-FWD-004
+#[test]
+fn a_forwarded_reply_comes_back_as_the_destination_gave_it() {
+    let forward = Request::Forward(ForwardRequest {
+        method: "GET".into(),
+        path_and_query: "/topics".into(),
+        headers: vec![],
+        body: vec![],
+        client_ip: None,
+    });
+    for status in [200u16, 409, 413, 429, 503] {
+        let reply = HttpReply {
+            status,
+            headers: vec![("x-extra".into(), "1".into())],
+            body: b"corpo".to_vec(),
+        };
+        let parsed = forward.parse_reply(reply).unwrap();
+        assert_eq!(
+            parsed,
+            Response::Forwarded(ForwardResponse {
+                status,
+                headers: vec![("x-extra".into(), "1".into())],
+                body: b"corpo".to_vec(),
+            })
+        );
+    }
+}
+
+#[test]
+fn an_error_reply_becomes_the_error_of_the_peer_with_retry_after() {
+    let error = TabaError::new(ErrorCode::ClusterNodeSyncing, "sem tabela")
+        .with_detail("x", ErrorCode::ValidationFailed, "y")
+        .with_retry_after(7);
+    let reply = error_reply(&error, "req-1");
+    assert_eq!(reply.status, 503);
+    let request = Request::ListNodes;
+    let back = request.parse_reply(reply).unwrap_err();
+    assert_eq!(back.code, ErrorCode::ClusterNodeSyncing);
+    assert_eq!(back.message, "sem tabela");
+    assert_eq!(back.retry_after, Some(7));
+    assert_eq!(back.details[0].field, "x");
+
+    // Uma resposta que não é o `ErrorResponse` não derruba a leitura.
+    let odd = HttpReply {
+        status: 500,
+        headers: vec![],
+        body: b"<html>".to_vec(),
+    };
+    assert_eq!(
+        request.parse_reply(odd).unwrap_err().code,
+        ErrorCode::InternalError
+    );
+}
+
+#[test]
+fn the_token_json_round_trips() {
+    use crate::core::token::{Permission, TokenRecord};
+    let token = TokenRecord {
+        id: guid(1),
+        name: "app".into(),
+        permissions: vec![Permission::Publish, Permission::Consume],
+        topic_prefixes: vec!["pedidos".into()],
+        created_ms: 1_791_288_000_000,
+        expires_ms: Some(1_791_374_400_000),
+        salt: "c2FsdA".into(),
+        secret_hash: "aGFzaA".into(),
+    };
+    assert_eq!(token_from_json(&token_to_json(&token)).unwrap(), token);
+    let mut no_expiry = token.clone();
+    no_expiry.expires_ms = None;
+    assert_eq!(
+        token_from_json(&token_to_json(&no_expiry)).unwrap(),
+        no_expiry
+    );
+    assert!(token_from_json(&serde_json::json!({"id": "x"})).is_err());
+}
