@@ -462,6 +462,32 @@ impl MessageStore {
         Ok(removed as u64)
     }
 
+    /// O espaço livre, em bytes, no volume de `storage.dir` (o que um processo sem privilégio pode
+    /// usar).
+    pub fn free_bytes(&self) -> io::Result<u64> {
+        fs4::available_space(&self.root)
+    }
+
+    /// A soma dos tamanhos dos arquivos de corpo do tópico (lê só os metadados dos arquivos, em
+    /// ordem de pasta: custa uma chamada por mensagem em disco).
+    pub fn body_bytes(&self, topic: &str) -> io::Result<u64> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(0);
+        };
+        let mut total = 0;
+        for entry in std::fs::read_dir(&disk.dir)? {
+            let entry = entry?;
+            if entry.path().extension().is_some_and(|e| e == BODY_EXT) {
+                match entry.metadata() {
+                    Ok(meta) => total += meta.len(),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        Ok(total)
+    }
+
     pub fn count(&self, topic: &str) -> io::Result<u64> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(0);

@@ -7,9 +7,12 @@ pub mod client_ip;
 mod common;
 mod json;
 pub mod messages;
+pub mod metrics;
+pub mod observe;
 pub mod operations;
 pub mod ratelimit;
 pub mod tokens;
+mod topic_stats;
 pub mod topics;
 
 use std::sync::Arc;
@@ -25,7 +28,9 @@ use crate::cluster::state::{DrainState, NodeShared};
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::messages::Messages;
+use crate::engine::messages::stats::StatsRules;
 use crate::engine::topics::Topics;
+use crate::telemetry::Telemetry;
 use auth::Auth;
 use client_ip::ClientIpRules;
 use ratelimit::RateLimiter;
@@ -46,6 +51,9 @@ pub struct AppState {
     pub client_ip: Arc<ClientIpRules>,
     pub rate_limiter: Arc<RateLimiter>,
     pub auth: Arc<Auth>,
+    pub telemetry: Arc<Telemetry>,
+    /// Os limites das condições dos tópicos (`stats.topics.*`).
+    pub stats_rules: Arc<StatsRules>,
 }
 
 /// Em drain o nó não atende chamada de cliente (doc 04, seção 6.10). Sem outro nó para
@@ -82,7 +90,10 @@ pub fn client_router(state: AppState, with_operations: bool) -> Router {
         routes = routes.merge(tokens::routes());
     }
     let routes = routes
-        .route_layer(middleware::from_fn(auth::authorize))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::authorize,
+        ))
         .route_layer(middleware::from_fn_with_state(
             state.node.clone(),
             drain_guard,

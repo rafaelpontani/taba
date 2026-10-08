@@ -1,5 +1,5 @@
-//! API de operação (doc 06b): saúde do nó, `/health/cluster` de um nó só e o drain.
-//! `/metrics` e `/metrics/topics/*` entram com a observabilidade.
+//! API de operação (doc 06b): saúde do nó, `/health/cluster` de um nó só, o drain, `/metrics`
+//! (`http/metrics`) e `/metrics/topics/*` (`http/topic_stats`).
 //!
 //! Estas rotas não usam token e só aceitam os IPs de `operations.allowed-ips` (lista vazia:
 //! sem restrição). O IP é o do cliente resolvido (`client-ip.*`, doc 12).
@@ -61,7 +61,7 @@ fn unix_ms(at: SystemTime) -> u64 {
 
 /// As rotas de operação, já com o filtro de `operations.allowed-ips`.
 pub fn routes(state: &AppState) -> Router<AppState> {
-    Router::new()
+    let mut routes = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/health/cluster", get(cluster_health))
@@ -69,6 +69,12 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/node/drain",
             get(drain_status).post(drain_start).delete(drain_cancel),
         )
+        .merge(super::topic_stats::routes());
+    // Com `telemetry.prometheus.enabled` desligado a rota não existe (`404`).
+    if state.telemetry.prometheus_enabled {
+        routes = routes.route("/metrics", get(super::metrics::prometheus));
+    }
+    routes
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             ratelimit::rate_limit,
@@ -154,6 +160,29 @@ async fn cluster_health(
         (_, NodeState::Syncing) => json!({ "syncing": 1 }),
         _ => json!({}),
     };
+    let disk_free = state.messages.disk_free_bytes();
+    let mut storage_json = json!({
+        "memoryUsedBytes": storage.memory_bytes,
+        "memoryLimitBytes": storage.memory_limit_bytes,
+        "memoryMessages": storage.memory_messages,
+        "diskMessages": storage.disk_messages,
+    });
+    if let (Some(free), Some(object)) = (disk_free, storage_json.as_object_mut()) {
+        object.insert("diskFreeBytes".into(), json!(free));
+    }
+    // `storage-pressure`: o espaço livre em `storage.dir` caiu abaixo de `stats.disk.free-min`.
+    let pressure = matches!(
+        (disk_free, state.stats_rules.disk_free_min),
+        (Some(free), Some(min)) if free < min
+    );
+    let (worst, conditions) = if pressure {
+        (
+            "storage-pressure",
+            json!([{ "condition": "storage-pressure", "severity": "warning" }]),
+        )
+    } else {
+        ("ok", json!([]))
+    };
     let status = json!({
         "nodeId": node.node_id,
         "version": env!("CARGO_PKG_VERSION"),
@@ -162,12 +191,7 @@ async fn cluster_health(
         "drainState": node.drain_state().as_str(),
         "startedAt": format_ms(unix_ms(node.started_at)),
         "collectedAt": now,
-        "storage": {
-            "memoryUsedBytes": storage.memory_bytes,
-            "memoryLimitBytes": storage.memory_limit_bytes,
-            "memoryMessages": storage.memory_messages,
-            "diskMessages": storage.disk_messages,
-        },
+        "storage": storage_json,
         "signals": {
             "membersVersion": 0,
             "quorumAvailable": true,
@@ -182,8 +206,8 @@ async fn cluster_health(
         "scope": scope,
         "collectedAt": now,
         "partial": false,
-        "worstCondition": "ok",
-        "conditions": [],
+        "worstCondition": worst,
+        "conditions": conditions,
         "summary": {
             "members": members,
             "membersVersion": 0,

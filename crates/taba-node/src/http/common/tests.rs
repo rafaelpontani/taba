@@ -75,6 +75,10 @@ fn app() -> Router {
             )),
         )),
         rate_limiter: Arc::new(RateLimiter::from_config(&config.rate_limit, clock.clone())),
+        telemetry: Arc::new(crate::telemetry::Telemetry::from_config(&config, "n")),
+        stats_rules: Arc::new(crate::engine::messages::stats::StatsRules::from_config(
+            &config,
+        )),
     };
     let routes = Router::new()
         .route("/boom", get(boom))

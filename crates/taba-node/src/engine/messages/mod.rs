@@ -35,12 +35,13 @@
 
 mod index;
 mod rates;
+pub mod stats;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::Notify;
 
@@ -53,9 +54,13 @@ use crate::core::validation;
 use crate::engine::topics::{CreateTopic, Kind, TopicView, Topics};
 use crate::storage;
 use crate::storage::messages::{MessageMeta, MessageStore};
-use index::{IndexRules, TopicIndex};
+use index::{GroupKey, IndexRules, TopicIndex};
 use rates::Rates;
 use sha2::{Digest, Sha256};
+use stats::{
+    DistributorCounters, GroupSnapshot, NodeCounters, NodeObservation, Percentiles, StatsRules,
+    TopicCounters, TopicSnapshot,
+};
 
 /// `waitTime` do `GET`: de 0 a 20 segundos (doc 12).
 const WAIT_TIME_SECS: (u64, u64) = (0, 20);
@@ -255,6 +260,8 @@ struct TopicState {
     /// O `maxDeliveries` com que as prontas foram conferidas por último: se o `PATCH` o mudar,
     /// as que já passam do novo limite vão à dead-letter.
     checked_max_deliveries: Option<Option<u64>>,
+    /// O que o tópico conta desde que o nó o abriu (doc 11).
+    stats: TopicCounters,
 }
 
 fn message_not_found() -> TabaError {
@@ -377,6 +384,42 @@ pub struct Messages {
     last_get: Mutex<HashMap<String, u64>>,
     /// A partida do nó, em milissegundos: o relógio de ociosidade nunca conta o tempo parado.
     started_ms: u64,
+    /// O que o nó todo conta (doc 11): lido por `GET /metrics`.
+    counters: NodeCounters,
+    /// O que cada distribuidor conta, por nome.
+    distributors: Mutex<HashMap<String, DistributorCounters>>,
+}
+
+/// Fecha a espera de um `GET` em long polling: se o chamador desistiu antes do fim (a conexão
+/// caiu e o futuro foi descartado), conta como `disconnected`.
+struct LongPoll<'a> {
+    counters: &'a NodeCounters,
+    /// `Some(true)`: terminou entregando; `Some(false)`: terminou vazio; `None`: foi descartado.
+    delivered: Option<bool>,
+}
+
+impl<'a> LongPoll<'a> {
+    fn start(counters: &'a NodeCounters) -> Self {
+        counters.longpoll_waiting.fetch_add(1, Ordering::Relaxed);
+        Self {
+            counters,
+            delivered: None,
+        }
+    }
+}
+
+impl Drop for LongPoll<'_> {
+    fn drop(&mut self) {
+        self.counters
+            .longpoll_waiting
+            .fetch_sub(1, Ordering::Relaxed);
+        let counter = match self.delivered {
+            Some(true) => &self.counters.longpoll_delivered,
+            Some(false) => &self.counters.longpoll_empty,
+            None => &self.counters.longpoll_disconnected,
+        };
+        NodeCounters::add(counter, 1);
+    }
 }
 
 impl Messages {
@@ -389,6 +432,7 @@ impl Messages {
     /// também avisam o nó, que passa a `failed` (doc 05, seção 7.3).
     fn disk_error(&self, what: &str, e: &io::Error) -> TabaError {
         tracing::error!(error = %e, "{what}");
+        NodeCounters::add(&self.counters.disk_errors, 1);
         if storage::is_fatal(e) {
             self.fail();
         }
@@ -439,6 +483,8 @@ impl Messages {
             on_failure: OnceLock::new(),
             last_get: Mutex::new(HashMap::new()),
             started_ms,
+            counters: NodeCounters::new(),
+            distributors: Mutex::new(HashMap::new()),
         });
         // As mensagens saem junto com o tópico (doc 02, seção 3.3).
         let weak = Arc::downgrade(&messages);
@@ -515,6 +561,7 @@ impl Messages {
             rates: Rates::default(),
             dedup,
             checked_max_deliveries: None,
+            stats: TopicCounters::new(),
         }));
         states.insert(name.to_owned(), state.clone());
         state
@@ -667,7 +714,10 @@ impl Messages {
                     break;
                 };
                 match self.store.put(&name, &stored.meta, &stored.body) {
-                    Ok(()) => freed += stored.body.len() as u64,
+                    Ok(()) => {
+                        freed += stored.body.len() as u64;
+                        NodeCounters::add(&self.counters.overflow, 1);
+                    }
                     Err(e) => {
                         self.disk_error("falha ao rebaixar a mensagem para o disco", &e);
                         self.put_in_memory(&mut guard, stored);
@@ -703,20 +753,49 @@ impl Messages {
     }
 
     pub fn publish(&self, topic: &str, request: PublishRequest) -> Result<Published, TabaError> {
+        let started = Instant::now();
         let view = self.topics.get(topic)?;
-        let prepared = Prepared::new(&request)?;
+        let result = self.publish_checked(&view, &request, started);
+        if result.is_err() {
+            self.count_publish_error(&view);
+        }
+        result
+    }
+
+    fn publish_checked(
+        &self,
+        view: &TopicView,
+        request: &PublishRequest,
+        started: Instant,
+    ) -> Result<Published, TabaError> {
+        let prepared = Prepared::new(request)?;
         if let Some(prefixes) = view.definition.prefixes() {
             if request.body.len() as u64 > self.rules.max_bytes {
                 return Err(too_large(self.rules.max_bytes));
             }
-            return self.publish_to_distributor(prefixes, &request, &prepared);
+            return self.publish_to_distributor(
+                &view.definition.name,
+                prefixes,
+                request,
+                &prepared,
+            );
         }
         let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
         if request.body.len() as u64 > limit {
             return Err(too_large(limit));
         }
-        self.store(&view, &request, &prepared)
+        self.store(view, request, &prepared, started)
             .map(|(id, duplicate)| Published::Queue { id, duplicate })
+    }
+
+    /// Uma publicação que voltou erro ao cliente (validação, tamanho, disco). O distribuidor
+    /// não entra: ele conta publicações aceitas e cópias.
+    fn count_publish_error(&self, view: &TopicView) {
+        if view.definition.queue().is_some() {
+            lock(&self.state_of(&view.definition.name))
+                .stats
+                .publish_errors += 1;
+        }
     }
 
     /// Valida os campos da publicação que dependem do tipo da fila e guarda a mensagem, em
@@ -726,6 +805,7 @@ impl Messages {
         view: &TopicView,
         request: &PublishRequest,
         prepared: &Prepared,
+        started: Instant,
     ) -> Result<(String, Option<bool>), TabaError> {
         let fifo = view.definition.queue().is_some_and(|q| q.fifo);
         if fifo && request.group_id.is_none() {
@@ -784,7 +864,18 @@ impl Messages {
                 if let Some((original, at)) = state.dedup.get(key)
                     && at.saturating_add(self.rules.fifo_dedup_window_ms) > now
                 {
-                    return Ok((original.clone(), Some(true)));
+                    let original = original.clone();
+                    state.stats.deduplicated += 1;
+                    NodeCounters::add(&self.counters.deduplicated, 1);
+                    tracing::debug!(
+                        event.name = "taba.message.deduplicated",
+                        messaging.destination.name = %name,
+                        group_id = %key.0,
+                        deduplication_id = %key.1,
+                        message.id = %original,
+                        "publicação descartada por deduplicação"
+                    );
+                    return Ok((original, Some(true)));
                 }
                 if state.dedup.len() > DEDUP_PRUNE_ABOVE {
                     let window = self.rules.fifo_dedup_window_ms;
@@ -805,6 +896,10 @@ impl Messages {
                 self.store
                     .put(&name, &meta, &request.body)
                     .map_err(|e| self.disk_error("falha ao gravar a mensagem em disco", &e))?;
+                // No drain toda mensagem vai ao disco: isso não é falta de memória.
+                if !self.draining.load(Ordering::SeqCst) {
+                    NodeCounters::add(&self.counters.overflow, 1);
+                }
             }
             state
                 .index
@@ -816,6 +911,13 @@ impl Messages {
                 .rates
                 .published
                 .record(now, 1, self.rules.rate_window_secs);
+            state.stats.published += 1;
+            state.stats.published_bytes += size;
+            state.stats.last_published_ms = Some(now);
+            state
+                .stats
+                .publish_latency
+                .record(started.elapsed().as_secs_f64());
         }
         self.wake(&name, 1);
         Ok((id, fifo.then_some(false)))
@@ -825,6 +927,7 @@ impl Messages {
     /// filas não é erro: a mensagem é descartada (doc 15, seção 14.2).
     fn publish_to_distributor(
         &self,
+        name: &str,
         prefixes: &[String],
         request: &PublishRequest,
         prepared: &Prepared,
@@ -855,10 +958,35 @@ impl Messages {
                 };
                 DistributorDelivery {
                     topic: view.definition.name.clone(),
-                    result: self.store(view, request, prepared).map(|(id, _)| id),
+                    result: self
+                        .store(view, request, prepared, Instant::now())
+                        .map(|(id, _)| id),
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let failed = deliveries.iter().filter(|d| d.result.is_err()).count() as u64;
+        {
+            let mut distributors = lock(&self.distributors);
+            let counters = distributors.entry(name.to_owned()).or_default();
+            counters.received += 1;
+            counters.copies += deliveries.len() as u64 - failed;
+            counters.copy_errors += failed;
+        }
+        if deliveries.is_empty() {
+            tracing::info!(
+                event.name = "taba.distributor.no_target",
+                messaging.destination.name = %name,
+                "publicação sem nenhuma fila que case: a mensagem foi descartada"
+            );
+        } else if failed > 0 {
+            tracing::warn!(
+                event.name = "taba.distributor.partial",
+                messaging.destination.name = %name,
+                failed,
+                copies = deliveries.len(),
+                "ao menos uma cópia da publicação falhou"
+            );
+        }
         Ok(Published::Distributor { deliveries })
     }
 
@@ -908,6 +1036,7 @@ impl Messages {
     pub fn ack(&self, topic: &str, id: &str, receipt_token: Option<&str>) -> Result<(), TabaError> {
         let view = self.queue_view(topic)?;
         let receipt_token = receipt_token.ok_or_else(|| required(&["receiptToken"]))?;
+        let started = Instant::now();
         let now = self.clock.now_millis();
         self.settle(&view, now);
         let name = &view.definition.name;
@@ -915,9 +1044,21 @@ impl Messages {
         let mut state = lock(&state);
         let (meta, place) = self.locate(&state, name, id, receipt_token)?;
         if view.definition.queue().is_some_and(|q| q.fifo) {
-            return self.fifo_ack(&mut state, name, meta, place, now);
+            self.fifo_ack(&mut state, name, meta, place, now)?;
+        } else {
+            self.remove_message(&mut state, name, id, place)?;
         }
-        self.remove_message(&mut state, name, id, place)
+        state.stats.acked += 1;
+        state.stats.last_consumed_ms = Some(now);
+        state
+            .rates
+            .acked
+            .record(now, 1, self.rules.rate_window_secs);
+        state
+            .stats
+            .consume_latency
+            .record(started.elapsed().as_secs_f64());
+        Ok(())
     }
 
     /// O ack da fila FIFO não apaga a linha: grava `deleteAt` (o instante do id mais a janela de
@@ -1091,6 +1232,8 @@ impl Messages {
         let name = view.definition.name.clone();
         let notify = self.notifier(&name);
         let deadline = tokio::time::Instant::now() + Duration::from_secs(wait);
+        // Só a chamada que chega a dormir é um long polling para as métricas.
+        let mut polling: Option<LongPoll<'_>> = None;
         loop {
             // Registra o interesse antes de olhar a fila, para não perder uma mensagem que
             // chegue entre o olhar e a espera. A ordem do registro é a ordem de atendimento.
@@ -1114,8 +1257,12 @@ impl Messages {
                 || tokio::time::Instant::now() >= deadline
                 || self.is_draining()
             {
+                if let Some(poll) = polling.as_mut() {
+                    poll.delivered = Some(!taken.delivered.is_empty());
+                }
                 return Ok(taken.delivered);
             }
+            polling.get_or_insert_with(|| LongPoll::start(&self.counters));
             // Dorme até chegar mensagem, o prazo acabar ou a próxima invisível vencer.
             let mut until = deadline;
             if let Some(at) = taken.next_visible_ms {
@@ -1246,7 +1393,16 @@ impl Messages {
                 Place::Disk
             };
             match self.remove_message(&mut state, name, &id, place) {
-                Ok(()) => tracing::info!(event = "taba.message.expired", topic = %name, id = %id),
+                Ok(()) => {
+                    state.stats.expired += 1;
+                    NodeCounters::add(&self.counters.expired, 1);
+                    tracing::info!(
+                        event.name = "taba.message.expired",
+                        messaging.destination.name = %name,
+                        message.id = %id,
+                        "mensagem descartada por ttl"
+                    );
+                }
                 Err(_) => tracing::error!(topic = %name, id = %id, "falha ao apagar vencida"),
             }
         }
@@ -1306,12 +1462,6 @@ impl Messages {
         for id in ids {
             let original: Option<MessageMeta>;
             let reset = |mut meta: MessageMeta| {
-                tracing::info!(
-                    event = "taba.message.dead_lettered",
-                    topic = %source,
-                    id = %id,
-                    delivery_count = meta.delivery_count
-                );
                 meta.delivery_count = 0;
                 meta.invisible_until_ms = 0;
                 meta.receipt_token = None;
@@ -1352,6 +1502,15 @@ impl Messages {
                 }
             }
             source_state.index.remove(&id);
+            source_state.stats.dead_lettered += 1;
+            NodeCounters::add(&self.counters.dead_lettered, 1);
+            tracing::warn!(
+                event.name = "taba.message.dead_lettered",
+                messaging.destination.name = %source,
+                message.id = %id,
+                delivery_count = original.as_ref().map_or(0, |m| m.delivery_count),
+                "mensagem enviada à dead-letter por atingir maxDeliveries"
+            );
             // Na FIFO a deduplicação segue valendo depois da saída da mensagem (doc 17, 16.7).
             if fifo
                 && let Some(original) = original
@@ -1568,11 +1727,150 @@ impl Messages {
         )
     }
 
+    // ---- Estatística (doc 11) ----
+
+    /// O retrato de uma fila para `GET /metrics/topics*`. Acerta antes o `ttl` e as invisibilidades
+    /// vencidas, para a contagem de prontas e em processamento ser a de agora. `404` se o tópico
+    /// não existe e `409` num distribuidor (que tem [`Messages::distributor_counters`]).
+    pub fn topic_snapshot(
+        &self,
+        topic: &str,
+        rules: &StatsRules,
+    ) -> Result<TopicSnapshot, TabaError> {
+        let view = self.queue_view(topic)?;
+        let now = self.clock.now_millis();
+        self.settle(&view, now);
+        let name = &view.definition.name;
+        let window = self.rules.rate_window_secs;
+        let mut snapshot = {
+            let handle = self.state_of(name);
+            let state = lock(&handle);
+            let fifo = state.index.is_fifo();
+            let totals = state.index.group_totals();
+            let memory_messages = state.memory.len() as u64;
+            TopicSnapshot {
+                counters: state.stats.clone(),
+                publish_rate: state.rates.published.per_second(now, window),
+                consume_rate: state.rates.consumed.per_second(now, window),
+                ack_rate: state.rates.acked.per_second(now, window),
+                visible: state.index.ready_count() as u64,
+                invisible: state.index.processing_count() as u64,
+                oldest_ms: state.index.oldest_age_ms(),
+                memory_messages,
+                disk_messages: (state.index.message_count() as u64).saturating_sub(memory_messages),
+                memory_bytes: state.memory.values().map(|s| s.body.len() as u64).sum(),
+                disk_bytes: 0,
+                groups: totals.groups,
+                largest_group: totals.largest,
+                busy_groups: if fifo { totals.busy } else { 0 },
+                stalled_group: rules
+                    .group_stalled_deliveries
+                    .filter(|_| fifo)
+                    .and_then(|over| state.index.stalled_group(over)),
+                publish_latency: Percentiles::of(&state.stats.publish_latency),
+                consume_latency: Percentiles::of(&state.stats.consume_latency),
+            }
+        };
+        // Os bytes em disco vêm do tamanho dos arquivos, fora da trava do tópico.
+        if snapshot.disk_messages > 0 {
+            snapshot.disk_bytes = self.store.body_bytes(name).unwrap_or(0);
+        }
+        Ok(snapshot)
+    }
+
+    /// Os grupos de uma fila, com as contagens e a faixa de hoje (sem ordem). Um grupo sem
+    /// mensagens não existe no índice, então não aparece.
+    pub fn group_snapshots(&self, topic: &str) -> Result<Vec<GroupSnapshot>, TabaError> {
+        let view = self.queue_view(topic)?;
+        self.settle(&view, self.clock.now_millis());
+        let handle = self.state_of(&view.definition.name);
+        let state = lock(&handle);
+        Ok(state
+            .index
+            .group_infos()
+            .into_iter()
+            .map(|info| {
+                let (group_id, overflow) = match info.key {
+                    GroupKey::Named(name) => (Some(name), false),
+                    GroupKey::Overflow => (None, true),
+                };
+                GroupSnapshot {
+                    group_id,
+                    overflow,
+                    visible: info.ready,
+                    invisible: info.processing,
+                    band: info.band,
+                    oldest_ms: info.oldest_age_ms,
+                }
+            })
+            .collect())
+    }
+
+    /// O que o distribuidor contou desde a partida do nó.
+    pub fn distributor_counters(&self, name: &str) -> DistributorCounters {
+        lock(&self.distributors)
+            .get(name)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// O que `GET /metrics` mostra do nó: memória, disco, prontas, grupos ocupados e os
+    /// contadores. Conta pelos índices dos tópicos abertos (todo tópico com mensagem em disco é
+    /// aberto na primeira varredura depois da partida).
+    pub fn observe_node(&self) -> NodeObservation {
+        let (mut ready, mut busy_groups, mut memory_messages, mut disk_messages) = (0, 0, 0, 0);
+        for (_, state) in self.existing_states() {
+            let state = lock(&state);
+            ready += state.index.ready_count() as u64;
+            if state.index.is_fifo() {
+                busy_groups += state.index.group_totals().busy;
+            }
+            let in_memory = state.memory.len() as u64;
+            memory_messages += in_memory;
+            disk_messages += (state.index.message_count() as u64).saturating_sub(in_memory);
+        }
+        let c = &self.counters;
+        let load = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
+        NodeObservation {
+            memory_bytes: self.memory_bytes.load(Ordering::SeqCst),
+            memory_limit_bytes: self.rules.memory_limit,
+            memory_messages,
+            disk_messages,
+            ready,
+            busy_groups,
+            overflow: load(&c.overflow),
+            reads_memory: load(&c.reads_memory),
+            reads_disk: load(&c.reads_disk),
+            disk_errors: load(&c.disk_errors),
+            redeliveries: load(&c.redeliveries),
+            dead_lettered: load(&c.dead_lettered),
+            expired: load(&c.expired),
+            deduplicated: load(&c.deduplicated),
+            longpoll_waiting: c.longpoll_waiting.load(Ordering::Relaxed),
+            longpoll_delivered: load(&c.longpoll_delivered),
+            longpoll_empty: load(&c.longpoll_empty),
+            longpoll_disconnected: load(&c.longpoll_disconnected),
+            fair_wait: c.fair_wait(),
+        }
+    }
+
+    /// O espaço livre no volume de `storage.dir`, em bytes; `None` se o sistema não disse.
+    pub fn disk_free_bytes(&self) -> Option<u64> {
+        self.store.free_bytes().ok()
+    }
+
+    /// A partida do nó, em milissegundos: onde a conta de ociosidade de um tópico sem atividade
+    /// começa quando ele é mais velho que o nó.
+    pub fn started_ms(&self) -> u64 {
+        self.started_ms
+    }
+
     // ---- Entrega ----
 
     /// Pega as mensagens prontas pelo índice (a justiça entre grupos e o efeito sanfona),
     /// juntando memória e disco.
     fn take(&self, view: &TopicView, max: usize, visibility_secs: u64) -> Result<Taken, TabaError> {
+        let started = Instant::now();
         let name = &view.definition.name;
         let now = self.clock.now_millis();
         self.settle(view, now);
@@ -1617,6 +1915,19 @@ impl Messages {
                     }
                 }
             };
+            match place {
+                Place::Memory => NodeCounters::add(&self.counters.reads_memory, 1),
+                Place::Disk => NodeCounters::add(&self.counters.reads_disk, 1),
+            }
+            if meta.delivery_count == 0 {
+                // A espera até a primeira entrega, pela faixa do grupo na hora de entregar.
+                let band = state.index.band_of_entry(&id).unwrap_or(0);
+                let waited_ms = now.saturating_sub(meta.age_base_ms());
+                self.counters.observe_wait(band, waited_ms as f64 / 1000.0);
+            } else {
+                state.stats.redelivered += 1;
+                NodeCounters::add(&self.counters.redeliveries, 1);
+            }
             meta.delivery_count += 1;
             meta.invisible_until_ms = until;
             let receipt_token = self.ids.new_at(now);
@@ -1653,6 +1964,14 @@ impl Messages {
             .rates
             .consumed
             .record(now, delivered.len() as u64, self.rules.rate_window_secs);
+        if !delivered.is_empty() {
+            state.stats.consumed += delivered.len() as u64;
+            state.stats.last_consumed_ms = Some(now);
+            state
+                .stats
+                .consume_latency
+                .record(started.elapsed().as_secs_f64());
+        }
         Ok(Taken {
             delivered,
             next_visible_ms: state.index.next_visible(),

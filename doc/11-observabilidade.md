@@ -202,7 +202,7 @@ Visão do cluster: **todos os nós reportam a mesma coisa** (ou a sua visão del
 | `taba.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `reason` (`vote`/`drain`, no desregistro), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
 | `taba.cluster.bootstrap.failures` | counter | {failure} | `reason` | Falhas de bootstrap (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
 | `taba.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
-| `taba.node.state` | gauge | {flag} | `state` (`joining`/`active`/`syncing`/`returning`) | `1` no estado atual **deste nó** (incluindo retorno após exclusão — seção 6.6). |
+| `taba.node.state` | gauge | {flag} | `state` (`joining`/`active`/`syncing`/`returning`/`failed`) | `1` no estado atual **deste nó** (incluindo retorno após exclusão — seção 6.6, e `failed`: disco cheio ou banco corrompido, seção 7.3 de [05](05-particionamento-replicacao.md)). |
 | `taba.node.drain.state` | gauge | {flag} | `state` (`active`/`draining`/`drained`) | `1` no estado do drain deste nó (seção 6.10 de [04-cluster.md](04-cluster.md)). |
 | `taba.node.drain.pending` | updowncounter | {message} | — | Mensagens ainda em memória durante o drain; chega a 0 quando o nó está `drained`. |
 
@@ -317,9 +317,9 @@ Ficam **fora** da exportação padrão e são consultadas por rotas dedicadas, p
 | **Fila** | `visibleMessages` | Mensagens **visíveis**: prontas para entrega, sem `invisibleUntil` no futuro ([14-invisibilidade.md](14-invisibilidade.md)). |
 | | `invisibleMessages` | Mensagens **invisíveis**: entregues, sem ack e com `invisibleUntil` no futuro (em processamento por algum consumidor). |
 | | `depth` | Mensagens ainda não confirmadas: `visibleMessages + invisibleMessages`. |
-| | `oldestMessageAt` | **Data de publicação da mensagem mais antiga** ainda não confirmada (visível ou invisível), tirada do timestamp do GUID v7 do ID. Ausente se o tópico não tem mensagens. |
+| | `oldestMessageAt` | **Data de publicação da mensagem mais antiga** ainda não confirmada (visível ou invisível); na dead-letter, a data em que a mensagem entrou nela (de onde o `ttl` conta). Ausente se o tópico não tem mensagens. |
 | | `oldestAge` | Derivado: `agora − oldestMessageAt`. O melhor indicador de consumidor parado. |
-| | `bytes` | Volume total acumulado. |
+| | `bytes` | Bytes das mensagens ainda não confirmadas (`memoryBytes + diskBytes`). |
 | **Armazenamento** | `memoryMessages` / `diskMessages` | Mensagens em memória e em disco. |
 | | `memoryBytes` / `diskBytes` | Bytes em memória e em disco. |
 | | `memoryShare` | Parcela da memória do cluster que o tópico ocupa (resultado da divisão dinâmica). |
@@ -343,7 +343,7 @@ Para tópicos com `groupId` (seção 12.11 de [13-entrega-de-mensagens.md](13-en
 | `oldestMessageAt`, `oldestAge` | Data e idade da mensagem mais antiga do grupo. |
 | `publishRate`, `consumeRate`, `ackRate` | Taxas do grupo, na janela `memory.rate.window`. |
 
-Parâmetros: `limit` e `cursor` (paginação por cursor, ordenada por `groupId`, sem `sort`, pelo mesmo motivo de `/metrics/topics`), `groupId` (um grupo exato), `top=N` (os `N` maiores por `messages`, **sem paginação**, é a forma de achar o barulhento), `scope` (`cluster` por padrão, ou `node`). Um grupo sem mensagens e sem atividade na janela deixa de ser acompanhado e some da resposta.
+A mensagem sem `groupId` pertence ao grupo de nome vazio (`groupId: ""`). Parâmetros: `limit` e `cursor` (paginação por cursor, ordenada por `groupId`, sem `sort`, pelo mesmo motivo de `/metrics/topics`), `groupId` (um grupo exato), `top=N` (os `N` maiores por `messages`, **sem paginação**, é a forma de achar o barulhento), `scope` (`cluster` por padrão, ou `node`). Um grupo sem mensagens e sem atividade na janela deixa de ser acompanhado e some da resposta.
 
 **Sem série por grupo no OTLP nem no Prometheus:** o número de grupos é ilimitado, e uma série por grupo estouraria a cardinalidade (mesmo motivo da seção "Exportação das métricas de tópico"). A justiça é medida por faixa, que tem cardinalidade pequena: `taba.delivery.fair.wait`, acima.
 
@@ -359,7 +359,9 @@ Também uma **lista de condições**, com o campo `worstCondition` (na API, [06b
 | `stalled` | aviso | Há mensagens (`depth > 0`) mas **nenhum consumo** há `stats.topics.stalled-after` — consumidor parado ou ausente. |
 | `noisy-group` | info | Há dois ou mais grupos e o maior ocupa mais de `stats.topics.noisy-group-share` do `depth` (padrão 50%). O grupo está em `topGroups`. Numa fila FIFO indica também o **grupo quente**, que concentra a fila num só primário ([17-topicos-fifo.md](17-topicos-fifo.md), seção 16.10). |
 | `group-stalled` | aviso | Só em fila FIFO: a cabeça de algum grupo já foi entregue mais de `stats.topics.group-stalled-deliveries` vezes sem ack, travando o grupo. O grupo está em `topGroups`. |
-| `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` >> `memoryMessages`): leituras mais lentas. |
+| `memory-pressure` | info | Maior parte das mensagens do tópico está em disco (`diskMessages` > `memoryMessages`; a razão exata é a D90): leituras mais lentas. |
+
+Um limite de `stats.topics.*` que não tem valor desliga a condição que depende dele (`backlog`, `stalled`, `idle`, `group-stalled`); `noisy-group` e `memory-pressure` não dependem de limite próprio (D90).
 
 ### Visão do nó e visão do cluster
 

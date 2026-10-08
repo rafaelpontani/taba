@@ -44,11 +44,12 @@ impl RateWindow {
     }
 }
 
-/// As duas taxas de um tópico.
+/// As taxas de um tópico.
 #[derive(Debug, Clone, Default)]
 pub struct Rates {
     pub published: RateWindow,
     pub consumed: RateWindow,
+    pub acked: RateWindow,
 }
 
 #[cfg(test)]

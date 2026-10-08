@@ -113,6 +113,20 @@ fn stale_cursor() -> TabaError {
 }
 
 impl Topics {
+    /// Todos os tópicos, em ordem de nome, com as filas de dead-letter. É o que as métricas de
+    /// tópico percorrem (doc 11): filtram e paginam elas mesmas, depois de medir.
+    pub fn all_views(&self) -> Vec<TopicView> {
+        let mut views = Vec::new();
+        for definition in self.read().values() {
+            views.push(self.view(definition));
+            if definition.queue().is_some() {
+                views.push(self.dead_letter_view(definition));
+            }
+        }
+        views.sort_by(|a, b| a.definition.name.cmp(&b.definition.name));
+        views
+    }
+
     /// Respondida localmente: a definição de todo tópico está em todo nó. Inclui as
     /// filas de dead-letter.
     pub fn list(&self, query: ListQuery) -> Result<ListResult, TabaError> {

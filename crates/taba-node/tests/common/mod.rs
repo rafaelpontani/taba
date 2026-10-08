@@ -136,9 +136,53 @@ impl TestNode {
             .expect("requisição")
     }
 
+    /// `GET` numa rota de operação.
+    pub async fn client_get_ops(&self, path_and_query: &str) -> Response {
+        self.client
+            .get(self.operations_url(path_and_query))
+            .send()
+            .await
+            .expect("requisição")
+    }
+
+    /// O texto de `GET /metrics`.
+    pub async fn metrics(&self) -> String {
+        let response = self
+            .client
+            .get(self.operations_url("/metrics"))
+            .send()
+            .await
+            .expect("requisição");
+        assert_eq!(response.status(), 200);
+        response.text().await.expect("corpo")
+    }
+
+    /// O valor de `GET /metrics/topics...` em JSON.
+    pub async fn stats(&self, path_and_query: &str) -> serde_json::Value {
+        let response = self
+            .client
+            .get(self.operations_url(path_and_query))
+            .send()
+            .await
+            .expect("requisição");
+        assert_eq!(response.status(), 200, "{path_and_query}");
+        response.json().await.expect("corpo JSON")
+    }
+
     pub async fn shutdown(self) {
         self.node.shutdown().await;
     }
+}
+
+/// O valor da série `nome{rótulos}` num texto do Prometheus, com os rótulos como saem (em ordem
+/// de atributo). `None` se a série não existe.
+pub fn series(text: &str, wanted: &str) -> Option<f64> {
+    text.lines()
+        .filter(|line| !line.starts_with('#'))
+        .find_map(|line| {
+            let (name, value) = line.rsplit_once(' ')?;
+            (name == wanted).then(|| value.parse().ok())?
+        })
 }
 
 fn url(addr: SocketAddr, path: &str) -> String {

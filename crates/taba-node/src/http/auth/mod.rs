@@ -26,6 +26,7 @@ use crate::config::{Auth as AuthConfig, RootToken};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::token::{Permission, TokenRecord, constant_time_eq};
 use crate::engine::tokens::Tokens;
+use crate::telemetry::metrics::AUTH_REQUESTS;
 
 /// Quem está chamando.
 #[derive(Debug, Clone)]
@@ -253,12 +254,26 @@ pub fn out_of_scope() -> TabaError {
 
 /// A camada de dentro: `401`, `403 auth.forbidden` e `403 auth.out-of-scope`; passa o
 /// [`Principal`] aos handlers.
-pub async fn authorize(mut request: Request, next: Next) -> Response {
+pub async fn authorize(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    // `taba.auth.requests` só existe com a autenticação ligada; o `id` do token nunca é atributo.
+    let count = |outcome: &str| {
+        if state.auth.enabled {
+            state
+                .telemetry
+                .registry
+                .add(&AUTH_REQUESTS, &[("taba.outcome", outcome)], 1.0);
+        }
+    };
     let principal = request
         .extensions()
         .get::<Authn>()
         .and_then(|authn| authn.0.clone());
     let Some(principal) = principal else {
+        count("unauthorized");
         tracing::warn!("chamada recusada: sem token válido");
         return unauthorized().into_response();
     };
@@ -273,6 +288,7 @@ pub async fn authorize(mut request: Request, next: Next) -> Response {
         Some(Need::Any) | None => false,
     };
     if refused {
+        count("forbidden");
         tracing::warn!(token.id = %principal.log_id(), route = %route, "chamada recusada: sem permissão");
         return forbidden().into_response();
     }
@@ -294,10 +310,12 @@ pub async fn authorize(mut request: Request, next: Next) -> Response {
         if let Some(topic) = topic
             && !principal.reaches(&topic)
         {
+            count("forbidden");
             tracing::warn!(token.id = %principal.log_id(), "chamada recusada: fora dos prefixos");
             return ApiError(out_of_scope()).into_response();
         }
     }
+    count("ok");
     request.extensions_mut().insert(principal);
     next.run(request).await
 }

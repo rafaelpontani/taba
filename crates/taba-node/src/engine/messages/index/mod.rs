@@ -388,6 +388,107 @@ impl TopicIndex {
     pub fn ready_ids(&self) -> Vec<String> {
         self.ready_all.iter().cloned().collect()
     }
+
+    // ---- Estatística (doc 11) ----
+
+    /// O índice é o de uma fila FIFO.
+    pub fn is_fifo(&self) -> bool {
+        self.rules.fifo
+    }
+
+    /// Quantas mensagens o índice conhece, prontas e em processamento.
+    pub fn message_count(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn ready_count(&self) -> usize {
+        self.ready_all.len()
+    }
+
+    pub fn processing_count(&self) -> usize {
+        self.invisible.len()
+    }
+
+    /// O instante de onde a mensagem mais antiga ainda não confirmada conta (a publicação, ou a
+    /// entrada na dead-letter): é o mesmo índice por idade do `ttl`, então não varre nada.
+    pub fn oldest_age_ms(&self) -> Option<u64> {
+        self.by_age.first().map(|(age, _)| *age)
+    }
+
+    /// Os totais dos grupos: quantos há, quantas mensagens o maior tem e quantos têm mensagem em
+    /// processamento.
+    pub fn group_totals(&self) -> GroupTotals {
+        let mut totals = GroupTotals::default();
+        for group in self.groups.values() {
+            totals.groups += 1;
+            totals.largest = totals
+                .largest
+                .max(group.ready.len() as u64 + group.processing);
+            totals.busy += u64::from(group.processing > 0);
+        }
+        totals
+    }
+
+    /// Cada grupo com as suas contagens, a faixa e a mensagem mais antiga (varre as mensagens
+    /// uma vez: é para consulta sob demanda, não para o caminho quente).
+    pub fn group_infos(&self) -> Vec<GroupInfo> {
+        let mut oldest: HashMap<&GroupKey, u64> = HashMap::new();
+        for entry in self.entries.values() {
+            oldest
+                .entry(&entry.group)
+                .and_modify(|age| *age = (*age).min(entry.age_ms))
+                .or_insert(entry.age_ms);
+        }
+        self.groups
+            .iter()
+            .map(|(key, group)| GroupInfo {
+                key: key.clone(),
+                ready: group.ready.len() as u64,
+                processing: group.processing,
+                band: self.band_of(group),
+                oldest_age_ms: oldest.get(key).copied(),
+            })
+            .collect()
+    }
+
+    /// O grupo cuja mensagem já foi entregue mais de `over` vezes (o de mais entregas), para a
+    /// condição `group-stalled`. Varre as mensagens.
+    pub fn stalled_group(&self, over: u32) -> Option<String> {
+        self.entries
+            .values()
+            .filter(|entry| entry.deliveries > over)
+            .max_by_key(|entry| entry.deliveries)
+            .map(|entry| match &entry.group {
+                GroupKey::Named(name) => name.clone(),
+                GroupKey::Overflow => String::new(),
+            })
+    }
+
+    /// A faixa do grupo da mensagem, no instante de hoje.
+    pub fn band_of_entry(&self, id: &str) -> Option<u32> {
+        let entry = self.entries.get(id)?;
+        self.groups.get(&entry.group).map(|g| self.band_of(g))
+    }
+}
+
+/// O que `group_totals` conta.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct GroupTotals {
+    pub groups: u64,
+    /// Mensagens do maior grupo.
+    pub largest: u64,
+    /// Grupos com mensagem em processamento.
+    pub busy: u64,
+}
+
+/// Um grupo como `group_infos` o vê.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupInfo {
+    pub key: GroupKey,
+    pub ready: u64,
+    pub processing: u64,
+    pub band: u32,
+    pub oldest_age_ms: Option<u64>,
 }
 
 #[cfg(test)]

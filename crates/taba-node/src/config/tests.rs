@@ -442,6 +442,35 @@ fn file_values_load_and_environment_overrides_them() {
     assert_eq!(c.cluster.entry_address.as_deref(), Some("lb:9101"));
 }
 
+/// UC: UC-OPS-040
+#[test]
+fn the_otel_variables_give_the_resource_attributes_and_the_service_name_wins() {
+    let none = Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap();
+    assert!(none.telemetry.resource.is_empty());
+
+    let env = MapEnv::new([
+        ("TABA_MODE", "development"),
+        (
+            "OTEL_RESOURCE_ATTRIBUTES",
+            "service.namespace=prod, deployment.environment.name=staging,service.name=velho,semigual,=vazio",
+        ),
+        ("OTEL_SERVICE_NAME", "taba-novo"),
+    ]);
+    let c = Config::parse(None, &env).unwrap();
+    let resource: std::collections::BTreeMap<_, _> = c.telemetry.resource.iter().cloned().collect();
+    assert_eq!(resource["service.namespace"], "prod");
+    assert_eq!(resource["deployment.environment.name"], "staging");
+    assert_eq!(
+        resource["service.name"], "taba-novo",
+        "OTEL_SERVICE_NAME vence"
+    );
+    assert_eq!(
+        resource.len(),
+        3,
+        "o par sem `=` e o sem chave são ignorados"
+    );
+}
+
 /// UC: UC-CFG-010
 #[test]
 fn an_explicit_config_file_that_does_not_exist_stops_startup() {

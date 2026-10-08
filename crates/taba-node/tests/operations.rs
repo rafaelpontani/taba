@@ -63,12 +63,22 @@ async fn wait_for_drain_state(node: &TestNode, state: &str) -> Value {
     panic!("o nó não chegou a `{state}`");
 }
 
-/// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-007, UC-OPS-004
+/// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-007, UC-DRN-020, UC-OPS-004
 #[tokio::test]
 async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
     let node = TestNode::development().await;
     create_queue(&node, "pedidos").await;
     assert_eq!(publish(&node, "pedidos", "1").await.status(), 201);
+    let before = node.metrics().await;
+    assert_eq!(
+        common::series(&before, "taba_node_drain_pending"),
+        Some(1.0),
+        "a mensagem ainda está em memória"
+    );
+    assert_eq!(
+        common::series(&before, "taba_node_drain_state{taba_state=\"active\"}"),
+        Some(1.0)
+    );
 
     let idle: Value = drain_call(&node, reqwest::Method::GET)
         .await
@@ -92,6 +102,16 @@ async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
             .join("pedidos")
             .join("_topic.db")
             .is_file()
+    );
+    let after = node.metrics().await;
+    assert_eq!(common::series(&after, "taba_node_drain_pending"), Some(0.0));
+    assert_eq!(
+        common::series(&after, "taba_node_drain_state{taba_state=\"drained\"}"),
+        Some(1.0)
+    );
+    assert_eq!(
+        common::series(&after, "taba_node_drain_state{taba_state=\"active\"}"),
+        Some(0.0)
     );
 
     // Fora da rotação: pronto cai a 503 e vivo segue 200.

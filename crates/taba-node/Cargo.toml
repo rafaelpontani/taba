@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 axum = "0.8.9"
 base64 = "0.23.1"
+fs4 = "1.1.0"
 getrandom = "0.4.3"
 http-body-util = "0.1.5"
 ipnet = "2.12.2"
@@ -30,6 +31,7 @@ time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
 tokio-util = "0.7.19"
 tower-http = { version = "0.7.1", features = ["catch-panic"] }
+tower-service = "0.3.3"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 uuid = { version = "1.27.0", features = ["v7"] }

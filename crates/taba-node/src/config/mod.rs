@@ -296,6 +296,35 @@ pub struct Telemetry {
     pub topics_max_topics: Option<u32>,
     /// `None`: o padrão ainda está a definir; o nó usa `info`.
     pub logs_level: Option<String>,
+    /// Atributos de recurso de `OTEL_SERVICE_NAME` e `OTEL_RESOURCE_ATTRIBUTES` (variáveis do
+    /// SDK do OpenTelemetry, que não têm chave no YAML).
+    pub resource: Vec<(String, String)>,
+}
+
+/// Lê `OTEL_RESOURCE_ATTRIBUTES` (`chave=valor,chave=valor`) e `OTEL_SERVICE_NAME`, que vence
+/// o `service.name` da primeira. Par sem `=` ou sem chave é ignorado.
+fn resource_attributes(env: &dyn EnvSource) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for pair in env
+        .get("OTEL_RESOURCE_ATTRIBUTES")
+        .unwrap_or_default()
+        .split(',')
+    {
+        if let Some((key, value)) = pair.split_once('=')
+            && !key.trim().is_empty()
+        {
+            out.retain(|(k, _)| k != key.trim());
+            out.push((key.trim().to_owned(), value.trim().to_owned()));
+        }
+    }
+    if let Some(name) = env
+        .get("OTEL_SERVICE_NAME")
+        .filter(|n| !n.trim().is_empty())
+    {
+        out.retain(|(k, _)| k != "service.name");
+        out.push(("service.name".to_owned(), name.trim().to_owned()));
+    }
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -391,7 +420,8 @@ impl Config {
     /// Monta a configuração a partir do conteúdo do arquivo e do ambiente.
     pub fn parse(yaml: Option<(&str, &str)>, env: &dyn EnvSource) -> Result<Self, ConfigError> {
         let (source, mut warnings) = Source::build(yaml, env)?;
-        let config = Self::build(&source, &mut warnings)?;
+        let mut config = Self::build(&source, &mut warnings)?;
+        config.telemetry.resource = resource_attributes(env);
         Ok(Self { warnings, ..config })
     }
 
@@ -604,6 +634,7 @@ impl Config {
                 .unwrap_or_default(),
             topics_max_topics: s.opt("telemetry.topics.max-topics")?,
             logs_level: s.opt("telemetry.logs.level")?,
+            resource: Vec::new(),
         };
         let stats = Stats {
             topics_top_groups: s.get("stats.topics.top-groups")?,

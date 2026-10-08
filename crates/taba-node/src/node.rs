@@ -16,11 +16,13 @@ use crate::cluster::state::NodeShared;
 use crate::config::Config;
 use crate::core::clock::{Clock, SystemClock};
 use crate::core::id;
+use crate::engine::messages::stats::StatsRules;
 use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::tokens::{TokenRules, Tokens};
 use crate::engine::topics::{TopicRules, Topics};
 use crate::http::auth::Auth;
 use crate::http::client_ip::ClientIpRules;
+use crate::http::observe::{self, Observer};
 use crate::http::ratelimit::RateLimiter;
 use crate::http::{self, AppState};
 use crate::storage;
@@ -29,6 +31,7 @@ use crate::storage::messages::MessageStore;
 use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::SqliteTokenStore;
 use crate::storage::topics::SqliteTopicStore;
+use crate::telemetry::Telemetry;
 
 #[derive(Debug, thiserror::Error)]
 pub enum NodeError {
@@ -188,6 +191,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     .await
     .map_err(storage_error)?;
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
+    let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id));
     let messages = Messages::new(
         topics.clone(),
         deps.clock.clone(),
@@ -226,6 +230,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             deps.clock.clone(),
         )),
         auth: auth.clone(),
+        telemetry: telemetry.clone(),
+        stats_rules: Arc::new(StatsRules::from_config(&config)),
     };
 
     if dev {
@@ -260,26 +266,29 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let state_messages = state.messages.clone();
     let token_sweep_interval = config.retention.sweep_interval.min(Duration::from_secs(1));
     let reload_interval = config.auth.reload_interval;
-    let mut serve = |listener: TcpListener, router: axum::Router| {
+    // Cada listener é medido com a sua porta no atributo `server.port` (doc 11).
+    let mut serve = |listener: TcpListener, router: axum::Router, port: u16| {
         let cancel = cancel.clone();
-        tasks.spawn(async move {
-            axum::serve(
-                listener,
-                router.into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .with_graceful_shutdown(cancel.cancelled_owned())
-            .await
-        });
+        let observer = Observer {
+            telemetry: telemetry.clone(),
+            port,
+        };
+        tasks.spawn(observe::serve(listener, router, observer, cancel));
     };
     serve(
         client,
         http::client_router(state.clone(), operations.is_none()),
+        client_addr.port(),
     );
-    if let Some(listener) = operations {
-        serve(listener, http::operations_router(state.clone()));
+    if let (Some(listener), Some(addr)) = (operations, operations_addr) {
+        serve(
+            listener,
+            http::operations_router(state.clone()),
+            addr.port(),
+        );
     }
-    if let Some(listener) = cluster {
-        serve(listener, http::cluster_router(state));
+    if let (Some(listener), Some(addr)) = (cluster, cluster_addr) {
+        serve(listener, http::cluster_router(state), addr.port());
     }
     {
         let cancel = cancel.clone();

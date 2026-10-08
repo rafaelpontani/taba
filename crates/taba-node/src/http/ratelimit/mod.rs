@@ -25,6 +25,7 @@ use super::common::ApiError;
 use crate::config::RateLimit;
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
+use crate::telemetry::metrics::RATELIMIT_REJECTED;
 
 /// Acima disto o mapa de contadores é podado dos que já voltaram ao estouro cheio.
 const PRUNE_ABOVE: usize = 4096;
@@ -165,6 +166,10 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
         | "/topics/{topic}/messages/{id}/visibility" => Some(Category::Consume),
+        // As métricas de tópico, em JSON, medem cada tópico: têm a categoria própria.
+        "/metrics/topics" | "/metrics/topics/{topic}" | "/metrics/topics/{topic}/groups" => {
+            Some(Category::Ops)
+        }
         // Só o `scope=cluster` (o padrão) consulta outros nós.
         "/health/cluster" => {
             let node_only = query
@@ -203,6 +208,21 @@ pub async fn rate_limit(State(state): State<AppState>, request: Request, next: N
             && let Err(retry_after) = state.rate_limiter.check(category, key.clone())
         {
             tracing::debug!(category = category.as_str(), ?key, "rate limit excedido");
+            // O `id` do token nunca é atributo de métrica: só diz se estourou o do token ou o do IP.
+            state.telemetry.registry.add(
+                &RATELIMIT_REJECTED,
+                &[
+                    ("taba.category", category.as_str()),
+                    (
+                        "taba.key",
+                        match key {
+                            Key::Token(_) => "token",
+                            Key::Ip(_) => "ip",
+                        },
+                    ),
+                ],
+                1.0,
+            );
             return ApiError(
                 TabaError::new(
                     ErrorCode::RateLimitExceeded,
