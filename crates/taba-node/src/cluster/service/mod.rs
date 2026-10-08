@@ -188,6 +188,16 @@ impl Handler for ClusterHandler {
     }
 }
 
+/// A espera entre duas tentativas de desregistro quando outra mudança de membros está em curso:
+/// 100 a 200 ms. Com o prazo fixo, dois nós que saem juntos repetiam o registro no mesmo instante,
+/// um recusava o outro de novo e só paravam no `drain.timeout`; o sorteio desfaz o compasso (a
+/// ordem deterministicamente justa entre mudanças diferentes é a D94).
+pub(crate) fn conflict_wait() -> Duration {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
+    Duration::from_millis(100 + u64::from_le_bytes(bytes) % 100)
+}
+
 fn node_syncing() -> TabaError {
     TabaError::new(
         ErrorCode::ClusterNodeSyncing,
@@ -405,16 +415,25 @@ impl ClusterService {
         id::new_at(self.clock.now_millis())
     }
 
-    fn count_change(&self, phase: &str, outcome: &str) {
-        self.telemetry.registry.add(
-            &CLUSTER_MEMBERSHIP_CHANGES,
-            &[
-                ("taba.operation", "register"),
-                ("taba.phase", phase),
-                ("taba.outcome", outcome),
-            ],
-            1.0,
-        );
+    /// Conta uma fase de uma mudança de membros: `register` para a entrada de nó, `unregister`
+    /// (com `reason`: `vote` ou `drain`) para a saída.
+    fn count_change(&self, change: Option<&Change>, phase: &str, outcome: &str) {
+        let (operation, reason) = match change {
+            Some(Change::Remove { .. }) => ("unregister", Some("drain")),
+            Some(Change::Exclude { .. }) => ("unregister", Some("vote")),
+            _ => ("register", None),
+        };
+        let mut labels = vec![
+            ("taba.operation", operation),
+            ("taba.phase", phase),
+            ("taba.outcome", outcome),
+        ];
+        if let Some(reason) = reason {
+            labels.push(("taba.reason", reason));
+        }
+        self.telemetry
+            .registry
+            .add(&CLUSTER_MEMBERSHIP_CHANGES, &labels, 1.0);
     }
 
     fn count_bootstrap_failure(&self, reason: &str) {
@@ -443,10 +462,13 @@ impl ClusterService {
                 self.require_member(caller)?;
                 self.refuse_while_busy(None)?;
                 let id = request.operation_id.clone();
-                let result = self
-                    .membership
-                    .register(&id, Change::Add(request.node), self.now());
-                self.count_change("register", if result.is_ok() { "ok" } else { "failed" });
+                let change = Change::Add(request.node);
+                let result = self.membership.register(&id, change.clone(), self.now());
+                self.count_change(
+                    Some(&change),
+                    "register",
+                    if result.is_ok() { "ok" } else { "failed" },
+                );
                 result.map_err(from_membership)?;
                 Ok(ack(id))
             }
@@ -464,16 +486,25 @@ impl ClusterService {
                         node_id: request.node_id,
                     },
                 };
-                self.membership
-                    .register(&id, change, self.now())
-                    .map_err(from_membership)?;
+                let result = self.membership.register(&id, change.clone(), self.now());
+                self.count_change(
+                    Some(&change),
+                    "register",
+                    if result.is_ok() { "ok" } else { "failed" },
+                );
+                result.map_err(from_membership)?;
                 Ok(ack(id))
             }
             Request::Commit(request) => {
                 request.validate()?;
                 self.require_member(caller)?;
+                let change = self.membership.pending_change(&request.operation_id);
                 let result = self.membership.commit(&request.operation_id, self.now());
-                self.count_change("commit", if result.is_ok() { "ok" } else { "failed" });
+                self.count_change(
+                    change.as_ref(),
+                    "commit",
+                    if result.is_ok() { "ok" } else { "failed" },
+                );
                 result.map_err(from_membership)?;
                 self.membership_changed();
                 Ok(ack(request.operation_id))
@@ -481,8 +512,13 @@ impl ClusterService {
             Request::Rollback(request) => {
                 request.validate()?;
                 self.require_member(caller)?;
+                let change = self.membership.pending_change(&request.operation_id);
                 let result = self.membership.rollback(&request.operation_id, self.now());
-                self.count_change("rollback", if result.is_ok() { "ok" } else { "failed" });
+                self.count_change(
+                    change.as_ref(),
+                    "rollback",
+                    if result.is_ok() { "ok" } else { "failed" },
+                );
                 result.map_err(from_membership)?;
                 Ok(ack(request.operation_id))
             }
@@ -643,11 +679,12 @@ impl ClusterService {
             .collect();
 
         // Fase 1: o registro em todos os nós, este inclusive.
-        if let Err(e) =
-            self.membership
-                .register(&operation_id, Change::Add(node.clone()), self.now())
+        let change = Change::Add(node.clone());
+        if let Err(e) = self
+            .membership
+            .register(&operation_id, change.clone(), self.now())
         {
-            self.count_change("register", "failed");
+            self.count_change(Some(&change), "register", "failed");
             tracing::warn!(node_id = %node.node_id, error = ?e, "ingresso recusado neste nó");
             return Err(registration_failed());
         }
@@ -662,25 +699,26 @@ impl ClusterService {
             )
             .await;
         if !failures.is_empty() {
-            self.count_change("register", "failed");
+            self.count_change(Some(&change), "register", "failed");
             for (peer, error) in &failures {
                 tracing::warn!(node_id = %node.node_id, peer = %peer, %error, "registro sem confirmação");
             }
-            self.rollback_everywhere(&confirmed, &operation_id).await;
+            self.rollback_everywhere(&confirmed, &operation_id, &change)
+                .await;
             tracing::error!(
                 node_id = %node.node_id,
                 "ingresso abortado (rollback): a fase de registro não foi confirmada por todos"
             );
             return Err(registration_failed());
         }
-        self.count_change("register", "ok");
+        self.count_change(Some(&change), "register", "ok");
 
         // Fase 2: o quórum de todos foi atingido, a decisão está tomada e não volta atrás.
         let table = self
             .membership
             .commit(&operation_id, self.now())
             .map_err(from_membership)?;
-        self.count_change("commit", "ok");
+        self.count_change(Some(&change), "commit", "ok");
         self.membership_changed();
         if self.commit_on_peers(&peers, &operation_id).await {
             tracing::info!(
@@ -690,7 +728,7 @@ impl ClusterService {
             );
             Ok(Response::Members(table))
         } else {
-            self.count_change("commit", "timeout");
+            self.count_change(Some(&change), "commit", "timeout");
             tracing::warn!(
                 node_id = %node.node_id,
                 "o commit continua em segundo plano: o nó foi aceito"
@@ -750,9 +788,14 @@ impl ClusterService {
     }
 
     /// Descarta o registro pendente aqui e nos que já o tinham confirmado.
-    async fn rollback_everywhere(self: &Arc<Self>, confirmed: &[Member], operation_id: &str) {
+    async fn rollback_everywhere(
+        self: &Arc<Self>,
+        confirmed: &[Member],
+        operation_id: &str,
+        change: &Change,
+    ) {
         let _ = self.membership.rollback(operation_id, self.now());
-        self.count_change("rollback", "ok");
+        self.count_change(Some(change), "rollback", "ok");
         let request = Request::Rollback(OperationRef {
             operation_id: operation_id.to_owned(),
         });
@@ -929,9 +972,13 @@ impl ClusterService {
                 node_id: target.to_owned(),
             },
         };
-        self.membership
-            .register(&operation_id, change, self.now())
-            .map_err(from_membership)?;
+        if let Err(e) = self
+            .membership
+            .register(&operation_id, change.clone(), self.now())
+        {
+            self.count_change(Some(&change), "register", "failed");
+            return Err(from_membership(e));
+        }
         let (confirmed, failures) = self
             .register_on_peers(
                 &peers,
@@ -944,10 +991,12 @@ impl ClusterService {
             )
             .await;
         if !failures.is_empty() {
+            self.count_change(Some(&change), "register", "failed");
             for (peer, error) in &failures {
                 tracing::warn!(peer = %peer, %error, "desregistro sem confirmação");
             }
-            self.rollback_everywhere(&confirmed, &operation_id).await;
+            self.rollback_everywhere(&confirmed, &operation_id, &change)
+                .await;
             tracing::error!("desregistro abortado (rollback): a fase 1 não fechou em todos");
             // Outra mudança pendente num par: quem pede a saída espera a vez e tenta de novo.
             let contended = failures.iter().any(
@@ -962,14 +1011,17 @@ impl ClusterService {
                 registration_failed()
             });
         }
+        self.count_change(Some(&change), "register", "ok");
         self.membership
             .commit(&operation_id, self.now())
             .map_err(from_membership)?;
+        self.count_change(Some(&change), "commit", "ok");
         self.membership_changed();
         if self.commit_on_peers(&peers, &operation_id).await {
             tracing::info!(node_id = %target, ?reason, "nó fora do cluster");
             Ok(())
         } else {
+            self.count_change(Some(&change), "commit", "timeout");
             tracing::warn!("o commit do desregistro segue em segundo plano em algum nó");
             Err(TabaError::new(
                 ErrorCode::ClusterCommitTimeout,

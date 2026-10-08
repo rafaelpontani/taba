@@ -8,10 +8,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use tokio::sync::Semaphore;
 
 use common::TestNode;
-use common::cluster::{TestCluster, eventually, eventually_async, host_of};
+use common::cluster::{TestCluster, eventually, host_of, pause_sync, start_isolated, wait_phase};
 use taba_node::cluster::members::MemberState;
 use taba_node::cluster::protocol::{Request, Response, StreamQuery};
 use taba_node::cluster::state::NodeState;
@@ -72,45 +71,6 @@ async fn ack(node: &TestNode, topic: &str, id: &str, token: &str) -> u16 {
         .expect("requisição")
         .status()
         .as_u16()
-}
-
-/// Sobe o nó `number` isolado da rede: o bootstrap tenta e falha até o teste devolver a rede, o
-/// que dá tempo de armar a pausa da sincronização.
-async fn start_isolated(cluster: &mut TestCluster, env: &[(&str, &str)]) -> usize {
-    let number = cluster.nodes.len() + 1;
-    cluster.network.isolate(&host_of(number));
-    let mut builder = cluster.builder(number, false);
-    for (name, value) in env {
-        builder = builder.env(name, value);
-    }
-    cluster
-        .spawn_node(builder)
-        .await
-        .expect("o nó deveria subir")
-}
-
-/// Faz a sincronização do nó parar ao entrar em `phase` e o devolve à rede. Devolve o portão:
-/// uma licença nele deixa a sincronização seguir.
-fn pause_sync(cluster: &TestCluster, number: usize, phase: &'static str) -> Arc<Semaphore> {
-    let gate = Arc::new(Semaphore::new(0));
-    cluster
-        .node(number)
-        .node
-        .cluster()
-        .and_then(|c| c.replication())
-        .expect("replicação")
-        .syncer
-        .pause_at(phase, gate.clone());
-    cluster.network.restore(&host_of(number));
-    gate
-}
-
-async fn wait_phase(node: &TestNode, phase: &str) {
-    let wanted = format!("taba_sync_phase{{taba_phase=\"{phase}\"}}");
-    eventually_async("a fase da sincronização", || async {
-        common::series(&node.metrics().await, &wanted) == Some(1.0)
-    })
-    .await;
 }
 
 fn member_state(cluster: &TestCluster, observer: usize, of: usize) -> Option<MemberState> {

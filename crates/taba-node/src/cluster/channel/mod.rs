@@ -621,6 +621,22 @@ impl Channels {
         Confirm::new(confirmed)
     }
 
+    /// O estado que o par disse ter (`active`, `syncing`, `failed`...), pelo sinal de vida ou por
+    /// um `node-state`.
+    pub fn peer_state(&self, node_id: &str) -> Option<String> {
+        let peer = self.lock().get(node_id).cloned()?;
+        let state = peer.lock();
+        state.peer_state.clone()
+    }
+
+    /// A votação de exclusão do par acabou sem efeito por um erro passageiro: a próxima falha do
+    /// canal abre outra, em vez de esperar o canal voltar.
+    pub fn allow_new_vote(&self, node_id: &str) {
+        if let Some(peer) = self.lock().get(node_id).cloned() {
+            peer.lock().vote_opened = false;
+        }
+    }
+
     /// Um par avisou que entrou em falha (ou o canal com ele caiu): abre a votação de exclusão.
     pub fn report_failed(&self, node_id: &str, reason: VoteReason) {
         if node_id == self.service.node_id() {

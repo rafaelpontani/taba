@@ -347,6 +347,16 @@ impl Membership {
         Ok(())
     }
 
+    /// A mudança pendente com esse `operationId` (para o commit e o rollback saberem o que contam).
+    pub fn pending_change(&self, operation_id: &str) -> Option<Change> {
+        let inner = self.lock();
+        inner
+            .pending
+            .as_ref()
+            .filter(|p| p.operation_id == operation_id)
+            .map(|p| p.change.clone())
+    }
+
     /// Fase 2: efetiva a mudança pendente e devolve a tabela nova.
     pub fn commit(
         &self,

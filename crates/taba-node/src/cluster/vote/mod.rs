@@ -20,9 +20,9 @@ use super::protocol::{
     Ballot, ChannelBatch, Request, Response, UnregisterReason, VoteReason, VoteRequest,
     VoteResponse,
 };
-use super::service::ClusterService;
+use super::service::{ClusterService, conflict_wait};
 use super::state::NodeState;
-use crate::core::error::TabaError;
+use crate::core::error::{ErrorCode, TabaError};
 use crate::telemetry::metrics::CLUSTER_VOTE;
 
 /// Quantos votos são exigidos de `healthy` votantes: `ceil(healthy × percent / 100)`.
@@ -105,13 +105,18 @@ impl Voting {
                 reason,
             });
             let timeout = service.rules().call_timeout;
-            set.spawn(async move { service.call_peer(&member, request, timeout).await });
+            set.spawn(async move {
+                let answer = service.call_peer(&member, request, timeout).await;
+                (member.node_id, answer)
+            });
         }
         // Eu voto por último e sempre `yes`: quem abre a votação já viu o nó cair.
         let (mut healthy, mut yes) = (1u32, 1u32);
+        let mut voters = vec![me.clone()];
         while let Some(joined) = set.join_next().await {
-            if let Ok(Ok(Response::Vote(VoteResponse { vote }))) = joined {
+            if let Ok((voter, Ok(Response::Vote(VoteResponse { vote })))) = joined {
                 healthy += 1;
+                voters.push(voter);
                 if vote == Ballot::Yes {
                     yes += 1;
                 }
@@ -131,30 +136,76 @@ impl Voting {
             "rejected"
         } else {
             tracing::warn!(candidate = %candidate, yes, healthy, "quórum atingido: excluindo o nó");
-            match self
-                .service
-                .unregister_node(&candidate, UnregisterReason::Vote)
-                .await
-            {
-                Ok(()) => "excluded",
-                Err(error) => {
-                    tracing::error!(candidate = %candidate, %error.message, "a exclusão não se efetivou");
-                    "failed"
-                }
-            }
+            self.exclude(&candidate, voters).await
         };
         self.count("opened", outcome);
         self.service.clear_vote(&candidate);
+        if outcome == "failed" {
+            self.channels.allow_new_vote(&candidate);
+        }
+    }
+
+    /// Efetiva a exclusão. Quando o nó cai, todos os saudáveis o percebem juntos e abrem a mesma
+    /// votação; se todos coordenassem o desregistro, cada um recusaria o do outro (`cluster.conflict`)
+    /// e ninguém o concluiria. Por isso coordena o de menor ID entre os saudáveis, e os outros
+    /// esperam a sua vez (o de ordem `k` espera `k × write.commit.timeout`) e só então tentam, caso
+    /// o nó ainda conste da tabela.
+    async fn exclude(&self, candidate: &str, mut voters: Vec<String>) -> &'static str {
+        voters.sort();
+        let me = self.service.node_id();
+        let rank = voters.iter().position(|v| *v == me).unwrap_or(0) as u32;
+        let rules = self.service.rules();
+        let started = tokio::time::Instant::now();
+        let turn_at = started + rules.commit_timeout * rank;
+        let give_up_at = turn_at + rules.join_timeout;
+        while tokio::time::Instant::now() < turn_at {
+            if !self.service.membership().is_member(candidate) {
+                return "excluded";
+            }
+            if self.service.cancel_token().is_cancelled() {
+                return "failed";
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        loop {
+            match self
+                .service
+                .unregister_node(candidate, UnregisterReason::Vote)
+                .await
+            {
+                Ok(()) => return "excluded",
+                // Outra mudança de membros em curso: espera um pouco e vê se o nó já saiu.
+                Err(error)
+                    if error.code == ErrorCode::ClusterConflict
+                        && tokio::time::Instant::now() < give_up_at
+                        && !self.service.cancel_token().is_cancelled() =>
+                {
+                    tokio::time::sleep(conflict_wait()).await;
+                    if !self.service.membership().is_member(candidate) {
+                        return "excluded";
+                    }
+                }
+                Err(error) => {
+                    tracing::error!(candidate = %candidate, %error.message, "a exclusão não se efetivou");
+                    return "failed";
+                }
+            }
+        }
     }
 
     /// `POST /cluster/vote-remove`: o voto deste nó conforme o que ele enxerga do candidato.
     pub async fn cast(&self, request: VoteRequest) -> Result<Response, TabaError> {
         request.validate()?;
-        let candidate = request.candidate_node_id;
+        let candidate = request.candidate_node_id.clone();
         let known = self.service.membership().is_member(&candidate);
         let vote = if !known || candidate == self.service.node_id() {
             // Quem não consta na tabela já saiu; e eu estou vivo.
             Ballot::No
+        } else if request.reason == VoteReason::NodeFailed
+            && self.channels.peer_state(&candidate).as_deref() == Some("failed")
+        {
+            // O candidato avisou que entrou em falha: está vivo, mas não serve ao cluster.
+            Ballot::Yes
         } else if self.reaches(&candidate).await {
             Ballot::No
         } else {

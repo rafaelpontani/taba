@@ -182,6 +182,22 @@ async fn the_delay_is_added_to_every_call() {
 }
 
 #[tokio::test]
+async fn the_delay_of_a_kind_slows_only_that_kind_of_call() {
+    let (network, _) = network_with(&["10.0.0.1", "10.0.0.2"]);
+    let one = network.transport("10.0.0.1");
+    network.set_delay_kind("commit", Duration::from_millis(60));
+    let started = Instant::now();
+    one.call(&addr("10.0.0.2"), op()).await.unwrap();
+    assert!(started.elapsed() >= Duration::from_millis(60));
+
+    let started = Instant::now();
+    one.call(&addr("10.0.0.2"), Request::ListNodes)
+        .await
+        .unwrap();
+    assert!(started.elapsed() < Duration::from_millis(60));
+}
+
+#[tokio::test]
 async fn a_balancer_spreads_the_calls_over_the_live_nodes() {
     let (network, handlers) = network_with(&["10.0.0.1", "10.0.0.2", "10.0.0.3"]);
     let balancer = PeerAddr::new("lb", 8081);

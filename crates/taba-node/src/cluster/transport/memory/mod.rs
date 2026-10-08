@@ -3,7 +3,7 @@
 //! e chama os outros por um `MemoryTransport` que sabe quem é o chamador.
 //!
 //! O teste programa as falhas: **partição** entre dois nós ou isolamento de um, **perda** das
-//! próximas chamadas a um nó, **atraso** em todas as chamadas, um nó **mudo** (aceita e não
+//! próximas chamadas a um nó, **atraso** em todas as chamadas (ou só nas de um tipo), um nó **mudo** (aceita e não
 //! responde, para estourar o prazo de quem chama) e um nó que **cai** (some da rede). Um
 //! **balanceador** reparte as chamadas entre nós, como o `cluster.entry-address` real.
 
@@ -36,6 +36,7 @@ struct State {
     lose_kind: HashMap<(String, String), usize>,
     silent: HashSet<String>,
     delay: Duration,
+    delay_kind: HashMap<String, Duration>,
     calls: Vec<Call>,
 }
 
@@ -132,6 +133,12 @@ impl MemoryNetwork {
         self.lock().delay = delay;
     }
 
+    /// Atraso somado só às chamadas de um tipo (`Request::name()`): para alongar uma fase do
+    /// protocolo (por exemplo, a votação) sem estourar o prazo do canal. `Duration::ZERO` o tira.
+    pub fn set_delay_kind(&self, request: &str, delay: Duration) {
+        self.lock().delay_kind.insert(request.to_owned(), delay);
+    }
+
     /// As chamadas feitas até agora, na ordem.
     pub fn calls(&self) -> Vec<Call> {
         self.lock().calls.clone()
@@ -217,7 +224,8 @@ impl MemoryNetwork {
                 "conexão recusada por {target}"
             )));
         };
-        Ok((handler, state.delay, state.silent.contains(&target.host)))
+        let delay = state.delay + state.delay_kind.get(request).copied().unwrap_or_default();
+        Ok((handler, delay, state.silent.contains(&target.host)))
     }
 }
 

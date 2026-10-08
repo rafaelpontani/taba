@@ -6,65 +6,23 @@
 
 mod common;
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::json;
-
-use common::cluster::{TestCluster, eventually, eventually_async, host_of};
-use common::{TestNode, error_code};
+use common::cluster::{
+    MANY_RETRIES, QUIET, TestCluster, address_of, channels_of, create_queue, eventually,
+    eventually_async, host_of, settled, signals_of, total,
+};
+use common::error_code;
 use taba_node::cluster::channel::Channels;
 use taba_node::cluster::protocol::{
     ChannelBatch, ChannelFrame, Keepalive, ReadyCount, Request, Response, Signal,
 };
-use taba_node::cluster::replication::{Replication, Signals};
-use taba_node::cluster::transport::{CallError, PeerAddr, Transport};
+use taba_node::cluster::transport::{CallError, Transport};
 use taba_node::core::error::ErrorCode;
 use taba_node::core::id;
 
-/// Sem votação: o canal só abre a votação depois de muitas tentativas seguidas.
-const MANY_RETRIES: (&str, &str) = ("TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES", "1000");
-/// O sinal de vida só quando o teste manda: a primeira chamada de cada par ainda o leva.
-const QUIET: (&str, &str) = ("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "30s");
-
 fn guid() -> String {
     id::new_at(1_791_288_000_000)
-}
-
-fn address_of(cluster: &TestCluster, number: usize) -> PeerAddr {
-    PeerAddr::new(
-        host_of(number),
-        cluster.node(number).node.cluster_addr().unwrap().port(),
-    )
-}
-
-fn replication_of(node: &TestNode) -> Arc<Replication> {
-    node.node
-        .cluster()
-        .and_then(|c| c.replication())
-        .expect("o nó está no cluster")
-        .clone()
-}
-
-fn channels_of(cluster: &TestCluster, number: usize) -> Arc<Channels> {
-    replication_of(cluster.node(number)).channels.clone()
-}
-
-fn signals_of(cluster: &TestCluster, number: usize) -> Arc<Signals> {
-    replication_of(cluster.node(number)).signals.clone()
-}
-
-/// A soma das séries `name{...}` do texto do `/metrics` cujo rótulo contém `label`.
-fn total(text: &str, name: &str, label: &str) -> f64 {
-    text.lines()
-        .filter(|line| !line.starts_with('#'))
-        .filter(|line| {
-            line.strip_prefix(name)
-                .is_some_and(|rest| rest.starts_with('{') || rest.starts_with(' '))
-        })
-        .filter(|line| line.contains(label))
-        .filter_map(|line| line.rsplit_once(' ')?.1.parse::<f64>().ok())
-        .sum()
 }
 
 fn ready(topic: &str, has_ready: bool) -> Signal {
@@ -95,37 +53,6 @@ fn confirmed(response: Response) -> Vec<u64> {
         Response::Confirm(confirm) => confirm.seqs,
         other => panic!("esperava um confirm, veio {other:?}"),
     }
-}
-
-/// Espera todos os canais do nó estarem conectados, com a fila de saída vazia e o sinal de vida do
-/// par (ativo, com a versão da tabela atual) já recebido.
-async fn settled(cluster: &TestCluster) {
-    let version = cluster.table(1).unwrap().version;
-    for number in 1..=cluster.nodes.len() {
-        let channels = channels_of(cluster, number);
-        let expected = cluster.nodes.len() - 1;
-        eventually("os canais conectados e vazios", move || {
-            let peers = channels.peers();
-            peers.len() == expected
-                && peers.iter().all(|p| {
-                    p.up && p.queue == 0
-                        && p.version == Some(version)
-                        && p.state.as_deref() == Some("active")
-                })
-        })
-        .await;
-    }
-}
-
-async fn create_queue(node: &TestNode, name: &str) {
-    let response = node
-        .client
-        .post(node.client_url("/topics"))
-        .json(&json!({"name": name, "type": "queue"}))
-        .send()
-        .await
-        .expect("requisição");
-    assert_eq!(response.status(), 201);
 }
 
 /// UC: UC-CAN-001, UC-CAN-024
@@ -331,7 +258,7 @@ fn listen(
     })
 }
 
-/// UC: UC-CAN-010
+/// UC: UC-CAN-010, UC-FAL-006
 #[tokio::test]
 async fn a_signal_without_confirm_waits_in_the_queue_and_goes_out_when_the_channel_returns() {
     let cluster = TestCluster::start_with(3, &[MANY_RETRIES]).await;
@@ -436,7 +363,7 @@ async fn a_queue_that_waits_too_long_opens_the_vote_without_waiting_for_the_retr
     cluster.shutdown().await;
 }
 
-/// UC: UC-CAN-021
+/// UC: UC-CAN-021, UC-FAL-003
 #[tokio::test]
 async fn a_channel_that_returns_before_the_retries_end_changes_nothing() {
     let cluster = TestCluster::start(3).await;

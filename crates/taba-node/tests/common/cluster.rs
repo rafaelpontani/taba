@@ -11,7 +11,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::sync::Semaphore;
+
+use serde_json::json;
+use taba_node::cluster::channel::Channels;
 use taba_node::cluster::members::MemberTable;
+use taba_node::cluster::replication::{Replication, Signals};
 use taba_node::cluster::transport::PeerAddr;
 use taba_node::cluster::transport::memory::MemoryNetwork;
 use taba_node::core::clock::ManualClock;
@@ -207,3 +212,116 @@ pub async fn wait_joined(node: &TestNode) {
 /// Para os testes que derrubam um nó e querem que ele **continue na tabela**: o canal só dá a nó
 /// por perdido (e abre a votação de exclusão) depois de muito tempo.
 pub const NO_VOTE: &[(&str, &str)] = &[("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "600s")];
+
+// ---- Atalhos dos testes de nível C ----
+
+pub fn address_of(cluster: &TestCluster, number: usize) -> PeerAddr {
+    PeerAddr::new(
+        host_of(number),
+        cluster.node(number).node.cluster_addr().unwrap().port(),
+    )
+}
+
+pub fn replication_of(node: &TestNode) -> Arc<Replication> {
+    node.node
+        .cluster()
+        .and_then(|c| c.replication())
+        .expect("o nó está no cluster")
+        .clone()
+}
+
+pub fn channels_of(cluster: &TestCluster, number: usize) -> Arc<Channels> {
+    replication_of(cluster.node(number)).channels.clone()
+}
+
+pub fn signals_of(cluster: &TestCluster, number: usize) -> Arc<Signals> {
+    replication_of(cluster.node(number)).signals.clone()
+}
+
+/// A soma das séries `name{...}` do texto do `/metrics` cujo rótulo contém `label`.
+pub fn total(text: &str, name: &str, label: &str) -> f64 {
+    text.lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter(|line| {
+            line.strip_prefix(name)
+                .is_some_and(|rest| rest.starts_with('{') || rest.starts_with(' '))
+        })
+        .filter(|line| line.contains(label))
+        .filter_map(|line| line.rsplit_once(' ')?.1.parse::<f64>().ok())
+        .sum()
+}
+
+/// Espera todos os canais do nó estarem conectados, com a fila de saída vazia e o sinal de vida do
+/// par (ativo, com a versão da tabela atual) já recebido.
+pub async fn settled(cluster: &TestCluster) {
+    let version = cluster.table(1).unwrap().version;
+    for number in 1..=cluster.nodes.len() {
+        let channels = channels_of(cluster, number);
+        let expected = cluster.nodes.len() - 1;
+        eventually("os canais conectados e vazios", move || {
+            let peers = channels.peers();
+            peers.len() == expected
+                && peers.iter().all(|p| {
+                    p.up && p.queue == 0
+                        && p.version == Some(version)
+                        && p.state.as_deref() == Some("active")
+                })
+        })
+        .await;
+    }
+}
+
+pub async fn create_queue(node: &TestNode, name: &str) {
+    let response = node
+        .client
+        .post(node.client_url("/topics"))
+        .json(&json!({"name": name, "type": "queue"}))
+        .send()
+        .await
+        .expect("requisição");
+    assert_eq!(response.status(), 201);
+}
+
+/// Sobe o nó `number` isolado da rede: o bootstrap tenta e falha até o teste devolver a rede, o
+/// que dá tempo de armar a pausa da sincronização.
+pub async fn start_isolated(cluster: &mut TestCluster, env: &[(&str, &str)]) -> usize {
+    let number = cluster.nodes.len() + 1;
+    cluster.network.isolate(&host_of(number));
+    let mut builder = cluster.builder(number, false);
+    for (name, value) in env {
+        builder = builder.env(name, value);
+    }
+    cluster
+        .spawn_node(builder)
+        .await
+        .expect("o nó deveria subir")
+}
+
+/// Faz a sincronização do nó parar ao entrar em `phase` e o devolve à rede. Devolve o portão:
+/// uma licença nele deixa a sincronização seguir.
+pub fn pause_sync(cluster: &TestCluster, number: usize, phase: &'static str) -> Arc<Semaphore> {
+    let gate = Arc::new(Semaphore::new(0));
+    cluster
+        .node(number)
+        .node
+        .cluster()
+        .and_then(|c| c.replication())
+        .expect("replicação")
+        .syncer
+        .pause_at(phase, gate.clone());
+    cluster.network.restore(&host_of(number));
+    gate
+}
+
+pub async fn wait_phase(node: &TestNode, phase: &str) {
+    let wanted = format!("taba_sync_phase{{taba_phase=\"{phase}\"}}");
+    eventually_async("a fase da sincronização", || async {
+        super::series(&node.metrics().await, &wanted) == Some(1.0)
+    })
+    .await;
+}
+
+/// Sem votação: o canal só abre a votação depois de muitas tentativas seguidas.
+pub const MANY_RETRIES: (&str, &str) = ("TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES", "1000");
+/// O sinal de vida só quando o teste manda: a primeira chamada de cada par ainda o leva.
+pub const QUIET: (&str, &str) = ("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "30s");

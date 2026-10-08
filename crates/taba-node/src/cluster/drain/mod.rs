@@ -10,23 +10,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
-use super::service::ClusterService;
+use super::service::{ClusterService, conflict_wait};
 use super::state::{DrainState, NodeShared};
 use crate::config::Mode;
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::messages::Messages;
 use crate::storage::state::NodeStateStore;
-
-/// A espera entre duas tentativas de sair do cluster quando outra mudança de membros está em curso:
-/// 100 a 200 ms. Com o prazo fixo, dois nós que saem juntos repetiam o registro no mesmo instante,
-/// um recusava o outro de novo e só paravam no `drain.timeout`; o sorteio desfaz o compasso (a
-/// ordem deterministicamente justa é a D94).
-fn conflict_wait() -> Duration {
-    let mut bytes = [0u8; 8];
-    getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
-    Duration::from_millis(100 + u64::from_le_bytes(bytes) % 100)
-}
 
 /// Quem pediu o drain (`DrainStatus.trigger`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
