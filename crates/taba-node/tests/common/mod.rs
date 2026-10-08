@@ -24,6 +24,7 @@ use taba_node::core::clock::ManualClock;
 use taba_node::node::{self, ClusterDeps, Deps, NodeError, RunningNode};
 
 pub mod cluster;
+pub mod otlp;
 
 pub struct TestNodeBuilder {
     env: Vec<(String, String)>,

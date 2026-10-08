@@ -7,12 +7,16 @@
 
 pub mod histogram;
 pub mod metrics;
+pub mod otlp;
 pub mod process;
 pub mod prometheus;
+pub mod trace;
 
 use std::collections::BTreeMap;
-
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::{Layer, SubscriberExt};
+use tracing_subscriber::registry::Registry as SpanRegistry;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::config::{Config, TopicsMetricsMode};
 use metrics::Registry;
@@ -67,12 +71,18 @@ impl Telemetry {
 }
 
 /// Liga o log em JSON no nível de `telemetry.logs.level` (`info` enquanto o padrão
-/// estiver a definir). Chamar de novo é inofensivo: vale a primeira chamada.
+/// estiver a definir) e as camadas do OTLP (spans e logs), que só exportam depois de um
+/// [`otlp::Pipeline::attach`]. Chamar de novo é inofensivo: vale a primeira chamada.
 pub fn init_logging(level: Option<&str>) {
     let filter = EnvFilter::new(level.unwrap_or("info"));
-    let _ = tracing_subscriber::fmt()
+    let hub = otlp::hub();
+    let fmt = tracing_subscriber::fmt::layer()
         .json()
-        .with_env_filter(filter)
         .with_current_span(false)
+        .with_filter(filter);
+    let _ = SpanRegistry::default()
+        .with(hub.trace_layer())
+        .with(hub.log_layer())
+        .with(fmt)
         .try_init();
 }

@@ -378,3 +378,33 @@ async fn publish_errors_are_counted_per_topic_and_not_for_missing_topics() {
     assert_eq!(snapshot.counters.published_bytes, 1);
     assert!(snapshot.publish_latency.p50.is_some());
 }
+
+/// UC: UC-OPS-034
+#[tokio::test]
+async fn the_overflow_goes_to_the_log_as_one_periodic_summary_and_not_per_message() {
+    let h = tiny_memory();
+    h.topics.create(queue("pedidos")).await.unwrap();
+    // Uma cabe em memória; as outras quatro vão para o disco.
+    let ((), during) = capture(|| {
+        for body in ["\"a\"", "\"b\"", "\"c\"", "\"d\"", "\"e\""] {
+            publish_ok(&h, "pedidos", body);
+        }
+    });
+    assert!(
+        events_named(&during, "taba.storage.overflow").is_empty(),
+        "nenhum log por mensagem: {during:?}"
+    );
+
+    let (moved, events) = capture(|| h.messages.log_overflow_summary(Duration::from_secs(60)));
+    assert_eq!(moved, 4);
+    let found = events_named(&events, "taba.storage.overflow");
+    assert_eq!(found.len(), 1, "um resumo só: {events:?}");
+    assert_eq!(found[0].level, tracing::Level::INFO);
+    assert_eq!(found[0].field("messages"), "4");
+    assert_eq!(found[0].field("window_secs"), "60");
+
+    // Sem overflow novo, a janela seguinte não gera log.
+    let (moved, events) = capture(|| h.messages.log_overflow_summary(Duration::from_secs(60)));
+    assert_eq!(moved, 0);
+    assert!(events_named(&events, "taba.storage.overflow").is_empty());
+}

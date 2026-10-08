@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::{mpsc, watch};
+use tracing::Instrument;
 
 use crate::cluster::members::Member;
 use crate::cluster::protocol::Request;
@@ -27,6 +28,7 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::telemetry::metrics::{
     WRITE_COMMIT_TIMEOUTS, WRITE_COORDINATED, WRITE_RETRIES, WRITE_ROLLBACKS,
 };
+use crate::telemetry::trace;
 
 /// O que o coordenador faz nos nós responsáveis.
 pub struct Plan {
@@ -102,13 +104,16 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
     let (events_tx, mut events) = mpsc::unbounded_channel();
     let (decision_tx, decision_rx) = watch::channel(Decision::Pending);
     for index in 0..total {
-        tokio::spawn(owner_task(
-            service.clone(),
-            plan.clone(),
-            index,
-            decision_rx.clone(),
-            events_tx.clone(),
-        ));
+        tokio::spawn(
+            owner_task(
+                service.clone(),
+                plan.clone(),
+                index,
+                decision_rx.clone(),
+                events_tx.clone(),
+            )
+            .in_current_span(),
+        );
     }
     drop(events_tx);
 
@@ -163,6 +168,7 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
                 || confirmed.len() + remaining < quorum
             {
                 let _ = decision_tx.send(Decision::Abort);
+                trace::durability_event();
                 service.telemetry().registry.add(&WRITE_ROLLBACKS, &[], 1.0);
                 tracing::error!(
                     confirmed = confirmed.len(),
@@ -204,9 +210,11 @@ async fn owner_work(
     events: mpsc::UnboundedSender<Event>,
 ) {
     let owner = &plan.owners[index];
-    let registered = match service
-        .call_member_retrying(owner, plan.register.clone())
-        .await
+    let registered = match trace::traced(
+        trace::peer_span("taba.write.register", &owner.node_id, false),
+        service.call_member_retrying(owner, plan.register.clone()),
+    )
+    .await
     {
         Ok(_) => {
             let _ = events.send(Event::Registered(index));
@@ -241,9 +249,11 @@ async fn owner_work(
         if !registered {
             return;
         }
-        if let Err(error) = service
-            .call_member_retrying(owner, plan.rollback.clone())
-            .await
+        if let Err(error) = trace::traced(
+            trace::peer_span("taba.write.rollback", &owner.node_id, true),
+            service.call_member_retrying(owner, plan.rollback.clone()),
+        )
+        .await
         {
             tracing::warn!(node_id = %owner.node_id, %error, "rollback sem confirmação: o registro expira sozinho");
         }
@@ -276,9 +286,18 @@ async fn commit_until_done(
     loop {
         // O nó que não chegou a registrar (ou perdeu o registro) registra antes do commit.
         let step = if registered {
-            service.call_member(owner, plan.commit.clone()).await
+            trace::traced(
+                trace::peer_span("taba.write.commit", &owner.node_id, false),
+                service.call_member(owner, plan.commit.clone()),
+            )
+            .await
         } else {
-            match service.call_member(owner, plan.register.clone()).await {
+            match trace::traced(
+                trace::peer_span("taba.write.register", &owner.node_id, false),
+                service.call_member(owner, plan.register.clone()),
+            )
+            .await
+            {
                 Ok(_) => {
                     registered = true;
                     continue;

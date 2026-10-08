@@ -33,7 +33,7 @@ Escolhas iniciais, trocáveis sem mexer no desenho:
 | JSON e NDJSON | `serde`, `serde_json` | [06d-api-convencoes.md](06d-api-convencoes.md), [06c-api-cluster.md](06c-api-cluster.md), seção 8.2.1 |
 | GUID v7 | `uuid` (feature `v7`) | IDs de mensagem, tópico, nó e token |
 | Logs e traces | `tracing` | [11-observabilidade.md](11-observabilidade.md) |
-| OTLP e Prometheus | `opentelemetry` + exportador de texto Prometheus | Uma instrumentação, dois exportadores |
+| OTLP e Prometheus | `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp` e `tracing-opentelemetry` para traces e logs; as métricas OTLP são montadas à mão com `opentelemetry-proto` (o SDK não aceita dados agregados de fora) a partir do registro próprio, que também escreve o texto do Prometheus | Uma instrumentação, dois exportadores (o exportador Prometheus do SDK está descontinuado) |
 | Configuração | `serde` + `serde_norway` (YAML) + variáveis `TABA_*`; `ipnet` para IPs e faixas CIDR | [10-configuracao.md](10-configuracao.md) |
 
 ### 17.3 Estrutura: um workspace, começando por um crate

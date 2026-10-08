@@ -5,6 +5,7 @@
 //! A leitura do arquivo e do ambiente é injetada, então os testes não tocam o processo.
 
 mod error;
+mod otlp;
 mod params;
 mod source;
 
@@ -14,6 +15,7 @@ use std::time::Duration;
 use ipnet::IpNet;
 
 pub use error::ConfigError;
+pub use otlp::{DEFAULT_METRIC_INTERVAL, Otlp, OtlpProtocol, Sampler};
 pub use params::{PARAMS, env_name};
 use source::{Bytes, List, NetList, Parse, Source};
 pub use source::{EnvSource, MapEnv, ProcessEnv};
@@ -299,6 +301,8 @@ pub struct Telemetry {
     /// Atributos de recurso de `OTEL_SERVICE_NAME` e `OTEL_RESOURCE_ATTRIBUTES` (variáveis do
     /// SDK do OpenTelemetry, que não têm chave no YAML).
     pub resource: Vec<(String, String)>,
+    /// A exportação OTLP (`OTEL_EXPORTER_OTLP_*`); `None` sem endpoint.
+    pub otlp: Option<Otlp>,
 }
 
 /// Lê `OTEL_RESOURCE_ATTRIBUTES` (`chave=valor,chave=valor`) e `OTEL_SERVICE_NAME`, que vence
@@ -422,6 +426,7 @@ impl Config {
         let (source, mut warnings) = Source::build(yaml, env)?;
         let mut config = Self::build(&source, &mut warnings)?;
         config.telemetry.resource = resource_attributes(env);
+        config.telemetry.otlp = otlp::from_env(env)?;
         Ok(Self { warnings, ..config })
     }
 
@@ -647,6 +652,7 @@ impl Config {
             topics_max_topics: s.opt("telemetry.topics.max-topics")?,
             logs_level: s.opt("telemetry.logs.level")?,
             resource: Vec::new(),
+            otlp: None,
         };
         let stats = Stats {
             topics_top_groups: s.get("stats.topics.top-groups")?,

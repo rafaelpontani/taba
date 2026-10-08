@@ -476,6 +476,9 @@ struct Taken {
     more_ready: bool,
 }
 
+/// De quanto em quanto tempo o resumo do overflow vai para o log (provisório, D118).
+pub const OVERFLOW_SUMMARY_EVERY: Duration = Duration::from_secs(60);
+
 pub struct Messages {
     topics: Arc<Topics>,
     clock: Arc<dyn Clock>,
@@ -1873,15 +1876,41 @@ impl Messages {
         let period = self.rules.sweep_interval.min(Duration::from_secs(1));
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut last_summary = tokio::time::Instant::now();
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
                 _ = ticker.tick() => {
                     let this = self.clone();
                     let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                    if last_summary.elapsed() >= OVERFLOW_SUMMARY_EVERY {
+                        self.log_overflow_summary(OVERFLOW_SUMMARY_EVERY);
+                        last_summary = tokio::time::Instant::now();
+                    }
                 }
             }
         }
+    }
+
+    /// O resumo periódico do overflow de memória para disco (doc 11, "Logs"): um log `info` com
+    /// quantas mensagens foram para o disco desde o resumo anterior, em vez de um log por
+    /// mensagem. Sem overflow na janela não há log. Devolve a quantidade resumida.
+    pub fn log_overflow_summary(&self, window: Duration) -> u64 {
+        let total = self.counters.overflow.load(Ordering::Relaxed);
+        let reported = self
+            .counters
+            .overflow_reported
+            .swap(total, Ordering::Relaxed);
+        let moved = total.saturating_sub(reported);
+        if moved > 0 {
+            tracing::info!(
+                event.name = "taba.storage.overflow",
+                messages = moved,
+                window_secs = window.as_secs(),
+                "overflow de memória para disco: {moved} mensagens na última janela"
+            );
+        }
+        moved
     }
 
     // ---- Drain ----

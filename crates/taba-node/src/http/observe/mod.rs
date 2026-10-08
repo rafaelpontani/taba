@@ -28,11 +28,13 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 
-use crate::telemetry::Telemetry;
+use tracing::Instrument;
+
 use crate::telemetry::metrics::{
     HTTP_SERVER_ACTIVE, HTTP_SERVER_DURATION, HTTP_SERVER_REQUEST_BODY, HTTP_SERVER_RESPONSE_BODY,
     NODE_CONNECTIONS,
 };
+use crate::telemetry::{Telemetry, trace};
 
 /// Onde se mede: o registro e a porta do listener (o atributo `server.port`).
 #[derive(Clone)]
@@ -49,6 +51,13 @@ fn method_label(method: &str) -> &str {
         }
         _ => "_OTHER",
     }
+}
+
+/// As rotas que contam como operação de cliente para o trace (doc 11, "Traces").
+fn is_client_operation(route: &str) -> bool {
+    !["/health", "/metrics", "/cluster", "/node"]
+        .iter()
+        .any(|prefix| route.starts_with(prefix))
 }
 
 /// Subtrai uma requisição ativa ao sair, mesmo que o futuro seja descartado no meio.
@@ -99,8 +108,19 @@ async fn observe(State(observer): State<Observer>, request: Request, next: Next)
         .and_then(|v| v.parse::<u64>().ok());
     let _active = ActiveRequest::start(&observer, &method);
     let started = Instant::now();
+    // Um trace por operação de cliente; as rotas de operação e as entre nós não geram trace.
+    let span = route
+        .as_deref()
+        .filter(|route| is_client_operation(route))
+        .map(|route| trace::server_span(&method, route, observer.port, request.headers()));
 
-    let response = next.run(request).await;
+    let response = match &span {
+        Some(span) => next.run(request).instrument(span.clone()).await,
+        None => next.run(request).await,
+    };
+    if let Some(span) = &span {
+        trace::finish_server_span(span, response.status().as_u16());
+    }
 
     let status = response.status().as_u16().to_string();
     let port = observer.port.to_string();

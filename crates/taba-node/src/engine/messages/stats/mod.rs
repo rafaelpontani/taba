@@ -74,6 +74,8 @@ pub struct DistributorCounters {
 #[derive(Debug)]
 pub struct NodeCounters {
     pub overflow: AtomicU64,
+    /// Quantas mensagens do `overflow` o resumo periódico do log já contou.
+    pub overflow_reported: AtomicU64,
     pub reads_memory: AtomicU64,
     pub reads_disk: AtomicU64,
     pub disk_errors: AtomicU64,
@@ -92,6 +94,7 @@ impl NodeCounters {
     pub fn new() -> Self {
         Self {
             overflow: AtomicU64::new(0),
+            overflow_reported: AtomicU64::new(0),
             reads_memory: AtomicU64::new(0),
             reads_disk: AtomicU64::new(0),
             disk_errors: AtomicU64::new(0),

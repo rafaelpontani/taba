@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
 use super::protocol::{
@@ -27,8 +28,8 @@ use crate::config::Config;
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::id;
-use crate::telemetry::Telemetry;
 use crate::telemetry::metrics::{CLUSTER_BOOTSTRAP_FAILURES, CLUSTER_MEMBERSHIP_CHANGES};
+use crate::telemetry::{Telemetry, trace};
 
 /// O prazo de uma chamada a outro nó. Não é configurável por ora (D93).
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -404,6 +405,7 @@ impl ClusterService {
         let mut attempt = 0;
         loop {
             attempt += 1;
+            crate::telemetry::trace::attempt(attempt);
             let result = self.call_member(member, request.clone()).await;
             let retry = match &result {
                 Err(e) if e.is_network() => true,
@@ -747,6 +749,14 @@ impl ClusterService {
 
     /// Uma tentativa do ingresso. `cluster.conflict` é a mudança de outro coordenador que ganhou.
     async fn join_once(self: &Arc<Self>, request: JoinRequest) -> Result<Response, TabaError> {
+        let span = trace::operation_span("taba.cluster.join", &request.node_id);
+        self.join_once_traced(request).instrument(span).await
+    }
+
+    async fn join_once_traced(
+        self: &Arc<Self>,
+        request: JoinRequest,
+    ) -> Result<Response, TabaError> {
         request.validate()?;
         if self.membership.table().is_none() {
             return Err(node_syncing());
@@ -922,11 +932,19 @@ impl ClusterService {
         let mut set = JoinSet::new();
         for peer in peers {
             let (me, peer, request) = (self.clone(), peer.clone(), request.clone());
-            set.spawn(async move {
-                // Outra mudança pendente no par (409) pode ser passageira: tenta de novo.
-                let result = me.call_retrying(&peer, request, true).await;
-                (peer, result)
-            });
+            let span = trace::peer_span("taba.cluster.register", &peer.node_id, false);
+            set.spawn(
+                async move {
+                    // Outra mudança pendente no par (409) pode ser passageira: tenta de novo.
+                    let result = trace::traced(
+                        tracing::Span::current(),
+                        me.call_retrying(&peer, request, true),
+                    )
+                    .await;
+                    (peer, result)
+                }
+                .instrument(span),
+            );
         }
         let (mut confirmed, mut failures) = (Vec::new(), Vec::new());
         while let Some(joined) = set.join_next().await {
@@ -954,12 +972,16 @@ impl ClusterService {
         let mut set = JoinSet::new();
         for peer in confirmed {
             let (me, peer, request) = (self.clone(), peer.clone(), request.clone());
-            set.spawn(async move {
-                if let Err(error) = me.call_retrying(&peer, request, false).await {
-                    // O registro pendente expira sozinho em `write.pending.ttl`.
-                    tracing::warn!(peer = %peer.node_id, %error, "rollback sem confirmação");
+            let span = trace::peer_span("taba.cluster.rollback", &peer.node_id, true);
+            set.spawn(
+                async move {
+                    if let Err(error) = me.call_retrying(&peer, request, false).await {
+                        // O registro pendente expira sozinho em `write.pending.ttl`.
+                        tracing::warn!(peer = %peer.node_id, %error, "rollback sem confirmação");
+                    }
                 }
-            });
+                .instrument(span),
+            );
         }
         while set.join_next().await.is_some() {}
     }
@@ -970,7 +992,10 @@ impl ClusterService {
         let mut set = JoinSet::new();
         for peer in peers {
             let (me, peer, operation_id) = (self.clone(), peer.clone(), operation_id.to_owned());
-            set.spawn(async move { me.commit_until_confirmed(peer, operation_id).await });
+            let span = trace::peer_span("taba.cluster.commit", &peer.node_id, false);
+            set.spawn(
+                async move { me.commit_until_confirmed(peer, operation_id).await }.instrument(span),
+            );
         }
         let all = tokio::time::timeout(self.rules.commit_timeout, async {
             while set.join_next().await.is_some() {}
@@ -1100,6 +1125,17 @@ impl ClusterService {
     /// de todos os nós que sobram, menos os que este nó enxerga fora do ar: eles são excluídos por
     /// votação própria, e esperá-los travaria a exclusão de quem já caiu.
     pub async fn unregister_node(
+        self: &Arc<Self>,
+        target: &str,
+        reason: UnregisterReason,
+    ) -> Result<(), TabaError> {
+        let span = trace::operation_span("taba.cluster.unregister", target);
+        self.unregister_node_traced(target, reason)
+            .instrument(span)
+            .await
+    }
+
+    async fn unregister_node_traced(
         self: &Arc<Self>,
         target: &str,
         reason: UnregisterReason,

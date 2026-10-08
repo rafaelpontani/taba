@@ -39,6 +39,7 @@ use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::SqliteTokenStore;
 use crate::storage::topics::SqliteTopicStore;
 use crate::telemetry::Telemetry;
+use crate::telemetry::otlp::{self, Pipeline};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NodeError {
@@ -54,6 +55,9 @@ pub enum NodeError {
         addr: SocketAddr,
         source: io::Error,
     },
+
+    #[error("exportação OTLP: {0}")]
+    Otlp(String),
 }
 
 /// Registra o nó numa rede (a em memória dos testes): recebe o endereço dele e o `Handler`.
@@ -107,6 +111,8 @@ pub struct RunningNode {
     drain_on_stop: bool,
     /// O gestor das filas voláteis deste nó (só num cluster).
     volatile: Option<Arc<VolatileManager>>,
+    /// Os provedores de traces e de logs do OTLP (só com `OTEL_EXPORTER_OTLP_ENDPOINT`).
+    otlp: Option<Arc<Pipeline>>,
 }
 
 impl RunningNode {
@@ -160,6 +166,13 @@ impl RunningNode {
         self.cluster_addr
     }
 
+    /// Envia já os spans e os logs que estão na fila do OTLP (para os testes).
+    pub async fn flush_otlp(&self) {
+        if let Some(pipeline) = self.otlp.clone() {
+            let _ = tokio::task::spawn_blocking(move || pipeline.flush()).await;
+        }
+    }
+
     /// Faz o drain local (se `drain.on-stop`), para os listeners e espera as chamadas em
     /// andamento terminarem. No desenvolvimento o drain é o *save*: a partida seguinte
     /// retoma do disco (doc 04, seção 6.10).
@@ -168,6 +181,10 @@ impl RunningNode {
             self.drain.stop_by_signal().await;
         }
         self.cancel.cancel();
+        if let Some(pipeline) = self.otlp.take() {
+            // Os spans e logs que ainda estão na fila saem antes de o processo terminar.
+            let _ = tokio::task::spawn_blocking(move || pipeline.shutdown()).await;
+        }
         while let Some(result) = self.tasks.join_next().await {
             match result {
                 Ok(Ok(())) => {}
@@ -357,6 +374,17 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         stats_rules: Arc::new(StatsRules::from_config(&config)),
     };
 
+    let otlp = match &config.telemetry.otlp {
+        Some(settings) => {
+            let pipeline =
+                Pipeline::start(settings, &telemetry.resource).map_err(NodeError::Otlp)?;
+            let sender = otlp::metrics::Sender::new(settings).map_err(NodeError::Otlp)?;
+            pipeline.attach(config.telemetry.logs_level.as_deref());
+            Some((Arc::new(pipeline), sender, settings.metric_interval))
+        }
+        None => None,
+    };
+
     if dev {
         tracing::warn!(node_id = %shared.node_id(), "mode=development: o nó é um cluster de um só, sem réplicas; não use em produção");
     } else {
@@ -375,6 +403,14 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     }
 
     let mut tasks = JoinSet::new();
+    let otlp = otlp.map(|(pipeline, sender, interval)| {
+        let (state, cancel) = (state.clone(), cancel.clone());
+        tasks.spawn(async move {
+            http::metrics::run_otlp(state, sender, interval, cancel).await;
+            Ok(())
+        });
+        pipeline
+    });
     let (fatal_tx, fatal_rx) = tokio::sync::mpsc::unbounded_channel();
     let sweeper = state.messages.clone();
     let state_messages = state.messages.clone();
@@ -542,6 +578,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         drain,
         drain_on_stop: config.drain.on_stop,
         volatile,
+        otlp,
     })
 }
 

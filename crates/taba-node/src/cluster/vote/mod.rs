@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
+use tracing::Instrument;
 
 use super::channel::Channels;
 use super::protocol::{
@@ -24,6 +25,7 @@ use super::service::{ClusterService, conflict_wait};
 use super::state::NodeState;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::telemetry::metrics::CLUSTER_VOTE;
+use crate::telemetry::trace;
 
 /// Quantos votos são exigidos de `healthy` votantes: `ceil(healthy × percent / 100)`.
 pub fn required_votes(healthy: u32, percent: u32) -> u32 {
@@ -57,7 +59,8 @@ impl Voting {
     /// Abre a votação sem esperar (é o que o canal e o sinal de falha chamam).
     pub fn open_in_background(self: &Arc<Self>, candidate: String, reason: VoteReason) {
         let me = self.clone();
-        tokio::spawn(async move { me.open(candidate, reason).await });
+        let span = trace::operation_span("taba.vote.open", &candidate);
+        tokio::spawn(async move { me.open(candidate, reason).await }.instrument(span));
     }
 
     /// Abre a votação de exclusão de `candidate` e, se o quórum fecha, o exclui.
@@ -105,10 +108,14 @@ impl Voting {
                 reason,
             });
             let timeout = service.rules().call_timeout;
-            set.spawn(async move {
-                let answer = service.call_peer(&member, request, timeout).await;
-                (member.node_id, answer)
-            });
+            let span = trace::peer_span("taba.vote.request", &member.node_id, false);
+            set.spawn(
+                async move {
+                    let answer = service.call_peer(&member, request, timeout).await;
+                    (member.node_id, answer)
+                }
+                .instrument(span),
+            );
         }
         // Eu voto por último e sempre `yes`: quem abre a votação já viu o nó cair.
         let (mut healthy, mut yes) = (1u32, 1u32);

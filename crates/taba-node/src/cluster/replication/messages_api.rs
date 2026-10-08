@@ -801,8 +801,9 @@ impl ClusterMessages {
             let missing = max - confirmed.len();
             let candidates = {
                 let (messages, view) = (self.messages.clone(), view.clone());
+                let span = tracing::Span::current();
                 tokio::task::spawn_blocking(move || {
-                    messages.take_candidates(&view, missing, visibility_secs)
+                    span.in_scope(|| messages.take_candidates(&view, missing, visibility_secs))
                 })
                 .await
                 .map_err(|_| TabaError::internal())??

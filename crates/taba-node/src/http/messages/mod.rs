@@ -24,6 +24,7 @@ use crate::core::token::Permission;
 use crate::engine::messages::{
     ConsumeQuery, Delivered, DistributorDelivery, Messages, PublishRequest, Published,
 };
+use crate::telemetry::trace;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -64,6 +65,14 @@ fn content_type(headers: &HeaderMap) -> Option<String> {
     })
 }
 
+/// Os atributos de mensageria do span da requisição: o tópico, a operação e as tags dele.
+fn annotate(state: &AppState, topic: &str, operation: &'static str) {
+    match state.topics.get(topic) {
+        Ok(view) => trace::annotate_messaging(topic, operation, &view.definition.tags),
+        Err(_) => trace::annotate_messaging(topic, operation, &std::collections::BTreeMap::new()),
+    }
+}
+
 async fn publish(
     State(state): State<AppState>,
     Path(topic): Path<String>,
@@ -71,6 +80,7 @@ async fn publish(
     headers: HeaderMap,
     body: Body,
 ) -> Result<Response, ApiError> {
+    annotate(&state, &topic, "send");
     // O tópico é conferido (`404`) e o limite descoberto antes de ler o corpo.
     let limit = state.messages.publish_limit(&topic)?;
     let body = read_body(body, limit).await?;
@@ -84,6 +94,9 @@ async fn publish(
         Some(cluster) => cluster.publish(&topic, request).await?,
         None => blocking(&state, move |messages| messages.publish(&topic, request)).await?,
     };
+    if let Published::Queue { id, .. } = &published {
+        trace::message_id(id);
+    }
     Ok(match published {
         // Só a fila FIFO traz `duplicate`; a duplicata é `200` e a mensagem criada, `201`.
         Published::Queue {
@@ -178,6 +191,7 @@ async fn consume(
     Path(topic): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<ConsumeResponse>, ApiError> {
+    annotate(&state, &topic, "receive");
     let query = ConsumeQuery {
         max_messages: params.get("maxMessages").cloned(),
         visibility_timeout: params.get("visibilityTimeout").cloned(),
@@ -196,6 +210,10 @@ async fn consume(
         Some(cluster) => cluster.consume(&topic, query).await?,
         None => state.messages.consume(&topic, query).await?,
     };
+    trace::batch_count(delivered.len());
+    if let Some(first) = delivered.first() {
+        trace::message_id(&first.id);
+    }
     Ok(Json(ConsumeResponse {
         messages: delivered.into_iter().map(Into::into).collect(),
     }))
@@ -206,6 +224,8 @@ async fn ack(
     Path((topic, id)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<StatusCode, ApiError> {
+    annotate(&state, &topic, "settle");
+    trace::message_id(&id);
     let receipt = params.get("receiptToken").cloned();
     match &state.replicated {
         Some(cluster) => cluster.ack(&topic, &id, receipt.as_deref()).await?,
@@ -226,6 +246,8 @@ async fn visibility(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<Value>, ApiError> {
+    annotate(&state, &topic, "settle");
+    trace::message_id(&id);
     let fields = json::object(&headers, &body)?;
     fields.reject_unknown(&["visibilityTimeout"])?;
     let receipt = params.get("receiptToken").cloned();
@@ -257,7 +279,9 @@ where
     F: FnOnce(&Messages) -> Result<T, TabaError> + Send + 'static,
 {
     let messages = state.messages.clone();
-    tokio::task::spawn_blocking(move || operation(&messages))
+    // O span da requisição segue para a thread do disco: os logs de lá levam o mesmo trace.
+    let span = tracing::Span::current();
+    tokio::task::spawn_blocking(move || span.in_scope(|| operation(&messages)))
         .await
         .map_err(|_| ApiError(TabaError::internal()))?
         .map_err(ApiError)

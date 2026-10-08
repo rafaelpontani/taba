@@ -29,6 +29,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use tracing::Instrument;
+
 use super::members::{Member, MemberState};
 use super::protocol::{Ack, LossRecord, MessageRecord, Request, Response, Step, StreamQuery};
 use super::replication::{Definitions, Pulled, Replica};
@@ -46,6 +48,7 @@ use crate::telemetry::metrics::{
     SYNC_BLOCKS_ACTIVE, SYNC_BYTES, SYNC_DURATION, SYNC_FAILURES, SYNC_IDS_LISTED, SYNC_LOG_BYTES,
     SYNC_LOG_EVENTS, SYNC_MESSAGES_PULLED, SYNC_PHASE,
 };
+use crate::telemetry::trace;
 
 /// Os parâmetros `cluster.sync.*` (doc 10) com os padrões escolhidos pela implementação.
 #[derive(Debug, Clone)]
@@ -490,17 +493,32 @@ impl Syncer {
         block: BlockId,
         log: &Arc<SyncLog>,
     ) -> Result<(), SyncError> {
-        let deadline = Instant::now() + self.rules.timeout;
-        loop {
-            match self.sync_block(ring, block, log).await {
-                Err(SyncError::NoSource(why)) if Instant::now() < deadline => {
-                    tracing::warn!(%why, "nenhuma origem atendeu o bloco: tentando de novo");
-                    self.check()?;
-                    self.nap().await;
+        // Um trace por bloco sincronizado (doc 11, "Traces"); cada chamada a uma origem é um span.
+        let span = tracing::info_span!(
+            "sync.block",
+            otel.name = "taba.sync.block",
+            otel.status_code = tracing::field::Empty,
+            taba.block.id = %block,
+        );
+        let result = async {
+            let deadline = Instant::now() + self.rules.timeout;
+            loop {
+                match self.sync_block(ring, block, log).await {
+                    Err(SyncError::NoSource(why)) if Instant::now() < deadline => {
+                        tracing::warn!(%why, "nenhuma origem atendeu o bloco: tentando de novo");
+                        self.check()?;
+                        self.nap().await;
+                    }
+                    other => return other,
                 }
-                other => return other,
             }
         }
+        .instrument(span.clone())
+        .await;
+        if result.is_err() {
+            span.record("otel.status_code", "ERROR");
+        }
+        result
     }
 
     /// Puxa as definições de um membro; tenta os outros e repete até `cluster.sync.timeout`.
@@ -532,6 +550,15 @@ impl Syncer {
     /// Chama uma origem. Falha de rede, `5xx` e `409` (a tabela de lá ainda é outra) repetem até
     /// `cluster.sync.timeout`; o resto é a resposta da origem.
     async fn call_source(&self, source: &Member, request: Request) -> Result<Response, TabaError> {
+        let span = trace::peer_span("taba.sync.fetch", &source.node_id, false);
+        trace::traced(span, self.call_source_inner(source, request)).await
+    }
+
+    async fn call_source_inner(
+        &self,
+        source: &Member,
+        request: Request,
+    ) -> Result<Response, TabaError> {
         let deadline = Instant::now() + self.rules.timeout;
         loop {
             if self.service.cancel_token().is_cancelled() {

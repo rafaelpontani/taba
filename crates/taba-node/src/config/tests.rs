@@ -538,3 +538,118 @@ fn every_registered_parameter_is_read_by_the_typed_config() {
         "parâmetros que o Config não lê: {missing:?}"
     );
 }
+
+fn otlp_of(vars: &[(&str, &str)]) -> Result<Option<Otlp>, ConfigError> {
+    let mut all = vec![("TABA_MODE", "development")];
+    all.extend_from_slice(vars);
+    let env = MapEnv(
+        all.into_iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect(),
+    );
+    Config::parse(None, &env).map(|c| c.telemetry.otlp)
+}
+
+/// UC: UC-OPS-039
+#[test]
+fn without_otel_exporter_otlp_endpoint_the_otlp_is_off() {
+    assert_eq!(otlp_of(&[]).unwrap(), None);
+    assert_eq!(
+        otlp_of(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "  ")]).unwrap(),
+        None,
+        "endpoint vazio conta como ausente"
+    );
+    // As demais variáveis, sozinhas, não ligam nada.
+    assert_eq!(
+        otlp_of(&[("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")]).unwrap(),
+        None
+    );
+}
+
+/// UC: UC-OPS-039
+#[test]
+fn the_otlp_protocol_defaults_to_grpc_and_accepts_http_protobuf() {
+    let default = otlp_of(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "http://coletor:4317/")])
+        .unwrap()
+        .unwrap();
+    assert_eq!(default.protocol, OtlpProtocol::Grpc);
+    assert_eq!(default.endpoint, "http://coletor:4317", "sem a barra final");
+    assert_eq!(default.metric_interval, DEFAULT_METRIC_INTERVAL);
+    assert!(default.headers.is_empty() && default.certificate.is_none());
+
+    let http = otlp_of(&[
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://coletor:4318"),
+        ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
+        (
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "authorization=Bearer x, k=v=w,sem-igual,=vazio",
+        ),
+        ("OTEL_EXPORTER_OTLP_CERTIFICATE", "/etc/ca.pem"),
+        ("OTEL_METRIC_EXPORT_INTERVAL", "5000"),
+    ])
+    .unwrap()
+    .unwrap();
+    assert_eq!(http.protocol, OtlpProtocol::HttpProtobuf);
+    assert_eq!(
+        http.headers,
+        vec![
+            ("authorization".to_owned(), "Bearer x".to_owned()),
+            ("k".to_owned(), "v=w".to_owned())
+        ]
+    );
+    assert_eq!(
+        http.certificate.as_deref(),
+        Some(std::path::Path::new("/etc/ca.pem"))
+    );
+    assert_eq!(http.metric_interval, Duration::from_secs(5));
+}
+
+/// UC: UC-OPS-039
+#[test]
+fn an_invalid_otlp_setting_stops_the_start_with_every_problem_listed() {
+    let error = otlp_of(&[
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "coletor:4317"),
+        ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json"),
+        ("OTEL_METRIC_EXPORT_INTERVAL", "0"),
+    ])
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("http:// ou https://"), "{error}");
+    assert!(error.contains("grpc ou http/protobuf"), "{error}");
+    assert!(error.contains("OTEL_METRIC_EXPORT_INTERVAL"), "{error}");
+}
+
+/// UC: UC-OPS-044
+#[test]
+fn the_sampler_follows_otel_traces_sampler_and_defaults_to_parentbased_traceidratio() {
+    let with = |extra: &[(&str, &str)]| {
+        let mut vars = vec![("OTEL_EXPORTER_OTLP_ENDPOINT", "http://c:4317")];
+        vars.extend_from_slice(extra);
+        otlp_of(&vars).map(|o| o.unwrap().sampler)
+    };
+    assert_eq!(
+        with(&[]).unwrap(),
+        Sampler::ParentBasedTraceIdRatio(0.1),
+        "padrão provisório (D117)"
+    );
+    assert_eq!(
+        with(&[("OTEL_TRACES_SAMPLER_ARG", "0.25")]).unwrap(),
+        Sampler::ParentBasedTraceIdRatio(0.25)
+    );
+    for (name, expected) in [
+        ("always_on", Sampler::AlwaysOn),
+        ("always_off", Sampler::AlwaysOff),
+        ("traceidratio", Sampler::TraceIdRatio(0.1)),
+        ("parentbased_always_on", Sampler::ParentBasedAlwaysOn),
+        ("parentbased_always_off", Sampler::ParentBasedAlwaysOff),
+    ] {
+        assert_eq!(
+            with(&[("OTEL_TRACES_SAMPLER", name)]).unwrap(),
+            expected,
+            "{name}"
+        );
+    }
+    assert!(with(&[("OTEL_TRACES_SAMPLER", "sempre")]).is_err());
+    assert!(with(&[("OTEL_TRACES_SAMPLER_ARG", "1.5")]).is_err());
+    assert!(with(&[("OTEL_TRACES_SAMPLER_ARG", "metade")]).is_err());
+}

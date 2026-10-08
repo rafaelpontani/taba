@@ -50,6 +50,11 @@ impl Histogram {
         self.sum
     }
 
+    /// A contagem de cada balde (não acumulada), o `+Inf` por último (o formato do OTLP).
+    pub fn buckets(&self) -> &[u64] {
+        &self.counts
+    }
+
     /// As contagens acumuladas por balde, o `+Inf` por último (o formato do Prometheus).
     pub fn cumulative(&self) -> Vec<u64> {
         let mut total = 0;

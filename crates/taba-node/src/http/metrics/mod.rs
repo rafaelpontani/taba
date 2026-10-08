@@ -57,6 +57,46 @@ pub async fn prometheus(
     Ok(([(header::CONTENT_TYPE, content_type)], body).into_response())
 }
 
+/// O envio periódico das métricas por OTLP: a cada `OTEL_METRIC_EXPORT_INTERVAL` lê o mesmo
+/// registro de `GET /metrics` e o manda ao coletor; ao parar, manda uma última vez. Uma falha de
+/// envio vira `warn` e a próxima rodada tenta de novo.
+pub async fn run_otlp(
+    state: AppState,
+    mut sender: crate::telemetry::otlp::metrics::Sender,
+    interval: std::time::Duration,
+    cancel: tokio_util::sync::CancellationToken,
+) {
+    let started = std::time::SystemTime::now();
+    let mut ticker = tokio::time::interval(interval);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    ticker.tick().await;
+    loop {
+        let stop = tokio::select! {
+            () = cancel.cancelled() => true,
+            _ = ticker.tick() => false,
+        };
+        let reading = state.clone();
+        let request = tokio::task::spawn_blocking(move || {
+            collect(&reading);
+            crate::telemetry::otlp::metrics::build_request(
+                &reading.telemetry.registry.snapshot(),
+                &reading.telemetry.resource,
+                started,
+                std::time::SystemTime::now(),
+            )
+        })
+        .await;
+        if let Ok(request) = request
+            && let Err(e) = sender.send(request).await
+        {
+            tracing::warn!(error = %e, "não foi possível enviar as métricas por OTLP");
+        }
+        if stop {
+            return;
+        }
+    }
+}
+
 /// Preenche o registro com o estado de agora.
 pub fn collect(state: &AppState) {
     let registry = &state.telemetry.registry;

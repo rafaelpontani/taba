@@ -55,7 +55,7 @@ Basta apontar o nó para o endpoint OTLP, com as **variáveis padrão do OpenTel
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Endereço do coletor (ex.: `http://coletor:4317`). Sem ela, o OTLP fica desligado. |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` (padrão) ou `http/protobuf`. |
 | `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_CERTIFICATE`... | Autenticação e TLS do backend. |
-| `OTEL_METRIC_EXPORT_INTERVAL` | Intervalo de envio das métricas. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Intervalo de envio das métricas, em milissegundos (padrão 60000). |
 | `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Amostragem de traces (`parentbased_traceidratio` e a fração). |
 | `OTEL_RESOURCE_ATTRIBUTES` | Atributos de recurso: `service.namespace=<cluster>,deployment.environment.name=<ambiente>`. |
 
@@ -499,7 +499,8 @@ Um trace por operação de cliente, com spans internos para cada etapa relevante
 - **Sincronização de bloco:** um trace por bloco sincronizado, com um span por lote de `GET`, indicando o nó de origem.
 - **Registro/desregistro de nó e votação:** um trace por operação, com um span por nó consultado.
 - **Atributos dos spans:** `taba.topic.tag.<chave>`, `messaging.message.id`, ID do bloco (`taba.block.id`), IDs dos nós envolvidos (`taba.node.id`, `taba.peer.id`), número da tentativa (`taba.attempt`). Como o ID da mensagem é um GUID v7 de alta cardinalidade, ele vai em **traces e logs, nunca em métricas**.
-- **Amostragem:** o SDK usa `OTEL_TRACES_SAMPLER` (padrão `parentbased_traceidratio`). Os spans de falha e de evento de durabilidade (erro ao cliente, rollback, teto de commit esgotado numa réplica, perda de mensagem) levam o atributo `taba.durability_event=true`, e o **Collector** os mantém sempre (amostragem por cauda, seção [Como ligar um coletor](#como-ligar-um-coletor)).
+- **Nomes dos spans do nó:** `{método} {rota}` na requisição de cliente (as rotas `/health`, `/metrics`, `/node` e `/cluster` não geram trace); `taba.write.register`, `taba.write.commit` e `taba.write.rollback` (um por nó de destino, com `taba.peer.id` e, no registro, `taba.attempt`); `taba.sync.block` (um trace por bloco, com `taba.block.id`) e `taba.sync.fetch` (uma chamada a uma origem, com `taba.peer.id`); `taba.cluster.join`, `taba.cluster.unregister` e `taba.vote.open` como raiz da operação, com `taba.cluster.register`, `taba.cluster.commit`, `taba.cluster.rollback` e `taba.vote.request` por nó consultado (`taba.node.id` é o nó que entra, sai ou é votado). O span que falha leva `otel.status_code=ERROR`. O `traceparent` de uma chamada de cliente é respeitado; entre nós o contexto ainda não viaja (D119).
+- **Amostragem:** o SDK usa `OTEL_TRACES_SAMPLER` (padrão `parentbased_traceidratio`, fração 0,1: D117). Os spans de falha e de evento de durabilidade (erro ao cliente, rollback, teto de commit esgotado numa réplica, perda de mensagem) levam o atributo `taba.durability_event=true`, e o **Collector** os mantém sempre (amostragem por cauda, seção [Como ligar um coletor](#como-ligar-um-coletor)).
 
 ## Logs
 
@@ -522,10 +523,10 @@ Logs **estruturados** (JSON, ou OTLP) com o mesmo contexto do trace (`trace_id`,
 | Início e fim de sincronização de bloco | `info` | Sincronização (seção 7.3) |
 | **Perda de mensagem** (ID, bloco, nós consultados) | `error` | Sincronização (seção 7.3) |
 | Retorno de nó e mensagens recuperadas | `info` | Cluster (seção 6.6) |
-| Overflow de memória para disco (resumo periódico, não por mensagem) | `info` | Armazenamento (seção 3.2) |
+| Overflow de memória para disco (resumo periódico, não por mensagem): evento `taba.storage.overflow`, com `messages` e `window_secs`, a cada 60 s e só quando houve overflow (D118) | `info` | Armazenamento (seção 3.2) |
 | Erro de I/O em disco | `error` | Armazenamento |
 
-O nível de log é configurável (`telemetry.logs.level`). Logs por mensagem em caminho quente (publicação, consumo) ficam em `debug` para não pesar na latência.
+Pelo OTLP cada log vai como *log record* com `trace_id` e `span_id` do span em que aconteceu, severidade do OpenTelemetry e os campos do evento (inclusive `event.name`) como atributos; o log em JSON no `stdout` ainda não leva `trace_id` nem `span_id` (PRB-050). O nível de log é configurável (`telemetry.logs.level`). Logs por mensagem em caminho quente (publicação, consumo) ficam em `debug` para não pesar na latência.
 
 ## Health checks
 
