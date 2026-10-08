@@ -51,7 +51,8 @@ Nunca reescreva as entradas antigas para parecerem melhores: se algo mudou, acre
 Toda implementação que descobre algo em aberto o registra **na mesma mudança**:
 
 - **Pergunta de design** (o documento não define, ou há duas saídas): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo código `D` livre e uma proposta. Quando for decidida, vai para `08a` (regras da seção "Decisões e pendências").
-- **Problema de lógica, risco ou limite** (o código se comporta de um jeito furado, injusto ou incompleto): entra em [doc/22-problemas-em-aberto.md](doc/22-problemas-em-aberto.md) com o próximo `PRB-NNN`, dizendo o efeito e apontando a dúvida `D` ou a etapa que o resolve. Resolvido, a linha vai para "Resolvidos" com a data; o código não é reaproveitado.
+- **Problema de lógica, risco ou limite** (o código se comporta de um jeito furado, injusto ou incompleto): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo `PRB-NNN`, dizendo o efeito e a proposta; se há uma dúvida `D` que o resolve, vai dentro dela ("Problema ligado"). Resolvido, vai para a seção "Problemas resolvidos" de [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) com a data; o código não é reaproveitado.
+- Na `08b`, o que **não depende de nada** fica na seção 1 e o que depende de outra dúvida, problema ou etapa fica na seção 2, com "Depende de".
 - O desvio em relação ao documento continua em [doc/21-historico-implementacao.md](doc/21-historico-implementacao.md); os três arquivos se apontam entre si.
 
 ## Casos de uso

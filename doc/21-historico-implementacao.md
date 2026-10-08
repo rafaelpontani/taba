@@ -33,7 +33,7 @@ A ordem vai do que fecha as pendências do nó único, e que o cluster vai reapr
 A 15 só fecha quando **todas** as linhas 15a a 15f dizem "Feita" **e** estas conferências passam. Elas existem para que nada se perca entre as sessões:
 
 1. `cargo test --test uc_coverage -- --nocapture` não lista como sem teste nenhum caso de nível `C` das áreas UC-CAN, UC-FAL, UC-FRZ, UC-CNC, UC-RTN, UC-SIN, nem os de UC-FIF, UC-VOL, UC-ING-023 e UC-CNS-020 e 022 que a tabela atribui às etapas acima. Um caso que a implementação decidir não cobrir sai da lista com a justificativa na seção 2, não some.
-2. Em [22-problemas-em-aberto.md](22-problemas-em-aberto.md) nenhum destes está "Aberto": PRB-003, 027, 032, 035, 036, 038, 040, 041, 042, 043, 044, 046 (o 045 foi resolvido na 15c, o 033 na 15b4 e o 037 na 15b2). Cada um foi para "Resolvidos" ou virou decisão registrada em [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md).
+2. Em [08b-pendencias.md](08b-pendencias.md) nenhum destes está "Aberto": PRB-003, 027, 032, 035, 036, 038, 040, 041, 042, 043, 044, 046 (o 045 foi resolvido na 15c, o 033 na 15b4 e o 037 na 15b2). Cada um foi para "Resolvidos" ou virou decisão registrada em [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md).
 3. Nenhuma linha da seção 3 deste documento promete algo "na etapa 15" ou "(etapa 15)": cada área ou está `Feito` ou aponta uma etapa de fora da 15 (12b, 16) ou uma dúvida `D`.
 4. `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings` e `cargo test` limpos, a suíte completa três vezes seguidas sem flake.
 
@@ -138,7 +138,7 @@ Ao terminar uma etapa: acrescente a entrada na seção 1, troque a situação de
 - **Nomes em inglês** no código e nos documentos, no mesmo commit: tabelas `topics` (`name`, `definition`), `state` (`key`, `value`) e `messages` (`group_id`, `published_at`, `dead_lettered_at`; os demais campos já eram em inglês), índices `messages_invisible_until` e `messages_age_base`, arquivo `_topic.db`, `${topic}` nas pastas e a chave `save_completed`. As tabelas ainda não implementadas passam a se chamar `losses` (`topic`, `id`, `block`, `detected_at`), `expiry` e `events` nos documentos. Os diagramas `mapa-mental-invisibilidade`, `mapa-mental-sync` e `remocao-no` foram regerados.
 - **Sem migração:** um `_node.db` ou `_topico.db` criado antes desta etapa tem os nomes antigos e não é lido pelo código novo. Serve só para os nós de desenvolvimento atuais (apague `storage.dir`); em produção nenhum nó existe ainda.
 - **A linha do tempo acima não foi reescrita:** as entradas das etapas 1 a 6 citam os nomes antigos porque era assim que se chamavam na época. Da seção 2 em diante os nomes são os novos.
-- **Pendências e problemas:** as dúvidas de design descobertas nas etapas 5 e 6 entraram em [08b](08b-pendencias.md) (D75 a D83), e [22-problemas-em-aberto.md](22-problemas-em-aberto.md) passa a registrar os problemas de lógica e de definição ainda sem solução. O procedimento está no AGENTS.md.
+- **Pendências e problemas:** as dúvidas de design descobertas nas etapas 5 e 6 entraram em [08b](08b-pendencias.md) (D75 a D83), e [08b-pendencias.md](08b-pendencias.md) passa a registrar os problemas de lógica e de definição ainda sem solução. O procedimento está no AGENTS.md.
 
 ### Etapa 7: rate limit e IP do cliente
 
@@ -331,7 +331,7 @@ Segunda das quatro entregas que fecham a 15b. Acrescenta os testes de integraç�
   - **`taba.cluster.membership.changes` ganhou `operation=unregister` e `reason` (`vote`/`drain`)**, como o doc 11 já dizia (o código só contava `register`, e nada do desregistro). `Membership::pending_change` deixa o commit e o rollback saberem de que mudança se trata, e `unregister_node` passou a contar as fases.
 - **Rede em memória:** `MemoryNetwork::set_delay_kind` atrasa só um tipo de chamada (`Request::name()`), para alongar uma fase sem estourar o prazo do canal (um atraso global de 600 ms fazia o canal dar todos os pares por caídos). Com teste unitário.
 - **Testes:** os helpers de `channel.rs` e `sync.rs` (`address_of`, `channels_of`, `signals_of`, `total`, `settled`, `create_queue`, `start_isolated`, `pause_sync`, `wait_phase`, `MANY_RETRIES`, `QUIET`) foram para `tests/common/cluster.rs`.
-- **Problemas novos (em [22](22-problemas-em-aberto.md) e [08b](08b-pendencias.md)):**
+- **Problemas novos (em [22, hoje na 08b](08b-pendencias.md) e [08b](08b-pendencias.md)):**
   - **PRB-040 / D100:** o nó que reinicia no mesmo endereço **antes** de a queda ser detectada responde ao canal com `503` (sem tabela), o canal conta isso como "par vivo", a votação nunca abre, e o ingresso do nó novo falha para sempre (o coordenador manda o `register` ao endereço do nó antigo, que agora é o próprio nó novo). O UC-CNC-007 só vale se a votação já estiver aberta, que é o que o teste prova.
   - **PRB-041 / D101:** na partição em que os dois lados se excluem, as tabelas dos dois lados ficam sem canais entre si e com a mesma versão; nenhum nó recebe `not-member` e `check_exclusion` exige tabela mais nova, então os lados **nunca se reencontram** depois da cura.
   - **PRB-037** foi para "Resolvidos".
@@ -372,7 +372,7 @@ Terceira das quatro entregas que fecham a 15b. O freezing e a volta do nó exclu
   - **13:** o sinal de vida repete o estado do nó; a fila de entrada não existe; o aviso expira em 10 s; o canal é uma chamada por par e sentido.
   - **20b e 20c:** UC-CAN-024 sem `queue.in`; UC-FAL-025 com a ressalva do PRB-044. O doc 06b já tinha `signals` (D102, D103) desde a 15b3.
 - **Decisões que ficaram no 08b (provisórias, com proposta):** D98 a D106 já estavam lá; entram **D107** (bloco cujo primário está fora do ar), **D108** (a exclusão sem os caídos) e **D109** (`NOTIFY_TTL`, `EXCLUDED_AFTER` e o prazo da chamada do canal são fixos).
-- **Problemas** ([22](22-problemas-em-aberto.md)): **PRB-033 vai para "Resolvidos"** (o canal tem `seq`, `confirm`, fila e reenvio; o transporte provisório é desvio 87); abertos **PRB-044** (acima) e **PRB-045** (o nó excluído apaga o estado local sem recuperar as mensagens até a 15c).
+- **Problemas** ([22, hoje na 08b](08b-pendencias.md)): **PRB-033 vai para "Resolvidos"** (o canal tem `seq`, `confirm`, fila e reenvio; o transporte provisório é desvio 87); abertos **PRB-044** (acima) e **PRB-045** (o nó excluído apaga o estado local sem recuperar as mensagens até a 15c).
 - **Desvios numerados:** 87 a 97 na seção 2.
 - **Ficou de fora:** as condições em `GET /health/ready` (o doc 06b não as pede; o doc 11 foi corrigido para dizer isso) e `monitoring` no sinal de vida.
 - **Testes desta parte:** nenhum teste novo; `conditions.rs` ganhou asserções (a métrica do quórum) e o teste do nó mudo ficou determinístico. Casos com teste: 508 → 508. `fmt`, `clippy -D warnings` e a suíte inteira passam.
@@ -429,6 +429,10 @@ A FIFO deixa de responder `503 fifo.primary-unavailable` em qualquer publicaçã
 - **Testes:** `failures.rs` (reinício antes da queda, reencontro da partição, nó em falha repassa e só `503` num nó só, canais descartados na exclusão), `sync.rs` (commit tardio, dois ingressos cruzados), `freezing.rs` (freezing herdado), `recovery.rs` (reinício), `conditions.rs` (primário fora), `channel.rs` (sinal de vida, instantâneo, sem ping), `volatile_cluster.rs` (conjunto derivado da tabela e volta do excluído) e unitários em `members`, `protocol`, `volatile` e `engine/messages`. Casos com teste: 550 → 572 de 814.
 - **Fora desta etapa:** o PRB-049 (avisos sem janela nem espera, desempate de conexão dupla e fila de entrada, que esperam o WebSocket da etapa 16); a saída (b) do D107 (o secundário coordenar a escrita); o freezing do membro que estava fora do ar no commit da exclusão (PRB-043).
 - **Problemas e dúvidas:** PRB-003, 027, 036, 040, 041, 042, 043, 044 e 046 vão para "Resolvidos"; abrem PRB-047 (limites do reencontro), PRB-048 (o prazo da recuperação atrasa o ingresso) e PRB-049 (avisos); D94, D100, D101, D105, D106, D107, D111 e D78.2 ficam no 08b como "implementado (provisório)" à espera de confirmação; D116 (PRB-036) entra no 08a. Desvios 115 a 127.
+
+### Unificação dos problemas em aberto na 08b
+
+Só documentação, sem código. O `22-problemas-em-aberto.md` foi extinto: os problemas abertos (`PRB-NNN`) passaram para [08b-pendencias.md](08b-pendencias.md), dentro da dúvida `D` que os resolve ("Problema ligado") ou como item avulso com proposta, e os resolvidos para a seção "Problemas resolvidos" de [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md). A 08b ganhou duas seções: **1. Sem bloqueio** (no topo) e **2. Bloqueadas por outra decisão ou etapa**, cada item com "Depende de". As entradas antigas deste documento que citam o 22 foram apenas relinkadas para a 08b; as menções a "22" no texto antigo leem-se como a 08b. O `AGENTS.md` e o `README.md` foram ajustados.
 
 ## 2. Desvios e decisões a conferir com a documentação
 
