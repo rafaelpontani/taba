@@ -110,7 +110,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `ANE` | Anel de hash, blocos e papéis | [05 §7.1](05-particionamento-replicacao.md) | 12 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | [02 §3.3 e 3.4](02-arquitetura.md) | 24 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | [13 §12.6 a 12.8](13-entrega-de-mensagens.md) | 31 |
-| `CAN` | Canal permanente entre nós e filas de sinais | [13 §12.8 e 12.9](13-entrega-de-mensagens.md), [06c](06c-api-cluster.md) | 24 |
+| `CAN` | Canal permanente entre nós e filas de sinais | [13 §12.8 e 12.9](13-entrega-de-mensagens.md), [06c](06c-api-cluster.md) | 25 |
 | `INV` | Invisibilidade no dono e nas réplicas | [14](14-invisibilidade.md) | 32 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | [02 §3.2](02-arquitetura.md) | 25 |
 
@@ -119,9 +119,9 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | Área | Assunto | Documentos de origem | Casos |
 |---|---|---|---:|
 | `ING` | Entrada de nó (bootstrap) | [04 §6.2 e 6.5](04-cluster.md) | 27 |
-| `FAL` | Detecção de falhas, votação de exclusão e saída por falha | [04 §6.3](04-cluster.md) | 25 |
-| `FRZ` | Período de freezing | [04 §6.7](04-cluster.md) | 8 |
-| `CNC` | Concorrência entre mudanças de membros | [04 §6.8](04-cluster.md) | 8 |
+| `FAL` | Detecção de falhas, votação de exclusão e saída por falha | [04 §6.3](04-cluster.md) | 27 |
+| `FRZ` | Período de freezing | [04 §6.7](04-cluster.md) | 9 |
+| `CNC` | Concorrência entre mudanças de membros | [04 §6.8](04-cluster.md) | 9 |
 | `SIN` | Sincronização distribuída de blocos | [05 §7.3](05-particionamento-replicacao.md) | 29 |
 | `STR` | Streams NDJSON entre nós | [06c §8.2.1](06c-api-cluster.md) | 15 |
 | `RTN` | Retorno de nó excluído e recuperação de perdas | [04 §6.6](04-cluster.md) | 13 |
@@ -133,7 +133,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 809 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 814 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 

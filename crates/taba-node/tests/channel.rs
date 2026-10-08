@@ -120,6 +120,7 @@ async fn the_node_that_joins_calls_every_member_and_only_members_are_answered() 
     // Quem não consta na tabela é recusado pela rede em memória...
     let outsider = cluster.network.transport("10.0.0.50");
     let batch = ChannelBatch {
+        to: String::new(),
         from: guid(),
         keepalive: None,
         frames: vec![frame(1, ready("x", true))],
@@ -161,6 +162,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
     // Um `seq` bem acima dos que o nó 2 usa de verdade.
     let base = 1_000_000;
     let batch = ChannelBatch {
+        to: String::new(),
         from: node2.clone(),
         keepalive: None,
         frames: vec![
@@ -181,6 +183,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
     // A confirmação se perdeu e o emissor reenviou o mesmo `seq`, agora com outro conteúdo: o
     // receptor devolve o confirm e não processa de novo.
     let repeated = ChannelBatch {
+        to: String::new(),
         from: node2.clone(),
         keepalive: None,
         frames: vec![frame(base + 1, ready("x", false))],
@@ -193,6 +196,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
         "o seq já processado foi ignorado"
     );
     let next = ChannelBatch {
+        to: String::new(),
         from: node2.clone(),
         keepalive: None,
         frames: vec![frame(base + 3, ready("x", false))],
@@ -205,6 +209,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
 
     // O sinal de vida não tem `seq`: não é confirmado nem fica na fila de ninguém.
     let alive = ChannelBatch {
+        to: String::new(),
         from: node2.clone(),
         keepalive: Some(Keepalive {
             at: "2026-10-05T12:00:00.000Z".into(),
@@ -437,5 +442,123 @@ async fn a_broadcast_with_confirm_returns_when_every_peer_confirmed_and_gives_up
         .find(|p| p.node_id == node2)
         .unwrap();
     assert!(waiting.queue >= 1, "o sinal sem confirmação fica na fila");
+    cluster.shutdown().await;
+}
+
+async fn publish_json(node: &common::TestNode, topic: &str, body: serde_json::Value) {
+    let response = node
+        .client
+        .post(node.client_url(&format!("/topics/{topic}/messages")))
+        .json(&body)
+        .send()
+        .await
+        .expect("requisição");
+    assert_eq!(response.status(), 201);
+}
+
+/// UC: UC-CAN-005
+#[tokio::test]
+async fn the_keepalive_carries_the_time_the_state_the_version_and_the_busiest_topics_up_to_the_limit()
+ {
+    let cluster = TestCluster::start(3).await;
+    for topic in ["a", "b", "c", "d"] {
+        create_queue(cluster.node(1), topic).await;
+        for n in 0..12 {
+            publish_json(cluster.node(1), topic, serde_json::json!({ "n": n })).await;
+        }
+    }
+    settled(&cluster).await;
+    let version = cluster.table(1).unwrap().version;
+
+    // Cada nó é dono de parte das mensagens de cada tópico; um deles tem prontas em três ou mais.
+    let (richest, all) = (1..=3)
+        .map(|n| (n, signals_of(&cluster, n).keepalive(10)))
+        .max_by_key(|(_, keepalive)| keepalive.ready.len())
+        .unwrap();
+    assert!(all.ready.len() >= 3, "tópicos com prontas: {:?}", all.ready);
+    assert_eq!(all.state, "active");
+    assert_eq!(all.version, version);
+    assert!(all.at.ends_with('Z'), "a data e hora do nó: {}", all.at);
+
+    // Só os tópicos com prontas, os de mais mensagens primeiro, até o limite
+    // (`cluster.channel.keepalive.max-topics`).
+    let limited = signals_of(&cluster, richest).keepalive(2);
+    assert_eq!(limited.ready.len(), 2);
+    assert!(limited.ready[0].count >= limited.ready[1].count);
+    assert_eq!(limited.ready, all.ready[..2]);
+    assert!(all.ready.iter().all(|r| r.count > 0));
+    cluster.shutdown().await;
+}
+
+/// UC: UC-CAN-008
+#[tokio::test]
+async fn a_channel_opens_with_a_snapshot_of_the_state_the_listeners_and_the_ready_topics() {
+    let cluster = TestCluster::start(3).await;
+    create_queue(cluster.node(1), "a").await;
+    create_queue(cluster.node(1), "b").await;
+    for n in 0..12 {
+        publish_json(cluster.node(1), "a", serde_json::json!({ "n": n })).await;
+    }
+    // Um `GET` com espera no nó 2 é um ouvinte do tópico `b`.
+    let waiting = {
+        let url = cluster.node(2).client_url("/topics/b/messages?waitTime=20");
+        let client = cluster.node(2).client.clone();
+        tokio::spawn(async move { client.get(url).send().await })
+    };
+    let signals = signals_of(&cluster, 2);
+    let probe = signals.clone();
+    eventually("o ouvinte do nó 2 aparecer", move || {
+        probe.local_listener_count("b") == 1
+    })
+    .await;
+
+    // O instantâneo: o estado primeiro e depois um `listeners` e um `ready` para cada tópico em que
+    // o estado é verdadeiro.
+    let snapshot = signals.snapshot();
+    assert_eq!(
+        snapshot[0],
+        Signal::NodeState {
+            state: "active".into()
+        }
+    );
+    assert!(snapshot.contains(&Signal::Listeners {
+        topic: "b".into(),
+        has_listeners: true
+    }));
+    let with_ready = (1..=3)
+        .filter(|n| {
+            signals_of(&cluster, *n)
+                .snapshot()
+                .contains(&ready("a", true))
+        })
+        .count();
+    assert!(with_ready >= 1, "algum nó é dono de mensagens de `a`");
+    assert!(
+        !snapshot.contains(&ready("b", true)),
+        "só o que é verdadeiro vai no instantâneo"
+    );
+    waiting.abort();
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FAL-001
+#[tokio::test]
+async fn there_is_no_ping_apart_from_the_channel_between_the_nodes() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    cluster.network.clear_calls();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let kinds: std::collections::BTreeSet<&str> = cluster
+        .network
+        .calls()
+        .iter()
+        .map(|call| call.request)
+        .collect();
+    assert!(!kinds.is_empty(), "o canal conversa sozinho");
+    assert_eq!(
+        kinds,
+        std::collections::BTreeSet::from(["channel"]),
+        "em repouso só o canal fala: sem ping nem sonda à parte"
+    );
     cluster.shutdown().await;
 }

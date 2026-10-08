@@ -151,7 +151,7 @@ No modo desenvolvimento devolve o mesmo nos dois `scope`, em formato de cluster 
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `health` | texto | `live`, `ready` ou `not-ready`. |
-| `reason` | texto | Só com `not-ready`: `bootstrapping` (ingresso em andamento), `syncing` (sincronização), `returning` (volta pós-exclusão), `draining`, `drained` ou `failed` (disco cheio ou banco corrompido, [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3). |
+| `reason` | texto | Só com `not-ready`: `bootstrapping` (ingresso em andamento), `syncing` (sincronização), `returning` (volta pós-exclusão), `draining`, `drained` ou `failed` (o nó em `failed` também não atende chamadas de cliente: ver `node.failed`, D78.2) (disco cheio ou banco corrompido, [05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3). |
 
 ### `DrainStatus`
 

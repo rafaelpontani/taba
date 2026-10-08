@@ -66,15 +66,27 @@ pub struct AppState {
 
 /// Em drain o nó não atende chamada de cliente (doc 04, seção 6.10): num cluster repassa a chamada
 /// ao nó mais livre, e a resposta volta como o destino a deu. Sem outro nó (ou numa chamada que já
-/// chegou por repasse, que nunca é repassada de novo) responde `503` com `Retry-After`.
+/// chegou por repasse, que nunca é repassada de novo) responde `503` com `Retry-After`. O nó em
+/// falha (`failed`) também não atende: repassa, ou responde `503` `node.failed` (D78.2).
 async fn drain_guard(State(state): State<AppState>, request: Request, next: Next) -> Response {
     // Um nó que ainda sincroniza também não atende: repassa a chamada a outro (doc 04, seção 6.9).
     let syncing = state.cluster.is_some() && state.node.state() == NodeState::Syncing;
-    if state.node.drain_state() == DrainState::Active && !syncing {
+    let failed = state.node.state() == NodeState::Failed;
+    if state.node.drain_state() == DrainState::Active && !syncing && !failed {
         return next.run(request).await;
     }
     if state.cluster.is_some() && request.extensions().get::<forward::Forwarded>().is_none() {
         return forward::forward_call(&state, request).await;
+    }
+    if failed {
+        return common::ApiError(
+            TabaError::new(
+                ErrorCode::NodeFailed,
+                "O nó está em falha e não atende chamadas de cliente.",
+            )
+            .with_retry_after(DRAIN_RETRY_AFTER_SECS),
+        )
+        .into_response();
     }
     if syncing {
         return common::ApiError(

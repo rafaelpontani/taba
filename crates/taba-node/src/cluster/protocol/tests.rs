@@ -336,6 +336,7 @@ fn requests() -> Vec<Request> {
             },
         },
         Request::Channel(ChannelBatch {
+            to: String::new(),
             from: guid(1),
             keepalive: Some(Keepalive {
                 at: "2026-10-05T12:00:00.000Z".into(),
@@ -364,6 +365,7 @@ fn requests() -> Vec<Request> {
             ],
         }),
         Request::Channel(ChannelBatch {
+            to: String::new(),
             from: guid(1),
             keepalive: None,
             frames: vec![],
@@ -716,6 +718,7 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     assert_eq!(take.parse_reply(taken.clone().into_http()).unwrap(), taken);
 
     let channel = Request::Channel(ChannelBatch {
+        to: String::new(),
         from: guid(1),
         keepalive: None,
         frames: vec![ChannelFrame {
@@ -862,4 +865,65 @@ fn the_token_json_round_trips() {
         no_expiry
     );
     assert!(token_from_json(&serde_json::json!({"id": "x"})).is_err());
+}
+
+/// UC: UC-CAN-002, UC-CAN-004
+#[test]
+fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_content() {
+    let signals = [
+        (
+            Signal::Listeners {
+                topic: "pedidos".into(),
+                has_listeners: true,
+            },
+            json!({"type": "listeners", "topic": "pedidos", "hasListeners": true}),
+        ),
+        (
+            Signal::Ready {
+                topic: "pedidos".into(),
+                has_ready: false,
+            },
+            json!({"type": "ready", "topic": "pedidos", "hasReady": false}),
+        ),
+        (
+            Signal::Notify {
+                topic: "pedidos".into(),
+                count: 3,
+            },
+            json!({"type": "notify", "topic": "pedidos", "count": 3}),
+        ),
+        (
+            Signal::NodeState {
+                state: "draining".into(),
+            },
+            json!({"type": "node-state", "state": "draining"}),
+        ),
+    ];
+    for (signal, expected) in signals {
+        // Só o `type` e os campos de contagem e de estado: nada de corpo nem de lista de IDs.
+        assert_eq!(serde_json::to_value(&signal).unwrap(), expected);
+        let back: Signal = serde_json::from_value(expected).unwrap();
+        assert_eq!(back, signal);
+    }
+    // O sinal de vida e o `confirm` completam os seis tipos do doc 06c.
+    let confirm = serde_json::to_value(Confirm::new(vec![1, 2])).unwrap();
+    assert_eq!(confirm, json!({"type": "confirm", "seqs": [1, 2]}));
+    let keepalive = serde_json::to_value(Keepalive {
+        at: "2026-10-05T12:00:00.000Z".into(),
+        load: 2,
+        version: 7,
+        state: "active".into(),
+        ready: vec![ReadyCount {
+            topic: "pedidos".into(),
+            count: 4,
+        }],
+    })
+    .unwrap();
+    assert_eq!(
+        keepalive,
+        json!({
+            "at": "2026-10-05T12:00:00.000Z", "load": 2, "version": 7, "state": "active",
+            "ready": [{"topic": "pedidos", "count": 4}]
+        })
+    );
 }

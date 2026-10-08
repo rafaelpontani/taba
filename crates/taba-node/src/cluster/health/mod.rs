@@ -94,7 +94,7 @@ pub struct HealthSignals {
     pub syncing_blocks: u64,
     /// Blocos com menos réplicas íntegras do que o anel dá (inclui os que estão abaixo do quórum).
     pub blocks_below_replication: u64,
-    /// Blocos com menos réplicas íntegras do que `write.quorum`.
+    /// Blocos com menos réplicas íntegras do que `write.quorum` ou com o primário fora do ar.
     pub blocks_below_quorum: u64,
     /// Nós em período de freezing.
     pub frozen_nodes: u64,
@@ -198,7 +198,12 @@ pub fn collect(service: &ClusterService) -> Option<HealthSignals> {
             .filter(|id| state_of(id) == Some(MemberState::Active) && reaches(id))
             .count();
         let quorum = (rules.quorum as usize).min(owners.len());
-        if intact < quorum {
+        // O quórum de escrita sempre inclui o primário do bloco (doc 05, seção 7.2): com ele fora do
+        // ar e ainda na tabela, as escritas do bloco falham até a exclusão (D107).
+        let primary_down = owners
+            .first()
+            .is_some_and(|id| state_of(id) == Some(MemberState::Active) && !reaches(id));
+        if intact < quorum || primary_down {
             below_quorum += 1;
         }
         if intact < owners.len() {

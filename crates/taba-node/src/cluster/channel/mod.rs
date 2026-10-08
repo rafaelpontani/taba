@@ -415,6 +415,7 @@ impl Channels {
             state.last_attempt = Some(now);
             ChannelBatch {
                 from: me,
+                to: peer.node_id.clone(),
                 keepalive,
                 frames,
             }
@@ -442,6 +443,10 @@ impl Channels {
                 self.succeeded(peer, &confirm.seqs, started.elapsed(), sent_keepalive, now)
             }
             Ok(_) => self.failed(peer),
+            // Outro processo atende nesse endereço: o nó que este canal procura não está lá (D100).
+            Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterWrongNode => {
+                self.failed(peer)
+            }
             Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterNotMember => {
                 // O par não me tem na tabela dele: ou fui excluído, ou o commit ainda não chegou.
                 let excluded = {

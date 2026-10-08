@@ -239,6 +239,7 @@ impl Voting {
         };
         let probe = Request::Channel(ChannelBatch {
             from: self.service.node_id(),
+            to: candidate.to_owned(),
             keepalive: None,
             frames: Vec::new(),
         });

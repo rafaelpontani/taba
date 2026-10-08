@@ -318,3 +318,160 @@ async fn a_get_tries_the_next_ids_after_a_failed_registration_up_to_the_attempt_
     assert!(attempts <= 3 * 2 * 3 * 3, "{attempts} chamadas de registro");
     cluster.shutdown().await;
 }
+
+type Managed = Vec<std::collections::BTreeSet<String>>;
+
+/// Quem gerencia cada fila agora, nó a nó (os `id` que cada um deriva da sua própria tabela).
+fn managed_sets(cluster: &TestCluster, count: usize) -> Managed {
+    (1..=count)
+        .map(|n| {
+            cluster
+                .node(n)
+                .node
+                .volatile_managed()
+                .into_iter()
+                .collect()
+        })
+        .collect()
+}
+
+/// O nó (de 1 a `count`) que é o primário da posição do `id` na tabela do nó 1.
+fn primary_of(cluster: &TestCluster, count: usize, id: &str) -> usize {
+    let owners = cluster
+        .node(1)
+        .node
+        .cluster()
+        .unwrap()
+        .owners_of(topic_position(id))
+        .unwrap();
+    (1..=count)
+        .find(|n| cluster.node_id(*n) == owners[0].node_id)
+        .unwrap()
+}
+
+async fn many_volatile_queues(cluster: &TestCluster, count: usize) -> Vec<String> {
+    let mut ids = Vec::new();
+    for n in 0..count {
+        ids.push(volatile_queue(cluster.node(1), &format!("fila-{n:02}"), 3600).await);
+    }
+    ids
+}
+
+/// UC: UC-VOL-007, UC-VOL-016, UC-ING-023
+#[tokio::test]
+async fn the_managed_set_is_derived_from_the_table_and_a_new_node_manages_only_once_ready() {
+    let mut cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let ids = many_volatile_queues(&cluster, 24).await;
+
+    // Cada fila tem um gestor só, o primário da posição dela, e cada nó a deriva da própria tabela.
+    eventually("cada fila ter o gestor que o anel manda", || {
+        let sets = managed_sets(&cluster, 3);
+        ids.iter().all(|id| {
+            let holders: Vec<usize> = (1..=3).filter(|n| sets[*n - 1].contains(id)).collect();
+            holders == [primary_of(&cluster, 3, id)]
+        })
+    })
+    .await;
+
+    // Criar e excluir um tópico muda o conjunto sozinho.
+    let extra = volatile_queue(cluster.node(2), "fila-extra", 3600).await;
+    let holder = primary_of(&cluster, 3, &extra);
+    eventually("a fila nova entrar no conjunto do gestor", || {
+        managed_sets(&cluster, 3)[holder - 1].contains(&extra)
+    })
+    .await;
+    let deleted = cluster
+        .node(3)
+        .client
+        .delete(cluster.node(3).client_url("/topics/fila-extra"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), 204);
+    eventually("a fila excluída sair do conjunto", || {
+        managed_sets(&cluster, 3)
+            .iter()
+            .all(|set| !set.contains(&extra))
+    })
+    .await;
+
+    // O nó 4 entra e sincroniza: está na tabela e no anel, mas ainda não gerencia nada, e as filas
+    // do trecho dele não são de ninguém até ele ficar pronto (nenhuma é excluída nesse intervalo).
+    let fourth = common::cluster::start_isolated(&mut cluster, &[]).await;
+    let gate = common::cluster::pause_sync(&cluster, fourth, "replay");
+    common::cluster::wait_phase(cluster.node(fourth), "replay").await;
+    eventually("os três nós terem o nó 4 na tabela", || {
+        (1..=3).all(|n| cluster.member_ids(n).len() == 4)
+    })
+    .await;
+    let moved: Vec<&String> = ids
+        .iter()
+        .filter(|id| primary_of(&cluster, 4, id) == 4)
+        .collect();
+    assert!(!moved.is_empty(), "o anel deu filas ao nó novo");
+    eventually("as filas do trecho do nó 4 ficarem sem gestor", || {
+        let sets = managed_sets(&cluster, 4);
+        sets[3].is_empty()
+            && moved
+                .iter()
+                .all(|id| (0..4).all(|n| !sets[n].contains(*id)))
+            && ids
+                .iter()
+                .filter(|id| !moved.contains(id))
+                .all(|id| (0..3).any(|n| sets[n].contains(id)))
+    })
+    .await;
+
+    // Pronto o nó 4, ele é também gestor das filas do trecho dele, e os outros as largaram.
+    gate.add_permits(1);
+    common::cluster::wait_joined(cluster.node(fourth)).await;
+    eventually("o nó 4 gerenciar as filas do trecho dele", || {
+        let sets = managed_sets(&cluster, 4);
+        ids.iter().all(|id| {
+            let holders: Vec<usize> = (1..=4).filter(|n| sets[*n - 1].contains(id)).collect();
+            holders == [primary_of(&cluster, 4, id)]
+        }) && moved.iter().all(|id| sets[3].contains(*id))
+    })
+    .await;
+    cluster.shutdown().await;
+}
+
+/// UC: UC-VOL-018
+#[tokio::test]
+async fn the_managed_set_of_every_node_goes_back_when_the_excluded_node_returns() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let ids = many_volatile_queues(&cluster, 24).await;
+    eventually("o conjunto de cada nó estabilizar", || {
+        managed_sets(&cluster, 3)
+            .iter()
+            .map(|s| s.len())
+            .sum::<usize>()
+            == ids.len()
+    })
+    .await;
+    let before = managed_sets(&cluster, 3);
+
+    // O nó 3 é excluído: os dois outros dividem as filas dele.
+    cluster.network.isolate(&host_of(3));
+    eventually("os dois nós ficarem com todas as filas", || {
+        let sets = managed_sets(&cluster, 2);
+        cluster.member_ids(1).len() == 2
+            && cluster.member_ids(2).len() == 2
+            && ids
+                .iter()
+                .all(|id| sets.iter().filter(|s| s.contains(id)).count() == 1)
+    })
+    .await;
+
+    // Passado o freezing, o nó volta com o mesmo ID, o anel é o de antes e o conjunto também.
+    cluster.network.restore(&host_of(3));
+    cluster.clock.advance(Duration::from_secs(301));
+    common::cluster::wait_joined(cluster.node(3)).await;
+    eventually("o conjunto de cada nó voltar ao de antes", || {
+        managed_sets(&cluster, 3) == before
+    })
+    .await;
+    cluster.shutdown().await;
+}

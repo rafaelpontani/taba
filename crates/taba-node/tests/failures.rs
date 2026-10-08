@@ -590,7 +590,7 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
     cluster.shutdown().await;
 }
 
-/// UC: UC-CNC-002, UC-CNC-007, UC-FRZ-005
+/// UC: UC-CNC-002, UC-CNC-007, UC-FRZ-005, UC-CAN-014
 #[tokio::test]
 async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins_as_a_new_node() {
     let mut cluster = TestCluster::start_with(3, &[("TABA_DRAIN_ON_STOP", "false")]).await;
@@ -722,6 +722,199 @@ async fn a_syncing_node_that_fails_is_excluded_by_the_others() {
     // de uma mudança por vez.
     eventually("os outros excluírem o nó que falhou", || {
         agree_without(&cluster, &[1, 2], number, 2)
+    })
+    .await;
+    cluster.shutdown().await;
+}
+
+/// UC: UC-CAN-025, UC-CAN-014, UC-CNC-007
+#[tokio::test]
+async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and_is_replaced() {
+    // 40 tentativas de 50 ms: o nó reinicia muito antes de a queda ser declarada.
+    let mut cluster = TestCluster::start_with(
+        3,
+        &[
+            ("TABA_DRAIN_ON_STOP", "false"),
+            ("TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES", "40"),
+        ],
+    )
+    .await;
+    settled(&cluster).await;
+    let old_id = cluster.node_id(3);
+    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+
+    cluster.nodes.pop().unwrap().shutdown().await;
+    cluster.network.unregister(&PeerAddr::new(host_of(3), port));
+    let builder = cluster
+        .builder(3, false)
+        .env("TABA_CLUSTER_PORT", &port.to_string());
+    let number = cluster.spawn_node(builder).await.expect("o nó reinicia");
+    let new_id = cluster.node_id(number);
+    assert_ne!(new_id, old_id);
+
+    // Antes de a votação abrir, o processo novo já não passa pelo antigo: o canal dos outros lados
+    // recebe `cluster.wrong-node` e conta como caído.
+    eventually("a votação do nó antigo", || {
+        [1, 2].iter().any(|n| {
+            cluster
+                .node(*n)
+                .node
+                .cluster()
+                .is_some_and(|c| !c.open_votes().is_empty())
+                || cluster.member_ids(*n).contains(&new_id)
+        })
+    })
+    .await;
+    eventually("o nó novo substituir o antigo na tabela", || {
+        [1, 2].iter().all(|n| {
+            let ids = cluster.member_ids(*n);
+            ids.contains(&new_id) && !ids.contains(&old_id)
+        })
+    })
+    .await;
+    wait_joined(cluster.node(number)).await;
+    assert_eq!(cluster.member_ids(1).len(), 3);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FAL-026
+#[tokio::test]
+async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again() {
+    let cluster = TestCluster::start(4).await;
+    settled(&cluster).await;
+    for left in [1, 2] {
+        for right in [3, 4] {
+            cluster.network.partition(&host_of(left), &host_of(right));
+        }
+    }
+    eventually("cada lado ficar só com os seus dois nós", || {
+        cluster.member_ids(1).len() == 2
+            && cluster.member_ids(3).len() == 2
+            && cluster.table(1) == cluster.table(2)
+            && cluster.table(3) == cluster.table(4)
+    })
+    .await;
+
+    // A rede volta, mas as duas tabelas têm a mesma versão e nenhum canal liga um lado ao outro.
+    // O freezing de cada lado já passou.
+    for left in [1, 2] {
+        for right in [3, 4] {
+            cluster.network.heal(&host_of(left), &host_of(right));
+        }
+    }
+    cluster.clock.advance(Duration::from_secs(301));
+
+    // Cada lado consulta a tabela de quem excluiu: o perdedor (o do menor `nodeId`, num empate)
+    // refaz o ingresso e as quatro tabelas voltam a ser uma só.
+    eventually("os quatro nós numa tabela só", || {
+        let tables: Vec<_> = (1..=4).map(|n| cluster.table(n)).collect();
+        tables.windows(2).all(|w| w[0] == w[1])
+            && tables[0].as_ref().is_some_and(|t| t.members.len() == 4)
+    })
+    .await;
+    for number in 1..=4 {
+        wait_joined(cluster.node(number)).await;
+    }
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FAL-027
+#[tokio::test]
+async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leaves() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    // A exclusão demora: o nó em falha segue na tabela e recebe chamadas por um instante.
+    cluster
+        .network
+        .set_delay_kind("unregister", Duration::from_millis(1500));
+    cluster.node(3).node.shared().set_failed();
+
+    let created = cluster
+        .node(3)
+        .client
+        .post(cluster.node(3).client_url("/topics"))
+        .json(&json!({ "name": "pedidos", "type": "queue" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201, "a chamada foi repassada a um nó são");
+    assert_eq!(
+        total(
+            &cluster.node(3).metrics().await,
+            "taba_cluster_forwarded_total",
+            "taba_outcome=\"ok\""
+        ),
+        1.0,
+        "o nó em falha repassou, não atendeu"
+    );
+    // O tópico foi criado no cluster, mas o nó em falha não o atende por conta própria.
+    let listed = cluster
+        .node(1)
+        .client
+        .get(cluster.node(1).client_url("/topics/pedidos"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), 200);
+    cluster.network.set_delay_kind("unregister", Duration::ZERO);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FAL-027
+#[tokio::test]
+async fn a_failed_single_node_refuses_the_client_calls_with_503() {
+    let node = TestNode::development().await;
+    node.node.shared().set_failed();
+    let response = node.client_get("/topics").await;
+    assert_eq!(response.status(), 503);
+    assert!(response.headers().contains_key("retry-after"));
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "node.failed");
+    // As rotas de operação continuam: é por elas que se vê a falha.
+    let ready = node.client_get_ops("/health/ready").await;
+    assert_eq!(ready.status(), 503);
+    assert_eq!(ready.json::<Value>().await.unwrap()["reason"], "failed");
+    node.shutdown().await;
+}
+
+/// UC: UC-CAN-022
+#[tokio::test]
+async fn once_the_exclusion_is_decided_the_nodes_drop_the_channel_and_the_return_starts_with_empty_queues()
+ {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let third = cluster.node_id(3);
+    cluster.network.isolate(&host_of(3));
+    eventually("os dois saudáveis excluírem o nó 3", || {
+        agree_without(&cluster, &[1, 2], 3, 2)
+    })
+    .await;
+
+    // O canal e as filas para o excluído foram descartados: não acumulam mais.
+    for number in [1, 2] {
+        let peers = channels_of(&cluster, number).peers();
+        assert!(
+            peers.iter().all(|p| p.node_id != third),
+            "nó {number}: o canal com o excluído foi descartado"
+        );
+    }
+    let label = format!("taba_peer=\"{third}\"");
+    assert_eq!(
+        sum_of(&cluster, &[1, 2], "taba_cluster_channel_queue_out", &label).await,
+        0.0
+    );
+
+    // Se o nó volta, refaz o bootstrap e os canais nascem novos e vazios.
+    cluster.network.restore(&host_of(3));
+    cluster.clock.advance(Duration::from_secs(301));
+    wait_joined(cluster.node(3)).await;
+    eventually("os canais novos, de pé e vazios", || {
+        [1, 2].iter().all(|n| {
+            channels_of(&cluster, *n)
+                .peers()
+                .iter()
+                .any(|p| p.node_id == third && p.up && p.queue == 0)
+        })
     })
     .await;
     cluster.shutdown().await;

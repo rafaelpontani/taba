@@ -105,6 +105,8 @@ pub struct RunningNode {
     drain: Arc<DrainController>,
     /// `drain.on-stop`: ao parar, as mensagens em memória vão para o disco.
     drain_on_stop: bool,
+    /// O gestor das filas voláteis deste nó (só num cluster).
+    volatile: Option<Arc<VolatileManager>>,
 }
 
 impl RunningNode {
@@ -119,6 +121,21 @@ impl RunningNode {
     /// O nó no cluster; só existe em `mode=production` com um `Transport`.
     pub fn cluster(&self) -> Option<&Arc<ClusterService>> {
         self.cluster.as_ref()
+    }
+
+    /// Os `id` das filas voláteis que este nó gerencia agora (doc 15, seção 14.5); vazio fora de
+    /// um cluster e enquanto o nó não está pronto.
+    pub fn volatile_managed(&self) -> Vec<String> {
+        self.volatile
+            .as_ref()
+            .map(|manager| {
+                manager
+                    .managed()
+                    .into_iter()
+                    .map(|queue| queue.id)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Espera o nó dizer que não consegue seguir (o bootstrap esgotou as tentativas) e devolve
@@ -236,16 +253,27 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     .map_err(storage_error)?;
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
     let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id()));
-    let messages = Messages::new(
-        topics.clone(),
-        deps.clock.clone(),
-        MessageRules::from_config(&config),
-        Arc::new(MessageStore::new(
-            &config.storage.dir,
-            config.storage.db_synchronous,
-        )),
-        dev && config.resume_on_start,
-    );
+    let message_store = Arc::new(MessageStore::new(
+        &config.storage.dir,
+        config.storage.db_synchronous,
+    ));
+    let messages = if !dev && deps.cluster.is_some() {
+        // Num cluster o disco da vida anterior espera a recuperação do reinício (D111).
+        Messages::new_keeping_disk(
+            topics.clone(),
+            deps.clock.clone(),
+            MessageRules::from_config(&config),
+            message_store,
+        )
+    } else {
+        Messages::new(
+            topics.clone(),
+            deps.clock.clone(),
+            MessageRules::from_config(&config),
+            message_store,
+            dev && config.resume_on_start,
+        )
+    };
     check_save_mark(&saves, dev && config.resume_on_start, topics.count());
     {
         let shared = shared.clone();
@@ -440,11 +468,18 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     }
 
     if let Some((service, _)) = &cluster_node {
+        let service = service.clone();
+        tasks.spawn(async move {
+            service.run_reunion().await;
+            Ok(())
+        });
+    }
+    let volatile = cluster_node
+        .as_ref()
+        .map(|(service, _)| VolatileManager::new(service.clone(), state_topics.clone()));
+    if let Some(manager) = volatile.clone() {
         // No cluster, quem exclui a fila volátil ociosa é o nó gestor dela (doc 15, seção 14.5).
-        let (cancel, manager) = (
-            cancel.clone(),
-            VolatileManager::new(service.clone(), state_topics.clone()),
-        );
+        let cancel = cancel.clone();
         tasks.spawn(async move {
             manager.run(cancel).await;
             Ok(())
@@ -506,6 +541,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         tasks,
         drain,
         drain_on_stop: config.drain.on_stop,
+        volatile,
     })
 }
 

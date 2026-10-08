@@ -209,6 +209,9 @@ pub struct ClusterService {
     open_votes: StdMutex<HashMap<String, Instant>>,
     /// O nó está refazendo o ingresso por ter sido excluído.
     excluded: AtomicBool,
+    /// O processo já consultou a lista de perdas dos outros nós (D111): só a primeira listagem do
+    /// bootstrap faz isso, e o nó que volta de uma exclusão ou de um drain já o fez.
+    boot_recovered: AtomicBool,
     /// Quem monta o `NodeStatus` deste nó (a camada de operação; `GET /cluster/status`).
     status_source: OnceLock<StatusSource>,
 }
@@ -237,6 +240,22 @@ pub(crate) fn conflict_wait() -> Duration {
     let mut bytes = [0u8; 8];
     getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
     Duration::from_millis(100 + u64::from_le_bytes(bytes) % 100)
+}
+
+/// Na partição simétrica, perde (refaz o ingresso) o lado com menos membros; no empate, o do
+/// menor `nodeId`. Os dois lados chegam à mesma conclusão (D101).
+fn loses_reunion(mine: &MemberTable, theirs: &MemberTable) -> bool {
+    let smallest = |t: &MemberTable| t.members.iter().map(|m| m.node_id.clone()).min();
+    (mine.members.len(), smallest(mine)) < (theirs.members.len(), smallest(theirs))
+}
+
+/// O `operationId` de uma fase 1, para quem a coordena conferir se a mudança ainda é dele.
+fn request_operation(request: &Request) -> Option<&str> {
+    match request {
+        Request::Register(r) => Some(&r.operation_id),
+        Request::Unregister(r) => Some(&r.operation_id),
+        _ => None,
+    }
 }
 
 fn node_syncing() -> TabaError {
@@ -288,6 +307,7 @@ impl ClusterService {
             on_change: OnceLock::new(),
             open_votes: StdMutex::new(HashMap::new()),
             excluded: AtomicBool::new(false),
+            boot_recovered: AtomicBool::new(false),
             status_source: OnceLock::new(),
         })
     }
@@ -312,6 +332,12 @@ impl ClusterService {
     }
 
     fn membership_changed(&self) {
+        // A votação de um nó que saiu da tabela acabou: se ele voltar com o mesmo ID, a marca
+        // antiga não vale de novo (e não bloqueia as entradas até `write.pending.ttl`).
+        self.open_votes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|candidate, _| self.membership.is_member(candidate));
         if let Some(hook) = self.on_change.get() {
             hook();
         }
@@ -497,10 +523,20 @@ impl ClusterService {
         caller: &str,
         request: Request,
     ) -> Result<Response, TabaError> {
+        // O canal diz a quem fala: outro processo no mesmo endereço não atende pelo antigo (D100).
+        if let Request::Channel(batch) = &request
+            && !batch.to.is_empty()
+            && batch.to != self.node_id()
+        {
+            return Err(TabaError::new(
+                ErrorCode::ClusterWrongNode,
+                "O nó neste endereço não é o que o canal procura.",
+            ));
+        }
         match request {
             Request::ListNodes => self
                 .membership
-                .table()
+                .table_with_frozen(self.now(), self.rules.freezing_duration)
                 .map(Response::Members)
                 .ok_or_else(node_syncing),
             Request::Join(request) => self.join(request).await,
@@ -693,6 +729,24 @@ impl ClusterService {
     /// `POST /cluster/nodes/join`: este nó coordena o registro do nó novo (doc 04, seção 6.2,
     /// passos 2 a 5) e só responde com a tabela depois do commit.
     async fn join(self: &Arc<Self>, request: JoinRequest) -> Result<Response, TabaError> {
+        // Dois ingressos coordenados por membros diferentes se cruzam: o mais antigo vence e o
+        // outro, que desfez o registro, espera um pouco e recomeça (D94).
+        let give_up_at = tokio::time::Instant::now() + self.rules.join_timeout;
+        loop {
+            match self.join_once(request.clone()).await {
+                Err(error) if error.code == ErrorCode::ClusterConflict => {
+                    if tokio::time::Instant::now() >= give_up_at || self.cancel.is_cancelled() {
+                        return Err(registration_failed());
+                    }
+                    tokio::time::sleep(conflict_wait()).await;
+                }
+                other => return other,
+            }
+        }
+    }
+
+    /// Uma tentativa do ingresso. `cluster.conflict` é a mudança de outro coordenador que ganhou.
+    async fn join_once(self: &Arc<Self>, request: JoinRequest) -> Result<Response, TabaError> {
         request.validate()?;
         if self.membership.table().is_none() {
             return Err(node_syncing());
@@ -702,7 +756,7 @@ impl ClusterService {
         let table = self.membership.table().ok_or_else(node_syncing)?;
         if table.member(&request.node_id).is_some() {
             // O mesmo nó repetindo o pedido (o anterior foi aceito e a resposta se perdeu).
-            return Ok(Response::Members(table));
+            return Ok(Response::Members(self.table_for_newcomer(table)));
         }
         // Um nó excluído por votação não volta antes do fim do freezing (doc 04, seção 6.7).
         if let Some(left) = self.membership.frozen_remaining(
@@ -739,13 +793,20 @@ impl ClusterService {
 
         // Fase 1: o registro em todos os nós, este inclusive.
         let change = Change::Add(node.clone());
-        if let Err(e) = self
-            .membership
-            .register(&operation_id, change.clone(), self.now())
+        if let Err(e) =
+            self.membership
+                .register_coordinating(&operation_id, change.clone(), self.now())
         {
             self.count_change(Some(&change), "register", "failed");
             tracing::warn!(node_id = %node.node_id, error = ?e, "ingresso recusado neste nó");
-            return Err(registration_failed());
+            // Outra mudança já pendente aqui (a de um coordenador que chegou antes): o ingresso
+            // espera a vez em vez de falhar (D94).
+            let error = from_membership(e);
+            return Err(if error.code == ErrorCode::ClusterConflict {
+                error
+            } else {
+                registration_failed()
+            });
         }
         let (confirmed, failures) = self
             .register_on_peers(
@@ -768,7 +829,27 @@ impl ClusterService {
                 node_id = %node.node_id,
                 "ingresso abortado (rollback): a fase de registro não foi confirmada por todos"
             );
-            return Err(registration_failed());
+            let contended = failures.iter().any(
+                |(_, e)| matches!(e, CallError::Remote(r) if r.code == ErrorCode::ClusterConflict),
+            );
+            return Err(if contended {
+                TabaError::new(
+                    ErrorCode::ClusterConflict,
+                    "Há outra mudança de membros em andamento.",
+                )
+            } else {
+                registration_failed()
+            });
+        }
+        if !self.membership.is_pending(&operation_id) {
+            // Um coordenador mais antigo deslocou este registro no meio da fase 1.
+            self.count_change(Some(&change), "register", "failed");
+            self.rollback_everywhere(&confirmed, &operation_id, &change)
+                .await;
+            return Err(TabaError::new(
+                ErrorCode::ClusterConflict,
+                "Outra mudança de membros, mais antiga, tomou a vez.",
+            ));
         }
         self.count_change(Some(&change), "register", "ok");
 
@@ -785,7 +866,7 @@ impl ClusterService {
                 version = table.version,
                 "nó novo registrado no cluster"
             );
-            Ok(Response::Members(table))
+            Ok(Response::Members(self.table_for_newcomer(table)))
         } else {
             self.count_change(Some(&change), "commit", "timeout");
             tracing::warn!(
@@ -798,6 +879,18 @@ impl ClusterService {
                  Consulte GET /cluster/nodes antes de repetir.",
             ))
         }
+    }
+
+    /// A tabela que o nó novo recebe leva os nós em freezing (D106): quem entra depois do commit de
+    /// uma exclusão herda o freezing de quem o recebeu.
+    fn table_for_newcomer(&self, mut table: MemberTable) -> MemberTable {
+        if let Some(with_frozen) = self
+            .membership
+            .table_with_frozen(self.now(), self.rules.freezing_duration)
+        {
+            table.frozen = with_frozen.frozen;
+        }
+        table
     }
 
     /// O teste de conexão (passo 2): conecta de volta ao nó novo. Uma resposta de erro do nó
@@ -951,27 +1044,38 @@ impl ClusterService {
     }
 
     /// `call_peer` com `write.retry.attempts` tentativas e `write.retry.backoff` entre elas, para
-    /// falha de rede e erro `5xx` do par (e, se pedido, o conflito `409`).
+    /// falha de rede e erro `5xx` do par. O conflito `409` (se pedido) é repetido por até
+    /// `write.commit.timeout`, enquanto a mudança continua pendente aqui: a mais antiga das que se
+    /// cruzam vence, e quem foi deslocada desiste na hora (D94).
     async fn call_retrying(
         &self,
         peer: &Member,
         request: Request,
         retry_conflict: bool,
     ) -> Result<Response, CallError> {
+        let started = tokio::time::Instant::now();
         let mut attempt = 0;
         loop {
             attempt += 1;
             let result = self
                 .call_peer(peer, request.clone(), self.rules.call_timeout)
                 .await;
-            let retry = match &result {
-                Err(e) if e.is_network() => true,
+            let (retry, conflict) = match &result {
+                Err(e) if e.is_network() => (true, false),
                 Err(CallError::Remote(e)) => {
-                    e.status() >= 500 || (retry_conflict && e.code == ErrorCode::ClusterConflict)
+                    let conflict = retry_conflict && e.code == ErrorCode::ClusterConflict;
+                    (e.status() >= 500 || conflict, conflict)
                 }
-                _ => false,
+                _ => (false, false),
             };
-            if !retry || attempt >= self.rules.retry_attempts {
+            let exhausted = if conflict {
+                started.elapsed() >= self.rules.commit_timeout
+                    || request_operation(&request)
+                        .is_some_and(|operation| !self.membership.is_pending(operation))
+            } else {
+                attempt >= self.rules.retry_attempts
+            };
+            if !retry || exhausted {
                 return result;
             }
             tokio::select! {
@@ -1031,9 +1135,9 @@ impl ClusterService {
                 node_id: target.to_owned(),
             },
         };
-        if let Err(e) = self
-            .membership
-            .register(&operation_id, change.clone(), self.now())
+        if let Err(e) =
+            self.membership
+                .register_coordinating(&operation_id, change.clone(), self.now())
         {
             self.count_change(Some(&change), "register", "failed");
             return Err(from_membership(e));
@@ -1070,6 +1174,15 @@ impl ClusterService {
                 registration_failed()
             });
         }
+        if !self.membership.is_pending(&operation_id) {
+            self.count_change(Some(&change), "register", "failed");
+            self.rollback_everywhere(&confirmed, &operation_id, &change)
+                .await;
+            return Err(TabaError::new(
+                ErrorCode::ClusterConflict,
+                "Outra mudança de membros, mais antiga, tomou a vez.",
+            ));
+        }
         self.count_change(Some(&change), "register", "ok");
         self.membership
             .commit(&operation_id, self.now())
@@ -1086,6 +1199,56 @@ impl ClusterService {
                 ErrorCode::ClusterCommitTimeout,
                 "O desregistro foi decidido e o commit segue em segundo plano.",
             ))
+        }
+    }
+
+    /// O reencontro depois de uma partição em que os dois lados se excluíram (D101): de tempos em
+    /// tempos o nó consulta a tabela de quem excluiu. Se ela é de outro cluster (nenhum membro em
+    /// comum, e sem este nó) e este lado é o perdedor (menos membros; empate: o lado do menor
+    /// `nodeId`), o nó refaz o ingresso do zero, como o excluído que volta.
+    pub async fn run_reunion(self: Arc<Self>) {
+        let period = (self.rules.keepalive_interval * 10).max(Duration::from_secs(1));
+        loop {
+            tokio::select! {
+                () = self.cancel.cancelled() => return,
+                () = tokio::time::sleep(period) => {}
+            }
+            self.check_reunion().await;
+        }
+    }
+
+    /// Uma volta do reencontro.
+    pub async fn check_reunion(self: &Arc<Self>) {
+        if self.node.state() != NodeState::Active
+            || self.node.drain_state() != super::state::DrainState::Active
+        {
+            return;
+        }
+        for other in self.membership.excluded_members() {
+            let Some(mine) = self.membership.table() else {
+                return;
+            };
+            let Ok(Response::Members(theirs)) = self
+                .call_peer(&other, Request::ListNodes, self.rules.call_timeout)
+                .await
+            else {
+                continue;
+            };
+            let separate = !theirs.members.is_empty()
+                && theirs.member(&self.node_id()).is_none()
+                && theirs
+                    .members
+                    .iter()
+                    .all(|m| mine.member(&m.node_id).is_none());
+            if separate && loses_reunion(&mine, &theirs) {
+                tracing::warn!(
+                    node_id = %self.node_id(),
+                    other = %other.node_id,
+                    "as duas metades do cluster se excluíram e se reencontraram: este lado refaz o ingresso"
+                );
+                self.handle_exclusion().await;
+                return;
+            }
         }
     }
 
@@ -1124,10 +1287,15 @@ impl ClusterService {
         }
         tracing::warn!(node_id = %self.node_id(), "este nó foi excluído do cluster: recuperando as perdas e refazendo o ingresso do zero");
         self.recover_losses().await;
+        self.boot_recovered.store(true, Ordering::SeqCst);
         if let Some(replication) = self.replication.get().cloned() {
             replication.reset_local().await;
         }
         self.membership.clear();
+        self.open_votes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.node.set_state(NodeState::Joining);
         if let Some(replication) = self.replication.get().cloned() {
             replication.channels.sync_members();
@@ -1165,11 +1333,35 @@ impl ClusterService {
         replication.recovery.run(peers).await;
     }
 
+    /// O reinício do processo: consulta a lista de perdas dos membros que a listagem de entrada
+    /// trouxe e devolve o que o disco tem delas. O disco fica como está: a sincronização que se
+    /// segue e a limpeza dos blocos decidem o que fica (D111).
+    async fn recover_on_boot(self: &Arc<Self>, table: &MemberTable) {
+        let Some(replication) = self.replication.get().cloned() else {
+            return;
+        };
+        if !table.members.is_empty() {
+            replication.recovery.run(table.members.clone()).await;
+        }
+        // Devolvido o que os outros pediram, o disco antigo é apagado: o nó entra vazio e a
+        // sincronização o enche com o que o anel lhe dá.
+        self.release_old_disk().await;
+    }
+
+    /// Apaga o que ficou no disco da vida anterior e libera a varredura (D111).
+    async fn release_old_disk(&self) {
+        if let Some(replication) = self.replication.get().cloned() {
+            replication.reset_local().await;
+            replication.messages.messages().release_old_disk();
+        }
+    }
+
     /// Volta do drain **como nó novo** (doc 04, seção 6.10): ID novo, estado local limpo e o
     /// bootstrap completo, com nova posição no anel. Não há freezing: o ID é outro e a saída foi
     /// voluntária.
     pub async fn rejoin_as_new(self: &Arc<Self>) {
         self.recover_losses().await;
+        self.boot_recovered.store(true, Ordering::SeqCst);
         let new_id = id::new_at(self.clock.now_millis());
         if let Some(replication) = self.replication.get().cloned() {
             replication.reset_local().await;
@@ -1180,6 +1372,10 @@ impl ClusterService {
             .node_id = new_id.clone();
         self.node.set_node_id(new_id.clone());
         self.membership.clear();
+        self.open_votes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.node.set_state(NodeState::Joining);
         tracing::info!(node_id = %new_id, "nó voltou do drain como nó novo; refazendo o bootstrap");
         let me = self.clone();
@@ -1195,7 +1391,12 @@ impl ClusterService {
         self.membership.install(MemberTable {
             version: 1,
             members: vec![self.local()],
+            ..MemberTable::default()
         });
+        // O primeiro nó não tem de quem recuperar: o disco antigo segue o caminho de sempre.
+        if let Some(replication) = self.replication.get() {
+            replication.messages.messages().release_old_disk();
+        }
         self.node.set_state(NodeState::Active);
         self.membership_changed();
         tracing::info!(node_id = %self.node_id(), "primeiro nó: o cluster começa só com ele");
@@ -1337,6 +1538,13 @@ impl ClusterService {
                 });
             }
         };
+
+        // O processo que reinicia nasce como nó novo, mas o que ficou no disco da vida anterior
+        // ainda pode ser uma mensagem que os outros nós declararam perdida (doc 04, seção 6.6): antes
+        // de entrar, ele a procura e a devolve ao responsável (D111).
+        if !self.boot_recovered.swap(true, Ordering::SeqCst) {
+            self.recover_on_boot(&table).await;
+        }
 
         // 2. Um membro ao acaso; se não responde, outro.
         let mut candidates = table.members;

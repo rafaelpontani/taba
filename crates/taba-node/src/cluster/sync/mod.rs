@@ -462,7 +462,7 @@ impl Syncer {
         let blocks = ring.blocks_of(&me, factor);
         for block in &blocks {
             self.check()?;
-            self.sync_block(&ring, *block, &log).await?;
+            self.sync_block_waiting(&ring, *block, &log).await?;
         }
 
         self.phase("replay").await;
@@ -479,6 +479,28 @@ impl Syncer {
             .registry
             .set(&SYNC_LOG_BYTES, &[], 0.0);
         Ok(())
+    }
+
+    /// `sync_block` que, se nenhuma origem atendeu, tenta de novo até `cluster.sync.timeout`. As
+    /// origens podem ainda não conhecer este nó, porque o commit do ingresso delas é mais lento que
+    /// `write.commit.timeout` e elas respondem `cluster.not-member` até ele chegar (D105).
+    async fn sync_block_waiting(
+        &self,
+        ring: &Ring,
+        block: BlockId,
+        log: &Arc<SyncLog>,
+    ) -> Result<(), SyncError> {
+        let deadline = Instant::now() + self.rules.timeout;
+        loop {
+            match self.sync_block(ring, block, log).await {
+                Err(SyncError::NoSource(why)) if Instant::now() < deadline => {
+                    tracing::warn!(%why, "nenhuma origem atendeu o bloco: tentando de novo");
+                    self.check()?;
+                    self.nap().await;
+                }
+                other => return other,
+            }
+        }
     }
 
     /// Puxa as definições de um membro; tenta os outros e repete até `cluster.sync.timeout`.

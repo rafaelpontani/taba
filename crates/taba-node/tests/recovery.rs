@@ -15,7 +15,7 @@ use common::cluster::{TestCluster, eventually, eventually_async, host_of, total,
 use taba_node::cluster::protocol::{LossRecord, MessageRecord, Request, Response, StreamQuery};
 use taba_node::cluster::recovery::Recovery;
 use taba_node::cluster::state::NodeState;
-use taba_node::cluster::transport::{CallError, Transport};
+use taba_node::cluster::transport::{CallError, PeerAddr, Transport};
 use taba_node::core::clock::Clock;
 use taba_node::core::error::ErrorCode;
 use taba_node::core::id;
@@ -500,4 +500,51 @@ async fn in_development_mode_there_is_no_cluster_to_recover_from() {
     assert!(node.node.cluster().is_none());
     assert!(node.node.cluster_addr().is_none());
     node.shutdown().await;
+}
+
+/// UC: UC-RTN-002
+#[tokio::test]
+async fn a_process_that_restarts_looks_up_the_lost_messages_on_its_disk_before_it_joins() {
+    let mut cluster = setup(&[("TABA_DRAIN_ON_STOP", "false"), ("TABA_MEMORY_LIMIT", "1B")]).await;
+    let lost = record(&cluster, 1, "perdida");
+    let unlisted = record(&cluster, 2, "ninguem declarou");
+    for number in [1, 2] {
+        declare_loss(&cluster, number, &lost);
+    }
+    hold(cluster.node(3), &lost);
+    hold(cluster.node(3), &unlisted);
+
+    // O processo cai sem drain e volta no mesmo endereço, com o mesmo disco: nasce como nó novo.
+    let old_id = cluster.node_id(3);
+    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let TestNode { node, dir, .. } = cluster.nodes.pop().unwrap();
+    node.shutdown().await;
+    cluster.network.unregister(&PeerAddr::new(host_of(3), port));
+    let builder = cluster
+        .builder(3, false)
+        .env("TABA_CLUSTER_PORT", &port.to_string())
+        .env("TABA_MEMORY_LIMIT", "1B")
+        .env(
+            "TABA_STORAGE_DIR",
+            &dir.path().join("taba").display().to_string(),
+        );
+    let number = cluster
+        .spawn_node(builder)
+        .await
+        .expect("o processo reinicia");
+    assert_ne!(cluster.node_id(number), old_id, "o ID é novo");
+
+    // Antes de entrar, o disco foi consultado: só a mensagem que a lista de perdas pede volta.
+    eventually("a mensagem perdida chegar aos dois responsáveis", || {
+        has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
+    })
+    .await;
+    assert!(!has(cluster.node(1), &unlisted.id));
+    assert!(!has(cluster.node(2), &unlisted.id));
+    eventually("a baixa da perda recuperada", || {
+        loss_count(&cluster, 1) == 0 && loss_count(&cluster, 2) == 0
+    })
+    .await;
+    wait_joined(cluster.node(number)).await;
+    cluster.shutdown().await;
 }

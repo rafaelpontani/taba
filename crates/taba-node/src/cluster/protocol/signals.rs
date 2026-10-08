@@ -77,6 +77,10 @@ pub struct ChannelFrame {
 pub struct ChannelBatch {
     /// O `nodeId` de quem envia.
     pub from: String,
+    /// O `nodeId` de quem deve receber. Um processo novo no mesmo IP e porta (outro ID) responde
+    /// `421` `cluster.wrong-node` em vez de passar pelo nó antigo (D100). Vazio: não confere.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub to: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keepalive: Option<Keepalive>,
     #[serde(default)]

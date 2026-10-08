@@ -76,8 +76,15 @@ impl Drop for InFlight<'_> {
     }
 }
 
-fn no_destination(syncing: bool) -> TabaError {
-    if syncing {
+fn no_destination(state: crate::cluster::state::NodeState) -> TabaError {
+    if state == crate::cluster::state::NodeState::Failed {
+        return TabaError::new(
+            ErrorCode::NodeFailed,
+            "O nó está em falha e nenhum outro nó pôde atender a chamada.",
+        )
+        .with_retry_after(5);
+    }
+    if state == crate::cluster::state::NodeState::Syncing {
         return TabaError::new(
             ErrorCode::ClusterNodeSyncing,
             "O nó está em sincronização e nenhum outro nó pôde atender a chamada.",
@@ -200,9 +207,7 @@ impl Forwarder {
             }
         }
         self.count("no-destination");
-        Err(no_destination(
-            self.service.node_state() == crate::cluster::state::NodeState::Syncing,
-        ))
+        Err(no_destination(self.service.node_state()))
     }
 
     /// O lado que recebe o repasse: executa a chamada contra a API de cliente deste nó.

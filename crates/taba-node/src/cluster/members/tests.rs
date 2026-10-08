@@ -22,6 +22,7 @@ fn alone(id: &str) -> Membership {
     membership.install(MemberTable {
         version: 1,
         members: vec![member(id)],
+        ..MemberTable::default()
     });
     membership
 }
@@ -248,4 +249,42 @@ fn the_memory_of_finished_operations_is_bounded() {
     membership
         .rollback(&format!("op{}", FINISHED_MEMORY + 9), at(0))
         .unwrap();
+}
+
+/// UC: UC-CNC-009
+#[test]
+fn a_coordinator_yields_to_an_older_registration_and_never_to_a_newer_one() {
+    let membership = alone("a");
+    // Este nó coordena a operação "op5".
+    membership
+        .register_coordinating("op5", Change::Add(member("x")), at(0))
+        .unwrap();
+    // Uma mais nova que chega de outro coordenador espera (conflito).
+    assert!(matches!(
+        membership.register("op7", Change::Add(member("y")), at(0)),
+        Err(MembershipError::Conflict(_))
+    ));
+    assert!(membership.is_pending("op5"));
+    // Uma mais antiga desloca a que este nó coordena, que passa a constar como desfeita.
+    membership
+        .register("op3", Change::Add(member("z")), at(0))
+        .unwrap();
+    assert!(!membership.is_pending("op5"));
+    assert!(membership.is_pending("op3"));
+    assert_eq!(membership.rollback("op5", at(0)), Ok(()));
+}
+
+/// UC: UC-CNC-009
+#[test]
+fn a_registration_held_for_another_coordinator_is_never_displaced() {
+    let membership = alone("a");
+    membership
+        .register("op5", Change::Add(member("x")), at(0))
+        .unwrap();
+    // Mesmo uma mais antiga espera: quem a recebeu como participante já confirmou à outra.
+    assert!(matches!(
+        membership.register("op3", Change::Add(member("z")), at(0)),
+        Err(MembershipError::Conflict(_))
+    ));
+    assert!(membership.is_pending("op5"));
 }

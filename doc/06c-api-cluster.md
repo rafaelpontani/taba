@@ -35,6 +35,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 | `409` | `cluster.conflict` | Há outra operação pendente para o mesmo recurso, ou o estado atual impede (mensagem já invisível, `receiptToken` diferente). |
 | `421` | `fifo.misdirected` | Só na publicação FIFO repassada: o nó não é mais o primário do grupo. |
 | `503` | `cluster.node-syncing`, `cluster.node-draining` | O nó não pode atender essa rota agora. |
+| `421` | `cluster.wrong-node` | Só no canal: o nó neste endereço não é o que o `to` da chamada procura (D100). |
 
 ### Resumo das rotas
 
@@ -121,7 +122,7 @@ Todo quadro, exceto `keepalive` e `confirm`, leva um `seq` crescente por canal e
 
 ### `POST /cluster/channel`: o canal enquanto não há WebSocket
 
-O que o código usa até o `Transport` real (etapa 16): cada nó tem, para cada par, uma tarefa que **chama** o outro. Uma chamada leva o sinal de vida (`keepalive`, quando é hora) e os quadros ainda sem confirmação, no corpo `{ "from": nodeId, "keepalive": {...}, "frames": [ { "seq", "type", ... } ] }`, e a resposta é o `confirm` (`{ "type": "confirm", "seqs": [...] }`), só depois de processar. Os dois sentidos de um par são independentes (não há conexão dupla a desempatar). Só aceita quem consta na tabela de membros: `403` `cluster.not-member`, e o nó que o recebe três vezes seguidas confere se foi excluído (seção 6.3 de [04-cluster.md](04-cluster.md)). Quadros, `seq`, instantâneo ao abrir e reenvio são os de `GET /cluster/channel` acima. Some quando o WebSocket existir.
+O que o código usa até o `Transport` real (etapa 16): cada nó tem, para cada par, uma tarefa que **chama** o outro. Uma chamada leva o sinal de vida (`keepalive`, quando é hora) e os quadros ainda sem confirmação, no corpo `{ "from": nodeId, "keepalive": {...}, "frames": [ { "seq", "type", ... } ] }`, e a resposta é o `confirm` (`{ "type": "confirm", "seqs": [...] }`), só depois de processar. Os dois sentidos de um par são independentes (não há conexão dupla a desempatar). Só aceita quem consta na tabela de membros: `403` `cluster.not-member`, e o nó que o recebe três vezes seguidas confere se foi excluído (seção 6.3 de [04-cluster.md](04-cluster.md)). O corpo leva também `to`, o `nodeId` do destino: um nó de **outro ID** no mesmo endereço (um reinício rápido) responde `421` `cluster.wrong-node` antes de qualquer outra conferência, e o emissor conta o canal como caído (D100). O corpo passa a ser `{ "from": nodeId, "to": nodeId, "keepalive": {...}, "frames": [...] }`. Quadros, `seq`, instantâneo ao abrir e reenvio são os de `GET /cluster/channel` acima. Some quando o WebSocket existir.
 
 ## Tópicos e tokens
 
@@ -305,6 +306,9 @@ Repassa uma chamada de cliente a outro nó: de quem está **sincronizando** ou *
 |---|---|---|
 | `version` | inteiro | Versão (época) da tabela. Versões diferentes entre nós indicam propagação incompleta (`membership-divergent`). |
 | `members` | lista de `Member` | Os membros. |
+| `frozen` | lista de `FrozenNode` | Só na resposta do `join` e de `GET /cluster/nodes`, e só se há algum: os nós excluídos por votação que ainda estão em freezing, para quem entra herdar o freezing (D106). Não conta na igualdade das tabelas e não sobe a `version`. |
+
+`FrozenNode`: `nodeId` (texto) e `frozenAt` (inteiro, milissegundos desde 1970 do instante da exclusão).
 
 ### `TopicDefinition`
 

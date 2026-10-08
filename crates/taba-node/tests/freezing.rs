@@ -193,3 +193,40 @@ async fn the_nodes_in_freezing_show_in_the_metric_and_in_the_node_frozen_conditi
     }
     cluster.shutdown().await;
 }
+
+/// UC: UC-FRZ-009
+#[tokio::test]
+async fn a_node_that_joins_after_the_exclusion_inherits_the_freezing_of_the_excluded() {
+    let mut cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let excluded = cluster.node_id(3);
+    cluster.network.isolate(&host_of(3));
+    eventually("os dois saudáveis excluírem o nó 3", || {
+        frozen_and_gone(&cluster, &[1, 2], 3)
+    })
+    .await;
+
+    // O nó 4 entra depois do commit da exclusão: ele não o viu, e recebe o freezing na tabela.
+    cluster.add_node(false).await;
+    let membership = cluster.node(4).node.cluster().unwrap().membership();
+    assert!(
+        membership
+            .frozen_remaining(&excluded, cluster.clock.now(), FREEZING)
+            .is_some(),
+        "o nó novo herdou o freezing"
+    );
+    // A tabela guardada não o leva, e as tabelas dos nós seguem iguais.
+    assert!(membership.table().unwrap().frozen.is_empty());
+    assert_eq!(cluster.table(4), cluster.table(1));
+
+    // Por isso o pedido do excluído que cair no nó 4 também é recusado.
+    let transport = cluster.network.transport(host_of(1));
+    let reply = transport
+        .call(&address_of(&cluster, 4), join_as(&cluster, 3))
+        .await;
+    match reply {
+        Err(CallError::Remote(error)) => assert_eq!(error.code, ErrorCode::ClusterNodeFrozen),
+        other => panic!("esperava cluster.node-frozen, veio {other:?}"),
+    }
+    cluster.shutdown().await;
+}

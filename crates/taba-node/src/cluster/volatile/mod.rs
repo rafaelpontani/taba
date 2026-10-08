@@ -44,6 +44,14 @@ enum Check {
     Blocked,
 }
 
+/// O atraso estável de uma fila dentro de uma janela de `window_ms`: de 0 a `window_ms`.
+fn jitter_in(window_ms: u64, topic_id: &str) -> u64 {
+    if window_ms == 0 {
+        return 0;
+    }
+    crate::core::ring::position(topic_id.as_bytes()) % (window_ms + 1)
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -127,11 +135,10 @@ impl VolatileManager {
     /// Um atraso estável por fila, de 0 até `topics.volatile.takeover.jitter`: muitas filas que
     /// trocam de gestor de uma vez não consultam todas no mesmo instante.
     fn jitter_ms(&self, topic_id: &str) -> u64 {
-        let window = self.service.rules().volatile_jitter.as_millis() as u64;
-        if window == 0 {
-            return 0;
-        }
-        crate::core::ring::position(topic_id.as_bytes()) % (window + 1)
+        jitter_in(
+            self.service.rules().volatile_jitter.as_millis() as u64,
+            topic_id,
+        )
     }
 
     fn schedule(&self, topic_id: &str, due_ms: u64) {
@@ -214,3 +221,6 @@ impl VolatileManager {
         Check::Idle(least)
     }
 }
+
+#[cfg(test)]
+mod tests;

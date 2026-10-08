@@ -213,8 +213,10 @@ Os códigos são estáveis dentro de uma versão do contrato. Uma coluna mostra 
 | `fifo.primary-unavailable` | `503` | O primário do grupo FIFO está fora do ar, sincronizando, ou esgotou `fifo.forward.max-attempts`. |
 | `delivery.unavailable` | `503` | O `GET` não capturou nenhuma mensagem e houve falhas no registro de invisibilidade (nunca devolve vazio nesse caso). |
 | `fifo.misdirected` | `421` | Entre nós: o nó não é o primário do grupo. |
+| `cluster.wrong-node` | `421` | Entre nós, no canal: o nó neste endereço não é o que o `to` da chamada procura (outro processo no mesmo IP e porta). |
+| `node.failed` | `503` | O nó está em falha (`failed`: disco cheio ou banco corrompido) e não achou outro nó para repassar a chamada de cliente. Traz `Retry-After`. |
 
-**Códigos só do cluster** (respostas das rotas `/cluster/*`): `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `fifo.misdirected` e `cluster.operation-unknown` (`404`: commit ou rollback de uma operação que o nó não conhece, por já ter expirado).
+**Códigos só do cluster** (respostas das rotas `/cluster/*`): `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `cluster.wrong-node`, `fifo.misdirected` e `cluster.operation-unknown` (`404`: commit ou rollback de uma operação que o nó não conhece, por já ter expirado).
 
 ### 8.3.7 DTOs reutilizados
 

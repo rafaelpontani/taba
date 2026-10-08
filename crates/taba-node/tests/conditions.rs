@@ -136,7 +136,7 @@ async fn every_node_answers_its_status_and_a_healthy_cluster_reports_ok() {
 
 /// UC: UC-OPS-018, UC-FAL-024, UC-FAL-025
 #[tokio::test]
-async fn a_node_that_does_not_answer_is_unreachable_and_the_cluster_is_only_under_replicated() {
+async fn a_node_that_does_not_answer_is_unreachable_and_the_blocks_it_leads_are_at_risk() {
     let cluster = TestCluster::start_with(3, NO_VOTE).await;
     settled(&cluster).await;
     create_queue(cluster.node(1), "pedidos").await;
@@ -162,16 +162,26 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_cluster_is_only_unde
     assert_eq!(silent["reachable"], false);
     assert_eq!(silent["status"], Value::Null);
 
-    // Com um dos três fora ainda há quórum de escrita (2): é aviso, não risco.
-    assert_eq!(names(&view), ["member-unreachable", "under-replicated"]);
+    // Com um dos três fora ainda há quórum de escrita (2), mas ele inclui o primário: nos blocos
+    // cujo primário é o nó fora, as escritas falham até a exclusão, e a condição diz isso (D107).
+    assert_eq!(
+        names(&view),
+        [
+            "write-quorum-at-risk",
+            "member-unreachable",
+            "under-replicated"
+        ]
+    );
+    assert_eq!(severity_of(&view, "write-quorum-at-risk"), "critical");
     assert_eq!(severity_of(&view, "member-unreachable"), "warning");
     assert_eq!(severity_of(&view, "under-replicated"), "warning");
-    assert_eq!(view["worstCondition"], "member-unreachable");
+    assert_eq!(view["worstCondition"], "write-quorum-at-risk");
     assert_eq!(view["summary"]["quorumAvailable"], true);
 
     // As escritas seguem respondendo (UC-FAL-025), menos as dos blocos cujo primário é o nó fora:
-    // o quórum sempre inclui o primário, então elas falham até a exclusão (PRB-044). O ID é
-    // sorteado, então o teste manda várias e confere que as dos outros blocos fecham.
+    // o quórum sempre inclui o primário, então elas falham até a exclusão, que é o que a condição
+    // acima anuncia. O ID é sorteado, então o teste manda várias e confere que as dos outros
+    // blocos fecham.
     let mut accepted = 0;
     for n in 0..16 {
         let response = cluster
@@ -202,8 +212,13 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_cluster_is_only_unde
         total(
             &metrics,
             "taba_cluster_condition",
-            "taba_condition=\"member-unreachable\"",
+            "taba_condition=\"write-quorum-at-risk\"",
         ) == 1.0
+            && total(
+                &metrics,
+                "taba_cluster_condition",
+                "taba_condition=\"member-unreachable\"",
+            ) == 1.0
             && total(
                 &metrics,
                 "taba_cluster_condition",

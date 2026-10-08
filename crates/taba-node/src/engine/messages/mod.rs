@@ -488,6 +488,8 @@ pub struct Messages {
     memory_bytes: AtomicU64,
     /// No drain o limite de memória efetivo é zero: toda mensagem nova vai para o disco.
     draining: AtomicBool,
+    /// O disco da vida anterior espera a recuperação do reinício: a varredura não o apaga.
+    keep_old_disk: AtomicBool,
     /// Acorda os `GET` em espera (long polling) quando chega mensagem ou o tópico some.
     notifiers: Mutex<HashMap<String, Arc<Notify>>>,
     /// Avisa o nó de que o disco falhou de um jeito que o derruba (estado `failed`).
@@ -571,8 +573,37 @@ impl Messages {
         store: Arc<MessageStore>,
         resume: bool,
     ) -> Arc<Self> {
+        Self::build(topics, clock, rules, store, resume, false)
+    }
+
+    /// Como `new`, para o nó de produção num cluster: o que sobrou no disco da vida anterior **não**
+    /// é apagado na partida nem pela varredura. O nó a consulta primeiro, no bootstrap, para
+    /// devolver o que os outros declararam perdido (doc 04, seção 6.6; D111), e só então apaga
+    /// ([`Messages::release_old_disk`]).
+    pub fn new_keeping_disk(
+        topics: Arc<Topics>,
+        clock: Arc<dyn Clock>,
+        rules: MessageRules,
+        store: Arc<MessageStore>,
+    ) -> Arc<Self> {
+        Self::build(topics, clock, rules, store, false, true)
+    }
+
+    /// Acabou a recuperação do reinício: a varredura volta a apagar o que é de tópico desconhecido.
+    pub fn release_old_disk(&self) {
+        self.keep_old_disk.store(false, Ordering::SeqCst);
+    }
+
+    fn build(
+        topics: Arc<Topics>,
+        clock: Arc<dyn Clock>,
+        rules: MessageRules,
+        store: Arc<MessageStore>,
+        resume: bool,
+        keep_old_disk: bool,
+    ) -> Arc<Self> {
         match store.topics_on_disk() {
-            Ok(on_disk) => {
+            Ok(on_disk) if !keep_old_disk => {
                 for name in on_disk {
                     if !resume || topics.get(&name).is_err() {
                         tracing::info!(topic = %name, "apagando mensagens antigas do disco");
@@ -582,6 +613,7 @@ impl Messages {
                     }
                 }
             }
+            Ok(_) => {}
             Err(e) => tracing::warn!(error = %e, "não foi possível listar as mensagens do disco"),
         }
         let started_ms = clock.now_millis();
@@ -594,6 +626,7 @@ impl Messages {
             states: RwLock::new(HashMap::new()),
             memory_bytes: AtomicU64::new(0),
             draining: AtomicBool::new(false),
+            keep_old_disk: AtomicBool::new(keep_old_disk),
             notifiers: Mutex::new(HashMap::new()),
             on_failure: OnceLock::new(),
             last_get: Mutex::new(HashMap::new()),
@@ -1815,6 +1848,7 @@ impl Messages {
                         self.sweep_dedup(&name, now);
                     }
                 }
+                Err(_) if self.keep_old_disk.load(Ordering::SeqCst) => {}
                 Err(_) => self.drop_topic(&name),
             }
         }

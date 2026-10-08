@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -53,11 +53,33 @@ pub struct Member {
 
 /// A tabela de membros (`MemberTable`, doc 06c). A `version` é a época: sobe a cada mudança
 /// efetivada, e versões diferentes entre nós indicam propagação incompleta.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MemberTable {
     pub version: u64,
     pub members: Vec<Member>,
+    /// Os nós em freezing que quem responde conhece (D106). Só viaja nas respostas que levam a
+    /// tabela a um nó novo; a tabela guardada nunca o tem (o freezing vive à parte, sem subir a
+    /// `version`), e ele não conta na igualdade das tabelas.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frozen: Vec<FrozenNode>,
+}
+
+impl PartialEq for MemberTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.version == other.version && self.members == other.members
+    }
+}
+
+impl Eq for MemberTable {}
+
+/// Um nó excluído por votação e o instante da exclusão (doc 04, seção 6.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FrozenNode {
+    pub node_id: String,
+    /// Milissegundos desde 1970.
+    pub frozen_at: u64,
 }
 
 impl MemberTable {
@@ -105,6 +127,8 @@ struct Pending {
     operation_id: String,
     change: Change,
     registered_at: SystemTime,
+    /// Este nó é quem coordena a mudança (e não só um participante dela).
+    coordinated: bool,
 }
 
 #[derive(Debug, Default)]
@@ -118,6 +142,9 @@ struct Inner {
     departed: Vec<Member>,
     /// Os nós excluídos por votação e quando, para o período de freezing (doc 04, seção 6.7).
     frozen: HashMap<String, SystemTime>,
+    /// Os nós excluídos por votação, com os endereços: depois de uma partição em que os dois lados
+    /// se excluem, é por eles que um lado procura o outro (D101). Só em memória, até 64.
+    excluded: Vec<Member>,
 }
 
 /// A tabela de membros de um nó, com a mudança pendente e o anel derivado dela.
@@ -156,6 +183,13 @@ impl Membership {
     pub fn install(&self, mut table: MemberTable) {
         table.sort();
         let mut inner = self.lock();
+        // O freezing que veio com a tabela é herdado; o que o nó já conhece vale mais.
+        for node in std::mem::take(&mut table.frozen) {
+            inner
+                .frozen
+                .entry(node.node_id)
+                .or_insert(UNIX_EPOCH + Duration::from_millis(node.frozen_at));
+        }
         inner.table = Some(table);
         inner.pending = None;
         self.rebuild_ring(&mut inner);
@@ -169,6 +203,28 @@ impl Membership {
 
     pub fn table(&self) -> Option<MemberTable> {
         self.lock().table.clone()
+    }
+
+    /// A tabela com os nós em freezing que ainda valem, para quem está entrando (D106).
+    pub fn table_with_frozen(&self, now: SystemTime, duration: Duration) -> Option<MemberTable> {
+        let mut inner = self.lock();
+        inner
+            .frozen
+            .retain(|_, at| now.duration_since(*at).unwrap_or_default() < duration);
+        let mut table = inner.table.clone()?;
+        table.frozen = inner
+            .frozen
+            .iter()
+            .map(|(node_id, at)| FrozenNode {
+                node_id: node_id.clone(),
+                frozen_at: at
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            })
+            .collect();
+        table.frozen.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+        Some(table)
     }
 
     pub fn version(&self) -> Option<u64> {
@@ -244,6 +300,22 @@ impl Membership {
             .any(|m| m.addresses.iter().any(|a| a == address))
     }
 
+    /// Os nós que este nó viu serem excluídos por votação e que não voltaram à tabela (D101).
+    pub fn excluded_members(&self) -> Vec<Member> {
+        let inner = self.lock();
+        inner
+            .excluded
+            .iter()
+            .filter(|m| {
+                inner
+                    .table
+                    .as_ref()
+                    .is_none_or(|t| t.member(&m.node_id).is_none())
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Quanto falta do freezing do nó (excluído por votação), ou `None` se ele não está em freezing.
     pub fn frozen_remaining(
         &self,
@@ -299,23 +371,60 @@ impl Membership {
             .map(|(_, f)| *f)
     }
 
-    /// Fase 1: deixa a mudança pendente. Repetir o mesmo `operationId` não muda nada.
+    /// Fase 1 como participante: deixa a mudança pendente. Repetir o mesmo `operationId` não muda
+    /// nada. Se a pendente é uma que **este nó coordena** e a que chega tem o `operationId` menor (a
+    /// mais antiga), este nó cede: descarta a sua e aceita a outra, de modo que dois coordenadores
+    /// simultâneos sempre têm um vencedor (D94).
     pub fn register(
         &self,
         operation_id: &str,
         change: Change,
         now: SystemTime,
     ) -> Result<(), MembershipError> {
+        self.register_as(operation_id, change, now, false)
+    }
+
+    /// Fase 1 de quem coordena a mudança.
+    pub fn register_coordinating(
+        &self,
+        operation_id: &str,
+        change: Change,
+        now: SystemTime,
+    ) -> Result<(), MembershipError> {
+        self.register_as(operation_id, change, now, true)
+    }
+
+    /// A mudança com esse `operationId` ainda está pendente aqui? Quem coordena confere antes do
+    /// commit: um participante mais antigo pode tê-la deslocado.
+    pub fn is_pending(&self, operation_id: &str) -> bool {
+        self.lock()
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.operation_id == operation_id)
+    }
+
+    fn register_as(
+        &self,
+        operation_id: &str,
+        change: Change,
+        now: SystemTime,
+        coordinated: bool,
+    ) -> Result<(), MembershipError> {
         let mut inner = self.lock();
         self.drop_expired(&mut inner, now);
         if let Some(pending) = &inner.pending {
-            return if pending.operation_id == operation_id {
-                Ok(())
-            } else {
-                Err(MembershipError::Conflict(
+            if pending.operation_id == operation_id {
+                return Ok(());
+            }
+            let yields =
+                !coordinated && pending.coordinated && operation_id < pending.operation_id.as_str();
+            if !yields {
+                return Err(MembershipError::Conflict(
                     "Há outra mudança de membros em andamento.".into(),
-                ))
-            };
+                ));
+            }
+            let displaced = inner.pending.take().expect("conferido acima");
+            Self::remember(&mut inner, displaced.operation_id, Finished::RolledBack);
         }
         if Self::finished(&inner, operation_id).is_some() {
             return Ok(());
@@ -343,6 +452,7 @@ impl Membership {
             operation_id: operation_id.to_owned(),
             change,
             registered_at: now,
+            coordinated,
         });
         Ok(())
     }
@@ -384,7 +494,9 @@ impl Membership {
         let excluded = matches!(pending.change, Change::Exclude { .. });
         let mut frozen = std::mem::take(&mut inner.frozen);
         let mut inner_departed = std::mem::take(&mut inner.departed);
+        let mut excluded_members = std::mem::take(&mut inner.excluded);
         let Some(table) = inner.table.as_mut() else {
+            inner.excluded = excluded_members;
             inner.departed = inner_departed;
             inner.frozen = frozen;
             return Err(MembershipError::NoTable);
@@ -392,6 +504,8 @@ impl Membership {
         match pending.change {
             Change::Add(member) => {
                 inner_departed.retain(|d| d.addresses != member.addresses || d.port != member.port);
+                excluded_members
+                    .retain(|d| d.addresses != member.addresses || d.port != member.port);
                 table.members.push(member);
             }
             Change::Remove { node_id } | Change::Exclude { node_id } => {
@@ -399,6 +513,12 @@ impl Membership {
                     frozen.insert(node_id.clone(), now);
                 }
                 if let Some(left) = table.members.iter().find(|m| m.node_id == node_id) {
+                    if excluded {
+                        excluded_members.push(left.clone());
+                        if excluded_members.len() > 64 {
+                            excluded_members.remove(0);
+                        }
+                    }
                     inner_departed.push(left.clone());
                     if inner_departed.len() > 64 {
                         inner_departed.remove(0);
@@ -410,6 +530,7 @@ impl Membership {
         table.version += 1;
         table.sort();
         let table = table.clone();
+        inner.excluded = excluded_members;
         inner.departed = inner_departed;
         inner.frozen = frozen;
         Self::remember(&mut inner, operation_id.to_owned(), Finished::Committed);

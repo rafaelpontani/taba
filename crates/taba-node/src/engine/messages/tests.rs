@@ -2915,3 +2915,36 @@ mod stats_events;
 
 mod blocks;
 mod cluster;
+
+/// UC: UC-VOL-013, UC-VOL-020
+#[tokio::test]
+async fn a_get_after_the_final_deletion_is_not_found_or_recreates_an_empty_queue_with_a_new_id() {
+    let h = harness();
+    h.topics.create(volatile_queue("fila", 60)).await.unwrap();
+    publish_ok(&h, "fila", "1");
+    let old = h.topics.volatile_queues().remove(0);
+
+    // A exclusão do gestor (com o `id` que ele viu) vale uma vez; a segunda tentativa, de quem
+    // assumiu a fila no meio da troca de gestor, é rejeitada sem efeito (UC-VOL-020).
+    h.topics.delete_expected("fila", &old.id).await.unwrap();
+    let error = h.topics.delete_expected("fila", &old.id).await.unwrap_err();
+    assert_eq!(error.code, ErrorCode::TopicNotFound);
+
+    // Um `GET` que chega depois da exclusão recebe `404`...
+    let error = h
+        .messages
+        .consume("fila", q(None, None, Some("0")))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::TopicNotFound);
+
+    // ...ou, com `autoCreate`, recria a fila com `id` novo e sem as mensagens antigas.
+    let got = h
+        .messages
+        .consume("fila", auto(&h, "fila", |_| {}))
+        .await
+        .unwrap();
+    assert!(got.is_empty(), "as mensagens antigas se foram");
+    let recreated = h.topics.volatile_queues().remove(0);
+    assert_ne!(recreated.id, old.id);
+}

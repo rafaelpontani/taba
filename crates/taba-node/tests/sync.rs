@@ -110,7 +110,7 @@ async fn two_nodes_with_messages(count: usize, env: &[(&str, &str)]) -> (TestClu
 }
 
 /// UC: UC-SIN-001, UC-SIN-002, UC-SIN-005, UC-SIN-006, UC-SIN-012, UC-ING-021, UC-ING-022,
-/// UC-ING-024, UC-SIN-019, UC-ARM-015
+/// UC: UC-ING-024, UC-SIN-019, UC-ARM-015
 #[tokio::test]
 async fn a_new_node_loads_its_blocks_but_does_not_deliver_until_it_is_ready() {
     let (mut cluster, ids) = two_nodes_with_messages(40, &[]).await;
@@ -174,7 +174,7 @@ async fn a_new_node_loads_its_blocks_but_does_not_deliver_until_it_is_ready() {
 }
 
 /// UC: UC-SIN-010, UC-SIN-011, UC-SIN-013, UC-SIN-014, UC-SIN-015, UC-SIN-017, UC-SIN-018,
-/// UC-SIN-007, UC-ING-022
+/// UC: UC-SIN-007, UC-ING-022
 #[tokio::test]
 async fn events_that_arrive_during_the_sync_are_logged_and_replayed_over_the_load() {
     let (mut cluster, _ids) = two_nodes_with_messages(12, &[]).await;
@@ -702,4 +702,86 @@ async fn the_final_check_drops_what_the_load_brought_and_no_source_lists_anymore
     let others: Vec<String> = ids.iter().filter(|id| **id != gone).cloned().collect();
     assert_eq!(held(node3, "pedidos", &others), others.len());
     cluster.shutdown().await;
+}
+
+/// UC: UC-SIN-020
+#[tokio::test]
+async fn a_node_whose_join_commit_reaches_the_sources_late_waits_for_them_and_stays_in() {
+    let mut cluster = TestCluster::start(3).await;
+    create_queue(cluster.node(1), "pedidos").await;
+    for n in 0..12 {
+        publish(cluster.node(1), "pedidos", json!({ "n": n })).await;
+    }
+    common::cluster::settled(&cluster).await;
+
+    // O commit chega aos outros nós bem depois de `write.commit.timeout` (400 ms): o coordenador
+    // responde `cluster.commit-timeout`, o nó novo começa a sincronizar e as origens ainda não o
+    // conhecem (`cluster.not-member`). Ele espera por elas em vez de falhar.
+    cluster
+        .network
+        .set_delay_kind("commit", Duration::from_millis(1500));
+    let builder = cluster.builder(4, false);
+    let number = cluster.spawn_node(builder).await.expect("o nó sobe");
+    common::cluster::wait_joined(cluster.node(number)).await;
+    assert_eq!(
+        cluster.node(number).node.cluster().unwrap().node_state(),
+        NodeState::Active
+    );
+    for observer in 1..=3 {
+        assert_eq!(cluster.member_ids(observer).len(), 4);
+    }
+    cluster.network.set_delay_kind("commit", Duration::ZERO);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-CNC-009
+#[tokio::test]
+async fn two_joins_coordinated_by_different_members_have_a_winner_and_neither_fails() {
+    // Os dois nós novos sorteiam o coordenador entre os três membros: repete até caírem em
+    // coordenadores diferentes (2 de 3 vezes).
+    for _ in 0..12 {
+        let mut cluster = TestCluster::start(3).await;
+        common::cluster::settled(&cluster).await;
+        // O registro demora, para os dois coordenadores deixarem a mudança pendente antes de se
+        // cruzarem.
+        cluster
+            .network
+            .set_delay_kind("register", Duration::from_millis(150));
+        let builders = [cluster.builder(4, false), cluster.builder(5, false)];
+        let mut numbers = Vec::new();
+        for builder in builders {
+            numbers.push(cluster.spawn_node(builder).await.expect("o nó sobe"));
+        }
+        for number in &numbers {
+            common::cluster::wait_joined(cluster.node(*number)).await;
+        }
+        cluster.network.set_delay_kind("register", Duration::ZERO);
+        let coordinators: std::collections::HashSet<String> = cluster
+            .network
+            .calls()
+            .iter()
+            .filter(|call| call.request == "join" && [host_of(4), host_of(5)].contains(&call.from))
+            .map(|call| call.to.host.clone())
+            .collect();
+        let mut refused = 0.0;
+        for number in &numbers {
+            refused += common::cluster::total(
+                &cluster.node(*number).metrics().await,
+                "taba_cluster_bootstrap_failures_total",
+                "taba_reason=\"phase1\"",
+            );
+        }
+        let table = cluster.table(1).unwrap();
+        let all_in = table.members.len() == 5;
+        cluster.shutdown().await;
+        if coordinators.len() >= 2 {
+            assert!(all_in, "os cinco nós ficaram na tabela");
+            assert_eq!(
+                refused, 0.0,
+                "nenhum ingresso foi recusado por causa do cruzamento"
+            );
+            return;
+        }
+    }
+    panic!("os dois ingressos nunca caíram em coordenadores diferentes");
 }

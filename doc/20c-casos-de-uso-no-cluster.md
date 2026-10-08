@@ -82,7 +82,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.3.
 | UC-FAL-010 | Com menos saudáveis que `cluster.vote.min-voters` (padrão 2), nenhuma exclusão se efetiva e a condição `quorum-lost` aparece; o mínimo impede que um nó isolado exclua todos os demais. | 04 §6.3, 11 | C |
 | UC-FAL-011 | `POST /cluster/vote-remove` (`VoteRequest`: `voteId`, `candidateNodeId`, `openedBy`, `reason`) responde `VoteResponse` com `vote` `yes` ou `no`, conforme o que o votante enxerga do candidato (por exemplo, `no` se ele enxerga o canal ativo). Quem não responde não entra na base. | 06c | C |
 | UC-FAL-012 | Com várias exclusões pendentes, elas são votadas uma de cada vez, cada uma sobre os saudáveis do momento. | 04 §6.3 | C |
-| UC-FAL-013 | Risco aceito: numa partição de rede em que os dois lados têm saudáveis suficientes, cada lado pode excluir o outro; o lado excluído, ao voltar, refaz o bootstrap do zero. | 04 §6.3 | C |
+| UC-FAL-013 | Risco aceito: numa partição de rede em que os dois lados têm saudáveis suficientes, cada lado pode excluir o outro; o lado excluído, ao voltar, refaz o bootstrap do zero (e, se **os dois** excluíram, o reencontro é o UC-FAL-026). | 04 §6.3 | C |
 | UC-FAL-014 | Cluster de 3 nós com um fora do ar: os 2 saudáveis votam e o quórum de 2 se atinge. | 04 §6.4 | C |
 | UC-FAL-015 | Votação e resultado são registrados (`taba.cluster.vote` por `role` e `outcome`; logs `warn` e `info`). | 11 | C |
 
@@ -104,7 +104,9 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.3.
 | UC-FAL-022 | Depois da exclusão, cada mensagem do nó removido continua em pelo menos `replication.factor − 1` nós. | 05 §7.1 | C |
 | UC-FAL-023 | Nó em **falha** (disco cheio, banco corrompido, banco de eventos acima de `cluster.sync.log.max-bytes`, ou sem origem de carga até `cluster.sync.timeout`) sinaliza isso ao cluster, e os demais ficam liberados para votar o desregistro dele. | 05 §7.3, 04 §6.8 | C |
 | UC-FAL-024 | As condições do cluster (lista, não estado único), cada uma com severidade: `member-unreachable`, `node-frozen`, `syncing`, `under-replicated`, `write-quorum-at-risk` (réplicas íntegras abaixo de `write.quorum`), `quorum-lost`, `membership-divergent`, `storage-pressure`; `ok` quando nenhuma. | 11 | C |
-| UC-FAL-025 | `under-replicated` (réplicas abaixo de `replication.factor`, mas **no ou acima** do quórum) é aviso transitório: as escritas continuam respondendo (menos as dos blocos cujo primário está fora do ar, até a exclusão: PRB-044). `write-quorum-at-risk` é crítica: as escritas podem falhar por não fechar quórum. | 11 | C |
+| UC-FAL-025 | `under-replicated` (réplicas abaixo de `replication.factor`, mas **no ou acima** do quórum) é aviso transitório: as escritas continuam respondendo (menos as dos blocos cujo primário está fora do ar, até a exclusão, o que a condição `write-quorum-at-risk` anuncia: D107). `write-quorum-at-risk` é crítica: as escritas podem falhar por não fechar quórum, e também aparece quando o **primário** de algum bloco está fora do ar (o quórum sempre o inclui): D107. | 11 | C |
+| UC-FAL-026 | O reencontro depois de uma partição em que **os dois lados** se excluíram (as tabelas têm a mesma versão e nenhum canal liga um lado ao outro): de tempos em tempos (`cluster.channel.keepalive.interval` × 10) cada nó consulta a tabela de quem ele viu ser excluído; se ela é de outro cluster (sem este nó e sem nenhum membro em comum) e este lado perde (tem menos membros; num empate, o do menor `nodeId`), o nó refaz o ingresso do zero, como o excluído que volta (UC-FAL-013). A marca de votação de um nó que saiu da tabela é esquecida ao sair (D101). | 04 §6.3 | C |
+| UC-FAL-027 | O nó em `failed` não atende chamadas de cliente: num cluster repassa a chamada a um nó são (como o nó em drain, UC-FWD); sem outro nó, e num nó só, responde `503` `node.failed` com `Retry-After`. As rotas de operação seguem (é por elas que se vê a falha). O nó continua respondendo as chamadas entre nós até ser excluído (D78.2). | 04 §6.3, 06d | C |
 
 ### FRZ: período de freezing
 
@@ -120,6 +122,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.7.
 | UC-FRZ-006 | A saída por **drain** não gera freezing (é voluntária e o retorno é com ID novo). | 04 §6.7, 6.10 | C |
 | UC-FRZ-007 | `taba.cluster.freezing` e a condição `node-frozen` refletem os nós em freezing. | 11 | C |
 | UC-FRZ-008 | Em modo desenvolvimento o freezing não se aplica (`cluster.freezing.*` é ignorado). | 04 §6.4 | I |
+| UC-FRZ-009 | O freezing sobrevive a quem coordena: a resposta do `join` e `GET /cluster/nodes` levam `frozen` (`nodeId`, `frozenAt` em ms) com os excluídos ainda em freezing; o nó que entra depois da exclusão o instala (sem subir a `version`, e a tabela guardada não o tem), e o `join` do excluído que cair nele é recusado com `cluster.node-frozen` (D106). | 04 §6.7, 06c | C |
 
 ### CNC: concorrência entre mudanças de membros
 
@@ -135,6 +138,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.8.
 | UC-CNC-006 | Os blocos de um nó em sincronização não mudam no meio da carga (o cluster não aceita outra entrada, saída ou rebalanceamento), e o banco de eventos não traz mudanças da tabela de membros. | 04 §6.8, 05 §7.3 | C |
 | UC-CNC-007 | Um nó que reinicia sem memória (mesmo IP e porta) antes de a votação concluir: o pedido de bootstrap entra na fila e espera; concluída a votação (o nó antigo removido), é processado como registro comum de nó novo, sem tratamento especial pelo endereço repetido. | 04 §6.8 | C |
 | UC-CNC-008 | Em modo desenvolvimento não há mudança de membros a coordenar. | 04 §6.4 | I |
+| UC-CNC-009 | Duas mudanças de membros coordenadas por membros diferentes ao mesmo tempo sempre têm um vencedor: a de menor `operationId` (a mais antiga) vence; quem coordena uma mudança e recebe o registro de uma mais antiga descarta a sua e aceita a outra; o coordenador deslocado desfaz o que registrou, espera um tempo sorteado e recomeça (o ingresso, sem desistir antes de 60 s, o prazo do ingresso); o vencedor repete o `409` dos pares até `write.commit.timeout`. Um registro mantido por participante nunca é deslocado (D94). | 04 §6.8 | U, C |
 
 ### SIN: sincronização distribuída de blocos
 
@@ -218,7 +222,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.6.
 | Código | Caso de uso | Fonte | Nível |
 |---|---|---|---|
 | UC-RTN-001 | Um nó desregistrado por falha do canal que volta consulta **todos** os nós que consegue alcançar (`GET /cluster/message-loss`, NDJSON) e une as respostas (cada nó responde com a sua tabela `losses`). Essas rotas aceitam chamadas de um nó que ainda não é membro. | 04 §6.6, 06c | C |
-| UC-RTN-002 | Para cada par (tópico, ID), o nó procura a mensagem localmente: no disco (`${topic}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o disco conta (o reinício ainda não passa por este procedimento: PRB-046). | 04 §6.6 | C |
+| UC-RTN-002 | Para cada par (tópico, ID), o nó procura a mensagem localmente: no disco (`${topic}/${id}.body` e o banco do tópico) e, se o processo é o mesmo que ficou fora (sem reinício), também em memória. Num reinício, só o disco conta, e o reinício **passa** por este procedimento: o processo novo, antes de entrar, consulta a lista de perdas dos membros que a listagem de entrada trouxe, devolve o que o disco tem delas ao responsável e só então apaga o disco da vida anterior (D111). | 04 §6.6 | C |
 | UC-RTN-003 | Para cada mensagem encontrada, o nó a envia ao responsável pelo bloco por `POST /cluster/messages/recover`; quem recebe grava **direto nos nós responsáveis**, idempotente pelo ID, sem as duas fases (nem registro pendente nem rollback), e confirma a linha quando `write.quorum` nós gravaram. | 04 §6.6, 06c | C |
 | UC-RTN-004 | Vai o corpo e o `deliveryCount`; a invisibilidade é **zerada** e a mensagem volta a ficar pronta para entrega. | 04 §6.6 | C |
 | UC-RTN-005 | Baixa do registro: o nó que aceita a mensagem apaga o par da sua tabela `losses` e avisa os demais (melhor esforço), para um segundo nó que volte com a mesma mensagem não a reenviar depois de ela já ter sido entregue e confirmada. | 04 §6.6 | C |
@@ -446,7 +450,7 @@ Regras: [06c-api-cluster.md](06c-api-cluster.md). As rotas específicas estão n
 | UC-CLR-007 | `GET /cluster/topics/{id}/idle` responde `IdleResponse` (`topicId`, `idleSeconds`, `sinceStart`); tópico desconhecido: `404` `topic.not-found`. | 06c | C |
 | UC-CLR-008 | Nó em sincronização ou em drain devolve `503` `cluster.node-syncing` ou `cluster.node-draining` nas rotas que não pode atender. Um nó em sincronização confirma `register` gravando no banco de eventos (UC-ESC-031). | 06c | C |
 | UC-CLR-009 | `GET /cluster/status` devolve o `NodeStatus`; não existe `GET /cluster/metrics` (cada nó expõe as próprias métricas). | 06c | C |
-| UC-CLR-010 | Códigos só do cluster: `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `fifo.misdirected` e `cluster.operation-unknown`. | 06d §8.3.6 | U, C |
+| UC-CLR-010 | Códigos só do cluster: `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `cluster.wrong-node`, `fifo.misdirected` e `cluster.operation-unknown`. | 06d §8.3.6 | U, C |
 
 ### CFG: configuração e validações de partida
 

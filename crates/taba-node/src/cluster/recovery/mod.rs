@@ -399,14 +399,20 @@ impl Recovery {
             return summary;
         };
         // O destino nunca é o próprio nó: a tabela de um par pode ainda listá-lo (o commit da
-        // saída não chegou a todos), mas ele não atende mais ninguém.
+        // saída não chegou a todos), mas ele não atende mais ninguém. No reinício do processo, a
+        // tabela ainda tem o ID antigo, no mesmo endereço (D111).
         let me = self.service.node_id();
+        let local = self.service.local();
+        let is_me = |m: &&Member| {
+            m.node_id == me
+                || (m.port == local.port && m.addresses.iter().any(|a| local.addresses.contains(a)))
+        };
         let ring = Ring::new(
             table
                 .members
                 .iter()
-                .map(|m| m.node_id.as_str())
-                .filter(|id| *id != me),
+                .filter(|m| !is_me(m))
+                .map(|m| m.node_id.as_str()),
             rules.virtual_nodes,
         );
         let mut by_owner: BTreeMap<String, Vec<MessageRecord>> = BTreeMap::new();
