@@ -10,8 +10,8 @@ mod signals;
 mod vote;
 
 pub use definitions::{
-    StreamEnd, StreamPage, StreamQuery, TokenOperation, TokenRegisterRequest, TopicOperation,
-    TopicRegisterRequest, token_from_json, token_to_json,
+    DefinitionApply, DefinitionKind, DefinitionOperation, DefinitionProposal, StreamEnd,
+    StreamPage, StreamQuery, token_from_json, token_to_json,
 };
 pub use messages::{
     AckRegisterRequest, FIFO_PLACEHOLDER_ID, FifoPublished, IdleResponse, MessageRecord,
@@ -119,12 +119,13 @@ pub enum Request {
     Commit(OperationRef),
     /// `POST /cluster/nodes/rollback`
     Rollback(OperationRef),
-    /// `POST /cluster/topics/register|commit|rollback`
-    Topic(Step<TopicRegisterRequest>),
+    /// `POST /cluster/definitions/propose`: a proposta de uma mudança de tópico ou de token, de quem
+    /// recebeu a chamada do cliente ao dono da definição.
+    DefinitionPropose(DefinitionProposal),
+    /// `POST /cluster/definitions/apply`: a mudança decidida pelo dono, com a versão dele.
+    DefinitionApply(DefinitionApply),
     /// `GET /cluster/topics`
     ListTopics(StreamQuery),
-    /// `POST /cluster/tokens/register|commit|rollback`
-    Token(Step<TokenRegisterRequest>),
     /// `GET /cluster/tokens`
     ListTokens(StreamQuery),
     /// `POST /cluster/topics/{topic}/messages/{id}/register|commit|rollback`
@@ -193,13 +194,9 @@ impl Request {
             Request::Unregister(_) => "unregister",
             Request::Commit(_) => "commit",
             Request::Rollback(_) => "rollback",
-            Request::Topic(Step::Register(_)) => "topic-register",
-            Request::Topic(Step::Commit(_)) => "topic-commit",
-            Request::Topic(Step::Rollback(_)) => "topic-rollback",
             Request::ListTopics(_) => "list-topics",
-            Request::Token(Step::Register(_)) => "token-register",
-            Request::Token(Step::Commit(_)) => "token-commit",
-            Request::Token(Step::Rollback(_)) => "token-rollback",
+            Request::DefinitionPropose(_) => "definition-propose",
+            Request::DefinitionApply(_) => "definition-apply",
             Request::ListTokens(_) => "list-tokens",
             Request::Write {
                 step: Step::Register(_),
@@ -259,6 +256,8 @@ impl Request {
 pub enum Response {
     Members(MemberTable),
     Ack(Ack),
+    /// A mudança de uma definição como o dono a decidiu (resposta do `propose` e do `apply`).
+    Definition(DefinitionApply),
     /// Um trecho de `GET /cluster/topics` ou `/cluster/tokens`.
     Stream(StreamPage),
     Taken(TakeResponse),

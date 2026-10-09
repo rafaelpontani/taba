@@ -34,7 +34,7 @@ UC-<ÁREA>-<NNN>
 
 ### 19.3 Colunas
 
-Todas as tabelas têm as mesmas colunas:
+Todas as tabelas têm as mesmas colunas (a última é gerada):
 
 | Coluna | Significado |
 |---|---|
@@ -42,6 +42,7 @@ Todas as tabelas têm as mesmas colunas:
 | **Caso de uso** | A situação (**quando**) e o resultado esperado (**então**), numa frase. É o que o teste precisa conferir. |
 | **Fonte** | O documento e a seção onde o comportamento está definido (por exemplo, `06a` é [06a-api-cliente.md](06a-api-cliente.md) e `13 §12.2` é a seção 12.2 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)). |
 | **Nível** | O nível de teste que deve cobrir o caso (seção 19.4). Pode haver mais de um. |
+| **Testes** | Os testes que citam o caso, como `arquivo::função` (o arquivo relativo a `crates/taba-node`). **Gerada**: não se edita à mão; depois de mexer nos testes ou nos casos, rode `TABA_UC_WRITE=1 cargo test --test uc_coverage`, e o mesmo teste falha se a coluna estiver desatualizada. `—` quer dizer que nenhum teste cita o caso (ou que ele está `(retirado)`). |
 
 ### 19.4 Níveis de teste
 
@@ -108,7 +109,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 |---|---|---|---:|
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | [05 §7.2](05-particionamento-replicacao.md), [02 §3.1](02-arquitetura.md) | 36 |
 | `ANE` | Anel de hash, blocos e papéis | [05 §7.1](05-particionamento-replicacao.md) | 12 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | [02 §3.3 e 3.4](02-arquitetura.md) | 24 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | [02 §3.3 e 3.4](02-arquitetura.md) | 26 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | [13 §12.6 a 12.8](13-entrega-de-mensagens.md) | 31 |
 | `CAN` | Canal permanente entre nós e filas de sinais | [13 §12.8 e 12.9](13-entrega-de-mensagens.md), [06c](06c-api-cluster.md) | 25 |
 | `INV` | Invisibilidade no dono e nas réplicas | [14](14-invisibilidade.md) | 32 |
@@ -133,7 +134,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 814 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 816 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 

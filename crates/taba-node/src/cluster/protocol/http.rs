@@ -9,10 +9,10 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::{
-    AckRegisterRequest, FifoPublished, ForwardRequest, ForwardResponse, IdleResponse, JoinRequest,
-    LossAck, LossRecord, MessageRecord, MessageRegisterRequest, NodeRegisterRequest,
-    NodeUnregisterRequest, OperationRef, RecoverResult, Request, Response, Step, StreamPage,
-    StreamQuery, TakeRequest, TakeResponse, TokenRegisterRequest, TopicRegisterRequest,
+    AckRegisterRequest, DefinitionApply, DefinitionProposal, FifoPublished, ForwardRequest,
+    ForwardResponse, IdleResponse, JoinRequest, LossAck, LossRecord, MessageRecord,
+    MessageRegisterRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
+    RecoverResult, Request, Response, Step, StreamPage, StreamQuery, TakeRequest, TakeResponse,
     VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body, recover_body,
 };
 use crate::cluster::members::MemberTable;
@@ -229,9 +229,13 @@ impl Request {
             Request::Rollback(body) => {
                 json_call("POST", "/cluster/nodes/rollback".to_owned(), body)
             }
-            Request::Topic(step) => step_call("/cluster/topics", step),
+            Request::DefinitionPropose(body) => {
+                json_call("POST", "/cluster/definitions/propose".to_owned(), body)
+            }
+            Request::DefinitionApply(body) => {
+                json_call("POST", "/cluster/definitions/apply".to_owned(), body)
+            }
             Request::ListTopics(query) => get_call(stream_path("/cluster/topics", query)),
-            Request::Token(step) => step_call("/cluster/tokens", step),
             Request::ListTokens(query) => get_call(stream_path("/cluster/tokens", query)),
             Request::Write { topic, id, step } => {
                 step_call(&format!("/cluster/topics/{topic}/messages/{id}"), step)
@@ -367,19 +371,15 @@ impl Request {
             ["cluster", "topics"] if is("GET") => {
                 Ok(Request::ListTopics(parse_stream_query(query)?))
             }
-            ["cluster", "topics", phase] if post() => {
-                Ok(Request::Topic(parse_step::<TopicRegisterRequest>(
-                    phase, headers, body,
-                )?))
-            }
             ["cluster", "tokens"] if is("GET") => {
                 Ok(Request::ListTokens(parse_stream_query(query)?))
             }
-            ["cluster", "tokens", phase] if post() => {
-                Ok(Request::Token(parse_step::<TokenRegisterRequest>(
-                    phase, headers, body,
-                )?))
-            }
+            ["cluster", "definitions", "propose"] if post() => Ok(Request::DefinitionPropose(
+                parse_body::<DefinitionProposal>(headers, body)?,
+            )),
+            ["cluster", "definitions", "apply"] if post() => Ok(Request::DefinitionApply(
+                parse_body::<DefinitionApply>(headers, body)?,
+            )),
             ["cluster", "topics", topic, "fifo", "publish"] if post() => Ok(Request::FifoPublish {
                 topic: (*topic).to_owned(),
                 record: parse_body::<MessageRecord>(headers, body)?,
@@ -524,6 +524,11 @@ impl Request {
                 Ok(Response::Vote(vote))
             }
             Request::Status => Ok(Response::Status(json(&reply)?)),
+            Request::DefinitionPropose(_) | Request::DefinitionApply(_) => {
+                let change: DefinitionApply =
+                    serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
+                Ok(Response::Definition(change))
+            }
             Request::MessageLoss(_) => {
                 let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
@@ -621,6 +626,7 @@ impl Response {
         match self {
             Response::Members(table) => json(&table),
             Response::Ack(ack) => json(&ack),
+            Response::Definition(change) => json(&change),
             Response::Taken(taken) => json(&taken),
             Response::Idle(idle) => json(&idle),
             Response::Record(record) => json(&record),

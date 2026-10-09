@@ -271,6 +271,21 @@ pub async fn settled(cluster: &TestCluster) {
     }
 }
 
+/// Um nome de tópico cujo dono da definição (o primário da posição dele no anel) é o nó `number`.
+pub fn name_owned_by(cluster: &TestCluster, number: usize, prefix: &str) -> String {
+    let membership = cluster.node(1).node.cluster().unwrap().membership();
+    let wanted = cluster.node_id(number);
+    (0..2000)
+        .map(|i| format!("{prefix}{i}"))
+        .find(|name| {
+            membership
+                .ring()
+                .primary(taba_node::core::ring::definition_position("topic", name))
+                .is_some_and(|owner| owner == wanted)
+        })
+        .expect("algum nome cai no nó")
+}
+
 pub async fn create_queue(node: &TestNode, name: &str) {
     let response = node
         .client

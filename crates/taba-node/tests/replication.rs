@@ -54,7 +54,7 @@ async fn consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
     value["messages"].as_array().cloned().unwrap_or_default()
 }
 
-/// UC: UC-DEF-001, UC-DEF-006
+/// UC: UC-DEF-025, UC-DEF-029
 #[tokio::test]
 async fn topic_definitions_reach_every_node_before_the_api_answers() {
     let cluster = TestCluster::start(3).await;
@@ -712,7 +712,7 @@ async fn status_with(node: &TestNode, token: &str) -> u16 {
         .as_u16()
 }
 
-/// UC: UC-DEF-008, UC-DEF-022, UC-ESC-030
+/// UC: UC-DEF-034, UC-DEF-022, UC-ESC-030
 #[tokio::test]
 async fn tokens_reach_every_node_and_a_new_node_pulls_them() {
     let mut cluster = TestCluster::start_with(2, &[("TABA_AUTH_ROOT_TOKEN", ROOT)]).await;

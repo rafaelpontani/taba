@@ -118,8 +118,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 fn is_event(request: &Request) -> bool {
     matches!(
         request,
-        Request::Topic(_)
-            | Request::Token(_)
+        Request::DefinitionApply(_)
             | Request::Write { .. }
             | Request::Visibility { .. }
             | Request::Ack { .. }
@@ -135,8 +134,9 @@ fn step_operation<R>(step: &Step<R>, register: impl Fn(&R) -> &str) -> String {
 
 fn operation_of(request: &Request) -> String {
     match request {
-        Request::Topic(step) => step_operation(step, |r| &r.operation_id),
-        Request::Token(step) => step_operation(step, |r| &r.operation_id),
+        Request::DefinitionApply(change) => {
+            format!("{}:{}:{}", change.kind.as_str(), change.key, change.version)
+        }
         Request::Write { step, .. } => step_operation(step, |r| &r.operation_id),
         Request::Visibility { step, .. } => step_operation(step, |r| &r.operation_id),
         Request::Ack { step, .. } => step_operation(step, |r| &r.operation_id),
@@ -385,6 +385,9 @@ impl Syncer {
             if size > self.rules.log_max_bytes {
                 self.overflow.store(true, Ordering::SeqCst);
             }
+        }
+        if let Request::DefinitionApply(change) = request {
+            return Ok(Some(Response::Definition(change.clone())));
         }
         Ok(Some(Response::Ack(Ack {
             operation_id: operation_of(request),
@@ -972,8 +975,9 @@ impl Syncer {
         // O evento vence a carga e é idempotente: um erro (a mensagem já não está aqui, a
         // definição já existe) não muda nada.
         let result = match request {
-            Request::Topic(step) => self.definitions.handle_topic(step).await.map(|_| ()),
-            Request::Token(step) => self.definitions.handle_token(step).await.map(|_| ()),
+            Request::DefinitionApply(change) => {
+                self.definitions.handle_apply(change).await.map(|_| ())
+            }
             other => self.replica.replay(other).await,
         };
         if let Err(e) = result {

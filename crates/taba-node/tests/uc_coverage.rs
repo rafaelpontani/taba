@@ -171,3 +171,153 @@ fn coverage_report_and_optional_strict_check() {
         );
     }
 }
+
+/// Marca o começo da célula gerada da coluna "Testes", para regerar a coluna sem duplicá-la.
+const TESTS_MARK: &str = "<!--t-->";
+
+/// Código -> os testes que o citam, como `arquivo::função` (o arquivo relativo ao crate), em ordem.
+/// A linha `/// UC:` vale para a primeira função que vem depois dela, pulando atributos e outras
+/// linhas de documentação.
+fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
+    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut files = Vec::new();
+    rust_files(&crate_dir.join("src"), &mut files);
+    rust_files(&crate_dir.join("tests"), &mut files);
+    files.sort();
+
+    let marker = format!("{} UC:", "///");
+    let mut tests: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for file in files {
+        let shown = file
+            .strip_prefix(crate_dir)
+            .unwrap_or(&file)
+            .display()
+            .to_string()
+            .replace('\\', "/");
+        let text = fs::read_to_string(&file).expect("ler fonte");
+        let mut pending: Vec<String> = Vec::new();
+        for line in text.lines() {
+            let line = line.trim_start();
+            if let Some(list) = line.strip_prefix(marker.as_str()) {
+                pending.extend(
+                    list.split(',')
+                        .map(str::trim)
+                        .filter(|c| !c.is_empty())
+                        .map(str::to_owned),
+                );
+                continue;
+            }
+            if pending.is_empty()
+                || line.is_empty()
+                || line.starts_with("#[")
+                || line.starts_with("//")
+            {
+                continue;
+            }
+            if let Some(after) = line.split("fn ").nth(1)
+                && let Some(name) = after.split(['(', '<']).next()
+            {
+                for code in pending.drain(..) {
+                    tests
+                        .entry(code)
+                        .or_default()
+                        .insert(format!("{shown}::{}", name.trim()));
+                }
+            } else {
+                pending.clear();
+            }
+        }
+    }
+    tests
+}
+
+/// O texto de `doc/20*.md` com a coluna "Testes" de cada tabela de casos de uso.
+fn with_tests_column(text: &str, tests: &BTreeMap<String, BTreeSet<String>>) -> String {
+    let mut out = Vec::new();
+    let mut columns = 0;
+    let mut after_header = false;
+    for line in text.lines() {
+        if line.starts_with("| Código |") {
+            let base = line
+                .trim_end()
+                .strip_suffix("| Testes |")
+                .unwrap_or_else(|| line.trim_end().trim_end_matches('|'))
+                .trim_end();
+            columns = base.matches('|').count() + 1;
+            out.push(format!("{base} | Testes |"));
+            after_header = true;
+            continue;
+        }
+        if after_header {
+            after_header = false;
+            if line.starts_with("|---") {
+                out.push(format!("{}|", "|---".repeat(columns)));
+                continue;
+            }
+        }
+        let code = line
+            .strip_prefix("| ")
+            .and_then(|rest| rest.split(' ').next())
+            .filter(|c| is_code(c));
+        let Some(code) = code else {
+            out.push(line.to_owned());
+            continue;
+        };
+        let base = match line.find(&format!(" | {TESTS_MARK}")) {
+            Some(i) => &line[..i],
+            None => line.trim_end().trim_end_matches('|').trim_end(),
+        };
+        let cell = tests
+            .get(code)
+            .filter(|_| !line.contains("(retirado"))
+            .map(|names| {
+                names
+                    .iter()
+                    .map(|n| format!("`{n}`"))
+                    .collect::<Vec<_>>()
+                    .join("<br>")
+            })
+            .unwrap_or_else(|| "—".to_owned());
+        out.push(format!("{base} | {TESTS_MARK}{cell} |"));
+    }
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
+}
+
+/// A coluna "Testes" das tabelas dos casos de uso diz em que arquivo e função cada caso é testado,
+/// e é gerada daqui. Depois de mexer nos testes ou nos casos, regere com
+/// `TABA_UC_WRITE=1 cargo test --test uc_coverage`.
+#[test]
+fn the_tests_column_of_the_use_cases_is_up_to_date() {
+    let tests = tests_by_code();
+    let mut stale = Vec::new();
+    let mut files: Vec<PathBuf> = fs::read_dir(root().join("doc"))
+        .expect("pasta doc/")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            name.starts_with("20") && name.ends_with(".md")
+        })
+        .collect();
+    files.sort();
+    for file in files {
+        let current = fs::read_to_string(&file).expect("ler doc");
+        let updated = with_tests_column(&current, &tests);
+        if updated == current {
+            continue;
+        }
+        if std::env::var("TABA_UC_WRITE").is_ok_and(|v| v == "1") {
+            fs::write(&file, updated).expect("gravar doc");
+        } else {
+            stale.push(file.display().to_string());
+        }
+    }
+    assert!(
+        stale.is_empty(),
+        "a coluna Testes está desatualizada em {stale:?}: rode `TABA_UC_WRITE=1 cargo test --test uc_coverage`"
+    );
+}

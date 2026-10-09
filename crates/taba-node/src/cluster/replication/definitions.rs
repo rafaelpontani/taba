@@ -1,57 +1,57 @@
 //! A propagação das definições de **tópicos e tokens** a todos os nós (doc 02, seções 3.3 e 3.4;
-//! doc 06c, "Tópicos e tokens"): registro + commit com a confirmação de **todos** os membros, sem
-//! quórum reduzido (doc 05, seção 7.2), e os streams `GET /cluster/topics` e `/cluster/tokens` que
-//! o nó novo puxa depois de entrar.
+//! doc 06c, "Tópicos e tokens"), e os streams `GET /cluster/topics` e `/cluster/tokens` que o nó
+//! novo puxa depois de entrar.
 //!
-//! Do lado de quem coordena (`Definitions` como [`TopicReplicator`] e [`TokenReplicator`]): o
-//! registro vai a todos; falhando algum, rollback nos que confirmaram e erro ao cliente; fechando,
-//! o commit vai a todos e insiste dentro de `write.commit.timeout` (esgotado, o erro vai ao cliente
-//! e a tentativa segue em segundo plano). Do lado de quem recebe: confere, deixa pendente, e só no
-//! commit a definição passa a valer e é gravada em disco.
+//! Cada definição tem um **dono** no anel: o primeiro nó ativo na posição do hash do nome do tópico
+//! ou do `id` do token. O dono é a fonte da verdade: só ele decide uma mudança, confere se ela cabe
+//! no estado atual (o nome já existe, o tópico não existe...) e dá a ela uma **versão** crescente.
+//! Todos os nós guardam a cópia completa e leem localmente; só a escrita passa pelo dono.
+//!
+//! Quem recebe a chamada do cliente propõe a mudança ao dono (`DefinitionPropose`). O dono grava
+//! primeiro num **herdeiro** (o primeiro outro dono alcançável da posição, para a mudança sobreviver à queda do
+//! dono), aplica em si e manda a todos os outros nós (`DefinitionApply`). Responde depois dos nós
+//! que respondem dentro de `write.commit.timeout`; os demais ficam pendentes e o dono **insiste**
+//! até eles confirmarem ou saírem do cluster. Cada nó aplica só uma versão que não seja menor que a
+//! sua, então repetir ou chegar fora de ordem não muda o resultado. A remoção deixa uma lápide com
+//! a versão, para uma mudança atrasada não ressuscitar o que foi removido.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
+use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinSet;
 
-use crate::cluster::members::Member;
+use crate::cluster::members::{Member, MemberState};
 use crate::cluster::protocol::{
-    Ack, OperationRef, Request, Response, Step, StreamPage, StreamQuery, TokenOperation,
-    TokenRegisterRequest, TopicOperation, TopicRegisterRequest, token_from_json, token_to_json,
+    DefinitionApply, DefinitionKind, DefinitionOperation, DefinitionProposal, Request, Response,
+    StreamPage, StreamQuery, token_from_json, token_to_json,
 };
 use crate::cluster::service::ClusterService;
+use crate::cluster::state::NodeState;
 use crate::cluster::transport::CallError;
 use crate::core::error::{ErrorCode, TabaError};
+use crate::core::ring;
 use crate::core::token::TokenRecord;
 use crate::core::topic::TopicDefinition;
 use crate::engine::tokens::{TokenChange, TokenReplicator, Tokens};
 use crate::engine::topics::{TopicChange, TopicReplicator, Topics};
 
-const FINISHED_MEMORY: usize = 1024;
 /// O teto padrão de linhas de um trecho de stream (`cluster.sync.stream.max-items`, a definir).
 const STREAM_PAGE: usize = 500;
+/// Quanto tempo uma lápide fica guardada (se nenhum nó está pendente para ela).
+const TOMBSTONE_TTL: Duration = Duration::from_secs(3600);
 
-#[derive(Clone)]
-enum Change {
-    Topic(TopicChange),
-    Token(TokenChange),
-}
+type Key = (DefinitionKind, String);
 
-struct Pending {
-    key: String,
-    change: Change,
+/// O que este nó sabe de uma definição: a versão que aplicou e se ela foi removida.
+struct Entry {
+    version: u64,
+    deleted: bool,
     at: SystemTime,
-}
-
-#[derive(Default)]
-struct State {
-    ops: HashMap<String, Pending>,
-    by_key: HashMap<String, String>,
-    finished: VecDeque<(String, bool)>,
 }
 
 /// O que a carga de definições trouxe (nomes dos tópicos e IDs dos tokens).
@@ -62,21 +62,35 @@ pub struct Pulled {
 }
 
 pub struct Definitions {
+    me: Weak<Definitions>,
     service: Arc<ClusterService>,
     topics: Arc<Topics>,
     tokens: Arc<Tokens>,
-    state: Mutex<State>,
+    versions: Mutex<HashMap<Key, Entry>>,
+    /// Uma mudança por vez em cada definição (a do dono e a aplicação nos nós).
+    locks: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<()>>>>,
+    /// Os nós que o dono ainda tenta alcançar: (tipo, chave, nó).
+    insisting: Mutex<HashSet<(DefinitionKind, String, String)>>,
 }
 
-fn conflict(message: &str) -> TabaError {
-    TabaError::new(ErrorCode::ClusterConflict, message)
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn ack(operation_id: &str) -> Ack {
-    Ack {
-        operation_id: operation_id.to_owned(),
-        accepted: true,
-    }
+fn unavailable(message: impl Into<String>) -> TabaError {
+    TabaError::new(ErrorCode::ClusterQuorumUnavailable, message.into()).with_retry_after(5)
+}
+
+fn bad(what: impl Into<String>) -> TabaError {
+    TabaError::new(ErrorCode::ValidationFailed, what.into())
+}
+
+/// Apaga o tipo do futuro (o `tokio::spawn` precisa de `Send` e as chamadas entre nós são
+/// recursivas por natureza).
+fn boxed<T: Send + 'static>(
+    future: impl Future<Output = T> + Send + 'static,
+) -> Pin<Box<dyn Future<Output = T> + Send>> {
+    Box::pin(future)
 }
 
 impl Definitions {
@@ -85,193 +99,354 @@ impl Definitions {
         topics: Arc<Topics>,
         tokens: Arc<Tokens>,
     ) -> Arc<Self> {
-        Arc::new(Self {
+        Arc::new_cyclic(|me| Self {
+            me: me.clone(),
             service,
             topics,
             tokens,
-            state: Mutex::new(State::default()),
+            versions: Mutex::new(HashMap::new()),
+            locks: Mutex::new(HashMap::new()),
+            insisting: Mutex::new(HashSet::new()),
         })
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    async fn lock_key(&self, key: &Key) -> OwnedMutexGuard<()> {
+        let mutex = {
+            let mut locks = lock(&self.locks);
+            locks.retain(|_, m| Arc::strong_count(m) > 1);
+            locks.entry(key.clone()).or_default().clone()
+        };
+        mutex.lock_owned().await
+    }
+
+    /// A versão que este nó aplicou (`0` se não conhece a definição).
+    fn version_of(&self, kind: DefinitionKind, key: &str) -> u64 {
+        lock(&self.versions)
+            .get(&(kind, key.to_owned()))
+            .map_or(0, |e| e.version)
+    }
+
+    // ---- Quem é o dono ----
+
+    /// Os donos da definição: os nós **ativos** da posição no anel, o primeiro é o dono (um
+    /// nó que sincroniza ainda não tem a cópia completa). `503` se nenhum nó ativo a ocupa.
+    fn owners(&self, kind: DefinitionKind, key: &str) -> Result<Vec<Member>, TabaError> {
+        let position = ring::definition_position(kind.as_str(), key);
+        let owners: Vec<Member> = self
+            .service
+            .owners_of(position)?
+            .into_iter()
+            .filter(|m| m.state == MemberState::Active)
+            .collect();
+        if owners.is_empty() {
+            return Err(unavailable("Nenhum nó ativo é dono desta definição."));
+        }
+        Ok(owners)
+    }
+
+    // ---- Quem propõe ----
+
+    /// Leva a mudança ao dono e só volta quando ela já vale neste nó também.
+    async fn propose(&self, proposal: DefinitionProposal) -> Result<(), TabaError> {
+        let owners = self.owners(proposal.kind, &proposal.key)?;
+        let owner = &owners[0];
+        if self.service.is_self(owner) {
+            self.coordinate(proposal).await?;
+            return Ok(());
+        }
+        match self
+            .service
+            .call_member(owner, Request::DefinitionPropose(proposal))
+            .await
+        {
+            Ok(Response::Definition(done)) => {
+                // O dono esperou este nó; repetir é inofensivo e garante o "li o que escrevi".
+                let key = (done.kind, done.key.clone());
+                let _guard = self.lock_key(&key).await;
+                self.apply_unlocked(&done).await?;
+                Ok(())
+            }
+            Ok(_) => Err(TabaError::internal()),
+            Err(CallError::Remote(error)) => Err(error),
+            Err(other) => Err(unavailable(format!(
+                "O dono da definição não respondeu: {other}."
+            ))),
+        }
+    }
+
+    // ---- O dono ----
+
+    /// Decide a mudança: confere com o estado do dono e dá a próxima versão.
+    fn decide(&self, proposal: &DefinitionProposal) -> Result<DefinitionApply, TabaError> {
+        match proposal.kind {
+            DefinitionKind::Topic => self.topics.check_change(&topic_change(proposal)?)?,
+            DefinitionKind::Token => self.tokens.check_change(&token_change(proposal)?)?,
+        }
+        let deleted = proposal.operation == DefinitionOperation::Delete;
+        Ok(DefinitionApply {
+            kind: proposal.kind,
+            key: proposal.key.clone(),
+            version: self.version_of(proposal.kind, &proposal.key) + 1,
+            deleted,
+            body: if deleted {
+                Value::Null
+            } else {
+                proposal.body.clone()
+            },
+        })
+    }
+
+    /// Roda no dono: decide, grava no herdeiro, aplica em si e espalha aos demais nós.
+    async fn coordinate(&self, proposal: DefinitionProposal) -> Result<DefinitionApply, TabaError> {
+        let key = (proposal.kind, proposal.key.clone());
+        let _guard = self.lock_key(&key).await;
+        let owners = self.owners(proposal.kind, &proposal.key)?;
+        if !self.service.is_self(&owners[0]) {
+            return Err(unavailable("Este nó não é o dono da definição."));
+        }
+        let decided = self.decide(&proposal)?;
+        // A mudança precisa existir em outro nó antes de o dono responder: o primeiro dono
+        // seguinte que confirma é o herdeiro dela (se ele cair, a mudança não se perde).
+        let mut heir: Option<&Member> = None;
+        for candidate in &owners[1..] {
+            match self
+                .service
+                .call_member(candidate, Request::DefinitionApply(decided.clone()))
+                .await
+            {
+                Ok(_) => {
+                    heir = Some(candidate);
+                    break;
+                }
+                Err(CallError::Remote(error)) if error.status() < 500 => return Err(error),
+                Err(_) => {}
+            }
+        }
+        if owners.len() > 1 && heir.is_none() {
+            return Err(unavailable(
+                "Nenhum outro dono da definição confirmou a mudança.",
+            ));
+        }
+        self.apply_unlocked(&decided).await?;
+        let mut done = vec![owners[0].node_id.clone()];
+        done.extend(heir.map(|m| m.node_id.clone()));
+        self.spread(&decided, &done).await;
+        Ok(decided)
+    }
+
+    /// Manda a mudança aos demais nós e espera os que respondem em `write.commit.timeout`; os
+    /// outros ficam pendentes e o dono insiste neles.
+    async fn spread(&self, decided: &DefinitionApply, done: &[String]) {
+        let Some(table) = self.service.membership().table() else {
+            return;
+        };
+        let skip: HashSet<&str> = done.iter().map(String::as_str).collect();
+        let mut pending: HashMap<String, Member> = table
+            .members
+            .iter()
+            .filter(|m| !skip.contains(m.node_id.as_str()))
+            .map(|m| (m.node_id.clone(), m.clone()))
+            .collect();
+        let mut set = JoinSet::new();
+        for member in pending.values().cloned() {
+            let (service, change) = (self.service.clone(), decided.clone());
+            set.spawn(boxed(async move {
+                let result = service
+                    .call_member(&member, Request::DefinitionApply(change))
+                    .await;
+                (member, result)
+            }));
+        }
+        let _ = tokio::time::timeout(self.service.rules().commit_timeout, async {
+            while let Some(joined) = set.join_next().await {
+                match joined {
+                    Ok((member, Ok(_))) => {
+                        pending.remove(&member.node_id);
+                    }
+                    Ok((member, Err(CallError::Remote(error)))) if error.status() < 500 => {
+                        tracing::warn!(node_id = %member.node_id, code = %error.code, "definição recusada por um nó");
+                        pending.remove(&member.node_id);
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await;
+        set.detach_all();
+        for member in pending.values() {
+            self.insist(decided, member);
+        }
+    }
+
+    /// Passa a insistir num nó que não confirmou (uma tarefa por definição e nó).
+    fn insist(&self, decided: &DefinitionApply, member: &Member) {
+        let Some(me) = self.me.upgrade() else {
+            return;
+        };
+        let tag = (decided.kind, decided.key.clone(), member.node_id.clone());
+        if !lock(&me.insisting).insert(tag.clone()) {
+            return;
+        }
+        tokio::spawn(boxed(async move { me.insist_loop(tag).await }));
+    }
+
+    /// Repete a **versão mais nova** que este nó tem até o nó confirmar, sair do cluster ou o
+    /// processo parar.
+    async fn insist_loop(self: Arc<Self>, tag: (DefinitionKind, String, String)) {
+        let (kind, key, node_id) = (tag.0, tag.1.clone(), tag.2.clone());
+        let service = self.service.clone();
+        loop {
+            if service.cancel_token().is_cancelled() {
+                break;
+            }
+            let member = service
+                .membership()
+                .table()
+                .and_then(|table| table.member(&node_id).cloned());
+            let (Some(member), Some(current)) = (member, self.current(kind, &key)) else {
+                break;
+            };
+            match service
+                .call_member(&member, Request::DefinitionApply(current))
+                .await
+            {
+                Ok(_) => break,
+                Err(CallError::Remote(error)) if error.status() < 500 => {
+                    tracing::warn!(node_id = %node_id, code = %error.code, "definição recusada por um nó");
+                    break;
+                }
+                Err(_) => {}
+            }
+            tokio::select! {
+                () = service.cancel_token().cancelled() => break,
+                () = tokio::time::sleep(service.rules().retry_backoff) => {}
+            }
+        }
+        lock(&self.insisting).remove(&tag);
+    }
+
+    /// O estado mais novo que este nó tem de uma definição (ou a lápide dela).
+    fn current(&self, kind: DefinitionKind, key: &str) -> Option<DefinitionApply> {
+        let (version, deleted) = lock(&self.versions)
+            .get(&(kind, key.to_owned()))
+            .map(|e| (e.version, e.deleted))?;
+        let body = if deleted {
+            Value::Null
+        } else {
+            match kind {
+                DefinitionKind::Topic => self.topics.definition(key)?.to_json(),
+                DefinitionKind::Token => token_to_json(&self.tokens.record(key)?),
+            }
+        };
+        Some(DefinitionApply {
+            kind,
+            key: key.to_owned(),
+            version,
+            deleted,
+            body,
+        })
     }
 
     // ---- Quem recebe ----
 
-    fn purge(&self, state: &mut State) {
-        let now = self.service.now();
-        let ttl = self.service.rules().pending_ttl;
-        let expired: Vec<String> = state
-            .ops
-            .iter()
-            .filter(|(_, p)| now.duration_since(p.at).is_ok_and(|age| age >= ttl))
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in expired {
-            if let Some(op) = state.ops.remove(&id) {
-                state.by_key.remove(&op.key);
-            }
-        }
-    }
-
-    fn register(&self, operation_id: &str, key: String, change: Change) -> Result<Ack, TabaError> {
-        let mut state = self.lock();
-        self.purge(&mut state);
-        if state.ops.contains_key(operation_id)
-            || state.finished.iter().any(|(id, _)| id == operation_id)
+    /// Aplica a mudança neste nó se a versão não é menor que a que ele já tem. Quem chama segura a
+    /// trava da definição. Devolve `false` quando a mudança chegou velha demais.
+    async fn apply_unlocked(&self, change: &DefinitionApply) -> Result<bool, TabaError> {
+        let key = (change.kind, change.key.clone());
+        if lock(&self.versions)
+            .get(&key)
+            .is_some_and(|e| e.version > change.version)
         {
-            return Ok(ack(operation_id));
+            return Ok(false);
         }
-        if state.by_key.contains_key(&key) {
-            return Err(conflict("Há outra operação pendente para este recurso."));
+        match (change.kind, change.deleted) {
+            (DefinitionKind::Topic, false) => {
+                let definition = TopicDefinition::from_json(&change.body).map_err(bad)?;
+                if definition.name != change.key {
+                    return Err(bad("O nome do tópico não é a chave da mudança."));
+                }
+                self.topics.apply_save(definition).await?;
+            }
+            (DefinitionKind::Topic, true) => self.topics.apply_delete(&change.key).await?,
+            (DefinitionKind::Token, false) => {
+                let record = token_from_json(&change.body)?;
+                if record.id != change.key {
+                    return Err(bad("O id do token não é a chave da mudança."));
+                }
+                self.tokens.apply_save(record).await?;
+            }
+            (DefinitionKind::Token, true) => self.tokens.apply_revoke(&change.key).await?,
         }
-        state.by_key.insert(key.clone(), operation_id.to_owned());
-        state.ops.insert(
-            operation_id.to_owned(),
-            Pending {
-                key,
-                change,
-                at: self.service.now(),
+        let now = self.service.now();
+        let mut versions = lock(&self.versions);
+        versions.insert(
+            key,
+            Entry {
+                version: change.version,
+                deleted: change.deleted,
+                at: now,
             },
         );
-        Ok(ack(operation_id))
+        let insisting = lock(&self.insisting);
+        versions.retain(|(kind, key), e| {
+            !(e.deleted
+                && now
+                    .duration_since(e.at)
+                    .is_ok_and(|age| age >= TOMBSTONE_TTL)
+                && !insisting
+                    .iter()
+                    .any(|(k, name, _)| k == kind && name == key))
+        });
+        Ok(true)
     }
 
-    async fn commit(&self, operation_id: &str) -> Result<Ack, TabaError> {
-        let pending = {
-            let mut state = self.lock();
-            self.purge(&mut state);
-            match state.ops.remove(operation_id) {
-                Some(op) => {
-                    state.by_key.remove(&op.key);
-                    op
-                }
-                None => {
-                    return match state.finished.iter().find(|(id, _)| id == operation_id) {
-                        Some((_, true)) => Ok(ack(operation_id)),
-                        Some((_, false)) => Err(conflict("A operação foi cancelada (rollback).")),
-                        None => Err(TabaError::new(
-                            ErrorCode::ClusterOperationUnknown,
-                            "O nó não conhece essa operação (nunca chegou ou já expirou).",
-                        )),
-                    };
-                }
-            }
-        };
-        let result = match pending.change {
-            Change::Topic(TopicChange::Create(def) | TopicChange::Update(def)) => {
-                self.topics.apply_save(def).await
-            }
-            Change::Topic(TopicChange::Delete { name, .. }) => {
-                self.topics.apply_delete(&name).await
-            }
-            Change::Token(TokenChange::Create(record) | TokenChange::Update(record)) => {
-                self.tokens.apply_save(record).await
-            }
-            Change::Token(TokenChange::Revoke(id)) => self.tokens.apply_revoke(&id).await,
-        };
-        self.remember(operation_id, true);
-        result.map(|()| ack(operation_id))
-    }
-
-    fn remember(&self, operation_id: &str, committed: bool) {
-        let mut state = self.lock();
-        state.finished.retain(|(id, _)| id != operation_id);
-        state
-            .finished
-            .push_back((operation_id.to_owned(), committed));
-        while state.finished.len() > FINISHED_MEMORY {
-            state.finished.pop_front();
-        }
-    }
-
-    fn rollback(&self, operation_id: &str) -> Result<Ack, TabaError> {
-        let mut state = self.lock();
-        self.purge(&mut state);
-        if let Some(op) = state.ops.remove(operation_id) {
-            state.by_key.remove(&op.key);
-            drop(state);
-            self.remember(operation_id, false);
-            return Ok(ack(operation_id));
-        }
-        match state.finished.iter().find(|(id, _)| id == operation_id) {
-            Some((_, false)) => Ok(ack(operation_id)),
-            Some((_, true)) => Err(conflict(
-                "A operação já foi efetivada: não há rollback depois do commit.",
-            )),
-            None => Err(TabaError::new(
-                ErrorCode::ClusterOperationUnknown,
-                "O nó não conhece essa operação (nunca chegou ou já expirou).",
-            )),
-        }
-    }
-
-    /// `POST /cluster/topics/register|commit|rollback`.
-    pub async fn handle_topic(
+    /// `POST /cluster/definitions/apply`.
+    pub fn handle_apply(
         &self,
-        step: Step<TopicRegisterRequest>,
-    ) -> Result<Response, TabaError> {
-        match step {
-            Step::Register(request) => {
-                let change = topic_change(&request)?;
-                self.topics.check_change(&change)?;
-                let key = match &change {
-                    TopicChange::Create(d) | TopicChange::Update(d) => d.name.clone(),
-                    TopicChange::Delete { name, .. } => name.clone(),
-                };
-                self.register(
-                    &request.operation_id,
-                    format!("topic:{key}"),
-                    Change::Topic(change),
-                )
+        change: DefinitionApply,
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TabaError>> + Send + '_>> {
+        Box::pin(async move {
+            if change.key.trim().is_empty() {
+                return Err(bad("A chave da definição é obrigatória."));
             }
-            Step::Commit(OperationRef { operation_id }) => self.commit(&operation_id).await,
-            Step::Rollback(OperationRef { operation_id }) => self.rollback(&operation_id),
-        }
-        .map(Response::Ack)
+            let key = (change.kind, change.key.clone());
+            let _guard = self.lock_key(&key).await;
+            self.apply_unlocked(&change).await?;
+            Ok(Response::Definition(change))
+        })
     }
 
-    /// `POST /cluster/tokens/register|commit|rollback`.
-    pub async fn handle_token(
+    /// `POST /cluster/definitions/propose`: o dono decide a mudança.
+    pub fn handle_propose(
         &self,
-        step: Step<TokenRegisterRequest>,
-    ) -> Result<Response, TabaError> {
-        match step {
-            Step::Register(request) => {
-                let change = match request.operation {
-                    TokenOperation::Create => TokenChange::Create(token_from_json(&request.token)?),
-                    TokenOperation::Update => TokenChange::Update(token_from_json(&request.token)?),
-                    TokenOperation::Revoke => TokenChange::Revoke(
-                        request
-                            .token
-                            .get("id")
-                            .and_then(Value::as_str)
-                            .ok_or_else(|| {
-                                TabaError::new(
-                                    ErrorCode::ValidationRequired,
-                                    "`token.id` é obrigatório.",
-                                )
-                            })?
-                            .to_owned(),
-                    ),
-                };
-                self.tokens.check_change(&change)?;
-                let key = match &change {
-                    TokenChange::Create(r) | TokenChange::Update(r) => r.id.clone(),
-                    TokenChange::Revoke(id) => id.clone(),
-                };
-                self.register(
-                    &request.operation_id,
-                    format!("token:{key}"),
-                    Change::Token(change),
-                )
+        proposal: DefinitionProposal,
+    ) -> Pin<Box<dyn Future<Output = Result<Response, TabaError>> + Send + '_>> {
+        Box::pin(async move {
+            if proposal.key.trim().is_empty() {
+                return Err(bad("A chave da definição é obrigatória."));
             }
-            Step::Commit(OperationRef { operation_id }) => self.commit(&operation_id).await,
-            Step::Rollback(OperationRef { operation_id }) => self.rollback(&operation_id),
-        }
-        .map(Response::Ack)
+            match self.service.node_state() {
+                NodeState::Active => {}
+                NodeState::Failed => {
+                    return Err(TabaError::new(
+                        ErrorCode::NodeFailed,
+                        "O nó está em falha e não decide definições até ser excluído.",
+                    )
+                    .with_retry_after(5));
+                }
+                _ => {
+                    return Err(TabaError::new(
+                        ErrorCode::ClusterNodeSyncing,
+                        "O nó ainda está em sincronização e não decide definições.",
+                    )
+                    .with_retry_after(5));
+                }
+            }
+            self.coordinate(proposal).await.map(Response::Definition)
+        })
     }
+
+    // ---- Streams ----
 
     fn page(query: &StreamQuery) -> usize {
         query
@@ -279,136 +454,33 @@ impl Definitions {
             .map_or(STREAM_PAGE, |n| (n as usize).clamp(2, STREAM_PAGE))
     }
 
-    /// `GET /cluster/topics`.
+    /// `GET /cluster/topics`: cada linha é a definição mais a `version` que este nó aplicou.
     pub fn list_topics(&self, query: &StreamQuery) -> Response {
         let (definitions, more) = self
             .topics
             .definitions_from(query.from.as_deref(), Self::page(query));
-        Response::Stream(StreamPage::new(
-            definitions.iter().map(TopicDefinition::to_json).collect(),
-            more,
-        ))
+        let items = definitions
+            .iter()
+            .map(|d| with_version(d.to_json(), self.version_of(DefinitionKind::Topic, &d.name)))
+            .collect();
+        Response::Stream(StreamPage::new(items, more))
     }
 
-    /// `GET /cluster/tokens`.
+    /// `GET /cluster/tokens`: cada linha é o registro mais a `version` que este nó aplicou.
     pub fn list_tokens(&self, query: &StreamQuery) -> Response {
         let (records, more) = self
             .tokens
             .records_from(query.from.as_deref(), Self::page(query));
-        Response::Stream(StreamPage::new(
-            records.iter().map(token_to_json).collect(),
-            more,
-        ))
-    }
-
-    // ---- Quem coordena ----
-
-    /// Registro em todos os membros e commit em todos (doc 05, seção 7.2): sem quórum reduzido.
-    async fn all_nodes(
-        &self,
-        register: Request,
-        commit: Request,
-        rollback: Request,
-    ) -> Result<(), TabaError> {
-        let service = &self.service;
-        let members: Vec<Member> =
-            service
-                .membership()
-                .table()
-                .map(|t| t.members)
-                .ok_or_else(|| {
-                    TabaError::new(
-                        ErrorCode::ClusterNodeSyncing,
-                        "O nó ainda não tem a tabela de membros.",
-                    )
-                    .with_retry_after(5)
-                })?;
-
-        // Fase 1.
-        let mut set = JoinSet::new();
-        for member in members.iter().cloned() {
-            let (service, request) = (service.clone(), register.clone());
-            set.spawn(boxed(async move {
-                let result = service.call_member_retrying(&member, request).await;
-                (member, result)
-            }));
-        }
-        let (mut confirmed, mut failure): (Vec<Member>, Option<CallError>) = (Vec::new(), None);
-        while let Some(joined) = set.join_next().await {
-            match joined {
-                Ok((member, Ok(_))) => confirmed.push(member),
-                Ok((_, Err(error))) => {
-                    // O erro de um nó vale mais que o de rede: é o motivo de verdade.
-                    if failure
-                        .as_ref()
-                        .is_none_or(|f| f.is_network() && !error.is_network())
-                    {
-                        failure = Some(error);
-                    }
-                }
-                Err(_) => {}
-            }
-        }
-        if let Some(error) = failure {
-            let mut set = JoinSet::new();
-            for member in confirmed {
-                let (service, request) = (service.clone(), rollback.clone());
-                set.spawn(boxed(async move {
-                    let _ = service.call_member_retrying(&member, request).await;
-                }));
-            }
-            while set.join_next().await.is_some() {}
-            return Err(match error {
-                CallError::Remote(e) if e.status() < 500 => e,
-                _ => TabaError::new(
-                    ErrorCode::ClusterRegistrationFailed,
-                    "A fase de registro não foi confirmada por todos os nós; foi cancelada.",
+        let items = records
+            .iter()
+            .map(|r| {
+                with_version(
+                    token_to_json(r),
+                    self.version_of(DefinitionKind::Token, &r.id),
                 )
-                .with_retry_after(5),
-            });
-        }
-
-        // Fase 2: a decisão está tomada; insiste até o teto.
-        let mut set = JoinSet::new();
-        for member in members {
-            let (service, request) = (service.clone(), commit.clone());
-            set.spawn(boxed(async move {
-                loop {
-                    match service.call_member(&member, request.clone()).await {
-                        Ok(_) => return,
-                        Err(CallError::Remote(e)) if e.status() < 500 => {
-                            tracing::warn!(node_id = %member.node_id, code = %e.code, "commit de definição recusado");
-                            return;
-                        }
-                        Err(_) => {}
-                    }
-                    if service.cancel_token().is_cancelled()
-                        || !service.membership().is_member(&member.node_id)
-                    {
-                        return;
-                    }
-                    tokio::select! {
-                        () = service.cancel_token().cancelled() => return,
-                        () = tokio::time::sleep(service.rules().retry_backoff) => {}
-                    }
-                }
-            }));
-        }
-        let all = tokio::time::timeout(service.rules().commit_timeout, async {
-            while set.join_next().await.is_some() {}
-        })
-        .await
-        .is_ok();
-        if all {
-            Ok(())
-        } else {
-            set.detach_all();
-            Err(TabaError::new(
-                ErrorCode::ClusterCommitTimeout,
-                "A definição foi decidida e o commit segue em segundo plano em algum nó.",
-            )
-            .with_retry_after(5))
-        }
+            })
+            .collect();
+        Response::Stream(StreamPage::new(items, more))
     }
 
     /// Apaga as definições e os tokens locais (o nó volta como nó novo).
@@ -419,29 +491,50 @@ impl Definitions {
         for id in self.tokens.ids() {
             let _ = self.tokens.apply_revoke(&id).await;
         }
-        *self.lock() = State::default();
-    }
-
-    fn references(&self) -> (String, String) {
-        (
-            self.service.new_operation_id(),
-            self.service.node_id().to_owned(),
-        )
+        lock(&self.versions).clear();
     }
 
     // ---- Nó novo: puxar as tabelas ----
+
+    /// Aplica o que o stream de uma origem trouxe: vale se a versão da origem não é menor que a
+    /// deste nó (um evento que já chegou e é mais novo vence a carga).
+    async fn load(&self, change: DefinitionApply) -> Result<(), TabaError> {
+        let key = (change.kind, change.key.clone());
+        let _guard = self.lock_key(&key).await;
+        let same = lock(&self.versions)
+            .get(&key)
+            .is_some_and(|e| e.version == change.version && !e.deleted);
+        if same {
+            return Ok(());
+        }
+        self.apply_unlocked(&change).await.map(|_| ())
+    }
 
     /// Puxa de um membro as definições de tópico e os tokens (doc 02, seções 3.3 e 3.4) e devolve
     /// o que veio, para a verificação final conferir.
     pub async fn pull(&self, source: &Member) -> Result<Pulled, TabaError> {
         let mut pulled = Pulled::default();
-        for definition in self.list_topics_of(source).await? {
+        for (definition, version) in self.list_topics_of(source).await? {
             pulled.topics.insert(definition.name.clone());
-            self.topics.load_remote(definition).await?;
+            self.load(DefinitionApply {
+                kind: DefinitionKind::Topic,
+                key: definition.name.clone(),
+                version,
+                deleted: false,
+                body: definition.to_json(),
+            })
+            .await?;
         }
-        for record in self.list_tokens_of(source).await? {
+        for (record, version) in self.list_tokens_of(source).await? {
             pulled.tokens.insert(record.id.clone());
-            self.tokens.load_remote(record).await?;
+            self.load(DefinitionApply {
+                kind: DefinitionKind::Token,
+                key: record.id.clone(),
+                version,
+                deleted: false,
+                body: token_to_json(&record),
+            })
+            .await?;
         }
         Ok(pulled)
     }
@@ -454,29 +547,34 @@ impl Definitions {
             .list_topics_of(source)
             .await?
             .into_iter()
-            .map(|d| d.name)
+            .map(|(d, _)| d.name)
             .collect();
         let tokens: HashSet<String> = self
             .list_tokens_of(source)
             .await?
             .into_iter()
-            .map(|r| r.id)
+            .map(|(r, _)| r.id)
             .collect();
         let mut dropped = 0;
         for name in pulled.topics.difference(&topics) {
             if self.topics.apply_delete(name).await.is_ok() {
+                lock(&self.versions).remove(&(DefinitionKind::Topic, name.clone()));
                 dropped += 1;
             }
         }
         for id in pulled.tokens.difference(&tokens) {
             if self.tokens.apply_revoke(id).await.is_ok() {
+                lock(&self.versions).remove(&(DefinitionKind::Token, id.clone()));
                 dropped += 1;
             }
         }
         Ok(dropped)
     }
 
-    async fn list_topics_of(&self, source: &Member) -> Result<Vec<TopicDefinition>, TabaError> {
+    async fn list_topics_of(
+        &self,
+        source: &Member,
+    ) -> Result<Vec<(TopicDefinition, u64)>, TabaError> {
         let mut out = Vec::new();
         let mut from: Option<String> = None;
         loop {
@@ -489,10 +587,10 @@ impl Definitions {
                 return Err(TabaError::internal());
             };
             for item in &page.items {
-                out.push(
-                    TopicDefinition::from_json(item)
-                        .map_err(|e| TabaError::new(ErrorCode::ValidationFailed, e))?,
-                );
+                out.push((
+                    TopicDefinition::from_json(item).map_err(bad)?,
+                    version_of_item(item),
+                ));
             }
             if !page.end.has_more || page.end.last == from {
                 break;
@@ -502,7 +600,7 @@ impl Definitions {
         Ok(out)
     }
 
-    async fn list_tokens_of(&self, source: &Member) -> Result<Vec<TokenRecord>, TabaError> {
+    async fn list_tokens_of(&self, source: &Member) -> Result<Vec<(TokenRecord, u64)>, TabaError> {
         let mut out = Vec::new();
         let mut from: Option<String> = None;
         loop {
@@ -515,7 +613,7 @@ impl Definitions {
                 return Err(TabaError::internal());
             };
             for item in &page.items {
-                out.push(token_from_json(item)?);
+                out.push((token_from_json(item)?, version_of_item(item)));
             }
             if !page.end.has_more || page.end.last == from {
                 break;
@@ -537,38 +635,56 @@ impl Definitions {
     }
 }
 
-/// Apaga o tipo do futuro (o `tokio::spawn` precisa de `Send` e as chamadas entre nós são
-/// recursivas por natureza).
-fn boxed<T: Send + 'static>(
-    future: impl Future<Output = T> + Send + 'static,
-) -> Pin<Box<dyn Future<Output = T> + Send>> {
-    Box::pin(future)
+fn with_version(mut item: Value, version: u64) -> Value {
+    if let Some(object) = item.as_object_mut() {
+        object.insert("version".into(), json!(version));
+    }
+    item
 }
 
-fn topic_change(request: &TopicRegisterRequest) -> Result<TopicChange, TabaError> {
-    let bad = |what: String| TabaError::new(ErrorCode::ValidationFailed, what);
-    match request.operation {
-        TopicOperation::Create => Ok(TopicChange::Create(
-            TopicDefinition::from_json(&request.topic).map_err(bad)?,
-        )),
-        TopicOperation::Update => Ok(TopicChange::Update(
-            TopicDefinition::from_json(&request.topic).map_err(bad)?,
-        )),
-        TopicOperation::Delete => {
-            let text = |key: &str| {
-                request
-                    .topic
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-                    .ok_or_else(|| bad(format!("falta `{key}` na remoção")))
-            };
+fn version_of_item(item: &Value) -> u64 {
+    item.get("version").and_then(Value::as_u64).unwrap_or(0)
+}
+
+fn topic_change(proposal: &DefinitionProposal) -> Result<TopicChange, TabaError> {
+    let definition = || {
+        let definition = TopicDefinition::from_json(&proposal.body).map_err(bad)?;
+        if definition.name != proposal.key {
+            return Err(bad("O nome do tópico não é a chave da proposta."));
+        }
+        Ok(definition)
+    };
+    match proposal.operation {
+        DefinitionOperation::Create => Ok(TopicChange::Create(definition()?)),
+        DefinitionOperation::Update => Ok(TopicChange::Update(definition()?)),
+        DefinitionOperation::Delete => {
+            let id = proposal
+                .body
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| bad("falta `id` na remoção"))?
+                .to_owned();
             Ok(TopicChange::Delete {
-                name: text("name")?,
-                id: text("id")?,
-                expected_id: request.expected_id.clone(),
+                name: proposal.key.clone(),
+                id,
+                expected_id: proposal.expected_id.clone(),
             })
         }
+    }
+}
+
+fn token_change(proposal: &DefinitionProposal) -> Result<TokenChange, TabaError> {
+    let record = || {
+        let record = token_from_json(&proposal.body)?;
+        if record.id != proposal.key {
+            return Err(bad("O id do token não é a chave da proposta."));
+        }
+        Ok(record)
+    };
+    match proposal.operation {
+        DefinitionOperation::Create => Ok(TokenChange::Create(record()?)),
+        DefinitionOperation::Update => Ok(TokenChange::Update(record()?)),
+        DefinitionOperation::Delete => Ok(TokenChange::Revoke(proposal.key.clone())),
     }
 }
 
@@ -578,34 +694,37 @@ impl TopicReplicator for Definitions {
         change: TopicChange,
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>> {
         Box::pin(async move {
-            let (operation_id, coordinator_id) = self.references();
-            let (operation, topic, expected_id) = match &change {
-                TopicChange::Create(d) => (TopicOperation::Create, d.to_json(), None),
-                TopicChange::Update(d) => (TopicOperation::Update, d.to_json(), None),
+            let (operation, key, body, expected_id) = match change {
+                TopicChange::Create(d) => (
+                    DefinitionOperation::Create,
+                    d.name.clone(),
+                    d.to_json(),
+                    None,
+                ),
+                TopicChange::Update(d) => (
+                    DefinitionOperation::Update,
+                    d.name.clone(),
+                    d.to_json(),
+                    None,
+                ),
                 TopicChange::Delete {
                     name,
                     id,
                     expected_id,
                 } => (
-                    TopicOperation::Delete,
+                    DefinitionOperation::Delete,
+                    name.clone(),
                     json!({ "name": name, "id": id }),
-                    expected_id.clone(),
+                    expected_id,
                 ),
             };
-            let reference = OperationRef {
-                operation_id: operation_id.clone(),
-            };
-            self.all_nodes(
-                Request::Topic(Step::Register(TopicRegisterRequest {
-                    operation_id,
-                    coordinator_id,
-                    operation,
-                    topic,
-                    expected_id,
-                })),
-                Request::Topic(Step::Commit(reference.clone())),
-                Request::Topic(Step::Rollback(reference)),
-            )
+            self.propose(DefinitionProposal {
+                kind: DefinitionKind::Topic,
+                operation,
+                key,
+                body,
+                expected_id,
+            })
             .await
         })
     }
@@ -617,25 +736,24 @@ impl TokenReplicator for Definitions {
         change: TokenChange,
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>> {
         Box::pin(async move {
-            let (operation_id, coordinator_id) = self.references();
-            let (operation, token) = match &change {
-                TokenChange::Create(r) => (TokenOperation::Create, token_to_json(r)),
-                TokenChange::Update(r) => (TokenOperation::Update, token_to_json(r)),
-                TokenChange::Revoke(id) => (TokenOperation::Revoke, json!({ "id": id })),
+            let (operation, key, body) = match change {
+                TokenChange::Create(r) => {
+                    (DefinitionOperation::Create, r.id.clone(), token_to_json(&r))
+                }
+                TokenChange::Update(r) => {
+                    (DefinitionOperation::Update, r.id.clone(), token_to_json(&r))
+                }
+                TokenChange::Revoke(id) => {
+                    (DefinitionOperation::Delete, id.clone(), json!({ "id": id }))
+                }
             };
-            let reference = OperationRef {
-                operation_id: operation_id.clone(),
-            };
-            self.all_nodes(
-                Request::Token(Step::Register(TokenRegisterRequest {
-                    operation_id,
-                    coordinator_id,
-                    operation,
-                    token,
-                })),
-                Request::Token(Step::Commit(reference.clone())),
-                Request::Token(Step::Rollback(reference)),
-            )
+            self.propose(DefinitionProposal {
+                kind: DefinitionKind::Token,
+                operation,
+                key,
+                body,
+                expected_id: None,
+            })
             .await
         })
     }

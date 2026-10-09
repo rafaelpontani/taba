@@ -236,18 +236,19 @@ fn requests() -> Vec<Request> {
         receipt_token: guid(5),
         delete_at_ms: Some(1_791_288_300_000),
     };
-    let topic = TopicRegisterRequest {
-        operation_id: guid(7),
-        coordinator_id: guid(3),
-        operation: TopicOperation::Create,
-        topic: serde_json::json!({"id": guid(8), "name": "pedidos", "type": "queue"}),
+    let topic = DefinitionProposal {
+        kind: DefinitionKind::Topic,
+        operation: DefinitionOperation::Create,
+        key: "pedidos".into(),
+        body: serde_json::json!({"id": guid(8), "name": "pedidos", "type": "queue"}),
         expected_id: Some(guid(8)),
     };
-    let token = TokenRegisterRequest {
-        operation_id: guid(9),
-        coordinator_id: guid(3),
-        operation: TokenOperation::Revoke,
-        token: serde_json::json!({"id": guid(12)}),
+    let token = DefinitionApply {
+        kind: DefinitionKind::Token,
+        key: guid(12),
+        version: 3,
+        deleted: true,
+        body: serde_json::Value::Null,
     };
     let t = || "pedidos".to_owned();
     let id = || guid(10);
@@ -277,16 +278,13 @@ fn requests() -> Vec<Request> {
         }),
         Request::Commit(op()),
         Request::Rollback(op()),
-        Request::Topic(Step::Register(topic)),
-        Request::Topic(Step::Commit(op())),
-        Request::Topic(Step::Rollback(op())),
+        Request::DefinitionPropose(topic),
         Request::ListTopics(StreamQuery {
             from: Some(guid(1)),
             to: None,
             limit: Some(50),
         }),
-        Request::Token(Step::Register(token)),
-        Request::Token(Step::Commit(op())),
+        Request::DefinitionApply(token),
         Request::ListTokens(StreamQuery::default()),
         Request::Write {
             topic: t(),
@@ -401,7 +399,7 @@ fn requests() -> Vec<Request> {
     ]
 }
 
-/// UC: UC-ESC-025, UC-INV-013, UC-DEF-005, UC-DEF-008, UC-RTN-001, UC-RTN-003, UC-FIF-026
+/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026
 #[test]
 fn every_request_survives_the_trip_to_http_and_back() {
     for request in requests() {
@@ -419,6 +417,7 @@ fn every_request_survives_the_trip_to_http_and_back() {
     }
 }
 
+/// UC: UC-DEF-033
 #[test]
 fn the_routes_are_the_ones_of_the_document() {
     let paths: Vec<(String, String)> = requests()
@@ -443,9 +442,9 @@ fn the_routes_are_the_ones_of_the_document() {
     assert!(has("GET", "/cluster/nodes"));
     assert!(has("POST", "/cluster/nodes/join"));
     assert!(has("POST", "/cluster/nodes/rollback"));
-    assert!(has("POST", "/cluster/topics/register"));
+    assert!(has("POST", "/cluster/definitions/propose"));
     assert!(has("GET", "/cluster/topics"));
-    assert!(has("POST", "/cluster/tokens/register"));
+    assert!(has("POST", "/cluster/definitions/apply"));
     assert!(has(
         "POST",
         &format!("/cluster/topics/pedidos/messages/{id}/register")

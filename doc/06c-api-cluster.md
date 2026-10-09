@@ -20,7 +20,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 
 - Cada operação tem um **`operationId`** (GUID v7 gerado pelo coordenador). As três fases levam o mesmo `operationId`, e **todas são idempotentes por ele**: repetir um `register`, um `commit` ou um `rollback` devolve o mesmo `Ack`, sem efeito novo.
 - Cada rota `rollback` só descarta um registro (fase 1) **pendente, sem commit**: falha ou timeout de retries antes de fechar o quórum. Uma falha na chamada de `commit` numa réplica fora do quórum, já decidido, **nunca** aciona `rollback`: o coordenador insiste no commit dentro do teto `write.commit.timeout` até confirmar em todas as réplicas (seção 7.2).
-- **Mensagens** (rotas com `messages/{id}`, `visibility` e `ack`) decidem o commit por **quórum** (`write.quorum`, sempre incluindo o primário do bloco): o `register` vai a todas as réplicas, mas o `commit` é decidido e respondido ao cliente assim que o quórum confirma. **Nó, tópico e token** exigem a confirmação de **todos** os nós, sem quórum reduzido.
+- **Mensagens** (rotas com `messages/{id}`, `visibility` e `ack`) decidem o commit por **quórum** (`write.quorum`, sempre incluindo o primário do bloco): o `register` vai a todas as réplicas, mas o `commit` é decidido e respondido ao cliente assim que o quórum confirma. **Nó** exige a confirmação de **todos** os nós, sem quórum reduzido. **Tópico e token** não usam estas fases: têm um dono no anel e rotas próprias (`definitions/propose` e `definitions/apply`, abaixo).
 - Um registro sem commit nem rollback expira sozinho após `write.pending.ttl`. Um `commit` ou `rollback` de uma operação que o nó não conhece (já expirou, ou nunca chegou) responde `404` `cluster.operation-unknown`.
 - Um nó **em sincronização** confirma o `register` gravando-o no banco de eventos, e o aplica depois ([05-particionamento-replicacao.md](05-particionamento-replicacao.md), seção 7.3); para o coordenador, a confirmação conta normalmente.
 
@@ -42,7 +42,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 | Grupo | Rotas |
 |---|---|
 | **Membros e canal** | `GET /cluster/nodes`, `POST /cluster/nodes/join`, `POST /cluster/nodes/register`, `POST /cluster/nodes/unregister`, `POST /cluster/nodes/commit`, `POST /cluster/nodes/rollback`, `POST /cluster/vote-remove`, `GET /cluster/channel` (WebSocket, o alvo), `POST /cluster/channel` (provisória, a que o código usa) |
-| **Tópicos e tokens** | `POST /cluster/topics/register`, `commit`, `rollback`; `GET /cluster/topics`; `POST /cluster/tokens/register`, `commit`, `rollback`; `GET /cluster/tokens`; `GET /cluster/topics/{id}/idle` |
+| **Tópicos e tokens** | `POST /cluster/definitions/propose`, `POST /cluster/definitions/apply`; `GET /cluster/topics`; `GET /cluster/tokens`; `GET /cluster/topics/{id}/idle` |
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`, `POST /cluster/topics/{topic}/fifo/publish` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/message-loss`, `DELETE /cluster/message-loss/{topic}/{id}`, `POST /cluster/messages/recover` |
 | **Observabilidade** | `GET /cluster/status`, `GET /cluster/metrics/topics` |
@@ -135,36 +135,42 @@ A conexão é **dada por caída** quando fecha ou quando nada chega do par por d
 
 ## Tópicos e tokens
 
-### `POST /cluster/topics/register`, `commit` e `rollback`
+### `POST /cluster/definitions/propose` e `apply`
 
-Propagam a criação, alteração ou remoção de um tópico a **todos** os nós ([02-arquitetura.md](02-arquitetura.md), seção 3.3). O `commit` efetiva a definição na tabela de tópicos, e cada nó grava, atualiza ou remove a linha da tabela `topics` do `_node.db` local. O `rollback` descarta a alteração pendente (sem commit) após esgotar os retries.
+Propagam a criação, a alteração e a remoção de um **tópico** ([02-arquitetura.md](02-arquitetura.md), seção 3.3) e a criação, a alteração e a revogação de um **token** (seção 3.4). Cada definição tem um **dono** no anel: o primeiro nó ativo na posição do hash de `topic:<nome>` ou de `token:<id>`. O **herdeiro** é o primeiro outro dono ativo da posição que responde (D123).
 
-**`register`, corpo: `TopicRegisterRequest`**
+**`propose`: do nó que recebeu a chamada do cliente ao dono. Corpo: `DefinitionProposal`**
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
-| `operationId`, `coordinatorId` | texto | sim | Identificam a operação e quem coordena. |
-| `operation` | texto | sim | `create`, `update` ou `delete`. |
-| `topic` | `TopicDefinition` | sim | A definição completa. Em `delete`, só `name` e `id` são lidos. |
-| `expectedId` | texto | não | Em `delete` pelo **nó gestor** de uma fila volátil: o `id` que o tópico deve ter. Cada nó só aceita se o tópico atual com aquele nome ainda tiver esse `id`, para uma fila excluída e recriada nunca ser apagada por engano (seção 14.5 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)). |
+| `kind` | texto | sim | `topic` ou `token`. |
+| `operation` | texto | sim | `create`, `update` ou `delete` (`delete` é a remoção do tópico ou a revogação do token). |
+| `key` | texto | sim | O nome do tópico ou o `id` do token. |
+| `body` | objeto | sim | A `TopicDefinition` ou o `TokenRecord` completos. Em `delete`, o tópico leva `name` e `id`, e o token, `id`. O `TokenRecord` leva o **sal** e o **hash salgado**, **nunca o segredo**. |
+| `expectedId` | texto | não | Em `delete` pelo **nó gestor** de uma fila volátil: o `id` que o tópico deve ter. O dono só aceita se o tópico atual com aquele nome ainda tiver esse `id`, para uma fila excluída e recriada nunca ser apagada por engano (seção 14.5 de [15-topicos-distribuidor.md](15-topicos-distribuidor.md)). |
 
-`commit` e `rollback`: corpo `OperationRef`. Resposta de todas: `200`, `Ack`.
+O dono confere a mudança com o estado dele, dá a ela a próxima **versão**, grava no herdeiro, aplica em si, manda `apply` aos demais nós e responde `200` com o `DefinitionApply` decidido, depois de os nós que respondem dentro de `write.commit.timeout` terem aplicado; nos outros ele insiste até confirmarem ou saírem do cluster.
+
+**`apply`: do dono a cada nó (e ao herdeiro). Corpo e resposta `200`: `DefinitionApply`**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `kind`, `key` | texto | O tipo e a chave, como em `propose`. |
+| `version` | inteiro | A versão que o dono deu (1, 2, 3...). O nó só aplica uma versão **maior ou igual** à que tem; uma menor é ignorada, sem erro. Repetir é inofensivo. |
+| `deleted` | booleano | `true` na remoção ou na revogação: a versão fica como lápide, e o corpo é `null`. |
+| `body` | objeto | A definição ou o registro completos. |
+
+Um nó em sincronização guarda o `apply` no banco de eventos e o aplica depois da carga (seção 7.3 de [05-particionamento-replicacao.md](05-particionamento-replicacao.md)).
 
 | Status | Código | Quando |
 |---|---|---|
-| `404` | `topic.not-found` | `update` ou `delete` de um tópico que o nó não conhece. |
-| `409` | `topic.already-exists`, `cluster.conflict` | `create` de um nome que já existe; outra operação pendente no mesmo tópico; `expectedId` diferente do `id` atual. |
-| `404` | `cluster.operation-unknown` | `commit` ou `rollback` de uma operação desconhecida. |
-
-### `POST /cluster/tokens/register`, `commit` e `rollback`
-
-O mesmo para os **tokens de acesso** ([02-arquitetura.md](02-arquitetura.md), seção 3.4): a tabela `tokens` do `_node.db` em cada nó. `register` leva o **sal** e o **hash salgado** do segredo, **nunca o segredo**.
-
-**`register`, corpo: `TokenRegisterRequest`**: `operationId`, `coordinatorId`, `operation` (`create`, `update` ou `revoke`) e `token` (`TokenRecord`). `commit` e `rollback`: `OperationRef`. Resposta: `200`, `Ack`. Erros: `409` `cluster.conflict`, `404` `token.not-found` (`update` ou `revoke` de um token desconhecido) e `404` `cluster.operation-unknown`.
+| `404` | `topic.not-found`, `token.not-found` | `update` ou `delete` de uma definição que o dono não conhece. |
+| `409` | `topic.already-exists`, `cluster.conflict` | `create` de um nome que já existe; `expectedId` diferente do `id` atual. |
+| `503` | `cluster.quorum-unavailable` | O dono está fora do ar e ainda na tabela, ou nenhum outro dono da posição confirmou a mudança. Com `Retry-After`; o cliente repete (D107). `node.failed` se o dono está em falha, `cluster.node-syncing` se ainda sincroniza. |
 
 ### `GET /cluster/topics` e `GET /cluster/tokens`: streams para o bootstrap
 
-Streams NDJSON (seção 8.2.1) com as definições de tópico e os tokens que o nó possui, **ordenados por `id`**; `from` e `to` opcionais. Usados pelo nó novo para montar as tabelas depois do registro, inclusive na verificação final (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). Linhas de dados: `TopicDefinition` e `TokenRecord`.
+Streams NDJSON (seção 8.2.1) com as definições de tópico e os tokens que o nó possui, **ordenados por `id`**; `from` e `to` opcionais. Usados pelo nó novo para montar as tabelas depois do registro, inclusive na verificação final (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). Linhas de dados: `TopicDefinition` e `TokenRecord`, cada uma com a `version` que o nó que responde aplicou (`0` se não tem versão).
 
 ### `GET /cluster/topics/{id}/idle`: ociosidade de uma fila volátil
 

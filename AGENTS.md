@@ -12,6 +12,7 @@ cargo test                                   # unitários (nos módulos) e de in
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
+TABA_UC_WRITE=1 cargo test --test uc_coverage  # regera a coluna "Testes" de doc/20*.md (o teste falha se ela estiver velha)
 cargo run -- init --out ./secrets             # certificado do cluster e token raiz (taba init)
 ```
 

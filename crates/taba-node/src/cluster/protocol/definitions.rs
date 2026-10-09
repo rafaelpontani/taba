@@ -1,6 +1,6 @@
 //! Os corpos das rotas de definição entre nós (doc 06c, "Tópicos e tokens") e o contrato dos
-//! streams de sincronização (seção 8.2.1): `TopicRegisterRequest`, `TokenRegisterRequest` e a
-//! página de um stream NDJSON.
+//! streams de sincronização (seção 8.2.1): a proposta ao dono, a mudança decidida e a página de um
+//! stream NDJSON.
 //!
 //! A definição do tópico e o registro do token viajam como JSON (`TopicDefinition` e `TokenRecord`
 //! do doc 06c): o nó que recebe converte para os tipos do `core`.
@@ -12,44 +12,60 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time;
 use crate::core::token::{Permission, TokenRecord};
 
+/// O tipo de uma definição compartilhada por todos os nós.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DefinitionKind {
+    Topic,
+    Token,
+}
+
+impl DefinitionKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            DefinitionKind::Topic => "topic",
+            DefinitionKind::Token => "token",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum TopicOperation {
+pub enum DefinitionOperation {
     Create,
     Update,
+    /// Remove o tópico ou revoga o token.
     Delete,
 }
 
-/// `TopicRegisterRequest` (doc 06c).
+/// A proposta de uma mudança, de quem recebeu a chamada do cliente ao dono da definição.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TopicRegisterRequest {
-    pub operation_id: String,
-    pub coordinator_id: String,
-    pub operation: TopicOperation,
-    /// A `TopicDefinition` completa; em `delete`, só `name` e `id` são lidos.
-    pub topic: Value,
+pub struct DefinitionProposal {
+    pub kind: DefinitionKind,
+    pub operation: DefinitionOperation,
+    /// O nome do tópico ou o `id` do token.
+    pub key: String,
+    /// A `TopicDefinition` ou o `TokenRecord` completos (o do token leva o sal e o hash salgado,
+    /// **nunca o segredo**); em `delete`, o tópico leva `name` e `id`, e o token, `id`.
+    pub body: Value,
     /// Em `delete` pelo nó gestor de uma fila volátil: o `id` que o tópico deve ter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TokenOperation {
-    Create,
-    Update,
-    Revoke,
-}
-
-/// `TokenRegisterRequest` (doc 06c). O `token` leva o sal e o hash salgado, **nunca o segredo**.
+/// A mudança já decidida pelo dono, com a versão que ele deu, como cada nó a aplica. Só vale se a
+/// versão não é menor que a que o nó já tem; repetir é inofensivo.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TokenRegisterRequest {
-    pub operation_id: String,
-    pub coordinator_id: String,
-    pub operation: TokenOperation,
-    pub token: Value,
+pub struct DefinitionApply {
+    pub kind: DefinitionKind,
+    pub key: String,
+    pub version: u64,
+    /// `true`: o tópico foi removido ou o token revogado (a versão fica como lápide).
+    pub deleted: bool,
+    #[serde(default)]
+    pub body: Value,
 }
 
 /// O `TokenRecord` do doc 06c, como JSON.

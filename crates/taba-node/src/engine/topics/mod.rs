@@ -298,6 +298,11 @@ impl Topics {
         self.apply_save(definition).await
     }
 
+    /// A definição guardada de um tópico (a que o cluster replica), sem a dead-letter.
+    pub fn definition(&self, name: &str) -> Option<TopicDefinition> {
+        self.read().get(name).cloned()
+    }
+
     /// Os nomes dos tópicos (filas e distribuidores).
     pub fn names(&self) -> Vec<String> {
         self.read().keys().cloned().collect()

@@ -14,7 +14,8 @@ use serde_json::{Value, json};
 use common::TestNode;
 use common::cluster::{
     MANY_RETRIES, NO_VOTE, TestCluster, address_of, channels_of, create_queue, eventually,
-    eventually_async, host_of, pause_sync, settled, start_isolated, total, wait_joined, wait_phase,
+    eventually_async, host_of, name_owned_by, pause_sync, settled, start_isolated, total,
+    wait_joined, wait_phase,
 };
 use taba_node::cluster::members::MemberTable;
 use taba_node::cluster::protocol::{Ballot, Request, Response, VoteReason, VoteRequest};
@@ -827,13 +828,15 @@ async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leave
     cluster
         .network
         .set_delay_kind("unregister", Duration::from_millis(1500));
+    // O dono da definição não pode ser o nó em falha (ele só deixa de ser dono quando é excluído).
+    let name = name_owned_by(&cluster, 1, "pedidos-");
     cluster.node(3).node.shared().set_failed();
 
     let created = cluster
         .node(3)
         .client
         .post(cluster.node(3).client_url("/topics"))
-        .json(&json!({ "name": "pedidos", "type": "queue" }))
+        .json(&json!({ "name": name, "type": "queue" }))
         .send()
         .await
         .unwrap();
@@ -851,7 +854,7 @@ async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leave
     let listed = cluster
         .node(1)
         .client
-        .get(cluster.node(1).client_url("/topics/pedidos"))
+        .get(cluster.node(1).client_url(&format!("/topics/{name}")))
         .send()
         .await
         .unwrap();

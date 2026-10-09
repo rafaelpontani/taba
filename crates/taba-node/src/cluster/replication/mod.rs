@@ -265,14 +265,8 @@ impl Replication {
                 step.validate_reference()?;
                 self.replica.ack(&topic, &id, step).await.map(Response::Ack)
             }
-            Request::Topic(step) => {
-                step.validate_reference()?;
-                self.definitions.handle_topic(step).await
-            }
-            Request::Token(step) => {
-                step.validate_reference()?;
-                self.definitions.handle_token(step).await
-            }
+            Request::DefinitionPropose(proposal) => self.definitions.handle_propose(proposal).await,
+            Request::DefinitionApply(change) => self.definitions.handle_apply(change).await,
             Request::ListTopics(query) => Ok(self.definitions.list_topics(&query)),
             Request::ListTokens(query) => Ok(self.definitions.list_tokens(&query)),
             Request::Idle { topic_id } => {

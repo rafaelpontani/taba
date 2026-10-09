@@ -241,6 +241,11 @@ impl Tokens {
         self.apply_save(record).await
     }
 
+    /// O registro guardado de um token, vencido ou não (a varredura apaga os vencidos).
+    pub fn record(&self, id: &str) -> Option<TokenRecord> {
+        self.read().get(id).cloned()
+    }
+
     /// Os `id` dos tokens.
     pub fn ids(&self) -> Vec<String> {
         self.read().keys().cloned().collect()

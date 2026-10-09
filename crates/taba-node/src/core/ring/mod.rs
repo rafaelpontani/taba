@@ -40,6 +40,13 @@ pub fn topic_position(topic_id: &str) -> u64 {
     position(topic_id.as_bytes())
 }
 
+/// A posição de uma definição compartilhada (`kind` é `topic` ou `token`): o hash de
+/// `kind:chave`, onde a chave é o **nome** do tópico (único no cluster) ou o `id` do token. Quem a
+/// ocupa é o dono da definição, a fonte da verdade sobre ela.
+pub fn definition_position(kind: &str, key: &str) -> u64 {
+    position(format!("{kind}:{key}").as_bytes())
+}
+
 /// O identificador de um bloco: a posição do nó virtual que o fecha.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockId(pub u64);
