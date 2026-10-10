@@ -371,6 +371,20 @@ impl ClusterService {
         }
     }
 
+    /// Depois do commit de uma exclusão por votação, enfileira o quadro `frozen` para todos os pares:
+    /// o membro que estava fora do ar no commit o recebe quando o canal volta (doc 04, seção 6.7).
+    fn announce_frozen(&self, change: Option<&Change>) {
+        let Some(Change::Exclude { node_id }) = change else {
+            return;
+        };
+        let Some(frozen_at) = self.membership.frozen_at(node_id) else {
+            return;
+        };
+        if let Some(replication) = self.replication.get() {
+            replication.signals.announce_frozen(node_id, frozen_at);
+        }
+    }
+
     pub fn cancel_token(&self) -> &CancellationToken {
         &self.cancel
     }
@@ -609,6 +623,7 @@ impl ClusterService {
                 );
                 result.map_err(from_membership)?;
                 self.membership_changed();
+                self.announce_frozen(change.as_ref());
                 Ok(ack(request.operation_id))
             }
             Request::Rollback(request) => {
@@ -781,10 +796,6 @@ impl ClusterService {
         // Uma mudança de membros por vez: outro ingresso em curso neste nó faz este esperar.
         let _turn = self.change_turn.lock().await;
         let table = self.membership.table().ok_or_else(node_syncing)?;
-        if table.member(&request.node_id).is_some() {
-            // O mesmo nó repetindo o pedido (o anterior foi aceito e a resposta se perdeu).
-            return Ok(Response::Members(self.table_for_newcomer(table)));
-        }
         // Um nó excluído por votação não volta antes do fim do freezing (doc 04, seção 6.7).
         if let Some(left) = self.membership.frozen_remaining(
             &request.node_id,
@@ -797,6 +808,10 @@ impl ClusterService {
                 "O nó foi excluído do cluster e está em período de freezing.",
             )
             .with_retry_after(left.as_secs().max(1)));
+        }
+        if table.member(&request.node_id).is_some() {
+            // O mesmo nó repetindo o pedido (o anterior foi aceito e a resposta se perdeu).
+            return Ok(Response::Members(self.table_for_newcomer(table)));
         }
         self.wait_for_sync_turn(&request.node_id).await?;
         let table = self.membership.table().ok_or_else(node_syncing)?;
@@ -1282,6 +1297,7 @@ impl ClusterService {
             .map_err(from_membership)?;
         self.count_change(Some(&change), "commit", "ok");
         self.membership_changed();
+        self.announce_frozen(Some(&change));
         if self.commit_on_peers(&peers, &operation_id).await {
             tracing::info!(node_id = %target, ?reason, "nó fora do cluster");
             Ok(())

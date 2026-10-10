@@ -24,6 +24,9 @@ pub enum Signal {
     /// O estado do nó: `draining` (os pares deixam de pedir `take`), `active` (ficou pronto ou
     /// cancelou o drain) ou `failed` (os outros ficam liberados para votar a exclusão).
     NodeState { state: String },
+    /// O nó `node_id` foi excluído por votação e está em freezing desde `frozen_at` (ms desde 1970;
+    /// doc 04, seção 6.7). Quem ainda não o conhecia o guarda e o repassa; não mexe na tabela.
+    Frozen { node_id: String, frozen_at: u64 },
 }
 
 /// Um sinal com quem o enviou.

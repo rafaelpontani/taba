@@ -841,6 +841,13 @@ fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_con
             },
             json!({"type": "node-state", "state": "draining"}),
         ),
+        (
+            Signal::Frozen {
+                node_id: "n3".into(),
+                frozen_at: 1_791_288_000_000,
+            },
+            json!({"type": "frozen", "nodeId": "n3", "frozenAt": 1_791_288_000_000_u64}),
+        ),
     ];
     for (signal, expected) in signals {
         // Só o `type` e os campos de contagem e de estado: nada de corpo nem de lista de IDs.

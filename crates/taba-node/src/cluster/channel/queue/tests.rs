@@ -119,3 +119,25 @@ fn the_queue_overflows_by_size_or_by_age() {
     assert_eq!(by_age.clear(), 1);
     assert!(!by_age.overflowed(start + Duration::from_secs(900)));
 }
+
+fn frozen(node_id: &str, secs: u64) -> Signal {
+    Signal::Frozen {
+        node_id: node_id.into(),
+        frozen_at: secs,
+    }
+}
+
+/// UC: UC-FRZ-013
+#[test]
+fn the_frozen_signal_never_expires_and_only_the_same_node_replaces_it() {
+    let mut queue = OutQueue::new(100, Duration::from_secs(600));
+    let start = Instant::now();
+    queue.push(frozen("x", 1), start);
+    let (_, dropped) = queue.push(frozen("y", 2), start);
+    assert_eq!(dropped.coalesced, 0, "outro nó não o substitui");
+    let (_, dropped) = queue.push(frozen("x", 3), start);
+    assert_eq!(dropped.coalesced, 1, "o mesmo nó o substitui");
+    let dropped = queue.expire(start + NOTIFY_TTL + Duration::from_secs(60));
+    assert_eq!(dropped.expired, 0, "não expira como um aviso");
+    assert_eq!(queue.len(), 2);
+}

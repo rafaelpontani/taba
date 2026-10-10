@@ -288,3 +288,53 @@ fn a_registration_held_for_another_coordinator_is_never_displaced() {
     ));
     assert!(membership.is_pending("op5"));
 }
+
+const FREEZING: Duration = Duration::from_secs(300);
+
+fn ms(secs: u64) -> u64 {
+    at(secs).duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
+/// UC: UC-FRZ-012
+#[test]
+fn a_freezing_learned_twice_keeps_the_first_instant_and_only_the_first_is_news() {
+    let membership = alone("a");
+    assert!(membership.learn_frozen("x", ms(10), at(20), FREEZING));
+    assert!(
+        !membership.learn_frozen("x", ms(15), at(20), FREEZING),
+        "o eco não é novidade"
+    );
+    assert_eq!(membership.frozen_at("x"), Some(ms(10)));
+    assert_eq!(
+        membership.frozen_remaining("x", at(20), FREEZING),
+        Some(FREEZING - Duration::from_secs(10))
+    );
+}
+
+/// UC: UC-FRZ-013
+#[test]
+fn a_freezing_that_already_ended_is_not_learned() {
+    let membership = alone("a");
+    assert!(!membership.learn_frozen("x", ms(10), at(10 + 300), FREEZING));
+    assert_eq!(membership.frozen_at("x"), None);
+    assert_eq!(membership.frozen_count(at(10 + 300), FREEZING), 0);
+    // Um instante no futuro (relógios que não batem) também vale: o prazo conta dele.
+    assert!(membership.learn_frozen("y", ms(40), at(30), FREEZING));
+}
+
+/// UC: UC-FRZ-014
+#[test]
+fn the_frozen_list_has_only_the_nodes_still_in_freezing() {
+    let membership = alone("a");
+    assert!(membership.learn_frozen("old", ms(0), at(100), FREEZING));
+    assert!(membership.learn_frozen("new", ms(90), at(100), FREEZING));
+    let listed = membership.frozen_nodes(at(100 + 250), FREEZING);
+    assert_eq!(
+        listed,
+        vec![FrozenNode {
+            node_id: "new".into(),
+            frozen_at: ms(90)
+        }],
+        "o vencido sai da lista"
+    );
+}

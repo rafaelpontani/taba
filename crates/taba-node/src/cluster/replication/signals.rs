@@ -186,6 +186,16 @@ impl Signals {
                 has_listeners: true,
             });
         }
+        let frozen = self
+            .service
+            .membership()
+            .frozen_nodes(self.service.now(), self.service.rules().freezing_duration);
+        for node in frozen {
+            out.push(Signal::Frozen {
+                node_id: node.node_id,
+                frozen_at: node.frozen_at,
+            });
+        }
         out
     }
 
@@ -435,6 +445,15 @@ impl Signals {
         });
     }
 
+    /// Um nó foi excluído por votação e está em freezing: todos os pares ficam sabendo, inclusive o
+    /// que estava fora do ar no commit (a fila de saída guarda o quadro até o canal voltar).
+    pub fn announce_frozen(&self, node_id: &str, frozen_at: u64) {
+        self.broadcast(Signal::Frozen {
+            node_id: node_id.to_owned(),
+            frozen_at,
+        });
+    }
+
     /// Este nó entrou em drain: os pares deixam de pedir `take` a ele.
     pub fn announce_draining(&self) {
         self.broadcast(Signal::NodeState {
@@ -524,6 +543,25 @@ impl Signals {
                 }
             }
             Signal::NodeState { state } => self.apply_state(&from, &state),
+            Signal::Frozen { node_id, frozen_at } => self.apply_frozen(node_id, frozen_at),
+        }
+    }
+
+    /// O freezing de um nó excluído, dito por um par: quem ainda não o conhecia o guarda e o repassa
+    /// a todos; o eco (já conhecido, vencido ou do próprio nó) morre aqui.
+    fn apply_frozen(&self, node_id: String, frozen_at: u64) {
+        if node_id == self.me() {
+            return;
+        }
+        let learned = self.service.membership().learn_frozen(
+            &node_id,
+            frozen_at,
+            self.service.now(),
+            self.service.rules().freezing_duration,
+        );
+        if learned {
+            tracing::info!(node_id = %node_id, "nó em freezing (dito por um par)");
+            self.announce_frozen(&node_id, frozen_at);
         }
     }
 

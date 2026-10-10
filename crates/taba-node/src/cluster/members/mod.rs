@@ -19,6 +19,13 @@ use crate::core::ring::Ring;
 /// `rollback` repetido em vez de dizer que a operação é desconhecida.
 const FINISHED_MEMORY: usize = 256;
 
+/// Milissegundos desde 1970.
+fn millis(at: SystemTime) -> u64 {
+    at.duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemberState {
@@ -329,6 +336,53 @@ impl Membership {
         duration.checked_sub(elapsed).filter(|left| !left.is_zero())
     }
 
+    /// Guarda o freezing de um nó que outro nó viu ser excluído (o quadro `frozen` do canal).
+    /// Devolve `true` se era novidade: o que o nó já conhece vale mais (o eco não muda o instante),
+    /// e um freezing que já acabou não é guardado.
+    pub fn learn_frozen(
+        &self,
+        node_id: &str,
+        frozen_at: u64,
+        now: SystemTime,
+        duration: Duration,
+    ) -> bool {
+        let at = UNIX_EPOCH + Duration::from_millis(frozen_at);
+        if now.duration_since(at).unwrap_or_default() >= duration {
+            return false;
+        }
+        let mut inner = self.lock();
+        inner
+            .frozen
+            .retain(|_, known| now.duration_since(*known).unwrap_or_default() < duration);
+        if inner.frozen.contains_key(node_id) {
+            return false;
+        }
+        inner.frozen.insert(node_id.to_owned(), at);
+        true
+    }
+
+    /// O instante (ms desde 1970) em que o nó entrou em freezing, se ele está guardado.
+    pub fn frozen_at(&self, node_id: &str) -> Option<u64> {
+        self.lock().frozen.get(node_id).map(|at| millis(*at))
+    }
+
+    /// Os nós ainda em freezing, em ordem de ID (os vencidos são esquecidos).
+    pub fn frozen_nodes(&self, now: SystemTime, duration: Duration) -> Vec<FrozenNode> {
+        let mut inner = self.lock();
+        inner
+            .frozen
+            .retain(|_, at| now.duration_since(*at).unwrap_or_default() < duration);
+        let mut nodes: Vec<FrozenNode> = inner
+            .frozen
+            .iter()
+            .map(|(node_id, at)| FrozenNode {
+                node_id: node_id.clone(),
+                frozen_at: millis(*at),
+            })
+            .collect();
+        nodes.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+        nodes
+    }
     /// Quantos nós estão em freezing agora (os vencidos são esquecidos).
     pub fn frozen_count(&self, now: SystemTime, duration: Duration) -> usize {
         let mut inner = self.lock();

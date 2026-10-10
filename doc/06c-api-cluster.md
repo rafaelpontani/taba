@@ -128,6 +128,7 @@ Cada **quadro** (`frames`) leva `seq` (crescente por canal e por sentido) e `typ
 | `ready` | `topic`, `hasReady` | O nó passou a ter (ou deixou de ter) mensagens prontas do tópico. |
 | `notify` | `topic`, `count` | Aviso de mensagem nova: há `count` mensagens prontas; venha buscar com `take`. É uma dica. |
 | `node-state` | `state` (`draining`, `active` ou `failed`) | O nó entrou em falha (`failed`: os pares ficam liberados para votar a exclusão dele), entrou em drain (os pares deixam de pedir `take` a ele), ou ficou **pronto** depois de sincronizar, ou voltou a `active` (o drain foi cancelado). Quem recebe `active` troca o `state` desse membro de `syncing` para `active` na própria tabela, **sem subir a `version`**. |
+| `frozen` | `nodeId`, `frozenAt` (ms) | O nó `nodeId` foi excluído por votação e está em freezing desde `frozenAt` (04, seção 6.7). Quem ainda não o conhecia o guarda e o repassa a todos os pares; quem já o conhecia ignora (eco). Um `frozen` já vencido (`frozenAt` + `cluster.freezing.duration`) é ignorado. Não altera a tabela de membros nem a `version`. |
 
 O emissor só tira um quadro da fila de saída ao receber o `confirm`, e **reenvia o que ficou sem confirmação** quando abre outra conexão (o receptor ignora um `seq` que já processou). Ao abrir o canal, cada lado envia primeiro um **instantâneo**: um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro, e só depois as mudanças (seção 12.9 de [13-entrega-de-mensagens.md](13-entrega-de-mensagens.md)).
 

@@ -7,9 +7,10 @@ mod common;
 use std::time::Duration;
 
 use common::cluster::{
-    TestCluster, address_of, eventually, eventually_async, host_of, settled, total, wait_joined,
+    TestCluster, address_of, eventually, eventually_async, host_of, settled, signals_of, total,
+    wait_joined,
 };
-use taba_node::cluster::protocol::{JoinRequest, Request};
+use taba_node::cluster::protocol::{JoinRequest, Request, Signal};
 use taba_node::cluster::state::NodeState;
 use taba_node::cluster::transport::{CallError, Transport};
 use taba_node::core::clock::Clock;
@@ -228,5 +229,93 @@ async fn a_node_that_joins_after_the_exclusion_inherits_the_freezing_of_the_excl
         Err(CallError::Remote(error)) => assert_eq!(error.code, ErrorCode::ClusterNodeFrozen),
         other => panic!("esperava cluster.node-frozen, veio {other:?}"),
     }
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FRZ-010, UC-FRZ-011
+#[tokio::test]
+async fn a_member_that_missed_the_exclusion_commit_learns_the_freezing_from_the_channel() {
+    let cluster = TestCluster::start(4).await;
+    settled(&cluster).await;
+    let excluded = cluster.node_id(4);
+
+    // O nó de maior ID entre os três saudáveis nunca é o que coordena a exclusão (coordena o de
+    // menor ID), e fica sem receber o commit: é o membro "fora do ar" no commit.
+    let lagging = (1..=3)
+        .max_by_key(|n| cluster.node_id(*n))
+        .expect("três nós saudáveis");
+    let others: Vec<usize> = (1..=3).filter(|n| *n != lagging).collect();
+    cluster
+        .network
+        .lose_kind(&host_of(lagging), "commit", 10_000);
+    cluster.network.isolate(&host_of(4));
+    eventually("os outros dois saudáveis excluírem o nó 4", || {
+        frozen_and_gone(&cluster, &others, 4)
+    })
+    .await;
+
+    // O commit não chegou ao retardatário: a tabela dele ainda tem o nó 4. Mesmo assim ele fica
+    // sabendo do freezing, pelo quadro `frozen` do canal.
+    let membership = cluster.node(lagging).node.cluster().unwrap().membership();
+    eventually("o retardatário saber do freezing", || {
+        membership
+            .frozen_remaining(&excluded, cluster.clock.now(), FREEZING)
+            .is_some()
+    })
+    .await;
+    assert!(
+        membership.is_member(&excluded),
+        "a tabela do retardatário segue com o excluído (o acerto dela é da etapa 18b)"
+    );
+    assert!(membership.table().unwrap().frozen.is_empty());
+
+    // O pedido do excluído que cair nele é recusado, e não aceito como "o mesmo nó repetindo".
+    let transport = cluster.network.transport(host_of(others[0]));
+    let reply = transport
+        .call(&address_of(&cluster, lagging), join_as(&cluster, 4))
+        .await;
+    match reply {
+        Err(CallError::Remote(error)) => assert_eq!(error.code, ErrorCode::ClusterNodeFrozen),
+        other => panic!("esperava cluster.node-frozen, veio {other:?}"),
+    }
+    // Sem perder mais commits, o commit que seguia em segundo plano termina e o desligamento não espera.
+    cluster.network.lose_kind(&host_of(lagging), "commit", 0);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-FRZ-014
+#[tokio::test]
+async fn the_channel_snapshot_carries_the_nodes_still_in_freezing() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let excluded = cluster.node_id(3);
+    assert!(
+        !signals_of(&cluster, 1)
+            .snapshot()
+            .iter()
+            .any(|s| matches!(s, Signal::Frozen { .. })),
+        "sem exclusão, o instantâneo não leva freezing"
+    );
+    cluster.network.isolate(&host_of(3));
+    eventually("os dois saudáveis excluírem o nó 3", || {
+        frozen_and_gone(&cluster, &[1, 2], 3)
+    })
+    .await;
+    let snapshot = signals_of(&cluster, 1).snapshot();
+    assert!(
+        snapshot
+            .iter()
+            .any(|s| matches!(s, Signal::Frozen { node_id, .. } if *node_id == excluded)),
+        "o instantâneo leva o nó em freezing: {snapshot:?}"
+    );
+
+    // Passado o freezing, ele sai do instantâneo.
+    cluster.clock.advance(FREEZING + Duration::from_secs(1));
+    assert!(
+        !signals_of(&cluster, 1)
+            .snapshot()
+            .iter()
+            .any(|s| matches!(s, Signal::Frozen { .. }))
+    );
     cluster.shutdown().await;
 }
