@@ -72,6 +72,7 @@ fn the_condition_entry_carries_the_name_and_the_severity() {
     );
 }
 
+/// UC: UC-FAL-024
 #[test]
 fn merging_nodes_unions_the_conditions_and_flags_divergent_tables() {
     let same = merge(

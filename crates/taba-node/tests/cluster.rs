@@ -297,7 +297,7 @@ async fn a_member_that_does_not_confirm_aborts_the_join_and_the_node_tries_again
     cluster.shutdown().await;
 }
 
-/// UC: UC-ING-018
+/// UC: UC-ING-018, UC-CNC-014
 #[tokio::test]
 async fn a_commit_that_does_not_arrive_does_not_undo_the_join() {
     let mut cluster = TestCluster::start(2).await;
@@ -318,16 +318,16 @@ async fn a_commit_that_does_not_arrive_does_not_undo_the_join() {
         "o pedido não foi repetido"
     );
     assert_eq!(cluster.table(3).unwrap().version, 3);
-    let versions: Vec<u64> = [1, 2]
-        .iter()
-        .map(|n| cluster.table(*n).unwrap().version)
-        .collect();
-    assert!(
-        versions.contains(&3) && versions.contains(&2),
-        "o coordenador efetivou, o outro ainda não: {versions:?}"
-    );
+    // O commit segue perdido, mas o outro membro não fica para trás: a mudança chega pelo quadro
+    // `membership` do canal, que não depende do registro nem do commit (D126).
+    for number in [1, 2] {
+        eventually("a mudança chegar ao outro membro pelo canal", || {
+            cluster.table(number).unwrap().version == 3
+        })
+        .await;
+    }
 
-    // O coordenador segue insistindo em segundo plano: quando a rede volta, todos convergem.
+    // O coordenador segue insistindo no commit em segundo plano: quando a rede volta, nada muda.
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "commit", 0);
     }

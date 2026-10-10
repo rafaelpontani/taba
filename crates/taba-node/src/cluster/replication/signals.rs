@@ -14,7 +14,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::cluster::channel::Channels;
-use crate::cluster::members::MemberState;
+use crate::cluster::members::{Change, MemberState};
 use crate::cluster::protocol::{Keepalive, ReadyCount, Signal, SignalFrame, VoteReason};
 use crate::cluster::service::ClusterService;
 use crate::cluster::state::{DrainState, NodeState};
@@ -454,6 +454,16 @@ impl Signals {
         });
     }
 
+    /// Uma mudança de membros foi efetivada neste nó: todos os pares ficam sabendo, inclusive o que
+    /// perdeu o registro ou o commit (a fila de saída guarda o quadro até o `confirm`).
+    pub fn announce_membership(&self, operation_id: &str, version: u64, change: &Change) {
+        self.broadcast(Signal::Membership {
+            operation_id: operation_id.to_owned(),
+            version,
+            change: change.clone(),
+        });
+    }
+
     /// Este nó entrou em drain: os pares deixam de pedir `take` a ele.
     pub fn announce_draining(&self) {
         self.broadcast(Signal::NodeState {
@@ -544,6 +554,13 @@ impl Signals {
             }
             Signal::NodeState { state } => self.apply_state(&from, &state),
             Signal::Frozen { node_id, frozen_at } => self.apply_frozen(node_id, frozen_at),
+            Signal::Membership {
+                operation_id,
+                version,
+                change,
+            } => self
+                .service
+                .learn_membership(&operation_id, version, change),
         }
     }
 

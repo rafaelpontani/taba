@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::cluster::members::Change;
+
 /// Um quadro do canal (`type` e os campos do doc 06c).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -27,6 +29,15 @@ pub enum Signal {
     /// O nó `node_id` foi excluído por votação e está em freezing desde `frozen_at` (ms desde 1970;
     /// doc 04, seção 6.7). Quem ainda não o conhecia o guarda e o repassa; não mexe na tabela.
     Frozen { node_id: String, frozen_at: u64 },
+    /// Uma mudança de membros já efetivada (entrada, saída ou exclusão), com a versão que a tabela
+    /// passou a ter e o `operationId` dela (doc 04, seção 6.2). Quem perdeu o registro ou o commit a
+    /// aplica ao receber, sem depender da mudança pendente; o quadro fica na fila de saída até o
+    /// `confirm` e nunca é substituído nem expira (D126).
+    Membership {
+        operation_id: String,
+        version: u64,
+        change: Change,
+    },
 }
 
 /// Um sinal com quem o enviou.

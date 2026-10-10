@@ -232,7 +232,7 @@ async fn a_node_that_joins_after_the_exclusion_inherits_the_freezing_of_the_excl
     cluster.shutdown().await;
 }
 
-/// UC: UC-FRZ-010, UC-FRZ-011
+/// UC: UC-FRZ-010, UC-FRZ-011, UC-CNC-013
 #[tokio::test]
 async fn a_member_that_missed_the_exclusion_commit_learns_the_freezing_from_the_channel() {
     let cluster = TestCluster::start(4).await;
@@ -263,9 +263,16 @@ async fn a_member_that_missed_the_exclusion_commit_learns_the_freezing_from_the_
             .is_some()
     })
     .await;
-    assert!(
-        membership.is_member(&excluded),
-        "a tabela do retardatário segue com o excluído (o acerto dela é da etapa 18b)"
+    // A tabela dele também se acerta: o quadro `membership` do canal leva a exclusão, sem depender
+    // do registro nem do commit que ele perdeu (D126).
+    eventually("o retardatário tirar o excluído da tabela", || {
+        !membership.is_member(&excluded)
+    })
+    .await;
+    assert_eq!(
+        membership.table().unwrap().version,
+        cluster.table(others[0]).unwrap().version,
+        "a tabela do retardatário ficou igual à dos outros"
     );
     assert!(membership.table().unwrap().frozen.is_empty());
 

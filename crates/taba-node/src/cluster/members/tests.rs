@@ -445,3 +445,199 @@ fn the_excluded_nodes_kept_for_the_reunion_are_the_last_64_and_leave_when_back_i
     assert_eq!(kept.len(), 63);
     assert!(!kept.contains(&ids[69]));
 }
+
+/// UC: UC-CNC-013, UC-CNC-014
+#[test]
+fn a_change_told_by_the_channel_is_applied_without_the_pending_one_and_the_late_commit_is_harmless()
+{
+    let membership = alone("a");
+    // O nó nunca viu o registro: a mudança chega já efetivada, na versão seguinte.
+    let applied = membership.learn("op1", 2, Change::Add(member("bb")), at(1));
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].1, 2);
+    assert_eq!(membership.ring().node_count(), 2, "o anel ganhou o novo");
+    let table = membership.table().unwrap();
+    assert_eq!(table.version, 2);
+    assert!(membership.is_member("bb"));
+
+    // A exclusão também: o nó sai da tabela, entra em freezing e o anel o perde.
+    let applied = membership.learn(
+        "op2",
+        3,
+        Change::Exclude {
+            node_id: "bb".into(),
+        },
+        at(2),
+    );
+    assert_eq!(applied.len(), 1);
+    assert!(!membership.is_member("bb"));
+    assert!(
+        membership
+            .frozen_remaining("bb", at(3), Duration::from_secs(300))
+            .is_some()
+    );
+    assert_eq!(
+        membership.ring().node_count(),
+        1,
+        "o anel perdeu o excluído"
+    );
+
+    // O commit que chega depois, da mesma operação, devolve a tabela sem aplicar duas vezes.
+    let table = membership.commit("op2", at(4)).unwrap();
+    assert_eq!(table.version, 3);
+}
+
+/// UC: UC-CNC-013
+#[test]
+fn a_change_told_by_the_channel_clears_the_pending_one_it_stands_for() {
+    let membership = alone("a");
+    membership
+        .register("op1", Change::Add(member("bb")), at(0))
+        .unwrap();
+    assert!(membership.has_pending(at(0)));
+    membership.learn("op1", 2, Change::Add(member("bb")), at(1));
+    assert!(
+        !membership.has_pending(at(1)),
+        "o registro virou a mudança efetivada"
+    );
+    assert_eq!(membership.table().unwrap().version, 2);
+    assert_eq!(membership.commit("op1", at(2)).unwrap().version, 2);
+}
+
+/// UC: UC-CNC-013
+#[test]
+fn a_change_already_applied_or_older_is_ignored() {
+    let membership = alone("a");
+    membership.learn("op1", 2, Change::Add(member("bb")), at(1));
+    assert!(
+        membership
+            .learn("op1", 2, Change::Add(member("bb")), at(2))
+            .is_empty(),
+        "a mesma versão de novo"
+    );
+    assert!(
+        membership
+            .learn("op0", 1, Change::Add(member("cc")), at(2))
+            .is_empty(),
+        "uma versão anterior"
+    );
+    assert_eq!(membership.table().unwrap().version, 2);
+    assert!(!membership.is_member("cc"));
+    assert!(
+        Membership::new(TTL, 16)
+            .learn("op1", 2, Change::Add(member("bb")), at(0))
+            .is_empty(),
+        "sem tabela não há o que aplicar"
+    );
+}
+
+/// UC: UC-CNC-015
+#[test]
+fn a_change_ahead_of_the_next_version_waits_for_the_ones_before_it() {
+    let membership = alone("a");
+    // A versão 3 chega antes da 2 (vieram de filas de nós diferentes).
+    assert!(
+        membership
+            .learn("op2", 3, Change::Add(member("cc")), at(1))
+            .is_empty()
+    );
+    assert_eq!(membership.table().unwrap().version, 1);
+    let applied = membership.learn("op1", 2, Change::Add(member("bb")), at(2));
+    assert_eq!(
+        applied.iter().map(|(_, v, _)| *v).collect::<Vec<_>>(),
+        [2, 3],
+        "aplica as duas, em ordem"
+    );
+    assert!(membership.is_member("bb") && membership.is_member("cc"));
+
+    // O commit normal avança a versão enquanto a seguinte espera: `learn_held` a aplica.
+    let membership = alone("a");
+    membership.learn("op3", 4, Change::Add(member("dd")), at(1));
+    membership.learn("op2", 3, Change::Add(member("cc")), at(1));
+    membership
+        .register("op1", Change::Add(member("bb")), at(1))
+        .unwrap();
+    membership.commit("op1", at(2)).unwrap();
+    assert_eq!(membership.table().unwrap().version, 2);
+    let applied = membership.learn_held(at(3));
+    assert_eq!(applied.len(), 2);
+    assert_eq!(membership.table().unwrap().version, 4);
+}
+
+/// UC: UC-CNC-015
+#[test]
+fn a_change_that_does_not_fit_the_table_is_dropped_and_the_held_ones_are_bounded() {
+    let membership = alone("a");
+    // Remover quem não é membro não cabe: é descartada, sem mexer na tabela.
+    let applied = membership.learn(
+        "op1",
+        2,
+        Change::Remove {
+            node_id: "zz".into(),
+        },
+        at(1),
+    );
+    assert!(applied.is_empty());
+    assert_eq!(membership.table().unwrap().version, 1);
+
+    // As adiantadas guardadas são no máximo 64, as mais próximas da tabela.
+    for version in 3..=100u64 {
+        membership.learn(
+            &format!("op{version}"),
+            version,
+            Change::Add(member(&format!("n{version}"))),
+            at(1),
+        );
+    }
+    let applied = membership.learn("op2", 2, Change::Add(member("bb")), at(2));
+    assert_eq!(
+        applied.len(),
+        1 + 63,
+        "a 2 e as 63 seguintes que cabiam nas 64 guardadas"
+    );
+}
+
+/// O freezing de quem aprende a exclusão pelo quadro `membership` conta do instante em que ele a
+/// aprendeu (o quadro não leva o instante do coordenador) e acaba no prazo (D126).
+/// UC: UC-CNC-013
+#[test]
+fn the_freezing_of_a_node_learned_by_the_membership_frame_counts_from_the_instant_it_was_learned() {
+    let membership = alone("a");
+    membership.learn("op1", 2, Change::Add(member("bb")), at(1));
+    let freezing = Duration::from_secs(300);
+    assert_eq!(membership.frozen_remaining("bb", at(2), freezing), None);
+
+    membership.learn(
+        "op2",
+        3,
+        Change::Exclude {
+            node_id: "bb".into(),
+        },
+        at(10),
+    );
+    assert_eq!(
+        membership.frozen_remaining("bb", at(10), freezing),
+        Some(freezing),
+        "o prazo inteiro, a partir de quando aprendeu"
+    );
+    assert_eq!(
+        membership.frozen_remaining("bb", at(70), freezing),
+        Some(Duration::from_secs(240))
+    );
+    assert_eq!(
+        membership.frozen_remaining("bb", at(10 + 300), freezing),
+        None,
+        "acaba no prazo"
+    );
+    // Uma saída por drain (sem votação) não deixa freezing.
+    membership.learn("op3", 4, Change::Add(member("cc")), at(11));
+    membership.learn(
+        "op4",
+        5,
+        Change::Remove {
+            node_id: "cc".into(),
+        },
+        at(12),
+    );
+    assert_eq!(membership.frozen_remaining("cc", at(12), freezing), None);
+}

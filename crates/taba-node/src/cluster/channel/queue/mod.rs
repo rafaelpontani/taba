@@ -41,7 +41,7 @@ fn state_key(signal: &Signal) -> Option<(u8, &str)> {
         Signal::Ready { topic, .. } => Some((1, topic)),
         Signal::NodeState { .. } => Some((2, "")),
         Signal::Frozen { node_id, .. } => Some((3, node_id)),
-        Signal::Notify { .. } => None,
+        Signal::Notify { .. } | Signal::Membership { .. } => None,
     }
 }
 

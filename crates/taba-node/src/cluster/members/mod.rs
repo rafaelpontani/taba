@@ -19,6 +19,9 @@ use crate::core::ring::Ring;
 /// `rollback` repetido em vez de dizer que a operação é desconhecida.
 const FINISHED_MEMORY: usize = 256;
 
+/// Quantas mudanças de versões adiante o nó guarda, à espera das que faltam antes delas.
+const HELD_LIMIT: usize = 64;
+
 /// Milissegundos desde 1970.
 fn millis(at: SystemTime) -> u64 {
     at.duration_since(UNIX_EPOCH)
@@ -99,8 +102,13 @@ impl MemberTable {
     }
 }
 
-/// O que uma operação pendente faz com a tabela.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// O que uma operação pendente faz com a tabela. Também viaja no quadro `membership` do canal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "operation",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Change {
     Add(Member),
     /// A saída voluntária (drain): sem freezing.
@@ -152,6 +160,9 @@ struct Inner {
     /// Os nós excluídos por votação, com os endereços: depois de uma partição em que os dois lados
     /// se excluem, é por eles que um lado procura o outro (D101). Só em memória, até 64.
     excluded: Vec<Member>,
+    /// As mudanças efetivadas que chegaram pelo canal antes da versão anterior a elas, por versão
+    /// (`operationId` e mudança). Só em memória, até [`HELD_LIMIT`].
+    held: std::collections::BTreeMap<u64, (String, Change)>,
 }
 
 /// A tabela de membros de um nó, com a mudança pendente e o anel derivado dela.
@@ -545,7 +556,20 @@ impl Membership {
             };
         }
         let pending = inner.pending.take().expect("conferido acima");
-        let excluded = matches!(pending.change, Change::Exclude { .. });
+        let table = self.apply_change(&mut inner, pending.change, now)?;
+        Self::remember(&mut inner, operation_id.to_owned(), Finished::Committed);
+        Ok(table)
+    }
+
+    /// Aplica a mudança à tabela: a mesma coisa para o commit e para a mudança que chega pelo canal.
+    /// Sobe a versão, guarda o freezing e quem saiu, refaz o anel e devolve a tabela nova.
+    fn apply_change(
+        &self,
+        inner: &mut Inner,
+        change: Change,
+        now: SystemTime,
+    ) -> Result<MemberTable, MembershipError> {
+        let excluded = matches!(change, Change::Exclude { .. });
         let mut frozen = std::mem::take(&mut inner.frozen);
         let mut inner_departed = std::mem::take(&mut inner.departed);
         let mut excluded_members = std::mem::take(&mut inner.excluded);
@@ -555,7 +579,7 @@ impl Membership {
             inner.frozen = frozen;
             return Err(MembershipError::NoTable);
         };
-        match pending.change {
+        match change {
             Change::Add(member) => {
                 inner_departed.retain(|d| d.addresses != member.addresses || d.port != member.port);
                 excluded_members
@@ -587,9 +611,76 @@ impl Membership {
         inner.excluded = excluded_members;
         inner.departed = inner_departed;
         inner.frozen = frozen;
-        Self::remember(&mut inner, operation_id.to_owned(), Finished::Committed);
-        self.rebuild_ring(&mut inner);
+        self.rebuild_ring(inner);
         Ok(table)
+    }
+
+    /// Uma mudança já efetivada que um par disse pelo canal (quadro `membership`): o nó que perdeu o
+    /// registro ou o commit (D126) a aplica sem depender da mudança pendente. Só vale a versão
+    /// **seguinte** à da tabela; uma igual ou menor já foi aplicada e é ignorada, e uma adiante fica
+    /// guardada até as anteriores chegarem. Devolve o que foi aplicado agora, em ordem:
+    /// `(operationId, versão, mudança)`.
+    pub fn learn(
+        &self,
+        operation_id: &str,
+        version: u64,
+        change: Change,
+        now: SystemTime,
+    ) -> Vec<(String, u64, Change)> {
+        let mut inner = self.lock();
+        let Some(current) = inner.table.as_ref().map(|t| t.version) else {
+            return Vec::new();
+        };
+        if version <= current {
+            return Vec::new();
+        }
+        inner
+            .held
+            .insert(version, (operation_id.to_owned(), change));
+        while inner.held.len() > HELD_LIMIT {
+            inner.held.pop_last();
+        }
+        self.apply_held(&mut inner, now)
+    }
+
+    /// Aplica as mudanças guardadas que agora são as seguintes à tabela (o commit normal pode ter
+    /// avançado a versão enquanto elas esperavam). Mesmo retorno de [`Membership::learn`].
+    pub fn learn_held(&self, now: SystemTime) -> Vec<(String, u64, Change)> {
+        let mut inner = self.lock();
+        self.apply_held(&mut inner, now)
+    }
+
+    fn apply_held(&self, inner: &mut Inner, now: SystemTime) -> Vec<(String, u64, Change)> {
+        let mut applied = Vec::new();
+        while let Some(current) = inner.table.as_ref().map(|t| t.version) {
+            inner.held.retain(|version, _| *version > current);
+            let Some((operation_id, change)) = inner.held.remove(&(current + 1)) else {
+                break;
+            };
+            let fits = inner.table.as_ref().is_some_and(|table| match &change {
+                Change::Add(member) => table.member(&member.node_id).is_none(),
+                Change::Remove { node_id } | Change::Exclude { node_id } => {
+                    table.member(node_id).is_some()
+                }
+            });
+            if !fits {
+                tracing::warn!(%operation_id, version = current + 1, "mudança de membros que não cabe na tabela: ignorada");
+                continue;
+            }
+            let Ok(table) = self.apply_change(inner, change.clone(), now) else {
+                break;
+            };
+            if inner
+                .pending
+                .as_ref()
+                .is_some_and(|p| p.operation_id == operation_id)
+            {
+                inner.pending = None;
+            }
+            Self::remember(inner, operation_id.clone(), Finished::Committed);
+            applied.push((operation_id, table.version, change));
+        }
+        applied
     }
 
     /// Descarta a mudança pendente (só antes do commit).

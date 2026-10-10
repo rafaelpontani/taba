@@ -389,6 +389,51 @@ impl ClusterService {
         }
     }
 
+    /// Depois do commit de uma mudança de membros, enfileira o quadro `membership` para todos os
+    /// pares: o membro que perdeu o registro ou o commit a aplica ao receber (D126).
+    fn announce_membership(&self, operation_id: &str, version: u64, change: &Change) {
+        if let Some(replication) = self.replication.get() {
+            replication
+                .signals
+                .announce_membership(operation_id, version, change);
+        }
+    }
+
+    /// Uma mudança de membros efetivada que um par disse pelo canal (D126): este nó perdeu o
+    /// registro ou o commit dela e a aplica agora, na ordem das versões.
+    pub(crate) fn learn_membership(&self, operation_id: &str, version: u64, change: Change) {
+        let me = self.node_id();
+        if let Change::Remove { node_id } | Change::Exclude { node_id } = &change
+            && *node_id == me
+        {
+            // A saída deste nó não se aplica à tabela dele: quem trata é a regra da exclusão.
+            return;
+        }
+        let applied = self
+            .membership
+            .learn(operation_id, version, change, self.now());
+        self.after_learning(applied);
+    }
+
+    /// Aplica as mudanças guardadas que passaram a ser as seguintes (o commit normal pode ter
+    /// avançado a versão enquanto elas esperavam).
+    fn settle_membership(&self) {
+        let applied = self.membership.learn_held(self.now());
+        self.after_learning(applied);
+    }
+
+    fn after_learning(&self, applied: Vec<(String, u64, Change)>) {
+        if applied.is_empty() {
+            return;
+        }
+        for (operation_id, version, change) in &applied {
+            self.count_change(Some(change), "channel", "ok");
+            tracing::info!(%operation_id, version, ?change, "mudança de membros aprendida pelo canal");
+            self.announce_membership(operation_id, *version, change);
+        }
+        self.membership_changed();
+    }
+
     pub fn cancel_token(&self) -> &CancellationToken {
         &self.cancel
     }
@@ -625,9 +670,13 @@ impl ClusterService {
                     "commit",
                     if result.is_ok() { "ok" } else { "failed" },
                 );
-                result.map_err(from_membership)?;
+                let table = result.map_err(from_membership)?;
                 self.membership_changed();
                 self.announce_frozen(change.as_ref());
+                if let Some(change) = change.as_ref() {
+                    self.announce_membership(&request.operation_id, table.version, change);
+                }
+                self.settle_membership();
                 Ok(ack(request.operation_id))
             }
             Request::Rollback(request) => {
@@ -906,6 +955,8 @@ impl ClusterService {
             .map_err(from_membership)?;
         self.count_change(Some(&change), "commit", "ok");
         self.membership_changed();
+        self.announce_membership(&operation_id, table.version, &change);
+        self.settle_membership();
         if self.commit_on_peers(&peers, &operation_id).await {
             tracing::info!(
                 node_id = %node.node_id,
@@ -1296,12 +1347,15 @@ impl ClusterService {
             ));
         }
         self.count_change(Some(&change), "register", "ok");
-        self.membership
+        let table = self
+            .membership
             .commit(&operation_id, self.now())
             .map_err(from_membership)?;
         self.count_change(Some(&change), "commit", "ok");
         self.membership_changed();
         self.announce_frozen(Some(&change));
+        self.announce_membership(&operation_id, table.version, &change);
+        self.settle_membership();
         if self.commit_on_peers(&peers, &operation_id).await {
             tracing::info!(node_id = %target, ?reason, "nó fora do cluster");
             Ok(())

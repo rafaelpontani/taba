@@ -14,6 +14,7 @@ use common::cluster::{
 };
 use common::error_code;
 use taba_node::cluster::channel::Channels;
+use taba_node::cluster::members::Change;
 use taba_node::cluster::protocol::{ChannelBatch, ChannelFrame, Keepalive, ReadyCount, Signal};
 use taba_node::cluster::transport::{CallError, ChannelOpen, Transport};
 use taba_node::core::error::ErrorCode;
@@ -660,5 +661,115 @@ async fn a_channel_call_without_the_destination_id_is_not_checked_against_it() {
         .await
         .unwrap();
     assert_eq!(error_code(response, 421).await, "cluster.wrong-node");
+    cluster.shutdown().await;
+}
+
+fn membership_batch(from: &str, seq: u64, version: u64, change: Change) -> ChannelBatch {
+    ChannelBatch {
+        from: from.to_owned(),
+        to: String::new(),
+        keepalive: None,
+        frames: vec![frame(
+            seq,
+            Signal::Membership {
+                operation_id: guid(),
+                version,
+                change,
+            },
+        )],
+    }
+}
+
+/// Dois pares dizem mudanças de versões seguidas, cada um pela sua fila, e a da versão maior chega
+/// primeiro: o nó espera a anterior e aplica as duas em ordem (D126).
+/// UC: UC-CNC-015
+#[tokio::test]
+async fn membership_changes_from_two_peers_arriving_out_of_order_apply_in_version_order() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let start = cluster.table(1).unwrap().version;
+    let (two, three) = (cluster.node_id(2), cluster.node_id(3));
+
+    // A versão seguinte tira o nó 3 (dita pelo nó 2); a posterior tira o nó 2 (dita pelo nó 3).
+    let ahead = membership_batch(
+        &three,
+        1_000_000,
+        start + 2,
+        Change::Remove {
+            node_id: two.clone(),
+        },
+    );
+    assert_eq!(
+        deliver(&cluster, ahead),
+        [1_000_000],
+        "o quadro é confirmado"
+    );
+    assert_eq!(
+        cluster.table(1).unwrap().version,
+        start,
+        "a versão adiante espera a anterior"
+    );
+    assert_eq!(cluster.member_ids(1).len(), 3);
+
+    let next = membership_batch(
+        &two,
+        1_000_000,
+        start + 1,
+        Change::Remove {
+            node_id: three.clone(),
+        },
+    );
+    assert_eq!(deliver(&cluster, next), [1_000_000]);
+    assert_eq!(
+        cluster.table(1).unwrap().version,
+        start + 2,
+        "as duas aplicadas, em ordem"
+    );
+    assert_eq!(cluster.member_ids(1), [cluster.node_id(1)]);
+    cluster.shutdown().await;
+}
+
+/// O quadro que tira o próprio nó da tabela não se aplica: quem trata a saída dele é a regra da
+/// exclusão (os pares dizem que ele não é membro), e não uma mudança que ele recebe (D126).
+/// UC: UC-CNC-015
+#[tokio::test]
+async fn a_membership_frame_that_removes_the_receiving_node_is_ignored() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let start = cluster.table(1).unwrap().version;
+    let (me, two) = (cluster.node_id(1), cluster.node_id(2));
+
+    let excluded = membership_batch(
+        &two,
+        1_000_000,
+        start + 1,
+        Change::Exclude {
+            node_id: me.clone(),
+        },
+    );
+    assert_eq!(
+        deliver(&cluster, excluded),
+        [1_000_000],
+        "é confirmado mesmo assim"
+    );
+    let drained = membership_batch(
+        &two,
+        1_000_001,
+        start + 1,
+        Change::Remove {
+            node_id: me.clone(),
+        },
+    );
+    assert_eq!(deliver(&cluster, drained), [1_000_001]);
+
+    assert_eq!(
+        cluster.table(1).unwrap().version,
+        start,
+        "a tabela não mudou"
+    );
+    assert!(
+        cluster.member_ids(1).contains(&me),
+        "o nó segue na própria tabela"
+    );
     cluster.shutdown().await;
 }

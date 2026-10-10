@@ -313,30 +313,28 @@ async fn the_quorum_is_lost_only_for_who_sees_fewer_healthy_nodes_than_the_minim
     cluster.shutdown().await;
 }
 
-/// UC: UC-FAL-024
+/// O commit do ingresso demora a chegar aos membros, mas a mudança viaja também pelo quadro
+/// `membership` do canal (D126): as tabelas se igualam antes dele e a divergência não dura. O alerta
+/// `membership-divergent` para versões diferentes está nos testes de `health`.
+/// UC: UC-CNC-014
 #[tokio::test]
-async fn tables_with_different_versions_are_membership_divergent_until_the_commit_arrives() {
+async fn a_delayed_commit_does_not_leave_the_tables_divergent_because_the_channel_carries_the_change()
+ {
     let mut cluster = TestCluster::start(3).await;
     settled(&cluster).await;
 
-    // O commit do ingresso do nó 4 demora a chegar aos nós (menos que `write.commit.timeout`):
-    // quem coordenou já tem a tabela nova, e os outros ainda têm a velha.
     cluster
         .network
-        .set_delay_kind("commit", Duration::from_millis(350));
+        .set_delay_kind("commit", Duration::from_millis(3_000));
     let builder = cluster.builder(4, false);
     let number = cluster.spawn_node(builder).await.expect("o nó sobe");
+    wait_joined(cluster.node(number)).await;
 
-    eventually_async("a divergência das tabelas aparecer", || async {
-        let view = cluster_view(cluster.node(1)).await;
-        names(&view).contains(&"membership-divergent".to_owned())
+    // Com o commit ainda a caminho, os membros antigos já têm a tabela nova.
+    eventually("as tabelas iguais antes do commit chegar", || {
+        (1..=4).all(|n| cluster.table(n).is_some_and(|t| t.version == 4))
     })
     .await;
-    let view = cluster_view(cluster.node(1)).await;
-    assert_eq!(severity_of(&view, "membership-divergent"), "critical");
-
-    // Chegado o commit e terminada a sincronização, as tabelas voltam a ser iguais.
-    wait_joined(cluster.node(number)).await;
     cluster.network.set_delay_kind("commit", Duration::ZERO);
     eventually_async("as condições sumirem", || async {
         cluster_view(cluster.node(1)).await["conditions"] == json!([])

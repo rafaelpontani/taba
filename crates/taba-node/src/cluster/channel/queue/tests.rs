@@ -141,3 +141,29 @@ fn the_frozen_signal_never_expires_and_only_the_same_node_replaces_it() {
     assert_eq!(dropped.expired, 0, "não expira como um aviso");
     assert_eq!(queue.len(), 2);
 }
+
+fn membership(operation_id: &str, version: u64) -> Signal {
+    Signal::Membership {
+        operation_id: operation_id.into(),
+        version,
+        change: crate::cluster::members::Change::Exclude {
+            node_id: "x".into(),
+        },
+    }
+}
+
+/// UC: UC-CAN-027
+#[test]
+fn a_membership_change_is_never_replaced_and_never_expires() {
+    let mut queue = OutQueue::new(100, Duration::from_secs(600));
+    let start = Instant::now();
+    queue.push(membership("op1", 2), start);
+    let (_, dropped) = queue.push(membership("op2", 3), start);
+    assert_eq!(dropped.coalesced, 0, "outra mudança não a substitui");
+    let (_, dropped) = queue.push(membership("op1", 2), start);
+    assert_eq!(dropped.coalesced, 0, "nem a mesma de novo");
+    assert_eq!(queue.len(), 3);
+    let dropped = queue.expire(start + NOTIFY_TTL + Duration::from_secs(3600));
+    assert_eq!(dropped.expired, 0, "o tempo não a descarta");
+    assert_eq!(queue.len(), 3);
+}

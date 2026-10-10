@@ -854,6 +854,21 @@ fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_con
             },
             json!({"type": "frozen", "nodeId": "n3", "frozenAt": 1_791_288_000_000_u64}),
         ),
+        (
+            Signal::Membership {
+                operation_id: "op1".into(),
+                version: 7,
+                change: crate::cluster::members::Change::Exclude {
+                    node_id: "n3".into(),
+                },
+            },
+            json!({
+                "type": "membership",
+                "operationId": "op1",
+                "version": 7,
+                "change": {"operation": "exclude", "nodeId": "n3"}
+            }),
+        ),
     ];
     for (signal, expected) in signals {
         // Só o `type` e os campos de contagem e de estado: nada de corpo nem de lista de IDs.
