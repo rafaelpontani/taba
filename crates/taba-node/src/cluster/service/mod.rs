@@ -232,6 +232,9 @@ pub struct ClusterService {
     /// O processo já consultou a lista de perdas dos outros nós (D111): só a primeira listagem do
     /// bootstrap faz isso, e o nó que volta de uma exclusão ou de um drain já o fez.
     boot_recovered: AtomicBool,
+    /// Os membros que a listagem do reinício trouxe, a quem o nó devolve o que o disco da vida
+    /// anterior tem das perdas, depois de ativo (PRB-048).
+    old_disk_peers: StdMutex<Vec<Member>>,
     /// Quem monta o `NodeStatus` deste nó (a camada de operação; `GET /cluster/status`).
     status_source: OnceLock<StatusSource>,
 }
@@ -336,6 +339,7 @@ impl ClusterService {
             open_votes: StdMutex::new(HashMap::new()),
             excluded: AtomicBool::new(false),
             boot_recovered: AtomicBool::new(false),
+            old_disk_peers: StdMutex::new(Vec::new()),
             status_source: OnceLock::new(),
         })
     }
@@ -1442,19 +1446,54 @@ impl ClusterService {
         replication.recovery.run(peers).await;
     }
 
-    /// O reinício do processo: consulta a lista de perdas dos membros que a listagem de entrada
-    /// trouxe e devolve o que o disco tem delas. O disco fica como está: a sincronização que se
-    /// segue e a limpeza dos blocos decidem o que fica (D111).
+    /// O reinício do processo: põe de lado o disco da vida anterior e apaga o resto, para o nó entrar
+    /// vazio (D111; PRB-048).
     async fn recover_on_boot(self: &Arc<Self>, table: &MemberTable) {
         let Some(replication) = self.replication.get().cloned() else {
             return;
         };
-        if !table.members.is_empty() {
-            replication.recovery.run(table.members.clone()).await;
+        // O disco da vida anterior é posto de lado e o nó entra vazio: a recuperação não atrasa o
+        // ingresso (PRB-048) e roda depois de ativo, em `recover_previous_life`.
+        let messages = replication.messages.messages().clone();
+        let aside = tokio::task::spawn_blocking(move || messages.set_aside_old_disk()).await;
+        match aside {
+            Ok(Ok(true)) => {
+                *self
+                    .old_disk_peers
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = table.members.clone();
+            }
+            Ok(Ok(false)) => {}
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "não foi possível pôr de lado o disco da vida anterior");
+            }
+            Err(_) => {}
         }
-        // Devolvido o que os outros pediram, o disco antigo é apagado: o nó entra vazio e a
-        // sincronização o enche com o que o anel lhe dá.
         self.release_old_disk().await;
+    }
+
+    /// Depois de ativo, o reinício devolve ao responsável o que o disco da vida anterior tem das
+    /// perdas dos membros e apaga esse disco (doc 04, seção 6.6; PRB-048). Roda em segundo plano:
+    /// um membro mudo só atrasa esta etapa, até `cluster.recovery.timeout`, nunca o ingresso.
+    fn recover_previous_life(self: &Arc<Self>) {
+        let peers = std::mem::take(
+            &mut *self
+                .old_disk_peers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        );
+        let Some(replication) = self.replication.get().cloned() else {
+            return;
+        };
+        let messages = replication.messages.messages().clone();
+        if peers.is_empty() {
+            tokio::task::spawn_blocking(move || messages.finish_previous_life());
+            return;
+        }
+        tokio::spawn(async move {
+            replication.recovery.run_streaming(peers).await;
+            let _ = tokio::task::spawn_blocking(move || messages.finish_previous_life()).await;
+        });
     }
 
     /// Apaga o que ficou no disco da vida anterior e libera a varredura (D111).
@@ -1550,6 +1589,7 @@ impl ClusterService {
         match syncer.run(&sources).await {
             Ok(()) => {
                 self.activate(&table).await;
+                self.recover_previous_life();
                 Ok(())
             }
             Err(SyncError::Cancelled) => {

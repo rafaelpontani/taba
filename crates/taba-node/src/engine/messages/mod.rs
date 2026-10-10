@@ -493,6 +493,8 @@ pub struct Messages {
     draining: AtomicBool,
     /// O disco da vida anterior espera a recuperação do reinício: a varredura não o apaga.
     keep_old_disk: AtomicBool,
+    /// O disco da vida anterior, posto de lado até a recuperação do reinício acabar (PRB-048).
+    previous_life: Mutex<Option<Arc<MessageStore>>>,
     /// Acorda os `GET` em espera (long polling) quando chega mensagem ou o tópico some.
     notifiers: Mutex<HashMap<String, Arc<Notify>>>,
     /// Avisa o nó de que o disco falhou de um jeito que o derruba (estado `failed`).
@@ -592,6 +594,23 @@ impl Messages {
         Self::build(topics, clock, rules, store, false, true)
     }
 
+    /// Põe de lado o disco da vida anterior e deixa o nó com o disco vazio, para entrar sem esperar
+    /// a recuperação (PRB-048). Devolve se há algo a recuperar.
+    pub fn set_aside_old_disk(&self) -> io::Result<bool> {
+        let previous = self.store.set_aside_old_disk()?.map(Arc::new);
+        let some = previous.is_some();
+        *lock(&self.previous_life) = previous;
+        Ok(some)
+    }
+
+    /// Acabou a recuperação do reinício: o disco da vida anterior é apagado.
+    pub fn finish_previous_life(&self) {
+        *lock(&self.previous_life) = None;
+        if let Err(e) = self.store.drop_old_disk() {
+            tracing::warn!(error = %e, "não foi possível apagar o disco da vida anterior");
+        }
+    }
+
     /// Acabou a recuperação do reinício: a varredura volta a apagar o que é de tópico desconhecido.
     pub fn release_old_disk(&self) {
         self.keep_old_disk.store(false, Ordering::SeqCst);
@@ -630,6 +649,7 @@ impl Messages {
             memory_bytes: AtomicU64::new(0),
             draining: AtomicBool::new(false),
             keep_old_disk: AtomicBool::new(keep_old_disk),
+            previous_life: Mutex::new(None),
             notifiers: Mutex::new(HashMap::new()),
             on_failure: OnceLock::new(),
             last_get: Mutex::new(HashMap::new()),

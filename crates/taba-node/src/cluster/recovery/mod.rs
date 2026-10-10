@@ -340,6 +340,17 @@ impl Recovery {
     /// perdas foi tratada ou o prazo `cluster.recovery.timeout` acabou. A limpeza do estado local e
     /// o novo ingresso (passo 6) são de quem chama.
     pub async fn run(self: &Arc<Self>, peers: Vec<Member>) -> Summary {
+        self.run_with(peers, false).await
+    }
+
+    /// Como `run`, para o reinício do processo (PRB-048): o disco da vida anterior não atrapalha
+    /// nada, então o que a lista de cada nó que responde pede é devolvido **na hora**, e só o nó
+    /// mudo é chamado de novo até o prazo.
+    pub async fn run_streaming(self: &Arc<Self>, peers: Vec<Member>) -> Summary {
+        self.run_with(peers, true).await
+    }
+
+    async fn run_with(self: &Arc<Self>, peers: Vec<Member>, early: bool) -> Summary {
         let rules = self.service.rules().clone();
         let deadline = Instant::now() + rules.recovery_timeout;
         let mut summary = Summary::default();
@@ -352,6 +363,7 @@ impl Recovery {
         // consultado de novo a cada `cluster.bootstrap.retry.interval`, até o prazo.
         let mut pending = peers;
         let mut lost: BTreeSet<(String, String)> = BTreeSet::new();
+        let mut handled: BTreeSet<(String, String)> = BTreeSet::new();
         let mut newest: Option<MemberTable> = None;
         loop {
             let mut failed = Vec::new();
@@ -368,6 +380,12 @@ impl Recovery {
                 {
                     newest = Some(table);
                 }
+            }
+            if early {
+                let fresh: Vec<_> = lost.difference(&handled).cloned().collect();
+                self.send_found(&fresh, newest.clone(), deadline, &mut summary)
+                    .await;
+                handled.extend(fresh);
             }
             pending = failed;
             if pending.is_empty() {
@@ -389,14 +407,33 @@ impl Recovery {
             }
         }
         summary.losses = lost.len();
-        if lost.is_empty() {
-            return summary;
-        }
+        let rest: Vec<_> = lost.difference(&handled).cloned().collect();
+        self.send_found(&rest, newest, deadline, &mut summary).await;
+        tracing::info!(
+            losses = summary.losses,
+            found = summary.found,
+            recovered = summary.recovered,
+            complete = summary.complete,
+            "recuperação de perdas concluída"
+        );
+        summary
+    }
 
-        // Passo 2: o que o nó ainda tem. Passo 3: o envio ao responsável pelo bloco.
-        let table = newest.or_else(|| self.service.membership().table());
+    /// Passos 2 e 3: procura cada perda no que o nó guarda e envia o que achou ao responsável.
+    async fn send_found(
+        &self,
+        lost: &[(String, String)],
+        table: Option<MemberTable>,
+        deadline: Instant,
+        summary: &mut Summary,
+    ) {
+        if lost.is_empty() {
+            return;
+        }
+        let rules = self.service.rules().clone();
+        let table = table.or_else(|| self.service.membership().table());
         let Some(table) = table else {
-            return summary;
+            return;
         };
         // O destino nunca é o próprio nó: a tabela de um par pode ainda listá-lo (o commit da
         // saída não chegou a todos), mas ele não atende mais ninguém. No reinício do processo, a
@@ -419,21 +456,26 @@ impl Recovery {
         for (topic, id) in lost {
             let messages = self.messages.clone();
             let (t, i) = (topic.clone(), id.clone());
-            let held = tokio::task::spawn_blocking(move || messages.held_message(&t, &i)).await;
+            // O que o nó guarda hoje vale primeiro; depois, o disco da vida anterior (PRB-048).
+            let held = tokio::task::spawn_blocking(move || match messages.held_message(&t, &i) {
+                Ok(None) => messages.held_previous_life(&t, &i),
+                other => other,
+            })
+            .await;
             let Ok(Ok(Some(found))) = held else {
                 continue;
             };
             summary.found += 1;
             let position = self
                 .messages
-                .position_for(&topic, &id, found.meta.group_id.as_deref());
+                .position_for(topic, id, found.meta.group_id.as_deref());
             let Some(primary) = ring.primary(position) else {
                 continue;
             };
             by_owner
                 .entry(primary.to_owned())
                 .or_default()
-                .push(MessageRecord::from_stored(&topic, found.meta, found.body));
+                .push(MessageRecord::from_stored(topic, found.meta, found.body));
         }
         let sent: usize = by_owner.values().map(Vec::len).sum();
         self.count(&RECOVER_MESSAGES, ("taba.outcome", "sent"), sent);
@@ -446,14 +488,6 @@ impl Recovery {
                 summary.recovered += self.send_chunk(&member, chunk, deadline).await;
             }
         }
-        tracing::info!(
-            losses = summary.losses,
-            found = summary.found,
-            recovered = summary.recovered,
-            complete = summary.complete,
-            "recuperação de perdas concluída"
-        );
-        summary
     }
 
     /// Uma passada completa pela lista de perdas de um nó, página a página. `None` se o nó não

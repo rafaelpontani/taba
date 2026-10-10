@@ -611,6 +611,39 @@ impl MessageStore {
         Ok(out)
     }
 
+    /// A pasta onde o disco da vida anterior espera a recuperação do reinício (PRB-048).
+    pub const PREVIOUS_LIFE: &str = "_previous-life";
+
+    /// Põe de lado o que ficou no disco da vida anterior: cada pasta de tópico vai para
+    /// `${root}/_previous-life`, e o nó segue com o disco vazio. Uma pasta que já estava lá (um
+    /// reinício que caiu no meio da recuperação) fica como está e a nova é apagada: a primeira é a
+    /// que pode ter o que só ela guardava; a nova só traz cópias que o cluster já tem. Devolve o
+    /// disco da vida anterior, ou `None` se não há nada nele.
+    pub fn set_aside_old_disk(&self) -> io::Result<Option<MessageStore>> {
+        let aside = self.root.join(Self::PREVIOUS_LIFE);
+        for topic in self.topics_on_disk()? {
+            let from = self.root.join(dir_name(&topic));
+            let to = aside.join(dir_name(&topic));
+            self.topics().remove(&topic);
+            if to.exists() {
+                std::fs::remove_dir_all(&from)?;
+                continue;
+            }
+            std::fs::create_dir_all(&aside)?;
+            move_dir(&from, &to)?;
+        }
+        let previous = MessageStore::new(&aside, self.synchronous);
+        Ok((!previous.topics_on_disk()?.is_empty()).then_some(previous))
+    }
+
+    /// Apaga o disco da vida anterior (acabou a recuperação).
+    pub fn drop_old_disk(&self) -> io::Result<()> {
+        match std::fs::remove_dir_all(self.root.join(Self::PREVIOUS_LIFE)) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+
     /// Apaga a pasta do tópico, com o banco e os corpos.
     pub fn drop_topic(&self, topic: &str) -> io::Result<()> {
         self.topics().remove(topic);
@@ -619,6 +652,38 @@ impl MessageStore {
             _ => Ok(()),
         }
     }
+}
+
+/// Move uma pasta. Onde o sistema não deixa renomear (no Windows, com um arquivo da pasta ainda
+/// aberto), copia e apaga a original, repetindo o apagar por até três segundos.
+fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    copy_dir(from, to)?;
+    let mut result = std::fs::remove_dir_all(from);
+    for _ in 0..30 {
+        if result.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        result = std::fs::remove_dir_all(from);
+    }
+    result
+}
+
+fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

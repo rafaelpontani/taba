@@ -16,11 +16,13 @@ use taba_node::cluster::protocol::{LossRecord, MessageRecord, Request, Response,
 use taba_node::cluster::recovery::Recovery;
 use taba_node::cluster::state::NodeState;
 use taba_node::cluster::transport::{CallError, PeerAddr, Transport};
+use taba_node::config::DbSynchronous;
 use taba_node::core::clock::Clock;
 use taba_node::core::error::ErrorCode;
 use taba_node::core::id;
 use taba_node::engine::messages::Messages;
 use taba_node::storage::losses::Loss;
+use taba_node::storage::messages::MessageStore;
 
 /// Os 5 minutos de `cluster.freezing.duration`.
 const FREEZING: Duration = Duration::from_secs(300);
@@ -502,39 +504,22 @@ async fn in_development_mode_there_is_no_cluster_to_recover_from() {
     node.shutdown().await;
 }
 
-/// UC: UC-RTN-002
+/// UC: UC-RTN-002, UC-RTN-016
 #[tokio::test]
-async fn a_process_that_restarts_looks_up_the_lost_messages_on_its_disk_before_it_joins() {
+async fn a_process_that_restarts_hands_back_the_lost_messages_its_old_disk_has() {
     let mut cluster = setup(&[("TABA_DRAIN_ON_STOP", "false"), ("TABA_MEMORY_LIMIT", "1B")]).await;
     let lost = record(&cluster, 1, "perdida");
     let unlisted = record(&cluster, 2, "ninguem declarou");
     for number in [1, 2] {
         declare_loss(&cluster, number, &lost);
     }
-    hold(cluster.node(3), &lost);
-    hold(cluster.node(3), &unlisted);
 
     // O processo cai sem drain e volta no mesmo endereço, com o mesmo disco: nasce como nó novo.
     let old_id = cluster.node_id(3);
-    let port = cluster.node(3).node.cluster_addr().unwrap().port();
-    let TestNode { node, dir, .. } = cluster.nodes.pop().unwrap();
-    node.shutdown().await;
-    cluster.network.unregister(&PeerAddr::new(host_of(3), port));
-    let builder = cluster
-        .builder(3, false)
-        .env("TABA_CLUSTER_PORT", &port.to_string())
-        .env("TABA_MEMORY_LIMIT", "1B")
-        .env(
-            "TABA_STORAGE_DIR",
-            &dir.path().join("taba").display().to_string(),
-        );
-    let number = cluster
-        .spawn_node(builder)
-        .await
-        .expect("o processo reinicia");
+    let (number, _) = restart_third(&mut cluster, &[], &[&lost, &unlisted]).await;
     assert_ne!(cluster.node_id(number), old_id, "o ID é novo");
 
-    // Antes de entrar, o disco foi consultado: só a mensagem que a lista de perdas pede volta.
+    // Só a mensagem que a lista de perdas pede volta aos responsáveis.
     eventually("a mensagem perdida chegar aos dois responsáveis", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
@@ -546,5 +531,133 @@ async fn a_process_that_restarts_looks_up_the_lost_messages_on_its_disk_before_i
     })
     .await;
     wait_joined(cluster.node(number)).await;
+    assert!(!messages_of(cluster.node(number)).holds(TOPIC, &unlisted.id));
+    cluster.shutdown().await;
+}
+
+/// O processo do nó 3 cai sem drain e volta no mesmo endereço, com o mesmo disco: nasce como nó
+/// novo. Devolve o número do nó e a pasta do disco.
+async fn restart_third(
+    cluster: &mut TestCluster,
+    env: &[(&str, &str)],
+    on_disk: &[&MessageRecord],
+) -> (usize, std::path::PathBuf) {
+    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let TestNode { node, dir, .. } = cluster.nodes.pop().unwrap();
+    node.shutdown().await;
+    cluster.network.unregister(&PeerAddr::new(host_of(3), port));
+    let storage = dir.path().join("taba");
+    // O disco da vida anterior é gravado com o processo já morto: nenhum arquivo fica aberto.
+    let old_disk = MessageStore::new(&storage, DbSynchronous::Off);
+    for record in on_disk {
+        old_disk
+            .put(&record.topic, &record.to_meta(), &record.body)
+            .expect("grava no disco");
+    }
+    drop(old_disk);
+    let mut builder = cluster
+        .builder(3, false)
+        .env("TABA_CLUSTER_PORT", &port.to_string())
+        .env("TABA_MEMORY_LIMIT", "1B")
+        .env("TABA_STORAGE_DIR", &storage.display().to_string());
+    for (key, value) in env {
+        builder = builder.env(key, value);
+    }
+    let number = cluster
+        .spawn_node(builder)
+        .await
+        .expect("o processo reinicia");
+    // A pasta do disco fica de pé: o `TempDir` morre com o teste, depois da verificação.
+    std::mem::forget(dir);
+    (number, storage)
+}
+
+/// UC: UC-RTN-014, UC-RTN-015, UC-RTN-016
+#[tokio::test]
+async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards() {
+    let mut cluster = setup(&[
+        ("TABA_DRAIN_ON_STOP", "false"),
+        ("TABA_MEMORY_LIMIT", "1B"),
+        ("TABA_CLUSTER_RECOVERY_TIMEOUT", "30s"),
+    ])
+    .await;
+    let from_one = record(&cluster, 1, "so o no 1 declarou");
+    let from_two = record(&cluster, 2, "so o no 2 declarou");
+    let unlisted = record(&cluster, 3, "ninguem declarou");
+    declare_loss(&cluster, 1, &from_one);
+    declare_loss(&cluster, 2, &from_two);
+    let old_id = cluster.node_id(3);
+
+    // O nó 2 não responde à consulta de perdas: antes, o reinício esperava até 5 minutos.
+    cluster
+        .network
+        .lose_kind("10.0.0.2", "message-loss", 100_000);
+    let (number, storage) = restart_third(
+        &mut cluster,
+        &[("TABA_CLUSTER_RECOVERY_TIMEOUT", "30s")],
+        &[&from_one, &from_two, &unlisted],
+    )
+    .await;
+    assert_ne!(cluster.node_id(number), old_id, "o ID é novo");
+    wait_joined(cluster.node(number)).await;
+    assert_eq!(
+        cluster.node(number).node.shared().state(),
+        NodeState::Active,
+        "entra ativo, sem passar por returning"
+    );
+
+    // A lista do nó 1 já foi tratada; o nó 2 continua mudo e a pasta da vida anterior espera.
+    eventually("a mensagem do nó 1 chegar aos responsáveis", || {
+        has(cluster.node(1), &from_one.id) && has(cluster.node(2), &from_one.id)
+    })
+    .await;
+    assert!(!has(cluster.node(1), &from_two.id));
+    assert!(storage.join("_previous-life").is_dir());
+
+    // O nó 2 volta a responder: a segunda perda também volta, e a pasta é apagada.
+    cluster.network.lose_kind("10.0.0.2", "message-loss", 0);
+    eventually("a mensagem do nó 2 chegar aos responsáveis", || {
+        has(cluster.node(1), &from_two.id) && has(cluster.node(2), &from_two.id)
+    })
+    .await;
+    eventually("a pasta da vida anterior ser apagada", || {
+        !storage.join("_previous-life").exists()
+    })
+    .await;
+    for node in [1, 2] {
+        assert!(!has(cluster.node(node), &unlisted.id));
+    }
+    assert!(!messages_of(cluster.node(number)).holds(TOPIC, &unlisted.id));
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-015
+#[tokio::test]
+async fn the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_stays_mute() {
+    let mut cluster = setup(&[("TABA_DRAIN_ON_STOP", "false"), ("TABA_MEMORY_LIMIT", "1B")]).await;
+    let lost = record(&cluster, 1, "perdida");
+    declare_loss(&cluster, 1, &lost);
+    cluster
+        .network
+        .lose_kind("10.0.0.2", "message-loss", 100_000);
+    let (number, storage) = restart_third(
+        &mut cluster,
+        &[("TABA_CLUSTER_RECOVERY_TIMEOUT", "400ms")],
+        &[&lost],
+    )
+    .await;
+    wait_joined(cluster.node(number)).await;
+    eventually("a mensagem chegar aos responsáveis", || {
+        has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
+    })
+    .await;
+    eventually("a pasta da vida anterior ser apagada no prazo", || {
+        !storage.join("_previous-life").exists()
+    })
+    .await;
+    assert_eq!(
+        cluster.node(number).node.shared().state(),
+        NodeState::Active
+    );
     cluster.shutdown().await;
 }

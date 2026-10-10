@@ -143,6 +143,37 @@ impl Messages {
         }
     }
 
+    /// A mensagem que só o disco da vida anterior ainda tem (PRB-048): a recuperação do reinício a
+    /// procura aqui depois de olhar o que o nó guarda hoje.
+    pub fn held_previous_life(
+        &self,
+        topic: &str,
+        id: &str,
+    ) -> Result<Option<BlockMessage>, TabaError> {
+        let Some(store) = lock(&self.previous_life).clone() else {
+            return Ok(None);
+        };
+        let Some(meta) = store
+            .get(topic, id)
+            .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+        else {
+            return Ok(None);
+        };
+        if meta.content_type.is_empty() {
+            return Ok(None);
+        }
+        match store.body(topic, id) {
+            Ok(body) => Ok(Some(BlockMessage {
+                topic: topic.to_owned(),
+                meta,
+                body,
+                delete_at_ms: None,
+            })),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+        }
+    }
+
     /// A mensagem que o nó ainda guarda, em memória ou em disco: é o que a recuperação do nó que
     /// volta procura para cada perda da lista (doc 04, seção 6.6, passo 2). Só o conteúdo que
     /// existe de fato conta: a linha curta da FIFO e o corpo que sumiu do disco não valem.

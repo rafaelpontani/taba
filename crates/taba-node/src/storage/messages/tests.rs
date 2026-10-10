@@ -314,3 +314,34 @@ fn the_short_fifo_row_is_listed_with_its_delete_at() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].delete_at_ms, Some(9_000));
 }
+
+/// UC: UC-RTN-014, UC-RTN-016
+#[test]
+fn the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let old = store(tmp.path());
+    old.put("pedidos", &meta("a1"), b"antigo").unwrap();
+    drop(old);
+
+    let store = store(tmp.path());
+    let previous = store
+        .set_aside_old_disk()
+        .unwrap()
+        .expect("havia mensagens no disco");
+    assert!(
+        store.topics_on_disk().unwrap().is_empty(),
+        "o disco do nó fica vazio"
+    );
+    assert_eq!(previous.body("pedidos", "a1").unwrap(), b"antigo");
+
+    // Um segundo reinício não perde o que já estava de lado: a pasta nova some e a velha fica.
+    drop(previous);
+    store.put("pedidos", &meta("a2"), b"novo").unwrap();
+    let previous = store.set_aside_old_disk().unwrap().expect("ainda há");
+    assert!(previous.get("pedidos", "a1").unwrap().is_some());
+    assert!(previous.get("pedidos", "a2").unwrap().is_none());
+
+    drop(previous);
+    store.drop_old_disk().unwrap();
+    assert!(!tmp.path().join(MessageStore::PREVIOUS_LIFE).exists());
+}
