@@ -157,7 +157,7 @@ O dono confere a mudança com o estado dele, dá a ela a próxima **versão**, g
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `kind`, `key` | texto | O tipo e a chave, como em `propose`. |
-| `version` | inteiro | A versão que o dono deu (1, 2, 3...). O nó só aplica uma versão **maior ou igual** à que tem; uma menor é ignorada, sem erro. Repetir é inofensivo. |
+| `version` | inteiro | A versão que o dono deu (1, 2, 3...). O nó só aplica uma versão **maior ou igual** à que tem; uma menor é ignorada, sem erro. Repetir é inofensivo. Na **mesma versão com conteúdo diferente** (duas decisões que não souberam uma da outra), vale a cópia de **menor impressão** (SHA-256 do corpo normalizado; a remoção tem uma só), em todo nó e em qualquer ordem de chegada (D124). |
 | `deleted` | booleano | `true` na remoção ou na revogação: a versão fica como lápide, e o corpo é `null`. |
 | `body` | objeto | A definição ou o registro completos. |
 

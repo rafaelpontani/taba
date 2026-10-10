@@ -203,6 +203,7 @@ Visão do cluster: **todos os nós reportam a mesma coisa** (ou a sua visão del
 | `taba.cluster.membership.changes` | counter | {change} | `operation` (`register`/`unregister`), `reason` (`vote`/`drain`, no desregistro), `phase`, `outcome` | Registros e desregistros de nós, por fase. |
 | `taba.cluster.bootstrap.failures` | counter | {failure} | `reason` (`connectivity`, `phase1`, `phase2`, `frozen`; e `list`, `join` e `config`, do lado do nó que tenta entrar) | Falhas de bootstrap deste nó (teste de conexão, fase 1 ou fase 2 — seção 6.5). |
 | `taba.cluster.freezing` | gauge | {node} | — | Nós atualmente em período de freezing (seção 6.7). |
+| `taba.cluster.definitions.conflicts` | counter | {conflict} | `kind` (`topic`/`token`) | Definições recebidas com a mesma versão e conteúdo diferente do que o nó tem; vale a de menor impressão (D124). |
 | `taba.cluster.condition` | gauge | {flag} | `taba.condition` | `1` para cada condição vigente na visão **deste nó** (uma série por condição, `0` quando não vigora). `membership-divergent` só se vê comparando nós (`scope=cluster`), então aqui fica sempre `0` (D104). |
 | `taba.node.state` | gauge | {flag} | `state` (`joining`/`active`/`syncing`/`returning`/`failed`) | `1` no estado atual **deste nó** (incluindo retorno após exclusão — seção 6.6, e `failed`: disco cheio ou banco corrompido, seção 7.3 de [05](05-particionamento-replicacao.md)). |
 | `taba.node.drain.state` | gauge | {flag} | `state` (`active`/`draining`/`drained`) | `1` no estado do drain deste nó (seção 6.10 de [04-cluster.md](04-cluster.md)). |

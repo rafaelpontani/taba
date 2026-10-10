@@ -404,6 +404,12 @@ pub static CHANNEL_QUEUE_DROPPED: Def = def(
     "{signal}",
     "Quadros substituídos, descartados por idade ou por estouro da fila de saída.",
 );
+pub static DEFINITION_CONFLICTS: Def = def(
+    "taba.cluster.definitions.conflicts",
+    Kind::Counter,
+    "{conflict}",
+    "Definições de tópico ou token recebidas com a mesma versão e conteúdo diferente do que o nó tem.",
+);
 pub static CLUSTER_VOTE: Def = def(
     "taba.cluster.vote",
     Kind::Counter,

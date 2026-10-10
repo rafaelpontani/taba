@@ -5,7 +5,7 @@
 mod common;
 
 use common::TestNode;
-use common::cluster::{TestCluster, address_of, eventually_async, host_of, name_owned_by};
+use common::cluster::{TestCluster, address_of, eventually_async, host_of, name_owned_by, total};
 use common::error_code;
 use serde_json::json;
 use taba_node::cluster::protocol::{
@@ -234,6 +234,92 @@ async fn each_change_gets_the_next_version_and_every_node_ends_on_the_last() {
         })
         .await;
     }
+    cluster.shutdown().await;
+}
+
+/// Duas cópias de mesma versão e conteúdo diferente (duas decisões que não souberam uma da outra)
+/// terminam iguais em todo nó, qualquer que seja a ordem de chegada: vale a de menor impressão do
+/// conteúdo. O empate é contado; repetir a mesma cópia não é empate.
+/// UC: UC-DEF-035
+#[tokio::test]
+async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
+    let cluster = TestCluster::start(3).await;
+    let name = name_owned_by(&cluster, 1, "tie-");
+    assert_eq!(create(&cluster, 1, &name).await.status(), 201);
+    for number in 1..=3 {
+        eventually_async("o tópico em todo nó", || async {
+            has_topic(&cluster, number, &name).await
+        })
+        .await;
+    }
+    let base = stream_of(&cluster, 1)
+        .await
+        .into_iter()
+        .find(|i| i["name"] == name.as_str())
+        .expect("o tópico no stream");
+    let copy = |team: &str| DefinitionApply {
+        kind: DefinitionKind::Topic,
+        key: name.clone(),
+        version: 2,
+        deleted: false,
+        body: {
+            let mut body = base.clone();
+            body["tags"] = json!({"team": team});
+            body
+        },
+    };
+    let (first, second) = (copy("alpha"), copy("beta"));
+    let sender = cluster.network.transport(host_of(1));
+    let send = |number: usize, change: DefinitionApply| {
+        let (sender, address) = (sender.clone(), address_of(&cluster, number));
+        async move {
+            sender
+                .call(&address, Request::DefinitionApply(change))
+                .await
+                .expect("o nó aceita a chamada");
+        }
+    };
+    send(2, first.clone()).await;
+    send(2, second.clone()).await;
+    send(3, second.clone()).await;
+    send(3, first.clone()).await;
+
+    let tags_of = |number: usize| {
+        let cluster = &cluster;
+        let name = name.clone();
+        async move {
+            stream_of(cluster, number)
+                .await
+                .into_iter()
+                .find(|i| i["name"] == name.as_str())
+                .map(|i| i["tags"].clone())
+        }
+    };
+    let (on_two, on_three) = (tags_of(2).await, tags_of(3).await);
+    assert_eq!(on_two, on_three, "os dois nós terminam com a mesma cópia");
+
+    let conflicts = |number: usize| {
+        let node = cluster.node(number);
+        async move {
+            total(
+                &node.metrics().await,
+                "taba_cluster_definitions_conflicts_total",
+                "",
+            )
+        }
+    };
+    assert_eq!(conflicts(2).await, 1.0, "o nó 2 contou o empate");
+    assert_eq!(conflicts(3).await, 1.0, "o nó 3 contou o empate");
+
+    // Repetir a cópia que venceu, ou a que perdeu, não muda nada e a que perdeu é só um novo empate.
+    send(2, first.clone()).await;
+    send(2, second.clone()).await;
+    assert_eq!(tags_of(2).await, on_two, "a cópia vencedora segue");
+    assert_eq!(
+        conflicts(2).await,
+        2.0,
+        "só a cópia perdedora conta como empate de novo"
+    );
     cluster.shutdown().await;
 }
 

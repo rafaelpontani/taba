@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinSet;
 
@@ -39,6 +40,7 @@ use crate::core::token::TokenRecord;
 use crate::core::topic::TopicDefinition;
 use crate::engine::tokens::{TokenChange, TokenReplicator, Tokens};
 use crate::engine::topics::{TopicChange, TopicReplicator, Topics};
+use crate::telemetry::metrics::DEFINITION_CONFLICTS;
 
 /// O teto padrão de linhas de um trecho de stream (`cluster.sync.stream.max-items`, a definir).
 const STREAM_PAGE: usize = 500;
@@ -46,11 +48,15 @@ const STREAM_PAGE: usize = 500;
 const TOMBSTONE_TTL: Duration = Duration::from_secs(3600);
 
 type Key = (DefinitionKind, String);
+/// O SHA-256 do conteúdo de uma versão da definição.
+type Fingerprint = [u8; 32];
 
-/// O que este nó sabe de uma definição: a versão que aplicou e se ela foi removida.
+/// O que este nó sabe de uma definição: a versão que aplicou, se ela foi removida e a impressão do
+/// conteúdo (para duas cópias de mesma versão serem desempatadas igual em todo nó).
 struct Entry {
     version: u64,
     deleted: bool,
+    fingerprint: Fingerprint,
     at: SystemTime,
 }
 
@@ -349,14 +355,45 @@ impl Definitions {
 
     // ---- Quem recebe ----
 
+    /// A mudança vale diante do que este nó já tem? Perde a de versão menor. Na mesma versão com
+    /// conteúdo diferente (duas decisões sem saber uma da outra: a nova tentativa que reusa a
+    /// versão, ou dois nós que se achavam donos), vale a de **menor impressão**, a mesma escolha em
+    /// qualquer nó e em qualquer ordem de chegada; o empate é contado e avisado.
+    fn wins_over_held(&self, change: &DefinitionApply, fingerprint: &Fingerprint) -> bool {
+        let held = lock(&self.versions)
+            .get(&(change.kind, change.key.clone()))
+            .map(|e| (e.version, e.fingerprint));
+        let Some((version, held_fingerprint)) = held else {
+            return true;
+        };
+        if version != change.version {
+            return version < change.version;
+        }
+        if held_fingerprint == *fingerprint {
+            return true;
+        }
+        let wins = fingerprint < &held_fingerprint;
+        tracing::warn!(
+            kind = change.kind.as_str(),
+            key = %change.key,
+            version,
+            replaced = wins,
+            "duas cópias da definição com a mesma versão e conteúdo diferente"
+        );
+        self.service.telemetry().registry.add(
+            &DEFINITION_CONFLICTS,
+            &[("taba.kind", change.kind.as_str())],
+            1.0,
+        );
+        wins
+    }
+
     /// Aplica a mudança neste nó se a versão não é menor que a que ele já tem. Quem chama segura a
     /// trava da definição. Devolve `false` quando a mudança chegou velha demais.
     async fn apply_unlocked(&self, change: &DefinitionApply) -> Result<bool, TabaError> {
         let key = (change.kind, change.key.clone());
-        if lock(&self.versions)
-            .get(&key)
-            .is_some_and(|e| e.version > change.version)
-        {
+        let fingerprint = fingerprint(change)?;
+        if !self.wins_over_held(change, &fingerprint) {
             return Ok(false);
         }
         match (change.kind, change.deleted) {
@@ -384,6 +421,7 @@ impl Definitions {
             Entry {
                 version: change.version,
                 deleted: change.deleted,
+                fingerprint,
                 at: now,
             },
         );
@@ -501,9 +539,10 @@ impl Definitions {
     async fn load(&self, change: DefinitionApply) -> Result<(), TabaError> {
         let key = (change.kind, change.key.clone());
         let _guard = self.lock_key(&key).await;
-        let same = lock(&self.versions)
-            .get(&key)
-            .is_some_and(|e| e.version == change.version && !e.deleted);
+        let fingerprint = fingerprint(&change)?;
+        let same = lock(&self.versions).get(&key).is_some_and(|e| {
+            e.version == change.version && !e.deleted && e.fingerprint == fingerprint
+        });
         if same {
             return Ok(());
         }
@@ -633,6 +672,24 @@ impl Definitions {
                     .with_retry_after(5),
             })
     }
+}
+
+/// A impressão do conteúdo de uma mudança: o SHA-256 do corpo normalizado (lido e escrito de novo pelo
+/// tipo da definição, para a ordem dos campos e os campos omitidos não mudarem o resultado). A
+/// remoção tem uma impressão só.
+fn fingerprint(change: &DefinitionApply) -> Result<Fingerprint, TabaError> {
+    let text = if change.deleted {
+        b"deleted".to_vec()
+    } else {
+        let body = match change.kind {
+            DefinitionKind::Topic => TopicDefinition::from_json(&change.body)
+                .map_err(bad)?
+                .to_json(),
+            DefinitionKind::Token => token_to_json(&token_from_json(&change.body)?),
+        };
+        serde_json::to_vec(&body).map_err(|_| TabaError::internal())?
+    };
+    Ok(Sha256::digest(text).into())
 }
 
 fn with_version(mut item: Value, version: u64) -> Value {
