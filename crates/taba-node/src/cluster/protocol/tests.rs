@@ -249,6 +249,7 @@ fn requests() -> Vec<Request> {
         version: 3,
         deleted: true,
         body: serde_json::Value::Null,
+        relay: true,
     };
     let t = || "pedidos".to_owned();
     let id = || guid(10);
@@ -853,6 +854,23 @@ fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_con
                 frozen_at: 1_791_288_000_000,
             },
             json!({"type": "frozen", "nodeId": "n3", "frozenAt": 1_791_288_000_000_u64}),
+        ),
+        (
+            Signal::Definition {
+                kind: DefinitionKind::Topic,
+                key: "pedidos".into(),
+                version: 4,
+                deleted: false,
+                body: json!({"name": "pedidos"}),
+            },
+            json!({
+                "type": "definition",
+                "kind": "topic",
+                "key": "pedidos",
+                "version": 4,
+                "deleted": false,
+                "body": {"name": "pedidos"}
+            }),
         ),
         (
             Signal::Membership {

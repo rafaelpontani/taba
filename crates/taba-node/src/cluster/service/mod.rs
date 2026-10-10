@@ -17,8 +17,8 @@ use tracing::Instrument;
 
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
 use super::protocol::{
-    Ack, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef, Request, Response,
-    UnregisterReason,
+    Ack, DefinitionApply, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
+    Request, Response, UnregisterReason,
 };
 use super::replication::Replication;
 use super::state::{NodeShared, NodeState};
@@ -413,6 +413,15 @@ impl ClusterService {
             .membership
             .learn(operation_id, version, change, self.now());
         self.after_learning(applied);
+    }
+
+    /// Uma definição que um par disse pelo canal (D127): aplica em segundo plano, pela regra do
+    /// `definition-apply`.
+    pub(crate) fn learn_definition(&self, change: DefinitionApply) {
+        let Some(replication) = self.replication.get().cloned() else {
+            return;
+        };
+        tokio::spawn(async move { replication.definitions.learn(change).await });
     }
 
     /// Aplica as mudanças guardadas que passaram a ser as seguintes (o commit normal pode ter

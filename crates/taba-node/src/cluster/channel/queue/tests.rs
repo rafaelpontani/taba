@@ -1,4 +1,5 @@
 use super::*;
+use crate::cluster::protocol::DefinitionKind;
 
 fn ready(topic: &str, has: bool) -> Signal {
     Signal::Ready {
@@ -163,6 +164,44 @@ fn a_membership_change_is_never_replaced_and_never_expires() {
     let (_, dropped) = queue.push(membership("op1", 2), start);
     assert_eq!(dropped.coalesced, 0, "nem a mesma de novo");
     assert_eq!(queue.len(), 3);
+    let dropped = queue.expire(start + NOTIFY_TTL + Duration::from_secs(3600));
+    assert_eq!(dropped.expired, 0, "o tempo não a descarta");
+    assert_eq!(queue.len(), 3);
+}
+
+fn definition(kind: DefinitionKind, key: &str, version: u64) -> Signal {
+    Signal::Definition {
+        kind,
+        key: key.into(),
+        version,
+        deleted: false,
+        body: serde_json::Value::Null,
+    }
+}
+
+/// UC: UC-CAN-028
+#[test]
+fn a_definition_frame_is_replaced_by_the_newer_of_the_same_definition_and_never_expires() {
+    let mut queue = OutQueue::new(100, Duration::from_secs(600));
+    let start = Instant::now();
+    queue.push(definition(DefinitionKind::Topic, "pedidos", 1), start);
+    queue.push(definition(DefinitionKind::Topic, "pagamentos", 1), start);
+    queue.push(definition(DefinitionKind::Token, "pedidos", 1), start);
+    assert_eq!(queue.len(), 3, "outro nome ou outro tipo não a substitui");
+
+    let (_, dropped) = queue.push(definition(DefinitionKind::Topic, "pedidos", 2), start);
+    assert_eq!(dropped.coalesced, 1, "a mesma definição, só a última fica");
+    assert_eq!(queue.len(), 3);
+    let pending = queue.pending(10);
+    assert!(pending.iter().any(|f| matches!(
+        &f.signal,
+        Signal::Definition { kind: DefinitionKind::Topic, key, version: 2, .. } if key == "pedidos"
+    )));
+    assert!(!pending.iter().any(|f| matches!(
+        &f.signal,
+        Signal::Definition { version: 1, kind: DefinitionKind::Topic, key, .. } if key == "pedidos"
+    )));
+
     let dropped = queue.expire(start + NOTIFY_TTL + Duration::from_secs(3600));
     assert_eq!(dropped.expired, 0, "o tempo não a descarta");
     assert_eq!(queue.len(), 3);

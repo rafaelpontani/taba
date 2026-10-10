@@ -66,6 +66,10 @@ pub struct DefinitionApply {
     pub deleted: bool,
     #[serde(default)]
     pub body: Value,
+    /// `true` na cópia que o dono grava no **herdeiro**: quem a recebe, além de aplicá-la, a enfileira
+    /// para todos os pares no quadro `definition` do canal (D127). O dono faz o mesmo.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub relay: bool,
 }
 
 /// O `TokenRecord` do doc 06c, como JSON.

@@ -5,7 +5,9 @@
 mod common;
 
 use common::TestNode;
-use common::cluster::{TestCluster, address_of, eventually_async, host_of, name_owned_by, total};
+use common::cluster::{
+    TestCluster, address_of, eventually_async, host_of, name_owned_by, settled, total,
+};
 use common::error_code;
 use serde_json::json;
 use taba_node::cluster::protocol::{
@@ -191,6 +193,7 @@ async fn a_late_change_does_not_bring_a_removed_topic_back() {
         version: 1,
         deleted: false,
         body: creation,
+        relay: false,
     };
     let peer = cluster.network.transport(host_of(1));
     for number in [2, 3] {
@@ -267,6 +270,7 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
             body["tags"] = json!({"team": team});
             body
         },
+        relay: false,
     };
     let (first, second) = (copy("alpha"), copy("beta"));
     let sender = cluster.network.transport(host_of(1));
@@ -393,6 +397,7 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
         version: 1,
         deleted: false,
         body: creation,
+        relay: false,
     };
     cluster
         .network
@@ -546,5 +551,79 @@ async fn a_token_revoked_while_a_node_is_unreachable_stops_working_there_when_it
         status_with(cluster.node(3), &secret).await == 401
     })
     .await;
+    cluster.shutdown().await;
+}
+
+/// O dono não alcança um nó, mas o herdeiro sim: a definição chega ao nó pelo quadro `definition`
+/// que o herdeiro enfileira, sem depender do dono (D127). Antes, só o dono insistia.
+/// UC: UC-DEF-037
+#[tokio::test]
+async fn the_heir_carries_the_definition_to_a_node_the_owner_cannot_reach() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let name = name_owned_by(&cluster, 1, "heir-");
+    cluster.network.partition(&host_of(1), &host_of(3));
+
+    let response = create(&cluster, 1, &name).await;
+    assert_eq!(response.status(), 201, "o dono responde com o herdeiro");
+    assert!(has_topic(&cluster, 2, &name).await);
+    eventually_async("o nó 3 receber o tópico pelo herdeiro", || async {
+        has_topic(&cluster, 3, &name).await
+    })
+    .await;
+
+    // A remoção (uma lápide) segue o mesmo caminho.
+    let node = cluster.node(1);
+    let removed = node
+        .client
+        .delete(node.client_url(&format!("/topics/{name}")))
+        .send()
+        .await
+        .expect("requisição");
+    assert_eq!(removed.status(), 204);
+    eventually_async("o nó 3 receber a remoção pelo herdeiro", || async {
+        !has_topic(&cluster, 3, &name).await
+    })
+    .await;
+    cluster.shutdown().await;
+}
+
+/// O dono reinicia depois de gravar no herdeiro e antes de o nó atrasado confirmar: o herdeiro já
+/// enfileirou o quadro, e o nó o recebe quando volta, sem lista de pendentes do dono (D127).
+/// UC: UC-DEF-038
+#[tokio::test]
+async fn a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_queue() {
+    let cluster = TestCluster::start(3).await;
+    settled(&cluster).await;
+    let name = name_owned_by(&cluster, 1, "queue-");
+    cluster.network.isolate(&host_of(3));
+
+    assert_eq!(create(&cluster, 1, &name).await.status(), 201);
+    let node = cluster.node(1);
+    for tags in [json!({"v": "1"}), json!({"v": "2"})] {
+        let patched = node
+            .client
+            .patch(node.client_url(&format!("/topics/{name}")))
+            .json(&json!({"tags": tags}))
+            .send()
+            .await
+            .expect("requisição");
+        assert_eq!(patched.status(), 200);
+    }
+
+    cluster.network.restore(&host_of(3));
+    eventually_async("o nó 3 terminar na última versão", || async {
+        stream_of(&cluster, 3)
+            .await
+            .iter()
+            .any(|i| i["name"] == name.as_str() && i["version"] == 3)
+    })
+    .await;
+    let items = stream_of(&cluster, 3).await;
+    let topic = items
+        .iter()
+        .find(|i| i["name"] == name.as_str())
+        .expect("o tópico");
+    assert_eq!(topic["tags"], json!({"v": "2"}));
     cluster.shutdown().await;
 }

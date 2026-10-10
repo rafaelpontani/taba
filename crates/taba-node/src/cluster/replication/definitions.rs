@@ -10,15 +10,16 @@
 //! Quem recebe a chamada do cliente propõe a mudança ao dono (`DefinitionPropose`). O dono grava
 //! primeiro num **herdeiro** (o primeiro outro dono alcançável da posição, para a mudança sobreviver à queda do
 //! dono), aplica em si e manda a todos os outros nós (`DefinitionApply`). Responde depois dos nós
-//! que respondem dentro de `write.commit.timeout`; os demais ficam pendentes e o dono **insiste**
-//! até eles confirmarem ou saírem do cluster. Cada nó aplica só uma versão que não seja menor que a
+//! que respondem dentro de `write.commit.timeout`; o dono e o herdeiro enfileiram o estado da definição para todos os
+//! pares no quadro `definition` do canal (D127), e o nó que não respondeu o recebe quando o canal
+//! volta, ou é excluído se a fila estoura. Cada nó aplica só uma versão que não seja menor que a
 //! sua, então repetir ou chegar fora de ordem não muda o resultado. A remoção deixa uma lápide com
 //! a versão, para uma mudança atrasada não ressuscitar o que foi removido.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
@@ -68,15 +69,12 @@ pub struct Pulled {
 }
 
 pub struct Definitions {
-    me: Weak<Definitions>,
     service: Arc<ClusterService>,
     topics: Arc<Topics>,
     tokens: Arc<Tokens>,
     versions: Mutex<HashMap<Key, Entry>>,
     /// Uma mudança por vez em cada definição (a do dono e a aplicação nos nós).
     locks: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<()>>>>,
-    /// Os nós que o dono ainda tenta alcançar: (tipo, chave, nó).
-    insisting: Mutex<HashSet<(DefinitionKind, String, String)>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -105,14 +103,12 @@ impl Definitions {
         topics: Arc<Topics>,
         tokens: Arc<Tokens>,
     ) -> Arc<Self> {
-        Arc::new_cyclic(|me| Self {
-            me: me.clone(),
+        Arc::new(Self {
             service,
             topics,
             tokens,
             versions: Mutex::new(HashMap::new()),
             locks: Mutex::new(HashMap::new()),
-            insisting: Mutex::new(HashSet::new()),
         })
     }
 
@@ -199,6 +195,7 @@ impl Definitions {
             } else {
                 proposal.body.clone()
             },
+            relay: false,
         })
     }
 
@@ -215,9 +212,13 @@ impl Definitions {
         // seguinte que confirma é o herdeiro dela (se ele cair, a mudança não se perde).
         let mut heir: Option<&Member> = None;
         for candidate in &owners[1..] {
+            let for_heir = DefinitionApply {
+                relay: true,
+                ..decided.clone()
+            };
             match self
                 .service
-                .call_member(candidate, Request::DefinitionApply(decided.clone()))
+                .call_member(candidate, Request::DefinitionApply(for_heir))
                 .await
             {
                 Ok(_) => {
@@ -234,6 +235,7 @@ impl Definitions {
             ));
         }
         self.apply_unlocked(&decided).await?;
+        self.relay(decided.kind, &decided.key);
         let mut done = vec![owners[0].node_id.clone()];
         done.extend(heir.map(|m| m.node_id.clone()));
         self.spread(&decided, &done).await;
@@ -279,56 +281,6 @@ impl Definitions {
         })
         .await;
         set.detach_all();
-        for member in pending.values() {
-            self.insist(decided, member);
-        }
-    }
-
-    /// Passa a insistir num nó que não confirmou (uma tarefa por definição e nó).
-    fn insist(&self, decided: &DefinitionApply, member: &Member) {
-        let Some(me) = self.me.upgrade() else {
-            return;
-        };
-        let tag = (decided.kind, decided.key.clone(), member.node_id.clone());
-        if !lock(&me.insisting).insert(tag.clone()) {
-            return;
-        }
-        tokio::spawn(boxed(async move { me.insist_loop(tag).await }));
-    }
-
-    /// Repete a **versão mais nova** que este nó tem até o nó confirmar, sair do cluster ou o
-    /// processo parar.
-    async fn insist_loop(self: Arc<Self>, tag: (DefinitionKind, String, String)) {
-        let (kind, key, node_id) = (tag.0, tag.1.clone(), tag.2.clone());
-        let service = self.service.clone();
-        loop {
-            if service.cancel_token().is_cancelled() {
-                break;
-            }
-            let member = service
-                .membership()
-                .table()
-                .and_then(|table| table.member(&node_id).cloned());
-            let (Some(member), Some(current)) = (member, self.current(kind, &key)) else {
-                break;
-            };
-            match service
-                .call_member(&member, Request::DefinitionApply(current))
-                .await
-            {
-                Ok(_) => break,
-                Err(CallError::Remote(error)) if error.status() < 500 => {
-                    tracing::warn!(node_id = %node_id, code = %error.code, "definição recusada por um nó");
-                    break;
-                }
-                Err(_) => {}
-            }
-            tokio::select! {
-                () = service.cancel_token().cancelled() => break,
-                () = tokio::time::sleep(service.rules().retry_backoff) => {}
-            }
-        }
-        lock(&self.insisting).remove(&tag);
     }
 
     /// O estado mais novo que este nó tem de uma definição (ou a lápide dela).
@@ -350,6 +302,7 @@ impl Definitions {
             version,
             deleted,
             body,
+            relay: false,
         })
     }
 
@@ -425,17 +378,36 @@ impl Definitions {
                 at: now,
             },
         );
-        let insisting = lock(&self.insisting);
-        versions.retain(|(kind, key), e| {
+        versions.retain(|_, e| {
             !(e.deleted
                 && now
                     .duration_since(e.at)
-                    .is_ok_and(|age| age >= TOMBSTONE_TTL)
-                && !insisting
-                    .iter()
-                    .any(|(k, name, _)| k == kind && name == key))
+                    .is_ok_and(|age| age >= TOMBSTONE_TTL))
         });
         Ok(true)
+    }
+
+    /// Enfileira para todos os pares o estado atual da definição, no quadro `definition` do canal: o nó
+    /// que não respondeu a tempo (ou estava fora do ar) o recebe quando o canal volta, sem depender
+    /// de quem decidiu (D127). O dono e o herdeiro fazem isso.
+    fn relay(&self, kind: DefinitionKind, key: &str) {
+        let Some(change) = self.current(kind, key) else {
+            return;
+        };
+        if let Some(replication) = self.service.replication() {
+            replication.signals.announce_definition(change);
+        }
+    }
+
+    /// Uma definição que um par disse pelo canal (quadro `definition`): aplica pela mesma regra do
+    /// `definition-apply` (versão maior vale; a mesma versão com conteúdo diferente, o desempate do
+    /// D124). Quem aprende por aqui não repassa.
+    pub async fn learn(&self, change: DefinitionApply) {
+        let key = (change.kind, change.key.clone());
+        let _guard = self.lock_key(&key).await;
+        if let Err(error) = self.apply_unlocked(&change).await {
+            tracing::warn!(kind = change.kind.as_str(), key = %change.key, code = %error.code, "definição dita por um par recusada");
+        }
     }
 
     /// `POST /cluster/definitions/apply`.
@@ -449,7 +421,10 @@ impl Definitions {
             }
             let key = (change.kind, change.key.clone());
             let _guard = self.lock_key(&key).await;
-            self.apply_unlocked(&change).await?;
+            let applied = self.apply_unlocked(&change).await?;
+            if change.relay && applied {
+                self.relay(change.kind, &change.key);
+            }
             Ok(Response::Definition(change))
         })
     }
@@ -591,6 +566,7 @@ impl Definitions {
                 version,
                 deleted: false,
                 body: definition.to_json(),
+                relay: false,
             })
             .await?;
         }
@@ -602,6 +578,7 @@ impl Definitions {
                 version,
                 deleted: false,
                 body: token_to_json(&record),
+                relay: false,
             })
             .await?;
         }
@@ -633,6 +610,7 @@ impl Definitions {
             version,
             deleted: true,
             body: Value::Null,
+            relay: false,
         };
         self.apply_unlocked(&change).await.map(|_| ())
     }

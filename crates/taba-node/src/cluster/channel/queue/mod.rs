@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use crate::cluster::protocol::{ChannelFrame, Signal};
+use crate::cluster::protocol::{ChannelFrame, DefinitionKind, Signal};
 
 /// Quanto tempo um aviso de mensagem nova vale: é só uma dica, e uma velha só atrapalha.
 pub const NOTIFY_TTL: Duration = Duration::from_secs(10);
@@ -41,6 +41,13 @@ fn state_key(signal: &Signal) -> Option<(u8, &str)> {
         Signal::Ready { topic, .. } => Some((1, topic)),
         Signal::NodeState { .. } => Some((2, "")),
         Signal::Frozen { node_id, .. } => Some((3, node_id)),
+        Signal::Definition { kind, key, .. } => Some((
+            match kind {
+                DefinitionKind::Topic => 4,
+                DefinitionKind::Token => 5,
+            },
+            key,
+        )),
         Signal::Notify { .. } | Signal::Membership { .. } => None,
     }
 }

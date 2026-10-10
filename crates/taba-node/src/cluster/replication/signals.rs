@@ -15,7 +15,9 @@ use tokio::sync::mpsc;
 
 use crate::cluster::channel::Channels;
 use crate::cluster::members::{Change, MemberState};
-use crate::cluster::protocol::{Keepalive, ReadyCount, Signal, SignalFrame, VoteReason};
+use crate::cluster::protocol::{
+    DefinitionApply, Keepalive, ReadyCount, Signal, SignalFrame, VoteReason,
+};
 use crate::cluster::service::ClusterService;
 use crate::cluster::state::{DrainState, NodeState};
 use crate::core::time;
@@ -464,6 +466,19 @@ impl Signals {
         });
     }
 
+    /// Uma definição aplicada neste nó (como dono ou herdeiro): todos os pares a recebem pelo canal, o
+    /// que estava fora do ar ao voltar (a fila guarda o quadro, e o seguinte da mesma definição o
+    /// substitui).
+    pub fn announce_definition(&self, change: DefinitionApply) {
+        self.broadcast(Signal::Definition {
+            kind: change.kind,
+            key: change.key,
+            version: change.version,
+            deleted: change.deleted,
+            body: change.body,
+        });
+    }
+
     /// Este nó entrou em drain: os pares deixam de pedir `take` a ele.
     pub fn announce_draining(&self) {
         self.broadcast(Signal::NodeState {
@@ -561,6 +576,20 @@ impl Signals {
             } => self
                 .service
                 .learn_membership(&operation_id, version, change),
+            Signal::Definition {
+                kind,
+                key,
+                version,
+                deleted,
+                body,
+            } => self.service.learn_definition(DefinitionApply {
+                kind,
+                key,
+                version,
+                deleted,
+                body,
+                relay: false,
+            }),
         }
     }
 
