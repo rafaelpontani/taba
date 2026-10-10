@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 
-use super::db::{NodeDb, to_io};
+use super::db::NodeDb;
 
 const SAVE_COMPLETED: &str = "save_completed";
 
@@ -31,7 +31,7 @@ impl NodeStateStore {
                 params![SAVE_COMPLETED, at_ms.to_string()],
             )
             .map(|_| ())
-            .map_err(to_io)
+            .map_err(|e| self.db.fail(e))
     }
 
     /// Lê a marca **e a apaga**: quem parte a consome, para uma queda depois da partida não
@@ -45,9 +45,9 @@ impl NodeStateStore {
                 |row| row.get(0),
             )
             .optional()
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         conn.execute("DELETE FROM state WHERE key = ?1", params![SAVE_COMPLETED])
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(value.and_then(|v| v.parse().ok()))
     }
 

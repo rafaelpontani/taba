@@ -922,3 +922,40 @@ async fn once_the_exclusion_is_decided_the_nodes_drop_the_channel_and_the_return
     .await;
     cluster.shutdown().await;
 }
+
+/// UC: UC-FAL-029
+#[tokio::test]
+async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
+    let cluster = TestCluster::start(5).await;
+    settled(&cluster).await;
+    let lowest = (1..=4)
+        .min_by_key(|n| cluster.node_id(*n))
+        .expect("quatro saudáveis");
+    cluster.network.clear_calls();
+
+    cluster.network.isolate(&host_of(5));
+    eventually("os quatro saudáveis excluírem o nó 5", || {
+        agree_without(&cluster, &[1, 2, 3, 4], 5, 4)
+    })
+    .await;
+
+    // Todos abriram a votação, mas só o de menor ID registrou o desregistro nos outros: os demais
+    // esperaram a vez e acharam o nó já fora da tabela.
+    let coordinators: std::collections::BTreeSet<String> = cluster
+        .network
+        .calls()
+        .iter()
+        .filter(|call| call.request == "unregister")
+        .map(|call| call.from.clone())
+        .collect();
+    assert_eq!(
+        coordinators,
+        std::collections::BTreeSet::from([host_of(lowest)]),
+        "o coordenador da exclusão"
+    );
+    assert!(
+        cluster.network.count("vote") >= 4,
+        "todos os saudáveis votaram"
+    );
+    cluster.shutdown().await;
+}

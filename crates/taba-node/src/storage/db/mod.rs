@@ -8,7 +8,7 @@
 
 use std::io;
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use rusqlite::Connection;
 
@@ -48,9 +48,22 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
 ";
 
+/// Quem é avisado de um erro de disco fatal no banco do nó (cheio ou corrompido).
+pub type FailureHook = Arc<dyn Fn() + Send + Sync>;
+
+#[derive(Default)]
+struct Hook(OnceLock<FailureHook>);
+
+impl std::fmt::Debug for Hook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Hook")
+    }
+}
+
 #[derive(Debug)]
 pub struct NodeDb {
     conn: Mutex<Connection>,
+    on_failure: Hook,
 }
 
 impl NodeDb {
@@ -80,7 +93,26 @@ impl NodeDb {
             .map_err(to_io)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            on_failure: Hook::default(),
         })
+    }
+
+    /// Registra quem é avisado de um erro de disco fatal (doc 04, seção 6.3, D78.1). Vale só a
+    /// primeira chamada.
+    pub fn on_failure(&self, hook: FailureHook) {
+        let _ = self.on_failure.0.set(hook);
+    }
+
+    /// O erro do SQLite como `io::Error`. Disco cheio ou banco corrompido também avisam o nó,
+    /// que passa a `failed`: sem o `_node.db` ele não guarda o que o cluster já confirmou.
+    pub fn fail(&self, e: rusqlite::Error) -> io::Error {
+        let error = to_io(e);
+        if super::is_fatal(&error)
+            && let Some(hook) = self.on_failure.0.get()
+        {
+            hook();
+        }
+        error
     }
 
     pub fn conn(&self) -> MutexGuard<'_, Connection> {

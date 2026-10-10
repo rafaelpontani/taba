@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use rusqlite::params;
 
-use super::db::{NodeDb, to_io};
+use super::db::NodeDb;
 
 /// Uma perda registrada.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +39,7 @@ impl LossStore {
                 "INSERT OR IGNORE INTO losses (topic, id, block, detected_at) VALUES (?1, ?2, ?3, ?4)",
                 params![loss.topic, loss.id, loss.block, loss.detected_ms as i64],
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(changed > 0)
     }
 
@@ -52,7 +52,7 @@ impl LossStore {
                 "DELETE FROM losses WHERE topic = ?1 AND id = ?2",
                 params![topic, id],
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(changed > 0)
     }
 
@@ -63,7 +63,7 @@ impl LossStore {
             .prepare(
                 "SELECT topic, id, block, detected_at FROM losses WHERE id >= ?1 ORDER BY id, topic LIMIT ?2",
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         let rows = stmt
             .query_map(
                 params![from.unwrap_or(""), i64::try_from(limit).unwrap_or(i64::MAX)],
@@ -76,8 +76,8 @@ impl LossStore {
                     })
                 },
             )
-            .map_err(to_io)?;
-        rows.collect::<Result<_, _>>().map_err(to_io)
+            .map_err(|e| self.db.fail(e))?;
+        rows.collect::<Result<_, _>>().map_err(|e| self.db.fail(e))
     }
 
     /// Apaga os registros detectados antes de `before_ms`; devolve quantos.
@@ -89,7 +89,7 @@ impl LossStore {
                 "DELETE FROM losses WHERE detected_at < ?1",
                 params![before_ms as i64],
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(removed as u64)
     }
 
@@ -98,7 +98,7 @@ impl LossStore {
             .db
             .conn()
             .query_row("SELECT COUNT(*) FROM losses", [], |row| row.get(0))
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(n as u64)
     }
 }

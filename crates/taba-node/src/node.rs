@@ -361,6 +361,13 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             shared.set_failed();
         }));
     }
+    {
+        let shared = shared.clone();
+        node_db.on_failure(Arc::new(move || {
+            tracing::error!("disco cheio ou banco do nó corrompido: o nó passa a `failed`");
+            shared.set_failed();
+        }));
+    }
     let drain = DrainController::new(
         shared.clone(),
         messages.clone(),

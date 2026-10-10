@@ -338,3 +338,63 @@ fn the_frozen_list_has_only_the_nodes_still_in_freezing() {
         "o vencido sai da lista"
     );
 }
+
+fn two_members(a: &str, b: &str) -> Membership {
+    let membership = Membership::new(TTL, 16);
+    membership.install(MemberTable {
+        version: 1,
+        members: vec![member(a), member(b)],
+        ..MemberTable::default()
+    });
+    membership
+}
+
+/// UC: UC-CNC-010
+#[test]
+fn an_exclusion_and_an_entry_that_cross_follow_the_same_rule_in_both_directions() {
+    // Este nó coordena a exclusão de "b" (op5): um ingresso mais antigo (op3) a desloca.
+    let membership = two_members("a", "b");
+    membership
+        .register_coordinating(
+            "op5",
+            Change::Exclude {
+                node_id: "b".into(),
+            },
+            at(0),
+        )
+        .unwrap();
+    membership
+        .register("op3", Change::Add(member("c")), at(0))
+        .unwrap();
+    assert!(!membership.is_pending("op5"));
+    assert!(membership.is_pending("op3"));
+
+    // Este nó coordena o ingresso de "c" (op5): uma exclusão mais nova (op7) espera, e uma mais
+    // antiga (op3) o desloca.
+    let membership = two_members("a", "b");
+    membership
+        .register_coordinating("op5", Change::Add(member("c")), at(0))
+        .unwrap();
+    assert!(matches!(
+        membership.register(
+            "op7",
+            Change::Exclude {
+                node_id: "b".into()
+            },
+            at(0)
+        ),
+        Err(MembershipError::Conflict(_))
+    ));
+    assert!(membership.is_pending("op5"));
+    membership
+        .register(
+            "op3",
+            Change::Exclude {
+                node_id: "b".into(),
+            },
+            at(0),
+        )
+        .unwrap();
+    assert!(!membership.is_pending("op5"));
+    assert!(membership.is_pending("op3"));
+}

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::params;
 
-use super::db::{NodeDb, to_io};
+use super::db::NodeDb;
 use crate::core::token::{Permission, TokenRecord};
 
 pub trait TokenStore: Send + Sync + 'static {
@@ -86,7 +86,7 @@ impl TokenStore for SqliteTokenStore {
                 "SELECT id, name, permissions, topic_prefixes, created_at, expires_at, salt, \
                  secret_hash FROM tokens ORDER BY id",
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((
@@ -100,10 +100,10 @@ impl TokenStore for SqliteTokenStore {
                     row.get(7)?,
                 ))
             })
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         let mut out = Vec::new();
         for row in rows {
-            out.push(record_of(row.map_err(to_io)?)?);
+            out.push(record_of(row.map_err(|e| self.db.fail(e))?)?);
         }
         Ok(out)
     }
@@ -136,7 +136,7 @@ impl TokenStore for SqliteTokenStore {
                     record.secret_hash,
                 ],
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(())
     }
 
@@ -144,7 +144,7 @@ impl TokenStore for SqliteTokenStore {
         self.db
             .conn()
             .execute("DELETE FROM tokens WHERE id = ?1", params![id])
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(())
     }
 }

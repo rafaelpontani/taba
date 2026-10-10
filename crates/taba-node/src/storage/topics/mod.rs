@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::params;
 
-use super::db::{NodeDb, to_io};
+use super::db::NodeDb;
 use crate::core::topic::TopicDefinition;
 
 pub trait TopicStore: Send + Sync + 'static {
@@ -45,15 +45,15 @@ impl TopicStore for SqliteTopicStore {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare("SELECT name, definition FROM topics ORDER BY name")
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         let mut out = Vec::new();
         for row in rows {
-            let (name, text) = row.map_err(to_io)?;
+            let (name, text) = row.map_err(|e| self.db.fail(e))?;
             let invalid = |reason: String| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -75,7 +75,7 @@ impl TopicStore for SqliteTopicStore {
                  ON CONFLICT(name) DO UPDATE SET definition = excluded.definition",
                 params![definition.name, text],
             )
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(())
     }
 
@@ -83,7 +83,7 @@ impl TopicStore for SqliteTopicStore {
         self.db
             .conn()
             .execute("DELETE FROM topics WHERE name = ?1", params![name])
-            .map_err(to_io)?;
+            .map_err(|e| self.db.fail(e))?;
         Ok(())
     }
 }
