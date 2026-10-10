@@ -79,7 +79,7 @@ Nas linhas com "Leitor mínimo", o JSON todo é lido por ele. Nas com a bibliote
 #### C# (`connectors/csharp/`)
 
 - **Dois alvos num mesmo projeto:** `net461` (**.NET clássico**: o Framework 4.6.1 a 4.8) e `net5.0` (**.NET moderno**: 5 em diante, incluindo o 6, 8 e 10). O código é o mesmo, com `#if` só onde as APIs diferem. A linguagem fica no C# 7.3 (`LangVersion`) nos dois, para não divergir.
-- **Um só SDK compila tudo:** a imagem única do **SDK do .NET 10** gera os dois alvos (o `net461` com os *reference assemblies* do pacote `Microsoft.NETFramework.ReferenceAssemblies`, o `net5.0` com o *targeting pack* baixado do NuGet), sem instalar SDKs antigos no CI. O SDK avisa que o .NET 5 está fora de suporte; o aviso é suprimido (`NETSDK1138`). Os **testes** rodam no Framework 4.8 (Windows) e no .NET 8 e no mais recente, para cobrir as duas linhas.
+- **Um só SDK compila tudo:** o **SDK do .NET 8 ou do .NET 10** (decidido, D68.1) gera os dois alvos (o `net461` com os *reference assemblies* do pacote `Microsoft.NETFramework.ReferenceAssemblies`, o `net5.0` com o *targeting pack* baixado do NuGet), sem instalar SDKs antigos no CI. O SDK avisa que o .NET 5 está fora de suporte; o aviso é suprimido (`NETSDK1138`). Os **testes** rodam no Framework 4.8 (Windows) e no .NET 8 e no mais recente, para cobrir as duas linhas.
 - **Assíncrono primeiro:** os métodos `...Async` (com `Task`) são a implementação, e os síncronos esperam por eles.
 - **`PATCH`:** `new HttpMethod("PATCH")` no `HttpRequestMessage`.
 - **TLS 1.2:** no .NET Framework 4.6.x, o protocolo usado é o do `ServicePointManager.SecurityProtocol`, e a partir do 4.7 é o do sistema. O conector **não** o altera sozinho; o README diz como conferir.
@@ -163,7 +163,7 @@ Cada conector compila e testa **dentro de um contêiner**, com a mesma imagem na
 | Linguagem | Imagem de compilação | Imagens de teste |
 |---|---|---|
 | Java | `eclipse-temurin:21-jdk` (`--release 11` gera para a base) | `eclipse-temurin:11-jdk`, `:17-jdk`, `:21-jdk` |
-| C# | `mcr.microsoft.com/dotnet/sdk:10.0` (compila `net461` e `net5.0`) | `dotnet/sdk:8.0` e `:10.0` para o .NET moderno; para o Framework 4.8, `mcr.microsoft.com/dotnet/framework/runtime:4.8` (contêiner Windows) |
+| C# | `mcr.microsoft.com/dotnet/sdk:10.0` ou `:8.0` (compilam `net461` e `net5.0`) | `dotnet/sdk:8.0` e `:10.0` para o .NET moderno; para o Framework 4.8, `mcr.microsoft.com/dotnet/framework/runtime:4.8` (contêiner Windows) |
 | Python | `python:3.13` (gera a *wheel* universal) | `python:2.7`, `python:3.4`, `python:3.13` |
 | PHP | `composer:2` | `php:5.6-cli`, `php:7.4-cli`, `php:8-cli` |
 | Ruby | `ruby:3` | `ruby:2.0`, `ruby:2.7`, `ruby:3` |

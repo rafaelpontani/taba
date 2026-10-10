@@ -102,6 +102,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `PAG` | Paginação | [06a §8.1.2](06a-api-cliente.md), [06d §8.3.4](06d-api-convencoes.md) | 9 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | [06d](06d-api-convencoes.md) | 17 |
 | `CNT` | Conectores | [19](19-conectores.md), [19a](19a-conectores-linguagens.md) | 32 |
+| `CLI` | O `taba-cli`, a linha de comando do cliente | [19b](19b-cli.md) | 28 |
 
 #### Nó: o caminho da mensagem ([20b-casos-de-uso-no-dados.md](20b-casos-de-uso-no-dados.md))
 
@@ -134,11 +135,11 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 816 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 873 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 
 - Os parâmetros marcados **"A definir"** em [10-configuracao.md](10-configuracao.md) (retries, intervalos, tetos) não têm valor fixo: os testes configuram o valor de que precisam, em vez de depender de um padrão.
-- Os casos que dependem de pendência em aberto ([08b-pendencias.md](08b-pendencias.md), D68, D70.1, D70.2 e D71.1, conectores) estão marcados com **(pendente: D##)**. O caso existe, mas o resultado esperado pode mudar quando a dúvida for decidida.
+- Os casos que dependem de pendência em aberto ([08b-pendencias.md](08b-pendencias.md), D68, D70.1 e D70.2, conectores) estão marcados com **(pendente: D##)**. O caso existe, mas o resultado esperado pode mudar quando a dúvida for decidida.
 - Os nomes de rotas, campos e códigos de erro são os do rascunho da API ([06-api.md](06-api.md)) e acompanham o contrato OpenAPI quando ele existir.
 - Estes casos não cobrem desempenho (as metas de velocidade e custo ainda não têm benchmark, [README](../README.md#status-e-limites)) nem o conteúdo do contrato OpenAPI.

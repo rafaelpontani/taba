@@ -34,6 +34,7 @@ taba/
       fixtures/             pares requisição/resposta HTTP, em arquivos de texto
       cenarios/             roteiros da suíte de conformidade (seção 18.7)
       docker-compose.yml    sobe um Taba em modo desenvolvimento para os testes de integração
+    cli/                    taba-cli          (binários nos Releases e imagem Docker; 19b-cli.md)
     csharp/                 Taba.Client       (nuget.org)
     java/                   taba-client       (Maven Central)
     rust/                   taba-client       (crates.io)
@@ -94,9 +95,9 @@ A superfície é a **mesma** em todas as linguagens, com os nomes adaptados à c
 
 **Fora da superfície (de propósito):**
 
-- **Tokens (`/tokens`).** Quem cria e revoga tokens é o operador, com o `curl` ou o `taba token`, não a aplicação. Entra depois, se houver demanda.
+- **Tokens (`/tokens`).** Quem cria e revoga tokens é o operador, com o `curl` ou o `taba-cli token` ([19b-cli.md](19b-cli.md)), não a aplicação. Entra depois, se houver demanda.
 - **API de operação** (`/metrics`, `/health`, `/node`) e **API do cluster**: não são de aplicação.
-- **Loop de consumo (`subscribe(handler)`)**, que faz long polling, chama o `handler` e confirma sozinho. É um **adicional** opcional, de poucas linhas sobre o `consume` + `ack`, e entra por linguagem quando ela tem uma forma natural de expressá-lo (D71.1).
+- **Loop de consumo (`subscribe(handler)`)**, que faz long polling, chama o `handler` e confirma sozinho. É um **adicional** opcional, de poucas linhas sobre o `consume` + `ack`, e entra na primeira versão das linguagens com assíncrono (C#, Java, Python 3.5+, Node.js, Go e Rust), não no C, C++, PHP e Ruby (D71.1).
 
 **Assíncrono (D71).** Onde a linguagem tem um modelo assíncrono, o conector oferece as nove operações também de forma assíncrona (`Task` no C#, `CompletableFuture` no Java, `Promise` no Node, `async`/`await` no Python 3.5+ e no Rust, `context.Context` no Go), com o mesmo contrato da forma síncrona. C, C++, PHP e Ruby só têm a síncrona. O que cada linguagem usa está em [19a](19a-conectores-linguagens.md), seção 18.10.2.
 
@@ -204,9 +205,10 @@ A ordem leva em conta **o valor** (as linguagens mais usadas primeiro) e **o apr
 | Fase | Entrega | Pré-requisito |
 |---|---|---|
 | 0 — Contrato | `contrato/`: fixtures, o conjunto de teste do leitor de JSON, os cenários e o `docker-compose.yml` (sem imagem ainda, só o esqueleto). O `connectors/README.md`. | Contrato OpenAPI da API de cliente (passo 1 de [08c-proximos-passos.md](08c-proximos-passos.md)) estável. |
+| 0,5 — Primeiro conector | **C#** (`connectors/csharp/`), escrito antes da fase 0 completa, a partir da documentação da API e dos testes do servidor, junto de um exemplo de console e de um Docker Compose de cluster com três nós (versão 0.1, [08c-proximos-passos.md](08c-proximos-passos.md)). Os demais esperam o contrato que ele ajudar a fixar. | Um Taba que rode em modo desenvolvimento (já existe). |
 | 1 — Referência | **Python** (a mais curta e a mais legível), como implementação de referência, e **Java**, por ter a base mais antiga. Juntas, estressam o desenho nas duas pontas (mais enxuta e mais restrita). | Fase 0. |
 | 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho). | Fase 1 (o contrato já foi exercitado). |
-| 3 — Plataformas | **C#**, **Node.js** e **Go**. | Fase 1. |
+| 3 — Plataformas | **Node.js** e **Go** (o **C#** foi para a frente, como primeiro conector da versão 0.1, [08c-proximos-passos.md](08c-proximos-passos.md)). | Fase 1. |
 | 4 — Restantes | **PHP**, **Ruby** e **Rust**. | Fase 1. |
 | 5 — Integração | Os cenários de integração passam em todos contra o Taba real; exemplos de uso preenchem a tabela de [Conectores](../README.md#conectores) do README da raiz; publicação nos registros. | Um Taba que rode em modo desenvolvimento: o protótipo de nó único (passo 3 de [08c](08c-proximos-passos.md)), em imagem Docker para o CI. |
 
