@@ -237,6 +237,9 @@ impl Request {
             }
             Request::ListTopics(query) => get_call(stream_path("/cluster/topics", query)),
             Request::ListTokens(query) => get_call(stream_path("/cluster/tokens", query)),
+            Request::ListTombstones(query) => {
+                get_call(stream_path("/cluster/definitions/tombstones", query))
+            }
             Request::Write { topic, id, step } => {
                 step_call(&format!("/cluster/topics/{topic}/messages/{id}"), step)
             }
@@ -374,6 +377,9 @@ impl Request {
             ["cluster", "tokens"] if is("GET") => {
                 Ok(Request::ListTokens(parse_stream_query(query)?))
             }
+            ["cluster", "definitions", "tombstones"] if is("GET") => {
+                Ok(Request::ListTombstones(parse_stream_query(query)?))
+            }
             ["cluster", "definitions", "propose"] if post() => Ok(Request::DefinitionPropose(
                 parse_body::<DefinitionProposal>(headers, body)?,
             )),
@@ -498,6 +504,7 @@ impl Request {
             }
             Request::ListTopics(_)
             | Request::ListTokens(_)
+            | Request::ListTombstones(_)
             | Request::BlockIds { .. }
             | Request::BlockMessages { .. } => {
                 let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;

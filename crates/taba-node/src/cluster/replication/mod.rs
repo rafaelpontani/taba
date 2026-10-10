@@ -269,6 +269,7 @@ impl Replication {
             Request::DefinitionApply(change) => self.definitions.handle_apply(change).await,
             Request::ListTopics(query) => Ok(self.definitions.list_topics(&query)),
             Request::ListTokens(query) => Ok(self.definitions.list_tokens(&query)),
+            Request::ListTombstones(query) => Ok(self.definitions.list_tombstones(&query)),
             Request::Idle { topic_id } => {
                 let (idle_seconds, since_start) = self.messages.messages().idle_of(&topic_id)?;
                 Ok(Response::Idle(crate::cluster::protocol::IdleResponse {

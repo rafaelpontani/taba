@@ -323,6 +323,90 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
     cluster.shutdown().await;
 }
 
+/// O nó que entra lê também as lápides do que foi removido: sem elas ele não saberia a versão já usada,
+/// e uma criação atrasada de versão menor (ou a recriação com a versão 1) ressuscitaria ou seria
+/// ignorada pelos outros nós. As lápides saem do stream `GET /cluster/definitions/tombstones`.
+/// UC: UC-DEF-036
+#[tokio::test]
+async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the_topic_back() {
+    let mut cluster = TestCluster::start(2).await;
+    let name = name_owned_by(&cluster, 1, "gone-");
+    assert_eq!(create(&cluster, 1, &name).await.status(), 201);
+    for number in 1..=2 {
+        eventually_async("o tópico em todo nó", || async {
+            has_topic(&cluster, number, &name).await
+        })
+        .await;
+    }
+    let creation = stream_of(&cluster, 1)
+        .await
+        .into_iter()
+        .find(|i| i["name"] == name.as_str())
+        .expect("o tópico no stream");
+    let node = cluster.node(1);
+    let removed = node
+        .client
+        .delete(node.client_url(&format!("/topics/{name}")))
+        .send()
+        .await
+        .expect("requisição");
+    assert_eq!(removed.status(), 204);
+    for number in 1..=2 {
+        eventually_async("o tópico removido em todo nó", || async {
+            !has_topic(&cluster, number, &name).await
+        })
+        .await;
+    }
+
+    cluster.add_node(false).await;
+
+    // O nó novo leu a lápide (versão 2) do nó que serviu a carga.
+    let tombstones = |number: usize| {
+        let (peer, address) = (
+            cluster.network.transport(host_of(1)),
+            address_of(&cluster, number),
+        );
+        async move {
+            match peer
+                .call(&address, Request::ListTombstones(StreamQuery::default()))
+                .await
+                .expect("stream")
+            {
+                Response::Stream(page) => page.items,
+                other => panic!("esperava um stream, veio {other:?}"),
+            }
+        }
+    };
+    let learned = tombstones(3).await;
+    assert!(
+        learned
+            .iter()
+            .any(|i| i["kind"] == "topic" && i["key"] == name.as_str() && i["version"] == 2),
+        "o nó novo guarda a lápide: {learned:?}"
+    );
+    assert_eq!(tombstones(1).await.len(), learned.len());
+
+    // A criação atrasada (versão 1) chega ao nó novo: com a lápide, é ignorada.
+    let late = DefinitionApply {
+        kind: DefinitionKind::Topic,
+        key: name.clone(),
+        version: 1,
+        deleted: false,
+        body: creation,
+    };
+    cluster
+        .network
+        .transport(host_of(1))
+        .call(&address_of(&cluster, 3), Request::DefinitionApply(late))
+        .await
+        .expect("o nó aceita a chamada");
+    assert!(
+        !has_topic(&cluster, 3, &name).await,
+        "o nó novo não ressuscita o tópico"
+    );
+    cluster.shutdown().await;
+}
+
 /// Sem nenhum outro dono alcançável a mudança não existe em outro nó: o dono recusa (`503`) em
 /// vez de responder com uma cópia só.
 /// UC: UC-DEF-030

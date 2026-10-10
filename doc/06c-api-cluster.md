@@ -42,7 +42,7 @@ Manual das rotas que **os nós usam entre si**: registro e desregistro de nós, 
 | Grupo | Rotas |
 |---|---|
 | **Membros e canal** | `GET /cluster/nodes`, `POST /cluster/nodes/join`, `POST /cluster/nodes/register`, `POST /cluster/nodes/unregister`, `POST /cluster/nodes/commit`, `POST /cluster/nodes/rollback`, `POST /cluster/vote-remove`, `GET /cluster/channel` (WebSocket, o alvo), `POST /cluster/channel` (provisória, a que o código usa) |
-| **Tópicos e tokens** | `POST /cluster/definitions/propose`, `POST /cluster/definitions/apply`; `GET /cluster/topics`; `GET /cluster/tokens`; `GET /cluster/topics/{id}/idle` |
+| **Tópicos e tokens** | `POST /cluster/definitions/propose`, `POST /cluster/definitions/apply`; `GET /cluster/topics`; `GET /cluster/tokens`; `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `.../visibility/register`, `commit`, `rollback`; `.../ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`, `POST /cluster/topics/{topic}/fifo/publish` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`, `GET /cluster/message-loss`, `POST /cluster/message-loss`, `DELETE /cluster/message-loss/{topic}/{id}`, `POST /cluster/messages/recover` |
 | **Observabilidade** | `GET /cluster/status`, `GET /cluster/metrics/topics` |
@@ -172,6 +172,10 @@ Um nó em sincronização guarda o `apply` no banco de eventos e o aplica depois
 ### `GET /cluster/topics` e `GET /cluster/tokens`: streams para o bootstrap
 
 Streams NDJSON (seção 8.2.1) com as definições de tópico e os tokens que o nó possui, **ordenados por `id`**; `from` e `to` opcionais. Usados pelo nó novo para montar as tabelas depois do registro, inclusive na verificação final (seção 3.3 de [02-arquitetura.md](02-arquitetura.md)). Linhas de dados: `TopicDefinition` e `TokenRecord`, cada uma com a `version` que o nó que responde aplicou (`0` se não tem versão).
+
+### `GET /cluster/definitions/tombstones`: as lápides para o bootstrap
+
+Stream NDJSON (seção 8.2.1) com as **lápides** que o nó guarda: as definições removidas (tópico apagado, token revogado) e a versão da remoção, ordenadas por `id` (`<tipo>:<chave>`); `from` opcional. O nó novo as lê logo depois dos dois streams acima, para saber as versões já usadas: sem isso uma criação atrasada ressuscitaria o que foi removido, e a recriação do mesmo nome por um dono novo sairia com a versão 1 e seria ignorada pelos outros nós (D125). Linha de dados: `{"id":"topic:<nome>","kind":"topic|token","key":"<nome ou id>","version":<n>}`. O nó guarda a lápide por 1 hora (e enquanto o dono insiste nela), então o stream só traz as remoções recentes.
 
 ### `GET /cluster/topics/{id}/idle`: ociosidade de uma fila volátil
 
@@ -383,6 +387,7 @@ Cada rota usa o mesmo formato com linhas diferentes:
 |---|---|
 | `/cluster/topics` | `TopicDefinition`: a definição do tópico (a mesma guardada na tabela `topics`). |
 | `/cluster/tokens` | `TokenRecord`: o token (o mesmo da tabela `tokens`, com o sal e o hash do segredo). |
+| `/cluster/definitions/tombstones` | `{"id","kind","key","version"}`: a lápide de uma definição removida. |
 | `/cluster/blocks/{id}/ids` | `{"id":"<id>","topic":"<topico>"}`; na fila FIFO, a linha de uma mensagem com exclusão lógica traz também `"deleteAt"` (seção 16.7 de [17-topicos-fifo.md](17-topicos-fifo.md)). |
 | `/cluster/message-loss` | `{"id":"<id>","topic":"<topico>"}` |
 | `/cluster/blocks/{id}/messages` | `MessageRecord`: a mensagem completa (`id`, conteúdo e metadados). Na fila FIFO, a mensagem com exclusão lógica vem **sem conteúdo** e com `"deleteAt"`. |

@@ -128,6 +128,9 @@ pub enum Request {
     ListTopics(StreamQuery),
     /// `GET /cluster/tokens`
     ListTokens(StreamQuery),
+    /// `GET /cluster/definitions/tombstones`: as lápides (definições removidas, com a versão) que o
+    /// nó ainda guarda.
+    ListTombstones(StreamQuery),
     /// `POST /cluster/topics/{topic}/messages/{id}/register|commit|rollback`
     Write {
         topic: String,
@@ -198,6 +201,7 @@ impl Request {
             Request::DefinitionPropose(_) => "definition-propose",
             Request::DefinitionApply(_) => "definition-apply",
             Request::ListTokens(_) => "list-tokens",
+            Request::ListTombstones(_) => "list-tombstones",
             Request::Write {
                 step: Step::Register(_),
                 ..

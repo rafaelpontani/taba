@@ -286,6 +286,11 @@ fn requests() -> Vec<Request> {
         }),
         Request::DefinitionApply(token),
         Request::ListTokens(StreamQuery::default()),
+        Request::ListTombstones(StreamQuery {
+            from: Some("topic:pedidos".to_owned()),
+            to: None,
+            limit: Some(20),
+        }),
         Request::Write {
             topic: t(),
             id: id(),
@@ -444,6 +449,7 @@ fn the_routes_are_the_ones_of_the_document() {
     assert!(has("POST", "/cluster/nodes/rollback"));
     assert!(has("POST", "/cluster/definitions/propose"));
     assert!(has("GET", "/cluster/topics"));
+    assert!(has("GET", "/cluster/definitions/tombstones"));
     assert!(has("POST", "/cluster/definitions/apply"));
     assert!(has(
         "POST",

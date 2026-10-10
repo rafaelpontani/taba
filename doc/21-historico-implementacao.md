@@ -4,7 +4,7 @@
 
 Registro, **na ordem em que aconteceu**, do que já foi implementado em `crates/`. O objetivo é bater a aplicação com a documentação: o que está pronto, o que se desviou do texto e o que ainda falta. Quem implementa algo novo atualiza este arquivo **na mesma mudança** (procedimento no [AGENTS.md](../AGENTS.md)).
 
-Último registro: etapa 18b, parcial (desempate de versão das definições, D124, 2026-10-10; antes, a 17d, o formato das mensagens do canal, D122; antes, a 17c-5, as dúvidas provisórias da 15f; antes, a 17c-4, o prazo da recuperação do reinício, 2026-10-09; antes, a 17c-3, o freezing do membro que estava fora do ar; antes, a 18a, o dono das definições, D123). Casos de uso com ao menos um teste: **622 de 837** (`cargo test --test uc_coverage -- --nocapture`).
+Último registro: etapa 18b, parcial (desempate de versão D124 e lápides no bootstrap D125, 2026-10-10; antes, a 17d, o formato das mensagens do canal, D122; antes, a 17c-5, as dúvidas provisórias da 15f; antes, a 17c-4, o prazo da recuperação do reinício, 2026-10-09; antes, a 17c-3, o freezing do membro que estava fora do ar; antes, a 18a, o dono das definições, D123). Casos de uso com ao menos um teste: **623 de 838** (`cargo test --test uc_coverage -- --nocapture`).
 
 ## Próximas etapas
 
@@ -471,6 +471,7 @@ Só documentação, sem código. O `22-problemas-em-aberto.md` foi extinto: os p
 
 - **O que entrou** (`cluster/replication/definitions`): duas cópias de uma definição com a mesma versão e conteúdo diferente terminam iguais em todo nó: vale a de menor impressão (SHA-256 do corpo normalizado, `fingerprint`; a remoção tem uma só). A regra vale no `apply`, na carga (`load`) e vai valer na reconciliação. O empate é avisado e contado em `taba.cluster.definitions.conflicts`. O teste `two_copies_with_the_same_version_end_the_same_in_any_arrival_order` (UC-DEF-035) falha sem a regra (provado por mutação).
 - **Decididas, ainda sem código:** a conferência das definições a cada abertura ou reabertura do canal com um par, com um limite de uma por par a cada sinal de vida, e o resumo (hash das definições vivas, depois uma lista leve só se diferir). Faltam o escopo da tabela de membros, as lápides e a direção do acerto.
+- **18b, as lápides no bootstrap (D125, 2026-10-10):** `GET /cluster/definitions/tombstones` (`Request::ListTombstones`, `Definitions::list_tombstones`): as remoções que o nó ainda guarda, com a versão. O `pull` do nó que sincroniza lê esse stream depois dos de tópicos e de tokens e guarda cada lápide (`load_tombstone`) se não conhece uma versão igual ou maior. A duração da lápide não mudou (1 h): o D125 registra que é suficiente e o limite do membro sem contato por mais de 1 h sem quórum. Teste: `a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the_topic_back` (UC-DEF-036; falha sem a leitura das lápides, provado por mutação).
 - **Não entrou:** o resto da 18b e a 18c.
 
 

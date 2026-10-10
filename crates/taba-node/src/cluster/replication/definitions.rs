@@ -521,6 +521,36 @@ impl Definitions {
         Response::Stream(StreamPage::new(items, more))
     }
 
+    /// `GET /cluster/definitions/tombstones`: as lápides que este nó guarda (a remoção e a versão
+    /// dela), para o nó que sincroniza saber as versões já usadas e não recriar o que foi removido
+    /// (D125). Cada linha leva `id` (`tipo:chave`, a ordem e o cursor), `kind`, `key` e `version`.
+    pub fn list_tombstones(&self, query: &StreamQuery) -> Response {
+        let mut rows: Vec<(String, DefinitionKind, String, u64)> = lock(&self.versions)
+            .iter()
+            .filter(|(_, e)| e.deleted)
+            .map(|((kind, key), e)| {
+                (
+                    format!("{}:{key}", kind.as_str()),
+                    *kind,
+                    key.clone(),
+                    e.version,
+                )
+            })
+            .filter(|(id, ..)| query.from.as_deref().is_none_or(|from| id.as_str() >= from))
+            .collect();
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
+        let page = Self::page(query);
+        let more = rows.len() > page;
+        rows.truncate(page);
+        let items = rows
+            .into_iter()
+            .map(|(id, kind, key, version)| {
+                json!({"id": id, "kind": kind.as_str(), "key": key, "version": version})
+            })
+            .collect();
+        Response::Stream(StreamPage::new(items, more))
+    }
+
     /// Apaga as definições e os tokens locais (o nó volta como nó novo).
     pub async fn wipe(&self) {
         for name in self.topics.names() {
@@ -575,7 +605,36 @@ impl Definitions {
             })
             .await?;
         }
+        for (kind, key, version) in self.list_tombstones_of(source).await? {
+            self.load_tombstone(kind, key, version).await?;
+        }
         Ok(pulled)
+    }
+
+    /// Guarda a lápide que a origem tem, se este nó não conhece uma versão igual ou maior da
+    /// definição; se tem uma viva de versão menor, ela é removida.
+    async fn load_tombstone(
+        &self,
+        kind: DefinitionKind,
+        key: String,
+        version: u64,
+    ) -> Result<(), TabaError> {
+        let tag = (kind, key.clone());
+        let _guard = self.lock_key(&tag).await;
+        if lock(&self.versions)
+            .get(&tag)
+            .is_some_and(|e| e.version >= version)
+        {
+            return Ok(());
+        }
+        let change = DefinitionApply {
+            kind,
+            key,
+            version,
+            deleted: true,
+            body: Value::Null,
+        };
+        self.apply_unlocked(&change).await.map(|_| ())
     }
 
     /// Verificação final (doc 05, seção 7.3, passo 5.5): repete a listagem de tópicos e de tokens e
@@ -653,6 +712,37 @@ impl Definitions {
             };
             for item in &page.items {
                 out.push((token_from_json(item)?, version_of_item(item)));
+            }
+            if !page.end.has_more || page.end.last == from {
+                break;
+            }
+            from = page.end.last;
+        }
+        Ok(out)
+    }
+
+    async fn list_tombstones_of(
+        &self,
+        source: &Member,
+    ) -> Result<Vec<(DefinitionKind, String, u64)>, TabaError> {
+        let mut out = Vec::new();
+        let mut from: Option<String> = None;
+        loop {
+            let request = Request::ListTombstones(StreamQuery {
+                from: from.clone(),
+                to: None,
+                limit: None,
+            });
+            let Response::Stream(page) = self.call(source, request).await? else {
+                return Err(TabaError::internal());
+            };
+            for item in &page.items {
+                let kind = serde_json::from_value::<DefinitionKind>(item["kind"].clone())
+                    .map_err(|_| bad("A lápide não diz o tipo da definição."))?;
+                let key = item["key"]
+                    .as_str()
+                    .ok_or_else(|| bad("A lápide não diz a chave da definição."))?;
+                out.push((kind, key.to_owned(), version_of_item(item)));
             }
             if !page.end.has_more || page.end.last == from {
                 break;
