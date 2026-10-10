@@ -489,13 +489,14 @@ rect.c-bg-rect { fill: var(--bg); }
           <rect x="676" y="292" width="144" height="18" rx="3" class="c-mask"/>
           <text x="748" y="302" class="t-muted" font-size="11" text-anchor="middle">desregistro (fase 1)</text>
         </g>
+        <text x="570" y="330" class="t-dim" font-size="7">coordena o de menor ID; os outros esperam a vez</text>
         </g>
 
-        <g data-edge-from="demais" data-edge-to="detector" data-edge-label="todos confirmam" data-edge-key="5" data-edge-id="des-ok">
+        <g data-edge-from="demais" data-edge-to="detector" data-edge-label="confirmam (menos os caídos)" data-edge-key="5" data-edge-id="des-ok">
           <path data-composition-edge-from="demais" data-composition-edge-to="detector" data-composition-edge-id="des-ok" data-composition-points="938,358;558,358" d="M 938 358 L 558 358" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="692.5" y="338" width="111" height="18" rx="3" class="c-mask"/>
-          <text x="748" y="348" class="t-muted" font-size="11" text-anchor="middle">todos confirmam</text>
+          <rect x="652.9" y="338" width="190.2" height="18" rx="3" class="c-mask"/>
+          <text x="748" y="348" class="t-muted" font-size="11" text-anchor="middle">confirmam (menos os caídos)</text>
         </g>
         </g>
 
@@ -514,6 +515,7 @@ rect.c-bg-rect { fill: var(--bg); }
           <rect x="672.7" y="402" width="150.6" height="18" rx="3" class="c-mask"/>
           <text x="748" y="412" class="t-muted" font-size="11" text-anchor="middle">nó removido da tabela</text>
         </g>
+        <text x="570" y="440" class="t-dim" font-size="7">o freezing do excluído segue pelo canal</text>
         </g>
 
         <g data-edge-from="falho" data-edge-to="demais" data-edge-label="consulta losses e envia o que achar" data-edge-key="8" data-edge-id="volta">

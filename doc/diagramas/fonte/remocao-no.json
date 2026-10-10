@@ -92,14 +92,15 @@
       "from": "detector",
       "to": "demais",
       "y": 312,
-      "label": "desregistro (fase 1)"
+      "label": "desregistro (fase 1)",
+      "note": "coordena o de menor ID; os outros esperam a vez"
     },
     {
       "id": "des-ok",
       "from": "demais",
       "to": "detector",
       "y": 358,
-      "label": "todos confirmam",
+      "label": "confirmam (menos os caídos)",
       "variant": "return"
     },
     {
@@ -117,7 +118,8 @@
       "to": "detector",
       "y": 422,
       "label": "nó removido da tabela",
-      "variant": "return"
+      "variant": "return",
+      "note": "o freezing do excluído segue pelo canal"
     },
     {
       "id": "volta",
@@ -149,6 +151,7 @@
       "title": "Concorrência",
       "items": [
         "Durante a votação, novos bootstraps ficam em espera",
+        "Duas mudanças que se cruzam: vence a de menor operationId",
         "Freezing opcional impede o retorno imediato do nó"
       ]
     },

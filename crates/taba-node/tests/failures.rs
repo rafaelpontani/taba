@@ -778,7 +778,7 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
     cluster.shutdown().await;
 }
 
-/// UC: UC-FAL-026
+/// UC: UC-FAL-026, UC-FAL-031
 #[tokio::test]
 async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again() {
     let cluster = TestCluster::start(4).await;
@@ -803,6 +803,7 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
             cluster.network.heal(&host_of(left), &host_of(right));
         }
     }
+    cluster.network.clear_calls();
     cluster.clock.advance(Duration::from_secs(301));
 
     // Cada lado consulta a tabela de quem excluiu: o perdedor (o do menor `nodeId`, num empate)
@@ -816,6 +817,26 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
     for number in 1..=4 {
         wait_joined(cluster.node(number)).await;
     }
+
+    // Só o lado perdedor refez o ingresso: o que tem o menor `nodeId` de todos (empate de 2 a 2).
+    let smallest = (1..=4).min_by_key(|n| cluster.node_id(*n)).unwrap();
+    let losers: Vec<String> = if smallest <= 2 {
+        vec![host_of(1), host_of(2)]
+    } else {
+        vec![host_of(3), host_of(4)]
+    };
+    let joiners: std::collections::BTreeSet<String> = cluster
+        .network
+        .calls()
+        .iter()
+        .filter(|call| call.request == "join" && call.from != "balancer")
+        .map(|call| call.from.clone())
+        .collect();
+    assert!(!joiners.is_empty(), "o perdedor refez o ingresso");
+    assert!(
+        joiners.iter().all(|host| losers.contains(host)),
+        "o vencedor não refez: {joiners:?}"
+    );
     cluster.shutdown().await;
 }
 

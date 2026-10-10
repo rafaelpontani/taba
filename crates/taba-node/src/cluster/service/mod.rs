@@ -1779,3 +1779,6 @@ fn registration_failed() -> TabaError {
     )
     .with_retry_after(SYNCING_RETRY_AFTER_SECS)
 }
+
+#[cfg(test)]
+mod tests;

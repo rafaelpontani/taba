@@ -661,3 +661,37 @@ async fn the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_
     );
     cluster.shutdown().await;
 }
+
+/// UC: UC-RTN-017
+#[tokio::test]
+async fn the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = dir.path().join("taba");
+    let old_disk = MessageStore::new(&storage, DbSynchronous::Off);
+    let cluster = TestCluster::empty();
+    let old = record(&cluster, 1, "de um cluster que não existe mais");
+    old_disk
+        .put(&old.topic, &old.to_meta(), &old.body)
+        .expect("grava no disco");
+    drop(old_disk);
+    assert!(storage.join(TOPIC).is_dir());
+
+    let mut cluster = cluster;
+    let builder = cluster
+        .builder(1, true)
+        .env("TABA_STORAGE_DIR", &storage.display().to_string());
+    let number = cluster
+        .spawn_node(builder)
+        .await
+        .expect("o primeiro nó sobe");
+    wait_joined(cluster.node(number)).await;
+
+    // Não há de quem recuperar: o disco antigo foi apagado, e nada ficou de lado.
+    eventually("o disco antigo ser apagado", || {
+        !storage.join(TOPIC).exists()
+    })
+    .await;
+    assert!(!storage.join(MessageStore::PREVIOUS_LIFE).exists());
+    assert_eq!(cluster.member_ids(number).len(), 1);
+    cluster.shutdown().await;
+}

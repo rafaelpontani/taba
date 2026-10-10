@@ -268,6 +268,7 @@ Regras: [04-cluster.md](04-cluster.md), seção 6.1, [13-entrega-de-mensagens.md
 | UC-CAN-023 | O sinal `node-state` com `state: draining`: os pares deixam de pedir `take` a esse nó e de escolhê-lo como origem de carga. | 06c, 04 §6.10 | C | <!--t-->`tests/drain_cluster.rs::a_draining_node_answers_take_empty_and_the_peers_stop_asking` |
 | UC-CAN-024 | Métricas do canal: `taba.cluster.channel.state` por peer, `rtt`, `reconnects`, `queue.out` e `queue.in` (a fila de entrada por nó de origem). | 11 | C | <!--t-->`tests/channel.rs::every_node_has_one_channel_to_each_other_node_and_measures_it` |
 | UC-CAN-025 | A chamada do canal leva o `nodeId` do destino (`to`): o processo novo que atende o mesmo IP e porta (outro ID, por exemplo um reinício rápido) responde `421` `cluster.wrong-node` antes de qualquer outra conferência, e o emissor conta o canal como caído. A votação abre, o nó antigo sai da tabela e o novo entra (D100). | 06c, 04 §6.3 | C | <!--t-->`tests/failures.rs::a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and_is_replaced` |
+| UC-CAN-026 | A chamada do canal **sem** `to` (vazio) não confere o destino: quem chama sem saber o ID do nó que procura (a rota de teste, uma versão que não o envia) é tratado como antes, sem `421` (D100). | 06c, 04 §6.3 | C | <!--t-->`tests/channel.rs::a_channel_call_without_the_destination_id_is_not_checked_against_it` |
 
 ### INV: invisibilidade no dono e nas réplicas
 

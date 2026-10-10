@@ -398,3 +398,50 @@ fn an_exclusion_and_an_entry_that_cross_follow_the_same_rule_in_both_directions(
     assert!(!membership.is_pending("op5"));
     assert!(membership.is_pending("op3"));
 }
+
+/// UC: UC-FAL-032
+#[test]
+fn the_excluded_nodes_kept_for_the_reunion_are_the_last_64_and_leave_when_back_in_the_table() {
+    let membership = Membership::new(TTL, 16);
+    let ids: Vec<String> = (0..70).map(|n| format!("m{n:02}")).collect();
+    let mut members = vec![member("a")];
+    members.extend(ids.iter().map(|id| member(id)));
+    membership.install(MemberTable {
+        version: 1,
+        members,
+        ..MemberTable::default()
+    });
+    for (n, id) in ids.iter().enumerate() {
+        let operation = format!("op{n}");
+        membership
+            .register(
+                &operation,
+                Change::Exclude {
+                    node_id: id.clone(),
+                },
+                at(0),
+            )
+            .unwrap();
+        membership.commit(&operation, at(0)).unwrap();
+    }
+
+    let kept: Vec<String> = membership
+        .excluded_members()
+        .into_iter()
+        .map(|m| m.node_id)
+        .collect();
+    assert_eq!(kept.len(), 64, "no máximo 64");
+    assert_eq!(kept, ids[6..], "os mais antigos saem primeiro");
+
+    // O que volta à tabela (com o mesmo ID) deixa de ser procurado.
+    let mut table = membership.table().unwrap();
+    table.members.push(member(&ids[69]));
+    membership.install(table);
+    let kept: Vec<String> = membership
+        .excluded_members()
+        .into_iter()
+        .map(|m| m.node_id)
+        .collect();
+    assert_eq!(kept.len(), 63);
+    assert!(!kept.contains(&ids[69]));
+}

@@ -633,3 +633,32 @@ async fn each_peer_has_an_out_queue_and_an_in_queue_that_drain() {
     );
     cluster.shutdown().await;
 }
+
+/// UC: UC-CAN-026
+#[tokio::test]
+async fn a_channel_call_without_the_destination_id_is_not_checked_against_it() {
+    let cluster = TestCluster::start(2).await;
+    settled(&cluster).await;
+    let node = cluster.node(1);
+    let upgrade = |query: String| {
+        node.client
+            .get(node.cluster_url(&format!("/cluster/channel?{query}")))
+            .header("connection", "Upgrade")
+            .header("upgrade", "websocket")
+            .header("sec-websocket-version", "13")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .send()
+    };
+    // Sem `to` (ausente ou vazio) a chamada segue para as outras conferências: quem não é membro
+    // é recusado por isso, não por ser o nó errado.
+    let response = upgrade(format!("from={}", guid())).await.unwrap();
+    assert_eq!(error_code(response, 403).await, "cluster.not-member");
+    let response = upgrade(format!("from={}&to=", guid())).await.unwrap();
+    assert_eq!(error_code(response, 403).await, "cluster.not-member");
+    // Com um `to` que não é este nó, o erro é outro.
+    let response = upgrade(format!("from={}&to={}", guid(), guid()))
+        .await
+        .unwrap();
+    assert_eq!(error_code(response, 421).await, "cluster.wrong-node");
+    cluster.shutdown().await;
+}

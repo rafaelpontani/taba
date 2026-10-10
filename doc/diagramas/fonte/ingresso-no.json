@@ -98,7 +98,8 @@
       "from": "contato",
       "to": "demais",
       "y": 300,
-      "label": "registro (fase 1)"
+      "label": "registro (fase 1)",
+      "note": "em conflito, a mudança mais antiga vence"
     },
     {
       "id": "reg-ok",
@@ -121,7 +122,7 @@
       "from": "contato",
       "to": "novo",
       "y": 384,
-      "label": "tabela de nós",
+      "label": "tabela de nós e nós em freezing",
       "variant": "return"
     },
     {
@@ -172,6 +173,7 @@
       "title": "Falha antes do commit",
       "items": [
         "Rollback do registro e o novo nó é excluído",
+        "Conflito com outra mudança: a perdedora recomeça em 100 a 200 ms",
         "Blocos são rebalanceados sem ele"
       ]
     },

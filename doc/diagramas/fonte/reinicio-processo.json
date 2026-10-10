@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Reinício do processo de um nó",
+    "output": "doc/diagramas/html/reinicio-processo.html",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "novo",
+      "type": "backend",
+      "label": "Processo reiniciado",
+      "sublabel": "ID novo, disco da vida anterior"
+    },
+    {
+      "id": "contato",
+      "type": "security",
+      "label": "Nó de contato",
+      "sublabel": "coordena o registro"
+    },
+    {
+      "id": "demais",
+      "type": "cloud",
+      "label": "Demais nós",
+      "sublabel": "membros e donos dos blocos"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 330,
+      "label": "Entrada, sem esperar ninguém"
+    },
+    {
+      "from": 342,
+      "to": 502,
+      "label": "Recuperação em segundo plano"
+    }
+  ],
+  "messages": [
+    {
+      "id": "lista",
+      "from": "novo",
+      "to": "contato",
+      "y": 172,
+      "label": "GET /cluster/nodes (balanceador)",
+      "variant": "dashed",
+      "note": "põe o disco antigo em _previous-life"
+    },
+    {
+      "id": "lista-ok",
+      "from": "contato",
+      "to": "novo",
+      "y": 200,
+      "label": "tabela de membros",
+      "variant": "return",
+      "note": "o nó segue com o disco vazio"
+    },
+    {
+      "id": "boot",
+      "from": "novo",
+      "to": "contato",
+      "y": 236,
+      "label": "pedido de ingresso: IPs e porta",
+      "variant": "emphasis",
+      "note": "nó novo, sem freezing"
+    },
+    {
+      "id": "ingresso",
+      "from": "contato",
+      "to": "demais",
+      "y": 264,
+      "label": "registro e commit em todos (seção 6.2)"
+    },
+    {
+      "id": "tabela",
+      "from": "contato",
+      "to": "novo",
+      "y": 292,
+      "label": "tabela de nós",
+      "variant": "return"
+    },
+    {
+      "id": "ativo",
+      "from": "novo",
+      "to": "demais",
+      "y": 320,
+      "label": "sincroniza e fica ativo",
+      "variant": "dashed",
+      "note": "não fica em returning"
+    },
+    {
+      "id": "perdas",
+      "from": "novo",
+      "to": "demais",
+      "y": 372,
+      "label": "GET /cluster/message-loss",
+      "variant": "emphasis",
+      "note": "a cada nó da primeira listagem"
+    },
+    {
+      "id": "perdas-ok",
+      "from": "demais",
+      "to": "novo",
+      "y": 400,
+      "label": "pares (tópico, ID) perdidos",
+      "variant": "return"
+    },
+    {
+      "id": "recupera",
+      "from": "novo",
+      "to": "demais",
+      "y": 436,
+      "label": "POST /recover: o que o disco antigo tem",
+      "variant": "emphasis",
+      "note": "na hora, para cada lista que chega"
+    },
+    {
+      "id": "mudo",
+      "from": "novo",
+      "to": "demais",
+      "y": 472,
+      "label": "repete só o nó que não respondeu",
+      "variant": "dashed",
+      "note": "até cluster.recovery.timeout"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Disco da vida anterior",
+      "items": [
+        "Fica em _previous-life até a recuperação acabar",
+        "Depois dela, ou no prazo, a pasta é apagada"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Queda no meio",
+      "items": [
+        "A pasta velha continua valendo",
+        "A nova do mesmo tópico é apagada"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Primeiro nó de um cluster novo",
+      "items": [
+        "Não há de quem recuperar: o disco antigo é apagado"
+      ]
+    }
+  ]
+}

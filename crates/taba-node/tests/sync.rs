@@ -363,7 +363,7 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
     cluster.shutdown().await;
 }
 
-/// UC: UC-SIN-020, UC-SIN-023
+/// UC: UC-SIN-020, UC-SIN-023, UC-SIN-030
 #[tokio::test]
 async fn a_node_with_no_source_for_a_load_fails_after_the_timeout() {
     let (mut cluster, _ids) = two_nodes_with_messages(6, &[]).await;
@@ -704,7 +704,7 @@ async fn the_final_check_drops_what_the_load_brought_and_no_source_lists_anymore
     cluster.shutdown().await;
 }
 
-/// UC: UC-SIN-020
+/// UC: UC-SIN-020, UC-SIN-030
 #[tokio::test]
 async fn a_node_whose_join_commit_reaches_the_sources_late_waits_for_them_and_stays_in() {
     let mut cluster = TestCluster::start(3).await;

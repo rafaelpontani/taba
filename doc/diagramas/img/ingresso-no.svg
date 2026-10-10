@@ -491,6 +491,7 @@ rect.c-bg-rect { fill: var(--bg); }
           <rect x="488.9" y="280" width="124.19999999999999" height="18" rx="3" class="c-mask"/>
           <text x="551" y="290" class="t-muted" font-size="11" text-anchor="middle">registro (fase 1)</text>
         </g>
+        <text x="438.6666666666667" y="318" class="t-dim" font-size="7">em conflito, a mudança mais antiga vence</text>
         </g>
 
         <g data-edge-from="demais" data-edge-to="contato" data-edge-label="todos confirmam" data-edge-key="5" data-edge-id="reg-ok">
@@ -509,11 +510,11 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
         </g>
 
-        <g data-edge-from="contato" data-edge-to="novo" data-edge-label="tabela de nós" data-edge-key="7" data-edge-id="tabela">
+        <g data-edge-from="contato" data-edge-to="novo" data-edge-label="tabela de nós e nós em freezing" data-edge-key="7" data-edge-id="tabela">
           <path data-composition-edge-from="contato" data-composition-edge-to="novo" data-composition-edge-id="tabela" data-composition-points="412.6666666666667,384;164,384" d="M 412.6666666666667 384 L 164 384" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="239.43333333333337" y="364" width="97.8" height="18" rx="3" class="c-mask"/>
-          <text x="288.33333333333337" y="374" class="t-muted" font-size="11" text-anchor="middle">tabela de nós</text>
+          <rect x="180.03333333333336" y="364" width="216.6" height="18" rx="3" class="c-mask"/>
+          <text x="288.33333333333337" y="374" class="t-muted" font-size="11" text-anchor="middle">tabela de nós e nós em freezing</text>
         </g>
         </g>
 
@@ -573,8 +574,8 @@ rect.c-bg-rect { fill: var(--bg); }
           <text x="62" y="255" class="t-dim" font-size="9" font-weight="600">Registro e commit em todos</text>
         </g>
         <g data-graph-role="segment-label" data-segment-id="3">
-          <rect x="56" y="362" width="144" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="375" class="t-dim" font-size="9" font-weight="600">Sincronização e prontidão</text>
+          <rect x="56" y="340" width="144" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="353" class="t-dim" font-size="9" font-weight="600">Sincronização e prontidão</text>
         </g>
 
         <!-- Participants -->
