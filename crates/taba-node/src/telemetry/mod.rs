@@ -1,6 +1,6 @@
-//! Métricas, traces e logs (doc 11). Hoje há o log estruturado, o registro de métricas `taba.*`
-//! com a saída no texto do Prometheus e os eventos (*log records* com `event.name`); o envio por
-//! OTLP e os traces entram depois (etapa 12b de `21-historico-implementacao.md`).
+//! Métricas, traces e logs (doc 11). O log estruturado, o registro de métricas `taba.*` com a saída
+//! no texto do Prometheus, os eventos (*log records* com `event.name`), os spans do nó e a
+//! exportação OTLP (métricas, traces e logs).
 //!
 //! O módulo não depende do resto do nó: o `engine` usa o [`histogram::Histogram`], e quem lê o
 //! estado do nó para preencher o registro é a camada HTTP (`http/metrics`).

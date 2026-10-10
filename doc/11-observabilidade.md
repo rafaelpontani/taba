@@ -556,6 +556,8 @@ Eventos pontuais, **não** condições de saúde do nó nem do cluster. São **l
 | `taba.message.expired` | Mensagem descartada por `ttl`. Atributos: fila, ID, idade. Em volume, pode ser amostrado ou agregado pela métrica `taba.retention.expired`. |
 | `taba.message.lost` | **Perda de mensagem** (seção 7.3): decidido que vai para o log em `error`, com o **nome do tópico**, o **ID da mensagem**, o bloco e os nós consultados, e para a tabela `losses` do banco do nó, consultada pelo nó que volta de uma exclusão (seção 6.6 de [04-cluster.md](04-cluster.md)). Não há métrica nem condição de saúde por enquanto; quem quiser alertar usa o evento no backend de logs. O sistema não envia notificações por conta própria. |
 
+Níveis de log dos eventos: `warn` para `taba.message.dead_lettered` e `taba.distributor.partial`; `info` para `taba.message.expired`, `taba.distributor.no_target` e `taba.volatile.deleted`; `debug` para `taba.message.deduplicated` (caminho quente). O evento `expired` não traz a idade hoje. A espera de um long polling que termina em erro conta como `disconnected`.
+
 ## Ainda em aberto
 
 As pendências desta área ficam em [08b-pendencias.md](08b-pendencias.md), no passo 10.

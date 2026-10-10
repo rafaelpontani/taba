@@ -27,7 +27,7 @@ Escolhas iniciais, trocáveis sem mexer no desenho:
 |---|---|---|
 | Runtime, tasks, canais, semáforo | `tokio` | Lista de prontos, fila de comandos por tópico, avisos ([13-entrega-de-mensagens.md](13-entrega-de-mensagens.md), seções 12.6 e 12.8) |
 | HTTP (três listeners) | `axum` + `hyper` | Portas de cliente, cluster e operação ([06-api.md](06-api.md), seção 8.0) |
-| TLS mútuo com recarga | `rustls` (verifier e resolver próprios) | [06-api.md](06-api.md), seção 8.0.1 |
+| TLS mútuo com recarga | `rustls` (verifier e resolver próprios; provedor `ring`, instalado como padrão do processo ao abrir o OTLP e o TLS, porque o `aws-lc` das dependências do `reqwest` também está ligado e o `rustls` não escolhe sozinho) | [06-api.md](06-api.md), seção 8.0.1 |
 | WebSocket do canal | `axum` (ws) / `tokio-tungstenite` | [04-cluster.md](04-cluster.md), seção 6.1 |
 | SQLite (`_node.db` e um banco por tópico) | `rusqlite` com a SQLite embutida (`bundled`: o build precisa de um compilador C) | [02-arquitetura.md](02-arquitetura.md), seção 3.2 |
 | JSON e NDJSON | `serde`, `serde_json` | [06d-api-convencoes.md](06d-api-convencoes.md), [06c-api-cluster.md](06c-api-cluster.md), seção 8.2.1 |
@@ -117,3 +117,32 @@ Com eles, os testes de integração (`crates/taba-node/tests/`) cobrem quórum, 
 - **`process.thread.count`** ([11-observabilidade.md](11-observabilidade.md)): mede as **threads do sistema operacional** do processo (as do runtime, do pool de bloqueio e as dos escritores SQLite). As tasks do tokio não entram.
 - **Imagem Docker:** binário único, em imagem mínima ([01-visao-geral.md](01-visao-geral.md), objetivo 7).
 - **Conectores:** ficam em `connectors/`, fora do workspace do servidor, uma pasta por linguagem. O `taba-client` em Rust é o conector `connectors/rust/`, independente do `taba-protocol` ([19-conectores.md](19-conectores.md), seção 18).
+
+### 17.7 Onde está cada coisa no código
+
+Cada `mod.rs` começa com um comentário `//!` que diz o que o módulo faz e em que documento está o desenho. Este mapa é o caminho de volta, do documento ao código (`crates/taba-node/src/`):
+
+| Assunto | Documento | Módulo |
+|---|---|---|
+| Configuração e tabela de parâmetros | [10](10-configuracao.md) | `config/` (`params` é a fonte única de chaves e padrões) |
+| Erros, IDs, datas, cursor, limites, anel de hash, definição de tópico e de token | [06d](06d-api-convencoes.md), [05](05-particionamento-replicacao.md), [02](02-arquitetura.md) | `core/` (`error`, `id`, `time`, `pagination`, `validation`, `ring`, `topic`, `token`, `content`, `clock`) |
+| Armazenamento: mensagens em disco, `_node.db` (`topics`, `tokens`, `state`, `losses`) e o banco de eventos | [02 §3.2](02-arquitetura.md) | `storage/` (`messages`, `db`, `topics`, `tokens`, `state`, `losses`, `synclog`) |
+| Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO, dead-letter, tokens | [13](13-entrega-de-mensagens.md), [14](14-invisibilidade.md), [15](15-topicos-distribuidor.md), [17](17-topicos-fifo.md) | `engine/` (`topics`, `messages` com `index`, `rates`, `replicas` e `stats`, `tokens`) |
+| API de cliente, de operação e do cluster; autenticação; rate limit; repasse | [06](06-api.md) a [06d](06d-api-convencoes.md), [12](12-limites-api.md) | `http/` (`topics`, `messages`, `tokens`, `auth`, `ratelimit`, `client_ip`, `forward`, `cluster_api`, `metrics`, `topic_stats`, `operations.rs`, `observe`) |
+| Tabela de membros e registro em duas fases | [04 §6.2](04-cluster.md) | `cluster/members/` (a mudança efetivada também viaja pelo quadro `membership` do canal) |
+| Chamadas entre nós como tipos | [06c](06c-api-cluster.md) | `cluster/protocol/`; o `Transport` em `cluster/transport/` (`http` real, `memory` de teste) |
+| Canal permanente, sinal de vida, fila de saída | [04 §6.1 e 6.3](04-cluster.md), [13 §12.8 e 12.9](13-entrega-de-mensagens.md) | `cluster/channel/` (com `queue/`) |
+| Votação de exclusão e freezing | [04 §6.3 e 6.7](04-cluster.md) | `cluster/vote/`, `cluster/members/` |
+| Replicação: escrita, invisibilidade, ack, avisos, definições de tópico e de token | [05 §7.2](05-particionamento-replicacao.md), [02 §3.3 e 3.4](02-arquitetura.md) | `cluster/replication/` (`coordinator`, `replica`, `forward`, `messages_api`, `signals`, `definitions`) |
+| Sincronização de blocos de um nó que entra | [05 §7.3](05-particionamento-replicacao.md) | `cluster/sync/` |
+| Retorno de nó e recuperação de perdas | [04 §6.6](04-cluster.md) | `cluster/recovery/`, `storage/losses/` |
+| Drain e save | [04 §6.10](04-cluster.md) | `cluster/drain/` |
+| Fila volátil (nó gestor) | [15 §14.5 e 14.6](15-topicos-distribuidor.md) | `cluster/volatile/` |
+| Condições do cluster | [11](11-observabilidade.md) | `cluster/health/` |
+| TLS mútuo | [06 §8.0.1](06-api.md) | `cluster/tls/`, `secrets/` |
+| Métricas, traces, logs, OTLP, Prometheus | [11](11-observabilidade.md) | `telemetry/` (`metrics`, `prometheus`, `otlp`, `trace`, `process`, `histogram`) |
+
+Detalhes que não aparecem no desenho:
+
+- Os **traces e os logs do OTLP** entram no `tracing` em `init_logging`: o `Hub` aponta para o pipeline do nó (amostrador, processador e logger trocáveis). Sem pipeline, o amostrador descarta e os logs não saem. Num processo com vários nós (os testes) vale o último a subir.
+- O **estado de falha** do nó (`failed`) é o mesmo para um erro de disco nas mensagens e para um erro fatal do `_node.db` (disco cheio ou banco corrompido): o nó deixa de atender o cliente e só um reinício o tira de lá (D78).

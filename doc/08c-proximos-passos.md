@@ -7,6 +7,8 @@
 Parte da seção 10. Cada passo lista o que cobre e as dúvidas que precisam estar fechadas antes dele (em [08b-pendencias.md](08b-pendencias.md)); as decisões já tomadas estão em [08a-decisoes-tomadas.md](08a-decisoes-tomadas.md). Uma pendência aparece uma vez, no primeiro passo que depende dela.
 
 
+**Situação (2026-10-10).** Os passos 2 a 9 estão implementados no crate `taba-node` (o mapa de módulos está na seção 17.7 de [18-estrutura-codigo.md](18-estrutura-codigo.md)), com testes de nível **C** sobre uma rede em memória e o `Transport` real com TLS mútuo. A observabilidade e as rotas de operação do passo 10 também estão feitas. **Faltam:** o passo 1 (o contrato OpenAPI), o passo 10 no que é empacotar em Docker e validar em Kubernetes, e o passo 11 (os conectores).
+
 | Passo | O que cobre | Dúvidas abertas |
 |---|---|---|
 | 1 — Contrato da API (OpenAPI) | Endpoints de registro/descoberta de nós, mensagens, sincronização e recuperação (seções 6, 7 e 8). | — |

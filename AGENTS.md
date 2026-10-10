@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação está no começo (esqueleto, configuração, listeners, saúde do nó, tópicos, publicação e consumo com disco, drain local, rotas de operação, métricas de um nó, a base do cluster e a replicação: anel, membros, ingresso de nós, escrita, entrega e ack por quórum, repasse e drain); a estrutura e as regras de código estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
+Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação (o nó, num crate só) implementa um nó e o cluster, com os testes de nível `C` sobre uma rede em memória; ainda faltam o contrato OpenAPI, o empacotamento e os conectores ([doc/08c-proximos-passos.md](doc/08c-proximos-passos.md)). A estrutura, as regras de código e o mapa de módulos estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
 
 ## Código
 
@@ -36,16 +36,14 @@ cargo run -- init --out ./secrets             # certificado do cluster e token r
 - **Comentários e mensagens para o usuário** (erro da API, log, ajuda da linha de comando): em **português** durante o desenvolvimento; serão traduzidos junto com a documentação.
 - Os nomes em disco (tabelas e colunas do SQLite, `_topic.db`, `${topic}` nas pastas, chaves do `state`) também são em inglês, nos documentos e no código.
 
-## Histórico da implementação
+## Ao terminar uma implementação
 
-[doc/21-historico-implementacao.md](doc/21-historico-implementacao.md) registra, **na ordem em que aconteceu**, tudo o que já foi implementado, os desvios em relação à documentação e o que ainda falta. Serve para conferir o código contra os documentos. **Toda nova implementação o atualiza na mesma mudança**:
+Não há mais um registro cronológico da implementação: o histórico é o git, com mensagens de commit que dizem o que mudou e por quê. Na mesma mudança do código:
 
-1. Acrescente uma entrada na seção 1 ("Linha do tempo"), ao final: o que foi feito, onde está no código, os desvios e o que ficou de fora.
-2. Registre na seção 2 cada decisão que a implementação tomou e que o documento não dizia ou contraria, e corrija o `.md` técnico. Quando virar decisão firme, ela vai para [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md).
-3. Mova na seção 3 as áreas que mudaram de `Falta` para `Parcial` ou `Feito`, e, ao concluir uma etapa, retire a linha dela de "Próximas etapas" (no início do documento, antes da seção 1); a conclusão fica só na seção 1.
-4. Atualize a linha "Último registro" e o placar de casos de uso com teste (`cargo test --test uc_coverage -- --nocapture`).
-
-Nunca reescreva as entradas antigas para parecerem melhores: se algo mudou, acrescente uma entrada nova que diz o que mudou.
+1. **Corrija o `.md` técnico** quando o código decidiu algo que o documento não dizia ou contraria. O desenho vive nos documentos, e o código é conferido contra eles.
+2. **Decisão firme** vai para [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md); **dúvida** ou **problema**, para [doc/08b-pendencias.md](doc/08b-pendencias.md) (seção abaixo).
+3. **Casos de uso** novos ou mudados entram em `doc/20a`, `20b` ou `20c`, e cada teste os cita em `/// UC: UC-XXX-NNN`. Rode `TABA_UC_WRITE=1 cargo test --test uc_coverage` para regerar a coluna "Testes". Um caso sem teste fica com "—", e a razão vai no próprio caso.
+4. **Módulo novo** entra no mapa da seção 17.7 de [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md), e o `mod.rs` dele começa com um comentário `//!` que diz o que faz e em que documento está o desenho.
 
 ## Pendências e problemas descobertos na implementação
 
@@ -54,7 +52,7 @@ Toda implementação que descobre algo em aberto o registra **na mesma mudança*
 - **Pergunta de design** (o documento não define, ou há duas saídas): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo código `D` livre e uma proposta. Quando for decidida, vai para `08a` (regras da seção "Decisões e pendências").
 - **Problema de lógica, risco ou limite** (o código se comporta de um jeito furado, injusto ou incompleto): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo `PRB-NNN`, dizendo o efeito e a proposta; se há uma dúvida `D` que o resolve, vai dentro dela ("Problema ligado"). Resolvido, vai para a seção "Problemas resolvidos" de [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) com a data; o código não é reaproveitado.
 - Na `08b`, o que **não depende de nada** fica na seção 1 e o que depende de outra dúvida, problema ou etapa fica na seção 2, com "Depende de".
-- O desvio em relação ao documento continua em [doc/21-historico-implementacao.md](doc/21-historico-implementacao.md); os três arquivos se apontam entre si.
+- O desvio em relação ao documento se corrige no próprio `.md` técnico; se depende de uma decisão, vira uma dúvida `D` na `08b`.
 
 ## Casos de uso
 
