@@ -109,17 +109,39 @@ jobs:
           echo "docker: ${docker_tags[*]}"
           echo "git flutuantes: ${git_tags[*]:-nenhuma}"
 
-  docker:
-    name: Imagem no Docker Hub
-    needs: [version, plan]
+  binary:
+    name: Binário do nó (versão da tag)
+    needs: version
+    if: needs.version.outputs.published == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: v${{ needs.version.outputs.version }}
       # Alinha o Cargo.toml, o Cargo.lock e os .csproj à versão da tag (só no build, sem commitar).
+      # O binário guarda essa versão (`taba --version`, /health, telemetria), por isso compila aqui.
       - run: .github/scripts/set-version.sh "${{ needs.version.outputs.version }}"
       - uses: ./.github/actions/node-binary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taba-node
+          path: dist/taba
+          retention-days: 1
+
+  docker:
+    name: Imagem no Docker Hub
+    needs: [version, plan, binary]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: taba-node
+          path: dist
+      # O artefato perde a permissão de execução ao ser baixado.
+      - run: chmod +x dist/taba
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:

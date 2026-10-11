@@ -62,6 +62,9 @@ jobs:
 
   docker-build:
     name: Imagem Docker (só compila)
+    # Em PR, valida o Dockerfile.ci. No push para release/main o binário é compilado no job `binary`
+    # do release.yml, já com a versão da tag, então não compila duas vezes.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
