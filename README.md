@@ -89,7 +89,7 @@ Outras linguagens usam o cliente HTTP delas ou a biblioteca em C. O desenho est�
 
 ## Status e limites
 
-- **Versão 0.1 validada de ponta a ponta:** o cluster de três nós sobe com `docker compose up`, forma-se sozinho, atende pelo `taba-cli`, pelo conector Rust e pelo conector C#, detecta a queda de um nó, o exclui por votação e o recebe de volta sem perder mensagens confirmadas (roteiro em [docker/validate.sh](docker/validate.sh)). O desenho completo está em [doc/](doc/README.md). Ainda faltam os demais conectores, o contrato OpenAPI e a publicação nos registros de pacotes.
+- **Versão 0.1 validada de ponta a ponta:** o cluster de três nós sobe com `docker compose up`, forma-se sozinho, atende pelo `taba-cli`, detecta a queda de um nó, o exclui por votação e o recebe de volta sem perder mensagens confirmadas (roteiro em [docker/validate.sh](docker/validate.sh)). O desenho completo está em [doc/](doc/README.md). Ainda faltam os demais conectores, o contrato OpenAPI e a publicação nos registros de pacotes.
 - **Não é um substituto de protocolo:** o Taba fala HTTP. Não há compatibilidade com AMQP, MQTT ou o protocolo do Kafka, então trocar de broker significa trocar o cliente.
 - **Não é uma plataforma de streaming:** processamento de streams e reprocessamento do histórico de mensagens estão fora do escopo. Para filas e pub/sub, sim; para reler o passado, não.
 - **Fora do escopo por enquanto:** interface gráfica, autenticação avançada e multi-região.

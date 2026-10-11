@@ -4,18 +4,19 @@
 # Sobe o Compose da raiz do zero e confere, nesta ordem:
 #   1. o cluster forma: três nós saudáveis e `taba-cli health cluster` sem condições;
 #   2. o taba-cli publica e consome (tópico, publish, consume --ack, list);
-#   3. o exemplo de console em C# publica e consome;
-#   4. a queda brusca de um nó (`docker compose kill`): é detectada, o nó é excluído por votação, as
+#   3. a queda brusca de um nó (`docker compose kill`): é detectada, o nó é excluído por votação, as
 #      publicações e o consumo seguem com dois nós, e o nó volta como nó novo (`docker compose start`);
-#   5. a saída ordenada de outro nó (`docker compose stop`, que dispara o drain) e a volta dele;
-#   6. em nenhum momento uma mensagem publicada (confirmada pelo quórum) se perde: ao fim, o conjunto
+#   4. a saída ordenada de outro nó (`docker compose stop`, que dispara o drain) e a volta dele;
+#   5. em nenhum momento uma mensagem publicada (confirmada pelo quórum) se perde: ao fim, o conjunto
 #      de mensagens confirmadas é exatamente o publicado.
+#
+# Só usa o taba-cli: é o teste geral integrado do cluster, e não de um conector. Cada conector tem o seu
+# teste (ex.: connectors/csharp/scripts/integration.sh).
 #
 # Uso:
 #   docker/validate.sh                  # tudo, do zero; apaga o cluster no fim
 #   docker/validate.sh --keep           # deixa o cluster de pé no fim
 #   docker/validate.sh --no-build       # reaproveita as imagens já construídas
-#   docker/validate.sh --skip-csharp    # sem o exemplo em C# (não precisa do SDK do .NET)
 #
 # Precisa de Docker (com o plugin compose). A porta 8080 do host precisa estar livre.
 
@@ -26,12 +27,10 @@ cd "$ROOT"
 
 KEEP=0
 BUILD=1
-CSHARP=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --keep) KEEP=1 ;;
     --no-build) BUILD=0 ;;
-    --skip-csharp) CSHARP=0 ;;
     -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "opção desconhecida: $1 (veja --help)" >&2; exit 2 ;;
   esac
@@ -154,19 +153,7 @@ got="$(cli consume validacao-cli --max 1 --wait 5 --ack -o raw)"
 cli topic list --name validacao-cli | grep -q validacao-cli || die "o topic list não mostra o tópico"
 ok "publish, consume --ack e topic list"
 
-# --- 3. exemplo C# ------------------------------------------------------------------------------
-
-if [ "$CSHARP" -eq 1 ]; then
-  step "Exemplo de console em C#"
-  command -v dotnet >/dev/null || die "dotnet não encontrado (use --skip-csharp para pular)"
-  TABA_URL="http://localhost:8080" \
-  TABA_TOKEN="$(docker compose run --rm -T --entrypoint cat taba-cli /secrets/root-token 2>/dev/null | tr -d '\r\n')" \
-    dotnet run --project exemplos/csharp-console | tee /tmp/taba-csharp-example.log
-  grep -q "3 mensagens recebidas e confirmadas" /tmp/taba-csharp-example.log || die "o exemplo C# não recebeu as 3 mensagens"
-  ok "o exemplo C# publicou, consumiu e confirmou"
-fi
-
-# --- 4. queda brusca ----------------------------------------------------------------------------
+# --- 3. queda brusca ----------------------------------------------------------------------------
 
 step "Queda brusca do taba-3 (docker compose kill)"
 cli topic create validacao-queda --type queue >/dev/null
@@ -185,7 +172,7 @@ ok "o consumo segue com dois nós ($(wc -l < "$ACKED") confirmadas até aqui)"
 docker compose start taba-3 >/dev/null 2>&1
 wait_for "o nó volta como nó novo e o cluster fica com 3 membros (só o aviso node-frozen é aceito)" 240 three_members_ok
 
-# --- 5. saída ordenada --------------------------------------------------------------------------
+# --- 4. saída ordenada --------------------------------------------------------------------------
 
 step "Saída ordenada do taba-2 (docker compose stop, com drain)"
 publish_many drain 10 validacao-queda
@@ -194,7 +181,7 @@ wait_for "o taba-2 sai do cluster (2 membros)" 120 two_members
 docker compose start taba-2 >/dev/null 2>&1
 wait_for "o taba-2 volta e o cluster fica com 3 membros" 240 three_members_ok
 
-# --- 6. nada se perdeu --------------------------------------------------------------------------
+# --- 5. nada se perdeu --------------------------------------------------------------------------
 
 step "Nenhuma mensagem confirmada se perdeu"
 drain_topic validacao-queda 30
