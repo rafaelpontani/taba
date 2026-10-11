@@ -53,12 +53,11 @@ Números do conhecimento do autor, não verificados no momento da escrita: confi
 
 Uma detecção de mudança (`dorny/paths-filter`) decide quais jobs rodam, para economizar minutos:
 
-1. **server**: `cargo fmt --check`, `cargo clippy -D warnings` e `cargo test --locked`, com `Swatinem/rust-cache`.
-2. **connector-rust**: o mesmo, com `working-directory: connectors/rust`.
-3. **connector-csharp**: `dotnet test` unitário, com SDK do .NET 8 e do 10 (o csproj condiciona o `net10.0` ao SDK).
+1. **server** (build e testes): `cargo fmt --check`, `clippy -D warnings`, `cargo test --locked` e o build estático (musl) do `taba`, que vira o artefato `taba-node`.
+2. **connector-rust** (build e testes): o mesmo, com `working-directory: connectors/rust`, e o build do `taba-cli`, que vira o artefato `taba-cli`.
+3. **connector-csharp** (build e testes): `dotnet test` unitário, com SDK do .NET 6, 8 e 10 (o csproj condiciona o `net10.0` ao SDK), e `dotnet pack` dos três pacotes, que viram o artefato `nuget-packages`.
 4. **integration**: só em push na main, ou em PR que toque `docker/**`, `Dockerfile`, `crates/**` ou `connectors/**`. Roda `integration.sh` e depois `docker/validate.sh`. É o job mais caro (build Docker do servidor), por isso fica atrás de filtro de caminho.
-5. **binary** (`release.yml`, depois do semantic-release e só com versão nova, em paralelo com os testes): aplica o `set-version.sh`, compila com a ação `node-binary` e envia o artefato `taba-node`. A versão fica dentro do binário, por isso compila depois que a versão existe. Não há build de imagem em PR: o `Dockerfile.ci` só roda na publicação.
-6. **docker** (`release.yml`): baixa o artefato `taba-node` e monta a imagem com `Dockerfile.ci`. Não compila nada.
+5. **docker** (`release.yml`): baixa o artefato `taba-node` e monta a imagem com `Dockerfile.ci`. Não compila nada e não há build de imagem em PR.
 
 Duas imagens, para duas finalidades: o `Dockerfile` da raiz compila tudo dentro do container e é o que o usuário usa para baixar o repositório e fazer o build (`docker build -t taba .`). O `Dockerfile.ci` é o da pipeline, rápido porque reaproveita o binário já compilado com o cache do runner. As duas geram a mesma imagem.
 
@@ -172,7 +171,7 @@ Só os commits depois da tag semente contam para a próxima versão. A branch `r
 
 ### 7.3 Fluxo do release.yml
 
-`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → em paralelo: CI (testes), binário com a versão da tag e plano de tags → imagem no Docker Hub (só se os testes passaram) → tags git flutuantes. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
+`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → CI (build e testes, com a versão da tag, gera os artefatos `taba-node`, `taba-cli` e `nuget-packages`) e plano de tags, em paralelo → imagem no Docker Hub (baixa `taba-node`; só se os testes passaram) → tags git flutuantes. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
 
 ### 7.4 Tags flutuantes
 

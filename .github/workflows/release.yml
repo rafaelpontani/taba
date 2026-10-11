@@ -1,8 +1,8 @@
 # A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
 # calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release primeiro. Depois
-# rodam os testes; se passarem, o binário é compilado com essa versão, e o pipeline publica a imagem no
-# Docker Hub e move as tags flutuantes. Commits sem
-# feat/fix/perf (docs, chore, ci...) não geram versão.
+# o ci.yml compila e testa com essa versão e envia os binários como artefatos; se os testes passarem, o
+# job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e depois movem as tags flutuantes.
+# Commits sem feat/fix/perf (docs, chore, ci...) não geram versão.
 #
 # Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
 #   0.1.0-rc.2 -> 0.1.0-rc.2, 0.1-rc, 0-rc, rc          (git: v0.1-rc, v0-rc)
@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  # A versão sai primeiro, antes de qualquer outro job. Os testes (ci) vêm depois e só liberam o binário.
+  # A versão sai primeiro, antes de qualquer outro job. Build e testes (ci) usam essa versão.
   version:
     name: Versão (semantic-release)
     runs-on: ubuntu-latest
@@ -49,9 +49,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   ci:
-    name: Testes
+    name: Build e testes
     needs: version
     uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
 
   plan:
     name: Plano de tags
@@ -112,28 +114,9 @@ jobs:
           echo "docker: ${docker_tags[*]}"
           echo "git flutuantes: ${git_tags[*]:-nenhuma}"
 
-  binary:
-    name: Binário do nó (versão da tag)
-    needs: version
-    if: needs.version.outputs.published == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: v${{ needs.version.outputs.version }}
-      # Alinha o Cargo.toml, o Cargo.lock e os .csproj à versão da tag (só no build, sem commitar).
-      # O binário guarda essa versão (`taba --version`, /health, telemetria), por isso compila aqui.
-      - run: .github/scripts/set-version.sh "${{ needs.version.outputs.version }}"
-      - uses: ./.github/actions/node-binary
-      - uses: actions/upload-artifact@v4
-        with:
-          name: taba-node
-          path: dist/taba
-          retention-days: 1
-
   docker:
     name: Imagem no Docker Hub
-    needs: [version, ci, plan, binary]
+    needs: [version, ci, plan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

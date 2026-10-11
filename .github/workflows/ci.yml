@@ -1,9 +1,16 @@
-# Build e testes. Roda em pull request e é chamado pelo release.yml a cada push na main.
+# Build e testes dos componentes. Roda em pull request e é chamado pelo release.yml, que passa a versão
+# da tag: aí o servidor, os conectores e os pacotes saem com essa versão. Os binários e pacotes são
+# enviados como artefatos, e o job de imagem Docker os baixa (não compila nada).
 name: CI
 
 on:
   pull_request:
   workflow_call:
+    inputs:
+      version:
+        description: Versão do release (X.Y.Z ou X.Y.Z-rc.N). Vazia em pull request.
+        type: string
+        default: ""
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -17,26 +24,37 @@ env:
 
 jobs:
   server:
-    name: Servidor (Rust)
+    name: Servidor (build e testes)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Versão do release
+        if: inputs.version != ''
+        run: .github/scripts/set-version.sh "${{ inputs.version }}"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      # Binário estático (musl) do nó, para a imagem Docker.
+      - uses: ./.github/actions/node-binary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taba-node
+          path: dist/taba
+          retention-days: 1
 
   connector-rust:
-    name: Conector Rust
+    name: Conector Rust (build e testes)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: connectors/rust
     steps:
       - uses: actions/checkout@v4
+      - name: Versão do release
+        if: inputs.version != ''
+        run: .github/scripts/set-version.sh "${{ inputs.version }}"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -44,14 +62,27 @@ jobs:
         with:
           workspaces: connectors/rust
       - run: cargo fmt --all --check
+        working-directory: connectors/rust
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        working-directory: connectors/rust
       - run: cargo test --workspace --locked
+        working-directory: connectors/rust
+      - run: cargo build --release --locked -p taba-cli
+        working-directory: connectors/rust
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taba-cli
+          path: connectors/rust/target/release/taba-cli
+          retention-days: 1
 
   connector-csharp:
-    name: Conector C#
+    name: Conector C# (build e testes)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Versão do release
+        if: inputs.version != ''
+        run: .github/scripts/set-version.sh "${{ inputs.version }}"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
@@ -59,3 +90,15 @@ jobs:
             8.0.x
       # Sem TABA_URL os testes de integração são ignorados; o cluster de verdade fica no job `integration`.
       - run: dotnet test connectors/csharp/Taba.Client.Tests/Taba.Client.Tests.csproj --configuration Release
+      - name: Pacotes NuGet
+        run: |
+          for p in connectors/csharp/Taba.Client/Taba.Client.csproj \
+                   connectors/csharp/Taba.Client.Abstractions/Taba.Client.Abstractions.csproj \
+                   connectors/csharp/Taba.Client.Extensions.DependencyInjection/Taba.Client.Extensions.DependencyInjection.csproj; do
+            dotnet pack "$p" --configuration Release --output nupkg
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: nupkg/*.nupkg
+          retention-days: 1

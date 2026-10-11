@@ -1,18 +1,13 @@
-# Compila o binário `taba` (estático, musl) no runner Ubuntu e o deixa em `dist/taba`, para o Dockerfile.ci.
-# O cache do Cargo (Swatinem/rust-cache) fica no runner, então um commit que muda só código reaproveita
-# as dependências. O Dockerfile da raiz compila o mesmo binário do zero, dentro do container.
+# Compila o binário `taba` (estático, musl) em `dist/taba`, para a imagem Docker. O job que chama a ação
+# instala o target x86_64-unknown-linux-musl no toolchain e o cache do Cargo.
 name: Binário do nó (musl)
-description: Compila taba-node estático (musl) em dist/taba, com cache do Cargo.
+description: Compila taba-node estático (musl) em dist/taba.
 
 runs:
   using: composite
   steps:
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: x86_64-unknown-linux-musl
     - shell: bash
       run: sudo apt-get update && sudo apt-get install -y musl-tools
-    - uses: Swatinem/rust-cache@v2
     - shell: bash
       env:
         RUSTFLAGS: "-C target-feature=+crt-static"
