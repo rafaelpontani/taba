@@ -1,0 +1,152 @@
+# Release por tag. Quem lança cria a tag, e o pipeline publica:
+#
+#   git tag v0.1.0-rc.1 && git push origin v0.1.0-rc.1     # release candidate
+#   git tag v0.1.0      && git push origin v0.1.0          # versão final
+#
+# Só tags X.Y.Z ou X.Y.Z-rc.N disparam (as tags flutuantes v0.1, v0.1-rc, v0 e v0-rc, que este
+# workflow move, não casam com o filtro e por isso não disparam nada).
+#
+# Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
+#   0.1.0-rc.2 -> 0.1.0-rc.2, 0.1-rc, 0-rc, rc          (git: v0.1-rc, v0-rc)
+#   0.1.0      -> 0.1.0, 0.1, 0, latest                 (git: v0.1, v0)
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  plan:
+    name: Plano de tags
+    needs: ci
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      docker_tags: ${{ steps.plan.outputs.docker_tags }}
+      git_tags: ${{ steps.plan.outputs.git_tags }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          re='^([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$'
+          if [[ ! $version =~ $re ]]; then
+            echo "tag inválida: $tag (use vX.Y.Z ou vX.Y.Z-rc.N)" >&2
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          rc="${BASH_REMATCH[4]}"
+
+          # A maior versão, entre as tags da mesma família (rc ou final), que casa com o filtro.
+          highest() {
+            git tag -l 'v*.*.*' | sed 's/^v//' | grep -E "$1" | sort -V | tail -n 1
+          }
+
+          docker_tags=("$version")
+          git_tags=()
+          if [[ -n $rc ]]; then
+            prerelease=true
+            family='-rc\.[0-9]+$'
+            [[ $(highest "^${major}\.${minor}\.[0-9]+${family}") == "$version" ]] \
+              && docker_tags+=("${major}.${minor}-rc") && git_tags+=("v${major}.${minor}-rc")
+            [[ $(highest "^${major}\.[0-9]+\.[0-9]+${family}") == "$version" ]] \
+              && docker_tags+=("${major}-rc") && git_tags+=("v${major}-rc")
+            [[ $(highest "^[0-9]+\.[0-9]+\.[0-9]+${family}") == "$version" ]] \
+              && docker_tags+=("rc")
+          else
+            prerelease=false
+            family='$'
+            [[ $(highest "^${major}\.${minor}\.[0-9]+${family}") == "$version" ]] \
+              && docker_tags+=("${major}.${minor}") && git_tags+=("v${major}.${minor}")
+            [[ $(highest "^${major}\.[0-9]+\.[0-9]+${family}") == "$version" ]] \
+              && docker_tags+=("${major}") && git_tags+=("v${major}")
+            [[ $(highest "^[0-9]+\.[0-9]+\.[0-9]+${family}") == "$version" ]] \
+              && docker_tags+=("latest")
+          fi
+
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "docker_tags=${docker_tags[*]}"
+            echo "git_tags=${git_tags[*]:-}"
+          } >> "$GITHUB_OUTPUT"
+          echo "docker: ${docker_tags[*]}"
+          echo "git flutuantes: ${git_tags[*]:-nenhuma}"
+
+  docker:
+    name: Imagem no Docker Hub
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Alinha o Cargo.toml, o Cargo.lock e os .csproj à versão da tag (só no build, sem commitar).
+      - run: .github/scripts/set-version.sh "${{ needs.plan.outputs.version }}"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: tags
+        shell: bash
+        env:
+          IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/taba
+          DOCKER_TAGS: ${{ needs.plan.outputs.docker_tags }}
+        run: |
+          {
+            echo "list<<EOF"
+            for t in $DOCKER_TAGS; do echo "$IMAGE:$t"; done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: GitHub Release e tags flutuantes
+    needs: [plan, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release
+        shell: bash
+        run: |
+          if [[ "${{ needs.plan.outputs.prerelease }}" == "true" ]]; then
+            flags=(--prerelease --latest=false)
+          else
+            flags=(--latest)
+          fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME" "${flags[@]}"
+      - name: Tags flutuantes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for t in ${{ needs.plan.outputs.git_tags }}; do
+            git tag -f "$t" "$GITHUB_SHA"
+            git push -f origin "refs/tags/$t"
+          done
