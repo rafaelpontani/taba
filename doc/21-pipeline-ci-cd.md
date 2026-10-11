@@ -57,9 +57,8 @@ Uma detecção de mudança (`dorny/paths-filter`) decide quais jobs rodam, para 
 2. **connector-rust**: o mesmo, com `working-directory: connectors/rust`.
 3. **connector-csharp**: `dotnet test` unitário, com SDK do .NET 8 e do 10 (o csproj condiciona o `net10.0` ao SDK).
 4. **integration**: só em push na main, ou em PR que toque `docker/**`, `Dockerfile`, `crates/**` ou `connectors/**`. Roda `integration.sh` e depois `docker/validate.sh`. É o job mais caro (build Docker do servidor), por isso fica atrás de filtro de caminho.
-5. **docker-build**: só em PR. Compila o `taba` com a ação `.github/actions/node-binary` e monta a imagem com `Dockerfile.ci`, sem push, para validar o Dockerfile.
-6. **binary** (`release.yml`, depois do semantic-release e só com versão nova): aplica o `set-version.sh`, compila com a ação `node-binary` e envia o artefato `taba-node`. A versão fica dentro do binário, por isso compila depois que a versão existe.
-7. **docker** (`release.yml`): baixa o artefato `taba-node` e monta a imagem com `Dockerfile.ci`. Não compila nada.
+5. **binary** (`release.yml`, depois do semantic-release e só com versão nova, em paralelo com os testes): aplica o `set-version.sh`, compila com a ação `node-binary` e envia o artefato `taba-node`. A versão fica dentro do binário, por isso compila depois que a versão existe. Não há build de imagem em PR: o `Dockerfile.ci` só roda na publicação.
+6. **docker** (`release.yml`): baixa o artefato `taba-node` e monta a imagem com `Dockerfile.ci`. Não compila nada.
 
 Duas imagens, para duas finalidades: o `Dockerfile` da raiz compila tudo dentro do container e é o que o usuário usa para baixar o repositório e fazer o build (`docker build -t taba .`). O `Dockerfile.ci` é o da pipeline, rápido porque reaproveita o binário já compilado com o cache do runner. As duas geram a mesma imagem.
 
@@ -119,7 +118,7 @@ Antes de publicar:
 
 ## 6. Ordem de implementação
 
-1. `ci.yml` com os quatro jobs unitários e o `docker-build`. Já dá valor sozinho.
+1. `ci.yml` com os quatro jobs unitários. Já dá valor sozinho.
 2. Job `integration` com o filtro de caminho.
 3. `release.yml` com semantic-release, Release e tags flutuantes.
 4. Imagem no GHCR e binários na Release.
