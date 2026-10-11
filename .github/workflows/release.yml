@@ -1,6 +1,7 @@
-# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): roda o CI, o
-# semantic-release calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub
-# Release, e o pipeline publica a imagem no Docker Hub e move as tags flutuantes. Commits sem
+# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
+# calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release primeiro. Depois
+# rodam os testes; se passarem, o binário é compilado com essa versão, e o pipeline publica a imagem no
+# Docker Hub e move as tags flutuantes. Commits sem
 # feat/fix/perf (docs, chore, ci...) não geram versão.
 #
 # Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
@@ -22,12 +23,9 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-
+  # A versão sai primeiro, antes de qualquer outro job. Os testes (ci) vêm depois e só liberam o binário.
   version:
     name: Versão (semantic-release)
-    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -49,6 +47,11 @@ jobs:
             conventional-changelog-conventionalcommits@8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ci:
+    name: Testes
+    needs: version
+    uses: ./.github/workflows/ci.yml
 
   plan:
     name: Plano de tags
@@ -130,7 +133,7 @@ jobs:
 
   docker:
     name: Imagem no Docker Hub
-    needs: [version, plan, binary]
+    needs: [version, ci, plan, binary]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

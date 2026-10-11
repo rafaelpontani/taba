@@ -173,7 +173,7 @@ Só os commits depois da tag semente contam para a próxima versão. A branch `r
 
 ### 7.3 Fluxo do release.yml
 
-`push na release ou na main` → CI → semantic-release (tag e GitHub Release; só se houver versão nova) → plano de tags → imagem no Docker Hub → tags git flutuantes. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
+`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → em paralelo: CI (testes), binário com a versão da tag e plano de tags → imagem no Docker Hub (só se os testes passaram) → tags git flutuantes. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
 
 ### 7.4 Tags flutuantes
 
