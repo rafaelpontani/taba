@@ -508,8 +508,10 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
             .any(|p| p.node_id == victim_for_wait && !p.up)
     })
     .await;
+    // Prazo de 10 s, como o `eventually`: runners lentos (arm64 no CI) levam mais que 5 s.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     let mut delivered: Vec<String> = Vec::new();
-    for _ in 0..200 {
+    while tokio::time::Instant::now() < deadline {
         for message in consume(
             cluster.node(1),
             "pedidos",
