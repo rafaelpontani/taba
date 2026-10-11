@@ -1,17 +1,18 @@
-# A cada push na main: roda o CI, o semantic-release calcula a versão pelos commits (Conventional
-# Commits) e cria a tag vX.Y.Z-rc.N e a GitHub Release, e o pipeline publica a imagem no Docker Hub
-# e move as tags flutuantes. Commits sem feat/fix/perf (docs, chore, ci...) não geram versão.
+# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): roda o CI, o
+# semantic-release calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub
+# Release, e o pipeline publica a imagem no Docker Hub e move as tags flutuantes. Commits sem
+# feat/fix/perf (docs, chore, ci...) não geram versão.
 #
 # Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
 #   0.1.0-rc.2 -> 0.1.0-rc.2, 0.1-rc, 0-rc, rc          (git: v0.1-rc, v0-rc)
 #   0.1.0      -> 0.1.0, 0.1, 0, latest                 (git: v0.1, v0)
 #
-# Configuração do semantic-release: .releaserc.json. Para sair do ciclo rc, ver doc/21-pipeline-ci-cd.md.
+# Configuração do semantic-release: .releaserc.json. Fluxo de candidatas e promoção: doc/21-pipeline-ci-cd.md.
 name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, release]
 
 concurrency:
   group: release

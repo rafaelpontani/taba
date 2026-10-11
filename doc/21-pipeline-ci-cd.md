@@ -43,7 +43,7 @@ Números do conhecimento do autor, não verificados no momento da escrita: confi
 .github/
   workflows/
     ci.yml          # PR e push em main: roda por caminho alterado
-    release.yml     # push na main: CI, semantic-release, imagem no Docker Hub e tags flutuantes (seção 7)
+    release.yml     # push na release (rc) ou na main (final): CI, semantic-release, imagem no Docker Hub e tags flutuantes (seção 7)
     manual.yml      # workflow_dispatch com inputs (opcional, fase 2)
   actions/
     setup-rust/     # composite: toolchain, cache, clippy
@@ -125,39 +125,51 @@ Antes de publicar:
 
 ## 7. Versionamento e release (decidido)
 
-O **semantic-release** gera as versões e as tags automaticamente, a cada push na `main`, a partir dos commits (Conventional Commits). Nenhuma tag é criada à mão.
+O **semantic-release** gera as versões e as tags automaticamente a partir dos commits (Conventional Commits). Nenhuma tag é criada à mão. São duas branches de release (`.releaserc.json`: `branches: ["main", {"name": "release", "prerelease": "rc"}]`):
 
-Enquanto o projeto está no ciclo `0.1`, a `main` é uma branch de **pré-release** (`rc`): `.releaserc.json` tem `branches: ["release", {"name": "main", "prerelease": "rc"}]`. Cada commit relevante gera a próxima candidata: `v0.1.0-rc.1`, `rc.2`, `rc.3`...
+| Branch | O que gera | Exemplo |
+|---|---|---|
+| `release` | **candidatas** (pré-release `rc`) | `v0.1.0-rc.1`, `rc.2`, `rc.3`... |
+| `main` | **versões finais** | `v0.1.0`, `v0.1.1`... |
 
-### 7.1 Que commit gera versão
+### 7.1 Fluxo
+
+1. O desenvolvimento entra na `release` (direto ou por PR). Cada commit relevante gera a próxima candidata, com imagem no Docker Hub (`0.1.0-rc.N`, `0.1-rc`, `0-rc`, `rc`).
+2. Aprovada a candidata, a `release` é promovida para a `main` (merge, de preferência por PR `release` → `main`). A `main` gera a versão final (`0.1.0`, com `0.1`, `0` e `latest`).
+3. O ciclo seguinte volta à `release`: o primeiro `fix` dá `0.1.1-rc.1`, um `feat` dá `0.2.0-rc.1`. A `release` deve receber de volta a `main` (merge `main` → `release`) para não divergir.
+4. Um hotfix pode ir direto na `main` (`0.1.1`); depois, mesclar a `main` na `release`.
+
+O comportamento foi testado em repositório descartável: 3 commits na `release` geraram `0.1.0-rc.1` a `rc.3`; o merge na `main` gerou `0.1.0`; depois `0.1.1-rc.1` e `0.2.0-rc.1`; um hotfix na `main` gerou `0.1.1`.
+
+### 7.1.1 Que commit gera versão
 
 | Commit | Resultado |
 |---|---|
-| `feat:`, `fix:`, `perf:` | nova `rc.N` |
-| `feat!:` ou `BREAKING CHANGE:` | também só uma nova `rc.N` (a regra `breaking -> minor` impede o salto para `1.0.0-rc.1`) |
+| `feat:`, `fix:`, `perf:` | nova versão (`rc.N` na `release`, final na `main`) |
+| `feat!:` ou `BREAKING CHANGE:` | conta como `minor` (a regra `breaking -> minor` impede o salto para `1.0.0` enquanto o projeto está em `0.x`) |
 | `docs:`, `chore:`, `ci:`, `refactor:`, `test:` | nenhuma versão |
 
-O preset é o `conventionalcommits`, que entende o `!`. O preset padrão (`angular`) ignora `feat!:`. Testado em repositório descartável.
+O preset é o `conventionalcommits`, que entende o `!`. O preset padrão (`angular`) ignora `feat!:`.
 
 ### 7.2 Preparação única (bootstrap)
 
-O semantic-release começa em `1.0.0` quando não há tag anterior, e a branch `main` de pré-release exige que exista uma branch de release estável. Por isso o repositório precisa de:
-
-1. uma **tag semente** `v0.1.0-rc.0`, com a anotação de canal `{"channels":["main"]}` (o canal de uma branch de pré-release tem o nome da branch). Sem a anotação o semantic-release a ignora;
-2. uma branch `release`, ainda sem uso, reservada para as versões estáveis.
+O semantic-release começa em `1.0.0` quando não há tag anterior. Para começar em `0.1.0`, o repositório precisa de uma **tag semente estável** `v0.0.0` num commit que esteja nas duas branches (a semente de canal `rc` usada na primeira versão deste desenho foi removida):
 
 ```bash
-git tag v0.1.0-rc.0 <commit-base>
-git notes --ref semantic-release-v0.1.0-rc.0 add -m '{"channels":["main"]}' v0.1.0-rc.0
-git push origin v0.1.0-rc.0 refs/notes/semantic-release-v0.1.0-rc.0
-git push origin <commit-base>:refs/heads/release
+# remover a semente antiga
+git push origin --delete v0.1.0-rc.0 refs/notes/semantic-release-v0.1.0-rc.0
+git tag -d v0.1.0-rc.0
+git update-ref -d refs/notes/semantic-release-v0.1.0-rc.0
+# nova semente
+git tag v0.0.0 <commit-base>
+git push origin v0.0.0
 ```
 
-Só os commits depois da tag semente contam para a próxima versão.
+Só os commits depois da tag semente contam para a próxima versão. A branch `release` já existe.
 
 ### 7.3 Fluxo do release.yml
 
-`push na main` → CI → semantic-release (tag e GitHub Release; só se houver versão nova) → plano de tags → imagem no Docker Hub → tags git flutuantes. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
+`push na release ou na main` → CI → semantic-release (tag e GitHub Release; só se houver versão nova) → plano de tags → imagem no Docker Hub → tags git flutuantes. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
 
 ### 7.4 Tags flutuantes
 
@@ -185,9 +197,9 @@ Versão flutuante no NuGet torna o build não reproduzível, a menos que se use 
 
 O `.github/scripts/set-version.sh` grava a versão calculada (inclusive `-rc.N`) no `Cargo.toml` e `Cargo.lock` do servidor, nos dois `Cargo.toml` e no `Cargo.lock` dos conectores Rust e nos `<Version>` dos `.csproj`, só dentro do build do release, sem commitar. O `taba --version` da imagem reporta a versão da tag. No repositório os arquivos ficam em `0.1.0`; para sincronizar à mão, rode o script.
 
-### 7.7 Sair do ciclo rc (lançar o 0.1.0 final)
+### 7.7 Sair do ciclo `0.x`
 
-Fazer a `main` passar a ser a branch estável: em `.releaserc.json`, trocar `branches` por `["main", {"name": "rc", "prerelease": true}]` e, a partir daí, as candidatas saem da branch `rc` e a versão final da `main`. A tag final precisa estar acima das candidatas (`0.1.0 > 0.1.0-rc.N`). Detalhar e testar quando chegar a hora.
+Quando a API estabilizar, remover a regra `breaking -> minor` de `.releaserc.json`: um breaking change passa a gerar a versão `major` (`1.0.0-rc.1` na `release` e `1.0.0` na `main`).
 
 ### 7.8 Estado e limitações
 
