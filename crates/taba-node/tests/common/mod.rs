@@ -259,12 +259,14 @@ fn url(addr: SocketAddr, path: &str) -> String {
 
 /// Confere o corpo de um `ErrorResponse` e devolve o `code`.
 pub async fn error_code(response: Response, expected_status: u16) -> String {
-    assert_eq!(response.status().as_u16(), expected_status);
+    let status = response.status().as_u16();
     let header_id = response.headers()["x-request-id"]
         .to_str()
         .unwrap()
         .to_owned();
     let body: serde_json::Value = response.json().await.expect("corpo JSON");
+    // O corpo vai na mensagem: sem ele, um erro inesperado não diz qual foi.
+    assert_eq!(status, expected_status, "corpo da resposta: {body}");
     assert_eq!(
         body["requestId"], header_id,
         "requestId do corpo e X-Request-Id divergem"
