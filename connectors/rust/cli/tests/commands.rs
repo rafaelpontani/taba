@@ -1515,11 +1515,9 @@ fn version_shows_the_program_and_the_contract_version() {
     ] {
         let out = rig.run(args);
         assert_eq!(out.code, 0);
-        assert!(
-            out.out.starts_with("taba-cli 0.1.0 (contrato da API 1)"),
-            "{}",
-            out.out
-        );
+        // A versão vem do Cargo.toml: no release o set-version a troca pela versão da tag.
+        let expected = format!("taba-cli {} (contrato da API 1)", env!("CARGO_PKG_VERSION"));
+        assert!(out.out.starts_with(&expected), "{}", out.out);
     }
 }
 
