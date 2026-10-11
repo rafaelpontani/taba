@@ -1,6 +1,6 @@
 # 21 — Pipeline de CI/CD (GitHub Actions)
 
-Plano do pipeline do Taba. Status: **fase 1 implementada** (`.github/workflows/ci.yml` e `release.yml`): build, testes e release por tag, com imagem no Docker Hub. Versão única para todo o repositório (seção 7).
+Plano do pipeline do Taba. Status: **fase 1 implementada** (`.github/workflows/ci.yml`, `release.yml` e `.releaserc.json`): build, testes, semantic-release e imagem no Docker Hub. Versão única para todo o repositório (seção 7).
 
 ## 1. O que o repositório tem hoje
 
@@ -43,7 +43,7 @@ Números do conhecimento do autor, não verificados no momento da escrita: confi
 .github/
   workflows/
     ci.yml          # PR e push em main: roda por caminho alterado
-    release.yml     # por tag vX.Y.Z[-rc.N]: CI, imagem no Docker Hub, Release e tags flutuantes (seção 7)
+    release.yml     # push na main: CI, semantic-release, imagem no Docker Hub e tags flutuantes (seção 7)
     manual.yml      # workflow_dispatch com inputs (opcional, fase 2)
   actions/
     setup-rust/     # composite: toolchain, cache, clippy
@@ -64,7 +64,7 @@ Os jobs usam `concurrency` com `cancel-in-progress` em PRs, para não gastar min
 ### 4.2 release.yml (só em main)
 
 1. Roda depois do CI verde (`workflow_run`, ou reaproveitando o `ci.yml` por `workflow_call`).
-2. **Tag manual** (seção 7): quem lança cria `vX.Y.Z` ou `vX.Y.Z-rc.N`. O semantic-release (versão automática pelos commits) fica para depois do 1.0, quando a versão deixar de ser controlada à mão.
+2. **semantic-release** lê os commits desde a última tag e cria a tag e a GitHub Release (detalhes na seção 7).
 3. Com a versão definida, jobs em paralelo:
    - **docker**: build multi-arch (amd64 e arm64) com buildx, push para `ghcr.io/rafaelpontani/taba:X.Y.Z` e `:latest`.
    - **binários**: `taba` e `taba-cli` anexados à Release, musl estático.
@@ -117,7 +117,7 @@ Antes de publicar:
 
 1. `ci.yml` com os quatro jobs unitários e o `docker-build`. Já dá valor sozinho.
 2. Job `integration` com o filtro de caminho.
-3. `release.yml` por tag, com Release e tags flutuantes.
+3. `release.yml` com semantic-release, Release e tags flutuantes.
 4. Imagem no GHCR e binários na Release.
 5. `dotnet pack` e `cargo publish --dry-run` no release (validação, sem publicar).
 6. Com o repo público e os secrets criados: Docker Hub, nuget.org e crates.io.
@@ -125,16 +125,41 @@ Antes de publicar:
 
 ## 7. Versionamento e release (decidido)
 
-O semantic-release foi descartado por ora: ele nunca volta a versão, e sem tag começa em 1.0.0, o que não serve para o ciclo 0.1.0-rc. A release é **disparada por tag**, criada por quem lança:
+O **semantic-release** gera as versões e as tags automaticamente, a cada push na `main`, a partir dos commits (Conventional Commits). Nenhuma tag é criada à mão.
 
+Enquanto o projeto está no ciclo `0.1`, a `main` é uma branch de **pré-release** (`rc`): `.releaserc.json` tem `branches: ["release", {"name": "main", "prerelease": "rc"}]`. Cada commit relevante gera a próxima candidata: `v0.1.0-rc.1`, `rc.2`, `rc.3`...
+
+### 7.1 Que commit gera versão
+
+| Commit | Resultado |
+|---|---|
+| `feat:`, `fix:`, `perf:` | nova `rc.N` |
+| `feat!:` ou `BREAKING CHANGE:` | também só uma nova `rc.N` (a regra `breaking -> minor` impede o salto para `1.0.0-rc.1`) |
+| `docs:`, `chore:`, `ci:`, `refactor:`, `test:` | nenhuma versão |
+
+O preset é o `conventionalcommits`, que entende o `!`. O preset padrão (`angular`) ignora `feat!:`. Testado em repositório descartável.
+
+### 7.2 Preparação única (bootstrap)
+
+O semantic-release começa em `1.0.0` quando não há tag anterior, e a branch `main` de pré-release exige que exista uma branch de release estável. Por isso o repositório precisa de:
+
+1. uma **tag semente** `v0.1.0-rc.0`, com a anotação de canal `{"channels":["main"]}` (o canal de uma branch de pré-release tem o nome da branch). Sem a anotação o semantic-release a ignora;
+2. uma branch `release`, ainda sem uso, reservada para as versões estáveis.
+
+```bash
+git tag v0.1.0-rc.0 <commit-base>
+git notes --ref semantic-release-v0.1.0-rc.0 add -m '{"channels":["main"]}' v0.1.0-rc.0
+git push origin v0.1.0-rc.0 refs/notes/semantic-release-v0.1.0-rc.0
+git push origin <commit-base>:refs/heads/release
 ```
-git tag v0.1.0-rc.1 && git push origin v0.1.0-rc.1     # release candidate
-git tag v0.1.0      && git push origin v0.1.0          # versão final
-```
 
-Só tags `X.Y.Z` ou `X.Y.Z-rc.N` são aceitas. O `release.yml` roda o CI, calcula as tags, publica a imagem no Docker Hub, cria a GitHub Release (pre-release se for rc) e move as tags git flutuantes.
+Só os commits depois da tag semente contam para a próxima versão.
 
-### 7.1 Tags flutuantes
+### 7.3 Fluxo do release.yml
+
+`push na main` → CI → semantic-release (tag e GitHub Release; só se houver versão nova) → plano de tags → imagem no Docker Hub → tags git flutuantes. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
+
+### 7.4 Tags flutuantes
 
 Cada tag flutuante só avança se a versão publicada for a maior do seu escopo e da sua família (rc ou final).
 
@@ -143,9 +168,9 @@ Cada tag flutuante só avança se a versão publicada for a maior do seu escopo 
 | `0.1.0-rc.2` | `0.1.0-rc.2`, `0.1-rc`, `0-rc`, `rc` | `v0.1-rc`, `v0-rc` |
 | `0.1.0` | `0.1.0`, `0.1`, `0`, `latest` | `v0.1`, `v0` |
 
-As tags flutuantes não casam com o filtro `v*.*.*` do workflow, então movê-las não dispara release. Em `0.x` o semver permite quebra a cada minor: `0.1` e `v0.1` são os ponteiros seguros; `0` e `v0` podem pular para um 0.2 incompatível.
+Em `0.x` o semver permite quebra a cada minor: `0.1` e `v0.1` são os ponteiros seguros; `0` e `v0` podem pular para um 0.2 incompatível.
 
-### 7.2 Pacotes (NuGet e crates.io)
+### 7.5 Pacotes (NuGet e crates.io)
 
 Versões publicadas são imutáveis e não há tag flutuante: quem consome usa faixas de versão.
 
@@ -156,13 +181,17 @@ Versões publicadas são imutáveis e não há tag flutuante: quem consome usa f
 
 Versão flutuante no NuGet torna o build não reproduzível, a menos que se use *lock file*.
 
-### 7.3 Estado da implementação
+### 7.6 Versão nos arquivos
 
-Feito: `ci.yml` (servidor, conector Rust, conector C# unitário e `docker build`) e `release.yml` (por tag), com a versão do servidor alinhada em `0.1.0` (os conectores já estavam em 0.1.0).
+O `.github/scripts/set-version.sh` grava a versão calculada (inclusive `-rc.N`) no `Cargo.toml` e `Cargo.lock` do servidor, nos dois `Cargo.toml` e no `Cargo.lock` dos conectores Rust e nos `<Version>` dos `.csproj`, só dentro do build do release, sem commitar. O `taba --version` da imagem reporta a versão da tag. No repositório os arquivos ficam em `0.1.0`; para sincronizar à mão, rode o script.
 
-Limitações conhecidas:
+### 7.7 Sair do ciclo rc (lançar o 0.1.0 final)
 
-- **Versão nos arquivos:** o `.github/scripts/set-version.sh` grava a versão da tag (inclusive `-rc.N`) no `Cargo.toml` e `Cargo.lock` do servidor, nos dois `Cargo.toml` e no `Cargo.lock` dos conectores Rust e nos `<Version>` dos `.csproj`, só no build do release, sem commitar. O binário `taba --version` reporta a versão da tag. No repositório os arquivos ficam na última versão final (hoje `0.1.0`); para sincronizar à mão, rode o script.
+Fazer a `main` passar a ser a branch estável: em `.releaserc.json`, trocar `branches` por `["main", {"name": "rc", "prerelease": true}]` e, a partir daí, as candidatas saem da branch `rc` e a versão final da `main`. A tag final precisa estar acima das candidatas (`0.1.0 > 0.1.0-rc.N`). Detalhar e testar quando chegar a hora.
+
+### 7.8 Estado e limitações
+
+Feito: `ci.yml` (servidor, conector Rust, conector C# unitário e `docker build`), `release.yml` e `.releaserc.json`.
+
 - **Imagem só amd64**: arm64 sob QEMU custa muitos minutos no plano privado.
 - **Fora desta fase:** job `integration` (`integration.sh` e `validate.sh`), binários na Release, NuGet e crates.io.
-- Antes do primeiro release, fazer o push dos commits na `main`, com o CI verde.

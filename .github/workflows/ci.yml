@@ -1,10 +1,8 @@
-# Build e testes. Roda em pull request e em push na main, e é chamado pelo release.yml a cada tag.
+# Build e testes. Roda em pull request e é chamado pelo release.yml a cada push na main.
 name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_call:
 
 concurrency:
