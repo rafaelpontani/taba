@@ -1,0 +1,59 @@
+# Build e testes do servidor (taba-node), para x86_64 e arm64 em runners nativos. Chamado pelo ci.yml (pull
+# request) e pelo release.yml, que passa a versão da tag. Envia o binário estático como o artefato
+# `taba-node-<arch>`, usado pela imagem Docker e pela GitHub Release.
+name: Build do servidor
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Versão do release (X.Y.Z ou X.Y.Z-rc.N). Vazia em pull request.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  server:
+    name: Servidor (build e testes, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            triple: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            triple: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versão do release
+        if: inputs.version != ''
+        run: .github/scripts/set-version.sh "${{ inputs.version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: ${{ matrix.triple }}-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      # Formatação e lint só em x86_64: o código é o mesmo, não precisa repetir.
+      - run: cargo fmt --all --check
+        if: matrix.arch == 'amd64'
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        if: matrix.arch == 'amd64'
+      - run: cargo test --workspace --locked
+      # Binário estático (musl) do nó, para a imagem Docker e a release.
+      - uses: ./.github/actions/node-binary
+        with:
+          target: ${{ matrix.triple }}-unknown-linux-musl
+          arch: ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taba-node-${{ matrix.arch }}
+          path: dist/taba-${{ matrix.arch }}
+          retention-days: 1

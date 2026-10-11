@@ -1,6 +1,6 @@
 # A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
 # calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release primeiro. Depois
-# o ci.yml compila e testa com essa versão e envia os binários como artefatos. Se os testes passarem, em
+# os builds (servidor, conector Rust e conector C#) compilam e testam com essa versão e enviam os binários como artefatos. Se os testes passarem, em
 # paralelo: o job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e o job de release
 # anexa os binários e pacotes à GitHub Release. Depois movem as tags flutuantes.
 # Commits sem feat/fix/perf (docs, chore, ci...) não geram versão.
@@ -49,10 +49,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  ci:
-    name: Build e testes
+  # Os três builds saem em paralelo, cada um com a versão da tag. O que as imagens e a release usam
+  # (servidor e conector Rust) não espera o conector C#, e vice-versa.
+  server:
+    name: Servidor
     needs: version
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/build-server.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  connector-rust:
+    name: Conector Rust
+    needs: version
+    uses: ./.github/workflows/build-connector-rust.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  connector-csharp:
+    name: Conector C#
+    needs: version
+    uses: ./.github/workflows/build-connector-csharp.yml
     with:
       version: ${{ needs.version.outputs.version }}
 
@@ -117,7 +133,7 @@ jobs:
 
   docker:
     name: Imagens no Docker Hub
-    needs: [version, ci, plan]
+    needs: [version, server, connector-rust, plan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,13 +186,15 @@ jobs:
   # Os binários e pacotes do ci vão para a GitHub Release da versão, em paralelo com a imagem Docker.
   release-assets:
     name: Binários na GitHub Release
-    needs: [version, ci]
+    needs: [version, server, connector-rust, connector-csharp, docker]
     if: needs.version.outputs.published == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Sem checkout não há .git aqui: o gh precisa saber o repositório por esta variável.
+      GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       # Baixa uma pasta por artefato: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64 e
@@ -204,7 +222,7 @@ jobs:
 
   floating-tags:
     name: Tags flutuantes
-    needs: [version, plan, docker]
+    needs: [version, plan, release-assets]
     if: needs.plan.outputs.git_tags != ''
     runs-on: ubuntu-latest
     permissions:

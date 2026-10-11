@@ -171,7 +171,7 @@ Só os commits depois da tag semente contam para a próxima versão. A branch `r
 
 ### 7.3 Fluxo do release.yml
 
-`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → CI (build e testes, com a versão da tag, gera os artefatos `taba-node`, `taba-cli` e `nuget-packages`) e plano de tags, em paralelo → em paralelo: imagem no Docker Hub (baixa `taba-node`) e binários na GitHub Release (baixa `taba-node`, `taba-cli` e `nuget-packages`, renomeados com a versão; só se os testes passaram) → tags git flutuantes. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
+`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → builds, em paralelo, cada um num workflow reutilizável com a versão da tag (`build-server.yml`, `build-connector-rust.yml`, `build-connector-csharp.yml`; artefatos `taba-node-<arch>`, `taba-cli-<arch>` e `nuget-packages`) e plano de tags → imagens no Docker Hub (esperam servidor, conector Rust e plano) → binários na GitHub Release (esperam os três builds e a imagem) → tags git flutuantes (esperam a Release). Assim as tags só avançam quando a imagem e os binários da versão já estão publicados. O `ci.yml` só roda em pull request e chama os mesmos três workflows, sem versão. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
 
 ### 7.4 Tags flutuantes
 

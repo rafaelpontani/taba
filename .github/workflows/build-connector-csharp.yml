@@ -1,0 +1,43 @@
+# Build e testes do conector C# e pacotes NuGet. Chamado pelo ci.yml (pull request) e pelo release.yml, que
+# passa a versão da tag. Envia os .nupkg como o artefato `nuget-packages`, usado pela GitHub Release.
+name: Build do conector C#
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Versão do release (X.Y.Z ou X.Y.Z-rc.N). Vazia em pull request.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  connector-csharp:
+    name: Conector C# (build e testes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versão do release
+        if: inputs.version != ''
+        run: .github/scripts/set-version.sh "${{ inputs.version }}"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+      # Sem TABA_URL os testes de integração são ignorados; o cluster de verdade fica no job `integration`.
+      - run: dotnet test connectors/csharp/Taba.Client.Tests/Taba.Client.Tests.csproj --configuration Release
+      - name: Pacotes NuGet
+        run: |
+          for p in connectors/csharp/Taba.Client/Taba.Client.csproj \
+                   connectors/csharp/Taba.Client.Abstractions/Taba.Client.Abstractions.csproj \
+                   connectors/csharp/Taba.Client.Extensions.DependencyInjection/Taba.Client.Extensions.DependencyInjection.csproj; do
+            dotnet pack "$p" --configuration Release --output nupkg
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: nupkg/*.nupkg
+          retention-days: 1

@@ -1,0 +1,68 @@
+# Build e testes do conector Rust (taba-cli), para x86_64 e arm64 em runners nativos. Chamado pelo ci.yml
+# (pull request) e pelo release.yml, que passa a versão da tag. Envia o binário estático como o artefato
+# `taba-cli-<arch>`, usado pela imagem Docker do CLI e pela GitHub Release.
+name: Build do conector Rust
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Versão do release (X.Y.Z ou X.Y.Z-rc.N). Vazia em pull request.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  connector-rust:
+    name: Conector Rust (build e testes, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            triple: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            triple: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versão do release
+        if: inputs.version != ''
+        run: .github/scripts/set-version.sh "${{ inputs.version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: ${{ matrix.triple }}-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: connectors/rust
+      - run: cargo fmt --all --check
+        if: matrix.arch == 'amd64'
+        working-directory: connectors/rust
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        if: matrix.arch == 'amd64'
+        working-directory: connectors/rust
+      - run: cargo test --workspace --locked
+        working-directory: connectors/rust
+      # Binário estático (musl), para a imagem Docker e a release.
+      - run: cargo build --release --locked -p taba-cli --target ${{ matrix.triple }}-unknown-linux-musl
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        working-directory: connectors/rust
+      - name: Binário em dist
+        run: |
+          mkdir -p dist
+          cp "connectors/rust/target/${{ matrix.triple }}-unknown-linux-musl/release/taba-cli" "dist/taba-cli-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taba-cli-${{ matrix.arch }}
+          path: dist/taba-cli-${{ matrix.arch }}
+          retention-days: 1
