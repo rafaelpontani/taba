@@ -199,9 +199,16 @@ jobs:
     steps:
       # Baixa uma pasta por artefato: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64 e
       # nuget-packages.
+      # Só os artefatos da release: sem filtro, o download pega também os `*.dockerbuild` que o
+      # build-push-action gera, e o download falha depois de 5 tentativas.
       - uses: actions/download-artifact@v4
         with:
+          pattern: taba-*
           path: assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: assets/nuget-packages
       # Nome com a versão e a arquitetura, para não se confundir com binários de outras releases.
       - name: Renomeia com a versão
         shell: bash
