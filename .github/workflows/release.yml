@@ -1,7 +1,8 @@
 # A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
 # calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release primeiro. Depois
-# o ci.yml compila e testa com essa versão e envia os binários como artefatos; se os testes passarem, o
-# job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e depois movem as tags flutuantes.
+# o ci.yml compila e testa com essa versão e envia os binários como artefatos. Se os testes passarem, em
+# paralelo: o job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e o job de release
+# anexa os binários e pacotes à GitHub Release. Depois movem as tags flutuantes.
 # Commits sem feat/fix/perf (docs, chore, ci...) não geram versão.
 #
 # Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
@@ -115,19 +116,23 @@ jobs:
           echo "git flutuantes: ${git_tags[*]:-nenhuma}"
 
   docker:
-    name: Imagem no Docker Hub
+    name: Imagens no Docker Hub
     needs: [version, ci, plan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: v${{ needs.version.outputs.version }}
+      # Baixa taba-node-* e taba-cli-*: dist/taba-amd64, dist/taba-arm64, dist/taba-cli-amd64 e
+      # dist/taba-cli-arm64.
       - uses: actions/download-artifact@v4
         with:
-          name: taba-node
+          pattern: taba-*
+          merge-multiple: true
           path: dist
       # O artefato perde a permissão de execução ao ser baixado.
-      - run: chmod +x dist/taba
+      - run: chmod +x dist/taba-*
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -136,20 +141,66 @@ jobs:
       - id: tags
         shell: bash
         env:
-          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/taba
+          USER_NAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_TAGS: ${{ needs.plan.outputs.docker_tags }}
         run: |
           {
-            echo "list<<EOF"
-            for t in $DOCKER_TAGS; do echo "$IMAGE:$t"; done
+            echo "server<<EOF"
+            for t in $DOCKER_TAGS; do echo "$USER_NAME/taba:$t"; done
+            echo "EOF"
+            echo "cli<<EOF"
+            for t in $DOCKER_TAGS; do echo "$USER_NAME/taba-cli:$t"; done
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.ci
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.list }}
+          tags: ${{ steps.tags.outputs.server }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.cli.ci
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.cli }}
+
+  # Os binários e pacotes do ci vão para a GitHub Release da versão, em paralelo com a imagem Docker.
+  release-assets:
+    name: Binários na GitHub Release
+    needs: [version, ci]
+    if: needs.version.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      # Baixa uma pasta por artefato: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64 e
+      # nuget-packages.
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+      # Nome com a versão e a arquitetura, para não se confundir com binários de outras releases.
+      - name: Renomeia com a versão
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          mv assets/taba-node-amd64/taba-amd64 "release/taba-$VERSION-x86_64-unknown-linux-musl"
+          mv assets/taba-node-arm64/taba-arm64 "release/taba-$VERSION-aarch64-unknown-linux-musl"
+          mv assets/taba-cli-amd64/taba-cli-amd64 "release/taba-cli-$VERSION-x86_64-unknown-linux-musl"
+          mv assets/taba-cli-arm64/taba-cli-arm64 "release/taba-cli-$VERSION-aarch64-unknown-linux-musl"
+          cp assets/nuget-packages/*.nupkg release/
+          ls -l release
+      - name: Envia para a release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "v$VERSION" release/* --clobber
 
   floating-tags:
     name: Tags flutuantes

@@ -68,7 +68,7 @@ Os jobs usam `concurrency` com `cancel-in-progress` em PRs, para não gastar min
 1. Roda depois do CI verde (`workflow_run`, ou reaproveitando o `ci.yml` por `workflow_call`).
 2. **semantic-release** lê os commits desde a última tag e cria a tag e a GitHub Release (detalhes na seção 7).
 3. Com a versão definida, jobs em paralelo:
-   - **docker**: build multi-arch (amd64 e arm64) com buildx, push para `ghcr.io/rafaelpontani/taba:X.Y.Z` e `:latest`.
+   - **docker**: build multi-arch (amd64 e arm64) com buildx, push para `ghcr.io/rafaelpontani/taba:X.Y.Z` e `:latest`. Duas imagens no Docker Hub: `rafaelpontani/taba` (o nó, `Dockerfile.ci`) e `rafaelpontani/taba-cli` (`Dockerfile.cli.ci`, ENTRYPOINT `taba-cli`), com as mesmas tags. Uso: `docker run --rm rafaelpontani/taba-cli --help`.
    - **binários**: `taba` e `taba-cli` anexados à Release, musl estático.
    - **nuget**: `dotnet pack` e `dotnet nuget push` para o nuget.org (secret `NUGET_API_KEY`).
    - **crates**: `cargo publish` do `taba-client` e do `taba-cli` (secret `CARGO_REGISTRY_TOKEN`). Pode ficar desligado até a publicação ser desejada.
@@ -171,7 +171,7 @@ Só os commits depois da tag semente contam para a próxima versão. A branch `r
 
 ### 7.3 Fluxo do release.yml
 
-`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → CI (build e testes, com a versão da tag, gera os artefatos `taba-node`, `taba-cli` e `nuget-packages`) e plano de tags, em paralelo → imagem no Docker Hub (baixa `taba-node`; só se os testes passaram) → tags git flutuantes. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
+`push na release ou na main` → semantic-release (tag e GitHub Release; só se houver versão nova; é o primeiro passo) → CI (build e testes, com a versão da tag, gera os artefatos `taba-node`, `taba-cli` e `nuget-packages`) e plano de tags, em paralelo → em paralelo: imagem no Docker Hub (baixa `taba-node`) e binários na GitHub Release (baixa `taba-node`, `taba-cli` e `nuget-packages`, renomeados com a versão; só se os testes passaram) → tags git flutuantes. Se os testes falharem depois da tag, a tag e a Release já existem: a correção vai numa versão seguinte. O semantic-release cria a tag com o `GITHUB_TOKEN`, e tags assim não disparam outros workflows: por isso tudo roda no mesmo workflow.
 
 ### 7.4 Tags flutuantes
 
@@ -207,5 +207,5 @@ Quando a API estabilizar, remover a regra `breaking -> minor` de `.releaserc.jso
 
 Feito: `ci.yml` (servidor, conector Rust, conector C# unitário e `docker build`), `release.yml` e `.releaserc.json`.
 
-- **Imagem só amd64**: arm64 sob QEMU custa muitos minutos no plano privado.
-- **Fora desta fase:** job `integration` (`integration.sh` e `validate.sh`), binários na Release, NuGet e crates.io.
+- **arm64**: `taba-node` e `taba-cli` compilam em runner nativo `ubuntu-24.04-arm` (sem QEMU). A imagem Docker é multi-arquitetura (amd64 e arm64) com QEMU só para montar a camada final, que é só cópia de binário. Os nomes na release levam a arquitetura (`x86_64` e `aarch64`). Minutos de runner arm64 contam no plano privado.
+- **Fora desta fase:** job `integration` (`integration.sh` e `validate.sh`), publicação NuGet e crates.io.

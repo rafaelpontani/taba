@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+#
+# A imagem do taba-cli usada pela pipeline (.github/workflows). Não compila nada: o binário estático
+# já vem pronto em dist/taba-cli-<arch>, gerado pelo job de conector Rust. O buildx (plataformas amd64 e
+# arm64) escolhe o arquivo pela TARGETARCH.
+#
+# Uso: `docker run --rm rafaelpontani/taba-cli --help`. Sem instalar o taba-cli na máquina.
+
+FROM alpine:3
+ARG TARGETARCH
+RUN apk add --no-cache ca-certificates \
+ && adduser -D -u 10001 taba
+COPY dist/taba-cli-${TARGETARCH} /usr/local/bin/taba-cli
+USER taba
+ENTRYPOINT ["taba-cli"]

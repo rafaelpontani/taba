@@ -1,6 +1,7 @@
 # Build e testes dos componentes. Roda em pull request e é chamado pelo release.yml, que passa a versão
-# da tag: aí o servidor, os conectores e os pacotes saem com essa versão. Os binários e pacotes são
-# enviados como artefatos, e o job de imagem Docker os baixa (não compila nada).
+# da tag: aí o servidor, os conectores e os pacotes saem com essa versão. Servidor e conector Rust rodam
+# para x86_64 e arm64 (runners nativos, sem emulação). Os binários e pacotes são enviados como artefatos,
+# e os jobs de release (imagem Docker e GitHub Release) os baixam sem compilar nada.
 name: CI
 
 on:
@@ -24,8 +25,18 @@ env:
 
 jobs:
   server:
-    name: Servidor (build e testes)
-    runs-on: ubuntu-latest
+    name: Servidor (build e testes, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            triple: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            triple: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Versão do release
@@ -34,22 +45,38 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: x86_64-unknown-linux-musl
+          targets: ${{ matrix.triple }}-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
+      # Formatação e lint só em x86_64: o código é o mesmo, não precisa repetir.
       - run: cargo fmt --all --check
+        if: matrix.arch == 'amd64'
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        if: matrix.arch == 'amd64'
       - run: cargo test --workspace --locked
-      # Binário estático (musl) do nó, para a imagem Docker.
+      # Binário estático (musl) do nó, para a imagem Docker e a release.
       - uses: ./.github/actions/node-binary
+        with:
+          target: ${{ matrix.triple }}-unknown-linux-musl
+          arch: ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: taba-node
-          path: dist/taba
+          name: taba-node-${{ matrix.arch }}
+          path: dist/taba-${{ matrix.arch }}
           retention-days: 1
 
   connector-rust:
-    name: Conector Rust (build e testes)
-    runs-on: ubuntu-latest
+    name: Conector Rust (build e testes, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            triple: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            triple: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Versão do release
@@ -58,21 +85,32 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: ${{ matrix.triple }}-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: connectors/rust
       - run: cargo fmt --all --check
+        if: matrix.arch == 'amd64'
         working-directory: connectors/rust
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        if: matrix.arch == 'amd64'
         working-directory: connectors/rust
       - run: cargo test --workspace --locked
         working-directory: connectors/rust
-      - run: cargo build --release --locked -p taba-cli
+      # Binário estático (musl), para a imagem Docker e a release.
+      - run: cargo build --release --locked -p taba-cli --target ${{ matrix.triple }}-unknown-linux-musl
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
         working-directory: connectors/rust
+      - name: Binário em dist
+        run: |
+          mkdir -p dist
+          cp "connectors/rust/target/${{ matrix.triple }}-unknown-linux-musl/release/taba-cli" "dist/taba-cli-${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: taba-cli
-          path: connectors/rust/target/release/taba-cli
+          name: taba-cli-${{ matrix.arch }}
+          path: dist/taba-cli-${{ matrix.arch }}
           retention-days: 1
 
   connector-csharp:

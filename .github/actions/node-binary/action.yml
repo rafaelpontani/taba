@@ -1,7 +1,15 @@
-# Compila o binário `taba` (estático, musl) em `dist/taba`, para a imagem Docker. O job que chama a ação
-# instala o target x86_64-unknown-linux-musl no toolchain e o cache do Cargo.
+# Compila o binário `taba` (estático, musl) em dist/taba-<arch>, para a imagem Docker e a release. O job
+# que chama a ação instala o target no toolchain e o cache do Cargo.
 name: Binário do nó (musl)
-description: Compila taba-node estático (musl) em dist/taba.
+description: Compila taba-node estático (musl) em dist/taba-<arch>.
+
+inputs:
+  target:
+    description: Target Rust musl (x86_64-unknown-linux-musl ou aarch64-unknown-linux-musl).
+    required: true
+  arch:
+    description: Arquitetura no nome do arquivo (amd64 ou arm64), a mesma que o Docker usa.
+    required: true
 
 runs:
   using: composite
@@ -11,8 +19,12 @@ runs:
     - shell: bash
       env:
         RUSTFLAGS: "-C target-feature=+crt-static"
-      run: cargo build --release --locked -p taba-node --target x86_64-unknown-linux-musl
+        TARGET: ${{ inputs.target }}
+      run: cargo build --release --locked -p taba-node --target "$TARGET"
     - shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        ARCH: ${{ inputs.arch }}
       run: |
         mkdir -p dist
-        cp target/x86_64-unknown-linux-musl/release/taba dist/taba
+        cp "target/$TARGET/release/taba" "dist/taba-$ARCH"
