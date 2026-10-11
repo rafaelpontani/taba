@@ -118,6 +118,10 @@ impl Transport for HttpTransport {
         request: Request,
     ) -> BoxFuture<'a, Result<Response, CallError>> {
         Box::pin(async move {
+            // A listagem de entrada passa por um balanceador (`cluster.entry-address`) que decide o nó
+            // por conexão: reaproveitar a conexão de uma tentativa na seguinte prenderia o bootstrap no
+            // mesmo nó (no reinício, o próprio nó, que ainda não tem a tabela). Cada listagem abre a sua.
+            let fresh_connection = matches!(request, Request::ListNodes);
             let mut call = request.to_http();
             // O contexto do trace segue com a chamada (doc 11, "Traces"; D119).
             crate::telemetry::trace::inject(&mut call.headers);
@@ -125,6 +129,9 @@ impl Transport for HttpTransport {
             let method = reqwest::Method::from_bytes(call.method.as_bytes())
                 .map_err(|e| CallError::Unreachable(e.to_string()))?;
             let mut builder = self.client.request(method, url);
+            if fresh_connection {
+                builder = builder.header("connection", "close");
+            }
             for (name, value) in &call.headers {
                 builder = builder.header(name.as_str(), value.as_str());
             }

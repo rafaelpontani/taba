@@ -56,6 +56,7 @@ Regras: [04-cluster.md](04-cluster.md), seções 6.2 e 6.5, e [06c-api-cluster.m
 | UC-ING-025 | Em modo desenvolvimento não há bootstrap: o nó sobe sozinho, e outro nó não consegue ingressar (a porta do cluster não é aberta). Um nó em produção que tenta ingressar num nó em desenvolvimento não consegue. | 04 §6.4, 06c | I | <!--t-->— |
 | UC-ING-026 | A tabela de membros **não** é persistida: o reinício do processo perde a tabela e o nó volta como nó novo. | 13 §12.9 | C | <!--t-->— |
 | UC-ING-027 | Uma versão (época) da tabela de membros diferente entre nós indica propagação incompleta (condição `membership-divergent`, `taba.cluster.members.version`). | 06c, 11 | C | <!--t-->`tests/cluster.rs::nodes_join_through_the_balancer_and_end_with_the_same_table` |
+| UC-ING-028 | Cada listagem de membros pelo `cluster.entry-address` abre uma **conexão nova** (`Connection: close`), sem reaproveitar a de uma tentativa anterior: o balanceador decide o nó por conexão, e uma conexão reaproveitada prenderia o bootstrap do nó que reinicia no próprio nó (que ainda não tem a tabela e responde `cluster.node-syncing`). | 04 §6.2, D139 | C | <!--t-->`src/cluster/transport/http/tests.rs::every_node_listing_opens_a_new_connection_so_the_balancer_can_pick_another_node` |
 
 ### FAL: detecção de falhas, votação de exclusão e saída por falha
 

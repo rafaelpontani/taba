@@ -10,7 +10,10 @@
 # Para derrubar e apagar os dados: docker compose down -v
 
 x-taba: &taba
+  # Cada nó declara o build do Dockerfile da raiz: `docker compose build` ou `up --build` constroem a
+  # imagem sem depender de outro serviço (as quatro construções usam o mesmo cache e a mesma etiqueta).
   image: taba:local
+  build: .
   # Maior que drain.timeout (25 s), para o nó terminar o drain antes do SIGKILL.
   stop_grace_period: 40s
   volumes:
@@ -33,7 +36,7 @@ services:
   # faz nada. Roda como root só para gravar no volume novo e entregar os arquivos ao usuário do nó.
   init:
     image: taba:local
-    build: .  # a imagem do nó é construída aqui e reaproveitada pelos três nós
+    build: .
     user: "0"
     entrypoint: ["sh", "-c"]
     command:

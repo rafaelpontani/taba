@@ -120,7 +120,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 
 | Área | Assunto | Documentos de origem | Casos |
 |---|---|---|---:|
-| `ING` | Entrada de nó (bootstrap) | [04 §6.2 e 6.5](04-cluster.md) | 27 |
+| `ING` | Entrada de nó (bootstrap) | [04 §6.2 e 6.5](04-cluster.md) | 28 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | [04 §6.3](04-cluster.md) | 27 |
 | `FRZ` | Período de freezing | [04 §6.7](04-cluster.md) | 9 |
 | `CNC` | Concorrência entre mudanças de membros | [04 §6.8](04-cluster.md) | 9 |
@@ -135,7 +135,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 881 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 882 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 
