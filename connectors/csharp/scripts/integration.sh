@@ -96,6 +96,6 @@ export TABA_TOKEN="$APP_TOKEN"
 export TABA_TOKEN_READONLY="$RO_TOKEN"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
-dotnet test "$TABA_ROOT/connectors/csharp/Taba.Client.Tests" "${TEST_ARGS[@]+"${TEST_ARGS[@]}"}"
+dotnet test connectors/csharp/Taba.Client.Tests "${TEST_ARGS[@]+"${TEST_ARGS[@]}"}"
 
 taba_step "Tudo passou"
