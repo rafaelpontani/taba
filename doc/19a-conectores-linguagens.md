@@ -83,7 +83,7 @@ Nas linhas com "Leitor mínimo", o JSON todo é lido por ele. Nas com a bibliote
 - **Assíncrono primeiro:** os métodos `...Async` (com `Task`) são a implementação, e os síncronos esperam por eles.
 - **`PATCH`:** `new HttpMethod("PATCH")` no `HttpRequestMessage`.
 - **TLS 1.2:** no .NET Framework 4.6.x, o protocolo usado é o do `ServicePointManager.SecurityProtocol`, e a partir do 4.7 é o do sistema. O conector **não** o altera sozinho; o README diz como conferir.
-- **Pacote:** `Taba.Client` (NuGet), com o *namespace* `Taba`.
+- **Pacotes (NuGet), *namespace* `Taba`:** `Taba.Client.Abstractions` (a interface `ITabaClient`, os modelos, um por arquivo, o `ITabaJsonSerializer`, o `MessageContext` e a `TabaException`) e `Taba.Client` (o `TabaClient` e o HTTP), que depende do primeiro. Quem só tipa ou simula o cliente referencia o `Abstractions`. O pacote `Taba.Client.Extensions.DependencyInjection` traz o `AddTabaClient` (DI e `IOptions<TabaConfig>`, a partir do `appsettings.json` ou do código), com as dependências `Microsoft.Extensions.*`. `PublishJson(topic, objeto)` serializa com `System.Text.Json` (.NET 5 em diante) ou `DataContractJsonSerializer` (.NET Framework), ou com o `TabaConfig.JsonSerializer`; o texto pronto vai em `PublishRawJson` (D140). `Consume(topic, opções, handler)` é o consumo com renovação automática da invisibilidade, e `Consume<T>` entrega o corpo já deserializado em `context.Body` (D140).
 
 #### Python (`connectors/python/`)
 

@@ -1,0 +1,141 @@
+using System;
+using System.Collections.Generic;
+
+namespace Taba
+{
+    /// <summary>Lê as respostas JSON da API e monta os modelos de <c>Taba.Client.Abstractions</c>.</summary>
+    internal static class ModelParser
+    {
+        public static JsonFields Fields(string raw, string what)
+        {
+            try
+            {
+                return JsonFields.Parse(raw);
+            }
+            catch (JsonException e)
+            {
+                throw TabaException.Client("client.invalid-response", what + ": " + e.Message);
+            }
+        }
+
+        public static Topic ParseTopic(string raw)
+        {
+            JsonFields f = Fields(raw, "tópico");
+            return new Topic
+            {
+                Id = f.String("id") ?? string.Empty,
+                Name = f.String("name") ?? string.Empty,
+                Type = f.String("type") ?? string.Empty,
+                CreatedAt = f.String("createdAt") ?? string.Empty,
+                Fifo = f.Boolean("fifo"),
+                Volatile = f.Boolean("volatile"),
+                Raw = raw,
+            };
+        }
+
+        public static Message ParseMessage(string raw)
+        {
+            JsonFields f = Fields(raw, "mensagem");
+            string contentType = f.String("contentType") ?? "application/json";
+            string body = f.Raw("body");
+            byte[] bytes;
+            try
+            {
+                if (body == null)
+                {
+                    bytes = new byte[0];
+                }
+                else if (f.String("bodyEncoding") == "base64")
+                {
+                    bytes = Convert.FromBase64String(Json.DecodeString(body));
+                }
+                else if (IsJsonType(contentType))
+                {
+                    bytes = Utf8.Encoding.GetBytes(body);
+                }
+                else
+                {
+                    bytes = Utf8.Encoding.GetBytes(Json.DecodeString(body));
+                }
+            }
+            catch (FormatException)
+            {
+                throw TabaException.Client("client.invalid-response", "corpo base64 inválido");
+            }
+            catch (JsonException e)
+            {
+                throw TabaException.Client("client.invalid-response", "corpo da mensagem: " + e.Message);
+            }
+            return new Message
+            {
+                Id = f.String("id") ?? string.Empty,
+                Body = bytes,
+                ContentType = contentType,
+                ReceiptToken = f.String("receiptToken") ?? string.Empty,
+                DeliveryCount = f.Integer("deliveryCount") ?? 0,
+                PublishedAt = f.String("publishedAt") ?? string.Empty,
+                InvisibleUntil = f.String("invisibleUntil") ?? string.Empty,
+                GroupId = f.String("groupId"),
+                DeduplicationId = f.String("deduplicationId"),
+                DeadLetteredAt = f.String("deadLetteredAt"),
+                DeadLetterReason = f.String("deadLetterReason"),
+                Raw = raw,
+            };
+        }
+
+        public static PublishResponse ParsePublishResponse(string raw)
+        {
+            JsonFields f = Fields(raw, "publicação");
+            var deliveries = new List<DistributorDelivery>();
+            try
+            {
+                string list = f.Raw("deliveries");
+                if (list != null)
+                {
+                    foreach (string item in Json.ArrayItems(list))
+                    {
+                        JsonFields d = JsonFields.Parse(item);
+                        string error = d.Raw("error");
+                        JsonFields e = error != null && error.StartsWith("{", StringComparison.Ordinal)
+                            ? JsonFields.Parse(error)
+                            : null;
+                        deliveries.Add(new DistributorDelivery(
+                            d.String("topic") ?? string.Empty,
+                            d.String("id"),
+                            e == null ? null : e.String("code") ?? string.Empty,
+                            e == null ? null : e.String("message")));
+                    }
+                }
+            }
+            catch (JsonException e)
+            {
+                throw TabaException.Client("client.invalid-response", "entregas do distribuidor: " + e.Message);
+            }
+            return new PublishResponse
+            {
+                Id = f.String("id"),
+                Duplicate = f.Boolean("duplicate"),
+                Matched = f.Integer("matched"),
+                Deliveries = deliveries,
+                Raw = raw,
+            };
+        }
+
+        public static VisibilityResponse ParseVisibilityResponse(string raw)
+        {
+            JsonFields f = Fields(raw, "invisibilidade");
+            return new VisibilityResponse
+            {
+                Id = f.String("id") ?? string.Empty,
+                InvisibleUntil = f.String("invisibleUntil") ?? string.Empty,
+                Raw = raw,
+            };
+        }
+
+        private static bool IsJsonType(string contentType)
+        {
+            string media = contentType.Split(';')[0].Trim().ToLowerInvariant();
+            return media == "application/json" || media.EndsWith("+json", StringComparison.Ordinal);
+        }
+    }
+}

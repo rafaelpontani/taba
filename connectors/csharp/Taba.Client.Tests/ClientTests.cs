@@ -92,7 +92,7 @@ namespace Taba.Tests
             client.ListTopics(10, "c1", "ped");
             client.UpdateTopic("pedidos", new TopicUpdate { IdleTimeout = 60 });
             client.DeleteTopic("pedidos");
-            client.PublishJson("pedidos", "{\"a\":1}");
+            client.PublishRawJson("pedidos", "{\"a\":1}");
             client.Consume("pedidos");
             client.Ack("pedidos", "m1", "rt_m1");
             client.ChangeVisibility("pedidos", "m1", "rt_m1", 30);
@@ -245,7 +245,7 @@ namespace Taba.Tests
             Assert.That(rig.Handler.Last.Header("Content-Type"), Is.EqualTo("text/plain; charset=utf-8"));
             Assert.That(rig.Handler.Last.Body, Is.EqualTo(Encoding.UTF8.GetBytes("olá, 世界 😀")));
 
-            rig.Client.PublishJson("pedidos", "{\"a\":1}");
+            rig.Client.PublishRawJson("pedidos", "{\"a\":1}");
             Assert.That(rig.Handler.Last.Header("Content-Type"), Is.EqualTo("application/json"));
         }
 
@@ -257,7 +257,7 @@ namespace Taba.Tests
             rig.Handler.Reply(
                 200,
                 "{\"matched\":2,\"deliveries\":[{\"topic\":\"pedidos-a\",\"id\":\"m1\"},{\"topic\":\"pedidos-b\",\"error\":{\"code\":\"validation.group-id-required\",\"message\":\"sem groupId\"}}]}");
-            PublishResponse response = rig.Client.PublishJson("eventos", "{}");
+            PublishResponse response = rig.Client.PublishRawJson("eventos", "{}");
             Assert.That(response.Id, Is.Null);
             Assert.That(response.Matched, Is.EqualTo(2));
             Assert.That(response.Deliveries.Count, Is.EqualTo(2));
@@ -371,7 +371,7 @@ namespace Taba.Tests
             var rig = new Rig();
             rig.Config.RequestTimeout = TimeSpan.FromMilliseconds(150);
             rig.Handler.Hang();
-            var e = Assert.Throws<TabaException>(() => rig.Client.PublishJson("pedidos", "{}"));
+            var e = Assert.Throws<TabaException>(() => rig.Client.PublishRawJson("pedidos", "{}"));
             Assert.That(e.Code, Is.EqualTo("client.timeout"));
             Assert.That(e.Status, Is.EqualTo(0));
             Assert.That(e.IsClientSide, Is.True);
@@ -458,7 +458,7 @@ namespace Taba.Tests
             Assert.That(ok.Id, Is.EqualTo("m1"));
             Assert.That(rig.Handler.Requests.Count, Is.EqualTo(3));
 
-            var e = Assert.Throws<TabaException>(() => rig.Client.PublishJson("fila", "{}"));
+            var e = Assert.Throws<TabaException>(() => rig.Client.PublishRawJson("fila", "{}"));
             Assert.That(e.Status, Is.EqualTo(502));
             Assert.That(rig.Handler.Requests.Count, Is.EqualTo(4), "fora da FIFO não repete");
         }
@@ -475,7 +475,7 @@ namespace Taba.Tests
 
             var dropped = new HttpRequestException("caiu", new IOException("conexão encerrada no meio da resposta"));
             rig.Handler.Fail(dropped);
-            var e = Assert.Throws<TabaException>(() => rig.Client.PublishJson("pedidos", "{}"));
+            var e = Assert.Throws<TabaException>(() => rig.Client.PublishRawJson("pedidos", "{}"));
             Assert.That(e.Code, Is.EqualTo("client.network"));
             Assert.That(e.Status, Is.EqualTo(0));
             Assert.That(rig.Handler.Requests.Count, Is.EqualTo(4), "depois de enviar não repete");
@@ -763,6 +763,174 @@ namespace Taba.Tests
             }
             Assert.That(rig.Handler.Requests[0].PathAndQuery, Is.EqualTo("/topics/pedidos/messages?maxMessages=3&waitTime=5"));
             Assert.That(rig.Handler.Requests.Count, Is.EqualTo(2), "a mensagem tratada é confirmada mesmo com o cancelamento");
+        }
+
+        private sealed class UpperSerializer : ITabaJsonSerializer
+        {
+            public string Serialize(object value)
+            {
+                return "{\"custom\":\"" + value + "\"}";
+            }
+
+            public T Deserialize<T>(string json)
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        /// UC: UC-CNT-033
+        [Test]
+        public async Task publish_json_serializes_the_object_and_sends_it_as_json()
+        {
+            var rig = new Rig();
+            rig.Handler.Reply(201, "{\"id\":\"m1\"}").Reply(201, "{\"id\":\"m2\"}");
+
+            await rig.Client.PublishJsonAsync("pedidos", new { pedido = 9001, itens = new[] { "a", "b" } });
+            Assert.That(rig.Handler.Last.BodyText, Is.EqualTo("{\"pedido\":9001,\"itens\":[\"a\",\"b\"]}"));
+            Assert.That(rig.Handler.Last.Header("content-type"), Does.StartWith("application/json"));
+
+            rig.Config.JsonSerializer = new UpperSerializer();
+            await new TabaClient(rig.Config, rig.Handler).PublishJsonAsync("pedidos", "x");
+            Assert.That(rig.Handler.Last.BodyText, Is.EqualTo("{\"custom\":\"x\"}"), "o serializador da configuração vale no lugar do padrão");
+
+            Assert.ThrowsAsync<ArgumentNullException>(() => rig.Client.PublishJsonAsync<object>("pedidos", null));
+        }
+
+        /// UC: UC-CNT-034
+        [Test]
+        public async Task consume_with_a_handler_deletes_by_default_and_keeps_the_message_when_asked_or_when_it_fails()
+        {
+            var rig = new Rig();
+            rig.Handler
+                .Reply(200, MessagesJson(MessageJson("m1", "{\"n\":1}")))
+                .Reply(204)
+                .Reply(200, MessagesJson(MessageJson("m2", "{\"n\":2}")))
+                .Reply(200, MessagesJson(MessageJson("m3", "{\"n\":3}")));
+            var client = new TabaClient(rig.Config, rig.Handler, (span, token) => Task.Delay(Timeout.Infinite, token));
+            string seen = null;
+
+            int handled = await client.ConsumeAsync("pedidos", null, context =>
+            {
+                seen = context.Message.BodyText + "/" + context.Message.DeliveryCount;
+                return Task.FromResult(0);
+            });
+            Assert.That(handled, Is.EqualTo(1));
+            Assert.That(seen, Is.EqualTo("{\"n\":1}/2"), "a mensagem inteira, com todas as propriedades");
+            Assert.That(rig.Handler.Requests[0].PathAndQuery, Is.EqualTo("/topics/pedidos/messages?maxMessages=1&visibilityTimeout=120&waitTime=20"), "padrões do consume com handler");
+            Assert.That(rig.Handler.Requests.Select(r => r.Method).ToArray(), Is.EqualTo(new[] { "GET", "DELETE" }), "apagada por padrão");
+
+            await client.ConsumeAsync("pedidos", null, context =>
+            {
+                context.Delete = false;
+                return Task.FromResult(0);
+            });
+            Assert.That(rig.Handler.Requests.Count, Is.EqualTo(3), "Delete = false: não apaga");
+
+            var e = Assert.ThrowsAsync<InvalidOperationException>(() => client.ConsumeAsync("pedidos", null, context =>
+            {
+                throw new InvalidOperationException("não deu");
+            }));
+            Assert.That(e.Message, Is.EqualTo("não deu"));
+            Assert.That(rig.Handler.Requests.Count, Is.EqualTo(4), "com exceção, não apaga");
+        }
+
+        /// UC: UC-CNT-034
+        [Test]
+        public async Task consume_with_a_handler_renews_the_visibility_while_it_runs_and_lets_it_change_it()
+        {
+            var rig = new Rig();
+            rig.Handler
+                .Reply(200, MessagesJson(MessageJson("m1", "{}")))
+                .Reply(200, "{\"id\":\"m1\",\"invisibleUntil\":\"2026-01-01T00:01:00Z\"}")
+                .Reply(200, "{\"id\":\"m1\",\"invisibleUntil\":\"2026-01-01T00:05:00Z\"}")
+                .Reply(204);
+            var waits = new List<TimeSpan>();
+            int calls = 0;
+            Func<TimeSpan, CancellationToken, Task> delay = async (span, token) =>
+            {
+                lock (waits)
+                {
+                    waits.Add(span);
+                }
+                if (Interlocked.Increment(ref calls) > 1)
+                {
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+            };
+            var client = new TabaClient(rig.Config, rig.Handler, delay);
+
+            await client.ConsumeAsync("pedidos", new ConsumeOptions { VisibilityTimeout = 30 }, async context =>
+            {
+                while (rig.Handler.Requests.Count < 2)
+                {
+                    await Task.Delay(5);
+                }
+                Assert.That(context.LeaseSeconds, Is.EqualTo(30));
+                await context.ChangeVisibilityAsync(300);
+                Assert.That(context.LeaseSeconds, Is.EqualTo(300), "a renovação passa a pedir o novo valor");
+            });
+
+            Seen renewal = rig.Handler.Requests[1];
+            Assert.That(renewal.Method, Is.EqualTo("PUT"));
+            Assert.That(renewal.PathAndQuery, Is.EqualTo("/topics/pedidos/messages/m1/visibility?receiptToken=rt_m1"));
+            Assert.That(renewal.BodyText, Is.EqualTo("{\"visibilityTimeout\":30}"));
+            Assert.That(rig.Handler.Requests[2].BodyText, Is.EqualTo("{\"visibilityTimeout\":300}"));
+            Assert.That(waits[0], Is.EqualTo(TimeSpan.FromSeconds(10)), "renova a cada um terço do prazo, sempre antes de vencer");
+            Assert.That(rig.Handler.Requests.Select(r => r.Method).ToArray(), Is.EqualTo(new[] { "GET", "PUT", "PUT", "DELETE" }));
+        }
+
+        public sealed class Pedido
+        {
+            public int Numero { get; set; }
+
+            public List<string> Itens { get; set; }
+        }
+
+        /// UC: UC-CNT-034
+        [Test]
+        public async Task consume_of_t_hands_over_the_deserialized_body_and_refuses_a_body_that_is_not_a_t()
+        {
+            var rig = new Rig();
+            rig.Handler
+                .Reply(200, MessagesJson(MessageJson("m1", "{\"numero\":9001,\"itens\":[\"a\",\"b\"]}")))
+                .Reply(204)
+                .Reply(200, MessagesJson(MessageJson("m2", "[1,2]")));
+            var client = new TabaClient(rig.Config, rig.Handler, (span, token) => Task.Delay(Timeout.Infinite, token));
+            Pedido seen = null;
+
+            await client.ConsumeAsync<Pedido>("pedidos", context =>
+            {
+                seen = context.Body;
+                Assert.That(context.Message.Id, Is.EqualTo("m1"), "a mensagem inteira continua disponível");
+                return Task.FromResult(0);
+            });
+            Assert.That(seen.Numero, Is.EqualTo(9001));
+            Assert.That(seen.Itens, Is.EqualTo(new[] { "a", "b" }));
+
+            bool called = false;
+            var e = Assert.ThrowsAsync<TabaException>(() => client.ConsumeAsync<Pedido>("pedidos", null, context =>
+            {
+                called = true;
+                return Task.FromResult(0);
+            }));
+            Assert.That(e.Code, Is.EqualTo("client.invalid-response"));
+            Assert.That(called, Is.False);
+            Assert.That(rig.Handler.Requests.Select(r => r.Method).ToArray(), Is.EqualTo(new[] { "GET", "DELETE", "GET" }), "a que não é um Pedido não é apagada");
+        }
+
+        /// UC: UC-CNT-034
+        [Test]
+        public void the_sync_consume_with_a_handler_works_like_the_async_one()
+        {
+            var rig = new Rig();
+            rig.Handler.Reply(200, MessagesJson(MessageJson("m1", "{}"))).Reply(204);
+            var delay = new Func<TimeSpan, CancellationToken, Task>((span, token) => Task.Delay(Timeout.Infinite, token));
+            var client = new TabaClient(rig.Config, rig.Handler, delay);
+            string id = null;
+            int handled = client.Consume("pedidos", context => id = context.Message.Id);
+            Assert.That(handled, Is.EqualTo(1));
+            Assert.That(id, Is.EqualTo("m1"));
+            Assert.That(rig.Handler.Last.Method, Is.EqualTo("DELETE"));
         }
     }
 }

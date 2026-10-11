@@ -4,6 +4,8 @@ O conector C# do Taba ([doc/19-conectores.md](../../doc/19-conectores.md), [doc/
 
 - **Alvos:** `net461` (.NET clássico, Framework 4.6.1 a 4.8), `net5.0`, `net6.0` e `net8.0`, e o `net10.0` quando o SDK é o 10 ou mais novo. O código é o mesmo, em **C# 7.3** nos alvos todos.
 - **Sem dependências:** só a biblioteca-padrão (`HttpClient`, `Task`). O JSON é um leitor mínimo próprio (`Json.cs`); o base64 é o `Convert`.
+- **Três pacotes:** `Taba.Client.Extensions.DependencyInjection` (o `AddTabaClient`, com `IOptions`; ver "Injeção de dependência"), e os dois abaixo.
+- **Dois pacotes:** `Taba.Client.Abstractions` (a interface `ITabaClient`, os modelos, uma classe por arquivo, e a `TabaException`) e `Taba.Client` (o `TabaClient`, o `HttpClient` e o leitor de JSON). Aplicações e bibliotecas dependem de `ITabaClient` e simulam o cliente nos testes sem trazer o `HttpClient`.
 - **Assíncrono primeiro:** as nove operações têm a forma `...Async` (a implementação) e a síncrona, que espera por ela. Todas aceitam um `CancellationToken`.
 - **Seguro entre threads:** um só `TabaClient` serve a várias tarefas e threads. Crie um por aplicação e reuse.
 - **Repetição de chamadas** do contrato comum: `429` e `503` (esperando o `Retry-After`, ou 1, 2 e 4 s), `502` e `504` só na publicação em fila FIFO (`PublishOptions.Fifo`), falha ao conectar. Nunca um `4xx`, nem um estouro de tempo, nem uma falha depois de enviar o corpo.
@@ -15,7 +17,7 @@ var config = new TabaConfig("http://localhost:8080") { Token = Environment.GetEn
 using (var client = new TabaClient(config))
 {
     await client.CreateTopicAsync(new TopicRequest { Name = "pedidos", Type = "queue" });
-    await client.PublishJsonAsync("pedidos", "{\"pedido\": 9001}");
+    await client.PublishJsonAsync("pedidos", new { pedido = 9001 });
 
     foreach (Message message in await client.ConsumeAsync("pedidos", new ConsumeOptions { WaitTime = 20 }))
     {
@@ -26,6 +28,153 @@ using (var client = new TabaClient(config))
 ```
 
 `SubscribeAsync(topic, options, handler, cancellationToken)` faz o laço inteiro: long polling, chama o `handler` e confirma sozinho **só se ele terminar sem exceção** (a que falhar volta à fila ao fim do `visibilityTimeout`). Termina, sem exceção, quando o token é cancelado.
+
+**Consumo com o objeto já deserializado (o uso mais comum):** `ConsumeAsync<T>` lê da fila (com long polling de 20 s, uma mensagem por vez e 120 s de invisibilidade por padrão), entrega o corpo como `T` em `context.Body` (mesmo serializador do `PublishJsonAsync`; a mensagem inteira segue em `context.Message`) e apaga a mensagem se o handler termina sem exceção. Enquanto o handler roda, a invisibilidade é renovada sozinha. Se o corpo não é um `T`, lança `client.invalid-response` antes de chamar o handler, e a mensagem não é apagada.
+
+Mínimo:
+
+```csharp
+await client.ConsumeAsync<Pedido>("pedidos", async context =>
+{
+    await ProcessarAsync(context.Body);   // Pedido já deserializado
+});
+```
+
+Padrões: `MaxMessages` 1, `WaitTime` 20 s (long polling) e `VisibilityTimeout` 120 s, que a renovação automática mantém (a cada um terço dele). Passe um `ConsumeOptions` para mudar. No handler: `context.Delete = false` deixa a mensagem na fila, `context.ChangeVisibilityAsync(segundos)` pede mais tempo de uma vez, e `context.LeaseLost` fica `true` se o servidor recusou uma renovação. Handler que lança: a mensagem não é apagada e a exceção sobe. Corpo que não é um `T`: `client.invalid-response` antes do handler, sem apagar. Um laço com `CancellationToken` está no exemplo do `BackgroundService`, na seção "Injeção de dependência".
+
+Sem o objeto deserializado, use o `ConsumeAsync(topic, handler)` (ou `(topic, options, handler)`): o `context` é o mesmo, sem o `Body`, e o corpo vem em `context.Message.Body` (bytes) e `context.Message.BodyText`.
+
+**Publicar objetos:** `PublishJsonAsync(topic, objeto)` serializa o objeto (`System.Text.Json` no .NET 5 em diante, `DataContractJsonSerializer` no .NET Framework, ou o `ITabaJsonSerializer` de `TabaConfig.JsonSerializer`); o JSON já pronto vai em `PublishRawJsonAsync`, e os bytes que você mesmo serializou, em `PublishAsync`.
+ 
+## Injeção de dependência
+
+O pacote **`Taba.Client.Extensions.DependencyInjection`** (à parte, para o `Taba.Client` seguir sem dependências) traz o `AddTabaClient`, que registra o `ITabaClient` como *singleton* (um só `TabaClient` por aplicação, descartado pelo contêiner) com o `TabaConfig` vindo do `IOptions<TabaConfig>`. Quem consome depende só de `ITabaClient` (pacote `Taba.Client.Abstractions`).
+
+Mínimo (o caminho da seção no `appsettings.json`; o `IConfiguration` só é lido quando o `ITabaClient` é pedido pela primeira vez, então não há dependência dele na montagem dos serviços):
+
+```csharp
+// appsettings.json:  "Taba": { "BaseUrl": "http://localhost:8080", "Token": "tb_..." }
+builder.Services.AddTabaClient("Taba");   // ou "Servicos:Taba", para uma seção aninhada
+
+public class PedidoService
+{
+    private readonly ITabaClient _taba;
+
+    public PedidoService(ITabaClient taba)
+    {
+        _taba = taba;
+    }
+
+    public Task PublicarAsync(Pedido pedido)
+    {
+        return _taba.PublishJsonAsync("pedidos", pedido);
+    }
+}
+```
+
+E o consumidor mínimo, um serviço de segundo plano (o token do host encerra o laço ao parar o serviço):
+
+```csharp
+builder.Services.AddHostedService<PedidosConsumer>();
+
+public class PedidosConsumer : BackgroundService
+{
+    private readonly ITabaClient _taba;
+
+    public PedidosConsumer(ITabaClient taba)
+    {
+        _taba = taba;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            // Long polling de 20 s; a mensagem é apagada ao fim do handler, se ele não lançar.
+            await _taba.ConsumeAsync<Pedido>("pedidos", context => ProcessarAsync(context.Body), stoppingToken);
+        }
+    }
+}
+```
+
+Completo, com todas as formas de configurar, o serializador do contêiner, o consumo em segundo plano e o teste:
+
+```csharp
+// appsettings.json (os nomes são os das propriedades do TabaConfig; TimeSpan como "hh:mm:ss"):
+// "Taba": {
+//   "BaseUrl": "https://taba.interno:8443",
+//   "Token": "tb_...",                 // em produção, de um cofre de segredos (user-secrets, variável de ambiente, Key Vault)
+//   "ConnectTimeout": "00:00:05",
+//   "RequestTimeout": "00:00:30",
+//   "MaxAttempts": 3,
+//   "UserAgent": "taba-csharp/0.1.0 meu-servico/1.0"
+// }
+
+// 1) pelo caminho da seção (o IConfiguration é lido só ao resolver o ITabaClient):
+builder.Services.AddTabaClient("Taba");
+
+// 1b) ou passando a própria seção, se você já tem o IConfiguration em mãos:
+builder.Services.AddTabaClient(builder.Configuration.GetSection("Taba"));
+
+// 2) ou no código:
+builder.Services.AddTabaClient(config =>
+{
+    config.BaseUrl = "https://taba.interno:8443";
+    config.Token = Environment.GetEnvironmentVariable("TABA_TOKEN");
+});
+
+// 3) ou pelo IOptions de sempre (Configure, PostConfigure, IConfigureOptions<TabaConfig>...), e depois só registrar:
+builder.Services.Configure<TabaConfig>(builder.Configuration.GetSection("Taba"));
+builder.Services.PostConfigure<TabaConfig>(config => config.UserAgent += " meu-servico/1.0");
+builder.Services.AddTabaClient();
+
+// O serializador do PublishJson e do Consume<T>: o ITabaJsonSerializer registrado no contêiner vale
+// (se o TabaConfig.JsonSerializer não foi informado). Sem ele, o padrão da plataforma.
+builder.Services.AddSingleton<ITabaJsonSerializer, MeuSerializadorNewtonsoft>();
+
+// O consumo vira um serviço de segundo plano: o token do host encerra o laço no Ctrl+C ou ao parar o serviço.
+public class PedidosWorker : BackgroundService
+{
+    private readonly ITabaClient _taba;
+    private readonly ILogger<PedidosWorker> _log;
+
+    public PedidosWorker(ITabaClient taba, ILogger<PedidosWorker> log)
+    {
+        _taba = taba;
+        _log = log;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await _taba.ConsumeAsync<Pedido>("pedidos", async context =>
+                {
+                    _log.LogInformation("Pedido {Numero} ({Id})", context.Body.Numero, context.Message.Id);
+                    await ProcessarAsync(context.Body, context.CancellationToken);
+                }, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // o serviço está parando
+            }
+            catch (TabaException e)
+            {
+                _log.LogError(e, "Taba: {Code}", e.Code);       // teste sempre o Code, nunca a mensagem
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken).ConfigureAwait(false);
+            }
+        }
+    }
+}
+
+builder.Services.AddHostedService<PedidosWorker>();
+```
+
+O `BaseUrl` inválido só falha (`TabaException` com `client.invalid-config`) quando o `ITabaClient` é resolvido pela primeira vez; para falhar na partida, resolva-o ao iniciar (`app.Services.GetRequiredService<ITabaClient>()`).
+
+Nos testes, como quem consome depende só da interface, troque o cliente por um simulado (Moq, NSubstitute...) ou por um `HttpMessageHandler` de mentira: `new TabaClient(config, handler)` aceita o seu handler (o cliente não o descarta). Sem o `Microsoft.Extensions.DependencyInjection`, registre o `TabaClient` como instância única da `ITabaClient` em qualquer contêiner (Autofac, Ninject, Unity...).
 
 ## Erros
 

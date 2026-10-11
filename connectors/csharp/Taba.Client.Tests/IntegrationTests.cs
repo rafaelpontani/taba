@@ -148,7 +148,7 @@ namespace Taba.Tests
             string topic = await NewQueueAsync("basico");
             try
             {
-                PublishResponse published = await _client.PublishJsonAsync(topic, "{ \"pedido\": 9001, \"itens\": [\"a\", \"b\"] }");
+                PublishResponse published = await _client.PublishRawJsonAsync(topic, "{ \"pedido\": 9001, \"itens\": [\"a\", \"b\"] }");
                 Assert.That(published.Id, Is.Not.Empty);
 
                 IList<Message> messages = await _client.ConsumeAsync(topic, new ConsumeOptions { MaxMessages = 5, VisibilityTimeout = 30, WaitTime = 5 });
@@ -213,7 +213,7 @@ namespace Taba.Tests
             string topic = await NewQueueAsync("invalido");
             try
             {
-                var e = Assert.ThrowsAsync<TabaException>(() => _client.PublishJsonAsync(topic, "{isto não é json"));
+                var e = Assert.ThrowsAsync<TabaException>(() => _client.PublishRawJsonAsync(topic, "{isto não é json"));
                 Assert.That(e.Status, Is.EqualTo(400));
                 Assert.That(e.Code, Is.EqualTo("validation.invalid-body"));
                 Assert.That(e.RequestId, Is.Not.Empty);
@@ -239,7 +239,7 @@ namespace Taba.Tests
                 Task<IList<Message>> waiting = _client.ConsumeAsync(topic, new ConsumeOptions { WaitTime = 15, VisibilityTimeout = 30 });
                 await Task.Delay(500);
                 watch.Restart();
-                await _client.PublishJsonAsync(topic, "{\"chegou\":true}");
+                await _client.PublishRawJsonAsync(topic, "{\"chegou\":true}");
                 IList<Message> got = await waiting;
                 Assert.That(got.Count, Is.EqualTo(1));
                 Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(8)), "voltou antes de esgotar o waitTime");
@@ -258,7 +258,7 @@ namespace Taba.Tests
             string topic = await NewQueueAsync("invisivel");
             try
             {
-                await _client.PublishJsonAsync(topic, "{\"n\":1}");
+                await _client.PublishRawJsonAsync(topic, "{\"n\":1}");
                 Message first = (await _client.ConsumeAsync(topic, new ConsumeOptions { VisibilityTimeout = 60, WaitTime = 5 })).Single();
                 Assert.That(await _client.ConsumeAsync(topic, new ConsumeOptions { VisibilityTimeout = 60 }), Is.Empty, "invisível");
 
@@ -327,7 +327,7 @@ namespace Taba.Tests
         {
             // As filas vêm do script: csharp-fan-a (comum) e csharp-fan-b (FIFO), sob o distribuidor csharp-fan.
             await DrainAsync("csharp-fan-a");
-            PublishResponse response = await _client.PublishJsonAsync("csharp-fan", "{\"evento\":\"criado\"}");
+            PublishResponse response = await _client.PublishRawJsonAsync("csharp-fan", "{\"evento\":\"criado\"}");
 
             Assert.That(response.Matched, Is.EqualTo(2));
             Assert.That(response.Deliveries.Count, Is.EqualTo(2));
@@ -360,7 +360,7 @@ namespace Taba.Tests
             string topic = "csharp-shared";
             await DrainAsync(topic);
             string marker = Guid.NewGuid().ToString("N");
-            await _client.PublishJsonAsync(topic, "{\"marca\":\"" + marker + "\"}");
+            await _client.PublishRawJsonAsync(topic, "{\"marca\":\"" + marker + "\"}");
             Message message = (await _client.ConsumeAsync(topic, new ConsumeOptions { WaitTime = 5, VisibilityTimeout = 30 })).Single();
             Assert.That(message.BodyText, Does.Contain(marker));
 
@@ -379,7 +379,7 @@ namespace Taba.Tests
             Assume.That(_readOnlyToken, Is.Not.Null.And.Not.Empty, "TABA_TOKEN_READONLY não definida");
             using (TabaClient reader = As(_readOnlyToken))
             {
-                var publish = Assert.ThrowsAsync<TabaException>(() => reader.PublishJsonAsync("csharp-shared", "{}"));
+                var publish = Assert.ThrowsAsync<TabaException>(() => reader.PublishRawJsonAsync("csharp-shared", "{}"));
                 Assert.That(publish.Status, Is.EqualTo(403));
                 Assert.That(publish.Code, Is.EqualTo("auth.forbidden"));
 
@@ -423,7 +423,7 @@ namespace Taba.Tests
             {
                 for (int n = 1; n <= 3; n++)
                 {
-                    await _client.PublishJsonAsync(topic, "{\"n\":" + n + "}");
+                    await _client.PublishRawJsonAsync(topic, "{\"n\":" + n + "}");
                 }
                 var received = new List<string>();
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60)))
@@ -462,7 +462,7 @@ namespace Taba.Tests
             try
             {
                 const int total = 40;
-                await Task.WhenAll(Enumerable.Range(0, total).Select(n => _client.PublishJsonAsync(topic, "{\"n\":" + n + "}")));
+                await Task.WhenAll(Enumerable.Range(0, total).Select(n => _client.PublishRawJsonAsync(topic, "{\"n\":" + n + "}")));
 
                 var seen = new HashSet<string>();
                 for (int round = 0; round < 40 && seen.Count < total; round++)

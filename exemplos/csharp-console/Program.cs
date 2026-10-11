@@ -32,7 +32,7 @@ internal static class Program
 
                 for (int pedido = 1; pedido <= 3; pedido++)
                 {
-                    PublishResponse published = await client.PublishJsonAsync(topic, $"{{\"pedido\": {pedido}, \"valor\": {pedido * 10}.50}}");
+                    PublishResponse published = await client.PublishRawJsonAsync(topic, $"{{\"pedido\": {pedido}, \"valor\": {pedido * 10}.50}}");
                     Console.WriteLine($"Publicado o pedido {pedido}: mensagem {published.Id}.");
                 }
 

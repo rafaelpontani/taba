@@ -38,6 +38,9 @@ namespace Taba
         /// <summary>Vai em <c>User-Agent</c> (<c>taba-csharp/&lt;versão&gt;</c>). Acrescente o nome do aplicativo.</summary>
         public string UserAgent { get; set; } = "taba-csharp/" + TabaClient.Version;
 
+        /// <summary>Quem serializa o objeto do <c>PublishJson</c>. Sem ele, vale o padrão do conector (<c>System.Text.Json</c> no .NET 5 em diante, <c>DataContractJsonSerializer</c> no .NET Framework).</summary>
+        public ITabaJsonSerializer JsonSerializer { get; set; }
+
         internal TabaConfig Copy()
         {
             return (TabaConfig)MemberwiseClone();

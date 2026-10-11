@@ -28,7 +28,8 @@ namespace Taba.Tests
 
         private static string[] Sources()
         {
-            return Directory.GetFiles(Library(), "*.cs", SearchOption.AllDirectories)
+            return new[] { Library(), Path.Combine(Path.GetDirectoryName(Library()), "Taba.Client.Abstractions") }
+                .SelectMany(d => Directory.GetFiles(d, "*.cs", SearchOption.AllDirectories))
                 .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)
                     && !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
                 .ToArray();
@@ -57,7 +58,8 @@ namespace Taba.Tests
             Assert.That(packages.Length, Is.EqualTo(1));
             Assert.That(packages[0], Does.StartWith("Include=\"Microsoft.NETFramework.ReferenceAssemblies\""));
             Assert.That(packages[0].Split('>')[0], Does.Contain("PrivateAssets=\"all\""), "não vira dependência de quem usa");
-            Assert.That(project, Does.Not.Contain("<ProjectReference"));
+            Assert.That(project, Does.Contain("<ProjectReference Include=\"..\\Taba.Client.Abstractions\\Taba.Client.Abstractions.csproj\" />"), "a única dependência é o pacote dos contratos, do próprio conector");
+            Assert.That(project.Split(new[] { "<ProjectReference " }, StringSplitOptions.None).Length, Is.EqualTo(2));
         }
 
         /// UC: UC-CNT-030

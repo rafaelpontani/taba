@@ -101,7 +101,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `LIM` | Rate limit e IP do cliente | [12](12-limites-api.md) | 15 |
 | `PAG` | Paginação | [06a §8.1.2](06a-api-cliente.md), [06d §8.3.4](06d-api-convencoes.md) | 9 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | [06d](06d-api-convencoes.md) | 17 |
-| `CNT` | Conectores | [19](19-conectores.md), [19a](19a-conectores-linguagens.md) | 32 |
+| `CNT` | Conectores | [19](19-conectores.md), [19a](19a-conectores-linguagens.md) | 35 |
 | `CLI` | O `taba-cli`, a linha de comando do cliente | [19b](19b-cli.md) | 36 |
 
 #### Nó: o caminho da mensagem ([20b-casos-de-uso-no-dados.md](20b-casos-de-uso-no-dados.md))
@@ -135,7 +135,7 @@ A verificação não confere o **nível** (`U`, `I`, `C`, `K`): citar o código 
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | [06c](06c-api-cluster.md) | 10 |
 | `CFG` | Configuração e validações de partida | [10](10-configuracao.md) | 12 |
 
-**Total: 882 casos de uso** (os casos `(retirado)` não entram na contagem).
+**Total: 885 casos de uso** (os casos `(retirado)` não entram na contagem).
 
 ### 19.7 Premissas e limites
 

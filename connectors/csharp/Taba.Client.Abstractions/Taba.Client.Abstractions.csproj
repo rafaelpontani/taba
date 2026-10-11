@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Os contratos do conector C# do Taba: a interface ITabaClient, os modelos (tópico, mensagem,
+       opções, respostas) e a TabaException. Quem só precisa tipar ou simular o cliente (injeção de
+       dependência, testes) referencia este pacote, sem o HttpClient nem o leitor de JSON do
+       Taba.Client. Mesmos alvos e C# 7.3 do conector, sem dependências. -->
+  <PropertyGroup>
+    <TargetFrameworks>net461;net5.0;net6.0;net8.0</TargetFrameworks>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>Taba.Client.Abstractions</AssemblyName>
+    <RootNamespace>Taba</RootNamespace>
+    <PackageId>Taba.Client.Abstractions</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Interfaces e modelos do conector C# do Taba, a fila de mensagens em cluster.</Description>
+    <Authors>Taba</Authors>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '10.0'))">
+    <TargetFrameworks>$(TargetFrameworks);net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net461'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- O construtor e os setters internos dos modelos são do Taba.Client, que os preenche ao ler o JSON. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Taba.Client" />
+    <InternalsVisibleTo Include="Taba.Client.Tests" />
+  </ItemGroup>
+
+</Project>
