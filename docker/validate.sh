@@ -11,7 +11,8 @@
 #      de mensagens confirmadas é exatamente o publicado.
 #
 # Só usa o taba-cli: é o teste geral integrado do cluster, e não de um conector. Cada conector tem o seu
-# teste (ex.: connectors/csharp/scripts/integration.sh).
+# teste (ex.: connectors/csharp/scripts/integration.sh). Subir, derrubar e provocar falhas no cluster
+# está em docker/cluster.sh, que os testes dos conectores também usam (source ou linha de comando).
 #
 # Uso:
 #   docker/validate.sh                  # tudo, do zero; apaga o cluster no fim
@@ -22,92 +23,36 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+source "$(dirname "${BASH_SOURCE[0]}")/cluster.sh"
+cd "$TABA_ROOT"
 
-KEEP=0
-BUILD=1
 while [ $# -gt 0 ]; do
   case "$1" in
-    --keep) KEEP=1 ;;
-    --no-build) BUILD=0 ;;
-    -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --keep) TABA_KEEP=1 ;;
+    --no-build) TABA_BUILD=0 ;;
+    -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "opção desconhecida: $1 (veja --help)" >&2; exit 2 ;;
   esac
   shift
 done
 
-# O Git Bash do Windows converte caminhos como /secrets/root-token.
-export MSYS_NO_PATHCONV=1
-export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+# Atalhos para as funções de docker/cluster.sh, a biblioteca que os testes dos conectores também usam.
+step() { taba_step "$@"; }
+ok() { taba_ok "$@"; }
+die() { taba_die "$@"; }
+cli() { taba_cli "$@"; }
+active_members() { taba_active_members; }
 
-step() { printf '\n== %s\n' "$*"; }
-ok() { printf '  ok: %s\n' "$*"; }
-die() { echo "FALHOU: $*" >&2; exit 1; }
-
-command -v docker >/dev/null || die "docker não encontrado"
-docker compose version >/dev/null 2>&1 || die "o plugin 'docker compose' não está instalado"
-docker info >/dev/null 2>&1 || die "o Docker não está rodando"
+taba_require_docker
 
 PUBLISHED="$(mktemp)"; ACKED="$(mktemp)"
-
-cli() { docker compose run --rm -T taba-cli "$@" 2>/dev/null | tr -d '\r'; }
-
 cleanup() {
-  status=$?
-  if [ "$status" -ne 0 ]; then
-    echo >&2
-    echo "A validação falhou. Últimas linhas dos nós:" >&2
-    docker compose logs --tail 25 taba-1 taba-2 taba-3 2>/dev/null >&2 || true
-  fi
-  if [ "$KEEP" -eq 1 ]; then
-    step "Cluster mantido (docker compose down -v para apagar)"
-  else
-    step "Derrubando o cluster e apagando os dados"
-    docker compose --profile tools down -v --remove-orphans >/dev/null 2>&1 || true
-  fi
+  local status=$?
   rm -f "$PUBLISHED" "$ACKED"
+  taba_teardown "$status" || true
   exit "$status"
 }
 trap cleanup EXIT
-
-healthy_nodes() {
-  local n=0 id state node
-  for node in taba-1 taba-2 taba-3; do
-    id="$(docker compose ps -q "$node" 2>/dev/null || true)"
-    [ -n "$id" ] || continue
-    state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null || echo none)"
-    [ "$state" = "healthy" ] && n=$((n + 1))
-  done
-  echo "$n"
-}
-
-# Quantos membros ativos o cluster enxerga (pelo taba-1; se ele estiver fora, 0).
-active_members() {
-  cli health cluster -o json | grep -o '"active": *[0-9]*' | head -n 1 | grep -o '[0-9]*$' || true
-}
-
-worst_condition() {
-  cli health cluster -o table | awk '/^worstCondition/ {print $2}' || true
-}
-
-# Espera uma condição (um comando que devolve 0), com limite de tempo.
-wait_for() {
-  local what="$1" limit="$2"; shift 2
-  local deadline=$((SECONDS + limit))
-  until "$@"; do
-    [ "$SECONDS" -lt "$deadline" ] || die "$what: não aconteceu em ${limit} s"
-    sleep 3
-  done
-  ok "$what (${SECONDS}s no total)"
-}
-
-three_healthy() { [ "$(healthy_nodes)" -eq 3 ]; }
-two_members() { [ "$(active_members)" = "2" ]; }
-# O ID antigo do nó que caiu fica congelado por cluster.freezing.duration (5 min), e isso aparece como o
-# aviso `node-frozen`; o nó reiniciado tem ID novo e não é afetado. Qualquer outra condição é falha.
-other_conditions() { cli health cluster -o json | grep -o '"condition": *"[^"]*"' | grep -v node-frozen || true; }
-three_members_ok() { [ "$(active_members)" = "3" ] && [ -z "$(other_conditions)" ] && three_healthy; }
 
 # Publica "$2" mensagens de texto "$1-N" no tópico "$3" e anota cada uma em $PUBLISHED.
 publish_many() {
@@ -130,13 +75,7 @@ drain_topic() {
 
 # --- 1. o cluster forma ------------------------------------------------------------------------
 
-step "Subindo o Compose do zero"
-docker compose --profile tools down -v --remove-orphans >/dev/null 2>&1 || true
-if [ "$BUILD" -eq 1 ]; then
-  docker compose --profile tools build
-fi
-docker compose up -d
-wait_for "os três nós ficam saudáveis" 240 three_healthy
+taba_up
 
 step "O cluster formou: taba-cli health cluster"
 [ "$(active_members)" = "3" ] || die "esperava 3 membros ativos, achei '$(active_members)'"
@@ -160,8 +99,8 @@ cli topic create validacao-queda --type queue >/dev/null
 publish_many antes 30 validacao-queda
 ok "30 mensagens publicadas e confirmadas pelo quórum"
 
-docker compose kill taba-3 >/dev/null 2>&1
-wait_for "a queda é detectada e o nó é excluído por votação (2 membros)" 120 two_members
+taba_kill taba-3
+taba_wait_members 2 120
 
 publish_many durante 10 validacao-queda
 ok "10 mensagens publicadas com dois nós"
@@ -169,17 +108,17 @@ drain_topic validacao-queda 2
 [ "$(wc -l < "$ACKED")" -ge 10 ] || die "o consumo com dois nós devolveu menos de 10 mensagens"
 ok "o consumo segue com dois nós ($(wc -l < "$ACKED") confirmadas até aqui)"
 
-docker compose start taba-3 >/dev/null 2>&1
-wait_for "o nó volta como nó novo e o cluster fica com 3 membros (só o aviso node-frozen é aceito)" 240 three_members_ok
+taba_start taba-3
+taba_wait_stable 240
 
 # --- 4. saída ordenada --------------------------------------------------------------------------
 
 step "Saída ordenada do taba-2 (docker compose stop, com drain)"
 publish_many drain 10 validacao-queda
-docker compose stop taba-2 >/dev/null 2>&1
-wait_for "o taba-2 sai do cluster (2 membros)" 120 two_members
-docker compose start taba-2 >/dev/null 2>&1
-wait_for "o taba-2 volta e o cluster fica com 3 membros" 240 three_members_ok
+taba_stop taba-2
+taba_wait_members 2 120
+taba_start taba-2
+taba_wait_stable 240
 
 # --- 5. nada se perdeu --------------------------------------------------------------------------
 
@@ -195,6 +134,6 @@ fi
 ok "$(wc -l < /tmp/taba-published.txt) mensagens publicadas, todas recebidas e confirmadas"
 
 step "Estado final"
-cli health cluster -o table | sed -n 1,6p
+taba_status | sed -n 1,6p
 
 step "A validação passou"
