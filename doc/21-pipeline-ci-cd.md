@@ -57,7 +57,9 @@ Uma detecção de mudança (`dorny/paths-filter`) decide quais jobs rodam, para 
 2. **connector-rust**: o mesmo, com `working-directory: connectors/rust`.
 3. **connector-csharp**: `dotnet test` unitário, com SDK do .NET 8 e do 10 (o csproj condiciona o `net10.0` ao SDK).
 4. **integration**: só em push na main, ou em PR que toque `docker/**`, `Dockerfile`, `crates/**` ou `connectors/**`. Roda `integration.sh` e depois `docker/validate.sh`. É o job mais caro (build Docker do servidor), por isso fica atrás de filtro de caminho.
-5. **docker-build**: `docker build` sem push, só para garantir que o Dockerfile compila.
+5. **docker-build**: compila o `taba` no runner com a ação `.github/actions/node-binary` (cache do Cargo no runner) e monta a imagem com `Dockerfile.ci` (só copia o binário), sem push.
+
+Duas imagens, para duas finalidades: o `Dockerfile` da raiz compila tudo dentro do container e é o que o usuário usa para baixar o repositório e fazer o build (`docker build -t taba .`). O `Dockerfile.ci` é o da pipeline, rápido porque reaproveita o binário já compilado com o cache do runner. As duas geram a mesma imagem.
 
 Os jobs usam `concurrency` com `cancel-in-progress` em PRs, para não gastar minuto com push antigo.
 

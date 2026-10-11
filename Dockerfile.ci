@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+#
+# A imagem do nó usada pela pipeline (.github/workflows). Não compila nada: o binário `taba` já vem
+# pronto em dist/taba, compilado pela ação .github/actions/node-binary com o cache do runner. Assim o
+# build da imagem leva segundos, em vez de recompilar o Rust dentro do container a cada commit.
+#
+# Para o usuário que baixa o repositório, use o Dockerfile da raiz (`docker build -t taba .`): ele
+# compila tudo sozinho e gera a mesma imagem.
+
+FROM alpine:3
+RUN apk add --no-cache ca-certificates \
+ && adduser -D -u 10001 taba \
+ && mkdir -p /var/lib/taba /etc/taba/secrets \
+ && chown taba:taba /var/lib/taba
+COPY dist/taba /usr/local/bin/taba
+# Sem privilégios. Os dados do nó (storage.dir) e a pasta de segredos (secrets.dir) são volumes.
+USER taba
+VOLUME ["/var/lib/taba"]
+EXPOSE 8080 8081 9090
+ENTRYPOINT ["taba"]

@@ -65,10 +65,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/node-binary
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.ci
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

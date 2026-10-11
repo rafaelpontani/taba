@@ -8,3 +8,4 @@ doc/diagramas/html/
 /connectors/csharp/**/obj
 /exemplos/**/bin
 /exemplos/**/obj
+/dist
