@@ -1,0 +1,9 @@
+target
+**/target
+.git
+doc
+connectors
+secrets
+.codegraph
+.archify
+**/*.md

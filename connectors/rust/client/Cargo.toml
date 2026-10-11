@@ -1,0 +1,11 @@
+[package]
+name = "taba-client"
+description = "Conector Rust do Taba: HTTP/1.1 próprio, TLS pelo rustls e leitor de JSON mínimo."
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"

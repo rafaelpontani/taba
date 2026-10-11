@@ -1,0 +1,116 @@
+# Um cluster completo do Taba: três nós atrás de um HAProxy de exemplo (decisão D129).
+#
+#   docker compose up --build -d        sobe tudo; o primeiro nó forma o cluster e os outros entram
+#   docker compose ps                   os três nós ficam "healthy" quando terminam de sincronizar
+#   docker compose run --rm taba-cli health cluster -o table
+#
+# A API de cliente fica em http://localhost:8080 (HAProxy). O token raiz está no volume `secrets`:
+#   docker compose run --rm --entrypoint cat taba-cli /secrets/root-token
+#
+# Para derrubar e apagar os dados: docker compose down -v
+
+x-taba: &taba
+  image: taba:local
+  # Maior que drain.timeout (25 s), para o nó terminar o drain antes do SIGKILL.
+  stop_grace_period: 40s
+  volumes:
+    - secrets:/etc/taba/secrets:ro
+  environment: &taba-env
+    # Porta própria para as rotas de operação (saúde, métricas, drain); ficam só na rede interna.
+    TABA_OPERATIONS_PORT: "9090"
+    # A descoberta passa pelo HAProxy, na porta do cluster.
+    TABA_CLUSTER_ENTRY_ADDRESS: haproxy:8081
+    TABA_REPLICATION_FACTOR: "3"
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/health/ready"]
+    interval: 3s
+    timeout: 3s
+    retries: 40
+    start_period: 5s
+
+services:
+  # Cria a pasta de segredos (certificado do cluster e token raiz) uma vez; nas vezes seguintes não
+  # faz nada. Roda como root só para gravar no volume novo e entregar os arquivos ao usuário do nó.
+  init:
+    image: taba:local
+    build: .  # a imagem do nó é construída aqui e reaproveitada pelos três nós
+    user: "0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        test -f /secrets/root-token || taba init --out /secrets
+        chown -R 10001:10001 /secrets
+    volumes:
+      - secrets:/secrets
+    restart: "no"
+
+  taba-1:
+    <<: *taba
+    hostname: taba-1
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      haproxy:
+        condition: service_started
+    environment:
+      <<: *taba-env
+      # Só o primeiro nó de um cluster novo inicia o cluster sozinho.
+      TABA_CLUSTER_FIRST_NODE: "true"
+    volumes:
+      - secrets:/etc/taba/secrets:ro
+      - data-1:/var/lib/taba
+
+  taba-2:
+    <<: *taba
+    hostname: taba-2
+    depends_on:
+      haproxy:
+        condition: service_started
+      taba-1:
+        condition: service_healthy
+    volumes:
+      - secrets:/etc/taba/secrets:ro
+      - data-2:/var/lib/taba
+
+  taba-3:
+    <<: *taba
+    hostname: taba-3
+    depends_on:
+      haproxy:
+        condition: service_started
+      taba-1:
+        condition: service_healthy
+    volumes:
+      - secrets:/etc/taba/secrets:ro
+      - data-3:/var/lib/taba
+
+  haproxy:
+    image: haproxy:lts-alpine
+    volumes:
+      - ./docker/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "8080:8080"
+
+  # A linha de comando do cliente, já apontada para o cluster. Só roda sob demanda:
+  #   docker compose run --rm taba-cli topic list
+  taba-cli:
+    build:
+      context: .
+      dockerfile: connectors/rust/cli/Dockerfile
+    image: taba-cli:local
+    profiles: ["tools"]
+    environment:
+      TABA_CLI_URL: http://haproxy:8080
+      # As rotas de operação não passam pelo HAProxy; este perfil fala com o primeiro nó.
+      TABA_CLI_OPS_URL: http://taba-1:9090
+      TABA_CLI_TOKEN_FILE: /secrets/root-token
+    volumes:
+      - secrets:/secrets:ro
+    depends_on:
+      - haproxy
+
+volumes:
+  secrets:
+  data-1:
+  data-2:
+  data-3:

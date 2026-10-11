@@ -30,6 +30,25 @@ Se você quer sair da cobrança por mensagem, de um cluster de brokers para oper
 | **Cobrança** | Sem cobrança por mensagem: só a infraestrutura | Por requisição | Infraestrutura, ou plano gerenciado | Infraestrutura, ou plano gerenciado |
 | **Escalar** | Adicionar um nó | Automático (gerenciado) | Brokers e partições | Nós no cluster |
 
+## Experimente em um minuto
+
+Com o Docker, um cluster de três nós (atrás de um HAProxy de exemplo) sobe com um comando. Um contêiner inicial cria o certificado do cluster e o token raiz, o primeiro nó forma o cluster e os outros dois entram:
+
+```bash
+docker compose up --build -d      # três nós "healthy" em cerca de um minuto
+```
+
+Depois, pelo [`taba-cli`](doc/19b-cli.md), que já vem no Compose apontado para o cluster (e com o token raiz):
+
+```bash
+docker compose run --rm taba-cli health cluster -o table             # os três nós, sem condições
+docker compose run --rm taba-cli topic create pedidos --type queue
+echo '{"pedido": 9001}' | docker compose run --rm -T taba-cli publish pedidos --stdin
+docker compose run --rm taba-cli consume pedidos --wait 5 --ack      # recebe e confirma
+```
+
+A API de cliente também fica em `http://localhost:8080` para qualquer cliente HTTP (com `Authorization: Bearer <token raiz>`; o token está no volume `secrets`: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`). `docker compose down -v` apaga tudo. O HAProxy é só um exemplo: qualquer balanceador serve ([doc/06-api.md](doc/06-api.md)). Para um nó só, sem cluster, use `docker run -p 8080:8080 -e TABA_MODE=development taba`.
+
 ## A API em quatro chamadas
 
 Tudo é HTTP. O contrato completo (OpenAPI) ainda está em definição; os verbos abaixo seguem o [rascunho da API](doc/06-api.md).
@@ -50,15 +69,17 @@ A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP q
 | Linguagem | Pasta | Versão-base | Estado | Exemplo de uso |
 |---|---|---|---|---|
 | Java | `connectors/java/` | Java 11 | planejado | TODO |
-| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5 | planejado | TODO |
+| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5, 6, 8 e 10 | [pronto](connectors/csharp/README.md) (nove operações assíncronas e síncronas, `subscribe`) | [exemplo de console](exemplos/csharp-console/) |
 | Python | `connectors/python/` | 2.7.9 e 3.4.3 | planejado | TODO |
 | PHP | `connectors/php/` | 5.6 | planejado | TODO |
 | Ruby | `connectors/ruby/` | 2.0 | planejado | TODO |
 | Node.js | `connectors/node/` | 0.12 | planejado | TODO |
 | Go | `connectors/go/` | 1.7 | planejado | TODO |
-| Rust | `connectors/rust/` | 1.70 | planejado | TODO |
+| Rust | `connectors/rust/client/` | 1.70 | síncrono pronto ([README](connectors/rust/client/README.md)) | [exemplo](connectors/rust/client/README.md) |
 | C | `connectors/c/` | C89 | planejado | TODO |
 | C++ | `connectors/cpp/` | C++03 | planejado | TODO |
+
+O `taba-cli`, a linha de comando do cliente ([connectors/rust/cli](connectors/rust/cli/README.md)), já está pronto e é a forma mais curta de testar um cluster.
 
 Outras linguagens usam o cliente HTTP delas ou a biblioteca em C. O desenho está em [doc/19-conectores.md](doc/19-conectores.md).
 
@@ -68,7 +89,7 @@ Outras linguagens usam o cliente HTTP delas ou a biblioteca em C. O desenho est�
 
 ## Status e limites
 
-- **Em fase inicial de código:** o desenho completo está em [doc/](doc/README.md) e a aplicação em Rust começou: esqueleto do nó, configuração, os três listeners, a saúde do nó, os tópicos (guardados no SQLite do nó) e a publicação e o consumo de mensagens **em memória** (long polling, invisibilidade, ack, distribuidor). Também já há `ttl`, `maxDeliveries` e dead-letter. As mensagens vão para o disco (SQLite por tópico e arquivos `.body`) quando passam de `memory.limit`, e a parada grava a memória em disco (o drain como save, também por `POST /node/drain`). Há a fila FIFO (ordem por grupo e deduplicação) e a entrega justa entre grupos (`groupId`), a divisão da memória por taxa de leitura, `taba init` (certificado e token raiz), filas voláteis com `autoCreate`, autenticação por token (token raiz e tokens com hash salgado no SQLite, permissões e prefixos), o rate limit por token ou IP (`429` com `Retry-After`), o filtro `operations.allowed-ips`, `/health/cluster` de um nó, o estado de falha e a observabilidade de um nó (`/metrics` no formato do Prometheus, métricas e condições por tópico e eventos). O cluster também começou: o anel de hash, a tabela de membros, o ingresso de nós em duas fases e a replicação (definições de tópico e token em todos os nós; escrita, entrega e ack por quórum; `take` e avisos entre nós; repasse e drain com saída do cluster), tudo testado com o `Transport` em memória (vários nós no mesmo processo). Ainda não há sincronização de blocos, votação, fila FIFO no cluster, `Transport` HTTP entre nós nem exportação OTLP.
+- **Versão 0.1 validada de ponta a ponta:** o cluster de três nós sobe com `docker compose up`, forma-se sozinho, atende pelo `taba-cli`, pelo conector Rust e pelo conector C#, detecta a queda de um nó, o exclui por votação e o recebe de volta sem perder mensagens confirmadas (roteiro em [docker/validate.sh](docker/validate.sh)). O desenho completo está em [doc/](doc/README.md). Ainda faltam os demais conectores, o contrato OpenAPI e a publicação nos registros de pacotes.
 - **Não é um substituto de protocolo:** o Taba fala HTTP. Não há compatibilidade com AMQP, MQTT ou o protocolo do Kafka, então trocar de broker significa trocar o cliente.
 - **Não é uma plataforma de streaming:** processamento de streams e reprocessamento do histórico de mensagens estão fora do escopo. Para filas e pub/sub, sim; para reler o passado, não.
 - **Fora do escopo por enquanto:** interface gráfica, autenticação avançada e multi-região.

@@ -13,7 +13,7 @@ Não confundir com o binário `taba` do servidor: o `taba` sobe o nó e cria a p
 
 ### Como é feito
 
-- **Linguagem:** Rust, em `connectors/cli/`, sobre o conector Rust (`connectors/rust/`, [19a](19a-conectores-linguagens.md), seção 18.10.3), que traz o HTTP/1.1, o TLS 1.2 ou superior (`rustls`) e o leitor de JSON mínimo. O CLI acrescenta só a leitura dos argumentos (própria, como a do `taba`, sem biblioteca de linhas de comando) e a saída.
+- **Linguagem:** Rust, em `connectors/rust/cli/`, num workspace do Cargo dos conectores (`connectors/rust/Cargo.toml`, fora do workspace do servidor), sobre o conector Rust (`connectors/rust/client/`, [19a](19a-conectores-linguagens.md), seção 18.10.3), que traz o HTTP/1.1, o TLS 1.2 ou superior (`rustls`) e o leitor de JSON mínimo. O CLI acrescenta só a leitura dos argumentos (própria, como a do `taba`, sem biblioteca de linhas de comando) e a saída.
 - **Nada de estado de execução:** cada execução faz uma ou mais chamadas e termina; não há processo residente nem sessão no servidor. A configuração de conexão vem dos **perfis** guardados num arquivo do usuário (seção 18.11.2).
 - **Um binário estático por plataforma**, sem dependências no sistema (seção 18.11.8), e uma imagem Docker mínima (seção 18.11.7).
 
@@ -65,7 +65,7 @@ profiles:
 | Campo | Padrão | Descrição |
 |---|---|---|
 | `url` | `http://127.0.0.1:8080` | Endereço da **API de cliente** (a porta `api.port`, ou o balanceador). `http://` ou `https://`. |
-| `ops-url` | o de `url`, com a porta `9090` | Endereço da **API de operação** (`operations.port`), usado só pelos comandos `health`, `metrics`, `stats` e `drain`. |
+| `ops-url` | o próprio `url` | Endereço da **API de operação**, usado só pelos comandos `health`, `metrics`, `stats` e `drain`. Sem `operations.port`, o nó serve as rotas de operação na **porta da API de cliente**, por isso o padrão é o `url`; com uma porta própria (`9090`, como no exemplo de [06-api.md](06-api.md)), dê o `ops-url`. |
 | `token-file` | nenhum | Lê o token do arquivo (a primeira linha). É o jeito de usar o `root-token` que o `taba init` criou. |
 | `token` | nenhum | O token em texto claro, que vai em `Authorization: Bearer`. Prefira `token-file`. |
 | `ca-file` | raízes do sistema | Certificado de CA (PEM) a confiar, para um Taba com `https://` e certificado próprio. **Não existe** campo para desligar a verificação (UC-CNT-030). |
@@ -76,20 +76,68 @@ profiles:
 
 **Variáveis de ambiente.** Cada campo tem a variável `TABA_CLI_<CAMPO>` (`TABA_CLI_URL`, `TABA_CLI_OPS_URL`, `TABA_CLI_TOKEN_FILE`, `TABA_CLI_TOKEN`, `TABA_CLI_CA_FILE`, `TABA_CLI_OUTPUT`, `TABA_CLI_CONNECT_TIMEOUT`, `TABA_CLI_TIMEOUT`, `TABA_CLI_MAX_ATTEMPTS`), com o prefixo para não colidir com o `TABA_*` do servidor ([10-configuracao.md](10-configuracao.md)). Elas são o **perfil de sessão** (abaixo) e o jeito de configurar um contêiner sem arquivo.
 
-**Precedência de cada campo:** opção do comando (`-o`), **variável de ambiente**, **perfil escolhido**, valor embutido.
+**Precedência de cada campo:** opção do comando (`-o`), **variável de ambiente**, **perfil escolhido**, valor embutido. Se `token` e `token-file` estão definidos, vale o de maior precedência (variável, depois perfil) e, no mesmo nível, o `token-file`.
 
 **Comandos** (locais, não chamam o servidor):
 
 | Comando | O que faz |
 |---|---|
-| `profile list` | Lista os perfis, marcando o padrão e o que está em uso na sessão. |
+| `profile list` | Lista os perfis, marcando o padrão e o que está em uso na sessão. A saída segue o `-o` como as demais (um item por perfil, com o `token` mostrado só como `(definido)`). |
 | `profile show [nome]` | Mostra um perfil (o em uso, se sem nome), **sem o token**. |
-| `profile add <nome> [campos] [--default]` | Cria o perfil com os campos dados (`--url`, `--ops-url`, `--token-file`, `--token`, `--ca-file`, `--output`, `--connect-timeout`, `--timeout`, `--max-attempts`). Se já existe, sai com `2`. `--default` o torna o padrão; o primeiro perfil criado já vira o padrão. |
+| `profile add <nome> [campos] [--default]` | Cria o perfil com os campos dados (`--url`, `--ops-url`, `--token-file`, `--token`, `--ca-file`, `--output`, `--connect-timeout`, `--timeout`, `--max-attempts`). Nestes comandos, `--output` é o campo `output` do perfil. Se já existe, sai com `2`. `--default` o torna o padrão; o primeiro perfil criado já vira o padrão. |
 | `profile set <nome> [campos] [--unset <campo>]` | Altera os campos dados e apaga os de `--unset` (repetível). Perfil inexistente sai com `2`. |
 | `profile remove <nome>` | Remove o perfil. Se era o padrão, o arquivo fica sem padrão. Pede confirmação num terminal e, fora dele, exige `--yes` (como o `topic delete`). |
 | `profile default [nome]` | Sem nome, mostra o padrão; com nome, o define. `--none` o remove. |
 | `profile path` | Imprime o caminho do arquivo de configuração. |
 | `profile session ...` | O **perfil de sessão**, abaixo. |
+| `profile` (sem subcomando) | Abre o **modo interativo** de perfis, abaixo. |
+
+**Modo interativo.** `taba-cli profile` sem subcomando, **num terminal**, abre uma tela de perfis navegada **com as setas, como um formulário**: lista, cadastra, altera, remove e escolhe o padrão sem decorar opções. É só uma tela por cima dos mesmos comandos (`profile add`, `set`, `remove`, `default`) e grava o mesmo arquivo, do mesmo jeito.
+
+*Lista de perfis:*
+
+```text
+ Perfis do taba-cli                         C:\Users\ana\AppData\Roaming\taba\config.yml
+
+   nome          url                        token-file    padrão
+ ▶ local         http://127.0.0.1:8080      —             ●
+   homologacao   https://taba-hml:8080      /seg/tok      ○
+   producao      https://taba.exemplo.com   —             ○
+
+ ↑↓ escolher   Enter abrir   n novo   d padrão   Del remover   q sair
+```
+
+*Formulário de um perfil (novo ou existente):*
+
+```text
+ Perfil  producao
+
+   Nome             producao
+   url              https://taba.exemplo.com▌
+   ops-url          (https://taba.exemplo.com)
+   token-file       /seg/prod.tok
+   token            eyJhbGciOi...
+   ca-file          (raízes do sistema)
+   output           ‹ json ›
+   connect-timeout  (5)
+   timeout          (30)
+   max-attempts     (3)
+   Perfil padrão    [x]
+
+   [ Salvar ]  [ Testar conexão ]  [ Cancelar ]
+
+ ↑↓/Tab campo   ←→ opção   Espaço marcar   Ctrl+S salvar   Esc cancelar
+```
+
+- **Navegação:** `↑`/`↓` (ou `Tab`/`Shift+Tab`) movem entre os campos e os botões. Num campo de texto, digita-se direto (`←`/`→`, `Home`, `End`, `Backspace` e `Delete` editam a linha). `output` é uma escolha, trocada com `←`/`→`; `Perfil padrão` é uma caixa, marcada com `Espaço`. Em um botão, `Enter` o aciona. `Ctrl+S` salva de qualquer campo.
+- **Valores padrão:** um campo vazio mostra, entre parênteses e em cinza, o valor que valerá (o embutido, ou o derivado, como o `ops-url`). Apagar o texto de um campo volta a ele; é o mesmo que `--unset`.
+- **Validação na hora:** um campo inválido (URL sem `http://` ou `https://`, número fora da faixa, nome repetido ou com caracteres que não são letra, dígito, `-` ou `_`) fica em vermelho com a mensagem logo abaixo, e **Salvar** não grava enquanto houver erro.
+- **Token:** `token-file` e `token` são mostrados e editados **à vista**, como os outros campos. O token no arquivo de configuração **não é criptografado** (o arquivo é `0600` em Unix), então a tela não finge segredo; quem não quer o token visível num terminal compartilhado usa `token-file`. Os comandos `profile show` e `config show` continuam sem mostrar o token.
+- **Testar conexão:** faz um `GET /topics?limit=1` na API de cliente (confere o endereço, o TLS e o token de uma vez) com os valores **ainda não salvos** do formulário e mostra o resultado (ok com o tempo, ou o erro) numa linha; só informa, não impede de salvar.
+- **Lista:** o padrão é marcado com `●`, e o perfil em uso na sessão (`TABA_CLI_PROFILE`), com `(sessão)`. `d` torna o perfil escolhido o padrão. `Del` (ou `r`) remove, depois de uma linha de confirmação `Remover "producao"? [s/N]`. `n` abre o formulário de um perfil novo; o primeiro perfil criado vira o padrão. Com a lista vazia, a tela diz que não há perfis e oferece `n`.
+- **Sair:** `q` ou `Esc` na lista, e `Ctrl+C` em qualquer tela, encerram e **restauram o terminal**. Cada ação já foi gravada quando confirmada; o formulário aberto e não salvo é descartado, e `Esc` nele pede confirmação se algo mudou.
+- **Terminal:** a tela usa sequências ANSI (cores, cursor e tela alternada, que devolve o terminal como estava ao sair) e a entrada em **modo cru**, sem biblioteca: no Linux e no macOS, por `stty`; no Windows, pelo `SetConsoleMode` do console com sequências virtuais (Windows 10 em diante). `NO_COLOR` tira as cores, mantendo a navegação. Um terminal menor que 60 colunas por 16 linhas mostra um aviso pedindo para aumentá-lo, em vez de desenhar quebrado, e a tela se redesenha, com o tamanho novo, a cada tecla.
+- **Fora de um terminal** (entrada ou saída redirecionada), `taba-cli profile` não abre a tela: imprime a ajuda dos comandos de perfil e sai com `2`. Scripts usam os subcomandos.
 
 **Perfil de sessão (temporário).** O que vale só para o terminal aberto, sem tocar no arquivo. Um programa filho não altera o ambiente do terminal que o chamou, então o comando **imprime** as linhas que o terminal deve executar, e a pessoa as aplica:
 
@@ -108,12 +156,12 @@ taba-cli profile session --url http://10.0.0.5:8080 --token-file .\tok --shell p
 
 **O arquivo é do CLI.** O `taba-cli` lê o subconjunto de YAML que ele mesmo escreve (mapas e textos, comentários com `#`) com um leitor próprio, e **reescreve o arquivo inteiro** a cada `profile add/set/remove/default` (por arquivo temporário e renomeação, para não deixar o arquivo pela metade); comentários feitos à mão não são preservados. Arquivo ilegível ou YAML inválido sai com `5`, dizendo a linha.
 
-**`config show`** mostra a configuração efetiva e **de onde veio cada valor** (`opção`, `variável`, `perfil <nome>` ou `padrão`), sem o token.
+**`config show`** mostra a configuração efetiva e **de onde veio cada valor** (`variável <nome>`, `perfil <nome>` ou `padrão`), uma linha por campo (`field`, `value`, `source`) e o perfil em uso. O token aparece só como `(definido)`.
 
 ### 18.11.3 Saída e códigos de saída
 
 - **Sucesso:** a resposta vai para a saída padrão. Com `-o json`, é o JSON do servidor, sem campos acrescentados. Os comandos que devolvem `204` não imprimem nada.
-- **Erro da API:** vai para a **saída de erro**, no formato `código: mensagem (requestId ...)`, mais os `details` se houver. Com `-o json`, é o `ErrorResponse` como veio ([06d](06d-api-convencoes.md), seção 8.3.6). O `Retry-After` do `429` e do `503` aparece numa linha à parte.
+- **Erro da API:** vai para a **saída de erro**, no formato `código: mensagem (requestId ...)`, mais os `details` se houver. Com o formato `json` **escolhido** (`-o json`, o `output` do perfil ou `TABA_CLI_OUTPUT`; o `json` embutido não conta), é o `ErrorResponse` como veio, indentado ([06d](06d-api-convencoes.md), seção 8.3.6). O `Retry-After` do `429` e do `503` aparece numa linha à parte.
 - **Códigos de saída:**
 
 | Código | Quando |
@@ -125,7 +173,7 @@ taba-cli profile session --url http://10.0.0.5:8080 --token-file .\tok --shell p
 | `4` | Estourou o tempo limite. |
 | `5` | Arquivo ilegível (`--file`, o `token-file` ou o `ca-file` do perfil, ou o próprio `config.yml`). |
 
-O comando `consume --exit-empty` (abaixo) devolve `6` quando a resposta vem vazia, para os scripts.
+O comando `consume --exit-empty` (abaixo) devolve `6` quando a resposta vem vazia, para os scripts. Se quem lê a saída a fecha (`taba-cli ... | head`), o programa para em silêncio, com `0`.
 
 ### 18.11.4 Tópicos
 
@@ -154,9 +202,9 @@ Rotas: [06a](06a-api-cliente.md), "Mensagens".
 
 | Comando | Rota | Opções e argumentos |
 |---|---|---|
-| `publish <tópico> [corpo]` | `POST /topics/{topic}/messages` | O corpo vem de **um** destes: o argumento, `--file <arquivo>` (bytes crus) ou `--stdin`. `--content-type <tipo>` (padrão `application/json`); atalhos `--json` e `--text`, que só escolhem o `Content-Type`; `--group-id <g>`; `--deduplication-id <d>`. O CLI **não valida o corpo**: o servidor responde `validation.invalid-body`. Imprime o `PublishResponse` (ou o `DistributorPublishResponse`); `--id-only` imprime só o `id`. `--count <n>` repete a publicação `n` vezes (cada uma é uma chamada, para um teste leve de carga). Depois de um `502` ou `504` fora da FIFO o CLI **não repete** a publicação sozinho (repetir duplicaria a mensagem); na FIFO a repetição é segura e segue a regra geral. |
-| `consume <tópico>` | `GET /topics/{topic}/messages` | `--max <n>` (`maxMessages`); `--visibility <s>` (`visibilityTimeout`); `--wait <s>` (`waitTime`, até 20); `--auto-create` com `--persistent` (a fila nasce não volátil), `--idle-timeout <s>`, `--fifo`, `--tag <k=v>`; `--ack` (confirma cada mensagem entregue logo depois de imprimi-la); `--exit-empty` (código `6` se vier vazia). Com `-o raw`, imprime só o `body` de cada mensagem, um por linha. O CLI manda só o que foi informado e não aplica padrões. |
-| `subscribe <tópico>` | `GET` em laço e `DELETE` | O laço de consumo da superfície dos conectores (D71.1): long polling contínuo (`--wait`, padrão 20), uma mensagem por vez (`--max`, padrão 1). Para cada mensagem: com `--exec <comando>`, roda o comando com o corpo na entrada padrão e **confirma só se ele sai com `0`**; sem `--exec`, imprime a mensagem e confirma. `--visibility <s>` (o CLI não confirma depois que o prazo passou). `--limit <n>` termina depois de `n` mensagens. `Ctrl+C` termina limpo, sem confirmar a que estava em andamento. |
+| `publish <tópico> [corpo]` | `POST /topics/{topic}/messages` | O corpo vem de **um** destes: o argumento, `--file <arquivo>` (bytes crus) ou `--stdin`. `--content-type <tipo>` (padrão `application/json`); atalhos `--json` e `--text`, que só escolhem o `Content-Type`; `--group-id <g>`; `--deduplication-id <d>`. O CLI **não valida o corpo**: o servidor responde `validation.invalid-body`. Imprime o `PublishResponse` (ou o `DistributorPublishResponse`); `--id-only` imprime só o `id`. `--count <n>` repete a publicação `n` vezes (cada uma é uma chamada, para um teste leve de carga). Depois de um `502` ou `504` fora da FIFO o CLI **não repete** a publicação sozinho (repetir duplicaria a mensagem); na FIFO a repetição é segura e segue a regra geral. Como o CLI não sabe de antemão se o tópico é FIFO, é só nesse erro que ele faz um `GET /topics/{topic}` para descobrir. |
+| `consume <tópico>` | `GET /topics/{topic}/messages` | `--max <n>` (`maxMessages`); `--visibility <s>` (`visibilityTimeout`); `--wait <s>` (`waitTime`, até 20); `--auto-create` com `--persistent` (a fila nasce não volátil), `--idle-timeout <s>`, `--fifo`, `--tag <k=v>`; `--ack` (confirma cada mensagem entregue logo depois de imprimi-la); `--exit-empty` (código `6` se vier vazia). Com `-o raw`, imprime só o `body` de cada mensagem, um por linha. As opções `--persistent`, `--idle-timeout`, `--fifo` e `--tag` só valem com `--auto-create` (sem ele, o CLI sai com `2`). O CLI manda só o que foi informado e não aplica padrões. |
+| `subscribe <tópico>` | `GET` em laço e `DELETE` | O laço de consumo da superfície dos conectores (D71.1): long polling contínuo (`--wait`, padrão 20), uma mensagem por vez (`--max`, padrão 1). Para cada mensagem: com `--exec <comando>`, roda o comando com o corpo na entrada padrão e **confirma só se ele sai com `0`**; sem `--exec`, imprime a mensagem e confirma. `--visibility <s>`. Um ack que chega depois do prazo (`409 message.stale-receipt` ou `404`) é ignorado, e o laço segue. `--limit <n>` termina depois de `n` mensagens. `Ctrl+C` encerra o programa na hora; a mensagem em andamento não é confirmada e volta à fila no fim da invisibilidade. |
 | `ack <tópico> <id>` | `DELETE /topics/{topic}/messages/{id}` | `--receipt <receiptToken>` (obrigatório): o token **da última entrega**. |
 | `visibility <tópico> <id>` | `PUT /topics/{topic}/messages/{id}/visibility` | `--receipt <receiptToken>` (obrigatório) e `--seconds <s>` (obrigatório; `0` devolve a mensagem na hora). Imprime o `VisibilityResponse`. |
 
@@ -189,10 +237,10 @@ taba-cli subscribe pedidos --exec ./processa.sh
 
 | Comando | Rota | Opções e argumentos |
 |---|---|---|
-| `health live` | `GET /health/live` | O código de saída é `0` se `200`, `1` se não. |
+| `health live` | `GET /health/live` | O código de saída é `0` se `200`, `1` se não. As rotas de saúde não repetem a chamada (o orquestrador pergunta de novo sozinho): um `503` é impresso (o corpo é o do próprio endpoint, não um `ErrorResponse`) e sai com `1`. |
 | `health ready` | `GET /health/ready` | Imprime o `reason` quando o nó não está pronto (`503`). |
 | `health cluster` | `GET /health/cluster` | `--scope cluster\|node` (padrão `cluster`). Com `-o table`, uma linha por nó e as condições. |
-| `metrics` | `GET /metrics` | `--openmetrics` (envia `Accept: application/openmetrics-text`). Só este nó. |
+| `metrics` | `GET /metrics` | `--openmetrics` (envia `Accept: application/openmetrics-text`). Só este nó. O texto sai como veio, qualquer que seja o `-o`. |
 | `stats topics` | `GET /metrics/topics` | `--scope cluster\|node`; `--tag <k=v>`; `--condition <c>`; `--fields <a,b>`; `--group-by <tag>`; `--limit`, `--cursor`, `--all`. |
 | `stats topic <nome>` | `GET /metrics/topics/{topic}` | `--scope`. |
 | `stats groups <tópico>` | `GET /metrics/topics/{topic}/groups` | `--limit`, `--cursor`, `--all`. |
@@ -206,9 +254,9 @@ taba-cli subscribe pedidos --exec ./processa.sh
 
 ### 18.11.7 A imagem Docker
 
-O `connectors/cli/Dockerfile` gera uma imagem **mínima, em Alpine**, só com o binário `taba-cli` (estático, ligado à musl), sem shell de aplicação nem outros pacotes além dos certificados de CA do sistema:
+O `connectors/rust/cli/Dockerfile` gera uma imagem **mínima, em Alpine**, só com o binário `taba-cli` (estático, ligado à musl), sem shell de aplicação nem outros pacotes além dos certificados de CA do sistema:
 
-- **Construção em duas etapas:** a primeira (imagem do Rust em Alpine) compila para `x86_64-unknown-linux-musl` ou `aarch64-unknown-linux-musl`, conforme a plataforma pedida em `docker buildx build --platform linux/amd64,linux/arm64`; a segunda parte de `alpine` e copia o binário.
+- **Construção em duas etapas:** o contexto é a raiz do repositório e o `Dockerfile` copia só a pasta `connectors/`. A primeira etapa (imagem do Rust em Alpine) compila para `x86_64-unknown-linux-musl` ou `aarch64-unknown-linux-musl`, conforme a plataforma pedida em `docker buildx build --platform linux/amd64,linux/arm64`; a segunda parte de `alpine` e copia o binário.
 - **Uso:** o `ENTRYPOINT` é o `taba-cli`, então o que vem depois do nome da imagem são os comandos:
 
 ```bash
@@ -230,13 +278,18 @@ O programa é distribuído como **um binário por plataforma**, para estas seis 
 | Linux (estático, musl) | sim | sim | `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` |
 | macOS | sim (Intel) | sim (Apple Silicon) | `x86_64-apple-darwin`, `aarch64-apple-darwin` |
 
-Os scripts ficam em `connectors/cli/scripts/`:
+Os scripts ficam em `connectors/rust/cli/scripts/`:
 
-- **`build.sh`** (Linux e macOS) e **`build.ps1`** (Windows). Sem argumento, constroem para a **plataforma da máquina**. `--target <alvo>` constrói para um alvo da tabela, e `--all` constrói **todos os que a máquina consegue**. O resultado vai para `connectors/cli/dist/<alvo>/`, com o binário e um arquivo `SHA256SUMS`.
+- **`build.sh`** (Linux e macOS) e **`build.ps1`** (Windows). Sem argumento, constroem para a **plataforma da máquina**. `--target <alvo>` constrói para um alvo da tabela, e `--all` constrói **todos os que a máquina consegue**. O resultado vai para `connectors/rust/cli/dist/<alvo>/`, com o binário e um arquivo `SHA256SUMS`.
 - **Quem constrói o quê:** o Linux e o macOS constroem os dois alvos do Linux (com `cargo-zigbuild` ou o `cross`, para o `aarch64`); o macOS constrói os dois do macOS; o Windows constrói os dois do Windows. Cruzar para o macOS a partir de outro sistema não é suportado pelos scripts: a matriz de publicação (um *runner* de cada sistema) faz as seis.
 - **Reprodutível:** o `Cargo.lock` vale (`--locked`), e o binário sai sem símbolos (`strip`) e otimizado para tamanho.
 - **A imagem Docker** tem o seu `docker buildx` (`scripts/docker.sh`), com as duas plataformas Linux.
 
 ### 18.11.9 Casos de uso e testes
 
-Os casos estão em [20a](20a-casos-de-uso-cliente.md), área `CLI`, no nível `K` (conector). O teste de cada comando sobe um Taba em modo desenvolvimento (e o Compose de três nós, para os de operação e de cluster) e confere a chamada que o CLI monta (rota, parâmetros, cabeçalhos e corpo) e o que ele imprime, com as **fixtures** de `connectors/contrato/` ([19-conectores.md](19-conectores.md), seção 18.7). A saída `json` é comparada com a resposta do servidor, sem campos acrescentados.
+Os casos estão em [20a](20a-casos-de-uso-cliente.md), área `CLI`, no nível `K` (conector). Os testes ficam em `connectors/rust/cli/`:
+
+- **Unitários** nos módulos (`src/**/tests.rs`): a leitura de argumentos, o YAML dos perfis, a escolha do perfil e a precedência, a tabela e o JSON indentado, o perfil de sessão e a tela interativa (teclas, formulário, validação), tudo sem terminal nem rede.
+- **Os comandos de ponta a ponta** (`tests/commands.rs`): rodam o programa inteiro (`taba_cli::run`) sobre o transporte de mentira do conector (`taba_client::testing`) e conferem a chamada que o CLI monta (rota, parâmetros, cabeçalhos e corpo), o que ele imprime e o código de saída, com os perfis num arquivo temporário e a tela interativa dirigida por teclas combinadas.
+- **A embalagem** (`tests/packaging.rs`): o `Dockerfile` e os scripts de build dizem o que as seções 18.11.7 e 18.11.8 prometem (os seis alvos, `--locked`, Alpine, usuário sem privilégios). O build de verdade e o terminal em modo cru conferem-se à mão e no CI.
+- **Contra um Taba de verdade:** os cenários de `connectors/contrato/` ([19-conectores.md](19-conectores.md), seção 18.7) e as **fixtures** compartilhadas com os outros conectores entram com a fase 0 do plano; até lá, a conferência é um Taba em modo desenvolvimento rodado à mão.

@@ -60,7 +60,7 @@ connectors/<linguagem>/
   exemplos/                 publicar, consumir com long polling e ack, FIFO
 ```
 
-**Relação com o `taba-client` de [18-estrutura-codigo.md](18-estrutura-codigo.md).** O `taba-client` em Rust passa a ser o conector `connectors/rust/`. Como o conector não tem dependências e precisa compilar em Rust antigo (seção 18.5), ele **não reaproveita** o `taba-protocol` do servidor, que usa `serde` e o `tokio`. O contrato entre os dois é o da API, garantido pela suíte de conformidade, não por código compartilhado.
+**Relação com o `taba-client` de [18-estrutura-codigo.md](18-estrutura-codigo.md).** O `taba-client` em Rust passa a ser o conector `connectors/rust/client/`. Como o conector não tem dependências e precisa compilar em Rust antigo (seção 18.5), ele **não reaproveita** o `taba-protocol` do servidor, que usa `serde` e o `tokio`. O contrato entre os dois é o da API, garantido pela suíte de conformidade, não por código compartilhado.
 
 **Publicação (D70).** O repositório é a fonte. Cada conector sai para o registro da sua linguagem, a partir da pasta, com uma tag própria (`connectors/python/v1.2.0`). A regra é publicar **no lugar mais usado e popular de cada tecnologia**, e ele precisa ser **gratuito**: uma linguagem cujo registro principal fosse pago não teria conector por ora.
 
@@ -176,7 +176,7 @@ A janela de 15 anos não é só "compilar": é **não usar o que a versão-base 
 
 - **Nada de sintaxe ou biblioteca posterior à versão-base.** Sem `record` e `switch` com seta no Java 11, sem `?.` e `??` no C# 7.3 (a linguagem fixa dos dois alvos), sem *f-strings* no Python 2.7.9 e 3.4.3, sem `??` no PHP 5.6, sem `&.` no Ruby 2.0, sem `let` e `const` no Node 0.12.
 - **A compilação roda nas duas pontas.** O CI compila e testa **na versão-base** e **na mais recente** de cada linguagem (seção 18.7). Compilar só na recente deixa passar o uso acidental de recurso novo.
-- **Compilador novo, alvo antigo.** Onde a ferramenta atual ainda gera código para a versão-base (Java com `--release 11`, .NET com os alvos `net461` e `net5.0` no SDK 10, Rust com `rust-version` no `Cargo.toml`), gera-se o artefato para a base. Onde não gera, usa-se a ferramenta da época no CI.
+- **Compilador novo, alvo antigo.** Onde a ferramenta atual ainda gera código para a versão-base (Java com `--release 11`, .NET com os alvos `net461`, `net5.0`, `net6.0`, `net8.0` e `net10.0` no SDK 10, Rust com `rust-version` no `Cargo.toml`), gera-se o artefato para a base. Onde não gera, usa-se a ferramenta da época no CI.
 - **TLS 1.2 ou superior (D69).** O conector usa a TLS da plataforma e **não** traz uma própria (a exceção é o Rust, com o `rustls`). Plataformas que não falam TLS 1.2 não são suportadas, e o Taba não oferece porta HTTP simples nem TLS antigo para elas. O conector **não** desliga a verificação do certificado.
 - **`PATCH` (D72).** O cliente HTTP da versão-base precisa fazer `PATCH`. O Taba **não** aceita `X-HTTP-Method-Override`, e o conector não faz conexão HTTP própria só para esse verbo.
 - **Texto em UTF-8, sempre.** Várias plataformas antigas assumem o *charset* local. O conector converte sempre de e para UTF-8 de forma explícita.
@@ -217,6 +217,6 @@ As fases 2, 3 e 4 **não dependem entre si** e podem andar em paralelo, por pess
 ### 18.9 Impacto em outros pontos da documentação
 
 - **README da raiz:** a seção "Clientes" passa a "Conectores", com as dez linguagens e o estado de cada uma ([README](../README.md#conectores)).
-- **[18-estrutura-codigo.md](18-estrutura-codigo.md):** o `taba-client` vira o conector `connectors/rust/`, sem depender do `taba-protocol`.
+- **[18-estrutura-codigo.md](18-estrutura-codigo.md):** o `taba-client` vira o conector `connectors/rust/client/`, sem depender do `taba-protocol`.
 - **[03-escopo.md](03-escopo.md):** os conectores entram no escopo inicial (seção 4.4).
 - **[09-glossario.md](09-glossario.md):** o termo **Conector**.

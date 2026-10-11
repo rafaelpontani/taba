@@ -81,16 +81,54 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Os `.rs` e `.cs` de uma pasta de conector, em qualquer profundidade, sem as pastas de build e de saída.
+fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        if path.is_dir() {
+            if !["target", "bin", "obj", "dist"]
+                .iter()
+                .any(|skip| name == *skip)
+            {
+                connector_files(&path, out);
+            }
+        } else if path.extension().is_some_and(|e| e == "rs" || e == "cs") {
+            out.push(path);
+        }
+    }
+}
+
+/// Os fontes que podem citar casos de uso, cada um com a pasta a que o caminho mostrado é relativo:
+/// o `src` e o `tests` deste crate (relativos ao crate) e todos os de cada conector em `connectors/<linguagem>`
+/// (relativos à raiz do repositório).
+fn source_files() -> Vec<(PathBuf, PathBuf)> {
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut found = Vec::new();
+    rust_files(&crate_dir.join("src"), &mut found);
+    rust_files(&crate_dir.join("tests"), &mut found);
+    let mut out: Vec<(PathBuf, PathBuf)> =
+        found.into_iter().map(|f| (f, crate_dir.clone())).collect();
+    if let Ok(entries) = fs::read_dir(root().join("connectors")) {
+        for entry in entries.flatten() {
+            let mut found = Vec::new();
+            connector_files(&entry.path(), &mut found);
+            out.extend(found.into_iter().map(|f| (f, root())));
+        }
+    }
+    out
+}
+
 /// Código -> arquivos que o citam.
 fn cited_codes() -> BTreeMap<String, BTreeSet<String>> {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut files = Vec::new();
-    rust_files(&crate_dir.join("src"), &mut files);
-    rust_files(&crate_dir.join("tests"), &mut files);
+    let files = source_files();
 
     let marker = format!("{} UC:", "///");
     let mut cited: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for file in files {
+    for (file, base) in files {
         let text = fs::read_to_string(&file).expect("ler fonte");
         for line in text.lines() {
             let Some(list) = line.trim_start().strip_prefix(marker.as_str()) else {
@@ -98,7 +136,7 @@ fn cited_codes() -> BTreeMap<String, BTreeSet<String>> {
             };
             for code in list.split(',').map(str::trim).filter(|c| !c.is_empty()) {
                 let name = file
-                    .strip_prefix(crate_dir)
+                    .strip_prefix(&base)
                     .unwrap_or(&file)
                     .display()
                     .to_string();
@@ -175,26 +213,24 @@ fn coverage_report_and_optional_strict_check() {
 /// Marca o começo da célula gerada da coluna "Testes", para regerar a coluna sem duplicá-la.
 const TESTS_MARK: &str = "<!--t-->";
 
-/// Código -> os testes que o citam, como `arquivo::função` (o arquivo relativo ao crate), em ordem.
+/// Código -> os testes que o citam, como `arquivo::função` (o arquivo relativo ao crate, ou à raiz do repositório para os conectores), em ordem.
 /// A linha `/// UC:` vale para a primeira função que vem depois dela, pulando atributos e outras
 /// linhas de documentação.
 fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut files = Vec::new();
-    rust_files(&crate_dir.join("src"), &mut files);
-    rust_files(&crate_dir.join("tests"), &mut files);
+    let mut files = source_files();
     files.sort();
 
     let marker = format!("{} UC:", "///");
     let mut tests: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for file in files {
+    for (file, base) in files {
         let shown = file
-            .strip_prefix(crate_dir)
+            .strip_prefix(&base)
             .unwrap_or(&file)
             .display()
             .to_string()
             .replace('\\', "/");
         let text = fs::read_to_string(&file).expect("ler fonte");
+        let is_csharp = file.extension().is_some_and(|e| e == "cs");
         let mut pending: Vec<String> = Vec::new();
         for line in text.lines() {
             let line = line.trim_start();
@@ -210,13 +246,23 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
             if pending.is_empty()
                 || line.is_empty()
                 || line.starts_with("#[")
+                || (is_csharp && line.starts_with('['))
                 || line.starts_with("//")
             {
                 continue;
             }
-            if let Some(after) = line.split("fn ").nth(1)
-                && let Some(name) = after.split(['(', '<']).next()
-            {
+            // Rust: `fn nome(`. C#: `public async Task nome(` (o último termo antes do parêntese).
+            let name = if is_csharp {
+                line.split('(')
+                    .next()
+                    .filter(|_| line.contains('('))
+                    .and_then(|head| head.split_whitespace().last())
+            } else {
+                line.split("fn ")
+                    .nth(1)
+                    .and_then(|after| after.split(['(', '<']).next())
+            };
+            if let Some(name) = name {
                 for code in pending.drain(..) {
                     tests
                         .entry(code)

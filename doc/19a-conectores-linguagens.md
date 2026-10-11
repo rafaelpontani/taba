@@ -19,7 +19,7 @@ A janela continua sendo de **15 anos** (de 2011 em diante), mas ela é só o **t
 | Linguagem | Pasta | Versão-base | Lançada | Por quê | Também testada em |
 |---|---|---|---|---|---|
 | **Java** | `connectors/java/` | **Java 11** (LTS) | 2018 | O `HttpURLConnection` **nunca** fez `PATCH` (ele recusa o verbo em qualquer versão); o `java.net.http.HttpClient` do 11 faz, tem TLS 1.2 e 1.3 por padrão e é assíncrono. O Java 8 ficou de fora por causa do `PATCH`. | 17 (LTS), a LTS mais recente |
-| **C#** | `connectors/csharp/` | Dois alvos: **.NET Framework 4.6.1** (clássico, `net461`) e **.NET 5** (moderno, `net5.0`) | 2015 / 2020 | `HttpClient` com `Task`, `async`/`await`, `PATCH` por `HttpMethod("PATCH")` e TLS 1.2 nos dois. O .NET 5 é o piso da linha moderna (o .NET Core 1.x a 3.x saíram). | .NET Framework 4.8; .NET 8 e a mais recente |
+| **C#** | `connectors/csharp/` | Cinco alvos: **.NET Framework 4.6.1** (clássico, `net461`) e o moderno: **.NET 5** (`net5.0`), **6**, **8** e **10** | 2015 / 2020 | `HttpClient` com `Task`, `async`/`await`, `PATCH` por `HttpMethod("PATCH")` e TLS 1.2 nos dois. O .NET 5 é o piso da linha moderna (o .NET Core 1.x a 3.x saíram). | .NET Framework 4.8; .NET 8 e a mais recente |
 | **Python** | `connectors/python/` | **2.7.9** e **3.4.3** | 2014 / 2015 | São as primeiras versões de cada linha que conferem o certificado HTTPS por padrão (PEP 476) e falam TLS 1.2. O 2.6 e o 2.7 antigo saíram. | 2.7.18, 3.5 a 3.13 |
 | **PHP** | `connectors/php/` | **5.6** | 2014 | TLS 1.2 e verificação de certificado ligada por padrão nos *streams*; `curl` faz `PATCH`. O 5.3 a 5.5 saíram. | 7.4, 8.x |
 | **Ruby** | `connectors/ruby/` | **2.0** | 2013 | `Net::HTTP::Patch` e `json` na biblioteca-padrão, `Net::HTTP` com certificado conferido por padrão e TLS 1.2 (com o OpenSSL 1.0.1 ou posterior). O 1.8.7 e o 1.9 saíram. | 2.7, 3.x |
@@ -27,7 +27,7 @@ A janela continua sendo de **15 anos** (de 2011 em diante), mas ela é só o **t
 | **C++** | `connectors/cpp/` | **C++03** | 2003 | Embrulha a `libtaba`, com a mesma exigência de `libcurl` 7.34. | C++11 a C++20 |
 | **Node.js** | `connectors/node/` | **0.12** | 2015 | `Promise` nativa e TLS 1.2 por padrão (o 0.10 negociava só TLS 1.0 por padrão); `https.request` faz qualquer verbo. | 4, 12, a LTS mais recente |
 | **Go** | `connectors/go/` | **1.7** | 2016 | `context.Context` na biblioteca-padrão (o jeito de Go de cancelar chamadas e de ser assíncrono), `net/http` com `PATCH` e TLS 1.2. Não há Go de 2011 (o 1.0 é de 2012). | 1.13, a mais recente |
-| **Rust** | `connectors/rust/` | **1.70** (edição 2021) | 2023 | Não há Rust de 2011 (a 1.0 é de 2015), e o TLS 1.2 **não está na biblioteca-padrão**: o conector usa o `rustls`, e a base é a versão mínima que ele (e o `tokio`, no assíncrono) pedem. **Estimativa:** fecha com o protótipo, olhando o `rust-version` das dependências fixadas. | a estável mais recente |
+| **Rust** | `connectors/rust/client/` | **1.70** (edição 2021) | 2023 | Não há Rust de 2011 (a 1.0 é de 2015), e o TLS 1.2 **não está na biblioteca-padrão**: o conector usa o `rustls`, e a base é a versão mínima que ele (e o `tokio`, no assíncrono) pedem. **Estimativa:** fecha com o protótipo, olhando o `rust-version` das dependências fixadas. | a estável mais recente |
 
 Nenhuma dessas versões recebe correção de segurança de todos os fornecedores. O conector as **suporta**, mas o README de cada pasta avisa que rodar nelas é responsabilidade de quem opera o ambiente.
 
@@ -36,7 +36,7 @@ Nenhuma dessas versões recebe correção de segurança de todos os fornecedores
 | Linguagem | Antes | Agora | Motivo |
 |---|---|---|---|
 | Java | 6 | **11** | O `HttpURLConnection` nunca fez `PATCH`; o `java.net.http` do 11 faz e é assíncrono |
-| C# | .NET 3.5 | **.NET Framework 4.6.1** (clássico) e **.NET 5** (moderno) | `HttpClient`, `Task` e TLS 1.2; um SDK 10 compila os dois |
+| C# | .NET 3.5 | **.NET Framework 4.6.1** (clássico) e **.NET 5, 6, 8 e 10** (moderno) | `HttpClient`, `Task` e TLS 1.2; o SDK 10 compila todos (o SDK 8 compila todos menos o `net10.0`) |
 | Python | 2.6 | **2.7.9 e 3.4.3** | Primeiras que conferem o certificado HTTPS por padrão e falam TLS 1.2 |
 | PHP | 5.3 | **5.6** | TLS 1.2 e verificação do certificado nos *streams* |
 | Ruby | 1.8.7 | **2.0** | `json` e `Net::HTTP::Patch` na biblioteca-padrão |
@@ -78,8 +78,8 @@ Nas linhas com "Leitor mínimo", o JSON todo é lido por ele. Nas com a bibliote
 
 #### C# (`connectors/csharp/`)
 
-- **Dois alvos num mesmo projeto:** `net461` (**.NET clássico**: o Framework 4.6.1 a 4.8) e `net5.0` (**.NET moderno**: 5 em diante, incluindo o 6, 8 e 10). O código é o mesmo, com `#if` só onde as APIs diferem. A linguagem fica no C# 7.3 (`LangVersion`) nos dois, para não divergir.
-- **Um só SDK compila tudo:** o **SDK do .NET 8 ou do .NET 10** (decidido, D68.1) gera os dois alvos (o `net461` com os *reference assemblies* do pacote `Microsoft.NETFramework.ReferenceAssemblies`, o `net5.0` com o *targeting pack* baixado do NuGet), sem instalar SDKs antigos no CI. O SDK avisa que o .NET 5 está fora de suporte; o aviso é suprimido (`NETSDK1138`). Os **testes** rodam no Framework 4.8 (Windows) e no .NET 8 e no mais recente, para cobrir as duas linhas.
+- **Cinco alvos num mesmo projeto:** `net461` (**.NET clássico**: o Framework 4.6.1 a 4.8) e, no **.NET moderno**, `net5.0`, `net6.0`, `net8.0` e `net10.0` (D137; o `net10.0` só entra quando o SDK é o 10 ou mais novo, por uma condição no `.csproj`). O código é o mesmo, com `#if` só onde as APIs diferem. A linguagem fica no C# 7.3 (`LangVersion`) nos dois, para não divergir.
+- **Um só SDK compila tudo:** o **SDK do .NET 8 ou do .NET 10** (decidido, D68.1) gera os alvos (o `net461` com os *reference assemblies* do pacote `Microsoft.NETFramework.ReferenceAssemblies`, os modernos com o *targeting pack* baixado do NuGet; o SDK 8 não gera o `net10.0`), sem instalar SDKs antigos no CI. O SDK avisa que o .NET 5 está fora de suporte; o aviso é suprimido (`NETSDK1138`). Os **testes** rodam no .NET 6, 8 e 10 (cada um contra o alvo de mesma versão) e, quando houver um Windows no CI, no Framework 4.8.
 - **Assíncrono primeiro:** os métodos `...Async` (com `Task`) são a implementação, e os síncronos esperam por eles.
 - **`PATCH`:** `new HttpMethod("PATCH")` no `HttpRequestMessage`.
 - **TLS 1.2:** no .NET Framework 4.6.x, o protocolo usado é o do `ServicePointManager.SecurityProtocol`, e a partir do 4.7 é o do sistema. O conector **não** o altera sozinho; o README diz como conferir.
@@ -138,7 +138,7 @@ Nas linhas com "Leitor mínimo", o JSON todo é lido por ele. Nas com a bibliote
 - **`PATCH`:** `http.MethodPatch`. A concorrência é a do Go: o `Client` é seguro entre *goroutines* (o `http.Client` do Go é).
 - **Módulos:** a pasta vale em `GOPATH` (Go 1.7) e também leva um `go.mod`, que as versões antigas ignoram. Como o módulo fica numa subpasta, a tag segue o formato `connectors/go/v1.2.0`.
 
-#### Rust (`connectors/rust/`)
+#### Rust (`connectors/rust/client/`)
 
 - **Núcleo sem entrada e saída:** montar a requisição HTTP/1.1 (linha, cabeçalhos, `Content-Length`) e interpretar a resposta (linha de status, cabeçalhos, `Content-Length` e `chunked`) são funções puras, testadas com as fixtures. As duas formas de chamar só acrescentam o transporte.
 - **Síncrono (base):** bloqueante, sobre `std::net::TcpStream` (com `set_read_timeout`/`set_write_timeout`) e o `rustls` para o HTTPS.
@@ -163,7 +163,7 @@ Cada conector compila e testa **dentro de um contêiner**, com a mesma imagem na
 | Linguagem | Imagem de compilação | Imagens de teste |
 |---|---|---|
 | Java | `eclipse-temurin:21-jdk` (`--release 11` gera para a base) | `eclipse-temurin:11-jdk`, `:17-jdk`, `:21-jdk` |
-| C# | `mcr.microsoft.com/dotnet/sdk:10.0` ou `:8.0` (compilam `net461` e `net5.0`) | `dotnet/sdk:8.0` e `:10.0` para o .NET moderno; para o Framework 4.8, `mcr.microsoft.com/dotnet/framework/runtime:4.8` (contêiner Windows) |
+| C# | `mcr.microsoft.com/dotnet/sdk:10.0` ou `:8.0` (compilam `net461`, `net5.0`, `net6.0` e `net8.0`; o `net10.0` só no `:10.0`) | `dotnet/sdk:8.0` e `:10.0` para o .NET moderno; para o Framework 4.8, `mcr.microsoft.com/dotnet/framework/runtime:4.8` (contêiner Windows) |
 | Python | `python:3.13` (gera a *wheel* universal) | `python:2.7`, `python:3.4`, `python:3.13` |
 | PHP | `composer:2` | `php:5.6-cli`, `php:7.4-cli`, `php:8-cli` |
 | Ruby | `ruby:3` | `ruby:2.0`, `ruby:2.7`, `ruby:3` |

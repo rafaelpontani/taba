@@ -1,0 +1,18 @@
+[package]
+name = "taba-cli"
+description = "A linha de comando do cliente do Taba."
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "taba_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taba-cli"
+path = "src/main.rs"
+
+[dependencies]
+taba-client = { path = "../client" }

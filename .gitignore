@@ -1,3 +1,10 @@
 .archify/
 doc/diagramas/html/
 /target
+/connectors/rust/target
+/connectors/rust/cli/dist
+
+/connectors/csharp/**/bin
+/connectors/csharp/**/obj
+/exemplos/**/bin
+/exemplos/**/obj

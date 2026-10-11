@@ -1,0 +1,8 @@
+target
+**/target
+.git
+connectors/rust/cli/dist
+doc
+crates
+**/*.md
+.codegraph
