@@ -47,7 +47,7 @@ async fn three_real_nodes_form_a_cluster_over_mutual_tls_and_replicate() {
     let id = body["id"].as_str().unwrap().to_owned();
     let consumed = cluster
         .node(3)
-        .client_get("/topics/pedidos/messages?maxMessages=1")
+        .client_get("/topics/pedidos/messages?maxMessages=1&waitTime=10")
         .await;
     assert_eq!(consumed.status(), 200);
     let consumed: Value = consumed.json().await.unwrap();
