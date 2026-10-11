@@ -13,6 +13,7 @@ pub mod testing;
 pub mod transport;
 
 pub use client::{
-    Call, Client, Config, ConsumeOptions, Error, Message, Nullable, Page, PublishOptions,
-    PublishResponse, Reply, Topic, TopicRequest, TopicUpdate, VisibilityResponse, CONTRACT_VERSION,
+    Call, Client, Config, ConsumeError, ConsumeOptions, Delivery, Error, HandlerError, Message,
+    Nullable, Page, PublishOptions, PublishResponse, Reply, Topic, TopicRequest, TopicUpdate,
+    VisibilityResponse, CONTRACT_VERSION,
 };

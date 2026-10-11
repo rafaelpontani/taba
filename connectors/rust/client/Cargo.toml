@@ -9,3 +9,13 @@ repository.workspace = true
 [dependencies]
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-native-certs = "0.8"
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+# `publish_object` e `consume_typed`: serializam e deserializam o corpo com o serde (D140).
+serde = ["dep:serde", "dep:serde_json"]
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

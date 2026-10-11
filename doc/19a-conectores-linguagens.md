@@ -143,7 +143,8 @@ Nas linhas com "Leitor mínimo", o JSON todo é lido por ele. Nas com a bibliote
 - **Núcleo sem entrada e saída:** montar a requisição HTTP/1.1 (linha, cabeçalhos, `Content-Length`) e interpretar a resposta (linha de status, cabeçalhos, `Content-Length` e `chunked`) são funções puras, testadas com as fixtures. As duas formas de chamar só acrescentam o transporte.
 - **Síncrono (base):** bloqueante, sobre `std::net::TcpStream` (com `set_read_timeout`/`set_write_timeout`) e o `rustls` para o HTTPS.
 - **Assíncrono (*feature* `async`):** o mesmo núcleo sobre `tokio::net::TcpStream` e `tokio-rustls`, com `async fn` para as nove operações.
-- **Dependências:** `rustls` (TLS 1.2 e 1.3, sem OpenSSL), uma fonte de certificados raiz e, só no `async`, o `tokio`. É a **única exceção** à regra "sem dependências" fora o `libcurl` do C (seção 18.5). Um *trait* `Transport` deixa a aplicação trocar a pilha.
+- **Consumo com *handler* e objetos (D140):** `consume_with` (long polling, apagar por padrão, renovação da invisibilidade numa segunda *thread*) e, na *feature* `serde`, `publish_object` e `consume_typed`. Sem DI, por não haver padrão na linguagem.
+- **Dependências:** `rustls` (TLS 1.2 e 1.3, sem OpenSSL), uma fonte de certificados raiz e, só no `async`, o `tokio` (e, só na *feature* `serde`, o `serde` e o `serde_json`). É a **única exceção** à regra "sem dependências" fora o `libcurl` do C (seção 18.5). Um *trait* `Transport` deixa a aplicação trocar a pilha.
 - **`taba-protocol`:** não é usado (seção 18.2).
 
 ### 18.10.4 E as outras linguagens?

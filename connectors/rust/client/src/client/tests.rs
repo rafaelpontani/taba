@@ -713,16 +713,28 @@ fn many_threads_can_use_one_client_at_the_same_time() {
 #[test]
 fn the_only_dependencies_are_rustls_and_its_root_certificates() {
     let manifest = include_str!("../../Cargo.toml");
-    let deps: Vec<&str> = manifest
-        .split("[dependencies]")
-        .nth(1)
-        .unwrap()
-        .lines()
-        .take_while(|l| !l.starts_with('['))
-        .filter_map(|l| l.split('=').next())
-        .map(str::trim)
-        .filter(|n| !n.is_empty())
-        .collect();
-    assert_eq!(deps, ["rustls", "rustls-native-certs"]);
-    assert!(!manifest.contains("[dev-dependencies]"));
+    let names = |section: &str, optional: bool| -> Vec<&str> {
+        manifest
+            .split(section)
+            .nth(1)
+            .unwrap()
+            .lines()
+            .take_while(|l| !l.starts_with('['))
+            .filter(|l| l.contains("optional = true") == optional)
+            .filter_map(|l| l.split('=').next())
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && !n.starts_with('#'))
+            .collect()
+    };
+    assert_eq!(
+        names("[dependencies]", false),
+        ["rustls", "rustls-native-certs"]
+    );
+    // O serde só entra na feature `serde` (publish_object e consume_typed); fora dela, nada.
+    assert_eq!(names("[dependencies]", true), ["serde", "serde_json"]);
+    assert_eq!(
+        names("[dev-dependencies]", false),
+        ["serde", "serde_json"],
+        "só para os testes"
+    );
 }

@@ -900,5 +900,11 @@ impl Client {
     }
 }
 
+mod handlers;
+pub use handlers::{
+    ConsumeError, Delivery, HandlerError, DEFAULT_MAX_MESSAGES, DEFAULT_VISIBILITY_TIMEOUT,
+    DEFAULT_WAIT_TIME,
+};
+
 #[cfg(test)]
 mod tests;
