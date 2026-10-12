@@ -611,7 +611,9 @@ impl Signals {
         }
     }
 
-    /// Os nós que têm mensagens prontas do tópico, sem este, os em drain e os que saíram da tabela.
+    /// Os nós que têm mensagens prontas do tópico, sem este, os em drain, os que saíram da tabela e
+    /// os de canal fora do ar: pedir `take` a um par que não responde custa o prazo da chamada
+    /// (5 s) a cada tentativa, e o canal reaberto traz o instantâneo de volta.
     /// O nó que avisou por último vem primeiro.
     pub fn ready_peers(&self, topic: &str) -> Vec<String> {
         let tables = self.lock();
@@ -625,6 +627,7 @@ impl Signals {
                         **n != me
                             && !tables.draining.contains(*n)
                             && self.service.membership().is_active(n)
+                            && self.channels().is_none_or(|c| c.is_live(n))
                     })
                     .cloned()
                     .collect()
