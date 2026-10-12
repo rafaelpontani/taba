@@ -306,9 +306,15 @@ async fn a_corrupt_topic_database_fails_the_node() {
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("_topic.db"), vec![0xAB; 4096]).unwrap();
 
-    // O corpo passa de `memory.limit`: vai ao disco e acha o banco corrompido.
+    // O corpo passa de `memory.limit`: vai ao disco e acha o banco corrompido. A varredura (a cada
+    // até 1 s) também abre o banco: se ela chegar antes do publish, o nó já está `failed` e o
+    // publish recebe `503` `node.failed`. Os dois desfechos deixam o nó em falha.
     let response = publish(&node, "pedidos", r#"{ "grande": true }"#).await;
-    assert_eq!(error_code(response, 500).await, "internal.error");
+    let (status, code) = match response.status().as_u16() {
+        503 => (503, "node.failed"),
+        _ => (500, "internal.error"),
+    };
+    assert_eq!(error_code(response, status).await, code);
 
     let ready = node.client_get("/health/ready").await;
     assert_eq!(ready.status(), 503);
