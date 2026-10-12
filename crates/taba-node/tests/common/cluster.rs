@@ -175,6 +175,30 @@ impl TestCluster {
         Ok(self.nodes.len())
     }
 
+    /// Sobe o nó `number` de novo, no mesmo endereço do que acabou de cair (`configure` põe a porta
+    /// no construtor). A porta é efêmera, sorteada pelo sistema, e nesse intervalo outra conexão ou
+    /// outro teste pode tomá-la; num runner lento a janela é bem maior. Por isso repete enquanto o
+    /// erro for `AddrInUse`, até `WAIT` s.
+    pub async fn respawn_node(
+        &mut self,
+        number: usize,
+        configure: impl Fn(TestNodeBuilder) -> TestNodeBuilder,
+    ) -> Result<usize, NodeError> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(WAIT);
+        loop {
+            let builder = configure(self.builder(number, false));
+            match self.spawn_node(builder).await {
+                Err(NodeError::Bind { source, .. })
+                    if source.kind() == std::io::ErrorKind::AddrInUse
+                        && tokio::time::Instant::now() < deadline =>
+                {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                other => return other,
+            }
+        }
+    }
+
     pub fn node(&self, number: usize) -> &TestNode {
         &self.nodes[number - 1]
     }

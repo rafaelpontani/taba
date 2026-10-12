@@ -622,10 +622,12 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
     .await;
 
     // Com a votação aberta, o nó reinicia no mesmo IP e porta e pede para entrar.
-    let builder = cluster
-        .builder(3, false)
-        .env("TABA_CLUSTER_PORT", &port.to_string());
-    let number = cluster.spawn_node(builder).await.expect("o nó reinicia");
+    let number = cluster
+        .respawn_node(3, |builder| {
+            builder.env("TABA_CLUSTER_PORT", &port.to_string())
+        })
+        .await
+        .expect("o nó reinicia");
     let new_id = cluster.node_id(number);
     assert_ne!(new_id, old_id, "o ID é novo");
 
@@ -732,6 +734,44 @@ async fn a_syncing_node_that_fails_is_excluded_by_the_others() {
     cluster.shutdown().await;
 }
 
+/// O nó que reinicia no mesmo endereço espera a porta do cluster ficar livre, em vez de falhar com
+/// `AddrInUse`: a porta é efêmera e, nesse intervalo, outra conexão ou outro teste pode tomá-la.
+#[tokio::test]
+async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_holds() {
+    let mut cluster = TestCluster::start(3).await;
+    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    cluster.nodes.pop().unwrap().shutdown().await;
+    cluster.network.unregister(&PeerAddr::new(host_of(3), port));
+
+    // Alguém pega a porta e só a solta depois de um tempo.
+    let mut holder = None;
+    for _ in 0..100 {
+        if let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) {
+            holder = Some(listener);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let holder = holder.expect("a porta fica livre depois do desligamento");
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        drop(holder);
+    });
+
+    let number = cluster
+        .respawn_node(3, |builder| {
+            builder.env("TABA_CLUSTER_PORT", &port.to_string())
+        })
+        .await
+        .expect("o nó reinicia quando a porta é liberada");
+    release.join().unwrap();
+    assert_eq!(
+        cluster.node(number).node.cluster_addr().unwrap().port(),
+        port
+    );
+    cluster.shutdown().await;
+}
+
 /// UC: UC-CAN-025, UC-CAN-014, UC-CNC-007
 #[tokio::test]
 async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and_is_replaced() {
@@ -750,10 +790,12 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
 
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
-    let builder = cluster
-        .builder(3, false)
-        .env("TABA_CLUSTER_PORT", &port.to_string());
-    let number = cluster.spawn_node(builder).await.expect("o nó reinicia");
+    let number = cluster
+        .respawn_node(3, |builder| {
+            builder.env("TABA_CLUSTER_PORT", &port.to_string())
+        })
+        .await
+        .expect("o nó reinicia");
     let new_id = cluster.node_id(number);
     assert_ne!(new_id, old_id);
 

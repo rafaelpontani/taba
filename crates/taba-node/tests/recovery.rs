@@ -555,16 +555,17 @@ async fn restart_third(
             .expect("grava no disco");
     }
     drop(old_disk);
-    let mut builder = cluster
-        .builder(3, false)
-        .env("TABA_CLUSTER_PORT", &port.to_string())
-        .env("TABA_MEMORY_LIMIT", "1B")
-        .env("TABA_STORAGE_DIR", &storage.display().to_string());
-    for (key, value) in env {
-        builder = builder.env(key, value);
-    }
     let number = cluster
-        .spawn_node(builder)
+        .respawn_node(3, |builder| {
+            let mut builder = builder
+                .env("TABA_CLUSTER_PORT", &port.to_string())
+                .env("TABA_MEMORY_LIMIT", "1B")
+                .env("TABA_STORAGE_DIR", &storage.display().to_string());
+            for (key, value) in env {
+                builder = builder.env(key, value);
+            }
+            builder
+        })
         .await
         .expect("o processo reinicia");
     // A pasta do disco fica de pé: o `TempDir` morre com o teste, depois da verificação.
