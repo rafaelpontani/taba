@@ -41,17 +41,22 @@ pub fn host_of(number: usize) -> String {
     format!("10.0.0.{number}")
 }
 
+/// O prazo, em segundos, de `eventually` e `eventually_async`.
+pub const WAIT: u64 = 30;
+
 pub fn balancer() -> PeerAddr {
     PeerAddr::new(BALANCER_HOST, BALANCER_PORT)
 }
 
-/// Espera a condição ficar verdadeira (até 10 s). Os nós trabalham em tarefas próprias.
+/// Espera a condição ficar verdadeira (até `WAIT` s). Os nós trabalham em tarefas próprias. O prazo é
+/// folgado de propósito: só custa tempo quando o teste já falhou, e um runner lento ou sobrecarregado
+/// (arm64 no CI) leva muito mais que o desenvolvedor vê na sua máquina.
 pub async fn eventually(what: &str, mut condition: impl FnMut() -> bool) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(WAIT);
     while !condition() {
         assert!(
             tokio::time::Instant::now() < deadline,
-            "esperei 10 s por: {what}"
+            "esperei {WAIT} s por: {what}"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -63,11 +68,11 @@ where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(WAIT);
     while !condition().await {
         assert!(
             tokio::time::Instant::now() < deadline,
-            "esperei 10 s por: {what}"
+            "esperei {WAIT} s por: {what}"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }

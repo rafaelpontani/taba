@@ -266,6 +266,14 @@ async fn publish_many(node: &TestNode, topic: &str, count: usize) {
     }
 }
 
+fn messages_of(node: &TestNode) -> std::sync::Arc<taba_node::engine::messages::Messages> {
+    node.node
+        .cluster()
+        .and_then(|c| c.replication())
+        .map(|r| r.messages.messages().clone())
+        .expect("o nó está no cluster")
+}
+
 fn delivered(body: &Value) -> usize {
     body["messages"].as_array().unwrap().len()
 }
@@ -291,11 +299,32 @@ async fn a_get_tries_the_next_ids_after_a_failed_registration_up_to_the_attempt_
     )
     .await;
     assert_eq!(response.status(), 200);
-    assert_eq!(delivered(&response.json().await.unwrap()), 1);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(delivered(&body), 1);
     for number in 2..=3 {
         cluster
             .network
             .lose_kind(&host_of(number), "visibility-register", 0);
+    }
+    // O quórum fecha sem a réplica que perdeu o registro: ela segue a registrar e dar o commit em
+    // segundo plano, de 200 ms em 200 ms (`write.retry.backoff`), até conseguir. Num nó lento essa
+    // réplica ainda está no meio quando a fase seguinte começa e, perdendo todas as chamadas, ficaria
+    // a somar tentativas à contagem. Espera todas terminarem antes de seguir.
+    let id = body["messages"][0]["id"].as_str().unwrap().to_owned();
+    let token = body["messages"][0]["receiptToken"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for number in 1..=3 {
+        let messages = messages_of(cluster.node(number));
+        let (id, token) = (id.clone(), token.clone());
+        eventually("a réplica registrar a entrega", move || {
+            messages
+                .message_info("pedidos", &id)
+                .unwrap()
+                .is_some_and(|info| info.meta.receipt_token.as_deref() == Some(token.as_str()))
+        })
+        .await;
     }
 
     // Sem nenhum registro fechando, o `GET` para depois de `delivery.get.max-attempts` falhas

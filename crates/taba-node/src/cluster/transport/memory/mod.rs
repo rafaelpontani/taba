@@ -42,6 +42,7 @@ struct State {
     silent: HashSet<String>,
     delay: Duration,
     delay_kind: HashMap<String, Duration>,
+    delay_host_kind: HashMap<(String, String), Duration>,
     calls: Vec<Call>,
     /// Os canais abertos (os dois hosts e como fechá-los): uma partição os derruba, como a queda de
     /// uma conexão TCP.
@@ -165,6 +166,14 @@ impl MemoryNetwork {
         self.lock().delay_kind.insert(request.to_owned(), delay);
     }
 
+    /// Atraso somado só às chamadas de um tipo (`Request::name()`) **a um nó**: para fazer a
+    /// resposta de um nó chegar depois das dos outros. `Duration::ZERO` o tira.
+    pub fn set_delay_host_kind(&self, host: &str, request: &str, delay: Duration) {
+        self.lock()
+            .delay_host_kind
+            .insert((host.to_owned(), request.to_owned()), delay);
+    }
+
     /// As chamadas feitas até agora, na ordem.
     pub fn calls(&self) -> Vec<Call> {
         self.lock().calls.clone()
@@ -250,7 +259,13 @@ impl MemoryNetwork {
                 "conexão recusada por {target}"
             )));
         };
-        let delay = state.delay + state.delay_kind.get(request).copied().unwrap_or_default();
+        let delay = state.delay
+            + state.delay_kind.get(request).copied().unwrap_or_default()
+            + state
+                .delay_host_kind
+                .get(&(target.host.clone(), request.to_owned()))
+                .copied()
+                .unwrap_or_default();
         Ok((handler, delay, state.silent.contains(&target.host)))
     }
 }

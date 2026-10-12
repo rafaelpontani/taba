@@ -121,6 +121,8 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
     let mut remaining = total;
     let mut primary_error: Option<CallError> = None;
     let mut required_failed = false;
+    // Todas as falhas até aqui foram respostas dos próprios nós (`4xx`), e não falha de rede.
+    let mut only_semantic = true;
     let mut committed: Vec<usize> = Vec::new();
     let mut quorum_set: Vec<usize> = Vec::new();
     let mut decided = false;
@@ -132,6 +134,9 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
             }
             Event::RegisterFailed(index, error) => {
                 remaining -= 1;
+                if !matches!(&error, CallError::Remote(e) if e.status() < 500) {
+                    only_semantic = false;
+                }
                 if index == 0 {
                     primary_error = Some(error);
                 } else if index < required {
@@ -175,6 +180,23 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
                     quorum,
                     "operação abortada (rollback): o quórum não fechou"
                 );
+                // O primário ainda não respondeu e os outros donos só disseram "não" (a mensagem
+                // não existe, o token venceu...): o que o primário diz vale mais que a conta do
+                // quórum. A ordem em que as respostas chegam muda de máquina para máquina (num nó
+                // lento as dos outros donos chegam antes), então espera a dele em vez de devolver
+                // `503` para um erro que é `4xx`. Com falha de rede não espera: o `503` é o certo.
+                if only_semantic && primary_error.is_none() && !confirmed.contains(&0) {
+                    while let Some(event) = events.recv().await {
+                        match event {
+                            Event::RegisterFailed(0, error) => {
+                                primary_error = Some(error);
+                                break;
+                            }
+                            Event::Registered(0) => break,
+                            _ => {}
+                        }
+                    }
+                }
                 return Err(match primary_error {
                     // O que o primário diz vale: mensagem que não existe, token vencido...
                     Some(CallError::Remote(error)) if error.status() < 500 => error,

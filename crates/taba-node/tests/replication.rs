@@ -819,6 +819,54 @@ async fn deliver_at(node: &TestNode) -> String {
     got[0]["receiptToken"].as_str().unwrap().to_owned()
 }
 
+/// UC: UC-INV-008, UC-INV-010
+///
+/// A mensagem não existe mais em nenhum dono: o ack responde `404`, mesmo que as respostas dos dois
+/// donos que não são o primário cheguem antes da dele. O erro que vale é o do primário, e não o
+/// `503` da conta do quórum (num nó lento a ordem de chegada muda).
+#[tokio::test]
+async fn an_ack_of_a_gone_message_answers_404_even_when_the_primary_answers_last() {
+    let cluster = TestCluster::start(3).await;
+    create_queue(cluster.node(1), "pedidos").await;
+    let id = publish(cluster.node(1), "pedidos", json!({"x": 1})).await;
+    let token = deliver_at(cluster.node(1)).await;
+    let ack = cluster
+        .node(1)
+        .client
+        .delete(cluster.node(1).client_url(&format!(
+            "/topics/pedidos/messages/{id}?receiptToken={token}"
+        )))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ack.status(), 204);
+    for number in 1..=3 {
+        let messages = messages_of(cluster.node(number));
+        let id = id.clone();
+        eventually("a mensagem sumir da réplica", move || {
+            messages.message_info("pedidos", &id).unwrap().is_none()
+        })
+        .await;
+    }
+
+    let primary = owners_of(&cluster, &id)[0];
+    cluster
+        .network
+        .set_delay_host_kind(&host(primary), "ack-register", Duration::from_millis(300));
+    let via = (1..=3).find(|n| *n != primary).unwrap();
+    let again = cluster
+        .node(via)
+        .client
+        .delete(cluster.node(via).client_url(&format!(
+            "/topics/pedidos/messages/{id}?receiptToken={token}"
+        )))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(error_code(again, 404).await, "message.not-found");
+    cluster.shutdown().await;
+}
+
 /// UC: UC-MSG-014, UC-MSG-015, UC-ESC-004, UC-ESC-006, UC-ESC-007, UC-ESC-011
 #[tokio::test]
 async fn the_answer_comes_only_after_the_quorum_committed_whichever_node_took_the_call() {
