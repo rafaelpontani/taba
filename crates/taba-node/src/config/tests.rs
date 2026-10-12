@@ -683,3 +683,23 @@ fn advertise_addresses_is_a_list_of_the_ips_the_node_tells_the_others() {
         vec!["10.0.0.5", "192.168.1.5"]
     );
 }
+
+/// UC: UC-OPS-032
+#[test]
+fn the_log_format_defaults_to_text_and_comes_from_yaml_or_env() {
+    assert_eq!(
+        prod_with(&[]).unwrap().telemetry.logs_format,
+        LogFormat::Text
+    );
+    let yaml = "telemetry:\n  logs:\n    format: json\n";
+    let from_yaml = Config::parse(Some(("taba.yml", yaml)), &MapEnv::new(PROD)).unwrap();
+    assert_eq!(from_yaml.telemetry.logs_format, LogFormat::Json);
+    // A variável de ambiente vence o arquivo.
+    let env = MapEnv::new([PROD[0], ("TABA_TELEMETRY_LOGS_FORMAT", "color")]);
+    let both = Config::parse(Some(("taba.yml", yaml)), &env).unwrap();
+    assert_eq!(both.telemetry.logs_format, LogFormat::Color);
+    let bad = prod_with(&[("TABA_TELEMETRY_LOGS_FORMAT", "xml")]);
+    assert!(
+        matches!(bad, Err(ConfigError::InvalidValue { key, .. }) if key == "telemetry.logs.format")
+    );
+}

@@ -125,6 +125,7 @@ pub static PARAMS: &[Param] = &[
     p("telemetry.topics.group-by-tags", None),
     p("telemetry.topics.max-topics", None),
     p("telemetry.logs.level", None),
+    p("telemetry.logs.format", Some("text")),
     p("stats.topics.top-groups", Some("10")),
     p("stats.topics.cache-ttl", None),
     p("stats.topics.backlog.depth", None),

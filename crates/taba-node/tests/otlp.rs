@@ -18,7 +18,7 @@ use common::{TestNode, series};
 async fn serial() -> tokio::sync::MutexGuard<'static, ()> {
     static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let guard = LOCK.lock().await;
-    taba_node::telemetry::init_logging(Some("warn"));
+    taba_node::telemetry::init_logging(Some("warn"), taba_node::config::LogFormat::Text);
     guard
 }
 

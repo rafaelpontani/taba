@@ -528,7 +528,7 @@ Logs **estruturados** (JSON, ou OTLP) com o mesmo contexto do trace (`trace_id`,
 | Overflow de memória para disco (resumo periódico, não por mensagem): evento `taba.storage.overflow`, com `messages` e `window_secs`, a cada 60 s e só quando houve overflow (D118) | `info` | Armazenamento (seção 3.2) |
 | Erro de I/O em disco | `error` | Armazenamento |
 
-Pelo OTLP cada log vai como *log record* com `trace_id` e `span_id` do span em que aconteceu, severidade do OpenTelemetry e os campos do evento (inclusive `event.name`) como atributos; o log em JSON no `stdout` ainda não leva `trace_id` nem `span_id` (PRB-050). O nível de log é configurável (`telemetry.logs.level`). Logs por mensagem em caminho quente (publicação, consumo) ficam em `debug` para não pesar na latência.
+Pelo OTLP cada log vai como *log record* com `trace_id` e `span_id` do span em que aconteceu, severidade do OpenTelemetry e os campos do evento (inclusive `event.name`) como atributos; o log no `stdout` (`telemetry.logs.format`: `text`, o padrão, `color` ou `json`) ainda não leva `trace_id` nem `span_id` (PRB-050). O nível de log é configurável (`telemetry.logs.level`). Logs por mensagem em caminho quente (publicação, consumo) ficam em `debug` para não pesar na latência.
 
 ## Health checks
 

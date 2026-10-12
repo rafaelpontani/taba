@@ -74,7 +74,7 @@ pub struct RealCluster {
 impl RealCluster {
     /// Sobe `count` nós, um depois do outro, cada um só depois de o anterior estar no cluster.
     pub async fn start(count: usize, tls_dir: Option<&Path>) -> Self {
-        taba_node::telemetry::init_logging(Some("info"));
+        taba_node::telemetry::init_logging(Some("info"), taba_node::config::LogFormat::Text);
         let mut cluster = Self {
             nodes: Vec::new(),
             tls_dir: tls_dir.map(Path::to_owned),

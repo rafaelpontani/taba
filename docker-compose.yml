@@ -24,6 +24,8 @@ x-taba: &taba
     # A descoberta passa pelo HAProxy, na porta do cluster.
     TABA_CLUSTER_ENTRY_ADDRESS: haproxy:8081
     TABA_REPLICATION_FACTOR: "3"
+    # Log em texto colorido no `docker compose logs` (padrão do nó: `text`; também há `json`).
+    TABA_TELEMETRY_LOGS_FORMAT: color
   healthcheck:
     test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/health/ready"]
     interval: 3s

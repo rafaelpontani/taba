@@ -102,6 +102,30 @@ impl Parse for TopicsMetricsMode {
     }
 }
 
+/// Formato dos logs no `stdout` (`telemetry.logs.format`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogFormat {
+    /// Texto simples, sem cores (o padrão).
+    #[default]
+    Text,
+    /// Texto com cores ANSI, para terminal e `docker compose logs`.
+    Color,
+    /// Uma linha JSON por evento.
+    Json,
+}
+
+impl Parse for LogFormat {
+    const EXPECTED: &'static str = "`text`, `color` ou `json`";
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "text" => Some(Self::Text),
+            "color" => Some(Self::Color),
+            "json" => Some(Self::Json),
+            _ => None,
+        }
+    }
+}
+
 /// Modo de sincronização do SQLite (`storage.db.synchronous`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbSynchronous {
@@ -301,6 +325,8 @@ pub struct Telemetry {
     pub topics_max_topics: Option<u32>,
     /// `None`: o padrão ainda está a definir; o nó usa `info`.
     pub logs_level: Option<String>,
+    /// `telemetry.logs.format`: `text` (padrão), `color` ou `json`.
+    pub logs_format: LogFormat,
     /// Atributos de recurso de `OTEL_SERVICE_NAME` e `OTEL_RESOURCE_ATTRIBUTES` (variáveis do
     /// SDK do OpenTelemetry, que não têm chave no YAML).
     pub resource: Vec<(String, String)>,
@@ -654,6 +680,7 @@ impl Config {
                 .unwrap_or_default(),
             topics_max_topics: s.opt("telemetry.topics.max-topics")?,
             logs_level: s.opt("telemetry.logs.level")?,
+            logs_format: s.get("telemetry.logs.format")?,
             resource: Vec::new(),
             otlp: None,
         };

@@ -18,7 +18,7 @@ use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::registry::Registry as SpanRegistry;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use crate::config::{Config, TopicsMetricsMode};
+use crate::config::{Config, LogFormat, TopicsMetricsMode};
 use metrics::Registry;
 
 /// O teto de séries por tópico no modo `per-topic` enquanto `telemetry.topics.max-topics` está a
@@ -70,16 +70,22 @@ impl Telemetry {
     }
 }
 
-/// Liga o log em JSON no nível de `telemetry.logs.level` (`info` enquanto o padrão
-/// estiver a definir) e as camadas do OTLP (spans e logs), que só exportam depois de um
-/// [`otlp::Pipeline::attach`]. Chamar de novo é inofensivo: vale a primeira chamada.
-pub fn init_logging(level: Option<&str>) {
+/// Liga o log no formato de `telemetry.logs.format` (texto simples, texto colorido ou JSON), no
+/// nível de `telemetry.logs.level` (`info` enquanto o padrão estiver a definir) e as camadas do
+/// OTLP (spans e logs), que só exportam depois de um [`otlp::Pipeline::attach`]. Chamar de novo é
+/// inofensivo: vale a primeira chamada.
+pub fn init_logging(level: Option<&str>, format: LogFormat) {
     let filter = EnvFilter::new(level.unwrap_or("info"));
     let hub = otlp::hub();
-    let fmt = tracing_subscriber::fmt::layer()
-        .json()
-        .with_current_span(false)
-        .with_filter(filter);
+    let fmt = match format {
+        LogFormat::Json => tracing_subscriber::fmt::layer()
+            .json()
+            .with_current_span(false)
+            .boxed(),
+        LogFormat::Text => tracing_subscriber::fmt::layer().with_ansi(false).boxed(),
+        LogFormat::Color => tracing_subscriber::fmt::layer().with_ansi(true).boxed(),
+    }
+    .with_filter(filter);
     let _ = SpanRegistry::default()
         .with(hub.trace_layer())
         .with(hub.log_layer())

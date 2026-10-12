@@ -37,7 +37,10 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    telemetry::init_logging(config.telemetry.logs_level.as_deref());
+    telemetry::init_logging(
+        config.telemetry.logs_level.as_deref(),
+        config.telemetry.logs_format,
+    );
 
     let deps = match Deps::production(&config) {
         Ok(deps) => deps,
