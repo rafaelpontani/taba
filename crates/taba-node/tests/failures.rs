@@ -787,7 +787,7 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
     settled(&cluster).await;
     let old_id = cluster.node_id(3);
     let port = cluster.node(3).node.cluster_addr().unwrap().port();
- 
+
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
     let number = cluster
