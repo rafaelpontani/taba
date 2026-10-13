@@ -11,7 +11,7 @@
       "id": "obs-d0-0",
       "type": "security",
       "label": "Paginação por chave",
-      "sublabel": "decisão 8.1.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         70
@@ -25,7 +25,7 @@
       "id": "obs-d0-0x",
       "type": "database",
       "label": "limit, cursor e sort",
-      "sublabel": "detalhe 8.1.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         70
@@ -39,7 +39,7 @@
       "id": "obs-d0-1",
       "type": "security",
       "label": "Mensagem máxima",
-      "sublabel": "decisão 8.1.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         136
@@ -53,7 +53,7 @@
       "id": "obs-d0-1x",
       "type": "database",
       "label": "5 MB; limite rígido",
-      "sublabel": "detalhe 8.1.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         136
@@ -67,7 +67,7 @@
       "id": "obs-d0-2",
       "type": "security",
       "label": "Rate limit por token ou IP",
-      "sublabel": "decisão 8.1.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         202
@@ -81,7 +81,7 @@
       "id": "obs-d0-2x",
       "type": "database",
       "label": "cabeçalho do balanceador",
-      "sublabel": "detalhe 8.1.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         202
@@ -95,7 +95,7 @@
       "id": "obs-t0",
       "type": "cloud",
       "label": "API de cliente",
-      "sublabel": "tema 8.1",
+      "sublabel": "tema",
       "pos": [
         225,
         136
@@ -109,7 +109,7 @@
       "id": "obs-d1-0",
       "type": "security",
       "label": "Um alvo por nó",
-      "sublabel": "decisão 8.2.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         268
@@ -123,7 +123,7 @@
       "id": "obs-d1-0x",
       "type": "database",
       "label": "total feito no PromQL",
-      "sublabel": "detalhe 8.2.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         268
@@ -137,7 +137,7 @@
       "id": "obs-d1-1",
       "type": "security",
       "label": "OTLP padrão",
-      "sublabel": "decisão 8.2.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         334
@@ -151,7 +151,7 @@
       "id": "obs-d1-1x",
       "type": "database",
       "label": "variáveis OTEL_*",
-      "sublabel": "detalhe 8.2.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         334
@@ -165,7 +165,7 @@
       "id": "obs-d1-2",
       "type": "security",
       "label": "Streams de sincronização",
-      "sublabel": "decisão 8.2.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         400
@@ -179,7 +179,7 @@
       "id": "obs-d1-2x",
       "type": "database",
       "label": "taba.sync.streams",
-      "sublabel": "detalhe 8.2.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         400
@@ -193,7 +193,7 @@
       "id": "obs-t1",
       "type": "cloud",
       "label": "Métricas",
-      "sublabel": "tema 8.2",
+      "sublabel": "tema",
       "pos": [
         225,
         334
@@ -207,7 +207,7 @@
       "id": "obs-d2-0",
       "type": "security",
       "label": "Rotas isentas de limite",
-      "sublabel": "decisão 8.3.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         466
@@ -221,7 +221,7 @@
       "id": "obs-d2-0x",
       "type": "database",
       "label": "health, metrics, health/cluster?scope=node",
-      "sublabel": "detalhe 8.3.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         466
@@ -235,7 +235,7 @@
       "id": "obs-d2-1",
       "type": "security",
       "label": "IPs autorizados",
-      "sublabel": "decisão 8.3.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         532
@@ -249,7 +249,7 @@
       "id": "obs-d2-1x",
       "type": "database",
       "label": "proxies confiáveis; rede segura",
-      "sublabel": "detalhe 8.3.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         532
@@ -263,7 +263,7 @@
       "id": "obs-t2",
       "type": "cloud",
       "label": "Operação",
-      "sublabel": "tema 8.3",
+      "sublabel": "tema",
       "pos": [
         225,
         499
@@ -277,7 +277,7 @@
       "id": "obs",
       "type": "backend",
       "label": "API e observabilidade",
-      "sublabel": "área 8",
+      "sublabel": "área",
       "pos": [
         20,
         318

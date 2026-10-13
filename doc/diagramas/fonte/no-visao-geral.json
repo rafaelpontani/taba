@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "Um nó Taba por dentro", "output": "doc/diagramas/html/no-visao-geral.html", "quality_profile": "showcase" },
+  "components": [
+    { "id": "apps", "type": "external", "label": "Aplicações", "sublabel": "produtores e consumidores", "pos": [30, 60], "size": [170, 64] },
+    { "id": "operador", "type": "external", "label": "Operador", "sublabel": "Prometheus, balanceador", "pos": [30, 200], "size": [170, 64] },
+    { "id": "peers", "type": "external", "label": "Outros nós", "sublabel": "mesma imagem", "pos": [30, 340], "size": [170, 64] },
+    { "id": "api", "type": "frontend", "label": "API de cliente", "sublabel": "api.port 8080 · token", "pos": [300, 60], "size": [190, 64] },
+    { "id": "ops", "type": "frontend", "label": "API de operação", "sublabel": "operations.port · sem auth", "pos": [300, 200], "size": [190, 64] },
+    { "id": "cl", "type": "security", "label": "API do cluster", "sublabel": "cluster.port 8081 · mTLS", "pos": [300, 340], "size": [190, 64] },
+    { "id": "engine", "type": "backend", "label": "Engine", "sublabel": "tópicos, entrega, FIFO", "pos": [600, 60], "size": [190, 64] },
+    { "id": "cluster", "type": "backend", "label": "Cluster", "sublabel": "membros, anel, votação", "pos": [600, 340], "size": [190, 64] },
+    { "id": "storage", "type": "database", "label": "Storage", "sublabel": "memória + SQLite", "pos": [870, 200], "size": [170, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Um nó (processo taba)", "wraps": ["api", "ops", "cl", "engine", "cluster", "storage"] }
+  ],
+  "connections": [
+    { "id": "c1", "from": "apps", "to": "api", "label": "HTTP" },
+    { "id": "c2", "from": "operador", "to": "ops", "label": "HTTP" },
+    { "id": "c3", "from": "peers", "to": "cl", "label": "HTTP + WebSocket", "variant": "security" },
+    { "id": "c4", "from": "api", "to": "engine", "label": "chama" },
+    { "id": "c5", "from": "cl", "to": "cluster", "label": "chama" },
+    { "id": "c6", "from": "engine", "to": "storage", "label": "lê e grava", "fromSide": "right", "toSide": "top" },
+    { "id": "c7", "from": "cluster", "to": "storage", "label": "grava", "fromSide": "right", "toSide": "bottom" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Camadas", "items": ["core ← storage ← engine ← cluster ← http ← node", "Cada camada só depende das da esquerda"] },
+    { "dot": "emerald", "title": "Sem coordenador", "items": ["Quem é dono de quê sai da tabela de membros e do anel"] }
+  ]
+}

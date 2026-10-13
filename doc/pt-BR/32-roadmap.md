@@ -1,0 +1,106 @@
+---
+título: Roadmap
+resumo: O que já está pronto (a versão 0.1) e o que vem a seguir, em marcos — contrato OpenAPI, demais conectores, publicação, Kubernetes, operação — com as pendências que cada marco fecha.
+tipo: referência
+status: parcial
+verificado-em: 2026-10-13 @ 71183b9
+fontes: [doc/08c-proximos-passos.md, doc/08b-pendencias.md, connectors/README.md, doc/pt-BR/31-pendencias.md]
+---
+
+# Roadmap
+
+> Este é o **plano de próximos passos**, só com o que está **aberto** (o feito está resumido em "Onde estamos"). As dúvidas e problemas citados estão em [31-pendencias.md](31-pendencias.md); o que já foi decidido, em [30-decisoes.md](30-decisoes.md). Regra do projeto: ao fechar uma pendência, apague a entrada e a referência aqui.
+
+## Onde estamos: a versão 0.1
+
+A **0.1 fecha** quando uma pessoa sobe um cluster de três nós com um comando, usa a API pelo `taba-cli` num terminal e por um aplicativo de console em C#. Os cinco passos estão **feitos**:
+
+| Passo | Estado |
+|---|---|
+| 1 — `taba-cli`, o primeiro conector (comandos, perfis, TUI, imagem Docker, binários para 6 plataformas) | ✅ |
+| 2 — Docker e Compose (`Dockerfile`, `docker-compose.yml` de três nós, HAProxy de exemplo, `taba init`) | ✅ |
+| 3 — Conector C# (nove operações, `subscribe`, injeção de dependência, testes unitários e de integração) | ✅ |
+| 4 — Exemplo de console em C# (`exemplos/csharp-console/`) | ✅ |
+| 5 — Validação de ponta a ponta (`docker/validate.sh`: cluster, `taba-cli`, queda e volta de nós, sem perda de mensagem) | ✅ |
+
+Também está pronto o **servidor** inteiro (nó, cluster, FIFO, volátil, distribuidor, tokens, mTLS, observabilidade) e o **CI/CD** com versionamento automático ([27-ci-cd.md](27-ci-cd.md)).
+
+> ⚠️ **Ressalvas da 0.1** (achadas ao documentar, ver [31-pendencias.md](31-pendencias.md) "Descobertas"): parar o cluster **inteiro** perde mensagens e tópicos; perder **dois nós seguidos** trava o cluster; `scope=cluster` das métricas de tópico não agrega entre nós; sete parâmetros de configuração não têm efeito.
+
+## Marcos
+
+A ordem é uma **proposta**; os marcos 1 e 2 não dependem um do outro.
+
+### Marco 1 — Contrato da API de cliente
+
+| Item | Detalhe | Fecha |
+|---|---|---|
+| **Contrato OpenAPI** da API de cliente ⬜ | Hoje o contrato é o texto de [15](15-api-visao-geral.md) e [16](16-api-cliente.md), o `taba-cli` e os testes. Fixar o OpenAPI **antes** dos outros conectores, para não divergirem do que o C# fixou. Inclui a política de versionamento nos caminhos (hoje não há `/v1`) | RF-22 |
+| **Suíte de conformidade** ⬜ | `connectors/contrato/`: fixtures (pares requisição/resposta), os documentos de teste do leitor de JSON, os cenários e um `docker-compose` do Taba em modo desenvolvimento | UC-CNT (nível `K`) |
+
+### Marco 2 — Os demais conectores
+
+Em fases ([21-conectores.md](21-conectores.md)); as fases 2, 3 e 4 **não dependem entre si**, só da 1:
+
+| Fase | Linguagens | Observação |
+|---|---|---|
+| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) | Estressam o desenho nas duas pontas |
+| 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho C++03 sobre a `libtaba`) | |
+| 3 — Plataformas | **Node.js** e **Go** | |
+| 4 — Restantes | **PHP** e **Ruby**; no **Rust**, a forma `async` | |
+| 5 — Integração | Os cenários passam em **todos** contra o Taba real; exemplos de uso preenchem a tabela do README | Depende do marco 1 |
+
+Decisões que precisam estar fechadas: **D68** (versões-base), **D70.1** e **D70.2** (nomes de organização e pacote; espelho do PHP; versões independentes).
+
+### Marco 3 — Publicação
+
+| Item | Detalhe |
+|---|---|
+| Pacotes ⬜ | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`), e os registros das outras linguagens. **Não podem ser apagados**: ficam atrás de aprovação manual ([27-ci-cd.md](27-ci-cd.md)) |
+| Imagens ⬜ | GHCR (hoje só Docker Hub) |
+| Repositório público ⬜ | Hoje privado; a publicação definitiva é uma decisão do dono |
+
+### Marco 4 — Operação em produção
+
+| Item | Detalhe | Fecha |
+|---|---|---|
+| **Kubernetes** ⬜ | Manifestos ou Helm e validação em um cluster de verdade (sondas, parada com drain, `Service` interno da porta do cluster) | RNF-10 |
+| **Exclusão forçada** ⬜ | Rota manual de exclusão para destravar um cluster em `quorum-lost` (hoje a saída é reiniciar tudo, perdendo mensagens e tópicos); ver "Evolução futura" do protocolo de cluster | Descoberta C |
+| **Retomada do disco em produção** ⬜ | Hoje todo reinício é de nó novo: parar o cluster inteiro perde tudo. Definir o que o primeiro nó faz com o disco anterior | Descoberta D |
+| **Backup e restauração** ⬜ | Não existem | Descoberta J |
+| **Agregação entre nós das métricas de tópico** ⬜ | A rota interna e o `fan-out` (com `stats.topics.cache-ttl`) | Descoberta A |
+| **Benchmarks** ⬜ | As metas de velocidade e custo não têm medição publicada | RNF-02 |
+
+### Marco 5 — Fechar as pendências de calibragem
+
+As pendências "sem bloqueio" de [31-pendencias.md](31-pendencias.md) são, em sua maioria, **calibragem** ou decisões pequenas:
+
+| Grupo | Itens |
+|---|---|
+| Padrões de configuração | **D84** (rate limit), **D90** (limiares das condições de tópico), **D91** (métricas de tópico em `/metrics`), **D89** (teto da deduplicação FIFO), **D87** (teto de filas voláteis), **D85** |
+| Memória do índice de entrega | **D82**, **D88**, **PRB-018**: o índice guarda tudo em memória e três parâmetros não têm efeito |
+| Drain | **D75** (drain pela API que estoura o prazo), **D77**, **PRB-005** (recusa o ack em drain) |
+| Segurança | **D76** (filtro de IPs vs. health checks), **PRB-015** (`X-Forwarded-For` forjável com a lista vazia), **PRB-017** |
+| Cluster | **D93**, **D99**, **D102**, **D104**, **D109**, **D120**, **PRB-051** (IP de saída) |
+| Observabilidade | **D117**, **D118**, **PRB-026** (métricas de processo só no Linux), **PRB-050** (limites do OTLP), **PRB-025**, **PRB-039** |
+| Portabilidade | **D80** (nomes reservados do Windows), **PRB-008** |
+
+### Marco 6 — Documentação e repositório
+
+| Item | Detalhe |
+|---|---|
+| **Idioma da raiz** ✅ | `README.md` e `AGENTS.md` em **en-US**, apontando para `doc/README.md` (que lista a documentação de cada idioma) |
+| **`uc_coverage` lendo os catálogos novos** ⬜ | Hoje lê `doc/20a-c`; migrar para `doc/pt-BR/26a`/`26b` (mudança de código, fora da documentação) |
+| **Diagramas desta documentação** ✅ | Os 31 pontos estão desenhados (índice em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); a fonte é o JSON do Archify |
+| **Verificação automática** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` num job de PR ([27-ci-cd.md](27-ci-cd.md)) |
+| **Job de integração no CI** ⬜ | `integration.sh` e `validate.sh` (hoje só à mão) |
+| **Traduções** ⬜ | Outras pastas de idioma ao lado de `doc/pt-BR/` |
+
+## Fora do escopo (por enquanto)
+
+Interface gráfica de administração; autenticação avançada (OAuth/OIDC, política por operação); protocolos AMQP, MQTT e Kafka; processamento de streams e reprocessamento do histórico; **multi-região**. Itens fora do escopo podem ser reavaliados.
+
+## Fontes e provas
+
+- `doc/08c-proximos-passos.md` (os passos da 0.1 e o "depois"), `doc/08b-pendencias.md` (as pendências por marco), `connectors/README.md` (o estado dos conectores), `21-pipeline-ci-cd.md` e `.github/` (o que falta no CI).
+- Os estados ✅/⬜ foram conferidos contra o repositório (existência de pastas, de workflows, de manifestos) e contra execuções reais descritas em [23-operacao.md](23-operacao.md).

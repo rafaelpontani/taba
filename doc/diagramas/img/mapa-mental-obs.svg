@@ -514,8 +514,8 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
 
         <!-- Components -->
-        <g id="node-obs-d0-0" data-node-id="obs-d0-0" data-node-label="Paginação por chave" tabindex="0" role="button" aria-label="Focus Paginação por chave, decisão 8.1.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.1.1" data-node-context="Architecture component">
-          <title>Paginação por chave · decisão 8.1.1 · Architecture component</title>
+        <g id="node-obs-d0-0" data-node-id="obs-d0-0" data-node-label="Paginação por chave" tabindex="0" role="button" aria-label="Focus Paginação por chave, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Paginação por chave · decisão · Architecture component</title>
           <rect x="450" y="70" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="70" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 76) scale(0.6875)">
@@ -523,11 +523,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Paginação por chave</text>
-        <text x="580" y="110" class="t-muted" font-size="9" text-anchor="middle">decisão 8.1.1</text>
+        <text x="580" y="110" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d0-0x" data-node-id="obs-d0-0x" data-node-label="limit, cursor e sort" tabindex="0" role="button" aria-label="Focus limit, cursor e sort, detalhe 8.1.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.1.1.1" data-node-context="Architecture component">
-          <title>limit, cursor e sort · detalhe 8.1.1.1 · Architecture component</title>
+        <g id="node-obs-d0-0x" data-node-id="obs-d0-0x" data-node-label="limit, cursor e sort" tabindex="0" role="button" aria-label="Focus limit, cursor e sort, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>limit, cursor e sort · detalhe · Architecture component</title>
           <rect x="745" y="70" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="70" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 76) scale(0.6875)">
@@ -535,11 +535,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">limit, cursor e sort</text>
-        <text x="892.5" y="110" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.1.1.1</text>
+        <text x="892.5" y="110" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-d0-1" data-node-id="obs-d0-1" data-node-label="Mensagem máxima" tabindex="0" role="button" aria-label="Focus Mensagem máxima, decisão 8.1.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.1.2" data-node-context="Architecture component">
-          <title>Mensagem máxima · decisão 8.1.2 · Architecture component</title>
+        <g id="node-obs-d0-1" data-node-id="obs-d0-1" data-node-label="Mensagem máxima" tabindex="0" role="button" aria-label="Focus Mensagem máxima, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Mensagem máxima · decisão · Architecture component</title>
           <rect x="450" y="136" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="136" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 142) scale(0.6875)">
@@ -547,11 +547,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Mensagem máxima</text>
-        <text x="580" y="176" class="t-muted" font-size="9" text-anchor="middle">decisão 8.1.2</text>
+        <text x="580" y="176" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d0-1x" data-node-id="obs-d0-1x" data-node-label="5 MB; limite rígido" tabindex="0" role="button" aria-label="Focus 5 MB; limite rígido, detalhe 8.1.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.1.2.1" data-node-context="Architecture component">
-          <title>5 MB; limite rígido · detalhe 8.1.2.1 · Architecture component</title>
+        <g id="node-obs-d0-1x" data-node-id="obs-d0-1x" data-node-label="5 MB; limite rígido" tabindex="0" role="button" aria-label="Focus 5 MB; limite rígido, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>5 MB; limite rígido · detalhe · Architecture component</title>
           <rect x="745" y="136" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="136" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 142) scale(0.6875)">
@@ -559,11 +559,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">5 MB; limite rígido</text>
-        <text x="892.5" y="176" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.1.2.1</text>
+        <text x="892.5" y="176" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-d0-2" data-node-id="obs-d0-2" data-node-label="Rate limit por token ou IP" tabindex="0" role="button" aria-label="Focus Rate limit por token ou IP, decisão 8.1.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.1.3" data-node-context="Architecture component">
-          <title>Rate limit por token ou IP · decisão 8.1.3 · Architecture component</title>
+        <g id="node-obs-d0-2" data-node-id="obs-d0-2" data-node-label="Rate limit por token ou IP" tabindex="0" role="button" aria-label="Focus Rate limit por token ou IP, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Rate limit por token ou IP · decisão · Architecture component</title>
           <rect x="450" y="202" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="202" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 208) scale(0.6875)">
@@ -571,11 +571,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="226" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Rate limit por token ou IP</text>
-        <text x="580" y="242" class="t-muted" font-size="9" text-anchor="middle">decisão 8.1.3</text>
+        <text x="580" y="242" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d0-2x" data-node-id="obs-d0-2x" data-node-label="cabeçalho do balanceador" tabindex="0" role="button" aria-label="Focus cabeçalho do balanceador, detalhe 8.1.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.1.3.1" data-node-context="Architecture component">
-          <title>cabeçalho do balanceador · detalhe 8.1.3.1 · Architecture component</title>
+        <g id="node-obs-d0-2x" data-node-id="obs-d0-2x" data-node-label="cabeçalho do balanceador" tabindex="0" role="button" aria-label="Focus cabeçalho do balanceador, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>cabeçalho do balanceador · detalhe · Architecture component</title>
           <rect x="745" y="202" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="202" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 208) scale(0.6875)">
@@ -583,22 +583,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="226" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">cabeçalho do balanceador</text>
-        <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.1.3.1</text>
+        <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-t0" data-node-id="obs-t0" data-node-label="API de cliente" tabindex="0" role="button" aria-label="Focus API de cliente, tema 8.1, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 8.1" data-node-context="Architecture component">
-          <title>API de cliente · tema 8.1 · Architecture component</title>
+        <g id="node-obs-t0" data-node-id="obs-t0" data-node-label="API de cliente" tabindex="0" role="button" aria-label="Focus API de cliente, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>API de cliente · tema · Architecture component</title>
           <rect x="225" y="136" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="136" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 142) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API de cliente</text>
-        <text x="320" y="176" class="t-muted" font-size="9" text-anchor="middle">tema 8.1</text>
+        <text x="320" y="176" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-obs-d1-0" data-node-id="obs-d1-0" data-node-label="Um alvo por nó" tabindex="0" role="button" aria-label="Focus Um alvo por nó, decisão 8.2.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.1" data-node-context="Architecture component">
-          <title>Um alvo por nó · decisão 8.2.1 · Architecture component</title>
+        <g id="node-obs-d1-0" data-node-id="obs-d1-0" data-node-label="Um alvo por nó" tabindex="0" role="button" aria-label="Focus Um alvo por nó, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Um alvo por nó · decisão · Architecture component</title>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 274) scale(0.6875)">
@@ -606,11 +606,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Um alvo por nó</text>
-        <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão 8.2.1</text>
+        <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d1-0x" data-node-id="obs-d1-0x" data-node-label="total feito no PromQL" tabindex="0" role="button" aria-label="Focus total feito no PromQL, detalhe 8.2.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.1.1" data-node-context="Architecture component">
-          <title>total feito no PromQL · detalhe 8.2.1.1 · Architecture component</title>
+        <g id="node-obs-d1-0x" data-node-id="obs-d1-0x" data-node-label="total feito no PromQL" tabindex="0" role="button" aria-label="Focus total feito no PromQL, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>total feito no PromQL · detalhe · Architecture component</title>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 274) scale(0.6875)">
@@ -618,11 +618,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">total feito no PromQL</text>
-        <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.2.1.1</text>
+        <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-d1-1" data-node-id="obs-d1-1" data-node-label="OTLP padrão" tabindex="0" role="button" aria-label="Focus OTLP padrão, decisão 8.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.2" data-node-context="Architecture component">
-          <title>OTLP padrão · decisão 8.2.2 · Architecture component</title>
+        <g id="node-obs-d1-1" data-node-id="obs-d1-1" data-node-label="OTLP padrão" tabindex="0" role="button" aria-label="Focus OTLP padrão, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>OTLP padrão · decisão · Architecture component</title>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 340) scale(0.6875)">
@@ -630,11 +630,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">OTLP padrão</text>
-        <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão 8.2.2</text>
+        <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d1-1x" data-node-id="obs-d1-1x" data-node-label="variáveis OTEL_*" tabindex="0" role="button" aria-label="Focus variáveis OTEL_*, detalhe 8.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.2.1" data-node-context="Architecture component">
-          <title>variáveis OTEL_* · detalhe 8.2.2.1 · Architecture component</title>
+        <g id="node-obs-d1-1x" data-node-id="obs-d1-1x" data-node-label="variáveis OTEL_*" tabindex="0" role="button" aria-label="Focus variáveis OTEL_*, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>variáveis OTEL_* · detalhe · Architecture component</title>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 340) scale(0.6875)">
@@ -642,11 +642,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">variáveis OTEL_*</text>
-        <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.2.2.1</text>
+        <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-d1-2" data-node-id="obs-d1-2" data-node-label="Streams de sincronização" tabindex="0" role="button" aria-label="Focus Streams de sincronização, decisão 8.2.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.2.3" data-node-context="Architecture component">
-          <title>Streams de sincronização · decisão 8.2.3 · Architecture component</title>
+        <g id="node-obs-d1-2" data-node-id="obs-d1-2" data-node-label="Streams de sincronização" tabindex="0" role="button" aria-label="Focus Streams de sincronização, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Streams de sincronização · decisão · Architecture component</title>
           <rect x="450" y="400" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="400" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 406) scale(0.6875)">
@@ -654,11 +654,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Streams de sincronização</text>
-        <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão 8.2.3</text>
+        <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d1-2x" data-node-id="obs-d1-2x" data-node-label="taba.sync.streams" tabindex="0" role="button" aria-label="Focus taba.sync.streams, detalhe 8.2.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.2.3.1" data-node-context="Architecture component">
-          <title>taba.sync.streams · detalhe 8.2.3.1 · Architecture component</title>
+        <g id="node-obs-d1-2x" data-node-id="obs-d1-2x" data-node-label="taba.sync.streams" tabindex="0" role="button" aria-label="Focus taba.sync.streams, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>taba.sync.streams · detalhe · Architecture component</title>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 406) scale(0.6875)">
@@ -666,22 +666,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">taba.sync.streams</text>
-        <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.2.3.1</text>
+        <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-t1" data-node-id="obs-t1" data-node-label="Métricas" tabindex="0" role="button" aria-label="Focus Métricas, tema 8.2, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 8.2" data-node-context="Architecture component">
-          <title>Métricas · tema 8.2 · Architecture component</title>
+        <g id="node-obs-t1" data-node-id="obs-t1" data-node-label="Métricas" tabindex="0" role="button" aria-label="Focus Métricas, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Métricas · tema · Architecture component</title>
           <rect x="225" y="334" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="334" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 340) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Métricas</text>
-        <text x="320" y="374" class="t-muted" font-size="9" text-anchor="middle">tema 8.2</text>
+        <text x="320" y="374" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-obs-d2-0" data-node-id="obs-d2-0" data-node-label="Rotas isentas de limite" tabindex="0" role="button" aria-label="Focus Rotas isentas de limite, decisão 8.3.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.3.1" data-node-context="Architecture component">
-          <title>Rotas isentas de limite · decisão 8.3.1 · Architecture component</title>
+        <g id="node-obs-d2-0" data-node-id="obs-d2-0" data-node-label="Rotas isentas de limite" tabindex="0" role="button" aria-label="Focus Rotas isentas de limite, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Rotas isentas de limite · decisão · Architecture component</title>
           <rect x="450" y="466" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="466" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 472) scale(0.6875)">
@@ -689,11 +689,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Rotas isentas de limite</text>
-        <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão 8.3.1</text>
+        <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d2-0x" data-node-id="obs-d2-0x" data-node-label="health, metrics, health/cluster?scope=node" tabindex="0" role="button" aria-label="Focus health, metrics, health/cluster?scope=node, detalhe 8.3.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.3.1.1" data-node-context="Architecture component">
-          <title>health, metrics, health/cluster?scope=node · detalhe 8.3.1.1 · Architecture component</title>
+        <g id="node-obs-d2-0x" data-node-id="obs-d2-0x" data-node-label="health, metrics, health/cluster?scope=node" tabindex="0" role="button" aria-label="Focus health, metrics, health/cluster?scope=node, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>health, metrics, health/cluster?scope=node · detalhe · Architecture component</title>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 472) scale(0.6875)">
@@ -701,11 +701,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">health, metrics, health/cluster?scope=node</text>
-        <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.3.1.1</text>
+        <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-d2-1" data-node-id="obs-d2-1" data-node-label="IPs autorizados" tabindex="0" role="button" aria-label="Focus IPs autorizados, decisão 8.3.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 8.3.2" data-node-context="Architecture component">
-          <title>IPs autorizados · decisão 8.3.2 · Architecture component</title>
+        <g id="node-obs-d2-1" data-node-id="obs-d2-1" data-node-label="IPs autorizados" tabindex="0" role="button" aria-label="Focus IPs autorizados, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>IPs autorizados · decisão · Architecture component</title>
           <rect x="450" y="532" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="532" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 538) scale(0.6875)">
@@ -713,11 +713,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="556" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IPs autorizados</text>
-        <text x="580" y="572" class="t-muted" font-size="9" text-anchor="middle">decisão 8.3.2</text>
+        <text x="580" y="572" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-obs-d2-1x" data-node-id="obs-d2-1x" data-node-label="proxies confiáveis; rede segura" tabindex="0" role="button" aria-label="Focus proxies confiáveis; rede segura, detalhe 8.3.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 8.3.2.1" data-node-context="Architecture component">
-          <title>proxies confiáveis; rede segura · detalhe 8.3.2.1 · Architecture component</title>
+        <g id="node-obs-d2-1x" data-node-id="obs-d2-1x" data-node-label="proxies confiáveis; rede segura" tabindex="0" role="button" aria-label="Focus proxies confiáveis; rede segura, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>proxies confiáveis; rede segura · detalhe · Architecture component</title>
           <rect x="745" y="532" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="532" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 538) scale(0.6875)">
@@ -725,29 +725,29 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="556" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">proxies confiáveis; rede segura</text>
-        <text x="892.5" y="572" class="t-muted" font-size="9" text-anchor="middle">detalhe 8.3.2.1</text>
+        <text x="892.5" y="572" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-obs-t2" data-node-id="obs-t2" data-node-label="Operação" tabindex="0" role="button" aria-label="Focus Operação, tema 8.3, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 8.3" data-node-context="Architecture component">
-          <title>Operação · tema 8.3 · Architecture component</title>
+        <g id="node-obs-t2" data-node-id="obs-t2" data-node-label="Operação" tabindex="0" role="button" aria-label="Focus Operação, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Operação · tema · Architecture component</title>
           <rect x="225" y="499" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="499" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 505) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="523" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Operação</text>
-        <text x="320" y="539" class="t-muted" font-size="9" text-anchor="middle">tema 8.3</text>
+        <text x="320" y="539" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-obs" data-node-id="obs" data-node-label="API e observabilidade" tabindex="0" role="button" aria-label="Focus API e observabilidade, área 8, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="área 8" data-node-context="Architecture component">
-          <title>API e observabilidade · área 8 · Architecture component</title>
+        <g id="node-obs" data-node-id="obs" data-node-label="API e observabilidade" tabindex="0" role="button" aria-label="Focus API e observabilidade, área, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="área" data-node-context="Architecture component">
+          <title>API e observabilidade · área · Architecture component</title>
           <rect x="20" y="318" width="170" height="60" rx="6" class="c-mask"/>
           <rect x="20" y="318" width="170" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(26 324) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" x="105" y="346" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API e observabilidade</text>
-        <text x="105" y="362" class="t-muted" font-size="9" text-anchor="middle">área 8</text>
+        <text x="105" y="362" class="t-muted" font-size="9" text-anchor="middle">área</text>
         </g>
 
         <!-- Connection labels -->

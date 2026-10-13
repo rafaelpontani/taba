@@ -40,7 +40,7 @@
       "id": "entrega",
       "type": "backend",
       "label": "2. Entrega",
-      "sublabel": "só o primário, sanfona, 1000 IDs",
+      "sublabel": "só o primário, sanfona, índice em memória",
       "pos": [
         40,
         175
@@ -110,7 +110,7 @@
       "id": "disco",
       "type": "database",
       "label": "7. Armazenamento",
-      "sublabel": "SQLite por tópico + corpo .json",
+      "sublabel": "SQLite por tópico + corpo .body",
       "pos": [
         790,
         285

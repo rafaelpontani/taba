@@ -12,6 +12,49 @@ const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const saida = (nome) => resolve(raiz, 'doc/diagramas/img', nome);
 mkdirSync(resolve(raiz, 'doc/diagramas/img'), { recursive: true });
 
+// ---------- idioma ----------
+// --lang=en gera anel-hash-en.svg e topico-espalhado-en.svg (README em inglês); sem a opção, o português.
+const LANG = (process.argv.find((a) => a.startsWith('--lang=')) || '--lang=pt').slice(7);
+const SUF = LANG === 'pt' ? '' : '-' + LANG;
+const EN = {
+  'Anel de hash circular: blocos e papéis': 'Circular hash ring: blocks and roles',
+  'cluster de 4 nós físicos, cada um em 3 posições do anel (nós virtuais), fator de replicação 3': '4 physical nodes, each at 3 ring positions (virtual nodes), replication factor 3',
+  'sentido horário': 'clockwise',
+  'Como ler o anel': 'How to read the ring',
+  'O ID da mensagem vira um hash: um ponto no anel (losango).': 'The message ID becomes a hash: a point on the ring (diamond).',
+  'Andando no sentido horário, o primeiro nó virtual é o primário (P): o dono da entrega.': 'Walking clockwise, the first virtual node is the primary (P): the owner of delivery.',
+  'Os próximos nós físicos ainda não usados são o secundário (S) e o terciário (T), até completar o fator de replicação.': 'The next physical nodes not used yet are the secondary (S) and the tertiary (T), until the replication factor is met.',
+  'Nó virtual de um nó físico já escolhido é pulado: as réplicas ficam sempre em máquinas distintas.': 'A virtual node of an already chosen physical node is skipped: replicas always sit on different machines.',
+  'Cada nó físico ocupa várias posições, então recebe blocos espalhados pelo anel, e não uma faixa contínua.': 'Each physical node holds several positions, so it gets blocks spread around the ring, not one continuous stretch.',
+  'Resultado dos dois exemplos': 'Result of the two examples',
+  'Blocos diferentes têm primários diferentes: m1 tem A como dono; m2 tem B.': 'Different blocks have different primaries: m1 is owned by A; m2 by B.',
+  'Nós físicos': 'Physical nodes',
+  'A1, A2, A3: nós virtuais do nó físico A': 'A1, A2, A3: virtual nodes of physical node A',
+  'pulado': 'skipped',
+  'Anel com 12 posições de 4 nós físicos. Duas mensagens caem em pontos do anel e, andando no sentido horário, o primeiro nó virtual é o primário, seguido do secundário e do terciário, pulando nós virtuais de um nó físico já escolhido.': 'A ring with 12 positions of 4 physical nodes. Two messages land on points of the ring and, walking clockwise, the first virtual node is the primary, followed by the secondary and the tertiary, skipping virtual nodes of an already chosen physical node.',
+  'Um tópico espalhado e redundante': 'A spread, redundant topic',
+  'tópico `pedidos`: 6 mensagens em 4 nós, fator de replicação 3 (m1 e m2 são as do diagrama do anel)': 'topic `orders`: 6 messages on 4 nodes, replication factor 3 (m1 and m2 are the ones in the ring diagram)',
+  'mensagem': 'message',
+  'cada nó guarda': 'each node stores',
+  'de': 'of',
+  'primário (dono)': 'primary (owner)',
+  'secundário': 'secondary',
+  'terciário': 'tertiary',
+  'não tem a mensagem': 'does not have the message',
+  'Espalhado': 'Spread',
+  'O ID decide o bloco, não o tópico: as mensagens caem em todo o anel.': 'The ID decides the block, not the topic: messages land all around the ring.',
+  'Nenhum nó guarda tudo, nem é dono do tópico. Cada um tem 4 ou 5 das 6.': 'No node stores everything or owns the topic. Each one has 4 or 5 of the 6.',
+  'Os primários se revezam entre A, B, C e D.': 'The primaries take turns among A, B, C and D.',
+  'Redundante': 'Redundant',
+  'Cada mensagem existe em 3 nós físicos distintos.': 'Each message exists on 3 different physical nodes.',
+  'Com quórum de 2 de 3, a escrita continua com uma réplica fora do ar.': 'With a quorum of 2 out of 3, writes continue with one replica down.',
+  'Se o nó B cair': 'If node B goes down',
+  'm1, m2, m5 e m6 continuam em 2 nós; nenhuma se perde.': 'm1, m2, m5 and m6 stay on 2 nodes; none is lost.',
+  'Os blocos de B passam ao próximo nó do anel e as réplicas são refeitas pela sincronização (seção 7.3).': 'The blocks of B move to the next node on the ring and the replicas are rebuilt by synchronization.',
+  'Matriz com as mensagens m1 a m6 do tópico pedidos nas linhas e os nós A, B, C e D nas colunas. Cada mensagem tem um primário e duas réplicas em nós distintos, e nenhum nó guarda todas as mensagens.': 'A matrix with messages m1 to m6 of topic orders in the rows and nodes A, B, C and D in the columns. Each message has a primary and two replicas on different nodes, and no node stores all the messages.',
+};
+const tr = (t) => (LANG === 'en' ? (EN[t] ?? t) : t);
+
 // ---------- dados ----------
 const FONTE = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace";
 // tema escuro, mesma família de cores dos diagramas do Archify
@@ -50,11 +93,12 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const n = (v) => Math.round(v * 100) / 100;
 
 function texto(x, y, s, { tam = 12, peso = 400, cor = TINTA, ancora = 'start' } = {}) {
-  return `<text x="${n(x)}" y="${n(y)}" font-size="${tam}" font-weight="${peso}" fill="${cor}" text-anchor="${ancora}">${esc(s)}</text>`;
+  return `<text x="${n(x)}" y="${n(y)}" font-size="${tam}" font-weight="${peso}" fill="${cor}" text-anchor="${ancora}">${esc(tr(s))}</text>`;
 }
 
 // quebra em linhas de até `max` caracteres (fonte monoespaçada)
 function quebrar(s, max) {
+  s = tr(s);
   const linhas = [];
   let atual = '';
   for (const p of s.split(' ')) {
@@ -72,9 +116,9 @@ function paragrafo(x, y, s, max, { tam = 12, cor = TINTA, passo = 17 } = {}) {
 
 function envolver(largura, altura, titulo, descricao, corpo) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" lang="pt-BR" aria-labelledby="t d" font-family="${FONTE}">
-<title id="t">${esc(titulo)}</title>
-<desc id="d">${esc(descricao)}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" lang="${LANG === 'en' ? 'en' : 'pt-BR'}" aria-labelledby="t d" font-family="${FONTE}">
+<title id="t">${esc(tr(titulo))}</title>
+<desc id="d">${esc(tr(descricao))}</desc>
 <rect width="${largura}" height="${altura}" fill="${BG}"/>
 ${corpo}
 </svg>
@@ -131,7 +175,7 @@ function anel() {
 
     for (const [k, papel] of Object.entries(m.papeis)) {
       const [bx, by] = pt(ang(Number(k)), R + 56);
-      const rotulo = papel === 'pulado' ? `${m.id} pulado` : `${m.id} ${papel}`;
+      const rotulo = papel === 'pulado' ? `${m.id} ${tr('pulado')}` : `${m.id} ${papel}`;
       const w = papel === 'pulado' ? 92 : 56;
       const cheio = papel === 'P';
       const fundo = papel === 'pulado' ? '#1e293b' : cheio ? m.cor : BG;
@@ -245,7 +289,7 @@ function topico() {
   nos.forEach((no, j) => {
     const t = totais[no];
     const cx = x0 + j * larg + larg / 2;
-    s += texto(cx, yt + 22, `${t.P + t.S + t.T} de ${TOPICO.length}`, { tam: 14, peso: 700, ancora: 'middle' });
+    s += texto(cx, yt + 22, `${t.P + t.S + t.T} ${tr('de')} ${TOPICO.length}`, { tam: 14, peso: 700, ancora: 'middle' });
     s += texto(cx, yt + 40, `${t.P}P ${t.S}S ${t.T}T`, { tam: 11, cor: SUAVE, ancora: 'middle' });
   });
 
@@ -402,7 +446,8 @@ function fifo() {
     'Matriz com os grupos g1 a g4 da fila pedidos-fifo nas linhas e os nós A, B, C e D nas colunas. Cada grupo tem um primário, um secundário e um terciário, e todas as mensagens de um grupo ficam nos mesmos nós.', s);
 }
 
-writeFileSync(saida('anel-hash.svg'), anel());
-writeFileSync(saida('topico-espalhado.svg'), topico());
-writeFileSync(saida('fifo-grupos.svg'), fifo());
+writeFileSync(saida(`anel-hash${SUF}.svg`), anel());
+writeFileSync(saida(`topico-espalhado${SUF}.svg`), topico());
+// o diagrama FIFO só existe em português (não está nos README da raiz)
+if (LANG === 'pt') writeFileSync(saida('fifo-grupos.svg'), fifo());
 console.log('gerados: doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg, doc/diagramas/img/fifo-grupos.svg');

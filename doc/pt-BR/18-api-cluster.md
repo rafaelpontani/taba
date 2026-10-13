@@ -1,0 +1,188 @@
+---
+título: API do cluster
+resumo: As rotas que os nós usam entre si — membros e canal, definições, mensagens, sincronização, recuperação, observabilidade e repasse — com o protocolo de duas fases, os streams NDJSON e os DTOs.
+tipo: referência
+status: estável
+verificado-em: 2026-10-13 @ 71183b9
+fontes: [crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
+---
+
+# API do cluster
+
+> ⚠️ **Interna.** Nenhuma aplicação cliente deve chamar estas rotas, e **não há garantia de estabilidade** entre versões: todos os nós de um cluster devem rodar a mesma versão. Convenções comuns: [15-api-visao-geral.md](15-api-visao-geral.md). Como o cluster usa estas rotas: [07-cluster.md](07-cluster.md), [10-publicacao.md](10-publicacao.md), [12-entrega.md](12-entrega.md).
+
+**Porta:** `cluster.port` (8081), **só** os outros nós. **Autenticação:** TLS mútuo ([14-seguranca.md](14-seguranca.md)); uma conexão sem certificado aceito falha **no handshake**. Em **modo desenvolvimento a porta não é aberta**: um nó de produção não consegue ingressar num nó de desenvolvimento.
+
+O protocolo existe em duas formas que são **a mesma coisa**: o tipo `Request` (`cluster/protocol`) e a rota HTTP. O `Transport` real as traduz para HTTP; a rede em memória dos testes entrega o tipo direto.
+
+## Regras comuns
+
+**Quem pode chamar.** Quem consta na **tabela de membros** do nó. Quem não consta: `403 cluster.not-member`. O chamador é reconhecido pelo **IP de origem** da conexão (todos usam o mesmo certificado), que tem de ser um `address` de algum membro. Um nó que ainda não tem a tabela responde `503 cluster.node-syncing`. **Aceitam chamador que ainda não é membro:** `GET /cluster/nodes`, e as de perdas (`message-loss`, `messages/recover`), porque quem volta de uma exclusão já não consta.
+
+**Protocolo de duas fases.** As rotas `register`, `commit` e `rollback`:
+
+- Cada operação tem um **`operationId`** (GUID v7 do coordenador). As três fases levam o mesmo, e **todas são idempotentes por ele**: repetir devolve o mesmo `Ack`, sem efeito novo.
+- `rollback` só descarta um registro **pendente, sem commit**. Falha de `commit` numa réplica fora do quórum **nunca** aciona `rollback`: o coordenador insiste até `write.commit.timeout`.
+- **Mensagens** decidem o commit por **quórum** (primário incluso); **nós** exigem **todos**. **Tópico e token** não usam estas fases: têm **dono** no anel (rotas `definitions`).
+- Um registro sem commit nem rollback **expira** em `write.pending.ttl`. `commit` ou `rollback` de uma operação desconhecida: `404 cluster.operation-unknown`.
+- Um nó **sincronizando** confirma o `register` **gravando-o no banco de eventos** e o aplica depois; para o coordenador, a confirmação conta normalmente.
+
+**Status comuns:**
+
+| Status | Código | Quando |
+|---|---|---|
+| `200` | — | Aceito ou consulta atendida |
+| `400` | `validation.failed`, `required`, `unknown-field` | Corpo inválido |
+| `403` | `cluster.not-member` | Chamador não é membro |
+| `404` | `cluster.operation-unknown`, `topic.not-found`, `message.not-found` | Desconhecido |
+| `409` | `cluster.conflict` | Outra operação pendente no mesmo recurso, ou o estado impede (mensagem já invisível, `receiptToken` diferente) |
+| `421` | `fifo.misdirected` | Só na publicação FIFO repassada: o nó não é mais o primário do grupo |
+| `421` | `cluster.wrong-node` | Só no canal: o nó neste endereço não é o que o `to` procura |
+| `503` | `cluster.node-syncing`, `cluster.node-draining` | O nó não pode atender agora |
+
+## Mapa das rotas
+
+Extraído de `cluster/protocol/http.rs`, o tradutor entre `Request` e HTTP.
+
+| Grupo | Rotas |
+|---|---|
+| **Membros e canal** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
+| **Definições** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
+| **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish` |
+| **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
+| **Observabilidade** | `GET /cluster/status` |
+| **Repasse** | `* /cluster/forward/{caminho}` |
+
+> A doc histórica também lista `GET /cluster/metrics/topics`; **essa rota não existe no código** (a agregação entre nós das métricas de tópico não foi implementada: [13-observabilidade.md](13-observabilidade.md)).
+
+---
+
+## Membros e canal
+
+| Rota | Faz |
+|---|---|
+| `GET /cluster/nodes` | A **primeira chamada** de um nó ao iniciar, pelo balanceador (`cluster.entry-address`). Devolve a `MemberTable`. Qualquer nó a responde, mesmo de quem não é membro. **A única que passa por balanceador** |
+| `POST /cluster/nodes/join` | O nó novo pede ingresso a **um membro**, que testa os IPs (conecta de volta), coordena o registro + commit com **todos** e só então responde com a `MemberTable`. **Pode demorar**: espera a vez se há outra mudança ou votação |
+| `POST /cluster/nodes/register` / `unregister` | **Fase 1** do ingresso e do **desregistro** (`reason`: `vote` ou `drain`) |
+| `POST /cluster/nodes/commit` | **Fase 2** (efetiva o registro **ou** o desregistro) |
+| `POST /cluster/nodes/rollback` | Aborta a fase 1 pendente |
+| `POST /cluster/vote-remove` | **Voto de exclusão**: corpo `VoteRequest` (`voteId`, `candidateNodeId`, `openedBy`, `reason`: `channel-down`, `queue-overflow` ou `node-failed`); resposta `VoteResponse` (`vote`: `yes`/`no`) |
+
+`join`: corpo `JoinRequest` (`nodeId`, `addresses`, `port`, `version`). Erros: `403 cluster.node-frozen` (com `Retry-After`), `422 cluster.join-unreachable` (o membro não conseguiu conectar de volta: o nó é excluído e repete o bootstrap), `503 cluster.registration-failed` (fase 1 não confirmada por todos; rollback feito), `503 cluster.commit-timeout` (registro confirmado e commit em segundo plano: o nó **foi aceito**; consulte `GET /cluster/nodes` antes de repetir).
+
+### O canal: `GET /cluster/channel` (WebSocket)
+
+Abre o **canal permanente** entre dois nós (`101 Switching Protocols`), **um por par**, usado nos dois sentidos, para todos os tópicos. A query leva `from` (quem abre) e `to` (quem deve atender): um nó de **outro ID** no mesmo endereço responde `421 cluster.wrong-node`. **Só sinais, nunca conteúdo de mensagem.**
+
+Cada mensagem de texto é um JSON de um de dois tipos:
+
+| Tipo | Campos | O que é |
+|---|---|---|
+| **lote** | `from`, `to`, `keepalive?`, `frames` | O que um nó manda: o sinal de vida (quando é hora) e os quadros sem confirmação |
+| **`confirm`** | `seqs` | A resposta a **cada** lote, depois de **processar** os quadros (vazia se só trouxe o sinal de vida) |
+
+**Sinal de vida (`keepalive`):** `at`, `load` (chamadas repassadas em andamento), `version` (da tabela de membros), `state` (do nó), `monitoring` (**ainda não enviado**) e `ready` (lista de `{topic, count}`, até `cluster.channel.keepalive.max-topics`). Não leva `seq` e não é reenviado.
+
+**Quadros (`frames`)**, cada um com `seq` (crescente por canal e por sentido) e `type`:
+
+| `type` | Campos | Significa |
+|---|---|---|
+| `listeners` | `topic`, `hasListeners` | O tópico ganhou ou perdeu ouvintes de long polling neste nó |
+| `ready` | `topic`, `hasReady` | O nó passou a ter (ou deixou de ter) mensagens prontas do tópico |
+| `notify` | `topic`, `count` | Aviso de mensagem nova (dica): venha buscar com `take` |
+| `node-state` | `state` | `draining`, `active` ou `failed`. Quem recebe `active` marca o membro como `active` na própria tabela, sem subir a `version` |
+| `frozen` | `nodeId`, `frozenAt` | Um nó excluído por votação está em freezing. Não altera a tabela nem a `version` |
+| `membership` | `operationId`, `version`, `change` | Uma mudança de membros **já efetivada** (`add`, `remove` por drain, `exclude` por votação), com a versão que a tabela passou a ter. Quem perdeu o registro ou o commit a aplica |
+| `definition` | `kind`, `key`, `version`, `deleted`, `body` | O estado de uma definição (tópico ou token), com a mesma regra do `apply` |
+
+A conexão é **dada por caída** quando fecha ou quando nada chega do par por `2 × cluster.channel.keepalive.interval`. Ao abrir, cada lado manda um **instantâneo** (`listeners`, `ready`, `frozen`) e só depois as mudanças.
+
+---
+
+## Definições (tópicos e tokens)
+
+Cada definição tem um **dono** no anel (o primeiro nó ativo na posição de `topic:<nome>` ou `token:<id>`) e um **herdeiro** (o primeiro outro dono ativo que responde).
+
+| Rota | Faz |
+|---|---|
+| `POST /cluster/definitions/propose` | Do nó que recebeu o cliente **ao dono**. Corpo `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`), `key`, `body`, `expectedId?` (usado pelo gestor de fila volátil para só apagar o `id` esperado) |
+| `POST /cluster/definitions/apply` | Do dono a cada nó e ao herdeiro. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?` |
+| `GET /cluster/topics`, `GET /cluster/tokens` | **Streams** das definições, ordenadas por `id`, para o bootstrap |
+| `GET /cluster/definitions/tombstones` | **Stream** das lápides (definições removidas e a versão da remoção), para uma criação atrasada não ressuscitar o que foi removido |
+| `GET /cluster/topics/{id}/idle` | Há quanto tempo foi o último `GET` do tópico **neste nó** (`IdleResponse`: `topicId`, `idleSeconds`, `sinceStart`). Usado pelo gestor da fila volátil |
+
+- O dono confere (nome já existe, tópico desconhecido, `expectedId`), dá a **próxima versão**, grava no **herdeiro**, aplica em si, manda `apply` aos demais e responde depois dos que respondem em `write.commit.timeout`. Os outros recebem pelo quadro `definition` do canal.
+- **Versão:** o nó só aplica versão **maior ou igual** à que tem. Na **mesma versão com conteúdo diferente**, vale a cópia de **menor impressão** (SHA-256 do corpo normalizado), em qualquer nó e ordem (D124).
+- **Token:** o `TokenRecord` leva o **sal** e o **hash salgado**, **nunca o segredo**.
+- Erros: `404` (`topic.not-found`, `token.not-found`), `409` (`topic.already-exists`, `cluster.conflict`), `503 cluster.quorum-unavailable` (dono fora do ar e na tabela, ou nenhum outro dono confirmou).
+
+## Mensagens
+
+Todas levam o `topic` e o `id` no caminho e o `operationId` no corpo. `register` vai a **todos** os responsáveis; `commit` é decidido por quórum e enviado às demais em segundo plano.
+
+| Rota | `register` (corpo) |
+|---|---|
+| `…/messages/{id}/register` | `MessageRegisterRequest`: `operationId`, `coordinatorId`, `kind` (`publish` ou `dead-letter`), `message` (`MessageRecord`), `sourceTopic` (só `dead-letter`). O **mesmo par de rotas** faz o movimento para a dead-letter (cria lá e remove da origem, com o mesmo `id`) |
+| `…/messages/{id}/visibility/register` | `VisibilityRegisterRequest`: `kind` (`delivery`/`change`), `invisibleUntil` (**absoluto**), `receiptToken`, `deliveryCount` (só `delivery`). O coordenador é sempre o **dono** |
+| `…/messages/{id}/ack/register` | `AckRegisterRequest`: `receiptToken` (deve conferir) e `deleteAt` (só FIFO) |
+
+`commit` e `rollback` de cada um recebem `OperationRef` (`operationId`) e respondem `Ack`. Erros: `404 message.not-found`, `409 cluster.conflict` (já há registro pendente, ou a mensagem já está invisível), `409 message.stale-receipt`.
+
+| Rota | Faz |
+|---|---|
+| `POST /cluster/topics/{topic}/messages/take` | Pede ao **dono** que entregue até `maxMessages` mensagens prontas (`TakeRequest`: `maxMessages`, `visibilityTimeout`). Ele faz o registro + commit de invisibilidade e devolve `TakeResponse` (`messages`: lista de `MessageRecord`). **Vazia** se a dica estava velha, ou se o nó está em **drain** |
+| `POST /cluster/topics/{topic}/fifo/publish` | Repasse da publicação FIFO ao **primário do grupo** (corpo `MessageRecord`, com `id` marcador `00000000-0000-7000-8000-000000000000`; quem gera o `id` é o primário). `421 fifo.misdirected` se o nó não é o primário. Usado também pelas cópias de um distribuidor para uma fila FIFO |
+
+## Sincronização e recuperação
+
+Todos os streams seguem o contrato [NDJSON](#streams-ndjson).
+
+| Rota | Faz |
+|---|---|
+| `GET /cluster/blocks/{id}/ids` | IDs de mensagens que o nó tem para o bloco, com o tópico, ordenados por ID (`BlockIdLine`: `id`, `topic`, e na FIFO `deleteAt`). **Primeiro passo** da sincronização |
+| `GET /cluster/blocks/{id}/messages?from=&to=` | As mensagens do bloco na faixa (IDs **inclusivos**): `MessageRecord`. É a chamada **balanceada** entre origens. Na FIFO, a mensagem com exclusão lógica vem **sem corpo** e com `deleteAt` |
+| `GET /cluster/blocks/{id}/messages/{messageId}` | **Uma** mensagem; último recurso para uma que faltou numa faixa |
+| `GET /cluster/message-loss` | A tabela `losses` do nó (`LossLine`: `id`, `topic`); aceita quem não é membro |
+| `POST /cluster/message-loss` | Registra uma perda (`LossRecord`: `topic`, `id`, `block`, `detectedAt`); resposta `LossAck` (`changed`) |
+| `DELETE /cluster/message-loss/{topic}/{id}` | Dá **baixa** numa perda |
+| `POST /cluster/messages/recover[?replicate=false]` | Um nó que **volta** envia ao responsável as mensagens que achou na lista de perdas. **Corpo é um stream NDJSON** (`Content-Type: application/x-ndjson`) de `MessageRecord` com a linha final; resposta `RecoverResult` (`end`, `count` aplicadas). Com `replicate=false` só grava no disco local. `415` com outro `Content-Type` |
+
+`{id}` do bloco malformado: `400 validation.failed`.
+
+## Observabilidade e repasse
+
+| Rota | Faz |
+|---|---|
+| `GET /cluster/status` | O `NodeStatus` local ([17-api-operacao.md](17-api-operacao.md)), para o `GET /health/cluster?scope=cluster` agregar |
+| `* /cluster/forward/{caminho}` | **Repasse** de uma chamada de cliente de um nó sincronizando, em drain ou em falha. Aceita **qualquer verbo**; método, query, corpo e cabeçalhos seguem como vieram e a resposta volta como o destino a deu. O IP do cliente já resolvido vai no cabeçalho `x-taba-client-ip`; o destino **confere o token de novo** e **não conta o rate limit**. Prazo de 60 s (cabe um long polling). **Quem recebe nunca repassa de novo**. Aceita só de membros e de nós que saíram por drain |
+
+## Streams NDJSON
+
+As rotas que movem volume (`/cluster/topics`, `/cluster/tokens`, `/cluster/definitions/tombstones`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/messages`, `/cluster/message-loss` e o corpo de `/cluster/messages/recover`) **não usam a paginação do cliente**: quem sincroniza precisa saber que recebeu **tudo**.
+
+| Regra | Efeito |
+|---|---|
+| **Formato** | `application/x-ndjson`, **um JSON por linha**; um buffer por linha, sem montar a resposta inteira. Tamanho máximo da linha limitado |
+| **Ordem** | **ID ascendente** (GUID v7 como texto minúsculo) |
+| **Faixa** | `from` e `to` (inclusivos, opcionais); `limit` opcional reduz o teto |
+| **Linha final obrigatória** | `{"end":true,"count":N,"last":"<id>","hasMore":false}`. **Sem ela, o trecho é considerado falho** (um corte entre linhas não se distingue de um fim normal) |
+| **Teto por stream** | O emissor fecha em `cluster.sync.stream.max-items` (padrão 500) ou `max-bytes` (padrão 4 MiB), com `hasMore: true`; o receptor abre outro com `from=<last>` |
+| **Retomada** | Depois de corte ou `hasMore`, repete com `from=<último ID lido>`; a linha repetida é ignorada (idempotente por ID). Sem estado no servidor |
+| **Erro depois do `200`** | O emissor escreve `{"error":"..."}` e fecha, ou apenas fecha: o receptor retoma pela regra acima. Não é `ErrorResponse` |
+| **Contrapressão** | O receptor lê no próprio ritmo; o TCP segura o emissor |
+
+A linha de dados: `TopicDefinition` (tópicos), `TokenRecord` (tokens), `{id, kind, key, version}` (lápides), `{id, topic}` (IDs e perdas) e `MessageRecord` (mensagens).
+
+## DTOs principais
+
+**`Member`:** `nodeId`, `addresses` (IPs internos), `port` (do cluster), `state` (`active`, `syncing`, `draining`, `suspect`). **`MemberTable`:** `version` (época; versões diferentes = `membership-divergent`), `members` e, só se há, `frozen` (lista de `{nodeId, frozenAt}`; não conta na igualdade nem sobe a `version`).
+
+**`MessageRecord`** (a mensagem como os nós a trocam): `id`, `topic`, `body` (JSON nativo se `application/json`/`*/*+json`; senão **base64**), `contentType`, `bodyEncoding` (`base64`), `groupId`, `deduplicationId`, `deliveryCount`, `invisibleUntil`, `receiptToken`, `deadLetteredAt`, `deadLetterReason`, `deleteAt`. **Não há** a forma "string de texto" da API de cliente, para o limite de linha dos streams ser previsível.
+
+**`Ack`:** `operationId`, `accepted`. **`StreamEnd`:** `end`, `count`, `last`, `hasMore`. **`OperationRef`:** `operationId`.
+
+## Fontes e provas
+
+- `cluster/protocol/http.rs` (a tabela de rotas é desta fonte), `cluster/protocol/{definitions,messages,recovery,signals,vote}.rs` (DTOs), `http/cluster_api`, `cluster/service` (atende as chamadas), `cluster/channel`, `cluster/members`, `cluster/replication`, `cluster/sync`, `cluster/recovery`.
+- Casos de uso: UC-CLR (contrato das rotas), UC-STR (streams), UC-CAN (canal), UC-ING, UC-FAL, UC-SIN, UC-RTN, UC-FWD; veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/cluster_api.rs`, `sync.rs`, `channel.rs`, `notify.rs`, `mtls.rs`.
+- Histórico: `06c-api-cluster.md`.

@@ -24,7 +24,7 @@
     {
       "id": "api-cli",
       "type": "backend",
-      "label": "API HTTP (cliente)",
+      "label": "API de cliente",
       "sublabel": "nó coordenador",
       "pos": [
         260,
@@ -38,7 +38,7 @@
     {
       "id": "api-int",
       "type": "backend",
-      "label": "API HTTP (interna)",
+      "label": "API do cluster",
       "sublabel": "registro, commit, rollback",
       "pos": [
         520,
@@ -81,7 +81,7 @@
       "id": "disk",
       "type": "database",
       "label": "Disco",
-      "sublabel": "SQLite + corpos .json",
+      "sublabel": "SQLite + corpos .body",
       "pos": [
         520,
         480

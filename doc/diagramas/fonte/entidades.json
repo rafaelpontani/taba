@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "Como os conceitos se ligam", "output": "doc/diagramas/html/entidades.html", "quality_profile": "showcase" },
+  "components": [
+    { "id": "cluster", "type": "backend", "label": "Cluster", "sublabel": "tabela de membros", "pos": [30, 60], "size": [170, 64] },
+    { "id": "node", "type": "backend", "label": "Nó", "sublabel": "um processo taba", "pos": [320, 60], "size": [170, 64] },
+    { "id": "ring", "type": "messagebus", "label": "Anel", "sublabel": "128 posições por nó", "pos": [610, 60], "size": [170, 64] },
+    { "id": "block", "type": "messagebus", "label": "Bloco", "sublabel": "arco do anel", "pos": [610, 210], "size": [170, 64] },
+    { "id": "role", "type": "security", "label": "Responsável", "sublabel": "primário, secundário, terciário", "pos": [880, 210], "size": [180, 64] },
+    { "id": "topic", "type": "frontend", "label": "Tópico", "sublabel": "fila ou distribuidor", "pos": [30, 360], "size": [170, 64] },
+    { "id": "msg", "type": "database", "label": "Mensagem", "sublabel": "ID GUID v7", "pos": [320, 360], "size": [170, 64] }
+  ],
+  "connections": [
+    { "id": "r1", "from": "cluster", "to": "node", "label": "tem N nós" },
+    { "id": "r2", "from": "node", "to": "ring", "label": "ocupa posições" },
+    { "id": "r3", "from": "ring", "to": "block", "label": "divide em" },
+    { "id": "r4", "from": "block", "to": "role", "label": "tem R" },
+    { "id": "r5", "from": "msg", "to": "block", "label": "cai em um", "variant": "emphasis", "fromSide": "right", "toSide": "bottom" },
+    { "id": "r6", "from": "topic", "to": "msg", "label": "guarda" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Cardinalidades", "items": ["R = replication.factor (padrão 3)", "O papel P/S/T vem da posição do bloco no anel"] }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Estados de um nó",
+    "output": "doc/diagramas/html/estados-no.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "Ingresso" },
+    { "id": "recovery", "label": "Retorno" },
+    { "id": "terminal", "label": "Falha" }
+  ],
+  "states": [
+    { "id": "joining", "type": "start", "label": "joining", "sublabel": "pediu para entrar", "lane": "main", "col": 0 },
+    { "id": "syncing", "type": "active", "label": "syncing", "sublabel": "na tabela, sem atender", "lane": "main", "col": 1 },
+    { "id": "active", "type": "success", "label": "active", "sublabel": "atende clientes", "lane": "main", "col": 2 },
+    { "id": "returning", "type": "waiting", "label": "returning", "sublabel": "recupera mensagens", "lane": "recovery", "col": 2 },
+    { "id": "failed", "type": "failure", "label": "failed", "sublabel": "erro fatal de disco", "lane": "terminal", "col": 2 }
+  ],
+  "transitions": [
+    { "from": "joining", "to": "syncing", "label": "commit do ingresso" },
+    { "from": "syncing", "to": "active", "label": "sincronização pronta" },
+    { "from": "active", "to": "returning", "label": "excluído ou drain" },
+    { "from": "returning", "to": "joining", "label": "refaz o ingresso", "variant": "dashed" },
+    { "from": "active", "to": "failed", "label": "erro de disco", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Estado e drain", "items": ["drainState é separado: active → draining → drained", "Freezing não é estado: é propriedade de um membro excluído"] },
+    { "dot": "rose", "title": "failed", "items": ["Só reiniciar o processo resolve", "O reinício nasce como nó novo"] }
+  ]
+}

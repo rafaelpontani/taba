@@ -2,7 +2,7 @@
 // Gera à mão o hero do README da raiz (não passa pelo Archify): doc/diagramas/img/hero.svg (quadro
 // estático, com as mensagens já replicadas) e doc/diagramas/img/hero.gif (animação das mensagens).
 // Esta é a fonte: para mudar texto, cores ou tempos, edite as constantes abaixo e rode
-//   node doc/diagramas/scripts/gerar-hero.mjs
+//   node doc/diagramas/scripts/gerar-hero.mjs [--lang=en] [--so-svg]
 // O GIF é montado com o Chrome headless (um quadro por captura) e o ffmpeg. Requer Node >= 22.
 // Chrome: variável ARCHIFY_CHROME, ou os caminhos comuns do Chrome/Edge. ffmpeg: no PATH, ou FFMPEG.
 import { spawn, spawnSync } from 'node:child_process';
@@ -15,6 +15,40 @@ const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const dirImg = resolve(raiz, 'doc/diagramas/img');
 mkdirSync(dirImg, { recursive: true });
 
+// ---------- idioma ----------
+// --lang=en gera hero-en.svg/hero-en.gif (README em inglês); sem a opção, o português (hero.svg/hero.gif).
+const LANG = (process.argv.find((a) => a.startsWith('--lang=')) || '--lang=pt').slice(7);
+const SUF = LANG === 'pt' ? '' : '-' + LANG;
+const TXT = {
+  pt: {
+    etiqueta: 'MENSAGERIA OPEN SOURCE · AGPLv3',
+    promessa: ['Substitua SQS, SNS, Kafka', 'e RabbitMQ com '],
+    promessaDestaque: 'uma só imagem.',
+    apoio: ['Velocidade e disponibilidade, com custo', 'quase zero. Sem nuvem obrigatória.'],
+    chips: ['1 imagem Docker', 'API HTTP', 'sem coordenador'],
+    centro: ['mesma imagem', 'em cada nó'],
+    produtor: 'produtor', consumidor: 'consumidor', primario: 'primário', replica: 'réplica',
+    legenda: ['produtores publicam, sem esperar', 'cada nó é o primário de parte das mensagens', 'consumidores leem quando quiserem', 'o ack remove a mensagem dos 3 nós', 'produtores e consumidores vão e vêm'],
+    titulo: 'Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma só imagem Docker',
+    desc: 'Cluster de 3 nós, todos com a mesma imagem, desenhados como prédios de 3 andares. Vários produtores entram e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica nos outros dois, e todo nó é o primário de parte delas. Consumidores chegam depois, leem as mensagens de forma assíncrona e confirmam com ack, e a mensagem sai dos 3 nós.',
+    html: 'pt-BR',
+  },
+  en: {
+    etiqueta: 'OPEN SOURCE MESSAGING · AGPLv3',
+    promessa: ['Replace SQS, SNS, Kafka', 'and RabbitMQ with '],
+    promessaDestaque: 'a single image.',
+    apoio: ['Speed and availability at almost', 'zero cost. No cloud required.'],
+    chips: ['1 Docker image', 'HTTP API', 'no coordinator'],
+    centro: ['same image', 'on every node'],
+    produtor: 'producer', consumidor: 'consumer', primario: 'primary', replica: 'replica',
+    legenda: ['producers publish without waiting', 'each node is the primary of some messages', 'consumers read whenever they want', 'the ack removes the message from all 3 nodes', 'producers and consumers come and go'],
+    titulo: 'Taba: open-source messaging that replaces SQS, SNS, Kafka and RabbitMQ with a single Docker image',
+    desc: 'A 3-node cluster, every node running the same image, drawn as 3-story buildings. Several producers come and go and publish messages; each message has a primary node, which replicates it to the other two, and every node is the primary of some of them. Consumers arrive later, read asynchronously and confirm with an ack, and the message leaves all 3 nodes.',
+    html: 'en',
+  },
+}[LANG];
+if (!TXT) { console.error('idioma desconhecido: ' + LANG + ' (pt ou en)'); process.exit(2); }
+
 // ---------- dados ----------
 const W = 1200, H = 540;
 const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -24,13 +58,13 @@ const BG = '#020617', PAINEL = '#0b1220', TINTA = '#f8fafc', SUAVE = '#94a3b8', 
 const DESTAQUE = '#22d3ee';
 
 const TEXTO = {
-  etiqueta: 'MENSAGERIA OPEN SOURCE · AGPLv3',
+  etiqueta: TXT.etiqueta,
   titulo: 'Taba',
-  promessa: ['Substitua SQS, SNS, Kafka', 'e RabbitMQ com '],
-  promessaDestaque: 'uma só imagem.',
-  apoio: ['Velocidade e disponibilidade, com custo', 'quase zero. Sem nuvem obrigatória.'],
-  chips: ['1 imagem Docker', 'API HTTP', 'sem coordenador'],
-  centro: ['mesma imagem', 'em cada nó'],
+  promessa: TXT.promessa,
+  promessaDestaque: TXT.promessaDestaque,
+  apoio: TXT.apoio,
+  chips: TXT.chips,
+  centro: TXT.centro,
 };
 
 // nós da aldeia: 3 nós, o mínimo para produção (mesma família de cores dos diagramas de hash)
@@ -45,14 +79,14 @@ const PRED = { larg: 108, andar: 28, folga: 4, telhado: 30 };
 
 // produtores (em cima) e consumidores (embaixo) entram e saem: janelas de tempo (s) em que aparecem
 const PRODUTORES = [
-  { x: 715, y: 22, w: 130, h: 44, texto: 'produtor', janelas: [[0.2, 2.8], [4.6, 8.8]] },
-  { x: 865, y: 22, w: 130, h: 44, texto: 'produtor', janelas: [[3.0, 6.2], [8.0, 10.2]] },
-  { x: 1015, y: 22, w: 130, h: 44, texto: 'produtor', janelas: [[1.6, 3.6]] },
+  { x: 715, y: 22, w: 130, h: 44, texto: TXT.produtor, janelas: [[0.2, 2.8], [4.6, 8.8]] },
+  { x: 865, y: 22, w: 130, h: 44, texto: TXT.produtor, janelas: [[3.0, 6.2], [8.0, 10.2]] },
+  { x: 1015, y: 22, w: 130, h: 44, texto: TXT.produtor, janelas: [[1.6, 3.6]] },
 ];
 const CONSUMIDORES = [
-  { x: 715, y: 458, w: 130, h: 40, texto: 'consumidor', janelas: [[3.6, 6.6], [9.0, 11.1]] },
-  { x: 865, y: 458, w: 130, h: 40, texto: 'consumidor', janelas: [[4.6, 8.4], [10.0, 12.2]] },
-  { x: 1015, y: 458, w: 130, h: 40, texto: 'consumidor', janelas: [[7.0, 9.6]] },
+  { x: 715, y: 458, w: 130, h: 40, texto: TXT.consumidor, janelas: [[3.6, 6.6], [9.0, 11.1]] },
+  { x: 865, y: 458, w: 130, h: 40, texto: TXT.consumidor, janelas: [[4.6, 8.4], [10.0, 12.2]] },
+  { x: 1015, y: 458, w: 130, h: 40, texto: TXT.consumidor, janelas: [[7.0, 9.6]] },
 ];
 
 // mensagens do exemplo. `slot` é o andar que ela ocupa nos 3 prédios; `envia` leva do produtor ao
@@ -68,13 +102,7 @@ const MSGS = [
 // linha do tempo (s) da animação; o quadro estático é o instante ESTATICO
 const DURACAO = 12.5, FPS = 20, ESTATICO = 4.9;
 // legenda que acompanha cada fase: [início, fim, texto]
-const LEGENDA = [
-  [0.3, 2.0, 'produtores publicam, sem esperar'],
-  [2.0, 4.8, 'cada nó é o primário de parte das mensagens'],
-  [4.8, 7.0, 'consumidores leem quando quiserem'],
-  [7.0, 9.6, 'o ack remove a mensagem dos 3 nós'],
-  [9.6, 12.2, 'produtores e consumidores vão e vêm'],
-];
+const LEGENDA = [[0.3, 2.0], [2.0, 4.8], [4.8, 7.0], [7.0, 9.6], [9.6, 12.2]].map((f, i) => [...f, TXT.legenda[i]]);
 
 // ---------- utilitários ----------
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -180,7 +208,7 @@ function direita(t) {
       if (op <= 0.01) continue;
       const y0 = yAndar(m.slot);
       p.push(`<rect x="${x0}" y="${n(y0)}" width="${PRED.larg}" height="${PRED.andar}" rx="5" fill="${m.cor}" fill-opacity="${primario ? 0.35 : 0.16}" stroke="${m.cor}" stroke-width="${primario ? 3 : 1.5}" opacity="${n(op)}"/>`);
-      p.push(texto(no.x, y0 + 20, primario ? 'primário' : 'réplica', { tam: 18, peso: primario ? 700 : 400, cor: primario ? TINTA : SUAVE, ancora: 'middle', op }));
+      p.push(texto(no.x, y0 + 20, primario ? TXT.primario : TXT.replica, { tam: 18, peso: primario ? 700 : 400, cor: primario ? TINTA : SUAVE, ancora: 'middle', op }));
     }
     // telhado (oca) com a letra do nó
     p.push(`<path d="M${no.x} ${n(b.topoTelhado)} L${no.x + PRED.larg / 2 - 6} ${n(b.topoAndares - 3)} L${no.x - PRED.larg / 2 + 6} ${n(b.topoAndares - 3)} Z" fill="${no.tom}" stroke="${no.cor}" stroke-width="3" stroke-linejoin="round"/>`);
@@ -217,10 +245,10 @@ function direita(t) {
 }
 
 function svg(t, estatico = false) {
-  const titulo = 'Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma só imagem Docker';
-  const desc = 'Cluster de 3 nós, todos com a mesma imagem, desenhados como prédios de 3 andares. Vários produtores entram e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica nos outros dois, e todo nó é o primário de parte delas. Consumidores chegam depois, leem as mensagens de forma assíncrona e confirmam com ack, e a mensagem sai dos 3 nós.';
+  const titulo = TXT.titulo;
+  const desc = TXT.desc;
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" lang="pt-BR" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" lang="${TXT.html}" aria-labelledby="t d">
 <title id="t">${esc(titulo)}</title>
 <desc id="d">${esc(desc)}</desc>
 <rect width="${W}" height="${H}" fill="${BG}"/>${esquerda()}${direita(estatico ? ESTATICO : t)}
@@ -229,8 +257,8 @@ function svg(t, estatico = false) {
 }
 
 // ---------- saída ----------
-writeFileSync(resolve(dirImg, 'hero.svg'), svg(0, true));
-console.log('SVG: doc/diagramas/img/hero.svg');
+writeFileSync(resolve(dirImg, `hero${SUF}.svg`), svg(0, true));
+console.log(`SVG: doc/diagramas/img/hero${SUF}.svg`);
 
 if (process.argv.includes('--so-svg')) process.exit(0);
 
@@ -291,21 +319,26 @@ try {
   const quadros = DURACAO * FPS;
   for (let i = 0; i < quadros; i++) {
     const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:${BG}">${svg(i / FPS).replace(/^<\?xml[^>]*\?>\s*/, '')}`;
-    await cdp('Page.navigate', { url: 'data:text/html;charset=utf-8,' + encodeURIComponent(html) });
-    await new Promise((ok) => setTimeout(ok, i === 0 ? 400 : 60));
-    const r = await cdp('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
+    let r;
+    for (let tentativa = 0; tentativa < 4; tentativa++) {
+      await cdp('Page.navigate', { url: 'data:text/html;charset=utf-8,' + encodeURIComponent(html) });
+      await new Promise((ok) => setTimeout(ok, i === 0 || tentativa ? 400 : 60));
+      r = await cdp('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
+      if (r.result) break;
+    }
+    if (!r.result) throw new Error('captura falhou no quadro ' + i + ': ' + JSON.stringify(r).slice(0, 300));
     writeFileSync(join(tmp, `q${String(i).padStart(3, '0')}.png`), Buffer.from(r.result.data, 'base64'));
   }
   ws.close();
 
-  const saida = resolve(dirImg, 'hero.gif');
+  const saida = resolve(dirImg, `hero${SUF}.gif`);
   const r = spawnSync(ffmpeg, [
     '-y', '-loglevel', 'error', '-framerate', String(FPS), '-i', join(tmp, 'q%03d.png'),
     '-vf', 'split[a][b];[a]palettegen=max_colors=64:stats_mode=full[p];[b][p]paletteuse=dither=none',
     '-loop', '0', saida,
   ], { stdio: 'inherit' });
   if (r.status !== 0) { console.error('ffmpeg falhou'); process.exitCode = 1; }
-  else console.log(`GIF: doc/diagramas/img/hero.gif (${quadros} quadros, ${DURACAO}s, ${FPS} fps)`);
+  else console.log(`GIF: doc/diagramas/img/hero${SUF}.gif (${quadros} quadros, ${DURACAO}s, ${FPS} fps)`);
 } finally {
   encerrar();
 }

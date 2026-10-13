@@ -11,7 +11,7 @@
       "id": "cluster-d0-0",
       "type": "security",
       "label": "Endereço do balanceador",
-      "sublabel": "decisão 5.1.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         70
@@ -25,7 +25,7 @@
       "id": "cluster-d0-0x",
       "type": "database",
       "label": "cluster.entry-address, obrigatório",
-      "sublabel": "detalhe 5.1.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         70
@@ -39,7 +39,7 @@
       "id": "cluster-d0-1",
       "type": "security",
       "label": "Uma mudança por vez",
-      "sublabel": "decisão 5.1.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         136
@@ -53,7 +53,7 @@
       "id": "cluster-d0-1x",
       "type": "database",
       "label": "até o nó ficar pronto",
-      "sublabel": "detalhe 5.1.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         136
@@ -67,7 +67,7 @@
       "id": "cluster-d0-2",
       "type": "security",
       "label": "Repasse de chamadas",
-      "sublabel": "decisão 5.1.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         202
@@ -81,7 +81,7 @@
       "id": "cluster-d0-2x",
       "type": "database",
       "label": "enquanto o nó sincroniza",
-      "sublabel": "detalhe 5.1.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         202
@@ -95,7 +95,7 @@
       "id": "cluster-t0",
       "type": "cloud",
       "label": "Entrada",
-      "sublabel": "tema 5.1",
+      "sublabel": "tema",
       "pos": [
         225,
         136
@@ -109,7 +109,7 @@
       "id": "cluster-d1-0",
       "type": "security",
       "label": "WebSocket permanente",
-      "sublabel": "decisão 5.2.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         268
@@ -123,7 +123,7 @@
       "id": "cluster-d1-0x",
       "type": "database",
       "label": "malha completa entre os nós",
-      "sublabel": "detalhe 5.2.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         268
@@ -137,7 +137,7 @@
       "id": "cluster-d1-1",
       "type": "security",
       "label": "Sinal de vida próprio",
-      "sublabel": "decisão 5.2.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         334
@@ -151,7 +151,7 @@
       "id": "cluster-d1-1x",
       "type": "database",
       "label": "data, monitoramento, prontas",
-      "sublabel": "detalhe 5.2.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         334
@@ -165,7 +165,7 @@
       "id": "cluster-d1-2",
       "type": "security",
       "label": "Sinais com identificador",
-      "sublabel": "decisão 5.2.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         400
@@ -179,7 +179,7 @@
       "id": "cluster-d1-2x",
       "type": "database",
       "label": "confirmado após processar",
-      "sublabel": "detalhe 5.2.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         400
@@ -193,7 +193,7 @@
       "id": "cluster-t1",
       "type": "cloud",
       "label": "Canal",
-      "sublabel": "tema 5.2",
+      "sublabel": "tema",
       "pos": [
         225,
         334
@@ -207,7 +207,7 @@
       "id": "cluster-d2-0",
       "type": "security",
       "label": "Votação de exclusão",
-      "sublabel": "decisão 5.3.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         466
@@ -221,7 +221,7 @@
       "id": "cluster-d2-0x",
       "type": "database",
       "label": "51% dos saudáveis, mínimo 2",
-      "sublabel": "detalhe 5.3.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         466
@@ -235,7 +235,7 @@
       "id": "cluster-d2-1",
       "type": "security",
       "label": "Freezing",
-      "sublabel": "decisão 5.3.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         532
@@ -249,7 +249,7 @@
       "id": "cluster-d2-1x",
       "type": "database",
       "label": "ingresso rejeitado com Retry-After",
-      "sublabel": "detalhe 5.3.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         532
@@ -263,7 +263,7 @@
       "id": "cluster-d2-2",
       "type": "security",
       "label": "Retry do bootstrap",
-      "sublabel": "decisão 5.3.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         598
@@ -277,7 +277,7 @@
       "id": "cluster-d2-2x",
       "type": "database",
       "label": "retry.interval configurável",
-      "sublabel": "detalhe 5.3.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         598
@@ -291,7 +291,7 @@
       "id": "cluster-t2",
       "type": "cloud",
       "label": "Falhas",
-      "sublabel": "tema 5.3",
+      "sublabel": "tema",
       "pos": [
         225,
         532
@@ -305,7 +305,7 @@
       "id": "cluster",
       "type": "backend",
       "label": "Cluster e membros",
-      "sublabel": "área 5",
+      "sublabel": "área",
       "pos": [
         20,
         565
@@ -319,7 +319,7 @@
       "id": "cluster-d3-0",
       "type": "security",
       "label": "Tudo em disco",
-      "sublabel": "decisão 4.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         664
@@ -333,7 +333,7 @@
       "id": "cluster-d3-0x",
       "type": "database",
       "label": "limite de memória a zero",
-      "sublabel": "detalhe 4.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         664
@@ -347,7 +347,7 @@
       "id": "cluster-d3-1",
       "type": "security",
       "label": "Saída voluntária",
-      "sublabel": "decisão 4.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         730
@@ -361,7 +361,7 @@
       "id": "cluster-d3-1x",
       "type": "database",
       "label": "desregistro sem votação",
-      "sublabel": "detalhe 4.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         730
@@ -375,7 +375,7 @@
       "id": "cluster-d3-2",
       "type": "security",
       "label": "Repasse de chamadas",
-      "sublabel": "decisão 4.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         796
@@ -389,7 +389,7 @@
       "id": "cluster-d3-2x",
       "type": "database",
       "label": "ao nó mais livre",
-      "sublabel": "detalhe 4.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         796
@@ -403,7 +403,7 @@
       "id": "cluster-d3-3",
       "type": "security",
       "label": "Volta como nó novo",
-      "sublabel": "decisão 4.4",
+      "sublabel": "decisão",
       "pos": [
         450,
         862
@@ -417,7 +417,7 @@
       "id": "cluster-d3-3x",
       "type": "database",
       "label": "ID novo, bootstrap completo",
-      "sublabel": "detalhe 4.4.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         862
@@ -431,7 +431,7 @@
       "id": "cluster-t3",
       "type": "cloud",
       "label": "Parada e drain",
-      "sublabel": "tema 4",
+      "sublabel": "tema",
       "pos": [
         225,
         763
@@ -445,7 +445,7 @@
       "id": "cluster-d4-0",
       "type": "security",
       "label": "Nó único",
-      "sublabel": "decisão 5.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         928
@@ -459,7 +459,7 @@
       "id": "cluster-d4-0x",
       "type": "database",
       "label": "mode=development",
-      "sublabel": "detalhe 5.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         928
@@ -473,7 +473,7 @@
       "id": "cluster-d4-1",
       "type": "security",
       "label": "Sem votação nem quórum",
-      "sublabel": "decisão 5.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         994
@@ -487,7 +487,7 @@
       "id": "cluster-d4-1x",
       "type": "database",
       "label": "replicação e quórum valem 1",
-      "sublabel": "detalhe 5.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         994
@@ -501,7 +501,7 @@
       "id": "cluster-t4",
       "type": "cloud",
       "label": "Modo desenvolvimento",
-      "sublabel": "tema 5",
+      "sublabel": "tema",
       "pos": [
         225,
         994
@@ -515,7 +515,7 @@
       "id": "cluster-d4-2",
       "type": "security",
       "label": "Drain como save",
-      "sublabel": "decisão 5.5.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         1060
@@ -529,7 +529,7 @@
       "id": "cluster-d4-2x",
       "type": "database",
       "label": "retoma do disco na partida",
-      "sublabel": "detalhe 5.5.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         1060

@@ -1,0 +1,70 @@
+# Taba (documentação pt-BR)
+
+> Taba é um sistema de mensageria open source, de uma só imagem Docker, que reúne fila (cada mensagem para um consumidor) e distribuição (cada publicação copiada para várias filas) numa API HTTP. Um cluster são três ou mais nós iguais, sem coordenador. Servidor em Rust (crate `taba-node`, binário `taba`); conectores em Rust e C#; linha de comando `taba-cli`. Esta documentação descreve o **estado atual do código** (verificado contra o commit indicado em cada arquivo) e foi escrita para quem nunca viu o projeto. Onde a doc histórica (`doc/`, sem idioma) e o código divergem, vale o código. Cada arquivo tem metadados (resumo, status, verificado-em, fontes) e termina com "Fontes e provas". Selos: ✅ implementado, 🟡 parcial, ⬜ planejado, ⚠️ limite conhecido.
+
+## Comece aqui
+
+- [README](README.md): índice e ordem de leitura por perfil (usuário, operador, contribuidor, IA)
+- [01 Visão geral](01-visao-geral.md): o que é, o que não é, objetivos e requisitos (RF/RNF) com o estado de cada um
+- [02 Início rápido](02-inicio-rapido.md): subir um nó ou o cluster de três nós, publicar, consumir, derrubar um nó
+- [03 Conceitos](03-conceitos.md): nó, cluster, tópico, mensagem, bloco, anel, quórum, invisibilidade, ack em uma página
+
+## Como funciona por dentro
+
+- [04 Arquitetura](04-arquitetura.md): camadas (core ← storage ← engine ← cluster ← http ← node), as três portas, traits de teste, mapa de módulos
+- [05 Dependências](05-dependencias.md): bibliotecas do servidor e por quê, ambiente, conectores sem dependências, ferramentas
+- [06 Anel e replicação](06-anel-e-replicacao.md): hash circular, blocos, primário/secundário/terciário, o mesmo anel para quatro perguntas
+- [07 Cluster](07-cluster.md): entrada de nó, detecção de falha, votação, freezing, retorno, sincronização, repasse, drain, modo desenvolvimento, condições
+- [08 Armazenamento](08-armazenamento.md): memória primeiro, overflow em disco, SQLite por tópico, banco do nó, dono da definição
+
+## Especificação funcional
+
+- [09 Tópicos](09-topicos.md): fila, distribuidor, volátil (nó gestor, autoCreate), FIFO (grupos, deduplicação, quórum), dead-letter
+- [10 Publicação](10-publicacao.md): registro + commit, quórum com o primário, rollback antes da decisão, falhas
+- [11 Durabilidade](11-durabilidade.md): garantias por cenário de falha, limites (parada total perde tudo), retenção
+- [12 Entrega](12-entrega.md): invisibilidade, receiptToken, dono da entrega, long polling, canal entre nós, ttl, maxDeliveries, entrega justa
+- [13 Observabilidade](13-observabilidade.md): 84 métricas, 8 condições do cluster, condições de tópico, OTLP, Prometheus, traces, logs, eventos
+- [14 Segurança](14-seguranca.md): tokens, TLS mútuo e rotação de certificados, rate limit, IP do cliente, rotas de operação sem autenticação
+
+## Interfaces
+
+- [15 APIs: visão geral e convenções](15-api-visao-geral.md): as três APIs, formato, cabeçalhos, ErrorResponse, paginação, status, quando repetir
+- [16 API de cliente](16-api-cliente.md): tópicos, mensagens (publicar, consumir, invisibilidade, ack) e tokens, rota a rota
+- [17 API de operação](17-api-operacao.md): saúde, métricas, drain
+- [18 API do cluster](18-api-cluster.md): rotas entre nós, canal WebSocket, streams NDJSON (interna, sem garantia de estabilidade)
+- [19 Erros e limites](19-erros-e-limites.md): os 50 códigos de erro com status fixo, limites fixos, rate limits
+- [20 Linhas de comando](20-cli.md): `taba` (servidor) e `taba-cli` (cliente, perfis, TUI, códigos de saída)
+- [21 Conectores](21-conectores.md): contrato comum, Rust e C# prontos, oito planejados, como escrever um novo
+
+## Operar
+
+- [22 Configuração](22-configuracao.md): todos os parâmetros, padrão efetivo, validações de partida
+- [23 Operação (runbook)](23-operacao.md): subir, escalar, atualizar, drain, o que fazer em cada condição, cluster travado
+
+## Contribuir
+
+- [24 Convenções](24-convencoes.md): idioma, pastas, regras de código, comandos, ao terminar uma implementação, diagramas, commits
+- [25 Testes](25-testes.md): níveis U/I/C/K, TestNode, TestCluster, rede em memória, relógio manual, como escrever e rodar
+- [26 Casos de uso](26-casos-de-uso.md): o código UC-ÁREA-NNN e a regra de cobertura
+- [26a Casos implementados](26a-casos-de-uso-implementados.md): o catálogo com teste (gerado)
+- [26b Casos planejados](26b-casos-de-uso-planejados.md): o catálogo sem teste (gerado)
+- [27 CI/CD](27-ci-cd.md): workflows, imagens, semantic-release, tags flutuantes, o que falta
+
+## Referência e projeto
+
+- [28 Glossário](28-glossario.md)
+- [29 Mapa mental](29-mapa-mental.md)
+- [30 Decisões](30-decisoes.md): o porquê, com os códigos D… e PRB-… (gerado)
+- [31 Pendências](31-pendencias.md): o que está em aberto e as descobertas desta documentação (gerado + manual)
+- [32 Roadmap](32-roadmap.md): o que vem a seguir, em marcos
+
+## Mais
+
+- [Plano desta documentação](00-plano-de-documentacao.md)
+- [Divergências doc histórica × código](_divergencias.md)
+
+## Optional
+
+- [Registros de decisões e pendências (histórico)](../08a-decisoes-tomadas.md)
+- [Código do servidor](../../crates/taba-node/src/lib.rs)
+- [AGENTS.md](../../AGENTS.md): instruções para agentes de IA

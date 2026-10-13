@@ -1,139 +1,147 @@
 # AGENTS.md
 
-Repositório (em português) do Sistema de Mensagens: a documentação em `doc/`, começando por [doc/README.md](doc/README.md), e a aplicação em Rust em `crates/`. A aplicação (o nó, num crate só) implementa um nó e o cluster, com os testes de nível `C` sobre uma rede em memória; ainda faltam o contrato OpenAPI, o empacotamento e os conectores ([doc/08c-proximos-passos.md](doc/08c-proximos-passos.md)). A estrutura, as regras de código e o mapa de módulos estão em [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md).
+Repository of the Taba messaging system: the documentation in `doc/` (one folder per language, starting at [doc/README.md](doc/README.md)) and the Rust application in `crates/`. The application (the node, in a single crate) implements a node and the cluster, with level-`C` tests over an in-memory network; the OpenAPI contract, the remaining connectors and package publishing are still missing ([doc/pt-BR/32-roadmap.md](doc/pt-BR/32-roadmap.md)). The structure, the code rules and the module map are in [doc/pt-BR/04-arquitetura.md](doc/pt-BR/04-arquitetura.md) and [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md).
 
-## Código
+## Where to read first
 
-Um Cargo workspace com um único crate, `crates/taba-node` (biblioteca `taba_node` mais o binário `taba`). Os módulos seguem [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md); o `main.rs` é só a linha de comando e os sinais, e o resto fica na biblioteca para os testes de integração subirem nós de verdade.
+- **Current documentation (Brazilian Portuguese):** [doc/pt-BR/README.md](doc/pt-BR/README.md), written *after* the code and checked against it. A machine-readable index is [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt). Every file there starts with metadata (`resumo`, `status`, `verificado-em`, `fontes`) and ends with "Fontes e provas" (the code paths and `UC-…` cases that back it up).
+- **Registers still in `doc/` (no language folder):** the use-case catalogue that `uc_coverage` checks (`doc/20*.md`) and the decision/pending registers (`doc/08a`, `08b`, `08c`). The original pre-code design documents were removed (see the git history); where old comments in the code cite "doc 05, section 7" and similar, the matching text is in `doc/pt-BR/`. The known disagreements between the old design and the code are in [doc/pt-BR/_divergencias.md](doc/pt-BR/_divergencias.md).
+- To look up code, prefer the module map in [doc/pt-BR/04-arquitetura.md](doc/pt-BR/04-arquitetura.md) and the `//!` comment at the top of each `mod.rs`.
+
+## Code
+
+A Cargo workspace with a single crate, `crates/taba-node` (the `taba_node` library plus the `taba` binary). The modules follow [doc/pt-BR/04-arquitetura.md](doc/pt-BR/04-arquitetura.md); `main.rs` is only the command line and the signals, and everything else lives in the library so integration tests can start real nodes.
 
 ```
 cargo build
-cargo test                                   # unitários (nos módulos) e de integração (crates/taba-node/tests/)
+cargo test                                   # unit (in the modules) and integration (crates/taba-node/tests/)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
-cargo test --test uc_coverage -- --nocapture # placar dos casos de uso com teste
-TABA_UC_WRITE=1 cargo test --test uc_coverage  # regera a coluna "Testes" de doc/20*.md (o teste falha se ela estiver velha)
-cargo run -- init --out ./secrets             # certificado do cluster e token raiz (taba init)
+cargo test --test uc_coverage -- --nocapture # scoreboard of the use cases that have a test
+TABA_UC_WRITE=1 cargo test --test uc_coverage  # regenerates the "Testes" column of doc/20*.md (the test fails if it is stale)
+cargo run -- init --out ./secrets             # cluster certificate and root token (taba init)
 ```
 
-- **Docker:** `docker compose up --build -d` sobe o cluster de três nós (Dockerfile e docker-compose.yml na raiz, `docker/haproxy.cfg`); `docker compose run --rm taba-cli ...` usa o CLI; `docker compose down -v` apaga tudo.
-- **Conectores em Rust:** o `taba-client` e o `taba-cli` ficam em `connectors/`, num workspace do Cargo próprio (`cd connectors/rust && cargo test --workspace --all-features`, mais `cargo clippy --workspace --all-targets -- -D warnings` e `cargo fmt --all`). Seguem as mesmas regras de testes (arquivo `tests.rs` irmão do módulo, `/// UC:`), e o `uc_coverage` do servidor lê as citações daqui também. O binário: `connectors/rust/cli/scripts/build.sh` (ou `build.ps1`); a imagem: `connectors/rust/cli/scripts/docker.sh`.
-- **Conector C#:** `connectors/csharp/` (`Taba.Client` e `Taba.Client.Tests`, NUnit; `cd connectors/csharp && dotnet test Taba.Client.Tests`). C# 7.3, sem dependências, cinco alvos (D137). Os testes citam `/// UC: UC-CNT-NNN` (linha simples, sem XML) e o `uc_coverage` os lê. Os de integração só rodam com `TABA_URL`: `connectors/csharp/scripts/integration.sh` sobe o Compose, cria tokens e filas e roda tudo.
-- **Cluster para testes integrados:** `docker/cluster.sh` (biblioteca com `source` ou comando) sobe/derruba o Compose, provoca falhas (`taba_kill`, `taba_stop`, `taba_start`), espera o cluster estabilizar e cria tokens/tópicos; os testes dos conectores devem reaproveitá-lo.
-- **Validação de ponta a ponta:** `docker/validate.sh` sobe o Compose do zero e confere o cluster, o `taba-cli` (só ele: o teste de cada conector é individual, como o `connectors/csharp/scripts/integration.sh`), a queda e a volta de nós e a ausência de perda de mensagens (leva uns 5 minutos). Rode antes de fechar mudanças que afetem cluster, canal, Compose ou conectores.
-- **Configuração:** `crates/taba-node/src/config/params.rs` é a tabela de chaves e padrões de [doc/10-configuracao.md](doc/10-configuracao.md). Parâmetro novo entra na tabela **e** no `Config`; um teste confere que todo parâmetro da tabela é lido.
-- **Testes:** os unitários ficam em arquivo irmão do módulo (`foo/mod.rs` e `foo/tests.rs` lado a lado, ligados por `#[cfg(test)] mod tests;`), não dentro do código. Cada teste cita os casos de uso que cobre numa linha `/// UC: UC-XXX-NNN` logo acima do `#[test]`. O `tests/uc_coverage.rs` falha se o código não existir (regras em [doc/20-casos-de-uso.md](doc/20-casos-de-uso.md)). Testes de integração usam `tests/common/mod.rs` (`TestNode`: nó em portas livres, disco numa pasta temporária); os de cluster (nível `C`) usam `tests/common/cluster.rs` (`TestCluster`: vários nós no mesmo processo, ligados pela rede em memória `MemoryNetwork` e por um `Clock` manual). Os de OTLP (`tests/otlp.rs`) sobem um coletor falso (`tests/common/otlp.rs`, `http/protobuf` e `grpc`) e andam um de cada vez, porque o assinante do `tracing` é do processo. Os dos avisos entre nós (`tests/notify.rs`) e os do canal (`tests/channel.rs`) usam a rede em memória. Os de segurança do cluster (`tests/mtls.rs`) sobem nós de verdade por TCP em `127.0.0.x`, com o `Transport` HTTP e TLS mútuo (`tests/common/real.rs`).
-- **Erros:** todo erro de API é um `ErrorCode` do catálogo (`core/error.rs`), com o status fixo de [doc/06d-api-convencoes.md](doc/06d-api-convencoes.md). Código novo no catálogo exige a linha no doc e o caso na tabela de teste.
-- **Disco:** o `target/` cresce rápido. O perfil `dev` já guarda só as tabelas de linha (`debug = "line-tables-only"`), mas `cargo clean -p taba-node` apaga os binários de teste velhos (cada mudança deixa um novo). Com pouco espaço, rode o cargo com `CARGO_INCREMENTAL=0` ou apague `target/debug/incremental`; "no space on device" do `rustc` e `LNK1180` do `link.exe` são isso.
-- **SQLite:** o `rusqlite` compila a SQLite embutida (`bundled`), então o build precisa de um compilador C (MSVC, `gcc` ou `clang`). No alvo `-gnu` do Windows o `cc` não pode achar o `gcc` do Cygwin.
-- **Windows com Git Bash:** o `link.exe` do coreutils esconde o do MSVC, e o MSVC desta máquina está incompleto. Se o `cargo build` falhar no link, use `cargo +stable-x86_64-pc-windows-gnu ...` (`rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal`).
+- **Docker:** `docker compose up --build -d` starts the three-node cluster (Dockerfile and docker-compose.yml at the root, `docker/haproxy.cfg`); `docker compose run --rm taba-cli ...` uses the CLI; `docker compose down -v` deletes everything. `docker compose stop` sends `SIGTERM`, which triggers a graceful drain; use `docker compose kill` to simulate a failure.
+- **Rust connectors:** `taba-client` and `taba-cli` live in `connectors/`, in their own Cargo workspace (`cd connectors/rust && cargo test --workspace --all-features`, plus `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all`). They follow the same test rules (a `tests.rs` file next to the module, `/// UC:`), and the server's `uc_coverage` reads the citations from here too. The binary: `connectors/rust/cli/scripts/build.sh` (or `build.ps1`); the image: `connectors/rust/cli/scripts/docker.sh`.
+- **C# connector:** `connectors/csharp/` (`Taba.Client` and `Taba.Client.Tests`, NUnit; `cd connectors/csharp && dotnet test Taba.Client.Tests`). C# 7.3, no dependencies, five targets (D137). The tests cite `/// UC: UC-CNT-NNN` (a plain line, no XML) and `uc_coverage` reads them. Integration tests only run with `TABA_URL`: `connectors/csharp/scripts/integration.sh` starts Compose, creates tokens and queues and runs everything.
+- **Cluster for integrated tests:** `docker/cluster.sh` (a library to `source`, or a command) starts/stops Compose, provokes failures (`taba_kill`, `taba_stop`, `taba_start`), waits for the cluster to settle and creates tokens/topics; connector tests should reuse it.
+- **End-to-end validation:** `docker/validate.sh` starts Compose from scratch and checks the cluster, the `taba-cli` (only it: each connector's test is individual, like `connectors/csharp/scripts/integration.sh`), nodes going down and coming back, and no message loss (takes about 5 minutes). Run it before closing changes that affect the cluster, the channel, Compose or the connectors.
+- **Configuration:** `crates/taba-node/src/config/params/mod.rs` is the table of keys and defaults ([doc/pt-BR/22-configuracao.md](doc/pt-BR/22-configuracao.md)). A new parameter goes in the table **and** in `Config`; a test checks that every parameter in the table is read.
+- **Tests:** unit tests live in a file next to the module (`foo/mod.rs` and `foo/tests.rs` side by side, linked by `#[cfg(test)] mod tests;`), not inside the code. Each test cites the use cases it covers on a `/// UC: UC-XXX-NNN` line right above the `#[test]`. `tests/uc_coverage.rs` fails if the code does not exist (rules in [doc/pt-BR/26-casos-de-uso.md](doc/pt-BR/26-casos-de-uso.md)). Integration tests use `tests/common/mod.rs` (`TestNode`: a node on free ports, disk in a temporary folder); cluster tests (level `C`) use `tests/common/cluster.rs` (`TestCluster`: several nodes in the same process, wired by the in-memory network `MemoryNetwork` and a manual `Clock`). The OTLP tests (`tests/otlp.rs`) start a fake collector (`tests/common/otlp.rs`, `http/protobuf` and `grpc`) and run one at a time, because the `tracing` subscriber is per process. The inter-node notice tests (`tests/notify.rs`) and the channel tests (`tests/channel.rs`) use the in-memory network. The cluster-security tests (`tests/mtls.rs`) start real nodes over TCP on `127.0.0.x`, with the HTTP `Transport` and mutual TLS (`tests/common/real.rs`). More in [doc/pt-BR/25-testes.md](doc/pt-BR/25-testes.md).
+- **Errors:** every API error is an `ErrorCode` from the catalogue (`core/error.rs`), with the fixed status from [doc/pt-BR/19-erros-e-limites.md](doc/pt-BR/19-erros-e-limites.md). A new code in the catalogue needs its line in the doc and its case in the test table.
+- **Disk:** `target/` grows fast. The `dev` profile already keeps only line tables (`debug = "line-tables-only"`), but `cargo clean -p taba-node` deletes old test binaries (every change leaves a new one). When space is low, run cargo with `CARGO_INCREMENTAL=0` or delete `target/debug/incremental`; "no space on device" from `rustc` and `LNK1180`/`LNK1201` from `link.exe` are this.
+- **SQLite:** `rusqlite` compiles the bundled SQLite (`bundled`), so the build needs a C compiler (MSVC, `gcc` or `clang`). On the Windows `-gnu` target, `cc` must not find the Cygwin `gcc`.
+- **Windows with Git Bash:** the coreutils `link.exe` hides the MSVC one, and the MSVC on this machine is incomplete. If `cargo build` fails at link time, use `cargo +stable-x86_64-pc-windows-gnu ...` (`rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal`). Docker commands that take a container path need `MSYS_NO_PATHCONV=1`. On Windows, `cargo test` fails with "access denied" if a compiled `taba.exe` is still running.
 
-## Decisões e pendências
+## Decisions and pending items
 
-- [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) guarda **tudo o que já foi decidido**; [doc/08b-pendencias.md](doc/08b-pendencias.md) guarda **só o que continua em aberto**. Nunca deixe em `08b` uma anotação do que já está definido: ela vai para `08a`, em linha própria, com o código da dúvida e o link para onde a definição está.
-- Dúvida parcialmente resolvida: a parte decidida entra em `08a` (com o mesmo código, ex.: D13.1), e `08b` mantém só as perguntas que faltam, cada uma com seu sub-código.
-- Ao fechar uma pendência: registre a decisão no documento técnico, o valor padrão em [doc/10-configuracao.md](doc/10-configuracao.md), a linha em `08a`, e **apague** a entrada de `08b` e a referência em [doc/08c-proximos-passos.md](doc/08c-proximos-passos.md). Os códigos não são reaproveitados.
+- [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) keeps **everything already decided**; [doc/08b-pendencias.md](doc/08b-pendencias.md) keeps **only what is still open**. Never leave in `08b` a note about something already defined: it goes to `08a`, on its own line, with the code of the question and the link to where the definition is. (`doc/pt-BR/30-decisoes.md` and `31-pendencias.md` are **generated** from these two by `node doc/pt-BR/scripts/gerar-historico.mjs`.)
+- A partially resolved question: the decided part goes to `08a` (with the same code, e.g. D13.1), and `08b` keeps only the questions that are missing, each with its sub-code.
+- When closing a pending item: record the decision in the technical document, the default value in [doc/pt-BR/22-configuracao.md](doc/pt-BR/22-configuracao.md), the line in `08a`, and **delete** the entry from `08b` and the reference in [doc/08c-proximos-passos.md](doc/08c-proximos-passos.md). Codes are never reused.
 
-## Idioma
+## Language
 
-- **Documentação:** em português do Brasil. No fim ela será traduzida e ficará em duas pastas, uma por idioma.
-- **Código:** nomes de variáveis, funções, tipos, módulos, campos, testes, chaves de configuração, rotas, códigos de erro e eventos em **inglês**, para facilitar a colaboração internacional. Nada de identificador em português, mesmo em teste.
-- **Comentários e mensagens para o usuário** (erro da API, log, ajuda da linha de comando): em **português** durante o desenvolvimento; serão traduzidos junto com a documentação.
-- Os nomes em disco (tabelas e colunas do SQLite, `_topic.db`, `${topic}` nas pastas, chaves do `state`) também são em inglês, nos documentos e no código.
+- **Documentation:** in Brazilian Portuguese, in `doc/pt-BR/`. In the end it will be translated and live in sibling folders, one per language. **The repository root files (`README.md`, this `AGENTS.md`) are in English (en-US).**
+- **Code:** names of variables, functions, types, modules, fields, tests, configuration keys, routes, error codes and events in **English**, to ease international collaboration. No identifier in Portuguese, not even in tests.
+- **Comments and user-facing messages** (API errors, logs, command-line help): in **Portuguese** during development; they will be translated together with the documentation.
+- On-disk names (SQLite tables and columns, `_topic.db`, `${topic}` in folders, `state` keys) are also in English, in the documents and in the code.
 
-## Ao terminar uma implementação
+## When you finish an implementation
 
-Não há mais um registro cronológico da implementação: o histórico é o git, com mensagens de commit que dizem o que mudou e por quê. Na mesma mudança do código:
+There is no chronological log of the implementation any more: the history is git, with commit messages that say what changed and why. In the same change as the code:
 
-1. **Corrija o `.md` técnico** quando o código decidiu algo que o documento não dizia ou contraria. O desenho vive nos documentos, e o código é conferido contra eles.
-2. **Decisão firme** vai para [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md); **dúvida** ou **problema**, para [doc/08b-pendencias.md](doc/08b-pendencias.md) (seção abaixo).
-3. **Casos de uso** novos ou mudados entram em `doc/20a`, `20b` ou `20c`, e cada teste os cita em `/// UC: UC-XXX-NNN`. Rode `TABA_UC_WRITE=1 cargo test --test uc_coverage` para regerar a coluna "Testes". Um caso sem teste fica com "—", e a razão vai no próprio caso.
-4. **Módulo novo** entra no mapa da seção 17.7 de [doc/18-estrutura-codigo.md](doc/18-estrutura-codigo.md), e o `mod.rs` dele começa com um comentário `//!` que diz o que faz e em que documento está o desenho.
+1. **Fix the technical `.md`** when the code decided something the document did not say or contradicts it. The design lives in the documents, and the code is checked against them. Update the matching file in `doc/pt-BR/` (the file whose "fontes" metadata names the code you changed), and run `node doc/pt-BR/scripts/verificar.mjs` (it checks links, metadata, configuration keys, error codes, routes, metrics and use-case codes against the code).
+2. A **firm decision** goes to [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md); a **question** or **problem**, to [doc/08b-pendencias.md](doc/08b-pendencias.md) (section below). Then run `node doc/pt-BR/scripts/gerar-historico.mjs`.
+3. **New or changed use cases** go to `doc/20a`, `20b` or `20c`, and each test cites them with `/// UC: UC-XXX-NNN`. Run `TABA_UC_WRITE=1 cargo test --test uc_coverage` to regenerate the "Testes" column, then `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` to regenerate [doc/pt-BR/26a-casos-de-uso-implementados.md](doc/pt-BR/26a-casos-de-uso-implementados.md) and `26b`. A case without a test keeps "—", and the reason goes in the case itself.
+4. **A new module** goes in the module map of [doc/pt-BR/04-arquitetura.md](doc/pt-BR/04-arquitetura.md), and its `mod.rs` starts with a `//!` comment saying what it does and which document holds the design.
 
-## Pendências e problemas descobertos na implementação
+## Pending items and problems found during implementation
 
-Toda implementação que descobre algo em aberto o registra **na mesma mudança**:
+Every implementation that finds something open records it **in the same change**:
 
-- **Pergunta de design** (o documento não define, ou há duas saídas): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo código `D` livre e uma proposta. Quando for decidida, vai para `08a` (regras da seção "Decisões e pendências").
-- **Problema de lógica, risco ou limite** (o código se comporta de um jeito furado, injusto ou incompleto): entra em [doc/08b-pendencias.md](doc/08b-pendencias.md) com o próximo `PRB-NNN`, dizendo o efeito e a proposta; se há uma dúvida `D` que o resolve, vai dentro dela ("Problema ligado"). Resolvido, vai para a seção "Problemas resolvidos" de [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) com a data; o código não é reaproveitado.
-- Na `08b`, o que **não depende de nada** fica na seção 1 e o que depende de outra dúvida, problema ou etapa fica na seção 2, com "Depende de".
-- O desvio em relação ao documento se corrige no próprio `.md` técnico; se depende de uma decisão, vira uma dúvida `D` na `08b`.
+- **Design question** (the document does not define it, or there are two ways out): goes to [doc/08b-pendencias.md](doc/08b-pendencias.md) with the next free `D` code and a proposal. When decided, it goes to `08a` (rules in the "Decisions and pending items" section).
+- **Logic problem, risk or limit** (the code behaves in a flawed, unfair or incomplete way): goes to [doc/08b-pendencias.md](doc/08b-pendencias.md) with the next `PRB-NNN`, stating the effect and the proposal; if a `D` question resolves it, it goes inside it ("Problema ligado"). When resolved, it goes to the "Problemas resolvidos" section of [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md) with the date; the code is not reused.
+- In `08b`, what **does not depend on anything** stays in section 1 and what depends on another question, problem or step stays in section 2, with "Depende de".
+- A deviation from the document is fixed in the technical `.md` itself; if it depends on a decision, it becomes a `D` question in `08b`.
 
-## Casos de uso
+## Use cases
 
-Os casos de uso que orientam os testes estão em [doc/20-casos-de-uso.md](doc/20-casos-de-uso.md) (e `20a`, `20b`, `20c`), cada um com um código `UC-<ÁREA>-<NNN>` que os testes citam numa linha `/// UC: UC-MSG-003`.
+The use cases that guide the tests are in [doc/20-casos-de-uso.md](doc/20-casos-de-uso.md) (and `20a`, `20b`, `20c`), each with a `UC-<AREA>-<NNN>` code that the tests cite on a `/// UC: UC-MSG-003` line. The method is explained in [doc/pt-BR/26-casos-de-uso.md](doc/pt-BR/26-casos-de-uso.md).
 
-- Os códigos **não são reaproveitados**: um caso que deixa de existir fica na tabela como `(retirado)`; um caso novo ganha o próximo número livre da área.
-- Ao mudar o comportamento descrito em um `.md` técnico, atualize os casos de uso correspondentes **no mesmo commit** (e o total do índice em `20-casos-de-uso.md`).
-- Um caso só vale como coberto com ao menos um teste que o cite, no nível da coluna "Nível".
+- Codes are **not reused**: a case that ceases to exist stays in the table as `(retirado)`; a new case gets the next free number in the area.
+- When you change the behaviour described in a technical `.md`, update the matching use cases **in the same commit** (and the total in the index of `20-casos-de-uso.md`).
+- A case only counts as covered with at least one test that cites it, at the level of the "Nível" column.
 
-## Diagramas
+## Diagrams
 
-Os diagramas são gerados com o [Archify](https://github.com/tt-a1i/archify) a partir de JSON. **A fonte da verdade é o JSON**; o SVG e o HTML são saídas geradas.
+Diagrams are generated with [Archify](https://github.com/tt-a1i/archify) from JSON. **The JSON is the source of truth**; the SVG and the HTML are generated outputs.
 
 ```
 doc/diagramas/
-  fonte/   *.json          fonte, versionada. É o que se edita.
-  img/     *.svg           exportado, versionado. É o que os .md embutem.
-  html/    *.html          interativo, NÃO versionado (só existe com --html).
-  scripts/gerar.sh         valida, renderiza e exporta o SVG
-  scripts/reespacar.mjs    recalcula o y das mensagens de diagramas de sequência
-  scripts/exportar-svg.mjs usado pelo gerar.sh (Chrome headless)
+  fonte/   *.json          source, versioned. This is what you edit.
+  img/     *.svg           exported, versioned. This is what the .md files embed.
+  html/    *.html          interactive, NOT versioned (only exists with --html).
+  scripts/gerar.sh         validates, renders and exports the SVG
+  scripts/reespacar.mjs    recomputes the y of the messages of sequence diagrams
+  scripts/exportar-svg.mjs used by gerar.sh (headless Chrome)
 ```
 
-### Regras
+The documentation in `doc/pt-BR/` embeds these SVGs (`![…](../diagramas/img/<name>.svg)`); the table of which diagram is used where is in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas). A spot that still needs a diagram is marked `🖼️ DIAGRAMA PLANEJADO` with its type and goal.
 
-- Edite sempre `doc/diagramas/fonte/<nome>.json`. Nunca edite o SVG ou o HTML: são sobrescritos a cada geração.
-- Depois de editar, rode `doc/diagramas/scripts/gerar.sh <nome>` e faça commit do JSON **e** do SVG juntos. Sem nome, gera todos.
-- Rode os comandos a partir da raiz do repositório. O `meta.output` dos JSON é relativo a ela (`doc/diagramas/html/<nome>.html`) e não deve ser alterado.
-- `--html` mantém o HTML interativo em `doc/diagramas/html/` para abrir no navegador. Ele é ignorado pelo git (`.gitignore`).
-- A pasta `.archify/` é área de trabalho do Archify e também é ignorada. Diagramas novos nascem lá, mas só entram no repositório depois de copiados para `doc/diagramas/fonte/` com nome estável (sem data) e `meta.output` apontando para `doc/diagramas/html/`.
-- O texto dos diagramas é em português; a legenda e a interface do viewer do Archify são fixas em inglês.
-- Ao mudar o comportamento descrito em um `.md`, atualize o diagrama correspondente (tabela em [doc/README.md](doc/README.md#diagramas)) e regere.
+### Rules
 
-### Diagramas desenhados por script (exceção)
+- Always edit `doc/diagramas/fonte/<name>.json`. Never edit the SVG or the HTML: they are overwritten at every generation.
+- After editing, run `doc/diagramas/scripts/gerar.sh <name>` and commit the JSON **and** the SVG together. With no name, it generates all of them.
+- Run the commands from the repository root. The JSON `meta.output` is relative to it (`doc/diagramas/html/<name>.html`) and must not be changed.
+- `--html` keeps the interactive HTML in `doc/diagramas/html/` to open in a browser. It is ignored by git (`.gitignore`).
+- The `.archify/` folder is Archify's work area and is also ignored. New diagrams are born there, but only enter the repository after being copied to `doc/diagramas/fonte/` with a stable name (no date) and `meta.output` pointing to `doc/diagramas/html/`.
+- The text of the diagrams is in Portuguese (the English `README.md` uses `c4-nivel0-contexto-en.json`, a translated copy: keep it in step with the Portuguese one); the legend and the Archify viewer interface are fixed in English.
+- When you change the behaviour described in a `.md`, update the matching diagram (table in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas)) and regenerate.
 
-`anel-hash.svg`, `topico-espalhado.svg` e `fifo-grupos.svg` não passam pelo Archify (ele não desenha anéis nem matrizes) e **não têm JSON**: a fonte é `doc/diagramas/scripts/gerar-hash.mjs`. Edite as constantes do script (nós, posições do anel, mensagens, matriz) e rode `node doc/diagramas/scripts/gerar-hash.mjs`; o `gerar.sh` não os gera. Faça commit do script **e** dos SVGs juntos. O script não valida o layout: abra o SVG (ou faça uma captura no Chrome) e confira textos sobrepostos.
+### Script-drawn diagrams (exception)
 
-O mesmo vale para o hero do README da raiz (`hero.svg` e `hero.gif`): a fonte é `doc/diagramas/scripts/gerar-hero.mjs`. Edite os textos, as cores e a linha do tempo (`PRODUTORES`, `CONSUMIDORES`, `MSGS`, `LEGENDA`) e rode `node doc/diagramas/scripts/gerar-hero.mjs`. O `hero.svg` é o quadro estático (instante `ESTATICO`) e o `hero.gif` é o que o README embute; o GIF usa o Chrome headless e o `ffmpeg` (variável `FFMPEG` se não estiver no PATH). `--so-svg` gera só o SVG. Faça commit do script **e** dos dois arquivos juntos.
+`anel-hash.svg`, `topico-espalhado.svg` and `fifo-grupos.svg` do not go through Archify (it does not draw rings or matrices) and **have no JSON**: the source is `doc/diagramas/scripts/gerar-hash.mjs`. `--lang=en` also generates `anel-hash-en.svg` and `topico-espalhado-en.svg` (used by the English `README.md`; translations are the `EN` table at the top of the script, so add the English text there for every new string). Edit the script constants (nodes, ring positions, messages, matrix) and run `node doc/diagramas/scripts/gerar-hash.mjs`; `gerar.sh` does not generate them. Commit the script **and** the SVGs together. The script does not validate the layout: open the SVG (or take a Chrome capture) and check for overlapping text.
 
-### Pré-requisitos
+The same applies to the root README hero (`hero.svg` and `hero.gif`): the source is `doc/diagramas/scripts/gerar-hero.mjs`. Edit the texts, colours and timeline (`PRODUTORES`, `CONSUMIDORES`, `MSGS`, `LEGENDA`) and run `node doc/diagramas/scripts/gerar-hero.mjs`. `hero.svg` is the static frame (instant `ESTATICO`) and `hero.gif` is what the README embeds; the GIF uses headless Chrome and `ffmpeg` (variable `FFMPEG` if it is not on the PATH). `--so-svg` generates only the SVG. `--lang=en` generates `hero-en.svg`/`hero-en.gif` (the banner of the English `README.md`; the Portuguese one, `hero.gif`, is used by `README-pt-BR.md`): when you change the texts, update the `TXT` table for both languages and run the script twice. Commit the script **and** both files together.
 
-- Node.js 22 ou superior.
-- Archify instalado como skill (`~/.claude/skills/archify`). Outro local: defina `ARCHIFY_BIN` com o caminho do `archify.mjs`.
-- Chrome ou Edge. Outro executável: defina `ARCHIFY_CHROME`.
+### Prerequisites
 
-### Editar um diagrama de sequência
+- Node.js 22 or later.
+- Archify installed as a skill (`~/.claude/skills/archify`). Another location: set `ARCHIFY_BIN` to the path of `archify.mjs`.
+- Chrome or Edge. Another executable: set `ARCHIFY_CHROME`.
 
-O array `messages` define a ordem; o `y` é recalculado por `scripts/reespacar.mjs`.
+### Editing a sequence diagram
 
-1. Insira, remova ou reordene mensagens no array. Para uma mensagem nova, use qualquer `y` (se houver `segments`, use o `y` de uma mensagem vizinha da mesma fase).
-2. `node doc/diagramas/scripts/reespacar.mjs doc/diagramas/fonte/<nome>.json` reatribui os `y` (passo de 28 px, folga entre fases), refaz as faixas de `segments` e ajusta `meta.viewBox`.
-3. `doc/diagramas/scripts/gerar.sh <nome>`.
+The `messages` array defines the order; `y` is recomputed by `scripts/reespacar.mjs`.
 
-Limites do Archify (perfil `showcase`) que o `scripts/gerar.sh` faz valer:
+1. Insert, remove or reorder messages in the array. For a new message, use any `y` (if there are `segments`, use the `y` of a neighbouring message of the same phase).
+2. `node doc/diagramas/scripts/reespacar.mjs doc/diagramas/fonte/<name>.json` reassigns the `y` values (28 px step, gap between phases), rebuilds the `segments` bands and adjusts `meta.viewBox`.
+3. `doc/diagramas/scripts/gerar.sh <name>`.
 
-- Mensagens que dividem espaço horizontal precisam de pelo menos 28 px entre si.
-- A proporção do `viewBox` não pode ser mais alta que cerca de 1,55 (largura/altura) com largura de 1080. Se o `scripts/reespacar.mjs` avisar, divida o diagrama em dois. Foi assim que o consumo virou `consumo` (entrega e ack) mais três cenários.
-- Com largura maior que cerca de 1085, o texto secundário fica pequeno demais na tela e a checagem falha.
+Archify limits (the `showcase` profile) that `scripts/gerar.sh` enforces:
 
-### Editar um diagrama de arquitetura (incluindo C4)
+- Messages that share horizontal space need at least 28 px between them.
+- The `viewBox` aspect ratio may not be taller than about 1.55 (width/height) at a width of 1080. If `scripts/reespacar.mjs` warns, split the diagram in two. That is how consumption became `consumo` (delivery and ack) plus three scenarios.
+- With a width above about 1085, the secondary text gets too small on screen and the check fails.
 
-Não há reespaçamento automático. Ajuste `pos` e `size` dos componentes no JSON, mantendo:
+### Editing an architecture diagram (including C4)
 
-- vizinhos conectados adjacentes, com folga de `6,5 px × caracteres + 21 px` para cada rótulo de conexão na linha principal;
-- `boundaries` só do tipo `region` ou `security-group`;
-- `meta.viewBox` omitido em diagramas de arquitetura novos.
+There is no automatic respacing. Adjust the components' `pos` and `size` in the JSON, keeping:
 
-### Diagnóstico
+- connected neighbours adjacent, with a gap of `6.5 px × characters + 21 px` for each connection label on the main line;
+- `boundaries` only of type `region` or `security-group`;
+- `meta.viewBox` omitted in new architecture diagrams.
 
-Quando o Archify recusa um diagrama, o `scripts/gerar.sh` imprime os códigos e mensagens. As mais comuns:
+### Diagnostics
 
-| Mensagem | Correção |
+When Archify rejects a diagram, `scripts/gerar.sh` prints the codes and messages. The most common:
+
+| Message | Fix |
 |---|---|
-| `less than 28px apart` | rodar `scripts/reespacar.mjs` |
-| `leaving no room for the legend` | aumentar a altura do `viewBox` (o `scripts/reespacar.mjs` já calcula) |
-| `composition/viewport-height` | diagrama alto demais: dividir |
-| `composition/desktop-readability` | reduzir a largura do `viewBox` |
+| `less than 28px apart` | run `scripts/reespacar.mjs` |
+| `leaving no room for the legend` | increase the `viewBox` height (`scripts/reespacar.mjs` already computes it) |
+| `composition/viewport-height` | diagram too tall: split it |
+| `composition/desktop-readability` | reduce the `viewBox` width |
 
-Detalhes do formato: `~/.claude/skills/archify/references/authoring-contract.md` e os schemas em `~/.claude/skills/archify/schemas/`.
+Format details: `~/.claude/skills/archify/references/authoring-contract.md` and the schemas in `~/.claude/skills/archify/schemas/`.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Constrói a imagem Docker do taba-cli (doc/19b-cli.md, seção 18.11.7) com o buildx.
+# Constrói a imagem Docker do taba-cli (doc/pt-BR/20-cli.md) com o buildx.
 #
 #   docker.sh                       imagem taba-cli para a plataforma desta máquina (fica no Docker local)
 #   docker.sh --multi               linux/amd64 e linux/arm64 (precisa de --push ou de --output)

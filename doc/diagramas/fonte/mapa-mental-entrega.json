@@ -11,7 +11,7 @@
       "id": "entrega-d0-0",
       "type": "security",
       "label": "Só o primário",
-      "sublabel": "decisão 2.1.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         70
@@ -25,7 +25,7 @@
       "id": "entrega-d0-0x",
       "type": "database",
       "label": "demais nós: cópias de segurança",
-      "sublabel": "detalhe 2.1.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         70
@@ -39,7 +39,7 @@
       "id": "entrega-d0-1",
       "type": "security",
       "label": "Coordenador do GET",
-      "sublabel": "decisão 2.1.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         136
@@ -53,7 +53,7 @@
       "id": "entrega-d0-1x",
       "type": "database",
       "label": "completa com outros nós (take)",
-      "sublabel": "detalhe 2.1.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         136
@@ -67,7 +67,7 @@
       "id": "entrega-t0",
       "type": "cloud",
       "label": "Quem entrega",
-      "sublabel": "tema 2.1",
+      "sublabel": "tema",
       "pos": [
         225,
         103
@@ -81,7 +81,7 @@
       "id": "entrega-d1-0",
       "type": "security",
       "label": "Em memória, por tópico",
-      "sublabel": "decisão 2.2.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         202
@@ -94,8 +94,8 @@
     {
       "id": "entrega-d1-0x",
       "type": "database",
-      "label": "1000 IDs (ready-list.size)",
-      "sublabel": "detalhe 2.2.1.1",
+      "label": "todas as prontas, em memória",
+      "sublabel": "detalhe",
       "pos": [
         745,
         202
@@ -109,7 +109,7 @@
       "id": "entrega-d1-1",
       "type": "security",
       "label": "Efeito sanfona",
-      "sublabel": "decisão 2.2.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         268
@@ -123,7 +123,7 @@
       "id": "entrega-d1-1x",
       "type": "database",
       "label": "pontas antiga e nova, intercaladas",
-      "sublabel": "detalhe 2.2.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         268
@@ -136,8 +136,8 @@
     {
       "id": "entrega-d1-2",
       "type": "security",
-      "label": "Thread com semáforo",
-      "sublabel": "decisão 2.2.3",
+      "label": "Índice completo no dono",
+      "sublabel": "decisão",
       "pos": [
         450,
         334
@@ -150,8 +150,8 @@
     {
       "id": "entrega-d1-2x",
       "type": "database",
-      "label": "repõe quando abre espaço",
-      "sublabel": "detalhe 2.2.3.1",
+      "label": "sem thread de reposição",
+      "sublabel": "detalhe",
       "pos": [
         745,
         334
@@ -165,7 +165,7 @@
       "id": "entrega-t1",
       "type": "cloud",
       "label": "Lista de prontos",
-      "sublabel": "tema 2.2",
+      "sublabel": "tema",
       "pos": [
         225,
         268
@@ -179,7 +179,7 @@
       "id": "entrega-d2-0",
       "type": "security",
       "label": "Long polling",
-      "sublabel": "decisão 2.3.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         400
@@ -193,7 +193,7 @@
       "id": "entrega-d2-0x",
       "type": "database",
       "label": "waitTime de 0 a 20 s",
-      "sublabel": "detalhe 2.3.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         400
@@ -207,7 +207,7 @@
       "id": "entrega-d2-1",
       "type": "security",
       "label": "maxMessages",
-      "sublabel": "decisão 2.3.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         466
@@ -221,7 +221,7 @@
       "id": "entrega-d2-1x",
       "type": "database",
       "label": "padrão 10",
-      "sublabel": "detalhe 2.3.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         466
@@ -235,7 +235,7 @@
       "id": "entrega-d2-2",
       "type": "security",
       "label": "Avisos de mensagem nova",
-      "sublabel": "decisão 2.3.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         532
@@ -249,7 +249,7 @@
       "id": "entrega-d2-2x",
       "type": "database",
       "label": "janela de 100 ms, um nó por vez",
-      "sublabel": "detalhe 2.3.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         532
@@ -263,7 +263,7 @@
       "id": "entrega-t2",
       "type": "cloud",
       "label": "Consumo",
-      "sublabel": "tema 2.3",
+      "sublabel": "tema",
       "pos": [
         225,
         466
@@ -277,7 +277,7 @@
       "id": "entrega",
       "type": "backend",
       "label": "Entrega",
-      "sublabel": "área 2",
+      "sublabel": "área",
       "pos": [
         20,
         499
@@ -291,7 +291,7 @@
       "id": "entrega-d3-0",
       "type": "security",
       "label": "TTL da mensagem",
-      "sublabel": "decisão 2.4.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         598
@@ -305,7 +305,7 @@
       "id": "entrega-d3-0x",
       "type": "database",
       "label": "padrão 14 dias (ttl.default)",
-      "sublabel": "detalhe 2.4.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         598
@@ -319,7 +319,7 @@
       "id": "entrega-d3-1",
       "type": "security",
       "label": "Limite de entregas",
-      "sublabel": "decisão 2.4.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         664
@@ -333,7 +333,7 @@
       "id": "entrega-d3-1x",
       "type": "database",
       "label": "padrão 10 (max-deliveries.default)",
-      "sublabel": "detalhe 2.4.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         664
@@ -347,7 +347,7 @@
       "id": "entrega-d3-2",
       "type": "security",
       "label": "Dead-letter por fila",
-      "sublabel": "decisão 2.4.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         730
@@ -361,7 +361,7 @@
       "id": "entrega-d3-2x",
       "type": "database",
       "label": "sufixo -dead-letter, só leitura",
-      "sublabel": "detalhe 2.4.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         730
@@ -375,7 +375,7 @@
       "id": "entrega-t3",
       "type": "cloud",
       "label": "Retenção e dead-letter",
-      "sublabel": "tema 2.4",
+      "sublabel": "tema",
       "pos": [
         225,
         664
@@ -389,7 +389,7 @@
       "id": "entrega-d4-0",
       "type": "security",
       "label": "Grupo da mensagem",
-      "sublabel": "decisão 2.5.1",
+      "sublabel": "decisão",
       "pos": [
         450,
         796
@@ -403,7 +403,7 @@
       "id": "entrega-d4-0x",
       "type": "database",
       "label": "groupId, até 128 caracteres",
-      "sublabel": "detalhe 2.5.1.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         796
@@ -417,7 +417,7 @@
       "id": "entrega-d4-1",
       "type": "security",
       "label": "Contagem por nó",
-      "sublabel": "decisão 2.5.2",
+      "sublabel": "decisão",
       "pos": [
         450,
         862
@@ -431,7 +431,7 @@
       "id": "entrega-d4-1x",
       "type": "database",
       "label": "prontas + em processamento, peso 0,1",
-      "sublabel": "detalhe 2.5.2.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         862
@@ -445,7 +445,7 @@
       "id": "entrega-d4-2",
       "type": "security",
       "label": "Grupos menores primeiro",
-      "sublabel": "decisão 2.5.3",
+      "sublabel": "decisão",
       "pos": [
         450,
         928
@@ -459,7 +459,7 @@
       "id": "entrega-d4-2x",
       "type": "database",
       "label": "faixas por potência de 2",
-      "sublabel": "detalhe 2.5.3.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         928
@@ -473,7 +473,7 @@
       "id": "entrega-d4-3",
       "type": "security",
       "label": "Progresso garantido",
-      "sublabel": "decisão 2.5.4",
+      "sublabel": "decisão",
       "pos": [
         450,
         994
@@ -487,7 +487,7 @@
       "id": "entrega-d4-3x",
       "type": "database",
       "label": "1 em 10 pela ordem normal",
-      "sublabel": "detalhe 2.5.4.1",
+      "sublabel": "detalhe",
       "pos": [
         745,
         994
@@ -501,7 +501,7 @@
       "id": "entrega-t4",
       "type": "cloud",
       "label": "Entrega justa por grupos",
-      "sublabel": "tema 2.5",
+      "sublabel": "tema",
       "pos": [
         225,
         895

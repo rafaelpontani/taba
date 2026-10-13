@@ -481,11 +481,11 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="176" y="282" class="t-dim" font-size="7">limpa estado local e recomeça do zero</text>
         </g>
 
-        <g data-edge-from="contato" data-edge-to="donos" data-edge-label="registro e commit em todos (seção 6.2)" data-edge-key="4" data-edge-id="ingresso">
+        <g data-edge-from="contato" data-edge-to="donos" data-edge-label="registro e commit em todos" data-edge-key="4" data-edge-id="ingresso">
           <path data-composition-edge-from="contato" data-composition-edge-to="donos" data-composition-edge-id="ingresso" data-composition-points="938,292;558,292" d="M 938 292 L 558 292" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g>
-          <rect x="616.6" y="272" width="262.79999999999995" height="18" rx="3" class="c-mask"/>
-          <text x="748" y="282" class="t-muted" font-size="11" text-anchor="middle">registro e commit em todos (seção 6.2)</text>
+          <rect x="656.2" y="272" width="183.6" height="18" rx="3" class="c-mask"/>
+          <text x="748" y="282" class="t-muted" font-size="11" text-anchor="middle">registro e commit em todos</text>
         </g>
         </g>
 

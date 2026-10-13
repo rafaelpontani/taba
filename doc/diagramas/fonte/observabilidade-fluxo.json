@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Caminhos da telemetria",
+    "output": "doc/diagramas/html/observabilidade-fluxo.html",
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    {
+      "label": "No nó"
+    },
+    {
+      "label": "Saídas"
+    },
+    {
+      "label": "Quem lê"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "inst",
+      "type": "backend",
+      "label": "Instrumentos",
+      "sublabel": "métricas, traces, logs",
+      "stage": 0,
+      "row": 1
+    },
+    {
+      "id": "peers",
+      "type": "backend",
+      "label": "Outros nós",
+      "sublabel": "estado e métricas de tópico",
+      "stage": 0,
+      "row": 2
+    },
+    {
+      "id": "otlp",
+      "type": "messagebus",
+      "label": "OTLP",
+      "sublabel": "push, tudo",
+      "stage": 1,
+      "row": 0
+    },
+    {
+      "id": "prom",
+      "type": "messagebus",
+      "label": "GET /metrics",
+      "sublabel": "pull, só deste nó",
+      "stage": 1,
+      "row": 1
+    },
+    {
+      "id": "json",
+      "type": "frontend",
+      "label": "/health/cluster",
+      "sublabel": "e /metrics/topics, JSON",
+      "stage": 1,
+      "row": 2
+    },
+    {
+      "id": "collector",
+      "type": "external",
+      "label": "Coletor OTLP",
+      "sublabel": "qualquer backend",
+      "stage": 2,
+      "row": 0
+    },
+    {
+      "id": "prometheus",
+      "type": "external",
+      "label": "Prometheus",
+      "sublabel": "soma os nós (PromQL)",
+      "stage": 2,
+      "row": 1
+    },
+    {
+      "id": "operator",
+      "type": "external",
+      "label": "Operador",
+      "sublabel": "CLI e scripts",
+      "stage": 2,
+      "row": 2
+    }
+  ],
+  "flows": [
+    {
+      "from": "inst",
+      "to": "otlp",
+      "label": "mesma fonte",
+      "variant": "emphasis"
+    },
+    {
+      "from": "inst",
+      "to": "prom",
+      "label": "coleta",
+      "route": "straight",
+      "labelDx": 30
+    },
+    {
+      "from": "peers",
+      "to": "json",
+      "label": "consulta",
+      "variant": "dashed",
+      "route": "straight"
+    },
+    {
+      "from": "otlp",
+      "to": "collector",
+      "label": "tudo",
+      "route": "straight"
+    },
+    {
+      "from": "prom",
+      "to": "prometheus",
+      "label": "métricas",
+      "route": "straight"
+    },
+    {
+      "from": "json",
+      "to": "operator",
+      "label": "JSON",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Sem agregação no servidor",
+      "items": [
+        "Cada nó reporta o seu; o total é do backend",
+        "A exceção são as rotas JSON, que consultam os nós"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Constrói o taba-cli (doc/19b-cli.md, seção 18.11.8) no Linux e no macOS.
+# Constrói o taba-cli (doc/pt-BR/20-cli.md) no Linux e no macOS.
 #
 #   build.sh                  a plataforma desta máquina
 #   build.sh --target <alvo>  um alvo da tabela abaixo

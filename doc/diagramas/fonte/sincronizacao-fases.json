@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": { "title": "Sincronização de um nó que entra", "output": "doc/diagramas/html/sincronizacao-fases.html", "quality_profile": "showcase" },
+  "lanes": [
+    { "id": "origem", "label": "Cluster (origens)" },
+    { "id": "novo", "label": "Nó que entra" },
+    { "id": "disco", "label": "Disco do nó" }
+  ],
+  "mainPath": ["topics", "blocks", "replay", "verify", "ready"],
+  "nodes": [
+    { "id": "events", "lane": "origem", "col": 0, "type": "external", "label": "Registro e commit", "sublabel": "chegam durante a carga", "width": 150 },
+    { "id": "topics", "lane": "novo", "col": 0, "type": "backend", "label": "1. topics", "sublabel": "tópicos e tokens", "width": 132 },
+    { "id": "blocks", "lane": "novo", "col": 1, "type": "backend", "label": "2. blocks", "sublabel": "IDs e faixas por bloco", "width": 132 },
+    { "id": "replay", "lane": "novo", "col": 3, "type": "backend", "label": "3. replay", "sublabel": "mais antigo primeiro", "width": 132 },
+    { "id": "verify", "lane": "novo", "col": 4, "type": "backend", "label": "4. verification", "sublabel": "relista as origens", "width": 132 },
+    { "id": "ready", "lane": "novo", "col": 5, "type": "security", "label": "5. ready", "sublabel": "active, modo normal", "width": 132 },
+    { "id": "syncdb", "lane": "disco", "col": 2, "type": "database", "label": "_sync/sync.db", "sublabel": "banco de eventos", "width": 150 }
+  ],
+  "edges": [
+    { "id": "e1", "from": "topics", "to": "blocks", "role": "main", "variant": "emphasis" },
+    { "id": "e2", "from": "blocks", "to": "replay", "role": "main", "variant": "emphasis" },
+    { "id": "e3", "from": "replay", "to": "verify", "role": "main", "variant": "emphasis" },
+    { "id": "e4", "from": "verify", "to": "ready", "role": "main", "variant": "emphasis", "label": "banco vazio" },
+    { "id": "e5", "from": "events", "to": "syncdb", "role": "async", "variant": "dashed", "label": "grava em ordem" },
+    { "id": "e6", "from": "syncdb", "to": "replay", "role": "branch", "label": "lê e apaga" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Escopo", "items": ["Só os blocos que o nó assumiu", "O resto do cluster segue normal"] },
+    { "dot": "amber", "title": "Falhas", "items": ["Disco cheio ou sync.db acima do limite: failed", "Sem origem até cluster.sync.timeout: failed"] }
+  ]
+}

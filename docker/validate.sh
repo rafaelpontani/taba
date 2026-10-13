@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A validação de ponta a ponta da versão 0.1 (doc/08c-proximos-passos.md, passo 5).
+# A validação de ponta a ponta da versão 0.1 (doc/pt-BR/32-roadmap.md).
 #
 # Sobe o Compose da raiz do zero e confere, nesta ordem:
 #   1. o cluster forma: três nós saudáveis e `taba-cli health cluster` sem condições;

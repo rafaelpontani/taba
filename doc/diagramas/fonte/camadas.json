@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "Camadas do servidor", "output": "doc/diagramas/html/camadas.html", "quality_profile": "showcase" },
+  "components": [
+    { "id": "node", "type": "frontend", "label": "node", "sublabel": "sobe o nó, liga as peças", "pos": [30, 190], "size": [150, 64] },
+    { "id": "http", "type": "frontend", "label": "http", "sublabel": "três APIs", "pos": [235, 190], "size": [150, 64] },
+    { "id": "cluster", "type": "backend", "label": "cluster", "sublabel": "membros, protocolo, sync", "pos": [440, 190], "size": [150, 64] },
+    { "id": "engine", "type": "backend", "label": "engine", "sublabel": "tópicos e entrega", "pos": [645, 190], "size": [150, 64] },
+    { "id": "storage", "type": "database", "label": "storage", "sublabel": "SQLite e arquivos", "pos": [850, 190], "size": [150, 64] },
+    { "id": "core", "type": "messagebus", "label": "core", "sublabel": "tipos, anel, erros, sem I/O", "pos": [645, 340], "size": [150, 64] },
+    { "id": "side", "type": "external", "label": "config · telemetry · secrets · cli", "sublabel": "usados por node", "pos": [30, 340], "size": [260, 64] }
+  ],
+  "connections": [
+    { "id": "d1", "from": "node", "to": "http", "label": "usa" },
+    { "id": "d2", "from": "http", "to": "cluster", "label": "usa" },
+    { "id": "d3", "from": "cluster", "to": "engine", "label": "usa" },
+    { "id": "d4", "from": "engine", "to": "storage", "label": "usa" },
+    { "id": "d5", "from": "storage", "to": "core", "label": "usa", "variant": "dashed", "fromSide": "bottom", "toSide": "right" },
+    { "id": "d6", "from": "side", "to": "node", "variant": "dashed", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Uma só direção", "items": ["Uma camada só conhece as da direita", "storage não conhece regras de entrega; engine não conhece rede", "Todas dependem de core, que não faz I/O"] }
+  ]
+}

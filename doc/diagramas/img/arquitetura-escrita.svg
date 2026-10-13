@@ -478,25 +478,25 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="105" y="244" class="t-muted" font-size="9" text-anchor="middle">publica / consome</text>
         </g>
 
-        <g id="node-api-cli" data-node-id="api-cli" data-node-label="API HTTP (cliente)" tabindex="0" role="button" aria-label="Focus API HTTP (cliente), nó coordenador, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="nó coordenador" data-node-context="Nó do cluster (idêntico, sem mestre)">
-          <title>API HTTP (cliente) · nó coordenador · Nó do cluster (idêntico, sem mestre)</title>
+        <g id="node-api-cli" data-node-id="api-cli" data-node-label="API de cliente" tabindex="0" role="button" aria-label="Focus API de cliente, nó coordenador, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="nó coordenador" data-node-context="Nó do cluster (idêntico, sem mestre)">
+          <title>API de cliente · nó coordenador · Nó do cluster (idêntico, sem mestre)</title>
           <rect x="260" y="200" width="150" height="60" rx="6" class="c-mask"/>
           <rect x="260" y="200" width="150" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(266 206) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="335" y="228" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API HTTP (cliente)</text>
+          <text data-node-label="" x="335" y="228" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API de cliente</text>
         <text x="335" y="244" class="t-muted" font-size="9" text-anchor="middle">nó coordenador</text>
         </g>
 
-        <g id="node-api-int" data-node-id="api-int" data-node-label="API HTTP (interna)" tabindex="0" role="button" aria-label="Focus API HTTP (interna), registro, commit, rollback, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="registro, commit, rollback" data-node-context="Nó do cluster (idêntico, sem mestre)">
-          <title>API HTTP (interna) · registro, commit, rollback · Nó do cluster (idêntico, sem mestre)</title>
+        <g id="node-api-int" data-node-id="api-int" data-node-label="API do cluster" tabindex="0" role="button" aria-label="Focus API do cluster, registro, commit, rollback, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="registro, commit, rollback" data-node-context="Nó do cluster (idêntico, sem mestre)">
+          <title>API do cluster · registro, commit, rollback · Nó do cluster (idêntico, sem mestre)</title>
           <rect x="520" y="200" width="150" height="60" rx="6" class="c-mask"/>
           <rect x="520" y="200" width="150" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(526 206) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="595" y="228" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API HTTP (interna)</text>
+          <text data-node-label="" x="595" y="228" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API do cluster</text>
         <text x="595" y="244" class="t-muted" font-size="9" text-anchor="middle">registro, commit, rollback</text>
         </g>
 
@@ -524,8 +524,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="595" y="384" class="t-muted" font-size="9" text-anchor="middle">memória com overflow</text>
         </g>
 
-        <g id="node-disk" data-node-id="disk" data-node-label="Disco" tabindex="0" role="button" aria-label="Focus Disco, SQLite + corpos .json, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite + corpos .json" data-node-context="Nó do cluster (idêntico, sem mestre)">
-          <title>Disco · SQLite + corpos .json · Nó do cluster (idêntico, sem mestre)</title>
+        <g id="node-disk" data-node-id="disk" data-node-label="Disco" tabindex="0" role="button" aria-label="Focus Disco, SQLite + corpos .body, Nó do cluster (idêntico, sem mestre)" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite + corpos .body" data-node-context="Nó do cluster (idêntico, sem mestre)">
+          <title>Disco · SQLite + corpos .body · Nó do cluster (idêntico, sem mestre)</title>
           <rect x="520" y="480" width="150" height="60" rx="6" class="c-mask"/>
           <rect x="520" y="480" width="150" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(526 486) scale(0.6875)">
@@ -533,7 +533,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="595" y="508" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Disco</text>
-        <text x="595" y="524" class="t-muted" font-size="9" text-anchor="middle">SQLite + corpos .json</text>
+        <text x="595" y="524" class="t-muted" font-size="9" text-anchor="middle">SQLite + corpos .body</text>
         </g>
 
         <g id="node-peers" data-node-id="peers" data-node-label="Nós responsáveis" tabindex="0" role="button" aria-label="Focus Nós responsáveis, primário + réplicas, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="primário + réplicas" data-node-tag="mesma arquitetura" data-node-context="Architecture component">

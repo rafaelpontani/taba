@@ -506,8 +506,8 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
 
         <!-- Components -->
-        <g id="node-invisibilidade-d0-0" data-node-id="invisibilidade-d0-0" data-node-label="invisibleUntil absoluto" tabindex="0" role="button" aria-label="Focus invisibleUntil absoluto, decisão 3.1.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.1.1" data-node-context="Architecture component">
-          <title>invisibleUntil absoluto · decisão 3.1.1 · Architecture component</title>
+        <g id="node-invisibilidade-d0-0" data-node-id="invisibilidade-d0-0" data-node-label="invisibleUntil absoluto" tabindex="0" role="button" aria-label="Focus invisibleUntil absoluto, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>invisibleUntil absoluto · decisão · Architecture component</title>
           <rect x="450" y="70" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="70" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 76) scale(0.6875)">
@@ -515,11 +515,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">invisibleUntil absoluto</text>
-        <text x="580" y="110" class="t-muted" font-size="9" text-anchor="middle">decisão 3.1.1</text>
+        <text x="580" y="110" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d0-0x" data-node-id="invisibilidade-d0-0x" data-node-label="calculado pelo dono" tabindex="0" role="button" aria-label="Focus calculado pelo dono, detalhe 3.1.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.1.1.1" data-node-context="Architecture component">
-          <title>calculado pelo dono · detalhe 3.1.1.1 · Architecture component</title>
+        <g id="node-invisibilidade-d0-0x" data-node-id="invisibilidade-d0-0x" data-node-label="calculado pelo dono" tabindex="0" role="button" aria-label="Focus calculado pelo dono, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>calculado pelo dono · detalhe · Architecture component</title>
           <rect x="745" y="70" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="70" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 76) scale(0.6875)">
@@ -527,11 +527,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">calculado pelo dono</text>
-        <text x="892.5" y="110" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.1.1.1</text>
+        <text x="892.5" y="110" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-d0-1" data-node-id="invisibilidade-d0-1" data-node-label="PUT /visibility" tabindex="0" role="button" aria-label="Focus PUT /visibility, decisão 3.1.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.1.2" data-node-context="Architecture component">
-          <title>PUT /visibility · decisão 3.1.2 · Architecture component</title>
+        <g id="node-invisibilidade-d0-1" data-node-id="invisibilidade-d0-1" data-node-label="PUT /visibility" tabindex="0" role="button" aria-label="Focus PUT /visibility, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>PUT /visibility · decisão · Architecture component</title>
           <rect x="450" y="136" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="136" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 142) scale(0.6875)">
@@ -539,11 +539,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PUT /visibility</text>
-        <text x="580" y="176" class="t-muted" font-size="9" text-anchor="middle">decisão 3.1.2</text>
+        <text x="580" y="176" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d0-1x" data-node-id="invisibilidade-d0-1x" data-node-label="novo tempo a partir de agora; 0 libera" tabindex="0" role="button" aria-label="Focus novo tempo a partir de agora; 0 libera, detalhe 3.1.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.1.2.1" data-node-context="Architecture component">
-          <title>novo tempo a partir de agora; 0 libera · detalhe 3.1.2.1 · Architecture component</title>
+        <g id="node-invisibilidade-d0-1x" data-node-id="invisibilidade-d0-1x" data-node-label="novo tempo a partir de agora; 0 libera" tabindex="0" role="button" aria-label="Focus novo tempo a partir de agora; 0 libera, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>novo tempo a partir de agora; 0 libera · detalhe · Architecture component</title>
           <rect x="745" y="136" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="136" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 142) scale(0.6875)">
@@ -551,22 +551,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">novo tempo a partir de agora; 0 libera</text>
-        <text x="892.5" y="176" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.1.2.1</text>
+        <text x="892.5" y="176" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-t0" data-node-id="invisibilidade-t0" data-node-label="Prazo" tabindex="0" role="button" aria-label="Focus Prazo, tema 3.1, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 3.1" data-node-context="Architecture component">
-          <title>Prazo · tema 3.1 · Architecture component</title>
+        <g id="node-invisibilidade-t0" data-node-id="invisibilidade-t0" data-node-label="Prazo" tabindex="0" role="button" aria-label="Focus Prazo, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Prazo · tema · Architecture component</title>
           <rect x="225" y="103" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="103" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 109) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="127" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Prazo</text>
-        <text x="320" y="143" class="t-muted" font-size="9" text-anchor="middle">tema 3.1</text>
+        <text x="320" y="143" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-invisibilidade-d1-0" data-node-id="invisibilidade-d1-0" data-node-label="Gerado a cada entrega" tabindex="0" role="button" aria-label="Focus Gerado a cada entrega, decisão 3.2.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.2.1" data-node-context="Architecture component">
-          <title>Gerado a cada entrega · decisão 3.2.1 · Architecture component</title>
+        <g id="node-invisibilidade-d1-0" data-node-id="invisibilidade-d1-0" data-node-label="Gerado a cada entrega" tabindex="0" role="button" aria-label="Focus Gerado a cada entrega, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Gerado a cada entrega · decisão · Architecture component</title>
           <rect x="450" y="202" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="202" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 208) scale(0.6875)">
@@ -574,11 +574,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="226" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gerado a cada entrega</text>
-        <text x="580" y="242" class="t-muted" font-size="9" text-anchor="middle">decisão 3.2.1</text>
+        <text x="580" y="242" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d1-0x" data-node-id="invisibilidade-d1-0x" data-node-label="guardado com a invisibilidade" tabindex="0" role="button" aria-label="Focus guardado com a invisibilidade, detalhe 3.2.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.2.1.1" data-node-context="Architecture component">
-          <title>guardado com a invisibilidade · detalhe 3.2.1.1 · Architecture component</title>
+        <g id="node-invisibilidade-d1-0x" data-node-id="invisibilidade-d1-0x" data-node-label="guardado com a invisibilidade" tabindex="0" role="button" aria-label="Focus guardado com a invisibilidade, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>guardado com a invisibilidade · detalhe · Architecture component</title>
           <rect x="745" y="202" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="202" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 208) scale(0.6875)">
@@ -586,11 +586,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="226" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">guardado com a invisibilidade</text>
-        <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.2.1.1</text>
+        <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-d1-1" data-node-id="invisibilidade-d1-1" data-node-label="Exigido no ack e no PUT" tabindex="0" role="button" aria-label="Focus Exigido no ack e no PUT, decisão 3.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.2.2" data-node-context="Architecture component">
-          <title>Exigido no ack e no PUT · decisão 3.2.2 · Architecture component</title>
+        <g id="node-invisibilidade-d1-1" data-node-id="invisibilidade-d1-1" data-node-label="Exigido no ack e no PUT" tabindex="0" role="button" aria-label="Focus Exigido no ack e no PUT, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Exigido no ack e no PUT · decisão · Architecture component</title>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 274) scale(0.6875)">
@@ -598,11 +598,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Exigido no ack e no PUT</text>
-        <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão 3.2.2</text>
+        <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d1-1x" data-node-id="invisibilidade-d1-1x" data-node-label="token velho recebe 409" tabindex="0" role="button" aria-label="Focus token velho recebe 409, detalhe 3.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.2.2.1" data-node-context="Architecture component">
-          <title>token velho recebe 409 · detalhe 3.2.2.1 · Architecture component</title>
+        <g id="node-invisibilidade-d1-1x" data-node-id="invisibilidade-d1-1x" data-node-label="token velho recebe 409" tabindex="0" role="button" aria-label="Focus token velho recebe 409, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>token velho recebe 409 · detalhe · Architecture component</title>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 274) scale(0.6875)">
@@ -610,22 +610,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">token velho recebe 409</text>
-        <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.2.2.1</text>
+        <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-t1" data-node-id="invisibilidade-t1" data-node-label="ReceiptToken" tabindex="0" role="button" aria-label="Focus ReceiptToken, tema 3.2, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 3.2" data-node-context="Architecture component">
-          <title>ReceiptToken · tema 3.2 · Architecture component</title>
+        <g id="node-invisibilidade-t1" data-node-id="invisibilidade-t1" data-node-label="ReceiptToken" tabindex="0" role="button" aria-label="Focus ReceiptToken, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>ReceiptToken · tema · Architecture component</title>
           <rect x="225" y="235" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="235" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 241) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="259" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ReceiptToken</text>
-        <text x="320" y="275" class="t-muted" font-size="9" text-anchor="middle">tema 3.2</text>
+        <text x="320" y="275" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-invisibilidade-d2-0" data-node-id="invisibilidade-d2-0" data-node-label="Lista de invisíveis" tabindex="0" role="button" aria-label="Focus Lista de invisíveis, decisão 3.3.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.3.1" data-node-context="Architecture component">
-          <title>Lista de invisíveis · decisão 3.3.1 · Architecture component</title>
+        <g id="node-invisibilidade-d2-0" data-node-id="invisibilidade-d2-0" data-node-label="Lista de invisíveis" tabindex="0" role="button" aria-label="Focus Lista de invisíveis, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Lista de invisíveis · decisão · Architecture component</title>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 340) scale(0.6875)">
@@ -633,47 +633,47 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Lista de invisíveis</text>
-        <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão 3.3.1</text>
+        <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d2-0x" data-node-id="invisibilidade-d2-0x" data-node-label="em memória (invisible-list.size)" tabindex="0" role="button" aria-label="Focus em memória (invisible-list.size), detalhe 3.3.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.3.1.1" data-node-context="Architecture component">
-          <title>em memória (invisible-list.size) · detalhe 3.3.1.1 · Architecture component</title>
+        <g id="node-invisibilidade-d2-0x" data-node-id="invisibilidade-d2-0x" data-node-label="todas, derivada de invisible_until" tabindex="0" role="button" aria-label="Focus todas, derivada de invisible_until, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>todas, derivada de invisible_until · detalhe · Architecture component</title>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 340) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">em memória (invisible-list.size)</text>
-        <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.3.1.1</text>
+          <text data-node-label="" x="892.5" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">todas, derivada de invisible_until</text>
+        <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-d2-1" data-node-id="invisibilidade-d2-1" data-node-label="Excedente no SQLite" tabindex="0" role="button" aria-label="Focus Excedente no SQLite, decisão 3.3.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.3.2" data-node-context="Architecture component">
-          <title>Excedente no SQLite · decisão 3.3.2 · Architecture component</title>
+        <g id="node-invisibilidade-d2-1" data-node-id="invisibilidade-d2-1" data-node-label="Sem tabela expiry" tabindex="0" role="button" aria-label="Focus Sem tabela expiry, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Sem tabela expiry · decisão · Architecture component</title>
           <rect x="450" y="400" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="400" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 406) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="580" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Excedente no SQLite</text>
-        <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão 3.3.2</text>
+          <text data-node-label="" x="580" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sem tabela expiry</text>
+        <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d2-1x" data-node-id="invisibilidade-d2-1x" data-node-label="tabela expiry, por prazo" tabindex="0" role="button" aria-label="Focus tabela expiry, por prazo, detalhe 3.3.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.3.2.1" data-node-context="Architecture component">
-          <title>tabela expiry, por prazo · detalhe 3.3.2.1 · Architecture component</title>
+        <g id="node-invisibilidade-d2-1x" data-node-id="invisibilidade-d2-1x" data-node-label="a fonte são os metadados" tabindex="0" role="button" aria-label="Focus a fonte são os metadados, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>a fonte são os metadados · detalhe · Architecture component</title>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 406) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">tabela expiry, por prazo</text>
-        <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.3.2.1</text>
+          <text data-node-label="" x="892.5" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">a fonte são os metadados</text>
+        <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-d2-2" data-node-id="invisibilidade-d2-2" data-node-label="Vencimento não se propaga" tabindex="0" role="button" aria-label="Focus Vencimento não se propaga, decisão 3.3.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 3.3.3" data-node-context="Architecture component">
-          <title>Vencimento não se propaga · decisão 3.3.3 · Architecture component</title>
+        <g id="node-invisibilidade-d2-2" data-node-id="invisibilidade-d2-2" data-node-label="Vencimento não se propaga" tabindex="0" role="button" aria-label="Focus Vencimento não se propaga, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Vencimento não se propaga · decisão · Architecture component</title>
           <rect x="450" y="466" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="466" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 472) scale(0.6875)">
@@ -681,11 +681,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Vencimento não se propaga</text>
-        <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão 3.3.3</text>
+        <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-invisibilidade-d2-2x" data-node-id="invisibilidade-d2-2x" data-node-label="dono recoloca na lista de prontos" tabindex="0" role="button" aria-label="Focus dono recoloca na lista de prontos, detalhe 3.3.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 3.3.3.1" data-node-context="Architecture component">
-          <title>dono recoloca na lista de prontos · detalhe 3.3.3.1 · Architecture component</title>
+        <g id="node-invisibilidade-d2-2x" data-node-id="invisibilidade-d2-2x" data-node-label="dono recoloca na lista de prontos" tabindex="0" role="button" aria-label="Focus dono recoloca na lista de prontos, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>dono recoloca na lista de prontos · detalhe · Architecture component</title>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 472) scale(0.6875)">
@@ -693,29 +693,29 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">dono recoloca na lista de prontos</text>
-        <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe 3.3.3.1</text>
+        <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-invisibilidade-t2" data-node-id="invisibilidade-t2" data-node-label="Expiração" tabindex="0" role="button" aria-label="Focus Expiração, tema 3.3, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 3.3" data-node-context="Architecture component">
-          <title>Expiração · tema 3.3 · Architecture component</title>
+        <g id="node-invisibilidade-t2" data-node-id="invisibilidade-t2" data-node-label="Expiração" tabindex="0" role="button" aria-label="Focus Expiração, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Expiração · tema · Architecture component</title>
           <rect x="225" y="400" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="400" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 406) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Expiração</text>
-        <text x="320" y="440" class="t-muted" font-size="9" text-anchor="middle">tema 3.3</text>
+        <text x="320" y="440" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-invisibilidade" data-node-id="invisibilidade" data-node-label="Invisibilidade" tabindex="0" role="button" aria-label="Focus Invisibilidade, área 3, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="área 3" data-node-context="Architecture component">
-          <title>Invisibilidade · área 3 · Architecture component</title>
+        <g id="node-invisibilidade" data-node-id="invisibilidade" data-node-label="Invisibilidade" tabindex="0" role="button" aria-label="Focus Invisibilidade, área, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="área" data-node-context="Architecture component">
+          <title>Invisibilidade · área · Architecture component</title>
           <rect x="20" y="252" width="170" height="60" rx="6" class="c-mask"/>
           <rect x="20" y="252" width="170" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(26 258) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" x="105" y="280" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Invisibilidade</text>
-        <text x="105" y="296" class="t-muted" font-size="9" text-anchor="middle">área 3</text>
+        <text x="105" y="296" class="t-muted" font-size="9" text-anchor="middle">área</text>
         </g>
 
         <!-- Connection labels -->

@@ -586,8 +586,8 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
 
         <!-- Components -->
-        <g id="node-cluster-d0-0" data-node-id="cluster-d0-0" data-node-label="Endereço do balanceador" tabindex="0" role="button" aria-label="Focus Endereço do balanceador, decisão 5.1.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.1.1" data-node-context="Architecture component">
-          <title>Endereço do balanceador · decisão 5.1.1 · Architecture component</title>
+        <g id="node-cluster-d0-0" data-node-id="cluster-d0-0" data-node-label="Endereço do balanceador" tabindex="0" role="button" aria-label="Focus Endereço do balanceador, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Endereço do balanceador · decisão · Architecture component</title>
           <rect x="450" y="70" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="70" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 76) scale(0.6875)">
@@ -595,11 +595,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Endereço do balanceador</text>
-        <text x="580" y="110" class="t-muted" font-size="9" text-anchor="middle">decisão 5.1.1</text>
+        <text x="580" y="110" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d0-0x" data-node-id="cluster-d0-0x" data-node-label="cluster.entry-address, obrigatório" tabindex="0" role="button" aria-label="Focus cluster.entry-address, obrigatório, detalhe 5.1.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.1.1.1" data-node-context="Architecture component">
-          <title>cluster.entry-address, obrigatório · detalhe 5.1.1.1 · Architecture component</title>
+        <g id="node-cluster-d0-0x" data-node-id="cluster-d0-0x" data-node-label="cluster.entry-address, obrigatório" tabindex="0" role="button" aria-label="Focus cluster.entry-address, obrigatório, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>cluster.entry-address, obrigatório · detalhe · Architecture component</title>
           <rect x="745" y="70" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="70" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 76) scale(0.6875)">
@@ -607,11 +607,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">cluster.entry-address, obrigatório</text>
-        <text x="892.5" y="110" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.1.1.1</text>
+        <text x="892.5" y="110" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d0-1" data-node-id="cluster-d0-1" data-node-label="Uma mudança por vez" tabindex="0" role="button" aria-label="Focus Uma mudança por vez, decisão 5.1.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.1.2" data-node-context="Architecture component">
-          <title>Uma mudança por vez · decisão 5.1.2 · Architecture component</title>
+        <g id="node-cluster-d0-1" data-node-id="cluster-d0-1" data-node-label="Uma mudança por vez" tabindex="0" role="button" aria-label="Focus Uma mudança por vez, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Uma mudança por vez · decisão · Architecture component</title>
           <rect x="450" y="136" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="136" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 142) scale(0.6875)">
@@ -619,11 +619,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Uma mudança por vez</text>
-        <text x="580" y="176" class="t-muted" font-size="9" text-anchor="middle">decisão 5.1.2</text>
+        <text x="580" y="176" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d0-1x" data-node-id="cluster-d0-1x" data-node-label="até o nó ficar pronto" tabindex="0" role="button" aria-label="Focus até o nó ficar pronto, detalhe 5.1.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.1.2.1" data-node-context="Architecture component">
-          <title>até o nó ficar pronto · detalhe 5.1.2.1 · Architecture component</title>
+        <g id="node-cluster-d0-1x" data-node-id="cluster-d0-1x" data-node-label="até o nó ficar pronto" tabindex="0" role="button" aria-label="Focus até o nó ficar pronto, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>até o nó ficar pronto · detalhe · Architecture component</title>
           <rect x="745" y="136" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="136" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 142) scale(0.6875)">
@@ -631,11 +631,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">até o nó ficar pronto</text>
-        <text x="892.5" y="176" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.1.2.1</text>
+        <text x="892.5" y="176" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d0-2" data-node-id="cluster-d0-2" data-node-label="Repasse de chamadas" tabindex="0" role="button" aria-label="Focus Repasse de chamadas, decisão 5.1.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.1.3" data-node-context="Architecture component">
-          <title>Repasse de chamadas · decisão 5.1.3 · Architecture component</title>
+        <g id="node-cluster-d0-2" data-node-id="cluster-d0-2" data-node-label="Repasse de chamadas" tabindex="0" role="button" aria-label="Focus Repasse de chamadas, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Repasse de chamadas · decisão · Architecture component</title>
           <rect x="450" y="202" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="202" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 208) scale(0.6875)">
@@ -643,11 +643,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="226" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Repasse de chamadas</text>
-        <text x="580" y="242" class="t-muted" font-size="9" text-anchor="middle">decisão 5.1.3</text>
+        <text x="580" y="242" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d0-2x" data-node-id="cluster-d0-2x" data-node-label="enquanto o nó sincroniza" tabindex="0" role="button" aria-label="Focus enquanto o nó sincroniza, detalhe 5.1.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.1.3.1" data-node-context="Architecture component">
-          <title>enquanto o nó sincroniza · detalhe 5.1.3.1 · Architecture component</title>
+        <g id="node-cluster-d0-2x" data-node-id="cluster-d0-2x" data-node-label="enquanto o nó sincroniza" tabindex="0" role="button" aria-label="Focus enquanto o nó sincroniza, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>enquanto o nó sincroniza · detalhe · Architecture component</title>
           <rect x="745" y="202" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="202" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 208) scale(0.6875)">
@@ -655,22 +655,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="226" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">enquanto o nó sincroniza</text>
-        <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.1.3.1</text>
+        <text x="892.5" y="242" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-t0" data-node-id="cluster-t0" data-node-label="Entrada" tabindex="0" role="button" aria-label="Focus Entrada, tema 5.1, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 5.1" data-node-context="Architecture component">
-          <title>Entrada · tema 5.1 · Architecture component</title>
+        <g id="node-cluster-t0" data-node-id="cluster-t0" data-node-label="Entrada" tabindex="0" role="button" aria-label="Focus Entrada, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Entrada · tema · Architecture component</title>
           <rect x="225" y="136" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="136" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 142) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="160" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Entrada</text>
-        <text x="320" y="176" class="t-muted" font-size="9" text-anchor="middle">tema 5.1</text>
+        <text x="320" y="176" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-cluster-d1-0" data-node-id="cluster-d1-0" data-node-label="WebSocket permanente" tabindex="0" role="button" aria-label="Focus WebSocket permanente, decisão 5.2.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.2.1" data-node-context="Architecture component">
-          <title>WebSocket permanente · decisão 5.2.1 · Architecture component</title>
+        <g id="node-cluster-d1-0" data-node-id="cluster-d1-0" data-node-label="WebSocket permanente" tabindex="0" role="button" aria-label="Focus WebSocket permanente, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>WebSocket permanente · decisão · Architecture component</title>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="268" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 274) scale(0.6875)">
@@ -678,11 +678,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">WebSocket permanente</text>
-        <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão 5.2.1</text>
+        <text x="580" y="308" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d1-0x" data-node-id="cluster-d1-0x" data-node-label="malha completa entre os nós" tabindex="0" role="button" aria-label="Focus malha completa entre os nós, detalhe 5.2.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.2.1.1" data-node-context="Architecture component">
-          <title>malha completa entre os nós · detalhe 5.2.1.1 · Architecture component</title>
+        <g id="node-cluster-d1-0x" data-node-id="cluster-d1-0x" data-node-label="malha completa entre os nós" tabindex="0" role="button" aria-label="Focus malha completa entre os nós, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>malha completa entre os nós · detalhe · Architecture component</title>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="268" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 274) scale(0.6875)">
@@ -690,11 +690,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">malha completa entre os nós</text>
-        <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.2.1.1</text>
+        <text x="892.5" y="308" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d1-1" data-node-id="cluster-d1-1" data-node-label="Sinal de vida próprio" tabindex="0" role="button" aria-label="Focus Sinal de vida próprio, decisão 5.2.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.2.2" data-node-context="Architecture component">
-          <title>Sinal de vida próprio · decisão 5.2.2 · Architecture component</title>
+        <g id="node-cluster-d1-1" data-node-id="cluster-d1-1" data-node-label="Sinal de vida próprio" tabindex="0" role="button" aria-label="Focus Sinal de vida próprio, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Sinal de vida próprio · decisão · Architecture component</title>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="334" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 340) scale(0.6875)">
@@ -702,11 +702,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sinal de vida próprio</text>
-        <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão 5.2.2</text>
+        <text x="580" y="374" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d1-1x" data-node-id="cluster-d1-1x" data-node-label="data, monitoramento, prontas" tabindex="0" role="button" aria-label="Focus data, monitoramento, prontas, detalhe 5.2.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.2.2.1" data-node-context="Architecture component">
-          <title>data, monitoramento, prontas · detalhe 5.2.2.1 · Architecture component</title>
+        <g id="node-cluster-d1-1x" data-node-id="cluster-d1-1x" data-node-label="data, monitoramento, prontas" tabindex="0" role="button" aria-label="Focus data, monitoramento, prontas, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>data, monitoramento, prontas · detalhe · Architecture component</title>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="334" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 340) scale(0.6875)">
@@ -714,11 +714,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">data, monitoramento, prontas</text>
-        <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.2.2.1</text>
+        <text x="892.5" y="374" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d1-2" data-node-id="cluster-d1-2" data-node-label="Sinais com identificador" tabindex="0" role="button" aria-label="Focus Sinais com identificador, decisão 5.2.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.2.3" data-node-context="Architecture component">
-          <title>Sinais com identificador · decisão 5.2.3 · Architecture component</title>
+        <g id="node-cluster-d1-2" data-node-id="cluster-d1-2" data-node-label="Sinais com identificador" tabindex="0" role="button" aria-label="Focus Sinais com identificador, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Sinais com identificador · decisão · Architecture component</title>
           <rect x="450" y="400" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="400" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 406) scale(0.6875)">
@@ -726,11 +726,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sinais com identificador</text>
-        <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão 5.2.3</text>
+        <text x="580" y="440" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d1-2x" data-node-id="cluster-d1-2x" data-node-label="confirmado após processar" tabindex="0" role="button" aria-label="Focus confirmado após processar, detalhe 5.2.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.2.3.1" data-node-context="Architecture component">
-          <title>confirmado após processar · detalhe 5.2.3.1 · Architecture component</title>
+        <g id="node-cluster-d1-2x" data-node-id="cluster-d1-2x" data-node-label="confirmado após processar" tabindex="0" role="button" aria-label="Focus confirmado após processar, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>confirmado após processar · detalhe · Architecture component</title>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="400" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 406) scale(0.6875)">
@@ -738,22 +738,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="424" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">confirmado após processar</text>
-        <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.2.3.1</text>
+        <text x="892.5" y="440" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-t1" data-node-id="cluster-t1" data-node-label="Canal" tabindex="0" role="button" aria-label="Focus Canal, tema 5.2, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 5.2" data-node-context="Architecture component">
-          <title>Canal · tema 5.2 · Architecture component</title>
+        <g id="node-cluster-t1" data-node-id="cluster-t1" data-node-label="Canal" tabindex="0" role="button" aria-label="Focus Canal, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Canal · tema · Architecture component</title>
           <rect x="225" y="334" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="334" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 340) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="358" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Canal</text>
-        <text x="320" y="374" class="t-muted" font-size="9" text-anchor="middle">tema 5.2</text>
+        <text x="320" y="374" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-cluster-d2-0" data-node-id="cluster-d2-0" data-node-label="Votação de exclusão" tabindex="0" role="button" aria-label="Focus Votação de exclusão, decisão 5.3.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.3.1" data-node-context="Architecture component">
-          <title>Votação de exclusão · decisão 5.3.1 · Architecture component</title>
+        <g id="node-cluster-d2-0" data-node-id="cluster-d2-0" data-node-label="Votação de exclusão" tabindex="0" role="button" aria-label="Focus Votação de exclusão, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Votação de exclusão · decisão · Architecture component</title>
           <rect x="450" y="466" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="466" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 472) scale(0.6875)">
@@ -761,11 +761,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Votação de exclusão</text>
-        <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão 5.3.1</text>
+        <text x="580" y="506" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d2-0x" data-node-id="cluster-d2-0x" data-node-label="51% dos saudáveis, mínimo 2" tabindex="0" role="button" aria-label="Focus 51% dos saudáveis, mínimo 2, detalhe 5.3.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.3.1.1" data-node-context="Architecture component">
-          <title>51% dos saudáveis, mínimo 2 · detalhe 5.3.1.1 · Architecture component</title>
+        <g id="node-cluster-d2-0x" data-node-id="cluster-d2-0x" data-node-label="51% dos saudáveis, mínimo 2" tabindex="0" role="button" aria-label="Focus 51% dos saudáveis, mínimo 2, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>51% dos saudáveis, mínimo 2 · detalhe · Architecture component</title>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="466" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 472) scale(0.6875)">
@@ -773,11 +773,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">51% dos saudáveis, mínimo 2</text>
-        <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.3.1.1</text>
+        <text x="892.5" y="506" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d2-1" data-node-id="cluster-d2-1" data-node-label="Freezing" tabindex="0" role="button" aria-label="Focus Freezing, decisão 5.3.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.3.2" data-node-context="Architecture component">
-          <title>Freezing · decisão 5.3.2 · Architecture component</title>
+        <g id="node-cluster-d2-1" data-node-id="cluster-d2-1" data-node-label="Freezing" tabindex="0" role="button" aria-label="Focus Freezing, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Freezing · decisão · Architecture component</title>
           <rect x="450" y="532" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="532" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 538) scale(0.6875)">
@@ -785,11 +785,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="556" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Freezing</text>
-        <text x="580" y="572" class="t-muted" font-size="9" text-anchor="middle">decisão 5.3.2</text>
+        <text x="580" y="572" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d2-1x" data-node-id="cluster-d2-1x" data-node-label="ingresso rejeitado com Retry-After" tabindex="0" role="button" aria-label="Focus ingresso rejeitado com Retry-After, detalhe 5.3.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.3.2.1" data-node-context="Architecture component">
-          <title>ingresso rejeitado com Retry-After · detalhe 5.3.2.1 · Architecture component</title>
+        <g id="node-cluster-d2-1x" data-node-id="cluster-d2-1x" data-node-label="ingresso rejeitado com Retry-After" tabindex="0" role="button" aria-label="Focus ingresso rejeitado com Retry-After, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>ingresso rejeitado com Retry-After · detalhe · Architecture component</title>
           <rect x="745" y="532" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="532" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 538) scale(0.6875)">
@@ -797,11 +797,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="556" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ingresso rejeitado com Retry-After</text>
-        <text x="892.5" y="572" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.3.2.1</text>
+        <text x="892.5" y="572" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d2-2" data-node-id="cluster-d2-2" data-node-label="Retry do bootstrap" tabindex="0" role="button" aria-label="Focus Retry do bootstrap, decisão 5.3.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.3.3" data-node-context="Architecture component">
-          <title>Retry do bootstrap · decisão 5.3.3 · Architecture component</title>
+        <g id="node-cluster-d2-2" data-node-id="cluster-d2-2" data-node-label="Retry do bootstrap" tabindex="0" role="button" aria-label="Focus Retry do bootstrap, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Retry do bootstrap · decisão · Architecture component</title>
           <rect x="450" y="598" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="598" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 604) scale(0.6875)">
@@ -809,11 +809,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="622" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Retry do bootstrap</text>
-        <text x="580" y="638" class="t-muted" font-size="9" text-anchor="middle">decisão 5.3.3</text>
+        <text x="580" y="638" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d2-2x" data-node-id="cluster-d2-2x" data-node-label="retry.interval configurável" tabindex="0" role="button" aria-label="Focus retry.interval configurável, detalhe 5.3.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.3.3.1" data-node-context="Architecture component">
-          <title>retry.interval configurável · detalhe 5.3.3.1 · Architecture component</title>
+        <g id="node-cluster-d2-2x" data-node-id="cluster-d2-2x" data-node-label="retry.interval configurável" tabindex="0" role="button" aria-label="Focus retry.interval configurável, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>retry.interval configurável · detalhe · Architecture component</title>
           <rect x="745" y="598" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="598" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 604) scale(0.6875)">
@@ -821,33 +821,33 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="622" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">retry.interval configurável</text>
-        <text x="892.5" y="638" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.3.3.1</text>
+        <text x="892.5" y="638" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-t2" data-node-id="cluster-t2" data-node-label="Falhas" tabindex="0" role="button" aria-label="Focus Falhas, tema 5.3, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 5.3" data-node-context="Architecture component">
-          <title>Falhas · tema 5.3 · Architecture component</title>
+        <g id="node-cluster-t2" data-node-id="cluster-t2" data-node-label="Falhas" tabindex="0" role="button" aria-label="Focus Falhas, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Falhas · tema · Architecture component</title>
           <rect x="225" y="532" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="532" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 538) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="556" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Falhas</text>
-        <text x="320" y="572" class="t-muted" font-size="9" text-anchor="middle">tema 5.3</text>
+        <text x="320" y="572" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-cluster" data-node-id="cluster" data-node-label="Cluster e membros" tabindex="0" role="button" aria-label="Focus Cluster e membros, área 5, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="área 5" data-node-context="Architecture component">
-          <title>Cluster e membros · área 5 · Architecture component</title>
+        <g id="node-cluster" data-node-id="cluster" data-node-label="Cluster e membros" tabindex="0" role="button" aria-label="Focus Cluster e membros, área, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="área" data-node-context="Architecture component">
+          <title>Cluster e membros · área · Architecture component</title>
           <rect x="20" y="565" width="170" height="60" rx="6" class="c-mask"/>
           <rect x="20" y="565" width="170" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(26 571) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" x="105" y="593" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cluster e membros</text>
-        <text x="105" y="609" class="t-muted" font-size="9" text-anchor="middle">área 5</text>
+        <text x="105" y="609" class="t-muted" font-size="9" text-anchor="middle">área</text>
         </g>
 
-        <g id="node-cluster-d3-0" data-node-id="cluster-d3-0" data-node-label="Tudo em disco" tabindex="0" role="button" aria-label="Focus Tudo em disco, decisão 4.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 4.1" data-node-context="Architecture component">
-          <title>Tudo em disco · decisão 4.1 · Architecture component</title>
+        <g id="node-cluster-d3-0" data-node-id="cluster-d3-0" data-node-label="Tudo em disco" tabindex="0" role="button" aria-label="Focus Tudo em disco, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Tudo em disco · decisão · Architecture component</title>
           <rect x="450" y="664" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="664" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 670) scale(0.6875)">
@@ -855,11 +855,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="688" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Tudo em disco</text>
-        <text x="580" y="704" class="t-muted" font-size="9" text-anchor="middle">decisão 4.1</text>
+        <text x="580" y="704" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d3-0x" data-node-id="cluster-d3-0x" data-node-label="limite de memória a zero" tabindex="0" role="button" aria-label="Focus limite de memória a zero, detalhe 4.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 4.1.1" data-node-context="Architecture component">
-          <title>limite de memória a zero · detalhe 4.1.1 · Architecture component</title>
+        <g id="node-cluster-d3-0x" data-node-id="cluster-d3-0x" data-node-label="limite de memória a zero" tabindex="0" role="button" aria-label="Focus limite de memória a zero, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>limite de memória a zero · detalhe · Architecture component</title>
           <rect x="745" y="664" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="664" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 670) scale(0.6875)">
@@ -867,11 +867,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="688" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">limite de memória a zero</text>
-        <text x="892.5" y="704" class="t-muted" font-size="9" text-anchor="middle">detalhe 4.1.1</text>
+        <text x="892.5" y="704" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d3-1" data-node-id="cluster-d3-1" data-node-label="Saída voluntária" tabindex="0" role="button" aria-label="Focus Saída voluntária, decisão 4.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 4.2" data-node-context="Architecture component">
-          <title>Saída voluntária · decisão 4.2 · Architecture component</title>
+        <g id="node-cluster-d3-1" data-node-id="cluster-d3-1" data-node-label="Saída voluntária" tabindex="0" role="button" aria-label="Focus Saída voluntária, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Saída voluntária · decisão · Architecture component</title>
           <rect x="450" y="730" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="730" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 736) scale(0.6875)">
@@ -879,11 +879,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="754" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Saída voluntária</text>
-        <text x="580" y="770" class="t-muted" font-size="9" text-anchor="middle">decisão 4.2</text>
+        <text x="580" y="770" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d3-1x" data-node-id="cluster-d3-1x" data-node-label="desregistro sem votação" tabindex="0" role="button" aria-label="Focus desregistro sem votação, detalhe 4.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 4.2.1" data-node-context="Architecture component">
-          <title>desregistro sem votação · detalhe 4.2.1 · Architecture component</title>
+        <g id="node-cluster-d3-1x" data-node-id="cluster-d3-1x" data-node-label="desregistro sem votação" tabindex="0" role="button" aria-label="Focus desregistro sem votação, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>desregistro sem votação · detalhe · Architecture component</title>
           <rect x="745" y="730" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="730" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 736) scale(0.6875)">
@@ -891,11 +891,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="754" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">desregistro sem votação</text>
-        <text x="892.5" y="770" class="t-muted" font-size="9" text-anchor="middle">detalhe 4.2.1</text>
+        <text x="892.5" y="770" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d3-2" data-node-id="cluster-d3-2" data-node-label="Repasse de chamadas" tabindex="0" role="button" aria-label="Focus Repasse de chamadas, decisão 4.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 4.3" data-node-context="Architecture component">
-          <title>Repasse de chamadas · decisão 4.3 · Architecture component</title>
+        <g id="node-cluster-d3-2" data-node-id="cluster-d3-2" data-node-label="Repasse de chamadas" tabindex="0" role="button" aria-label="Focus Repasse de chamadas, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Repasse de chamadas · decisão · Architecture component</title>
           <rect x="450" y="796" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="796" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 802) scale(0.6875)">
@@ -903,11 +903,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="820" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Repasse de chamadas</text>
-        <text x="580" y="836" class="t-muted" font-size="9" text-anchor="middle">decisão 4.3</text>
+        <text x="580" y="836" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d3-2x" data-node-id="cluster-d3-2x" data-node-label="ao nó mais livre" tabindex="0" role="button" aria-label="Focus ao nó mais livre, detalhe 4.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 4.3.1" data-node-context="Architecture component">
-          <title>ao nó mais livre · detalhe 4.3.1 · Architecture component</title>
+        <g id="node-cluster-d3-2x" data-node-id="cluster-d3-2x" data-node-label="ao nó mais livre" tabindex="0" role="button" aria-label="Focus ao nó mais livre, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>ao nó mais livre · detalhe · Architecture component</title>
           <rect x="745" y="796" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="796" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 802) scale(0.6875)">
@@ -915,11 +915,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="820" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ao nó mais livre</text>
-        <text x="892.5" y="836" class="t-muted" font-size="9" text-anchor="middle">detalhe 4.3.1</text>
+        <text x="892.5" y="836" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d3-3" data-node-id="cluster-d3-3" data-node-label="Volta como nó novo" tabindex="0" role="button" aria-label="Focus Volta como nó novo, decisão 4.4, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 4.4" data-node-context="Architecture component">
-          <title>Volta como nó novo · decisão 4.4 · Architecture component</title>
+        <g id="node-cluster-d3-3" data-node-id="cluster-d3-3" data-node-label="Volta como nó novo" tabindex="0" role="button" aria-label="Focus Volta como nó novo, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Volta como nó novo · decisão · Architecture component</title>
           <rect x="450" y="862" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="862" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 868) scale(0.6875)">
@@ -927,11 +927,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="886" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Volta como nó novo</text>
-        <text x="580" y="902" class="t-muted" font-size="9" text-anchor="middle">decisão 4.4</text>
+        <text x="580" y="902" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d3-3x" data-node-id="cluster-d3-3x" data-node-label="ID novo, bootstrap completo" tabindex="0" role="button" aria-label="Focus ID novo, bootstrap completo, detalhe 4.4.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 4.4.1" data-node-context="Architecture component">
-          <title>ID novo, bootstrap completo · detalhe 4.4.1 · Architecture component</title>
+        <g id="node-cluster-d3-3x" data-node-id="cluster-d3-3x" data-node-label="ID novo, bootstrap completo" tabindex="0" role="button" aria-label="Focus ID novo, bootstrap completo, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>ID novo, bootstrap completo · detalhe · Architecture component</title>
           <rect x="745" y="862" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="862" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 868) scale(0.6875)">
@@ -939,22 +939,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="886" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ID novo, bootstrap completo</text>
-        <text x="892.5" y="902" class="t-muted" font-size="9" text-anchor="middle">detalhe 4.4.1</text>
+        <text x="892.5" y="902" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-t3" data-node-id="cluster-t3" data-node-label="Parada e drain" tabindex="0" role="button" aria-label="Focus Parada e drain, tema 4, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 4" data-node-context="Architecture component">
-          <title>Parada e drain · tema 4 · Architecture component</title>
+        <g id="node-cluster-t3" data-node-id="cluster-t3" data-node-label="Parada e drain" tabindex="0" role="button" aria-label="Focus Parada e drain, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Parada e drain · tema · Architecture component</title>
           <rect x="225" y="763" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="763" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 769) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="787" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Parada e drain</text>
-        <text x="320" y="803" class="t-muted" font-size="9" text-anchor="middle">tema 4</text>
+        <text x="320" y="803" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-cluster-d4-0" data-node-id="cluster-d4-0" data-node-label="Nó único" tabindex="0" role="button" aria-label="Focus Nó único, decisão 5.1, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.1" data-node-context="Architecture component">
-          <title>Nó único · decisão 5.1 · Architecture component</title>
+        <g id="node-cluster-d4-0" data-node-id="cluster-d4-0" data-node-label="Nó único" tabindex="0" role="button" aria-label="Focus Nó único, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Nó único · decisão · Architecture component</title>
           <rect x="450" y="928" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="928" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 934) scale(0.6875)">
@@ -962,11 +962,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="952" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Nó único</text>
-        <text x="580" y="968" class="t-muted" font-size="9" text-anchor="middle">decisão 5.1</text>
+        <text x="580" y="968" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d4-0x" data-node-id="cluster-d4-0x" data-node-label="mode=development" tabindex="0" role="button" aria-label="Focus mode=development, detalhe 5.1.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.1.1" data-node-context="Architecture component">
-          <title>mode=development · detalhe 5.1.1 · Architecture component</title>
+        <g id="node-cluster-d4-0x" data-node-id="cluster-d4-0x" data-node-label="mode=development" tabindex="0" role="button" aria-label="Focus mode=development, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>mode=development · detalhe · Architecture component</title>
           <rect x="745" y="928" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="928" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 934) scale(0.6875)">
@@ -974,11 +974,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="952" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">mode=development</text>
-        <text x="892.5" y="968" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.1.1</text>
+        <text x="892.5" y="968" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d4-1" data-node-id="cluster-d4-1" data-node-label="Sem votação nem quórum" tabindex="0" role="button" aria-label="Focus Sem votação nem quórum, decisão 5.2, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.2" data-node-context="Architecture component">
-          <title>Sem votação nem quórum · decisão 5.2 · Architecture component</title>
+        <g id="node-cluster-d4-1" data-node-id="cluster-d4-1" data-node-label="Sem votação nem quórum" tabindex="0" role="button" aria-label="Focus Sem votação nem quórum, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Sem votação nem quórum · decisão · Architecture component</title>
           <rect x="450" y="994" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="994" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 1000) scale(0.6875)">
@@ -986,11 +986,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sem votação nem quórum</text>
-        <text x="580" y="1034" class="t-muted" font-size="9" text-anchor="middle">decisão 5.2</text>
+        <text x="580" y="1034" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d4-1x" data-node-id="cluster-d4-1x" data-node-label="replicação e quórum valem 1" tabindex="0" role="button" aria-label="Focus replicação e quórum valem 1, detalhe 5.2.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.2.1" data-node-context="Architecture component">
-          <title>replicação e quórum valem 1 · detalhe 5.2.1 · Architecture component</title>
+        <g id="node-cluster-d4-1x" data-node-id="cluster-d4-1x" data-node-label="replicação e quórum valem 1" tabindex="0" role="button" aria-label="Focus replicação e quórum valem 1, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>replicação e quórum valem 1 · detalhe · Architecture component</title>
           <rect x="745" y="994" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="994" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 1000) scale(0.6875)">
@@ -998,22 +998,22 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">replicação e quórum valem 1</text>
-        <text x="892.5" y="1034" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.2.1</text>
+        <text x="892.5" y="1034" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-t4" data-node-id="cluster-t4" data-node-label="Modo desenvolvimento" tabindex="0" role="button" aria-label="Focus Modo desenvolvimento, tema 5, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema 5" data-node-context="Architecture component">
-          <title>Modo desenvolvimento · tema 5 · Architecture component</title>
+        <g id="node-cluster-t4" data-node-id="cluster-t4" data-node-label="Modo desenvolvimento" tabindex="0" role="button" aria-label="Focus Modo desenvolvimento, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Modo desenvolvimento · tema · Architecture component</title>
           <rect x="225" y="994" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="994" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 1000) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" x="320" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Modo desenvolvimento</text>
-        <text x="320" y="1034" class="t-muted" font-size="9" text-anchor="middle">tema 5</text>
+        <text x="320" y="1034" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-cluster-d4-2" data-node-id="cluster-d4-2" data-node-label="Drain como save" tabindex="0" role="button" aria-label="Focus Drain como save, decisão 5.5.3, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão 5.5.3" data-node-context="Architecture component">
-          <title>Drain como save · decisão 5.5.3 · Architecture component</title>
+        <g id="node-cluster-d4-2" data-node-id="cluster-d4-2" data-node-label="Drain como save" tabindex="0" role="button" aria-label="Focus Drain como save, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Drain como save · decisão · Architecture component</title>
           <rect x="450" y="1060" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="1060" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 1066) scale(0.6875)">
@@ -1021,11 +1021,11 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="580" y="1084" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Drain como save</text>
-        <text x="580" y="1100" class="t-muted" font-size="9" text-anchor="middle">decisão 5.5.3</text>
+        <text x="580" y="1100" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d4-2x" data-node-id="cluster-d4-2x" data-node-label="retoma do disco na partida" tabindex="0" role="button" aria-label="Focus retoma do disco na partida, detalhe 5.5.3.1, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe 5.5.3.1" data-node-context="Architecture component">
-          <title>retoma do disco na partida · detalhe 5.5.3.1 · Architecture component</title>
+        <g id="node-cluster-d4-2x" data-node-id="cluster-d4-2x" data-node-label="retoma do disco na partida" tabindex="0" role="button" aria-label="Focus retoma do disco na partida, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>retoma do disco na partida · detalhe · Architecture component</title>
           <rect x="745" y="1060" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="1060" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 1066) scale(0.6875)">
@@ -1033,7 +1033,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="892.5" y="1084" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">retoma do disco na partida</text>
-        <text x="892.5" y="1100" class="t-muted" font-size="9" text-anchor="middle">detalhe 5.5.3.1</text>
+        <text x="892.5" y="1100" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
         <!-- Connection labels -->

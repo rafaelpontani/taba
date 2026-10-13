@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "Mapa do disco de um nó", "output": "doc/diagramas/html/armazenamento-disco.html", "quality_profile": "showcase" },
+  "components": [
+    { "id": "engine", "type": "backend", "label": "Engine", "sublabel": "mensagens e tópicos", "pos": [30, 60], "size": [170, 64] },
+    { "id": "cluster", "type": "backend", "label": "Cluster", "sublabel": "estado, perdas", "pos": [30, 190], "size": [170, 64] },
+    { "id": "sync", "type": "backend", "label": "Sincronização", "sublabel": "só ao entrar", "pos": [30, 320], "size": [170, 64] },
+    { "id": "restart", "type": "backend", "label": "Reinício", "sublabel": "disco da vida anterior", "pos": [30, 440], "size": [170, 64] },
+    { "id": "nodedb", "type": "database", "label": "_node.db", "sublabel": "tópicos, tokens, estado, perdas", "pos": [430, 60], "size": [210, 64] },
+    { "id": "topicdb", "type": "database", "label": "<tópico>/_topic.db", "sublabel": "mensagens em disco", "pos": [430, 190], "size": [210, 64] },
+    { "id": "body", "type": "database", "label": "<tópico>/<id>.body", "sublabel": "bytes do corpo", "pos": [740, 190], "size": [210, 64] },
+    { "id": "syncdb", "type": "database", "label": "_sync/sync.db", "sublabel": "eventos durante a carga", "pos": [430, 320], "size": [210, 64] },
+    { "id": "prev", "type": "database", "label": "_previous-life/", "sublabel": "devolvido em segundo plano", "pos": [430, 440], "size": [210, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "storage.dir (a última pasta se chama taba)", "wraps": ["nodedb", "topicdb", "body", "syncdb", "prev"] }
+  ],
+  "connections": [
+    { "id": "w1", "from": "engine", "to": "nodedb", "label": "definições" },
+    { "id": "w2", "from": "engine", "to": "topicdb", "label": "overflow" },
+    { "id": "w3", "from": "topicdb", "to": "body", "label": "aponta" },
+    { "id": "w4", "from": "cluster", "to": "nodedb", "label": "estado" },
+    { "id": "w5", "from": "sync", "to": "syncdb", "label": "grava e apaga" },
+    { "id": "w6", "from": "restart", "to": "prev", "label": "põe de lado" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Tudo é local", "items": ["Nenhum desses arquivos é copiado entre nós", "A mensagem está na memória ou no disco, nunca nos dois"] }
+  ]
+}
