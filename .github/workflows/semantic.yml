@@ -28,6 +28,10 @@ jobs:
   preview:
     name: Prévia da versão
     runs-on: ubuntu-latest
+    # O dry-run do semantic-release faz `git push --dry-run` para checar permissão, e isso exige
+    # escrita no token, mesmo sem criar nada. O workflow inteiro está com contents: read.
+    permissions:
+      contents: write
     outputs:
       published: ${{ steps.dry.outputs.new_release_published }}
       version: ${{ steps.dry.outputs.new_release_version }}
@@ -44,7 +48,7 @@ jobs:
           extra_plugins: |
             conventional-changelog-conventionalcommits@8
         env:
-          # Só lê: o dry-run não cria tag, então o GITHUB_TOKEN basta (o PAT é só do job semantic).
+          # O dry-run não cria tag, então o GITHUB_TOKEN basta (o PAT é só do job semantic).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Resumo
         shell: bash
