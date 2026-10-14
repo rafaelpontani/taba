@@ -3,7 +3,7 @@ título: Operação (runbook)
 resumo: Guia prático para quem roda um cluster Taba — subir, verificar, escalar, atualizar, retirar nós, diagnosticar cada condição de saúde, o que fazer em cada falha e o que não fazer.
 tipo: guia
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [docker-compose.yml, docker/haproxy.cfg, docker/cluster.sh, docker/validate.sh, crates/taba-node/src/cluster/health, crates/taba-node/src/cluster/drain, crates/taba-node/src/http/operations.rs]
 ---
 
@@ -17,7 +17,7 @@ fontes: [docker-compose.yml, docker/haproxy.cfg, docker/cluster.sh, docker/valid
 |---|---|
 | **Reinicie e atualize um nó por vez**, esperando `healthy` entre eles | Perder dois nós em sequência rápida **trava** o cluster (`quorum-lost`) e a saída é reiniciar tudo, **perdendo mensagens e tópicos** |
 | **Pare nós com `SIGTERM`** (`docker stop`, `kubectl delete pod`), com prazo de parada **maior** que `drain.timeout` | Dispara o **drain**: sem ele, o que está só em memória se perde e o cluster só o tira depois da votação |
-| **Nunca pare o cluster inteiro** em produção | Todo reinício é de nó novo: com todos parados **as mensagens e os tópicos se perdem** |
+| **Nunca pare o cluster inteiro** em produção **sem o backup em S3** (ou sem `POST /cluster/stop`) | Todo reinício é de nó novo: com todos parados **as mensagens e os tópicos se perdem**. Com o backup, pare com `POST /cluster/stop` ([33-backup-s3.md](33-backup-s3.md)) |
 | **Proteja as portas de operação e do cluster** na rede | Não têm autenticação (operação) / confiam no certificado (cluster); `POST /node/drain` tira um nó do ar |
 | **Tenha ≥ 3 nós** | Com 2, a falha de um deixa um sobrevivente que não alcança `cluster.vote.min-voters` |
 
@@ -105,7 +105,9 @@ Durante a janela de ~4 s, publicações nos blocos do nó caído **podem** respo
 
 ### Todos os nós caíram
 
-Em produção, **mensagens e tópicos se perdem** (todo reinício é de nó novo; o disco só devolve "perdas" listadas por nós vivos). Suba o primeiro nó (`first-node`), depois os demais; **recrie os tópicos e tokens**. O **token raiz e o certificado** estão na pasta de segredos e sobrevivem. Planeje para isto: produtores com repetição e tópicos recriáveis por automação.
+**Com o backup em S3** ([33-backup-s3.md](33-backup-s3.md)): suba os processos de novo (`docker compose start`). O primeiro nó que não achar ninguém batendo no bucket espera o batimento dos mortos vencer (`backup.dead-after`, 60 s), pega a trava de restauração, restaura definições, tokens e mensagens, e os demais entram como nós normais. Perde-se só o que ainda não tinha ido ao S3 (a janela de `backup.delay`) e o estado da última janela do diário.
+
+**Sem o backup**, em produção **mensagens e tópicos se perdem** (todo reinício é de nó novo; o disco só devolve "perdas" listadas por nós vivos). Suba o primeiro nó (`first-node`), depois os demais; **recrie os tópicos e tokens**. O **token raiz e o certificado** estão na pasta de segredos e sobrevivem. Planeje para isto: produtores com repetição e tópicos recriáveis por automação.
 
 ### Nó em `failed` (disco cheio ou banco corrompido)
 
@@ -134,7 +136,47 @@ Edite o arquivo do token raiz com **duas linhas** (a nova e a anterior); cada n�
 
 ## Backup e restauração
 
-⬜ **Não há backup nem restauração.** A durabilidade vem da **replicação**, não do disco de um nó: copiar `storage.dir` de um nó **não** é um backup restaurável (um nó que reinicia entra como nó novo e o disco antigo só serve ao retorno de um nó excluído). O que se deve guardar: a **pasta de segredos** (`taba init`) e **a definição dos tópicos e tokens** em automação (IaC). Veja o roadmap ([32-roadmap.md](32-roadmap.md)).
+A durabilidade vem da **replicação**, não do disco de um nó: copiar `storage.dir` de um nó **não** é um backup restaurável. O backup **opcional em S3** ([33-backup-s3.md](33-backup-s3.md)) cobre a perda de todos os nós. Mesmo com ele, guarde a **pasta de segredos** (`taba init`): o certificado do cluster e o token raiz **não** vão ao bucket.
+
+### Ligar o backup
+
+```yaml
+backup:
+  s3:
+    bucket: taba-backup
+    region: sa-east-1          # credenciais: a cadeia padrão da AWS (IAM, perfil, papel da tarefa)
+```
+
+Com MinIO ou outro S3 compatível: `backup.s3.endpoint`, `access-key` e `secret-key`. Em produção o bucket **deve** ter versionamento/retenção do lado do S3 e permissão só de escrita para os nós (leitura é necessária para restaurar). Configuração pronta em [`exemplos/backup-s3`](../../exemplos/backup-s3/README.md). Confira com `GET /node/backup`: `s3Reachable: true` e `pending` indo a zero.
+
+### Forçar o backup agora (flush)
+
+Antes de uma manutenção, de uma troca de infraestrutura ou de qualquer risco, mande tudo ao bucket **sem parar nada**:
+
+```bash
+# neste nó (porta de operação do nó, não o balanceador):
+curl -s -X POST http://nó:9090/node/backup/flush
+# no cluster inteiro (o nó repassa aos outros e junta as respostas):
+curl -s -X POST http://nó:9090/cluster/backup/flush
+```
+
+Cada nó faz: memória → disco, disco → S3 e `outbox` → S3. `"complete": true` quer dizer que **nada ficou pendente**. Um nó com `"pending": true` estava lento ou fora: repita a chamada e confira `GET /node/backup` (`pending: 0`). Sem S3 configurado a resposta é `422 backup.not-configured`. Durante o flush o nó grava as mensagens novas em disco; com o disco acima de 90% a passagem pausa até a evicção liberar espaço (ou `backup.drain.timeout`).
+
+### Parar e iniciar o cluster inteiro (com backup)
+
+```bash
+curl -s -X POST http://nó:9090/cluster/stop     # drena todos os nós, envia ao S3 e grava a lista da parada
+# confira: "stopList": true e "warnings": []
+docker compose stop                             # (ou desligue os processos como a sua plataforma pede)
+…
+docker compose start                            # "iniciar" é subir os processos: a restauração é automática
+```
+
+Se `stopList` vier `false` o S3 estava indisponível: o drain em disco foi feito, mas **o backup não foi enviado**; não desligue a infraestrutura até repetir o `stop` com o S3 de volta (ou aceite perder a janela não enviada). O `stop_grace_period` (Docker) ou `terminationGracePeriodSeconds` (Kubernetes) precisa passar de `drain.timeout` + `backup.drain.timeout` (o `docker-compose.yml` do repositório usa 70 s).
+
+### O que o backup não faz
+
+Não é ponto de recuperação por tempo (não há versões de mensagens nem "voltar a ontem"); não restaura a pasta de segredos; e a defasagem (RPO) é a de `backup.delay` e `backup.meta.interval`. O consumidor precisa ser **idempotente**: uma restauração pode devolver entregável uma mensagem cujo recibo ou invisibilidade da última janela estava defasado.
 
 ## Monitorar
 
@@ -167,7 +209,7 @@ docker compose down -v                             # apaga também os volumes (i
 
 ## Fontes e provas
 
-- `cluster/health/mod.rs` (as 8 condições), `cluster/drain`, `cluster/state`, `cluster/service` (bootstrap, ingresso, freezing, votação), `http/operations.rs`, `docker-compose.yml`, `docker/`.
+- `cluster/backup` (backup em S3: [33-backup-s3.md](33-backup-s3.md)), `cluster/health/mod.rs` (as 8 condições), `cluster/drain`, `cluster/state`, `cluster/service` (bootstrap, ingresso, freezing, votação), `http/operations.rs`, `docker-compose.yml`, `docker/`.
 - **Execuções reais** deste guia (cluster de 3 nós, `docker compose`): kill de um nó (condições em 4 s e 8 s), parada normal com drain, drain pela API (`drained` em ~4 s e volta como nó novo), rolling restart dos três nós (14/14 mensagens), perda de dois nós seguidos (`quorum-lost`, reentrada impossível), `down`+`up` (cluster nasce vazio).
 - Casos de uso: UC-FAL, UC-FRZ, UC-DRN, UC-RTN, UC-ING, UC-OPS; veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/failures.rs`, `freezing.rs`, `drain_cluster.rs`, `recovery.rs`.
 - Histórico: `04-cluster.md`, `11-observabilidade.md`.

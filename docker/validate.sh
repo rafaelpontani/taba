@@ -8,7 +8,9 @@
 #      publicações e o consumo seguem com dois nós, e o nó volta como nó novo (`docker compose start`);
 #   4. a saída ordenada de outro nó (`docker compose stop`, que dispara o drain) e a volta dele;
 #   5. em nenhum momento uma mensagem publicada (confirmada pelo quórum) se perde: ao fim, o conjunto
-#      de mensagens confirmadas é exatamente o publicado.
+#      de mensagens confirmadas é exatamente o publicado;
+#   6. o backup em S3 (o MinIO do Compose): `POST /cluster/stop`, os discos dos nós apagados, o
+#      cluster sobe de novo e as mensagens publicadas voltam do bucket.
 #
 # Só usa o taba-cli: é o teste geral integrado do cluster, e não de um conector. Cada conector tem o seu
 # teste (ex.: connectors/csharp/scripts/integration.sh). Subir, derrubar e provocar falhas no cluster
@@ -132,6 +134,41 @@ if ! diff -q /tmp/taba-published.txt /tmp/taba-acked.txt >/dev/null; then
   die "o conjunto recebido difere do publicado"
 fi
 ok "$(wc -l < /tmp/taba-published.txt) mensagens publicadas, todas recebidas e confirmadas"
+
+# --- 6. backup em S3 (MinIO) ---------------------------------------------------------------------
+
+step "Backup em S3: parar o cluster, apagar os discos dos nós e restaurar do MinIO"
+cli topic create validacao-backup --type queue >/dev/null
+BACKUP_PUBLISHED="$(mktemp)"
+for n in $(seq 1 20); do
+  cli publish validacao-backup --text "backup-$n" --id-only >/dev/null || die "publicar backup-$n"
+  echo "backup-$n" >> "$BACKUP_PUBLISHED"
+done
+ok "20 mensagens publicadas em validacao-backup"
+
+stop="$(taba_compose exec -T taba-1 wget -q -O - --post-data='' http://127.0.0.1:9090/cluster/stop)" || die "POST /cluster/stop"
+case "$stop" in *'"stopList":true'*) ok "parada programada: a lista dos nós foi gravada no S3" ;; *) die "o /cluster/stop não gravou a lista: $stop" ;; esac
+
+taba_compose stop taba-1 taba-2 taba-3 >/dev/null 2>&1
+taba_compose rm -f taba-1 taba-2 taba-3 >/dev/null 2>&1
+for volume in $(docker volume ls -q | grep -E '(^|_)data-[123]$'); do docker volume rm "$volume" >/dev/null; done
+ok "os discos dos nós foram apagados: só o bucket guarda as mensagens"
+
+taba_compose up -d
+taba_wait_healthy 240
+BACKUP_ACKED="$(mktemp)"
+for round in $(seq 1 6); do
+  cli consume validacao-backup --max 10 --wait 5 --ack -o raw >> "$BACKUP_ACKED" || true
+done
+sort -u "$BACKUP_PUBLISHED" > /tmp/taba-backup-published.txt
+sort -u "$BACKUP_ACKED" > /tmp/taba-backup-acked.txt
+if ! diff -q /tmp/taba-backup-published.txt /tmp/taba-backup-acked.txt >/dev/null; then
+  echo "publicadas e não restauradas:" >&2
+  comm -23 /tmp/taba-backup-published.txt /tmp/taba-backup-acked.txt >&2
+  die "a restauração do S3 não devolveu tudo"
+fi
+rm -f "$BACKUP_PUBLISHED" "$BACKUP_ACKED"
+ok "as 20 mensagens voltaram do S3 depois de a infraestrutura ser apagada"
 
 step "Estado final"
 taba_status | sed -n 1,6p

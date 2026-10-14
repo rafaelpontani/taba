@@ -44,6 +44,7 @@ fn every_code_has_the_documented_status() {
         ("distributor.too-many-targets", 422),
         ("topic.volatile-limit", 422),
         ("cluster.join-unreachable", 422),
+        ("backup.not-configured", 422),
         ("rate-limit.exceeded", 429),
         ("internal.error", 500),
         ("forward.bad-gateway", 502),

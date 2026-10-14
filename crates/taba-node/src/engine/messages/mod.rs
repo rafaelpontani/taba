@@ -33,12 +33,14 @@
 //! Os métodos são síncronos e bloqueiam no disco:
 //! quem chama de código assíncrono usa `spawn_blocking`.
 
+mod backup;
 mod blocks;
 mod index;
 mod rates;
 mod replicas;
 pub mod stats;
 
+pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -510,6 +512,8 @@ pub struct Messages {
     distributors: Mutex<HashMap<String, DistributorCounters>>,
     /// Só em `mode=production`: quem diz se o nó é o dono, onde vão as dead-letters e os sinais.
     cluster: OnceLock<ClusterHooks>,
+    /// O backup opcional em S3: o motor só o avisa do que acontece (doc 23, "Backup em S3").
+    backup: OnceLock<Arc<dyn BackupSink>>,
 }
 
 /// Fecha a espera de um `GET` em long polling: se o chamador desistiu antes do fim (a conexão
@@ -657,6 +661,7 @@ impl Messages {
             counters: NodeCounters::new(),
             distributors: Mutex::new(HashMap::new()),
             cluster: OnceLock::new(),
+            backup: OnceLock::new(),
         });
         // As mensagens saem junto com o tópico (doc 02, seção 3.3).
         let weak = Arc::downgrade(&messages);
@@ -668,6 +673,85 @@ impl Messages {
             }
         }));
         messages
+    }
+
+    // ---- Backup opcional em S3 ----
+
+    /// Liga o backup. Vale só a primeira chamada.
+    pub fn set_backup(&self, sink: Arc<dyn BackupSink>) {
+        let _ = self.backup.set(sink);
+    }
+
+    fn backup_stored(&self, topic: &str, id: &str, owned: bool) {
+        if let Some(sink) = self.backup.get() {
+            sink.stored(topic, id, owned);
+        }
+    }
+
+    fn backup_removed(&self, topic: &str, id: &str, owned: bool) {
+        if let Some(sink) = self.backup.get() {
+            sink.removed(topic, id, owned);
+        }
+    }
+
+    fn backup_changed(&self, topic: &str, id: &str, owned: bool) {
+        if let Some(sink) = self.backup.get() {
+            sink.changed(topic, id, owned);
+        }
+    }
+
+    /// O corpo de uma mensagem que a evicção tirou do disco, buscado no S3.
+    fn backup_body(&self, topic: &str, id: &str) -> Option<Vec<u8>> {
+        self.backup
+            .get()
+            .and_then(|sink| sink.fetch_body(topic, id))
+    }
+
+    /// Os tópicos que o nó conhece, em memória ou em disco.
+    pub fn topic_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .existing_states()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        if let Ok(on_disk) = self.store.topics_on_disk() {
+            names.extend(on_disk);
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// Os `id` das mensagens de que o nó é dono no tópico (as que o primário envia ao S3).
+    pub fn owned_ids(&self, topic: &str) -> Vec<String> {
+        let state = self.state_of(topic);
+        lock(&state).index.ids()
+    }
+
+    /// Os metadados e o corpo de uma mensagem que o nó guarda, para o backup. `None` se ela não
+    /// existe mais ou se o corpo não está no disco.
+    pub fn backup_load(&self, topic: &str, id: &str) -> Option<(MessageMeta, Vec<u8>)> {
+        let state = self.state_of(topic);
+        let state = lock(&state);
+        if let Some(stored) = state.memory.get(id) {
+            return Some((stored.meta.clone(), stored.body.clone()));
+        }
+        if !state.index.contains(id) && !state.replicas.contains(id) {
+            return None;
+        }
+        let meta = self.store.get(topic, id).ok().flatten()?;
+        let body = self.store.body(topic, id).ok()?;
+        Some((meta, body))
+    }
+
+    /// Devolve ao nó uma mensagem lida do backup (restauração): é uma publicação já decidida.
+    pub fn restore_message(
+        &self,
+        topic: &str,
+        meta: MessageMeta,
+        body: Vec<u8>,
+    ) -> Result<(), TabaError> {
+        self.apply_publish(topic, meta, body)
     }
 
     // ---- Estado dos tópicos ----
@@ -1073,6 +1157,7 @@ impl Messages {
             state
                 .index
                 .insert(&id, request.group_id.as_deref(), now, 0, 0, now);
+            self.backup_stored(&name, &id, true);
             if let Some(key) = dedup_key {
                 state.dedup.insert(key, (id.clone(), now));
             }
@@ -1278,8 +1363,10 @@ impl Messages {
         self.store
             .tombstone(topic, &meta, delete_at)
             .map_err(|e| self.disk_error("falha ao gravar o ack da fila FIFO", &e))?;
+        let owned = state.index.contains(&meta.id);
         self.take_from_memory(state, &meta.id);
         state.index.remove(&meta.id);
+        self.backup_removed(topic, &meta.id, owned);
         Ok(())
     }
 
@@ -1291,6 +1378,7 @@ impl Messages {
         id: &str,
         place: Place,
     ) -> Result<(), TabaError> {
+        let owned = state.index.contains(id);
         match place {
             Place::Memory => {
                 self.take_from_memory(state, id);
@@ -1302,6 +1390,7 @@ impl Messages {
         }
         state.index.remove(id);
         state.replicas.remove(id);
+        self.backup_removed(topic, id, owned);
         Ok(())
     }
 
@@ -1313,7 +1402,8 @@ impl Messages {
         meta: &MessageMeta,
         place: Place,
     ) -> Result<(), TabaError> {
-        match place {
+        let owned = state.index.contains(&meta.id);
+        let saved = match place {
             Place::Memory => {
                 if let Some(stored) = state.memory.get_mut(&meta.id) {
                     stored.meta = meta.clone();
@@ -1324,7 +1414,11 @@ impl Messages {
                 .store
                 .update_delivery(topic, meta)
                 .map_err(|e| self.disk_error("falha ao gravar a entrega em disco", &e)),
+        };
+        if saved.is_ok() {
+            self.backup_changed(topic, &meta.id, owned);
         }
+        saved
     }
 
     /// Define a invisibilidade a partir de agora (doc 06a, `PUT .../visibility`): substitui o
@@ -1810,6 +1904,8 @@ impl Messages {
             }
             source_state.index.remove(&id);
             source_state.replicas.remove(&id);
+            self.backup_removed(source, &id, owned);
+            self.backup_stored(&target, &id, owned);
             if owned {
                 source_state.stats.dead_lettered += 1;
                 NodeCounters::add(&self.counters.dead_lettered, 1);
@@ -1992,6 +2088,10 @@ impl Messages {
             for id in ids {
                 if stop() {
                     break 'topics;
+                }
+                // Disco perto de encher: espera a evicção (S3) liberar espaço (doc 23, 1.8).
+                if let Some(sink) = self.backup.get() {
+                    sink.before_disk_write();
                 }
                 let mut state = lock(&state);
                 let Some(stored) = self.take_from_memory(&mut state, &id) else {
@@ -2266,12 +2366,18 @@ impl Messages {
                     };
                     match self.store.body(name, &id) {
                         Ok(body) => (meta, body),
+                        // O corpo que a evicção tirou do disco volta do S3 (doc 23).
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                            // Linha sem arquivo (uma queda no meio da gravação): perdida.
-                            tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
-                            let _ = self.store.remove(name, &id);
-                            state.index.remove(&id);
-                            continue;
+                            match self.backup_body(name, &id) {
+                                Some(body) => (meta, body),
+                                None => {
+                                    // Linha sem arquivo (uma queda no meio da gravação): perdida.
+                                    tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
+                                    let _ = self.store.remove(name, &id);
+                                    state.index.remove(&id);
+                                    continue;
+                                }
+                            }
                         }
                         Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
                     }
@@ -2482,10 +2588,14 @@ impl Messages {
         else {
             return Ok(None);
         };
-        let body = self
-            .store
-            .body(topic, id)
-            .map_err(|e| self.disk_error("falha ao ler o corpo em disco", &e))?;
+        let body = match self.store.body(topic, id) {
+            Ok(body) => body,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => match self.backup_body(topic, id) {
+                Some(body) => body,
+                None => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+            },
+            Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+        };
         Ok(Some((meta, body)))
     }
 
@@ -2668,6 +2778,7 @@ impl Messages {
                     NodeCounters::add(&self.counters.overflow, 1);
                 }
             }
+            self.backup_stored(topic, &id, owned);
             if owned {
                 state
                     .index
@@ -2884,10 +2995,18 @@ impl Messages {
                         (meta, body)
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
-                        let _ = self.store.remove(name, &id);
-                        state.index.remove(&id);
-                        continue;
+                        match self.backup_body(name, &id) {
+                            Some(body) => {
+                                NodeCounters::add(&self.counters.reads_disk, 1);
+                                (meta, body)
+                            }
+                            None => {
+                                tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
+                                let _ = self.store.remove(name, &id);
+                                state.index.remove(&id);
+                                continue;
+                            }
+                        }
                     }
                     Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
                 }
@@ -2984,6 +3103,9 @@ impl Messages {
                         let age = state.index.age_of(&id).unwrap_or(now);
                         state.index.remove(&id);
                         state.replicas.insert(&id, age);
+                        if let Some(sink) = self.backup.get() {
+                            sink.released(&name, &id);
+                        }
                     }
                 }
                 for id in state.replicas.ids() {
@@ -3007,6 +3129,9 @@ impl Messages {
                         meta.delivery_count,
                         now,
                     );
+                    if let Some(sink) = self.backup.get() {
+                        sink.adopted(&name, &id);
+                    }
                     woke |= meta.invisible_until_ms <= now;
                 }
                 self.ready_changed(&name, &mut state);

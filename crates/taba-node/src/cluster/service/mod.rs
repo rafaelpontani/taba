@@ -15,6 +15,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+use super::backup::{BackupPort, StartupDecision, not_configured};
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
 use super::protocol::{
     Ack, DefinitionApply, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
@@ -237,6 +238,9 @@ pub struct ClusterService {
     old_disk_peers: StdMutex<Vec<Member>>,
     /// Quem monta o `NodeStatus` deste nó (a camada de operação; `GET /cluster/status`).
     status_source: OnceLock<StatusSource>,
+    /// O backup opcional em S3 (doc 23): o serviço dele, por referência fraca (o serviço guarda o
+    /// cluster, e o cluster não pode segurá-lo de volta).
+    backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
 }
 
 /// Devolve o `NodeStatus` (doc 06b) deste nó, como JSON.
@@ -341,7 +345,18 @@ impl ClusterService {
             boot_recovered: AtomicBool::new(false),
             old_disk_peers: StdMutex::new(Vec::new()),
             status_source: OnceLock::new(),
+            backup: OnceLock::new(),
         })
+    }
+
+    /// Liga o backup em S3. Vale só a primeira chamada.
+    pub fn set_backup(&self, port: &Arc<dyn BackupPort>) {
+        let _ = self.backup.set(Arc::downgrade(port));
+    }
+
+    /// O backup em S3, se o nó o tem.
+    pub fn backup(&self) -> Option<Arc<dyn BackupPort>> {
+        self.backup.get().and_then(std::sync::Weak::upgrade)
     }
 
     /// Liga quem monta o `NodeStatus`, para o `GET /cluster/status` responder.
@@ -708,6 +723,23 @@ impl ClusterService {
                     .get()
                     .ok_or_else(TabaError::route_not_found)?;
                 Ok(Response::Status(source()))
+            }
+            Request::BackupFlush => {
+                self.require_member(caller)?;
+                let port = self.backup().ok_or_else(not_configured)?;
+                Ok(Response::Backup(port.backup().flush().await.to_json()))
+            }
+            Request::BackupStop => {
+                self.require_member(caller)?;
+                let port = self.backup().ok_or_else(not_configured)?;
+                port.stop_node().await.map(Response::Backup)
+            }
+            Request::BackupSaved(saved) => {
+                self.require_member(caller)?;
+                saved.validate()?;
+                let port = self.backup().ok_or_else(not_configured)?;
+                port.backup().accept_saved(&saved);
+                Ok(ack(String::new()))
             }
             // O repasse de uma chamada de cliente também vale para quem saiu por drain (doc 04,
             // seção 6.9); quem o recebe nunca repassa de novo.
@@ -1736,6 +1768,27 @@ impl ClusterService {
                     reason: "list",
                     message: "resposta inesperada à listagem de nós".into(),
                 });
+            }
+            Err(e) if e.is_network() && self.backup().is_some() => {
+                // Com o backup em S3 quem decide é o bucket (doc 23, seção 1.7): o nó só começa
+                // sozinho (e restaura) se nenhum nó bate lá e a trava de restauração é dele.
+                let port = self.backup().expect("conferido acima");
+                let backup = port.backup();
+                match backup.startup_decision(self.rules.first_node).await {
+                    StartupDecision::StartAlone => {
+                        self.start_alone();
+                        backup.spawn_restore();
+                        return Ok(());
+                    }
+                    StartupDecision::KeepTrying => {
+                        return Err(Failure {
+                            reason: "list",
+                            message: format!(
+                                "a listagem de nós em {entry} falhou e o backup não autoriza começar sozinho: {e}"
+                            ),
+                        });
+                    }
+                }
             }
             Err(e) if e.is_network() && self.rules.first_node => {
                 // Só o primeiro nó de um cluster novo começa sozinho, e só quando a listagem

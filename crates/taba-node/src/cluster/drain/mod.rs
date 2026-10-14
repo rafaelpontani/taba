@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
+use super::backup::Backup;
 use super::service::{ClusterService, conflict_wait};
 use super::state::{DrainState, NodeShared};
 use crate::config::Mode;
@@ -86,6 +87,8 @@ pub struct DrainController {
     cluster: OnceLock<Arc<ClusterService>>,
     /// O desregistro (passo 5) está em andamento: `DELETE /node/drain` responde `409`.
     leaving: AtomicBool,
+    /// O backup opcional em S3: o drain manda tudo ao bucket antes de sair (doc 23, seção 1.10).
+    backup: OnceLock<Arc<Backup>>,
 }
 
 impl DrainController {
@@ -106,7 +109,29 @@ impl DrainController {
             stopping: AtomicBool::new(false),
             cluster: OnceLock::new(),
             leaving: AtomicBool::new(false),
+            backup: OnceLock::new(),
         })
+    }
+
+    /// Liga o backup em S3 ao drain.
+    pub fn set_backup(&self, backup: Arc<Backup>) {
+        let _ = self.backup.set(backup);
+    }
+
+    /// O drain pedido por quem para o cluster inteiro (`POST /cluster/stop`): começa, espera
+    /// concluir (memória em disco, envio ao S3, saída do cluster) e devolve se o nó chegou a
+    /// `drained`. Dentro do prazo do drain mais o do backup.
+    pub async fn drain_and_wait(self: &Arc<Self>) -> bool {
+        let _ = self.start_api();
+        let backup_timeout = self
+            .backup
+            .get()
+            .map_or(Duration::ZERO, |b| b.rules().drain_timeout);
+        let deadline = Instant::now() + self.timeout + backup_timeout + Duration::from_secs(5);
+        while self.shared.drain_state() != DrainState::Drained && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        self.shared.drain_state() == DrainState::Drained
     }
 
     /// Liga o drain ao cluster: o aviso aos pares, o desregistro e a volta como nó novo.
@@ -191,6 +216,28 @@ impl DrainController {
                 return;
             }
         };
+        // Com a memória toda em disco, tudo vai ao S3 **antes** de o nó sair do cluster: depois da
+        // saída ele deixa de ser dono do que enviaria. Não espera para sempre: passado
+        // `backup.drain.timeout` o nó segue com o que tem (doc 23, seção 1.10, cenário 18).
+        if let Some(backup) = self.backup.get().cloned()
+            && report.remaining == 0
+            && !stop.load(Ordering::Relaxed)
+        {
+            let sent = backup.drain_upload().await;
+            if sent.complete() {
+                tracing::info!(
+                    segments = sent.segments_uploaded,
+                    messages = sent.messages_uploaded,
+                    "drain: tudo foi para o S3"
+                );
+            } else {
+                tracing::error!(
+                    outbox = sent.outbox_pending,
+                    journal = sent.journal_pending,
+                    "drain: o envio ao S3 não terminou no prazo (backup.drain.timeout); o nó sai assim mesmo e o que sobrou depende das réplicas"
+                );
+            }
+        }
         // Com a memória toda em disco, o nó pede a própria saída do cluster, sem votação.
         if let Some(cluster) = self.cluster.get().cloned()
             && report.remaining == 0
@@ -228,6 +275,12 @@ impl DrainController {
             }
         }
         self.finish(&stop, report.moved, report.failed, report.remaining);
+        // Saiu limpo: o batimento no bucket some junto (quem observa não espera o prazo de morte).
+        if self.shared.drain_state() == DrainState::Drained
+            && let Some(backup) = self.backup.get().cloned()
+        {
+            backup.leave().await;
+        }
     }
 
     fn finish(&self, stop: &Arc<AtomicBool>, moved: u64, failed: u64, remaining: u64) {
@@ -288,6 +341,9 @@ impl DrainController {
             from = before.as_str(),
             "drain cancelado: o nó voltou a gravar em memória"
         );
+        if let Some(backup) = self.backup.get() {
+            backup.resume_beating();
+        }
         let status = self.status_of(None);
         Ok(match (before, self.shared.mode) {
             (DrainState::Drained, Mode::Production) => {

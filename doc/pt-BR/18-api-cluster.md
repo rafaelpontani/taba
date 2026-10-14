@@ -3,8 +3,8 @@ título: API do cluster
 resumo: As rotas que os nós usam entre si — membros e canal, definições, mensagens, sincronização, recuperação, observabilidade e repasse — com o protocolo de duas fases, os streams NDJSON e os DTOs.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
-fontes: [crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
+verificado-em: 2026-10-14 @ efeb47a
+fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
 ---
 
 # API do cluster
@@ -51,6 +51,7 @@ Extraído de `cluster/protocol/http.rs`, o tradutor entre `Request` e HTTP.
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
 | **Observabilidade** | `GET /cluster/status` |
+| **Backup em S3** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved` |
 | **Repasse** | `* /cluster/forward/{caminho}` |
 
 > A doc histórica também lista `GET /cluster/metrics/topics`; **essa rota não existe no código** (a agregação entre nós das métricas de tópico não foi implementada: [13-observabilidade.md](13-observabilidade.md)).
@@ -148,6 +149,16 @@ Todos os streams seguem o contrato [NDJSON](#streams-ndjson).
 | `POST /cluster/messages/recover[?replicate=false]` | Um nó que **volta** envia ao responsável as mensagens que achou na lista de perdas. **Corpo é um stream NDJSON** (`Content-Type: application/x-ndjson`) de `MessageRecord` com a linha final; resposta `RecoverResult` (`end`, `count` aplicadas). Com `replicate=false` só grava no disco local. `415` com outro `Content-Type` |
 
 `{id}` do bloco malformado: `400 validation.failed`.
+
+## Backup em S3
+
+Só existem com o backup configurado ([33-backup-s3.md](33-backup-s3.md)); sem ele respondem `422 backup.not-configured`. Aceitam só **membros**. São as chamadas por trás de `POST /cluster/backup/flush` e `POST /cluster/stop` da API de operação ([17-api-operacao.md](17-api-operacao.md)).
+
+| Rota | Faz |
+|---|---|
+| `POST /cluster/backup/flush` | O flush do backup **neste** nó (as três etapas); responde o `FlushReport` em JSON |
+| `POST /cluster/backup/stop` | O drain **deste** nó para a parada do cluster, com o envio ao S3; responde quando o nó concluiu: `{ "nodeId", "drained", "outboxPending" }` |
+| `POST /cluster/backup/saved` | O primário avisa a réplica, em lote, de quais mensagens do tópico já estão no bucket: `{ "topic", "items": [{ "id", "segment", "offset", "len" }] }` (até 5000 itens). A réplica guarda a referência do que ela tem e ignora o resto; responde `Ack` |
 
 ## Observabilidade e repasse
 

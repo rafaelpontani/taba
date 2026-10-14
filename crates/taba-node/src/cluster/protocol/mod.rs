@@ -2,6 +2,7 @@
 //! `/cluster/*` e a rede em memória entendem. Uma só definição serve às duas pontas, e o
 //! [`http`] traduz cada chamada para a rota HTTP do documento e de volta.
 
+mod backup;
 mod definitions;
 pub mod http;
 mod messages;
@@ -9,6 +10,7 @@ mod recovery;
 mod signals;
 mod vote;
 
+pub use backup::{BACKUP_SAVED_MAX_ITEMS, BackupSaved, BackupSavedItem};
 pub use definitions::{
     DefinitionApply, DefinitionKind, DefinitionOperation, DefinitionProposal, StreamEnd,
     StreamPage, StreamQuery, token_from_json, token_to_json,
@@ -185,6 +187,14 @@ pub enum Request {
         records: Vec<MessageRecord>,
         replicate: bool,
     },
+    /// `POST /cluster/backup/flush`: o flush do backup em S3 neste nó (doc 23, seção 1.11).
+    BackupFlush,
+    /// `POST /cluster/backup/stop`: o drain deste nó para a parada programada do cluster, com o
+    /// envio ao S3; responde quando o nó concluiu.
+    BackupStop,
+    /// `POST /cluster/backup/saved`: o primário avisa a réplica de quais mensagens já estão no
+    /// bucket.
+    BackupSaved(BackupSaved),
 }
 
 impl Request {
@@ -250,6 +260,9 @@ impl Request {
             Request::LossRegister(_) => "loss-register",
             Request::LossRemove { .. } => "loss-remove",
             Request::Recover { .. } => "recover",
+            Request::BackupFlush => "backup-flush",
+            Request::BackupStop => "backup-stop",
+            Request::BackupSaved(_) => "backup-saved",
             Request::FifoPublish { .. } => "fifo-publish",
         }
     }
@@ -280,6 +293,8 @@ pub enum Response {
     Recovered(RecoverResult),
     /// A resposta do primário a uma publicação FIFO repassada.
     FifoPublished(FifoPublished),
+    /// O relatório do backup em S3 (flush ou parada), como JSON.
+    Backup(serde_json::Value),
 }
 
 fn invalid(field: &str, code: ErrorCode, message: &str) -> TabaError {

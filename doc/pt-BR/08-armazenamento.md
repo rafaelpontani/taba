@@ -3,7 +3,7 @@ título: Armazenamento
 resumo: Onde cada dado do nó mora — memória primeiro, overflow para o disco, um banco SQLite por tópico, o banco do nó, o banco de eventos — e o que acontece num reinício.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/src/storage, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/src/engine/messages/rates, crates/taba-node/src/engine/topics/mod.rs, crates/taba-node/src/engine/tokens/mod.rs]
 ---
 
@@ -24,6 +24,7 @@ A última pasta do caminho **precisa se chamar `taba`** (validação de partida)
 ```
 ${storage.dir}/
   _node.db                 banco do nó (SQLite, WAL)
+  _backup.db               banco do backup em S3 (só com `backup.s3.bucket`): fila de envio, referências, segmentos
   _sync/sync.db            banco de eventos; só existe durante a sincronização
   _previous-life/          disco da vida anterior, posto de lado num reinício (até a recuperação)
   <topico>/                uma pasta por tópico (maiúsculas viram "~" + minúscula: Pedidos → ~pedidos/)
@@ -99,6 +100,21 @@ Existe só durante a sincronização de um nó que entra: tabela `events` (núme
 | **Desenvolvimento**, `resume-on-start` ligado | Retoma o que está em `storage.dir`: definições (mantendo `id` e data), mensagens e metadados, listas reconstruídas |
 | **Desenvolvimento**, desligado | Apaga `storage.dir` e começa limpo, com aviso |
 
+## O banco do backup (`_backup.db`)
+
+Só existe com o **backup opcional em S3** ([33-backup-s3.md](33-backup-s3.md)). É local como os outros, e **nunca** entra no caminho da publicação: o commit de uma mensagem só **insere uma linha** nele.
+
+| Tabela | Guarda |
+|---|---|
+| `outbox` | Os `id` das mensagens que o nó (dono) ainda não mandou ao S3. Só o `id`: o corpo e os metadados vêm de onde a mensagem está. Sem teto: se o disco enche, o nó entra em `failed`, como com qualquer falta de espaço |
+| `saved` | Onde cada mensagem salva está no bucket (segmento, deslocamento, tamanho): é o que deixa o nó **apagar o corpo do disco** e ler de volta por `Range`. A réplica recebe a referência por aviso do primário |
+| `segments` | Para cada segmento que **este nó** gravou: quantas mensagens ainda vivem. Quando chega a zero o primário apaga o segmento do bucket, sem consultar o S3 |
+| `journal` | As mensagens com estado alterado (ou removidas) desde o último diário |
+
+Numa partida em produção o banco é **zerado**: o nó é novo, e o que o anterior guardava (fila, referências) não vale para a identidade nova (o que o disco da vida anterior devolve entra de novo pela publicação normal, e o novo dono o enfileira).
+
+**Evicção.** Com o disco acima de `backup.disk.evict-above` (85%), o nó apaga só o **arquivo do corpo** (`<id>.body`) das mensagens que já têm referência no bucket, até `backup.disk.evict-to` (70%). A linha em `_topic.db` fica, então a ordem "arquivo primeiro, linha depois" segue valendo. Na leitura, o corpo ausente vira um `Range` no segmento. Detalhes e a pausa durante o drain: [33-backup-s3.md](33-backup-s3.md).
+
 ## Limites conhecidos
 
 - **PRB-025:** `diskBytes` e `bytes` somam o tamanho dos arquivos `.body` do tópico, **uma chamada por mensagem em disco**, a cada leitura de `/metrics/topics*`.
@@ -107,6 +123,6 @@ Existe só durante a sincronização de um nó que entra: tabela `events` (núme
 
 ## Fontes e provas
 
-- `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
+- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
 - Casos de uso: UC-ARM (armazenamento), UC-DEF (definições replicadas), UC-DRN (drain como save); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md` (3.2 a 3.4).

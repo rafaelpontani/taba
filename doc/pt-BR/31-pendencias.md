@@ -3,7 +3,7 @@ título: Pendências
 resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…) e problemas de lógica, risco ou limite (PRB-…) — mais as divergências e descobertas desta documentação, ainda sem código.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [doc/08b-pendencias.md, doc/pt-BR/_divergencias.md]
 ---
 
@@ -17,7 +17,7 @@ fontes: [doc/08b-pendencias.md, doc/pt-BR/_divergencias.md]
 
 ## Descobertas desta documentação (ainda sem código)
 
-Achadas ao escrever os documentos desta pasta, **conferindo o código**. Cada uma tem a evidência. Para virar item oficial, entram em `doc/08b-pendencias.md` com o próximo `PRB` ou `D` livre (os mais altos hoje são **PRB-052** e **D128**).
+Achadas ao escrever os documentos desta pasta, **conferindo o código**. Cada uma tem a evidência. Para virar item oficial, entram em `doc/08b-pendencias.md` com o próximo `PRB` ou `D` livre (os mais altos hoje são **PRB-057** e **D151**).
 
 | # | Tipo | O que se viu | Efeito | Proposta | Evidência |
 |---|---|---|---|---|---|
@@ -30,7 +30,22 @@ Achadas ao escrever os documentos desta pasta, **conferindo o código**. Cada um
 | G | documentação | **`21-pipeline-ci-cd.md` está parcialmente velho** ("não há `.github/`"; planeja o job `integration` e o GHCR, que não existem) | Plano e estado confundidos | Atualizar o doc histórico | [27-ci-cd.md](27-ci-cd.md) |
 | H | documentação | **`D79`/`PRB-013` ainda constam em aberto, mas `diskFreeBytes` já é devolvido** (`fs4`); **`D82`** é confirmada pelo código (não há `expiry`) | O `08b` mente | Mover D79 e PRB-013 para "resolvidos"; decidir D82 | `_divergencias.md` #8, #9 |
 | I | idioma | **`README.md` e `AGENTS.md` da raiz estão em português**; a regra do projeto é en-US | Quem chega vê o idioma errado | Traduzir (fase 8 do plano de documentação) | [00-plano-de-documentacao.md](00-plano-de-documentacao.md) |
-| J | operação | **Sem backup nem restauração; sem manifestos Kubernetes** | Operar em produção exige improviso | Roadmap | [23-operacao.md](23-operacao.md), [32-roadmap.md](32-roadmap.md) |
+| J | operação | ~~Sem backup nem restauração~~ **Resolvido em parte:** o backup opcional em S3 existe ([33-backup-s3.md](33-backup-s3.md)); **continuam sem manifestos Kubernetes**, e o que falta do backup está em PRB-053 a PRB-057 abaixo | Operar em Kubernetes exige improviso | Roadmap | [23-operacao.md](23-operacao.md), [32-roadmap.md](32-roadmap.md) |
+| K | processo | **As ferramentas da documentação e do teste de casos de uso leem arquivos que o commit `efeb47a` removeu** (`doc/08a`, `08b`, `08c`, `doc/20*.md`): `verificar.mjs` (a verificação 6), `gerar-historico.mjs`, `gerar-casos-de-uso.mjs` e o teste `uc_coverage` falhavam com "arquivo não encontrado". O `AGENTS.md` ainda manda atualizar esses arquivos | Não dá regerar `26a`/`26b`/`30`/`31`; `cargo test` não passava limpo | **Parcial, nesta mudança:** o `uc_coverage` passou a ler os casos dos cartões de `26a`/`26b` e dos cartões `UC-BKP` (escritos à mão em 26a), e o `verificar.mjs` aceita a falta do histórico. Falta decidir a fonte definitiva dos casos, das decisões e das pendências (restaurar `doc/08*`/`doc/20*`, ou reescrever os geradores sobre `doc/pt-BR`) e atualizar o `AGENTS.md` | `git show efeb47a --stat`; `cargo test --test uc_coverage` antes e depois |
+
+## Backup em S3 (problemas e limites novos)
+
+Achados ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)); entram aqui à mão (veja K). Cada um tem o **efeito** e a **proposta**.
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-053** | **O diário não é compactado.** Cada `backup.meta.interval` grava um diário por tópico e o bucket só os apaga junto com o tópico: a restauração lê todos, e a leitura cresce com o tempo | Um *snapshot* periódico por tópico (o estado de todas as mensagens vivas) que substitui os diários anteriores; a restauração lê o último snapshot e os diários depois dele |
+| **PRB-054** | **Um segmento de um primário que deixou de sê-lo só é reaproveitado pelo `ttl`.** O herdeiro não tem a contagem de vivas do antigo, e as referências avisadas às réplicas não a trazem. O gestor apaga um segmento quando **todas** as mensagens passaram do `ttl` (padrão 14 dias); até lá o bucket guarda bytes mortos | Fazer o gestor calcular a vida do segmento pelos rodapés e pelos diários (nunca pela memória), com um cache dos rodapés |
+| **PRB-055** | **A restauração lê cada segmento inteiro** (e todos os diários do tópico), em série: num bucket grande a partida do sobrevivente demora. A busca de mensagens perdidas (`recover_missing`) lê só rodapés e `Range`, mas também lista todo o bucket do tópico | Restaurar por tópico em paralelo e filtrar pelo anel já na leitura; restaurar só as mensagens de que o nó é responsável |
+| **PRB-056** | **Uma definição removida enquanto o gestor estava fora do ar pode ressuscitar na restauração:** a lápide e a revogação saem da fila em memória do gestor se ele cai antes de gravá-las. A reconciliação periódica **só grava**, nunca apaga do bucket o que a memória não tem (apagar daria perda geral num nó que subiu vazio) | Gravar a lápide e a revogação num `outbox` durável no `_backup.db` |
+| **PRB-057** | **A busca no bucket depois de uma exclusão por morte custa o tamanho do bucket do tópico** (listagem, diários inteiros, um rodapé por segmento) e roda em cada sobrevivente | Um índice leve de ids por segmento mantido pelo gestor |
+
+Também ficam registrados como **limites aceitos** (cenários 2, 7, 8 e 10 de [33-backup-s3.md](33-backup-s3.md)): S3 fora só para um nó vivo, mensagem confirmada e consumida antes de `backup.delay` quando **todos** os nós caem, estado defasado pela janela do diário (consumidor idempotente), e S3 sem escrita condicional (a trava de restauração não é segura). A votação de exclusão **rejeitada** não é repetida sozinha (herdado do protocolo de votação; no backup o atraso até o batimento vencer deixa isso raro).
 
 ## 1. Sem bloqueio
 

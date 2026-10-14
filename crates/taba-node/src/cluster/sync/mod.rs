@@ -875,6 +875,27 @@ impl Syncer {
             if !listed {
                 continue;
             }
+            // Antes de declarar a perda, o bucket (doc 23, seção 1.7, exemplo B): a mensagem que
+            // nenhum nó vivo tem é buscada no S3. Só se o S3 também não a tiver ela vira perda.
+            if let Some(port) = self.service.backup()
+                && let Some((meta, body)) = port
+                    .backup()
+                    .find_message(&entry.line.topic, &entry.line.id)
+                    .await
+                && self
+                    .messages
+                    .apply_load(&entry.line.topic, meta, body)
+                    .is_ok()
+            {
+                tracing::warn!(
+                    event.name = "taba.message.restored_from_backup",
+                    messaging.destination.name = %entry.line.topic,
+                    message.id = %entry.line.id,
+                    block,
+                    "nenhum nó vivo tinha a mensagem: restaurada do backup em S3"
+                );
+                continue;
+            }
             tracing::error!(
                 event.name = "taba.message.lost",
                 messaging.destination.name = %entry.line.topic,

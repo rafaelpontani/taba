@@ -76,6 +76,7 @@ catalog! {
     DistributorTooManyTargets => ("distributor.too-many-targets", 422),
     TopicVolatileLimit => ("topic.volatile-limit", 422),
     ClusterJoinUnreachable => ("cluster.join-unreachable", 422),
+    BackupNotConfigured => ("backup.not-configured", 422),
     RateLimitExceeded => ("rate-limit.exceeded", 429),
     // Disponibilidade e falhas (5xx)
     InternalError => ("internal.error", 500),

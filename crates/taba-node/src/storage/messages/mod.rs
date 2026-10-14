@@ -552,6 +552,44 @@ impl MessageStore {
         fs4::available_space(&self.root)
     }
 
+    /// O uso do volume de `storage.dir`, em porcentagem (do que um processo sem privilégio vê).
+    pub fn disk_usage_percent(&self) -> io::Result<u32> {
+        let total = fs4::total_space(&self.root)?;
+        if total == 0 {
+            return Ok(0);
+        }
+        let free = fs4::available_space(&self.root)?.min(total);
+        Ok(((total - free) * 100 / total) as u32)
+    }
+
+    /// Apaga só o arquivo do corpo, mantendo a linha (a evicção do backup, doc 23, seção 1.8): a
+    /// ordem "arquivo primeiro, linha depois" continua valendo. Devolve os bytes liberados; `0` se o
+    /// corpo já não estava no disco.
+    pub fn evict_body(&self, topic: &str, id: &str) -> io::Result<u64> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(0);
+        };
+        let path = disk.body_path(id);
+        let size = match std::fs::metadata(&path) {
+            Ok(meta) => meta.len(),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e),
+        };
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(size),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(0),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// O corpo da mensagem está em arquivo no disco?
+    pub fn has_body(&self, topic: &str, id: &str) -> bool {
+        self.disk(topic, false)
+            .ok()
+            .flatten()
+            .is_some_and(|disk| disk.body_path(id).is_file())
+    }
+
     /// A soma dos tamanhos dos arquivos de corpo do tópico (lê só os metadados dos arquivos, em
     /// ordem de pasta: custa uma chamada por mensagem em disco).
     pub fn body_bytes(&self, topic: &str) -> io::Result<u64> {

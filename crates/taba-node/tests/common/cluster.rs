@@ -21,6 +21,7 @@ use taba_node::cluster::transport::PeerAddr;
 use taba_node::cluster::transport::memory::MemoryNetwork;
 use taba_node::core::clock::ManualClock;
 use taba_node::node::NodeError;
+use taba_node::storage::backup::MemoryStore;
 
 use super::{TestNode, TestNodeBuilder};
 
@@ -35,6 +36,19 @@ pub const FAST: &[(&str, &str)] = &[
     ("TABA_CLUSTER_BOOTSTRAP_RETRY_INTERVAL", "50ms"),
     ("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "200ms"),
     ("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "50ms"),
+];
+
+/// Os prazos do backup nos testes: o `Clock` é o manual (a janela de `backup.delay` passa quando o
+/// teste avança o relógio); os prazos de tempo real (batimento, morte) são curtos.
+pub const BACKUP_FAST: &[(&str, &str)] = &[
+    ("TABA_BACKUP_DELAY", "60s"),
+    ("TABA_BACKUP_META_INTERVAL", "300ms"),
+    ("TABA_BACKUP_SEGMENT_MAX_AGE", "300ms"),
+    ("TABA_BACKUP_HEARTBEAT_INTERVAL", "100ms"),
+    ("TABA_BACKUP_DEAD_AFTER", "1500ms"),
+    ("TABA_BACKUP_DRAIN_TIMEOUT", "8s"),
+    ("TABA_BACKUP_RECONCILE_INTERVAL", "1s"),
+    ("TABA_BACKUP_RESTORE_LOCK_TTL", "1500ms"),
 ];
 
 pub fn host_of(number: usize) -> String {
@@ -84,6 +98,11 @@ pub struct TestCluster {
     pub nodes: Vec<TestNode>,
     /// Parâmetros extras de todos os nós (por exemplo, o token raiz).
     pub env: Vec<(String, String)>,
+    /// O S3 em memória do backup, compartilhado por todos os nós (`start_with_backup`).
+    pub s3: Option<Arc<MemoryStore>>,
+    /// O uso do disco (%) que os nós com backup enxergam: o teste o sobe para simular o disco
+    /// enchendo, sem depender do disco da máquina.
+    pub disk_usage: Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl TestCluster {
@@ -96,7 +115,45 @@ impl TestCluster {
             clock: Arc::new(ManualClock::at_doc_epoch()),
             nodes: Vec::new(),
             env: Vec::new(),
+            s3: None,
+            disk_usage: Arc::new(std::sync::atomic::AtomicU32::new(10)),
         }
+    }
+
+    /// Liga ao backup do nó a medida de disco do teste.
+    fn arm_backup(&self, node: &TestNode) {
+        if let Some(backup) = node.node.backup() {
+            let usage = self.disk_usage.clone();
+            backup.set_disk_probe(Arc::new(move || {
+                usage.load(std::sync::atomic::Ordering::SeqCst)
+            }));
+        }
+    }
+
+    /// O uso do disco (%) que os nós enxergam daqui em diante.
+    pub fn set_disk_usage(&self, percent: u32) {
+        self.disk_usage
+            .store(percent, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Como `start_with`, com o backup em S3 ligado nos nós, num depósito em memória que o teste
+    /// também enxerga (`cluster.s3`). Os prazos do backup são curtos; o `Clock` é o manual.
+    pub async fn start_with_backup(
+        count: usize,
+        env: &[(&str, &str)],
+        s3: Arc<MemoryStore>,
+    ) -> Self {
+        let mut cluster = Self::empty();
+        cluster.s3 = Some(s3);
+        cluster.env = BACKUP_FAST
+            .iter()
+            .chain(env)
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        for number in 1..=count {
+            cluster.add_node(number == 1).await;
+        }
+        cluster
     }
 
     /// Sobe `count` nós, um depois do outro, cada um só depois de o anterior estar no cluster.
@@ -128,6 +185,9 @@ impl TestCluster {
         }
         for (name, value) in &self.env {
             builder = builder.env(name, value);
+        }
+        if let Some(s3) = &self.s3 {
+            builder = builder.backup_store(s3.clone());
         }
         if first {
             builder = builder.env("TABA_CLUSTER_FIRST_NODE", "true");
@@ -161,6 +221,7 @@ impl TestCluster {
             .try_start()
             .await
             .expect("o nó deveria subir");
+        self.arm_backup(&node);
         self.nodes.push(node);
         wait_joined(self.nodes.last().expect("recém-adicionado")).await;
         self.publish_backends(self.nodes.len());
@@ -171,6 +232,7 @@ impl TestCluster {
     /// Entra na lista de nós, mas não no balanceador (veja `publish_backends`).
     pub async fn spawn_node(&mut self, builder: TestNodeBuilder) -> Result<usize, NodeError> {
         let node = builder.try_start().await?;
+        self.arm_backup(&node);
         self.nodes.push(node);
         Ok(self.nodes.len())
     }

@@ -4,6 +4,11 @@
 #   docker compose ps                   os três nós ficam "healthy" quando terminam de sincronizar
 #   docker compose run --rm taba-cli health cluster -o table
 #
+# O backup opcional em S3 (doc/pt-BR/33-backup-s3.md) já vem ligado, num MinIO que sobe junto. Em produção o
+# bucket seria o S3 da nuvem (ou um Service do Kubernetes): troque as variáveis TABA_BACKUP_S3_* abaixo
+# (a AWS não precisa de endpoint nem de chaves, só de bucket e região). Para rodar sem backup, apague
+# estas variáveis e os serviços `minio` e `minio-init`.
+#
 # A API de cliente fica em http://localhost:8080 (HAProxy). O token raiz está no volume `secrets`:
 #   docker compose run --rm --entrypoint cat taba-cli /secrets/root-token
 #
@@ -14,8 +19,9 @@ x-taba: &taba
   # imagem sem depender de outro serviço (as quatro construções usam o mesmo cache e a mesma etiqueta).
   image: taba:local
   build: .
-  # Maior que drain.timeout (25 s), para o nó terminar o drain antes do SIGKILL.
-  stop_grace_period: 40s
+  # Maior que drain.timeout (25 s) + backup.drain.timeout (30 s), para o nó terminar o drain, e o envio
+  # ao S3, antes do SIGKILL.
+  stop_grace_period: 70s
   volumes:
     - secrets:/etc/taba/secrets:ro
   environment: &taba-env
@@ -26,6 +32,11 @@ x-taba: &taba
     TABA_REPLICATION_FACTOR: "3"
     # Log em texto colorido no `docker compose logs` (padrão do nó: `text`; também há `json`).
     TABA_TELEMETRY_LOGS_FORMAT: color
+    # Backup em S3 (MinIO do exemplo). Credenciais de demonstração: troque em qualquer uso real.
+    TABA_BACKUP_S3_BUCKET: taba
+    TABA_BACKUP_S3_ENDPOINT: http://minio:9000
+    TABA_BACKUP_S3_ACCESS_KEY: taba
+    TABA_BACKUP_S3_SECRET_KEY: taba-minio-secret
   healthcheck:
     test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/health/ready"]
     interval: 3s
@@ -54,6 +65,8 @@ services:
     hostname: taba-1
     depends_on:
       init:
+        condition: service_completed_successfully
+      minio-init:
         condition: service_completed_successfully
       haproxy:
         condition: service_started
@@ -89,6 +102,37 @@ services:
       - secrets:/etc/taba/secrets:ro
       - data-3:/var/lib/taba
 
+  # O S3 do exemplo (MinIO). Em produção: o S3 da nuvem. Console web em http://localhost:9001 (taba / taba-minio-secret).
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: taba
+      MINIO_ROOT_PASSWORD: taba-minio-secret
+    ports:
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  # Cria o bucket do backup uma vez; nas vezes seguintes não faz nada.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set local http://minio:9000 taba taba-minio-secret
+        mc mb --ignore-existing local/taba
+    restart: "no"
+
   haproxy:
     image: haproxy:lts-alpine
     volumes:
@@ -116,6 +160,7 @@ services:
 
 volumes:
   secrets:
+  minio-data:
   data-1:
   data-2:
   data-3:

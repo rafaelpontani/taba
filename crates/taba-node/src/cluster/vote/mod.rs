@@ -71,6 +71,21 @@ impl Voting {
         {
             return;
         }
+        // Com o backup em S3, "inalcançável" não basta: o nó pode estar vivo em outra partição, e
+        // o batimento dele no bucket diz. A exclusão espera o batimento vencer (doc 23, 1.6).
+        if reason != VoteReason::NodeFailed
+            && let Some(port) = self.service.backup()
+        {
+            let channels = self.channels.clone();
+            let who = candidate.clone();
+            if !port
+                .backup()
+                .confirm_dead(&candidate, move || channels.is_live(&who))
+                .await
+            {
+                return;
+            }
+        }
         let _turn = self.turn.lock().await;
         let Some(table) = self.service.membership().table() else {
             return;
@@ -129,7 +144,15 @@ impl Voting {
             }
         }
         let rules = self.service.rules();
-        let outcome = if healthy < rules.vote_min_voters {
+        // O sobrevivente único: todos os outros membros estão mortos para o bucket, então não há
+        // quem votar, e o nó pode excluí-los mesmo abaixo de `cluster.vote.min-voters`.
+        let alone = match self.service.backup() {
+            Some(port) if healthy < rules.vote_min_voters => {
+                port.backup().wait_all_others_dead().await
+            }
+            _ => false,
+        };
+        let outcome = if healthy < rules.vote_min_voters && !alone {
             tracing::error!(
                 candidate = %candidate,
                 healthy,

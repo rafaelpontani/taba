@@ -1,0 +1,14 @@
+# Backup opcional em S3 na AWS. Sem chaves aqui: o SDK usa a cadeia padrão de credenciais da AWS
+# (papel da tarefa no ECS, IAM da instância no EC2, IRSA no Kubernetes, perfil ou variáveis
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). Doc: doc/pt-BR/33-backup-s3.md.
+#
+# Permissões mínimas do papel, no bucket e no prefixo: s3:PutObject, s3:GetObject, s3:DeleteObject e
+# s3:ListBucket. A trava de restauração usa escrita condicional (If-None-Match / If-Match), que o S3
+# da AWS suporta; o bucket NÃO deve ter regras de ciclo de vida que apaguem o que o Taba ainda usa
+# (os segmentos são apagados pelo próprio Taba, quando todas as mensagens deles morrem).
+
+backup:
+  s3:
+    bucket: minha-empresa-taba-backup
+    region: sa-east-1
+    prefix: taba/producao          # um prefixo por cluster, se o bucket for compartilhado

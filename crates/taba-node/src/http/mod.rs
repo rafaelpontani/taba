@@ -3,6 +3,7 @@
 //! (`cluster.port`). O mTLS da porta do cluster entra na etapa 16.
 
 pub mod auth;
+pub mod backup;
 pub mod client_ip;
 pub mod cluster_api;
 mod common;
@@ -47,6 +48,8 @@ const DRAIN_RETRY_AFTER_SECS: u64 = 5;
 pub struct AppState {
     pub clock: Arc<dyn Clock>,
     pub node: Arc<NodeShared>,
+    /// O backup opcional em S3; `None` sem `backup.s3.bucket`.
+    pub backup: Option<Arc<crate::cluster::backup::Backup>>,
     pub topics: Arc<Topics>,
     pub messages: Arc<Messages>,
     pub drain: Arc<DrainController>,

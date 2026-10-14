@@ -102,6 +102,16 @@ pub trait TokenReplicator: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
 }
 
+/// O que mudou na tabela de tokens deste nó (o commit de uma criação, alteração ou revogação).
+#[derive(Debug, Clone)]
+pub enum TokenEvent {
+    Saved(TokenRecord),
+    Revoked(String),
+}
+
+/// Quem acompanha as mudanças da tabela (o backup em S3). Nunca espera nem falha.
+pub type TokenHook = Arc<dyn Fn(&TokenEvent) + Send + Sync>;
+
 pub struct Tokens {
     rules: TokenRules,
     store: Arc<dyn TokenStore>,
@@ -112,6 +122,7 @@ pub struct Tokens {
     writer: tokio::sync::Mutex<()>,
     /// No cluster: a propagação a todos os nós.
     replicator: OnceLock<Arc<dyn TokenReplicator>>,
+    event_hooks: std::sync::Mutex<Vec<TokenHook>>,
 }
 
 fn not_found() -> TabaError {
@@ -142,6 +153,7 @@ impl Tokens {
             map: RwLock::new(tokens.into_iter().map(|t| (t.id.clone(), t)).collect()),
             writer: tokio::sync::Mutex::new(()),
             replicator: OnceLock::new(),
+            event_hooks: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -185,6 +197,25 @@ impl Tokens {
         let _ = self.replicator.set(replicator);
     }
 
+    /// Registra quem acompanha cada mudança da tabela (criação, alteração, revogação).
+    pub fn on_event(&self, hook: TokenHook) {
+        self.event_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(hook);
+    }
+
+    fn emit(&self, event: &TokenEvent) {
+        let hooks = self
+            .event_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for hook in hooks {
+            hook(event);
+        }
+    }
+
     /// O `register` de uma mudança no nó que a recebe.
     pub fn check_change(&self, change: &TokenChange) -> Result<(), TabaError> {
         let map = self.read();
@@ -202,7 +233,8 @@ impl Tokens {
     /// O commit de uma criação ou alteração: grava e passa a valer.
     pub async fn apply_save(&self, record: TokenRecord) -> Result<(), TabaError> {
         self.save(record.clone()).await?;
-        self.write().insert(record.id.clone(), record);
+        self.write().insert(record.id.clone(), record.clone());
+        self.emit(&TokenEvent::Saved(record));
         Ok(())
     }
 
@@ -215,6 +247,7 @@ impl Tokens {
             .map_err(|_| TabaError::internal())?
             .map_err(|e| disk_error("falha ao apagar o token", &e))?;
         self.write().remove(id);
+        self.emit(&TokenEvent::Revoked(id.to_owned()));
         Ok(())
     }
 

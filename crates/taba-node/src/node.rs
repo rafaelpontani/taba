@@ -11,6 +11,9 @@ use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::cluster::backup::{
+    Backup, BackupArgs, BackupPort, BackupRules, ClusterTopology, Solo, Topology,
+};
 use crate::cluster::drain::DrainController;
 use crate::cluster::members::{Member, MemberState};
 use crate::cluster::replication::{self, Attached};
@@ -34,6 +37,7 @@ use crate::http::observe::{self, Observer};
 use crate::http::ratelimit::RateLimiter;
 use crate::http::{self, AppState};
 use crate::storage;
+use crate::storage::backup::{BackupDb, ObjectStore, Prefixed, S3Settings, S3Store};
 use crate::storage::db::NodeDb;
 use crate::storage::losses::LossStore;
 use crate::storage::messages::MessageStore;
@@ -93,6 +97,9 @@ pub struct Deps {
     /// Os certificados do cluster, se quem monta o nó já os abriu (o `Transport` real usa os
     /// mesmos). Sem eles, o nó abre a pasta de `cluster.tls.dir`, se houver.
     pub tls: Option<Arc<TlsStore>>,
+    /// O depósito de objetos do backup (os testes entregam o em memória). Sem ele, com
+    /// `backup.s3.bucket`, o nó abre o cliente do S3.
+    pub backup_store: Option<Arc<dyn ObjectStore>>,
 }
 
 impl Deps {
@@ -146,8 +153,63 @@ impl Default for Deps {
             bind_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             cluster: None,
             tls: None,
+            backup_store: None,
         }
     }
+}
+
+/// O que o cluster usa do backup sem conhecer o resto do nó: o serviço e o drain da parada.
+struct NodeBackupPort {
+    backup: Arc<Backup>,
+    drain: Arc<DrainController>,
+}
+
+impl BackupPort for NodeBackupPort {
+    fn backup(&self) -> Arc<Backup> {
+        self.backup.clone()
+    }
+
+    fn stop_node(
+        &self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<serde_json::Value, crate::core::error::TabaError>,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            let drained = self.drain.drain_and_wait().await;
+            Ok(serde_json::json!({
+                "nodeId": self.backup.node_id(),
+                "drained": drained,
+                "outboxPending": self.backup.status().outbox_pending,
+            }))
+        })
+    }
+}
+
+/// Abre o depósito de objetos do backup: o que os testes entregam, ou o S3 de `backup.s3.*`.
+async fn open_backup_store(
+    s3: &crate::config::S3,
+    injected: Option<Arc<dyn ObjectStore>>,
+) -> Arc<dyn ObjectStore> {
+    let raw = match injected {
+        Some(store) => store,
+        None => Arc::new(
+            S3Store::connect(&S3Settings {
+                bucket: s3.bucket.clone(),
+                region: s3.region.clone(),
+                endpoint: s3.endpoint.clone(),
+                access_key: s3.access_key.clone(),
+                secret_key: s3.secret_key.as_ref().map(|s| s.expose().to_owned()),
+                path_style: s3.path_style,
+            })
+            .await,
+        ),
+    };
+    Arc::new(Prefixed::new(raw, &s3.prefix))
 }
 
 pub struct RunningNode {
@@ -169,6 +231,10 @@ pub struct RunningNode {
     volatile: Option<Arc<VolatileManager>>,
     /// Os provedores de traces e de logs do OTLP (só com `OTEL_EXPORTER_OTLP_ENDPOINT`).
     otlp: Option<Arc<Pipeline>>,
+    /// O backup opcional em S3 (só com `backup.s3.bucket`).
+    backup: Option<Arc<Backup>>,
+    /// O cluster só guarda uma referência fraca: o nó segura o serviço do backup vivo.
+    _backup_port: Option<Arc<dyn BackupPort>>,
 }
 
 impl RunningNode {
@@ -220,6 +286,11 @@ impl RunningNode {
     /// `None` em modo desenvolvimento: a porta do cluster não é aberta.
     pub fn cluster_addr(&self) -> Option<SocketAddr> {
         self.cluster_addr
+    }
+
+    /// O backup em S3 deste nó; `None` sem `backup.s3.bucket`.
+    pub fn backup(&self) -> Option<&Arc<Backup>> {
+        self.backup.as_ref()
     }
 
     /// Envia já os spans e os logs que estão na fila do OTLP (para os testes).
@@ -336,6 +407,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         &config.storage.dir,
         config.storage.db_synchronous,
     ));
+    let disk_store = message_store.clone();
     let messages = if !dev && deps.cluster.is_some() {
         // Num cluster o disco da vida anterior espera a recuperação do reinício (D111).
         Messages::new_keeping_disk(
@@ -424,9 +496,50 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             SyncRules::from_config(&config),
         )
     });
+    // O backup opcional em S3: sem `backup.s3.bucket` nada disto existe e o nó é o de sempre.
+    let backup_parts = match &config.backup.s3 {
+        Some(s3) => {
+            let store = open_backup_store(s3, deps.backup_store.clone()).await;
+            let db = Arc::new(BackupDb::open(&config.storage.dir).map_err(storage_error)?);
+            if !dev || !config.resume_on_start {
+                // Toda partida em produção é de nó novo: o que o `_backup.db` da vida anterior
+                // guardava (fila de envio, referências) não vale para a identidade nova.
+                db.reset().map_err(storage_error)?;
+            }
+            let topology: Arc<dyn Topology> = match &cluster_node {
+                Some((service, _)) => Arc::new(ClusterTopology(service.clone())),
+                None => Arc::new(Solo::new(shared.clone())),
+            };
+            let backup = Backup::new(BackupArgs {
+                rules: BackupRules::from_config(&config),
+                store,
+                db,
+                messages: messages.clone(),
+                disk: disk_store,
+                topics: topics.clone(),
+                tokens: auth.tokens.clone(),
+                clock: deps.clock.clone(),
+                shared: shared.clone(),
+                topology,
+                cancel: cancel.clone(),
+            });
+            drain.set_backup(backup.clone());
+            let port: Arc<dyn BackupPort> = Arc::new(NodeBackupPort {
+                backup: backup.clone(),
+                drain: drain.clone(),
+            });
+            if let Some((service, _)) = &cluster_node {
+                service.set_backup(&port);
+            }
+            Some((backup, port))
+        }
+        None => None,
+    };
+    let backup = backup_parts.as_ref().map(|(backup, _)| backup.clone());
     let state = AppState {
         clock: deps.clock.clone(),
         node: shared.clone(),
+        backup: backup.clone(),
         topics,
         messages,
         drain: drain.clone(),
@@ -599,6 +712,12 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             Ok(())
         });
     }
+    if let Some(backup) = backup.clone() {
+        tasks.spawn(async move {
+            backup.run().await;
+            Ok(())
+        });
+    }
 
     if let Some((service, _)) = &cluster_node {
         let service = service.clone();
@@ -676,6 +795,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         drain_on_stop: config.drain.on_stop,
         volatile,
         otlp,
+        backup,
+        _backup_port: backup_parts.map(|(_, port)| port),
     })
 }
 

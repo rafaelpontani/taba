@@ -31,12 +31,12 @@ fn is_code(s: &str) -> bool {
         && parts[2].chars().all(|c| c.is_ascii_digit())
 }
 
-/// Código -> `true` se o caso está `(retirado)`. Também devolve os códigos repetidos.
-fn documented_codes() -> (BTreeMap<String, bool>, Vec<String>) {
-    let mut codes = BTreeMap::new();
-    let mut duplicated = Vec::new();
+/// O catálogo dos casos de uso em tabela (`| UC-XXX-NNN | caso | fonte | nível | testes |`): o
+/// histórico em `doc/20*.md`, se ainda existir.
+fn catalogue_tables() -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(root().join("doc"))
-        .expect("pasta doc/")
+        .into_iter()
+        .flatten()
         .flatten()
         .map(|e| e.path())
         .filter(|p| {
@@ -45,7 +45,56 @@ fn documented_codes() -> (BTreeMap<String, bool>, Vec<String>) {
         })
         .collect();
     files.sort();
-    assert!(!files.is_empty(), "nenhum doc/20*.md encontrado");
+    files
+}
+
+/// Os casos que só existem como cartões (`### UC-XXX-NNN`) nos catálogos gerados `26a` e `26b`:
+/// valem quando o histórico `doc/20*.md` já não está no repositório.
+fn catalogue_cards() -> Vec<String> {
+    let legacy = fs::read_dir(root().join("doc"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.starts_with("20") && name.ends_with(".md")
+        });
+    if legacy {
+        return Vec::new();
+    }
+    let mut codes = Vec::new();
+    for name in [
+        "26a-casos-de-uso-implementados.md",
+        "26b-casos-de-uso-planejados.md",
+    ] {
+        let Ok(text) = fs::read_to_string(root().join("doc/pt-BR").join(name)) else {
+            continue;
+        };
+        for line in text.lines() {
+            if let Some(code) = line.strip_prefix("### ")
+                && is_code(code.trim())
+            {
+                codes.push(code.trim().to_owned());
+            }
+        }
+    }
+    codes
+}
+
+/// Código -> `true` se o caso está `(retirado)`. Também devolve os códigos repetidos.
+fn documented_codes() -> (BTreeMap<String, bool>, Vec<String>) {
+    let mut codes = BTreeMap::new();
+    let mut duplicated = Vec::new();
+    let files = catalogue_tables();
+    for code in catalogue_cards() {
+        if codes.insert(code.clone(), false).is_some() {
+            duplicated.push(code);
+        }
+    }
+    assert!(
+        !files.is_empty() || !codes.is_empty(),
+        "nenhum catálogo de casos de uso encontrado"
+    );
 
     for file in files {
         let text = fs::read_to_string(&file).expect("ler doc");
@@ -166,7 +215,9 @@ fn every_cited_code_exists_and_no_code_is_documented_twice() {
             ));
         } else {
             match documented.get(code) {
-                None => problems.push(format!("`{code}` (em {files}) não existe em doc/20*.md")),
+                None => problems.push(format!(
+                    "`{code}` (em {files}) não existe no catálogo de casos de uso (doc/pt-BR/26*.md)"
+                )),
                 Some(true) => problems.push(format!("`{code}` (em {files}) está (retirado)")),
                 Some(false) => {}
             }
@@ -340,17 +391,7 @@ fn with_tests_column(text: &str, tests: &BTreeMap<String, BTreeSet<String>>) -> 
 fn the_tests_column_of_the_use_cases_is_up_to_date() {
     let tests = tests_by_code();
     let mut stale = Vec::new();
-    let mut files: Vec<PathBuf> = fs::read_dir(root().join("doc"))
-        .expect("pasta doc/")
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            name.starts_with("20") && name.ends_with(".md")
-        })
-        .collect();
-    files.sort();
-    for file in files {
+    for file in catalogue_tables() {
         let current = fs::read_to_string(&file).expect("ler doc");
         let updated = with_tests_column(&current, &tests);
         if updated == current {

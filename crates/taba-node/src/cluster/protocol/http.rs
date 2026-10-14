@@ -9,8 +9,8 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::{
-    AckRegisterRequest, DefinitionApply, DefinitionProposal, FifoPublished, ForwardRequest,
-    ForwardResponse, IdleResponse, JoinRequest, LossAck, LossRecord, MessageRecord,
+    AckRegisterRequest, BackupSaved, DefinitionApply, DefinitionProposal, FifoPublished,
+    ForwardRequest, ForwardResponse, IdleResponse, JoinRequest, LossAck, LossRecord, MessageRecord,
     MessageRegisterRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
     RecoverResult, Request, Response, Step, StreamPage, StreamQuery, TakeRequest, TakeResponse,
     VisibilityRegisterRequest, VoteRequest, VoteResponse, parse_recover_body, recover_body,
@@ -293,6 +293,21 @@ impl Request {
                 headers: vec![("content-type".to_owned(), NDJSON.to_owned())],
                 body: recover_body(records),
             },
+            Request::BackupFlush => HttpCall {
+                method: "POST".to_owned(),
+                path: "/cluster/backup/flush".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+            Request::BackupStop => HttpCall {
+                method: "POST".to_owned(),
+                path: "/cluster/backup/stop".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+            Request::BackupSaved(body) => {
+                json_call("POST", "/cluster/backup/saved".to_owned(), body)
+            }
             Request::Forward(forward) => {
                 let mut headers = forward.headers.clone();
                 if let Some(ip) = &forward.client_ip {
@@ -452,6 +467,13 @@ impl Request {
                 topic: (*topic).to_owned(),
                 id: (*id).to_owned(),
             }),
+            ["cluster", "backup", "flush"] if post() => Ok(Request::BackupFlush),
+            ["cluster", "backup", "stop"] if post() => Ok(Request::BackupStop),
+            ["cluster", "backup", "saved"] if post() => {
+                Ok(Request::BackupSaved(parse_body::<BackupSaved>(
+                    headers, body,
+                )?))
+            }
             ["cluster", "messages", "recover"] if post() => {
                 let media = headers
                     .iter()
@@ -531,6 +553,7 @@ impl Request {
                 Ok(Response::Vote(vote))
             }
             Request::Status => Ok(Response::Status(json(&reply)?)),
+            Request::BackupFlush | Request::BackupStop => Ok(Response::Backup(json(&reply)?)),
             Request::DefinitionPropose(_) | Request::DefinitionApply(_) => {
                 let change: DefinitionApply =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
@@ -642,6 +665,7 @@ impl Response {
             Response::FifoPublished(published) => json(&published),
             Response::Recovered(result) => json(&result),
             Response::Status(status) => json(&status),
+            Response::Backup(report) => json(&report),
             Response::Stream(page) => HttpReply {
                 status: 200,
                 headers: vec![("content-type".to_owned(), NDJSON.to_owned())],

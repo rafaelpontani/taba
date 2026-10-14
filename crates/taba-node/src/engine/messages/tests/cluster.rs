@@ -8,7 +8,7 @@ use super::*;
 
 /// Dono é quem está na lista; o resto é réplica.
 #[derive(Default)]
-struct Owners(Mutex<HashSet<String>>);
+pub(super) struct Owners(pub(super) Mutex<HashSet<String>>);
 
 impl Placement for Owners {
     fn is_owner(&self, _topic: &str, id: &str, _group: Option<&str>, _position: u64) -> bool {

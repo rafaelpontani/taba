@@ -3,7 +3,7 @@ título: Arquitetura
 resumo: Como um nó do Taba é montado por dentro — camadas, direção das dependências, as três portas, as fronteiras de teste e o mapa de módulos.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/src/lib.rs, crates/taba-node/src/node.rs, crates/taba-node/src/main.rs, crates/taba-node/src/http/mod.rs, crates/taba-node/src/cluster/transport/mod.rs]
 ---
 
@@ -78,6 +78,8 @@ O que toca o mundo fica atrás de um *trait*, para o teste trocar a implementaç
 | `Transport` (`cluster/transport`) | HTTP + WebSocket, com mTLS (`transport/http`) | Rede em memória com partição, perda, atraso e nó mudo programáveis (`transport/memory`) | Chamadas e canal entre nós |
 | `Clock` (`core/clock`) | Relógio do sistema | Relógio manual, avançado pelo teste | Invisibilidade, `ttl`, freezing, votação |
 | `Handler` (`cluster/protocol`) | `ClusterHandler` sobre `ClusterService` | o mesmo | O que **recebe** uma chamada entre nós, igual para a rota HTTP e para a rede em memória |
+| `ObjectStore` (`storage/backup/store`) | `S3Store` sobre o `aws-sdk-s3` (AWS e MinIO) | `MemoryStore`, com falhas programáveis (fora do ar, sem escrita condicional) | O depósito do backup opcional em S3 |
+| `BackupSink` (`engine/messages`) | `Backup` (`cluster/backup`) | um registrador, nos testes do motor | O que o motor **avisa** (publicou, removeu, mudou o estado, mudou o dono), sem nunca esperar o S3 |
 
 Por isso os testes de cluster (nível `C`, [25-testes.md](25-testes.md)) rodam vários nós **no mesmo processo** e controlam o tempo e a rede.
 
@@ -101,10 +103,12 @@ crates/taba-node/src/
   core/              clock content error id pagination ring time token topic validation
   secrets/           pasta de segredos (certificado do cluster, token raiz)
   storage/           db (o `_node.db`) messages topics tokens state losses synclog
+                     backup (store, keys, segment, journal, db: o `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
-  cluster/           channel drain health members protocol recovery replication
+  cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
+                     channel drain health members protocol recovery replication
                      service state sync tls transport (http, memory) vote volatile
-  http/              auth client_ip cluster_api common forward messages metrics observe
+  http/              auth backup client_ip cluster_api common forward messages metrics observe
                      operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```

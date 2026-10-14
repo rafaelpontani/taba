@@ -159,9 +159,14 @@ fn refill(bucket: &Bucket, rate: f64, capacity: f64, now_ms: u64) -> f64 {
 /// A categoria de uma chamada, pela rota casada e pelo verbo; `None` é isenta.
 pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Category> {
     match route {
-        "/topics" | "/topics/{topic}" | "/tokens" | "/tokens/{id}" | "/node/drain" => {
-            Some(Category::Admin)
-        }
+        "/topics"
+        | "/topics/{topic}"
+        | "/tokens"
+        | "/tokens/{id}"
+        | "/node/drain"
+        | "/node/backup/flush"
+        | "/cluster/backup/flush"
+        | "/cluster/stop" => Some(Category::Admin),
         "/topics/{topic}/messages" if method == Method::POST => Some(Category::Publish),
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"

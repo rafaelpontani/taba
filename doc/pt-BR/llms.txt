@@ -39,7 +39,8 @@
 ## Operar
 
 - [22 Configuração](22-configuracao.md): todos os parâmetros, padrão efetivo, validações de partida
-- [23 Operação (runbook)](23-operacao.md): subir, escalar, atualizar, drain, o que fazer em cada condição, cluster travado
+- [23 Operação (runbook)](23-operacao.md): subir, escalar, atualizar, drain, o que fazer em cada condição, cluster travado, backup, parar e iniciar o cluster
+- [33 Backup opcional em S3](33-backup-s3.md): o que vai ao bucket (segmentos, diário, definições, batimento), restauração do sobrevivente único, evicção de disco, flush e parada do cluster
 
 ## Contribuir
 

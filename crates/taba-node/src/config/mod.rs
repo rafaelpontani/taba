@@ -209,6 +209,65 @@ pub struct Drain {
     pub timeout: Duration,
 }
 
+/// O backup opcional em S3 (`backup.*`). Sem `s3.bucket` o recurso fica desligado.
+#[derive(Debug, Clone)]
+pub struct Backup {
+    pub s3: Option<S3>,
+    /// A mensagem só vai ao S3 depois deste tempo no outbox: a confirmada e consumida antes disso
+    /// nunca chega ao bucket.
+    pub delay: Duration,
+    /// De quanto em quanto tempo o estado mutável das mensagens vira um diário.
+    pub meta_interval: Duration,
+    pub segment_max_bytes: u64,
+    pub segment_max_messages: u32,
+    pub segment_max_age: Duration,
+    pub heartbeat_interval: Duration,
+    /// Um nó é dado como morto para quem observa quando o batimento dele não muda por este tempo.
+    pub dead_after: Duration,
+    /// O quanto o drain (parada, flush) espera o envio ao S3.
+    pub drain_timeout: Duration,
+    /// Acima deste uso do disco (%), o nó apaga o corpo das mensagens que já estão no S3.
+    pub evict_above: u32,
+    /// A evicção para quando o uso cai a este valor (%).
+    pub evict_to: u32,
+    /// Durante flush e drain, a passagem da memória para o disco pausa a este uso (%).
+    pub pause_at: u32,
+    pub reconcile_interval: Duration,
+    pub restore_lock_ttl: Duration,
+}
+
+impl Backup {
+    pub fn enabled(&self) -> bool {
+        self.s3.is_some()
+    }
+}
+
+/// Onde fica o bucket (`backup.s3.*`).
+#[derive(Clone)]
+pub struct S3 {
+    pub bucket: String,
+    pub region: Option<String>,
+    pub endpoint: Option<String>,
+    pub prefix: String,
+    pub access_key: Option<String>,
+    pub secret_key: Option<Secret>,
+    pub path_style: bool,
+}
+
+impl std::fmt::Debug for S3 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3")
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("endpoint", &self.endpoint)
+            .field("prefix", &self.prefix)
+            .field("access_key", &self.access_key)
+            .field("secret_key", &self.secret_key.as_ref().map(|_| "<oculto>"))
+            .field("path_style", &self.path_style)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Storage {
     pub dir: PathBuf,
@@ -399,6 +458,7 @@ pub struct Config {
     pub tls: Tls,
     pub auth: Auth,
     pub drain: Drain,
+    pub backup: Backup,
     pub storage: Storage,
     pub messages: Messages,
     pub write: Write,
@@ -509,6 +569,9 @@ impl Config {
             on_stop: s.get("drain.on-stop")?,
             timeout: s.get("drain.timeout")?,
         };
+
+        // Backup opcional em S3
+        let backup = backup_config(s, &mut problems)?;
 
         // Armazenamento e mensagens
         let storage = Storage {
@@ -736,6 +799,7 @@ impl Config {
             tls,
             auth,
             drain,
+            backup,
             storage,
             messages,
             write,
@@ -982,3 +1046,67 @@ fn delivery_config(s: &Source) -> Result<Delivery, ConfigError> {
 
 #[cfg(test)]
 mod tests;
+
+/// `backup.*`: sem `backup.s3.bucket` o recurso fica desligado e as demais chaves só são
+/// conferidas.
+fn backup_config(s: &Source, problems: &mut Vec<String>) -> Result<Backup, ConfigError> {
+    let endpoint: Option<String> = s.opt("backup.s3.endpoint")?;
+    let path_style: Option<bool> = s.opt("backup.s3.path-style")?;
+    let access_key: Option<String> = s.opt("backup.s3.access-key")?;
+    let secret_key: Option<String> = s.opt("backup.s3.secret-key")?;
+    if access_key.is_some() != secret_key.is_some() {
+        problems.push(
+            "backup.s3.access-key e backup.s3.secret-key vão juntas (ou nenhuma: a cadeia padrão da AWS)"
+                .into(),
+        );
+    }
+    let bucket: Option<String> = s.opt("backup.s3.bucket")?;
+    let region: Option<String> = s.opt("backup.s3.region")?;
+    let prefix: String = s.get("backup.s3.prefix")?;
+    let s3 = bucket.map(|bucket| S3 {
+        bucket,
+        region,
+        path_style: path_style.unwrap_or(endpoint.is_some()),
+        endpoint: endpoint.clone(),
+        prefix,
+        access_key,
+        secret_key: secret_key.map(Secret),
+    });
+    let backup = Backup {
+        s3,
+        delay: s.get("backup.delay")?,
+        meta_interval: s.get("backup.meta.interval")?,
+        segment_max_bytes: s.get::<Bytes>("backup.segment.max-bytes")?.0,
+        segment_max_messages: s.get("backup.segment.max-messages")?,
+        segment_max_age: s.get("backup.segment.max-age")?,
+        heartbeat_interval: s.get("backup.heartbeat.interval")?,
+        dead_after: s.get("backup.dead-after")?,
+        drain_timeout: s.get("backup.drain.timeout")?,
+        evict_above: s.get("backup.disk.evict-above")?,
+        evict_to: s.get("backup.disk.evict-to")?,
+        pause_at: s.get("backup.disk.pause-at")?,
+        reconcile_interval: s.get("backup.reconcile.interval")?,
+        restore_lock_ttl: s.get("backup.restore.lock-ttl")?,
+    };
+    if backup.segment_max_bytes == 0 || backup.segment_max_messages == 0 {
+        problems.push(
+            "backup.segment.max-bytes e backup.segment.max-messages devem ser de 1 em diante"
+                .into(),
+        );
+    }
+    if !(backup.evict_to < backup.evict_above
+        && backup.evict_above < backup.pause_at
+        && backup.pause_at <= 100)
+    {
+        problems.push(
+            "backup.disk.evict-to < backup.disk.evict-above < backup.disk.pause-at <= 100".into(),
+        );
+    }
+    if backup.dead_after <= backup.heartbeat_interval {
+        problems.push(
+            "backup.dead-after deve ser maior que backup.heartbeat.interval (senão todo nó parece morto)"
+                .into(),
+        );
+    }
+    Ok(backup)
+}

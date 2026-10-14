@@ -103,6 +103,16 @@ pub trait TopicReplicator: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
 }
 
+/// O que mudou na tabela de tópicos deste nó (o commit de uma criação, alteração ou remoção).
+#[derive(Debug, Clone)]
+pub enum TopicEvent {
+    Saved(TopicDefinition),
+    Deleted { name: String, id: String },
+}
+
+/// Quem acompanha as mudanças da tabela (o backup em S3). Nunca espera nem falha.
+pub type TopicHook = Arc<dyn Fn(&TopicEvent) + Send + Sync>;
+
 pub struct Topics {
     rules: TopicRules,
     store: Arc<dyn TopicStore>,
@@ -111,6 +121,7 @@ pub struct Topics {
     /// Uma alteração por vez: valida, grava em disco e só então aplica em memória.
     writer: tokio::sync::Mutex<()>,
     removed_hooks: Mutex<Vec<RemovedHook>>,
+    event_hooks: Mutex<Vec<TopicHook>>,
     /// No cluster: a propagação a todos os nós.
     replicator: OnceLock<Arc<dyn TopicReplicator>>,
 }
@@ -173,6 +184,7 @@ impl Topics {
             map: RwLock::new(map),
             writer: tokio::sync::Mutex::new(()),
             removed_hooks: Mutex::new(Vec::new()),
+            event_hooks: Mutex::new(Vec::new()),
             replicator: OnceLock::new(),
         }
     }
@@ -201,6 +213,25 @@ impl Topics {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(hook);
+    }
+
+    /// Registra quem acompanha cada mudança da tabela (criação, alteração, remoção).
+    pub fn on_event(&self, hook: TopicHook) {
+        self.event_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(hook);
+    }
+
+    fn emit(&self, event: &TopicEvent) {
+        let hooks = self
+            .event_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for hook in hooks {
+            hook(event);
+        }
     }
 
     /// Liga a propagação aos outros nós (`mode=production`). Vale só a primeira chamada.
@@ -239,7 +270,9 @@ impl Topics {
     pub async fn apply_save(&self, definition: TopicDefinition) -> Result<(), TabaError> {
         let to_save = definition.clone();
         self.persist(move |store| store.save(&to_save)).await?;
-        self.write().insert(definition.name.clone(), definition);
+        self.write()
+            .insert(definition.name.clone(), definition.clone());
+        self.emit(&TopicEvent::Saved(definition));
         Ok(())
     }
 
@@ -252,6 +285,10 @@ impl Topics {
         let to_delete = name.to_owned();
         self.persist(move |store| store.delete(&to_delete)).await?;
         self.write().remove(name);
+        self.emit(&TopicEvent::Deleted {
+            name: name.to_owned(),
+            id: current.id.clone(),
+        });
         let mut gone = vec![name.to_owned()];
         if current.queue().is_some() {
             gone.push(format!("{name}{}", self.rules.dead_letter_suffix));

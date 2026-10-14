@@ -3,7 +3,7 @@ título: Cluster
 resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, modo desenvolvimento.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, http/forward]
 ---
 
@@ -93,6 +93,10 @@ O nó em `failed` (**disco cheio** ou **banco corrompido**, tanto nos bancos de 
 
 Com 3 nós, `docker compose kill taba-2` leva em ~8 s à exclusão do nó (tabela na versão seguinte, condição `node-frozen`). Se **antes de ele voltar** um segundo nó cai, sobra **um** nó, menos que `cluster.vote.min-voters` (2): a condição `quorum-lost` aparece e a exclusão **não se efetiva**. Os dois nós reiniciados **não conseguem reentrar**: o ingresso exige o registro em **todos** os nós da tabela, e a tabela ainda lista o nó morto (`cluster.registration-failed` e `cluster.node-syncing` em laço no log). **Não há recuperação automática nem rota manual** (decisão adiada: "exclusão forçada"). O que funcionou foi **reiniciar o cluster inteiro**, ao custo de **perder mensagens e tópicos** ([11-durabilidade.md](11-durabilidade.md)). Por isso: reinicie e atualize **um nó por vez**, esperando `healthy` entre eles.
 
+### Com o backup em S3: vivo não é alcançável
+
+Com `backup.s3.bucket`, "inalcançável" deixa de bastar: cada nó grava um **batimento** no bucket, e a votação de exclusão **só abre depois de o batimento do candidato vencer** (`backup.dead-after`). Um nó inalcançável **com batimento fresco** está vivo em outra partição, e os outros **não assumem** os blocos dele. Quando sobra **um só nó** e todos os outros estão mortos para o bucket, ele exclui os mortos sozinho, mesmo abaixo de `cluster.vote.min-voters` (sem isso o cluster ficaria em `quorum-lost` sem saída). E quando os membros mortos saem da tabela, os sobreviventes buscam no S3 as mensagens que só existiam neles. A partida de um nó que não acha ninguém também consulta o bucket (o sobrevivente único restaura). Tudo em [33-backup-s3.md](33-backup-s3.md); sem o S3, ou com ele fora do ar, vale o que está aqui.
+
 ### Risco aceito: partições
 
 A base de votantes é só quem o votante enxerga. Numa **partição de rede** em que os dois lados têm saudáveis suficientes, cada lado pode excluir o outro. O `cluster.vote.min-voters` impede só que um nó **isolado** exclua todos os demais; quem opera muitos nós pode aumentá-lo para uma maioria do cluster. Quando os dois lados se excluíram, cada nó guarda os endereços dos excluídos e, a cada `keepalive.interval × 10`, consulta a tabela deles: se for de **outro cluster** e este lado **perder** (menos membros; no empate, o do menor `nodeId`), o nó refaz o ingresso do zero.
@@ -163,10 +167,11 @@ Um nó que ainda não está íntegro (sincronizando, em drain ou em falha) pode 
 2. **Avisa os pares** pelo canal ("em drain"): eles deixam de pedir `take` a ele e de escolhê-lo como origem de carga.
 3. **Grava tudo em disco:** o limite de memória efetivo cai a **zero**; toda mensagem nova (publicada ou réplica) vai direto para o disco.
 4. **Esvazia a memória:** move para o disco as mensagens em memória **com os metadados** (`deliveryCount`, `invisibleUntil`, `receiptToken`), primeiro os tópicos de menor taxa de leitura.
-5. **Sai do cluster:** coordena o **desregistro de si mesmo** pelo protocolo de duas fases (`POST /cluster/nodes/unregister` e `commit`), **sem votação**. Rebalanceia, e os novos primários assumem as filas voláteis dele.
-6. **Fecha o canal.** Estado `drained`. Se foi por sinal, espera as chamadas repassadas terminarem (dentro de `drain.timeout`) e encerra.
+5. **Com o backup em S3, antes de sair:** manda ao S3 tudo o que está em disco, o `outbox`, o diário e as definições pendentes, dentro de `backup.drain.timeout` ([33-backup-s3.md](33-backup-s3.md)). Com o S3 fora do ar o nó não espera para sempre.
+6. **Sai do cluster:** coordena o **desregistro de si mesmo** pelo protocolo de duas fases (`POST /cluster/nodes/unregister` e `commit`), **sem votação**. Rebalanceia, e os novos primários assumem as filas voláteis dele.
+7. **Fecha o canal.** Estado `drained`. Se foi por sinal, espera as chamadas repassadas terminarem (dentro de `drain.timeout`) e encerra.
 
-`drain.timeout` (padrão **25 s**) cobre tudo e precisa ser **menor** que o prazo de parada do orquestrador (`stop_grace_period` no Compose, `terminationGracePeriodSeconds` no Kubernetes, 30 s por padrão). Estourado, o nó registra o que sobrou em memória e a etapa em que parou e encerra mesmo assim (se por sinal): cai-se no comportamento sem drain. Erro de I/O no passo 4 **não interrompe** o drain.
+`drain.timeout` (padrão **25 s**) cobre tudo (menos o envio ao S3, que tem o prazo próprio `backup.drain.timeout`, 30 s) e precisa ser **menor** que o prazo de parada do orquestrador (`stop_grace_period` no Compose, `terminationGracePeriodSeconds` no Kubernetes, 30 s por padrão). Estourado, o nó registra o que sobrou em memória e a etapa em que parou e encerra mesmo assim (se por sinal): cai-se no comportamento sem drain. Erro de I/O no passo 4 **não interrompe** o drain.
 
 **Voltar do drain** (`DELETE /node/drain`):
 

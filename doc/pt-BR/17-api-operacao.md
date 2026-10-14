@@ -1,10 +1,10 @@
 ---
 título: API de operação
-resumo: Manual das rotas para operador, Prometheus e orquestrador — saúde, métricas do nó e de tópicos, e drain — com parâmetros, DTOs e exemplos.
+resumo: Manual das rotas para operador, Prometheus e orquestrador — saúde, métricas do nó e de tópicos, drain e backup em S3 — com parâmetros, DTOs e exemplos.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
-fontes: [crates/taba-node/src/http/operations.rs, crates/taba-node/src/http/metrics, crates/taba-node/src/http/topic_stats, crates/taba-node/src/cluster/drain, crates/taba-node/src/cluster/health, crates/taba-node/src/cluster/state]
+verificado-em: 2026-10-14 @ efeb47a
+fontes: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operations.rs, crates/taba-node/src/http/metrics, crates/taba-node/src/http/topic_stats, crates/taba-node/src/cluster/drain, crates/taba-node/src/cluster/health, crates/taba-node/src/cluster/state]
 ---
 
 # API de operação
@@ -27,6 +27,10 @@ fontes: [crates/taba-node/src/http/operations.rs, crates/taba-node/src/http/metr
 | `POST` | `/node/drain` | admin | `202` (ou `200` se já em drain) |
 | `GET` | `/node/drain` | admin | `200` `DrainStatus` |
 | `DELETE` | `/node/drain` | admin | `200` ou `202` `DrainStatus` |
+| `GET` | `/node/backup` | isenta | `200` `BackupStatus` (ou `422 backup.not-configured`) |
+| `POST` | `/node/backup/flush` | admin | `200` `FlushReport` (ou `422 backup.not-configured`) |
+| `POST` | `/cluster/backup/flush` | admin | `200` `ClusterFlushReport` (ou `422 backup.not-configured`) |
+| `POST` | `/cluster/stop` | admin | `200` `StopReport` |
 
 "Isenta" = nunca responde `429`: são leves e chamadas por máquina; um `429` no `/health/ready` faria o balanceador tirar o nó da rotação por engano.
 
@@ -162,9 +166,74 @@ Verificado num cluster de 3 nós: `drain start` levou o nó a `drained` em ~4 s 
 
 > Enquanto em drain, o nó **recusa toda chamada de cliente** (inclusive ack): repassa a outro nó ou, sem outro, `503 cluster.node-draining` (PRB-005). Pendência **D75:** drain pedido pela API que estoura `drain.timeout` fica `draining` até alguém chamar `DELETE`. **D77:** o `Retry-After` do `503` do drain é fixo em 5 s.
 
+## Backup em S3
+
+O recurso é opcional ([33-backup-s3.md](33-backup-s3.md)). Estas rotas, como `/node/drain`, não usam token: a proteção é de rede. Sem `backup.s3.bucket`, `GET /node/backup` e os dois *flush* respondem `422` `backup.not-configured`; `POST /cluster/stop` ainda drena os nós.
+
+> Estas rotas moram na **API de operação** (a porta de operação, ou a de cliente sem `operations.port`), **não** na porta do cluster: as chamadas entre nós usam `/cluster/backup/flush`, `/cluster/backup/stop` e `/cluster/backup/saved` na porta do cluster (mTLS), descritas em [18-api-cluster.md](18-api-cluster.md).
+
+### `GET /node/backup`: o estado
+
+```bash
+curl -s http://nó:9090/node/backup
+# {"s3Reachable":true,"lastError":null,"lastSuccessAt":"2026-10-14T15:00:03.512Z",
+#  "outboxPending":0,"journalPending":0,"definitionsPending":0,"pending":0,
+#  "segments":3,"segmentBytes":182011,"saved":412,"segmentsUploaded":9,
+#  "messagesUploaded":412,"bodiesEvicted":0,"errors":0}
+```
+
+| Campo | Significado |
+|---|---|
+| `s3Reachable` / `lastError` / `lastSuccessAt` | O S3 respondeu na última chamada? Se não, o motivo e quando foi a última que deu certo |
+| `outboxPending` | Mensagens que ainda não estão num segmento no bucket (inclui as que esperam `backup.delay`) |
+| `journalPending` | Mudanças de estado ainda fora do diário |
+| `definitionsPending` | Definições de tópico ou token ainda por gravar |
+| `pending` | A soma dos três: **zero é "tudo salvo"** |
+| `segments` / `segmentBytes` | Segmentos que **este nó** gravou e mantém no bucket |
+| `saved` | Mensagens que este nó (dono ou réplica) sabe ler do bucket |
+| `bodiesEvicted` | Corpos que a evicção apagou do disco desde a partida |
+
+### `POST /node/backup/flush`: forçar o backup neste nó
+
+Faz, em sequência, as três etapas: **memória → disco** (pelo caminho do drain, sem parar o nó), **disco → S3** (segmentos e diário, com prioridade) e **`outbox` → S3**. Responde quando as três terminam **ou** quando `backup.drain.timeout` estoura. Não desregistra nem para o nó: é seguro em produção. Durante o flush o nó grava as mensagens novas em disco (o limite de memória cai a zero) e volta ao normal ao terminar.
+
+```bash
+curl -s -X POST http://nó:9090/node/backup/flush
+# {"complete":true,"memoryMoved":128,"memoryRemaining":0,"segmentsUploaded":4,
+#  "messagesUploaded":128,"journalsUploaded":2,"outboxPending":0,"journalPending":0,
+#  "timedOut":false,"s3Reachable":true,"nodeId":"01a1…"}
+```
+
+`complete: true` só quando nada ficou para trás (`memoryRemaining`, `outboxPending` e `journalPending` em zero e sem estouro de prazo).
+
+### `POST /cluster/backup/flush`: forçar em todos os nós
+
+O nó que recebe a chamada a repassa a todos os outros (pela porta do cluster) e junta as respostas. **Não muda a ordem de nenhum bloco.**
+
+```bash
+curl -s -X POST http://nó:9090/cluster/backup/flush
+# {"complete":false,"nodes":[
+#   {"nodeId":"01a1…","complete":true,"outboxPending":0, …},
+#   {"nodeId":"01a2…","complete":false,"pending":true,"error":"prazo esgotado"}]}
+```
+
+Um nó lento ou fora do ar aparece com `"pending": true` e o motivo; `complete` do conjunto é `false` e o operador repete a chamada.
+
+### `POST /cluster/stop`: parar o cluster com backup
+
+Faz o drain em **todos** os nós pela mesma etapa de envio do encerramento por sinal; os outros em paralelo, e o nó que recebeu a chamada por último. O coordenador grava `cluster/stop.json` com os nós que pararam e a ordem em que pararam. Os processos **continuam rodando** em `drained`: parar os processos é com o orquestrador (`docker compose stop`).
+
+```bash
+curl -s -X POST http://nó:9090/cluster/stop
+# {"stopped":["01a2…","01a3…","01a1…"],"stopList":true,"warnings":[],
+#  "nodes":[{"nodeId":"01a2…","drained":true,"outboxPending":0}, …]}
+```
+
+`stopList: false` com `warnings` quando o S3 estava indisponível: o drain em disco foi feito, mas o backup **não foi enviado**. Um nó que não respondeu fica fora da lista e é tratado como morto ao subir.
+
 ## Fontes e provas
 
-- `http/operations.rs` (as rotas e `HealthResponse`), `http/metrics`, `http/topic_stats`, `cluster/drain` (estados e transições), `cluster/health` (condições), `cluster/state`.
+- `http/backup.rs` (as rotas do backup), `http/operations.rs` (as rotas e `HealthResponse`), `http/metrics`, `http/topic_stats`, `cluster/drain` (estados e transições), `cluster/health` (condições), `cluster/state`.
 - Respostas copiadas de um nó real (um nó em desenvolvimento e um cluster de 3 nós pelo Compose).
 - Casos de uso: UC-OPS (saúde, métricas e estatísticas), UC-DRN (drain), UC-LIM (limites das rotas de operação); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/operations.rs`, `metrics.rs`, `topic_stats.rs`, `drain_cluster.rs`.
 - Histórico: `06b-api-operacao.md`, `11-observabilidade.md`.

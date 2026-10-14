@@ -3,7 +3,7 @@ título: Glossário
 resumo: Os termos do projeto em ordem alfabética, cada um com uma definição curta e o link do documento que o explica.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/src, doc/pt-BR]
 ---
 
@@ -21,6 +21,11 @@ fontes: [crates/taba-node/src, doc/pt-BR]
 | **`autoCreate`** | Parâmetro do `GET` que cria a fila (volátil por padrão) se ela não existir | [09](09-topicos.md) |
 
 ## B
+
+| Termo | Significado | Detalhe |
+|---|---|---|
+| **Backup (S3)** | O backup opcional de falha grave: segmentos de mensagens, diários de estado, definições e batimentos num bucket S3 ou MinIO. Nunca entra no caminho de publicação | [33](33-backup-s3.md) |
+| **Batimento** | O arquivo `nodes/<id>.json` que cada nó regrava no bucket, com um `seq` crescente; quem observa vê o ETag mudar e dá o nó por morto quando para por `backup.dead-after` | [33](33-backup-s3.md) |
 
 | Termo | Significado | Detalhe |
 |---|---|---|

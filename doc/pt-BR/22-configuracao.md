@@ -3,7 +3,7 @@ título: Configuração
 resumo: Como configurar o nó (arquivo YAML e variáveis TABA_*), a precedência, e a tabela completa de parâmetros com o padrão efetivo e o que cada um faz.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/src/config/params/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/src/config/source/mod.rs]
 ---
 
@@ -65,7 +65,8 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 - `retention.ttl.default`, `retention.max-deliveries.default` ou `topics.volatile.idle-timeout.default` estão fora das faixas de [19-erros-e-limites.md](19-erros-e-limites.md);
 - `cluster.tls.dir` definido não existe, ou a pasta existe sem nenhum par válido;
 - `auth.enabled=true` sem token raiz; token raiz com menos de 32 caracteres; `auth.root-token-file` definido que não existe;
-- `operations.allowed-ips` ou `client-ip.trusted-proxies` têm uma entrada inválida.
+- `operations.allowed-ips` ou `client-ip.trusted-proxies` têm uma entrada inválida;
+- `backup.s3.access-key` sem `backup.s3.secret-key` (ou o contrário); `backup.segment.max-bytes` ou `backup.segment.max-messages` iguais a zero; a regra `backup.disk.evict-to` < `backup.disk.evict-above` < `backup.disk.pause-at` ≤ 100 desrespeitada; `backup.dead-after` que não passa de `backup.heartbeat.interval` (todo nó pareceria morto).
 
 
 Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados**, com um aviso no log.
@@ -252,13 +253,40 @@ Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.
 |---|---|---|---|
 | `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | sem limite | Requisições por segundo, **por token** (ou por IP do cliente, sem token válido), para `POST /topics/{topic}/messages`. |
 | `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | sem limite | Requisições por segundo, por token (ou por IP, sem token válido), para `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibilidade) e `DELETE /topics/{topic}/messages/{id}` (ack). |
-| `ratelimit.admin.rps` | `TABA_RATELIMIT_ADMIN_RPS` | sem limite | Requisições por segundo, por token (ou por IP, sem token válido), para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`, e `/tokens`. |
+| `ratelimit.admin.rps` | `TABA_RATELIMIT_ADMIN_RPS` | sem limite | Requisições por segundo, por token (ou por IP, sem token válido), para `POST/GET/PATCH/DELETE /topics` e `/topics/{topic}`, e `/tokens`; e, por IP, para `/node/drain`, `/node/backup/flush`, `/cluster/backup/flush` e `/cluster/stop`. |
 | `ratelimit.ops.rps` | `TABA_RATELIMIT_OPS_RPS` | sem limite | Requisições por segundo, por IP, para `/health/cluster?scope=cluster` e `/metrics/topics`. `/health/live`, `/health/ready`, `/metrics` e `/health/cluster?scope=node` são isentos. |
 | `ratelimit.burst` | `TABA_RATELIMIT_BURST` | `ceil(rps)` de cada categoria | Tamanho do estouro permitido acima da taxa (ex.: token bucket), para absorver picos curtos sem rejeitar requisições. Vale para cada contador, de token ou de IP. |
 | `client-ip.headers.enabled` | `TABA_CLIENT_IP_HEADERS_ENABLED` | **true** | Usa os cabeçalhos abaixo para achar o IP do cliente atrás de balanceador; `false` usa só o endereço da conexão. Só importa para as chamadas contadas por IP (sem token válido) e para `operations.allowed-ips`. |
 | `client-ip.headers` | `TABA_CLIENT_IP_HEADERS` | **X-Forwarded-For** | Lista, em ordem, de cabeçalhos consultados; vale o primeiro presente e, nele, o primeiro endereço. |
 | `client-ip.trusted-proxies` | `TABA_CLIENT_IP_TRUSTED_PROXIES` | vazia (cabeçalho aceito de qualquer origem) | Lista de IPs/CIDR dos balanceadores ou proxies cujos cabeçalhos de IP são aceitos. Vazia: aceita de qualquer origem (o serviço deve ficar em camada segura). Vale para o rate limit e para `operations.allowed-ips`. |
 
+
+## Backup opcional em S3
+
+O recurso liga com `backup.s3.bucket`; sem ele nada disto existe. Como funciona: [33-backup-s3.md](33-backup-s3.md).
+
+| Chave | Variável | Padrão | O que faz |
+|---|---|---|---|
+| `backup.s3.bucket` | `TABA_BACKUP_S3_BUCKET` | sem valor (**recurso desligado**) | O bucket. Definido, liga o backup. |
+| `backup.s3.region` | `TABA_BACKUP_S3_REGION` | sem valor | A região. Sem ela o SDK usa a cadeia padrão da AWS (`AWS_REGION`, perfil); com `backup.s3.endpoint` e sem região vale `us-east-1`. |
+| `backup.s3.endpoint` | `TABA_BACKUP_S3_ENDPOINT` | sem valor (AWS) | O endereço de um S3 compatível (MinIO, Ceph), como `http://minio:9000`. |
+| `backup.s3.prefix` | `TABA_BACKUP_S3_PREFIX` | **taba** | O prefixo base de todos os objetos no bucket. Vários clusters podem dividir um bucket com prefixos diferentes. |
+| `backup.s3.access-key` | `TABA_BACKUP_S3_ACCESS_KEY` | sem valor | A chave de acesso. **Opcional:** sem ela (e sem a secreta), vale a cadeia padrão da AWS (IAM, perfil, papel da tarefa). Vai sempre com a secreta. |
+| `backup.s3.secret-key` | `TABA_BACKUP_S3_SECRET_KEY` | sem valor | A chave secreta; nunca aparece em log nem em `Debug`. |
+| `backup.s3.path-style` | `TABA_BACKUP_S3_PATH_STYLE` | (do código) **true** com `endpoint`, **false** sem | O bucket no caminho (`http://host/bucket/chave`) em vez de no nome do host. O MinIO exige. |
+| `backup.delay` | `TABA_BACKUP_DELAY` | **60s** | A mensagem só vai ao S3 depois deste tempo no outbox: a confirmada e consumida antes **nunca vai**. |
+| `backup.meta.interval` | `TABA_BACKUP_META_INTERVAL` | **60s** | De quanto em quanto tempo o estado mutável (entrega, invisibilidade, ack) vira um diário. É a defasagem (RPO) do estado. |
+| `backup.segment.max-bytes` | `TABA_BACKUP_SEGMENT_MAX_BYTES` | **8MB** | O segmento fecha ao chegar a este tamanho (`MB` é 2²⁰ bytes, como em `message.max-bytes`). |
+| `backup.segment.max-messages` | `TABA_BACKUP_SEGMENT_MAX_MESSAGES` | **5000** | O segmento fecha ao chegar a esta quantidade de mensagens. |
+| `backup.segment.max-age` | `TABA_BACKUP_SEGMENT_MAX_AGE` | **60s** | O segmento fecha ao chegar a esta idade (do momento em que a primeira mensagem entrou nele). |
+| `backup.heartbeat.interval` | `TABA_BACKUP_HEARTBEAT_INTERVAL` | **15s** | De quanto em quanto tempo o nó regrava `nodes/<id>.json` e observa os dos outros. |
+| `backup.dead-after` | `TABA_BACKUP_DEAD_AFTER` | **60s** | Um nó é dado como morto para quem observa quando o batimento dele não muda por este tempo. Deve ser **maior** que `backup.heartbeat.interval` (com folga: vários batimentos). Também é o atraso da exclusão de um nó inalcançável. |
+| `backup.drain.timeout` | `TABA_BACKUP_DRAIN_TIMEOUT` | **30s** | O quanto o drain, o flush e a pausa por disco cheio esperam o envio ao S3. Estourado, o nó segue sem o S3. O prazo de parada do orquestrador deve ser **maior** que `drain.timeout` + este valor. |
+| `backup.disk.evict-above` | `TABA_BACKUP_DISK_EVICT_ABOVE` | **85** | Uso do disco (%) acima do qual o nó apaga o corpo das mensagens já salvas no S3. |
+| `backup.disk.evict-to` | `TABA_BACKUP_DISK_EVICT_TO` | **70** | A evicção para quando o uso cai a este valor (%). |
+| `backup.disk.pause-at` | `TABA_BACKUP_DISK_PAUSE_AT` | **90** | Durante o flush e o drain, a passagem da memória para o disco pausa a este uso (%) até a evicção liberar espaço. |
+| `backup.reconcile.interval` | `TABA_BACKUP_RECONCILE_INTERVAL` | **60s** | De quanto em quanto tempo o gestor regrava as definições que divergem do bucket, apaga segmentos vencidos pelo `ttl` e o nó limpa batimentos mortos. |
+| `backup.restore.lock-ttl` | `TABA_BACKUP_RESTORE_LOCK_TTL` | **60s** | A validade da trava de restauração: o titular a renova; parada por este tempo, outro nó a toma. |
 
 ## Limites fixos (não são configuração)
 

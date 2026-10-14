@@ -3,7 +3,7 @@ título: Documentação do Taba (pt-BR)
 resumo: Índice da documentação em português, com a ordem de leitura para cada perfil.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [README.md, AGENTS.md, crates/taba-node/src/lib.rs]
 ---
 
@@ -20,7 +20,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | Você é… | Leia nesta ordem |
 |---|---|
 | **Quem vai usar** o Taba numa aplicação | [01](01-visao-geral.md) → [02](02-inicio-rapido.md) → [03](03-conceitos.md) → [09](09-topicos.md) → [12](12-entrega.md) → [16](16-api-cliente.md) → [21](21-conectores.md) |
-| **Quem vai operar** um cluster | [01](01-visao-geral.md) → [02](02-inicio-rapido.md) → [03](03-conceitos.md) → [07](07-cluster.md) → [22](22-configuracao.md) → [23](23-operacao.md) → [13](13-observabilidade.md) → [14](14-seguranca.md) |
+| **Quem vai operar** um cluster | [01](01-visao-geral.md) → [02](02-inicio-rapido.md) → [03](03-conceitos.md) → [07](07-cluster.md) → [22](22-configuracao.md) → [23](23-operacao.md) → [33](33-backup-s3.md) → [13](13-observabilidade.md) → [14](14-seguranca.md) |
 | **Quem vai contribuir** com o código | [03](03-conceitos.md) → [04](04-arquitetura.md) → [06](06-anel-e-replicacao.md) → [10](10-publicacao.md) → [24](24-convencoes.md) → [25](25-testes.md) → [26](26-casos-de-uso.md) |
 | **Uma IA** (agente) que vai ler ou alterar o projeto | [llms.txt](llms.txt) → [03](03-conceitos.md) → [04](04-arquitetura.md) → o documento do assunto → [24](24-convencoes.md) |
 
@@ -72,7 +72,8 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | Arquivo | Conteúdo |
 |---|---|
 | [22-configuracao.md](22-configuracao.md) | Todos os parâmetros e padrões |
-| [23-operacao.md](23-operacao.md) | Runbook: subir, escalar, retirar, diagnosticar |
+| [23-operacao.md](23-operacao.md) | Runbook: subir, escalar, retirar, diagnosticar, backup, parar e iniciar |
+| [33-backup-s3.md](33-backup-s3.md) | Backup opcional em S3: o que vai ao bucket, restauração, evicção, flush, parada |
 
 ### Parte F — Contribuir
 

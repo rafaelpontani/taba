@@ -3,7 +3,7 @@ título: Dependências
 resumo: O que o Taba usa para compilar, rodar e testar — bibliotecas do servidor e por quê, dependências de sistema, ferramentas e a regra de "zero dependências" dos conectores.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [Cargo.toml, crates/taba-node/Cargo.toml, connectors/rust/Cargo.toml, connectors/rust/client/Cargo.toml, connectors/csharp, Dockerfile, docker-compose.yml]
 ---
 
@@ -22,6 +22,7 @@ Linguagem **Rust**, edição 2024, runtime assíncrono **tokio**. O workspace te
 | TLS mútuo | `rustls` (provedor `ring`), `tokio-rustls`, `x509-parser`, `rcgen` | Porta do cluster, recarga dos certificados, `taba init` e `taba cert generate`. O nome do host **não** é verificado: a confiança é a do próprio certificado |
 | Cliente HTTP entre nós | `reqwest` (só `rustls`) | O `Transport` real chama a porta do cluster dos outros nós |
 | WebSocket do canal | `axum` (ws), `tokio-tungstenite`, `futures-util` | Canal permanente entre cada par de nós |
+| Backup em S3 | `aws-sdk-s3` e `aws-config` (o SDK oficial) | `storage/backup/store`: o `S3Store` fala com AWS e com MinIO (`backup.s3.endpoint`). Compila no Windows (MSVC) sem ferramentas extras; traz o `aws-lc-rs` (o provedor TLS do próprio SDK, separado do `ring` do resto do nó) |
 | Banco local | `rusqlite` com SQLite **embutida** (`bundled`) | `_node.db`, um banco por tópico, banco de eventos de sincronização |
 | JSON | `serde`, `serde_json` (`raw_value`) | DTOs das APIs e do canal |
 | YAML | `serde_norway` | Arquivo de configuração `.yml` |

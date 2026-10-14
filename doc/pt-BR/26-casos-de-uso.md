@@ -1,9 +1,9 @@
 ---
 título: Casos de uso e rastreabilidade
-resumo: O formato do código `UC-ÁREA-NNN`, os níveis de teste, como um teste cita um caso, a regra de cobertura que o `uc_coverage` confere, o índice das 37 áreas e como ler os dois catálogos (implementados e planejados).
+resumo: O formato do código `UC-ÁREA-NNN`, os níveis de teste, como um teste cita um caso, a regra de cobertura que o `uc_coverage` confere, o índice das 38 áreas e como ler os dois catálogos (implementados e planejados).
 tipo: guia
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/tests/uc_coverage.rs, doc/20-casos-de-uso.md, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, doc/pt-BR/scripts/gerar-casos-de-uso.mjs]
 ---
 
@@ -61,7 +61,7 @@ fn publishing_binary_stores_the_raw_bytes() { /* … */ }
 
 A regra "todo caso documentado tem teste" **só falha com `TABA_UC_STRICT=1`**; sem a variável o teste imprime o placar (`cargo test --test uc_coverage -- --nocapture`): hoje **702 de 885** casos têm teste (**11** retirados). A verificação **não confere o nível**: citar o código num teste unitário não prova o caso de nível `I`; quem revisa olha a coluna.
 
-> Os catálogos aqui em `doc/pt-BR/` **não são lidos** pelo `uc_coverage`: a fonte conferida continua sendo `doc/20a`, `20b` e `20c`. Migrar o teste para ler os catálogos novos é uma mudança de código fora do escopo desta documentação ([32-roadmap.md](32-roadmap.md)). Os códigos são os mesmos.
+> **Onde o `uc_coverage` lê os casos.** O histórico `doc/20a`, `20b` e `20c` **já não está no repositório** (o commit `efeb47a` o removeu; veja a pendência K em [31-pendencias.md](31-pendencias.md)). Enquanto ele não existir, o teste lê os **cartões** (`### UC-XXX-NNN`) de [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md) . Como o gerador também não roda, **um caso novo é escrito à mão como cartão** (em 26a se tem teste, em 26b se não tem), no formato dos demais; foi assim com a área `BKP`. Os códigos são os mesmos de sempre.
 
 ## Como ler e regenerar os catálogos
 
@@ -72,7 +72,7 @@ A regra "todo caso documentado tem teste" **só falha com `TABA_UC_STRICT=1`**; 
 
 O script lê as **linhas `/// UC:` do código** (a mesma regra do `uc_coverage`), **não** a coluna "Testes" (que pode estar velha), então o placar é o do momento. Um caso em 26b **não quer dizer que o comportamento não existe**, só que **nenhum teste o cita**. Alguns têm "(pendente: D##)" no texto: dependem de uma dúvida em aberto ([31-pendencias.md](31-pendencias.md)).
 
-## As áreas (37)
+## As áreas (38)
 
 **Cliente** (a API que as aplicações usam):
 
@@ -125,6 +125,7 @@ O script lê as **linhas `/// UC:` do código** (a mesma regra do `uc_coverage`)
 | `OPS` | Observabilidade, estatísticas, métricas e saúde |
 | `CLR` | Contrato das rotas do cluster |
 | `CFG` | Configuração e validações de partida |
+| `BKP` | Backup opcional em S3: envio, restauração, batimento, evicção, flush e parada |
 
 (O número de casos por área e a cobertura estão em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md).)
 

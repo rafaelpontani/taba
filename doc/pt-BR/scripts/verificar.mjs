@@ -154,8 +154,16 @@ for (const [f, t] of Object.entries(texts)) {
   const problems = [];
   const histCodes = new Set();
   const areas = new Set();
-  for (const f of ['20a-casos-de-uso-cliente.md', '20b-casos-de-uso-no-dados.md', '20c-casos-de-uso-no-cluster.md']) {
+  // O catálogo histórico (`doc/20*.md`), quando ainda existe; senão os cartões dos catálogos gerados
+  // (`26a`, `26b`). Os cartões `UC-BKP` foram escritos à mão em 26a.
+  const legacy = ['20a-casos-de-uso-cliente.md', '20b-casos-de-uso-no-dados.md', '20c-casos-de-uso-no-cluster.md'].filter((f) => fs.existsSync(path.join(root, 'doc', f)));
+  for (const f of legacy) {
     for (const m of read(path.join(root, 'doc', f)).matchAll(/^\| (UC-([A-Z]{3})-\d{3}) \|/gm)) { histCodes.add(m[1]); areas.add(m[2]); }
+  }
+  if (!legacy.length) {
+    for (const f of ['26a-casos-de-uso-implementados.md', '26b-casos-de-uso-planejados.md']) {
+      for (const m of texts[f].matchAll(/^### (UC-([A-Z]{3})-\d{3})[ ]*$/gm)) { histCodes.add(m[1]); areas.add(m[2]); }
+    }
   }
   for (const [f, t] of Object.entries(texts)) {
     if (generated.has(f)) continue;

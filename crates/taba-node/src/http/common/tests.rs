@@ -59,6 +59,7 @@ fn app() -> Router {
     );
     let state = AppState {
         clock: clock.clone(),
+        backup: None,
         topics,
         messages,
         node,

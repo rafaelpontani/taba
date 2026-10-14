@@ -23,6 +23,7 @@ use taba_node::cluster::transport::memory::MemoryNetwork;
 use taba_node::config::{Config, MapEnv};
 use taba_node::core::clock::ManualClock;
 use taba_node::node::{self, ClusterDeps, Deps, NodeError, RunningNode};
+use taba_node::storage::backup::ObjectStore;
 
 pub mod cluster;
 pub mod otlp;
@@ -35,6 +36,8 @@ pub struct TestNodeBuilder {
     clock: Option<Arc<ManualClock>>,
     /// O nó usa o `Transport` HTTP de verdade e escuta neste IP (loopback).
     real_ip: Option<IpAddr>,
+    /// O depósito de objetos do backup em S3 (o em memória, compartilhado entre os nós do teste).
+    backup_store: Option<Arc<dyn ObjectStore>>,
 }
 
 impl TestNodeBuilder {
@@ -51,6 +54,12 @@ impl TestNodeBuilder {
         self.network = Some((network.clone(), host.to_owned()));
         self.env("TABA_MODE", "production")
             .env("TABA_CLUSTER_ENTRY_ADDRESS", "balancer:8081")
+    }
+
+    /// Liga o backup em S3 com este depósito (e o bucket `test`).
+    pub fn backup_store(mut self, store: Arc<dyn ObjectStore>) -> Self {
+        self.backup_store = Some(store);
+        self.env("TABA_BACKUP_S3_BUCKET", "test")
     }
 
     /// O relógio do nó; vários nós de um teste compartilham o mesmo.
@@ -93,6 +102,7 @@ impl TestNodeBuilder {
             .clock
             .unwrap_or_else(|| Arc::new(ManualClock::at_doc_epoch()));
         let real_ip = self.real_ip;
+        let backup_store = self.backup_store.clone();
         let cluster = self.network.map(|(network, host)| {
             let attach_to = network.clone();
             ClusterDeps {
@@ -108,6 +118,7 @@ impl TestNodeBuilder {
                 let mut deps = Deps::production(&config)?;
                 deps.clock = clock.clone();
                 deps.bind_ip = ip;
+                deps.backup_store = backup_store.clone();
                 // O cluster reconhece o chamador pelo IP: cada nó chama a partir do seu.
                 if let Some(cluster) = deps.cluster.as_mut() {
                     cluster.transport = Arc::new(
@@ -121,6 +132,7 @@ impl TestNodeBuilder {
                 bind_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
                 cluster,
                 tls: None,
+                backup_store: backup_store.clone(),
             },
         };
         let node = node::start(config, deps).await?;
@@ -158,6 +170,7 @@ impl TestNode {
             network: None,
             clock: None,
             real_ip: None,
+            backup_store: None,
         }
     }
 

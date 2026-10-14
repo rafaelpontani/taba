@@ -77,7 +77,8 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/node/drain",
             get(drain_status).post(drain_start).delete(drain_cancel),
         )
-        .merge(super::topic_stats::routes());
+        .merge(super::topic_stats::routes())
+        .merge(super::backup::routes());
     // Com `telemetry.prometheus.enabled` desligado a rota não existe (`404`).
     if state.telemetry.prometheus_enabled {
         routes = routes.route("/metrics", get(super::metrics::prometheus));

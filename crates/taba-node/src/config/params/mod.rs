@@ -144,6 +144,27 @@ pub static PARAMS: &[Param] = &[
     p("client-ip.headers.enabled", Some("true")),
     p("client-ip.headers", Some("X-Forwarded-For")),
     p("client-ip.trusted-proxies", None),
+    // Backup opcional em S3 (doc 23, "Backup em S3"): sem `backup.s3.bucket` o recurso fica desligado
+    p("backup.s3.bucket", None),
+    p("backup.s3.region", None),
+    p("backup.s3.endpoint", None),
+    p("backup.s3.prefix", Some("taba")),
+    p("backup.s3.access-key", None),
+    p("backup.s3.secret-key", None),
+    p("backup.s3.path-style", None), // derivado: `true` quando há `backup.s3.endpoint`
+    p("backup.delay", Some("60s")),
+    p("backup.meta.interval", Some("60s")),
+    p("backup.segment.max-bytes", Some("8MB")),
+    p("backup.segment.max-messages", Some("5000")),
+    p("backup.segment.max-age", Some("60s")),
+    p("backup.heartbeat.interval", Some("15s")),
+    p("backup.dead-after", Some("60s")),
+    p("backup.drain.timeout", Some("30s")),
+    p("backup.disk.evict-above", Some("85")),
+    p("backup.disk.evict-to", Some("70")),
+    p("backup.disk.pause-at", Some("90")),
+    p("backup.reconcile.interval", Some("60s")),
+    p("backup.restore.lock-ttl", Some("60s")),
 ];
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ título: Roadmap
 resumo: O que já está pronto (a versão 0.1) e o que vem a seguir, em marcos — contrato OpenAPI, demais conectores, publicação, Kubernetes, operação — com as pendências que cada marco fecha.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [doc/08c-proximos-passos.md, doc/08b-pendencias.md, connectors/README.md, doc/pt-BR/31-pendencias.md]
 ---
 
@@ -67,7 +67,7 @@ Decisões que precisam estar fechadas: **D68** (versões-base), **D70.1** e **D7
 | **Kubernetes** ⬜ | Manifestos ou Helm e validação em um cluster de verdade (sondas, parada com drain, `Service` interno da porta do cluster) | RNF-10 |
 | **Exclusão forçada** ⬜ | Rota manual de exclusão para destravar um cluster em `quorum-lost` (hoje a saída é reiniciar tudo, perdendo mensagens e tópicos); ver "Evolução futura" do protocolo de cluster | Descoberta C |
 | **Retomada do disco em produção** ⬜ | Hoje todo reinício é de nó novo: parar o cluster inteiro perde tudo. Definir o que o primeiro nó faz com o disco anterior | Descoberta D |
-| **Backup e restauração** ⬜ | Não existem | Descoberta J |
+| **Backup e restauração** 🟡 | ✅ Feito: backup opcional em S3 (segmentos, diário, definições, batimento, restauração, evicção, flush, parada do cluster; [33-backup-s3.md](33-backup-s3.md)). ⬜ Falta: compactar o diário (PRB-053), recuperar mais cedo os segmentos de um primário que deixou de sê-lo (PRB-054), restaurar sem ler os segmentos inteiros (PRB-055), apagar do bucket definições removidas com o gestor fora do ar (PRB-056), validar contra um MinIO/AWS reais (o teste de hoje usa um S3 de mentira em HTTP) e medir a latência de publicação com e sem S3 | Descoberta J |
 | **Agregação entre nós das métricas de tópico** ⬜ | A rota interna e o `fan-out` (com `stats.topics.cache-ttl`) | Descoberta A |
 | **Benchmarks** ⬜ | As metas de velocidade e custo não têm medição publicada | RNF-02 |
 

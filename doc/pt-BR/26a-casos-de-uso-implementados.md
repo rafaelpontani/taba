@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Gerado.** Este arquivo é produzido por `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`, que lê as linhas `/// UC: UC-XXX-NNN` do código: não se edita à mão. Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-13, commit 71183b9):** **702** de **885** casos têm ao menos um teste (79.3%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-14, commit efeb47a):** **742** de **925** casos têm ao menos um teste (80.2%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -56,6 +56,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 33 | 9 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 3 | 7 |
 | `CFG` | Configuração e validações de partida | 10 | 2 |
+| `BKP` | Backup opcional em S3 | 40 | 0 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -7629,7 +7630,437 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
+## BKP: Backup opcional em S3
+
+### UC-BKP-001
+
+**Caso:** Sem `backup.s3.bucket` o recurso **não existe**  
+**Então:** o nó é o de sempre e `GET /node/backup`, `POST /node/backup/flush` e `POST /cluster/backup/flush` respondem `422` `backup.not-configured`. Com o bucket configurado mas o **S3 fora do ar na partida**, o nó **sobe com aviso** e o cluster funciona como sem o backup (o recurso liga sozinho quando o S3 volta).  
+**Nível:** I, C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::without_a_backup_nothing_is_told_and_a_missing_body_is_still_a_loss`
+  - `tests/backup.rs::with_s3_down_at_start_the_nodes_start_with_a_warning_and_the_cluster_works`
+  - `tests/backup.rs::without_a_bucket_the_backup_does_not_exist_and_its_routes_say_so`
+  - `tests/s3_store.rs::an_unreachable_s3_is_an_error_the_caller_can_swallow_not_a_panic`
+
+---
+
+### UC-BKP-002
+
+**Caso:** A configuração `backup.*` tem os padrões documentados (`delay` 60 s, `meta.interval` 60 s, segmento de 8 MB, 5000 mensagens ou 60 s, batimento 15 s, `dead-after` 60 s, `drain.timeout` 30 s, evicção 85/70/90); as credenciais são **opcionais** (sem elas vale a cadeia padrão da AWS); `endpoint` liga o `path-style`; o segredo nunca aparece em `Debug`; valores contraditórios impedem a partida.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/backup/tests.rs::the_backup_rules_come_from_the_configuration_with_the_documented_defaults`
+  - `src/cluster/backup/tests.rs::the_example_configuration_files_are_valid`
+  - `src/cluster/backup/tests.rs::the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional`
+
+---
+
+### UC-BKP-003
+
+**Caso:** O depósito de objetos (`ObjectStore`) faz `put`, `get`, `get_range`, `get_suffix`, `list` e `delete`, e a escrita condicional (`If-None-Match`, `If-Match`), tanto no fake em memória quanto no cliente do S3 (contra um S3 em HTTP); um `404` é "não existe", um `412` é "a condição falhou", e o S3 inacessível é um erro que o chamador engole. **O S3 nunca entra no caminho da publicação:** com ele fora do ar a publicação e o consumo seguem, e o `outbox` guarda os IDs até ele voltar.  
+**Nível:** U, C  
+**Testes:**
+  - `src/storage/backup/store/tests.rs::a_store_without_conditional_writes_says_so_and_one_that_is_down_fails`
+  - `src/storage/backup/store/tests.rs::conditional_writes_create_once_and_replace_only_the_known_version`
+  - `src/storage/backup/store/tests.rs::the_memory_store_does_what_the_object_store_trait_promises`
+  - `tests/backup.rs::when_the_primary_dies_the_new_primary_sends_what_was_still_pending`
+  - `tests/s3_store.rs::the_s3_client_does_what_the_object_store_contract_says_against_an_s3_server`
+
+---
+
+### UC-BKP-004
+
+**Caso:** O prefixo base (`backup.s3.prefix`) vai na frente de **todas** as chaves e fica fora das listagens; vazio, nada muda.  
+**Nível:** U, C  
+**Testes:**
+  - `src/storage/backup/store/tests.rs::the_base_prefix_goes_in_front_of_every_key_and_out_of_the_listing`
+  - `tests/s3_store.rs::the_base_prefix_is_a_folder_in_the_bucket`
+
+---
+
+### UC-BKP-005
+
+**Caso:** Os nomes dos objetos seguem o desenho  
+**Então:** `topics/<tópico>.json`, `tokens/<id>.json`, `nodes/<id>.json`, `messages/<tópico>/<topicId>/<primeiroId>_<escritor>_<seq>.seg`, `journal/…/<instante>_<escritor>_<seq>.jrn`; o `topicId` no caminho impede que um tópico recriado ressuscite mensagens do antigo.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/backup/keys/tests.rs::segments_of_a_recreated_topic_do_not_share_a_prefix_with_the_old_one`
+  - `src/storage/backup/keys/tests.rs::the_key_layout_follows_the_documented_one`
+
+---
+
+### UC-BKP-006
+
+**Caso:** O **segmento** termina num rodapé-índice (id, deslocamento, tamanho)  
+**Então:** dá para ler o rodapé do fim do objeto sem baixá-lo (pedindo mais se o rodapé é maior que o palpite) e uma só mensagem por `Range`; lixo é recusado.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/backup/segment/tests.rs::a_segment_round_trips_with_its_footer_index`
+  - `src/storage/backup/segment/tests.rs::a_short_tail_asks_for_the_whole_footer_and_garbage_is_refused`
+  - `src/storage/backup/segment/tests.rs::metadata_survives_the_conversion_both_ways`
+  - `src/storage/backup/segment/tests.rs::one_message_is_read_by_range_without_downloading_the_segment`
+
+---
+
+### UC-BKP-007
+
+**Caso:** O **diário** guarda o último estado de cada mensagem alterada (contador, prazo, recibo, dead-letter) ou a remoção; o estado do diário sobrescreve o da cópia do segmento; um diário ilegível é um erro, não um pânico.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/backup/journal/tests.rs::a_broken_journal_is_an_error_not_a_panic`
+  - `src/storage/backup/journal/tests.rs::a_journal_round_trips_states_and_removals`
+  - `src/storage/backup/journal/tests.rs::a_state_record_overwrites_the_delivery_fields_of_the_segment_copy`
+
+---
+
+### UC-BKP-008
+
+**Caso:** O `_backup.db` guarda o `outbox` (só IDs, do mais antigo ao mais novo, sem repetir), as referências das mensagens salvas, os segmentos que o nó gravou com quantas mensagens vivas, e o contador de sequência (que sobrevive ao reinício).  
+**Nível:** U  
+**Testes:**
+  - `src/storage/backup/db/tests.rs::a_segment_is_reported_dead_only_when_its_last_message_dies`
+  - `src/storage/backup/db/tests.rs::committing_a_segment_records_the_references_and_empties_the_outbox`
+  - `src/storage/backup/db/tests.rs::sequence_numbers_never_repeat_and_a_topic_can_be_forgotten`
+  - `src/storage/backup/db/tests.rs::the_outbox_keeps_only_ids_and_hands_them_out_oldest_first`
+
+---
+
+### UC-BKP-009
+
+**Caso:** O **commit** de uma mensagem só insere uma linha no `outbox`  
+**Então:** o motor apenas avisa o backup (`stored`) e **nunca espera o S3**.  
+**Nível:** U, C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::publishing_only_tells_the_backup_and_never_waits_for_it`
+  - `src/storage/backup/db/tests.rs::the_outbox_keeps_only_ids_and_hands_them_out_oldest_first`
+  - `tests/backup.rs::a_message_consumed_before_the_delay_never_reaches_s3_and_the_rest_does`
+  - `tests/backup.rs::publishing_never_waits_for_s3_and_the_outbox_keeps_the_ids_while_it_is_down`
+
+---
+
+### UC-BKP-010
+
+**Caso:** A mensagem confirmada e consumida **antes de `backup.delay`** nunca vai ao S3 (sai do `outbox` sem gerar upload); as que passam da janela sobem.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::a_message_consumed_before_the_delay_never_reaches_s3_and_the_rest_does`
+
+---
+
+### UC-BKP-011
+
+**Caso:** O segmento fecha pelo que vier primeiro  
+**Então:** tamanho, **quantidade de mensagens** ou idade (`backup.segment.*`).  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::a_message_consumed_before_the_delay_never_reaches_s3_and_the_rest_does`
+  - `tests/backup.rs::a_segment_closes_by_message_count_before_it_gets_old`
+
+---
+
+### UC-BKP-012
+
+**Caso:** Só **depois do PUT confirmar** as linhas do lote saem do `outbox` e ganham referência; o S3 que falha deixa tudo como está, e o envio tenta de novo quando ele volta.  
+**Nível:** U, C  
+**Testes:**
+  - `src/storage/backup/db/tests.rs::committing_a_segment_records_the_references_and_empties_the_outbox`
+  - `tests/backup.rs::a_message_consumed_before_the_delay_never_reaches_s3_and_the_rest_does`
+  - `tests/backup.rs::publishing_never_waits_for_s3_and_the_outbox_keeps_the_ids_while_it_is_down`
+
+---
+
+### UC-BKP-013
+
+**Caso:** O estado mutável vai num **diário** a cada `backup.meta.interval`, só o último estado de cada mensagem; uma entrega é uma mudança de estado e um **ack é uma remoção** (nunca se apaga uma mensagem solta do bucket). Só entram no diário as mensagens já salvas, e a que morre **durante o upload** do segmento dela entra como remoção.  
+**Nível:** U, C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::a_delivery_is_a_state_change_and_an_ack_is_a_removal`
+  - `src/storage/backup/db/tests.rs::a_message_that_died_during_the_upload_is_not_alive_and_is_journaled_as_removed`
+  - `src/storage/backup/db/tests.rs::only_saved_messages_enter_the_journal_and_a_death_is_a_removal`
+  - `tests/backup.rs::the_journal_keeps_the_last_state_and_an_ack_is_a_removal_that_empties_the_segment`
+
+---
+
+### UC-BKP-014
+
+**Caso:** O primário apaga um segmento do bucket **somente quando todas as mensagens dele morreram** (ack, `ttl`, dead-letter); parcialmente morto, fica.  
+**Nível:** U, C  
+**Testes:**
+  - `src/storage/backup/db/tests.rs::a_message_that_died_during_the_upload_is_not_alive_and_is_journaled_as_removed`
+  - `src/storage/backup/db/tests.rs::a_segment_is_reported_dead_only_when_its_last_message_dies`
+  - `tests/backup.rs::the_journal_keeps_the_last_state_and_an_ack_is_a_removal_that_empties_the_segment`
+
+---
+
+### UC-BKP-015
+
+**Caso:** **Todas** as filas entram no backup  
+**Então:** as voláteis e as dead-letter também.  
+**Nível:** C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::a_message_that_goes_to_the_dead_letter_is_removed_from_the_queue_and_stored_in_the_other`
+  - `tests/backup.rs::volatile_queues_and_dead_letters_are_backed_up_too`
+
+---
+
+### UC-BKP-016
+
+**Caso:** A definição de tópico é gravada pelo **nó gestor** em `topics/<nome>.json`; com o S3 fora do ar a alteração **vale mesmo assim** (nunca é recusada) e é regravada quando ele volta.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::definitions_and_tokens_go_to_the_bucket_and_a_failure_never_refuses_the_change`
+
+---
+
+### UC-BKP-017
+
+**Caso:** A remoção de tópico grava uma **lápide** na definição e apaga, em segundo plano, os segmentos e diários do `topicId`.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::removing_a_topic_leaves_a_tombstone_and_clears_its_messages_from_the_bucket`
+
+---
+
+### UC-BKP-018
+
+**Caso:** Cada token vai num `tokens/<id>.json` com o hash salgado (**nunca o segredo**); a revogação apaga o objeto.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::definitions_and_tokens_go_to_the_bucket_and_a_failure_never_refuses_the_change`
+  - `tests/backup.rs::tokens_go_to_the_bucket_one_file_each_and_a_revoked_token_disappears`
+
+---
+
+### UC-BKP-019
+
+**Caso:** Cada nó grava `nodes/<id>.json` com id, ips, porta, estado e um `seq` que cresce a cada batimento; ao sair limpo (drain) remove o próprio arquivo e para de bater.  
+**Nível:** U, C  
+**Testes:**
+  - `src/cluster/backup/tests.rs::the_node_writes_its_own_heartbeat_with_a_growing_sequence`
+  - `tests/backup.rs::every_node_beats_in_the_bucket_with_a_growing_sequence_and_leaves_on_drain`
+
+---
+
+### UC-BKP-020
+
+**Caso:** Quem observa **não compara horários**  
+**Então:** guarda o ETag de cada batimento e o instante (monotônico) em que ele mudou; o nó está **morto** quando o ETag não muda por `backup.dead-after`, e um arquivo visto pela primeira vez conta como fresco; sem arquivo, o nó está morto; com o S3 ilegível o resultado é **desconhecido** (vale o comportamento sem o backup).  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/backup/tests.rs::a_heartbeat_is_fresh_while_its_etag_changes_and_dead_when_it_stops`
+  - `src/cluster/backup/tests.rs::a_node_without_a_file_is_dead_and_an_unreadable_bucket_says_nothing`
+  - `tests/backup.rs::an_unreachable_node_with_a_fresh_heartbeat_is_not_excluded_until_the_heartbeat_expires`
+
+---
+
+### UC-BKP-021
+
+**Caso:** Um nó **inalcançável com batimento fresco** está vivo em outra partição  
+**Então:** a votação **não o exclui** até o batimento vencer; ao vencer, é excluído.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::an_unreachable_node_with_a_fresh_heartbeat_is_not_excluded_until_the_heartbeat_expires`
+
+---
+
+### UC-BKP-022
+
+**Caso:** **Três de cinco** nós caem ao mesmo tempo  
+**Então:** os dois sobreviventes excluem os mortos depois de o batimento vencer, e as mensagens que só existiam nos mortos são **buscadas no S3** (só vira perda se o S3 também não tiver).  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::after_a_crash_the_survivor_waits_for_the_heartbeats_to_expire_and_restores`
+  - `tests/backup.rs::three_of_five_nodes_fall_and_the_survivors_find_the_missing_messages_in_s3`
+
+---
+
+### UC-BKP-023
+
+**Caso:** O nó que sobe e **não acha ninguém** batendo (todos vencidos) é o **sobrevivente único**  
+**Então:** começa um cluster de um nó e restaura. Um sobrevivente **em execução** exclui os mortos sozinho, mesmo abaixo de `cluster.vote.min-voters`.  
+**Nível:** U, C  
+**Testes:**
+  - `src/cluster/backup/tests.rs::a_node_with_no_cluster_in_the_bucket_only_starts_alone_if_it_is_the_first_or_the_stop_list_says_so`
+  - `src/cluster/backup/tests.rs::the_verdict_tells_a_live_cluster_from_a_dead_one_from_an_empty_bucket`
+  - `tests/backup.rs::a_planned_stop_flushes_everything_and_the_next_start_restores_the_cluster`
+  - `tests/backup.rs::a_single_survivor_excludes_the_dead_even_below_the_minimum_of_voters`
+  - `tests/backup.rs::after_a_crash_the_survivor_waits_for_the_heartbeats_to_expire_and_restores`
+
+---
+
+### UC-BKP-024
+
+**Caso:** Se algum nó `member` bate no bucket, o nó que sobe **não está sozinho** e segue pelo caminho normal; um nó que também está subindo (`joining`) não prova que o cluster existe; sem rastro de cluster, só `first-node` (ou a lista da parada) autoriza começar sozinho.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/backup/tests.rs::a_node_with_no_cluster_in_the_bucket_only_starts_alone_if_it_is_the_first_or_the_stop_list_says_so`
+  - `src/cluster/backup/tests.rs::only_one_survivor_gets_the_restore_lock_and_the_other_waits_as_a_normal_node`
+  - `src/cluster/backup/tests.rs::the_verdict_tells_a_live_cluster_from_a_dead_one_from_an_empty_bucket`
+
+---
+
+### UC-BKP-025
+
+**Caso:** Dois restauradores ao mesmo tempo  
+**Então:** a **trava** `restore/lock.json` (criada com `If-None-Match`) dá a vitória a um só; o outro espera e entra como nó normal; a trava vence por `backup.restore.lock-ttl` se o titular some. Num S3 **sem escrita condicional** o nó avisa que a trava não é segura e segue.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/backup/tests.rs::only_one_survivor_gets_the_restore_lock_and_the_other_waits_as_a_normal_node`
+  - `src/cluster/backup/tests.rs::without_conditional_writes_the_lock_is_unsafe_but_the_node_still_starts`
+  - `src/storage/backup/store/tests.rs::a_store_without_conditional_writes_says_so_and_one_that_is_down_fails`
+  - `tests/s3_store.rs::conditional_writes_use_if_none_match_and_if_match_and_a_412_is_not_an_error`
+
+---
+
+### UC-BKP-026
+
+**Caso:** A restauração devolve definições, tokens (menos os vencidos) e mensagens  
+**Então:** segmentos mais o último estado do diário; as mensagens que o diário removeu são descartadas.  
+**Nível:** U, C  
+**Testes:**
+  - `src/cluster/backup/restore.rs::the_last_journal_state_wins_and_removals_drop_the_message`
+  - `tests/backup.rs::a_planned_stop_flushes_everything_and_the_next_start_restores_the_cluster`
+  - `tests/backup.rs::after_a_crash_the_survivor_waits_for_the_heartbeats_to_expire_and_restores`
+
+---
+
+### UC-BKP-027
+
+**Caso:** A limpeza de `nodes/` apaga só os arquivos de ids que **não são membros** e cujo batimento **venceu**; um arquivo fresco nunca é apagado (pode ser um nó vivo em outra partição).  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/backup/tests.rs::cleaning_nodes_removes_only_dead_files_of_nodes_that_are_not_in_the_cluster`
+
+---
+
+### UC-BKP-028
+
+**Caso:** Com o disco acima de 85% o nó apaga o `.body` das mensagens que já têm referência no bucket, até 70%; a linha em `_topic.db` fica.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::a_full_disk_evicts_the_bodies_already_in_s3_and_reading_one_goes_back_to_the_bucket`
+
+---
+
+### UC-BKP-029
+
+**Caso:** A leitura de uma mensagem cujo corpo foi evictado busca o corpo no segmento por `Range`; sem o backup, o corpo sumido continua sendo perda.  
+**Nível:** U, C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::a_body_the_eviction_removed_from_disk_comes_back_from_the_backup`
+  - `tests/backup.rs::a_full_disk_evicts_the_bodies_already_in_s3_and_reading_one_goes_back_to_the_bucket`
+
+---
+
+### UC-BKP-030
+
+**Caso:** Durante o flush e o drain, ao chegar a 90% a passagem da memória para o disco **pausa** até a evicção liberar espaço (no máximo `backup.drain.timeout`).  
+**Nível:** U, C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::the_drain_asks_the_backup_before_each_memory_to_disk_write`
+  - `tests/backup.rs::at_ninety_percent_the_memory_to_disk_pass_pauses_until_the_disk_has_room`
+
+---
+
+### UC-BKP-031
+
+**Caso:** O **drain** manda ao S3, com prioridade, tudo o que está em disco e o `outbox` **antes** de o nó sair do cluster; o nó só chega a `drained` depois do envio (ou do prazo) e remove o próprio batimento.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::a_planned_stop_flushes_everything_and_the_next_start_restores_the_cluster`
+
+---
+
+### UC-BKP-032
+
+**Caso:** `POST /node/backup/flush` faz memória → disco, disco → S3 e `outbox` → S3, **sem desregistrar nem parar o nó**, e responde um relatório (`complete`).  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::the_node_flush_sends_everything_without_stopping_the_node`
+
+---
+
+### UC-BKP-033
+
+**Caso:** `POST /cluster/backup/flush` repassa a todos os nós e junta as respostas; um nó lento aparece como pendente.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::the_cluster_flush_asks_every_node_and_a_slow_one_shows_up_as_pending`
+
+---
+
+### UC-BKP-034
+
+**Caso:** `POST /cluster/stop` faz o drain em **todos** os nós e o coordenador grava `cluster/stop.json` com os nós vivos e a ordem em que pararam; com o S3 indisponível ainda faz o drain em disco e responde com **aviso** de que o backup não foi enviado.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::a_planned_stop_flushes_everything_and_the_next_start_restores_the_cluster`
+  - `tests/backup.rs::with_s3_down_the_stop_still_drains_every_node_and_warns_that_the_backup_was_not_sent`
+
+---
+
+### UC-BKP-035
+
+**Caso:** **Iniciar o cluster** é subir os processos  
+**Então:** a restauração acontece sozinha, o primeiro nó usa a lista da parada para não esperar o prazo de morte, a trava e a lista são soltas ao fim. Uma queda (sem lista) espera o prazo de `backup.dead-after`.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::a_planned_stop_flushes_everything_and_the_next_start_restores_the_cluster`
+
+---
+
+### UC-BKP-036
+
+**Caso:** O primário avisa as réplicas, em lote, de quais mensagens já estão no bucket; a réplica só guarda a referência do que ela tem; a mensagem que morre numa réplica esquece a referência sem tocar no diário nem na contagem do segmento (são do dono).  
+**Nível:** U, C  
+**Testes:**
+  - `src/storage/backup/db/tests.rs::a_replica_keeps_the_reference_but_never_the_journal_or_the_segment_count`
+  - `tests/backup.rs::the_primary_tells_the_replicas_which_messages_are_already_in_the_bucket`
+
+---
+
+### UC-BKP-037
+
+**Caso:** Quando o primário morre ou deixa de ser o dono, o **herdeiro adota** o que ainda não está no bucket e o envia depois de `backup.delay`; o antigo dono esquece.  
+**Nível:** U, C  
+**Testes:**
+  - `src/engine/messages/tests/backup.rs::a_replica_becomes_the_owner_and_adopts_and_the_old_owner_releases`
+  - `tests/backup.rs::when_the_primary_dies_the_new_primary_sends_what_was_still_pending`
+
+---
+
+### UC-BKP-038
+
+**Caso:** `GET /node/backup` mostra o estado do backup (S3 no ar, fila de envio, segmentos, o que ainda falta  
+**Então:** `pending`).  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::the_cluster_flush_asks_every_node_and_a_slow_one_shows_up_as_pending`
+
+---
+
+### UC-BKP-039
+
+**Caso:** Com o S3 fora do ar na parada o envio **não bloqueia para sempre**  
+**Então:** passado `backup.drain.timeout` o nó termina o drain mesmo assim.  
+**Nível:** C  
+**Testes:**
+  - `tests/backup.rs::with_s3_down_the_stop_still_drains_every_node_and_warns_that_the_backup_was_not_sent`
+
+---
+
+### UC-BKP-040
+
+**Caso:** O modo desenvolvimento (um nó só) é dono de tudo e também faz o backup.  
+**Nível:** I  
+**Testes:**
+  - `tests/backup.rs::a_single_node_in_development_mode_owns_everything_and_backs_up_too`
+
+---
+
 ## Fontes e provas
 
 - Os casos vêm de `doc/20a`, `20b` e `20c` (o catálogo histórico, conferido pelo teste `crates/taba-node/tests/uc_coverage.rs`); os testes, das linhas `/// UC:` do código.
-- Regenerar: `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`.
+- Os casos `UC-BKP` (backup em S3) não vêm do catálogo histórico: foram escritos à mão neste arquivo, no mesmo formato, e a lista de testes de cada um é conferida por `uc_coverage`.
+- Regenerar: `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` (hoje quebrado: o catálogo histórico foi removido; veja a pendência K em [31-pendencias.md](31-pendencias.md)).

@@ -3,7 +3,7 @@ título: Durabilidade
 resumo: O que o Taba garante sobre mensagens confirmadas, em quais falhas elas sobrevivem, em quais se perdem, e como ajustar o equilíbrio entre latência e garantia.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-14 @ efeb47a
 fontes: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
 ---
 
@@ -11,7 +11,7 @@ fontes: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/
 
 > Leia antes: [10-publicacao.md](10-publicacao.md) e [08-armazenamento.md](08-armazenamento.md).
 
-Este documento responde: **"se eu recebi o `201` (ou o `204` do ack), em que situações a mensagem não se perde?"** A resposta curta: ela sobrevive à falha de **qualquer nó** (e a mais de um, conforme o fator de replicação), mas **não** a uma parada simultânea de todos os nós **em produção**, porque a durabilidade vem da **replicação em memória**, não do disco.
+Este documento responde: **"se eu recebi o `201` (ou o `204` do ack), em que situações a mensagem não se perde?"** A resposta curta: ela sobrevive à falha de **qualquer nó** (e a mais de um, conforme o fator de replicação), mas **não** a uma parada simultânea de todos os nós **em produção**, porque a durabilidade vem da **replicação em memória**, não do disco. **Com o backup opcional em S3** ([33-backup-s3.md](33-backup-s3.md)) o cluster restaura o que estava no bucket, com a defasagem (RPO) de `backup.delay` para as mensagens e de `backup.meta.interval` para o estado.
 
 ## O modelo
 
@@ -37,7 +37,8 @@ Considere o padrão: 3 nós, `replication.factor=3`, `write.quorum=2`.
 | Um nó é **reiniciado** (processo reinicia) | **Sim**, as cópias dos **outros** nós | O nó volta como **nó novo** e sincroniza. O disco da vida anterior ainda devolve ao cluster o que só ele tinha |
 | Um nó sai por **drain** | **Sim** | O nó grava tudo em disco e se desregistra; as cópias dele já existiam nos outros nós |
 | Os três nós são reiniciados **um por vez** (`docker compose restart`) | **Sim** | Verificado: com 14 mensagens no tópico, reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (cada um até ficar `healthy`) e consumir tudo devolveu **14 de 14** |
-| **Todos os nós** param ao mesmo tempo (produção) | **Não: perde as mensagens e também as definições de tópico** | Em produção todo reinício é de nó novo e o disco antigo só serve para devolver "perdas" listadas pelos outros nós. Com o cluster inteiro parado não há quem liste. Verificado: `docker compose down` + `up` (volumes mantidos) subiu um cluster **sem nenhum tópico**. ⚠️ Limite de projeto |
+| **Todos os nós** param ao mesmo tempo (produção), **com o backup em S3** | **Sim, com defasagem:** definições e tokens voltam; as mensagens voltam **menos** as confirmadas e expiradas (diário) e **mais** as que estavam no bucket. Perde o que ainda esperava no `outbox` (até `backup.delay`) e o estado da última janela. *At-least-once*: o consumidor precisa ser idempotente | Parada **programada** (`POST /cluster/stop`): sem defasagem, o drain manda tudo ao S3. Queda: o último envio. Detalhes e cenários: [33-backup-s3.md](33-backup-s3.md) |
+| **Todos os nós** param ao mesmo tempo (produção), **sem backup** | **Não: perde as mensagens e também as definições de tópico** | Em produção todo reinício é de nó novo e o disco antigo só serve para devolver "perdas" listadas pelos outros nós. Com o cluster inteiro parado não há quem liste. Verificado: `docker compose down` + `up` (volumes mantidos) subiu um cluster **sem nenhum tópico**. ⚠️ Limite de projeto |
 | Partição de rede | **Depende do lado** | Cada lado pode excluir o outro e seguir ([07-cluster.md](07-cluster.md), "Risco aceito"). Mensagens com cópia em ambos os lados sobrevivem; as escritas no lado minoritário falham por falta de quórum |
 | Modo desenvolvimento, 1 nó | **Só com drain** | Sem réplicas: o drain grava tudo e a próxima partida retoma. Queda sem drain perde o que só estava em memória |
 | **Primário** de um bloco fora do ar | A mensagem **não é perdida**, mas as escritas do bloco **falham** | O secundário não coordena; quando o primário é excluído, o herdeiro assume |
@@ -96,7 +97,7 @@ A idade vem **do próprio `id`** (GUID v7 carrega o instante da publicação; na
 
 ## Limites conhecidos
 
-- **Parada total** em produção perde o que estava só em memória (acima).
+- **Parada total** em produção perde o que estava só em memória (acima), **a menos que** o backup em S3 esteja ligado ([33-backup-s3.md](33-backup-s3.md)): então perde só a janela ainda não enviada.
 - **PRB-005:** durante o drain o nó recusa o ack; sem outro nó para repassar, o consumidor não confirma.
 - **D116 (decidido):** a redundância das mensagens de um nó que sai fica em `replication.factor − 1` até entrar um nó novo.
 - **D114:** o que `delivery.get.max-attempts` conta ainda não está decidido.

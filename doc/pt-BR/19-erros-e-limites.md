@@ -77,6 +77,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `distributor.too-many-targets` | 422 | A publicação casaria mais filas que `topics.distributor.max-targets` (nenhuma cópia é feita) |
 | `topic.volatile-limit` | 422 | O `autoCreate` esbarra em `topics.volatile.max-count` |
 | `cluster.join-unreachable` | 422 | Entre nós: o coordenador do ingresso não conseguiu conectar de volta ao nó novo |
+| `backup.not-configured` | 422 | `POST /node/backup/flush` ou `POST /cluster/backup/flush` num nó sem `backup.s3.bucket` |
 | `rate-limit.exceeded` | 429 | Rate limit excedido (traz `Retry-After`) |
 
 ## Disponibilidade e falhas — `5xx`
