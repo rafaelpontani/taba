@@ -1,5 +1,5 @@
 # Roda quando o semantic-release (semantic.yml) cria a tag de uma versão: vX.Y.Z (final, da main) ou
-# vX.Y.Z-rc.N (candidata, da release). Os builds (servidor, conector Rust e conector C#) compilam e
+# vX.Y.Z-rc.N (candidata, da release). O semantic.yml o dispara com a ref na tag; o push de tag também serve. Os builds (servidor, conector Rust e conector C#) compilam e
 # testam com a versão da tag e enviam os binários como artefatos. Se os testes passarem, em paralelo: o
 # job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e o job de release anexa os
 # binários e pacotes à GitHub Release. Depois movem as tags flutuantes.
@@ -20,6 +20,9 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+  # O semantic.yml dispara com `--ref vX.Y.Z`: tag criada com o GITHUB_TOKEN não gera o evento de push.
+  # Disparado numa branch ou numa tag flutuante, o job `version` não passa e nada roda.
+  workflow_dispatch:
 
 concurrency:
   group: release

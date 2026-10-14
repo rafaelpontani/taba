@@ -1,12 +1,8 @@
 # A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
 # calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release. Só isso. O resto
-# do pipeline (build, testes, Docker, binários na Release, tags flutuantes) está no release.yml e roda
-# quando a tag vX.Y.Z é criada.
+# do pipeline (build, testes, Docker, binários na Release, tags flutuantes) está no release.yml, que este
+# workflow dispara para a tag vX.Y.Z recém-criada. Não precisa de PAT: tudo usa o GITHUB_TOKEN.
 # Commits sem feat/fix/perf (docs, chore, ci...) não geram versão: o job termina sem criar tag.
-#
-# A tag precisa ser enviada com um token que NÃO seja o GITHUB_TOKEN: o GitHub não dispara workflows
-# por eventos criados com ele, e o release.yml nunca rodaria. Secret RELEASE_TOKEN: PAT (ou token de
-# GitHub App) com permissão de escrita em "Contents" do repositório.
 #
 # Configuração do semantic-release: .releaserc.json. Fluxo de candidatas e promoção: doc/pt-BR/27-ci-cd.md.
 name: Semantic
@@ -48,7 +44,6 @@ jobs:
           extra_plugins: |
             conventional-changelog-conventionalcommits@8
         env:
-          # O dry-run não cria tag, então o GITHUB_TOKEN basta (o PAT é só do job semantic).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Resumo
         shell: bash
@@ -76,15 +71,31 @@ jobs:
     needs: preview
     if: needs.preview.outputs.published == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: cycjimmy/semantic-release-action@v4
+      - id: release
+        uses: cycjimmy/semantic-release-action@v4
         with:
           semantic_version: 24
           extra_plugins: |
             conventional-changelog-conventionalcommits@8
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A tag criada com o GITHUB_TOKEN não dispara o `on: push: tags` do release.yml (regra do GitHub).
+      # O workflow_dispatch é a exceção permitida: dispara o release.yml com a ref na tag, e lá o
+      # github.ref_name é a própria tag.
+      - name: Dispara o release.yml na tag
+        if: steps.release.outputs.new_release_published == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.release.outputs.new_release_version }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"

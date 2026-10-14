@@ -31,14 +31,14 @@ Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo
 | `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64** (o código é o mesmo), `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
 | `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo build --release --locked -p taba-cli` (musl, `musl-tools`); artefato `taba-cli-<arch>` |
 | `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** (`Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection`) como o artefato `nuget-packages` |
-| `semantic.yml` | `push` em `main`/`release`: só cria a tag (semantic-release). Usa o secret `RELEASE_TOKEN` (PAT ou GitHub App), **não** o `GITHUB_TOKEN`: tags criadas com o `GITHUB_TOKEN` não disparam workflows |
+| `semantic.yml` | `push` em `main`/`release`: prévia da versão (dry-run), cria a tag (semantic-release) e dispara o `release.yml` nela. Só usa o `GITHUB_TOKEN` |
 | `release.yml` | O fluxo de release (abaixo), disparado pela tag |
 
 O parâmetro de entrada `version` dos builds é **vazio em pull request**; no release recebe a versão da tag e o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**.
 
 ## O release (`semantic.yml` e `release.yml`)
 
-0. **`semantic.yml`**: a cada push, o job `preview` roda o semantic-release em **dry-run** e mostra no resumo da execução a versão que sairia (sem criar nada); o job `semantic` roda em seguida, **automaticamente**, se houver versão (a aprovação é a do MR que leva o commit à branch). O **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**. Sem commit relevante, nada é criado e o `release.yml` não roda. O push da tag dispara o `release.yml`. Os filtros de tag (`v[0-9]+.[0-9]+.[0-9]+` e `…-rc.[0-9]+`) deixam de fora as tags flutuantes, e o job `version` confere o formato de novo.
+0. **`semantic.yml`**: a cada push, o job `preview` roda o semantic-release em **dry-run** e mostra no resumo da execução a versão que sairia (sem criar nada); o job `semantic` roda em seguida, **automaticamente**, se houver versão (a aprovação é a do MR que leva o commit à branch). O **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**. Sem commit relevante, nada é criado e o `release.yml` não roda. Tudo usa o `GITHUB_TOKEN` (sem PAT): como a tag criada com ele não gera evento de push, o próprio `semantic.yml` dispara o `release.yml` por `workflow_dispatch` com a ref na tag (`gh workflow run release.yml --ref vX.Y.Z`; o push de tag também o dispara). Os filtros de tag (`v[0-9]+.[0-9]+.[0-9]+` e `…-rc.[0-9]+`) deixam de fora as tags flutuantes, e o job `version` confere o formato de novo.
 1. **`version`**: extrai a versão do nome da tag.
 2. **`server`, `connector-rust`, `connector-csharp`** (em paralelo): compilam e **testam com a versão da tag**.
 3. **`plan`**: calcula as tags Docker e as tags flutuantes do git (abaixo).
