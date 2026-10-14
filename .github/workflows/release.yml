@@ -1,9 +1,12 @@
-# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
-# calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release primeiro. Depois
-# os builds (servidor, conector Rust e conector C#) compilam e testam com essa versão e enviam os binários como artefatos. Se os testes passarem, em
-# paralelo: o job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e o job de release
-# anexa os binários e pacotes à GitHub Release. Depois movem as tags flutuantes.
-# Commits sem feat/fix/perf (docs, chore, ci...) não geram versão.
+# Roda quando o semantic-release (semantic.yml) cria a tag de uma versão: vX.Y.Z (final, da main) ou
+# vX.Y.Z-rc.N (candidata, da release). Os builds (servidor, conector Rust e conector C#) compilam e
+# testam com a versão da tag e enviam os binários como artefatos. Se os testes passarem, em paralelo: o
+# job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e o job de release anexa os
+# binários e pacotes à GitHub Release. Depois movem as tags flutuantes.
+#
+# As tags flutuantes (v0.1, v0, v0.1-rc, v0-rc) NÃO podem disparar este workflow: os filtros abaixo só
+# aceitam tags completas, o job `version` confere de novo, e o floating-tags as envia com o GITHUB_TOKEN,
+# que não dispara workflows.
 #
 # Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
 #   0.1.0-rc.2 -> 0.1.0-rc.2, 0.1-rc, 0-rc, rc          (git: v0.1-rc, v0-rc)
@@ -14,7 +17,9 @@ name: Release
 
 on:
   push:
-    branches: [main, release]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
 
 concurrency:
   group: release
@@ -24,36 +29,36 @@ permissions:
   contents: read
 
 jobs:
-  # A versão sai primeiro, antes de qualquer outro job. Build e testes (ci) usam essa versão.
+  # A versão vem da tag que disparou o workflow. Build e testes usam essa versão.
   version:
-    name: Versão (semantic-release)
+    name: Versão (tag)
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     outputs:
-      published: ${{ steps.release.outputs.new_release_published }}
-      version: ${{ steps.release.outputs.new_release_version }}
+      published: ${{ steps.tag.outputs.published }}
+      version: ${{ steps.tag.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: release
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          semantic_version: 24
-          extra_plugins: |
-            conventional-changelog-conventionalcommits@8
+      # Segunda barreira contra tags flutuantes ou fora do padrão: só segue com vX.Y.Z[-rc.N].
+      - id: tag
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "tag ignorada: $TAG"
+          fi
 
   # Os três builds saem em paralelo, cada um com a versão da tag. O que as imagens e a release usam
   # (servidor e conector Rust) não espera o conector C#, e vice-versa.
   server:
     name: Servidor
     needs: version
+    if: needs.version.outputs.published == 'true'
     uses: ./.github/workflows/build-server.yml
     with:
       version: ${{ needs.version.outputs.version }}
@@ -61,6 +66,7 @@ jobs:
   connector-rust:
     name: Conector Rust
     needs: version
+    if: needs.version.outputs.published == 'true'
     uses: ./.github/workflows/build-connector-rust.yml
     with:
       version: ${{ needs.version.outputs.version }}
@@ -68,6 +74,7 @@ jobs:
   connector-csharp:
     name: Conector C#
     needs: version
+    if: needs.version.outputs.published == 'true'
     uses: ./.github/workflows/build-connector-csharp.yml
     with:
       version: ${{ needs.version.outputs.version }}

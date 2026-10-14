@@ -16,7 +16,8 @@ fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ver
 | Fluxo | Quando | O que faz |
 |---|---|---|
 | **CI** (`ci.yml`) | A cada **pull request** | Chama os três builds (servidor, conector Rust, conector C#), **sem versão** |
-| **Release** (`release.yml`) | A cada **push** em `release` ou `main` | Calcula a versão, cria a tag e a GitHub Release, compila e testa com essa versão, publica as imagens Docker e anexa binários e pacotes à Release |
+| **Semantic** (`semantic.yml`) | A cada **push** em `release` ou `main` | Roda o semantic-release: calcula a versão pelos commits e cria a tag e a GitHub Release (nada, se o commit não gera versão) |
+| **Release** (`release.yml`) | Quando uma **tag completa** (`vX.Y.Z` ou `vX.Y.Z-rc.N`) é criada | Compila e testa com a versão da tag, publica as imagens Docker e anexa binários e pacotes à Release. **Tags flutuantes não disparam** |
 
 Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo CI **e** pelo release, com a mesma lógica.
 
@@ -30,13 +31,15 @@ Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo
 | `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64** (o código é o mesmo), `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
 | `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo build --release --locked -p taba-cli` (musl, `musl-tools`); artefato `taba-cli-<arch>` |
 | `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** (`Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection`) como o artefato `nuget-packages` |
-| `release.yml` | O fluxo de release (abaixo) |
+| `semantic.yml` | `push` em `main`/`release`: só cria a tag (semantic-release). Usa o secret `RELEASE_TOKEN` (PAT ou GitHub App), **não** o `GITHUB_TOKEN`: tags criadas com o `GITHUB_TOKEN` não disparam workflows |
+| `release.yml` | O fluxo de release (abaixo), disparado pela tag |
 
 O parâmetro de entrada `version` dos builds é **vazio em pull request**; no release recebe a versão da tag e o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**.
 
-## O release (`release.yml`)
+## O release (`semantic.yml` e `release.yml`)
 
-1. **`version`**: o **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**, **antes de tudo**. Sem commit relevante, nada é publicado e o resto não roda.
+0. **`semantic.yml`**: a cada push, o job `preview` roda o semantic-release em **dry-run** e mostra no resumo da execução a versão que sairia (sem criar nada); o job `semantic` só roda se houver versão e **depois de aprovação manual** (environment `release` com *Required reviewers*). Aprovado, o **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**. Sem commit relevante, nada é criado e o `release.yml` não roda. O push da tag dispara o `release.yml`. Os filtros de tag (`v[0-9]+.[0-9]+.[0-9]+` e `…-rc.[0-9]+`) deixam de fora as tags flutuantes, e o job `version` confere o formato de novo.
+1. **`version`**: extrai a versão do nome da tag.
 2. **`server`, `connector-rust`, `connector-csharp`** (em paralelo): compilam e **testam com a versão da tag**.
 3. **`plan`**: calcula as tags Docker e as tags flutuantes do git (abaixo).
 4. **`docker`** (Docker Hub): baixa os binários `taba-node-*` e `taba-cli-*` e monta **duas imagens multi-arquitetura** (`linux/amd64`, `linux/arm64`), **sem compilar nada**: `rafaelpontani/taba` (`Dockerfile.ci`) e `rafaelpontani/taba-cli` (`Dockerfile.cli.ci`, `ENTRYPOINT taba-cli`).
