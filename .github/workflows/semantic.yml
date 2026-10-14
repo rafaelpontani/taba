@@ -44,7 +44,8 @@ jobs:
           extra_plugins: |
             conventional-changelog-conventionalcommits@8
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          # Só lê: o dry-run não cria tag, então o GITHUB_TOKEN basta (o PAT é só do job semantic).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Resumo
         shell: bash
         env:
