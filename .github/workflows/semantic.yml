@@ -1,5 +1,4 @@
-# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): mostra a prévia da
-# versão. Ao disparar o workflow à mão na branch, o semantic-release
+# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
 # calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release. Só isso. O resto
 # do pipeline (build, testes, Docker, binários na Release, tags flutuantes) está no release.yml e roda
 # quando a tag vX.Y.Z é criada.
@@ -15,8 +14,6 @@ name: Semantic
 on:
   push:
     branches: [main, release]
-  # Disparo manual: é a aprovação. Roda a prévia e, havendo versão, cria a tag da branch escolhida.
-  workflow_dispatch:
 
 concurrency:
   group: semantic
@@ -27,7 +24,7 @@ permissions:
 
 jobs:
   # Simulação (dry-run): mostra no resumo da execução qual versão sairia, sem criar tag nem Release.
-  # Sem aprovação: roda em todo push, para quem aprova saber o que está aprovando.
+  # A aprovação é a do MR que leva o commit à branch; a prévia só registra o que vai sair.
   preview:
     name: Prévia da versão
     runs-on: ubuntu-latest
@@ -73,13 +70,11 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Cria a tag de verdade. Só roda quando alguém dispara o workflow à mão (Actions > Semantic > Run
-  # workflow, escolhendo a branch) e se a prévia achou versão. Em push, só a prévia roda. (Repositório
-  # privado no plano Free não tem "Required reviewers" em environments, então a aprovação é este clique.)
+  # Cria a tag de verdade, automaticamente, se a prévia achou versão.
   semantic:
     name: Semantic (cria a tag)
     needs: preview
-    if: github.event_name == 'workflow_dispatch' && needs.preview.outputs.published == 'true'
+    if: needs.preview.outputs.published == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

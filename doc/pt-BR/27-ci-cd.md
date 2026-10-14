@@ -38,7 +38,7 @@ O parâmetro de entrada `version` dos builds é **vazio em pull request**; no re
 
 ## O release (`semantic.yml` e `release.yml`)
 
-0. **`semantic.yml`**: a cada push, o job `preview` roda o semantic-release em **dry-run** e mostra no resumo da execução a versão que sairia (sem criar nada); o job `semantic` só roda se houver versão e **quando o workflow é disparado à mão** (Actions → Semantic → *Run workflow*, na branch desejada; é a aprovação manual, já que *Required reviewers* não existe em repositório privado no plano Free). Disparado, o **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**. Sem commit relevante, nada é criado e o `release.yml` não roda. O push da tag dispara o `release.yml`. Os filtros de tag (`v[0-9]+.[0-9]+.[0-9]+` e `…-rc.[0-9]+`) deixam de fora as tags flutuantes, e o job `version` confere o formato de novo.
+0. **`semantic.yml`**: a cada push, o job `preview` roda o semantic-release em **dry-run** e mostra no resumo da execução a versão que sairia (sem criar nada); o job `semantic` roda em seguida, **automaticamente**, se houver versão (a aprovação é a do MR que leva o commit à branch). O **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**. Sem commit relevante, nada é criado e o `release.yml` não roda. O push da tag dispara o `release.yml`. Os filtros de tag (`v[0-9]+.[0-9]+.[0-9]+` e `…-rc.[0-9]+`) deixam de fora as tags flutuantes, e o job `version` confere o formato de novo.
 1. **`version`**: extrai a versão do nome da tag.
 2. **`server`, `connector-rust`, `connector-csharp`** (em paralelo): compilam e **testam com a versão da tag**.
 3. **`plan`**: calcula as tags Docker e as tags flutuantes do git (abaixo).
