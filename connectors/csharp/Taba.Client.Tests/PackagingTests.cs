@@ -6,9 +6,9 @@ using NUnit.Framework;
 namespace Taba.Tests
 {
     /// <summary>
-    /// O projeto do conector e o código-fonte dizem o que a documentação promete (doc 19, seções 18.5 e
-    /// 18.6): os alvos, o C# 7.3, nenhuma dependência, a TLS da plataforma e o <c>PATCH</c> de verdade.
-    /// O build de cada alvo é o que confere a compilação de fato.
+    /// The connector project and the source code say what the documentation promises (doc 19, sections 18.5 and
+    /// 18.6): the targets, C# 7.3, no dependencies, the platform's TLS and a real <c>PATCH</c>.
+    /// The build of each target is what actually checks the compilation.
     /// </summary>
     [TestFixture]
     public class PackagingTests
@@ -23,7 +23,7 @@ namespace Taba.Tests
                     return candidate;
                 }
             }
-            throw new InvalidOperationException("pasta Taba.Client não encontrada");
+            throw new InvalidOperationException("Taba.Client folder not found");
         }
 
         private static string[] Sources()
@@ -44,7 +44,7 @@ namespace Taba.Tests
             {
                 Assert.That(project, Does.Contain(target), target);
             }
-            Assert.That(project, Does.Contain("net10.0"), "o net10.0 entra com o SDK 10");
+            Assert.That(project, Does.Contain("net10.0"), "net10.0 comes in with SDK 10");
             Assert.That(project, Does.Contain("<LangVersion>7.3</LangVersion>"));
             Assert.That(project, Does.Contain("<TreatWarningsAsErrors>true</TreatWarningsAsErrors>"));
         }
@@ -57,8 +57,8 @@ namespace Taba.Tests
             var packages = project.Split(new[] { "<PackageReference " }, StringSplitOptions.None).Skip(1).ToArray();
             Assert.That(packages.Length, Is.EqualTo(1));
             Assert.That(packages[0], Does.StartWith("Include=\"Microsoft.NETFramework.ReferenceAssemblies\""));
-            Assert.That(packages[0].Split('>')[0], Does.Contain("PrivateAssets=\"all\""), "não vira dependência de quem usa");
-            Assert.That(project, Does.Contain("<ProjectReference Include=\"..\\Taba.Client.Abstractions\\Taba.Client.Abstractions.csproj\" />"), "a única dependência é o pacote dos contratos, do próprio conector");
+            Assert.That(packages[0].Split('>')[0], Does.Contain("PrivateAssets=\"all\""), "it does not become a dependency of whoever uses it");
+            Assert.That(project, Does.Contain("<ProjectReference Include=\"..\\Taba.Client.Abstractions\\Taba.Client.Abstractions.csproj\" />"), "the only dependency is the contracts package, from the connector itself");
             Assert.That(project.Split(new[] { "<ProjectReference " }, StringSplitOptions.None).Length, Is.EqualTo(2));
         }
 
@@ -88,7 +88,7 @@ namespace Taba.Tests
             string client = File.ReadAllText(Path.Combine(Library(), "TabaClient.cs"));
             Assert.That(client, Does.Contain("new HttpMethod(\"PATCH\")"));
             Assert.That(client, Does.Not.Contain("X-HTTP-Method-Override"));
-            Assert.That(client, Does.Not.Contain("HttpWebRequest"), "sem conexão HTTP própria para esse verbo");
+            Assert.That(client, Does.Not.Contain("HttpWebRequest"), "no HTTP connection of its own for that verb");
         }
     }
 }

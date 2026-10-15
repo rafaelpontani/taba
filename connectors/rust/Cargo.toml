@@ -1,5 +1,5 @@
-# Os conectores em Rust (o `taba-client` e o `taba-cli`) formam um workspace próprio, fora do
-# workspace do servidor: não dividem dependências nem versão do Rust com ele (doc/pt-BR/21-conectores.md).
+# The Rust connectors (`taba-client` and `taba-cli`) form their own workspace, outside the
+# server workspace: they share neither dependencies nor the Rust version with it (doc/pt-BR/21-conectores.md).
 [workspace]
 resolver = "2"
 members = ["client", "cli"]
@@ -10,5 +10,5 @@ license = "AGPL-3.0-only"
 repository = "https://github.com/rafaelpontani/taba"
 
 [profile.dev]
-# Só as tabelas de linha: com os símbolos completos cada binário de teste ocupava centenas de MB.
+# Line tables only: with full symbols each test binary took hundreds of MB.
 debug = "line-tables-only"

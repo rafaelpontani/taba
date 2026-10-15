@@ -1,14 +1,14 @@
-//! A pasta de segredos (doc 06, seção 8.0.1; doc 06a, seção 8.1.3): o que `taba init`,
-//! `taba cert generate` e `taba token generate` criam. Só depende de `core`.
+//! The secrets folder (doc 06, section 8.0.1; doc 06a, section 8.1.3): what `taba init`,
+//! `taba cert generate` and `taba token generate` create. It only depends on `core`.
 //!
-//! - **Certificado do cluster:** um par `cluster-<data de início>.crt` e `.key`, autoassinado e
-//!   válido para servidor e cliente (o nó confia no certificado em si, sem CA; o nome do host
-//!   não é verificado). O nome traz a data de início, para gerações sucessivas não se
-//!   sobrescreverem.
-//! - **Token raiz:** 256 bits aleatórios em base64 sem preenchimento (43 caracteres), no arquivo
-//!   `root-token`.
+//! - **Cluster certificate:** a `cluster-<start date>.crt` and `.key` pair, self-signed and
+//!   valid for server and client (the node trusts the certificate itself, without a CA; the host name
+//!   is not verified). The name carries the start date, so successive generations do not
+//!   overwrite each other.
+//! - **Root token:** 256 random bits in unpadded base64 (43 characters), in the
+//!   `root-token` file.
 //!
-//! Nada é sobrescrito: se o arquivo já existe, o comando falha e o operador decide.
+//! Nothing is overwritten: if the file already exists, the command fails and the operator decides.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -20,31 +20,31 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rcgen::{CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair};
 use time::OffsetDateTime;
 
-/// Folga no `notBefore` para a diferença de relógio entre os nós, quando o início é "agora".
+/// Slack on the `notBefore` for clock differences between nodes, when the start is "now".
 const CLOCK_SKEW: Duration = Duration::from_secs(5 * 60);
-/// Validade padrão do primeiro certificado do `taba init`: cinco anos.
+/// Default validity of the first `taba init` certificate: five years.
 pub const DEFAULT_DAYS: u64 = 1825;
 const ROOT_TOKEN_FILE: &str = "root-token";
 const TLS_DIR: &str = "tls";
 
-/// O que o `cert generate` criou.
+/// What `cert generate` created.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertFiles {
     pub certificate: PathBuf,
     pub key: PathBuf,
 }
 
-/// O que o `init` criou.
+/// What `init` created.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitFiles {
     pub certificate: CertFiles,
     pub root_token: PathBuf,
 }
 
-/// Um segredo aleatório de 256 bits, em base64 sem preenchimento (43 caracteres): o token raiz.
+/// A random 256-bit secret, in unpadded base64 (43 characters): the root token.
 pub fn generate_root_token() -> String {
     let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
+    getrandom::fill(&mut bytes).expect("the system has no source of random numbers");
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
@@ -52,14 +52,14 @@ fn already_exists(path: &Path) -> io::Error {
     io::Error::new(
         io::ErrorKind::AlreadyExists,
         format!(
-            "`{}` já existe; apague-o ou escolha outra pasta (nada é sobrescrito)",
+            "`{}` already exists; delete it or choose another folder (nothing is overwritten)",
             path.display()
         ),
     )
 }
 
-/// Cria o arquivo **novo** com o conteúdo, só para o dono quando o sistema permite (as chaves e
-/// o token raiz são segredos). Falha se ele já existe.
+/// Creates the **new** file with the content, only for the owner when the system allows (the keys and
+/// the root token are secrets). Fails if it already exists.
 fn write_new(path: &Path, content: &[u8]) -> io::Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -79,9 +79,9 @@ fn write_new(path: &Path, content: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 
-/// Gera o par `cluster-<AAAAMMDD do início>.crt` e `.key` em `dir`, autoassinado, válido por
-/// `days` dias a partir do início. O início é `now + starts_in`; sem `starts_in`, é `now` menos
-/// uma folga de alguns minutos para a diferença de relógio.
+/// Generates the `cluster-<start YYYYMMDD>.crt` and `.key` pair in `dir`, self-signed, valid for
+/// `days` days from the start. The start is `now + starts_in`; without `starts_in`, it is `now` minus
+/// a few minutes of slack for clock differences.
 pub fn generate_cert(
     dir: &Path,
     now: OffsetDateTime,
@@ -91,7 +91,7 @@ pub fn generate_cert(
     if days == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "--days deve ser maior que zero",
+            "--days must be greater than zero",
         ));
     }
     let skew = time::Duration::try_from(CLOCK_SKEW).map_err(io::Error::other)?;
@@ -100,10 +100,10 @@ pub fn generate_cert(
         None => now - skew,
     };
     let days = i64::try_from(days)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--days grande demais"))?;
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "--days too large"))?;
     let not_after = not_before
         .checked_add(time::Duration::days(days))
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "--days grande demais"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "--days too large"))?;
 
     let key = KeyPair::generate().map_err(io::Error::other)?;
     let mut params = CertificateParams::new(Vec::<String>::new()).map_err(io::Error::other)?;
@@ -129,7 +129,7 @@ pub fn generate_cert(
         certificate: dir.join(format!("{name}.crt")),
         key: dir.join(format!("{name}.key")),
     };
-    // Confere os dois antes de gravar qualquer um: não deixa um `.crt` sem `.key`.
+    // Checks both before writing either: it does not leave a `.crt` without a `.key`.
     for path in [&files.certificate, &files.key] {
         if path.exists() {
             return Err(already_exists(path));
@@ -140,8 +140,8 @@ pub fn generate_cert(
     Ok(files)
 }
 
-/// `taba init --out <pasta>`: cria a pasta de segredos, com o primeiro certificado em `tls/` e o
-/// token raiz em `root-token`.
+/// `taba init --out <folder>`: creates the secrets folder, with the first certificate in `tls/` and the
+/// root token in `root-token`.
 pub fn init(out: &Path, now: OffsetDateTime, days: u64) -> io::Result<InitFiles> {
     let root_token = out.join(ROOT_TOKEN_FILE);
     if root_token.exists() {

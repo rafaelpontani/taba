@@ -1,27 +1,183 @@
 {
   "schema_version": 1,
   "diagram_type": "architecture",
-  "meta": { "title": "As três APIs do nó e suas rotas", "output": "doc/diagramas/html/portas-do-no.html", "quality_profile": "showcase" },
+  "meta": {
+    "title": "The node's three APIs and their routes",
+    "output": "doc/diagramas/html/portas-do-no.html",
+    "quality_profile": "showcase"
+  },
   "components": [
-    { "id": "apps", "type": "external", "label": "Aplicações", "sublabel": "produtores e consumidores", "pos": [30, 60], "size": [170, 64] },
-    { "id": "oper", "type": "external", "label": "Operador", "sublabel": "Prometheus, CLI, balanceador", "pos": [30, 210], "size": [170, 64] },
-    { "id": "peers", "type": "external", "label": "Outros nós", "sublabel": "mesma imagem", "pos": [30, 360], "size": [170, 64] },
-    { "id": "client", "type": "frontend", "label": "API de cliente", "sublabel": "api.port 8080 · token opcional", "pos": [330, 60], "size": [220, 64] },
-    { "id": "ops", "type": "frontend", "label": "API de operação", "sublabel": "operations.port · sem auth", "pos": [330, 210], "size": [220, 64] },
-    { "id": "cluster", "type": "security", "label": "API do cluster", "sublabel": "cluster.port 8081 · mTLS", "pos": [330, 360], "size": [220, 64] },
-    { "id": "r1", "type": "backend", "label": "Rotas de cliente", "sublabel": "/topics, mensagens, /tokens", "pos": [700, 60], "size": [230, 64] },
-    { "id": "r2", "type": "backend", "label": "Rotas de operação", "sublabel": "/health, /metrics, drain", "pos": [700, 210], "size": [230, 64] },
-    { "id": "r3", "type": "backend", "label": "Rotas /cluster/*", "sublabel": "membros, canal, sync, repasse", "pos": [700, 360], "size": [230, 64] }
+    {
+      "id": "apps",
+      "type": "external",
+      "label": "Applications",
+      "sublabel": "producers and consumers",
+      "pos": [
+        30,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "oper",
+      "type": "external",
+      "label": "Operator",
+      "sublabel": "Prometheus, CLI, load balancer",
+      "pos": [
+        30,
+        210
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "peers",
+      "type": "external",
+      "label": "Other nodes",
+      "sublabel": "same image",
+      "pos": [
+        30,
+        360
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Client API",
+      "sublabel": "api.port 8080 · optional token",
+      "pos": [
+        330,
+        60
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "frontend",
+      "label": "Operations API",
+      "sublabel": "operations.port · no auth",
+      "pos": [
+        330,
+        210
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "cluster",
+      "type": "security",
+      "label": "Cluster API",
+      "sublabel": "cluster.port 8081 · mTLS",
+      "pos": [
+        330,
+        360
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "r1",
+      "type": "backend",
+      "label": "Client routes",
+      "sublabel": "/topics, messages, /tokens",
+      "pos": [
+        700,
+        60
+      ],
+      "size": [
+        230,
+        64
+      ]
+    },
+    {
+      "id": "r2",
+      "type": "backend",
+      "label": "Operations routes",
+      "sublabel": "/health, /metrics, drain",
+      "pos": [
+        700,
+        210
+      ],
+      "size": [
+        230,
+        64
+      ]
+    },
+    {
+      "id": "r3",
+      "type": "backend",
+      "label": "/cluster/* routes",
+      "sublabel": "members, channel, sync, forwarding",
+      "pos": [
+        700,
+        360
+      ],
+      "size": [
+        230,
+        64
+      ]
+    }
   ],
   "connections": [
-    { "id": "p1", "from": "apps", "to": "client" },
-    { "id": "p2", "from": "oper", "to": "ops" },
-    { "id": "p3", "from": "peers", "to": "cluster", "variant": "security" },
-    { "id": "p4", "from": "client", "to": "r1", "label": "serve" },
-    { "id": "p5", "from": "ops", "to": "r2", "label": "serve" },
-    { "id": "p6", "from": "cluster", "to": "r3", "label": "serve" }
+    {
+      "id": "p1",
+      "from": "apps",
+      "to": "client"
+    },
+    {
+      "id": "p2",
+      "from": "oper",
+      "to": "ops"
+    },
+    {
+      "id": "p3",
+      "from": "peers",
+      "to": "cluster",
+      "variant": "security"
+    },
+    {
+      "id": "p4",
+      "from": "client",
+      "to": "r1",
+      "label": "serves"
+    },
+    {
+      "id": "p5",
+      "from": "ops",
+      "to": "r2",
+      "label": "serves"
+    },
+    {
+      "id": "p6",
+      "from": "cluster",
+      "to": "r3",
+      "label": "serves"
+    }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Públicos separados", "items": ["Cada porta tem o seu público e a rede restringe cada uma", "Em modo desenvolvimento a porta do cluster não existe"] }
+    {
+      "dot": "cyan",
+      "title": "Separate audiences",
+      "items": [
+        "Each port has its own audience and the network restricts each one",
+        "In development mode the cluster port does not exist"
+      ]
+    }
   ]
 }

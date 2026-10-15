@@ -1,4 +1,4 @@
-//! Os três listeners e a saúde do nó (doc 06, seção 8.0; doc 06b).
+//! The three listeners and the node's health (doc 06, section 8.0; doc 06b).
 
 mod common;
 
@@ -37,7 +37,7 @@ async fn production_node_without_cluster_protocol_is_live_but_not_ready() {
     let ready = node.client_get("/health/ready").await;
     assert_eq!(ready.status(), 503);
     assert_eq!(ready.headers()["content-type"], "application/json");
-    // O corpo é o `HealthResponse`, nunca o `ErrorResponse` (UC-OPS-003).
+    // The body is the `HealthResponse`, never the `ErrorResponse` (UC-OPS-003).
     let body: serde_json::Value = ready.json().await.unwrap();
     assert_eq!(
         body,
@@ -50,11 +50,11 @@ async fn production_node_without_cluster_protocol_is_live_but_not_ready() {
 /// UC: UC-DEV-002, UC-SEG-005
 #[tokio::test]
 async fn development_node_starts_alone_and_does_not_open_the_cluster_port() {
-    // Sem `cluster.entry-address`, que em desenvolvimento não é exigido.
+    // Without `cluster.entry-address`, which is not required in development.
     let node = TestNode::development().await;
     assert_eq!(node.node.cluster_addr(), None);
 
-    // Nenhuma rota /cluster/* responde.
+    // No /cluster/* route answers.
     let code = error_code(node.client_get("/cluster/nodes").await, 404).await;
     assert_eq!(code, "route.not-found");
 
@@ -69,7 +69,7 @@ async fn client_port_hides_cluster_routes_and_cluster_port_serves_only_cluster_r
     let cluster_addr = node
         .node
         .cluster_addr()
-        .expect("produção abre a porta do cluster");
+        .expect("production opens the cluster port");
     assert_ne!(client_addr.port(), cluster_addr.port());
 
     assert_eq!(
@@ -101,10 +101,7 @@ async fn operations_routes_move_to_their_own_port_when_one_is_set() {
         .env("TABA_OPERATIONS_PORT", "0")
         .start()
         .await;
-    let operations = node
-        .node
-        .operations_addr()
-        .expect("porta de operação aberta");
+    let operations = node.node.operations_addr().expect("operations port open");
     assert_ne!(operations, node.node.client_addr());
 
     let response = node
@@ -115,7 +112,7 @@ async fn operations_routes_move_to_their_own_port_when_one_is_set() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // Na porta da API as rotas de operação deixam de existir.
+    // On the API port the operations routes cease to exist.
     assert_eq!(
         error_code(node.client_get("/health/live").await, 404).await,
         "route.not-found"
@@ -159,6 +156,6 @@ async fn shutdown_closes_the_listeners() {
     node.shutdown().await;
     assert!(
         client.get(&url).send().await.is_err(),
-        "a porta deveria estar fechada"
+        "the port should be closed"
     );
 }

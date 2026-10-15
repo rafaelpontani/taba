@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Mapa mental: 8. API e observabilidade",
+    "title": "Mind map: 8. API and observability",
     "output": "doc/diagramas/html/mapa-mental-obs.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "obs-d0-0",
       "type": "security",
-      "label": "Paginação por chave",
-      "sublabel": "decisão",
+      "label": "Key pagination",
+      "sublabel": "decision",
       "pos": [
         450,
         70
@@ -24,8 +24,8 @@
     {
       "id": "obs-d0-0x",
       "type": "database",
-      "label": "limit, cursor e sort",
-      "sublabel": "detalhe",
+      "label": "limit, cursor and sort",
+      "sublabel": "detail",
       "pos": [
         745,
         70
@@ -38,8 +38,8 @@
     {
       "id": "obs-d0-1",
       "type": "security",
-      "label": "Mensagem máxima",
-      "sublabel": "decisão",
+      "label": "Maximum message",
+      "sublabel": "decision",
       "pos": [
         450,
         136
@@ -52,8 +52,8 @@
     {
       "id": "obs-d0-1x",
       "type": "database",
-      "label": "5 MB; limite rígido",
-      "sublabel": "detalhe",
+      "label": "5 MB; hard limit",
+      "sublabel": "detail",
       "pos": [
         745,
         136
@@ -66,8 +66,8 @@
     {
       "id": "obs-d0-2",
       "type": "security",
-      "label": "Rate limit por token ou IP",
-      "sublabel": "decisão",
+      "label": "Rate limit per token or IP",
+      "sublabel": "decision",
       "pos": [
         450,
         202
@@ -80,8 +80,8 @@
     {
       "id": "obs-d0-2x",
       "type": "database",
-      "label": "cabeçalho do balanceador",
-      "sublabel": "detalhe",
+      "label": "load balancer header",
+      "sublabel": "detail",
       "pos": [
         745,
         202
@@ -94,8 +94,8 @@
     {
       "id": "obs-t0",
       "type": "cloud",
-      "label": "API de cliente",
-      "sublabel": "tema",
+      "label": "Client API",
+      "sublabel": "theme",
       "pos": [
         225,
         136
@@ -108,8 +108,8 @@
     {
       "id": "obs-d1-0",
       "type": "security",
-      "label": "Um alvo por nó",
-      "sublabel": "decisão",
+      "label": "One target per node",
+      "sublabel": "decision",
       "pos": [
         450,
         268
@@ -122,8 +122,8 @@
     {
       "id": "obs-d1-0x",
       "type": "database",
-      "label": "total feito no PromQL",
-      "sublabel": "detalhe",
+      "label": "total computed in PromQL",
+      "sublabel": "detail",
       "pos": [
         745,
         268
@@ -136,8 +136,8 @@
     {
       "id": "obs-d1-1",
       "type": "security",
-      "label": "OTLP padrão",
-      "sublabel": "decisão",
+      "label": "Standard OTLP",
+      "sublabel": "decision",
       "pos": [
         450,
         334
@@ -150,8 +150,8 @@
     {
       "id": "obs-d1-1x",
       "type": "database",
-      "label": "variáveis OTEL_*",
-      "sublabel": "detalhe",
+      "label": "OTEL_* variables",
+      "sublabel": "detail",
       "pos": [
         745,
         334
@@ -164,8 +164,8 @@
     {
       "id": "obs-d1-2",
       "type": "security",
-      "label": "Streams de sincronização",
-      "sublabel": "decisão",
+      "label": "Synchronization streams",
+      "sublabel": "decision",
       "pos": [
         450,
         400
@@ -179,7 +179,7 @@
       "id": "obs-d1-2x",
       "type": "database",
       "label": "taba.sync.streams",
-      "sublabel": "detalhe",
+      "sublabel": "detail",
       "pos": [
         745,
         400
@@ -192,8 +192,8 @@
     {
       "id": "obs-t1",
       "type": "cloud",
-      "label": "Métricas",
-      "sublabel": "tema",
+      "label": "Metrics",
+      "sublabel": "theme",
       "pos": [
         225,
         334
@@ -206,8 +206,8 @@
     {
       "id": "obs-d2-0",
       "type": "security",
-      "label": "Rotas isentas de limite",
-      "sublabel": "decisão",
+      "label": "Routes exempt from the limit",
+      "sublabel": "decision",
       "pos": [
         450,
         466
@@ -221,7 +221,7 @@
       "id": "obs-d2-0x",
       "type": "database",
       "label": "health, metrics, health/cluster?scope=node",
-      "sublabel": "detalhe",
+      "sublabel": "detail",
       "pos": [
         745,
         466
@@ -234,8 +234,8 @@
     {
       "id": "obs-d2-1",
       "type": "security",
-      "label": "IPs autorizados",
-      "sublabel": "decisão",
+      "label": "Authorized IPs",
+      "sublabel": "decision",
       "pos": [
         450,
         532
@@ -248,8 +248,8 @@
     {
       "id": "obs-d2-1x",
       "type": "database",
-      "label": "proxies confiáveis; rede segura",
-      "sublabel": "detalhe",
+      "label": "trusted proxies; secure network",
+      "sublabel": "detail",
       "pos": [
         745,
         532
@@ -262,8 +262,8 @@
     {
       "id": "obs-t2",
       "type": "cloud",
-      "label": "Operação",
-      "sublabel": "tema",
+      "label": "Operation",
+      "sublabel": "theme",
       "pos": [
         225,
         499
@@ -276,8 +276,8 @@
     {
       "id": "obs",
       "type": "backend",
-      "label": "API e observabilidade",
-      "sublabel": "área",
+      "label": "API and observability",
+      "sublabel": "area",
       "pos": [
         20,
         318

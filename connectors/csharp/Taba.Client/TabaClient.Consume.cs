@@ -58,9 +58,9 @@ namespace Taba
         }
 
         /// <summary>
-        /// <c>GET /topics/{topic}/messages</c>. O tempo de leitura é <c>waitTime + 10 s</c>, e não o
-        /// <c>RequestTimeout</c>. Estourar o tempo não é repetido (o nó pode ter capturado mensagens, que
-        /// voltam sozinhas ao fim do <c>visibilityTimeout</c>). Devolve uma lista vazia se não há mensagens.
+        /// <c>GET /topics/{topic}/messages</c>. The read time is <c>waitTime + 10 s</c>, not the
+        /// <c>RequestTimeout</c>. A timeout is not retried (the node may have captured messages, which
+        /// come back by themselves at the end of the <c>visibilityTimeout</c>). Returns an empty list if there are no messages.
         /// </summary>
         public async Task<IList<Message>> ConsumeAsync(string topic, ConsumeOptions options = null, CancellationToken cancellationToken = default(CancellationToken))
         {
@@ -76,7 +76,7 @@ namespace Taba
             }
             catch (JsonException e)
             {
-                throw TabaException.Client("client.invalid-response", "mensagens: " + e.Message);
+                throw TabaException.Client("client.invalid-response", "messages: " + e.Message);
             }
             return messages;
         }
@@ -89,7 +89,7 @@ namespace Taba
             await SendAsync(call, cancellationToken).ConfigureAwait(false);
         }
 
-        /// <summary>Confirma a mensagem recebida do <see cref="ConsumeAsync"/>.</summary>
+        /// <summary>Acknowledges the message received from <see cref="ConsumeAsync"/>.</summary>
         public Task AckAsync(string topic, Message message, CancellationToken cancellationToken = default(CancellationToken))
         {
             return AckAsync(topic, message.Id, message.ReceiptToken, cancellationToken);
@@ -110,7 +110,7 @@ namespace Taba
             return ModelParser.ParseVisibilityResponse(reply.Text);
         }
 
-        /// <summary>Muda a invisibilidade da mensagem recebida do <see cref="ConsumeAsync"/>.</summary>
+        /// <summary>Changes the invisibility of the message received from <see cref="ConsumeAsync"/>.</summary>
         public Task<VisibilityResponse> ChangeVisibilityAsync(string topic, Message message, int seconds, CancellationToken cancellationToken = default(CancellationToken))
         {
             return ChangeVisibilityAsync(topic, message.Id, message.ReceiptToken, seconds, cancellationToken);

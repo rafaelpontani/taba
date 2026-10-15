@@ -3,19 +3,19 @@ using System.Collections.Generic;
 namespace Taba
 {
     /// <summary>
-    /// <c>POST /topics</c>. O conector manda só o que foi preenchido; o que não vale para o tipo, o
-    /// servidor recusa.
+    /// <c>POST /topics</c>. The connector sends only what was filled in; whatever does not apply to the type, the
+    /// server refuses.
     /// </summary>
     public sealed class TopicRequest
     {
         public string Name { get; set; }
 
-        /// <summary><c>queue</c> ou <c>distributor</c>.</summary>
+        /// <summary><c>queue</c> or <c>distributor</c>.</summary>
         public string Type { get; set; }
 
         public IDictionary<string, string> Tags { get; set; }
 
-        /// <summary>Só no distribuidor: os prefixos de nome das filas para onde cada publicação é copiada.</summary>
+        /// <summary>Distributor only: the name prefixes of the queues each publication is copied to.</summary>
         public IList<string> Prefixes { get; set; }
 
         public bool? Volatile { get; set; }

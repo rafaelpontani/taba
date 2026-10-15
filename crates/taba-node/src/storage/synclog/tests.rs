@@ -16,14 +16,14 @@ fn events_are_kept_in_arrival_order_and_read_oldest_first() {
     let second = log
         .append("POST", "/cluster/b", &headers(), b"{\"n\":2}")
         .unwrap();
-    assert!(second > first, "o número de sequência cresce");
+    assert!(second > first, "the sequence number grows");
     assert_eq!(log.len().unwrap(), 2);
 
     let oldest = log.oldest().unwrap().unwrap();
     assert_eq!(oldest.path, "/cluster/a");
     assert_eq!(oldest.headers, headers());
     assert_eq!(oldest.body, b"{\"n\":1}");
-    // Não há posição guardada: o que resta na tabela é o que falta processar.
+    // There is no stored position: what remains in the table is what is left to process.
     log.delete(oldest.seq).unwrap();
     assert_eq!(log.oldest().unwrap().unwrap().path, "/cluster/b");
     log.delete(second).unwrap();
@@ -42,9 +42,9 @@ fn the_database_lives_in_the_sync_folder_and_goes_away_with_discard() {
     log.discard().unwrap();
     assert!(!dir.path().join("_sync").exists());
 
-    // Uma sincronização que ficou pela metade não deixa lixo para a seguinte.
+    // A synchronization left half done leaves no garbage for the next one.
     let first = SyncLog::create(dir.path()).unwrap();
-    first.append("POST", "/velho", &[], b"{}").unwrap();
+    first.append("POST", "/old", &[], b"{}").unwrap();
     drop(first);
     let again = SyncLog::create(dir.path()).unwrap();
     assert!(again.is_empty().unwrap());

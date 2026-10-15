@@ -1,4 +1,4 @@
-//! A plataforma de verdade: ambiente, terminal, rede e processos do sistema.
+//! The real platform: environment, terminal, network and processes of the system.
 
 use std::io::{self, IsTerminal, Write};
 use std::process::{Command, Stdio};
@@ -44,7 +44,7 @@ impl Platform for RealPlatform {
         };
         let mut child = shell.stdin(Stdio::piped()).spawn()?;
         if let Some(mut pipe) = child.stdin.take() {
-            // O comando pode sair sem ler tudo; um pipe quebrado aqui não é erro.
+            // The command may exit without reading everything; a broken pipe here is not an error.
             let _ = pipe.write_all(stdin);
         }
         Ok(child.wait()?.code().unwrap_or(-1))

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Exclusão de uma fila volátil pelo gestor",
+    "title": "Deletion of a volatile queue by the manager",
     "output": "doc/diagramas/html/fila-volatil-exclusao.html",
     "viewBox": [
       1080,
@@ -15,37 +15,37 @@
     {
       "id": "cons",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "cliente"
+      "label": "Consumer",
+      "sublabel": "client"
     },
     {
       "id": "gestor",
       "type": "backend",
-      "label": "Nó gestor",
-      "sublabel": "hash do id no anel"
+      "label": "Manager node",
+      "sublabel": "hash of the id on the ring"
     },
     {
       "id": "nos",
       "type": "cloud",
-      "label": "Todos os nós",
-      "sublabel": "último GET por tópico"
+      "label": "All nodes",
+      "sublabel": "last GET per topic"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 186,
-      "label": "Espera"
+      "label": "Wait"
     },
     {
       "from": 194,
       "to": 250,
-      "label": "Verificação final"
+      "label": "Final check"
     },
     {
       "from": 258,
       "to": 370,
-      "label": "Exclusão"
+      "label": "Exclusion"
     }
   ],
   "messages": [
@@ -54,41 +54,41 @@
       "from": "cons",
       "to": "nos",
       "y": 172,
-      "label": "qualquer GET da fila",
+      "label": "any GET on the queue",
       "variant": "dashed",
-      "note": "o nó grava o instante no início"
+      "note": "the node records the instant at the start"
     },
     {
       "id": "venc",
       "from": "gestor",
       "to": "nos",
       "y": 208,
-      "label": "prazo vencido: há quanto foi o último GET?",
+      "label": "deadline expired: how long ago was the last GET?",
       "variant": "security",
-      "note": "leitura local em cada nó"
+      "note": "local read on each node"
     },
     {
       "id": "dur",
       "from": "nos",
       "to": "gestor",
       "y": 236,
-      "label": "duração desde o último GET, por nó",
+      "label": "duration since the last GET, per node",
       "variant": "return",
-      "note": "nenhum GET dentro do idleTimeout"
+      "note": "no GET within the idleTimeout"
     },
     {
       "id": "reg",
       "from": "gestor",
       "to": "nos",
       "y": 272,
-      "label": "exclusão (fase 1) com o id do tópico"
+      "label": "deletion (phase 1) with the topic id"
     },
     {
       "id": "ok",
       "from": "nos",
       "to": "gestor",
       "y": 300,
-      "label": "todos confirmam, se o id confere",
+      "label": "all confirm, if the id matches",
       "variant": "return"
     },
     {
@@ -96,42 +96,42 @@
       "from": "gestor",
       "to": "nos",
       "y": 328,
-      "label": "commit (fase 2)",
+      "label": "commit (phase 2)",
       "variant": "emphasis",
-      "note": "apagam mensagens e definição"
+      "note": "delete messages and definition"
     },
     {
       "id": "fim",
       "from": "nos",
       "to": "gestor",
       "y": 356,
-      "label": "fila removida",
+      "label": "queue removed",
       "variant": "return"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "GET recente",
+      "title": "Recent GET",
       "items": [
-        "Algum nó viu GET dentro do prazo",
-        "O gestor reagenda pelo tempo restante"
+        "Some node saw a GET within the deadline",
+        "The manager reschedules for the remaining time"
       ]
     },
     {
       "dot": "rose",
-      "title": "Na dúvida, não exclui",
+      "title": "When in doubt, it does not delete",
       "items": [
-        "Nó sem resposta: tenta de novo depois",
-        "Nó recém-iniciado responde o tempo desde que subiu"
+        "Node without response: tries again later",
+        "A just-started node answers the time since it started"
       ]
     },
     {
       "dot": "orange",
-      "title": "Corrida residual",
+      "title": "Residual race",
       "items": [
-        "GET entre a verificação e o commit recebe 404",
-        "Com autoCreate, recria com id novo"
+        "A GET between the check and the commit gets 404",
+        "With autoCreate, recreates with a new id"
       ]
     }
   ]

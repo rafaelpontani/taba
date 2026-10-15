@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Publicação numa fila FIFO",
+    "title": "Publishing to a FIFO queue",
     "output": "doc/diagramas/html/fifo-publicacao.html",
     "viewBox": [
       1080,
@@ -15,43 +15,43 @@
     {
       "id": "prod",
       "type": "external",
-      "label": "Produtor",
-      "sublabel": "cliente"
+      "label": "Producer",
+      "sublabel": "client"
     },
     {
       "id": "recv",
       "type": "backend",
-      "label": "Nó que recebe",
-      "sublabel": "qualquer nó"
+      "label": "Receiving node",
+      "sublabel": "any node"
     },
     {
       "id": "prim",
       "type": "security",
-      "label": "Primário do grupo",
-      "sublabel": "coordena e ordena"
+      "label": "Group primary",
+      "sublabel": "coordinates and orders"
     },
     {
       "id": "reps",
       "type": "cloud",
-      "label": "Secundário e réplicas",
-      "sublabel": "mesmo bloco do grupo"
+      "label": "Secondary and replicas",
+      "sublabel": "same block as the group"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 214,
-      "label": "Repasse"
+      "label": "Forwarding"
     },
     {
       "from": 222,
       "to": 334,
-      "label": "Primário coordena"
+      "label": "Primary coordinates"
     },
     {
       "from": 342,
       "to": 426,
-      "label": "Resposta"
+      "label": "Answer"
     }
   ],
   "messages": [
@@ -60,31 +60,31 @@
       "from": "prod",
       "to": "recv",
       "y": 172,
-      "label": "POST com groupId",
+      "label": "POST with groupId",
       "variant": "security",
-      "note": "hash(id do tópico + groupId)"
+      "note": "hash(topic id + groupId)"
     },
     {
       "id": "fwd",
       "from": "recv",
       "to": "prim",
       "y": 200,
-      "label": "repassa ao primário do grupo",
-      "note": "421 se não for o dono"
+      "label": "forwards to the group's primary",
+      "note": "421 if not the owner"
     },
     {
       "id": "reg",
       "from": "prim",
       "to": "reps",
       "y": 236,
-      "label": "registro (ID monotônico, deduplicationId)"
+      "label": "register (monotonic ID, deduplicationId)"
     },
     {
       "id": "ok",
       "from": "reps",
       "to": "prim",
       "y": 264,
-      "label": "quórum: primário + secundário",
+      "label": "quorum: primary + secondary",
       "variant": "return"
     },
     {
@@ -92,7 +92,7 @@
       "from": "prim",
       "to": "reps",
       "y": 292,
-      "label": "commit por quórum",
+      "label": "commit by quorum",
       "variant": "emphasis"
     },
     {
@@ -100,7 +100,7 @@
       "from": "prim",
       "to": "reps",
       "y": 320,
-      "label": "demais réplicas em segundo plano",
+      "label": "other replicas in the background",
       "variant": "dashed"
     },
     {
@@ -108,7 +108,7 @@
       "from": "prim",
       "to": "recv",
       "y": 356,
-      "label": "201 com o ID",
+      "label": "201 with the ID",
       "variant": "return"
     },
     {
@@ -116,7 +116,7 @@
       "from": "recv",
       "to": "prod",
       "y": 384,
-      "label": "201 com o ID da mensagem",
+      "label": "201 with the message ID",
       "variant": "return"
     },
     {
@@ -124,36 +124,36 @@
       "from": "prim",
       "to": "recv",
       "y": 412,
-      "label": "duplicada: 200, ID da original",
+      "label": "duplicate: 200, ID of the original",
       "variant": "dashed"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Colocação",
+      "title": "Placement",
       "items": [
-        "Posição no anel: id do tópico + groupId",
-        "Um grupo, um bloco, um primário",
-        "O primário gera o ID: max(agora, último + 1)"
+        "Position on the ring: topic id + groupId",
+        "One group, one block, one primary",
+        "The primary generates the ID: max(now, last + 1)"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Quórum",
+      "title": "Quorum",
       "items": [
-        "Sempre o primário e o secundário",
-        "O secundário é o herdeiro do bloco",
-        "replication.factor mínimo de 2"
+        "Always the primary and the secondary",
+        "The secondary is the block's heir",
+        "replication.factor minimum of 2"
       ]
     },
     {
       "dot": "rose",
-      "title": "Falhas",
+      "title": "Failures",
       "items": [
-        "Primário sincronizando ou fora do ar: 503",
-        "Repasse e cliente podem repetir: o primário deduplica",
-        "Tabela velha no repasse: 421 e nova tentativa"
+        "Primary syncing or down: 503",
+        "Forwarding and client may repeat: the primary deduplicates",
+        "Old table on the forward: 421 and retry"
       ]
     }
   ]

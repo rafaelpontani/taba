@@ -1,21 +1,21 @@
 # syntax=docker/dockerfile:1
 #
-# A imagem do nó do Taba: o binário `taba` (estático, ligado à musl) em Alpine, sem mais nada além
-# dos certificados de CA. O mesmo binário faz `taba init`, `taba cert generate` e `taba token
-# generate` (doc/06-api.md, seção 8.0.1).
+# The Taba node image: the `taba` binary (static, linked against musl) on Alpine, with nothing else besides
+# the CA certificates. The same binary does `taba init`, `taba cert generate` and `taba token
+# generate` (doc/06-api.md, section 8.0.1).
 #
 #   docker build -t taba .
 #   docker run --rm -v "$PWD/secrets:/out" taba init --out /out
 #
-# O `docker-compose.yml` ao lado sobe um cluster completo de três nós.
+# The `docker-compose.yml` next to it starts a complete cluster.
 
 FROM rust:1-alpine AS build
 RUN apk add --no-cache build-base
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
-# Estático, ligado à musl. Com --target o RUSTFLAGS não vale para as macros de procedimento (que rodam
-# no build), que não podem ser estáticas.
+# Static, linked against musl. With --target the RUSTFLAGS do not apply to procedural macros (which run
+# at build time), which cannot be static.
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN triple="$(uname -m)-unknown-linux-musl" \
  && cargo build --release --locked -p taba-node --target "$triple" \
@@ -27,7 +27,7 @@ RUN apk add --no-cache ca-certificates \
  && mkdir -p /var/lib/taba /etc/taba/secrets \
  && chown taba:taba /var/lib/taba
 COPY --from=build /taba /usr/local/bin/taba
-# Sem privilégios. Os dados do nó (storage.dir) e a pasta de segredos (secrets.dir) são volumes.
+# Unprivileged. The node data (storage.dir) and the secrets folder (secrets.dir) are volumes.
 USER taba
 VOLUME ["/var/lib/taba"]
 EXPOSE 8080 8081 9090

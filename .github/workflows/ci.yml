@@ -1,5 +1,5 @@
-# Validação de pull request: chama os três builds (servidor, conector Rust e conector C#), sem versão.
-# Na release, o release.yml chama os mesmos workflows, com a versão da tag.
+# Pull request validation: calls the three builds (server, Rust connector and C# connector), with no version.
+# On release, release.yml calls the same workflows, with the tag version.
 name: CI
 
 on:

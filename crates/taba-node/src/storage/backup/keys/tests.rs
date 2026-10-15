@@ -25,9 +25,9 @@ fn the_key_layout_follows_the_documented_one() {
 #[test]
 fn segments_of_a_recreated_topic_do_not_share_a_prefix_with_the_old_one() {
     assert_ne!(
-        segments_prefix("pedidos", "velho"),
-        segments_prefix("pedidos", "novo")
+        segments_prefix("orders", "old"),
+        segments_prefix("orders", "new")
     );
-    assert!(segments_prefix("pedidos", "velho").starts_with(&topic_messages_prefix("pedidos")));
-    assert!(journals_prefix("pedidos", "velho").starts_with(&topic_journal_prefix("pedidos")));
+    assert!(segments_prefix("orders", "old").starts_with(&topic_messages_prefix("orders")));
+    assert!(journals_prefix("orders", "old").starts_with(&topic_journal_prefix("orders")));
 }

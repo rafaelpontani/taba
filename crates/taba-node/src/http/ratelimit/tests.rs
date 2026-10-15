@@ -27,10 +27,7 @@ fn a_burst_is_absorbed_and_then_the_rate_applies() {
         assert!(limiter.check(Category::Publish, ip("1.1.1.1")).is_ok());
     }
     let wait = limiter.check(Category::Publish, ip("1.1.1.1")).unwrap_err();
-    assert_eq!(
-        wait, 1,
-        "meio segundo até o próximo token, arredondado para cima"
-    );
+    assert_eq!(wait, 1, "half a second until the next token, rounded up");
 
     clock.advance(Duration::from_millis(500));
     assert!(limiter.check(Category::Publish, ip("1.1.1.1")).is_ok());
@@ -45,7 +42,7 @@ fn without_a_burst_the_capacity_is_one_second_of_the_rate() {
         assert!(limiter.check(Category::Publish, ip("1.1.1.1")).is_ok());
     }
     assert!(limiter.check(Category::Publish, ip("1.1.1.1")).is_err());
-    // Taxa menor que 1 ainda deixa passar uma chamada de cada vez.
+    // A rate below 1 still lets one call through at a time.
     let (slow, _) = limiter_with_admin(0.1);
     assert!(slow.check(Category::Admin, ip("1.1.1.1")).is_ok());
     assert_eq!(slow.check(Category::Admin, ip("1.1.1.1")), Err(10));
@@ -83,11 +80,11 @@ fn categories_and_clients_count_separately() {
     assert!(limiter.check(Category::Publish, ip("1.1.1.1")).is_err());
     assert!(
         limiter.check(Category::Publish, ip("2.2.2.2")).is_ok(),
-        "outro IP"
+        "another IP"
     );
     assert!(
         limiter.check(Category::Admin, ip("1.1.1.1")).is_ok(),
-        "outra categoria"
+        "another category"
     );
 }
 
@@ -98,7 +95,7 @@ fn a_category_without_a_rate_is_unlimited() {
     for _ in 0..1000 {
         assert!(limiter.check(Category::Consume, ip("1.1.1.1")).is_ok());
     }
-    assert_eq!(limiter.tracked(), 0, "nem guarda contador");
+    assert_eq!(limiter.tracked(), 0, "it does not even keep a counter");
 }
 
 /// UC: UC-LIM-003
@@ -127,9 +124,9 @@ fn idle_counters_are_dropped_when_the_map_grows() {
             .unwrap();
     }
     assert!(limiter.tracked() > PRUNE_ABOVE);
-    clock.advance(Duration::from_secs(5)); // todos voltam ao estouro cheio
+    clock.advance(Duration::from_secs(5)); // all go back to a full burst
     limiter.check(Category::Publish, ip("9.9.9.9")).unwrap();
-    assert_eq!(limiter.tracked(), 1, "só o contador novo sobrou");
+    assert_eq!(limiter.tracked(), 1, "only the new counter is left");
 }
 
 /// UC: UC-LIM-002, UC-LIM-009, UC-LIM-010

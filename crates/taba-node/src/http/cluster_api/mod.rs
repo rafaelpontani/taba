@@ -1,10 +1,10 @@
-//! A API do cluster, na porta do cluster (doc 06c). Uma só rota, `/cluster/{*caminho}`, lê a
-//! chamada com o codec do protocolo (`protocol::http`), entrega à `ClusterService` e devolve a
-//! resposta. A rede em memória dos testes chama a mesma `ClusterService`, então as duas pontas se
-//! comportam igual.
+//! The cluster API, on the cluster port (doc 06c). A single route, `/cluster/{*path}`, reads the
+//! call with the protocol codec (`protocol::http`), hands it to the `ClusterService` and returns the
+//! response. The tests' in-memory network calls the same `ClusterService`, so both ends
+//! behave the same.
 //!
-//! Quem chama é reconhecido pelo IP de origem da conexão: todos os nós usam o mesmo certificado do
-//! cluster (doc 06, seção 8.0.1), e a tabela de membros guarda os IPs de cada um.
+//! The caller is recognized by the connection's source IP: every node uses the same cluster
+//! certificate (doc 06, section 8.0.1), and the member table keeps each one's IPs.
 
 use std::net::SocketAddr;
 
@@ -29,10 +29,10 @@ use crate::telemetry::trace;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/cluster/channel", get(channel))
-        .route("/cluster/{*caminho}", any(dispatch))
+        .route("/cluster/{*path}", any(dispatch))
 }
 
-/// `from` e `to` do canal: os `nodeId` de quem abre e de quem deve atender.
+/// `from` and `to` of the channel: the `nodeId` of who opens and of who must serve.
 #[derive(serde::Deserialize)]
 struct ChannelQuery {
     from: String,
@@ -40,8 +40,8 @@ struct ChannelQuery {
     to: String,
 }
 
-/// `GET /cluster/channel`: o canal permanente entre dois nós, um WebSocket. Os erros (não é membro,
-/// outro processo no endereço) saem antes do upgrade, como status HTTP.
+/// `GET /cluster/channel`: the permanent channel between two nodes, a WebSocket. The errors (not a member,
+/// another process at the address) come out before the upgrade, as HTTP status.
 async fn channel(
     State(state): State<AppState>,
     ConnectInfo(caller): ConnectInfo<SocketAddr>,
@@ -75,7 +75,7 @@ async fn dispatch(
     ConnectInfo(caller): ConnectInfo<SocketAddr>,
     request: HttpRequest,
 ) -> Result<HttpResponse, ApiError> {
-    // Só há serviço de cluster em `mode=production`, e só nele a porta do cluster é aberta.
+    // There is only a cluster service in `mode=production`, and only then is the cluster port opened.
     let service = state
         .cluster
         .as_ref()
@@ -95,13 +95,13 @@ async fn dispatch(
     let body = to_bytes(body, usize::MAX).await.map_err(|_| {
         ApiError(TabaError::new(
             ErrorCode::ValidationFailed,
-            "Não foi possível ler o corpo da requisição.",
+            "Could not read the request body.",
         ))
     })?;
     let request = Request::from_http(parts.method.as_str(), &path_and_query, &headers, &body)?;
     let caller_ip = caller.ip().to_string();
     let handled = service.handle(&caller_ip, request);
-    // Uma chamada que veio de uma operação com trace continua o mesmo trace neste nó.
+    // A call that came from an operation with a trace continues the same trace on this node.
     let reply =
         match trace::inbound_span(&format!("{} {}", parts.method, parts.uri.path()), &headers) {
             Some(span) => handled.instrument(span).await?,

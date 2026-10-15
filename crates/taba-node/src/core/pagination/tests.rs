@@ -11,7 +11,7 @@ struct Key {
 #[test]
 fn cursor_round_trips_and_is_url_safe() {
     let key = Key {
-        n: "pedidos/ç?".into(),
+        n: "orders/ç?".into(),
         i: 7,
     };
     let cursor = encode_cursor(&key);
@@ -27,7 +27,7 @@ fn cursor_round_trips_and_is_url_safe() {
 /// UC: UC-PAG-002
 #[test]
 fn malformed_cursor_is_invalid_cursor() {
-    for bad in ["", "!!!", "bm90LWpzb24", &encode_cursor(&"texto")] {
+    for bad in ["", "!!!", "bm90LWpzb24", &encode_cursor(&"text")] {
         let err = decode_cursor::<Key>(bad).unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationInvalidCursor, "{bad:?}");
     }

@@ -1,30 +1,147 @@
 {
   "schema_version": 2,
   "diagram_type": "workflow",
-  "meta": { "title": "Qual tipo de tópico usar", "output": "doc/diagramas/html/decisao-topico.html", "quality_profile": "showcase" },
+  "meta": {
+    "title": "Which topic type to use",
+    "output": "doc/diagramas/html/decisao-topico.html",
+    "quality_profile": "showcase"
+  },
   "lanes": [
-    { "id": "q", "label": "Perguntas" },
-    { "id": "a", "label": "Resposta" }
+    {
+      "id": "q",
+      "label": "Questions"
+    },
+    {
+      "id": "a",
+      "label": "Answer"
+    }
   ],
-  "mainPath": ["q1", "q2", "q3", "queue"],
+  "mainPath": [
+    "q1",
+    "q2",
+    "q3",
+    "queue"
+  ],
   "nodes": [
-    { "id": "q1", "lane": "q", "col": 0, "type": "frontend", "label": "Vários sistemas", "sublabel": "recebem o mesmo evento?", "width": 150 },
-    { "id": "q2", "lane": "q", "col": 2, "type": "frontend", "label": "Ordem por entidade", "sublabel": "ou evitar duplicata?", "width": 150 },
-    { "id": "q3", "lane": "q", "col": 4, "type": "frontend", "label": "Sumir sozinha", "sublabel": "se não houver consumidor?", "width": 150 },
-    { "id": "dist", "lane": "a", "col": 0, "type": "messagebus", "label": "Distribuidor", "sublabel": "+ uma fila por sistema", "width": 150 },
-    { "id": "fifo", "lane": "a", "col": 2, "type": "messagebus", "label": "Fila FIFO", "sublabel": "fifo: true, groupId", "width": 150 },
-    { "id": "vol", "lane": "a", "col": 4, "type": "messagebus", "label": "Fila volátil", "sublabel": "volatile: true", "width": 150 },
-    { "id": "queue", "lane": "a", "col": 5, "type": "backend", "label": "Fila comum", "sublabel": "uma tarefa por consumidor", "width": 150 }
+    {
+      "id": "q1",
+      "lane": "q",
+      "col": 0,
+      "type": "frontend",
+      "label": "Several systems",
+      "sublabel": "receive the same event?",
+      "width": 150
+    },
+    {
+      "id": "q2",
+      "lane": "q",
+      "col": 2,
+      "type": "frontend",
+      "label": "Order per entity",
+      "sublabel": "or avoid duplicates?",
+      "width": 150
+    },
+    {
+      "id": "q3",
+      "lane": "q",
+      "col": 4,
+      "type": "frontend",
+      "label": "Disappear on its own",
+      "sublabel": "if there is no consumer?",
+      "width": 150
+    },
+    {
+      "id": "dist",
+      "lane": "a",
+      "col": 0,
+      "type": "messagebus",
+      "label": "Distributor",
+      "sublabel": "+ one queue per system",
+      "width": 150
+    },
+    {
+      "id": "fifo",
+      "lane": "a",
+      "col": 2,
+      "type": "messagebus",
+      "label": "FIFO queue",
+      "sublabel": "fifo: true, groupId",
+      "width": 150
+    },
+    {
+      "id": "vol",
+      "lane": "a",
+      "col": 4,
+      "type": "messagebus",
+      "label": "Volatile queue",
+      "sublabel": "volatile: true",
+      "width": 150
+    },
+    {
+      "id": "queue",
+      "lane": "a",
+      "col": 5,
+      "type": "backend",
+      "label": "Plain queue",
+      "sublabel": "one task per consumer",
+      "width": 150
+    }
   ],
   "edges": [
-    { "id": "x1", "from": "q1", "to": "q2", "label": "não", "role": "main" },
-    { "id": "x2", "from": "q2", "to": "q3", "label": "não", "role": "main" },
-    { "id": "x3", "from": "q3", "to": "queue", "label": "não", "role": "main" },
-    { "id": "y1", "from": "q1", "to": "dist", "label": "sim", "role": "branch", "variant": "emphasis" },
-    { "id": "y2", "from": "q2", "to": "fifo", "label": "sim", "role": "branch", "variant": "emphasis" },
-    { "id": "y3", "from": "q3", "to": "vol", "label": "sim", "role": "branch", "variant": "emphasis" }
+    {
+      "id": "x1",
+      "from": "q1",
+      "to": "q2",
+      "label": "no",
+      "role": "main"
+    },
+    {
+      "id": "x2",
+      "from": "q2",
+      "to": "q3",
+      "label": "no",
+      "role": "main"
+    },
+    {
+      "id": "x3",
+      "from": "q3",
+      "to": "queue",
+      "label": "no",
+      "role": "main"
+    },
+    {
+      "id": "y1",
+      "from": "q1",
+      "to": "dist",
+      "label": "yes",
+      "role": "branch",
+      "variant": "emphasis"
+    },
+    {
+      "id": "y2",
+      "from": "q2",
+      "to": "fifo",
+      "label": "yes",
+      "role": "branch",
+      "variant": "emphasis"
+    },
+    {
+      "id": "y3",
+      "from": "q3",
+      "to": "vol",
+      "label": "yes",
+      "role": "branch",
+      "variant": "emphasis"
+    }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Só dois tipos", "items": ["type: queue ou distributor", "FIFO e volátil são atributos da fila e se combinam"] }
+    {
+      "dot": "cyan",
+      "title": "Only two types",
+      "items": [
+        "type: queue or distributor",
+        "FIFO and volatile are queue attributes and combine"
+      ]
+    }
   ]
 }

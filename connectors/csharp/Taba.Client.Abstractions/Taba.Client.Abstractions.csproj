@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Os contratos do conector C# do Taba: a interface ITabaClient, os modelos (tópico, mensagem,
-       opções, respostas) e a TabaException. Quem só precisa tipar ou simular o cliente (injeção de
-       dependência, testes) referencia este pacote, sem o HttpClient nem o leitor de JSON do
-       Taba.Client. Mesmos alvos e C# 7.3 do conector, sem dependências. -->
+  <!-- The contracts of the Taba C# connector: the ITabaClient interface, the models (topic, message,
+       options, responses) and the TabaException. Whoever only needs to type or mock the client (dependency
+       injection, tests) references this package, without the HttpClient or the JSON reader of
+       Taba.Client. Same targets and C# 7.3 as the connector, no dependencies. -->
   <PropertyGroup>
     <TargetFrameworks>net461;net5.0;net6.0;net8.0</TargetFrameworks>
     <LangVersion>7.3</LangVersion>
@@ -11,7 +11,7 @@
     <RootNamespace>Taba</RootNamespace>
     <PackageId>Taba.Client.Abstractions</PackageId>
     <Version>0.1.0</Version>
-    <Description>Interfaces e modelos do conector C# do Taba, a fila de mensagens em cluster.</Description>
+    <Description>Interfaces and models of the Taba C# connector, the clustered message queue.</Description>
     <Authors>Taba</Authors>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -26,7 +26,7 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- O construtor e os setters internos dos modelos são do Taba.Client, que os preenche ao ler o JSON. -->
+  <!-- The constructor and the internal setters of the models belong to Taba.Client, which fills them when reading the JSON. -->
   <ItemGroup>
     <InternalsVisibleTo Include="Taba.Client" />
     <InternalsVisibleTo Include="Taba.Client.Tests" />

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Mapa mental: 4. Tópicos",
+    "title": "Mind map: 4. Topics",
     "output": "doc/diagramas/html/mapa-mental-topicos.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "topicos-d0-0",
       "type": "security",
-      "label": "Fila (QT)",
-      "sublabel": "decisão",
+      "label": "Queue (QT)",
+      "sublabel": "decision",
       "pos": [
         450,
         70
@@ -24,8 +24,8 @@
     {
       "id": "topicos-d0-0x",
       "type": "database",
-      "label": "entrega única por mensagem",
-      "sublabel": "detalhe",
+      "label": "single delivery per message",
+      "sublabel": "detail",
       "pos": [
         745,
         70
@@ -38,8 +38,8 @@
     {
       "id": "topicos-d0-1",
       "type": "security",
-      "label": "Distribuidor (DT)",
-      "sublabel": "decisão",
+      "label": "Distributor (DT)",
+      "sublabel": "decision",
       "pos": [
         450,
         136
@@ -52,8 +52,8 @@
     {
       "id": "topicos-d0-1x",
       "type": "database",
-      "label": "copia por prefixo, até 20",
-      "sublabel": "detalhe",
+      "label": "copies by prefix, up to 20",
+      "sublabel": "detail",
       "pos": [
         745,
         136
@@ -66,8 +66,8 @@
     {
       "id": "topicos-t0",
       "type": "cloud",
-      "label": "Tipos",
-      "sublabel": "tema",
+      "label": "Types",
+      "sublabel": "theme",
       "pos": [
         225,
         103
@@ -80,8 +80,8 @@
     {
       "id": "topicos-d1-0",
       "type": "security",
-      "label": "Exclusão por ociosidade",
-      "sublabel": "decisão",
+      "label": "Deletion by idleness",
+      "sublabel": "decision",
       "pos": [
         450,
         202
@@ -94,8 +94,8 @@
     {
       "id": "topicos-d1-0x",
       "type": "database",
-      "label": "idleTimeout padrão 600 s",
-      "sublabel": "detalhe",
+      "label": "default idleTimeout 600 s",
+      "sublabel": "detail",
       "pos": [
         745,
         202
@@ -108,8 +108,8 @@
     {
       "id": "topicos-d1-1",
       "type": "security",
-      "label": "autoCreate no GET",
-      "sublabel": "decisão",
+      "label": "autoCreate on the GET",
+      "sublabel": "decision",
       "pos": [
         450,
         268
@@ -122,8 +122,8 @@
     {
       "id": "topicos-d1-1x",
       "type": "database",
-      "label": "só cria fila; teto configurável",
-      "sublabel": "detalhe",
+      "label": "only creates a queue; configurable ceiling",
+      "sublabel": "detail",
       "pos": [
         745,
         268
@@ -136,8 +136,8 @@
     {
       "id": "topicos-d1-2",
       "type": "security",
-      "label": "Nó gestor",
-      "sublabel": "decisão",
+      "label": "Manager node",
+      "sublabel": "decision",
       "pos": [
         450,
         334
@@ -150,8 +150,8 @@
     {
       "id": "topicos-d1-2x",
       "type": "database",
-      "label": "hash do id do tópico no anel",
-      "sublabel": "detalhe",
+      "label": "hash of the topic id on the ring",
+      "sublabel": "detail",
       "pos": [
         745,
         334
@@ -164,8 +164,8 @@
     {
       "id": "topicos-t1",
       "type": "cloud",
-      "label": "Fila volátil (QTV)",
-      "sublabel": "tema",
+      "label": "Volatile queue (QTV)",
+      "sublabel": "theme",
       "pos": [
         225,
         268
@@ -178,8 +178,8 @@
     {
       "id": "topicos-d2-0",
       "type": "security",
-      "label": "Destinos por publicação",
-      "sublabel": "decisão",
+      "label": "Destinations per publish",
+      "sublabel": "decision",
       "pos": [
         450,
         400
@@ -192,8 +192,8 @@
     {
       "id": "topicos-d2-0x",
       "type": "database",
-      "label": "sem limite por padrão; 422",
-      "sublabel": "detalhe",
+      "label": "no limit by default; 422",
+      "sublabel": "detail",
       "pos": [
         745,
         400
@@ -206,8 +206,8 @@
     {
       "id": "topicos-d2-1",
       "type": "security",
-      "label": "Nome do tópico",
-      "sublabel": "decisão",
+      "label": "Topic name",
+      "sublabel": "decision",
       "pos": [
         450,
         466
@@ -221,7 +221,7 @@
       "id": "topicos-d2-1x",
       "type": "database",
       "label": "1 a 100, A-Za-z0-9_-",
-      "sublabel": "detalhe",
+      "sublabel": "detail",
       "pos": [
         745,
         466
@@ -234,8 +234,8 @@
     {
       "id": "topicos-t2",
       "type": "cloud",
-      "label": "Limites",
-      "sublabel": "tema",
+      "label": "Limits",
+      "sublabel": "theme",
       "pos": [
         225,
         433
@@ -248,8 +248,8 @@
     {
       "id": "topicos-d3-0",
       "type": "security",
-      "label": "Grupo atrelado a um primário",
-      "sublabel": "decisão",
+      "label": "Group tied to a primary",
+      "sublabel": "decision",
       "pos": [
         450,
         532
@@ -262,8 +262,8 @@
     {
       "id": "topicos-d3-0x",
       "type": "database",
-      "label": "hash do id + groupId; ordena",
-      "sublabel": "detalhe",
+      "label": "hash of id + groupId; orders",
+      "sublabel": "detail",
       "pos": [
         745,
         532
@@ -276,8 +276,8 @@
     {
       "id": "topicos-d3-1",
       "type": "security",
-      "label": "Deduplicação",
-      "sublabel": "decisão",
+      "label": "Deduplication",
+      "sublabel": "decision",
       "pos": [
         450,
         598
@@ -290,8 +290,8 @@
     {
       "id": "topicos-d3-1x",
       "type": "database",
-      "label": "deduplicationId ou hash; deleteAt",
-      "sublabel": "detalhe",
+      "label": "deduplicationId or hash; deleteAt",
+      "sublabel": "detail",
       "pos": [
         745,
         598
@@ -304,8 +304,8 @@
     {
       "id": "topicos-t3",
       "type": "cloud",
-      "label": "Fila FIFO (QTF)",
-      "sublabel": "tema",
+      "label": "FIFO queue (QTF)",
+      "sublabel": "theme",
       "pos": [
         225,
         565
@@ -318,8 +318,8 @@
     {
       "id": "topicos",
       "type": "backend",
-      "label": "Tópicos",
-      "sublabel": "área",
+      "label": "Topics",
+      "sublabel": "area",
       "pos": [
         20,
         268

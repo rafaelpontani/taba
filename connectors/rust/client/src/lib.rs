@@ -1,7 +1,7 @@
-//! Conector Rust do Taba (doc 19): as nove operações da API de cliente, a repetição de chamadas do
-//! contrato comum e um HTTP/1.1 próprio sobre `std::net::TcpStream`, com o `rustls` para o TLS.
+//! The Taba Rust connector (doc 19): the nine operations of the client API, the common contract's call retries
+//! and its own HTTP/1.1 over `std::net::TcpStream`, with `rustls` for TLS.
 
-// O erro carrega o corpo da resposta e só existe no caminho de falha, então seu tamanho não pesa.
+// The error carries the response body and only exists on the failure path, so its size does not matter.
 #![allow(clippy::result_large_err)]
 
 pub mod base64;

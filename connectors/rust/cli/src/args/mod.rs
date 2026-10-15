@@ -1,10 +1,10 @@
-//! Leitura própria dos argumentos (sem biblioteca de linhas de comando), guiada pela tabela de
-//! opções de cada comando.
+//! Own reading of the arguments (no command-line library), driven by the table of
+//! options of each command.
 
 #[derive(Debug, Clone, Copy)]
 pub struct Opt {
     pub name: &'static str,
-    /// `true` se a opção recebe um valor; `false` é uma chave liga/desliga.
+    /// `true` if the option takes a value; `false` is an on/off switch.
     pub takes_value: bool,
     pub short: Option<char>,
 }
@@ -25,7 +25,7 @@ pub const fn flag(name: &'static str) -> Opt {
     }
 }
 
-/// As opções que todo comando aceita.
+/// The options every command accepts.
 pub const GLOBAL: [Opt; 6] = [
     val("profile"),
     val("request-id"),
@@ -51,7 +51,7 @@ pub struct Parsed {
 }
 
 impl Parsed {
-    /// O último valor dado à opção.
+    /// The last value given to the option.
     pub fn value(&self, name: &str) -> Option<&str> {
         self.values
             .iter()
@@ -60,7 +60,7 @@ impl Parsed {
             .map(|(_, v)| v.as_str())
     }
 
-    /// Todos os valores da opção, na ordem em que vieram.
+    /// All the option's values, in the order they came.
     pub fn values(&self, name: &str) -> Vec<&str> {
         self.values
             .iter()
@@ -77,14 +77,14 @@ impl Parsed {
         self.flags.iter().any(|f| f == name)
     }
 
-    /// O valor da opção como inteiro sem sinal.
+    /// The option's value as an unsigned integer.
     pub fn number(&self, name: &str) -> Result<Option<u64>, String> {
         match self.value(name) {
             None => Ok(None),
             Some(v) => v
                 .parse::<u64>()
                 .map(Some)
-                .map_err(|_| format!("--{name}: `{v}` não é um número inteiro")),
+                .map_err(|_| format!("--{name}: `{v}` is not an integer")),
         }
     }
 
@@ -93,8 +93,8 @@ impl Parsed {
     }
 }
 
-/// Lê `args` (sem o nome do programa nem as palavras do comando) segundo as opções do comando mais
-/// as globais. `--opção=valor`, `--opção valor`, `-o valor`, `-ovalor` e `--` (o resto é posicional).
+/// Reads `args` (without the program name or the command words) according to the command's options plus
+/// the global ones. `--option=value`, `--option value`, `-o value`, `-ovalue` and `--` (the rest is positional).
 pub fn parse(args: &[String], opts: &[Opt]) -> Result<Parsed, String> {
     let find_long = |name: &str| opts.iter().chain(GLOBAL.iter()).find(|o| o.name == name);
     let find_short = |c: char| {
@@ -122,14 +122,14 @@ pub fn parse(args: &[String], opts: &[Opt]) -> Result<Parsed, String> {
                 None => (long, None),
             };
             (
-                find_long(name).ok_or_else(|| format!("opção desconhecida: --{name}"))?,
+                find_long(name).ok_or_else(|| format!("unknown option: --{name}"))?,
                 inline,
             )
         } else {
             let mut chars = arg[1..].chars();
             let c = chars.next().unwrap_or('-');
             let rest: String = chars.collect();
-            let opt = find_short(c).ok_or_else(|| format!("opção desconhecida: -{c}"))?;
+            let opt = find_short(c).ok_or_else(|| format!("unknown option: -{c}"))?;
             (opt, if rest.is_empty() { None } else { Some(rest) })
         };
         if opt.takes_value {
@@ -138,7 +138,7 @@ pub fn parse(args: &[String], opts: &[Opt]) -> Result<Parsed, String> {
                 None => {
                     let v = args
                         .get(i)
-                        .ok_or_else(|| format!("--{} precisa de um valor", opt.name))?;
+                        .ok_or_else(|| format!("--{} needs a value", opt.name))?;
                     i += 1;
                     v.clone()
                 }
@@ -149,7 +149,7 @@ pub fn parse(args: &[String], opts: &[Opt]) -> Result<Parsed, String> {
                 .as_ref()
                 .is_some_and(|v| arg.starts_with("--") || !v.is_empty())
             {
-                return Err(format!("--{} não recebe valor", opt.name));
+                return Err(format!("--{} takes no value", opt.name));
             }
             parsed.flags.push(opt.name.to_owned());
         }

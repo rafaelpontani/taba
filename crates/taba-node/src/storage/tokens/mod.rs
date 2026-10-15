@@ -1,6 +1,6 @@
-//! Persistência dos tokens de acesso: a tabela `tokens` do `_node.db`, uma linha por token
-//! (doc 02, seção 3.4). A linha guarda o **hash salgado** do segredo (`salt` e `secret_hash`),
-//! nunca o segredo. Os métodos são síncronos, como os dos tópicos.
+//! Persistence of the access tokens: the `tokens` table of `_node.db`, one row per token
+//! (doc 02, section 3.4). The row keeps the secret's **salted hash** (`salt` and `secret_hash`),
+//! never the secret. The methods are synchronous, like the topics'.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -13,13 +13,13 @@ use super::db::NodeDb;
 use crate::core::token::{Permission, TokenRecord};
 
 pub trait TokenStore: Send + Sync + 'static {
-    /// Todos os tokens gravados. Linha ilegível é erro: o nó não sobe com a tabela pela metade.
+    /// All the stored tokens. An unreadable row is an error: the node does not start with a half-built table.
     fn load_all(&self) -> io::Result<Vec<TokenRecord>>;
 
-    /// Grava (ou substitui) o token, de forma atômica.
+    /// Writes (or replaces) the token, atomically.
     fn save(&self, record: &TokenRecord) -> io::Result<()>;
 
-    /// Apaga o token. Apagar o que não existe não é erro.
+    /// Deletes the token. Deleting what does not exist is no error.
     fn delete(&self, id: &str) -> io::Result<()>;
 }
 
@@ -37,11 +37,11 @@ impl SqliteTokenStore {
 fn invalid(id: &str, reason: impl std::fmt::Display) -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidData,
-        format!("token `{id}` em _node.db: {reason}"),
+        format!("token `{id}` in _node.db: {reason}"),
     )
 }
 
-/// Uma linha da tabela, como veio do SQLite.
+/// A table row, as it came from SQLite.
 type Row = (
     String,
     String,
@@ -57,7 +57,7 @@ fn record_of(row: Row) -> io::Result<TokenRecord> {
     let (id, name, permissions, prefixes, created, expires, salt, secret_hash) = row;
     let permissions = permissions
         .split(',')
-        .map(|p| Permission::parse(p).ok_or_else(|| invalid(&id, format!("permissão `{p}`"))))
+        .map(|p| Permission::parse(p).ok_or_else(|| invalid(&id, format!("permission `{p}`"))))
         .collect::<Result<Vec<_>, _>>()?;
     let topic_prefixes: Vec<String> =
         serde_json::from_str(&prefixes).map_err(|e| invalid(&id, e))?;
@@ -149,7 +149,7 @@ impl TokenStore for SqliteTokenStore {
     }
 }
 
-/// A implementação de teste: memória, com falha programável.
+/// The test implementation: memory, with a programmable failure.
 #[derive(Debug, Default)]
 pub struct MemoryTokenStore {
     tokens: Mutex<BTreeMap<String, TokenRecord>>,
@@ -157,7 +157,7 @@ pub struct MemoryTokenStore {
 }
 
 impl MemoryTokenStore {
-    /// Com `true`, `save` e `delete` falham, como um disco cheio.
+    /// With `true`, `save` and `delete` fail, like a full disk.
     pub fn set_failing(&self, failing: bool) {
         self.failing.store(failing, Ordering::SeqCst);
     }
@@ -172,7 +172,7 @@ impl MemoryTokenStore {
 
     fn check(&self) -> io::Result<()> {
         if self.failing.load(Ordering::SeqCst) {
-            return Err(io::Error::other("falha programada pelo teste"));
+            return Err(io::Error::other("failure programmed by the test"));
         }
         Ok(())
     }

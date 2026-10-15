@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Publicação em um Tópico Distribuidor",
+    "title": "Publishing to a Distributor Topic",
     "output": "doc/diagramas/html/distribuidor-publicacao.html",
     "viewBox": [
       1080,
@@ -15,37 +15,37 @@
     {
       "id": "prod",
       "type": "external",
-      "label": "Produtor",
-      "sublabel": "cliente"
+      "label": "Producer",
+      "sublabel": "client"
     },
     {
       "id": "coord",
       "type": "backend",
-      "label": "Nó que recebe",
-      "sublabel": "coordenador"
+      "label": "Receiving node",
+      "sublabel": "coordinator"
     },
     {
       "id": "filas",
       "type": "cloud",
-      "label": "Nós de cada fila",
-      "sublabel": "primário + réplicas"
+      "label": "Each queue's nodes",
+      "sublabel": "primary + replicas"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 186,
-      "label": "Recepção"
+      "label": "Reception"
     },
     {
       "from": 194,
       "to": 306,
-      "label": "Cópias"
+      "label": "Copies"
     },
     {
       "from": 314,
       "to": 370,
-      "label": "Resposta"
+      "label": "Answer"
     }
   ],
   "messages": [
@@ -54,24 +54,24 @@
       "from": "prod",
       "to": "coord",
       "y": 172,
-      "label": "POST no Tópico Distribuidor",
+      "label": "POST to the Distributor Topic",
       "variant": "security",
-      "note": "casa prefixos na tabela local"
+      "note": "matches prefixes in the local table"
     },
     {
       "id": "reg1",
       "from": "coord",
       "to": "filas",
       "y": 208,
-      "label": "fila A: registro (ID próprio)",
-      "note": "só filas (QT) casam"
+      "label": "queue A: register (own ID)",
+      "note": "only queues (QT) match"
     },
     {
       "id": "ok1",
       "from": "filas",
       "to": "coord",
       "y": 236,
-      "label": "quórum confirma (primário incluso)",
+      "label": "quorum confirms (primary included)",
       "variant": "return"
     },
     {
@@ -79,7 +79,7 @@
       "from": "coord",
       "to": "filas",
       "y": 264,
-      "label": "fila A: commit por quórum",
+      "label": "queue A: commit by quorum",
       "variant": "emphasis"
     },
     {
@@ -87,16 +87,16 @@
       "from": "coord",
       "to": "filas",
       "y": 292,
-      "label": "fila B: mesmo fluxo, outro ID",
+      "label": "queue B: same flow, another ID",
       "variant": "dashed",
-      "note": "cópias independentes"
+      "note": "independent copies"
     },
     {
       "id": "resp",
       "from": "coord",
       "to": "prod",
       "y": 328,
-      "label": "200: resultado por fila (ID ou erro)",
+      "label": "200: result per queue (ID or error)",
       "variant": "return"
     },
     {
@@ -104,38 +104,38 @@
       "from": "coord",
       "to": "prod",
       "y": 356,
-      "label": "nenhuma fila casou: 200 e descarta",
+      "label": "no queue matched: 200 and discards",
       "variant": "dashed",
-      "note": "evento distributor-no-target"
+      "note": "distributor-no-target event"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Casamento",
+      "title": "Matching",
       "items": [
-        "Nome da fila começa com algum prefixo",
-        "Uma cópia por fila, mesmo com vários prefixos",
-        "Só na hora da publicação, sem retroativo"
+        "The queue name starts with some prefix",
+        "One copy per queue, even with several prefixes",
+        "Only at publish time, not retroactive"
       ]
     },
     {
       "dot": "rose",
-      "title": "Falha parcial",
+      "title": "Partial failure",
       "items": [
-        "Cada cópia é independente",
-        "Sem rollback global entre filas",
-        "Erro por fila na resposta, não no distribuidor",
-        "Fila FIFO sem groupId: erro só nessa fila"
+        "Each copy is independent",
+        "No global rollback across queues",
+        "Error per queue in the response, not on the distributor",
+        "FIFO queue without groupId: error only on that queue"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Sem destino ou acima do teto",
+      "title": "No destination or above the ceiling",
       "items": [
-        "Não é erro: o distribuidor recebeu",
-        "Mensagem descartada e evento registrado",
-        "Acima do teto de destinos (se definido): 422"
+        "Not an error: the distributor received it",
+        "Message discarded and event recorded",
+        "Above the destination ceiling (if defined): 422"
       ]
     }
   ]

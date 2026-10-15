@@ -1,14 +1,14 @@
-//! A recuperação de perdas (doc 04, seção 6.6; doc 06c, "Sincronização e recuperação").
+//! The recovery of losses (doc 04, section 6.6; doc 06c, "Synchronization and recovery").
 //!
-//! Dois lados:
+//! Two sides:
 //!
-//! - **Quem serve:** a tabela `losses` do nó (`GET /cluster/message-loss`), o registro e a baixa de
-//!   uma perda (`POST`/`DELETE /cluster/message-loss`) e a aceitação das mensagens que um nó que
-//!   volta encontrou (`POST /cluster/messages/recover`). As duas primeiras rotas e a última
-//!   aceitam quem ainda não é membro.
-//! - **Quem volta:** o nó que descobre ter sido excluído, ou que volta do drain, consulta a lista de
-//!   perdas de todos os nós que alcança, procura cada mensagem no que ainda guarda e a envia ao
-//!   responsável pelo bloco; só então limpa o estado local e refaz o ingresso.
+//! - **Who serves:** the node's `losses` table (`GET /cluster/message-loss`), the record and acknowledgement of
+//!   a loss (`POST`/`DELETE /cluster/message-loss`) and the acceptance of the messages a returning
+//!   node found (`POST /cluster/messages/recover`). The first two routes and the last
+//!   accept whoever is not yet a member.
+//! - **Who returns:** the node that finds out it was excluded, or that comes back from the drain, queries the loss
+//!   list of all the nodes it reaches, looks for each message in what it still keeps and sends it to the
+//!   block's responsible party; only then does it clean the local state and redo the join.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -32,16 +32,16 @@ use crate::engine::messages::{Loaded, Messages};
 use crate::storage::losses::{Loss, LossStore};
 use crate::telemetry::metrics::{CLUSTER_RECOVER, RECOVER_MESSAGES};
 
-/// O que a volta recuperou, para o log e para os testes.
+/// What the return recovered, for the log and the tests.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Summary {
-    /// Perdas distintas que os nós consultados listaram.
+    /// Distinct losses the queried nodes listed.
     pub losses: usize,
-    /// Quantas dessas o nó ainda tinha.
+    /// How many of those the node still had.
     pub found: usize,
-    /// Quantas o responsável aplicou (quórum de gravação atingido).
+    /// How many the responsible party applied (write quorum reached).
     pub recovered: usize,
-    /// Todos os nós responderam à consulta antes de `cluster.recovery.timeout`.
+    /// All the nodes answered the query before `cluster.recovery.timeout`.
     pub complete: bool,
 }
 
@@ -49,19 +49,19 @@ pub struct Recovery {
     service: Arc<ClusterService>,
     messages: Arc<Messages>,
     losses: LossStore,
-    /// O teto de linhas de uma página da lista de perdas e de um envio (`cluster.sync.stream.max-items`).
+    /// The ceiling of lines in a page of the loss list and in a send (`cluster.sync.stream.max-items`).
     max_items: usize,
 }
 
 fn disk(error: &std::io::Error) -> TabaError {
-    tracing::error!(error = %error, "falha ao acessar a tabela de perdas");
+    tracing::error!(error = %error, "failed to access the loss table");
     TabaError::internal()
 }
 
 fn node_syncing() -> TabaError {
     TabaError::new(
         ErrorCode::ClusterNodeSyncing,
-        "O nó ainda está em sincronização e não aceita mensagens recuperadas.",
+        "The node is still syncing and does not accept recovered messages.",
     )
     .with_retry_after(5)
 }
@@ -81,7 +81,7 @@ impl Recovery {
         })
     }
 
-    /// A tabela de perdas deste nó.
+    /// This node's loss table.
     pub fn losses(&self) -> &LossStore {
         &self.losses
     }
@@ -95,19 +95,19 @@ impl Recovery {
         }
     }
 
-    // ---- Quem serve ----
+    // ---- Who serves ----
 
-    /// Apaga os registros mais velhos que `cluster.message-loss.ttl`.
+    /// Deletes the records older than `cluster.message-loss.ttl`.
     fn expire(&self) {
         let ttl =
             u64::try_from(self.service.rules().message_loss_ttl.as_millis()).unwrap_or(u64::MAX);
         let cutoff = self.service.clock().now_millis().saturating_sub(ttl);
         if let Err(e) = self.losses.expire(cutoff) {
-            tracing::warn!(error = %e, "falha ao expirar a tabela de perdas");
+            tracing::warn!(error = %e, "failed to expire the loss table");
         }
     }
 
-    /// `GET /cluster/message-loss`: a tabela `losses`, em ordem de ID.
+    /// `GET /cluster/message-loss`: the `losses` table, in ID order.
     pub fn serve_losses(&self, query: &StreamQuery) -> Result<Response, TabaError> {
         self.expire();
         let limit = query
@@ -127,7 +127,7 @@ impl Recovery {
         Ok(Response::Stream(StreamPage::new(items, more)))
     }
 
-    /// `POST /cluster/message-loss`: outro nó declarou uma perda num bloco que este também guarda.
+    /// `POST /cluster/message-loss`: another node declared a loss in a block this one also keeps.
     pub fn register_loss(&self, record: LossRecord) -> Result<Response, TabaError> {
         record.validate()?;
         let detected_ms = time::parse_ms(&record.detected_at).unwrap_or(0);
@@ -143,16 +143,16 @@ impl Recovery {
         Ok(Response::Loss(LossAck { changed }))
     }
 
-    /// `DELETE /cluster/message-loss/{topic}/{id}`: a mensagem foi recuperada em outro nó.
+    /// `DELETE /cluster/message-loss/{topic}/{id}`: the message was recovered on another node.
     pub fn remove_loss(&self, topic: &str, id: &str) -> Result<Response, TabaError> {
         super::protocol::validate_message_path(topic, id)?;
         let changed = self.losses.remove(topic, id).map_err(|e| disk(&e))?;
         Ok(Response::Loss(LossAck { changed }))
     }
 
-    /// Grava a mensagem recuperada neste nó, sem as duas fases: a mensagem não existe nos donos,
-    /// ninguém concorre por ela. A invisibilidade é zerada e o recibo de uma entrega antiga some;
-    /// o `deliveryCount` fica.
+    /// Stores the recovered message on this node, without the two phases: the message does not exist on the owners,
+    /// nobody competes for it. The invisibility is zeroed and the receipt of an old delivery disappears;
+    /// the `deliveryCount` stays.
     async fn apply_local(&self, record: &MessageRecord) -> Result<Loaded, TabaError> {
         let messages = self.messages.clone();
         let topic = record.topic.clone();
@@ -165,10 +165,10 @@ impl Recovery {
             .map_err(|_| TabaError::internal())?
     }
 
-    /// `POST /cluster/messages/recover`. Cada registro vai aos nós responsáveis pelo bloco; com
-    /// `replicate` este nó grava o seu e manda aos outros, e a linha só conta como aplicada quando
-    /// `write.quorum` nós gravaram. Sem `replicate` só grava aqui (é o pedido de outro nó
-    /// responsável). Quem aceita dá baixa na perda e avisa os demais (melhor esforço).
+    /// `POST /cluster/messages/recover`. Each record goes to the nodes responsible for the block; with
+    /// `replicate` this node stores its own and sends to the others, and the row only counts as applied when
+    /// `write.quorum` nodes stored it. Without `replicate` it only stores here (it is another responsible node's
+    /// request). Whoever accepts acknowledges the loss and notifies the others (best effort).
     pub async fn accept(
         self: &Arc<Self>,
         records: Vec<MessageRecord>,
@@ -179,7 +179,7 @@ impl Recovery {
         }
         let me = self.service.node_id();
         let quorum = self.service.rules().quorum.max(1) as usize;
-        // Gravações confirmadas por registro, e os responsáveis de cada um.
+        // Confirmed writes per record, and the responsible parties of each.
         let mut confirmed = vec![0usize; records.len()];
         let mut needed = vec![quorum; records.len()];
         let mut remote: BTreeMap<String, (Member, Vec<usize>)> = BTreeMap::new();
@@ -200,15 +200,15 @@ impl Recovery {
                             confirmed[index] += 1;
                             local_ok[index] = true;
                         }
-                        // Já existia, venceu por `ttl` ou o tópico deixou de existir: não há mais o
-                        // que gravar e a linha está resolvida.
+                        // It already existed, expired by `ttl` or the topic ceased to exist: there is nothing more
+                        // to store and the row is resolved.
                         Ok(_) => {
                             skipped += 1;
                             confirmed[index] += 1;
                             local_ok[index] = true;
                         }
                         Err(e) => {
-                            tracing::warn!(topic = %record.topic, id = %record.id, error = %e.message, "não foi possível gravar a mensagem recuperada");
+                            tracing::warn!(topic = %record.topic, id = %record.id, error = %e.message, "could not store the recovered message");
                         }
                     }
                 } else if replicate {
@@ -260,8 +260,8 @@ impl Recovery {
         Ok(Response::Recovered(RecoverResult::new(count)))
     }
 
-    /// Manda o lote a um responsável (`replicate=false`) e diz, por registro, se ele gravou. Se o
-    /// responsável aplicou só parte, cada registro é pedido de novo sozinho para saber quais.
+    /// Sends the batch to a responsible node (`replicate=false`) and says, per record, whether it stored it. If the
+    /// responsible node applied only part, each record is asked for again on its own to find out which.
     async fn send_to_owner(
         service: &Arc<ClusterService>,
         owner: &Member,
@@ -275,8 +275,8 @@ impl Recovery {
                     records,
                     replicate: false,
                 };
-                // Chama pelo `Transport` (nunca o próprio nó, que não é responsável aqui): evita
-                // que `accept` apareça dentro do próprio tipo de futuro.
+                // Calls through the `Transport` (never the node itself, which is not responsible here): avoids
+                // `accept` appearing inside its own future type.
                 let rules = service.rules();
                 for attempt in 1..=rules.retry_attempts.max(1) {
                     match service
@@ -307,16 +307,16 @@ impl Recovery {
         }
     }
 
-    /// Dá baixa na perda aqui e avisa os outros membros, sem esperar.
+    /// Acknowledges the loss here and notifies the other members, without waiting.
     fn settle(self: &Arc<Self>, topic: &str, id: &str) {
         if let Err(e) = self.losses.remove(topic, id) {
-            tracing::warn!(error = %e, "falha ao dar baixa na perda");
+            tracing::warn!(error = %e, "failed to acknowledge the loss");
         }
         tracing::info!(
             event.name = "taba.message.recovered",
             messaging.destination.name = %topic,
             message.id = %id,
-            "mensagem perdida recuperada"
+            "lost message recovered"
         );
         let Some(table) = self.service.membership().table() else {
             return;
@@ -334,18 +334,18 @@ impl Recovery {
         }
     }
 
-    // ---- Quem volta ----
+    // ---- Who returns ----
 
-    /// O procedimento do doc 04, seção 6.6, passos 1 a 5: devolve o resumo quando a lista de
-    /// perdas foi tratada ou o prazo `cluster.recovery.timeout` acabou. A limpeza do estado local e
-    /// o novo ingresso (passo 6) são de quem chama.
+    /// The procedure of doc 04, section 6.6, steps 1 to 5: returns the summary when the loss list
+    /// was handled or the `cluster.recovery.timeout` deadline ran out. Cleaning the local state and
+    /// the new join (step 6) are up to the caller.
     pub async fn run(self: &Arc<Self>, peers: Vec<Member>) -> Summary {
         self.run_with(peers, false).await
     }
 
-    /// Como `run`, para o reinício do processo (PRB-048): o disco da vida anterior não atrapalha
-    /// nada, então o que a lista de cada nó que responde pede é devolvido **na hora**, e só o nó
-    /// mudo é chamado de novo até o prazo.
+    /// Like `run`, for the process restart (PRB-048): the previous life's disk does not get in the way of
+    /// anything, so what each answering node's list asks for is returned **right away**, and only the
+    /// mute node is called again until the deadline.
     pub async fn run_streaming(self: &Arc<Self>, peers: Vec<Member>) -> Summary {
         self.run_with(peers, true).await
     }
@@ -359,8 +359,8 @@ impl Recovery {
             return summary;
         }
 
-        // Passo 1: a lista de perdas de todos os nós que respondem. Quem não respondeu é
-        // consultado de novo a cada `cluster.bootstrap.retry.interval`, até o prazo.
+        // Step 1: the loss list of all the nodes that answer. Whoever did not answer is
+        // queried again every `cluster.bootstrap.retry.interval`, until the deadline.
         let mut pending = peers;
         let mut lost: BTreeSet<(String, String)> = BTreeSet::new();
         let mut handled: BTreeSet<(String, String)> = BTreeSet::new();
@@ -396,7 +396,7 @@ impl Recovery {
             if now >= deadline || self.service.cancel_token().is_cancelled() {
                 tracing::warn!(
                     missing = pending.len(),
-                    "a recuperação seguiu sem a lista de perdas de todos os nós"
+                    "the recovery went on without the loss list of all the nodes"
                 );
                 break;
             }
@@ -414,12 +414,12 @@ impl Recovery {
             found = summary.found,
             recovered = summary.recovered,
             complete = summary.complete,
-            "recuperação de perdas concluída"
+            "loss recovery completed"
         );
         summary
     }
 
-    /// Passos 2 e 3: procura cada perda no que o nó guarda e envia o que achou ao responsável.
+    /// Steps 2 and 3: looks for each loss in what the node keeps and sends what it found to the responsible party.
     async fn send_found(
         &self,
         lost: &[(String, String)],
@@ -435,9 +435,9 @@ impl Recovery {
         let Some(table) = table else {
             return;
         };
-        // O destino nunca é o próprio nó: a tabela de um par pode ainda listá-lo (o commit da
-        // saída não chegou a todos), mas ele não atende mais ninguém. No reinício do processo, a
-        // tabela ainda tem o ID antigo, no mesmo endereço (D111).
+        // The destination is never the node itself: a peer's table may still list it (the exit
+        // commit did not reach everyone), but it no longer serves anyone. On a process restart, the
+        // table still has the old ID, at the same address (D111).
         let me = self.service.node_id();
         let local = self.service.local();
         let is_me = |m: &&Member| {
@@ -456,7 +456,7 @@ impl Recovery {
         for (topic, id) in lost {
             let messages = self.messages.clone();
             let (t, i) = (topic.clone(), id.clone());
-            // O que o nó guarda hoje vale primeiro; depois, o disco da vida anterior (PRB-048).
+            // What the node keeps today counts first; then, the previous life's disk (PRB-048).
             let held = tokio::task::spawn_blocking(move || match messages.held_message(&t, &i) {
                 Ok(None) => messages.held_previous_life(&t, &i),
                 other => other,
@@ -490,8 +490,8 @@ impl Recovery {
         }
     }
 
-    /// Uma passada completa pela lista de perdas de um nó, página a página. `None` se o nó não
-    /// respondeu.
+    /// A full pass through a node's loss list, page by page. `None` if the node did not
+    /// answer.
     async fn fetch_losses(&self, peer: &Member) -> Option<Vec<(String, String)>> {
         let mut found = Vec::new();
         let mut from: Option<String> = None;
@@ -524,7 +524,7 @@ impl Recovery {
         }
     }
 
-    /// A tabela de membros que o nó enxerga (para achar o responsável de cada bloco hoje).
+    /// The member table the node sees (to find each block's responsible party today).
     async fn fetch_table(&self, peer: &Member) -> Option<MemberTable> {
         match self
             .service
@@ -536,8 +536,8 @@ impl Recovery {
         }
     }
 
-    /// Envia um lote ao responsável e repete tudo (o reenvio é idempotente) a cada
-    /// `cluster.bootstrap.retry.interval` até o prazo. Devolve quantas linhas foram aplicadas.
+    /// Sends a batch to the responsible party and repeats everything (the resend is idempotent) every
+    /// `cluster.bootstrap.retry.interval` until the deadline. Returns how many rows were applied.
     async fn send_chunk(
         &self,
         owner: &Member,
@@ -561,7 +561,7 @@ impl Recovery {
                 outcome => {
                     let now = Instant::now();
                     if now >= deadline || self.service.cancel_token().is_cancelled() {
-                        tracing::warn!(owner = %owner.node_id, ?outcome, "o lote recuperado não foi aceito por inteiro");
+                        tracing::warn!(owner = %owner.node_id, ?outcome, "the recovered batch was not accepted in full");
                         return match outcome {
                             Ok(Response::Recovered(result)) => result.count as usize,
                             _ => 0,

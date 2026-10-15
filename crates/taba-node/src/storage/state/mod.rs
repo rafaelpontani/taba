@@ -1,6 +1,6 @@
-//! O estado do nó na tabela `state` do `_node.db` (doc 04, seção 6.10): hoje a marca
-//! `save_completed`, o instante do fim do drain. É o que separa a parada limpa (o save
-//! terminou) da queda (a partida seguinte avisa que o que só estava em memória se perdeu).
+//! The node state in the `state` table of `_node.db` (doc 04, section 6.10): today the
+//! `save_completed` mark, the instant the drain ended. It is what separates a clean stop (the save
+//! finished) from a crash (the next start warns that what was only in memory was lost).
 
 use std::io;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ impl NodeStateStore {
         Self { db }
     }
 
-    /// Grava a marca com o instante (ms) do fim do save.
+    /// Writes the mark with the instant (ms) the save ended.
     pub fn mark_save_completed(&self, at_ms: u64) -> io::Result<()> {
         self.db
             .conn()
@@ -34,8 +34,8 @@ impl NodeStateStore {
             .map_err(|e| self.db.fail(e))
     }
 
-    /// Lê a marca **e a apaga**: quem parte a consome, para uma queda depois da partida não
-    /// passar por save limpo. `None`: não houve save concluído.
+    /// Reads the mark **and deletes it**: whoever starts consumes it, so a crash after the start does not
+    /// count as a clean save. `None`: there was no completed save.
     pub fn take_save_mark(&self) -> io::Result<Option<u64>> {
         let conn = self.db.conn();
         let value: Option<String> = conn
@@ -51,7 +51,7 @@ impl NodeStateStore {
         Ok(value.and_then(|v| v.parse().ok()))
     }
 
-    /// Apaga a marca sem ler (o drain foi cancelado: voltou a gravar em memória).
+    /// Deletes the mark without reading (the drain was cancelled: it went back to writing in memory).
     pub fn clear_save_mark(&self) -> io::Result<()> {
         self.take_save_mark().map(|_| ())
     }

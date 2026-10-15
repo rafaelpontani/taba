@@ -1,6 +1,6 @@
-//! As chamadas entre nós como tipos (doc 06c): o que o `Transport` leva e o que as rotas
-//! `/cluster/*` e a rede em memória entendem. Uma só definição serve às duas pontas, e o
-//! [`http`] traduz cada chamada para a rota HTTP do documento e de volta.
+//! The calls between nodes as types (doc 06c): what the `Transport` carries and what the
+//! `/cluster/*` routes and the in-memory network understand. A single definition serves both ends, and
+//! [`http`] translates each call to the document's HTTP route and back.
 
 mod backup;
 mod definitions;
@@ -33,14 +33,14 @@ use super::members::{Member, MemberTable};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::id;
 
-/// `OperationRef` (doc 06c): a fase 2 e o rollback só dizem de qual operação falam.
+/// `OperationRef` (doc 06c): phase 2 and the rollback only say which operation they speak of.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OperationRef {
     pub operation_id: String,
 }
 
-/// `Ack` (doc 06d, seção 8.3.7): a resposta de `register`, `commit` e `rollback`.
+/// `Ack` (doc 06d, section 8.3.7): the response of `register`, `commit` and `rollback`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Ack {
@@ -48,7 +48,7 @@ pub struct Ack {
     pub accepted: bool,
 }
 
-/// `JoinRequest` (doc 06c): o pedido de ingresso que o nó novo faz a um membro.
+/// `JoinRequest` (doc 06c): the join request the new node makes to a member.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JoinRequest {
@@ -58,7 +58,7 @@ pub struct JoinRequest {
     pub version: String,
 }
 
-/// `NodeRegisterRequest` (doc 06c): a fase 1 do ingresso, do coordenador a todos os nós.
+/// `NodeRegisterRequest` (doc 06c): phase 1 of the join, from the coordinator to all nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NodeRegisterRequest {
@@ -74,7 +74,7 @@ pub enum UnregisterReason {
     Drain,
 }
 
-/// `NodeUnregisterRequest` (doc 06c): a fase 1 da saída de um nó.
+/// `NodeUnregisterRequest` (doc 06c): phase 1 of a node's departure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NodeUnregisterRequest {
@@ -84,8 +84,8 @@ pub struct NodeUnregisterRequest {
     pub reason: UnregisterReason,
 }
 
-/// As três fases de uma operação em duas fases: `register` (com o corpo da operação), `commit` e
-/// `rollback` (só com o `operationId`).
+/// The three phases of a two-phase operation: `register` (with the operation body), `commit` and
+/// `rollback` (only with the `operationId`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step<R> {
     Register(R),
@@ -94,7 +94,7 @@ pub enum Step<R> {
 }
 
 impl<R> Step<R> {
-    /// `register`, `commit` ou `rollback`.
+    /// `register`, `commit` or `rollback`.
     pub const fn phase(&self) -> &'static str {
         match self {
             Step::Register(_) => "register",
@@ -104,8 +104,8 @@ impl<R> Step<R> {
     }
 }
 
-/// Uma chamada a outro nó. A maior variante (o registro de uma mensagem) leva o corpo inteiro; a
-/// enum é montada e consumida sem copiar, então não vale a indireção.
+/// A call to another node. The largest variant (a message's register) carries the whole body; the
+/// enum is built and consumed without copying, so the indirection is not worth it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum Request {
@@ -121,17 +121,17 @@ pub enum Request {
     Commit(OperationRef),
     /// `POST /cluster/nodes/rollback`
     Rollback(OperationRef),
-    /// `POST /cluster/definitions/propose`: a proposta de uma mudança de tópico ou de token, de quem
-    /// recebeu a chamada do cliente ao dono da definição.
+    /// `POST /cluster/definitions/propose`: the proposal of a topic or token change, from whoever
+    /// received the client's call to the definition's owner.
     DefinitionPropose(DefinitionProposal),
-    /// `POST /cluster/definitions/apply`: a mudança decidida pelo dono, com a versão dele.
+    /// `POST /cluster/definitions/apply`: the change decided by the owner, with its version.
     DefinitionApply(DefinitionApply),
     /// `GET /cluster/topics`
     ListTopics(StreamQuery),
     /// `GET /cluster/tokens`
     ListTokens(StreamQuery),
-    /// `GET /cluster/definitions/tombstones`: as lápides (definições removidas, com a versão) que o
-    /// nó ainda guarda.
+    /// `GET /cluster/definitions/tombstones`: the tombstones (removed definitions, with the version) that the
+    /// node still keeps.
     ListTombstones(StreamQuery),
     /// `POST /cluster/topics/{topic}/messages/{id}/register|commit|rollback`
     Write {
@@ -157,9 +157,9 @@ pub enum Request {
     Take { topic: String, request: TakeRequest },
     /// `POST /cluster/vote-remove`
     Vote(VoteRequest),
-    /// `GET /cluster/status`: o `NodeStatus` do nó, para o `GET /health/cluster` do cluster.
+    /// `GET /cluster/status`: the node's `NodeStatus`, for the cluster's `GET /health/cluster`.
     Status,
-    /// `* /cluster/forward/{caminho}`
+    /// `* /cluster/forward/{path}`
     Forward(ForwardRequest),
     /// `GET /cluster/blocks/{id}/ids`
     BlockIds { block: String, query: StreamQuery },
@@ -167,38 +167,38 @@ pub enum Request {
     BlockMessages { block: String, query: StreamQuery },
     /// `GET /cluster/blocks/{id}/messages/{messageId}`
     BlockMessage { block: String, id: String },
-    /// `GET /cluster/message-loss`: a tabela `losses` do nó (aceita quem ainda não é membro).
+    /// `GET /cluster/message-loss`: the node's `losses` table (accepts whoever is not yet a member).
     MessageLoss(StreamQuery),
-    /// `POST /cluster/message-loss`: registra uma perda declarada por outro nó.
+    /// `POST /cluster/message-loss`: records a loss declared by another node.
     LossRegister(LossRecord),
-    /// `DELETE /cluster/message-loss/{topic}/{id}`: dá baixa numa perda recuperada.
+    /// `DELETE /cluster/message-loss/{topic}/{id}`: acknowledges a recovered loss.
     LossRemove { topic: String, id: String },
-    /// `POST /cluster/topics/{topic}/fifo/publish`: o repasse de uma publicação FIFO ao primário
-    /// do grupo. O `MessageRecord` leva o conteúdo, o `groupId` e o `deduplicationId`; o `id` é um
-    /// marcador (`FIFO_PLACEHOLDER_ID`), porque quem gera o `id` é o primário.
+    /// `POST /cluster/topics/{topic}/fifo/publish`: the forward of a FIFO publication to the group's primary.
+    /// The `MessageRecord` carries the content, the `groupId` and the `deduplicationId`; the `id` is a
+    /// placeholder (`FIFO_PLACEHOLDER_ID`), because whoever generates the `id` is the primary.
     FifoPublish {
         topic: String,
         record: MessageRecord,
     },
-    /// `POST /cluster/messages/recover`: as mensagens que o nó que volta encontrou (aceita quem
-    /// ainda não é membro). Com `replicate`, quem recebe grava também nos outros responsáveis;
-    /// sem ele (`?replicate=false`), só grava no próprio disco.
+    /// `POST /cluster/messages/recover`: the messages the returning node found (accepts whoever is
+    /// not yet a member). With `replicate`, whoever receives it also writes to the other responsible nodes;
+    /// without it (`?replicate=false`), it only writes to its own disk.
     Recover {
         records: Vec<MessageRecord>,
         replicate: bool,
     },
-    /// `POST /cluster/backup/flush`: o flush do backup em S3 neste nó (doc 23, seção 1.11).
+    /// `POST /cluster/backup/flush`: the S3 backup flush on this node (doc 23, section 1.11).
     BackupFlush,
-    /// `POST /cluster/backup/stop`: o drain deste nó para a parada programada do cluster, com o
-    /// envio ao S3; responde quando o nó concluiu.
+    /// `POST /cluster/backup/stop`: this node's drain for the cluster's planned stop, with the
+    /// upload to S3; answers when the node is done.
     BackupStop,
-    /// `POST /cluster/backup/saved`: o primário avisa a réplica de quais mensagens já estão no
+    /// `POST /cluster/backup/saved`: the primary tells the replica which messages are already in the
     /// bucket.
     BackupSaved(BackupSaved),
 }
 
 impl Request {
-    /// Um nome curto, para log e para conferir o que passou pela rede em memória.
+    /// A short name, for logs and to check what passed through the in-memory network.
     pub const fn name(&self) -> &'static str {
         match self {
             Request::ListNodes => "list-nodes",
@@ -268,37 +268,37 @@ impl Request {
     }
 }
 
-/// A resposta de sucesso (`200`) de uma chamada.
+/// The success response (`200`) of a call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
     Members(MemberTable),
     Ack(Ack),
-    /// A mudança de uma definição como o dono a decidiu (resposta do `propose` e do `apply`).
+    /// A definition's change as the owner decided it (response of `propose` and `apply`).
     Definition(DefinitionApply),
-    /// Um trecho de `GET /cluster/topics` ou `/cluster/tokens`.
+    /// A stretch of `GET /cluster/topics` or `/cluster/tokens`.
     Stream(StreamPage),
     Taken(TakeResponse),
     Idle(IdleResponse),
-    /// O voto de exclusão.
+    /// The exclusion vote.
     Vote(VoteResponse),
-    /// O `NodeStatus` (doc 06b), como JSON: quem o monta é a camada de operação.
+    /// The `NodeStatus` (doc 06b), as JSON: whoever builds it is the operations layer.
     Status(serde_json::Value),
-    /// A resposta de uma chamada de cliente repassada, como o destino a deu.
+    /// The response of a forwarded client call, as the destination gave it.
     Forwarded(ForwardResponse),
-    /// Uma mensagem inteira (`GET /cluster/blocks/{id}/messages/{messageId}`).
+    /// A whole message (`GET /cluster/blocks/{id}/messages/{messageId}`).
     Record(MessageRecord),
-    /// O registro ou a baixa de uma perda.
+    /// The record or acknowledgement of a loss.
     Loss(LossAck),
-    /// O resultado do `recover`.
+    /// The result of `recover`.
     Recovered(RecoverResult),
-    /// A resposta do primário a uma publicação FIFO repassada.
+    /// The primary's response to a forwarded FIFO publication.
     FifoPublished(FifoPublished),
-    /// O relatório do backup em S3 (flush ou parada), como JSON.
+    /// The S3 backup report (flush or stop), as JSON.
     Backup(serde_json::Value),
 }
 
 fn invalid(field: &str, code: ErrorCode, message: &str) -> TabaError {
-    TabaError::new(code, "A requisição tem campos inválidos.").with_detail(field, code, message)
+    TabaError::new(code, "The request has invalid fields.").with_detail(field, code, message)
 }
 
 pub(crate) fn require_guid(field: &str, value: &str) -> Result<(), TabaError> {
@@ -308,7 +308,7 @@ pub(crate) fn require_guid(field: &str, value: &str) -> Result<(), TabaError> {
         Err(invalid(
             field,
             ErrorCode::ValidationFailed,
-            "Esperado um GUID v7 em minúsculas.",
+            "Expected a lowercase GUID v7.",
         ))
     }
 }
@@ -318,7 +318,7 @@ fn require_text(field: &str, value: &str) -> Result<(), TabaError> {
         Err(invalid(
             field,
             ErrorCode::ValidationRequired,
-            "Campo obrigatório.",
+            "Required field.",
         ))
     } else {
         Ok(())
@@ -330,14 +330,14 @@ fn validate_endpoint(addresses: &[String], port: u16) -> Result<(), TabaError> {
         return Err(invalid(
             "addresses",
             ErrorCode::ValidationRequired,
-            "Informe ao menos um endereço.",
+            "Provide at least one address.",
         ));
     }
     if port == 0 {
         return Err(invalid(
             "port",
             ErrorCode::ValidationOutOfRange,
-            "A porta deve ser de 1 a 65535.",
+            "The port must be from 1 to 65535.",
         ));
     }
     Ok(())
@@ -375,8 +375,8 @@ impl OperationRef {
 }
 
 impl<R> Step<R> {
-    /// Valida o `operationId` da fase 2 e do rollback; o corpo do `register` é validado por quem
-    /// o conhece.
+    /// Validates the `operationId` of phase 2 and of the rollback; the `register` body is validated by whoever
+    /// knows it.
     pub fn validate_reference(&self) -> Result<(), TabaError> {
         match self {
             Step::Register(_) => Ok(()),

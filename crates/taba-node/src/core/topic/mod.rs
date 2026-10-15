@@ -1,5 +1,5 @@
-//! A definição de um tópico (doc 02, seção 3.3): o que é replicado a todos os nós e
-//! gravado na tabela `topics` do `_node.db`. O mesmo JSON é a base da resposta da API.
+//! A topic's definition (doc 02, section 3.3): what is replicated to every node and
+//! stored in the `topics` table of `_node.db`. The same JSON is the basis of the API response.
 
 use std::collections::BTreeMap;
 
@@ -7,12 +7,12 @@ use serde_json::{Map, Value, json};
 
 use super::time;
 
-/// Configurações de uma fila. `None` em `max_message_bytes`, `ttl` e `max_deliveries`
-/// quer dizer "vale o padrão do cluster" (`null` no JSON).
+/// Queue settings. `None` in `max_message_bytes`, `ttl` and `max_deliveries`
+/// means "the cluster default applies" (`null` in the JSON).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueueSpec {
     pub volatile: bool,
-    /// Só em fila volátil.
+    /// Only on a volatile queue.
     pub idle_timeout: Option<u64>,
     pub fifo: bool,
     pub max_message_bytes: Option<u64>,
@@ -43,7 +43,7 @@ impl TopicDefinition {
         }
     }
 
-    /// Os prefixos de um distribuidor; `None` numa fila.
+    /// A distributor's prefixes; `None` on a queue.
     pub fn prefixes(&self) -> Option<&[String]> {
         match &self.spec {
             Spec::Distributor { prefixes } => Some(prefixes),
@@ -58,8 +58,8 @@ impl TopicDefinition {
         }
     }
 
-    /// O JSON da definição, o mesmo que a tabela `topics` guarda. Campo ausente = não se aplica ao tipo;
-    /// `null` = aplica-se e vale o padrão (doc 06d, seção 8.3.1).
+    /// The definition's JSON, the same one the `topics` table stores. Absent field = does not apply to the type;
+    /// `null` = it applies and the default holds (doc 06d, section 8.3.1).
     pub fn to_json(&self) -> Value {
         let mut m = Map::new();
         m.insert("id".into(), json!(self.id));
@@ -85,9 +85,9 @@ impl TopicDefinition {
         Value::Object(m)
     }
 
-    /// O inverso de [`to_json`](Self::to_json). O erro é um texto para o log.
+    /// The inverse of [`to_json`](Self::to_json). The error is a text for the log.
     pub fn from_json(value: &Value) -> Result<Self, String> {
-        let obj = value.as_object().ok_or("a definição não é um objeto")?;
+        let obj = value.as_object().ok_or("the definition is not an object")?;
         let text = |k: &str| {
             obj.get(k)
                 .and_then(Value::as_str)
@@ -100,7 +100,7 @@ impl TopicDefinition {
                 Some(v) => v
                     .as_u64()
                     .map(Some)
-                    .ok_or(format!("`{k}` não é um inteiro")),
+                    .ok_or(format!("`{k}` is not an integer")),
             }
         };
         let tags = match obj.get("tags") {
@@ -110,12 +110,12 @@ impl TopicDefinition {
                 .map(|(k, v)| {
                     v.as_str()
                         .map(|v| (k.clone(), v.to_owned()))
-                        .ok_or(format!("tag `{k}` não é texto"))
+                        .ok_or(format!("tag `{k}` is not text"))
                 })
                 .collect::<Result<_, _>>()?,
-            Some(_) => return Err("`tags` não é um objeto".into()),
+            Some(_) => return Err("`tags` is not an object".into()),
         };
-        let created_ms = time::parse_ms(&text("createdAt")?).ok_or("`createdAt` inválido")?;
+        let created_ms = time::parse_ms(&text("createdAt")?).ok_or("`createdAt` is invalid")?;
         let spec = match text("type")?.as_str() {
             "queue" => Spec::Queue(QueueSpec {
                 volatile: obj
@@ -139,7 +139,7 @@ impl TopicDefinition {
                     })
                     .unwrap_or_default(),
             },
-            other => return Err(format!("tipo `{other}` desconhecido")),
+            other => return Err(format!("unknown type `{other}`")),
         };
         Ok(Self {
             id: text("id")?,
@@ -151,9 +151,9 @@ impl TopicDefinition {
     }
 }
 
-/// O `id` da fila de dead-letter, derivado do `id` da fila de origem (ela não tem
-/// definição própria, doc 13, seção 12.10): o último dígito hexadecimal avança um.
-/// Serve para a dead-letter ter uma chave única na ordenação e na paginação.
+/// The `id` of the dead-letter queue, derived from the source queue's `id` (it has no
+/// definition of its own, doc 13, section 12.10): the last hexadecimal digit advances by one.
+/// It lets the dead-letter have a unique key in ordering and pagination.
 pub fn dead_letter_id(source_id: &str) -> String {
     let mut chars: Vec<char> = source_id.chars().collect();
     if let Some(last) = chars.last_mut() {

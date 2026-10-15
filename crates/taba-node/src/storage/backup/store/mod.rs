@@ -1,9 +1,9 @@
-//! O depósito de objetos do backup (doc 23, "Backup em S3"): o trait [`ObjectStore`], o depósito
-//! em memória dos testes ([`MemoryStore`]), o cliente do S3 ([`S3Store`]) e o prefixo base
+//! The backup's object store (doc 23, "S3 backup"): the [`ObjectStore`] trait, the in-memory
+//! store of the tests ([`MemoryStore`]), the S3 client ([`S3Store`]) and the base prefix
 //! ([`Prefixed`]).
 //!
-//! O S3 é **opcional** e nunca entra no caminho de publicação: quem usa o depósito trata cada erro
-//! como "o backup está fora do ar" e segue.
+//! S3 is **optional** and never enters the publication path: whoever uses the store treats each error
+//! as "the backup is down" and carries on.
 
 mod memory;
 mod s3;
@@ -15,71 +15,71 @@ use std::sync::Arc;
 pub use memory::MemoryStore;
 pub use s3::{S3Settings, S3Store};
 
-/// O erro de uma chamada ao depósito.
+/// The error of a call to the store.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum StoreError {
-    /// O depósito não respondeu (rede, credenciais, serviço fora do ar).
-    #[error("o depósito de objetos não respondeu: {0}")]
+    /// The store did not answer (network, credentials, service down).
+    #[error("the object store did not answer: {0}")]
     Unavailable(String),
-    /// O depósito não suporta a escrita condicional (`If-None-Match`, `If-Match`).
-    #[error("o depósito não suporta escrita condicional: {0}")]
+    /// The store does not support conditional writes (`If-None-Match`, `If-Match`).
+    #[error("the store does not support conditional writes: {0}")]
     Unsupported(String),
 }
 
 pub type StoreResult<T> = Result<T, StoreError>;
 pub type StoreFuture<'a, T> = Pin<Box<dyn Future<Output = StoreResult<T>> + Send + 'a>>;
 
-/// O que se sabe de um objeto sem baixá-lo.
+/// What is known about an object without downloading it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectInfo {
     pub key: String,
     pub size: u64,
-    /// Muda a cada gravação com conteúdo diferente: o batimento dos nós depende disto.
+    /// Changes on every write with different content: the nodes' heartbeat depends on this.
     pub etag: String,
 }
 
-/// Um objeto baixado.
+/// A downloaded object.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Object {
     pub body: Vec<u8>,
     pub etag: String,
 }
 
-/// O que o backup pede ao S3 (ou ao MinIO). Todas as chaves são relativas ao prefixo base.
+/// What the backup asks of S3 (or MinIO). All the keys are relative to the base prefix.
 pub trait ObjectStore: Send + Sync + 'static {
-    /// Grava (ou substitui) o objeto e devolve o `etag` novo.
+    /// Writes (or replaces) the object and returns the new `etag`.
     fn put(&self, key: &str, body: Vec<u8>) -> StoreFuture<'_, String>;
 
-    /// Cria o objeto só se ele ainda não existe (`If-None-Match: *`). `false`: já existia.
+    /// Creates the object only if it does not exist yet (`If-None-Match: *`). `false`: it already existed.
     fn put_if_absent(&self, key: &str, body: Vec<u8>) -> StoreFuture<'_, bool>;
 
-    /// Substitui o objeto só se o `etag` atual é `etag` (`If-Match`). `false`: mudou ou sumiu.
+    /// Replaces the object only if the current `etag` is `etag` (`If-Match`). `false`: it changed or vanished.
     fn put_if_match(&self, key: &str, body: Vec<u8>, etag: &str) -> StoreFuture<'_, bool>;
 
     fn get(&self, key: &str) -> StoreFuture<'_, Option<Object>>;
 
-    /// `len` bytes a partir de `start` (`Range`). `None`: o objeto não existe. O fim passa do
-    /// tamanho sem erro.
+    /// `len` bytes from `start` (`Range`). `None`: the object does not exist. The end past the
+    /// size is no error.
     fn get_range(&self, key: &str, start: u64, len: u64) -> StoreFuture<'_, Option<Vec<u8>>>;
 
-    /// Os últimos `len` bytes do objeto (para ler o rodapé de um segmento sem baixá-lo).
+    /// The last `len` bytes of the object (to read a segment's footer without downloading it).
     fn get_suffix(&self, key: &str, len: u64) -> StoreFuture<'_, Option<Vec<u8>>>;
 
-    /// Os objetos cujo nome começa com `prefix`, em ordem de nome.
+    /// The objects whose name starts with `prefix`, in name order.
     fn list(&self, prefix: &str) -> StoreFuture<'_, Vec<ObjectInfo>>;
 
-    /// Apaga o objeto. Apagar o que não existe não é erro.
+    /// Deletes the object. Deleting what does not exist is no error.
     fn delete(&self, key: &str) -> StoreFuture<'_, ()>;
 }
 
-/// Põe um prefixo base (`backup.s3.prefix`) na frente de todas as chaves.
+/// Puts a base prefix (`backup.s3.prefix`) in front of every key.
 pub struct Prefixed {
     inner: Arc<dyn ObjectStore>,
     prefix: String,
 }
 
 impl Prefixed {
-    /// `prefix` sem barra no começo e no fim; vazio, não muda nada.
+    /// `prefix` without a slash at the start and end; empty, it changes nothing.
     pub fn new(inner: Arc<dyn ObjectStore>, prefix: &str) -> Self {
         let prefix = prefix.trim_matches('/');
         Self {

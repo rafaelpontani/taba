@@ -1,17 +1,17 @@
-# Conectores
+# Connectors
 
-Os conectores do Taba ([doc/19-conectores.md](../doc/19-conectores.md)), uma pasta por linguagem. Cada um é autônomo e fala a API de cliente ([doc/06a-api-cliente.md](../doc/06a-api-cliente.md)).
+The Taba connectors ([doc/pt-BR/21-conectores.md](../doc/pt-BR/21-conectores.md)), one folder per language. Each one is self-contained and speaks the client API ([doc/pt-BR/16-api-cliente.md](../doc/pt-BR/16-api-cliente.md)).
 
-| Pasta | O que é | Estado |
+| Folder | What it is | Status |
 |---|---|---|
-| [`rust/`](rust/) | `taba-client`: as nove operações, o `subscribe` e a repetição de chamadas, com HTTP/1.1, TLS (`rustls`), JSON e base64 próprios | Síncrono pronto; a forma `async` e a publicação no crates.io faltam |
-| [`cli/`](cli/) | `taba-cli`: a linha de comando do cliente ([doc/19b-cli.md](../doc/19b-cli.md)), sobre o conector Rust | Pronto; falta conferir a imagem Docker num Docker de verdade e o roteiro de ponta a ponta |
-| [`csharp/`](csharp/) | `Taba.Client`: as nove operações em `...Async` e síncronas, o `subscribe`, a repetição de chamadas, JSON próprio, sem dependências; alvos `net461`, `net5.0`, `net6.0`, `net8.0` e `net10.0` | Pronto (unitários e integração contra o Compose, `scripts/integration.sh`; [exemplo de console](../exemplos/csharp-console/)); falta a publicação no nuget.org |
-| `java/`, `c/`, `cpp/`, `python/`, `php/`, `ruby/`, `go/`, `node/` | Os demais ([plano](../doc/19-conectores.md), seção 18.8) | A fazer |
+| [`rust/`](rust/) | `taba-client`: the nine operations, `subscribe` and call retries, with its own HTTP/1.1, TLS (`rustls`), JSON and base64 | Synchronous ready; the `async` form and publishing to crates.io are missing |
+| [`cli/`](cli/) | `taba-cli`: the client command line ([doc/pt-BR/20-cli.md](../doc/pt-BR/20-cli.md)), on top of the Rust connector | Ready; the Docker image still needs checking on a real Docker, and so does the end-to-end script |
+| [`csharp/`](csharp/) | `Taba.Client`: the nine operations as `...Async` and synchronous, `subscribe`, call retries, its own JSON, no dependencies; targets `net461`, `net5.0`, `net6.0`, `net8.0` and `net10.0` | Ready (unit tests and integration against Compose, `scripts/integration.sh`; [console example](../examples/csharp-console/)); publishing to nuget.org is missing |
+| `java/`, `c/`, `cpp/`, `python/`, `php/`, `ruby/`, `go/`, `node/` | The rest ([plan](../doc/pt-BR/21-conectores.md)) | To do |
 
 ## Rust
 
-Os dois crates formam um workspace do Cargo próprio (`Cargo.toml` desta pasta), fora do workspace do servidor:
+The two crates form their own Cargo workspace (the `Cargo.toml` in this folder), outside the server workspace:
 
 ```
 cd connectors/rust
@@ -20,4 +20,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 ```
 
-Os testes citam os casos de uso (`/// UC: UC-CLI-001`) como os do servidor, e o `crates/taba-node/tests/uc_coverage.rs` os lê também daqui.
+The tests cite the use cases (`/// UC: UC-CLI-001`) like the server's, and `crates/taba-node/tests/uc_coverage.rs` reads them from here too.

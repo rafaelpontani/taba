@@ -44,7 +44,7 @@ fn rejects_malformed_documents() {
         "{\"a\":1 \"b\":2}",
         "\"a\nb\"",
     ] {
-        assert!(validate(doc).is_err(), "deveria recusar {doc:?}");
+        assert!(validate(doc).is_err(), "should refuse {doc:?}");
     }
 }
 
@@ -87,7 +87,7 @@ fn decodes_escapes_unicode_and_surrogate_pairs() {
     assert_eq!(decode_string("\"\\u00e9\\u4e2d\"").unwrap(), "é中");
     assert_eq!(decode_string("\"\\ud83d\\ude00\"").unwrap(), "😀");
     assert_eq!(decode_string("\"😀 direto\"").unwrap(), "😀 direto");
-    // Substituto sozinho não derruba: vira o caractere de substituição.
+    // A lone surrogate does not bring it down: it becomes the replacement character.
     assert_eq!(decode_string("\"\\ud83d x\"").unwrap(), "\u{FFFD} x");
     assert_eq!(decode_string("\"\\ude00\"").unwrap(), "\u{FFFD}");
     assert!(decode_string("abc").is_err());
@@ -98,9 +98,9 @@ fn decodes_escapes_unicode_and_surrogate_pairs() {
 fn quote_round_trips_through_decode() {
     for s in [
         "",
-        "simples",
+        "simple",
         "aspas \" e barra \\",
-        "linha\nnova\ttab",
+        "new\nline\ttab",
         "\u{1}ctrl",
         "çã 中 😀",
     ] {

@@ -1,4 +1,4 @@
-//! Fila volátil e `autoCreate` (doc 15, seções 14.3 e 14.4).
+//! Volatile queue and `autoCreate` (doc 15, sections 14.3 and 14.4).
 
 mod common;
 
@@ -25,20 +25,20 @@ async fn wait_until_gone(node: &TestNode, name: &str) {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!("a fila `{name}` não foi excluída");
+    panic!("queue `{name}` was not deleted");
 }
 
 /// UC: UC-CNS-031
 #[tokio::test]
 async fn auto_create_on_get_makes_a_volatile_queue_and_the_get_counts() {
     let node = TestNode::development().await;
-    let response = consume(&node, "/topics/nova/messages?autoCreate=true").await;
+    let response = consume(&node, "/topics/new/messages?autoCreate=true").await;
     assert_eq!(response.status(), 200);
     assert_eq!(
         response.json::<Value>().await.unwrap(),
         json!({ "messages": [] })
     );
-    let created: Value = topic(&node, "nova").await.json().await.unwrap();
+    let created: Value = topic(&node, "new").await.json().await.unwrap();
     assert_eq!(created["type"], "queue");
     assert_eq!(created["volatile"], true);
     assert_eq!(created["idleTimeout"], 600);
@@ -75,19 +75,19 @@ async fn auto_create_is_idempotent_never_makes_a_distributor_and_refuses_bad_nam
     let node = TestNode::development().await;
     consume(
         &node,
-        "/topics/fila/messages?autoCreate=true&idleTimeout=300",
+        "/topics/queue/messages?autoCreate=true&idleTimeout=300",
     )
     .await;
-    // De novo, com outros parâmetros: ignorados.
+    // Again, with other parameters: ignored.
     let again = consume(
         &node,
-        "/topics/fila/messages?autoCreate=true&idleTimeout=900&fifo=true",
+        "/topics/queue/messages?autoCreate=true&idleTimeout=900&fifo=true",
     )
     .await;
     assert_eq!(again.status(), 200);
-    let fila: Value = topic(&node, "fila").await.json().await.unwrap();
+    let queue: Value = topic(&node, "queue").await.json().await.unwrap();
     assert_eq!(
-        (fila["idleTimeout"].as_u64(), fila["fifo"].as_bool()),
+        (queue["idleTimeout"].as_u64(), queue["fifo"].as_bool()),
         (Some(300), Some(false))
     );
 
@@ -117,20 +117,20 @@ async fn auto_create_is_idempotent_never_makes_a_distributor_and_refuses_bad_nam
     );
     assert_eq!(
         error_code(
-            consume(&node, "/topics/com%20espa%C3%A7o/messages?autoCreate=true").await,
+            consume(&node, "/topics/with%20space%C3%A7/messages?autoCreate=true").await,
             400
         )
         .await,
         "validation.invalid-name"
     );
     assert_eq!(
-        error_code(consume(&node, "/topics/nada/messages").await, 404).await,
+        error_code(consume(&node, "/topics/nothing/messages").await, 404).await,
         "topic.not-found",
-        "sem autoCreate"
+        "without autoCreate"
     );
     assert_eq!(
         error_code(
-            consume(&node, "/topics/nada/messages?autoCreate=talvez").await,
+            consume(&node, "/topics/nothing/messages?autoCreate=maybe").await,
             400
         )
         .await,
@@ -199,7 +199,7 @@ async fn a_queue_without_consumers_is_deleted_by_the_sweeper_and_a_get_postpones
     assert_eq!(
         topic(&node, "efemera").await.status(),
         200,
-        "o GET adiou a exclusão"
+        "the GET postponed the deletion"
     );
 
     node.clock.advance(Duration::from_secs(2));
@@ -215,12 +215,12 @@ async fn a_queue_without_consumers_is_deleted_by_the_sweeper_and_a_get_postpones
         )
         .await,
         "topic.not-found",
-        "a dead-letter vai junto"
+        "the dead-letter goes along"
     );
     assert_eq!(
         topic(&node, "vizinha").await.status(),
         200,
-        "a outra não venceu"
+        "the other one did not expire"
     );
     node.shutdown().await;
 }
@@ -231,25 +231,25 @@ async fn publishing_and_reading_the_dead_letter_do_not_keep_a_volatile_queue_ali
     let node = TestNode::development().await;
     consume(
         &node,
-        "/topics/fila/messages?autoCreate=true&idleTimeout=60",
+        "/topics/queue/messages?autoCreate=true&idleTimeout=60",
     )
     .await;
     node.clock.advance(Duration::from_secs(40));
     node.client
-        .post(node.client_url("/topics/fila/messages"))
+        .post(node.client_url("/topics/queue/messages"))
         .header("content-type", "application/json")
         .body("1")
         .send()
         .await
         .unwrap();
     assert_eq!(
-        consume(&node, "/topics/fila-dead-letter/messages")
+        consume(&node, "/topics/queue-dead-letter/messages")
             .await
             .status(),
         200
     );
     node.clock.advance(Duration::from_secs(20));
-    wait_until_gone(&node, "fila").await;
+    wait_until_gone(&node, "queue").await;
     node.shutdown().await;
 }
 
@@ -259,12 +259,12 @@ async fn volatile_and_the_type_are_immutable_but_the_idle_timeout_can_change() {
     let node = TestNode::development().await;
     consume(
         &node,
-        "/topics/fila/messages?autoCreate=true&idleTimeout=60",
+        "/topics/queue/messages?autoCreate=true&idleTimeout=60",
     )
     .await;
     let patch = |body: Value| {
         node.client
-            .patch(node.client_url("/topics/fila"))
+            .patch(node.client_url("/topics/queue"))
             .json(&body)
             .send()
     };
@@ -282,9 +282,9 @@ async fn volatile_and_the_type_are_immutable_but_the_idle_timeout_can_change() {
     node.clock.advance(Duration::from_secs(120));
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(
-        topic(&node, "fila").await.status(),
+        topic(&node, "queue").await.status(),
         200,
-        "o prazo novo vale"
+        "the new deadline counts"
     );
     node.shutdown().await;
 }
@@ -295,13 +295,13 @@ async fn an_ordinary_queue_never_expires() {
     let node = TestNode::development().await;
     node.client
         .post(node.client_url("/topics"))
-        .json(&json!({ "name": "pedidos", "type": "queue" }))
+        .json(&json!({ "name": "orders", "type": "queue" }))
         .send()
         .await
         .unwrap();
     node.clock.advance(Duration::from_secs(30 * 86_400));
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    assert_eq!(topic(&node, "pedidos").await.status(), 200);
+    assert_eq!(topic(&node, "orders").await.status(), 200);
     node.shutdown().await;
 }
 
@@ -318,17 +318,17 @@ async fn a_resumed_node_gives_the_volatile_queue_a_fresh_idle_period() {
     let node = start().await.unwrap();
     consume(
         &node,
-        "/topics/fila/messages?autoCreate=true&idleTimeout=60",
+        "/topics/queue/messages?autoCreate=true&idleTimeout=60",
     )
     .await;
     node.shutdown().await;
 
-    // O relógio do novo nó começa em outro instante: a criação da fila fica no passado.
+    // The new node's clock starts at another instant: the queue's creation is left in the past.
     let node = start().await.unwrap();
     node.clock.advance(Duration::from_secs(3600));
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    // O relógio manual avançou depois da partida: só então o prazo de 60 s conta.
-    wait_until_gone(&node, "fila").await;
+    // The manual clock advanced after the start: only then does the 60 s deadline count.
+    wait_until_gone(&node, "queue").await;
     node.shutdown().await;
 }
 
@@ -370,36 +370,36 @@ async fn auto_create_needs_consume_and_create_but_a_plain_consume_only_needs_con
     let both = make_token(&node, &["consume", "create"], &[]).await;
     let only_create = make_token(&node, &["create"], &[]).await;
 
-    // Sem `create`, o `autoCreate` que criaria a fila é `403`, e nada é criado.
+    // Without `create`, the `autoCreate` that would create the queue is `403`, and nothing is created.
     assert_eq!(
         error_code(
-            get_with(&node, "/topics/nova/messages?autoCreate=true", &consumer).await,
+            get_with(&node, "/topics/new/messages?autoCreate=true", &consumer).await,
             403
         )
         .await,
         "auth.forbidden"
     );
-    assert_eq!(get_with(&node, "/topics/nova", ROOT).await.status(), 404);
+    assert_eq!(get_with(&node, "/topics/new", ROOT).await.status(), 404);
 
-    // Com `consume` e `create`, cria.
+    // With `consume` and `create`, it creates.
     assert_eq!(
-        get_with(&node, "/topics/nova/messages?autoCreate=true", &both)
+        get_with(&node, "/topics/new/messages?autoCreate=true", &both)
             .await
             .status(),
         200
     );
-    assert_eq!(get_with(&node, "/topics/nova", ROOT).await.status(), 200);
-    // A fila já existe: o consumo normal só pede `consume`.
+    assert_eq!(get_with(&node, "/topics/new", ROOT).await.status(), 200);
+    // The queue already exists: the normal consumption only asks for `consume`.
     assert_eq!(
-        get_with(&node, "/topics/nova/messages?autoCreate=true", &consumer)
+        get_with(&node, "/topics/new/messages?autoCreate=true", &consumer)
             .await
             .status(),
         200
     );
-    // Só `create` não consome: a rota exige `consume`.
+    // Only `create` does not consume: the route requires `consume`.
     assert_eq!(
         error_code(
-            get_with(&node, "/topics/nova/messages?autoCreate=true", &only_create).await,
+            get_with(&node, "/topics/new/messages?autoCreate=true", &only_create).await,
             403
         )
         .await,
@@ -412,9 +412,9 @@ async fn auto_create_needs_consume_and_create_but_a_plain_consume_only_needs_con
 #[tokio::test]
 async fn auto_create_stays_inside_the_token_prefixes() {
     let node = auth_builder().start().await;
-    let token = make_token(&node, &["consume", "create"], &["pedidos"]).await;
+    let token = make_token(&node, &["consume", "create"], &["orders"]).await;
     assert_eq!(
-        get_with(&node, "/topics/pedidos-br/messages?autoCreate=true", &token)
+        get_with(&node, "/topics/orders-br/messages?autoCreate=true", &token)
             .await
             .status(),
         200

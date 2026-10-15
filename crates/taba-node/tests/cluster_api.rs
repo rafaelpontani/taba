@@ -1,6 +1,6 @@
-//! A API do cluster pela porta do cluster, em HTTP de verdade (doc 06c, "Membros e canal"). O
-//! ingresso entre nós usa a rede em memória; aqui o que se vê é o contrato das rotas: o formato
-//! dos corpos, os status e quem pode chamar.
+//! The cluster API through the cluster port, over real HTTP (doc 06c, "Members and channel"). The
+//! join between nodes uses the in-memory network; what is seen here is the routes' contract: the format
+//! of the bodies, the statuses and who may call.
 
 mod common;
 
@@ -19,8 +19,8 @@ fn guid() -> String {
     id::new_at(1_791_288_000_000)
 }
 
-/// Um nó que ainda não tem a tabela: atende tudo com `503 cluster.node-syncing`, como um nó
-/// que acabou de subir. Serve de "nó novo" que o membro consegue alcançar.
+/// A node that does not have the table yet: serves everything with `503 cluster.node-syncing`, like a node
+/// that just started. It serves as the "new node" that the member can reach.
 struct JustStarted;
 
 impl Handler for JustStarted {
@@ -32,7 +32,7 @@ impl Handler for JustStarted {
         Box::pin(async {
             Err(TabaError::new(
                 ErrorCode::ClusterNodeSyncing,
-                "ainda sem a tabela",
+                "still without the table",
             ))
         })
     }
@@ -60,7 +60,7 @@ async fn the_cluster_port_serves_only_cluster_routes_and_the_client_port_none() 
     assert_eq!(member["port"], node.node.cluster_addr().unwrap().port());
     assert_eq!(member["state"], "active");
 
-    // A porta do cluster responde 404 ao que não é /cluster/*, e a da API ao que é.
+    // The cluster port answers 404 to what is not /cluster/*, and the API's to what is.
     let response = node
         .client
         .get(node.cluster_url("/topics"))
@@ -75,10 +75,10 @@ async fn the_cluster_port_serves_only_cluster_routes_and_the_client_port_none() 
         .await
         .unwrap();
     assert_eq!(error_code(response, 404).await, "route.not-found");
-    // Rota do cluster que não existe.
+    // A cluster route that does not exist.
     let response = node
         .client
-        .get(node.cluster_url("/cluster/nada"))
+        .get(node.cluster_url("/cluster/nothing"))
         .send()
         .await
         .unwrap();
@@ -91,7 +91,7 @@ async fn the_cluster_port_serves_only_cluster_routes_and_the_client_port_none() 
 async fn the_join_route_registers_the_node_and_answers_with_the_table() {
     let cluster = TestCluster::start(1).await;
     let node = cluster.node(1);
-    // O "nó novo" está na rede em memória, e o membro consegue conectar de volta a ele.
+    // The "new node" is on the in-memory network, and the member can connect back to it.
     cluster
         .network
         .register(PeerAddr::new("10.0.0.77", 9100), Arc::new(JustStarted));
@@ -112,7 +112,7 @@ async fn the_join_route_registers_the_node_and_answers_with_the_table() {
 
     assert_eq!(response.status(), 200);
     let table: Value = response.json().await.unwrap();
-    assert_eq!(table["version"], 2, "a tabela já traz o commit");
+    assert_eq!(table["version"], 2, "the table already carries the commit");
     let ids: Vec<&str> = table["members"]
         .as_array()
         .unwrap()
@@ -121,7 +121,7 @@ async fn the_join_route_registers_the_node_and_answers_with_the_table() {
         .collect();
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&new_id.as_str()));
-    // O membro vê a mesma tabela depois.
+    // The member sees the same table afterwards.
     assert_eq!(cluster.member_ids(1).len(), 2);
     cluster.shutdown().await;
 }
@@ -133,7 +133,7 @@ async fn the_bodies_of_the_cluster_routes_are_validated() {
     let node = cluster.node(1);
     let join = node.cluster_url("/cluster/nodes/join");
 
-    // Campo que falta.
+    // A missing field.
     let response = node
         .client
         .post(&join)
@@ -143,7 +143,7 @@ async fn the_bodies_of_the_cluster_routes_are_validated() {
         .unwrap();
     assert_eq!(error_code(response, 400).await, "validation.required");
 
-    // Campo que a rota não define.
+    // A field the route does not define.
     let response = node
         .client
         .post(&join)
@@ -156,7 +156,7 @@ async fn the_bodies_of_the_cluster_routes_are_validated() {
         .unwrap();
     assert_eq!(error_code(response, 400).await, "validation.unknown-field");
 
-    // Valor inválido: o `nodeId` não é um GUID v7.
+    // Invalid value: the `nodeId` is not a GUID v7.
     let response = node
         .client
         .post(&join)
@@ -168,7 +168,7 @@ async fn the_bodies_of_the_cluster_routes_are_validated() {
         .unwrap();
     assert_eq!(error_code(response, 400).await, "validation.failed");
 
-    // Outro `Content-Type`.
+    // Another `Content-Type`.
     let response = node
         .client
         .post(&join)
@@ -187,7 +187,7 @@ async fn the_bodies_of_the_cluster_routes_are_validated() {
 async fn a_caller_that_is_not_a_member_is_refused_on_the_phase_routes() {
     let cluster = TestCluster::start(1).await;
     let node = cluster.node(1);
-    // O teste chama de 127.0.0.1, que não consta na tabela (o nó tem o IP 10.0.0.1).
+    // The test calls from 127.0.0.1, which is not in the table (the node has the IP 10.0.0.1).
     for route in ["commit", "rollback"] {
         let response = node
             .client

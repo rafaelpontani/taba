@@ -5,11 +5,11 @@ using System.Text;
 
 namespace Taba
 {
-    /// <summary>JSON malformado na resposta do servidor.</summary>
+    /// <summary>Malformed JSON in the server's response.</summary>
     internal sealed class JsonException : Exception
     {
         public JsonException(int position, string message)
-            : base("JSON inválido na posição " + position.ToString(CultureInfo.InvariantCulture) + ": " + message)
+            : base("invalid JSON at position " + position.ToString(CultureInfo.InvariantCulture) + ": " + message)
         {
             Position = position;
         }
@@ -18,14 +18,14 @@ namespace Taba
     }
 
     /// <summary>
-    /// Leitor de JSON mínimo (doc 19, seção 18.5). Percorre o texto sem montar árvore: sabe pular
-    /// qualquer valor, entrega os campos de um objeto como pares nome → trecho do texto e decodifica
-    /// uma string JSON. O <c>body</c> de uma mensagem é um JSON qualquer, então o conector devolve o
-    /// trecho de texto sem interpretá-lo.
+    /// Minimal JSON reader (doc 19, section 18.5). Walks the text without building a tree: it can skip
+    /// any value, hands out an object's fields as name → text-span pairs and decodes
+    /// a JSON string. A message's <c>body</c> is any JSON, so the connector returns the
+    /// text span without interpreting it.
     /// </summary>
     internal static class Json
     {
-        /// <summary>Aninhamento máximo aceito; acima disso o documento é recusado em vez de estourar a pilha.</summary>
+        /// <summary>Maximum nesting accepted; above it the document is refused instead of overflowing the stack.</summary>
         public const int MaxDepth = 512;
 
         private static JsonException Fail(int position, string message)
@@ -42,13 +42,13 @@ namespace Taba
             return i;
         }
 
-        /// <summary>Confere que <paramref name="s"/> inteiro é um único valor JSON válido.</summary>
+        /// <summary>Checks that the whole of <paramref name="s"/> is a single valid JSON value.</summary>
         public static void Validate(string s)
         {
             Finish(s, Skip(s, 0, 0));
         }
 
-        /// <summary>Pula o valor que começa em <paramref name="start"/> e devolve o índice logo após ele.</summary>
+        /// <summary>Skips the value that starts at <paramref name="start"/> and returns the index right after it.</summary>
         public static int SkipValue(string s, int start)
         {
             return Skip(s, start, 0);
@@ -58,12 +58,12 @@ namespace Taba
         {
             if (depth > MaxDepth)
             {
-                throw Fail(i, "aninhamento profundo demais");
+                throw Fail(i, "nesting too deep");
             }
             i = Ws(s, i);
             if (i >= s.Length)
             {
-                throw Fail(i, "fim inesperado");
+                throw Fail(i, "unexpected end");
             }
             switch (s[i])
             {
@@ -91,7 +91,7 @@ namespace Taba
                         }
                         else
                         {
-                            throw Fail(i, "esperava ',' ou '}'");
+                            throw Fail(i, "expected ',' or '}'");
                         }
                     }
                 case '[':
@@ -113,7 +113,7 @@ namespace Taba
                         }
                         else
                         {
-                            throw Fail(i, "esperava ',' ou ']'");
+                            throw Fail(i, "expected ',' or ']'");
                         }
                     }
                 case '"':
@@ -129,7 +129,7 @@ namespace Taba
                     {
                         return SkipNumber(s, i);
                     }
-                    throw Fail(i, "valor inesperado");
+                    throw Fail(i, "unexpected value");
             }
         }
 
@@ -139,7 +139,7 @@ namespace Taba
             {
                 return i + word.Length;
             }
-            throw Fail(i, "literal inválido");
+            throw Fail(i, "invalid literal");
         }
 
         private static bool IsHex(char c)
@@ -151,14 +151,14 @@ namespace Taba
         {
             if (i >= s.Length || s[i] != '"')
             {
-                throw Fail(i, "esperava uma string");
+                throw Fail(i, "expected a string");
             }
             i++;
             while (true)
             {
                 if (i >= s.Length)
                 {
-                    throw Fail(i, "string sem fim");
+                    throw Fail(i, "unterminated string");
                 }
                 char c = s[i];
                 if (c == '"')
@@ -180,17 +180,17 @@ namespace Taba
                         }
                         else
                         {
-                            throw Fail(i, "escape \\u inválido");
+                            throw Fail(i, "invalid \\u escape");
                         }
                     }
                     else
                     {
-                        throw Fail(i, "escape inválido");
+                        throw Fail(i, "invalid escape");
                     }
                 }
                 else if (c < 0x20)
                 {
-                    throw Fail(i, "caractere de controle na string");
+                    throw Fail(i, "control character in string");
                 }
                 else
                 {
@@ -224,14 +224,14 @@ namespace Taba
             }
             else
             {
-                throw Fail(i, "número inválido");
+                throw Fail(i, "invalid number");
             }
             if (i < s.Length && s[i] == '.')
             {
                 int next = Digits(s, i + 1);
                 if (next == i + 1)
                 {
-                    throw Fail(i, "número inválido");
+                    throw Fail(i, "invalid number");
                 }
                 i = next;
             }
@@ -245,7 +245,7 @@ namespace Taba
                 int next = Digits(s, i);
                 if (next == i)
                 {
-                    throw Fail(i, "número inválido");
+                    throw Fail(i, "invalid number");
                 }
                 i = next;
             }
@@ -256,18 +256,18 @@ namespace Taba
         {
             if (Ws(s, i) != s.Length)
             {
-                throw Fail(Ws(s, i), "texto depois do documento");
+                throw Fail(Ws(s, i), "text after the document");
             }
         }
 
-        /// <summary>Os campos de um objeto, com o nome ainda entre aspas e o valor como trecho do texto.</summary>
+        /// <summary>The fields of an object, with the name still quoted and the value as a text span.</summary>
         private static List<KeyValuePair<string, string>> RawFields(string s)
         {
             var fields = new List<KeyValuePair<string, string>>();
             int i = Ws(s, 0);
             if (i >= s.Length || s[i] != '{')
             {
-                throw Fail(i, "esperava um objeto");
+                throw Fail(i, "expected an object");
             }
             i = Ws(s, i + 1);
             if (i < s.Length && s[i] == '}')
@@ -299,12 +299,12 @@ namespace Taba
                 }
                 else
                 {
-                    throw Fail(i, "esperava ',' ou '}'");
+                    throw Fail(i, "expected ',' or '}'");
                 }
             }
         }
 
-        /// <summary>Os campos de um objeto: nome decodificado e o trecho do texto de cada valor.</summary>
+        /// <summary>The fields of an object: decoded name and the text span of each value.</summary>
         public static List<KeyValuePair<string, string>> ObjectFields(string s)
         {
             var fields = RawFields(s);
@@ -315,14 +315,14 @@ namespace Taba
             return fields;
         }
 
-        /// <summary>Os itens de uma lista, cada um como trecho do texto.</summary>
+        /// <summary>The items of a list, each one as a text span.</summary>
         public static List<string> ArrayItems(string s)
         {
             var items = new List<string>();
             int i = Ws(s, 0);
             if (i >= s.Length || s[i] != '[')
             {
-                throw Fail(i, "esperava uma lista");
+                throw Fail(i, "expected a list");
             }
             i = Ws(s, i + 1);
             if (i < s.Length && s[i] == ']')
@@ -346,7 +346,7 @@ namespace Taba
                 }
                 else
                 {
-                    throw Fail(i, "esperava ',' ou ']'");
+                    throw Fail(i, "expected ',' or ']'");
                 }
             }
         }
@@ -355,7 +355,7 @@ namespace Taba
         {
             if (at + 4 > s.Length)
             {
-                throw Fail(at, "escape \\u inválido");
+                throw Fail(at, "invalid \\u escape");
             }
             int value = 0;
             for (int n = 0; n < 4; n++)
@@ -363,20 +363,20 @@ namespace Taba
                 char c = s[at + n];
                 if (!IsHex(c))
                 {
-                    throw Fail(at, "escape \\u inválido");
+                    throw Fail(at, "invalid \\u escape");
                 }
                 value = (value * 16) + Convert.ToInt32(c.ToString(), 16);
             }
             return value;
         }
 
-        /// <summary>Decodifica uma string JSON (<paramref name="raw"/> inclui as aspas): escapes, <c>\uXXXX</c> e pares substitutos.</summary>
+        /// <summary>Decodes a JSON string (<paramref name="raw"/> includes the quotes): escapes, <c>\uXXXX</c> and surrogate pairs.</summary>
         public static string DecodeString(string raw)
         {
             raw = raw.Trim();
             if (raw.Length < 2 || raw[0] != '"' || raw[raw.Length - 1] != '"')
             {
-                throw Fail(0, "esperava uma string");
+                throw Fail(0, "expected a string");
             }
             var sb = new StringBuilder(raw.Length);
             int end = raw.Length - 1;
@@ -411,7 +411,7 @@ namespace Taba
                         i += 4;
                         if (first >= 0xD800 && first < 0xDC00)
                         {
-                            // Par substituto: o segundo escape precisa vir logo em seguida.
+                            // Surrogate pair: the second escape must follow right away.
                             bool paired = false;
                             if (i + 6 <= end && raw[i] == '\\' && raw[i + 1] == 'u')
                             {
@@ -438,13 +438,13 @@ namespace Taba
                         }
                         break;
                     default:
-                        throw Fail(i - 2, "escape inválido");
+                        throw Fail(i - 2, "invalid escape");
                 }
             }
             return sb.ToString();
         }
 
-        /// <summary>Escreve <paramref name="s"/> como string JSON, entre aspas.</summary>
+        /// <summary>Writes <paramref name="s"/> as a JSON string, in quotes.</summary>
         public static string Quote(string s)
         {
             var sb = new StringBuilder(s.Length + 2);
@@ -474,7 +474,7 @@ namespace Taba
         }
     }
 
-    /// <summary>Os campos de um objeto JSON, com busca por nome. Campos desconhecidos são simplesmente ignorados.</summary>
+    /// <summary>The fields of a JSON object, searchable by name. Unknown fields are simply ignored.</summary>
     internal sealed class JsonFields
     {
         private readonly List<KeyValuePair<string, string>> _fields;
@@ -489,7 +489,7 @@ namespace Taba
             return new JsonFields(Json.ObjectFields(s));
         }
 
-        /// <summary>O trecho do texto do campo, ou <c>null</c> se não existe.</summary>
+        /// <summary>The field's text span, or <c>null</c> if it does not exist.</summary>
         public string Raw(string name)
         {
             foreach (var field in _fields)
@@ -502,14 +502,14 @@ namespace Taba
             return null;
         }
 
-        /// <summary>O campo como texto, ou <c>null</c> se não existe ou não é uma string.</summary>
+        /// <summary>The field as text, or <c>null</c> if it does not exist or is not a string.</summary>
         public string String(string name)
         {
             string raw = Raw(name);
             return raw != null && raw.StartsWith("\"", StringComparison.Ordinal) ? Json.DecodeString(raw) : null;
         }
 
-        /// <summary>O campo como inteiro sem sinal, ou <c>null</c>.</summary>
+        /// <summary>The field as an unsigned integer, or <c>null</c>.</summary>
         public long? Integer(string name)
         {
             long value;
@@ -519,7 +519,7 @@ namespace Taba
                 : null;
         }
 
-        /// <summary>O campo como booleano, ou <c>null</c>.</summary>
+        /// <summary>The field as a boolean, or <c>null</c>.</summary>
         public bool? Boolean(string name)
         {
             string raw = Raw(name);

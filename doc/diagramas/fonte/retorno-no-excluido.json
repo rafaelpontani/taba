@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Retorno de um nó excluído",
+    "title": "Return of an excluded node",
     "output": "doc/diagramas/html/retorno-no-excluido.html",
     "viewBox": [
       1080,
@@ -15,32 +15,32 @@
     {
       "id": "volta",
       "type": "external",
-      "label": "Nó que voltou",
-      "sublabel": "excluído por falha"
+      "label": "Node that came back",
+      "sublabel": "excluded by failure"
     },
     {
       "id": "donos",
       "type": "database",
-      "label": "Novos donos",
-      "sublabel": "outros nós e donos dos blocos"
+      "label": "New owners",
+      "sublabel": "other nodes and block owners"
     },
     {
       "id": "contato",
       "type": "security",
-      "label": "Nó de contato",
-      "sublabel": "coordena o registro"
+      "label": "Contact node",
+      "sublabel": "coordinates the register"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 242,
-      "label": "Recuperação de mensagens"
+      "label": "Message recovery"
     },
     {
       "from": 250,
       "to": 334,
-      "label": "Novo bootstrap"
+      "label": "New bootstrap"
     }
   ],
   "messages": [
@@ -49,16 +49,16 @@
       "from": "volta",
       "to": "donos",
       "y": 172,
-      "label": "GET /cluster/message-loss (todos os nós)",
+      "label": "GET /cluster/message-loss (all nodes)",
       "variant": "emphasis",
-      "note": "une as listas de perdas"
+      "note": "merges the loss lists"
     },
     {
       "id": "envia-ok",
       "from": "donos",
       "to": "volta",
       "y": 200,
-      "label": "pares (tópico, ID) perdidos",
+      "label": "lost (topic, ID) pairs",
       "variant": "return"
     },
     {
@@ -66,58 +66,58 @@
       "from": "volta",
       "to": "donos",
       "y": 228,
-      "label": "POST /recover: mensagens que o nó achou",
+      "label": "POST /recover: messages the node found",
       "variant": "emphasis",
-      "note": "confronta com disco e memória"
+      "note": "checks against disk and memory"
     },
     {
       "id": "boot",
       "from": "volta",
       "to": "contato",
       "y": 264,
-      "label": "registro: IPs e porta",
+      "label": "register: IPs and port",
       "variant": "emphasis",
-      "note": "limpa estado local e recomeça do zero"
+      "note": "clears local state and starts over"
     },
     {
       "id": "ingresso",
       "from": "contato",
       "to": "donos",
       "y": 292,
-      "label": "registro e commit em todos"
+      "label": "register and commit on all"
     },
     {
       "id": "tabela",
       "from": "contato",
       "to": "volta",
       "y": 320,
-      "label": "tabela de nós e de tópicos",
+      "label": "node and topic table",
       "variant": "return",
-      "note": "nova posição no anel"
+      "note": "new position on the ring"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Sem mensagens perdidas",
+      "title": "No lost messages",
       "items": [
-        "Nada a enviar: limpa o estado e refaz o bootstrap",
-        "Dados antigos ficam em quarentena até a recuperação acabar"
+        "Nothing to send: clears the state and redoes the bootstrap",
+        "Old data stays in quarantine until the recovery ends"
       ]
     },
     {
       "dot": "rose",
-      "title": "Freezing opcional",
+      "title": "Optional freezing",
       "items": [
-        "Pode atrasar o novo registro até o período expirar",
-        "A recuperação das mensagens não depende dele"
+        "May delay the new registration until the period expires",
+        "The message recovery does not depend on it"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Não retoma o lugar antigo",
+      "title": "Does not resume the old place",
       "items": [
-        "Os blocos dele já foram reatribuídos a outros nós"
+        "Its blocks have already been reassigned to other nodes"
       ]
     }
   ]

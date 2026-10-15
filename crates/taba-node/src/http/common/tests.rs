@@ -23,7 +23,7 @@ use crate::storage::tokens::MemoryTokenStore;
 use crate::storage::topics::MemoryTopicStore;
 
 async fn boom() -> &'static str {
-    panic!("falha de teste")
+    panic!("test failure")
 }
 
 fn app() -> Router {
@@ -96,7 +96,7 @@ fn app() -> Router {
         )
         .route(
             "/auth",
-            get(|| async { ApiError(TabaError::new(ErrorCode::AuthUnauthorized, "sem token")) }),
+            get(|| async { ApiError(TabaError::new(ErrorCode::AuthUnauthorized, "no token")) }),
         )
         .route("/ok", get(|| async { "ok" }));
     finish(routes, state)
@@ -128,9 +128,9 @@ fn request_id_header(response: &Response) -> String {
 /// UC: UC-CNV-004
 #[tokio::test]
 async fn client_request_id_is_echoed_in_header_and_error_body() {
-    let (response, body) = call(&app(), Some("pedido-42:a.b_c"), "/nao-existe").await;
-    assert_eq!(request_id_header(&response), "pedido-42:a.b_c");
-    assert_eq!(body["requestId"], "pedido-42:a.b_c");
+    let (response, body) = call(&app(), Some("order-42:a.b_c"), "/does-not-exist").await;
+    assert_eq!(request_id_header(&response), "order-42:a.b_c");
+    assert_eq!(body["requestId"], "order-42:a.b_c");
 }
 
 /// UC: UC-CNV-004
@@ -140,7 +140,7 @@ async fn missing_or_invalid_request_id_is_replaced_by_a_guid_v7() {
     for sent in [
         None,
         Some(""),
-        Some("com espaço"),
+        Some("with space"),
         Some(too_long.as_str()),
         Some("a/b"),
     ] {
@@ -148,21 +148,21 @@ async fn missing_or_invalid_request_id_is_replaced_by_a_guid_v7() {
         let id = request_id_header(&response);
         assert!(
             id::is_guid_v7(&id),
-            "{sent:?} deveria virar um GUID v7, veio {id}"
+            "{sent:?} should become a GUID v7, got {id}"
         );
     }
     let (response, _) = call(&app(), Some(&"a".repeat(128)), "/ok").await;
     assert_eq!(
         request_id_header(&response).len(),
         128,
-        "128 caracteres ainda vale"
+        "128 characters is still valid"
     );
 }
 
 /// UC: UC-CNV-004, UC-CNV-006
 #[tokio::test]
 async fn unknown_route_is_a_404_error_response_with_matching_request_id() {
-    let (response, body) = call(&app(), None, "/nao-existe").await;
+    let (response, body) = call(&app(), None, "/does-not-exist").await;
     assert_eq!(response.status(), 404);
     assert_eq!(body["code"], "route.not-found");
     assert!(body["message"].is_string());
@@ -170,7 +170,7 @@ async fn unknown_route_is_a_404_error_response_with_matching_request_id() {
     assert_eq!(response.headers()["content-type"], "application/json");
     assert!(
         body.get("status").is_none(),
-        "o status vai só na linha de status"
+        "the status goes only in the status line"
     );
 }
 

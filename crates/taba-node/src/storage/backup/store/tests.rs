@@ -20,12 +20,12 @@ fn the_memory_store_does_what_the_object_store_trait_promises() {
         assert_eq!(
             store.get_range("a/1", 2, 3).await.unwrap().unwrap(),
             b"234",
-            "Range de dentro"
+            "Range inside"
         );
         assert_eq!(
             store.get_range("a/1", 8, 100).await.unwrap().unwrap(),
             b"89",
-            "o fim passa do tamanho sem erro"
+            "the end past the size is no error"
         );
         assert_eq!(store.get_suffix("a/1", 4).await.unwrap().unwrap(), b"6789");
         assert!(store.get("a/2").await.unwrap().is_none());
@@ -58,7 +58,7 @@ fn conditional_writes_create_once_and_replace_only_the_known_version() {
         let etag = store.get("lock").await.unwrap().unwrap().etag;
         assert!(
             !store
-                .put_if_match("lock", b"3".to_vec(), "outro")
+                .put_if_match("lock", b"3".to_vec(), "other")
                 .await
                 .unwrap()
         );
@@ -115,7 +115,7 @@ fn the_base_prefix_goes_in_front_of_every_key_and_out_of_the_listing() {
         bare.put("x", vec![1]).await.unwrap();
         assert!(
             raw.peek("x").is_some(),
-            "sem prefixo, a chave fica como veio"
+            "without a prefix, the key stays as it came"
         );
     });
 }

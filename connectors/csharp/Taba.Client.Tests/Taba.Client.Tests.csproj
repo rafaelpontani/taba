@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Os testes do conector C# (NUnit 3): os unitários, sem rede, e os de integração, contra um Taba de
-       verdade (categoria "Integration"; só rodam com TABA_URL, ver scripts/integration.sh).
-       Rodam no .NET 6, 8 e 10 (o 10 com o SDK 10), cada um contra o alvo do conector de mesma versão. -->
+  <!-- The C# connector tests (NUnit 3): the unit ones, no network, and the integration ones, against a real Taba
+       (category "Integration"; they only run with TABA_URL, see scripts/integration.sh).
+       They run on .NET 6, 8 and 10 (10 with SDK 10), each against the connector target of the same version. -->
   <PropertyGroup>
     <TargetFrameworks>net6.0;net8.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>

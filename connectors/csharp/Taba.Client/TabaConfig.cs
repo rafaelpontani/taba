@@ -3,8 +3,8 @@ using System;
 namespace Taba
 {
     /// <summary>
-    /// A configuração do cliente (doc 19, seção 18.3). Não lê variáveis de ambiente: <c>TABA_*</c> é o
-    /// prefixo da configuração do servidor; quem usa o conector lê as suas e preenche este objeto.
+    /// The client configuration (doc 19, section 18.3). It does not read environment variables: <c>TABA_*</c> is the
+    /// prefix of the server configuration; whoever uses the connector reads their own and fills this object.
     /// </summary>
     public sealed class TabaConfig
     {
@@ -17,28 +17,28 @@ namespace Taba
             BaseUrl = baseUrl;
         }
 
-        /// <summary>Endereço do balanceador da API de cliente (<c>http://host:porta</c> ou <c>https://...</c>). Obrigatório.</summary>
+        /// <summary>Address of the client API load balancer (<c>http://host:port</c> or <c>https://...</c>). Required.</summary>
         public string BaseUrl { get; set; }
 
-        /// <summary>Vai em <c>Authorization: Bearer</c>. Sem ele, a chamada vai sem o cabeçalho.</summary>
+        /// <summary>Goes in <c>Authorization: Bearer</c>. Without it, the call goes without the header.</summary>
         public string Token { get; set; }
 
         /// <summary>
-        /// Tempo para abrir a conexão (5 s). Vale no .NET 5 em diante; no .NET Framework o
-        /// <c>HttpClient</c> não tem esse limite separado, e vale só o <see cref="RequestTimeout"/>.
+        /// Time to open the connection (5 s). Applies on .NET 5 and later; on .NET Framework the
+        /// <c>HttpClient</c> has no such separate limit, and only <see cref="RequestTimeout"/> applies.
         /// </summary>
         public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
-        /// <summary>Tempo total de uma chamada comum (30 s). O <c>consume</c> usa <c>waitTime + 10 s</c>.</summary>
+        /// <summary>Total time of an ordinary call (30 s). <c>consume</c> uses <c>waitTime + 10 s</c>.</summary>
         public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
         /// <summary>Tentativas, contando a primeira (3).</summary>
         public int MaxAttempts { get; set; } = 3;
 
-        /// <summary>Vai em <c>User-Agent</c> (<c>taba-csharp/&lt;versão&gt;</c>). Acrescente o nome do aplicativo.</summary>
+        /// <summary>Goes in <c>User-Agent</c> (<c>taba-csharp/&lt;version&gt;</c>). Add the application name.</summary>
         public string UserAgent { get; set; } = "taba-csharp/" + TabaClient.Version;
 
-        /// <summary>Quem serializa o objeto do <c>PublishJson</c>. Sem ele, vale o padrão do conector (<c>System.Text.Json</c> no .NET 5 em diante, <c>DataContractJsonSerializer</c> no .NET Framework).</summary>
+        /// <summary>Who serializes the <c>PublishJson</c> object. Without it, the connector default applies (<c>System.Text.Json</c> on .NET 5 and later, <c>DataContractJsonSerializer</c> on .NET Framework).</summary>
         public ITabaJsonSerializer JsonSerializer { get; set; }
 
         internal TabaConfig Copy()

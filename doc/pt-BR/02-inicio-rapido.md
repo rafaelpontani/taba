@@ -86,16 +86,24 @@ taba-cli health cluster -o table
 Na raiz do repositório:
 
 ```bash
-docker compose up --build -d        # constrói a imagem e sobe tudo
+docker compose up -d                # baixa as imagens públicas (rafaelpontani/taba) e sobe tudo
 docker compose ps                   # os três nós ficam "healthy" ao terminar de sincronizar
 ```
+
+Para construir a imagem a partir do repositório (quem desenvolve), some o override `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+```
+
+A tag das imagens públicas vem de `TABA_VERSION` (padrão `rc`): `TABA_VERSION=1.2 docker compose up -d`.
 
 O que o Compose faz, em ordem (`docker-compose.yml`):
 
 1. O serviço **`init`** roda `taba init --out /secrets` uma vez e cria, num volume, o **certificado do cluster** (TLS mútuo entre nós) e o **token raiz**. Nas vezes seguintes não faz nada.
 2. O **HAProxy** (de exemplo) escuta na porta `8080` e balanceia a API de cliente para os nós que estiverem prontos. Qualquer balanceador serve.
-3. O **`taba-1`** sobe com `cluster.first-node=true`: o primeiro nó forma o cluster sozinho.
-4. **`taba-2` e `taba-3`** esperam o `taba-1` ficar saudável, descobrem o cluster pelo HAProxy (`cluster.entry-address`), entram e sincronizam.
+3. O **`taba-0`** sobe com `cluster.first-node=true`: o primeiro nó forma o cluster sozinho.
+4. As **réplicas do serviço `taba`** (duas por padrão, `taba-1` e `taba-2`) esperam o `taba-0` ficar saudável, descobrem o cluster pelo HAProxy (`cluster.entry-address`), entram e sincronizam. Para mais nós: `docker compose up -d --scale taba=4`; o HAProxy descobre as réplicas pelo DNS. Cada réplica tem um volume de dados anônimo, apagado por `docker compose down -v`.
 
 Use o `taba-cli` do Compose, já apontado para o cluster e com o token raiz:
 
@@ -114,26 +122,26 @@ docker compose run --rm --entrypoint cat taba-cli /secrets/root-token
 
 ### Derrubar um nó e ver o cluster reagir
 
-Há **duas** formas de tirar um nó, e elas são diferentes:
+Há **duas** formas de tirar um nó, e elas são diferentes. As réplicas são do mesmo serviço, então o `docker compose stop` não as distingue; o `docker/cluster.sh` aceita os nomes `taba-0` (o primeiro nó), `taba-1` e `taba-2` (o `taba-N` é a réplica N do serviço `taba`):
 
 ```bash
 # 1. Parada normal: SIGTERM -> o nó faz DRAIN e sai do cluster por conta própria (sem votação)
-docker compose stop taba-3
+docker/cluster.sh stop taba-2
 docker compose run --rm taba-cli health cluster -o table   # já mostra 2 nós ativos, membersVersion subiu
-docker compose start taba-3                                  # volta como nó novo e sincroniza
+docker/cluster.sh start taba-2                               # volta como nó novo e sincroniza
 
 # 2. Falha: SIGKILL -> o cluster precisa DETECTAR a queda e votar
-docker compose kill taba-3
+docker/cluster.sh kill taba-2
 docker compose run --rm taba-cli health cluster              # em ~4 s: write-quorum-at-risk, member-unreachable, under-replicated
-docker compose run --rm taba-cli health cluster              # em ~8 s: taba-3 excluído; sobra a condição node-frozen
-docker compose start taba-3                                  # volta como nó novo (ID novo: sem freezing) e sincroniza
+docker compose run --rm taba-cli health cluster              # em ~8 s: taba-2 excluído; sobra a condição node-frozen
+docker/cluster.sh start taba-2                               # volta como nó novo (ID novo: sem freezing) e sincroniza
 ```
 
 O que acontece por baixo ([07-cluster.md](07-cluster.md)): na **falha**, os outros nós notam que o canal permanente com o `taba-3` caiu, tentam reconectar, abrem uma **votação** de exclusão e o retiram da tabela de membros; as mensagens dele já existiam em outros nós (fator de replicação 3), então nada que foi confirmado se perde. Na **parada normal**, o nó grava tudo em disco e se desregistra sozinho. Nos dois casos, ao voltar, o nó entra **como nó novo**, sincroniza os blocos e passa a atender.
 
 > ⚠️ **Não derrube um segundo nó antes de o primeiro voltar.** Com 3 nós, a perda de dois em sequência rápida deixa um único sobrevivente (menos que `cluster.vote.min-voters`, 2): o cluster fica em `quorum-lost` e os nós reiniciados não conseguem reentrar. Veja [23-operacao.md](23-operacao.md).
 
-![O que o docker compose up cria](../diagramas/img/implantacao-compose.svg)
+![O que o docker compose up cria](../diagramas/img/pt-BR/implantacao-compose.svg)
 
 ### Limpeza
 

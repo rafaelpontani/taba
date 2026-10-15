@@ -24,7 +24,7 @@ fn table(ids: &[&str]) -> MemberTable {
 fn rules_with(extra: &[(&str, &str)]) -> ClusterRules {
     let mut env = BTreeMap::from([(
         "TABA_CLUSTER_ENTRY_ADDRESS".to_owned(),
-        "taba-lb.interno:8081".to_owned(),
+        "taba-lb.internal:8081".to_owned(),
     )]);
     env.extend(
         extra
@@ -37,19 +37,19 @@ fn rules_with(extra: &[(&str, &str)]) -> ClusterRules {
 /// UC: UC-FAL-031
 #[test]
 fn the_reunion_has_exactly_one_losing_side_the_smaller_and_in_a_tie_the_one_of_the_lowest_id() {
-    // Menos membros perde, e só ele.
+    // Fewer members loses, and only it.
     let small = table(&["a", "b"]);
     let large = table(&["x", "y", "z"]);
     assert!(loses_reunion(&small, &large));
     assert!(!loses_reunion(&large, &small));
 
-    // Empate: perde o lado do menor `nodeId`, e os dois lados chegam à mesma conclusão.
+    // Tie: the side of the lowest `nodeId` loses, and both sides reach the same conclusion.
     let left = table(&["b", "d"]);
     let right = table(&["c", "e"]);
-    assert!(loses_reunion(&left, &right), "o lado de `b` perde");
-    assert!(!loses_reunion(&right, &left), "o lado de `c` fica");
+    assert!(loses_reunion(&left, &right), "the side of `b` loses");
+    assert!(!loses_reunion(&right, &left), "the side of `c` stays");
 
-    // Em qualquer par de tabelas diferentes há um perdedor, nunca dois nem nenhum.
+    // In any pair of different tables there is a loser, never two or none.
     for (a, b) in [(&small, &large), (&left, &right), (&left, &large)] {
         assert_ne!(loses_reunion(a, b), loses_reunion(b, a));
     }
@@ -66,7 +66,7 @@ fn the_reunion_and_recovery_parameters_default_to_what_was_decided_and_can_be_ch
     assert_eq!(rules.message_loss_ttl, Duration::from_secs(14 * 24 * 3600));
     assert_eq!(rules.recovery_timeout, Duration::from_secs(300));
 
-    // Com um sinal de vida curto, o reencontro nunca passa a rodar em menos de 1 s.
+    // With a short heartbeat, the reunion never starts running in under 1 s.
     let fast = rules_with(&[("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "50ms")]);
     assert_eq!(fast.reunion_interval, Duration::from_secs(1));
 

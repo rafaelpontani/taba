@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/diagramas/img/hero-en.gif" width="100%" alt="Taba: open-source messaging that replaces SQS, SNS, Kafka and RabbitMQ with a single Docker image. Animation: 3 nodes, each drawn as a 3-story building. Several producers come and go and publish messages; each message has a primary node, which replicates it to the other two, and every node is the primary of some of them. Consumers arrive later, read asynchronously and confirm with an ack.">
+  <img src="doc/diagramas/img/en/hero.gif" width="100%" alt="Taba: open-source messaging that replaces SQS, SNS, Kafka and RabbitMQ with a single Docker image. Animation: 3 nodes, each drawn as a 3-story building. Several producers come and go and publish messages; each message has a primary node, which replicates it to the other two, and every node is the primary of some of them. Consumers arrive later, read asynchronously and confirm with an ack.">
 </p>
 
 🇺🇸 **English** | 🇧🇷 [Português (Brasil)](README-pt-BR.md)
@@ -37,8 +37,10 @@ If you want to get away from per-message billing, from a cluster of brokers to o
 With Docker, a three-node cluster (behind an example HAProxy) starts with one command. An init container creates the cluster certificate and the root token, the first node forms the cluster and the other two join:
 
 ```bash
-docker compose up --build -d      # three "healthy" nodes in about a minute
+docker compose up -d              # three "healthy" nodes in about a minute (public images from Docker Hub)
 ```
+
+To build the images from this repository instead (for development): `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`.
 
 Then, with the [`taba-cli`](doc/pt-BR/20-cli.md), which already ships in the Compose file pointed at the cluster (and with the root token):
 
@@ -102,7 +104,7 @@ Other languages use their own HTTP client or the C library. The design is in [th
 
 **Taba** comes from **T**opics, **A**synchronous, **B**alanced and **A**utonomous (in Portuguese: **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos). In Tupi, *taba* is the **village**: each node is a hut, the cluster is the village, and messages move between them without you having to take care of it.
 
-![C4 level 0: Taba context](doc/diagramas/img/c4-nivel0-contexto-en.svg)
+![C4 level 0: Taba context](doc/diagramas/img/en/c4-nivel0-contexto.svg)
 
 | Letter | Promise | How Taba delivers |
 |---|---|---|
@@ -111,11 +113,11 @@ Other languages use their own HTTP client or the C library. The design is in [th
 | **B**alanced | No node carries everything alone. | A consistent-hash ring splits topics into blocks and replicates them across several nodes. |
 | **A**utonomous | No coordinator and no manual operation. | Nodes discover each other, monitor each other and vote out whoever fails. When the node returns, it is re-admitted. |
 
-![Hash ring: blocks and roles](doc/diagramas/img/anel-hash-en.svg)
+![Hash ring: blocks and roles](doc/diagramas/img/en/anel-hash.svg)
 
 *The hash ring splits the work among the nodes.*
 
-![Spread, redundant topic](doc/diagramas/img/topico-espalhado-en.svg)
+![Spread, redundant topic](doc/diagramas/img/en/topico-espalhado.svg)
 
 *A topic spread across the cluster and replicated: if a node goes down, the village stays up.*
 

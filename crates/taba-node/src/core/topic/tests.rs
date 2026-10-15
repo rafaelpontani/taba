@@ -50,7 +50,7 @@ fn queue_json_has_null_for_defaults_and_distributor_json_omits_queue_fields() {
     ] {
         assert!(
             d.get(absent).is_none(),
-            "{absent} não se aplica ao distribuidor"
+            "{absent} does not apply to the distributor"
         );
     }
     assert_eq!(d["prefixes"], json!(["pedidos", "x"]));

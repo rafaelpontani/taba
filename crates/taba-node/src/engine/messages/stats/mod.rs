@@ -1,7 +1,7 @@
-//! O que as mensagens contam sobre si mesmas (doc 11): os contadores por tópico e do nó, os
-//! retratos que `GET /metrics/topics*` e `GET /metrics` leem e as condições do tópico. É só dado:
-//! quem conta é o `Messages`, e quem lê é a camada HTTP, sem que o `engine` conheça formato de
-//! saída nenhum.
+//! What the messages count about themselves (doc 11): the per-topic and node counters, the
+//! snapshots that `GET /metrics/topics*` and `GET /metrics` read and the topic conditions. It is only data:
+//! whoever counts is `Messages`, and whoever reads is the HTTP layer, without the `engine` knowing any
+//! output format.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
@@ -9,15 +9,15 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use crate::config::Config;
 use crate::telemetry::histogram::{Histogram, LATENCY_BOUNDS};
 
-/// Os baldes do tempo de espera da primeira entrega (`taba.delivery.fair.wait`), em segundos.
+/// The buckets of the wait time for the first delivery (`taba.delivery.fair.wait`), in seconds.
 pub const WAIT_BOUNDS: &[f64] = &[
     0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 60.0, 300.0,
 ];
 
-/// As faixas do atributo `band`: de `0` a `14`, e `15+`.
+/// The `band` attribute's bands: from `0` to `14`, and `15+`.
 pub const BANDS: usize = 16;
 
-/// O que um tópico de fila conta desde que o nó abriu o tópico.
+/// What a queue topic counts since the node opened the topic.
 #[derive(Debug, Clone)]
 pub struct TopicCounters {
     pub published: u64,
@@ -25,7 +25,7 @@ pub struct TopicCounters {
     pub publish_errors: u64,
     pub consumed: u64,
     pub acked: u64,
-    /// Só na FIFO: publicações descartadas por duplicidade.
+    /// FIFO only: publications discarded as duplicates.
     pub deduplicated: u64,
     pub redelivered: u64,
     pub dead_lettered: u64,
@@ -62,7 +62,7 @@ impl Default for TopicCounters {
     }
 }
 
-/// O que o distribuidor conta (doc 15, seção 14.7).
+/// What the distributor counts (doc 15, section 14.7).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DistributorCounters {
     pub received: u64,
@@ -70,11 +70,11 @@ pub struct DistributorCounters {
     pub copy_errors: u64,
 }
 
-/// Os contadores do nó todo. Atômicos: quem conta não pega trava nenhuma.
+/// The whole node's counters. Atomic: whoever counts takes no lock.
 #[derive(Debug)]
 pub struct NodeCounters {
     pub overflow: AtomicU64,
-    /// Quantas mensagens do `overflow` o resumo periódico do log já contou.
+    /// How many `overflow` messages the periodic log summary has already counted.
     pub overflow_reported: AtomicU64,
     pub reads_memory: AtomicU64,
     pub reads_disk: AtomicU64,
@@ -114,7 +114,7 @@ impl NodeCounters {
         counter.fetch_add(n, Ordering::Relaxed);
     }
 
-    /// A espera até a primeira entrega de uma mensagem cujo grupo estava na faixa `band`.
+    /// The wait until the first delivery of a message whose group was in the `band` band.
     pub fn observe_wait(&self, band: u32, seconds: f64) {
         let index = (band as usize).min(BANDS - 1);
         self.fair_wait.lock().unwrap_or_else(|e| e.into_inner())[index].record(seconds);
@@ -134,7 +134,7 @@ impl Default for NodeCounters {
     }
 }
 
-/// O que `Messages::observe_node` entrega a `GET /metrics`.
+/// What `Messages::observe_node` hands to `GET /metrics`.
 #[derive(Debug, Clone)]
 pub struct NodeObservation {
     pub memory_bytes: u64,
@@ -158,7 +158,7 @@ pub struct NodeObservation {
     pub fair_wait: Vec<Histogram>,
 }
 
-/// p50, p95 e p99 de uma latência, em segundos. `None`: ainda sem observação.
+/// p50, p95 and p99 of a latency, in seconds. `None`: no observation yet.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Percentiles {
     pub p50: Option<f64>,
@@ -176,17 +176,17 @@ impl Percentiles {
     }
 }
 
-/// Um grupo de mensagens (doc 11, "Métricas por grupo").
+/// A group of messages (doc 11, "Per-group metrics").
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupSnapshot {
-    /// `None` no contador compartilhado dos grupos acima de `delivery.fair.max-groups`. A mensagem
-    /// sem `groupId` é o grupo de nome vazio.
+    /// `None` on the shared counter of the groups above `delivery.fair.max-groups`. A message
+    /// without a `groupId` is the group with an empty name.
     pub group_id: Option<String>,
     pub overflow: bool,
     pub visible: u64,
     pub invisible: u64,
     pub band: u32,
-    /// O instante da mensagem mais antiga do grupo.
+    /// The instant of the group's oldest message.
     pub oldest_ms: Option<u64>,
 }
 
@@ -196,7 +196,7 @@ impl GroupSnapshot {
     }
 }
 
-/// O retrato de uma fila num instante (doc 11, "Métricas por tópico").
+/// A queue's snapshot at an instant (doc 11, "Per-topic metrics").
 #[derive(Debug, Clone)]
 pub struct TopicSnapshot {
     pub counters: TopicCounters,
@@ -205,19 +205,19 @@ pub struct TopicSnapshot {
     pub ack_rate: f64,
     pub visible: u64,
     pub invisible: u64,
-    /// A mensagem mais antiga ainda não confirmada.
+    /// The oldest message not yet acknowledged.
     pub oldest_ms: Option<u64>,
     pub memory_messages: u64,
     pub disk_messages: u64,
     pub memory_bytes: u64,
     pub disk_bytes: u64,
-    /// Os grupos acompanhados, e quantas mensagens o maior tem.
+    /// The groups followed, and how many messages the largest has.
     pub groups: u64,
     pub largest_group: u64,
-    /// Só na FIFO: grupos com mensagem em voo.
+    /// FIFO only: groups with a message in flight.
     pub busy_groups: u64,
-    /// Só na FIFO, e só com `stats.topics.group-stalled-deliveries`: o grupo cuja cabeça passou
-    /// do limite de entregas.
+    /// FIFO only, and only with `stats.topics.group-stalled-deliveries`: the group whose head went past
+    /// the delivery limit.
     pub stalled_group: Option<String>,
     pub publish_latency: Percentiles,
     pub consume_latency: Percentiles,
@@ -228,7 +228,7 @@ impl TopicSnapshot {
         self.visible + self.invisible
     }
 
-    /// A parcela do `depth` que o maior grupo ocupa, de 0 a 1.
+    /// The share of `depth` the largest group takes up, from 0 to 1.
     pub fn noisy_share(&self) -> f64 {
         match self.depth() {
             0 => 0.0,
@@ -256,7 +256,7 @@ impl Severity {
     }
 }
 
-/// As condições do tópico, em ordem de severidade e depois de nome.
+/// The topic's conditions, in severity order and then by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Condition {
     Backlog,
@@ -300,8 +300,8 @@ impl Condition {
     }
 }
 
-/// Os limites das condições e o tamanho do detalhe (`stats.topics.*`). Um limite que não foi
-/// definido desliga a condição que depende dele (D90).
+/// The conditions' limits and the size of the detail (`stats.topics.*`). A limit that was not
+/// set turns off the condition that depends on it (D90).
 #[derive(Debug, Clone)]
 pub struct StatsRules {
     pub top_groups: usize,
@@ -311,7 +311,7 @@ pub struct StatsRules {
     pub group_stalled_deliveries: Option<u32>,
     pub stalled_after_ms: Option<u64>,
     pub idle_after_ms: Option<u64>,
-    /// `stats.disk.free-min`: abaixo disto de espaço livre, a condição `storage-pressure` do nó.
+    /// `stats.disk.free-min`: below this much free space, the node's `storage-pressure` condition.
     pub disk_free_min: Option<u64>,
 }
 
@@ -335,8 +335,8 @@ impl StatsRules {
     }
 }
 
-/// As condições vigentes do tópico, as mais graves primeiro. `baseline_ms` é o início da conta
-/// para um tópico que ainda não teve atividade: o maior entre a criação e a partida do nó.
+/// The topic's conditions in force, the most serious first. `baseline_ms` is the start of the count
+/// for a topic that has not had activity yet: the greater of the creation and the node's start.
 pub fn evaluate(
     snapshot: &TopicSnapshot,
     rules: &StatsRules,

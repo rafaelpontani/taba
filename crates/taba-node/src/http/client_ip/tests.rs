@@ -49,7 +49,7 @@ fn a_missing_or_invalid_header_falls_back_to_the_connection() {
         r.resolve(peer("10.0.0.5:1"), &HeaderMap::new()),
         ip("10.0.0.5")
     );
-    let h = headers(&[("x-forwarded-for", "não-é-ip")]);
+    let h = headers(&[("x-forwarded-for", "not-an-ip")]);
     assert_eq!(r.resolve(peer("10.0.0.5:1"), &h), ip("10.0.0.5"));
 }
 
@@ -72,7 +72,7 @@ fn headers_are_only_trusted_from_the_trusted_proxies() {
     assert_eq!(
         r.resolve(peer("203.0.113.7:1"), &h),
         ip("203.0.113.7"),
-        "fora da lista o cabeçalho é ignorado (quem o forja não escapa do limite)"
+        "outside the list the header is ignored (whoever forges it does not escape the limit)"
     );
 }
 

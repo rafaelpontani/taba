@@ -1,20 +1,20 @@
-// Reespaça as mensagens de um diagrama de sequência do Archify.
-// Uso: node doc/diagramas/scripts/reespacar.mjs <fonte.json> [...]
+// Re-spaces the messages of an Archify sequence diagram.
+// Usage: node doc/diagramas/scripts/reespacar.mjs <fonte.json> [...]
 //
-// A ORDEM das mensagens no array "messages" é a ordem do diagrama; o "y" é recalculado
-// aqui (passo fixo). Para inserir uma mensagem, coloque-a na posição certa do array com
-// qualquer "y"; se houver "segments", use um y igual ao de uma mensagem vizinha da fase
-// à qual ela pertence. O script também refaz as faixas de "segments" e o "meta.viewBox".
+// The ORDER of the messages in the "messages" array is the diagram's order; the "y" is recalculated
+// here (fixed step). To insert a message, put it in the right position of the array with
+// any "y"; if there are "segments", use a y equal to a neighboring message's in the phase
+// it belongs to. The script also rebuilds the "segments" bands and the "meta.viewBox".
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const PASSO = 28;        // mínimo do Archify: 28 px entre mensagens que dividem espaço
-const FOLGA_FASE = 8;    // respiro extra entre fases (segments)
-const TOPO = 172;        // primeiro y (mínimo do Archify: 160)
-const LARGURA = 1080;    // largura do viewBox (proporção mínima de tela: ~1,55)
+const PASSO = 28;        // Archify's minimum: 28 px between messages that share space
+const FOLGA_FASE = 8;    // extra breathing room between phases (segments)
+const TOPO = 172;        // first y (Archify's minimum: 160)
+const LARGURA = 1080;    // viewBox width (minimum screen ratio: ~1.55)
 
 for (const arquivo of process.argv.slice(2)) {
   const j = JSON.parse(readFileSync(arquivo, 'utf8'));
-  if (j.diagram_type !== 'sequence') { console.log(`${arquivo}: ignorado (não é sequence)`); continue; }
+  if (j.diagram_type !== 'sequence') { console.log(`${arquivo}: skipped (not a sequence)`); continue; }
 
   const segs = j.segments || [];
   let fase = 0;
@@ -36,7 +36,7 @@ for (const arquivo of process.argv.slice(2)) {
   writeFileSync(arquivo, JSON.stringify(j, null, 2) + '\n');
 
   const aviso = altura > LARGURA / 1.55
-    ? '  AVISO: diagrama alto demais para a proporção mínima do Archify; divida em dois diagramas.'
+    ? '  WARNING: diagram too tall for Archify\'s minimum ratio; split it in two diagrams.'
     : '';
-  console.log(`${arquivo}: ${j.messages.length} mensagens, viewBox ${LARGURA}x${altura}${aviso}`);
+  console.log(`${arquivo}: ${j.messages.length} messages, viewBox ${LARGURA}x${altura}${aviso}`);
 }

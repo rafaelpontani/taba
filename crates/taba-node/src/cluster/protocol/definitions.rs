@@ -1,9 +1,9 @@
-//! Os corpos das rotas de definição entre nós (doc 06c, "Tópicos e tokens") e o contrato dos
-//! streams de sincronização (seção 8.2.1): a proposta ao dono, a mudança decidida e a página de um
-//! stream NDJSON.
+//! The bodies of the definition routes between nodes (doc 06c, "Topics and tokens") and the contract of the
+//! synchronization streams (section 8.2.1): the proposal to the owner, the decided change and the page of an
+//! NDJSON stream.
 //!
-//! A definição do tópico e o registro do token viajam como JSON (`TopicDefinition` e `TokenRecord`
-//! do doc 06c): o nó que recebe converte para os tipos do `core`.
+//! The topic definition and the token record travel as JSON (`TopicDefinition` and `TokenRecord`
+//! of doc 06c): the node that receives converts them to the `core` types.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -12,7 +12,7 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time;
 use crate::core::token::{Permission, TokenRecord};
 
-/// O tipo de uma definição compartilhada por todos os nós.
+/// The type of a definition shared by all nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DefinitionKind {
@@ -34,45 +34,45 @@ impl DefinitionKind {
 pub enum DefinitionOperation {
     Create,
     Update,
-    /// Remove o tópico ou revoga o token.
+    /// Removes the topic or revokes the token.
     Delete,
 }
 
-/// A proposta de uma mudança, de quem recebeu a chamada do cliente ao dono da definição.
+/// A change proposal, from whoever received the client's call to the definition's owner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DefinitionProposal {
     pub kind: DefinitionKind,
     pub operation: DefinitionOperation,
-    /// O nome do tópico ou o `id` do token.
+    /// The topic name or the token `id`.
     pub key: String,
-    /// A `TopicDefinition` ou o `TokenRecord` completos (o do token leva o sal e o hash salgado,
-    /// **nunca o segredo**); em `delete`, o tópico leva `name` e `id`, e o token, `id`.
+    /// The full `TopicDefinition` or `TokenRecord` (the token's carries the salt and the salted hash,
+    /// **never the secret**); on `delete`, the topic carries `name` and `id`, and the token, `id`.
     pub body: Value,
-    /// Em `delete` pelo nó gestor de uma fila volátil: o `id` que o tópico deve ter.
+    /// On `delete` by the managing node of a volatile queue: the `id` the topic must have.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_id: Option<String>,
 }
 
-/// A mudança já decidida pelo dono, com a versão que ele deu, como cada nó a aplica. Só vale se a
-/// versão não é menor que a que o nó já tem; repetir é inofensivo.
+/// The change already decided by the owner, with the version it gave, as each node applies it. It only applies if the
+/// version is not lower than the one the node already has; repeating is harmless.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DefinitionApply {
     pub kind: DefinitionKind,
     pub key: String,
     pub version: u64,
-    /// `true`: o tópico foi removido ou o token revogado (a versão fica como lápide).
+    /// `true`: the topic was removed or the token revoked (the version stays as a tombstone).
     pub deleted: bool,
     #[serde(default)]
     pub body: Value,
-    /// `true` na cópia que o dono grava no **herdeiro**: quem a recebe, além de aplicá-la, a enfileira
-    /// para todos os pares no quadro `definition` do canal (D127). O dono faz o mesmo.
+    /// `true` on the copy the owner writes to the **heir**: whoever receives it, besides applying it, queues it
+    /// for all peers in the channel's `definition` frame (D127). The owner does the same.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub relay: bool,
 }
 
-/// O `TokenRecord` do doc 06c, como JSON.
+/// The doc 06c `TokenRecord`, as JSON.
 pub fn token_to_json(token: &TokenRecord) -> Value {
     json!({
         "id": token.id,
@@ -86,15 +86,15 @@ pub fn token_to_json(token: &TokenRecord) -> Value {
     })
 }
 
-/// O inverso de [`token_to_json`].
+/// The inverse of [`token_to_json`].
 pub fn token_from_json(value: &Value) -> Result<TokenRecord, TabaError> {
     let bad = |what: &str| {
         TabaError::new(
             ErrorCode::ValidationFailed,
-            format!("O token entre nós é inválido: {what}."),
+            format!("The token between nodes is invalid: {what}."),
         )
     };
-    let object = value.as_object().ok_or_else(|| bad("não é um objeto"))?;
+    let object = value.as_object().ok_or_else(|| bad("not an object"))?;
     let text = |key: &str| {
         object
             .get(key)
@@ -107,8 +107,8 @@ pub fn token_from_json(value: &Value) -> Result<TokenRecord, TabaError> {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(s)) => time::parse_ms(s)
                 .map(Some)
-                .ok_or_else(|| bad(&format!("`{key}` inválido"))),
-            Some(_) => Err(bad(&format!("`{key}` inválido"))),
+                .ok_or_else(|| bad(&format!("`{key}` invalid"))),
+            Some(_) => Err(bad(&format!("`{key}` invalid"))),
         }
     };
     let list = |key: &str| -> Result<Vec<String>, TabaError> {
@@ -120,7 +120,7 @@ pub fn token_from_json(value: &Value) -> Result<TokenRecord, TabaError> {
             .map(|v| {
                 v.as_str()
                     .map(str::to_owned)
-                    .ok_or_else(|| bad(&format!("`{key}` tem um item que não é texto")))
+                    .ok_or_else(|| bad(&format!("`{key}` has an item that is not text")))
             })
             .collect()
     };
@@ -129,7 +129,7 @@ pub fn token_from_json(value: &Value) -> Result<TokenRecord, TabaError> {
         let permission = Permission::ALL
             .into_iter()
             .find(|p| p.as_str() == name)
-            .ok_or_else(|| bad(&format!("permissão `{name}` desconhecida")))?;
+            .ok_or_else(|| bad(&format!("unknown permission `{name}`")))?;
         permissions.push(permission);
     }
     Ok(TokenRecord {
@@ -144,7 +144,7 @@ pub fn token_from_json(value: &Value) -> Result<TokenRecord, TabaError> {
     })
 }
 
-/// A consulta de um stream de sincronização: `from` (inclusivo) e `limit` (reduz o teto).
+/// The query of a synchronization stream: `from` (inclusive) and `limit` (lowers the ceiling).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StreamQuery {
     pub from: Option<String>,
@@ -152,7 +152,7 @@ pub struct StreamQuery {
     pub limit: Option<u32>,
 }
 
-/// `StreamEnd` (doc 06d, seção 8.3.7): a linha final de todo stream.
+/// `StreamEnd` (doc 06d, section 8.3.7): the final line of every stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StreamEnd {
@@ -163,8 +163,8 @@ pub struct StreamEnd {
     pub has_more: bool,
 }
 
-/// Um trecho de um stream: as linhas de dados e a linha final. Quem pede o próximo trecho repete a
-/// consulta com `from = último` (a linha repetida é ignorada).
+/// A stretch of a stream: the data lines and the final line. Whoever asks for the next stretch repeats the
+/// query with `from = last` (the repeated line is ignored).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamPage {
     pub items: Vec<Value>,
@@ -172,7 +172,7 @@ pub struct StreamPage {
 }
 
 impl StreamPage {
-    /// Monta o trecho com o `id` de cada linha como `last`.
+    /// Builds the stretch with each line's `id` as `last`.
     pub fn new(items: Vec<Value>, has_more: bool) -> Self {
         let last = items
             .last()
@@ -190,7 +190,7 @@ impl StreamPage {
         }
     }
 
-    /// NDJSON: um objeto por linha e, por último, o `StreamEnd`.
+    /// NDJSON: one object per line and, last, the `StreamEnd`.
     pub fn to_ndjson(&self) -> String {
         let mut out = String::new();
         for item in &self.items {
@@ -202,31 +202,31 @@ impl StreamPage {
         out
     }
 
-    /// O inverso. Sem a linha final o trecho é **falho**, mesmo que a conexão tenha fechado
-    /// limpa (doc 06c, seção 8.2.1).
+    /// The inverse. Without the final line the stretch is **flawed**, even if the connection closed
+    /// cleanly (doc 06c, section 8.2.1).
     pub fn from_ndjson(text: &str) -> Result<Self, TabaError> {
         let bad = |what: &str| {
             TabaError::new(
                 ErrorCode::ValidationFailed,
-                format!("Stream incompleto ou inválido: {what}."),
+                format!("Incomplete or invalid stream: {what}."),
             )
         };
         let mut items = Vec::new();
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
-            let value: Value = serde_json::from_str(line).map_err(|_| bad("linha ilegível"))?;
+            let value: Value = serde_json::from_str(line).map_err(|_| bad("unreadable line"))?;
             if value.get("error").is_some() {
-                return Err(bad("o emissor reportou um erro"));
+                return Err(bad("the sender reported an error"));
             }
             if value.get("end").is_some() {
                 let end: StreamEnd =
-                    serde_json::from_value(value).map_err(|_| bad("linha final inválida"))?;
+                    serde_json::from_value(value).map_err(|_| bad("invalid final line"))?;
                 if end.count != items.len() as u64 {
-                    return Err(bad("a contagem da linha final não confere"));
+                    return Err(bad("the final line's count does not match"));
                 }
                 return Ok(Self { items, end });
             }
             items.push(value);
         }
-        Err(bad("faltou a linha final"))
+        Err(bad("the final line is missing"))
     }
 }

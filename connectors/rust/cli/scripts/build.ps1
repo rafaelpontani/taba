@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-  Constrói o taba-cli no Windows (doc/19b-cli.md, seção 18.11.8).
+  Builds taba-cli on Windows (doc/19b-cli.md, section 18.11.8).
 
 .DESCRIPTION
-  Sem argumento, constrói para a plataforma desta máquina. -Target constrói um alvo da tabela e
-  -All constrói todos os que a máquina consegue (x86_64-pc-windows-msvc e aarch64-pc-windows-msvc;
-  os do Linux e do macOS ficam em build.sh). O resultado vai para connectors\cli\dist\<alvo>\, com
-  o binário e um SHA256SUMS.
+  With no argument, builds for this machine's platform. -Target builds one target from the table and
+  -All builds every one the machine can (x86_64-pc-windows-msvc and aarch64-pc-windows-msvc;
+  the Linux and macOS ones live in build.sh). The result goes to connectors\cli\dist\<target>\, with
+  the binary and a SHA256SUMS.
 
 .EXAMPLE
   .\build.ps1
@@ -20,11 +20,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
-$root = (Resolve-Path (Join-Path $here '..\..')).Path   # connectors\, o workspace do Cargo dos conectores
+$root = (Resolve-Path (Join-Path $here '..\..')).Path   # connectors\, the Cargo workspace of the connectors
 $dist = Join-Path (Split-Path $here -Parent) 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
-# Binário pequeno e reprodutível: o Cargo.lock vale (--locked), sem símbolos, otimizado para tamanho.
+# Small, reproducible binary: Cargo.lock applies (--locked), no symbols, optimized for size.
 $env:CARGO_PROFILE_RELEASE_OPT_LEVEL = 'z'
 $env:CARGO_PROFILE_RELEASE_LTO = 'true'
 $env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = '1'
@@ -33,7 +33,7 @@ $env:CARGO_PROFILE_RELEASE_STRIP = 'symbols'
 
 $hostTriple = ((rustc -vV) | Where-Object { $_ -like 'host:*' }) -replace '^host:\s*', ''
 if ($hostTriple -notlike '*-windows-msvc') {
-  Write-Error "build.ps1: sistema não suportado ($hostTriple); no Linux e no macOS use build.sh"
+  Write-Error "build.ps1: unsupported system ($hostTriple); on Linux and macOS use build.sh"
   exit 2
 }
 $reachable = @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')
@@ -41,13 +41,13 @@ $reachable = @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')
 function Build-One([string]$triple) {
   Write-Host "==> $triple"
   $previous = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'   # o rustup escreve avisos informativos na saída de erro
+  $ErrorActionPreference = 'Continue'   # rustup writes informational warnings to the error output
   rustup target add $triple 2>&1 | Out-Null
   $ErrorActionPreference = $previous
   Push-Location $root
   try {
     cargo build --release --locked -p taba-cli --target $triple
-    if ($LASTEXITCODE -ne 0) { throw "cargo build falhou para $triple" }
+    if ($LASTEXITCODE -ne 0) { throw "cargo build failed for $triple" }
   } finally {
     Pop-Location
   }
@@ -67,7 +67,7 @@ if ($All) {
   if ($failed) { exit 1 }
 } elseif ($Target) {
   if ($reachable -notcontains $Target) {
-    Write-Error "build.ps1: esta máquina ($hostTriple) não constrói $Target (alcança: $($reachable -join ', '))"
+    Write-Error "build.ps1: this machine ($hostTriple) does not build $Target (it reaches: $($reachable -join ', '))"
     exit 2
   }
   Build-One $Target

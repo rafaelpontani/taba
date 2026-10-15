@@ -1,5 +1,5 @@
-//! O que impede o nó de subir (doc 10; UC-CFG-004). A validação da configuração em si
-//! é testada junto do código; aqui está o que só aparece ao abrir portas e disco.
+//! What keeps the node from starting (doc 10; UC-CFG-004). The validation of the configuration itself
+//! is tested next to the code; here is what only shows up when opening ports and disk.
 
 mod common;
 
@@ -21,7 +21,7 @@ async fn an_occupied_api_port_stops_startup_naming_the_port() {
         .await;
 
     let Err(error) = result else {
-        panic!("o nó não deveria subir com a porta ocupada")
+        panic!("the node should not start with the port taken")
     };
     assert!(matches!(error, NodeError::Bind { .. }), "{error}");
     assert!(error.to_string().contains(&port), "{error}");
@@ -40,7 +40,7 @@ async fn an_occupied_cluster_port_stops_startup_in_production() {
         .await;
 
     let Err(error) = result else {
-        panic!("o nó não deveria subir com a porta do cluster ocupada")
+        panic!("the node should not start with the cluster port taken")
     };
     assert!(error.to_string().contains("cluster"), "{error}");
 }
@@ -62,7 +62,7 @@ async fn in_development_the_cluster_port_is_ignored_even_when_occupied() {
 /// UC: UC-ING-001
 #[test]
 fn production_without_the_entry_address_does_not_start() {
-    // A configuração é recusada antes de abrir qualquer porta; o `taba` sai com código 2.
+    // The configuration is refused before opening any port; `taba` exits with code 2.
     let env = MapEnv::new([("TABA_MODE", "production"), ("TABA_API_PORT", "0")]);
     let error = Config::parse(None, &env).unwrap_err();
     assert!(
@@ -75,8 +75,8 @@ fn production_without_the_entry_address_does_not_start() {
 #[tokio::test]
 async fn a_storage_dir_that_cannot_be_created_stops_startup() {
     let tmp = tempfile::tempdir().unwrap();
-    let blocker = tmp.path().join("arquivo");
-    std::fs::write(&blocker, "não sou uma pasta").unwrap();
+    let blocker = tmp.path().join("file");
+    std::fs::write(&blocker, "I am not a folder").unwrap();
     let storage = blocker.join("taba");
 
     let result = TestNode::builder()
@@ -85,7 +85,7 @@ async fn a_storage_dir_that_cannot_be_created_stops_startup() {
         .await;
 
     let Err(error) = result else {
-        panic!("o nó não deveria subir sem poder criar storage.dir")
+        panic!("the node should not start without being able to create storage.dir")
     };
     assert!(matches!(error, NodeError::Storage { .. }), "{error}");
     assert!(error.to_string().contains("storage.dir"), "{error}");

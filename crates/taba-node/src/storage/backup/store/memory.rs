@@ -1,4 +1,4 @@
-//! O depósito em memória dos testes: o que o S3 faz, sem rede, e com falhas programáveis.
+//! The in-memory store of the tests: what S3 does, without a network, and with programmable failures.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -9,9 +9,9 @@ use super::{Object, ObjectInfo, ObjectStore, StoreError, StoreFuture, StoreResul
 #[derive(Default)]
 pub struct MemoryStore {
     objects: Mutex<BTreeMap<String, Object>>,
-    /// Fora do ar: toda chamada falha.
+    /// Down: every call fails.
     down: AtomicBool,
-    /// Sem escrita condicional (um S3 antigo): `put_if_*` falham.
+    /// No conditional write (an old S3): `put_if_*` fail.
     no_conditional: AtomicBool,
     version: AtomicU64,
     puts: AtomicU64,
@@ -27,27 +27,27 @@ impl MemoryStore {
         self.objects.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Liga ou desliga a falha de todas as chamadas.
+    /// Turns the failure of all calls on or off.
     pub fn set_down(&self, down: bool) {
         self.down.store(down, Ordering::SeqCst);
     }
 
-    /// Liga ou desliga o suporte à escrita condicional.
+    /// Turns conditional write support on or off.
     pub fn set_conditional(&self, supported: bool) {
         self.no_conditional.store(!supported, Ordering::SeqCst);
     }
 
-    /// Quantas gravações (`put*`) deram certo.
+    /// How many writes (`put*`) succeeded.
     pub fn puts(&self) -> u64 {
         self.puts.load(Ordering::SeqCst)
     }
 
-    /// Quantas leituras (`get*`) foram feitas.
+    /// How many reads (`get*`) were made.
     pub fn gets(&self) -> u64 {
         self.gets.load(Ordering::SeqCst)
     }
 
-    /// Os nomes dos objetos que começam com `prefix`.
+    /// The names of the objects that start with `prefix`.
     pub fn keys(&self, prefix: &str) -> Vec<String> {
         self.objects()
             .keys()
@@ -56,14 +56,14 @@ impl MemoryStore {
             .collect()
     }
 
-    /// O conteúdo de um objeto, sem contar como leitura.
+    /// An object's content, without counting as a read.
     pub fn peek(&self, key: &str) -> Option<Vec<u8>> {
         self.objects().get(key).map(|o| o.body.clone())
     }
 
     fn check(&self) -> StoreResult<()> {
         if self.down.load(Ordering::SeqCst) {
-            Err(StoreError::Unavailable("fora do ar (teste)".into()))
+            Err(StoreError::Unavailable("down (test)".into()))
         } else {
             Ok(())
         }
@@ -72,7 +72,7 @@ impl MemoryStore {
     fn check_conditional(&self) -> StoreResult<()> {
         if self.no_conditional.load(Ordering::SeqCst) {
             Err(StoreError::Unsupported(
-                "sem escrita condicional (teste)".into(),
+                "no conditional write (test)".into(),
             ))
         } else {
             Ok(())

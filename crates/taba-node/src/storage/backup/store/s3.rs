@@ -1,6 +1,6 @@
-//! O cliente do S3 (e do MinIO) sobre o `aws-sdk-s3` oficial (D-S3: Q11). Sem credenciais na
-//! configuração, o SDK usa a cadeia padrão da AWS (variáveis de ambiente, perfil, papel da
-//! tarefa, IAM da instância).
+//! The S3 (and MinIO) client over the official `aws-sdk-s3` (D-S3: Q11). Without credentials in the
+//! configuration, the SDK uses the default AWS chain (environment variables, profile, task
+//! role, instance IAM).
 
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::retry::RetryConfig;
@@ -11,16 +11,16 @@ use aws_sdk_s3::primitives::ByteStream;
 
 use super::{Object, ObjectInfo, ObjectStore, StoreError, StoreFuture};
 
-/// O que `backup.s3.*` configura.
+/// What `backup.s3.*` configures.
 #[derive(Debug, Clone, Default)]
 pub struct S3Settings {
     pub bucket: String,
     pub region: Option<String>,
-    /// Fora da AWS (MinIO, Ceph): o endereço do serviço.
+    /// Outside AWS (MinIO, Ceph): the service address.
     pub endpoint: Option<String>,
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
-    /// `bucket` no caminho (`http://host/bucket/chave`) em vez de no nome do host. Obrigatório no
+    /// `bucket` in the path (`http://host/bucket/key`) instead of in the host name. Required on
     /// MinIO.
     pub path_style: bool,
 }
@@ -30,7 +30,7 @@ pub struct S3Store {
     bucket: String,
 }
 
-/// O código HTTP de uma falha do SDK, se a resposta chegou.
+/// The HTTP code of an SDK failure, if the response arrived.
 fn status<E>(error: &SdkError<E, aws_sdk_s3::config::http::HttpResponse>) -> Option<u16> {
     error.raw_response().map(|r| r.status().as_u16())
 }
@@ -49,8 +49,8 @@ where
 
 impl S3Store {
     pub async fn connect(settings: &S3Settings) -> Self {
-        // Prazos curtos: um S3 que não responde não pode segurar o envio nem o drain por minutos
-        // (o backup tenta de novo na passada seguinte; quem espera tem o prazo `backup.drain.timeout`).
+        // Short deadlines: an S3 that does not answer cannot hold the upload or the drain for minutes
+        // (the backup tries again on the next pass; whoever waits has the `backup.drain.timeout` deadline).
         let mut loader = aws_config::defaults(BehaviorVersion::latest())
             .timeout_config(
                 TimeoutConfig::builder()
@@ -63,7 +63,7 @@ impl S3Store {
         if let Some(region) = &settings.region {
             loader = loader.region(Region::new(region.clone()));
         } else if settings.endpoint.is_some() {
-            // Fora da AWS a região não importa, mas o SDK exige uma.
+            // Outside AWS the region does not matter, but the SDK requires one.
             loader = loader.region(Region::new("us-east-1"));
         }
         if let (Some(access), Some(secret)) = (&settings.access_key, &settings.secret_key) {
@@ -80,8 +80,8 @@ impl S3Store {
         if let Some(endpoint) = &settings.endpoint {
             config = config.endpoint_url(endpoint.clone());
         }
-        // Só calcula e confere somas de verificação quando o serviço exige: o MinIO e outros S3
-        // compatíveis mais antigos não as conhecem, e o ETag já cobre a integridade que o backup usa.
+        // Only computes and checks checksums when the service requires it: MinIO and other older compatible
+        // S3s do not know them, and the ETag already covers the integrity the backup uses.
         config = config
             .force_path_style(settings.path_style)
             .request_checksum_calculation(
@@ -245,7 +245,7 @@ impl S3Store {
                         .to_vec(),
                 )),
                 Err(e) if status(&e) == Some(404) => Ok(None),
-                // Uma faixa que começa depois do fim (objeto vazio): nada a ler.
+                // A range that starts after the end (empty object): nothing to read.
                 Err(e) if status(&e) == Some(416) => Ok(Some(Vec::new())),
                 Err(e) => Err(unavailable(&e)),
             }
@@ -253,8 +253,8 @@ impl S3Store {
     }
 }
 
-/// O resultado de uma escrita condicional: `412` e `409` dizem que a condição falhou; `501` e
-/// `400` com o cabeçalho condicional, que o depósito não o conhece.
+/// The result of a conditional write: `412` and `409` say the condition failed; `501` and
+/// `400` with the conditional header, that the store does not know it.
 fn conditional<T, E>(
     result: Result<T, SdkError<E, aws_sdk_s3::config::http::HttpResponse>>,
 ) -> Result<bool, StoreError>

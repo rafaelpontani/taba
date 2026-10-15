@@ -1,7 +1,7 @@
-//! Leitura do corpo JSON das rotas (doc 06d, seção 8.3.1): `415` para outro
-//! `Content-Type`, `validation.unknown-field` para campo que a rota não define e
-//! `validation.required` para o que falta. Os erros de tipo viram `validation.failed`
-//! com o campo em `details`.
+//! Reading the routes' JSON body (doc 06d, section 8.3.1): `415` for another
+//! `Content-Type`, `validation.unknown-field` for a field the route does not define and
+//! `validation.required` for what is missing. Type errors become `validation.failed`
+//! with the field in `details`.
 
 use std::collections::BTreeMap;
 
@@ -16,16 +16,16 @@ pub struct Fields(Map<String, Value>);
 fn wrong_type(field: &str, expected: &str) -> TabaError {
     TabaError::new(
         ErrorCode::ValidationFailed,
-        "A requisição tem campos inválidos.",
+        "The request has invalid fields.",
     )
     .with_detail(
         field,
         ErrorCode::ValidationFailed,
-        format!("Esperado {expected}."),
+        format!("Expected {expected}."),
     )
 }
 
-/// `415` se o `Content-Type` não é `application/json`.
+/// `415` if the `Content-Type` is not `application/json`.
 fn require_json(headers: &HeaderMap) -> Result<(), TabaError> {
     let media_type = headers
         .get(header::CONTENT_TYPE)
@@ -42,7 +42,7 @@ fn require_json(headers: &HeaderMap) -> Result<(), TabaError> {
     }
 }
 
-/// O corpo como objeto JSON. Corpo vazio vale como `{}`: quem exige campos reclama deles.
+/// The body as a JSON object. An empty body counts as `{}`: whoever requires fields complains about them.
 pub fn object(headers: &HeaderMap, body: &[u8]) -> Result<Fields, TabaError> {
     if body.iter().all(u8::is_ascii_whitespace) {
         return Ok(Fields(Map::new()));
@@ -52,40 +52,37 @@ pub fn object(headers: &HeaderMap, body: &[u8]) -> Result<Fields, TabaError> {
         Ok(Value::Object(map)) => Ok(Fields(map)),
         Ok(_) => Err(TabaError::new(
             ErrorCode::ValidationFailed,
-            "O corpo deve ser um objeto JSON.",
+            "The body must be a JSON object.",
         )),
         Err(e) => Err(TabaError::new(
             ErrorCode::ValidationFailed,
-            format!("O corpo não é um JSON válido: {e}."),
+            format!("The body is not valid JSON: {e}."),
         )),
     }
 }
 
 impl Fields {
-    /// O primeiro campo que a rota não define.
+    /// The first field the route does not define.
     pub fn reject_unknown(&self, allowed: &[&str]) -> Result<(), TabaError> {
         match self.0.keys().find(|k| !allowed.contains(&k.as_str())) {
             None => Ok(()),
             Some(field) => Err(TabaError::new(
                 ErrorCode::ValidationUnknownField,
-                format!("O campo `{field}` não existe nesta rota."),
+                format!("The field `{field}` does not exist on this route."),
             )
-            .with_detail(
-                field,
-                ErrorCode::ValidationUnknownField,
-                "Campo desconhecido.",
-            )),
+            .with_detail(field, ErrorCode::ValidationUnknownField, "Unknown field.")),
         }
     }
 
-    /// Todos os campos que faltam (ausentes ou `null`), cada um em `details`.
+    /// All the missing fields (absent or `null`), each one in `details`.
     pub fn require(&self, fields: &[&str]) -> Result<(), TabaError> {
-        let mut error =
-            TabaError::new(ErrorCode::ValidationRequired, "Faltam campos obrigatórios.");
+        let mut error = TabaError::new(
+            ErrorCode::ValidationRequired,
+            "Required fields are missing.",
+        );
         for field in fields {
             if self.0.get(*field).is_none_or(Value::is_null) {
-                error =
-                    error.with_detail(*field, ErrorCode::ValidationRequired, "Campo obrigatório.");
+                error = error.with_detail(*field, ErrorCode::ValidationRequired, "Required field.");
             }
         }
         if error.details.is_empty() {
@@ -95,7 +92,7 @@ impl Fields {
         }
     }
 
-    /// O campo veio, mesmo que `null`.
+    /// The field came, even if `null`.
     pub fn has(&self, field: &str) -> bool {
         self.0.contains_key(field)
     }
@@ -108,7 +105,7 @@ impl Fields {
         match self.present(field) {
             None => Ok(None),
             Some(Value::String(s)) => Ok(Some(s.clone())),
-            Some(_) => Err(wrong_type(field, "um texto")),
+            Some(_) => Err(wrong_type(field, "a text")),
         }
     }
 
@@ -116,11 +113,11 @@ impl Fields {
         match self.present(field) {
             None => Ok(None),
             Some(Value::Bool(b)) => Ok(Some(*b)),
-            Some(_) => Err(wrong_type(field, "`true` ou `false`")),
+            Some(_) => Err(wrong_type(field, "`true` or `false`")),
         }
     }
 
-    /// Inteiro. Um número que não cabe em `i64` é fora da faixa; um decimal é erro de tipo.
+    /// Integer. A number that does not fit in `i64` is out of range; a decimal is a type error.
     pub fn integer(&self, field: &str) -> Result<Option<i64>, TabaError> {
         match self.present(field) {
             None => Ok(None),
@@ -128,16 +125,16 @@ impl Fields {
                 Some(v) => Ok(Some(v)),
                 None if n.is_u64() => Err(TabaError::new(
                     ErrorCode::ValidationOutOfRange,
-                    format!("{field} está fora da faixa."),
+                    format!("{field} is out of range."),
                 )
                 .with_detail(
                     field,
                     ErrorCode::ValidationOutOfRange,
-                    "Fora da faixa.",
+                    "Out of range.",
                 )),
-                None => Err(wrong_type(field, "um número inteiro")),
+                None => Err(wrong_type(field, "an integer")),
             },
-            Some(_) => Err(wrong_type(field, "um número inteiro")),
+            Some(_) => Err(wrong_type(field, "an integer")),
         }
     }
 
@@ -148,11 +145,11 @@ impl Fields {
                 .iter()
                 .map(|(k, v)| match v {
                     Value::String(s) => Ok((k.clone(), s.clone())),
-                    _ => Err(wrong_type(&format!("{field}.{k}"), "um texto")),
+                    _ => Err(wrong_type(&format!("{field}.{k}"), "a text")),
                 })
                 .collect::<Result<_, _>>()
                 .map(Some),
-            Some(_) => Err(wrong_type(field, "um objeto de texto para texto")),
+            Some(_) => Err(wrong_type(field, "a text-to-text object")),
         }
     }
 
@@ -165,25 +162,25 @@ impl Fields {
                 .map(|(i, v)| {
                     v.as_str()
                         .map(str::to_owned)
-                        .ok_or_else(|| wrong_type(&format!("{field}[{i}]"), "um texto"))
+                        .ok_or_else(|| wrong_type(&format!("{field}[{i}]"), "a text"))
                 })
                 .collect::<Result<_, _>>()
                 .map(Some),
-            Some(_) => Err(wrong_type(field, "uma lista de textos")),
+            Some(_) => Err(wrong_type(field, "a list of texts")),
         }
     }
 
-    /// Data no formato da API (`2026-10-06T12:00:00.000Z`), em milissegundos desde a época.
+    /// Date in the API format (`2026-10-06T12:00:00.000Z`), in milliseconds since the epoch.
     pub fn date(&self, field: &str) -> Result<Option<u64>, TabaError> {
         match self.string(field)? {
             None => Ok(None),
             Some(text) => crate::core::time::parse_ms(&text)
                 .map(Some)
-                .ok_or_else(|| wrong_type(field, "uma data como 2026-10-06T12:00:00.000Z")),
+                .ok_or_else(|| wrong_type(field, "a date like 2026-10-06T12:00:00.000Z")),
         }
     }
 
-    /// Data num `PATCH`: ausente, `null` (remove) ou uma data.
+    /// Date in a `PATCH`: absent, `null` (removes) or a date.
     pub fn patch_date(&self, field: &str) -> Result<Patch<u64>, TabaError> {
         match self.0.get(field) {
             None => Ok(Patch::Absent),
@@ -192,7 +189,7 @@ impl Fields {
         }
     }
 
-    /// Campo de um `PATCH`: ausente, `null` (volta ao padrão) ou um inteiro.
+    /// A `PATCH` field: absent, `null` (goes back to the default) or an integer.
     pub fn patch_integer(&self, field: &str) -> Result<Patch<i64>, TabaError> {
         match self.0.get(field) {
             None => Ok(Patch::Absent),

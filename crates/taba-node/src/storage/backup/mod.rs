@@ -1,10 +1,10 @@
-//! O que o backup opcional em S3 precisa do armazenamento (doc 23, "Backup em S3"): o depósito de
-//! objetos (`store`), os nomes no bucket (`keys`), o formato do segmento (`segment`) e do diário
-//! (`journal`), e o `_backup.db` local (`db`).
+//! What the optional S3 backup needs from storage (doc 23, "S3 backup"): the object
+//! store (`store`), the names in the bucket (`keys`), the segment (`segment`) and journal
+//! (`journal`) format, and the local `_backup.db` (`db`).
 //!
-//! Nada aqui fala com o cluster nem com o motor de mensagens: a coordenação mora em
-//! `cluster::backup`. O S3 é só backup de falha grave; SQLite e memória seguem como o armazenamento
-//! primário, e nenhuma publicação espera o S3.
+//! Nothing here talks to the cluster or to the message engine: coordination lives in
+//! `cluster::backup`. S3 is only a backup for serious failure; SQLite and memory remain the
+//! primary storage, and no publication waits for S3.
 
 pub mod db;
 pub mod journal;

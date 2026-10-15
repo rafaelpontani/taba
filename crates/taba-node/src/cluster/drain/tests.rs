@@ -97,7 +97,7 @@ async fn wait_for(h: &Harness, state: DrainState) {
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("o drain não chegou a {state:?}");
+    panic!("the drain did not reach {state:?}");
 }
 
 /// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-010
@@ -116,7 +116,7 @@ async fn the_api_drain_moves_memory_to_disk_and_ends_drained() {
     wait_for(&h, DrainState::Drained).await;
 
     let status = h.controller.status();
-    assert_eq!(status.pending_messages, 0, "chega a 0 quando drained");
+    assert_eq!(status.pending_messages, 0, "reaches 0 when drained");
     assert_eq!(status.trigger, Some(Trigger::Api));
     assert_eq!(h.messages.usage("pedidos"), (0, 2));
     assert!(h.saves.take_save_mark().unwrap().is_some());
@@ -163,9 +163,9 @@ async fn canceling_a_finished_drain_in_development_goes_straight_back_to_active(
     assert_eq!(
         h.saves.take_save_mark().unwrap(),
         None,
-        "a marca foi apagada"
+        "the mark was deleted"
     );
-    assert!(!h.messages.is_draining(), "volta a gravar em memória");
+    assert!(!h.messages.is_draining(), "goes back to writing in memory");
     h.messages
         .publish(
             "pedidos",
@@ -182,7 +182,7 @@ async fn canceling_a_finished_drain_in_development_goes_straight_back_to_active(
 #[tokio::test]
 async fn canceling_while_draining_stops_the_move() {
     let h = harness(Mode::Development, Duration::from_secs(25)).await;
-    // Segura o drain no começo: o nó entra em `draining` sem a tarefa que esvazia.
+    // Holds the drain at the start: the node enters `draining` without the task that empties.
     let stop = h.controller.begin(Trigger::Api).unwrap();
     assert_eq!(h.shared.drain_state(), DrainState::Draining);
 
@@ -192,10 +192,10 @@ async fn canceling_while_draining_stops_the_move() {
     assert_eq!(status.state, DrainState::Active);
     assert!(
         stop.load(Ordering::Relaxed),
-        "o drain em andamento foi avisado"
+        "the drain in progress was notified"
     );
 
-    // A tarefa que acordar depois do cancelamento não conclui nada.
+    // The task that wakes up after the cancellation concludes nothing.
     h.controller.clone().run_drain(stop).await;
     assert_eq!(h.shared.drain_state(), DrainState::Active);
     assert_eq!(h.saves.take_save_mark().unwrap(), None);
@@ -249,11 +249,11 @@ async fn an_expired_timeout_leaves_the_node_draining_without_a_save_mark() {
     let h = harness(Mode::Development, Duration::ZERO).await;
     assert!(!h.controller.stop_by_signal().await);
     assert_eq!(h.shared.drain_state(), DrainState::Draining);
-    assert_eq!(h.messages.pending(), 2, "o que sobrou fica em memória");
+    assert_eq!(h.messages.pending(), 2, "what was left stays in memory");
     assert_eq!(
         h.saves.take_save_mark().unwrap(),
         None,
-        "sem save concluído"
+        "without a completed save"
     );
 }
 
@@ -261,7 +261,7 @@ async fn an_expired_timeout_leaves_the_node_draining_without_a_save_mark() {
 #[tokio::test]
 async fn a_long_poll_waiting_when_the_drain_starts_answers_empty() {
     let h = harness(Mode::Development, Duration::from_secs(25)).await;
-    // Esvazia a fila para o `GET` ficar esperando.
+    // Empties the queue so the `GET` stays waiting.
     h.messages
         .consume(
             "pedidos",
@@ -289,7 +289,7 @@ async fn a_long_poll_waiting_when_the_drain_starts_answers_empty() {
             .await
     });
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!poll.is_finished(), "ainda esperando mensagem");
+    assert!(!poll.is_finished(), "still waiting for a message");
 
     h.controller.start_api();
     let result = tokio::time::timeout(Duration::from_secs(5), poll)

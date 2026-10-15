@@ -1,8 +1,8 @@
-//! Um histograma de baldes fixos (doc 11): o dado que o registro de métricas guarda e que o
-//! `engine` usa para as latências de tópico (p50, p95 e p99) e para a espera da entrega justa.
-//! Não depende de nada: só conta e soma.
+//! A fixed-bucket histogram (doc 11): the data the metrics registry keeps and the
+//! `engine` uses for topic latencies (p50, p95 and p99) and for fair delivery wait.
+//! It depends on nothing: it only counts and sums.
 
-/// Limites superiores, em segundos, das latências de publicação e de consumo.
+/// Upper limits, in seconds, of publish and consume latencies.
 pub const LATENCY_BOUNDS: &[f64] = &[
     0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5,
     5.0, 10.0,
@@ -11,7 +11,7 @@ pub const LATENCY_BOUNDS: &[f64] = &[
 #[derive(Debug, Clone, PartialEq)]
 pub struct Histogram {
     bounds: &'static [f64],
-    /// Uma contagem por balde (não acumulada); a última é o balde `+Inf`.
+    /// One count per bucket (not cumulative); the last is the `+Inf` bucket.
     counts: Vec<u64>,
     sum: f64,
     count: u64,
@@ -50,12 +50,12 @@ impl Histogram {
         self.sum
     }
 
-    /// A contagem de cada balde (não acumulada), o `+Inf` por último (o formato do OTLP).
+    /// The count of each bucket (not cumulative), `+Inf` last (the OTLP format).
     pub fn buckets(&self) -> &[u64] {
         &self.counts
     }
 
-    /// As contagens acumuladas por balde, o `+Inf` por último (o formato do Prometheus).
+    /// The cumulative counts per bucket, `+Inf` last (the Prometheus format).
     pub fn cumulative(&self) -> Vec<u64> {
         let mut total = 0;
         self.counts
@@ -67,9 +67,9 @@ impl Histogram {
             .collect()
     }
 
-    /// O limite do balde onde cai o percentil `p` (de 0 a 1): uma aproximação por cima, no
-    /// tamanho do balde. `None` sem nenhuma observação. Quem passou do último limite recebe o
-    /// último limite.
+    /// The limit of the bucket where percentile `p` (from 0 to 1) falls: an approximation from above, at the
+    /// size of the bucket. `None` with no observation. Whatever went past the last limit gets the
+    /// last limit.
     pub fn percentile(&self, p: f64) -> Option<f64> {
         if self.count == 0 {
             return None;
@@ -85,7 +85,7 @@ impl Histogram {
         None
     }
 
-    /// Soma as observações de `other`, que tem de ter os mesmos limites.
+    /// Adds up the observations of `other`, which must have the same limits.
     pub fn merge(&mut self, other: &Histogram) {
         debug_assert_eq!(self.bounds, other.bounds);
         for (mine, theirs) in self.counts.iter_mut().zip(&other.counts) {

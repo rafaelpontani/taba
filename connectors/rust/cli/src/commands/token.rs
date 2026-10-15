@@ -1,4 +1,4 @@
-//! Tokens de acesso (doc 19b, seção 18.11.6).
+//! Access tokens (doc 19b, section 18.11.6).
 
 use taba_client::json::{self, Fields};
 
@@ -13,7 +13,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["token", "create"],
             args: "",
-            summary: "Cria um token (só o token raiz). O segredo aparece só nesta resposta.",
+            summary: "Creates a token (root token only). The secret shows up only in this response.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![
@@ -28,7 +28,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["token", "list"],
             args: "",
-            summary: "Lista os tokens (nunca mostra o segredo).",
+            summary: "Lists the tokens (never shows the secret).",
             min_pos: 0,
             max_pos: 0,
             opts: vec![
@@ -43,7 +43,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["token", "get"],
             args: "<id>",
-            summary: "Mostra um token.",
+            summary: "Shows a token.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![],
@@ -53,7 +53,7 @@ pub fn commands() -> Vec<Command> {
             path: &["token", "update"],
             args: "<id>",
             summary:
-                "Altera o nome ou o vencimento de um token (--expires-at none remove o prazo).",
+                "Changes the name or the expiry of a token (--expires-at none removes the deadline).",
             min_pos: 1,
             max_pos: 1,
             opts: vec![val("name"), val("expires-at")],
@@ -62,7 +62,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["token", "revoke"],
             args: "<id>",
-            summary: "Revoga um token (pede confirmação; --yes dispensa).",
+            summary: "Revokes a token (asks for confirmation; --yes skips it).",
             min_pos: 1,
             max_pos: 1,
             opts: vec![flag("yes")],
@@ -83,7 +83,7 @@ fn strings(items: &[String]) -> String {
 fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let name = p
         .value("name")
-        .ok_or_else(|| CliError::usage("--name é obrigatório"))?;
+        .ok_or_else(|| CliError::usage("--name is required"))?;
     let permissions: Vec<String> = p
         .values("permission")
         .into_iter()
@@ -93,7 +93,7 @@ fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         .collect();
     if permissions.is_empty() {
         return Err(CliError::usage(
-            "--permission é obrigatório (publish, consume, create, admin)",
+            "--permission is required (publish, consume, create, admin)",
         ));
     }
     if let Some(bad) = permissions
@@ -101,7 +101,7 @@ fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         .find(|s| !PERMISSIONS.contains(&s.as_str()))
     {
         return Err(CliError::usage(format!(
-            "--permission: `{bad}` não vale (use {})",
+            "--permission: `{bad}` is not valid (use {})",
             PERMISSIONS.join(", ")
         )));
     }
@@ -125,7 +125,7 @@ fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
             Some(secret) if !ctx.globals.quiet => ctx.say(&secret),
             Some(_) => Ok(()),
             None => Err(CliError::File(
-                "a resposta não trouxe o campo token".to_owned(),
+                "the response did not bring the token field".to_owned(),
             )),
         };
     }
@@ -172,7 +172,7 @@ fn update(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     }
     if fields.is_empty() {
         return Err(CliError::usage(
-            "nada para alterar: dê --name ou --expires-at",
+            "nothing to change: give --name or --expires-at",
         ));
     }
     let client = ctx.api_client()?;

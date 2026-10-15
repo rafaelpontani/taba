@@ -4,7 +4,7 @@ resumo: As bibliotecas de cliente do Taba — o contrato comum (as nove operaç�
 tipo: referência
 status: parcial
 verificado-em: 2026-10-13 @ 71183b9
-fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, exemplos/csharp-console]
+fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, examples/csharp-console]
 ---
 
 # Conectores
@@ -154,7 +154,7 @@ using (var client = new TabaClient(config))
 - **`SubscribeAsync`:** o laço inteiro.
 - **Injeção de dependência:** `builder.Services.AddTabaClient("Taba")` lê `BaseUrl`, `Token`… da seção do `appsettings.json` e registra `ITabaClient` como *singleton*.
 - **Testes:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; os de integração só rodam com `TABA_URL`). `connectors/csharp/scripts/integration.sh` sobe o Compose, cria tokens e filas e roda tudo.
-- **Exemplo:** [`exemplos/csharp-console/`](../../exemplos/csharp-console/): cria um tópico, publica, consome com long polling e confirma; lê o endereço e o token raiz de variáveis de ambiente.
+- **Exemplo:** [`examples/csharp-console/`](../../examples/csharp-console/): cria um tópico, publica, consome com long polling e confirma; lê o endereço e o token raiz de variáveis de ambiente.
 
 ## Os planejados: versão-base e publicação
 
@@ -189,6 +189,6 @@ D68 (confirmar as versões-base das demais linguagens), D70.1 (organização e i
 
 ## Fontes e provas
 
-- `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `exemplos/csharp-console`, `connectors/README.md`.
+- `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `examples/csharp-console`, `connectors/README.md`.
 - Casos de uso: UC-CNT (35 casos, nível `K`; conectores); veja [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md). Testes: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
 - Histórico: `19-conectores.md`, `19a-conectores-linguagens.md`.

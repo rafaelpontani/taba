@@ -62,7 +62,7 @@ fn one_message_is_read_by_range_without_downloading_the_segment() {
                     match read_footer(&store.get_suffix("seg", n).await.unwrap().unwrap()).unwrap()
                     {
                         FooterRead::Done(f) => f,
-                        FooterRead::NeedMore(_) => panic!("o rodapé inteiro foi pedido"),
+                        FooterRead::NeedMore(_) => panic!("the whole footer was requested"),
                     }
                 }
             };
@@ -85,9 +85,9 @@ fn a_short_tail_asks_for_the_whole_footer_and_garbage_is_refused() {
     let tail = &bytes[bytes.len() - 20..];
     match read_footer(tail).unwrap() {
         FooterRead::NeedMore(n) => assert!(n > 20),
-        FooterRead::Done(_) => panic!("20 bytes não bastam"),
+        FooterRead::Done(_) => panic!("20 bytes are not enough"),
     }
-    assert!(read_footer(b"nada a ver").is_err());
+    assert!(read_footer(b"nothing to see").is_err());
     assert!(decode_all(b"TABASEG1").is_err());
     assert!(decode_entry(&[1, 0]).is_err());
 }

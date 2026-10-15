@@ -1,44 +1,44 @@
-//! O índice derivado de um tópico (doc 13, seções 12.6 e 12.11; doc 14, seção 13.1): a lista
-//! de prontos, a lista de invisíveis e os contadores por grupo. É **só um índice**: a fonte de
-//! verdade são os metadados da mensagem, em memória ou no banco do tópico, e o índice é refeito
-//! a partir deles quando o tópico é aberto (reinício ou novo dono).
+//! A topic's derived index (doc 13, sections 12.6 and 12.11; doc 14, section 13.1): the ready
+//! list, the invisible list and the per-group counters. It is **only an index**: the source of
+//! truth is the message metadata, in memory or in the topic's database, and the index is rebuilt
+//! from it when the topic is opened (restart or new owner).
 //!
-//! **Fila FIFO** (doc 17, seção 16.6). Um grupo é *livre* quando não tem mensagem em processamento
-//! e tem prontas, e *ocupado* quando tem uma em voo. A lista de prontas passa a ter **uma entrada
-//! por grupo livre**, a cabeça (a mais antiga do grupo), e a entrega tira a cabeça mais antiga
-//! entre os grupos livres, sem faixas nem `normal-every`. Como a entregue deixa o grupo ocupado, o
-//! mesmo lote nunca traz duas mensagens do mesmo grupo; o ack, o vencimento da invisibilidade, o
-//! `ttl` e a dead-letter da cabeça liberam o grupo para a seguinte, na ordem do `id`.
+//! **FIFO queue** (doc 17, section 16.6). A group is *free* when it has no message being processed
+//! and has ready ones, and *busy* when it has one in flight. The ready list has **one entry
+//! per free group**, the head (the group's oldest), and delivery takes the oldest head
+//! among the free groups, with no bands or `normal-every`. Since the delivered one leaves the group busy, the
+//! same batch never brings two messages of the same group; the ack, the end of invisibility, the
+//! `ttl` and the head's dead-letter release the group for the next one, in `id` order.
 //!
-//! Sem I/O e sem relógio próprio (quem chama passa o `now`), para ser testado sozinho.
+//! No I/O and no clock of its own (whoever calls passes `now`), to be tested on its own.
 //!
-//! **Entrega justa.** Cada grupo tem duas contagens, as **prontas** e as **em processamento**
-//! (invisíveis). O tamanho é `em processamento + peso × prontas`, e a **faixa** é
-//! `⌊log2(tamanho)⌋` (tamanho menor que 1 conta como 1). A entrega tira da menor faixa que tem
-//! mensagem pronta; dentro dela alterna a mais antiga e a mais nova (efeito sanfona). A cada
-//! `normal-every` entregas uma pega a mais antiga de todas, de qualquer grupo, para o grupo
-//! grande nunca esperar sem limite. Como a faixa é recalculada a cada escolha, o "ID que mudou
-//! de faixa" nunca fica velho na lista.
+//! **Fair delivery.** Each group has two counts, the **ready** ones and those **in processing**
+//! (invisible). The size is `in processing + weight × ready`, and the **band** is
+//! `⌊log2(size)⌋` (a size under 1 counts as 1). Delivery takes from the lowest band that has a
+//! ready message; within it, it alternates the oldest and the newest (accordion effect). Every
+//! `normal-every` deliveries one takes the oldest of all, from any group, so the
+//! big group never waits without limit. Since the band is recalculated on each choice, the "ID that changed
+//! band" never goes stale in the list.
 
 use std::collections::{BTreeSet, HashMap};
 
-/// A chave de um grupo. Os grupos acima de `delivery.fair.max-groups` dividem um contador só.
+/// A group's key. Groups above `delivery.fair.max-groups` share a single counter.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GroupKey {
-    /// O `groupId`; a mensagem sem grupo é o grupo de nome vazio.
+    /// The `groupId`; a message without a group is the group with an empty name.
     Named(String),
     Overflow,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct IndexRules {
-    /// `delivery.fair.ready-weight`, de 0 a 1.
+    /// `delivery.fair.ready-weight`, from 0 to 1.
     pub ready_weight: f64,
-    /// `delivery.fair.max-groups`; `None`, sem teto.
+    /// `delivery.fair.max-groups`; `None`, no ceiling.
     pub max_groups: Option<usize>,
     /// `delivery.fair.normal-every`; `0` desliga a garantia.
     pub normal_every: u32,
-    /// Fila FIFO: um grupo, uma mensagem em voo; a entrega justa não vale.
+    /// FIFO queue: one group, one message in flight; fair delivery does not apply.
     pub fifo: bool,
 }
 
@@ -50,7 +50,7 @@ struct Group {
 
 struct Entry {
     group: GroupKey,
-    /// Fim da invisibilidade; só vale com `processing`.
+    /// End of invisibility; only applies with `processing`.
     until_ms: u64,
     age_ms: u64,
     deliveries: u32,
@@ -61,21 +61,21 @@ pub struct TopicIndex {
     rules: IndexRules,
     entries: HashMap<String, Entry>,
     groups: HashMap<GroupKey, Group>,
-    /// Os grupos com alguma pronta, por faixa.
+    /// The groups with some ready message, by band.
     bands: BTreeSet<(u32, GroupKey)>,
     ready_all: BTreeSet<String>,
-    /// As invisíveis, por prazo.
+    /// The invisible ones, by deadline.
     invisible: BTreeSet<(u64, String)>,
-    /// Todas, por idade (o `ttl` conta daqui).
+    /// All, by age (the `ttl` counts from here).
     by_age: BTreeSet<(u64, String)>,
     picks: u64,
     newest_next: bool,
-    /// Só na FIFO: a cabeça de cada grupo livre.
+    /// FIFO only: the head of each free group.
     free_heads: BTreeSet<String>,
     head_of: HashMap<GroupKey, String>,
 }
 
-/// `⌊log2(tamanho)⌋`, com tamanho menor que 1 contado como 1.
+/// `⌊log2(size)⌋`, with a size under 1 counted as 1.
 pub fn band(size: f64) -> u32 {
     let size = size.max(1.0);
     size.log2().floor() as u32
@@ -113,19 +113,19 @@ impl TopicIndex {
     }
 
     #[cfg(test)]
-    /// Prontas e em processamento do tópico todo.
+    /// Ready and in processing for the whole topic.
     pub fn counts(&self) -> (usize, usize) {
         (self.ready_all.len(), self.invisible.len())
     }
 
     #[cfg(test)]
-    /// Prontas e em processamento de um grupo.
+    /// Ready and in processing for a group.
     pub fn group_counts(&self, key: &GroupKey) -> Option<(usize, u64)> {
         self.groups.get(key).map(|g| (g.ready.len(), g.processing))
     }
 
     #[cfg(test)]
-    /// A faixa atual do grupo (`None` se não existe).
+    /// The group's current band (`None` if it does not exist).
     pub fn group_band(&self, key: &GroupKey) -> Option<u32> {
         self.groups.get(key).map(|g| self.band_of(g))
     }
@@ -135,11 +135,11 @@ impl TopicIndex {
         self.groups.len()
     }
 
-    /// A chave com que o `groupId` é contado: os grupos novos acima do teto vão para o contador
-    /// compartilhado.
+    /// The key the `groupId` is counted under: new groups above the ceiling go to the shared
+    /// counter.
     pub fn key_for(&self, group: Option<&str>) -> GroupKey {
         let named = GroupKey::Named(group.unwrap_or_default().to_owned());
-        // Na FIFO o grupo serializa a entrega: dois grupos num contador só se atrapalhariam.
+        // On FIFO the group serializes delivery: two groups in a single counter would get in each other's way.
         let Some(max) = self.rules.max_groups.filter(|_| !self.rules.fifo) else {
             return named;
         };
@@ -157,12 +157,12 @@ impl TopicIndex {
         self.entries.get(id).map(|e| &e.group)
     }
 
-    /// Todos os `id` que o índice conhece.
+    /// All the `id`s the index knows.
     pub fn ids(&self) -> Vec<String> {
         self.entries.keys().cloned().collect()
     }
 
-    /// O instante de onde o `ttl` conta para a mensagem.
+    /// The instant the `ttl` counts from for the message.
     pub fn age_of(&self, id: &str) -> Option<u64> {
         self.entries.get(id).map(|e| e.age_ms)
     }
@@ -175,8 +175,8 @@ impl TopicIndex {
         band(group.processing as f64 + self.rules.ready_weight * group.ready.len() as f64)
     }
 
-    /// Aplica `change` ao grupo mantendo a posição dele na tabela de faixas e apagando o grupo
-    /// que ficou sem nada.
+    /// Applies `change` to the group keeping its position in the band table and deleting the group
+    /// that was left with nothing.
     fn mutate(&mut self, key: &GroupKey, change: impl FnOnce(&mut Group)) {
         let mut group = self.groups.remove(key).unwrap_or_default();
         if !group.ready.is_empty() {
@@ -194,8 +194,8 @@ impl TopicIndex {
         }
     }
 
-    /// Mantém a lista de grupos livres: a cabeça do grupo só está nela se o grupo não tem
-    /// mensagem em processamento.
+    /// Maintains the free-group list: the group's head is only in it if the group has no
+    /// message in processing.
     fn refresh_head(&mut self, key: &GroupKey, group: &Group) {
         if let Some(old) = self.head_of.remove(key) {
             self.free_heads.remove(&old);
@@ -220,8 +220,8 @@ impl TopicIndex {
         self.mutate(key, |g| g.processing += 1);
     }
 
-    /// Passa a mensagem a conhecida do índice: pronta, ou em processamento se `until_ms` ainda
-    /// não chegou. Repetir o mesmo `id` troca o que havia.
+    /// Makes the message known to the index: ready, or in processing if `until_ms` has not
+    /// arrived yet. Repeating the same `id` replaces what was there.
     pub fn insert(
         &mut self,
         id: &str,
@@ -252,7 +252,7 @@ impl TopicIndex {
         }
     }
 
-    /// Tira a mensagem do índice (ack, `ttl`, dead-letter). `false` se não estava.
+    /// Takes the message out of the index (ack, `ttl`, dead-letter). `false` if it was not there.
     pub fn remove(&mut self, id: &str) -> bool {
         let Some(entry) = self.entries.remove(id) else {
             return false;
@@ -270,8 +270,8 @@ impl TopicIndex {
         true
     }
 
-    /// Muda o fim da invisibilidade (entrega, `PUT visibility`). Com `until_ms` no futuro a
-    /// mensagem fica em processamento; com `until_ms ≤ now` volta a pronta.
+    /// Changes the end of invisibility (delivery, `PUT visibility`). With `until_ms` in the future the
+    /// message stays in processing; with `until_ms ≤ now` it goes back to ready.
     pub fn set_until(&mut self, id: &str, until_ms: u64, now_ms: u64) {
         let Some(entry) = self.entries.get(id) else {
             return;
@@ -305,7 +305,7 @@ impl TopicIndex {
         }
     }
 
-    /// Registra a entrega: mais uma no contador e o novo fim da invisibilidade.
+    /// Records the delivery: one more in the counter and the new end of invisibility.
     pub fn deliver(&mut self, id: &str, until_ms: u64, now_ms: u64, deliveries: u32) {
         if let Some(entry) = self.entries.get_mut(id) {
             entry.deliveries = deliveries;
@@ -313,8 +313,8 @@ impl TopicIndex {
         self.set_until(id, until_ms, now_ms);
     }
 
-    /// Devolve a prontas as mensagens cuja invisibilidade venceu, e quais foram. Não se
-    /// propaga nada: é só o índice acompanhando os metadados.
+    /// Returns to ready the messages whose invisibility expired, and which ones they were. Nothing is
+    /// propagated: it is only the index following the metadata.
     pub fn release_due(&mut self, now_ms: u64) -> Vec<String> {
         let mut released = Vec::new();
         while let Some((until, id)) = self.invisible.first().cloned() {
@@ -327,7 +327,7 @@ impl TopicIndex {
         released
     }
 
-    /// As mensagens cujo `ttl` venceu: `idade + ttl ≤ agora`.
+    /// The messages whose `ttl` expired: `age + ttl ≤ now`.
     pub fn expired(&self, now_ms: u64, ttl_ms: u64) -> Vec<String> {
         let Some(limit) = now_ms.checked_sub(ttl_ms) else {
             return Vec::new();
@@ -339,7 +339,7 @@ impl TopicIndex {
             .collect()
     }
 
-    /// Quando a próxima invisível volta a ser entregável.
+    /// When the next invisible one becomes deliverable again.
     pub fn next_visible(&self) -> Option<u64> {
         self.invisible.first().map(|(until, _)| *until)
     }
@@ -351,8 +351,8 @@ impl TopicIndex {
         !self.ready_all.is_empty()
     }
 
-    /// O próximo ID a entregar (sem tirá-lo da lista de prontas; quem entrega chama
-    /// [`TopicIndex::deliver`]). `None` se não há pronta.
+    /// The next ID to deliver (without taking it off the ready list; whoever delivers calls
+    /// [`TopicIndex::deliver`]). `None` if there is no ready one.
     pub fn pick(&mut self) -> Option<String> {
         if self.rules.fifo {
             return self.free_heads.first().cloned();
@@ -378,13 +378,13 @@ impl TopicIndex {
         }
     }
 
-    /// A mensagem está em processamento (invisível, já entregue e sem ack)?
+    /// The message is in processing (invisible, already delivered and not acknowledged)?
     pub fn is_processing(&self, id: &str) -> bool {
         self.entries.get(id).is_some_and(|e| e.processing)
     }
 
-    /// As prontas que já foram entregues alguma vez, com o número de entregas: as candidatas à
-    /// dead-letter quando o `maxDeliveries` as alcança.
+    /// The ready ones that were already delivered at some point, with the number of deliveries: the candidates for
+    /// the dead-letter when `maxDeliveries` reaches them.
     pub fn ready_delivered(&self) -> Vec<(String, u32)> {
         self.entries
             .iter()
@@ -393,20 +393,20 @@ impl TopicIndex {
             .collect()
     }
 
-    /// Os IDs prontos, em ordem de `id` (para os testes).
+    /// The ready IDs, in `id` order (for the tests).
     #[cfg(test)]
     pub fn ready_ids(&self) -> Vec<String> {
         self.ready_all.iter().cloned().collect()
     }
 
-    // ---- Estatística (doc 11) ----
+    // ---- Statistics (doc 11) ----
 
-    /// O índice é o de uma fila FIFO.
+    /// The index is that of a FIFO queue.
     pub fn is_fifo(&self) -> bool {
         self.rules.fifo
     }
 
-    /// Quantas mensagens o índice conhece, prontas e em processamento.
+    /// How many messages the index knows, ready and in processing.
     pub fn message_count(&self) -> usize {
         self.entries.len()
     }
@@ -419,14 +419,14 @@ impl TopicIndex {
         self.invisible.len()
     }
 
-    /// O instante de onde a mensagem mais antiga ainda não confirmada conta (a publicação, ou a
-    /// entrada na dead-letter): é o mesmo índice por idade do `ttl`, então não varre nada.
+    /// The instant the oldest not-yet-acknowledged message counts from (the publication, or the
+    /// entry into the dead-letter): it is the same age index as the `ttl`, so it scans nothing.
     pub fn oldest_age_ms(&self) -> Option<u64> {
         self.by_age.first().map(|(age, _)| *age)
     }
 
-    /// Os totais dos grupos: quantos há, quantas mensagens o maior tem e quantos têm mensagem em
-    /// processamento.
+    /// The group totals: how many there are, how many messages the largest has and how many have a message in
+    /// processing.
     pub fn group_totals(&self) -> GroupTotals {
         let mut totals = GroupTotals::default();
         for group in self.groups.values() {
@@ -439,8 +439,8 @@ impl TopicIndex {
         totals
     }
 
-    /// Cada grupo com as suas contagens, a faixa e a mensagem mais antiga (varre as mensagens
-    /// uma vez: é para consulta sob demanda, não para o caminho quente).
+    /// Each group with its counts, the band and the oldest message (scans the messages
+    /// once: it is for on-demand queries, not for the hot path).
     pub fn group_infos(&self) -> Vec<GroupInfo> {
         let mut oldest: HashMap<&GroupKey, u64> = HashMap::new();
         for entry in self.entries.values() {
@@ -461,8 +461,8 @@ impl TopicIndex {
             .collect()
     }
 
-    /// O grupo cuja mensagem já foi entregue mais de `over` vezes (o de mais entregas), para a
-    /// condição `group-stalled`. Varre as mensagens.
+    /// The group whose message was already delivered more than `over` times (the one with the most deliveries), for the
+    /// `group-stalled` condition. Scans the messages.
     pub fn stalled_group(&self, over: u32) -> Option<String> {
         self.entries
             .values()
@@ -474,24 +474,24 @@ impl TopicIndex {
             })
     }
 
-    /// A faixa do grupo da mensagem, no instante de hoje.
+    /// The group's band for the message, at the present instant.
     pub fn band_of_entry(&self, id: &str) -> Option<u32> {
         let entry = self.entries.get(id)?;
         self.groups.get(&entry.group).map(|g| self.band_of(g))
     }
 }
 
-/// O que `group_totals` conta.
+/// What `group_totals` counts.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct GroupTotals {
     pub groups: u64,
-    /// Mensagens do maior grupo.
+    /// Messages of the largest group.
     pub largest: u64,
-    /// Grupos com mensagem em processamento.
+    /// Groups with a message in processing.
     pub busy: u64,
 }
 
-/// Um grupo como `group_infos` o vê.
+/// A group as `group_infos` sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupInfo {
     pub key: GroupKey,

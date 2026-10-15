@@ -33,9 +33,9 @@ fn the_connection_config_uses_builtin_values_where_the_profile_is_silent() {
 #[test]
 fn an_unreadable_token_file_or_ca_file_is_reported() {
     let mut p = Profile::default();
-    p.set("token-file", "/nao/existe/tok").unwrap();
+    p.set("token-file", "/does/not/exist/tok").unwrap();
     assert!(connection_config(&p).unwrap_err().contains("token-file"));
     let mut p = Profile::default();
-    p.set("ca-file", "/nao/existe/ca.pem").unwrap();
+    p.set("ca-file", "/does/not/exist/ca.pem").unwrap();
     assert!(connection_config(&p).unwrap_err().contains("ca-file"));
 }

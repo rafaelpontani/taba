@@ -1,10 +1,10 @@
-//! O modo drain (doc 04, seção 6.10; doc 06b, "Drain"). Hoje vale a parte **local**: sair da
-//! rotação, gravar tudo em disco (o save do desenvolvimento) e voltar. O aviso aos pares e o
-//! desregistro do nó entram com o protocolo de cluster.
+//! Drain mode (doc 04, section 6.10; doc 06b, "Drain"). Today the **local** part applies: leaving
+//! rotation, writing everything to disk (the development save) and coming back. Notifying the peers and the
+//! node's deregistration come in with the cluster protocol.
 //!
-//! Estados: `active` → `draining` → `drained`. Entra por sinal (`drain.on-stop`) ou pela API.
-//! O `drain.timeout` cobre o drain inteiro; estourado, o nó registra o que sobrou em memória
-//! e, se foi por sinal, encerra mesmo assim.
+//! States: `active` → `draining` → `drained`. It is entered by signal (`drain.on-stop`) or by the API.
+//! `drain.timeout` covers the whole drain; once exceeded, the node records what is left in memory
+//! and, if it was by signal, shuts down anyway.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -19,7 +19,7 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::messages::Messages;
 use crate::storage::state::NodeStateStore;
 
-/// Quem pediu o drain (`DrainStatus.trigger`).
+/// Who requested the drain (`DrainStatus.trigger`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trigger {
     Signal,
@@ -39,38 +39,38 @@ impl Trigger {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DrainStatus {
     pub state: DrainState,
-    /// `None` em `active`.
+    /// `None` in `active`.
     pub trigger: Option<Trigger>,
     pub started_at: Option<SystemTime>,
-    /// Mensagens ainda em memória.
+    /// Messages still in memory.
     pub pending_messages: u64,
 }
 
-/// Resposta do `POST /node/drain`.
+/// Response of `POST /node/drain`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Started {
-    /// `202`: o drain começou agora.
+    /// `202`: the drain started now.
     Started(DrainStatus),
-    /// `200`: o nó já estava em drain.
+    /// `200`: the node was already in drain.
     AlreadyDraining(DrainStatus),
 }
 
-/// Resposta do `DELETE /node/drain`.
+/// Response of `DELETE /node/drain`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Cancelled {
-    /// `200`: não havia drain.
+    /// `200`: there was no drain.
     Nothing(DrainStatus),
-    /// `200`: o drain foi cancelado e o nó voltou a gravar em memória.
+    /// `200`: the drain was cancelled and the node went back to writing in memory.
     Cancelled(DrainStatus),
-    /// `202`: o nó que já tinha saído volta como nó novo (em produção).
+    /// `202`: the node that had already left comes back as a new node (in production).
     Returned(DrainStatus),
 }
 
-/// O drain em andamento ou concluído.
+/// The drain in progress or completed.
 struct Run {
     trigger: Trigger,
     started_at: SystemTime,
-    /// Cancelamento: o `DELETE` liga, e a tarefa do drain para na próxima mensagem.
+    /// Cancellation: `DELETE` sets it, and the drain task stops at the next message.
     stop: Arc<AtomicBool>,
 }
 
@@ -81,13 +81,13 @@ pub struct DrainController {
     clock: Arc<dyn Clock>,
     timeout: Duration,
     run: Mutex<Option<Run>>,
-    /// O processo está parando por sinal: `DELETE /node/drain` responde `409`.
+    /// The process is stopping by signal: `DELETE /node/drain` answers `409`.
     stopping: AtomicBool,
-    /// Em `mode=production`: o nó no cluster, que avisa os pares, se desregistra e volta.
+    /// In `mode=production`: the node in the cluster, which notifies the peers, deregisters and comes back.
     cluster: OnceLock<Arc<ClusterService>>,
-    /// O desregistro (passo 5) está em andamento: `DELETE /node/drain` responde `409`.
+    /// The deregistration (step 5) is in progress: `DELETE /node/drain` answers `409`.
     leaving: AtomicBool,
-    /// O backup opcional em S3: o drain manda tudo ao bucket antes de sair (doc 23, seção 1.10).
+    /// The optional S3 backup: the drain sends everything to the bucket before leaving (doc 23, section 1.10).
     backup: OnceLock<Arc<Backup>>,
 }
 
@@ -113,14 +113,14 @@ impl DrainController {
         })
     }
 
-    /// Liga o backup em S3 ao drain.
+    /// Attaches the S3 backup to the drain.
     pub fn set_backup(&self, backup: Arc<Backup>) {
         let _ = self.backup.set(backup);
     }
 
-    /// O drain pedido por quem para o cluster inteiro (`POST /cluster/stop`): começa, espera
-    /// concluir (memória em disco, envio ao S3, saída do cluster) e devolve se o nó chegou a
-    /// `drained`. Dentro do prazo do drain mais o do backup.
+    /// The drain requested by whoever stops the whole cluster (`POST /cluster/stop`): starts, waits to
+    /// finish (memory to disk, upload to S3, leaving the cluster) and returns whether the node reached
+    /// `drained`. Within the drain deadline plus the backup's.
     pub async fn drain_and_wait(self: &Arc<Self>) -> bool {
         let _ = self.start_api();
         let backup_timeout = self
@@ -134,7 +134,7 @@ impl DrainController {
         self.shared.drain_state() == DrainState::Drained
     }
 
-    /// Liga o drain ao cluster: o aviso aos pares, o desregistro e a volta como nó novo.
+    /// Attaches the drain to the cluster: the notice to the peers, the deregistration and the return as a new node.
     pub fn set_cluster(&self, cluster: Arc<ClusterService>) {
         let _ = self.cluster.set(cluster);
     }
@@ -164,7 +164,7 @@ impl DrainController {
         }
     }
 
-    /// `POST /node/drain`: põe o nó em drain sem encerrar o processo. O andamento fica em
+    /// `POST /node/drain`: puts the node in drain without ending the process. Progress is in
     /// `GET /node/drain`.
     pub fn start_api(self: &Arc<Self>) -> Started {
         let stop = match self.begin(Trigger::Api) {
@@ -176,7 +176,7 @@ impl DrainController {
         Started::Started(self.status())
     }
 
-    /// Entra em `draining` se o nó estava `active`. Devolve o sinal de cancelamento do drain.
+    /// Enters `draining` if the node was `active`. Returns the drain's cancellation signal.
     fn begin(&self, trigger: Trigger) -> Option<Arc<AtomicBool>> {
         let mut run = self.run();
         if !self
@@ -192,15 +192,15 @@ impl DrainController {
             stop: stop.clone(),
         });
         self.messages.begin_drain();
-        // Os pares deixam de pedir `take` a este nó (doc 04, seção 6.10, passo 2).
+        // The peers stop asking this node for `take` (doc 04, section 6.10, step 2).
         if let Some(signals) = self.signals() {
             signals.announce_draining();
         }
-        tracing::info!(trigger = trigger.as_str(), "drain iniciado");
+        tracing::info!(trigger = trigger.as_str(), "drain started");
         Some(stop)
     }
 
-    /// Esvazia a memória e, se deu certo, marca o save e passa a `drained`.
+    /// Empties memory and, if it worked, marks the save and moves to `drained`.
     async fn run_drain(self: Arc<Self>, stop: Arc<AtomicBool>) {
         let deadline = Instant::now() + self.timeout;
         let messages = self.messages.clone();
@@ -212,13 +212,13 @@ impl DrainController {
         let report = match report {
             Ok(report) => report,
             Err(e) => {
-                tracing::error!(error = %e, "o drain falhou");
+                tracing::error!(error = %e, "the drain failed");
                 return;
             }
         };
-        // Com a memória toda em disco, tudo vai ao S3 **antes** de o nó sair do cluster: depois da
-        // saída ele deixa de ser dono do que enviaria. Não espera para sempre: passado
-        // `backup.drain.timeout` o nó segue com o que tem (doc 23, seção 1.10, cenário 18).
+        // With all memory on disk, everything goes to S3 **before** the node leaves the cluster: after
+        // leaving it stops being the owner of what it would send. It does not wait forever: once
+        // `backup.drain.timeout` passes the node goes on with what it has (doc 23, section 1.10, scenario 18).
         if let Some(backup) = self.backup.get().cloned()
             && report.remaining == 0
             && !stop.load(Ordering::Relaxed)
@@ -228,24 +228,24 @@ impl DrainController {
                 tracing::info!(
                     segments = sent.segments_uploaded,
                     messages = sent.messages_uploaded,
-                    "drain: tudo foi para o S3"
+                    "drain: everything went to S3"
                 );
             } else {
                 tracing::error!(
                     outbox = sent.outbox_pending,
                     journal = sent.journal_pending,
-                    "drain: o envio ao S3 não terminou no prazo (backup.drain.timeout); o nó sai assim mesmo e o que sobrou depende das réplicas"
+                    "drain: the upload to S3 did not finish in time (backup.drain.timeout); the node leaves anyway and what is left depends on the replicas"
                 );
             }
         }
-        // Com a memória toda em disco, o nó pede a própria saída do cluster, sem votação.
+        // With all memory on disk, the node asks to leave the cluster itself, without a vote.
         if let Some(cluster) = self.cluster.get().cloned()
             && report.remaining == 0
             && !stop.load(Ordering::Relaxed)
         {
             self.leaving.store(true, Ordering::Relaxed);
-            // Outra mudança de membros em curso: o pedido espera a vez, dentro de `drain.timeout`
-            // (doc 04, seção 6.8).
+            // Another member change in progress: the request waits its turn, within `drain.timeout`
+            // (doc 04, section 6.8).
             let left = tokio::time::timeout_at(deadline.into(), async {
                 loop {
                     match cluster.leave().await {
@@ -260,22 +260,22 @@ impl DrainController {
             self.leaving.store(false, Ordering::Relaxed);
             match left {
                 Ok(Ok(())) => {}
-                // Decidido, mas o commit ainda corre em algum par: o nó já saiu da tabela.
+                // Decided, but the commit is still running on some peer: the node has already left the table.
                 Ok(Err(e)) if e.code == ErrorCode::ClusterCommitTimeout => {}
                 Ok(Err(e)) => {
-                    tracing::error!(error = %e, "o drain não conseguiu sair do cluster: o nó segue em draining");
+                    tracing::error!(error = %e, "the drain could not leave the cluster: the node stays in draining");
                     return;
                 }
                 Err(_) => {
                     tracing::error!(
-                        "drain.timeout estourou antes de o nó sair do cluster: o nó segue em draining"
+                        "drain.timeout ran out before the node left the cluster: the node stays in draining"
                     );
                     return;
                 }
             }
         }
         self.finish(&stop, report.moved, report.failed, report.remaining);
-        // Saiu limpo: o batimento no bucket some junto (quem observa não espera o prazo de morte).
+        // Left cleanly: the heartbeat in the bucket disappears too (whoever watches does not wait for the death deadline).
         if self.shared.drain_state() == DrainState::Drained
             && let Some(backup) = self.backup.get().cloned()
         {
@@ -285,7 +285,7 @@ impl DrainController {
 
     fn finish(&self, stop: &Arc<AtomicBool>, moved: u64, failed: u64, remaining: u64) {
         let run = self.run();
-        // Cancelado (ou substituído por outro drain) enquanto esvaziava: não há o que concluir.
+        // Cancelled (or replaced by another drain) while emptying: there is nothing to conclude.
         let current = run.as_ref().is_some_and(|r| Arc::ptr_eq(&r.stop, stop));
         if !current || stop.load(Ordering::Relaxed) {
             return;
@@ -296,32 +296,32 @@ impl DrainController {
                 failed,
                 remaining,
                 timeout = ?self.timeout,
-                "drain incompleto: sobraram mensagens em memória (etapa: esvaziar a memória)"
+                "incomplete drain: messages were left in memory (step: emptying memory)"
             );
             return;
         }
         if let Err(e) = self.saves.mark_save_completed(self.clock.now_millis()) {
-            tracing::error!(error = %e, "não foi possível gravar a marca do save");
+            tracing::error!(error = %e, "could not write the save mark");
             return;
         }
         self.shared
             .transition_drain(DrainState::Draining, DrainState::Drained);
-        tracing::info!(moved, "drain concluído: a memória está toda em disco");
+        tracing::info!(moved, "drain completed: all memory is on disk");
     }
 
-    /// `DELETE /node/drain`: cancela o drain (ou, depois da saída, volta). Sem cluster não há
-    /// desregistro, então nunca há `409` por esse motivo; só com o processo parando por sinal.
+    /// `DELETE /node/drain`: cancels the drain (or, after leaving, comes back). Without a cluster there is no
+    /// deregistration, so there is never a `409` for that reason; only with the process stopping by signal.
     pub fn cancel(&self) -> Result<Cancelled, TabaError> {
         if self.leaving.load(Ordering::Relaxed) {
             return Err(TabaError::new(
                 ErrorCode::DrainConflict,
-                "O nó está se desregistrando do cluster; tente de novo quando estiver drained.",
+                "The node is deregistering from the cluster; try again when it is drained.",
             ));
         }
         if self.stopping.load(Ordering::Relaxed) {
             return Err(TabaError::new(
                 ErrorCode::DrainConflict,
-                "O processo está parando por sinal; o drain não pode ser cancelado.",
+                "The process is stopping by signal; the drain cannot be cancelled.",
             ));
         }
         let mut run = self.run();
@@ -334,12 +334,12 @@ impl DrainController {
         }
         self.messages.cancel_drain();
         if let Err(e) = self.saves.clear_save_mark() {
-            tracing::warn!(error = %e, "não foi possível apagar a marca do save");
+            tracing::warn!(error = %e, "could not delete the save mark");
         }
         self.shared.set_drain_state(DrainState::Active);
         tracing::info!(
             from = before.as_str(),
-            "drain cancelado: o nó voltou a gravar em memória"
+            "drain cancelled: the node went back to writing in memory"
         );
         if let Some(backup) = self.backup.get() {
             backup.resume_beating();
@@ -347,7 +347,7 @@ impl DrainController {
         let status = self.status_of(None);
         Ok(match (before, self.shared.mode) {
             (DrainState::Drained, Mode::Production) => {
-                // Já fora do cluster: volta como nó novo, com ID novo e bootstrap completo.
+                // Already out of the cluster: comes back as a new node, with a new ID and a full bootstrap.
                 if let Some(cluster) = self.cluster.get().cloned() {
                     tokio::spawn(async move { cluster.rejoin_as_new().await });
                 }
@@ -362,9 +362,9 @@ impl DrainController {
         })
     }
 
-    /// A parada por sinal (`drain.on-stop`): faz o drain e espera terminar, dentro de
-    /// `drain.timeout`. Devolve se a memória ficou toda em disco. Se a API já tinha começado o
-    /// drain, espera por ele.
+    /// The stop by signal (`drain.on-stop`): does the drain and waits for it to finish, within
+    /// `drain.timeout`. Returns whether memory ended up entirely on disk. If the API had already started the
+    /// drain, it waits for that one.
     pub async fn stop_by_signal(self: &Arc<Self>) -> bool {
         self.stopping.store(true, Ordering::Relaxed);
         match self.begin(Trigger::Signal) {
@@ -377,7 +377,7 @@ impl DrainController {
         if !done {
             tracing::error!(
                 pending = self.messages.pending(),
-                "o drain não terminou: encerrando mesmo assim, o que só estava em memória se perde"
+                "the drain did not finish: shutting down anyway, what was only in memory is lost"
             );
         }
         done

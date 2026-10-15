@@ -1,8 +1,8 @@
-//! API de operação (doc 06b): saúde do nó, `/health/cluster` de um nó só, o drain, `/metrics`
-//! (`http/metrics`) e `/metrics/topics/*` (`http/topic_stats`).
+//! Operations API (doc 06b): node health, a single node's `/health/cluster`, the drain, `/metrics`
+//! (`http/metrics`) and `/metrics/topics/*` (`http/topic_stats`).
 //!
-//! Estas rotas não usam token e só aceitam os IPs de `operations.allowed-ips` (lista vazia:
-//! sem restrição). O IP é o do cliente resolvido (`client-ip.*`, doc 12).
+//! These routes use no token and only accept the IPs of `operations.allowed-ips` (empty list:
+//! no restriction). The IP is the resolved client's (`client-ip.*`, doc 12).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -32,8 +32,8 @@ use crate::core::time::format_ms;
 use crate::engine::messages::Messages;
 use crate::engine::messages::stats::StatsRules;
 
-/// Corpo de `/health/live` e `/health/ready`. Essas rotas nunca devolvem `ErrorResponse`
-/// (doc 06b), para o orquestrador poder ler o motivo sem tratar erros.
+/// Body of `/health/live` and `/health/ready`. These routes never return an `ErrorResponse`
+/// (doc 06b), so the orchestrator can read the reason without handling errors.
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
     pub health: &'static str,
@@ -67,7 +67,7 @@ fn unix_ms(at: SystemTime) -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// As rotas de operação, já com o filtro de `operations.allowed-ips`.
+/// The operations routes, already with the `operations.allowed-ips` filter.
 pub fn routes(state: &AppState) -> Router<AppState> {
     let mut routes = Router::new()
         .route("/health/live", get(live))
@@ -79,7 +79,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         )
         .merge(super::topic_stats::routes())
         .merge(super::backup::routes());
-    // Com `telemetry.prometheus.enabled` desligado a rota não existe (`404`).
+    // With `telemetry.prometheus.enabled` off the route does not exist (`404`).
     if state.telemetry.prometheus_enabled {
         routes = routes.route("/metrics", get(super::metrics::prometheus));
     }
@@ -91,7 +91,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route_layer(middleware::from_fn_with_state(state.clone(), ip_filter))
 }
 
-/// `403 ops.ip-not-allowed` para o IP fora de `operations.allowed-ips`.
+/// `403 ops.ip-not-allowed` for an IP outside `operations.allowed-ips`.
 async fn ip_filter(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let allowed = &state.allowed_ips;
     let ip = request
@@ -105,7 +105,7 @@ async fn ip_filter(State(state): State<AppState>, request: Request, next: Next) 
     } else {
         ApiError(TabaError::new(
             ErrorCode::OpsIpNotAllowed,
-            "O IP de origem não está em operations.allowed-ips.",
+            "The source IP is not in operations.allowed-ips.",
         ))
         .into_response()
     }
@@ -137,8 +137,8 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthRespons
     }
 }
 
-/// O que o `NodeStatus` lê do nó. Fica separado do `AppState` porque o serviço do cluster guarda a
-/// fonte do `GET /cluster/status`, e o `AppState` guarda o serviço: um ciclo de referências.
+/// What the `NodeStatus` reads from the node. Kept apart from `AppState` because the cluster service keeps the
+/// source of `GET /cluster/status`, and `AppState` keeps the service: a reference cycle.
 #[derive(Clone)]
 pub struct StatusParts {
     clock: Arc<dyn Clock>,
@@ -157,7 +157,7 @@ impl StatusParts {
         }
     }
 
-    /// O espaço livre em `storage.dir` caiu abaixo de `stats.disk.free-min`?
+    /// Did the free space in `storage.dir` fall below `stats.disk.free-min`?
     pub fn storage_pressure(&self) -> bool {
         matches!(
             (self.messages.disk_free_bytes(), self.stats_rules.disk_free_min),
@@ -166,8 +166,8 @@ impl StatusParts {
     }
 }
 
-/// O `NodeStatus` deste nó (doc 06b), sem as métricas. Com a tabela de membros, os sinais vêm do
-/// cluster; antes dela (ou no desenvolvimento) o nó é um cluster de um só.
+/// This node's `NodeStatus` (doc 06b), without the metrics. With the member table, the signals come from the
+/// cluster; before it (or in development) the node is a cluster of one.
 pub fn node_status(parts: &StatusParts, cluster: Option<&ClusterService>) -> Value {
     let node = &parts.node;
     let storage = parts.messages.storage_stats();
@@ -201,13 +201,13 @@ pub fn node_status(parts: &StatusParts, cluster: Option<&ClusterService>) -> Val
     })
 }
 
-/// Um nó na resposta de `GET /health/cluster`: o `NodeStatus`, ou `None` se não respondeu.
+/// A node in the `GET /health/cluster` response: the `NodeStatus`, or `None` if it did not answer.
 type Reported = (String, Option<Value>);
 
-/// `GET /health/cluster`. Com `scope=cluster` (o padrão) pergunta a todos os membros pelo
-/// `GET /cluster/status` e junta as condições; um que não responde aparece com `reachable: false`.
-/// Com `scope=node`, ou sem a tabela de membros (nó em desenvolvimento, ou que ainda não entrou),
-/// o cluster é este nó.
+/// `GET /health/cluster`. With `scope=cluster` (the default) it asks all the members for
+/// `GET /cluster/status` and joins the conditions; one that does not answer shows up with `reachable: false`.
+/// With `scope=node`, or without the member table (a node in development, or one that has not joined yet),
+/// the cluster is this node.
 async fn cluster_health(
     State(state): State<AppState>,
     Query(query): Query<HashMap<String, String>>,
@@ -218,12 +218,12 @@ async fn cluster_health(
         Some(_) => {
             return Err(TabaError::new(
                 ErrorCode::ValidationFailed,
-                "A requisição tem campos inválidos.",
+                "The request has invalid fields.",
             )
             .with_detail(
                 "scope",
                 ErrorCode::ValidationFailed,
-                "Esperado `cluster` ou `node`.",
+                "Expected `cluster` or `node`.",
             )
             .into());
         }
@@ -261,7 +261,7 @@ async fn cluster_health(
         ),
     };
 
-    // As condições: as de cada nó que respondeu, mais as que só aparecem comparando os nós.
+    // The conditions: those of each node that answered, plus those that only appear when comparing the nodes.
     let disk_free_min = state.stats_rules.disk_free_min;
     let unreachable = reported.iter().any(|(_, status)| status.is_none());
     let mut per_node = Vec::new();
@@ -305,8 +305,8 @@ async fn cluster_health(
     })))
 }
 
-/// Pergunta o `NodeStatus` a cada membro (a si mesmo sem rede), todos ao mesmo tempo, e devolve
-/// na ordem da tabela.
+/// Asks each member for its `NodeStatus` (itself without the network), all at once, and returns
+/// in table order.
 async fn ask_members(cluster: &Arc<ClusterService>, members: &[Member]) -> Vec<Reported> {
     let mut set = tokio::task::JoinSet::new();
     for (index, member) in members.iter().enumerate() {

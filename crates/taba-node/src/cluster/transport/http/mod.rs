@@ -1,13 +1,13 @@
-//! O `Transport` real (doc 18, seção 17.5): as chamadas entre nós como requisições HTTP à porta do
-//! cluster do outro nó (doc 06c), com TLS mútuo quando há pasta de certificados. A tradução entre
-//! a chamada tipada e a requisição HTTP é a do `protocol::http`, a mesma que a porta do cluster
-//! usa ao receber. O **canal** entre dois nós é um WebSocket (`GET /cluster/channel` com upgrade)
-//! aberto sobre a mesma conexão TCP e o mesmo TLS: cada mensagem é um texto JSON
+//! The real `Transport` (doc 18, section 17.5): the calls between nodes as HTTP requests to the other node's cluster
+//! port (doc 06c), with mutual TLS when there is a certificates folder. The translation between
+//! the typed call and the HTTP request is that of `protocol::http`, the same the cluster port
+//! uses on receiving. The **channel** between two nodes is a WebSocket (`GET /cluster/channel` with upgrade)
+//! opened over the same TCP connection and the same TLS: each message is a JSON text
 //! ([`ChannelMessage`]).
 //!
-//! Conexões saem e ficam abertas pelo `reqwest`; o certificado que o nó apresenta é escolhido a
-//! cada handshake (`cluster::tls`), então a rotação vale para as conexões novas, e as abertas
-//! seguem com o certificado antigo até caírem.
+//! Connections go out and stay open through `reqwest`; the certificate the node presents is chosen on
+//! each handshake (`cluster::tls`), so rotation applies to new connections, and open ones
+//! carry on with the old certificate until they drop.
 
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::Arc;
@@ -26,37 +26,37 @@ use crate::cluster::protocol::http::{HttpReply, error_from_reply};
 use crate::cluster::protocol::{ChannelMessage, Request, Response};
 use crate::cluster::tls::TlsStore;
 
-/// O prazo de abrir a conexão (o prazo da chamada inteira é de quem chama).
+/// The deadline for opening the connection (the deadline of the whole call is the caller's).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct HttpTransport {
     client: reqwest::Client,
     scheme: &'static str,
-    /// A configuração do cliente TLS (a mesma do `reqwest`), para o canal.
+    /// The TLS client configuration (the same as `reqwest`'s), for the channel.
     tls: Option<Arc<ClientConfig>>,
-    /// O IP de onde as conexões saem.
+    /// The IP the connections go out from.
     local: Option<IpAddr>,
 }
 
 impl HttpTransport {
-    /// Sem TLS: a porta do cluster atende em HTTP puro (sem pasta de certificados).
+    /// Without TLS: the cluster port serves plain HTTP (no certificates folder).
     pub fn plain() -> Result<Self, String> {
         Self::build(None, None)
     }
 
-    /// Com TLS mútuo, com os certificados da pasta.
+    /// With mutual TLS, with the folder's certificates.
     pub fn mutual_tls(store: &Arc<TlsStore>) -> Result<Self, String> {
         Self::build(Some(store), None)
     }
 
-    /// `mutual_tls` se há pasta, senão `plain`.
+    /// `mutual_tls` if there is a folder, otherwise `plain`.
     pub fn new(store: Option<&Arc<TlsStore>>) -> Result<Self, String> {
         Self::build(store, None)
     }
 
-    /// Como `new`, mas as conexões saem do IP `local`. O cluster reconhece o chamador pelo IP
-    /// de origem da conexão; em loopback o sistema escolheria `127.0.0.1` para todos, então os
-    /// testes com vários nós no mesmo host fixam o IP de cada um.
+    /// Like `new`, but the connections go out from IP `local`. The cluster recognizes the caller by the
+    /// connection's source IP; on loopback the system would choose `127.0.0.1` for all, so the
+    /// tests with several nodes on the same host pin each one's IP.
     pub fn bound_to(store: Option<&Arc<TlsStore>>, local: IpAddr) -> Result<Self, String> {
         Self::build(store, Some(local))
     }
@@ -86,12 +86,12 @@ fn base_builder() -> reqwest::ClientBuilder {
         .pool_idle_timeout(Duration::from_secs(60))
 }
 
-/// Uma falha de rede do `reqwest` como o `Transport` a conta.
+/// A `reqwest` network failure as the `Transport` counts it.
 fn network_error(error: &reqwest::Error) -> CallError {
     if error.is_timeout() {
         CallError::Timeout
     } else {
-        // A cadeia de causas traz o motivo de verdade (conexão recusada, handshake recusado...).
+        // The cause chain brings the real reason (connection refused, handshake refused...).
         let mut why = error.to_string();
         let mut source = std::error::Error::source(error);
         while let Some(cause) = source {
@@ -118,12 +118,12 @@ impl Transport for HttpTransport {
         request: Request,
     ) -> BoxFuture<'a, Result<Response, CallError>> {
         Box::pin(async move {
-            // A listagem de entrada passa por um balanceador (`cluster.entry-address`) que decide o nó
-            // por conexão: reaproveitar a conexão de uma tentativa na seguinte prenderia o bootstrap no
-            // mesmo nó (no reinício, o próprio nó, que ainda não tem a tabela). Cada listagem abre a sua.
+            // The entry listing goes through a load balancer (`cluster.entry-address`) that decides the node
+            // per connection: reusing the connection from one attempt in the next would pin the bootstrap to the
+            // same node (on restart, the node itself, which does not have the table yet). Each listing opens its own.
             let fresh_connection = matches!(request, Request::ListNodes);
             let mut call = request.to_http();
-            // O contexto do trace segue com a chamada (doc 11, "Traces"; D119).
+            // The trace context follows the call (doc 11, "Traces"; D119).
             crate::telemetry::trace::inject(&mut call.headers);
             let url = format!("{}://{}{}", self.scheme, authority(to), call.path);
             let method = reqwest::Method::from_bytes(call.method.as_bytes())
@@ -194,7 +194,7 @@ impl Transport for HttpTransport {
     }
 }
 
-/// Abre a conexão TCP com o par, saindo de `local` quando ele é fixado.
+/// Opens the TCP connection with the peer, going out from `local` when it is pinned.
 async fn tcp_connect(to: &PeerAddr, local: Option<IpAddr>) -> Result<TcpStream, CallError> {
     let unreachable = |e: std::io::Error| CallError::Unreachable(e.to_string());
     let mut addresses = tokio::net::lookup_host((to.host.as_str(), to.port))
@@ -202,7 +202,7 @@ async fn tcp_connect(to: &PeerAddr, local: Option<IpAddr>) -> Result<TcpStream, 
         .map_err(unreachable)?;
     let target: SocketAddr = addresses
         .find(|a| local.is_none_or(|l| l.is_ipv4() == a.is_ipv4()))
-        .ok_or_else(|| CallError::Unreachable(format!("`{to}` não resolve para um endereço")))?;
+        .ok_or_else(|| CallError::Unreachable(format!("`{to}` does not resolve to an address")))?;
     let socket = if target.is_ipv4() {
         TcpSocket::new_v4()
     } else {
@@ -217,7 +217,7 @@ async fn tcp_connect(to: &PeerAddr, local: Option<IpAddr>) -> Result<TcpStream, 
     socket.connect(target).await.map_err(unreachable)
 }
 
-/// O upgrade para WebSocket sobre uma conexão pronta (TCP ou TLS).
+/// The upgrade to WebSocket over a ready connection (TCP or TLS).
 async fn websocket<S>(url: String, stream: S) -> Result<ChannelLink, CallError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -227,7 +227,7 @@ where
             Message::Text(text) => Some(text.as_str().to_owned()),
             _ => None,
         })),
-        // O nó recusou o upgrade com um erro (não é membro, outro processo no endereço...).
+        // The node refused the upgrade with an error (not a member, another process at the address...).
         Err(tungstenite::Error::Http(response)) => {
             let reply = HttpReply {
                 status: response.status().as_u16(),
@@ -244,9 +244,9 @@ where
     }
 }
 
-/// Liga um WebSocket (de qualquer biblioteca) às duas pontas do canal: o que o nó manda vira uma
-/// mensagem de texto, e o texto que chega vira um [`ChannelMessage`]. Cada lado que acaba fecha o
-/// outro, e o fechamento chega ao nó como o fim da recepção.
+/// Attaches a WebSocket (from any library) to the two ends of the channel: what the node sends becomes a
+/// text message, and the text that arrives becomes a [`ChannelMessage`]. Each side that ends closes the
+/// other, and the closing reaches the node as the end of reception.
 pub fn bridge<S, M, E>(
     socket: S,
     text: fn(String) -> M,
@@ -285,7 +285,7 @@ where
                 frame = stream.next() => frame,
             };
             let Some(Ok(frame)) = frame else { break };
-            // Só o texto importa: o sinal de vida é uma mensagem nossa, não o ping do WebSocket.
+            // Only text matters: the heartbeat is a message of ours, not the WebSocket ping.
             let Some(body) = as_text(frame) else { continue };
             let Ok(message) = ChannelMessage::from_text(&body) else {
                 break;
@@ -302,15 +302,15 @@ where
     }
 }
 
-/// O IP que este nó usa para sair em direção a `entry` (o `cluster.entry-address`): o endereço
-/// local de um soquete UDP "conectado" a ele, sem enviar nada (D95). Quem tem NAT ou várias
-/// interfaces informa `cluster.advertise-addresses`.
+/// The IP this node uses to go out toward `entry` (the `cluster.entry-address`): the local
+/// address of a UDP socket "connected" to it, without sending anything (D95). Whoever has NAT or several
+/// interfaces sets `cluster.advertise-addresses`.
 pub fn discover_address(entry: &PeerAddr) -> Result<String, String> {
     let target = (entry.host.as_str(), entry.port)
         .to_socket_addrs()
-        .map_err(|e| format!("não foi possível resolver `{entry}`: {e}"))?
+        .map_err(|e| format!("could not resolve `{entry}`: {e}"))?
         .next()
-        .ok_or_else(|| format!("`{entry}` não resolve para nenhum endereço"))?;
+        .ok_or_else(|| format!("`{entry}` does not resolve to any address"))?;
     let bind = if target.is_ipv6() {
         "[::]:0"
     } else {
@@ -319,10 +319,10 @@ pub fn discover_address(entry: &PeerAddr) -> Result<String, String> {
     let socket = UdpSocket::bind(bind).map_err(|e| e.to_string())?;
     socket
         .connect(target)
-        .map_err(|e| format!("não foi possível escolher a interface para `{entry}`: {e}"))?;
+        .map_err(|e| format!("could not choose the interface for `{entry}`: {e}"))?;
     let local = socket.local_addr().map_err(|e| e.to_string())?;
     if local.ip().is_unspecified() {
-        return Err(format!("sem interface de rede para chegar a `{entry}`"));
+        return Err(format!("no network interface to reach `{entry}`"));
     }
     Ok(local.ip().to_string())
 }

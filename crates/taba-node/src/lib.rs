@@ -1,9 +1,9 @@
-//! O nó do Taba. O binário `taba` (`main.rs`) é só a linha de comando e os sinais;
-//! tudo o mais mora aqui para os testes de integração subirem nós de verdade.
+//! The Taba node. The `taba` binary (`main.rs`) is only the command line and the signals;
+//! everything else lives here so the integration tests can bring real nodes up.
 //!
-//! A direção das dependências é `core ← storage ← engine ← cluster ← http ← node`
-//! (doc 18, seção 17.3): cada módulo conhece só os da esquerda. `config` fica ao
-//! lado: lê o arquivo e o ambiente e só depende de `core`.
+//! The direction of dependencies is `core ← storage ← engine ← cluster ← http ← node`
+//! (doc 18, section 17.3): each module knows only those on its left. `config` sits
+//! beside them: it reads the file and the environment and depends only on `core`.
 
 pub mod cli;
 pub mod cluster;

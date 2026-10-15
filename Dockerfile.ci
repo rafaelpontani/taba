@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 #
-# A imagem do nó usada pela pipeline (.github/workflows). Não compila nada: o binário `taba` já vem
-# pronto em dist/taba-<arch>, compilado pela ação .github/actions/node-binary com o cache do runner. O
-# buildx (plataformas amd64 e arm64) escolhe o arquivo pela TARGETARCH. Assim o build da imagem leva
-# segundos, em vez de recompilar o Rust dentro do container a cada commit.
+# The node image used by the pipeline (.github/workflows). It compiles nothing: the `taba` binary already comes
+# ready in dist/taba-<arch>, built by the .github/actions/node-binary action with the runner's cache. buildx
+# (amd64 and arm64 platforms) picks the file by TARGETARCH. This way the image build takes seconds,
+# instead of recompiling Rust inside the container on every commit.
 #
-# Para o usuário que baixa o repositório, use o Dockerfile da raiz (`docker build -t taba .`): ele
-# compila tudo sozinho e gera a mesma imagem.
+# For users who download the repository, use the root Dockerfile (`docker build -t taba .`): it
+# compiles everything by itself and produces the same image.
 
 FROM alpine:3
 ARG TARGETARCH
@@ -15,7 +15,7 @@ RUN apk add --no-cache ca-certificates \
  && mkdir -p /var/lib/taba /etc/taba/secrets \
  && chown taba:taba /var/lib/taba
 COPY dist/taba-${TARGETARCH} /usr/local/bin/taba
-# Sem privilégios. Os dados do nó (storage.dir) e a pasta de segredos (secrets.dir) são volumes.
+# Unprivileged. The node data (storage.dir) and the secrets folder (secrets.dir) are volumes.
 USER taba
 VOLUME ["/var/lib/taba"]
 EXPOSE 8080 8081 9090

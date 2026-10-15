@@ -7,7 +7,7 @@ fn creates_the_directory_and_leaves_no_probe_behind() {
     prepare_dir(&dir).unwrap();
     assert!(dir.is_dir());
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
-    prepare_dir(&dir).expect("repetir é inofensivo");
+    prepare_dir(&dir).expect("repeating is harmless");
 }
 
 #[test]
@@ -22,15 +22,15 @@ fn fails_when_the_path_is_a_file() {
 fn wipe_removes_the_contents_but_keeps_the_directory() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("taba");
-    std::fs::create_dir_all(dir.join("pasta")).unwrap();
-    std::fs::write(dir.join("pasta").join("a.json"), "{}").unwrap();
-    std::fs::write(dir.join("solto"), "x").unwrap();
+    std::fs::create_dir_all(dir.join("folder")).unwrap();
+    std::fs::write(dir.join("folder").join("a.json"), "{}").unwrap();
+    std::fs::write(dir.join("loose"), "x").unwrap();
 
     wipe_dir_contents(&dir).unwrap();
 
     assert!(dir.is_dir());
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
-    wipe_dir_contents(&tmp.path().join("nao-existe")).unwrap();
+    wipe_dir_contents(&tmp.path().join("does-not-exist")).unwrap();
 }
 
 #[test]
@@ -47,5 +47,5 @@ fn only_a_full_disk_or_corruption_is_fatal() {
     assert!(is_fatal(&sqlite(rusqlite::ffi::SQLITE_NOTADB)));
     assert!(!is_fatal(&sqlite(rusqlite::ffi::SQLITE_BUSY)));
     assert!(!is_fatal(&io::Error::from(io::ErrorKind::NotFound)));
-    assert!(!is_fatal(&io::Error::other("qualquer")));
+    assert!(!is_fatal(&io::Error::other("anything")));
 }

@@ -1,7 +1,7 @@
-//! Memória, overflow em disco, SQLite por tópico, `sync.db` e `_node.db` (doc 02, seção 3.2): o
-//! banco do nó (`db`), as definições de tópico (`topics`) e as mensagens em disco (`messages`).
+//! Memory, disk overflow, per-topic SQLite, `sync.db` and `_node.db` (doc 02, section 3.2): the
+//! node database (`db`), the topic definitions (`topics`) and the messages on disk (`messages`).
 //!
-//! Os traits ficam aqui, na camada mais baixa de que o `engine` precisa.
+//! The traits live here, in the lowest layer the `engine` needs.
 
 pub mod backup;
 pub mod db;
@@ -15,8 +15,8 @@ pub mod topics;
 use std::io;
 use std::path::Path;
 
-/// `true` para o erro de disco que derruba o nó (doc 05, seção 7.3): disco cheio ou banco
-/// corrompido. Os demais (um arquivo que sumiu, por exemplo) valem só para a operação.
+/// `true` for the disk error that brings the node down (doc 05, section 7.3): full disk or
+/// corrupt database. The others (a file that vanished, for example) only apply to the operation.
 pub fn is_fatal(e: &io::Error) -> bool {
     use rusqlite::ErrorCode;
     if e.kind() == io::ErrorKind::StorageFull {
@@ -32,8 +32,8 @@ pub fn is_fatal(e: &io::Error) -> bool {
         })
 }
 
-/// Apaga o que há **dentro** de `dir`, mantendo a pasta. É o `development.resume-on-start=false`
-/// (doc 10): o nó começa limpo.
+/// Deletes what is **inside** `dir`, keeping the folder. It is `development.resume-on-start=false`
+/// (doc 10): the node starts clean.
 pub fn wipe_dir_contents(dir: &Path) -> io::Result<()> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -51,8 +51,8 @@ pub fn wipe_dir_contents(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Cria `storage.dir` se não existir e confere que dá para gravar nela. Se não der,
-/// o nó não sobe (doc 10, `storage.dir`).
+/// Creates `storage.dir` if it does not exist and checks that it can be written to. If not,
+/// the node does not start (doc 10, `storage.dir`).
 pub fn prepare_dir(dir: &Path) -> io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let probe = dir.join(".taba-write-probe");

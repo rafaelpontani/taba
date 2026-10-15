@@ -1,4 +1,4 @@
-//! As operações por bloco do anel (doc 05, seção 7.3): listar, ler, carregar e limpar.
+//! The ring's per-block operations (doc 05, section 7.3): list, read, load and clean.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use super::*;
 use crate::core::ring::message_position;
 
-/// O nó é responsável só pelas posições da lista.
+/// The node is only responsible for the positions in the list.
 #[derive(Default)]
 struct Responsible(Mutex<Option<HashSet<u64>>>);
 
@@ -44,12 +44,12 @@ fn record(h: &Harness, topic: &str, body: &str) -> (MessageMeta, Vec<u8>) {
 /// UC: UC-SIN-002, UC-SIN-006, UC-SIN-007
 #[tokio::test]
 async fn the_ids_of_a_block_come_from_memory_and_disk_in_order() {
-    // Memória para uma mensagem só: as seguintes vão para o disco.
+    // Memory for a single message: the following ones go to disk.
     let (h, _) = clustered(&[("TABA_MEMORY_LIMIT", "20B")]);
-    h.topics.create(queue("pedidos")).await.unwrap();
-    h.topics.create(queue("outro")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
+    h.topics.create(queue("other")).await.unwrap();
     let mut ids = Vec::new();
-    for (n, topic) in ["pedidos", "outro", "pedidos", "outro", "pedidos"]
+    for (n, topic) in ["orders", "other", "orders", "other", "orders"]
         .into_iter()
         .enumerate()
     {
@@ -68,9 +68,9 @@ async fn the_ids_of_a_block_come_from_memory_and_disk_in_order() {
         .collect();
     let mut expected = ids.clone();
     expected.sort();
-    assert_eq!(listed, expected, "todos os tópicos, em ordem de ID");
+    assert_eq!(listed, expected, "all the topics, in ID order");
 
-    // A faixa de posição escolhe o bloco: só entra o que a posição cobre.
+    // The position range chooses the block: only what the position covers goes in.
     let pick = &ids[2].0;
     let position = message_position(pick);
     let only = h
@@ -80,7 +80,7 @@ async fn the_ids_of_a_block_come_from_memory_and_disk_in_order() {
     assert!(only.iter().any(|e| &e.id == pick));
     assert!(only.iter().all(|e| message_position(&e.id) == position));
 
-    // Faixa de IDs e limite.
+    // ID range and limit.
     let sorted: Vec<String> = expected.iter().map(|(id, _)| id.clone()).collect();
     let middle = h
         .messages
@@ -97,16 +97,12 @@ async fn the_ids_of_a_block_come_from_memory_and_disk_in_order() {
 #[tokio::test]
 async fn block_messages_carry_the_body_and_stop_at_the_item_and_byte_ceilings() {
     let (h, _) = clustered(&[("TABA_MEMORY_LIMIT", "40B")]);
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     let mut ids = Vec::new();
     for n in 0..6 {
-        let (meta, body) = record(
-            &h,
-            "pedidos",
-            &format!("{{\"n\":{n},\"x\":\"abcdefghij\"}}"),
-        );
+        let (meta, body) = record(&h, "orders", &format!("{{\"n\":{n},\"x\":\"abcdefghij\"}}"));
         ids.push(meta.id.clone());
-        h.messages.apply_publish("pedidos", meta, body).unwrap();
+        h.messages.apply_publish("orders", meta, body).unwrap();
     }
     let all = [(0, u64::MAX)];
     let (found, more) = h
@@ -118,13 +114,13 @@ async fn block_messages_carry_the_body_and_stop_at_the_item_and_byte_ceilings() 
     assert!(
         found
             .iter()
-            .all(|m| !m.body.is_empty() && m.topic == "pedidos")
+            .all(|m| !m.body.is_empty() && m.topic == "orders")
     );
-    // Pelo teto de bytes: a primeira sempre entra, e o resto espera o próximo trecho.
+    // By the byte ceiling: the first always goes in, and the rest waits for the next stretch.
     let (found, more) = h.messages.block_messages(&all, None, None, 10, 1).unwrap();
     assert_eq!(found.len(), 1);
     assert!(more);
-    // A continuação pelo último ID lido devolve a mesma linha de novo (a retomada a ignora).
+    // The continuation by the last ID read returns the same row again (the resumption ignores it).
     let last = found[0].meta.id.clone();
     let (next, _) = h
         .messages
@@ -133,7 +129,7 @@ async fn block_messages_carry_the_body_and_stop_at_the_item_and_byte_ceilings() 
     assert_eq!(next[0].meta.id, last);
     let first_index = ids.iter().position(|i| *i == last).unwrap();
     assert_eq!(next.len(), 6 - first_index);
-    // Uma mensagem avulsa.
+    // A loose message.
     let one = h.messages.block_message(&all, None, &ids[2]).unwrap();
     assert_eq!(one.meta.id, ids[2]);
     assert!(h.messages.block_message(&all, None, "inexistente").is_err());
@@ -145,41 +141,41 @@ async fn block_messages_carry_the_body_and_stop_at_the_item_and_byte_ceilings() 
 #[tokio::test]
 async fn loading_skips_what_expired_and_what_the_node_already_has_and_notes_unknown_topics() {
     let (h, _) = clustered(&[]);
-    h.topics.create(queue("pedidos")).await.unwrap();
-    let (meta, body) = record(&h, "pedidos", "{\"a\":1}");
+    h.topics.create(queue("orders")).await.unwrap();
+    let (meta, body) = record(&h, "orders", "{\"a\":1}");
     let id = meta.id.clone();
 
     assert_eq!(
         h.messages
-            .apply_load("pedidos", meta.clone(), body.clone())
+            .apply_load("orders", meta.clone(), body.clone())
             .unwrap(),
         Loaded::Stored
     );
-    let info = h.messages.message_info("pedidos", &id).unwrap().unwrap();
+    let info = h.messages.message_info("orders", &id).unwrap().unwrap();
     assert!(
         !info.owned,
-        "a carga grava cópias: o nó em sincronização não é dono"
+        "the load stores copies: the node in synchronization is not an owner"
     );
     assert_eq!(info.meta.position, message_position(&id));
     assert_eq!(
         h.messages
-            .apply_load("pedidos", meta.clone(), body.clone())
+            .apply_load("orders", meta.clone(), body.clone())
             .unwrap(),
         Loaded::Existing,
-        "repetir a carga não muda nada"
+        "repeating the load changes nothing"
     );
     assert_eq!(
         h.messages
-            .apply_load("sem-topico", meta.clone(), body.clone())
+            .apply_load("no-topic", meta.clone(), body.clone())
             .unwrap(),
         Loaded::UnknownTopic
     );
 
-    // Passou do `ttl` do tópico: não vale copiar.
-    let (old, old_body) = record(&h, "pedidos", "{\"b\":2}");
+    // Past the topic's `ttl`: not worth copying.
+    let (old, old_body) = record(&h, "orders", "{\"b\":2}");
     h.clock.advance(Duration::from_secs(30 * 24 * 3600));
     assert_eq!(
-        h.messages.apply_load("pedidos", old, old_body).unwrap(),
+        h.messages.apply_load("orders", old, old_body).unwrap(),
         Loaded::Expired
     );
 }
@@ -188,24 +184,24 @@ async fn loading_skips_what_expired_and_what_the_node_already_has_and_notes_unkn
 #[tokio::test]
 async fn copies_of_blocks_the_node_no_longer_serves_are_forgotten_and_the_rest_stay() {
     let (h, placement) = clustered(&[("TABA_MEMORY_LIMIT", "40B")]);
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     let mut ids = Vec::new();
     for n in 0..8 {
-        let (meta, body) = record(&h, "pedidos", &format!("{{\"n\":{n}}}"));
+        let (meta, body) = record(&h, "orders", &format!("{{\"n\":{n}}}"));
         ids.push(meta.id.clone());
-        h.messages.apply_publish("pedidos", meta, body).unwrap();
+        h.messages.apply_publish("orders", meta, body).unwrap();
     }
-    // Tudo é responsabilidade do nó: nada é apagado.
+    // Everything is the node's responsibility: nothing is deleted.
     assert_eq!(h.messages.forget_foreign(&|_| true), 0);
     let present = |h: &Harness| {
         ids.iter()
-            .filter(|id| h.messages.message_info("pedidos", id).unwrap().is_some())
+            .filter(|id| h.messages.message_info("orders", id).unwrap().is_some())
             .count()
     };
     assert_eq!(present(&h), 8);
     assert!(h.messages.pending() > 0 && h.messages.storage_stats().disk_messages > 0);
 
-    // O nó deixa de ser responsável por metade das posições (memória e disco).
+    // The node stops being responsible for half the positions (memory and disk).
     let keep: HashSet<u64> = ids
         .iter()
         .step_by(2)
@@ -218,9 +214,9 @@ async fn copies_of_blocks_the_node_no_longer_serves_are_forgotten_and_the_rest_s
     assert_eq!(removed, 4);
     for (n, id) in ids.iter().enumerate() {
         assert_eq!(
-            h.messages.message_info("pedidos", id).unwrap().is_some(),
+            h.messages.message_info("orders", id).unwrap().is_some(),
             n % 2 == 0,
-            "mensagem {n}"
+            "message {n}"
         );
     }
     assert!(h.messages.responsible_for(message_position(&ids[0])));

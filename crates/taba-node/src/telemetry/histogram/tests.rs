@@ -16,7 +16,11 @@ fn counts_land_in_the_first_bucket_that_fits() {
 #[test]
 fn percentile_is_the_upper_bound_of_the_bucket() {
     let mut h = Histogram::new(BOUNDS);
-    assert_eq!(h.percentile(0.5), None, "sem observação não há percentil");
+    assert_eq!(
+        h.percentile(0.5),
+        None,
+        "with no observation there is no percentile"
+    );
     for _ in 0..90 {
         h.record(0.5);
     }

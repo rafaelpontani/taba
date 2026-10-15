@@ -1,27 +1,27 @@
-//! Regras que o registro de tópicos lê da configuração, e os pedidos que ele recebe.
+//! Rules the topic registry reads from the configuration, and the requests it receives.
 
 use std::collections::BTreeMap;
 
 use crate::config::Config;
 
-/// Os valores de configuração de que os tópicos dependem (doc 10).
+/// The configuration values the topics depend on (doc 10).
 #[derive(Debug, Clone)]
 pub struct TopicRules {
     /// `topics.dead-letter.suffix`.
     pub dead_letter_suffix: String,
-    /// `message.max-bytes`: o padrão do `maxMessageBytes`.
+    /// `message.max-bytes`: the default of `maxMessageBytes`.
     pub max_message_bytes_default: u64,
-    /// `message.hard-limit`: sem ele, não há teto para o `maxMessageBytes`.
+    /// `message.hard-limit`: without it, there is no ceiling for `maxMessageBytes`.
     pub hard_limit: Option<u64>,
-    /// `retention.ttl.default`, em segundos.
+    /// `retention.ttl.default`, in seconds.
     pub ttl_default: u64,
     /// `retention.max-deliveries.default`.
     pub max_deliveries_default: u64,
-    /// `topics.volatile.idle-timeout.default`, em segundos.
+    /// `topics.volatile.idle-timeout.default`, in seconds.
     pub idle_timeout_default: u64,
-    /// `topics.volatile.max-count`: o teto de filas voláteis para o `autoCreate`; `None`, sem teto.
+    /// `topics.volatile.max-count`: the ceiling of volatile queues for `autoCreate`; `None`, no ceiling.
     pub volatile_max_count: Option<u32>,
-    /// Fila FIFO exige `replication.factor` de pelo menos 2; em desenvolvimento não vale.
+    /// A FIFO queue requires a `replication.factor` of at least 2; in development it does not apply.
     pub fifo_needs_replication: bool,
     /// `api.pagination.default-limit` e `max-limit`.
     pub default_limit: u32,
@@ -51,8 +51,8 @@ pub enum Kind {
     Distributor,
 }
 
-/// `POST /topics`. Os números chegam como `i64` para o `400` por faixa valer também
-/// para valores negativos.
+/// `POST /topics`. The numbers arrive as `i64` so the range `400` also applies
+/// to negative values.
 #[derive(Debug, Clone)]
 pub struct CreateTopic {
     pub name: String,
@@ -67,7 +67,7 @@ pub struct CreateTopic {
     pub max_deliveries: Option<i64>,
 }
 
-/// Um campo de um `PATCH`: ausente (não mexe), `null` (volta ao padrão) ou um valor.
+/// A `PATCH` field: absent (does not touch), `null` (goes back to the default) or a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Patch<T> {
     #[default]
@@ -76,10 +76,10 @@ pub enum Patch<T> {
     Value(T),
 }
 
-/// `PATCH /topics/{topic}`: atualização parcial.
+/// `PATCH /topics/{topic}`: partial update.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateTopic {
-    /// Campos imutáveis (`name`, `id`, `type`, `volatile`, `fifo`) que vieram no corpo.
+    /// Immutable fields (`name`, `id`, `type`, `volatile`, `fifo`) that came in the body.
     pub immutable_present: Vec<String>,
     pub tags: Option<BTreeMap<String, String>>,
     pub prefixes: Option<Vec<String>>,
@@ -89,13 +89,13 @@ pub struct UpdateTopic {
     pub max_deliveries: Patch<i64>,
 }
 
-/// Os parâmetros de query de `GET /topics`, como vieram, para o `engine` validar.
+/// The query parameters of `GET /topics`, as they came, for the `engine` to validate.
 #[derive(Debug, Clone, Default)]
 pub struct ListQuery {
     pub limit: Option<String>,
     pub cursor: Option<String>,
     pub sort: Option<String>,
     pub name: Option<String>,
-    /// Só os tópicos cujo nome começa com algum destes prefixos (os do token); vazio, todos.
+    /// Only the topics whose name starts with any of these prefixes (the token's); empty, all.
     pub scope: Vec<String>,
 }

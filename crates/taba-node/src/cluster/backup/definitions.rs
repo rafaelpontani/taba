@@ -1,14 +1,14 @@
-//! Definições de tópico e tokens no bucket (doc 23, "Backup em S3", seção 1.5).
+//! Topic and token definitions in the bucket (doc 23, "S3 backup", section 1.5).
 //!
-//! - **Tópico:** quem grava é o **nó gestor** (o dono da definição no anel, como em `09-topicos.md`),
-//!   num `.json` por tópico: `topics/<nome>.json`. A remoção grava uma **lápide** no mesmo objeto e o
-//!   prefixo das mensagens é apagado em segundo plano.
-//! - **Token:** um `.json` por token, `tokens/<id>.json`, gravado pelo gestor dele (o dono da
-//!   definição do token). A revogação apaga o objeto.
+//! - **Topic:** whoever writes is the **managing node** (the definition's owner on the ring, as in `09-topicos.md`),
+//!   in one `.json` per topic: `topics/<name>.json`. Removal writes a **tombstone** in the same object and the
+//!   messages prefix is deleted in the background.
+//! - **Token:** one `.json` per token, `tokens/<id>.json`, written by its manager (the token definition's
+//!   owner). Revocation deletes the object.
 //!
-//! Uma alteração de definição **nunca é recusada por falha no S3**: se a gravação falhar, a
-//! alteração vale no cluster e entra numa fila de retentativa. Uma reconciliação periódica compara o
-//! que o bucket guarda com a memória e regrava o que diverge.
+//! A definition change is **never refused because of an S3 failure**: if the write fails, the
+//! change applies in the cluster and goes into a retry queue. A periodic reconciliation compares what
+//! the bucket keeps with memory and rewrites what diverges.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
@@ -23,7 +23,7 @@ use crate::engine::tokens::TokenEvent;
 use crate::engine::topics::TopicEvent;
 use crate::storage::backup::keys;
 
-/// O que o gestor já gravou de cada definição (sem o instante), para não regravar o igual.
+/// What the manager has already written of each definition (without the instant), so as not to rewrite an identical one.
 #[derive(Default)]
 pub(crate) struct Written(HashMap<String, String>);
 
@@ -63,7 +63,7 @@ impl Backup {
                 }
             }
             TopicEvent::Deleted { name, id } => {
-                // Todos os nós esquecem o que tinham do tópico; só o gestor limpa o bucket.
+                // Every node forgets what it had of the topic; only the manager cleans the bucket.
                 let _ = self.db.drop_topic(name);
                 if self.topology.manages_definition("topic", name) {
                     let mut runtime = lock(&self.runtime);
@@ -97,7 +97,7 @@ impl Backup {
         }
     }
 
-    /// Grava no bucket as definições pendentes. As que falharem ficam para a próxima passada.
+    /// Writes the pending definitions to the bucket. Those that fail stay for the next pass.
     pub(crate) async fn flush_definitions(&self) {
         if self.restoring.load(std::sync::atomic::Ordering::SeqCst) {
             return;
@@ -110,7 +110,7 @@ impl Backup {
         }
     }
 
-    /// `true` se a definição ficou em dia no bucket.
+    /// `true` if the definition is up to date in the bucket.
     async fn write_definition(&self, def: &DefRef) -> bool {
         let now = self.clock.now_millis();
         match def {
@@ -129,7 +129,7 @@ impl Backup {
                     .store
                     .put(&keys::topic(name), body.to_string().into_bytes())
                     .await;
-                self.note("PUT da lápide do tópico", &put);
+                self.note("PUT of the topic tombstone", &put);
                 if put.is_err() {
                     return false;
                 }
@@ -158,19 +158,19 @@ impl Backup {
         }
     }
 
-    /// Grava `body` em `key`, a menos que o bucket já tenha a mesma definição.
+    /// Writes `body` to `key`, unless the bucket already has the same definition.
     async fn put_if_changed(&self, key: &str, fingerprint: &str, body: Value) -> bool {
         let known = lock(&self.written).0.get(key).cloned();
         let same = match known {
             Some(known) => known == fingerprint,
-            // Um gestor novo (ou que acabou de subir) não sabe o que há no bucket: lê.
+            // A new manager (or one that just started) does not know what is in the bucket: it reads.
             None => match self.store.get(key).await {
                 Ok(Some(object)) => {
                     bucket_fingerprint(&object.body).as_deref() == Some(fingerprint)
                 }
                 Ok(None) => false,
                 Err(e) => {
-                    self.note::<(), _>("GET da definição", &Err(e));
+                    self.note::<(), _>("GET of the definition", &Err(e));
                     return false;
                 }
             },
@@ -182,7 +182,7 @@ impl Backup {
             return true;
         }
         let put = self.store.put(key, body.to_string().into_bytes()).await;
-        self.note("PUT da definição", &put);
+        self.note("PUT of the definition", &put);
         if put.is_err() {
             return false;
         }
@@ -195,8 +195,8 @@ impl Backup {
         true
     }
 
-    /// A reconciliação: toda definição de que este nó é o gestor e que o bucket não tem igual volta
-    /// à fila de gravação.
+    /// The reconciliation: every definition this node manages and that the bucket does not have identical goes back
+    /// to the write queue.
     pub(crate) async fn reconcile_definitions(&self) {
         if !self.topology.is_active() || self.restoring.load(std::sync::atomic::Ordering::SeqCst) {
             return;
@@ -217,7 +217,7 @@ impl Backup {
         self.flush_definitions().await;
     }
 
-    /// Apaga, em segundo plano, o prefixo das mensagens e dos diários de tópicos removidos.
+    /// Deletes, in the background, the prefix of the messages and journals of removed topics.
     pub(crate) async fn purge_removed_topics(&self) {
         let pending: Vec<(String, String)> = std::mem::take(&mut lock(&self.runtime).purges);
         let mut failed = Vec::new();
@@ -228,14 +228,14 @@ impl Backup {
                 keys::journals_prefix(&name, &id),
             ] {
                 let listed = self.store.list(&prefix).await;
-                self.note("LIST do tópico removido", &listed);
+                self.note("LIST of the removed topic", &listed);
                 let Ok(objects) = listed else {
                     ok = false;
                     continue;
                 };
                 for object in objects {
                     let deleted = self.store.delete(&object.key).await;
-                    self.note("DELETE do tópico removido", &deleted);
+                    self.note("DELETE of the removed topic", &deleted);
                     ok &= deleted.is_ok();
                 }
             }
@@ -249,7 +249,7 @@ impl Backup {
     }
 }
 
-/// A definição que o objeto guarda, no mesmo formato da impressão digital (para comparar).
+/// The definition the object holds, in the same format as the fingerprint (to compare).
 pub(crate) fn bucket_fingerprint(body: &[u8]) -> Option<String> {
     let value: Value = serde_json::from_slice(body).ok()?;
     if value.get("deleted").and_then(Value::as_bool) == Some(true) {
@@ -261,7 +261,7 @@ pub(crate) fn bucket_fingerprint(body: &[u8]) -> Option<String> {
         .map(Value::to_string)
 }
 
-/// Lê um objeto de `topics/` como definição.
+/// Reads an object of `topics/` as a definition.
 pub(crate) fn parse_topic(body: &[u8]) -> Option<TopicDefinition> {
     let value: Value = serde_json::from_slice(body).ok()?;
     if value.get("deleted").and_then(Value::as_bool) == Some(true) {
@@ -270,7 +270,7 @@ pub(crate) fn parse_topic(body: &[u8]) -> Option<TopicDefinition> {
     TopicDefinition::from_json(value.get("definition")?).ok()
 }
 
-/// Lê um objeto de `tokens/` como token.
+/// Reads an object of `tokens/` as a token.
 pub(crate) fn parse_token(body: &[u8]) -> Option<TokenRecord> {
     let value: Value = serde_json::from_slice(body).ok()?;
     token_from_json(value.get("token")?).ok()

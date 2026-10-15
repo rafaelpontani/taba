@@ -1,13 +1,13 @@
-//! As mensagens em disco (doc 02, seção 3.2): o corpo em `${topic}/${id}.body`, só os bytes
-//! como vieram, e o resto numa linha da tabela `messages` do banco do tópico,
-//! `${topic}/_topic.db`, estritamente local ao nó.
+//! The messages on disk (doc 02, section 3.2): the body in `${topic}/${id}.body`, only the bytes
+//! as they came, and the rest in a row of the `messages` table of the topic's database,
+//! `${topic}/_topic.db`, strictly local to the node.
 //!
-//! **Ordem de gravação:** na escrita, primeiro o arquivo e depois a linha; na remoção,
-//! primeiro a linha e depois o arquivo. Uma queda deixa no máximo arquivo sem linha (lixo
-//! inofensivo) ou linha sem arquivo (a mensagem se perdeu: é descartada na leitura).
+//! **Write order:** on writing, first the file and then the row; on removal,
+//! first the row and then the file. A crash leaves at most a file without a row (harmless
+//! garbage) or a row without a file (the message was lost: it is discarded on read).
 //!
-//! **Escritor único:** cada banco tem uma conexão atrás de um `Mutex`; toda escrita espera a
-//! sua vez. Os métodos são síncronos: o `engine` os chama fora do executor assíncrono
+//! **Single writer:** each database has a connection behind a `Mutex`; every write waits for
+//! its turn. The methods are synchronous: the `engine` calls them outside the async executor
 //! (`spawn_blocking`).
 
 use std::collections::HashMap;
@@ -23,30 +23,30 @@ use crate::config::DbSynchronous;
 pub const TOPIC_DB_FILE: &str = "_topic.db";
 const BODY_EXT: &str = "body";
 
-/// Tudo o que se sabe de uma mensagem menos o corpo: é o que vai para a linha do banco.
+/// Everything known about a message except the body: it is what goes into the database row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageMeta {
     pub id: String,
     pub content_type: String,
     pub group_id: Option<String>,
-    /// Só na fila FIFO: a chave de deduplicação dentro do grupo (a informada, ou o SHA-256 do
-    /// corpo em hexadecimal).
+    /// FIFO queue only: the deduplication key within the group (the given one, or the SHA-256 of the
+    /// body in hexadecimal).
     pub deduplication_id: Option<String>,
     pub published_ms: u64,
     pub delivery_count: u32,
-    /// Instante a partir do qual a mensagem é entregável. `0`: nunca foi entregue.
+    /// Instant from which the message is deliverable. `0`: it was never delivered.
     pub invisible_until_ms: u64,
     pub receipt_token: Option<String>,
-    /// Quando entrou na dead-letter (e por quê). Dali em diante o `ttl` conta deste instante.
+    /// When it entered the dead-letter (and why). From then on the `ttl` counts from this instant.
     pub dead_lettered_ms: Option<u64>,
     pub dead_letter_reason: Option<String>,
-    /// A posição no anel de hash (doc 05, seção 7.1): é por ela que se acha o bloco da mensagem.
-    /// Quem guarda a mensagem a calcula (a da fila FIFO é a do grupo).
+    /// The position on the hash ring (doc 05, section 7.1): it is how the message's block is found.
+    /// Whoever stores the message computes it (a FIFO queue's is the group's).
     pub position: u64,
 }
 
-/// A posição no anel como o banco a guarda: o `u64` com o bit mais alto trocado, num inteiro com
-/// sinal que mantém a mesma ordem (o SQLite não tem inteiro sem sinal).
+/// The position on the ring as the database stores it: the `u64` with the highest bit flipped, in a signed
+/// integer that keeps the same order (SQLite has no unsigned integer).
 fn position_to_db(position: u64) -> i64 {
     (position ^ (1 << 63)) as i64
 }
@@ -56,30 +56,30 @@ fn position_from_db(stored: i64) -> u64 {
 }
 
 impl MessageMeta {
-    /// O instante de onde o `ttl` conta.
+    /// The instant the `ttl` counts from.
     pub fn age_base_ms(&self) -> u64 {
         self.dead_lettered_ms.unwrap_or(self.published_ms)
     }
 }
 
-/// Uma linha de [`MessageStore::block_rows`]: o que a listagem de IDs de um bloco diz de cada
-/// mensagem (doc 06c, `GET /cluster/blocks/{id}/ids`).
+/// A row of [`MessageStore::block_rows`]: what a block's ID listing says about each
+/// message (doc 06c, `GET /cluster/blocks/{id}/ids`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockRow {
     pub id: String,
-    /// Só na fila FIFO, na linha curta que o ack deixa.
+    /// FIFO queue only, on the short row the ack leaves.
     pub delete_at_ms: Option<u64>,
 }
 
-/// Uma linha de [`MessageStore::scan`].
+/// A row of [`MessageStore::scan`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanRow {
     pub id: String,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
     pub published_ms: u64,
-    /// A linha curta que o ack da fila FIFO deixa para a deduplicação (`deleteAt`): sem corpo, sem
-    /// entrega e fora do índice.
+    /// The short row the FIFO queue's ack leaves for deduplication (`deleteAt`): no body, no
+    /// delivery and outside the index.
     pub delete_at_ms: Option<u64>,
     pub age_ms: u64,
     pub delivery_count: u32,
@@ -106,15 +106,15 @@ const SCHEMA: &str = "
     CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
 ";
 
-/// Os índices das colunas da fila FIFO, criados depois de `migrate` (um banco de antes delas
-/// ainda não as tem).
+/// The indexes of the FIFO queue columns, created after `migrate` (a database from before them
+/// does not have them yet).
 const FIFO_INDEXES: &str = "
     CREATE INDEX IF NOT EXISTS messages_group_dedup ON messages (group_id, deduplication_id);
     CREATE INDEX IF NOT EXISTS messages_delete_at ON messages (delete_at);
     CREATE INDEX IF NOT EXISTS messages_position ON messages (position);
 ";
 
-/// Acrescenta ao banco de uma versão anterior as colunas que ele não tem.
+/// Adds to the database of an earlier version the columns it lacks.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('messages')")?;
     let have: Vec<String> = stmt
@@ -153,9 +153,9 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
     })
 }
 
-/// A pasta de um tópico. Os nomes de tópico diferenciam maiúsculas de minúsculas e o disco do
-/// Windows e do macOS não: cada maiúscula vira `~` mais a minúscula (`Pedidos` → `~pedidos`).
-/// O `~` não pode estar num nome de tópico (`A-Za-z0-9_-`), então a troca não é ambígua.
+/// A topic's folder. Topic names are case-sensitive and the disk of Windows and macOS is not: each
+/// capital becomes `~` plus the lowercase (`Orders` → `~orders`).
+/// The `~` cannot be in a topic name (`A-Za-z0-9_-`), so the swap is not ambiguous.
 pub fn dir_name(topic: &str) -> String {
     let mut stem = String::with_capacity(topic.len());
     for c in topic.chars() {
@@ -167,7 +167,7 @@ pub fn dir_name(topic: &str) -> String {
     stem
 }
 
-/// O nome do tópico de uma pasta (o inverso de `dir_name`); `None` se não é uma pasta nossa.
+/// The topic name of a folder (the inverse of `dir_name`); `None` if it is not one of our folders.
 fn topic_of_dir(dir: &str) -> Option<String> {
     let mut topic = String::with_capacity(dir.len());
     let mut chars = dir.chars();
@@ -184,7 +184,7 @@ fn topic_of_dir(dir: &str) -> Option<String> {
     Some(topic)
 }
 
-/// O disco de um tópico: a pasta e o banco.
+/// A topic's disk: the folder and the database.
 #[derive(Debug)]
 struct TopicDisk {
     dir: PathBuf,
@@ -201,8 +201,8 @@ impl TopicDisk {
     }
 }
 
-/// Todas as mensagens em disco do nó, por tópico. Os bancos abrem sob demanda: um tópico que
-/// nunca foi para o disco não tem pasta.
+/// All the node's messages on disk, by topic. The databases open on demand: a topic that
+/// never went to disk has no folder.
 #[derive(Debug)]
 pub struct MessageStore {
     root: PathBuf,
@@ -211,7 +211,7 @@ pub struct MessageStore {
 }
 
 impl MessageStore {
-    /// `root` é o `storage.dir`; cada tópico ganha uma pasta dentro dele.
+    /// `root` is the `storage.dir`; each topic gets a folder inside it.
     pub fn new(root: &Path, synchronous: DbSynchronous) -> Self {
         Self {
             root: root.to_path_buf(),
@@ -224,7 +224,7 @@ impl MessageStore {
         self.topics.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// O disco do tópico. Sem `create`, um tópico sem pasta é `None` (leituras não criam nada).
+    /// The topic's disk. Without `create`, a topic without a folder is `None` (reads create nothing).
     fn disk(&self, topic: &str, create: bool) -> io::Result<Option<Arc<TopicDisk>>> {
         let mut topics = self.topics();
         if let Some(disk) = topics.get(topic) {
@@ -255,9 +255,9 @@ impl MessageStore {
         Ok(Some(disk))
     }
 
-    /// Grava a mensagem: primeiro o arquivo do corpo, depois a linha.
+    /// Writes the message: first the body file, then the row.
     pub fn put(&self, topic: &str, meta: &MessageMeta, body: &[u8]) -> io::Result<()> {
-        let disk = self.disk(topic, true)?.expect("criado");
+        let disk = self.disk(topic, true)?.expect("created");
         let target = disk.body_path(&meta.id);
         let tmp = target.with_extension(format!("{BODY_EXT}.tmp"));
         std::fs::write(&tmp, body)?;
@@ -305,7 +305,7 @@ impl MessageStore {
             .map_err(to_io)
     }
 
-    /// Grava de novo os campos que mudam na entrega: contador, prazo e `receiptToken`.
+    /// Writes again the fields that change on delivery: counter, deadline and `receiptToken`.
     pub fn update_delivery(&self, topic: &str, meta: &MessageMeta) -> io::Result<()> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(());
@@ -325,7 +325,7 @@ impl MessageStore {
         Ok(())
     }
 
-    /// Os bytes do corpo, como foram gravados.
+    /// The body bytes, as they were written.
     pub fn body(&self, topic: &str, id: &str) -> io::Result<Vec<u8>> {
         match self.disk(topic, false)? {
             Some(disk) => std::fs::read(disk.body_path(id)),
@@ -333,7 +333,7 @@ impl MessageStore {
         }
     }
 
-    /// Remove a mensagem: primeiro a linha, depois o arquivo.
+    /// Removes the message: first the row, then the file.
     pub fn remove(&self, topic: &str, id: &str) -> io::Result<()> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(());
@@ -359,8 +359,8 @@ impl MessageStore {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
-    /// O que o índice do tópico precisa de cada mensagem em disco (sem o corpo), para refazê-lo
-    /// quando o tópico é aberto: `id`, grupo, idade, entregas e fim da invisibilidade.
+    /// What the topic's index needs from each message on disk (without the body), to rebuild it
+    /// when the topic is opened: `id`, group, age, deliveries and end of invisibility.
     pub fn scan(&self, topic: &str) -> io::Result<Vec<ScanRow>> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(Vec::new());
@@ -389,9 +389,9 @@ impl MessageStore {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
-    /// As mensagens do tópico cuja posição cai em alguma das `ranges` (os arcos de um bloco), com
-    /// `id` entre `from` e `to` (inclusivos), em ordem de `id`, no máximo `limit`. Inclui a linha
-    /// curta da fila FIFO (`delete_at`).
+    /// The topic's messages whose position falls in any of the `ranges` (a block's arcs), with
+    /// `id` between `from` and `to` (inclusive), in `id` order, at most `limit`. Includes the FIFO queue's
+    /// short row (`delete_at`).
     pub fn block_rows(
         &self,
         topic: &str,
@@ -441,7 +441,7 @@ impl MessageStore {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
-    /// Os `limit` primeiros ids entregáveis (prazo vencido), em ordem de `id`.
+    /// The first `limit` deliverable ids (deadline expired), in `id` order.
     pub fn ready_ids(&self, topic: &str, now_ms: u64, limit: usize) -> io::Result<Vec<String>> {
         self.ids(
             topic,
@@ -450,7 +450,7 @@ impl MessageStore {
         )
     }
 
-    /// O instante em que a próxima invisível volta a ser entregável.
+    /// The instant the next invisible one becomes deliverable again.
     pub fn next_invisible_until(&self, topic: &str, now_ms: u64) -> io::Result<Option<u64>> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(None);
@@ -466,7 +466,7 @@ impl MessageStore {
         Ok(next.map(|v| v as u64))
     }
 
-    /// As mensagens cujo `ttl` venceu: `age_base + ttl ≤ agora`.
+    /// The messages whose `ttl` expired: `age_base + ttl ≤ now`.
     pub fn expired_ids(&self, topic: &str, now_ms: u64, ttl_ms: u64) -> io::Result<Vec<String>> {
         let limit = i64::try_from(now_ms.saturating_sub(ttl_ms)).unwrap_or(i64::MAX);
         if ttl_ms > now_ms {
@@ -479,7 +479,7 @@ impl MessageStore {
         )
     }
 
-    /// As mensagens que gastaram as entregas e cuja invisibilidade acabou.
+    /// The messages that used up their deliveries and whose invisibility ended.
     pub fn exhausted_ids(&self, topic: &str, now_ms: u64, max: u64) -> io::Result<Vec<String>> {
         self.ids(
             topic,
@@ -489,11 +489,11 @@ impl MessageStore {
         )
     }
 
-    /// Move a mensagem para a pasta de outro tópico (a dead-letter), trocando os metadados.
-    /// O arquivo é renomeado, sem copiar o corpo.
+    /// Moves the message to another topic's folder (the dead-letter), swapping the metadata.
+    /// The file is renamed, without copying the body.
     pub fn move_to(&self, from: &str, to: &str, meta: &MessageMeta) -> io::Result<()> {
-        let source = self.disk(from, true)?.expect("criado");
-        let target = self.disk(to, true)?.expect("criado");
+        let source = self.disk(from, true)?.expect("created");
+        let target = self.disk(to, true)?.expect("created");
         std::fs::rename(source.body_path(&meta.id), target.body_path(&meta.id))?;
         Self::insert_row(&target, meta)?;
         source
@@ -503,11 +503,11 @@ impl MessageStore {
         Ok(())
     }
 
-    /// O ack da fila FIFO: a mensagem vira uma linha curta com `delete_at` (doc 17, seção 16.7).
-    /// Ficam `id`, grupo, `deduplicationId` e as datas; saem o corpo e os metadados de entrega. A
-    /// linha vale mesmo que a mensagem estivesse só em memória. Primeiro a linha, depois o arquivo.
+    /// The FIFO queue's ack: the message becomes a short row with `delete_at` (doc 17, section 16.7).
+    /// What stays is `id`, group, `deduplicationId` and the dates; the body and delivery metadata go. The
+    /// row applies even if the message was only in memory. First the row, then the file.
     pub fn tombstone(&self, topic: &str, meta: &MessageMeta, delete_at_ms: u64) -> io::Result<()> {
-        let disk = self.disk(topic, true)?.expect("criado");
+        let disk = self.disk(topic, true)?.expect("created");
         disk.conn()
             .execute(
                 "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
@@ -531,7 +531,7 @@ impl MessageStore {
         }
     }
 
-    /// Apaga as linhas curtas cujo `delete_at` passou, pelo índice, e devolve quantas.
+    /// Deletes the short rows whose `delete_at` has passed, by the index, and returns how many.
     pub fn sweep_tombstones(&self, topic: &str, now_ms: u64) -> io::Result<u64> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(0);
@@ -546,13 +546,13 @@ impl MessageStore {
         Ok(removed as u64)
     }
 
-    /// O espaço livre, em bytes, no volume de `storage.dir` (o que um processo sem privilégio pode
-    /// usar).
+    /// The free space, in bytes, on the `storage.dir` volume (what an unprivileged process can
+    /// use).
     pub fn free_bytes(&self) -> io::Result<u64> {
         fs4::available_space(&self.root)
     }
 
-    /// O uso do volume de `storage.dir`, em porcentagem (do que um processo sem privilégio vê).
+    /// The usage of the `storage.dir` volume, as a percentage (of what an unprivileged process sees).
     pub fn disk_usage_percent(&self) -> io::Result<u32> {
         let total = fs4::total_space(&self.root)?;
         if total == 0 {
@@ -562,9 +562,9 @@ impl MessageStore {
         Ok(((total - free) * 100 / total) as u32)
     }
 
-    /// Apaga só o arquivo do corpo, mantendo a linha (a evicção do backup, doc 23, seção 1.8): a
-    /// ordem "arquivo primeiro, linha depois" continua valendo. Devolve os bytes liberados; `0` se o
-    /// corpo já não estava no disco.
+    /// Deletes only the body file, keeping the row (the backup's eviction, doc 23, section 1.8): the
+    /// "file first, row after" order still holds. Returns the bytes freed; `0` if the
+    /// body was no longer on disk.
     pub fn evict_body(&self, topic: &str, id: &str) -> io::Result<u64> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(0);
@@ -582,7 +582,7 @@ impl MessageStore {
         }
     }
 
-    /// O corpo da mensagem está em arquivo no disco?
+    /// Is the message body in a file on disk?
     pub fn has_body(&self, topic: &str, id: &str) -> bool {
         self.disk(topic, false)
             .ok()
@@ -590,8 +590,8 @@ impl MessageStore {
             .is_some_and(|disk| disk.body_path(id).is_file())
     }
 
-    /// A soma dos tamanhos dos arquivos de corpo do tópico (lê só os metadados dos arquivos, em
-    /// ordem de pasta: custa uma chamada por mensagem em disco).
+    /// The sum of the sizes of the topic's body files (reads only the files' metadata, in
+    /// folder order: it costs one call per message on disk).
     pub fn body_bytes(&self, topic: &str) -> io::Result<u64> {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(0);
@@ -625,7 +625,7 @@ impl MessageStore {
         Ok(n as u64)
     }
 
-    /// Os tópicos que têm pasta com banco em `storage.dir`.
+    /// The topics that have a folder with a database in `storage.dir`.
     pub fn topics_on_disk(&self) -> io::Result<Vec<String>> {
         let entries = match std::fs::read_dir(&self.root) {
             Ok(entries) => entries,
@@ -649,14 +649,14 @@ impl MessageStore {
         Ok(out)
     }
 
-    /// A pasta onde o disco da vida anterior espera a recuperação do reinício (PRB-048).
+    /// The folder where the previous life's disk waits for the restart recovery (PRB-048).
     pub const PREVIOUS_LIFE: &str = "_previous-life";
 
-    /// Põe de lado o que ficou no disco da vida anterior: cada pasta de tópico vai para
-    /// `${root}/_previous-life`, e o nó segue com o disco vazio. Uma pasta que já estava lá (um
-    /// reinício que caiu no meio da recuperação) fica como está e a nova é apagada: a primeira é a
-    /// que pode ter o que só ela guardava; a nova só traz cópias que o cluster já tem. Devolve o
-    /// disco da vida anterior, ou `None` se não há nada nele.
+    /// Sets aside what was left on the previous life's disk: each topic folder goes to
+    /// `${root}/_previous-life`, and the node goes on with an empty disk. A folder that was already there (a
+    /// restart that crashed halfway through the recovery) stays as it is and the new one is deleted: the first is
+    /// the one that may have what only it kept; the new one only brings copies the cluster already has. Returns
+    /// the previous life's disk, or `None` if there is nothing on it.
     pub fn set_aside_old_disk(&self) -> io::Result<Option<MessageStore>> {
         let aside = self.root.join(Self::PREVIOUS_LIFE);
         for topic in self.topics_on_disk()? {
@@ -674,7 +674,7 @@ impl MessageStore {
         Ok((!previous.topics_on_disk()?.is_empty()).then_some(previous))
     }
 
-    /// Apaga o disco da vida anterior (acabou a recuperação).
+    /// Deletes the previous life's disk (the recovery is over).
     pub fn drop_old_disk(&self) -> io::Result<()> {
         match std::fs::remove_dir_all(self.root.join(Self::PREVIOUS_LIFE)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
@@ -682,7 +682,7 @@ impl MessageStore {
         }
     }
 
-    /// Apaga a pasta do tópico, com o banco e os corpos.
+    /// Deletes the topic's folder, with the database and the bodies.
     pub fn drop_topic(&self, topic: &str) -> io::Result<()> {
         self.topics().remove(topic);
         match std::fs::remove_dir_all(self.root.join(dir_name(topic))) {
@@ -692,8 +692,8 @@ impl MessageStore {
     }
 }
 
-/// Move uma pasta. Onde o sistema não deixa renomear (no Windows, com um arquivo da pasta ainda
-/// aberto), copia e apaga a original, repetindo o apagar por até três segundos.
+/// Moves a folder. Where the system does not allow renaming (on Windows, with a file of the folder still
+/// open), it copies and deletes the original, repeating the delete for up to three seconds.
 fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
     if std::fs::rename(from, to).is_ok() {
         return Ok(());

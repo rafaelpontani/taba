@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/diagramas/img/hero.gif" width="100%" alt="Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma única imagem Docker. Animação: 3 nós, cada um desenhado como um prédio de 3 andares. Vários produtores chegam e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica para os outros dois, e todo nó é primário de algumas delas. Os consumidores chegam depois, leem de forma assíncrona e confirmam com um ack.">
+  <img src="doc/diagramas/img/pt-BR/hero.gif" width="100%" alt="Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma única imagem Docker. Animação: 3 nós, cada um desenhado como um prédio de 3 andares. Vários produtores chegam e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica para os outros dois, e todo nó é primário de algumas delas. Os consumidores chegam depois, leem de forma assíncrona e confirmam com um ack.">
 </p>
 
 🇺🇸 [English](README.md) | 🇧🇷 **Português (Brasil)**
@@ -37,8 +37,10 @@ Se você quer fugir da cobrança por mensagem, de um cluster de brokers para ope
 Com Docker, um cluster de três nós (atrás de um HAProxy de exemplo) sobe com um comando. Um contêiner de inicialização cria o certificado do cluster e o token raiz, o primeiro nó forma o cluster e os outros dois entram:
 
 ```bash
-docker compose up --build -d      # três nós "healthy" em cerca de um minuto
+docker compose up -d              # três nós "healthy" em cerca de um minuto (imagens públicas do Docker Hub)
 ```
+
+Para construir as imagens a partir deste repositório (desenvolvimento): `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`.
 
 Depois, com o [`taba-cli`](doc/pt-BR/20-cli.md), que já vem no Compose apontado para o cluster (e com o token raiz):
 
@@ -102,7 +104,7 @@ As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho e
 
 **Taba** vem de **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos. Em tupi, *taba* é a **aldeia**: cada nó é uma oca, o cluster é a aldeia, e as mensagens circulam entre elas sem que você precise cuidar disso.
 
-![C4 nível 0: contexto do Taba](doc/diagramas/img/c4-nivel0-contexto.svg)
+![C4 nível 0: contexto do Taba](doc/diagramas/img/pt-BR/c4-nivel0-contexto.svg)
 
 | Letra | Promessa | Como o Taba cumpre |
 |---|---|---|
@@ -111,11 +113,11 @@ As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho e
 | **B**alanceado | Nenhum nó carrega tudo sozinho. | Um anel de hash consistente divide os tópicos em blocos e os replica em vários nós. |
 | **A**utogerido | Sem coordenador e sem operação manual. | Os nós se descobrem, se monitoram e votam para tirar quem falha. Quando o nó volta, é readmitido. |
 
-![Anel de hash: blocos e papéis](doc/diagramas/img/anel-hash.svg)
+![Anel de hash: blocos e papéis](doc/diagramas/img/pt-BR/anel-hash.svg)
 
 *O anel de hash divide o trabalho entre os nós.*
 
-![Tópico espalhado e redundante](doc/diagramas/img/topico-espalhado.svg)
+![Tópico espalhado e redundante](doc/diagramas/img/pt-BR/topico-espalhado.svg)
 
 *Um tópico espalhado pelo cluster e replicado: se um nó cai, a aldeia continua de pé.*
 

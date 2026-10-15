@@ -2,10 +2,10 @@ using System.Collections.Generic;
 
 namespace Taba
 {
-    /// <summary><c>PATCH /topics/{topic}</c>: só o que foi preenchido é enviado.</summary>
+    /// <summary><c>PATCH /topics/{topic}</c>: only what was filled in is sent.</summary>
     public sealed class TopicUpdate
     {
-        /// <summary>Substitui o mapa inteiro (um mapa vazio limpa as tags).</summary>
+        /// <summary>Replaces the whole map (an empty map clears the tags).</summary>
         public IDictionary<string, string> Tags { get; set; }
 
         public IList<string> Prefixes { get; set; }

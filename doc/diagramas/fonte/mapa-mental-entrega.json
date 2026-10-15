@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Mapa mental: 2. Entrega",
+    "title": "Mind map: 2. Delivery",
     "output": "doc/diagramas/html/mapa-mental-entrega.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "entrega-d0-0",
       "type": "security",
-      "label": "Só o primário",
-      "sublabel": "decisão",
+      "label": "Only the primary",
+      "sublabel": "decision",
       "pos": [
         450,
         70
@@ -24,8 +24,8 @@
     {
       "id": "entrega-d0-0x",
       "type": "database",
-      "label": "demais nós: cópias de segurança",
-      "sublabel": "detalhe",
+      "label": "other nodes: backup copies",
+      "sublabel": "detail",
       "pos": [
         745,
         70
@@ -38,8 +38,8 @@
     {
       "id": "entrega-d0-1",
       "type": "security",
-      "label": "Coordenador do GET",
-      "sublabel": "decisão",
+      "label": "GET coordinator",
+      "sublabel": "decision",
       "pos": [
         450,
         136
@@ -52,8 +52,8 @@
     {
       "id": "entrega-d0-1x",
       "type": "database",
-      "label": "completa com outros nós (take)",
-      "sublabel": "detalhe",
+      "label": "completes with other nodes (take)",
+      "sublabel": "detail",
       "pos": [
         745,
         136
@@ -66,8 +66,8 @@
     {
       "id": "entrega-t0",
       "type": "cloud",
-      "label": "Quem entrega",
-      "sublabel": "tema",
+      "label": "Who delivers",
+      "sublabel": "theme",
       "pos": [
         225,
         103
@@ -80,8 +80,8 @@
     {
       "id": "entrega-d1-0",
       "type": "security",
-      "label": "Em memória, por tópico",
-      "sublabel": "decisão",
+      "label": "In memory, per topic",
+      "sublabel": "decision",
       "pos": [
         450,
         202
@@ -94,8 +94,8 @@
     {
       "id": "entrega-d1-0x",
       "type": "database",
-      "label": "todas as prontas, em memória",
-      "sublabel": "detalhe",
+      "label": "all the ready ones, in memory",
+      "sublabel": "detail",
       "pos": [
         745,
         202
@@ -108,8 +108,8 @@
     {
       "id": "entrega-d1-1",
       "type": "security",
-      "label": "Efeito sanfona",
-      "sublabel": "decisão",
+      "label": "Accordion effect",
+      "sublabel": "decision",
       "pos": [
         450,
         268
@@ -122,8 +122,8 @@
     {
       "id": "entrega-d1-1x",
       "type": "database",
-      "label": "pontas antiga e nova, intercaladas",
-      "sublabel": "detalhe",
+      "label": "old and new ends, interleaved",
+      "sublabel": "detail",
       "pos": [
         745,
         268
@@ -136,8 +136,8 @@
     {
       "id": "entrega-d1-2",
       "type": "security",
-      "label": "Índice completo no dono",
-      "sublabel": "decisão",
+      "label": "Complete index on the owner",
+      "sublabel": "decision",
       "pos": [
         450,
         334
@@ -150,8 +150,8 @@
     {
       "id": "entrega-d1-2x",
       "type": "database",
-      "label": "sem thread de reposição",
-      "sublabel": "detalhe",
+      "label": "no refill thread",
+      "sublabel": "detail",
       "pos": [
         745,
         334
@@ -164,8 +164,8 @@
     {
       "id": "entrega-t1",
       "type": "cloud",
-      "label": "Lista de prontos",
-      "sublabel": "tema",
+      "label": "Ready list",
+      "sublabel": "theme",
       "pos": [
         225,
         268
@@ -179,7 +179,7 @@
       "id": "entrega-d2-0",
       "type": "security",
       "label": "Long polling",
-      "sublabel": "decisão",
+      "sublabel": "decision",
       "pos": [
         450,
         400
@@ -192,8 +192,8 @@
     {
       "id": "entrega-d2-0x",
       "type": "database",
-      "label": "waitTime de 0 a 20 s",
-      "sublabel": "detalhe",
+      "label": "waitTime from 0 to 20 s",
+      "sublabel": "detail",
       "pos": [
         745,
         400
@@ -207,7 +207,7 @@
       "id": "entrega-d2-1",
       "type": "security",
       "label": "maxMessages",
-      "sublabel": "decisão",
+      "sublabel": "decision",
       "pos": [
         450,
         466
@@ -220,8 +220,8 @@
     {
       "id": "entrega-d2-1x",
       "type": "database",
-      "label": "padrão 10",
-      "sublabel": "detalhe",
+      "label": "default 10",
+      "sublabel": "detail",
       "pos": [
         745,
         466
@@ -234,8 +234,8 @@
     {
       "id": "entrega-d2-2",
       "type": "security",
-      "label": "Avisos de mensagem nova",
-      "sublabel": "decisão",
+      "label": "New-message notices",
+      "sublabel": "decision",
       "pos": [
         450,
         532
@@ -248,8 +248,8 @@
     {
       "id": "entrega-d2-2x",
       "type": "database",
-      "label": "janela de 100 ms, um nó por vez",
-      "sublabel": "detalhe",
+      "label": "100 ms window, one node at a time",
+      "sublabel": "detail",
       "pos": [
         745,
         532
@@ -262,8 +262,8 @@
     {
       "id": "entrega-t2",
       "type": "cloud",
-      "label": "Consumo",
-      "sublabel": "tema",
+      "label": "Consumption",
+      "sublabel": "theme",
       "pos": [
         225,
         466
@@ -276,8 +276,8 @@
     {
       "id": "entrega",
       "type": "backend",
-      "label": "Entrega",
-      "sublabel": "área",
+      "label": "Delivery",
+      "sublabel": "area",
       "pos": [
         20,
         499
@@ -290,8 +290,8 @@
     {
       "id": "entrega-d3-0",
       "type": "security",
-      "label": "TTL da mensagem",
-      "sublabel": "decisão",
+      "label": "Message TTL",
+      "sublabel": "decision",
       "pos": [
         450,
         598
@@ -304,8 +304,8 @@
     {
       "id": "entrega-d3-0x",
       "type": "database",
-      "label": "padrão 14 dias (ttl.default)",
-      "sublabel": "detalhe",
+      "label": "default 14 days (ttl.default)",
+      "sublabel": "detail",
       "pos": [
         745,
         598
@@ -318,8 +318,8 @@
     {
       "id": "entrega-d3-1",
       "type": "security",
-      "label": "Limite de entregas",
-      "sublabel": "decisão",
+      "label": "Delivery limit",
+      "sublabel": "decision",
       "pos": [
         450,
         664
@@ -332,8 +332,8 @@
     {
       "id": "entrega-d3-1x",
       "type": "database",
-      "label": "padrão 10 (max-deliveries.default)",
-      "sublabel": "detalhe",
+      "label": "default 10 (max-deliveries.default)",
+      "sublabel": "detail",
       "pos": [
         745,
         664
@@ -346,8 +346,8 @@
     {
       "id": "entrega-d3-2",
       "type": "security",
-      "label": "Dead-letter por fila",
-      "sublabel": "decisão",
+      "label": "Dead-letter per queue",
+      "sublabel": "decision",
       "pos": [
         450,
         730
@@ -360,8 +360,8 @@
     {
       "id": "entrega-d3-2x",
       "type": "database",
-      "label": "sufixo -dead-letter, só leitura",
-      "sublabel": "detalhe",
+      "label": "-dead-letter suffix, read-only",
+      "sublabel": "detail",
       "pos": [
         745,
         730
@@ -374,8 +374,8 @@
     {
       "id": "entrega-t3",
       "type": "cloud",
-      "label": "Retenção e dead-letter",
-      "sublabel": "tema",
+      "label": "Retention and dead-letter",
+      "sublabel": "theme",
       "pos": [
         225,
         664
@@ -388,8 +388,8 @@
     {
       "id": "entrega-d4-0",
       "type": "security",
-      "label": "Grupo da mensagem",
-      "sublabel": "decisão",
+      "label": "Message group",
+      "sublabel": "decision",
       "pos": [
         450,
         796
@@ -402,8 +402,8 @@
     {
       "id": "entrega-d4-0x",
       "type": "database",
-      "label": "groupId, até 128 caracteres",
-      "sublabel": "detalhe",
+      "label": "groupId, up to 128 characters",
+      "sublabel": "detail",
       "pos": [
         745,
         796
@@ -416,8 +416,8 @@
     {
       "id": "entrega-d4-1",
       "type": "security",
-      "label": "Contagem por nó",
-      "sublabel": "decisão",
+      "label": "Count per node",
+      "sublabel": "decision",
       "pos": [
         450,
         862
@@ -430,8 +430,8 @@
     {
       "id": "entrega-d4-1x",
       "type": "database",
-      "label": "prontas + em processamento, peso 0,1",
-      "sublabel": "detalhe",
+      "label": "ready + in processing, weight 0.1",
+      "sublabel": "detail",
       "pos": [
         745,
         862
@@ -444,8 +444,8 @@
     {
       "id": "entrega-d4-2",
       "type": "security",
-      "label": "Grupos menores primeiro",
-      "sublabel": "decisão",
+      "label": "Smaller groups first",
+      "sublabel": "decision",
       "pos": [
         450,
         928
@@ -458,8 +458,8 @@
     {
       "id": "entrega-d4-2x",
       "type": "database",
-      "label": "faixas por potência de 2",
-      "sublabel": "detalhe",
+      "label": "bands by power of 2",
+      "sublabel": "detail",
       "pos": [
         745,
         928
@@ -472,8 +472,8 @@
     {
       "id": "entrega-d4-3",
       "type": "security",
-      "label": "Progresso garantido",
-      "sublabel": "decisão",
+      "label": "Guaranteed progress",
+      "sublabel": "decision",
       "pos": [
         450,
         994
@@ -486,8 +486,8 @@
     {
       "id": "entrega-d4-3x",
       "type": "database",
-      "label": "1 em 10 pela ordem normal",
-      "sublabel": "detalhe",
+      "label": "1 in 10 in the normal order",
+      "sublabel": "detail",
       "pos": [
         745,
         994
@@ -500,8 +500,8 @@
     {
       "id": "entrega-t4",
       "type": "cloud",
-      "label": "Entrega justa por grupos",
-      "sublabel": "tema",
+      "label": "Fair delivery by groups",
+      "sublabel": "theme",
       "pos": [
         225,
         895

@@ -33,7 +33,7 @@ fn saves_one_row_per_topic_and_loads_them_back_after_reopening() {
     let (store, db) = store(tmp.path());
     assert!(store.load_all().unwrap().is_empty());
 
-    let (a, b) = (definition("pedidos"), definition("Pedidos"));
+    let (a, b) = (definition("orders"), definition("Orders"));
     store.save(&a).unwrap();
     store.save(&b).unwrap();
     drop((store, db));
@@ -53,7 +53,7 @@ fn store_at(dir: &std::path::Path) -> (SqliteTopicStore, Arc<NodeDb>) {
 fn saving_again_replaces_the_row() {
     let tmp = tempfile::tempdir().unwrap();
     let (store, _db) = store(tmp.path());
-    let mut topic = definition("pedidos");
+    let mut topic = definition("orders");
     store.save(&topic).unwrap();
     topic.tags.insert("a".into(), "b".into());
     store.save(&topic).unwrap();
@@ -65,9 +65,9 @@ fn saving_again_replaces_the_row() {
 fn delete_removes_the_row_and_tolerates_a_missing_one() {
     let tmp = tempfile::tempdir().unwrap();
     let (store, _db) = store(tmp.path());
-    store.save(&definition("pedidos")).unwrap();
-    store.delete("pedidos").unwrap();
-    store.delete("pedidos").unwrap();
+    store.save(&definition("orders")).unwrap();
+    store.delete("orders").unwrap();
+    store.delete("orders").unwrap();
     assert!(store.load_all().unwrap().is_empty());
 }
 
@@ -75,14 +75,14 @@ fn delete_removes_the_row_and_tolerates_a_missing_one() {
 fn a_corrupt_row_is_an_error_naming_the_topic() {
     let tmp = tempfile::tempdir().unwrap();
     let (store, db) = store(tmp.path());
-    store.save(&definition("bom")).unwrap();
+    store.save(&definition("good")).unwrap();
     db.conn()
-        .execute("INSERT INTO topics VALUES ('ruim', '{ não é json')", [])
+        .execute("INSERT INTO topics VALUES ('bad', '{ not json')", [])
         .unwrap();
 
     let err = store.load_all().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    assert!(err.to_string().contains("`ruim`"), "{err}");
+    assert!(err.to_string().contains("`bad`"), "{err}");
 }
 
 /// UC: UC-DEF-009, UC-DEF-024
@@ -90,16 +90,16 @@ fn a_corrupt_row_is_an_error_naming_the_topic() {
 fn definitions_are_not_files_and_names_differing_in_case_are_different_topics() {
     let tmp = tempfile::tempdir().unwrap();
     let (store, _db) = store(tmp.path());
-    store.save(&definition("pedidos")).unwrap();
-    store.save(&definition("Pedidos")).unwrap();
-    store.delete("Pedidos").unwrap();
+    store.save(&definition("orders")).unwrap();
+    store.save(&definition("Orders")).unwrap();
+    store.delete("Orders").unwrap();
     let left = store.load_all().unwrap();
     assert_eq!(left.len(), 1);
-    assert_eq!(left[0].name, "pedidos");
+    assert_eq!(left[0].name, "orders");
 
     assert!(
         !tmp.path().join("_topics").exists(),
-        "não há arquivo por tópico"
+        "there is no file per topic"
     );
 }
 

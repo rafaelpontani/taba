@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Cenário 1: a lista local tem mensagem",
+    "title": "Scenario 1: the local list has a message",
     "output": "doc/diagramas/html/consumo-cenario1-lista-local.html",
     "viewBox": [
       1080,
@@ -15,20 +15,20 @@
     {
       "id": "consumidor",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "cliente HTTP"
+      "label": "Consumer",
+      "sublabel": "HTTP client"
     },
     {
       "id": "a",
       "type": "backend",
-      "label": "Nó A",
-      "sublabel": "primário de m1"
+      "label": "Node A",
+      "sublabel": "primary of m1"
     },
     {
       "id": "quorum",
       "type": "database",
-      "label": "Réplicas (quórum)",
-      "sublabel": "B ou C, com o primário"
+      "label": "Replicas (quorum)",
+      "sublabel": "B or C, with the primary"
     }
   ],
   "messages": [
@@ -37,23 +37,23 @@
       "y": 176,
       "from": "consumidor",
       "to": "a",
-      "label": "GET /topics/pedidos/messages",
+      "label": "GET /topics/orders/messages",
       "variant": "emphasis",
-      "note": "lista de prontos de A: [m1, m4]"
+      "note": "A's ready list: [m1, m4]"
     },
     {
       "id": "m2",
       "y": 214,
       "from": "a",
       "to": "quorum",
-      "label": "registro: invisível até T, count+1"
+      "label": "register: invisible until T, count+1"
     },
     {
       "id": "m3",
       "y": 252,
       "from": "quorum",
       "to": "a",
-      "label": "confirma: quórum fechado",
+      "label": "confirms: quorum closed",
       "variant": "return"
     },
     {
@@ -63,7 +63,7 @@
       "to": "quorum",
       "label": "commit",
       "variant": "emphasis",
-      "note": "A remove m1 da lista de prontos"
+      "note": "A removes m1 from the ready list"
     },
     {
       "id": "m5",
@@ -85,17 +85,17 @@
   "cards": [
     {
       "dot": "emerald",
-      "title": "Caso comum",
+      "title": "Common case",
       "items": [
-        "A é o dono de m1, então decide sozinho",
-        "Nenhum outro nó é consultado para achar a mensagem"
+        "A is the owner of m1, so it decides alone",
+        "No other node is queried to find the message"
       ]
     },
     {
       "dot": "cyan",
-      "title": "Custo",
+      "title": "Cost",
       "items": [
-        "Só o registro e o commit no quórum, como em qualquer entrega"
+        "Only the register and the commit on the quorum, as in any delivery"
       ]
     }
   ]

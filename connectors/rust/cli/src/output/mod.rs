@@ -1,5 +1,5 @@
-//! A saída: `json` (a resposta do servidor, indentada), `table` (colunas) e `raw`, e a forma dos
-//! erros da API (doc 19b, seção 18.11.3).
+//! The output: `json` (the server's response, indented), `table` (columns) and `raw`, and the shape of the
+//! API errors (doc 19b, section 18.11.3).
 
 use std::io::{self, Write};
 
@@ -20,13 +20,13 @@ impl Format {
             "table" => Ok(Format::Table),
             "raw" => Ok(Format::Raw),
             other => Err(format!(
-                "formato de saída `{other}` desconhecido (use json, table ou raw)"
+                "unknown output format `{other}` (use json, table or raw)"
             )),
         }
     }
 }
 
-/// O texto de uma resposta no formato pedido. `raw` devolve o texto como veio.
+/// The text of a response in the requested format. `raw` returns the text as it came.
 pub fn render(text: &str, format: Format) -> String {
     match format {
         Format::Json => json::pretty(text).unwrap_or_else(|_| text.trim_end().to_owned()),
@@ -35,8 +35,8 @@ pub fn render(text: &str, format: Format) -> String {
     }
 }
 
-/// Uma tabela com os itens de uma lista (`items`, `messages` ou uma lista na raiz) ou, para um
-/// objeto só, uma linha por campo. `None` se o texto não é JSON de um desses formatos.
+/// A table with the items of a list (`items`, `messages` or a list at the root) or, for a
+/// single object, one row per field. `None` if the text is not JSON of one of those shapes.
 pub fn table(text: &str) -> Option<String> {
     let text = text.trim();
     let rows: Vec<&str>;
@@ -56,7 +56,7 @@ pub fn table(text: &str) -> Option<String> {
         return None;
     }
     if rows.is_empty() {
-        return Some("(vazio)".to_owned());
+        return Some("(empty)".to_owned());
     }
     if single {
         let fields = json::object_fields(rows[0]).ok()?;
@@ -64,7 +64,7 @@ pub fn table(text: &str) -> Option<String> {
             .iter()
             .map(|(k, v)| vec![k.clone(), cell(v)])
             .collect();
-        return Some(layout(&["campo", "valor"], &table));
+        return Some(layout(&["field", "value"], &table));
     }
     let mut columns: Vec<String> = Vec::new();
     let mut parsed = Vec::new();
@@ -96,7 +96,7 @@ pub fn table(text: &str) -> Option<String> {
     Some(layout(&header, &table))
 }
 
-/// O `ClusterStatus` em tabelas: os campos simples, uma linha por nó e uma por condição.
+/// The `ClusterStatus` as tables: the simple fields, one row per node and one per condition.
 pub fn cluster_table(text: &str) -> Option<String> {
     let fields = Fields::parse(text.trim()).ok()?;
     let simple: Vec<Vec<String>> = [
@@ -109,7 +109,7 @@ pub fn cluster_table(text: &str) -> Option<String> {
     .iter()
     .filter_map(|name| fields.raw(name).map(|v| vec![(*name).to_owned(), cell(v)]))
     .collect();
-    let mut out = layout(&["campo", "valor"], &simple);
+    let mut out = layout(&["field", "value"], &simple);
     for (title, name) in [("nodes", "nodes"), ("conditions", "conditions")] {
         let list = fields.raw(name).filter(|l| l.starts_with('['))?;
         out.push_str(&format!("\n\n{title}\n"));
@@ -118,7 +118,7 @@ pub fn cluster_table(text: &str) -> Option<String> {
     Some(out)
 }
 
-/// O texto de uma célula: strings sem aspas, `null` como `-`, objetos e listas compactos.
+/// The text of a cell: strings without quotes, `null` as `-`, objects and lists compact.
 fn cell(raw: &str) -> String {
     let raw = raw.trim();
     let text = if raw.starts_with('"') {
@@ -138,7 +138,7 @@ fn cell(raw: &str) -> String {
     }
 }
 
-/// O JSON sem os espaços e quebras de linha fora das strings.
+/// The JSON without the spaces and line breaks outside strings.
 fn compact(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut in_string = false;
@@ -191,8 +191,8 @@ fn layout(header: &[&str], rows: &[Vec<String>]) -> String {
     lines.join("\n")
 }
 
-/// Escreve um erro da API na saída de erro: `código: mensagem (requestId ...)`, os `details` e o
-/// `Retry-After`. Com `json` e um `ErrorResponse` do servidor, escreve o corpo como veio (indentado).
+/// Writes an API error to the error output: `code: message (requestId ...)`, the `details` and the
+/// `Retry-After`. With `json` and a server `ErrorResponse`, writes the body as it came (indented).
 pub fn write_api_error(w: &mut dyn Write, e: &ApiError, json: bool) -> io::Result<()> {
     if json && e.status > 0 {
         let body = String::from_utf8_lossy(&e.body);

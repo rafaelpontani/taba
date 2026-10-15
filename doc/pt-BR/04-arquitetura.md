@@ -22,7 +22,7 @@ Um cluster Taba é feito de **nós idênticos**. Cada nó é **um processo** (o 
 
 Não existe um nó "mestre" nem um serviço externo. O que seria "o banco" são arquivos locais de cada nó; o que seria "o coordenador" é calculado por todos do mesmo jeito.
 
-![Um nó por dentro: três portas, engine, cluster e storage](../diagramas/img/no-visao-geral.svg)
+![Um nó por dentro: três portas, engine, cluster e storage](../diagramas/img/pt-BR/no-visao-geral.svg)
 
 ## As camadas e a direção das dependências
 
@@ -50,7 +50,7 @@ Cada módulo conhece apenas os da esquerda. Isso é verificável: `core` não im
 
 O `main.rs` é só a **raiz de composição**: lê a configuração, chama o que está em `node.rs` e espera o sinal de parada. Tudo o mais mora na biblioteca `taba_node` para que os testes de integração subam **nós de verdade**.
 
-![As camadas e a direção das dependências](../diagramas/img/camadas.svg)
+![As camadas e a direção das dependências](../diagramas/img/pt-BR/camadas.svg)
 
 ## As três portas
 

@@ -1,7 +1,7 @@
-//! A recuperação de perdas e o retorno do nó (doc 04, seção 6.6; doc 20c, UC-RTN e UC-DRN-018;
-//! nível **C**): o nó que descobre ter sido excluído, ou que volta do drain, consulta a lista de
-//! perdas dos outros nós, procura cada mensagem no que ainda guarda e a envia ao responsável pelo
-//! bloco, antes de apagar o estado local. O `Clock` é manual; os prazos de espera são reais.
+//! The recovery of losses and the node's return (doc 04, section 6.6; doc 20c, UC-RTN and UC-DRN-018;
+//! level **C**): the node that finds out it was excluded, or that comes back from the drain, queries the
+//! other nodes' loss list, looks for each message in what it still keeps and sends it to the owner of the
+//! block, before deleting the local state. The `Clock` is manual; the wait deadlines are real.
 
 mod common;
 
@@ -24,16 +24,16 @@ use taba_node::engine::messages::Messages;
 use taba_node::storage::losses::Loss;
 use taba_node::storage::messages::MessageStore;
 
-/// Os 5 minutos de `cluster.freezing.duration`.
+/// The 5 minutes of `cluster.freezing.duration`.
 const FREEZING: Duration = Duration::from_secs(300);
-const TOPIC: &str = "pedidos";
+const TOPIC: &str = "orders";
 
 fn messages_of(node: &TestNode) -> Arc<Messages> {
     node.node
         .cluster()
         .and_then(|c| c.replication())
         .map(|r| r.messages.messages().clone())
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
 }
 
 fn recovery_of(node: &TestNode) -> Arc<Recovery> {
@@ -41,16 +41,16 @@ fn recovery_of(node: &TestNode) -> Arc<Recovery> {
         .cluster()
         .and_then(|c| c.replication())
         .map(|r| r.recovery.clone())
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
 }
 
-/// Uma mensagem como o nó 3 a guardaria: já entregue duas vezes e com uma invisibilidade vigente.
+/// A message as node 3 would keep it: already delivered twice and with a current invisibility.
 fn record(cluster: &TestCluster, n: u64, text: &str) -> MessageRecord {
     let now = cluster.clock.now_millis();
     MessageRecord {
         id: id::new_at(now + n),
         topic: TOPIC.into(),
-        body: json!({ "texto": text }).to_string().into_bytes(),
+        body: json!({ "text": text }).to_string().into_bytes(),
         content_type: "application/json".into(),
         group_id: None,
         deduplication_id: None,
@@ -63,15 +63,15 @@ fn record(cluster: &TestCluster, n: u64, text: &str) -> MessageRecord {
     }
 }
 
-/// O nó passa a guardar a mensagem (como se a tivesse recebido de uma publicação).
+/// The node starts keeping the message (as if it had received it from a publish).
 fn hold(node: &TestNode, record: &MessageRecord) {
     messages_of(node)
         .apply_load(&record.topic, record.to_meta(), record.body.clone())
-        .expect("grava");
+        .expect("writes");
     assert!(messages_of(node).holds(&record.topic, &record.id));
 }
 
-/// O nó declara a perda da mensagem (como a sincronização de um nó novo a declararia).
+/// The node declares the loss of the message (as the synchronization of a new node would declare it).
 fn declare_loss(cluster: &TestCluster, number: usize, record: &MessageRecord) {
     recovery_of(cluster.node(number))
         .losses()
@@ -99,11 +99,11 @@ async fn setup(env: &[(&str, &str)]) -> TestCluster {
     cluster
 }
 
-/// Isola o nó 3 e espera os outros dois o excluírem.
+/// Isolates node 3 and waits for the other two to exclude it.
 async fn exclude_third(cluster: &TestCluster) {
     let id = cluster.node_id(3);
     cluster.network.isolate(&host_of(3));
-    eventually("os dois saudáveis excluírem o nó 3", || {
+    eventually("the two healthy ones to exclude node 3", || {
         [1, 2].iter().all(|n| !cluster.member_ids(*n).contains(&id))
     })
     .await;
@@ -135,7 +135,7 @@ async fn an_excluded_node_sends_back_the_lost_messages_it_still_has_and_then_rej
     let cluster = setup(&[]).await;
     let lost = record(&cluster, 1, "perdida");
     let unlisted = record(&cluster, 2, "ninguem declarou");
-    let absent = record(&cluster, 3, "o nó 3 não tem");
+    let absent = record(&cluster, 3, "node 3 does not have");
     for number in [1, 2] {
         declare_loss(&cluster, number, &lost);
         declare_loss(&cluster, number, &absent);
@@ -145,15 +145,15 @@ async fn an_excluded_node_sends_back_the_lost_messages_it_still_has_and_then_rej
     hold(cluster.node(3), &unlisted);
     let third_id = cluster.node_id(3);
 
-    // A rede volta: o nó 3 vê que foi excluído, recupera o que a lista de perdas pede e só então
-    // apaga o estado local.
+    // The network returns: node 3 sees it was excluded, recovers what the loss list asks for and only then
+    // deletes the local state.
     cluster.network.restore(&host_of(3));
-    eventually("a mensagem perdida chegar aos dois responsáveis", || {
+    eventually("the lost message to reach the two owners", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
 
-    // Grava direto, com o contador de entregas; a invisibilidade e o recibo antigos somem.
+    // Writes directly, with the delivery counter; the old invisibility and receipt disappear.
     let info = messages_of(cluster.node(1))
         .message_info(TOPIC, &lost.id)
         .unwrap()
@@ -171,21 +171,21 @@ async fn an_excluded_node_sends_back_the_lost_messages_it_still_has_and_then_rej
                 .owned
         })
         .collect();
-    assert_eq!(owners.iter().filter(|o| **o).count(), 1, "um só dono");
+    assert_eq!(owners.iter().filter(|o| **o).count(), 1, "a single owner");
 
-    // Só o que a lista pede e o nó tem foi enviado: a mensagem que ninguém declarou perdida não
-    // vai, e a perdida que o nó 3 não tem fica no registro.
+    // Only what the list asks for and the node has was sent: the message no one declared lost does not
+    // go, and the lost one that node 3 does not have stays in the register.
     assert!(!has(cluster.node(1), &unlisted.id));
     assert!(!has(cluster.node(2), &unlisted.id));
     assert!(!has(cluster.node(1), &absent.id));
 
-    // Baixa: o par recuperado sai das duas tabelas; o que não foi recuperado fica.
-    eventually("a baixa da perda recuperada", || {
+    // Clearance: the recovered pair leaves both tables; what was not recovered stays.
+    eventually("the clearance of the recovered loss", || {
         loss_count(&cluster, 1) == 1 && loss_count(&cluster, 2) == 1
     })
     .await;
 
-    // A mensagem volta a ficar pronta para entrega.
+    // The message becomes ready for delivery again.
     let mut got = Vec::new();
     for _ in 0..40 {
         got = consume_ids(cluster.node(1)).await;
@@ -196,7 +196,7 @@ async fn an_excluded_node_sends_back_the_lost_messages_it_still_has_and_then_rej
     }
     assert_eq!(got, vec![lost.id.clone()]);
 
-    // Contagem: uma enviada pelo nó 3, aplicada nos dois responsáveis.
+    // Count: one sent by node 3, applied on the two owners.
     let third = cluster.node(3).metrics().await;
     assert_eq!(
         total(
@@ -229,8 +229,8 @@ async fn an_excluded_node_sends_back_the_lost_messages_it_still_has_and_then_rej
     .sum();
     assert_eq!(applied, 2.0);
 
-    // Recuperado, o nó apagou o que tinha e refaz o ingresso do zero (o freezing só o atrasa).
-    eventually("o nó 3 apagar o estado local", || {
+    // Recovered, the node deleted what it had and redoes the join from scratch (the freezing only delays it).
+    eventually("node 3 to delete the local state", || {
         !has(cluster.node(3), &unlisted.id)
     })
     .await;
@@ -251,12 +251,12 @@ async fn the_node_keeps_its_old_data_while_a_node_does_not_answer_the_loss_query
     exclude_third(&cluster).await;
     hold(cluster.node(3), &lost);
 
-    // O nó 2 não responde à consulta: o nó 3 espera, em `returning`, sem apagar nada.
+    // Node 2 does not answer the query: node 3 waits, in `returning`, without deleting anything.
     cluster
         .network
         .lose_kind("10.0.0.2", "message-loss", 100_000);
     cluster.network.restore(&host_of(3));
-    eventually("o nó 3 em returning", || {
+    eventually("node 3 in returning", || {
         cluster.node(3).node.shared().state() == NodeState::Returning
     })
     .await;
@@ -264,23 +264,23 @@ async fn the_node_keeps_its_old_data_while_a_node_does_not_answer_the_loss_query
     assert_eq!(ready.status(), 503);
     assert_eq!(ready.json::<Value>().await.unwrap()["reason"], "returning");
     let asked = cluster.network.count("message-loss");
-    eventually("a consulta repetida ao nó que não respondeu", || {
+    eventually("the repeated query to the node that did not answer", || {
         cluster.network.count("message-loss") >= asked + 3
     })
     .await;
     assert!(
         messages_of(cluster.node(3)).holds(TOPIC, &lost.id),
-        "o estado antigo fica em quarentena"
+        "the old state stays in quarantine"
     );
     assert!(!has(cluster.node(1), &lost.id));
 
-    // O nó 2 volta a responder: a recuperação termina e só então o estado é apagado.
+    // Node 2 answers again: the recovery finishes and only then is the state deleted.
     cluster.network.lose_kind("10.0.0.2", "message-loss", 0);
-    eventually("a mensagem chegar aos responsáveis", || {
+    eventually("the message to reach the owners", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
-    eventually("o nó 3 sair de returning", || {
+    eventually("node 3 to leave returning", || {
         cluster.node(3).node.shared().state() != NodeState::Returning
     })
     .await;
@@ -297,19 +297,22 @@ async fn when_the_recovery_timeout_runs_out_the_node_goes_on_with_the_lists_it_h
     exclude_third(&cluster).await;
     hold(cluster.node(3), &lost);
 
-    // O nó 2 nunca responde: passado o prazo, vale a lista do nó 1 e o nó segue.
+    // Node 2 never answers: after the deadline, node 1's list counts and the node goes on.
     cluster
         .network
         .lose_kind("10.0.0.2", "message-loss", 100_000);
     cluster.network.restore(&host_of(3));
-    eventually("a mensagem chegar aos responsáveis", || {
+    eventually("the message to reach the owners", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
-    eventually("o nó 3 apagar o estado local e sair de returning", || {
-        cluster.node(3).node.shared().state() != NodeState::Returning
-            && !messages_of(cluster.node(3)).holds(TOPIC, &lost.id)
-    })
+    eventually(
+        "node 3 to delete the local state and leave returning",
+        || {
+            cluster.node(3).node.shared().state() != NodeState::Returning
+                && !messages_of(cluster.node(3)).holds(TOPIC, &lost.id)
+        },
+    )
     .await;
     cluster.clock.advance(FREEZING);
     wait_joined(cluster.node(3)).await;
@@ -354,12 +357,12 @@ async fn a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_
         .unwrap();
     assert_eq!(back.status(), 202);
 
-    // Antes de limpar o estado, o nó entrega aos responsáveis o que a lista de perdas pedia.
-    eventually("a mensagem chegar aos responsáveis", || {
+    // Before clearing the state, the node delivers to the owners what the loss list asked for.
+    eventually("the message to reach the owners", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
-    eventually("o nó voltar com ID novo", || {
+    eventually("the node to come back with a new ID", || {
         let id = node3.node.node_id();
         id != old_id
             && cluster
@@ -387,14 +390,14 @@ async fn the_loss_routes_take_a_caller_that_is_not_a_member_for_the_list_and_the
     let outsider = cluster.network.transport("10.0.0.9");
     let first = common::cluster::address_of(&cluster, 1);
 
-    // A lista de perdas e o `recover` aceitam quem não consta na tabela; o registro, não.
+    // The loss list and `recover` accept whoever is not in the table; the register does not.
     declare_loss(&cluster, 1, &lost);
     let listed = outsider
         .call(&first, Request::MessageLoss(StreamQuery::default()))
         .await
-        .expect("a lista aceita quem não é membro");
+        .expect("the list accepts whoever is not a member");
     let Response::Stream(page) = listed else {
-        panic!("esperava um stream");
+        panic!("expected a stream");
     };
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0]["id"], lost.id);
@@ -408,7 +411,7 @@ async fn the_loss_routes_take_a_caller_that_is_not_a_member_for_the_list_and_the
             },
         )
         .await
-        .expect("o recover aceita quem não é membro");
+        .expect("the recover accepts whoever is not a member");
     assert!(matches!(recovered, Response::Recovered(r) if r.count == 0));
     let register = Request::LossRegister(LossRecord {
         topic: TOPIC.into(),
@@ -421,7 +424,7 @@ async fn the_loss_routes_take_a_caller_that_is_not_a_member_for_the_list_and_the
         other => panic!("esperava `cluster.not-member`: {other:?}"),
     }
 
-    // Um membro registra a perda no nó 2, que passa a listá-la, e a baixa a tira.
+    // A member registers the loss on node 2, which starts listing it, and the clearance removes it.
     let member = cluster.network.transport(host_of(1));
     let second = common::cluster::address_of(&cluster, 2);
     let ack = member.call(&second, register).await.unwrap();
@@ -437,21 +440,21 @@ async fn the_loss_routes_take_a_caller_that_is_not_a_member_for_the_list_and_the
     assert!(matches!(again, Response::Loss(a) if !a.changed));
     assert_eq!(loss_count(&cluster, 2), 0);
 
-    // O registro expira depois de `cluster.message-loss.ttl`.
+    // The record expires after `cluster.message-loss.ttl`.
     cluster.clock.advance(Duration::from_secs(2 * 3600));
     let Response::Stream(page) = outsider
         .call(&first, Request::MessageLoss(StreamQuery::default()))
         .await
         .unwrap()
     else {
-        panic!("esperava um stream");
+        panic!("expected a stream");
     };
     assert!(page.items.is_empty());
     assert_eq!(loss_count(&cluster, 1), 0);
     cluster.shutdown().await;
 }
 
-/// Reenviar o lote inteiro é seguro: a mensagem já aplicada é ignorada e a linha conta como feita.
+/// Resending the whole batch is safe: the message already applied is ignored and the line counts as done.
 ///
 /// UC: UC-RTN-009, UC-RTN-003
 #[tokio::test]
@@ -490,7 +493,7 @@ async fn resending_a_recover_batch_ignores_what_was_already_applied() {
     .sum();
     assert_eq!(
         skipped, 2.0,
-        "o segundo envio foi ignorado nos dois responsáveis"
+        "the second send was ignored on the two owners"
     );
     cluster.shutdown().await;
 }
@@ -514,19 +517,19 @@ async fn a_process_that_restarts_hands_back_the_lost_messages_its_old_disk_has()
         declare_loss(&cluster, number, &lost);
     }
 
-    // O processo cai sem drain e volta no mesmo endereço, com o mesmo disco: nasce como nó novo.
+    // The process falls without drain and comes back at the same address, with the same disk: it is born as a new node.
     let old_id = cluster.node_id(3);
     let (number, _) = restart_third(&mut cluster, &[], &[&lost, &unlisted]).await;
-    assert_ne!(cluster.node_id(number), old_id, "o ID é novo");
+    assert_ne!(cluster.node_id(number), old_id, "the ID is new");
 
-    // Só a mensagem que a lista de perdas pede volta aos responsáveis.
-    eventually("a mensagem perdida chegar aos dois responsáveis", || {
+    // Only the message the loss list asks for returns to the owners.
+    eventually("the lost message to reach the two owners", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
     assert!(!has(cluster.node(1), &unlisted.id));
     assert!(!has(cluster.node(2), &unlisted.id));
-    eventually("a baixa da perda recuperada", || {
+    eventually("the clearance of the recovered loss", || {
         loss_count(&cluster, 1) == 0 && loss_count(&cluster, 2) == 0
     })
     .await;
@@ -535,8 +538,8 @@ async fn a_process_that_restarts_hands_back_the_lost_messages_its_old_disk_has()
     cluster.shutdown().await;
 }
 
-/// O processo do nó 3 cai sem drain e volta no mesmo endereço, com o mesmo disco: nasce como nó
-/// novo. Devolve o número do nó e a pasta do disco.
+/// Node 3's process falls without drain and comes back at the same address, with the same disk: it is born as a
+/// new node. Returns the node number and the disk folder.
 async fn restart_third(
     cluster: &mut TestCluster,
     env: &[(&str, &str)],
@@ -547,12 +550,12 @@ async fn restart_third(
     node.shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
     let storage = dir.path().join("taba");
-    // O disco da vida anterior é gravado com o processo já morto: nenhum arquivo fica aberto.
+    // The previous life's disk is written with the process already dead: no file stays open.
     let old_disk = MessageStore::new(&storage, DbSynchronous::Off);
     for record in on_disk {
         old_disk
             .put(&record.topic, &record.to_meta(), &record.body)
-            .expect("grava no disco");
+            .expect("writes to disk");
     }
     drop(old_disk);
     let number = cluster
@@ -568,7 +571,7 @@ async fn restart_third(
         })
         .await
         .expect("o processo reinicia");
-    // A pasta do disco fica de pé: o `TempDir` morre com o teste, depois da verificação.
+    // The disk folder stays up: the `TempDir` dies with the test, after the check.
     std::mem::forget(dir);
     (number, storage)
 }
@@ -589,7 +592,7 @@ async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_aft
     declare_loss(&cluster, 2, &from_two);
     let old_id = cluster.node_id(3);
 
-    // O nó 2 não responde à consulta de perdas: antes, o reinício esperava até 5 minutos.
+    // Node 2 does not answer the loss query: before, the restart waited up to 5 minutes.
     cluster
         .network
         .lose_kind("10.0.0.2", "message-loss", 100_000);
@@ -599,29 +602,29 @@ async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_aft
         &[&from_one, &from_two, &unlisted],
     )
     .await;
-    assert_ne!(cluster.node_id(number), old_id, "o ID é novo");
+    assert_ne!(cluster.node_id(number), old_id, "the ID is new");
     wait_joined(cluster.node(number)).await;
     assert_eq!(
         cluster.node(number).node.shared().state(),
         NodeState::Active,
-        "entra ativo, sem passar por returning"
+        "joins active, without going through returning"
     );
 
-    // A lista do nó 1 já foi tratada; o nó 2 continua mudo e a pasta da vida anterior espera.
-    eventually("a mensagem do nó 1 chegar aos responsáveis", || {
+    // Node 1's list was already handled; node 2 stays mute and the previous life's folder waits.
+    eventually("node 1's message to reach the owners", || {
         has(cluster.node(1), &from_one.id) && has(cluster.node(2), &from_one.id)
     })
     .await;
     assert!(!has(cluster.node(1), &from_two.id));
     assert!(storage.join("_previous-life").is_dir());
 
-    // O nó 2 volta a responder: a segunda perda também volta, e a pasta é apagada.
+    // Node 2 answers again: the second loss also comes back, and the folder is deleted.
     cluster.network.lose_kind("10.0.0.2", "message-loss", 0);
-    eventually("a mensagem do nó 2 chegar aos responsáveis", || {
+    eventually("node 2's message to reach the owners", || {
         has(cluster.node(1), &from_two.id) && has(cluster.node(2), &from_two.id)
     })
     .await;
-    eventually("a pasta da vida anterior ser apagada", || {
+    eventually("the previous life's folder to be deleted", || {
         !storage.join("_previous-life").exists()
     })
     .await;
@@ -648,11 +651,11 @@ async fn the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_
     )
     .await;
     wait_joined(cluster.node(number)).await;
-    eventually("a mensagem chegar aos responsáveis", || {
+    eventually("the message to reach the owners", || {
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
-    eventually("a pasta da vida anterior ser apagada no prazo", || {
+    eventually("the previous life's folder to be deleted on time", || {
         !storage.join("_previous-life").exists()
     })
     .await;
@@ -670,10 +673,10 @@ async fn the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previou
     let storage = dir.path().join("taba");
     let old_disk = MessageStore::new(&storage, DbSynchronous::Off);
     let cluster = TestCluster::empty();
-    let old = record(&cluster, 1, "de um cluster que não existe mais");
+    let old = record(&cluster, 1, "from a cluster that no longer exists");
     old_disk
         .put(&old.topic, &old.to_meta(), &old.body)
-        .expect("grava no disco");
+        .expect("writes to disk");
     drop(old_disk);
     assert!(storage.join(TOPIC).is_dir());
 
@@ -684,11 +687,11 @@ async fn the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previou
     let number = cluster
         .spawn_node(builder)
         .await
-        .expect("o primeiro nó sobe");
+        .expect("the first node starts");
     wait_joined(cluster.node(number)).await;
 
-    // Não há de quem recuperar: o disco antigo foi apagado, e nada ficou de lado.
-    eventually("o disco antigo ser apagado", || {
+    // There is no one to recover from: the old disk was deleted, and nothing was set aside.
+    eventually("the old disk to be deleted", || {
         !storage.join(TOPIC).exists()
     })
     .await;

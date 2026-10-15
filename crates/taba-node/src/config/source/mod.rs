@@ -1,6 +1,6 @@
-//! De onde os valores vêm e como viram tipos: arquivo `.yml`, variáveis de ambiente,
-//! padrões da tabela. Precedência, da maior para a menor: variável de ambiente,
-//! arquivo, padrão (doc 10, "Como configurar").
+//! Where the values come from and how they become types: `.yml` file, environment variables,
+//! table defaults. Precedence, from highest to lowest: environment variable,
+//! file, default (doc 10, "How to configure").
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,7 +12,7 @@ use ipnet::IpNet;
 use super::error::ConfigError;
 use super::params::{self, PARAMS};
 
-/// As variáveis de ambiente, atrás de um trait para os testes não tocarem o processo.
+/// The environment variables, behind a trait so the tests do not touch the process.
 pub trait EnvSource {
     fn get(&self, name: &str) -> Option<String>;
     fn names(&self) -> Vec<String>;
@@ -56,15 +56,15 @@ impl EnvSource for MapEnv {
     }
 }
 
-/// Os valores definidos pelo usuário (arquivo e ambiente) mais os padrões da tabela.
+/// The values the user set (file and environment) plus the table defaults.
 pub struct Source {
     explicit: BTreeMap<String, String>,
     read: RefCell<BTreeSet<String>>,
 }
 
 impl Source {
-    /// Junta o arquivo (já lido; o rótulo vai nas mensagens) e o ambiente.
-    /// Devolve também os avisos (variáveis `TABA_*` que ninguém conhece).
+    /// Joins the file (already read; the label goes in the messages) and the environment.
+    /// Also returns the warnings (`TABA_*` variables nobody knows).
     pub fn build(
         yaml: Option<(&str, &str)>,
         env: &dyn EnvSource,
@@ -88,7 +88,7 @@ impl Source {
             .names()
             .into_iter()
             .filter(|n| n.starts_with("TABA_") && !known_env.contains(n))
-            .map(|n| format!("variável de ambiente `{n}` desconhecida: ignorada"))
+            .map(|n| format!("environment variable `{n}` unknown: ignored"))
             .collect();
 
         Ok((
@@ -100,13 +100,13 @@ impl Source {
         ))
     }
 
-    /// `true` se o usuário definiu a chave (arquivo ou ambiente), não o padrão.
+    /// `true` if the user set the key (file or environment), not the default.
     #[cfg(test)]
     pub fn is_set(&self, key: &str) -> bool {
         self.explicit.contains_key(key)
     }
 
-    /// As chaves definidas pelo usuário que começam com algum dos prefixos.
+    /// The keys set by the user that start with any of the prefixes.
     pub fn set_keys_with_prefix(&self, prefixes: &[&str]) -> Vec<String> {
         self.explicit
             .keys()
@@ -115,7 +115,7 @@ impl Source {
             .collect()
     }
 
-    /// As chaves da tabela que `Config` leu. Os testes conferem que são todas.
+    /// The table keys that `Config` read. The tests check that they are all of them.
     #[cfg(test)]
     pub fn keys_read(&self) -> BTreeSet<String> {
         self.read.borrow().clone()
@@ -127,12 +127,12 @@ impl Source {
         Ok(self.explicit.get(key).map(String::as_str).or(param.default))
     }
 
-    /// Valor obrigatório: definido pelo usuário ou com padrão na tabela.
+    /// Required value: set by the user or with a default in the table.
     pub fn get<T: Parse>(&self, key: &'static str) -> Result<T, ConfigError> {
         self.opt(key)?.ok_or(ConfigError::Missing(key))
     }
 
-    /// Valor opcional: `None` quando não há valor nem padrão.
+    /// Optional value: `None` when there is neither a value nor a default.
     pub fn opt<T: Parse>(&self, key: &'static str) -> Result<Option<T>, ConfigError> {
         match self.raw(key)? {
             None => Ok(None),
@@ -142,13 +142,13 @@ impl Source {
                     key,
                     env: params::env_name(key),
                     value: raw.to_owned(),
-                    reason: format!("esperado {}", T::EXPECTED),
+                    reason: format!("expected {}", T::EXPECTED),
                 }),
         }
     }
 }
 
-/// Achata o YAML em chaves com pontos: cada ponto da chave é um nível de aninhamento.
+/// Flattens the YAML into dotted keys: each dot of the key is a nesting level.
 fn flatten_yaml(
     label: &str,
     content: &str,
@@ -189,7 +189,7 @@ fn flatten_yaml(
                         Value::Bool(b) => parts.push(b.to_string()),
                         _ => {
                             return Err(file_err(format!(
-                                "`{prefix}`: a lista só aceita valores simples"
+                                "`{prefix}`: the list only accepts simple values"
                             )));
                         }
                     }
@@ -199,9 +199,7 @@ fn flatten_yaml(
             Value::Mapping(map) => {
                 for (k, v) in map {
                     let Value::String(name) = k else {
-                        return Err(file_err(format!(
-                            "chave que não é texto abaixo de `{prefix}`"
-                        )));
+                        return Err(file_err(format!("non-text key below `{prefix}`")));
                     };
                     let path = if prefix.is_empty() {
                         name.clone()
@@ -212,16 +210,16 @@ fn flatten_yaml(
                 }
                 Ok(())
             }
-            Value::Tagged(_) => Err(file_err(format!("`{prefix}`: tags YAML não são aceitas"))),
+            Value::Tagged(_) => Err(file_err(format!("`{prefix}`: YAML tags are not accepted"))),
         }
     }
 
     walk("", &value, out, &file_err)
 }
 
-/// Converte o texto de um parâmetro no tipo pedido.
+/// Converts a parameter's text into the requested type.
 pub trait Parse: Sized {
-    /// O que o parâmetro espera, para a mensagem de erro.
+    /// What the parameter expects, for the error message.
     const EXPECTED: &'static str;
     fn parse(s: &str) -> Option<Self>;
 }
@@ -236,14 +234,14 @@ macro_rules! parse_with_from_str {
 }
 
 parse_with_from_str! {
-    u16 => "uma porta (0 a 65535)",
-    u32 => "um número inteiro",
-    u64 => "um número inteiro",
-    f64 => "um número",
+    u16 => "a port (0 to 65535)",
+    u32 => "an integer",
+    u64 => "an integer",
+    f64 => "a number",
 }
 
 impl Parse for bool {
-    const EXPECTED: &'static str = "`true` ou `false`";
+    const EXPECTED: &'static str = "`true` or `false`";
     fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "true" => Some(true),
@@ -254,14 +252,14 @@ impl Parse for bool {
 }
 
 impl Parse for String {
-    const EXPECTED: &'static str = "um texto";
+    const EXPECTED: &'static str = "a text";
     fn parse(s: &str) -> Option<Self> {
         Some(s.to_owned())
     }
 }
 
 impl Parse for Duration {
-    const EXPECTED: &'static str = "uma duração com unidade (`100ms`, `60s`, `5m`, `2h` ou `30d`)";
+    const EXPECTED: &'static str = "a duration with a unit (`100ms`, `60s`, `5m`, `2h` or `30d`)";
     fn parse(s: &str) -> Option<Self> {
         let split = s.find(|c: char| !c.is_ascii_digit())?;
         let (digits, unit) = s.split_at(split);
@@ -278,12 +276,12 @@ impl Parse for Duration {
     }
 }
 
-/// Um tamanho em bytes. As unidades são binárias: `5MB` são 5.242.880 bytes (doc 10).
+/// A size in bytes. The units are binary: `5MB` is 5,242,880 bytes (doc 10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bytes(pub u64);
 
 impl Parse for Bytes {
-    const EXPECTED: &'static str = "um tamanho (`512KB`, `5MB`, `1GB`) ou um número de bytes";
+    const EXPECTED: &'static str = "a size (`512KB`, `5MB`, `1GB`) or a number of bytes";
     fn parse(s: &str) -> Option<Self> {
         let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
         let (digits, unit) = s.split_at(split);
@@ -300,12 +298,12 @@ impl Parse for Bytes {
     }
 }
 
-/// Lista: texto separado por vírgula (a lista do YAML já chega assim).
+/// List: text separated by commas (a YAML list already arrives like this).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct List(pub Vec<String>);
 
 impl Parse for List {
-    const EXPECTED: &'static str = "uma lista separada por vírgula";
+    const EXPECTED: &'static str = "a comma-separated list";
     fn parse(s: &str) -> Option<Self> {
         Some(List(
             s.split(',')
@@ -317,12 +315,12 @@ impl Parse for List {
     }
 }
 
-/// Lista de IPs ou faixas CIDR (`10.0.0.0/8, 192.168.1.10`).
+/// List of IPs or CIDR ranges (`10.0.0.0/8, 192.168.1.10`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetList(pub Vec<IpNet>);
 
 impl Parse for NetList {
-    const EXPECTED: &'static str = "uma lista de IPs ou faixas CIDR separada por vírgula";
+    const EXPECTED: &'static str = "a comma-separated list of IPs or CIDR ranges";
     fn parse(s: &str) -> Option<Self> {
         let mut nets = Vec::new();
         for part in s.split(',').map(str::trim).filter(|p| !p.is_empty()) {

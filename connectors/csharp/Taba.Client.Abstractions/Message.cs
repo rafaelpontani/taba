@@ -1,6 +1,6 @@
 namespace Taba
 {
-    /// <summary>Uma mensagem entregue. O <see cref="Body"/> sai sempre como bytes (doc 19, seção 18.4).</summary>
+    /// <summary>A delivered message. The <see cref="Body"/> always comes out as bytes (doc 19, section 18.4).</summary>
     public sealed class Message
     {
         internal Message()
@@ -10,8 +10,8 @@ namespace Taba
         public string Id { get; internal set; }
 
         /// <summary>
-        /// JSON: o texto JSON tal qual veio. <c>text/*</c> em UTF-8: o texto em UTF-8. Base64: os bytes
-        /// já decodificados.
+        /// JSON: the JSON text as it came. <c>text/*</c> in UTF-8: the UTF-8 text. Base64: the bytes
+        /// already decoded.
         /// </summary>
         public byte[] Body { get; internal set; }
 
@@ -21,10 +21,10 @@ namespace Taba
 
         public long DeliveryCount { get; internal set; }
 
-        /// <summary>Data de publicação, como texto RFC 3339.</summary>
+        /// <summary>Publication date, as RFC 3339 text.</summary>
         public string PublishedAt { get; internal set; }
 
-        /// <summary>Até quando a mensagem fica invisível, como texto RFC 3339.</summary>
+        /// <summary>Until when the message stays invisible, as RFC 3339 text.</summary>
         public string InvisibleUntil { get; internal set; }
 
         public string GroupId { get; internal set; }
@@ -35,10 +35,10 @@ namespace Taba
 
         public string DeadLetterReason { get; internal set; }
 
-        /// <summary>O JSON da mensagem, como o servidor devolveu.</summary>
+        /// <summary>The message JSON, as the server returned it.</summary>
         public string Raw { get; internal set; }
 
-        /// <summary>O <see cref="Body"/> como texto UTF-8.</summary>
+        /// <summary>The <see cref="Body"/> as UTF-8 text.</summary>
         public string BodyText
         {
             get { return Utf8.Encoding.GetString(Body); }

@@ -8,9 +8,9 @@ using System.Text;
 namespace Taba
 {
     /// <summary>
-    /// O serializador padrão do <c>PublishJson</c>, sem dependência extra: <c>System.Text.Json</c> (nomes em
-    /// camelCase) no .NET 5 em diante e <c>DataContractJsonSerializer</c> no .NET Framework (nomes como
-    /// declarados; datas e tipos especiais seguem as regras dele). Quem precisa de mais informa o seu em
+    /// The default serializer of <c>PublishJson</c>, with no extra dependency: <c>System.Text.Json</c> (names in
+    /// camelCase) on .NET 5 and later and <c>DataContractJsonSerializer</c> on .NET Framework (names as
+    /// declared; dates and special types follow its rules). Whoever needs more sets their own in
     /// <see cref="TabaConfig.JsonSerializer"/>.
     /// </summary>
     internal sealed class DefaultJsonSerializer : ITabaJsonSerializer

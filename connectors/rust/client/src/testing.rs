@@ -1,5 +1,5 @@
-//! Um transporte de mentira para os testes de quem usa o conector (o `taba-cli` o usa): devolve
-//! respostas combinadas e guarda o que foi enviado.
+//! A fake transport for the tests of whoever uses the connector (`taba-cli` uses it): returns
+//! agreed responses and records what was sent.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -9,10 +9,10 @@ use crate::client::{Client, Config};
 use crate::http::{Request, Response, Url};
 use crate::transport::{Timeouts, Transport, TransportError};
 
-/// O que o transporte recebeu numa chamada.
+/// What the transport received in a call.
 #[derive(Debug, Clone)]
 pub struct Seen {
-    /// `http://host:porta` do servidor chamado.
+    /// `http://host:port` of the server called.
     pub origin: String,
     pub request: Request,
     pub timeouts: Timeouts,
@@ -43,7 +43,7 @@ impl MockTransport {
         Arc::new(MockTransport::default())
     }
 
-    /// Combina a próxima resposta.
+    /// Agrees on the next response.
     pub fn reply(&self, status: u16, headers: &[(&str, &str)], body: &str) {
         self.replies.lock().unwrap().push_back(Ok(Response {
             status,
@@ -55,7 +55,7 @@ impl MockTransport {
         }));
     }
 
-    /// Combina uma falha de transporte como próxima resposta.
+    /// Agrees on a transport failure as the next response.
     pub fn fail(&self, error: TransportError) {
         self.replies.lock().unwrap().push_back(Err(error));
     }
@@ -64,7 +64,7 @@ impl MockTransport {
         self.seen.lock().unwrap().clone()
     }
 
-    /// Respostas combinadas que ninguém usou.
+    /// Agreed responses that nobody used.
     pub fn pending(&self) -> usize {
         self.replies.lock().unwrap().len()
     }
@@ -87,13 +87,13 @@ impl Transport for Arc<MockTransport> {
             .unwrap()
             .pop_front()
             .unwrap_or(Err(TransportError::Connect(
-                "sem resposta combinada no teste".into(),
+                "no agreed response in the test".into(),
             )))
     }
 }
 
-/// Um cliente sobre o transporte de mentira, sem esperar de verdade entre as tentativas.
+/// A client over the fake transport, without really waiting between attempts.
 pub fn client(config: Config, mock: &Arc<MockTransport>) -> Client {
     Client::with_transport(config, Box::new(mock.clone()), Arc::new(|_: Duration| {}))
-        .expect("endereço de teste inválido")
+        .expect("invalid test address")
 }

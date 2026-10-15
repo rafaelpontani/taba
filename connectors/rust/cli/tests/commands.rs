@@ -1,6 +1,6 @@
-//! Os comandos do `taba-cli` de ponta a ponta, menos a rede: cada teste roda o programa inteiro
-//! (argumentos, perfis, saída, códigos) sobre um transporte de mentira e confere a chamada que o CLI
-//! monta (rota, parâmetros, cabeçalhos e corpo) e o que ele imprime.
+//! The `taba-cli` commands end to end, minus the network: each test runs the whole program
+//! (arguments, profiles, output, codes) over a fake transport and checks the call the CLI
+//! builds (route, parameters, headers and body) and what it prints.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Cursor};
@@ -180,16 +180,16 @@ fn pretty(json: &str) -> String {
     taba_client::json::pretty(json).unwrap()
 }
 
-const TOPIC: &str = "{\"id\":\"01927f3a\",\"name\":\"pedidos\",\"type\":\"queue\",\"tags\":{},\"createdAt\":\"2026-10-06T12:00:00.000Z\",\"fifo\":false}";
+const TOPIC: &str = "{\"id\":\"01927f3a\",\"name\":\"orders\",\"type\":\"queue\",\"tags\":{},\"createdAt\":\"2026-10-06T12:00:00.000Z\",\"fifo\":false}";
 const ERR_404: &str =
-    "{\"code\":\"topic.not-found\",\"message\":\"O tópico não existe.\",\"requestId\":\"r-9\"}";
+    "{\"code\":\"topic.not-found\",\"message\":\"The topic does not exist.\",\"requestId\":\"r-9\"}";
 
 fn message(id: &str, body: &str) -> String {
     format!("{{\"id\":\"{id}\",\"body\":{body},\"contentType\":\"application/json\",\"receiptToken\":\"rt-{id}\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\"}}")
 }
 
 // ---------------------------------------------------------------------------------------------
-// Conexão, perfis escolhidos, saída e erros
+// Connection, chosen profiles, output and errors
 // ---------------------------------------------------------------------------------------------
 
 /// UC: UC-CLI-022, UC-CLI-001, UC-CLI-002
@@ -197,7 +197,7 @@ fn message(id: &str, body: &str) -> String {
 fn without_any_configuration_it_calls_localhost_8080_without_a_token() {
     let rig = Rig::new();
     rig.mock().reply(200, &[], TOPIC);
-    let out = rig.run(&["topic", "get", "pedidos"]);
+    let out = rig.run(&["topic", "get", "orders"]);
     assert_eq!(out.code, 0, "{}", out.err);
     let seen = rig.seen();
     assert_eq!(seen[0].origin, "http://127.0.0.1:8080");
@@ -206,7 +206,7 @@ fn without_any_configuration_it_calls_localhost_8080_without_a_token() {
             seen[0].request.method.as_str(),
             seen[0].request.target.as_str()
         ),
-        ("GET", "/topics/pedidos")
+        ("GET", "/topics/orders")
     );
     assert_eq!(seen[0].header("Authorization"), None);
     assert!(seen[0]
@@ -215,7 +215,7 @@ fn without_any_configuration_it_calls_localhost_8080_without_a_token() {
         .starts_with("taba-cli/"));
     assert!(
         !rig.config_path().exists(),
-        "rodar um comando não cria o arquivo de perfis"
+        "running a command does not create the profiles file"
     );
 }
 
@@ -223,7 +223,7 @@ fn without_any_configuration_it_calls_localhost_8080_without_a_token() {
 #[test]
 fn the_default_profile_gives_the_url_and_the_token_from_its_file() {
     let rig = Rig::new();
-    let token = rig.file("tok", "tb_do_arquivo\nsegunda linha ignorada\n");
+    let token = rig.file("tok", "tb_from_file\nsecond line ignored\n");
     assert_eq!(
         rig.run(&[
             "profile",
@@ -238,13 +238,10 @@ fn the_default_profile_gives_the_url_and_the_token_from_its_file() {
         0
     );
     rig.mock().reply(200, &[], TOPIC);
-    assert_eq!(rig.run(&["topic", "get", "pedidos"]).code, 0);
+    assert_eq!(rig.run(&["topic", "get", "orders"]).code, 0);
     let seen = rig.seen();
     assert_eq!(seen[0].origin, "http://10.0.0.7:8080");
-    assert_eq!(
-        seen[0].header("Authorization"),
-        Some("Bearer tb_do_arquivo")
-    );
+    assert_eq!(seen[0].header("Authorization"), Some("Bearer tb_from_file"));
 }
 
 /// UC: UC-CLI-026
@@ -275,7 +272,7 @@ fn the_profile_flag_beats_the_variable_and_the_variable_overrides_only_its_field
     assert_eq!(
         seen[2].timeouts.total.as_secs(),
         7,
-        "o resto vem do perfil escolhido"
+        "the rest comes from the chosen profile"
     );
 }
 
@@ -283,9 +280,9 @@ fn the_profile_flag_beats_the_variable_and_the_variable_overrides_only_its_field
 #[test]
 fn an_unknown_profile_is_a_usage_error() {
     let rig = Rig::new();
-    let out = rig.run(&["--profile", "nada", "topic", "list"]);
+    let out = rig.run(&["--profile", "nope", "topic", "list"]);
     assert_eq!(out.code, 2);
-    assert!(out.err.contains("`nada` não existe"), "{}", out.err);
+    assert!(out.err.contains("`nope` does not exist"), "{}", out.err);
     assert!(rig.seen().is_empty());
 }
 
@@ -315,9 +312,9 @@ fn there_is_no_option_to_turn_off_certificate_checks_and_a_missing_ca_file_exits
     ] {
         let out = rig.run(&["topic", "list", flag, "x"]);
         assert_eq!(out.code, 2, "{flag}");
-        assert!(out.err.contains("opção desconhecida"), "{}", out.err);
+        assert!(out.err.contains("unknown option"), "{}", out.err);
     }
-    rig.set_env("TABA_CLI_CA_FILE", "/nao/existe/ca.pem");
+    rig.set_env("TABA_CLI_CA_FILE", "/does/not/exist/ca.pem");
     let out = rig.run(&["topic", "list"]);
     assert_eq!(out.code, 5);
     assert!(out.err.contains("ca-file"), "{}", out.err);
@@ -327,11 +324,11 @@ fn there_is_no_option_to_turn_off_certificate_checks_and_a_missing_ca_file_exits
 #[test]
 fn an_unreadable_token_file_exits_5() {
     let rig = Rig::new();
-    rig.set_env("TABA_CLI_TOKEN_FILE", "/nao/existe/tok");
+    rig.set_env("TABA_CLI_TOKEN_FILE", "/does/not/exist/tok");
     let out = rig.run(&["topic", "list"]);
     assert_eq!(out.code, 5);
     assert!(out.err.contains("token-file"), "{}", out.err);
-    let empty = rig.file("vazio", "\n");
+    let empty = rig.file("empty", "\n");
     rig.set_env("TABA_CLI_TOKEN_FILE", &empty);
     assert_eq!(rig.run(&["topic", "list"]).code, 5);
 }
@@ -350,11 +347,11 @@ fn json_is_the_server_answer_indented_table_and_raw_change_only_the_form() {
     assert!(
         table
             .out
-            .starts_with("id        name     type   tags  createdAt"),
+            .starts_with("id        name    type   tags  createdAt"),
         "{}",
         table.out
     );
-    assert!(table.out.contains("pedidos"));
+    assert!(table.out.contains("orders"));
     let raw = rig.run(&["topic", "list", "--output=raw"]);
     assert_eq!(raw.out, format!("{page}\n"));
 }
@@ -380,10 +377,10 @@ fn the_output_format_comes_from_the_profile_and_the_flag_overrides_it() {
 fn a_204_prints_nothing_and_quiet_silences_success() {
     let rig = Rig::new();
     rig.mock().reply(204, &[], "");
-    let out = rig.run(&["topic", "delete", "pedidos", "--yes"]);
+    let out = rig.run(&["topic", "delete", "orders", "--yes"]);
     assert_eq!((out.code, out.out.as_str(), out.err.as_str()), (0, "", ""));
     rig.mock().reply(200, &[], TOPIC);
-    let quiet = rig.run(&["topic", "get", "pedidos", "-q"]);
+    let quiet = rig.run(&["topic", "get", "orders", "-q"]);
     assert_eq!((quiet.code, quiet.out.as_str()), (0, ""));
 }
 
@@ -392,12 +389,12 @@ fn a_204_prints_nothing_and_quiet_silences_success() {
 fn an_api_error_goes_to_stderr_with_code_message_and_request_id_and_exits_1() {
     let rig = Rig::new();
     rig.mock().reply(404, &[("X-Request-Id", "r-9")], ERR_404);
-    let out = rig.run(&["topic", "get", "nada"]);
+    let out = rig.run(&["topic", "get", "nope"]);
     assert_eq!(out.code, 1);
     assert_eq!(out.out, "");
     assert_eq!(
         out.err,
-        "topic.not-found: O tópico não existe. (requestId r-9)\n"
+        "topic.not-found: The topic does not exist. (requestId r-9)\n"
     );
 }
 
@@ -409,7 +406,7 @@ fn with_json_the_error_response_is_printed_as_it_came_and_retry_after_gets_its_o
     rig.mock().reply(
         503,
         &[("Retry-After", "5")],
-        "{\"code\":\"cluster.quorum-unavailable\",\"message\":\"Sem quórum.\",\"requestId\":\"r\"}",
+        "{\"code\":\"cluster.quorum-unavailable\",\"message\":\"No quorum.\",\"requestId\":\"r\"}",
     );
     let out = rig.run(&["topic", "get", "x", "-o", "json"]);
     assert_eq!(out.code, 1);
@@ -426,20 +423,20 @@ fn with_json_the_error_response_is_printed_as_it_came_and_retry_after_gets_its_o
 #[test]
 fn exit_codes_cover_usage_connection_and_timeout() {
     let rig = Rig::new();
-    assert_eq!(rig.run(&["nada"]).code, 2);
+    assert_eq!(rig.run(&["nope"]).code, 2);
     assert_eq!(rig.run(&["topic"]).code, 2);
     assert_eq!(rig.run(&["topic", "frobnicate"]).code, 2);
-    assert_eq!(rig.run(&["topic", "get"]).code, 2, "falta o nome");
+    assert_eq!(rig.run(&["topic", "get"]).code, 2, "the name is missing");
     assert_eq!(
         rig.run(&["topic", "get", "a", "b"]).code,
         2,
-        "argumento demais"
+        "too many arguments"
     );
-    assert_eq!(rig.run(&["topic", "get", "a", "--nada"]).code, 2);
-    assert_eq!(rig.run(&[]).code, 0, "sem argumentos mostra a ajuda");
+    assert_eq!(rig.run(&["topic", "get", "a", "--nope"]).code, 2);
+    assert_eq!(rig.run(&[]).code, 0, "with no arguments it shows the help");
 
     rig.run(&["profile", "add", "p", "--max-attempts", "1"]);
-    rig.mock().fail(TransportError::Connect("recusada".into()));
+    rig.mock().fail(TransportError::Connect("refused".into()));
     let out = rig.run(&["topic", "list"]);
     assert_eq!(out.code, 3);
     assert!(out.err.starts_with("client.network:"), "{}", out.err);
@@ -460,7 +457,7 @@ fn the_request_id_flag_goes_in_the_header() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tópicos
+// Topics
 // ---------------------------------------------------------------------------------------------
 
 /// UC: UC-CLI-006
@@ -472,7 +469,7 @@ fn topic_create_sends_only_the_options_given() {
     let out = rig.run(&[
         "topic",
         "create",
-        "pedidos",
+        "orders",
         "--type",
         "queue",
         "--fifo",
@@ -493,7 +490,7 @@ fn topic_create_sends_only_the_options_given() {
         ),
         ("POST", "/topics")
     );
-    assert_eq!(seen[0].body_text(), "{\"name\":\"pedidos\",\"type\":\"queue\",\"tags\":{\"time\":\"financeiro\",\"a\":\"b\"},\"fifo\":true,\"ttl\":86400}");
+    assert_eq!(seen[0].body_text(), "{\"name\":\"orders\",\"type\":\"queue\",\"tags\":{\"time\":\"financeiro\",\"a\":\"b\"},\"fifo\":true,\"ttl\":86400}");
     assert_eq!(seen[0].header("Content-Type"), Some("application/json"));
 
     rig.run(&[
@@ -503,13 +500,13 @@ fn topic_create_sends_only_the_options_given() {
         "--type",
         "distributor",
         "--prefix",
-        "pedidos-",
+        "orders-",
         "--prefix",
         "x",
     ]);
     assert_eq!(
         rig.seen()[1].body_text(),
-        "{\"name\":\"dist\",\"type\":\"distributor\",\"prefixes\":[\"pedidos-\",\"x\"]}"
+        "{\"name\":\"dist\",\"type\":\"distributor\",\"prefixes\":[\"orders-\",\"x\"]}"
     );
 }
 
@@ -518,9 +515,13 @@ fn topic_create_sends_only_the_options_given() {
 fn topic_create_needs_a_valid_type_and_well_formed_numbers_and_tags() {
     let rig = Rig::new();
     assert_eq!(rig.run(&["topic", "create", "x"]).code, 2);
-    assert_eq!(rig.run(&["topic", "create", "x", "--type", "fila"]).code, 2);
     assert_eq!(
-        rig.run(&["topic", "create", "x", "--type", "queue", "--ttl", "muito"])
+        rig.run(&["topic", "create", "x", "--type", "queue-ish"])
+            .code,
+        2
+    );
+    assert_eq!(
+        rig.run(&["topic", "create", "x", "--type", "queue", "--ttl", "lots"])
             .code,
         2
     );
@@ -536,12 +537,14 @@ fn topic_create_needs_a_valid_type_and_well_formed_numbers_and_tags() {
 #[test]
 fn the_server_refusal_for_a_field_that_does_not_fit_the_type_is_shown() {
     let rig = Rig::new();
-    rig.mock().reply(400, &[], "{\"code\":\"validation.not-applicable\",\"message\":\"Campo que não vale.\",\"requestId\":\"r\",\"details\":[{\"field\":\"fifo\",\"code\":\"validation.not-applicable\",\"message\":\"fifo não vale num distribuidor\"}]}");
+    rig.mock().reply(400, &[], "{\"code\":\"validation.not-applicable\",\"message\":\"A field that does not apply.\",\"requestId\":\"r\",\"details\":[{\"field\":\"fifo\",\"code\":\"validation.not-applicable\",\"message\":\"fifo does not apply to a distributor\"}]}");
     let out = rig.run(&["topic", "create", "d", "--type", "distributor", "--fifo"]);
     assert_eq!(out.code, 1);
     assert!(
         out.err.contains("validation.not-applicable")
-            && out.err.contains("- fifo: fifo não vale num distribuidor"),
+            && out
+                .err
+                .contains("- fifo: fifo does not apply to a distributor"),
         "{}",
         out.err
     );
@@ -557,7 +560,7 @@ fn topic_list_passes_name_sort_limit_and_cursor() {
         "topic",
         "list",
         "--name",
-        "pedido",
+        "order",
         "--sort=-createdAt",
         "--limit",
         "2",
@@ -567,11 +570,11 @@ fn topic_list_passes_name_sort_limit_and_cursor() {
     assert_eq!(out.code, 0, "{}", out.err);
     assert_eq!(
         rig.seen()[0].request.target,
-        "/topics?name=pedido&sort=-createdAt&limit=2&cursor=c1"
+        "/topics?name=order&sort=-createdAt&limit=2&cursor=c1"
     );
     assert!(
         out.out.contains("\"nextCursor\": \"c2\""),
-        "uma página sai como o servidor a devolveu: {}",
+        "a page comes out as the server returned it: {}",
         out.out
     );
 }
@@ -618,7 +621,7 @@ fn topic_get_and_update_send_only_what_was_given() {
     rig.run(&[
         "topic",
         "update",
-        "pedidos",
+        "orders",
         "--ttl",
         "default",
         "--tag",
@@ -627,7 +630,7 @@ fn topic_get_and_update_send_only_what_was_given() {
     rig.run(&[
         "topic",
         "update",
-        "pedidos",
+        "orders",
         "--clear-tags",
         "--max-deliveries",
         "5",
@@ -687,7 +690,7 @@ fn immutable_fields_are_not_options_and_an_empty_update_is_a_usage_error() {
 #[test]
 fn delete_without_yes_refuses_outside_a_terminal() {
     let rig = Rig::new();
-    let out = rig.run(&["topic", "delete", "pedidos"]);
+    let out = rig.run(&["topic", "delete", "orders"]);
     assert_eq!(out.code, 2);
     assert!(out.err.contains("--yes"), "{}", out.err);
     assert!(rig.seen().is_empty());
@@ -701,17 +704,17 @@ fn delete_without_yes_refuses_outside_a_terminal() {
 fn in_a_terminal_delete_asks_and_only_yes_goes_on() {
     let mut rig = Rig::new();
     rig.platform.tty = true;
-    let out = rig.run_with(&["topic", "delete", "pedidos"], "n\n");
+    let out = rig.run_with(&["topic", "delete", "orders"], "n\n");
     assert_eq!(out.code, 2);
     assert!(
-        out.err.contains("Remover o tópico `pedidos`") && out.err.contains("Cancelado."),
+        out.err.contains("Remove the topic `orders`") && out.err.contains("Cancelled."),
         "{}",
         out.err
     );
     assert!(rig.seen().is_empty());
 
     rig.mock().reply(204, &[], "");
-    let out = rig.run_with(&["topic", "delete", "pedidos"], "s\n");
+    let out = rig.run_with(&["topic", "delete", "orders"], "y\n");
     assert_eq!(out.code, 0, "{}", out.err);
     let seen = rig.seen();
     assert_eq!(
@@ -719,11 +722,11 @@ fn in_a_terminal_delete_asks_and_only_yes_goes_on() {
             seen[0].request.method.as_str(),
             seen[0].request.target.as_str()
         ),
-        ("DELETE", "/topics/pedidos")
+        ("DELETE", "/topics/orders")
     );
 
     rig.mock().reply(204, &[], "");
-    assert_eq!(rig.run_with(&["token", "revoke", "t1"], "sim\n").code, 0);
+    assert_eq!(rig.run_with(&["token", "revoke", "t1"], "yes\n").code, 0);
     assert_eq!(rig.seen()[1].request.target, "/tokens/t1");
 }
 
@@ -738,7 +741,7 @@ fn yes_skips_the_question() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Mensagens
+// Messages
 // ---------------------------------------------------------------------------------------------
 
 /// UC: UC-CLI-010
@@ -751,7 +754,7 @@ fn publish_takes_the_body_from_the_argument_the_file_or_stdin() {
     }
     let from_arg = rig.run(&[
         "publish",
-        "pedidos",
+        "orders",
         "{\"a\":1}",
         "--group-id",
         "g 1",
@@ -766,20 +769,20 @@ fn publish_takes_the_body_from_the_argument_the_file_or_stdin() {
     let path = rig.file("corpo.bin", "\u{1}\u{2}binario");
     rig.run(&[
         "publish",
-        "pedidos",
+        "orders",
         "--file",
         &path,
         "--content-type",
         "application/octet-stream",
     ]);
     rig.run_with(
-        &["publish", "pedidos", "--stdin", "--text"],
-        "linha de texto\n",
+        &["publish", "orders", "--stdin", "--text"],
+        "line of text\n",
     );
     let seen = rig.seen();
     assert_eq!(
         seen[0].request.target,
-        "/topics/pedidos/messages?groupId=g%201&deduplicationId=d-1"
+        "/topics/orders/messages?groupId=g%201&deduplicationId=d-1"
     );
     assert_eq!(seen[0].body_text(), "{\"a\":1}");
     assert_eq!(seen[0].header("Content-Type"), Some("application/json"));
@@ -788,7 +791,7 @@ fn publish_takes_the_body_from_the_argument_the_file_or_stdin() {
         seen[1].header("Content-Type"),
         Some("application/octet-stream")
     );
-    assert_eq!(seen[2].body_text(), "linha de texto\n");
+    assert_eq!(seen[2].body_text(), "line of text\n");
     assert_eq!(
         seen[2].header("Content-Type"),
         Some("text/plain; charset=utf-8")
@@ -815,7 +818,7 @@ fn publish_wants_exactly_one_body_source_and_one_content_type_choice() {
         2
     );
     assert_eq!(rig.run(&["publish", "p", "corpo", "--count", "0"]).code, 2);
-    let out = rig.run(&["publish", "p", "--file", "/nao/existe.bin"]);
+    let out = rig.run(&["publish", "p", "--file", "/does/not/exist.bin"]);
     assert_eq!(out.code, 5);
     assert!(rig.seen().is_empty());
 }
@@ -842,11 +845,11 @@ fn publish_does_not_validate_the_body_the_server_does() {
     rig.mock().reply(
         400,
         &[],
-        "{\"code\":\"validation.invalid-body\",\"message\":\"JSON inválido.\",\"requestId\":\"r\"}",
+        "{\"code\":\"validation.invalid-body\",\"message\":\"Invalid JSON.\",\"requestId\":\"r\"}",
     );
-    let out = rig.run(&["publish", "p", "isto não é json"]);
+    let out = rig.run(&["publish", "p", "this is not json"]);
     assert_eq!(out.code, 1);
-    assert_eq!(rig.seen()[0].body_text(), "isto não é json");
+    assert_eq!(rig.seen()[0].body_text(), "this is not json");
     assert!(out.err.starts_with("validation.invalid-body:"));
 }
 
@@ -866,13 +869,13 @@ fn after_a_502_outside_a_fifo_publish_is_not_repeated() {
     let rig = Rig::new();
     let gateway = "{\"code\":\"forward.bad-gateway\",\"message\":\"x\",\"requestId\":\"r\"}";
     rig.mock().reply(502, &[], gateway);
-    rig.mock().reply(200, &[], TOPIC); // o CLI olha o tópico: não é FIFO
-    let out = rig.run(&["publish", "fila", "{}"]);
+    rig.mock().reply(200, &[], TOPIC); // the CLI looks at the topic: it is not FIFO
+    let out = rig.run(&["publish", "queue", "{}"]);
     assert_eq!(out.code, 1);
     let seen = rig.seen();
     assert_eq!(seen.len(), 2);
     assert_eq!(seen[0].request.method, "POST");
-    assert_eq!(seen[1].request.target, "/topics/fila");
+    assert_eq!(seen[1].request.target, "/topics/queue");
 }
 
 /// UC: UC-CLI-011
@@ -885,7 +888,7 @@ fn after_a_502_on_a_fifo_publish_is_repeated_because_the_primary_deduplicates() 
         .reply(200, &[], &TOPIC.replace("\"fifo\":false", "\"fifo\":true"));
     rig.mock()
         .reply(201, &[], "{\"id\":\"m1\",\"duplicate\":true}");
-    let out = rig.run(&["publish", "fila", "{}", "--group-id", "g"]);
+    let out = rig.run(&["publish", "queue", "{}", "--group-id", "g"]);
     assert_eq!(out.code, 0, "{}", out.err);
     assert!(out.out.contains("\"duplicate\": true"));
     assert_eq!(
@@ -901,12 +904,12 @@ fn after_a_502_on_a_fifo_publish_is_repeated_because_the_primary_deduplicates() 
 #[test]
 fn consume_sends_only_the_given_parameters_and_prints_the_whole_message_with_the_receipt() {
     let rig = Rig::new();
-    let m = message("m1", "{\"pedido\":9001}");
+    let m = message("m1", "{\"order\":9001}");
     rig.mock()
         .reply(200, &[], &format!("{{\"messages\":[{m}]}}"));
-    let out = rig.run(&["consume", "pedidos"]);
+    let out = rig.run(&["consume", "orders"]);
     assert_eq!(out.code, 0, "{}", out.err);
-    assert_eq!(rig.seen()[0].request.target, "/topics/pedidos/messages");
+    assert_eq!(rig.seen()[0].request.target, "/topics/orders/messages");
     assert_eq!(
         out.out,
         format!("{}\n", pretty(&format!("{{\"messages\":[{m}]}}")))
@@ -916,7 +919,7 @@ fn consume_sends_only_the_given_parameters_and_prints_the_whole_message_with_the
     rig.mock().reply(200, &[], "{\"messages\":[]}");
     rig.run(&[
         "consume",
-        "pedidos",
+        "orders",
         "--max",
         "5",
         "--visibility",
@@ -934,7 +937,7 @@ fn consume_sends_only_the_given_parameters_and_prints_the_whole_message_with_the
     let seen = rig.seen();
     assert_eq!(
         seen[1].request.target,
-        "/topics/pedidos/messages?maxMessages=5&visibilityTimeout=60&waitTime=20&autoCreate=true&volatile=false&idleTimeout=900&fifo=true&tag.time=fin"
+        "/topics/orders/messages?maxMessages=5&visibilityTimeout=60&waitTime=20&autoCreate=true&volatile=false&idleTimeout=900&fifo=true&tag.time=fin"
     );
     assert_eq!(seen[1].timeouts.total.as_secs(), 30, "waitTime 20 + 10 s");
 }
@@ -967,7 +970,7 @@ fn consume_raw_prints_only_the_body_one_per_line_and_ack_confirms_each_message()
         .reply(200, &[], &format!("{{\"messages\":[{a},{b}]}}"));
     rig.mock().reply(204, &[], "");
     rig.mock().reply(204, &[], "");
-    let out = rig.run(&["consume", "pedidos", "--max", "2", "--ack", "-o", "raw"]);
+    let out = rig.run(&["consume", "orders", "--max", "2", "--ack", "-o", "raw"]);
     assert_eq!(out.code, 0, "{}", out.err);
     assert_eq!(out.out, "{\"x\":1}\n{\"x\":2}\n");
     let seen = rig.seen();
@@ -976,11 +979,11 @@ fn consume_raw_prints_only_the_body_one_per_line_and_ack_confirms_each_message()
             seen[1].request.method.as_str(),
             seen[1].request.target.as_str()
         ),
-        ("DELETE", "/topics/pedidos/messages/m1?receiptToken=rt-m1")
+        ("DELETE", "/topics/orders/messages/m1?receiptToken=rt-m1")
     );
     assert_eq!(
         seen[2].request.target,
-        "/topics/pedidos/messages/m2?receiptToken=rt-m2"
+        "/topics/orders/messages/m2?receiptToken=rt-m2"
     );
 }
 
@@ -996,7 +999,7 @@ fn exit_empty_returns_6_only_when_nothing_came() {
     assert_eq!(
         rig.run(&["consume", "f"]).code,
         0,
-        "sem --exit-empty, vazio é sucesso"
+        "without --exit-empty, empty is success"
     );
     rig.mock().reply(
         200,
@@ -1010,9 +1013,9 @@ fn exit_empty_returns_6_only_when_nothing_came() {
 #[test]
 fn consume_binary_bodies_come_out_decoded_in_raw_mode() {
     let rig = Rig::new();
-    rig.mock().reply(200, &[], "{\"messages\":[{\"id\":\"m\",\"body\":\"T2zDoQ==\",\"contentType\":\"application/octet-stream\",\"bodyEncoding\":\"base64\",\"receiptToken\":\"r\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\"}]}");
+    rig.mock().reply(200, &[], "{\"messages\":[{\"id\":\"m\",\"body\":\"Q2Fmw6k=\",\"contentType\":\"application/octet-stream\",\"bodyEncoding\":\"base64\",\"receiptToken\":\"r\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\"}]}");
     let out = rig.run(&["consume", "f", "-o", "raw"]);
-    assert_eq!(out.out, "Olá\n");
+    assert_eq!(out.out, "Café\n");
 }
 
 /// UC: UC-CLI-013
@@ -1031,13 +1034,13 @@ fn subscribe_prints_each_message_confirms_it_and_stops_at_the_limit() {
         &format!("{{\"messages\":[{}]}}", message("m2", "{\"n\":2}")),
     );
     rig.mock().reply(204, &[], "");
-    let out = rig.run(&["subscribe", "pedidos", "--limit", "2", "-o", "raw"]);
+    let out = rig.run(&["subscribe", "orders", "--limit", "2", "-o", "raw"]);
     assert_eq!(out.code, 0, "{}", out.err);
     assert_eq!(out.out, "{\"n\":1}\n{\"n\":2}\n");
     let seen = rig.seen();
     assert_eq!(
         seen[0].request.target,
-        "/topics/pedidos/messages?maxMessages=1&waitTime=20"
+        "/topics/orders/messages?maxMessages=1&waitTime=20"
     );
     assert_eq!(
         seen.iter().filter(|s| s.request.method == "DELETE").count(),
@@ -1063,9 +1066,9 @@ fn subscribe_exec_runs_the_command_with_the_body_and_confirms_only_on_exit_zero(
     );
     let out = rig.run(&[
         "subscribe",
-        "pedidos",
+        "orders",
         "--exec",
-        "./processa.sh",
+        "./process.sh",
         "--limit",
         "2",
         "--wait",
@@ -1076,13 +1079,16 @@ fn subscribe_exec_runs_the_command_with_the_body_and_confirms_only_on_exit_zero(
         "30",
     ]);
     assert_eq!(out.code, 0, "{}", out.err);
-    assert_eq!(out.out, "", "com --exec o CLI não imprime a mensagem");
+    assert_eq!(
+        out.out, "",
+        "with --exec the CLI does not print the message"
+    );
     let calls = rig.platform.exec_calls.lock().unwrap().clone();
     assert_eq!(
         calls,
         [
-            ("./processa.sh".to_owned(), b"{\"n\":1}".to_vec()),
-            ("./processa.sh".to_owned(), b"{\"n\":2}".to_vec())
+            ("./process.sh".to_owned(), b"{\"n\":1}".to_vec()),
+            ("./process.sh".to_owned(), b"{\"n\":2}".to_vec())
         ]
     );
     let seen = rig.seen();
@@ -1093,12 +1099,12 @@ fn subscribe_exec_runs_the_command_with_the_body_and_confirms_only_on_exit_zero(
         .collect();
     assert_eq!(
         acks,
-        ["/topics/pedidos/messages/m1?receiptToken=rt-m1"],
-        "a m2 saiu com 3 e não é confirmada"
+        ["/topics/orders/messages/m1?receiptToken=rt-m1"],
+        "m2 exited with 3 and is not acknowledged"
     );
     assert_eq!(
         seen[0].request.target,
-        "/topics/pedidos/messages?maxMessages=1&visibilityTimeout=30&waitTime=5"
+        "/topics/orders/messages?maxMessages=1&visibilityTimeout=30&waitTime=5"
     );
 }
 
@@ -1122,7 +1128,7 @@ fn subscribe_keeps_going_when_the_receipt_went_stale_during_processing() {
         &format!("{{\"messages\":[{}]}}", message("m2", "2")),
     );
     rig.mock().reply(204, &[], "");
-    let out = rig.run(&["subscribe", "pedidos", "--limit", "2", "-o", "raw"]);
+    let out = rig.run(&["subscribe", "orders", "--limit", "2", "-o", "raw"]);
     assert_eq!(out.code, 0, "{}", out.err);
     assert_eq!(out.out, "1\n2\n");
 }
@@ -1189,7 +1195,7 @@ fn a_stale_receipt_is_a_409_error_with_exit_1() {
         &[],
         "{\"code\":\"message.stale-receipt\",\"message\":\"Token obsoleto.\",\"requestId\":\"r\"}",
     );
-    let out = rig.run(&["ack", "p", "m1", "--receipt", "velho"]);
+    let out = rig.run(&["ack", "p", "m1", "--receipt", "old"]);
     assert_eq!(out.code, 1);
     assert!(out.err.starts_with("message.stale-receipt:"), "{}", out.err);
 }
@@ -1209,13 +1215,13 @@ fn token_create_sends_name_permissions_prefixes_and_expiry() {
         "token",
         "create",
         "--name",
-        "servico-pedidos",
+        "servico-orders",
         "--permission",
         "publish,create",
         "--permission",
         "consume",
         "--prefix",
-        "pedidos",
+        "orders",
         "--expires-at",
         "2027-06-01T00:00:00.000Z",
     ]);
@@ -1223,7 +1229,7 @@ fn token_create_sends_name_permissions_prefixes_and_expiry() {
     assert!(out.out.contains("\"token\": \"tb_t1.segredo\""));
     assert_eq!(
         rig.seen()[0].body_text(),
-        "{\"name\":\"servico-pedidos\",\"permissions\":[\"publish\",\"create\",\"consume\"],\"topicPrefixes\":[\"pedidos\"],\"expiresAt\":\"2027-06-01T00:00:00.000Z\"}"
+        "{\"name\":\"servico-orders\",\"permissions\":[\"publish\",\"create\",\"consume\"],\"topicPrefixes\":[\"orders\"],\"expiresAt\":\"2027-06-01T00:00:00.000Z\"}"
     );
     let only = rig.run(&[
         "token",
@@ -1314,7 +1320,7 @@ fn without_authentication_the_tokens_routes_answer_404_and_the_cli_says_so() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Operação
+// Operations
 // ---------------------------------------------------------------------------------------------
 
 /// UC: UC-CLI-016
@@ -1346,17 +1352,16 @@ fn health_ready_shows_the_reason_on_a_503_and_exits_1_without_retrying() {
     rig.mock().reply(
         503,
         &[],
-        "{\"health\":\"not-ready\",\"reason\":\"o nó está em sincronização\"}",
+        "{\"health\":\"not-ready\",\"reason\":\"the node is syncing\"}",
     );
     let out = rig.run(&["health", "ready"]);
     assert_eq!(out.code, 1);
     assert!(
-        out.out
-            .contains("\"reason\": \"o nó está em sincronização\""),
+        out.out.contains("\"reason\": \"the node is syncing\""),
         "{}",
         out.out
     );
-    assert_eq!(rig.seen().len(), 1, "um 503 de saúde não é repetido");
+    assert_eq!(rig.seen().len(), 1, "a health 503 is not retried");
 }
 
 /// UC: UC-CLI-016
@@ -1374,7 +1379,7 @@ fn health_cluster_validates_the_scope() {
 #[test]
 fn health_live_with_nothing_listening_exits_3() {
     let rig = Rig::new();
-    rig.mock().fail(TransportError::Connect("recusada".into()));
+    rig.mock().fail(TransportError::Connect("refused".into()));
     assert_eq!(rig.run(&["health", "live"]).code, 3);
     assert_eq!(rig.seen().len(), 1);
 }
@@ -1437,18 +1442,18 @@ fn stats_pass_scope_tags_condition_fields_group_by_and_pagination() {
         "--cursor",
         "c",
     ]);
-    rig.run(&["stats", "topic", "pedidos", "--scope", "cluster"]);
-    let all = rig.run(&["stats", "groups", "pedidos", "--all", "-o", "raw"]);
+    rig.run(&["stats", "topic", "orders", "--scope", "cluster"]);
+    let all = rig.run(&["stats", "groups", "orders", "--all", "-o", "raw"]);
     let seen = rig.seen();
     assert_eq!(seen[0].request.target, "/metrics/topics?scope=node&tag.time=fin&tag.env=prod&condition=backlog&fields=name%2Cdepth&groupBy=time&limit=10&cursor=c");
     assert_eq!(
         seen[1].request.target,
-        "/metrics/topics/pedidos?scope=cluster"
+        "/metrics/topics/orders?scope=cluster"
     );
-    assert_eq!(seen[2].request.target, "/metrics/topics/pedidos/groups");
+    assert_eq!(seen[2].request.target, "/metrics/topics/orders/groups");
     assert_eq!(
         seen[3].request.target,
-        "/metrics/topics/pedidos/groups?cursor=n"
+        "/metrics/topics/orders/groups?cursor=n"
     );
     assert_eq!(
         all.out,
@@ -1501,7 +1506,7 @@ fn drain_acts_on_the_node_of_the_profile_ops_url() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Ajuda e versão
+// Help and version
 // ---------------------------------------------------------------------------------------------
 
 /// UC: UC-CLI-019
@@ -1515,8 +1520,8 @@ fn version_shows_the_program_and_the_contract_version() {
     ] {
         let out = rig.run(args);
         assert_eq!(out.code, 0);
-        // A versão vem do Cargo.toml: no release o set-version a troca pela versão da tag.
-        let expected = format!("taba-cli {} (contrato da API 1)", env!("CARGO_PKG_VERSION"));
+        // The version comes from Cargo.toml: on release, set-version replaces it with the tag version.
+        let expected = format!("taba-cli {} (API contract 1)", env!("CARGO_PKG_VERSION"));
         assert!(out.out.starts_with(&expected), "{}", out.out);
     }
 }
@@ -1546,8 +1551,8 @@ fn help_lists_the_commands_and_shows_each_one() {
     let one = rig.run(&["help", "topic", "create"]);
     assert!(
         one.out
-            .contains("uso: taba-cli topic create <nome> [opções]")
-            && one.out.contains("--type <valor>"),
+            .contains("usage: taba-cli topic create <name> [options]")
+            && one.out.contains("--type <value>"),
         "{}",
         one.out
     );
@@ -1555,12 +1560,12 @@ fn help_lists_the_commands_and_shows_each_one() {
     assert_eq!(flagged.out, one.out);
     let group = rig.run(&["help", "topic"]);
     assert!(group.out.contains("topic list") && group.out.contains("topic delete"));
-    assert!(rig.run(&["help", "nada"]).out.contains("Não há ajuda"));
+    assert!(rig.run(&["help", "nope"]).out.contains("There is no help"));
     assert!(rig.seen().is_empty());
 }
 
 // ---------------------------------------------------------------------------------------------
-// Perfis
+// Profiles
 // ---------------------------------------------------------------------------------------------
 
 /// UC: UC-CLI-023
@@ -1592,22 +1597,21 @@ fn profile_add_creates_the_file_the_first_profile_is_the_default_and_a_duplicate
     let out = rig.run(&["profile", "add", "local", "--url", "http://127.0.0.1:8080"]);
     assert_eq!(out.code, 0, "{}", out.err);
     assert_eq!(
-        rig.run(&["profile", "add", "hml", "--url", "https://hml:8080"])
+        rig.run(&["profile", "add", "stg", "--url", "https://stg:8080"])
             .code,
         0
     );
     let text = std::fs::read_to_string(rig.config_path()).unwrap();
     assert!(
-        text.contains("default: local") && text.contains("hml:"),
+        text.contains("default: local") && text.contains("stg:"),
         "{text}"
     );
-    let dup = rig.run(&["profile", "add", "hml"]);
+    let dup = rig.run(&["profile", "add", "stg"]);
     assert_eq!(dup.code, 2);
-    assert!(dup.err.contains("já existe"), "{}", dup.err);
-    assert_eq!(rig.run(&["profile", "add", "com espaço"]).code, 2);
+    assert!(dup.err.contains("already exists"), "{}", dup.err);
+    assert_eq!(rig.run(&["profile", "add", "with space"]).code, 2);
     assert_eq!(
-        rig.run(&["profile", "add", "x", "--url", "sem-esquema"])
-            .code,
+        rig.run(&["profile", "add", "x", "--url", "no-scheme"]).code,
         2
     );
     assert_eq!(rig.run(&["profile", "add", "y", "--default"]).code, 0);
@@ -1650,7 +1654,7 @@ fn profile_set_changes_fields_and_unset_clears_them() {
         "{\"name\":\"p\",\"default\":true,\"url\":\"http://b:2\"}"
     );
     assert_eq!(
-        rig.run(&["profile", "set", "nada", "--url", "http://x:1"])
+        rig.run(&["profile", "set", "nope", "--url", "http://x:1"])
             .code,
         2
     );
@@ -1668,14 +1672,14 @@ fn profile_remove_asks_outside_yes_and_removing_the_default_leaves_none() {
     assert_eq!(
         rig.run(&["profile", "remove", "a"]).code,
         2,
-        "fora de um terminal exige --yes"
+        "off a terminal it requires --yes"
     );
-    assert_eq!(rig.run(&["profile", "remove", "nada", "--yes"]).code, 2);
+    assert_eq!(rig.run(&["profile", "remove", "nope", "--yes"]).code, 2);
     assert_eq!(rig.run(&["profile", "remove", "a", "--yes"]).code, 0);
-    assert_eq!(rig.run(&["profile", "default"]).out.trim(), "(nenhum)");
+    assert_eq!(rig.run(&["profile", "default"]).out.trim(), "(none)");
     rig.platform.tty = true;
     assert_eq!(rig.run_with(&["profile", "remove", "b"], "n\n").code, 2);
-    assert_eq!(rig.run_with(&["profile", "remove", "b"], "s\n").code, 0);
+    assert_eq!(rig.run_with(&["profile", "remove", "b"], "y\n").code, 0);
     let list = rig.run(&["profile", "list", "-o", "raw"]);
     assert_eq!(list.out.trim(), "{\"items\":[]}");
 }
@@ -1695,12 +1699,12 @@ fn profile_default_shows_sets_and_clears_and_list_marks_default_and_session() {
         "tb_segredo_nao_aparece",
     ]);
     assert_eq!(rig.run(&["profile", "default", "b"]).code, 0);
-    assert_eq!(rig.run(&["profile", "default", "nada"]).code, 2);
+    assert_eq!(rig.run(&["profile", "default", "nope"]).code, 2);
     rig.set_env("TABA_CLI_PROFILE", "a");
     let list = rig.run(&["profile", "list", "-o", "raw"]);
     assert_eq!(
         list.out.trim(),
-        "{\"items\":[{\"name\":\"a\",\"default\":false,\"url\":\"http://a:1\",\"session\":true},{\"name\":\"b\",\"default\":true,\"url\":\"http://b:2\",\"token\":\"(definido)\"}]}"
+        "{\"items\":[{\"name\":\"a\",\"default\":false,\"url\":\"http://a:1\",\"session\":true},{\"name\":\"b\",\"default\":true,\"url\":\"http://b:2\",\"token\":\"(set)\"}]}"
     );
     assert!(!list.out.contains("tb_segredo"));
     let table = rig.run(&["profile", "list", "-o", "table"]);
@@ -1710,7 +1714,7 @@ fn profile_default_shows_sets_and_clears_and_list_marks_default_and_session() {
         table.out
     );
     assert_eq!(rig.run(&["profile", "default", "--none"]).code, 0);
-    assert_eq!(rig.run(&["profile", "default"]).out.trim(), "(nenhum)");
+    assert_eq!(rig.run(&["profile", "default"]).out.trim(), "(none)");
 }
 
 /// UC: UC-CLI-025
@@ -1724,7 +1728,7 @@ fn profile_show_never_prints_the_token() {
         "--token",
         "tb_segredo_nao_aparece",
         "--token-file",
-        "/seg/tok",
+        "/sec/tok",
     ]);
     for args in [
         &["profile", "show", "p"][..],
@@ -1734,9 +1738,9 @@ fn profile_show_never_prints_the_token() {
         let out = rig.run(args);
         assert_eq!(out.code, 0, "{}", out.err);
         assert!(!out.out.contains("tb_segredo"), "{}", out.out);
-        assert!(out.out.contains("(definido)"));
+        assert!(out.out.contains("(set)"));
     }
-    assert_eq!(rig.run(&["profile", "show", "nada"]).code, 2);
+    assert_eq!(rig.run(&["profile", "show", "nope"]).code, 2);
 }
 
 /// UC: UC-CLI-026
@@ -1758,26 +1762,26 @@ fn config_show_tells_where_each_value_came_from() {
     assert!(out.out.contains("\"profile\":\"local\""), "{}", out.out);
     assert!(
         out.out.contains(
-            "{\"field\":\"url\",\"value\":\"http://env:9\",\"source\":\"variável TABA_CLI_URL\"}"
+            "{\"field\":\"url\",\"value\":\"http://env:9\",\"source\":\"variable TABA_CLI_URL\"}"
         ),
         "{}",
         out.out
     );
     assert!(
         out.out
-            .contains("{\"field\":\"timeout\",\"value\":\"60\",\"source\":\"perfil local\"}"),
+            .contains("{\"field\":\"timeout\",\"value\":\"60\",\"source\":\"profile local\"}"),
         "{}",
         out.out
     );
     assert!(
         out.out
-            .contains("{\"field\":\"max-attempts\",\"value\":\"3\",\"source\":\"padrão\"}"),
+            .contains("{\"field\":\"max-attempts\",\"value\":\"3\",\"source\":\"default\"}"),
         "{}",
         out.out
     );
     assert!(out
         .out
-        .contains("{\"field\":\"token\",\"value\":null,\"source\":\"padrão\"}"));
+        .contains("{\"field\":\"token\",\"value\":null,\"source\":\"default\"}"));
     let table = rig.run(&["config", "show", "-o", "table"]);
     assert!(
         table.out.lines().next().unwrap().starts_with("field"),
@@ -1790,10 +1794,10 @@ fn config_show_tells_where_each_value_came_from() {
 #[test]
 fn profile_session_prints_lines_and_writes_nothing() {
     let rig = Rig::new();
-    rig.run(&["profile", "add", "homologacao", "--url", "http://h:1"]);
+    rig.run(&["profile", "add", "staging", "--url", "http://h:1"]);
     let before = std::fs::read_to_string(rig.config_path()).unwrap();
-    let chosen = rig.run(&["profile", "session", "homologacao"]);
-    assert_eq!(chosen.out, "export TABA_CLI_PROFILE='homologacao'\n");
+    let chosen = rig.run(&["profile", "session", "staging"]);
+    assert_eq!(chosen.out, "export TABA_CLI_PROFILE='staging'\n");
     let temp = rig.run(&[
         "profile",
         "session",
@@ -1836,7 +1840,7 @@ fn profile_session_defaults_to_powershell_on_windows_and_checks_its_arguments() 
     let out = rig.run(&["profile", "session", "--url", "http://x:1"]);
     assert_eq!(out.out, "$env:TABA_CLI_URL = 'http://x:1'\n");
     assert_eq!(rig.run(&["profile", "session"]).code, 2);
-    assert_eq!(rig.run(&["profile", "session", "nada"]).code, 2);
+    assert_eq!(rig.run(&["profile", "session", "nope"]).code, 2);
     assert_eq!(
         rig.run(&["profile", "session", "--clear", "--url", "http://x:1"])
             .code,
@@ -1855,8 +1859,7 @@ fn profile_session_defaults_to_powershell_on_windows_and_checks_its_arguments() 
         2
     );
     assert_eq!(
-        rig.run(&["profile", "session", "--url", "sem-esquema"])
-            .code,
+        rig.run(&["profile", "session", "--url", "no-scheme"]).code,
         2
     );
 }
@@ -1875,7 +1878,7 @@ fn an_invalid_config_file_exits_5_with_the_line() {
         let out = rig.run(args);
         assert_eq!(out.code, 5, "{args:?}: {}", out.err);
         assert!(
-            out.err.contains("config.yml") && out.err.contains("linha 3"),
+            out.err.contains("config.yml") && out.err.contains("line 3"),
             "{}",
             out.err
         );
@@ -1884,7 +1887,7 @@ fn an_invalid_config_file_exits_5_with_the_line() {
     assert_eq!(
         std::fs::read_to_string(rig.config_path()).unwrap(),
         "default: a\nprofiles:\n  a: [\n",
-        "o arquivo inválido não é sobrescrito"
+        "the invalid file is not overwritten"
     );
 }
 
@@ -1894,16 +1897,16 @@ fn a_hand_written_config_with_comments_and_quotes_is_read() {
     let rig = Rig::new();
     std::fs::write(
         rig.config_path(),
-        "# meus perfis\ndefault: hml\nprofiles:\n  hml:\n    url: \"https://taba.hml:8443\"   # homologação\n    max-attempts: 5\n",
+        "# my profiles\ndefault: stg\nprofiles:\n  stg:\n    url: \"https://taba.stg:8443\"   # staging\n    max-attempts: 5\n",
     )
     .unwrap();
     rig.mock().reply(200, &[], TOPIC);
     assert_eq!(rig.run(&["topic", "get", "x"]).code, 0);
-    assert_eq!(rig.seen()[0].origin, "https://taba.hml:8443");
+    assert_eq!(rig.seen()[0].origin, "https://taba.stg:8443");
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tela interativa de perfis
+// Interactive profiles screen
 // ---------------------------------------------------------------------------------------------
 
 fn with_terminal(rig: &mut Rig, keys: &[Key]) -> Arc<Mutex<Vec<Frame>>> {
@@ -1925,12 +1928,12 @@ fn chars(text: &str) -> Vec<Key> {
 fn the_interactive_screen_creates_a_profile_that_the_commands_then_use() {
     let mut rig = Rig::new();
     let mut keys = vec![Key::Char('n')];
-    keys.extend(chars("producao"));
+    keys.extend(chars("production"));
     keys.push(Key::Down);
-    keys.extend(chars("https://taba.exemplo.com"));
+    keys.extend(chars("https://taba.example.com"));
     keys.push(Key::Down);
     keys.push(Key::Down);
-    keys.extend(chars("/seg/prod.tok"));
+    keys.extend(chars("/sec/prod.tok"));
     keys.extend([Key::Ctrl('s'), Key::Char('q')]);
     let frames = with_terminal(&mut rig, &keys);
     let out = rig.run(&["profile"]);
@@ -1943,22 +1946,22 @@ fn the_interactive_screen_creates_a_profile_that_the_commands_then_use() {
         .collect::<Vec<_>>()
         .join("\n=====\n");
     assert!(
-        shown.contains("Perfis do taba-cli")
-            && shown.contains("Novo perfil")
-            && shown.contains("Perfil `producao` salvo."),
+        shown.contains("taba-cli profiles")
+            && shown.contains("New profile")
+            && shown.contains("Profile `production` saved."),
         "{shown}"
     );
 
-    // O arquivo é o mesmo que o `profile add` escreveria, e os comandos o usam.
+    // The file is the same one `profile add` would write, and the commands use it.
     let text = std::fs::read_to_string(rig.config_path()).unwrap();
     assert!(
-        text.contains("default: producao")
-            && text.contains("url: https://taba.exemplo.com")
-            && text.contains("token-file: /seg/prod.tok"),
+        text.contains("default: production")
+            && text.contains("url: https://taba.example.com")
+            && text.contains("token-file: /sec/prod.tok"),
         "{text}"
     );
     let list = rig.run(&["profile", "list", "-o", "raw"]);
-    assert_eq!(list.out.trim(), "{\"items\":[{\"name\":\"producao\",\"default\":true,\"url\":\"https://taba.exemplo.com\",\"token-file\":\"/seg/prod.tok\"}]}");
+    assert_eq!(list.out.trim(), "{\"items\":[{\"name\":\"production\",\"default\":true,\"url\":\"https://taba.example.com\",\"token-file\":\"/sec/prod.tok\"}]}");
 }
 
 /// UC: UC-CLI-029, UC-CLI-033
@@ -1969,7 +1972,7 @@ fn the_interactive_screen_removes_after_confirming_and_marks_the_default() {
     rig.run(&["profile", "add", "b", "--url", "http://b:2"]);
     let frames = with_terminal(
         &mut rig,
-        &[Key::Down, Key::Delete, Key::Char('s'), Key::Esc],
+        &[Key::Down, Key::Delete, Key::Char('y'), Key::Esc],
     );
     assert_eq!(rig.run(&["profile"]).code, 0);
     let first = frames.lock().unwrap()[0].lines.join("\n");
@@ -1991,7 +1994,7 @@ fn the_interactive_test_button_calls_the_client_api_with_the_unsaved_values() {
     let mut keys = vec![Key::Char('n')];
     keys.extend(chars("t"));
     keys.push(Key::Down);
-    keys.extend(chars("http://teste:7"));
+    keys.extend(chars("http://test:7"));
     keys.push(Key::Down);
     keys.push(Key::Down);
     keys.push(Key::Down);
@@ -2003,7 +2006,7 @@ fn the_interactive_test_button_calls_the_client_api_with_the_unsaved_values() {
     assert_eq!(rig.run(&["profile"]).code, 0);
     let seen = rig.seen();
     assert_eq!(seen.len(), 1);
-    assert_eq!(seen[0].origin, "http://teste:7");
+    assert_eq!(seen[0].origin, "http://test:7");
     assert_eq!(seen[0].request.target, "/topics?limit=1");
     assert_eq!(seen[0].header("Authorization"), Some("Bearer tb_visivel"));
     let shown = frames
@@ -2013,8 +2016,8 @@ fn the_interactive_test_button_calls_the_client_api_with_the_unsaved_values() {
         .map(|f| f.lines.join("\n"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(shown.contains("ok: http://teste:7 respondeu em"), "{shown}");
-    assert!(!rig.config_path().exists(), "testar não grava");
+    assert!(shown.contains("ok: http://test:7 answered in"), "{shown}");
+    assert!(!rig.config_path().exists(), "testing does not save");
 }
 
 /// UC: UC-CLI-036
@@ -2024,7 +2027,7 @@ fn outside_a_terminal_the_profile_command_prints_help_and_exits_2() {
     let out = rig.run(&["profile"]);
     assert_eq!(out.code, 2);
     assert!(
-        out.err.contains("precisa de um terminal")
+        out.err.contains("needs a terminal")
             && out.err.contains("profile add")
             && out.err.contains("profile session"),
         "{}",
@@ -2032,11 +2035,14 @@ fn outside_a_terminal_the_profile_command_prints_help_and_exits_2() {
     );
     assert_eq!(out.out, "");
 
-    // Com a entrada redirecionada mas sem terminal de verdade, também não abre.
+    // With the input redirected but no real terminal, it does not open either.
     let mut rig = Rig::new();
     rig.platform.tty = true;
     let out = rig.run(&["profile"]);
-    assert_eq!(out.code, 2, "sem terminal disponível a tela não abre");
+    assert_eq!(
+        out.code, 2,
+        "without an available terminal the screen does not open"
+    );
 }
 
 struct ClosedPipe;

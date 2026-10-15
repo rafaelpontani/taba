@@ -20,7 +20,11 @@ fn config_path_accepts_both_forms() {
 #[test]
 fn rejects_missing_path_and_unknown_arguments() {
     assert!(parse_strs(&["--config"]).is_err());
-    assert!(parse_strs(&["--nada"]).unwrap_err().contains("--nada"));
+    assert!(
+        parse_strs(&["--nothing"])
+            .unwrap_err()
+            .contains("--nothing")
+    );
 }
 
 #[test]
@@ -121,7 +125,7 @@ fn cert_generate_takes_days_out_and_an_optional_start_delay() {
         .contains("--starts-in")
     );
     assert!(parse_strs(&["cert"]).is_err());
-    assert!(parse_strs(&["cert", "outro"]).is_err());
+    assert!(parse_strs(&["cert", "other"]).is_err());
 }
 
 /// UC: UC-SEG-021

@@ -1,6 +1,6 @@
-//! `GET /topics`: ordenação total e estável, filtro por nome e paginação por chave
-//! (doc 06a, seção 8.1.2). A ordem termina sempre num campo único (o `id`), e o cursor
-//! guarda a última chave lida, então inserir ou remover itens não desloca a página.
+//! `GET /topics`: total, stable ordering, filtering by name and key pagination
+//! (doc 06a, section 8.1.2). The order always ends in a unique field (the `id`), and the cursor
+//! holds the last key read, so inserting or removing items does not shift the page.
 
 use std::cmp::Ordering;
 
@@ -11,7 +11,7 @@ use super::{TopicView, Topics};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::pagination;
 
-/// A chave de ordenação de um item: nome, `id` e criação.
+/// An item's sort key: name, `id` and creation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Key {
     n: String,
@@ -21,9 +21,9 @@ struct Key {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Cursor {
-    /// A última chave lida.
+    /// The last key read.
     k: Key,
-    /// O `sort` e o filtro que geraram o cursor: com outros, ele é recusado.
+    /// The `sort` and filter that generated the cursor: with others, it is refused.
     s: String,
     f: Option<String>,
 }
@@ -55,12 +55,12 @@ impl Sort {
             _ => {
                 return Err(TabaError::new(
                     ErrorCode::ValidationFailed,
-                    "A requisição tem campos inválidos.",
+                    "The request has invalid fields.",
                 )
                 .with_detail(
                     "query.sort",
                     ErrorCode::ValidationFailed,
-                    "Use name, id ou createdAt, com `-` na frente para decrescente.",
+                    "Use name, id or createdAt, with `-` in front for descending.",
                 ));
             }
         };
@@ -76,8 +76,8 @@ impl Sort {
         format!("{}{name}", if self.descending { "-" } else { "" })
     }
 
-    /// `sort=-createdAt` vale `(createdAt desc, id asc)`: o desempate é sempre o `id`
-    /// crescente.
+    /// `sort=-createdAt` means `(createdAt desc, id asc)`: the tie-break is always the ascending
+    /// `id`.
     fn compare(&self, a: &Key, b: &Key) -> Ordering {
         let primary = match self.field {
             Field::Name => a.n.cmp(&b.n),
@@ -103,18 +103,18 @@ pub struct ListResult {
 fn stale_cursor() -> TabaError {
     TabaError::new(
         ErrorCode::ValidationInvalidCursor,
-        "O cursor não vale para este `sort` e filtro.",
+        "The cursor does not apply to this `sort` and filter.",
     )
     .with_detail(
         "cursor",
         ErrorCode::ValidationInvalidCursor,
-        "Cursor gerado com outro `sort` ou filtro.",
+        "Cursor generated with another `sort` or filter.",
     )
 }
 
 impl Topics {
-    /// Todos os tópicos, em ordem de nome, com as filas de dead-letter. É o que as métricas de
-    /// tópico percorrem (doc 11): filtram e paginam elas mesmas, depois de medir.
+    /// All the topics, in name order, with the dead-letter queues. It is what the topic metrics
+    /// walk through (doc 11): they filter and paginate on their own, after measuring.
     pub fn all_views(&self) -> Vec<TopicView> {
         let mut views = Vec::new();
         for definition in self.read().values() {
@@ -127,8 +127,8 @@ impl Topics {
         views
     }
 
-    /// Respondida localmente: a definição de todo tópico está em todo nó. Inclui as
-    /// filas de dead-letter.
+    /// Answered locally: every topic's definition is on every node. Includes the
+    /// dead-letter queues.
     pub fn list(&self, query: ListQuery) -> Result<ListResult, TabaError> {
         let limit = pagination::parse_limit(
             query.limit.as_deref(),

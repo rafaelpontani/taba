@@ -38,11 +38,11 @@ fn file() -> ConfigFile {
     f.add("local", profile(&[("url", "http://127.0.0.1:8080")]))
         .unwrap();
     f.add(
-        "homologacao",
-        profile(&[("url", "https://taba-hml:8080"), ("token-file", "/seg/tok")]),
+        "staging",
+        profile(&[("url", "https://taba-stg:8080"), ("token-file", "/sec/tok")]),
     )
     .unwrap();
-    f.add("producao", Profile::default()).unwrap();
+    f.add("production", Profile::default()).unwrap();
     f
 }
 
@@ -70,26 +70,26 @@ fn shown(app: &App) -> String {
 #[test]
 fn the_list_shows_profiles_with_the_default_and_the_session_profile_and_never_the_token() {
     let mut f = file();
-    f.get_mut("homologacao")
+    f.get_mut("staging")
         .unwrap()
         .set("token", "tb_secreto")
         .unwrap();
-    let app = App::new(f, "C:\\cfg\\config.yml".into(), Some("homologacao".into()));
+    let app = App::new(f, "C:\\cfg\\config.yml".into(), Some("staging".into()));
     let text = shown(&app);
     assert!(
-        text.contains("Perfis do taba-cli") && text.contains("C:\\cfg\\config.yml"),
+        text.contains("taba-cli profiles") && text.contains("C:\\cfg\\config.yml"),
         "{text}"
     );
     assert!(text.contains("▶ local") && text.contains("●"), "{text}");
     assert!(
-        text.contains("homologacao (sessão)") && text.contains("○"),
+        text.contains("staging (session)") && text.contains("○"),
         "{text}"
     );
     assert!(
-        text.contains("/seg/tok") && !text.contains("tb_secreto"),
+        text.contains("/sec/tok") && !text.contains("tb_secreto"),
         "{text}"
     );
-    assert!(text.contains("↑↓ escolher") && text.contains("Del remover"));
+    assert!(text.contains("↑↓ choose") && text.contains("Del remove"));
 }
 
 /// UC: UC-CLI-029
@@ -114,7 +114,7 @@ fn an_empty_list_says_so_and_offers_n() {
     let a = App::new(ConfigFile::default(), "p".into(), None);
     let text = shown(&a);
     assert!(
-        text.contains("Não há perfis") && text.contains("n para criar"),
+        text.contains("There are no profiles") && text.contains("n to create"),
         "{text}"
     );
 }
@@ -135,8 +135,8 @@ fn d_makes_the_selected_profile_the_default_and_saves() {
     let mut fake = Fake::default();
     press(&mut a, &mut fake, &[Key::Down, Key::Char('d')]);
     assert_eq!(fake.saved.len(), 1);
-    assert_eq!(fake.saved[0].default.as_deref(), Some("homologacao"));
-    assert!(shown(&a).contains("`homologacao` é o perfil padrão."));
+    assert_eq!(fake.saved[0].default.as_deref(), Some("staging"));
+    assert!(shown(&a).contains("`staging` is the default profile."));
 }
 
 /// UC: UC-CLI-033
@@ -145,14 +145,14 @@ fn removing_asks_first_and_only_s_removes() {
     let mut a = app();
     let mut fake = Fake::default();
     press(&mut a, &mut fake, &[Key::Down, Key::Delete]);
-    assert!(shown(&a).contains("Remover \"homologacao\"? [s/N]"));
+    assert!(shown(&a).contains("Remove \"staging\"? [y/N]"));
     press(&mut a, &mut fake, &[Key::Enter]);
     assert!(fake.saved.is_empty());
-    assert_eq!(a.file().names(), ["local", "homologacao", "producao"]);
-    assert!(shown(&a).contains("Nada foi removido."));
-    press(&mut a, &mut fake, &[Key::Char('r'), Key::Char('s')]);
-    assert_eq!(fake.saved.last().unwrap().names(), ["local", "producao"]);
-    assert_eq!(a.file().names(), ["local", "producao"]);
+    assert_eq!(a.file().names(), ["local", "staging", "production"]);
+    assert!(shown(&a).contains("Nothing was removed."));
+    press(&mut a, &mut fake, &[Key::Char('r'), Key::Char('y')]);
+    assert_eq!(fake.saved.last().unwrap().names(), ["local", "production"]);
+    assert_eq!(a.file().names(), ["local", "production"]);
 }
 
 /// UC: UC-CLI-033
@@ -160,7 +160,7 @@ fn removing_asks_first_and_only_s_removes() {
 fn removing_the_default_leaves_the_file_without_one() {
     let mut a = app();
     let mut fake = Fake::default();
-    press(&mut a, &mut fake, &[Key::Char('r'), Key::Char('s')]);
+    press(&mut a, &mut fake, &[Key::Char('r'), Key::Char('y')]);
     assert_eq!(fake.saved[0].default, None);
 }
 
@@ -181,7 +181,7 @@ fn a_new_profile_is_created_through_the_form_and_the_first_one_becomes_the_defau
         saved.get("local").unwrap().get("url"),
         Some("http://10.0.0.1:8080")
     );
-    assert!(shown(&a).contains("Perfil `local` salvo."));
+    assert!(shown(&a).contains("Profile `local` saved."));
     assert_eq!(a.file(), saved);
 }
 
@@ -191,16 +191,16 @@ fn a_second_profile_does_not_take_the_default_unless_the_box_is_ticked() {
     let mut a = app();
     let mut fake = Fake::default();
     press(&mut a, &mut fake, &[Key::Char('n')]);
-    press(&mut a, &mut fake, &typed("novo"));
+    press(&mut a, &mut fake, &typed("new"));
     press(&mut a, &mut fake, &[Key::Ctrl('s')]);
     assert_eq!(fake.saved.last().unwrap().default.as_deref(), Some("local"));
 
     press(&mut a, &mut fake, &[Key::Char('n')]);
-    press(&mut a, &mut fake, &typed("outro"));
-    // Do nome até a caixa "Perfil padrão": 10 passos para baixo.
+    press(&mut a, &mut fake, &typed("other"));
+    // From the name to the "Default profile" box: 10 steps down.
     press(&mut a, &mut fake, &[Key::Down; 10]);
     press(&mut a, &mut fake, &[Key::Char(' '), Key::Ctrl('s')]);
-    assert_eq!(fake.saved.last().unwrap().default.as_deref(), Some("outro"));
+    assert_eq!(fake.saved.last().unwrap().default.as_deref(), Some("other"));
 }
 
 /// UC: UC-CLI-031
@@ -211,12 +211,12 @@ fn save_is_refused_while_a_field_is_invalid() {
     press(&mut a, &mut fake, &[Key::Char('n')]);
     press(&mut a, &mut fake, &typed("x"));
     press(&mut a, &mut fake, &[Key::Down]);
-    press(&mut a, &mut fake, &typed("sem-esquema"));
+    press(&mut a, &mut fake, &typed("no-scheme"));
     press(&mut a, &mut fake, &[Key::Ctrl('s')]);
     assert!(fake.saved.is_empty());
     let text = shown(&a);
     assert!(
-        text.contains("Corrija os campos em vermelho antes de salvar."),
+        text.contains("Fix the fields in red before saving."),
         "{text}"
     );
     assert!(text.contains("http://"), "{text}");
@@ -228,13 +228,13 @@ fn editing_an_existing_profile_changes_it_in_place_and_a_rename_keeps_the_defaul
     let mut a = app();
     let mut fake = Fake::default();
     press(&mut a, &mut fake, &[Key::Enter]);
-    assert!(shown(&a).contains("Perfil  local"));
-    // Renomeia: apaga o nome e digita outro.
+    assert!(shown(&a).contains("Profile  local"));
+    // Rename: deletes the name and types another.
     press(&mut a, &mut fake, &[Key::Ctrl('u')]);
     press(&mut a, &mut fake, &typed("principal"));
     press(&mut a, &mut fake, &[Key::Ctrl('s')]);
     let saved = fake.saved.last().unwrap();
-    assert_eq!(saved.names(), ["principal", "homologacao", "producao"]);
+    assert_eq!(saved.names(), ["principal", "staging", "production"]);
     assert_eq!(saved.default.as_deref(), Some("principal"));
     assert_eq!(
         saved.get("principal").unwrap().get("url"),
@@ -258,25 +258,25 @@ fn unticking_the_box_of_the_default_profile_removes_the_default() {
 fn test_connection_uses_the_unsaved_values_and_only_reports() {
     let mut a = app();
     let mut fake = Fake {
-        check_result: Some(Ok("ok: http://x:1 respondeu em 12 ms".to_owned())),
+        check_result: Some(Ok("ok: http://x:1 answered in 12 ms".to_owned())),
         ..Fake::default()
     };
     press(&mut a, &mut fake, &[Key::Char('n')]);
     press(&mut a, &mut fake, &typed("t"));
     press(&mut a, &mut fake, &[Key::Down]);
     press(&mut a, &mut fake, &typed("http://x:1"));
-    // Até o botão Testar: do campo url (1) ao botão (12).
+    // Up to the Test button: from the url field (1) to the button (12).
     press(&mut a, &mut fake, &[Key::Down; 11]);
     press(&mut a, &mut fake, &[Key::Enter]);
     assert_eq!(fake.checks.len(), 1);
     assert_eq!(fake.checks[0].get("url"), Some("http://x:1"));
     assert!(fake.saved.is_empty());
-    assert!(shown(&a).contains("ok: http://x:1 respondeu em 12 ms"));
+    assert!(shown(&a).contains("ok: http://x:1 answered in 12 ms"));
 
-    fake.check_result = Some(Err("não conectou".to_owned()));
+    fake.check_result = Some(Err("could not connect".to_owned()));
     press(&mut a, &mut fake, &[Key::Enter]);
-    assert!(shown(&a).contains("não conectou"));
-    // O teste falhar não impede de salvar.
+    assert!(shown(&a).contains("could not connect"));
+    // The test failing does not prevent saving.
     press(&mut a, &mut fake, &[Key::Ctrl('s')]);
     assert_eq!(fake.saved.len(), 1);
 }
@@ -291,7 +291,7 @@ fn testing_is_refused_while_the_form_has_errors() {
     press(&mut a, &mut fake, &[Key::Down; 10]);
     press(&mut a, &mut fake, &[Key::Enter]);
     assert!(fake.checks.is_empty());
-    assert!(shown(&a).contains("Corrija os campos em vermelho antes de testar."));
+    assert!(shown(&a).contains("Fix the fields in red before testing."));
 }
 
 /// UC: UC-CLI-033
@@ -302,9 +302,9 @@ fn an_unsaved_form_is_discarded_on_a_second_escape() {
     press(&mut a, &mut fake, &[Key::Char('n')]);
     press(&mut a, &mut fake, &typed("x"));
     press(&mut a, &mut fake, &[Key::Esc]);
-    assert!(shown(&a).contains("Há alterações não salvas"));
+    assert!(shown(&a).contains("There are unsaved changes"));
     press(&mut a, &mut fake, &[Key::Esc]);
-    assert!(shown(&a).contains("Perfis do taba-cli"));
+    assert!(shown(&a).contains("taba-cli profiles"));
     assert!(fake.saved.is_empty());
     assert_eq!(a.file().names().len(), 3);
 }
@@ -323,17 +323,17 @@ fn ctrl_c_quits_from_the_form_too() {
 fn a_failed_write_keeps_the_previous_state_and_shows_the_error() {
     let mut a = app();
     let mut fake = Fake {
-        fail_save: Some("disco cheio".to_owned()),
+        fail_save: Some("disk full".to_owned()),
         ..Fake::default()
     };
-    press(&mut a, &mut fake, &[Key::Char('r'), Key::Char('s')]);
+    press(&mut a, &mut fake, &[Key::Char('r'), Key::Char('y')]);
     assert_eq!(a.file().names().len(), 3);
-    assert!(shown(&a).contains("disco cheio"));
+    assert!(shown(&a).contains("disk full"));
 
     press(&mut a, &mut fake, &[Key::Char('n')]);
     press(&mut a, &mut fake, &typed("x"));
     press(&mut a, &mut fake, &[Key::Ctrl('s')]);
-    assert!(shown(&a).contains("disco cheio") && shown(&a).contains("Novo perfil"));
+    assert!(shown(&a).contains("disk full") && shown(&a).contains("New profile"));
 }
 
 /// UC: UC-CLI-035
@@ -343,16 +343,16 @@ fn a_terminal_smaller_than_60_by_16_shows_a_warning_instead_of_a_broken_screen()
     for (w, h) in [(59, 30), (80, 15), (10, 5)] {
         let text = a.render(Style { color: false }, w, h).lines.join("\n");
         assert!(
-            text.contains("Terminal pequeno demais") && text.contains("60 colunas por 16 linhas"),
+            text.contains("Terminal too small") && text.contains("60 columns by 16 lines"),
             "{w}x{h}: {text}"
         );
-        assert!(!text.contains("Perfis do taba-cli"));
+        assert!(!text.contains("taba-cli profiles"));
     }
     assert!(a
         .render(Style { color: false }, 60, 16)
         .lines
         .join("\n")
-        .contains("Perfis do taba-cli"));
+        .contains("taba-cli profiles"));
 }
 
 /// UC: UC-CLI-035

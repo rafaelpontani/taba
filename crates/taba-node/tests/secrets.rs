@@ -1,5 +1,5 @@
-//! Os subcomandos `taba init`, `taba cert generate` e `taba token generate`, rodados como o
-//! operador os roda (o binário de verdade), e a pasta que eles criam usada por um nó.
+//! The `taba init`, `taba cert generate` and `taba token generate` subcommands, run as the
+//! operator runs them (the real binary), and the folder they create used by a node.
 
 mod common;
 
@@ -13,7 +13,7 @@ fn taba(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_taba"))
         .args(args)
         .output()
-        .expect("rodar o binário taba")
+        .expect("run the taba binary")
 }
 
 fn text(bytes: &[u8]) -> String {
@@ -51,14 +51,14 @@ fn init_creates_the_certificate_and_the_root_token_and_refuses_to_run_twice() {
     );
     let token = std::fs::read_to_string(out.join("root-token")).unwrap();
     assert!(token.trim().len() >= 32);
-    // O segredo não vai para a tela.
+    // The secret does not go to the screen.
     assert!(!report.contains(token.trim()));
 
-    // Rodar de novo não sobrescreve nada.
+    // Running again does not overwrite anything.
     let second = taba(&["init", "--out", out_arg]);
     assert!(!second.status.success());
     assert!(
-        text(&second.stderr).contains("já existe"),
+        text(&second.stderr).contains("already exists"),
         "{}",
         text(&second.stderr)
     );
@@ -93,11 +93,11 @@ fn cert_generate_adds_a_pair_named_after_its_start_date() {
     assert_eq!(
         names.iter().filter(|n| n.ends_with(".crt")).count(),
         2,
-        "a rotação não sobrescreve o par anterior"
+        "the rotation does not overwrite the previous pair"
     );
 
     let again = taba(&["cert", "generate", "--days", "30", "--out", dir_arg]);
-    assert!(!again.status.success(), "mesma data de início: recusa");
+    assert!(!again.status.success(), "same start date: refuses");
     let bad = taba(&["cert", "generate", "--out", dir_arg]);
     assert_eq!(bad.status.code(), Some(2));
     assert!(text(&bad.stderr).contains("--days"));
@@ -136,7 +136,7 @@ async fn a_node_mounting_the_folder_from_init_turns_authentication_on_by_itself(
         async move { request.send().await.unwrap().status() }
     };
     assert_eq!(call(None).await, 401);
-    assert_eq!(call(Some("outro")).await, 401);
+    assert_eq!(call(Some("other")).await, 401);
     assert_eq!(call(Some(root.trim())).await, 200);
 
     let created = node

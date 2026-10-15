@@ -49,7 +49,7 @@ fn counters_get_total_and_the_unit_is_not_repeated() {
     assert!(out.contains("taba_storage_memory_usage_bytes 1024\n"));
     assert!(
         !out.contains("{message}"),
-        "a unidade entre chaves não aparece no nome"
+        "the unit in braces does not appear in the name"
     );
 }
 

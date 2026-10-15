@@ -13,8 +13,8 @@ fn fields(pairs: &[(&str, &str)]) -> Profile {
 fn session_lines_for_a_saved_profile_and_for_loose_fields() {
     let none = Profile::default();
     assert_eq!(
-        session_lines(Shell::Sh, Some("homologacao"), &none, false).unwrap(),
-        ["export TABA_CLI_PROFILE='homologacao'"]
+        session_lines(Shell::Sh, Some("staging"), &none, false).unwrap(),
+        ["export TABA_CLI_PROFILE='staging'"]
     );
     let loose = fields(&[("url", "http://10.0.0.5:8080"), ("token-file", "./tok")]);
     assert_eq!(
@@ -74,7 +74,7 @@ fn values_are_escaped_for_the_chosen_shell() {
         Shell::Cmd.set_line("V", "C:\\a b").unwrap(),
         "set \"V=C:\\a b\""
     );
-    assert!(Shell::Cmd.set_line("V", "com \" aspas").is_err());
+    assert!(Shell::Cmd.set_line("V", "with \" quotes").is_err());
 }
 
 /// UC: UC-CLI-027

@@ -81,7 +81,7 @@ Detalhes em [15-api-visao-geral.md](15-api-visao-geral.md).
 
 ## Um mapa de dependência dos conceitos
 
-![Como cluster, nó, anel, bloco, tópico e mensagem se ligam](../diagramas/img/entidades.svg)
+![Como cluster, nó, anel, bloco, tópico e mensagem se ligam](../diagramas/img/pt-BR/entidades.svg)
 
 ## Onde seguir
 

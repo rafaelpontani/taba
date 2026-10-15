@@ -1,15 +1,15 @@
-//! Autenticação e autorização por token (doc 06a, seção 8.1.3).
+//! Token authentication and authorization (doc 06a, section 8.1.3).
 //!
-//! Três camadas nas rotas de cliente, de fora para dentro:
-//! 1. [`authenticate`] descobre **quem** chama (token raiz, token de trabalho ou ninguém) e
-//!    guarda o resultado; não recusa nada, porque o rate limit vem em seguida e precisa da
-//!    chave (o `id` do token, ou o IP quando não há token válido);
-//! 2. o rate limit (`http::ratelimit`);
-//! 3. [`authorize`] recusa: `401` sem token válido, `403 auth.forbidden` sem a permissão da
-//!    rota e `403 auth.out-of-scope` fora dos prefixos do token.
+//! Three layers on the client routes, from the outside in:
+//! 1. [`authenticate`] finds out **who** is calling (root token, work token or nobody) and
+//!    stores the result; it refuses nothing, because the rate limit comes next and needs the
+//!    key (the token's `id`, or the IP when there is no valid token);
+//! 2. the rate limit (`http::ratelimit`);
+//! 3. [`authorize`] refuses: `401` without a valid token, `403 auth.forbidden` without the route's
+//!    permission and `403 auth.out-of-scope` outside the token's prefixes.
 //!
-//! Com a autenticação desligada (sem token raiz, ou sempre em desenvolvimento) todo mundo é
-//! [`Principal::Open`] e nada é conferido. As rotas de operação e do cluster não passam por aqui.
+//! With authentication off (no root token, or always in development) everyone is
+//! [`Principal::Open`] and nothing is checked. The operations and cluster routes do not go through here.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -28,12 +28,12 @@ use crate::core::token::{Permission, TokenRecord, constant_time_eq};
 use crate::engine::tokens::Tokens;
 use crate::telemetry::metrics::AUTH_REQUESTS;
 
-/// Quem está chamando.
+/// Who is calling.
 #[derive(Debug, Clone)]
 pub enum Principal {
-    /// Autenticação desligada: acesso total, sem conferência.
+    /// Authentication off: full access, no checking.
     Open,
-    /// O token raiz: todas as permissões, sem prefixos, e o único que gerencia `/tokens`.
+    /// The root token: all permissions, no prefixes, and the only one that manages `/tokens`.
     Root,
     Token(Arc<TokenRecord>),
 }
@@ -53,7 +53,7 @@ impl Principal {
         }
     }
 
-    /// Os prefixos do token; vazio alcança todos os tópicos.
+    /// The token's prefixes; empty reaches every topic.
     pub fn prefixes(&self) -> &[String] {
         match self {
             Principal::Token(record) => &record.topic_prefixes,
@@ -61,15 +61,15 @@ impl Principal {
         }
     }
 
-    /// Um prefixo de distribuição só é aceito se **toda** fila que ele alcança está no alcance
-    /// do token: ele mesmo começa com um dos prefixos do token (senão o token injetaria
-    /// mensagens em filas fora do seu alcance).
+    /// A distribution prefix is only accepted if **every** queue it reaches is within the token's
+    /// reach: it itself starts with one of the token's prefixes (otherwise the token would inject
+    /// messages into queues outside its reach).
     pub fn covers_distribution_prefix(&self, prefix: &str) -> bool {
         let own = self.prefixes();
         own.is_empty() || own.iter().any(|p| prefix.starts_with(p.as_str()))
     }
 
-    /// Identificação em logs e traces: o `id` do token, ou `root`.
+    /// Identification in logs and traces: the token's `id`, or `root`.
     pub fn log_id(&self) -> &str {
         match self {
             Principal::Open => "-",
@@ -83,12 +83,12 @@ impl Principal {
     }
 }
 
-/// O que `authenticate` descobriu: `None` é "sem token válido".
+/// What `authenticate` found out: `None` is "no valid token".
 #[derive(Debug, Clone)]
 pub struct Authn(pub Option<Principal>);
 
-/// Os segredos do token raiz: o inline, ou as até duas linhas do arquivo (a atual e a
-/// anterior), relido a cada `auth.reload-interval`.
+/// The root token's secrets: the inline one, or the up to two lines of the file (the current and the
+/// previous), re-read every `auth.reload-interval`.
 pub struct RootTokens {
     values: RwLock<Vec<String>>,
     file: Option<PathBuf>,
@@ -119,7 +119,7 @@ impl RootTokens {
         self.file.is_some()
     }
 
-    /// Relê o arquivo. Se não der (sumiu, ficou vazio), segue com o que tinha.
+    /// Re-reads the file. If it fails (vanished, became empty), it carries on with what it had.
     pub fn reload(&self) {
         let Some(path) = &self.file else { return };
         match read_lines(path) {
@@ -127,12 +127,12 @@ impl RootTokens {
                 *self.values.write().unwrap_or_else(|e| e.into_inner()) = values;
             }
             None => tracing::warn!(
-                "não foi possível reler auth.root-token-file; o token raiz anterior segue valendo"
+                "could not re-read auth.root-token-file; the previous root token keeps applying"
             ),
         }
     }
 
-    /// Confere em tempo constante contra todos os valores, sem parar no primeiro que casa.
+    /// Checks in constant time against all the values, without stopping at the first one that matches.
     pub fn matches(&self, presented: &str) -> bool {
         let values = self.values.read().unwrap_or_else(|e| e.into_inner());
         values.iter().fold(false, |found, value| {
@@ -141,7 +141,7 @@ impl RootTokens {
     }
 }
 
-/// As linhas não vazias do arquivo, no máximo duas. `None` se não leu ou não há nenhuma.
+/// The non-empty lines of the file, at most two. `None` if it could not be read or there are none.
 fn read_lines(path: &Path) -> Option<Vec<String>> {
     let text = std::fs::read_to_string(path).ok()?;
     let lines: Vec<String> = text
@@ -154,7 +154,7 @@ fn read_lines(path: &Path) -> Option<Vec<String>> {
     (!lines.is_empty()).then_some(lines)
 }
 
-/// O estado de autenticação do nó.
+/// The node's authentication state.
 pub struct Auth {
     pub enabled: bool,
     pub root: RootTokens,
@@ -170,7 +170,7 @@ impl Auth {
         }
     }
 
-    /// O token do cabeçalho `Authorization: Bearer <token>`.
+    /// The token from the `Authorization: Bearer <token>` header.
     fn principal(&self, headers: &HeaderMap) -> Option<Principal> {
         let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
         let (scheme, presented) = value.split_once(' ')?;
@@ -187,8 +187,8 @@ impl Auth {
     }
 }
 
-/// A camada de fora: descobre quem chama. Em drain o nó não valida o token (doc 12: conta por
-/// IP e repassa); desligada a autenticação, todo mundo é `Open`.
+/// The outer layer: finds out who is calling. In drain the node does not validate the token (doc 12: it counts by
+/// IP and forwards); with authentication off, everyone is `Open`.
 pub async fn authenticate(
     State(state): State<AppState>,
     mut request: Request,
@@ -205,12 +205,12 @@ pub async fn authenticate(
     next.run(request).await
 }
 
-/// O que a rota exige.
+/// What the route requires.
 enum Need {
-    /// Qualquer token válido (leitura de tópicos, dentro dos prefixos).
+    /// Any valid token (topic reads, within the prefixes).
     Any,
     Permission(Permission),
-    /// Só o token raiz (`/tokens`).
+    /// Only the root token (`/tokens`).
     Root,
 }
 
@@ -231,35 +231,35 @@ fn need(method: &Method, route: &str) -> Option<Need> {
 }
 
 fn unauthorized() -> ApiError {
-    // A resposta é igual para token ausente, mal formado, desconhecido, revogado ou vencido.
+    // The response is the same for a missing, malformed, unknown, revoked or expired token.
     ApiError(TabaError::new(
         ErrorCode::AuthUnauthorized,
-        "Token ausente, inválido ou vencido.",
+        "Missing, invalid or expired token.",
     ))
 }
 
 fn forbidden() -> ApiError {
     ApiError(TabaError::new(
         ErrorCode::AuthForbidden,
-        "O token não tem a permissão que esta rota exige.",
+        "The token does not have the permission this route requires.",
     ))
 }
 
 pub fn out_of_scope() -> TabaError {
     TabaError::new(
         ErrorCode::AuthOutOfScope,
-        "O tópico está fora dos prefixos do token.",
+        "The topic is outside the token's prefixes.",
     )
 }
 
-/// A camada de dentro: `401`, `403 auth.forbidden` e `403 auth.out-of-scope`; passa o
-/// [`Principal`] aos handlers.
+/// The inner layer: `401`, `403 auth.forbidden` and `403 auth.out-of-scope`; passes the
+/// [`Principal`] to the handlers.
 pub async fn authorize(
     State(state): State<AppState>,
     mut request: Request,
     next: Next,
 ) -> Response {
-    // `taba.auth.requests` só existe com a autenticação ligada; o `id` do token nunca é atributo.
+    // `taba.auth.requests` only exists with authentication on; the token's `id` is never an attribute.
     let count = |outcome: &str| {
         if state.auth.enabled {
             state
@@ -274,7 +274,7 @@ pub async fn authorize(
         .and_then(|authn| authn.0.clone());
     let Some(principal) = principal else {
         count("unauthorized");
-        tracing::warn!("chamada recusada: sem token válido");
+        tracing::warn!("call refused: no valid token");
         return unauthorized().into_response();
     };
     let route = request
@@ -289,7 +289,7 @@ pub async fn authorize(
     };
     if refused {
         count("forbidden");
-        tracing::warn!(token.id = %principal.log_id(), route = %route, "chamada recusada: sem permissão");
+        tracing::warn!(token.id = %principal.log_id(), route = %route, "call refused: no permission");
         return forbidden().into_response();
     }
     if route.contains("{topic}") {
@@ -311,7 +311,7 @@ pub async fn authorize(
             && !principal.reaches(&topic)
         {
             count("forbidden");
-            tracing::warn!(token.id = %principal.log_id(), "chamada recusada: fora dos prefixos");
+            tracing::warn!(token.id = %principal.log_id(), "call refused: outside the prefixes");
             return ApiError(out_of_scope()).into_response();
         }
     }

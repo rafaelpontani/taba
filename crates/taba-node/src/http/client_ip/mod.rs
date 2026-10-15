@@ -1,6 +1,6 @@
-//! O IP do cliente (doc 12, "Identificação do cliente"): o endereço da conexão, ou o do
-//! cabeçalho de `client-ip.headers` quando o nó está atrás de balanceador. Vale para o rate
-//! limit e para `operations.allowed-ips`.
+//! The client IP (doc 12, "Client identification"): the connection's address, or the one in the
+//! `client-ip.headers` header when the node is behind a load balancer. Applies to the rate
+//! limit and to `operations.allowed-ips`.
 
 use std::net::{IpAddr, SocketAddr};
 
@@ -25,9 +25,9 @@ impl ClientIpRules {
         }
     }
 
-    /// O IP do cliente. Os cabeçalhos só valem se estão ligados e a conexão vem de um proxy
-    /// confiável (lista vazia: de qualquer origem). Vale o **primeiro cabeçalho presente** e,
-    /// nele, o primeiro endereço; ausente ou inválido, cai no endereço da conexão.
+    /// The client IP. The headers only apply if they are on and the connection comes from a
+    /// trusted proxy (empty list: from any origin). The **first header present** applies and,
+    /// in it, the first address; absent or invalid, it falls back to the connection's address.
     pub fn resolve(&self, peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
         let peer_ip = peer.ip().to_canonical();
         let trusted = self.trusted_proxies.is_empty()
@@ -53,7 +53,7 @@ impl ClientIpRules {
     }
 }
 
-/// `1.2.3.4`, `1.2.3.4:5678`, `::1` ou `[::1]:5678`.
+/// `1.2.3.4`, `1.2.3.4:5678`, `::1` or `[::1]:5678`.
 fn parse_address(text: &str) -> Option<IpAddr> {
     text.parse::<IpAddr>()
         .or_else(|_| text.parse::<SocketAddr>().map(|addr| addr.ip()))

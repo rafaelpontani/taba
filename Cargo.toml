@@ -9,6 +9,6 @@ license = "AGPL-3.0-only"
 repository = "https://github.com/rafaelpontani/taba"
 
 [profile.dev]
-# Só as tabelas de linha: com os símbolos completos cada binário de teste ocupava centenas de MB
-# e o `target/` enchia o disco.
+# Line tables only: with full symbols each test binary took hundreds of MB
+# and `target/` filled the disk.
 debug = "line-tables-only"

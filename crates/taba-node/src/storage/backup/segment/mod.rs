@@ -1,14 +1,14 @@
-//! O formato do segmento (`.seg`) do backup (doc 23, "Backup em S3").
+//! The backup's segment (`.seg`) format (doc 23, "S3 backup").
 //!
 //! ```text
 //! "TABASEG1"
-//! entrada*   = u32 (LE) tamanho dos metadados | metadados (JSON) | corpo
-//! rodapé     = JSON { topic, topicId, writer, entries: [{ id, offset, len }] }
-//! u32 (LE) tamanho do rodapé | "TABAFTR1"
+//! entry*   = u32 (LE) metadata size | metadata (JSON) | body
+//! footer   = JSON { topic, topicId, writer, entries: [{ id, offset, len }] }
+//! u32 (LE) footer size | "TABAFTR1"
 //! ```
 //!
-//! O rodapé-índice deixa listar um segmento sem baixá-lo (`get_suffix`) e ler uma só mensagem por
-//! `Range` (`offset` e `len` cobrem a entrada inteira: metadados e corpo).
+//! The index footer lets you list a segment without downloading it (`get_suffix`) and read a single message by
+//! `Range` (`offset` and `len` cover the whole entry: metadata and body).
 
 use std::io;
 
@@ -18,10 +18,10 @@ use crate::storage::messages::MessageMeta;
 
 const HEADER: &[u8; 8] = b"TABASEG1";
 const TRAILER: &[u8; 8] = b"TABAFTR1";
-/// O que se lê do fim do objeto na primeira tentativa de achar o rodapé.
+/// What is read from the end of the object on the first attempt to find the footer.
 pub const TAIL_GUESS: u64 = 16 * 1024;
 
-/// Os metadados de uma mensagem como o backup os guarda: os mesmos de [`MessageMeta`].
+/// A message's metadata as the backup stores it: the same as [`MessageMeta`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackupMessage {
     pub id: String,
@@ -81,7 +81,7 @@ impl From<BackupMessage> for MessageMeta {
     }
 }
 
-/// Onde uma mensagem está dentro do segmento.
+/// Where a message is inside the segment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub id: String,
@@ -98,7 +98,7 @@ pub struct Footer {
     pub entries: Vec<IndexEntry>,
 }
 
-/// Monta um segmento, mensagem por mensagem.
+/// Builds a segment, message by message.
 pub struct SegmentBuilder {
     footer: Footer,
     buf: Vec<u8>,
@@ -117,7 +117,7 @@ impl SegmentBuilder {
         }
     }
 
-    /// Acrescenta a mensagem e devolve onde ela ficou.
+    /// Appends the message and returns where it ended up.
     pub fn push(&mut self, meta: &MessageMeta, body: &[u8]) -> IndexEntry {
         let head = serde_json::to_vec(&BackupMessage::from(meta)).expect("metadados serializam");
         let offset = self.buf.len() as u64;
@@ -138,7 +138,7 @@ impl SegmentBuilder {
         self.footer.entries.len()
     }
 
-    /// Os bytes das entradas até agora (sem o rodapé).
+    /// The bytes of the entries so far (without the footer).
     pub fn bytes(&self) -> usize {
         self.buf.len()
     }
@@ -151,9 +151,9 @@ impl SegmentBuilder {
         &self.footer.entries
     }
 
-    /// Fecha o segmento: as entradas, o rodapé e o tamanho do rodapé.
+    /// Closes the segment: the entries, the footer and the footer size.
     pub fn finish(mut self) -> Vec<u8> {
-        let footer = serde_json::to_vec(&self.footer).expect("rodapé serializa");
+        let footer = serde_json::to_vec(&self.footer).expect("footer serializes");
         self.buf.extend_from_slice(&footer);
         self.buf
             .extend_from_slice(&(footer.len() as u32).to_le_bytes());
@@ -165,22 +165,22 @@ impl SegmentBuilder {
 fn invalid(what: &str) -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidData,
-        format!("segmento inválido: {what}"),
+        format!("invalid segment: {what}"),
     )
 }
 
-/// O que `read_footer` decide a partir do fim do objeto.
+/// What `read_footer` decides from the end of the object.
 #[derive(Debug, PartialEq, Eq)]
 pub enum FooterRead {
     Done(Footer),
-    /// O trecho lido é curto: o rodapé inteiro tem este tamanho (com o fim), leia de novo.
+    /// The part read is short: the whole footer has this size (with the end), read again.
     NeedMore(u64),
 }
 
-/// Lê o rodapé do fim do segmento (`tail` são os últimos bytes do objeto).
+/// Reads the footer from the end of the segment (`tail` are the object's last bytes).
 pub fn read_footer(tail: &[u8]) -> io::Result<FooterRead> {
     if tail.len() < 12 || &tail[tail.len() - 8..] != TRAILER {
-        return Err(invalid("sem o fim esperado"));
+        return Err(invalid("without the expected end"));
     }
     let size_at = tail.len() - 12;
     let footer_len = u32::from_le_bytes(tail[size_at..size_at + 4].try_into().expect("4 bytes"));
@@ -191,40 +191,40 @@ pub fn read_footer(tail: &[u8]) -> io::Result<FooterRead> {
     let body = &tail[size_at - footer_len as usize..size_at];
     serde_json::from_slice(body)
         .map(FooterRead::Done)
-        .map_err(|e| invalid(&format!("rodapé: {e}")))
+        .map_err(|e| invalid(&format!("footer: {e}")))
 }
 
-/// Lê uma entrada (metadados e corpo), como `offset` e `len` do rodapé a delimitam.
+/// Reads an entry (metadata and body), as the footer's `offset` and `len` delimit it.
 pub fn decode_entry(entry: &[u8]) -> io::Result<(BackupMessage, Vec<u8>)> {
     if entry.len() < 4 {
-        return Err(invalid("entrada curta"));
+        return Err(invalid("short entry"));
     }
     let head_len = u32::from_le_bytes(entry[..4].try_into().expect("4 bytes")) as usize;
     if entry.len() < 4 + head_len {
-        return Err(invalid("entrada truncada"));
+        return Err(invalid("truncated entry"));
     }
     let meta = serde_json::from_slice(&entry[4..4 + head_len])
         .map_err(|e| invalid(&format!("metadados: {e}")))?;
     Ok((meta, entry[4 + head_len..].to_vec()))
 }
 
-/// Uma entrada lida do segmento: os metadados e o corpo.
+/// An entry read from the segment: the metadata and the body.
 pub type Entry = (BackupMessage, Vec<u8>);
 
-/// Lê o segmento inteiro: o rodapé e todas as entradas.
+/// Reads the whole segment: the footer and all the entries.
 pub fn decode_all(whole: &[u8]) -> io::Result<(Footer, Vec<Entry>)> {
     if whole.len() < HEADER.len() || &whole[..HEADER.len()] != HEADER {
-        return Err(invalid("sem o começo esperado"));
+        return Err(invalid("without the expected beginning"));
     }
     let footer = match read_footer(whole)? {
         FooterRead::Done(footer) => footer,
-        FooterRead::NeedMore(_) => return Err(invalid("rodapé truncado")),
+        FooterRead::NeedMore(_) => return Err(invalid("truncated footer")),
     };
     let mut messages = Vec::with_capacity(footer.entries.len());
     for entry in &footer.entries {
         let (from, to) = (entry.offset as usize, (entry.offset + entry.len) as usize);
         if to > whole.len() {
-            return Err(invalid("entrada fora do objeto"));
+            return Err(invalid("entry outside the object"));
         }
         messages.push(decode_entry(&whole[from..to])?);
     }

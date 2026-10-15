@@ -29,7 +29,7 @@ fn sizes_are_binary_and_accept_plain_bytes() {
     for bad in ["MB", "5XB", "", "-1", "5 MB"] {
         assert_eq!(Bytes::parse(bad), None, "{bad:?}");
     }
-    assert_eq!(Bytes::parse("99999999999999TB"), None, "estouro de u64");
+    assert_eq!(Bytes::parse("99999999999999TB"), None, "u64 overflow");
 }
 
 #[test]
@@ -67,17 +67,17 @@ fn environment_wins_over_file_and_file_over_default() {
     assert_eq!(
         source.get::<u16>("api.port").unwrap(),
         7000,
-        "ambiente vence o arquivo"
+        "environment beats the file"
     );
     assert_eq!(
         source.get::<u16>("cluster.port").unwrap(),
         9001,
-        "arquivo vence o padrão"
+        "file beats the default"
     );
     assert_eq!(
         source.get::<u32>("replication.factor").unwrap(),
         3,
-        "padrão da tabela"
+        "table default"
     );
 }
 
@@ -135,7 +135,7 @@ fn unknown_taba_variable_becomes_a_warning() {
     let env = MapEnv::new([
         ("TABA_API_PROT", "80"),
         ("TABA_CONFIG_FILE", "x.yml"),
-        ("OUTRA", "1"),
+        ("OTHER", "1"),
     ]);
     let (_, warnings) = Source::build(None, &env).unwrap();
     assert_eq!(warnings.len(), 1);

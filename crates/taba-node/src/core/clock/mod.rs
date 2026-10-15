@@ -1,5 +1,5 @@
-//! O relógio do nó, atrás de um trait para os testes controlarem o tempo
-//! (invisibilidade, `ttl`, freezing, votação; doc 18, seção 17.5).
+//! The node clock, behind a trait so the tests control time
+//! (invisibility, `ttl`, freezing, voting; doc 18, section 17.5).
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub trait Clock: Send + Sync + 'static {
     fn now(&self) -> SystemTime;
 
-    /// Milissegundos desde a época Unix, a base do GUID v7 e dos prazos absolutos.
+    /// Milliseconds since the Unix epoch, the basis of the GUID v7 and of absolute deadlines.
     fn now_millis(&self) -> u64 {
         self.now()
             .duration_since(UNIX_EPOCH)
@@ -15,7 +15,7 @@ pub trait Clock: Send + Sync + 'static {
     }
 }
 
-/// O relógio do sistema.
+/// The system clock.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SystemClock;
 
@@ -25,7 +25,7 @@ impl Clock for SystemClock {
     }
 }
 
-/// Relógio manual: só anda quando o teste manda.
+/// Manual clock: only moves when the test says so.
 #[derive(Debug)]
 pub struct ManualClock {
     now: Mutex<SystemTime>,
@@ -38,7 +38,7 @@ impl ManualClock {
         }
     }
 
-    /// Começa em `2026-10-06T12:00:00Z`, o instante dos exemplos da documentação.
+    /// Starts at `2026-10-06T12:00:00Z`, the instant of the documentation's examples.
     pub fn at_doc_epoch() -> Self {
         Self::new(UNIX_EPOCH + Duration::from_secs(1_791_288_000))
     }

@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace Taba
 {
-    /// <summary>Um campo do <c>PATCH</c> que aceita voltar ao padrão do servidor (<c>null</c>).</summary>
+    /// <summary>A <c>PATCH</c> field that accepts going back to the server default (<c>null</c>).</summary>
     public struct Field<T> where T : struct, IFormattable
     {
         private readonly int _state;
@@ -16,13 +16,13 @@ namespace Taba
             _value = value;
         }
 
-        /// <summary>Não envia o campo (o valor inicial).</summary>
+        /// <summary>Does not send the field (the initial value).</summary>
         public static Field<T> Keep
         {
             get { return default(Field<T>); }
         }
 
-        /// <summary>Envia <c>null</c>: volta ao padrão do servidor.</summary>
+        /// <summary>Sends <c>null</c>: goes back to the server default.</summary>
         public static Field<T> UseDefault
         {
             get { return new Field<T>(1, default(T)); }

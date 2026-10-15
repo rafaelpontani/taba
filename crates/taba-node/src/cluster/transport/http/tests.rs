@@ -2,10 +2,10 @@ use super::*;
 
 #[test]
 fn the_own_address_is_the_interface_that_reaches_the_entry_address() {
-    // Para um destino local, a interface é a de loopback (nada é enviado).
+    // For a local destination, the interface is the loopback one (nothing is sent).
     let entry = PeerAddr::new("127.0.0.1", 9);
     assert_eq!(discover_address(&entry).unwrap(), "127.0.0.1");
-    let unresolved = PeerAddr::new("nome.que.nao.existe.invalid", 9);
+    let unresolved = PeerAddr::new("name.that.does.not.exist.invalid", 9);
     assert!(discover_address(&unresolved).is_err());
 }
 
@@ -15,7 +15,7 @@ fn an_ipv6_host_is_bracketed_in_the_url() {
     assert_eq!(authority(&PeerAddr::new("::1", 8081)), "[::1]:8081");
 }
 
-/// Um servidor HTTP/1.1 mínimo que conta as conexões aceitas e deixa cada uma aberta (keep-alive).
+/// A minimal HTTP/1.1 server that counts the accepted connections and leaves each one open (keep-alive).
 async fn counting_server() -> (u16, Arc<std::sync::atomic::AtomicUsize>) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -58,6 +58,6 @@ async fn every_node_listing_opens_a_new_connection_so_the_balancer_can_pick_anot
     assert_eq!(
         accepted.load(Ordering::SeqCst),
         3,
-        "uma conexão por listagem"
+        "one connection per listing"
     );
 }

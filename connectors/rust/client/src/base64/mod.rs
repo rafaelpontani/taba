@@ -1,4 +1,4 @@
-//! Base64 padrão (RFC 4648), próprio: o conector não depende de nenhuma biblioteca para isso.
+//! Standard Base64 (RFC 4648), our own: the connector depends on no library for this.
 
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -27,8 +27,8 @@ pub fn encode(data: &[u8]) -> String {
     out
 }
 
-/// Decodifica base64 com ou sem preenchimento; devolve `None` se há caractere fora do alfabeto ou
-/// o tamanho é impossível.
+/// Decodes base64 with or without padding; returns `None` if there is a character outside the alphabet or
+/// the length is impossible.
 pub fn decode(text: &str) -> Option<Vec<u8>> {
     let trimmed = text.trim_end_matches('=');
     if text.len() - trimmed.len() > 2 || trimmed.len() % 4 == 1 {

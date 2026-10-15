@@ -1,5 +1,5 @@
-//! O transporte: leva os bytes da requisição ao servidor e traz a resposta. O núcleo (montar e ler
-//! HTTP) está em `http`; aqui só há TCP e TLS (`rustls`, TLS 1.2 ou superior).
+//! The transport: carries the request bytes to the server and brings the response back. The core (building and reading
+//! HTTP) is in `http`; here there is only TCP and TLS (`rustls`, TLS 1.2 or later).
 
 use std::io::{self, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -14,22 +14,22 @@ use crate::http::{self, ReadError, Request, Response, Url};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timeouts {
-    /// Para abrir a conexão.
+    /// To open the connection.
     pub connect: Duration,
-    /// Total da chamada, da conexão aberta até a resposta lida.
+    /// Total of the call, from the open connection until the response is read.
     pub total: Duration,
 }
 
-/// Por que a chamada falhou, e se o servidor pode ter recebido o pedido.
+/// Why the call failed, and whether the server may have received the request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportError {
-    /// Falha antes de enviar qualquer byte da requisição (DNS, recusa, handshake de TLS).
+    /// Failure before sending any byte of the request (DNS, refusal, TLS handshake).
     Connect(String),
-    /// O tempo acabou; `sent` diz se a requisição já tinha sido escrita.
+    /// Time ran out; `sent` says whether the request had already been written.
     Timeout { sent: bool },
-    /// Falha de rede depois de começar a enviar.
+    /// Network failure after starting to send.
     Io(String),
-    /// A resposta não é HTTP válido.
+    /// The response is not valid HTTP.
     Protocol(String),
 }
 
@@ -42,14 +42,14 @@ pub trait Transport: Send + Sync {
     ) -> Result<Response, TransportError>;
 }
 
-/// TCP puro ou com `rustls`. Uma conexão por chamada.
+/// Plain TCP or with `rustls`. One connection per call.
 pub struct TcpTransport {
     ca_pem: Option<Vec<u8>>,
     tls: Mutex<Option<Arc<ClientConfig>>>,
 }
 
 impl TcpTransport {
-    /// `ca_pem` é um certificado de CA (PEM) a confiar, além das raízes do sistema.
+    /// `ca_pem` is a CA certificate (PEM) to trust, besides the system roots.
     pub fn new(ca_pem: Option<Vec<u8>>) -> Self {
         TcpTransport {
             ca_pem,
@@ -69,8 +69,8 @@ impl TcpTransport {
     }
 }
 
-/// A configuração de TLS: as raízes do sistema mais a CA dada. Nunca desliga a verificação do
-/// certificado (UC-CNT-030).
+/// The TLS configuration: the system roots plus the given CA. It never turns certificate
+/// verification off (UC-CNT-030).
 pub fn build_tls_config(ca_pem: Option<&[u8]>) -> Result<ClientConfig, String> {
     let mut roots = RootCertStore::empty();
     for cert in rustls_native_certs::load_native_certs().certs {
@@ -79,14 +79,14 @@ pub fn build_tls_config(ca_pem: Option<&[u8]>) -> Result<ClientConfig, String> {
     if let Some(pem) = ca_pem {
         let mut found = 0;
         for cert in CertificateDer::pem_slice_iter(pem) {
-            let cert = cert.map_err(|e| format!("certificado de CA inválido: {e}"))?;
+            let cert = cert.map_err(|e| format!("invalid CA certificate: {e}"))?;
             roots
                 .add(cert)
-                .map_err(|e| format!("certificado de CA recusado: {e}"))?;
+                .map_err(|e| format!("CA certificate refused: {e}"))?;
             found += 1;
         }
         if found == 0 {
-            return Err("o arquivo de CA não tem nenhum certificado PEM".into());
+            return Err("the CA file has no PEM certificate".into());
         }
     }
     let provider = Arc::new(rustls::crypto::ring::default_provider());
@@ -96,7 +96,7 @@ pub fn build_tls_config(ca_pem: Option<&[u8]>) -> Result<ClientConfig, String> {
     Ok(builder.with_root_certificates(roots).with_no_client_auth())
 }
 
-/// Lê e escreve com um prazo único para a chamada inteira.
+/// Reads and writes with a single deadline for the whole call.
 struct Deadlined {
     sock: TcpStream,
     deadline: Instant,
@@ -141,7 +141,7 @@ fn is_timeout(e: &io::Error) -> bool {
 fn connect(url: &Url, timeouts: &Timeouts) -> Result<TcpStream, TransportError> {
     let addrs = (url.host.as_str(), url.port)
         .to_socket_addrs()
-        .map_err(|e| TransportError::Connect(format!("não achou {}: {e}", url.host)))?;
+        .map_err(|e| TransportError::Connect(format!("could not find {}: {e}", url.host)))?;
     let mut last = None;
     for addr in addrs {
         match TcpStream::connect_timeout(&addr, timeouts.connect) {
@@ -154,8 +154,8 @@ fn connect(url: &Url, timeouts: &Timeouts) -> Result<TcpStream, TransportError> 
         }
     }
     Err(TransportError::Connect(match last {
-        Some(e) => format!("não conectou a {}:{}: {e}", url.host, url.port),
-        None => format!("{} não tem endereço", url.host),
+        Some(e) => format!("could not connect to {}:{}: {e}", url.host, url.port),
+        None => format!("{} has no address", url.host),
     }))
 }
 
@@ -174,17 +174,17 @@ impl Transport for TcpTransport {
         let bytes = http::encode_request(&url.host_header(), request);
         if url.https {
             let name = ServerName::try_from(url.host.clone()).map_err(|_| {
-                TransportError::Connect(format!("`{}` não é um nome de servidor válido", url.host))
+                TransportError::Connect(format!("`{}` is not a valid server name", url.host))
             })?;
             let mut conn = ClientConnection::new(self.tls_config()?, name)
                 .map_err(|e| TransportError::Connect(e.to_string()))?;
-            // O handshake termina antes de qualquer byte da requisição: falhar aqui é "não enviou".
+            // The handshake ends before any byte of the request: failing here is "did not send".
             while conn.is_handshaking() {
                 conn.complete_io(&mut stream).map_err(|e| {
                     if is_timeout(&e) {
                         TransportError::Timeout { sent: false }
                     } else {
-                        TransportError::Connect(format!("falha de TLS: {e}"))
+                        TransportError::Connect(format!("TLS failure: {e}"))
                     }
                 })?;
             }
@@ -200,7 +200,7 @@ fn exchange<S: Read + Write>(mut stream: S, bytes: &[u8]) -> Result<Response, Tr
         return Err(if is_timeout(&e) {
             TransportError::Timeout { sent: true }
         } else {
-            TransportError::Io(format!("falha ao enviar: {e}"))
+            TransportError::Io(format!("failed to send: {e}"))
         });
     }
     let mut reader = BufReader::new(stream);
@@ -210,7 +210,7 @@ fn exchange<S: Read + Write>(mut stream: S, bytes: &[u8]) -> Result<Response, Tr
             Err(TransportError::Timeout { sent: true })
         }
         Err(ReadError::Io { error, .. }) => Err(TransportError::Io(format!(
-            "falha ao ler a resposta: {error}"
+            "failed to read the response: {error}"
         ))),
         Err(ReadError::Malformed(why)) => Err(TransportError::Protocol(why.to_owned())),
     }

@@ -1,26 +1,26 @@
-//! O canal permanente entre cada par de nós (doc 04, seções 6.1 e 6.3; doc 13, seções 12.8 e 12.9):
-//! o **sinal de vida** (`keepalive`), os sinais de disponibilidade da entrega com `seq`,
-//! confirmação e fila de saída, e a detecção de falha que abre a votação de exclusão.
+//! The permanent channel between each pair of nodes (doc 04, sections 6.1 and 6.3; doc 13, sections 12.8 and 12.9):
+//! the **heartbeat** (`keepalive`), the delivery availability signals with `seq`,
+//! confirmation and outgoing queue, and the failure detection that opens the exclusion vote.
 //!
-//! Há **uma conexão** por par (um WebSocket na rede real, `GET /cluster/channel`; um par de filas
-//! na rede em memória), usada nos dois sentidos: cada nó manda **lotes** (o sinal de vida e os
-//! quadros ainda sem confirmação) e responde a cada lote recebido com o `confirm`. O canal cai
-//! quando a conexão fecha ou quando nada chega do par por duas vezes
-//! `cluster.channel.keepalive.interval`; a primeira queda marca o canal como caído e as seguintes
-//! tentativas de abrir de novo (a cada `cluster.channel.reconnect.backoff`) contam como tentativas
-//! de reconexão. Esgotadas `cluster.channel.reconnect.retries`, o nó abre a votação de exclusão do
-//! par. A fila de saída estourar (tamanho ou idade) abre a votação na hora.
+//! There is **one connection** per pair (a WebSocket on the real network, `GET /cluster/channel`; a pair of queues
+//! on the in-memory network), used in both directions: each node sends **batches** (the heartbeat and the
+//! frames still unconfirmed) and answers each batch received with the `confirm`. The channel drops
+//! when the connection closes or when nothing arrives from the peer for twice
+//! `cluster.channel.keepalive.interval`; the first drop marks the channel as down and the following
+//! attempts to open again (every `cluster.channel.reconnect.backoff`) count as reconnection
+//! attempts. Once `cluster.channel.reconnect.retries` run out, the node opens the exclusion vote on the
+//! peer. The outgoing queue overflowing (size or age) opens the vote right away.
 //!
-//! Quem abre a conexão: o nó que **entra ou volta** abre com todos os outros; os que já estavam no
-//! cluster só aceitam (e, se o novo não aparece em um intervalo de sinal de vida, abrem eles). Se
-//! os dois abrirem ao mesmo tempo, fica a aberta pelo nó de **maior hash do ID** (o de menor hash
-//! fecha a que abriu): sempre um canal por par. O que ficou sem confirmação na conexão que caiu é
-//! reenviado na que ficou.
+//! Who opens the connection: the node that **joins or returns** opens it with all the others; those that were already in the
+//! cluster only accept (and, if the new one does not show up within a heartbeat interval, they open it). If
+//! both open at the same time, the one opened by the node with the **highest ID hash** stays (the one with the lowest hash
+//! closes the one it opened): always one channel per pair. What was left unconfirmed on the connection that dropped is
+//! resent on the one that stayed.
 //!
-//! Uma tarefa por par abre a conexão quando não há; uma por conexão envia, e duas recebem: uma lê o
-//! que chega (e marca que o par está vivo) e põe na **fila de entrada** do par, e a outra processa
-//! a fila na ordem e devolve o `confirm`. Assim um processamento lento não esconde o sinal de vida
-//! do par, só atrasa o `confirm`.
+//! One task per pair opens the connection when there is none; one per connection sends, and two receive: one reads what
+//! arrives (and marks the peer as alive) and puts it in the peer's **incoming queue**, and the other processes
+//! the queue in order and returns the `confirm`. This way slow processing does not hide the peer's heartbeat,
+//! it only delays the `confirm`.
 
 mod queue;
 
@@ -46,60 +46,60 @@ use crate::telemetry::metrics::{
     CHANNEL_RECONNECTS, CHANNEL_RTT, CHANNEL_STATE,
 };
 
-/// Quantos quadros um lote leva no máximo.
+/// How many frames a batch carries at most.
 const MAX_FRAMES: usize = 256;
-/// Quantas respostas `not-member` seguidas fazem o nó concluir que foi excluído.
+/// How many consecutive `not-member` answers make the node conclude it was excluded.
 const EXCLUDED_AFTER: u32 = 3;
 
-/// Duas conexões com o mesmo par: fica a aberta pelo nó de **maior hash do ID** (doc 13, seção
-/// 12.9); o de menor hash fecha a que abriu. `mine_wins`: o hash deste nó é o maior. Devolve se a
-/// nova substitui a antiga: sempre que o mesmo lado a reabriu (a antiga está morta) e, entre
-/// lados diferentes, quando a nova foi aberta pelo nó de maior hash.
+/// Two connections with the same peer: the one opened by the node with the **highest ID hash** stays (doc 13, section
+/// 12.9); the one with the lowest hash closes the one it opened. `mine_wins`: this node's hash is the highest. Returns whether the
+/// new one replaces the old: whenever the same side reopened it (the old one is dead) and, between
+/// different sides, when the new one was opened by the node with the highest hash.
 fn keeps_new_link(old_opened_by_me: bool, new_opened_by_me: bool, mine_wins: bool) -> bool {
     old_opened_by_me == new_opened_by_me || new_opened_by_me == mine_wins
 }
 
-/// Uma conexão aberta com o par.
+/// An open connection with the peer.
 struct Link {
     id: u64,
-    /// Fui eu que abri a conexão (senão o par abriu).
+    /// I opened the connection (otherwise the peer did).
     opened_by_me: bool,
     tx: mpsc::Sender<ChannelMessage>,
     cancel: CancellationToken,
-    /// Há algo novo a enviar.
+    /// There is something new to send.
     wake: Notify,
-    /// O maior `seq` de quadro já enviado por esta conexão: o que passou disso é novo.
+    /// The highest frame `seq` already sent by this connection: anything past that is new.
     sent_max: AtomicU64,
-    /// Quando cada lote sem `confirm` foi enviado (o `confirm` volta na mesma ordem).
+    /// When each batch without a `confirm` was sent (the `confirm` comes back in the same order).
     in_flight: Mutex<VecDeque<Instant>>,
-    /// Quando chegou a última mensagem do par por esta conexão.
+    /// When the peer's last message arrived on this connection.
     heard: Mutex<Instant>,
 }
 
 #[derive(Debug)]
 struct PeerState {
     queue: OutQueue,
-    /// O canal está conectado (a conexão está aberta e o par está falando).
+    /// The channel is connected (the connection is open and the peer is talking).
     up: bool,
-    /// Já houve conexão com este par (a próxima é uma reconexão).
+    /// There has already been a connection with this peer (the next one is a reconnection).
     connected_once: bool,
-    /// A conexão de agora.
+    /// The current connection.
     link: Option<Arc<Link>>,
-    /// Aberturas seguidas que falharam (ou conexões que caíram).
+    /// Consecutive openings that failed (or connections that dropped).
     failures: u32,
-    /// A votação desta queda já foi aberta.
+    /// This drop's vote has already been opened.
     vote_opened: bool,
-    /// Respostas `not-member` seguidas.
+    /// Consecutive `not-member` answers.
     not_member: u32,
-    /// O instantâneo dos sinais precisa ser enfileirado (canal novo ou que voltou).
+    /// The signal snapshot needs to be queued (new channel or one that came back).
     snapshot_pending: bool,
     last_keepalive_sent: Option<Instant>,
     last_attempt: Option<Instant>,
-    /// Não abrir a conexão antes disto (o nó que já estava no cluster espera o novo aparecer).
+    /// Do not open the connection before this (the node that was already in the cluster waits for the new one to show up).
     dial_not_before: Option<Instant>,
-    /// O maior `seq` já processado deste par.
+    /// The highest `seq` already processed from this peer.
     in_max_seq: u64,
-    /// O que o último sinal de vida dele disse.
+    /// What its last heartbeat said.
     peer_version: Option<u64>,
     peer_state: Option<String>,
 }
@@ -113,7 +113,7 @@ impl std::fmt::Debug for Link {
 pub struct Peer {
     node_id: String,
     state: Mutex<PeerState>,
-    /// Acorda a tarefa que abre a conexão (a conexão caiu, o par saiu).
+    /// Wakes the task that opens the connection (the connection dropped, the peer left).
     dialer: Notify,
     removed: AtomicBool,
 }
@@ -124,7 +124,7 @@ impl Peer {
     }
 }
 
-/// O que um par mostra para as condições do cluster e para `GET /health/cluster`.
+/// What a peer shows for the cluster conditions and for `GET /health/cluster`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerInfo {
     pub node_id: String,
@@ -144,8 +144,8 @@ pub struct Channels {
     on_down: OnceLock<DownHook>,
     on_excluded: OnceLock<ExcludedHook>,
     next_link: AtomicU64,
-    /// Este nó já viu a tabela de membros com ele dentro: os pares que aparecem depois são os que
-    /// entram, e é o novo quem abre a conexão com os antigos.
+    /// This node has already seen the member table with it inside: the peers that appear later are those that
+    /// join, and it is the new one that opens the connection with the old ones.
     established: AtomicBool,
 }
 
@@ -166,13 +166,13 @@ impl Channels {
         let _ = self.signals.set(Arc::downgrade(signals));
     }
 
-    /// Quem é chamado quando um par cai ou a fila para ele estoura (abre a votação).
+    /// Who is called when a peer falls or the queue to it overflows (opens the vote).
     pub fn set_on_down(&self, hook: DownHook) {
         let _ = self.on_down.set(hook);
     }
 
-    /// Quem é chamado quando um par insiste em dizer que este nó não é membro: confere se o nó foi
-    /// mesmo excluído do cluster.
+    /// Who is called when a peer insists on saying this node is not a member: checks whether the node was
+    /// really excluded from the cluster.
     pub fn set_on_excluded(&self, hook: ExcludedHook) {
         let _ = self.on_excluded.set(hook);
     }
@@ -189,22 +189,22 @@ impl Channels {
         self.service.rules()
     }
 
-    /// Quanto silêncio do par derruba a conexão.
+    /// How much silence from the peer brings the connection down.
     fn dead_after(&self) -> Duration {
         (self.rules().keepalive_interval * 2).max(Duration::from_millis(500))
     }
 
-    // ---- Os pares ----
+    // ---- The peers ----
 
-    /// Acerta os canais com a tabela de membros: abre o canal de quem entrou e descarta o de quem
-    /// saiu, com a fila de saída e a de entrada (doc 13, seção 12.9).
+    /// Adjusts the channels to the member table: opens the channel of whoever joined and discards that of whoever
+    /// left, with the outgoing and incoming queue (doc 13, section 12.9).
     pub fn sync_members(self: &Arc<Self>) {
         let Some(table) = self.service.membership().table() else {
             self.drop_all();
             return;
         };
         let me = self.service.node_id();
-        // O nó que saiu da própria tabela (drain, exclusão) não tem mais canais.
+        // A node that left its own table (drain, exclusion) has no channels left.
         if table.member(&me).is_none() {
             self.drop_all();
             return;
@@ -215,7 +215,7 @@ impl Channels {
             .filter(|m| m.node_id != me)
             .map(|m| m.node_id.clone())
             .collect();
-        // O nó que acaba de entrar abre a conexão com todos; os que já estavam esperam por ele.
+        // The node that just joined opens the connection with all; those that were already there wait for it.
         let joining = !self.established.swap(true, Ordering::SeqCst);
         let mut added = Vec::new();
         let mut removed = Vec::new();
@@ -303,7 +303,7 @@ impl Channels {
         registry.set(&CHANNEL_STATE, &label, 0.0);
     }
 
-    /// Como cada par aparece para quem olha o cluster.
+    /// How each peer appears to whoever looks at the cluster.
     pub fn peers(&self) -> Vec<PeerInfo> {
         let mut out: Vec<PeerInfo> = self
             .lock()
@@ -323,13 +323,13 @@ impl Channels {
         out
     }
 
-    /// O canal com o nó está conectado? Um nó que este não conhece como par não está.
+    /// Is the channel with the node connected? A node this one does not know as a peer is not.
     pub fn is_up(&self, node_id: &str) -> bool {
         self.lock().get(node_id).is_some_and(|p| p.lock().up)
     }
 
-    /// O par está falando agora: a conexão está aberta e o último sinal dele chegou há menos que o
-    /// prazo de silêncio. É o que o votante confere antes de votar a exclusão.
+    /// The peer is talking now: the connection is open and its last signal arrived less than the
+    /// silence deadline ago. It is what the voter checks before voting on the exclusion.
     pub fn is_live(&self, node_id: &str) -> bool {
         let Some(peer) = self.lock().get(node_id).cloned() else {
             return false;
@@ -345,10 +345,10 @@ impl Channels {
             })
     }
 
-    // ---- Enviar sinais ----
+    // ---- Sending signals ----
 
-    /// Enfileira o sinal para todos os pares. Um nó que ainda sincroniza só manda o seu estado
-    /// (doc 13, seção 12.7: não avisa nem sinaliza mensagens prontas).
+    /// Queues the signal for all the peers. A node that is still syncing only sends its state
+    /// (doc 13, section 12.7: it neither notifies nor signals ready messages).
     pub fn broadcast(&self, signal: Signal) {
         let peers: Vec<Arc<Peer>> = self.lock().values().cloned().collect();
         for peer in peers {
@@ -356,7 +356,7 @@ impl Channels {
         }
     }
 
-    /// Enfileira o sinal para um par.
+    /// Queues the signal for a peer.
     pub fn send(&self, node_id: &str, signal: Signal) {
         let peer = self.lock().get(node_id).cloned();
         if let Some(peer) = peer {
@@ -402,8 +402,8 @@ impl Channels {
         }
     }
 
-    /// Enfileira o sinal para todos os pares e espera os `confirm` (até `timeout`). É o que o nó que
-    /// acabou de ficar pronto usa: os outros precisam saber antes de ele passar a atender.
+    /// Queues the signal for all the peers and waits for the `confirm`s (up to `timeout`). It is what the node that
+    /// just became ready uses: the others need to know before it starts serving.
     pub async fn broadcast_confirmed(&self, signal: Signal, timeout: Duration) {
         let peers: Vec<Arc<Peer>> = self.lock().values().cloned().collect();
         let mut waiting: Vec<(Arc<Peer>, u64)> = Vec::new();
@@ -423,9 +423,9 @@ impl Channels {
         }
     }
 
-    // ---- Abrir a conexão ----
+    // ---- Opening the connection ----
 
-    /// Quanto falta para a próxima tentativa de abrir a conexão.
+    /// How long until the next attempt to open the connection.
     fn dial_wait(&self, state: &PeerState) -> Duration {
         let now = Instant::now();
         let mut wait = state
@@ -443,7 +443,7 @@ impl Channels {
         wait
     }
 
-    /// A tarefa do par que abre a conexão quando não há uma.
+    /// The peer's task that opens the connection when there is none.
     async fn run_peer(self: Arc<Self>, peer: Arc<Peer>) {
         let cancel = self.service.cancel_token().clone();
         loop {
@@ -498,12 +498,12 @@ impl Channels {
         }
         match result {
             Ok(link) => self.install(peer, link, true),
-            // Outro processo atende nesse endereço: o nó que este canal procura não está lá (D100).
+            // Another process serves at that address: the node this channel is looking for is not there (D100).
             Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterWrongNode => {
                 self.failed(peer)
             }
             Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterNotMember => {
-                // O par não me tem na tabela dele: ou fui excluído, ou o commit ainda não chegou.
+                // The peer does not have me in its table: either I was excluded, or the commit has not arrived yet.
                 let excluded = {
                     let mut state = peer.lock();
                     state.not_member += 1;
@@ -517,8 +517,8 @@ impl Channels {
                     hook(peer.node_id.clone());
                 }
             }
-            // O par respondeu com um erro (por exemplo, ainda sem tabela): está vivo, mas ainda não
-            // aceita o canal. Tenta de novo no próximo intervalo.
+            // The peer answered with an error (for example, still without a table): it is alive, but does not yet
+            // accept the channel. Tries again at the next interval.
             Err(CallError::Remote(_)) => {
                 self.mark_up(peer);
                 peer.lock().dial_not_before = Some(Instant::now() + interval);
@@ -527,10 +527,10 @@ impl Channels {
         }
     }
 
-    // ---- A conexão ----
+    // ---- The connection ----
 
-    /// A conexão aberta (por mim ou pelo par) passa a ser o canal do par. Se já havia uma, fica a
-    /// aberta pelo nó de maior hash do ID (doc 13, seção 12.9); a outra é fechada.
+    /// The open connection (by me or by the peer) becomes the peer's channel. If there was already one, the
+    /// one opened by the node with the highest ID hash stays (doc 13, section 12.9); the other is closed.
     fn install(self: &Arc<Self>, peer: &Arc<Peer>, io: ChannelLink, opened_by_me: bool) {
         let ChannelLink { tx, rx } = io;
         let link = Arc::new(Link {
@@ -551,14 +551,14 @@ impl Channels {
                 false
             } else {
                 match state.link.clone() {
-                    // O mesmo lado reabriu: a conexão antiga está morta.
+                    // The same side reopened: the old connection is dead.
                     Some(old) if old.opened_by_me == opened_by_me => {
                         old.cancel.cancel();
                         state.link = Some(link.clone());
                         true
                     }
-                    // Duas conexões ao mesmo tempo: fica a do nó de maior hash. O que a que fecha
-                    // levou e não foi confirmado se reenvia na que ficou.
+                    // Two connections at the same time: the one of the node with the highest hash stays. What the one that closes
+                    // carried and was not confirmed is resent on the one that stayed.
                     Some(old) => {
                         if keeps_new_link(old.opened_by_me, opened_by_me, mine_wins) {
                             old.cancel.cancel();
@@ -588,7 +588,7 @@ impl Channels {
         tokio::spawn(async move { channels.run_link(peer, link, rx).await });
     }
 
-    /// O canal com o par está de pé: zera as falhas e conta a reconexão.
+    /// The channel with the peer is up: resets the failures and counts the reconnection.
     fn mark_up(&self, peer: &Arc<Peer>) {
         let registry = &self.service.telemetry().registry;
         let label = [("taba.peer", peer.node_id.as_str())];
@@ -614,12 +614,12 @@ impl Channels {
                 &[("taba.peer", peer.node_id.as_str()), ("taba.outcome", "ok")],
                 1.0,
             );
-            tracing::info!(peer = %peer.node_id, "canal com o nó restabelecido");
+            tracing::info!(peer = %peer.node_id, "channel with the node reestablished");
         }
     }
 
-    /// O que uma conexão faz enquanto vive: o envio é esta tarefa, e a leitura e o processamento
-    /// são duas outras.
+    /// What a connection does while it lives: sending is this task, and reading and processing
+    /// are two others.
     async fn run_link(
         self: Arc<Self>,
         peer: Arc<Peer>,
@@ -628,7 +628,7 @@ impl Channels {
     ) {
         let (inbox_tx, mut inbox) = mpsc::unbounded_channel::<ChannelMessage>();
         let telemetry = self.service.telemetry().clone();
-        // Lê o que chega e põe na fila de entrada.
+        // Reads what arrives and puts it in the incoming queue.
         let reader = {
             let (link, telemetry, peer) = (link.clone(), telemetry.clone(), peer.clone());
             tokio::spawn(async move {
@@ -639,7 +639,7 @@ impl Channels {
                     };
                     let Some(message) = message else { break };
                     *link.heard.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
-                    // O par falou: a conexão vale, e as falhas anteriores ficam para trás.
+                    // The peer spoke: the connection is valid, and the previous failures are left behind.
                     {
                         let mut state = peer.lock();
                         state.failures = 0;
@@ -656,7 +656,7 @@ impl Channels {
                 link.cancel.cancel();
             })
         };
-        // Processa a fila de entrada na ordem e devolve o `confirm`.
+        // Processes the incoming queue in order and returns the `confirm`.
         let processor = {
             let (channels, link, telemetry, peer) =
                 (self.clone(), link.clone(), telemetry.clone(), peer.clone());
@@ -671,7 +671,7 @@ impl Channels {
                     channels.process(&peer, &link, message).await;
                     telemetry.registry.add(&CHANNEL_QUEUE_IN, &label, -1.0);
                 }
-                // O que ficou sem processar sai da conta; o par reenvia na conexão seguinte.
+                // What was left unprocessed leaves the count; the peer resends it on the next connection.
                 let mut left = 0.0;
                 while inbox.try_recv().is_ok() {
                     left += 1.0;
@@ -723,8 +723,8 @@ impl Channels {
         self.link_ended(&peer, &link);
     }
 
-    /// O lote a enviar agora: o instantâneo (canal novo), o sinal de vida (quando é hora) e os
-    /// quadros que esta conexão ainda não levou.
+    /// The batch to send now: the snapshot (new channel), the heartbeat (when it is time) and the
+    /// frames this connection has not carried yet.
     fn build_batch(&self, peer: &Arc<Peer>, link: &Arc<Link>) -> Option<ChannelBatch> {
         let signals = self.signals()?;
         let now = Instant::now();
@@ -774,8 +774,8 @@ impl Channels {
         })
     }
 
-    /// Uma mensagem da fila de entrada: um lote se processa e se confirma; um `confirm` tira os
-    /// quadros da fila de saída.
+    /// A message from the incoming queue: a batch is processed and confirmed; a `confirm` takes the
+    /// frames out of the outgoing queue.
     async fn process(
         self: &Arc<Self>,
         peer: &Arc<Peer>,
@@ -815,14 +815,14 @@ impl Channels {
                 if let Some(started) = started {
                     registry.observe(&CHANNEL_RTT, &label, started.elapsed().as_secs_f64());
                 }
-                // Restou algo que coube só depois (mais de um lote de quadros).
+                // Something is left that only fit afterwards (more than one batch of frames).
                 link.wake.notify_one();
             }
         }
     }
 
-    /// A conexão acabou (o par fechou, ficou mudo ou o nó parou): se era a do par, o canal caiu e
-    /// a tarefa do par abre outra depois do `backoff`.
+    /// The connection ended (the peer closed it, went mute or the node stopped): if it was the peer's, the channel fell and
+    /// the peer's task opens another after the `backoff`.
     fn link_ended(&self, peer: &Arc<Peer>, link: &Arc<Link>) {
         let current = {
             let mut state = peer.lock();
@@ -871,7 +871,7 @@ impl Channels {
         if went_down {
             registry.add(&CHANNEL_CONNECTIONS, &[], -1.0);
             registry.set(&CHANNEL_STATE, &label, 0.0);
-            tracing::warn!(peer = %peer.node_id, "canal com o nó caído: tentando reconectar");
+            tracing::warn!(peer = %peer.node_id, "channel with the node down: trying to reconnect");
         } else {
             registry.add(
                 &CHANNEL_RECONNECTS,
@@ -899,14 +899,14 @@ impl Channels {
         }
     }
 
-    // ---- Receber ----
+    // ---- Receiving ----
 
-    /// O par abriu a conexão com este nó.
+    /// The peer opened the connection with this node.
     pub fn accept(self: &Arc<Self>, from: &str, io: ChannelLink) {
         let peer = match self.lock().get(from).cloned() {
             Some(peer) => Some(peer),
             None => {
-                // Um membro que esta tabela já tem e o canal ainda não conhecia.
+                // A member this table already has and the channel did not know yet.
                 self.sync_members();
                 self.lock().get(from).cloned()
             }
@@ -917,8 +917,8 @@ impl Channels {
         }
     }
 
-    /// Guarda o que o sinal de vida diz, processa os quadros novos (um `seq` já processado é
-    /// ignorado) e devolve o `confirm` de todos, depois de processar.
+    /// Stores what the heartbeat says, processes the new frames (an already-processed `seq` is
+    /// ignored) and returns the `confirm` of all, after processing.
     pub fn receive(self: &Arc<Self>, batch: ChannelBatch) -> Confirm {
         let peer = self.lock().get(&batch.from).cloned();
         let peer = match peer {
@@ -948,7 +948,7 @@ impl Channels {
                     let mut state = peer.lock();
                     if frame.seq > state.in_max_seq {
                         state.in_max_seq = frame.seq;
-                        // A mudança de estado também vale até o próximo sinal de vida.
+                        // The state change also applies until the next heartbeat.
                         if let Signal::NodeState { state: node_state } = &frame.signal {
                             state.peer_state = Some(node_state.clone());
                         }
@@ -970,23 +970,23 @@ impl Channels {
         Confirm::new(confirmed)
     }
 
-    /// O estado que o par disse ter (`active`, `syncing`, `failed`...), pelo sinal de vida ou por
-    /// um `node-state`.
+    /// The state the peer said it has (`active`, `syncing`, `failed`...), through the heartbeat or through
+    /// a `node-state`.
     pub fn peer_state(&self, node_id: &str) -> Option<String> {
         let peer = self.lock().get(node_id).cloned()?;
         let state = peer.lock();
         state.peer_state.clone()
     }
 
-    /// A votação de exclusão do par acabou sem efeito por um erro passageiro: a próxima falha do
-    /// canal abre outra, em vez de esperar o canal voltar.
+    /// The peer's exclusion vote ended without effect because of a transient error: the channel's next failure
+    /// opens another, instead of waiting for the channel to come back.
     pub fn allow_new_vote(&self, node_id: &str) {
         if let Some(peer) = self.lock().get(node_id).cloned() {
             peer.lock().vote_opened = false;
         }
     }
 
-    /// Um par avisou que entrou em falha (ou o canal com ele caiu): abre a votação de exclusão.
+    /// A peer notified that it entered failure (or the channel to it fell): opens the exclusion vote.
     pub fn report_failed(&self, node_id: &str, reason: VoteReason) {
         if node_id == self.service.node_id() {
             return;

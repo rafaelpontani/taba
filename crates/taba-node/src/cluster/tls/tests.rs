@@ -15,14 +15,14 @@ fn der_of(path: &Path) -> CertificateDer<'static> {
     CertificateDer::from_pem_file(path).unwrap()
 }
 
-/// Um par autoassinado em `dir` que começa em `starts_in` (a partir de agora) e vale `days`.
+/// A self-signed pair in `dir` that starts at `starts_in` (from now) and is valid for `days`.
 fn pair(dir: &Path, starts_in: Option<Duration>, days: u64) -> CertificateDer<'static> {
     let files = generate_cert(dir, OffsetDateTime::now_utc(), days, starts_in).unwrap();
     der_of(&files.certificate)
 }
 
-/// Um par emitido por uma CA: a CA vai para `ca_dir` só como `.crt` (para confiar) e o par do nó
-/// para `node_dir`.
+/// A pair issued by a CA: the CA goes to `ca_dir` only as `.crt` (to trust) and the node's pair
+/// to `node_dir`.
 fn issued_pair(ca_dir: &Path, node_dir: &Path) -> CertificateDer<'static> {
     let ca_key = KeyPair::generate().unwrap();
     let mut ca = CertificateParams::new(Vec::<String>::new()).unwrap();
@@ -54,12 +54,12 @@ fn now() -> i64 {
 #[test]
 fn it_trusts_an_equal_certificate_and_ignores_the_start_date() {
     let dir = tempfile::tempdir().unwrap();
-    // Começa só daqui a duas semanas: já é aceito (a data de início não conta para a confiança).
+    // Starts only in two weeks: it is already accepted (the start date does not count for trust).
     let future = pair(dir.path(), Some(Duration::from_secs(14 * 86_400)), 30);
     let set = load(dir.path()).unwrap();
     assert!(set.trusts(&future, &[], now()));
 
-    // Outro certificado qualquer não é aceito.
+    // Any other certificate is not accepted.
     let other_dir = tempfile::tempdir().unwrap();
     let stranger = pair(other_dir.path(), None, 30);
     assert!(!set.trusts(&stranger, &[], now()));
@@ -69,7 +69,7 @@ fn it_trusts_an_equal_certificate_and_ignores_the_start_date() {
 #[test]
 fn an_expired_certificate_is_neither_trusted_nor_presented() {
     let dir = tempfile::tempdir().unwrap();
-    // Gerado há 10 dias, válido por 1: expirou há 9.
+    // Generated 10 days ago, valid for 1: expired 9 days ago.
     let files = generate_cert(
         dir.path(),
         OffsetDateTime::now_utc() - time::Duration::days(10),
@@ -78,14 +78,17 @@ fn an_expired_certificate_is_neither_trusted_nor_presented() {
     )
     .unwrap();
     let expired = der_of(&files.certificate);
-    // Mais um par bom, para a pasta ser válida.
+    // One more good pair, so the folder is valid.
     let good = pair(dir.path(), Some(Duration::from_secs(3600)), 30);
     let set = load(dir.path()).unwrap();
-    assert!(!set.trusts(&expired, &[], now()), "o expirado não é aceito");
+    assert!(
+        !set.trusts(&expired, &[], now()),
+        "the expired one is not accepted"
+    );
     assert!(set.trusts(&good, &[], now()));
-    // Não apresenta o expirado nem o que ainda não começou.
+    // Does not present the expired one nor the one that has not started yet.
     assert!(set.presented(now()).is_none());
-    // Daqui a duas horas o bom começa a valer.
+    // In two hours the good one becomes valid.
     assert_eq!(
         set.presented(now() + 7200).unwrap().der.as_ref(),
         good.as_ref()
@@ -97,7 +100,7 @@ fn an_expired_certificate_is_neither_trusted_nor_presented() {
 fn it_presents_the_newest_pair_that_has_already_started() {
     let dir = tempfile::tempdir().unwrap();
     let old = pair(dir.path(), None, 30);
-    // O nome traz a data de início: o par novo começa em outro dia.
+    // The name carries the start date: the new pair starts on another day.
     let newer = pair(dir.path(), Some(Duration::from_secs(2 * 86_400)), 30);
     let set = load(dir.path()).unwrap();
     assert_eq!(set.names().len(), 2);
@@ -105,7 +108,7 @@ fn it_presents_the_newest_pair_that_has_already_started() {
     assert_eq!(
         set.presented(now() + 3 * 86_400).unwrap().der.as_ref(),
         newer.as_ref(),
-        "depois do início, o mais novo"
+        "after the start, the newest"
     );
 }
 
@@ -114,7 +117,7 @@ fn it_presents_the_newest_pair_that_has_already_started() {
 fn a_crt_without_key_only_serves_to_trust_and_a_key_without_crt_is_incomplete() {
     let dir = tempfile::tempdir().unwrap();
     let mine = pair(dir.path(), None, 30);
-    // O certificado de um colega: só o .crt.
+    // A colleague's certificate: only the .crt.
     let others = tempfile::tempdir().unwrap();
     let theirs = pair(others.path(), None, 30);
     let their_crt = std::fs::read_dir(others.path())
@@ -130,13 +133,13 @@ fn a_crt_without_key_only_serves_to_trust_and_a_key_without_crt_is_incomplete() 
     assert_eq!(
         set.presented(now()).unwrap().der.as_ref(),
         mine.as_ref(),
-        "só apresenta o que tem .key"
+        "only presents what has a .key"
     );
 
-    // Um .key sem o .crt de mesmo nome é par incompleto.
-    std::fs::write(dir.path().join("sozinho.key"), "x").unwrap();
+    // A .key without the .crt of the same name is an incomplete pair.
+    std::fs::write(dir.path().join("alone.key"), "x").unwrap();
     let error = load(dir.path()).err().unwrap();
-    assert!(error.contains("par incompleto"), "{error}");
+    assert!(error.contains("incomplete pair"), "{error}");
 }
 
 /// UC: UC-SEG-008
@@ -145,7 +148,7 @@ fn a_folder_without_a_valid_pair_does_not_open() {
     let empty = tempfile::tempdir().unwrap();
     assert!(TlsStore::open(empty.path()).is_err());
 
-    // Um .crt sem .key não basta.
+    // A .crt without a .key is not enough.
     let only_crt = tempfile::tempdir().unwrap();
     let others = tempfile::tempdir().unwrap();
     pair(others.path(), None, 30);
@@ -156,7 +159,7 @@ fn a_folder_without_a_valid_pair_does_not_open() {
     }
     assert!(TlsStore::open(only_crt.path()).is_err());
 
-    // Um .key que não é o do .crt.
+    // A .key that is not the .crt's.
     let wrong = tempfile::tempdir().unwrap();
     let a = tempfile::tempdir().unwrap();
     let b = tempfile::tempdir().unwrap();
@@ -165,7 +168,7 @@ fn a_folder_without_a_valid_pair_does_not_open() {
     std::fs::copy(&fa.certificate, wrong.path().join("p.crt")).unwrap();
     std::fs::copy(&fb.key, wrong.path().join("p.key")).unwrap();
     let error = TlsStore::open(wrong.path()).err().unwrap();
-    assert!(error.contains("não é a chave"), "{error}");
+    assert!(error.contains("is not the key"), "{error}");
 }
 
 /// UC: UC-SEG-013
@@ -176,13 +179,13 @@ fn a_reload_with_an_invalid_folder_keeps_the_previous_set_and_a_valid_one_replac
     let store = TlsStore::open(dir.path()).unwrap();
     assert_eq!(store.presented_der().unwrap(), first.as_ref());
 
-    // Arquivo ilegível: a recarga é recusada e vale o conjunto anterior.
-    std::fs::write(dir.path().join("lixo.crt"), "isto não é PEM").unwrap();
+    // Unreadable file: the reload is refused and the previous set applies.
+    std::fs::write(dir.path().join("junk.crt"), "this is not PEM").unwrap();
     assert!(store.reload().is_err());
     assert_eq!(store.presented_der().unwrap(), first.as_ref());
 
-    // Pasta de novo válida, com um par a mais (começa mais tarde): a recarga vale.
-    std::fs::remove_file(dir.path().join("lixo.crt")).unwrap();
+    // Folder valid again, with one more pair (starts later): the reload applies.
+    std::fs::remove_file(dir.path().join("junk.crt")).unwrap();
     pair(dir.path(), Some(Duration::from_secs(2 * 86_400)), 30);
     store.reload().unwrap();
     assert_eq!(store.presented_der().unwrap(), first.as_ref());
@@ -195,14 +198,14 @@ fn a_ca_in_the_folder_makes_the_certificates_it_issued_accepted() {
     let ca_dir = tempfile::tempdir().unwrap();
     let node_dir = tempfile::tempdir().unwrap();
     let issued = issued_pair(ca_dir.path(), node_dir.path());
-    // Este nó confia na CA e apresenta o seu par.
+    // This node trusts the CA and presents its pair.
     let mine = tempfile::tempdir().unwrap();
     pair(mine.path(), None, 30);
     std::fs::copy(ca_dir.path().join("ca.crt"), mine.path().join("ca.crt")).unwrap();
     let set = load(mine.path()).unwrap();
-    assert!(set.trusts(&issued, &[], now()), "emitido pela CA da pasta");
+    assert!(set.trusts(&issued, &[], now()), "issued by the folder's CA");
 
-    // Sem a CA, o mesmo certificado não é aceito.
+    // Without the CA, the same certificate is not accepted.
     let without = tempfile::tempdir().unwrap();
     pair(without.path(), None, 30);
     assert!(!load(without.path()).unwrap().trusts(&issued, &[], now()));

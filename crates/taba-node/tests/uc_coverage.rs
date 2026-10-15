@@ -1,15 +1,15 @@
-//! Verificação de cobertura dos casos de uso (doc 20, seção 19.5).
+//! Verification of use-case coverage (doc 20, section 19.5).
 //!
-//! Lê os códigos `UC-<ÁREA>-<NNN>` das tabelas de `doc/20*.md` e os códigos citados nos
-//! testes, na linha de comentário `UC:` logo acima de cada função de teste, e falha
-//! quando:
+//! Reads the `UC-<AREA>-<NNN>` codes from the tables of `doc/20*.md` and the codes cited in the
+//! tests, on the `UC:` comment line right above each test function, and fails
+//! when:
 //!
-//! 1. um teste cita um código que não existe (ou que está `(retirado)`);
-//! 2. um código aparece duas vezes na documentação.
+//! 1. a test cites a code that does not exist (or that is `(retirado)`);
+//! 2. a code appears twice in the documentation.
 //!
-//! A terceira regra, "todo caso documentado tem ao menos um teste", só falha com
-//! `TABA_UC_STRICT=1`: a documentação tem mais de oitocentos casos e a implementação
-//! está no começo. Sem a variável o teste imprime o placar (`cargo test -- --nocapture`).
+//! The third rule, "every documented case has at least one test", only fails with
+//! `TABA_UC_STRICT=1`: the documentation has more than eight hundred cases and the implementation
+//! is at the beginning. Without the variable the test prints the scoreboard (`cargo test -- --nocapture`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -31,8 +31,8 @@ fn is_code(s: &str) -> bool {
         && parts[2].chars().all(|c| c.is_ascii_digit())
 }
 
-/// O catálogo dos casos de uso em tabela (`| UC-XXX-NNN | caso | fonte | nível | testes |`): o
-/// histórico em `doc/20*.md`, se ainda existir.
+/// The catalog of the use cases in a table (`| UC-XXX-NNN | case | source | level | tests |`): the
+/// history in `doc/20*.md`, if it still exists.
 fn catalogue_tables() -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(root().join("doc"))
         .into_iter()
@@ -48,8 +48,8 @@ fn catalogue_tables() -> Vec<PathBuf> {
     files
 }
 
-/// Os casos que só existem como cartões (`### UC-XXX-NNN`) nos catálogos gerados `26a` e `26b`:
-/// valem quando o histórico `doc/20*.md` já não está no repositório.
+/// The cases that only exist as cards (`### UC-XXX-NNN`) in the generated catalogs `26a` and `26b`:
+/// they count when the `doc/20*.md` history is no longer in the repository.
 fn catalogue_cards() -> Vec<String> {
     let legacy = fs::read_dir(root().join("doc"))
         .into_iter()
@@ -81,7 +81,7 @@ fn catalogue_cards() -> Vec<String> {
     codes
 }
 
-/// Código -> `true` se o caso está `(retirado)`. Também devolve os códigos repetidos.
+/// Code -> `true` if the case is `(retirado)`. Also returns the repeated codes.
 fn documented_codes() -> (BTreeMap<String, bool>, Vec<String>) {
     let mut codes = BTreeMap::new();
     let mut duplicated = Vec::new();
@@ -93,13 +93,13 @@ fn documented_codes() -> (BTreeMap<String, bool>, Vec<String>) {
     }
     assert!(
         !files.is_empty() || !codes.is_empty(),
-        "nenhum catálogo de casos de uso encontrado"
+        "no use-case catalog found"
     );
 
     for file in files {
-        let text = fs::read_to_string(&file).expect("ler doc");
+        let text = fs::read_to_string(&file).expect("read doc");
         for line in text.lines() {
-            // Só linhas de tabela cujo primeiro campo é o código: `| UC-MSG-003 | ... |`.
+            // Only table lines whose first field is the code: `| UC-MSG-003 | ... |`.
             let Some(rest) = line.strip_prefix("| ") else {
                 continue;
             };
@@ -130,7 +130,7 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Os `.rs` e `.cs` de uma pasta de conector, em qualquer profundidade, sem as pastas de build e de saída.
+/// The `.rs` and `.cs` files of a connector folder, at any depth, without the build and output folders.
 fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -151,9 +151,9 @@ fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Os fontes que podem citar casos de uso, cada um com a pasta a que o caminho mostrado é relativo:
-/// o `src` e o `tests` deste crate (relativos ao crate) e todos os de cada conector em `connectors/<linguagem>`
-/// (relativos à raiz do repositório).
+/// The sources that may cite use cases, each with the folder the shown path is relative to:
+/// the `src` and `tests` of this crate (relative to the crate) and all of each connector in `connectors/<language>`
+/// (relative to the repository root).
 fn source_files() -> Vec<(PathBuf, PathBuf)> {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut found = Vec::new();
@@ -171,14 +171,14 @@ fn source_files() -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
-/// Código -> arquivos que o citam.
+/// Code -> files that cite it.
 fn cited_codes() -> BTreeMap<String, BTreeSet<String>> {
     let files = source_files();
 
     let marker = format!("{} UC:", "///");
     let mut cited: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (file, base) in files {
-        let text = fs::read_to_string(&file).expect("ler fonte");
+        let text = fs::read_to_string(&file).expect("read source");
         for line in text.lines() {
             let Some(list) = line.trim_start().strip_prefix(marker.as_str()) else {
                 continue;
@@ -203,7 +203,7 @@ fn every_cited_code_exists_and_no_code_is_documented_twice() {
 
     assert!(
         duplicated.is_empty(),
-        "códigos repetidos na documentação: {duplicated:?}"
+        "repeated codes in the documentation: {duplicated:?}"
     );
 
     let mut problems = Vec::new();
@@ -211,21 +211,21 @@ fn every_cited_code_exists_and_no_code_is_documented_twice() {
         let files = files.iter().cloned().collect::<Vec<_>>().join(", ");
         if !code.starts_with(CODE_PREFIX) || !is_code(code) {
             problems.push(format!(
-                "`{code}` (em {files}) não tem o formato UC-<ÁREA>-<NNN>"
+                "`{code}` (in {files}) does not have the format UC-<AREA>-<NNN>"
             ));
         } else {
             match documented.get(code) {
                 None => problems.push(format!(
-                    "`{code}` (em {files}) não existe no catálogo de casos de uso (doc/pt-BR/26*.md)"
+                    "`{code}` (in {files}) does not exist in the use-case catalog (doc/pt-BR/26*.md)"
                 )),
-                Some(true) => problems.push(format!("`{code}` (em {files}) está (retirado)")),
+                Some(true) => problems.push(format!("`{code}` (in {files}) is (retirado)")),
                 Some(false) => {}
             }
         }
     }
     assert!(
         problems.is_empty(),
-        "testes citam casos de uso inválidos:\n  - {}",
+        "tests cite invalid use cases:\n  - {}",
         problems.join("\n  - ")
     );
 }
@@ -246,7 +246,7 @@ fn coverage_report_and_optional_strict_check() {
     let covered = active.len() - uncovered.len();
 
     eprintln!(
-        "casos de uso com ao menos um teste: {covered} de {} ({} retirados)",
+        "use cases with at least one test: {covered} of {} ({} retired)",
         active.len(),
         documented.len() - active.len()
     );
@@ -254,19 +254,19 @@ fn coverage_report_and_optional_strict_check() {
     if std::env::var("TABA_UC_STRICT").is_ok_and(|v| v == "1") {
         assert!(
             uncovered.is_empty(),
-            "{} casos de uso sem teste, por exemplo: {:?}",
+            "{} use cases without a test, for example: {:?}",
             uncovered.len(),
             &uncovered[..uncovered.len().min(10)]
         );
     }
 }
 
-/// Marca o começo da célula gerada da coluna "Testes", para regerar a coluna sem duplicá-la.
+/// Marks the start of the generated cell of the "Testes" column, to regenerate the column without duplicating it.
 const TESTS_MARK: &str = "<!--t-->";
 
-/// Código -> os testes que o citam, como `arquivo::função` (o arquivo relativo ao crate, ou à raiz do repositório para os conectores), em ordem.
-/// A linha `/// UC:` vale para a primeira função que vem depois dela, pulando atributos e outras
-/// linhas de documentação.
+/// Code -> the tests that cite it, as `file::function` (the file relative to the crate, or to the repository root for the connectors), in order.
+/// The `/// UC:` line counts for the first function that comes after it, skipping attributes and other
+/// documentation lines.
 fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
     let mut files = source_files();
     files.sort();
@@ -280,7 +280,7 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
             .display()
             .to_string()
             .replace('\\', "/");
-        let text = fs::read_to_string(&file).expect("ler fonte");
+        let text = fs::read_to_string(&file).expect("read source");
         let is_csharp = file.extension().is_some_and(|e| e == "cs");
         let mut pending: Vec<String> = Vec::new();
         for line in text.lines() {
@@ -302,7 +302,7 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
             {
                 continue;
             }
-            // Rust: `fn nome(`. C#: `public async Task nome(` (o último termo antes do parêntese).
+            // Rust: `fn name(`. C#: `public async Task name(` (the last term before the parenthesis).
             let name = if is_csharp {
                 line.split('(')
                     .next()
@@ -328,7 +328,7 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
     tests
 }
 
-/// O texto de `doc/20*.md` com a coluna "Testes" de cada tabela de casos de uso.
+/// The text of `doc/20*.md` with the "Testes" column of each use-case table.
 fn with_tests_column(text: &str, tests: &BTreeMap<String, BTreeSet<String>>) -> String {
     let mut out = Vec::new();
     let mut columns = 0;
@@ -384,27 +384,27 @@ fn with_tests_column(text: &str, tests: &BTreeMap<String, BTreeSet<String>>) -> 
     joined
 }
 
-/// A coluna "Testes" das tabelas dos casos de uso diz em que arquivo e função cada caso é testado,
-/// e é gerada daqui. Depois de mexer nos testes ou nos casos, regere com
+/// The "Testes" column of the use-case tables says in which file and function each case is tested,
+/// and it is generated from here. After changing the tests or the cases, regenerate with
 /// `TABA_UC_WRITE=1 cargo test --test uc_coverage`.
 #[test]
 fn the_tests_column_of_the_use_cases_is_up_to_date() {
     let tests = tests_by_code();
     let mut stale = Vec::new();
     for file in catalogue_tables() {
-        let current = fs::read_to_string(&file).expect("ler doc");
+        let current = fs::read_to_string(&file).expect("read doc");
         let updated = with_tests_column(&current, &tests);
         if updated == current {
             continue;
         }
         if std::env::var("TABA_UC_WRITE").is_ok_and(|v| v == "1") {
-            fs::write(&file, updated).expect("gravar doc");
+            fs::write(&file, updated).expect("write doc");
         } else {
             stale.push(file.display().to_string());
         }
     }
     assert!(
         stale.is_empty(),
-        "a coluna Testes está desatualizada em {stale:?}: rode `TABA_UC_WRITE=1 cargo test --test uc_coverage`"
+        "the Testes column is out of date in {stale:?}: run `TABA_UC_WRITE=1 cargo test --test uc_coverage`"
     );
 }

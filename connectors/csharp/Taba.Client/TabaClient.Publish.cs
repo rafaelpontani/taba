@@ -12,7 +12,7 @@ namespace Taba
 {
     public sealed partial class TabaClient
     {
-        /// <summary><c>POST /topics/{topic}/messages</c>. O corpo vai como bytes, sem validação.</summary>
+        /// <summary><c>POST /topics/{topic}/messages</c>. The body goes as bytes, without validation.</summary>
         public async Task<PublishResponse> PublishAsync(
             string topic,
             byte[] body,
@@ -41,9 +41,9 @@ namespace Taba
         }
 
         /// <summary>
-        /// Serializa <paramref name="value"/> em JSON (com o <see cref="TabaConfig.JsonSerializer"/>, ou o
-        /// padrão do conector) e publica com <c>Content-Type: application/json</c>. Para controlar a
-        /// serialização por conta própria, use o <see cref="PublishAsync"/> com os bytes.
+        /// Serializes <paramref name="value"/> to JSON (with the <see cref="TabaConfig.JsonSerializer"/>, or the
+        /// connector default) and publishes with <c>Content-Type: application/json</c>. To control
+        /// serialization on your own, use <see cref="PublishAsync"/> with the bytes.
         /// </summary>
         public Task<PublishResponse> PublishJsonAsync<T>(string topic, T value, CancellationToken cancellationToken = default(CancellationToken))
         {
@@ -55,13 +55,13 @@ namespace Taba
             return PublishAsync(topic, Utf8.Encoding.GetBytes(json), null, cancellationToken);
         }
 
-        /// <summary>Publica um texto JSON que a aplicação já montou (<c>Content-Type: application/json</c>), sem serializar.</summary>
+        /// <summary>Publishes a JSON text the application already built (<c>Content-Type: application/json</c>), without serializing.</summary>
         public Task<PublishResponse> PublishRawJsonAsync(string topic, string json, CancellationToken cancellationToken = default(CancellationToken))
         {
             return PublishAsync(topic, Utf8.Encoding.GetBytes(json), null, cancellationToken);
         }
 
-        /// <summary>Publica um texto (<c>Content-Type: text/plain; charset=utf-8</c>).</summary>
+        /// <summary>Publishes a text (<c>Content-Type: text/plain; charset=utf-8</c>).</summary>
         public Task<PublishResponse> PublishTextAsync(string topic, string text, CancellationToken cancellationToken = default(CancellationToken))
         {
             var options = new PublishOptions { ContentType = "text/plain; charset=utf-8" };

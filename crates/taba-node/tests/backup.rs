@@ -1,6 +1,6 @@
-//! O backup opcional em S3 (doc 23, "Backup em S3"; doc 20, nível **C**): o depósito de objetos é o
-//! em memória (`MemoryStore`), compartilhado entre os nós do cluster simulado, e o `Clock` é o
-//! manual (a janela de `backup.delay` passa quando o teste avança o relógio).
+//! The optional S3 backup (doc 23, "S3 backup"; doc 20, level **C**): the object store is the
+//! in-memory one (`MemoryStore`), shared among the nodes of the simulated cluster, and the `Clock` is the
+//! manual one (the `backup.delay` window passes when the test advances the clock).
 
 mod common;
 
@@ -14,7 +14,7 @@ use common::{TestNode, error_code};
 use taba_node::storage::backup::{MemoryStore, ObjectStore, keys};
 
 fn backup_of(node: &TestNode) -> Arc<taba_node::cluster::backup::Backup> {
-    node.node.backup().expect("o backup está ligado").clone()
+    node.node.backup().expect("the backup is on").clone()
 }
 
 async fn create_queue(node: &TestNode, name: &str) {
@@ -24,7 +24,7 @@ async fn create_queue(node: &TestNode, name: &str) {
         .json(&json!({"name": name, "type": "queue"}))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201, "{:?}", response.text().await);
 }
 
@@ -35,7 +35,7 @@ async fn publish(node: &TestNode, topic: &str, body: Value) -> String {
         .json(&body)
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201, "{:?}", response.text().await);
     let value: Value = response.json().await.unwrap();
     value["id"].as_str().unwrap().to_owned()
@@ -47,20 +47,20 @@ async fn consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
         .get(node.client_url(&format!("/topics/{topic}/messages?{query}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 200, "{:?}", response.text().await);
     let value: Value = response.json().await.unwrap();
     value["messages"].as_array().cloned().unwrap_or_default()
 }
 
-/// Como `consume`, mas uma resposta de erro (o quórum ainda não fechou) é "nada por enquanto".
+/// Like `consume`, but an error response (the quorum has not closed yet) is "nothing for now".
 async fn try_consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
     let response = node
         .client
         .get(node.client_url(&format!("/topics/{topic}/messages?{query}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     if response.status() != 200 {
         return Vec::new();
     }
@@ -78,11 +78,11 @@ async fn ack(node: &TestNode, topic: &str, message: &Value) {
         )))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 204, "{:?}", response.text().await);
 }
 
-/// Quantas mensagens o bucket guarda nos segmentos do tópico (somando os rodapés).
+/// How many messages the bucket holds in the topic's segments (adding up the footers).
 async fn messages_in_bucket(s3: &MemoryStore, topic: &str) -> usize {
     let mut total = 0;
     for key in s3.keys(&format!("taba/{}", keys::topic_messages_prefix(topic))) {
@@ -132,40 +132,40 @@ async fn without_a_bucket_the_backup_does_not_exist_and_its_routes_say_so() {
 async fn a_message_consumed_before_the_delay_never_reaches_s3_and_the_rest_does() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..10 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
-    eventually("o outbox dos donos ter as 10 mensagens", || {
+    eventually("the owners' outbox to have the 10 messages", || {
         outbox_total(&cluster) == 10
     })
     .await;
     assert_eq!(
-        messages_in_bucket(&s3, "pedidos").await,
+        messages_in_bucket(&s3, "orders").await,
         0,
-        "nada sobe antes da janela"
+        "nothing goes up before the window"
     );
 
-    // O consumidor confirma 6 dentro da janela: elas saem do outbox sem gerar upload.
+    // The consumer confirms 6 within the window: they leave the outbox without generating an upload.
     let got = consume(
         cluster.node(1),
-        "pedidos",
+        "orders",
         "maxMessages=6&visibilityTimeout=300",
     )
     .await;
     assert_eq!(got.len(), 6);
     for message in &got {
-        ack(cluster.node(1), "pedidos", message).await;
+        ack(cluster.node(1), "orders", message).await;
     }
-    eventually("as 6 confirmadas saírem do outbox", || {
+    eventually("the 6 confirmed to leave the outbox", || {
         outbox_total(&cluster) == 4
     })
     .await;
 
-    // A janela fecha: as 4 restantes vão ao S3, e só depois do PUT saem do outbox.
+    // The window closes: the remaining 4 go to S3, and only after the PUT do they leave the outbox.
     cluster.clock.advance(Duration::from_secs(61));
     eventually("o outbox esvaziar", || outbox_total(&cluster) == 0).await;
-    assert_eq!(messages_in_bucket(&s3, "pedidos").await, 4);
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 4);
     cluster.shutdown().await;
 }
 
@@ -174,27 +174,27 @@ async fn a_message_consumed_before_the_delay_never_reaches_s3_and_the_rest_does(
 async fn publishing_never_waits_for_s3_and_the_outbox_keeps_the_ids_while_it_is_down() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     s3.set_down(true);
     for i in 0..5 {
-        publish(cluster.node(2), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(2), "orders", json!({"n": i})).await;
     }
     cluster.clock.advance(Duration::from_secs(61));
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(
         outbox_total(&cluster),
         5,
-        "o S3 fora do ar: os IDs ficam no outbox"
+        "S3 down: the IDs stay in the outbox"
     );
-    let consumed = consume(cluster.node(3), "pedidos", "maxMessages=5").await;
-    assert_eq!(consumed.len(), 5, "o consumo segue como sem o S3");
+    let consumed = consume(cluster.node(3), "orders", "maxMessages=5").await;
+    assert_eq!(consumed.len(), 5, "consumption goes on as without S3");
 
     s3.set_down(false);
-    eventually("o outbox esvaziar quando o S3 volta", || {
+    eventually("the outbox to empty when S3 comes back", || {
         outbox_total(&cluster) == 0
     })
     .await;
-    assert_eq!(messages_in_bucket(&s3, "pedidos").await, 5);
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 5);
     cluster.shutdown().await;
 }
 
@@ -203,21 +203,21 @@ async fn publishing_never_waits_for_s3_and_the_outbox_keeps_the_ids_while_it_is_
 async fn definitions_and_tokens_go_to_the_bucket_and_a_failure_never_refuses_the_change() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
-    eventually("a definição no bucket", || {
-        s3.peek("taba/topics/pedidos.json").is_some()
+    create_queue(cluster.node(1), "orders").await;
+    eventually("the definition in the bucket", || {
+        s3.peek("taba/topics/orders.json").is_some()
     })
     .await;
     let stored: Value =
-        serde_json::from_slice(&s3.peek("taba/topics/pedidos.json").unwrap()).unwrap();
-    assert_eq!(stored["definition"]["name"], "pedidos");
+        serde_json::from_slice(&s3.peek("taba/topics/orders.json").unwrap()).unwrap();
+    assert_eq!(stored["definition"]["name"], "orders");
 
-    // O S3 fora do ar: a criação vale no cluster, e a gravação espera a volta.
+    // S3 down: the creation takes effect in the cluster, and the write waits for the return.
     s3.set_down(true);
     create_queue(cluster.node(2), "faturas").await;
     assert!(s3.peek("taba/topics/faturas.json").is_none());
     s3.set_down(false);
-    eventually("a definição que falhou ser regravada", || {
+    eventually("the definition that failed to be rewritten", || {
         s3.peek("taba/topics/faturas.json").is_some()
     })
     .await;
@@ -229,25 +229,25 @@ async fn definitions_and_tokens_go_to_the_bucket_and_a_failure_never_refuses_the
 async fn removing_a_topic_leaves_a_tombstone_and_clears_its_messages_from_the_bucket() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
-    publish(cluster.node(1), "pedidos", json!({"n": 1})).await;
+    create_queue(cluster.node(1), "orders").await;
+    publish(cluster.node(1), "orders", json!({"n": 1})).await;
     cluster.clock.advance(Duration::from_secs(61));
-    eventually("a mensagem no bucket", || {
-        !s3.keys("taba/messages/pedidos/").is_empty()
+    eventually("the message in the bucket", || {
+        !s3.keys("taba/messages/orders/").is_empty()
     })
     .await;
     let response = cluster
         .node(1)
         .client
-        .delete(cluster.node(1).client_url("/topics/pedidos"))
+        .delete(cluster.node(1).client_url("/topics/orders"))
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), 204);
-    eventually("a lápide e o prefixo apagado", || {
-        s3.keys("taba/messages/pedidos/").is_empty()
+    eventually("the tombstone and the deleted prefix", || {
+        s3.keys("taba/messages/orders/").is_empty()
             && s3
-                .peek("taba/topics/pedidos.json")
+                .peek("taba/topics/orders.json")
                 .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
                 .is_some_and(|v| v["deleted"] == true)
     })
@@ -262,7 +262,7 @@ async fn every_node_beats_in_the_bucket_with_a_growing_sequence_and_leaves_on_dr
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
     let id = cluster.node_id(2);
     let key = format!("taba/nodes/{id}.json");
-    eventually("o batimento do nó 2", || s3.peek(&key).is_some()).await;
+    eventually("node 2's heartbeat", || s3.peek(&key).is_some()).await;
     let first: Value = serde_json::from_slice(&s3.peek(&key).unwrap()).unwrap();
     assert_eq!(first["id"], id.as_str());
     assert!(first["addresses"].as_array().is_some_and(|a| !a.is_empty()));
@@ -274,7 +274,7 @@ async fn every_node_beats_in_the_bucket_with_a_growing_sequence_and_leaves_on_dr
     })
     .await;
 
-    // Um nó que sai limpo (drain) remove o próprio arquivo.
+    // A node that leaves cleanly (drain) removes its own file.
     let response = cluster
         .node(2)
         .client
@@ -283,7 +283,7 @@ async fn every_node_beats_in_the_bucket_with_a_growing_sequence_and_leaves_on_dr
         .await
         .unwrap();
     assert!(response.status().is_success());
-    eventually("o arquivo do nó 2 sumir", || s3.peek(&key).is_none()).await;
+    eventually("node 2's file to disappear", || s3.peek(&key).is_none()).await;
     cluster.shutdown().await;
 }
 
@@ -292,13 +292,13 @@ async fn every_node_beats_in_the_bucket_with_a_growing_sequence_and_leaves_on_dr
 async fn the_node_flush_sends_everything_without_stopping_the_node() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..6 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
-    eventually("o outbox ter as 6", || outbox_total(&cluster) == 6).await;
+    eventually("the outbox to have the 6", || outbox_total(&cluster) == 6).await;
 
-    // Sem esperar a janela: o flush manda tudo agora.
+    // Without waiting for the window: the flush sends everything now.
     for number in 1..=3 {
         let response = cluster
             .node(number)
@@ -312,10 +312,10 @@ async fn the_node_flush_sends_everything_without_stopping_the_node() {
         assert_eq!(report["complete"], true, "{report}");
         assert_eq!(report["outboxPending"], 0);
     }
-    assert_eq!(messages_in_bucket(&s3, "pedidos").await, 6);
-    // O nó segue no ar e atende.
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 6);
+    // The node stays up and serves.
     assert_eq!(
-        consume(cluster.node(1), "pedidos", "maxMessages=6")
+        consume(cluster.node(1), "orders", "maxMessages=6")
             .await
             .len(),
         6
@@ -328,9 +328,9 @@ async fn the_node_flush_sends_everything_without_stopping_the_node() {
 async fn the_cluster_flush_asks_every_node_and_a_slow_one_shows_up_as_pending() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..4 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     let response = cluster
         .node(2)
@@ -343,8 +343,8 @@ async fn the_cluster_flush_asks_every_node_and_a_slow_one_shows_up_as_pending() 
     let report: Value = response.json().await.unwrap();
     assert_eq!(report["complete"], true, "{report}");
     assert_eq!(report["nodes"].as_array().unwrap().len(), 3);
-    assert_eq!(messages_in_bucket(&s3, "pedidos").await, 4);
-    eventually_async("o status mostrar tudo enviado", || async {
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 4);
+    eventually_async("the status to show everything sent", || async {
         let status: Value = cluster
             .node(1)
             .client
@@ -378,19 +378,19 @@ async fn stop_cluster(cluster: &TestCluster) -> Value {
 async fn a_planned_stop_flushes_everything_and_the_next_start_restores_the_cluster() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..8 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
-    // 3 confirmadas antes da parada: não podem voltar.
+    // 3 confirmed before the stop: they cannot come back.
     let got = consume(
         cluster.node(1),
-        "pedidos",
+        "orders",
         "maxMessages=3&visibilityTimeout=300",
     )
     .await;
     for message in &got {
-        ack(cluster.node(1), "pedidos", message).await;
+        ack(cluster.node(1), "orders", message).await;
     }
 
     let stopped = stop_cluster(&cluster).await;
@@ -400,27 +400,27 @@ async fn a_planned_stop_flushes_everything_and_the_next_start_restores_the_clust
     assert_eq!(
         list["nodes"].as_array().unwrap().len(),
         3,
-        "a lista da parada"
+        "the stop's list"
     );
     assert!(
         s3.keys("taba/nodes/").is_empty(),
-        "quem sai limpo remove o próprio batimento"
+        "whoever leaves cleanly removes its own heartbeat"
     );
     for number in 1..=3 {
         assert_eq!(
             backup_of(cluster.node(number)).status().outbox_pending,
             0,
-            "o drain só termina com o outbox enviado"
+            "the drain only ends with the outbox sent"
         );
     }
     cluster.shutdown().await;
 
-    // Os processos sobem de novo (disco vazio, nós novos): o primeiro restaura sozinho.
+    // The processes start again (empty disk, new nodes): the first restores on its own.
     let again = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    eventually_async("as 5 mensagens voltarem", || async {
+    eventually_async("the 5 messages to come back", || async {
         let got = consume(
             again.node(2),
-            "pedidos",
+            "orders",
             "maxMessages=10&visibilityTimeout=300",
         )
         .await;
@@ -429,11 +429,11 @@ async fn a_planned_stop_flushes_everything_and_the_next_start_restores_the_clust
     .await;
     assert!(
         s3.peek("taba/restore/lock.json").is_none(),
-        "a trava é solta ao fim da restauração"
+        "the lock is released at the end of the restoration"
     );
     assert!(
         s3.peek("taba/cluster/stop.json").is_none(),
-        "a lista da parada some depois de usada"
+        "the stop's list disappears after being used"
     );
     again.shutdown().await;
 }
@@ -444,11 +444,11 @@ async fn after_a_crash_the_survivor_waits_for_the_heartbeats_to_expire_and_resto
     let s3 = Arc::new(MemoryStore::new());
     let env = [("TABA_DRAIN_ON_STOP", "false")];
     let cluster = TestCluster::start_with_backup(3, &env, s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..6 {
-        publish(cluster.node(2), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(2), "orders", json!({"n": i})).await;
     }
-    // O backup de um cluster que vai cair: o flush antes da queda.
+    // The backup of a cluster that is going to fall: the flush before the fall.
     let response = cluster
         .node(1)
         .client
@@ -457,18 +457,15 @@ async fn after_a_crash_the_survivor_waits_for_the_heartbeats_to_expire_and_resto
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
-    cluster.shutdown().await; // sem drain: os batimentos ficam no bucket, parados
-    assert!(
-        !s3.keys("taba/nodes/").is_empty(),
-        "queda: os arquivos ficam"
-    );
+    cluster.shutdown().await; // without drain: the heartbeats stay in the bucket, stopped
+    assert!(!s3.keys("taba/nodes/").is_empty(), "fall: the files stay");
     assert!(s3.peek("taba/cluster/stop.json").is_none());
 
     let again = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    eventually_async("as 6 mensagens voltarem", || async {
+    eventually_async("the 6 messages to come back", || async {
         consume(
             again.node(2),
-            "pedidos",
+            "orders",
             "maxMessages=10&visibilityTimeout=300",
         )
         .await
@@ -479,7 +476,7 @@ async fn after_a_crash_the_survivor_waits_for_the_heartbeats_to_expire_and_resto
     again.shutdown().await;
 }
 
-/// O nó morre de verdade: sai da rede (ninguém mais o alcança) e para (o batimento no bucket pára).
+/// The node really dies: leaves the network (no one reaches it anymore) and stops (the heartbeat in the bucket stops).
 async fn kill_last(cluster: &mut TestCluster) {
     let number = cluster.nodes.len();
     cluster.network.isolate(&common::cluster::host_of(number));
@@ -498,13 +495,13 @@ async fn an_unreachable_node_with_a_fresh_heartbeat_is_not_excluded_until_the_he
     let mut cluster = TestCluster::start_with_backup(3, &env, s3.clone()).await;
     common::cluster::settled(&cluster).await;
 
-    // O nó 3 fica inalcançável, mas continua batendo no bucket: vivo em outra partição.
+    // Node 3 becomes unreachable, but keeps beating in the bucket: alive in another partition.
     cluster.network.isolate(&common::cluster::host_of(3));
     tokio::time::sleep(Duration::from_secs(4)).await;
     assert_eq!(
         members_of(&cluster, 1),
         3,
-        "não assume os blocos de quem está vivo"
+        "does not take over the blocks of whoever is alive"
     );
     let victim = cluster.node_id(3);
     assert_eq!(
@@ -512,20 +509,20 @@ async fn an_unreachable_node_with_a_fresh_heartbeat_is_not_excluded_until_the_he
         taba_node::cluster::backup::Liveness::Fresh
     );
 
-    // Agora ele morre de verdade: o batimento para, vence, e só então sai da tabela.
+    // Now it really dies: the heartbeat stops, expires, and only then does it leave the table.
     let dead = cluster.nodes.pop().unwrap();
     dead.shutdown().await;
     let died_at = std::time::Instant::now();
-    eventually("o nó 3 sair da tabela", || members_of(&cluster, 1) == 2).await;
+    eventually("node 3 to leave the table", || members_of(&cluster, 1) == 2).await;
     assert!(
         died_at.elapsed() >= Duration::from_millis(900),
-        "a exclusão esperou o batimento vencer ({:?})",
+        "the exclusion waited for the heartbeat to expire ({:?})",
         died_at.elapsed()
     );
-    // Os dois sobreviventes observam o bucket por conta própria: o observador que votou o vê morto
-    // logo depois (pode haver meio batimento de diferença entre as duas leituras).
+    // The two survivors watch the bucket on their own: the observer that voted sees it dead
+    // right after (there may be half a heartbeat of difference between the two reads).
     let observer = backup_of(cluster.node(1));
-    eventually("o batimento morto para quem observa", || {
+    eventually("the dead heartbeat for whoever observes", || {
         observer.liveness(&victim) == taba_node::cluster::backup::Liveness::Dead
     })
     .await;
@@ -539,9 +536,9 @@ async fn three_of_five_nodes_fall_and_the_survivors_find_the_missing_messages_in
     let env = [("TABA_DRAIN_ON_STOP", "false")];
     let mut cluster = TestCluster::start_with_backup(5, &env, s3.clone()).await;
     common::cluster::settled(&cluster).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..30 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     let response = cluster
         .node(1)
@@ -551,24 +548,24 @@ async fn three_of_five_nodes_fall_and_the_survivors_find_the_missing_messages_in
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
-    assert_eq!(messages_in_bucket(&s3, "pedidos").await, 30);
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 30);
 
-    // Três caem ao mesmo tempo (sem drain: os batimentos ficam parados no bucket).
+    // Three fall at the same time (without drain: the heartbeats stay stopped in the bucket).
     for _ in 0..3 {
         kill_last(&mut cluster).await;
     }
-    eventually("os dois sobreviventes excluírem os mortos", || {
+    eventually("the two survivors to exclude the dead", || {
         members_of(&cluster, 1) == 2 && members_of(&cluster, 2) == 2
     })
     .await;
     let seen = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
-    eventually_async("as 30 mensagens voltarem a ser entregues", || {
+    eventually_async("the 30 messages to be delivered again", || {
         let seen = seen.clone();
         let cluster = &cluster;
         async move {
             for message in try_consume(
                 cluster.node(1),
-                "pedidos",
+                "orders",
                 "maxMessages=10&visibilityTimeout=600",
             )
             .await
@@ -595,14 +592,14 @@ async fn a_single_survivor_excludes_the_dead_even_below_the_minimum_of_voters() 
     for _ in 0..2 {
         kill_last(&mut cluster).await;
     }
-    eventually("o único nó excluir os dois mortos", || {
+    eventually("the only node to exclude the two dead", || {
         members_of(&cluster, 1) == 1
     })
     .await;
     cluster.shutdown().await;
 }
 
-/// Os registros de todos os diários do tópico no bucket, do mais antigo ao mais novo.
+/// The records of all the topic's journals in the bucket, from oldest to newest.
 async fn journal_records(
     s3: &MemoryStore,
     topic: &str,
@@ -637,55 +634,55 @@ async fn flush_all(cluster: &TestCluster) {
 async fn the_journal_keeps_the_last_state_and_an_ack_is_a_removal_that_empties_the_segment() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..3 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     flush_all(&cluster).await;
-    assert!(!s3.keys("taba/messages/pedidos/").is_empty());
+    assert!(!s3.keys("taba/messages/orders/").is_empty());
 
-    // Entregue na janela: o diário guarda o último estado da mensagem.
+    // Delivered in the window: the journal keeps the message's last state.
     let first = consume(
         cluster.node(1),
-        "pedidos",
+        "orders",
         "maxMessages=1&visibilityTimeout=300",
     )
     .await;
     let id = first[0]["id"].as_str().unwrap().to_owned();
-    eventually_async("o estado da entrega no diário", || async {
-        journal_records(&s3, "pedidos")
+    eventually_async("the delivery state in the journal", || async {
+        journal_records(&s3, "orders")
             .await
             .iter()
             .any(|r| r.id == id && !r.removed && r.delivery_count == 1)
     })
     .await;
 
-    // O ack é uma remoção; ninguém apaga uma mensagem solta do bucket.
-    ack(cluster.node(1), "pedidos", &first[0]).await;
-    eventually_async("a remoção no diário", || async {
-        journal_records(&s3, "pedidos")
+    // The ack is a removal; no one deletes a loose message from the bucket.
+    ack(cluster.node(1), "orders", &first[0]).await;
+    eventually_async("the removal in the journal", || async {
+        journal_records(&s3, "orders")
             .await
             .iter()
             .any(|r| r.id == id && r.removed)
     })
     .await;
     assert!(
-        !s3.keys("taba/messages/pedidos/").is_empty(),
-        "o segmento com mensagens vivas continua no bucket"
+        !s3.keys("taba/messages/orders/").is_empty(),
+        "the segment with live messages stays in the bucket"
     );
 
-    // Quando todas as mensagens de um segmento morrem, o primário o apaga.
+    // When all of a segment's messages die, the primary deletes it.
     for message in consume(
         cluster.node(1),
-        "pedidos",
+        "orders",
         "maxMessages=5&visibilityTimeout=300",
     )
     .await
     {
-        ack(cluster.node(1), "pedidos", &message).await;
+        ack(cluster.node(1), "orders", &message).await;
     }
-    eventually("os segmentos mortos saírem do bucket", || {
-        s3.keys("taba/messages/pedidos/").is_empty()
+    eventually("the dead segments to leave the bucket", || {
+        s3.keys("taba/messages/orders/").is_empty()
     })
     .await;
     cluster.shutdown().await;
@@ -711,25 +708,25 @@ async fn volatile_queues_and_dead_letters_are_backed_up_too() {
         .node(1)
         .client
         .post(cluster.node(1).client_url("/topics"))
-        .json(&json!({"name": "pedidos", "type": "queue", "maxDeliveries": 1}))
+        .json(&json!({"name": "orders", "type": "queue", "maxDeliveries": 1}))
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), 201);
-    publish(cluster.node(1), "pedidos", json!({"n": 1})).await;
+    publish(cluster.node(1), "orders", json!({"n": 1})).await;
     let got = consume(
         cluster.node(1),
-        "pedidos",
+        "orders",
         "maxMessages=1&visibilityTimeout=1",
     )
     .await;
     assert_eq!(got.len(), 1);
-    // A invisibilidade vence com o limite de entregas gasto: a mensagem vai à dead-letter.
+    // The invisibility expires with the delivery limit spent: the message goes to the dead-letter.
     cluster.clock.advance(Duration::from_secs(5));
-    eventually_async("a mensagem na dead-letter", || async {
+    eventually_async("the message in the dead-letter", || async {
         !try_consume(
             cluster.node(2),
-            "pedidos-dead-letter",
+            "orders-dead-letter",
             "maxMessages=1&visibilityTimeout=1",
         )
         .await
@@ -739,10 +736,10 @@ async fn volatile_queues_and_dead_letters_are_backed_up_too() {
     flush_all(&cluster).await;
     assert!(
         !s3.keys("taba/messages/efemera/").is_empty(),
-        "fila volátil"
+        "volatile queue"
     );
     assert!(
-        !s3.keys("taba/messages/pedidos-dead-letter/").is_empty(),
+        !s3.keys("taba/messages/orders-dead-letter/").is_empty(),
         "dead-letter"
     );
     cluster.shutdown().await;
@@ -754,10 +751,10 @@ async fn with_s3_down_at_start_the_nodes_start_with_a_warning_and_the_cluster_wo
     let s3 = Arc::new(MemoryStore::new());
     s3.set_down(true);
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
-    publish(cluster.node(2), "pedidos", json!({"n": 1})).await;
+    create_queue(cluster.node(1), "orders").await;
+    publish(cluster.node(2), "orders", json!({"n": 1})).await;
     assert_eq!(
-        consume(cluster.node(3), "pedidos", "maxMessages=1")
+        consume(cluster.node(3), "orders", "maxMessages=1")
             .await
             .len(),
         1
@@ -773,7 +770,7 @@ async fn with_s3_down_at_start_the_nodes_start_with_a_warning_and_the_cluster_wo
         .await
         .unwrap();
     assert_eq!(status["s3Reachable"], false);
-    // O S3 volta: o recurso liga sozinho.
+    // S3 comes back: the feature turns on by itself.
     s3.set_down(false);
     eventually("o batimento no bucket", || {
         !s3.keys("taba/nodes/").is_empty()
@@ -787,24 +784,24 @@ async fn with_s3_down_at_start_the_nodes_start_with_a_warning_and_the_cluster_wo
 async fn the_primary_tells_the_replicas_which_messages_are_already_in_the_bucket() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..5 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     flush_all(&cluster).await;
-    // Fator de replicação 3 em 3 nós: todos guardam as 5 e, com o aviso, todos sabem onde estão.
+    // Replication factor 3 on 3 nodes: all keep the 5 and, with the notice, all know where they are.
     for number in 1..=3 {
         let node = backup_of(cluster.node(number));
         let watching = node.clone();
-        eventually("a réplica saber onde as 5 estão", move || {
+        eventually("the replica to know where the 5 are", move || {
             watching.status().saved == 5
         })
         .await;
-        // A referência traz o instante do PUT (relógio do primário), em qualquer réplica.
-        let first = node.db.saved_of_topic("pedidos").unwrap().remove(0);
+        // The reference carries the instant of the PUT (the primary's clock), on any replica.
+        let first = node.db.saved_of_topic("orders").unwrap().remove(0);
         assert!(first.1.saved_at_ms > 0, "saved_at ausente");
         assert_eq!(
-            node.saved_info("pedidos", &first.0).unwrap().saved_at_ms,
+            node.saved_info("orders", &first.0).unwrap().saved_at_ms,
             first.1.saved_at_ms
         );
     }
@@ -818,21 +815,21 @@ async fn when_the_primary_dies_the_new_primary_sends_what_was_still_pending() {
     let env = [("TABA_DRAIN_ON_STOP", "false")];
     let mut cluster = TestCluster::start_with_backup(3, &env, s3.clone()).await;
     common::cluster::settled(&cluster).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..9 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
-    eventually("o outbox dos donos", || outbox_total(&cluster) == 9).await;
-    // O nó 3 cai antes de enviar o que tinha no outbox.
+    eventually("the owners' outbox", || outbox_total(&cluster) == 9).await;
+    // Node 3 falls before sending what it had in the outbox.
     kill_last(&mut cluster).await;
-    eventually("o nó 3 sair da tabela", || members_of(&cluster, 1) == 2).await;
-    // O herdeiro adota as mensagens quando a tabela muda; a janela dele conta dali.
+    eventually("node 3 to leave the table", || members_of(&cluster, 1) == 2).await;
+    // The heir adopts the messages when the table changes; its window counts from there.
     let s3_check = s3.clone();
     let clock = cluster.clock.clone();
-    eventually_async("os herdeiros enviarem as 9", || {
+    eventually_async("the heirs to send the 9", || {
         let s3 = s3_check.clone();
         clock.advance(Duration::from_secs(61));
-        async move { messages_in_bucket(&s3, "pedidos").await == 9 }
+        async move { messages_in_bucket(&s3, "orders").await == 9 }
     })
     .await;
     cluster.shutdown().await;
@@ -843,30 +840,30 @@ async fn when_the_primary_dies_the_new_primary_sends_what_was_still_pending() {
 async fn a_full_disk_evicts_the_bodies_already_in_s3_and_reading_one_goes_back_to_the_bucket() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     let mut ids = Vec::new();
     for i in 0..6 {
         ids.push(
             publish(
                 cluster.node(1),
-                "pedidos",
-                json!({"n": i, "texto": "x".repeat(200)}),
+                "orders",
+                json!({"n": i, "text": "x".repeat(200)}),
             )
             .await,
         );
     }
-    // Tudo para o disco (etapa 1 do flush) e para o S3.
+    // Everything to disk (step 1 of the flush) and to S3.
     flush_all(&cluster).await;
     let bodies = |number: usize| -> usize {
         let dir = cluster
             .node(number)
             .storage_dir()
-            .join(taba_node::storage::messages::dir_name("pedidos"));
+            .join(taba_node::storage::messages::dir_name("orders"));
         ids.iter()
             .filter(|id| dir.join(format!("{id}.body")).is_file())
             .count()
     };
-    // O flush só moveu a memória do nó 1; os outros também a levam ao disco.
+    // The flush only moved node 1's memory; the others also take it to disk.
     for number in 2..=3 {
         let response = cluster
             .node(number)
@@ -878,35 +875,35 @@ async fn a_full_disk_evicts_the_bodies_already_in_s3_and_reading_one_goes_back_t
         assert_eq!(response.status(), 200);
     }
     for number in 1..=3 {
-        eventually("a réplica saber onde as 6 estão", || {
+        eventually("the replica to know where the 6 are", || {
             backup_of(cluster.node(number)).status().saved == 6
         })
         .await;
         assert_eq!(
             bodies(number),
             6,
-            "antes da evicção os corpos estão no disco"
+            "before the eviction the bodies are on disk"
         );
     }
 
-    // O disco passa de 85%: o corpo do que já está no S3 sai do disco; a linha fica.
+    // The disk goes over 85%: the body of what is already in S3 leaves the disk; the row stays.
     cluster.set_disk_usage(90);
     for number in 1..=3 {
-        eventually("os corpos saírem do disco", || bodies(number) == 0).await;
+        eventually("the bodies to leave the disk", || bodies(number) == 0).await;
     }
     assert!(backup_of(cluster.node(1)).status().bodies_evicted > 0);
 
-    // A leitura acha o arquivo ausente e busca o corpo no segmento por `Range`.
+    // The read finds the file missing and fetches the body from the segment by `Range`.
     cluster.set_disk_usage(10);
     let got = consume(
         cluster.node(2),
-        "pedidos",
+        "orders",
         "maxMessages=6&visibilityTimeout=300",
     )
     .await;
     assert_eq!(got.len(), 6);
     for message in &got {
-        assert_eq!(message["body"]["texto"], "x".repeat(200));
+        assert_eq!(message["body"]["text"], "x".repeat(200));
     }
     cluster.shutdown().await;
 }
@@ -916,9 +913,9 @@ async fn a_full_disk_evicts_the_bodies_already_in_s3_and_reading_one_goes_back_t
 async fn at_ninety_percent_the_memory_to_disk_pass_pauses_until_the_disk_has_room() {
     let s3 = Arc::new(MemoryStore::new());
     let cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..3 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     cluster.set_disk_usage(95);
     let started = std::time::Instant::now();
@@ -937,7 +934,7 @@ async fn at_ninety_percent_the_memory_to_disk_pass_pauses_until_the_disk_has_roo
     let report: Value = response.json().await.unwrap();
     assert!(
         started.elapsed() >= Duration::from_millis(600),
-        "o flush esperou o disco ({:?}): {report}",
+        "the flush waited for the disk ({:?}): {report}",
         started.elapsed()
     );
     assert_eq!(report["memoryRemaining"], 0, "{report}");
@@ -950,27 +947,27 @@ async fn a_segment_closes_by_message_count_before_it_gets_old() {
     let s3 = Arc::new(MemoryStore::new());
     let env = [
         ("TABA_BACKUP_SEGMENT_MAX_MESSAGES", "2"),
-        // A idade nunca fecha: só a quantidade.
+        // The age never closes: only the count.
         ("TABA_BACKUP_SEGMENT_MAX_AGE", "1h"),
     ];
     let cluster = TestCluster::start_with_backup(3, &env, s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..12 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     cluster.clock.advance(Duration::from_secs(61));
-    // Cada dono fecha o segmento ao chegar em 2 mensagens; o resto espera a idade (1 h): ao menos
-    // metade das 12 já subiu, em segmentos de no máximo 2.
-    eventually_async("segmentos fechados por quantidade", || async {
-        messages_in_bucket(&s3, "pedidos").await >= 6
+    // Each owner closes the segment on reaching 2 messages; the rest wait for the age (1 h): at least
+    // half of the 12 has already gone up, in segments of at most 2.
+    eventually_async("segments closed by count", || async {
+        messages_in_bucket(&s3, "orders").await >= 6
     })
     .await;
-    for key in s3.keys("taba/messages/pedidos/") {
+    for key in s3.keys("taba/messages/orders/") {
         let body = s3.get(&key).await.unwrap().unwrap().body;
         let (footer, _) = taba_node::storage::backup::segment::decode_all(&body).unwrap();
         assert!(
             footer.entries.len() <= 2,
-            "{key}: {} mensagens",
+            "{key}: {} messages",
             footer.entries.len()
         );
     }
@@ -993,7 +990,7 @@ async fn tokens_go_to_the_bucket_one_file_each_and_a_revoked_token_disappears() 
         .client
         .post(node.client_url("/tokens"))
         .header("authorization", format!("Bearer {root}"))
-        .json(&json!({"name": "ci", "permissions": ["publish"], "topicPrefixes": ["pedidos"]}))
+        .json(&json!({"name": "ci", "permissions": ["publish"], "topicPrefixes": ["orders"]}))
         .send()
         .await
         .unwrap();
@@ -1006,7 +1003,7 @@ async fn tokens_go_to_the_bucket_one_file_each_and_a_revoked_token_disappears() 
     assert_eq!(stored["token"]["name"], "ci");
     assert!(
         stored["token"]["secretHash"].is_string() && stored["token"].get("token").is_none(),
-        "só o hash salgado vai ao bucket, nunca o segredo"
+        "only the salted hash goes to the bucket, never the secret"
     );
 
     node.clock.advance(Duration::from_secs(1));
@@ -1018,7 +1015,7 @@ async fn tokens_go_to_the_bucket_one_file_each_and_a_revoked_token_disappears() 
         .await
         .unwrap();
     assert_eq!(response.status(), 204);
-    eventually("o token revogado sair do bucket", || {
+    eventually("the revoked token to leave the bucket", || {
         s3.peek(&key).is_none()
     })
     .await;
@@ -1031,9 +1028,9 @@ async fn with_s3_down_the_stop_still_drains_every_node_and_warns_that_the_backup
     let s3 = Arc::new(MemoryStore::new());
     let env = [("TABA_BACKUP_DRAIN_TIMEOUT", "1s")];
     let cluster = TestCluster::start_with_backup(3, &env, s3.clone()).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for i in 0..6 {
-        publish(cluster.node(1), "pedidos", json!({"n": i})).await;
+        publish(cluster.node(1), "orders", json!({"n": i})).await;
     }
     s3.set_down(true);
     cluster.clock.advance(Duration::from_secs(61));
@@ -1046,16 +1043,16 @@ async fn with_s3_down_the_stop_still_drains_every_node_and_warns_that_the_backup
             .unwrap()
             .iter()
             .any(|w| w.as_str().unwrap().contains("S3")),
-        "avisa que o backup não foi enviado: {report}"
+        "warns that the backup was not sent: {report}"
     );
     assert_eq!(
         report["stopped"].as_array().unwrap().len(),
         3,
-        "o drain em disco foi feito"
+        "the drain to disk was done"
     );
     assert!(
         started.elapsed() >= Duration::from_millis(900),
-        "o envio esperou até o prazo do backup antes de desistir ({:?})",
+        "the send waited until the backup deadline before giving up ({:?})",
         started.elapsed()
     );
     for number in 1..=3 {
@@ -1078,9 +1075,9 @@ async fn a_single_node_in_development_mode_owns_everything_and_backs_up_too() {
         .env("TABA_BACKUP_DISK_PAUSE_AT", "100")
         .start()
         .await;
-    create_queue(&node, "pedidos").await;
+    create_queue(&node, "orders").await;
     for i in 0..3 {
-        publish(&node, "pedidos", json!({"n": i})).await;
+        publish(&node, "orders", json!({"n": i})).await;
     }
     let response = node
         .client
@@ -1091,16 +1088,16 @@ async fn a_single_node_in_development_mode_owns_everything_and_backs_up_too() {
     assert_eq!(response.status(), 200);
     let report: Value = response.json().await.unwrap();
     assert_eq!(report["outboxPending"], 0, "{report}");
-    assert_eq!(messages_in_bucket(&s3, "pedidos").await, 3);
-    assert!(s3.peek("taba/topics/pedidos.json").is_some());
+    assert_eq!(messages_in_bucket(&s3, "orders").await, 3);
+    assert!(s3.peek("taba/topics/orders.json").is_some());
     node.shutdown().await;
 }
 
-/// A latência de publicação com e sem o backup (e com o S3 fora do ar): o S3 não pode aparecer nela.
-/// Não roda no `cargo test` (mede tempo); rode com
+/// The publish latency with and without the backup (and with S3 down): S3 must not show up in it.
+/// It does not run in `cargo test` (it measures time); run it with
 /// `cargo test --test backup publish_latency -- --ignored --nocapture`.
 #[tokio::test]
-#[ignore = "mede tempo; rode à mão"]
+#[ignore = "measures time; run by hand"]
 async fn publish_latency_with_and_without_s3() {
     async fn run(label: &str, cluster: &TestCluster) -> f64 {
         create_queue(cluster.node(1), "medida").await;
@@ -1122,28 +1119,28 @@ async fn publish_latency_with_and_without_s3() {
     }
 
     let without = TestCluster::start(3).await;
-    let base = run("sem backup", &without).await;
+    let base = run("without backup", &without).await;
     without.shutdown().await;
 
     let s3 = Arc::new(MemoryStore::new());
     let with = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    let up = run("com backup (S3 no ar)", &with).await;
+    let up = run("with backup (S3 up)", &with).await;
     with.shutdown().await;
 
     let s3 = Arc::new(MemoryStore::new());
     s3.set_down(true);
     let down_cluster = TestCluster::start_with_backup(3, &[], s3.clone()).await;
-    let down = run("com backup (S3 fora do ar)", &down_cluster).await;
+    let down = run("with backup (S3 down)", &down_cluster).await;
     down_cluster.shutdown().await;
 
-    // O backup só insere uma linha no outbox: nada de S3 na publicação. Folga larga (máquina de
-    // desenvolvimento, três nós no mesmo processo).
+    // The backup only inserts a row in the outbox: no S3 on the publish. Wide margin (development
+    // machine, three nodes in the same process).
     assert!(
         up < base * 2.0 + 5.0,
-        "com backup {up} ms contra {base} ms sem"
+        "with backup {up} ms against {base} ms without"
     );
     assert!(
         down < base * 2.0 + 5.0,
-        "com S3 fora {down} ms contra {base} ms sem"
+        "with S3 down {down} ms against {base} ms without"
     );
 }

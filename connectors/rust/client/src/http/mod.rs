@@ -1,16 +1,16 @@
-//! HTTP/1.1 como funções puras, sem entrada e saída (doc 19a, seção 18.10.3): montar a requisição,
-//! interpretar a resposta (`Content-Length`, `chunked` ou até o fim da conexão) e ler o endereço.
-//! O transporte (TCP, TLS) só leva e traz bytes.
+//! HTTP/1.1 as pure functions, with no input or output (doc 19a, section 18.10.3): building the request,
+//! interpreting the response (`Content-Length`, `chunked` or until the connection ends) and reading the address.
+//! The transport (TCP, TLS) only carries bytes back and forth.
 
 use std::io::{self, BufRead, Read};
 
-/// Teto do corpo de uma resposta: um lote de mensagens grandes em base64 cabe com folga.
+/// Cap on a response body: a batch of large base64 messages fits with room to spare.
 pub const MAX_BODY: usize = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
     pub method: String,
-    /// Caminho mais query, já codificados (`/topics?limit=5`).
+    /// Path plus query, already encoded (`/topics?limit=5`).
     pub target: String,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
@@ -32,13 +32,13 @@ impl Response {
     }
 }
 
-/// O endereço de um servidor, lido de `http://host:porta` ou `https://host:porta/prefixo`.
+/// A server's address, read from `http://host:port` or `https://host:port/prefix`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Url {
     pub https: bool,
     pub host: String,
     pub port: u16,
-    /// Prefixo de caminho, sem barra no fim (vazio na raiz).
+    /// Path prefix, with no trailing slash (empty at the root).
     pub base_path: String,
 }
 
@@ -51,7 +51,7 @@ impl Url {
             (false, rest)
         } else {
             return Err(format!(
-                "o endereço `{text}` precisa começar com http:// ou https://"
+                "the address `{text}` must start with http:// or https://"
             ));
         };
         let (authority, path) = match rest.find('/') {
@@ -59,17 +59,17 @@ impl Url {
             None => (rest, ""),
         };
         if authority.is_empty() || authority.contains('@') {
-            return Err(format!("o endereço `{text}` não tem um host válido"));
+            return Err(format!("the address `{text}` has no valid host"));
         }
         let default_port = if https { 443 } else { 80 };
         let (host, port) = if let Some(inner) = authority.strip_prefix('[') {
-            // IPv6 literal: `[::1]` ou `[::1]:8080`.
+            // Literal IPv6: `[::1]` or `[::1]:8080`.
             let end = inner
                 .find(']')
-                .ok_or_else(|| format!("o endereço `{text}` tem um IPv6 sem `]`"))?;
+                .ok_or_else(|| format!("the address `{text}` has an IPv6 without `]`"))?;
             let port = match &inner[end + 1..] {
                 "" => default_port,
-                p => parse_port(p.strip_prefix(':').ok_or("porta inválida")?, text)?,
+                p => parse_port(p.strip_prefix(':').ok_or("invalid port")?, text)?,
             };
             (inner[..end].to_owned(), port)
         } else {
@@ -79,7 +79,7 @@ impl Url {
             }
         };
         if host.is_empty() {
-            return Err(format!("o endereço `{text}` não tem um host válido"));
+            return Err(format!("the address `{text}` has no valid host"));
         }
         Ok(Url {
             https,
@@ -89,7 +89,7 @@ impl Url {
         })
     }
 
-    /// O valor do cabeçalho `Host`.
+    /// The value of the `Host` header.
     pub fn host_header(&self) -> String {
         let host = if self.host.contains(':') {
             format!("[{}]", self.host)
@@ -104,7 +104,7 @@ impl Url {
         }
     }
 
-    /// O mesmo endereço, com outra porta.
+    /// The same address, with another port.
     pub fn with_port(&self, port: u16) -> Url {
         Url {
             port,
@@ -112,7 +112,7 @@ impl Url {
         }
     }
 
-    /// O endereço como texto (`http://host:porta`), sem o prefixo de caminho.
+    /// The address as text (`http://host:port`), without the path prefix.
     pub fn origin(&self) -> String {
         format!(
             "{}://{}",
@@ -126,10 +126,10 @@ fn parse_port(port: &str, text: &str) -> Result<u16, String> {
     port.parse::<u16>()
         .ok()
         .filter(|p| *p != 0)
-        .ok_or_else(|| format!("o endereço `{text}` tem uma porta inválida"))
+        .ok_or_else(|| format!("the address `{text}` has an invalid port"))
 }
 
-/// Codifica um componente de query: só `A-Za-z0-9-._~` passa como está.
+/// Encodes a query component: only `A-Za-z0-9-._~` passes as is.
 pub fn percent_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -142,8 +142,8 @@ pub fn percent_encode(s: &str) -> String {
     out
 }
 
-/// Caminho mais query (`/topics/x/messages?maxMessages=2`). Os segmentos do caminho já vêm
-/// codificados por quem chama.
+/// Path plus query (`/topics/x/messages?maxMessages=2`). The path segments already come
+/// encoded by the caller.
 pub fn build_target(base_path: &str, path: &str, query: &[(String, String)]) -> String {
     let mut target = format!("{base_path}{path}");
     for (n, (key, value)) in query.iter().enumerate() {
@@ -155,7 +155,7 @@ pub fn build_target(base_path: &str, path: &str, query: &[(String, String)]) -> 
     target
 }
 
-/// Os bytes da requisição. Acrescenta `Host`, `Content-Length` e `Connection: close`.
+/// The request bytes. Adds `Host`, `Content-Length` and `Connection: close`.
 pub fn encode_request(host: &str, req: &Request) -> Vec<u8> {
     let mut head = format!("{} {} HTTP/1.1\r\nHost: {host}\r\n", req.method, req.target);
     for (k, v) in &req.headers {
@@ -172,7 +172,7 @@ pub fn encode_request(host: &str, req: &Request) -> Vec<u8> {
 
 #[derive(Debug)]
 pub enum ReadError {
-    /// Falha de leitura; `received` diz se algum byte da resposta já tinha chegado.
+    /// Read failure; `received` says whether any byte of the response had already arrived.
     Io {
         error: io::Error,
         received: bool,
@@ -194,27 +194,27 @@ fn read_line<R: BufRead>(r: &mut R, received: bool) -> Result<String, ReadError>
         return Err(io_err(io::ErrorKind::UnexpectedEof.into(), received));
     }
     if line.last() != Some(&b'\n') {
-        return Err(ReadError::Malformed("linha de cabeçalho sem fim"));
+        return Err(ReadError::Malformed("header line without an end"));
     }
     while matches!(line.last(), Some(b'\n' | b'\r')) {
         line.pop();
     }
-    String::from_utf8(line).map_err(|_| ReadError::Malformed("cabeçalho que não é UTF-8"))
+    String::from_utf8(line).map_err(|_| ReadError::Malformed("header that is not UTF-8"))
 }
 
-/// Lê uma resposta completa. As respostas `1xx` são puladas.
+/// Reads a complete response. `1xx` responses are skipped.
 pub fn read_response<R: BufRead>(r: &mut R) -> Result<Response, ReadError> {
     let (status, headers) = loop {
         let line = read_line(r, false)?;
         let mut parts = line.splitn(3, ' ');
         let version = parts.next().unwrap_or_default();
         if !version.starts_with("HTTP/1.") {
-            return Err(ReadError::Malformed("linha de status inválida"));
+            return Err(ReadError::Malformed("invalid status line"));
         }
         let status: u16 = parts
             .next()
             .and_then(|s| s.parse().ok())
-            .ok_or(ReadError::Malformed("código de status inválido"))?;
+            .ok_or(ReadError::Malformed("invalid status code"))?;
         let mut headers = Vec::new();
         loop {
             let line = read_line(r, true)?;
@@ -223,7 +223,7 @@ pub fn read_response<R: BufRead>(r: &mut R) -> Result<Response, ReadError> {
             }
             let (name, value) = line
                 .split_once(':')
-                .ok_or(ReadError::Malformed("cabeçalho sem ':'"))?;
+                .ok_or(ReadError::Malformed("header without ':'"))?;
             headers.push((name.trim().to_owned(), value.trim().to_owned()));
         }
         if !(100..200).contains(&status) {
@@ -242,7 +242,7 @@ pub fn read_response<R: BufRead>(r: &mut R) -> Result<Response, ReadError> {
     let length = match header("content-length") {
         Some(v) => Some(
             v.parse::<usize>()
-                .map_err(|_| ReadError::Malformed("Content-Length inválido"))?,
+                .map_err(|_| ReadError::Malformed("invalid Content-Length"))?,
         ),
         None => None,
     };
@@ -253,14 +253,14 @@ pub fn read_response<R: BufRead>(r: &mut R) -> Result<Response, ReadError> {
         read_chunked(r)?
     } else if let Some(n) = length {
         if n > MAX_BODY {
-            return Err(ReadError::Malformed("corpo grande demais"));
+            return Err(ReadError::Malformed("body too large"));
         }
         let mut body = vec![0; n];
         r.read_exact(&mut body).map_err(|e| io_err(e, true))?;
         body
     } else {
-        // Sem tamanho: o corpo vai até o fim da conexão. Um TLS fechado sem `close_notify` chega
-        // como `UnexpectedEof`, e aqui isso é o fim.
+        // Without a length: the body goes until the connection ends. A TLS closed without `close_notify` arrives
+        // as `UnexpectedEof`, and here that is the end.
         let mut body = Vec::new();
         match r.take(MAX_BODY as u64 + 1).read_to_end(&mut body) {
             Ok(_) => {}
@@ -268,7 +268,7 @@ pub fn read_response<R: BufRead>(r: &mut R) -> Result<Response, ReadError> {
             Err(e) => return Err(io_err(e, true)),
         }
         if body.len() > MAX_BODY {
-            return Err(ReadError::Malformed("corpo grande demais"));
+            return Err(ReadError::Malformed("body too large"));
         }
         body
     };
@@ -285,21 +285,21 @@ fn read_chunked<R: BufRead>(r: &mut R) -> Result<Vec<u8>, ReadError> {
         let line = read_line(r, true)?;
         let size_text = line.split(';').next().unwrap_or_default().trim();
         let size = usize::from_str_radix(size_text, 16)
-            .map_err(|_| ReadError::Malformed("tamanho de bloco inválido"))?;
+            .map_err(|_| ReadError::Malformed("invalid chunk size"))?;
         if size == 0 {
-            // Trailers até a linha vazia.
+            // Trailers until the empty line.
             while !read_line(r, true)?.is_empty() {}
             return Ok(body);
         }
         if body.len() + size > MAX_BODY {
-            return Err(ReadError::Malformed("corpo grande demais"));
+            return Err(ReadError::Malformed("body too large"));
         }
         let start = body.len();
         body.resize(start + size, 0);
         r.read_exact(&mut body[start..])
             .map_err(|e| io_err(e, true))?;
         if !read_line(r, true)?.is_empty() {
-            return Err(ReadError::Malformed("bloco sem CRLF no fim"));
+            return Err(ReadError::Malformed("chunk without a CRLF at the end"));
         }
     }
 }

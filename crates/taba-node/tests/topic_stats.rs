@@ -60,7 +60,7 @@ fn item<'a>(page: &'a Value, name: &str) -> &'a Value {
         .unwrap()
         .iter()
         .find(|item| item["name"] == name)
-        .unwrap_or_else(|| panic!("sem `{name}` em {page}"))
+        .unwrap_or_else(|| panic!("no `{name}` in {page}"))
 }
 
 fn conditions(topic: &Value) -> Vec<&str> {
@@ -78,14 +78,14 @@ async fn lists_the_topics_by_name_with_their_numbers_and_the_dead_letter_too() {
     let node = TestNode::development().await;
     create(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "tags": { "time": "fin" } }),
+        json!({ "name": "orders", "type": "queue", "tags": { "time": "fin" } }),
     )
     .await;
-    queue(&node, "vazio").await;
-    publish(&node, "pedidos", "", "a").await;
-    publish(&node, "pedidos", "", "b").await;
+    queue(&node, "quiet").await;
+    publish(&node, "orders", "", "a").await;
+    publish(&node, "orders", "", "b").await;
     assert_eq!(
-        take(&node, "pedidos", "visibilityTimeout=600&maxMessages=1")
+        take(&node, "orders", "visibilityTimeout=600&maxMessages=1")
             .await
             .len(),
         1
@@ -94,56 +94,51 @@ async fn lists_the_topics_by_name_with_their_numbers_and_the_dead_letter_too() {
     let page = node.stats("/metrics/topics").await;
     assert_eq!(
         names(&page),
-        [
-            "pedidos",
-            "pedidos-dead-letter",
-            "vazio",
-            "vazio-dead-letter"
-        ]
+        ["orders", "orders-dead-letter", "quiet", "quiet-dead-letter"]
     );
     assert!(page.get("nextCursor").is_none());
 
-    let pedidos = item(&page, "pedidos");
-    assert_eq!(pedidos["type"], "queue");
-    assert_eq!(pedidos["tags"], json!({ "time": "fin" }));
-    assert_eq!(pedidos["published"], 2);
-    assert_eq!(pedidos["publishedBytes"], 2);
-    assert_eq!(pedidos["publishErrors"], 0);
-    assert_eq!(pedidos["consumed"], 1);
-    assert_eq!(pedidos["acked"], 0);
-    assert_eq!(pedidos["visibleMessages"], 1);
-    assert_eq!(pedidos["invisibleMessages"], 1);
-    assert_eq!(pedidos["depth"], 2);
-    assert_eq!(pedidos["memoryMessages"], 2);
-    assert_eq!(pedidos["diskMessages"], 0);
-    assert_eq!(pedidos["memoryBytes"], 2);
-    assert_eq!(pedidos["diskBytes"], 0);
-    assert_eq!(pedidos["bytes"], 2);
-    assert_eq!(pedidos["memoryShare"], 1.0);
-    assert_eq!(pedidos["groups"], 1);
-    assert_eq!(pedidos["worstCondition"], "ok");
-    assert_eq!(pedidos["conditions"], json!([]));
-    assert_eq!(pedidos["partial"], false);
-    assert!(pedidos["publishRate"].as_f64().unwrap() > 0.0);
-    assert!(pedidos["publishLatency"]["p50"].is_number());
-    assert!(pedidos["consumeLatency"]["p99"].is_number());
-    assert!(pedidos["oldestMessageAt"].is_string());
-    assert!(pedidos["oldestAge"].as_f64().unwrap() >= 0.0);
-    assert!(pedidos["collectedAt"].is_string());
+    let orders = item(&page, "orders");
+    assert_eq!(orders["type"], "queue");
+    assert_eq!(orders["tags"], json!({ "time": "fin" }));
+    assert_eq!(orders["published"], 2);
+    assert_eq!(orders["publishedBytes"], 2);
+    assert_eq!(orders["publishErrors"], 0);
+    assert_eq!(orders["consumed"], 1);
+    assert_eq!(orders["acked"], 0);
+    assert_eq!(orders["visibleMessages"], 1);
+    assert_eq!(orders["invisibleMessages"], 1);
+    assert_eq!(orders["depth"], 2);
+    assert_eq!(orders["memoryMessages"], 2);
+    assert_eq!(orders["diskMessages"], 0);
+    assert_eq!(orders["memoryBytes"], 2);
+    assert_eq!(orders["diskBytes"], 0);
+    assert_eq!(orders["bytes"], 2);
+    assert_eq!(orders["memoryShare"], 1.0);
+    assert_eq!(orders["groups"], 1);
+    assert_eq!(orders["worstCondition"], "ok");
+    assert_eq!(orders["conditions"], json!([]));
+    assert_eq!(orders["partial"], false);
+    assert!(orders["publishRate"].as_f64().unwrap() > 0.0);
+    assert!(orders["publishLatency"]["p50"].is_number());
+    assert!(orders["consumeLatency"]["p99"].is_number());
+    assert!(orders["oldestMessageAt"].is_string());
+    assert!(orders["oldestAge"].as_f64().unwrap() >= 0.0);
+    assert!(orders["collectedAt"].is_string());
 
-    let vazio = item(&page, "vazio");
-    assert_eq!(vazio["depth"], 0);
-    assert!(vazio.get("oldestMessageAt").is_none(), "nunca zero");
-    assert!(vazio.get("oldestAge").is_none());
-    assert!(vazio["publishLatency"]["p50"].is_null());
+    let empty = item(&page, "quiet");
+    assert_eq!(empty["depth"], 0);
+    assert!(empty.get("oldestMessageAt").is_none(), "never zero");
+    assert!(empty.get("oldestAge").is_none());
+    assert!(empty["publishLatency"]["p50"].is_null());
 
-    let dead = item(&page, "pedidos-dead-letter");
+    let dead = item(&page, "orders-dead-letter");
     assert_eq!(dead["deadLetter"], true);
-    assert_eq!(dead["source"], "pedidos");
+    assert_eq!(dead["source"], "orders");
     assert_eq!(
         dead["tags"],
         json!({ "time": "fin" }),
-        "herda as tags da origem"
+        "inherits the origin's tags"
     );
     node.shutdown().await;
 }
@@ -196,9 +191,9 @@ async fn pages_by_name_and_validates_the_parameters() {
 
     for (query, status, code) in [
         ("sort=name", 400, "validation.unknown-field"),
-        ("fields=nada", 400, "validation.unknown-field"),
+        ("fields=nothing", 400, "validation.unknown-field"),
         ("scope=mundo", 400, "validation.failed"),
-        ("condition=nada", 400, "validation.failed"),
+        ("condition=nothing", 400, "validation.failed"),
         ("limit=0", 400, "validation.out-of-range"),
         ("cursor=@@", 400, "validation.invalid-cursor"),
     ] {
@@ -221,7 +216,7 @@ async fn group_by_a_tag_gives_one_row_per_value_with_the_sums() {
         )
         .await;
     }
-    queue(&node, "sem-tag").await;
+    queue(&node, "no-tag").await;
     publish(&node, "a", "", "x").await;
     publish(&node, "b", "", "yy").await;
     publish(&node, "b", "", "zz").await;
@@ -229,7 +224,11 @@ async fn group_by_a_tag_gives_one_row_per_value_with_the_sums() {
 
     let page = node.stats("/metrics/topics?groupBy=time").await;
     let rows = page["items"].as_array().unwrap();
-    assert_eq!(rows.len(), 2, "o tópico sem a tag não entra: {page}");
+    assert_eq!(
+        rows.len(),
+        2,
+        "the topic without the tag does not enter: {page}"
+    );
     assert_eq!(rows[0]["tag"], "time");
     assert_eq!(rows[0]["value"], "fin");
     assert_eq!(rows[0]["topics"], 4, "a, b e as duas dead-letters");
@@ -252,25 +251,25 @@ async fn group_by_a_tag_gives_one_row_per_value_with_the_sums() {
 #[tokio::test]
 async fn a_distributor_only_shows_what_it_received_copied_and_failed_to_copy() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos-1").await;
-    queue(&node, "pedidos-2").await;
+    queue(&node, "orders-1").await;
+    queue(&node, "orders-2").await;
     create(
         &node,
-        json!({ "name": "pedidos-fifo", "type": "queue", "fifo": true }),
+        json!({ "name": "orders-fifo", "type": "queue", "fifo": true }),
     )
     .await;
     create(
         &node,
-        json!({ "name": "eventos", "type": "distributor", "prefixes": ["pedidos"] }),
+        json!({ "name": "eventos", "type": "distributor", "prefixes": ["orders"] }),
     )
     .await;
     create(
         &node,
-        json!({ "name": "nenhum", "type": "distributor", "prefixes": ["zzz"] }),
+        json!({ "name": "none", "type": "distributor", "prefixes": ["zzz"] }),
     )
     .await;
     assert_eq!(publish(&node, "eventos", "", "a").await.status(), 200);
-    assert_eq!(publish(&node, "nenhum", "", "a").await.status(), 200);
+    assert_eq!(publish(&node, "none", "", "a").await.status(), 200);
 
     let eventos = node.stats("/metrics/topics/eventos").await;
     assert_eq!(
@@ -279,17 +278,17 @@ async fn a_distributor_only_shows_what_it_received_copied_and_failed_to_copy() {
     );
     assert!(
         eventos.get("depth").is_none(),
-        "as métricas de fila são das filas destino"
+        "the queue metrics are the destination queues'"
     );
     assert!(eventos.get("topGroups").is_none());
     assert_eq!(eventos["worstCondition"], "ok");
-    let nenhum = node.stats("/metrics/topics/nenhum").await;
+    let none = node.stats("/metrics/topics/none").await;
     assert_eq!(
-        nenhum["distributor"],
+        none["distributor"],
         json!({ "received": 1, "copies": 0, "copyErrors": 0 })
     );
     let page = node.stats("/metrics/topics").await;
-    assert_eq!(item(&page, "pedidos-1")["published"], 1);
+    assert_eq!(item(&page, "orders-1")["published"], 1);
     node.shutdown().await;
 }
 
@@ -300,36 +299,36 @@ async fn the_detail_adds_the_largest_groups_and_404s_for_unknown_topics() {
         .env("TABA_STATS_TOPICS_TOP_GROUPS", "2")
         .start()
         .await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     for _ in 0..5 {
-        publish(&node, "pedidos", "?groupId=grande", "a").await;
+        publish(&node, "orders", "?groupId=big", "a").await;
     }
     for _ in 0..3 {
-        publish(&node, "pedidos", "?groupId=medio", "a").await;
+        publish(&node, "orders", "?groupId=medio", "a").await;
     }
-    publish(&node, "pedidos", "?groupId=pequeno", "a").await;
+    publish(&node, "orders", "?groupId=small", "a").await;
 
-    let detail = node.stats("/metrics/topics/pedidos").await;
+    let detail = node.stats("/metrics/topics/orders").await;
     assert_eq!(detail["depth"], 9);
     assert_eq!(detail["groups"], 3);
     let top = detail["topGroups"].as_array().unwrap();
     assert_eq!(top.len(), 2, "stats.topics.top-groups");
-    assert_eq!(top[0]["groupId"], "grande");
+    assert_eq!(top[0]["groupId"], "big");
     assert_eq!(top[0]["messages"], 5);
     assert_eq!(top[1]["groupId"], "medio");
     assert!(
         top[0].get("band").is_none(),
-        "a faixa só vem com scope=node"
+        "the range only comes with scope=node"
     );
     assert!((detail["noisyShare"].as_f64().unwrap() - 5.0 / 9.0).abs() < 1e-9);
 
-    let local = node.stats("/metrics/topics/pedidos?scope=node").await;
+    let local = node.stats("/metrics/topics/orders?scope=node").await;
     assert!(local["topGroups"][0]["band"].is_number());
 
-    let dead = node.stats("/metrics/topics/pedidos-dead-letter").await;
+    let dead = node.stats("/metrics/topics/orders-dead-letter").await;
     assert_eq!(dead["deadLetter"], true);
 
-    let missing = node.client_get_ops("/metrics/topics/nao-existe").await;
+    let missing = node.client_get_ops("/metrics/topics/does-not-exist").await;
     assert_eq!(error_code(missing, 404).await, "topic.not-found");
     node.shutdown().await;
 }
@@ -341,13 +340,13 @@ async fn the_groups_route_lists_pages_filters_and_tops_the_groups() {
         .env("TABA_DELIVERY_FAIR_MAX_GROUPS", "3")
         .start()
         .await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     for (group, count) in [("a", 3), ("b", 1), ("c", 2)] {
         for _ in 0..count {
-            publish(&node, "pedidos", &format!("?groupId={group}"), "x").await;
+            publish(&node, "orders", &format!("?groupId={group}"), "x").await;
         }
     }
-    let all = node.stats("/metrics/topics/pedidos/groups").await;
+    let all = node.stats("/metrics/topics/orders/groups").await;
     let ids: Vec<&str> = all["items"]
         .as_array()
         .unwrap()
@@ -362,7 +361,7 @@ async fn the_groups_route_lists_pages_filters_and_tops_the_groups() {
     assert!(all["items"][0]["oldestMessageAt"].is_string());
     assert!(all["items"][0]["oldestAge"].is_number());
 
-    let top = node.stats("/metrics/topics/pedidos/groups?top=2").await;
+    let top = node.stats("/metrics/topics/orders/groups?top=2").await;
     let ids: Vec<&str> = top["items"]
         .as_array()
         .unwrap()
@@ -370,18 +369,18 @@ async fn the_groups_route_lists_pages_filters_and_tops_the_groups() {
         .map(|g| g["groupId"].as_str().unwrap())
         .collect();
     assert_eq!(ids, ["a", "c"]);
-    assert!(top.get("nextCursor").is_none(), "`top` não pagina");
+    assert!(top.get("nextCursor").is_none(), "`top` does not paginate");
 
-    let one = node.stats("/metrics/topics/pedidos/groups?groupId=b").await;
+    let one = node.stats("/metrics/topics/orders/groups?groupId=b").await;
     assert_eq!(one["items"].as_array().unwrap().len(), 1);
     assert_eq!(one["items"][0]["messages"], 1);
 
-    let first = node.stats("/metrics/topics/pedidos/groups?limit=2").await;
+    let first = node.stats("/metrics/topics/orders/groups?limit=2").await;
     assert_eq!(first["items"].as_array().unwrap().len(), 2);
     let cursor = first["nextCursor"].as_str().unwrap();
     let second = node
         .stats(&format!(
-            "/metrics/topics/pedidos/groups?limit=2&cursor={cursor}"
+            "/metrics/topics/orders/groups?limit=2&cursor={cursor}"
         ))
         .await;
     assert_eq!(second["items"][0]["groupId"], "c");
@@ -389,15 +388,15 @@ async fn the_groups_route_lists_pages_filters_and_tops_the_groups() {
 
     let both = node
         .client_get_ops(&format!(
-            "/metrics/topics/pedidos/groups?top=1&cursor={cursor}"
+            "/metrics/topics/orders/groups?top=1&cursor={cursor}"
         ))
         .await;
     assert_eq!(error_code(both, 400).await, "validation.failed");
     let zero = node
-        .client_get_ops("/metrics/topics/pedidos/groups?top=0")
+        .client_get_ops("/metrics/topics/orders/groups?top=0")
         .await;
     assert_eq!(error_code(zero, 400).await, "validation.out-of-range");
-    let missing = node.client_get_ops("/metrics/topics/nada/groups").await;
+    let missing = node.client_get_ops("/metrics/topics/nothing/groups").await;
     assert_eq!(error_code(missing, 404).await, "topic.not-found");
     node.shutdown().await;
 }
@@ -409,22 +408,22 @@ async fn the_shared_counter_shows_as_overflow_and_an_empty_group_disappears() {
         .env("TABA_DELIVERY_FAIR_MAX_GROUPS", "2")
         .start()
         .await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     for group in ["a", "b", "c", "d"] {
-        publish(&node, "pedidos", &format!("?groupId={group}"), "x").await;
+        publish(&node, "orders", &format!("?groupId={group}"), "x").await;
     }
-    publish(&node, "pedidos", "", "sem grupo").await;
+    publish(&node, "orders", "", "no group").await;
 
-    let page = node.stats("/metrics/topics/pedidos/groups").await;
+    let page = node.stats("/metrics/topics/orders/groups").await;
     let rows = page["items"].as_array().unwrap();
     let last = rows.last().unwrap();
     assert_eq!(last["overflow"], true);
     assert!(last.get("groupId").is_none());
-    assert_eq!(last["messages"], 3, "c, d e a mensagem sem grupo");
+    assert_eq!(last["messages"], 3, "c, d and the message without a group");
     assert_eq!(rows.len(), 3);
 
-    // O grupo que esvazia deixa de ser acompanhado.
-    let message = take(&node, "pedidos", "maxMessages=1&visibilityTimeout=600").await;
+    // The group that empties stops being tracked.
+    let message = take(&node, "orders", "maxMessages=1&visibilityTimeout=600").await;
     let (id, receipt) = (
         message[0]["id"].as_str().unwrap().to_owned(),
         message[0]["receiptToken"].as_str().unwrap().to_owned(),
@@ -432,13 +431,13 @@ async fn the_shared_counter_shows_as_overflow_and_an_empty_group_disappears() {
     let acked = node
         .client
         .delete(node.client_url(&format!(
-            "/topics/pedidos/messages/{id}?receiptToken={receipt}"
+            "/topics/orders/messages/{id}?receiptToken={receipt}"
         )))
         .send()
         .await
         .unwrap();
     assert_eq!(acked.status(), 204);
-    let page = node.stats("/metrics/topics/pedidos/groups").await;
+    let page = node.stats("/metrics/topics/orders/groups").await;
     assert_eq!(page["items"].as_array().unwrap().len(), 2);
 
     let distributor = {
@@ -457,31 +456,31 @@ async fn the_shared_counter_shows_as_overflow_and_an_empty_group_disappears() {
 #[tokio::test]
 async fn noisy_group_fires_with_two_groups_and_the_largest_over_the_share() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     queue(&node, "calmo").await;
     for _ in 0..9 {
-        publish(&node, "pedidos", "?groupId=g1", "x").await;
+        publish(&node, "orders", "?groupId=g1", "x").await;
     }
-    publish(&node, "pedidos", "?groupId=g2", "x").await;
+    publish(&node, "orders", "?groupId=g2", "x").await;
     publish(&node, "calmo", "?groupId=g1", "x").await;
     publish(&node, "calmo", "?groupId=g2", "x").await;
 
     let page = node.stats("/metrics/topics").await;
-    let pedidos = item(&page, "pedidos");
-    assert_eq!(conditions(pedidos), ["noisy-group"]);
-    assert_eq!(pedidos["worstCondition"], "noisy-group");
-    assert_eq!(pedidos["conditions"][0]["severity"], "info");
-    assert!((pedidos["noisyShare"].as_f64().unwrap() - 0.9).abs() < 1e-9);
+    let orders = item(&page, "orders");
+    assert_eq!(conditions(orders), ["noisy-group"]);
+    assert_eq!(orders["worstCondition"], "noisy-group");
+    assert_eq!(orders["conditions"][0]["severity"], "info");
+    assert!((orders["noisyShare"].as_f64().unwrap() - 0.9).abs() < 1e-9);
     assert_eq!(
         item(&page, "calmo")["worstCondition"],
         "ok",
-        "50% não passa de 50%"
+        "50% does not go over 50%"
     );
 
     let only = node.stats("/metrics/topics?condition=noisy-group").await;
-    assert_eq!(names(&only), ["pedidos"]);
+    assert_eq!(names(&only), ["orders"]);
     let healthy = node.stats("/metrics/topics?condition=ok").await;
-    assert!(!names(&healthy).contains(&"pedidos"));
+    assert!(!names(&healthy).contains(&"orders"));
     assert!(names(&healthy).contains(&"calmo"));
     node.shutdown().await;
 }
@@ -496,7 +495,7 @@ async fn backlog_stalled_and_idle_follow_the_configured_limits_and_the_clock() {
         .env("TABA_STATS_TOPICS_IDLE_AFTER", "5m")
         .start()
         .await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     queue(&node, "ocioso").await;
     let worst = |page: &Value, name: &str| {
         item(page, name)["worstCondition"]
@@ -505,40 +504,40 @@ async fn backlog_stalled_and_idle_follow_the_configured_limits_and_the_clock() {
             .to_owned()
     };
 
-    publish(&node, "pedidos", "", "a").await;
+    publish(&node, "orders", "", "a").await;
     let page = node.stats("/metrics/topics").await;
-    assert_eq!(worst(&page, "pedidos"), "ok");
+    assert_eq!(worst(&page, "orders"), "ok");
 
-    // Passa de `stats.topics.backlog.depth`.
-    publish(&node, "pedidos", "", "b").await;
-    publish(&node, "pedidos", "", "c").await;
+    // Goes over `stats.topics.backlog.depth`.
+    publish(&node, "orders", "", "b").await;
+    publish(&node, "orders", "", "c").await;
     let page = node.stats("/metrics/topics").await;
-    assert_eq!(conditions(item(&page, "pedidos")), ["backlog"]);
+    assert_eq!(conditions(item(&page, "orders")), ["backlog"]);
 
-    // Ninguém consome há mais de `stalled-after`.
+    // No one has consumed for more than `stalled-after`.
     node.clock.advance(Duration::from_secs(61));
     let page = node.stats("/metrics/topics").await;
-    assert_eq!(conditions(item(&page, "pedidos")), ["backlog", "stalled"]);
+    assert_eq!(conditions(item(&page, "orders")), ["backlog", "stalled"]);
     assert_eq!(
-        item(&page, "pedidos")["conditions"][1]["severity"],
+        item(&page, "orders")["conditions"][1]["severity"],
         "warning"
     );
 
-    // Consumir tira o `stalled` (e deixa de haver prontas demais).
+    // Consuming takes away the `stalled` (and there are no longer too many ready ones).
     assert_eq!(
-        take(&node, "pedidos", "maxMessages=3&visibilityTimeout=600")
+        take(&node, "orders", "maxMessages=3&visibilityTimeout=600")
             .await
             .len(),
         3
     );
     let page = node.stats("/metrics/topics").await;
-    assert_eq!(conditions(item(&page, "pedidos")), ["backlog"]);
+    assert_eq!(conditions(item(&page, "orders")), ["backlog"]);
 
-    // A mais antiga passa de `backlog.age` e o tópico sem atividade fica `idle`.
+    // The oldest goes over `backlog.age` and the topic with no activity becomes `idle`.
     node.clock.advance(Duration::from_secs(600));
     let page = node.stats("/metrics/topics").await;
     assert_eq!(
-        conditions(item(&page, "pedidos")),
+        conditions(item(&page, "orders")),
         ["backlog", "stalled", "idle"]
     );
     assert_eq!(conditions(item(&page, "ocioso")), ["idle"]);
@@ -552,19 +551,19 @@ async fn memory_pressure_means_most_of_the_topic_is_on_disk() {
         .env("TABA_MEMORY_LIMIT", "150")
         .start()
         .await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     let body = "x".repeat(100);
     for _ in 0..3 {
-        publish(&node, "pedidos", "", &body).await;
+        publish(&node, "orders", "", &body).await;
     }
     let page = node.stats("/metrics/topics").await;
-    let pedidos = item(&page, "pedidos");
-    assert_eq!(pedidos["memoryMessages"], 1);
-    assert_eq!(pedidos["diskMessages"], 2);
-    assert_eq!(pedidos["memoryBytes"], 100);
-    assert_eq!(pedidos["diskBytes"], 200);
-    assert_eq!(pedidos["bytes"], 300);
-    assert_eq!(conditions(pedidos), ["memory-pressure"]);
+    let orders = item(&page, "orders");
+    assert_eq!(orders["memoryMessages"], 1);
+    assert_eq!(orders["diskMessages"], 2);
+    assert_eq!(orders["memoryBytes"], 100);
+    assert_eq!(orders["diskBytes"], 200);
+    assert_eq!(orders["bytes"], 300);
+    assert_eq!(conditions(orders), ["memory-pressure"]);
     node.shutdown().await;
 }
 
@@ -577,33 +576,33 @@ async fn group_stalled_fires_when_a_fifo_head_is_delivered_too_often_without_ack
         .await;
     create(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "fifo": true }),
+        json!({ "name": "orders", "type": "queue", "fifo": true }),
     )
     .await;
-    publish(&node, "pedidos", "?groupId=cliente-1", "x").await;
-    publish(&node, "pedidos", "?groupId=cliente-2", "x").await;
+    publish(&node, "orders", "?groupId=customer-1", "x").await;
+    publish(&node, "orders", "?groupId=customer-2", "x").await;
 
     for _ in 0..2 {
         assert!(
-            !take(&node, "pedidos", "maxMessages=1&visibilityTimeout=0")
+            !take(&node, "orders", "maxMessages=1&visibilityTimeout=0")
                 .await
                 .is_empty()
         );
     }
     let page = node.stats("/metrics/topics").await;
     assert!(
-        !conditions(item(&page, "pedidos")).contains(&"group-stalled"),
-        "duas entregas ainda não passam do limite"
+        !conditions(item(&page, "orders")).contains(&"group-stalled"),
+        "two deliveries still do not go over the limit"
     );
     assert!(
-        !take(&node, "pedidos", "maxMessages=1&visibilityTimeout=0")
+        !take(&node, "orders", "maxMessages=1&visibilityTimeout=0")
             .await
             .is_empty()
     );
     let page = node.stats("/metrics/topics?condition=group-stalled").await;
-    assert_eq!(names(&page), ["pedidos"]);
+    assert_eq!(names(&page), ["orders"]);
     assert_eq!(
-        item(&page, "pedidos")["conditions"][0]["severity"],
+        item(&page, "orders")["conditions"][0]["severity"],
         "warning"
     );
     node.shutdown().await;
@@ -632,21 +631,21 @@ async fn noisy_group_points_at_the_hot_group_of_a_fifo_queue() {
     let node = TestNode::development().await;
     create(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "fifo": true }),
+        json!({ "name": "orders", "type": "queue", "fifo": true }),
     )
     .await;
-    // Corpos diferentes: na FIFO o mesmo corpo repetido é descartado como duplicado.
+    // Different bodies: on the FIFO the same repeated body is discarded as a duplicate.
     for n in 0..9 {
-        publish(&node, "pedidos", "?groupId=quente", &format!("m{n}")).await;
+        publish(&node, "orders", "?groupId=quente", &format!("m{n}")).await;
     }
-    publish(&node, "pedidos", "?groupId=frio", "x").await;
+    publish(&node, "orders", "?groupId=frio", "x").await;
 
     let page = node.stats("/metrics/topics").await;
-    let pedidos = item(&page, "pedidos");
-    assert_eq!(conditions(pedidos), ["noisy-group"]);
-    assert!((pedidos["noisyShare"].as_f64().unwrap() - 0.9).abs() < 1e-9);
-    // O grupo quente aparece primeiro em `topGroups`.
-    let detail = node.stats("/metrics/topics/pedidos").await;
+    let orders = item(&page, "orders");
+    assert_eq!(conditions(orders), ["noisy-group"]);
+    assert!((orders["noisyShare"].as_f64().unwrap() - 0.9).abs() < 1e-9);
+    // The hot group appears first in `topGroups`.
+    let detail = node.stats("/metrics/topics/orders").await;
     assert_eq!(detail["topGroups"][0]["groupId"], "quente");
     node.shutdown().await;
 }

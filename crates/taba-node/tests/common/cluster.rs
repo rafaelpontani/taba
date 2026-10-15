@@ -1,10 +1,10 @@
-//! O cluster simulado dos testes de nível **C** (doc 20, seção 19.4): vários nós de verdade no
-//! mesmo processo, cada um com disco numa pasta temporária e HTTP real em portas livres, ligados
-//! pela rede em memória (`MemoryNetwork`, com perda, atraso e partição programáveis) e por um
-//! `Clock` manual compartilhado.
+//! The simulated cluster of the **C**-level tests (doc 20, section 19.4): several real nodes in the
+//! same process, each with disk in a temporary folder and real HTTP on free ports, linked
+//! by the in-memory network (`MemoryNetwork`, with programmable loss, delay and partition) and by a
+//! shared manual `Clock`.
 //!
-//! O nó `n` tem o IP `10.0.0.n` na rede em memória. O balanceador (`cluster.entry-address`) é
-//! `balancer:8081` e reparte as chamadas entre os nós que já subiram.
+//! Node `n` has the IP `10.0.0.n` on the in-memory network. The load balancer (`cluster.entry-address`) is
+//! `balancer:8081` and splits the calls among the nodes that are already up.
 
 #![allow(dead_code)]
 
@@ -28,7 +28,7 @@ use super::{TestNode, TestNodeBuilder};
 pub const BALANCER_HOST: &str = "balancer";
 pub const BALANCER_PORT: u16 = 8081;
 
-/// Prazos curtos: os testes rodam em tempo real (só o `Clock` é manual).
+/// Short deadlines: the tests run in real time (only the `Clock` is manual).
 pub const FAST: &[(&str, &str)] = &[
     ("TABA_WRITE_RETRY_ATTEMPTS", "3"),
     ("TABA_WRITE_RETRY_BACKOFF", "10ms"),
@@ -38,8 +38,8 @@ pub const FAST: &[(&str, &str)] = &[
     ("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "50ms"),
 ];
 
-/// Os prazos do backup nos testes: o `Clock` é o manual (a janela de `backup.delay` passa quando o
-/// teste avança o relógio); os prazos de tempo real (batimento, morte) são curtos.
+/// The backup deadlines in the tests: the `Clock` is the manual one (the `backup.delay` window passes when the
+/// test advances the clock); the real-time deadlines (heartbeat, death) are short.
 pub const BACKUP_FAST: &[(&str, &str)] = &[
     ("TABA_BACKUP_DELAY", "60s"),
     ("TABA_BACKUP_META_INTERVAL", "300ms"),
@@ -55,28 +55,28 @@ pub fn host_of(number: usize) -> String {
     format!("10.0.0.{number}")
 }
 
-/// O prazo, em segundos, de `eventually` e `eventually_async`.
+/// The deadline, in seconds, of `eventually` and `eventually_async`.
 pub const WAIT: u64 = 30;
 
 pub fn balancer() -> PeerAddr {
     PeerAddr::new(BALANCER_HOST, BALANCER_PORT)
 }
 
-/// Espera a condição ficar verdadeira (até `WAIT` s). Os nós trabalham em tarefas próprias. O prazo é
-/// folgado de propósito: só custa tempo quando o teste já falhou, e um runner lento ou sobrecarregado
-/// (arm64 no CI) leva muito mais que o desenvolvedor vê na sua máquina.
+/// Waits for the condition to become true (up to `WAIT` s). The nodes work in their own tasks. The deadline is
+/// generous on purpose: it only costs time when the test has already failed, and a slow or overloaded runner
+/// (arm64 on CI) takes much longer than the developer sees on their machine.
 pub async fn eventually(what: &str, mut condition: impl FnMut() -> bool) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(WAIT);
     while !condition() {
         assert!(
             tokio::time::Instant::now() < deadline,
-            "esperei {WAIT} s por: {what}"
+            "waited {WAIT} s for: {what}"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
 
-/// O mesmo, para uma condição que precisa de `await` (por exemplo, ler o `/metrics`).
+/// The same, for a condition that needs `await` (for example, reading `/metrics`).
 pub async fn eventually_async<F, Fut>(what: &str, mut condition: F)
 where
     F: FnMut() -> Fut,
@@ -86,7 +86,7 @@ where
     while !condition().await {
         assert!(
             tokio::time::Instant::now() < deadline,
-            "esperei {WAIT} s por: {what}"
+            "waited {WAIT} s for: {what}"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -96,17 +96,17 @@ pub struct TestCluster {
     pub network: MemoryNetwork,
     pub clock: Arc<ManualClock>,
     pub nodes: Vec<TestNode>,
-    /// Parâmetros extras de todos os nós (por exemplo, o token raiz).
+    /// Extra parameters for all the nodes (for example, the root token).
     pub env: Vec<(String, String)>,
-    /// O S3 em memória do backup, compartilhado por todos os nós (`start_with_backup`).
+    /// The backup's in-memory S3, shared by all the nodes (`start_with_backup`).
     pub s3: Option<Arc<MemoryStore>>,
-    /// O uso do disco (%) que os nós com backup enxergam: o teste o sobe para simular o disco
-    /// enchendo, sem depender do disco da máquina.
+    /// The disk usage (%) the nodes with backup see: the test raises it to simulate the disk
+    /// filling up, without depending on the machine's disk.
     pub disk_usage: Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl TestCluster {
-    /// Uma rede sem nós, com o balanceador no ar (sem nó por trás).
+    /// A network without nodes, with the load balancer up (no node behind it).
     pub fn empty() -> Self {
         let network = MemoryNetwork::new();
         network.add_balancer(balancer(), Vec::new());
@@ -120,7 +120,7 @@ impl TestCluster {
         }
     }
 
-    /// Liga ao backup do nó a medida de disco do teste.
+    /// Connects the test's disk measure to the node's backup.
     fn arm_backup(&self, node: &TestNode) {
         if let Some(backup) = node.node.backup() {
             let usage = self.disk_usage.clone();
@@ -130,14 +130,14 @@ impl TestCluster {
         }
     }
 
-    /// O uso do disco (%) que os nós enxergam daqui em diante.
+    /// The disk usage (%) the nodes see from now on.
     pub fn set_disk_usage(&self, percent: u32) {
         self.disk_usage
             .store(percent, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// Como `start_with`, com o backup em S3 ligado nos nós, num depósito em memória que o teste
-    /// também enxerga (`cluster.s3`). Os prazos do backup são curtos; o `Clock` é o manual.
+    /// Like `start_with`, with the S3 backup enabled on the nodes, in an in-memory store that the test
+    /// also sees (`cluster.s3`). The backup deadlines are short; the `Clock` is the manual one.
     pub async fn start_with_backup(
         count: usize,
         env: &[(&str, &str)],
@@ -156,13 +156,13 @@ impl TestCluster {
         cluster
     }
 
-    /// Sobe `count` nós, um depois do outro, cada um só depois de o anterior estar no cluster.
-    /// O primeiro é o `cluster.first-node`.
+    /// Starts `count` nodes, one after the other, each only after the previous one is in the cluster.
+    /// The first is the `cluster.first-node`.
     pub async fn start(count: usize) -> Self {
         Self::start_with(count, &[]).await
     }
 
-    /// Como `start`, com parâmetros `TABA_*` a mais em todos os nós.
+    /// Like `start`, with extra `TABA_*` parameters on all the nodes.
     pub async fn start_with(count: usize, env: &[(&str, &str)]) -> Self {
         let mut cluster = Self::empty();
         cluster.env = env
@@ -175,7 +175,7 @@ impl TestCluster {
         cluster
     }
 
-    /// O construtor de um nó com os prazos curtos, o relógio e a rede do cluster.
+    /// A node's builder with the short deadlines, the clock and the cluster network.
     pub fn builder(&self, number: usize, first: bool) -> TestNodeBuilder {
         let mut builder = TestNode::builder()
             .in_network(&self.network, &host_of(number))
@@ -195,8 +195,8 @@ impl TestCluster {
         builder
     }
 
-    /// O balanceador passa a repartir as chamadas entre os `count` primeiros nós da lista. Um nó
-    /// só entra nele depois de ter a tabela (senão o balanceador o escolheria para a listagem).
+    /// The load balancer starts splitting the calls among the first `count` nodes in the list. A node
+    /// only enters it after having the table (otherwise the load balancer would pick it for the listing).
     pub fn publish_backends(&self, count: usize) {
         let backends: Vec<PeerAddr> = self
             .nodes
@@ -213,23 +213,23 @@ impl TestCluster {
         self.network.add_balancer(balancer(), backends);
     }
 
-    /// Sobe o próximo nó (`10.0.0.<n>`) e espera ele entrar no cluster.
+    /// Starts the next node (`10.0.0.<n>`) and waits for it to join the cluster.
     pub async fn add_node(&mut self, first: bool) -> &TestNode {
         let number = self.nodes.len() + 1;
         let node = self
             .builder(number, first)
             .try_start()
             .await
-            .expect("o nó deveria subir");
+            .expect("the node should start");
         self.arm_backup(&node);
         self.nodes.push(node);
-        wait_joined(self.nodes.last().expect("recém-adicionado")).await;
+        wait_joined(self.nodes.last().expect("just added")).await;
         self.publish_backends(self.nodes.len());
-        self.nodes.last().expect("recém-adicionado")
+        self.nodes.last().expect("just added")
     }
 
-    /// Sobe um nó sem esperar ele entrar (quando o teste quer ver o ingresso falhar ou demorar).
-    /// Entra na lista de nós, mas não no balanceador (veja `publish_backends`).
+    /// Starts a node without waiting for it to join (when the test wants to see the join fail or take long).
+    /// It enters the node list, but not the load balancer (see `publish_backends`).
     pub async fn spawn_node(&mut self, builder: TestNodeBuilder) -> Result<usize, NodeError> {
         let node = builder.try_start().await?;
         self.arm_backup(&node);
@@ -237,10 +237,10 @@ impl TestCluster {
         Ok(self.nodes.len())
     }
 
-    /// Sobe o nó `number` de novo, no mesmo endereço do que acabou de cair (`configure` põe a porta
-    /// no construtor). A porta é efêmera, sorteada pelo sistema, e nesse intervalo outra conexão ou
-    /// outro teste pode tomá-la; num runner lento a janela é bem maior. Por isso repete enquanto o
-    /// erro for `AddrInUse`, até `WAIT` s.
+    /// Starts node `number` again, at the same address as the one that just fell (`configure` puts the port
+    /// in the builder). The port is ephemeral, drawn by the system, and in that interval another connection or
+    /// another test may take it; on a slow runner the window is much larger. So it retries while the
+    /// error is `AddrInUse`, up to `WAIT` s.
     pub async fn respawn_node(
         &mut self,
         number: usize,
@@ -265,7 +265,7 @@ impl TestCluster {
         &self.nodes[number - 1]
     }
 
-    /// A tabela de membros que o nó tem.
+    /// The member table the node has.
     pub fn table(&self, number: usize) -> Option<MemberTable> {
         self.node(number)
             .node
@@ -273,7 +273,7 @@ impl TestCluster {
             .and_then(|c| c.membership().table())
     }
 
-    /// Os IDs dos membros que o nó enxerga, em ordem.
+    /// The IDs of the members the node sees, in order.
     pub fn member_ids(&self, number: usize) -> Vec<String> {
         self.table(number)
             .map(|t| t.members.into_iter().map(|m| m.node_id).collect())
@@ -291,20 +291,20 @@ impl TestCluster {
     }
 }
 
-/// Espera o nó ter a tabela de membros e ficar `active`.
+/// Waits for the node to have the member table and be `active`.
 pub async fn wait_joined(node: &TestNode) {
     let shared = node.node.shared().clone();
-    eventually("o nó entrar no cluster", move || {
+    eventually("the node to join the cluster", move || {
         shared.state() == taba_node::cluster::state::NodeState::Active
     })
     .await;
 }
 
-/// Para os testes que derrubam um nó e querem que ele **continue na tabela**: o canal só dá a nó
-/// por perdido (e abre a votação de exclusão) depois de muito tempo.
+/// For the tests that bring a node down and want it to **stay in the table**: the channel only gives a node
+/// up for lost (and opens the exclusion vote) after a long time.
 pub const NO_VOTE: &[(&str, &str)] = &[("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "600s")];
 
-// ---- Atalhos dos testes de nível C ----
+// ---- Shortcuts for the C-level tests ----
 
 pub fn address_of(cluster: &TestCluster, number: usize) -> PeerAddr {
     PeerAddr::new(
@@ -317,7 +317,7 @@ pub fn replication_of(node: &TestNode) -> Arc<Replication> {
     node.node
         .cluster()
         .and_then(|c| c.replication())
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
         .clone()
 }
 
@@ -329,7 +329,7 @@ pub fn signals_of(cluster: &TestCluster, number: usize) -> Arc<Signals> {
     replication_of(cluster.node(number)).signals.clone()
 }
 
-/// A soma das séries `name{...}` do texto do `/metrics` cujo rótulo contém `label`.
+/// The sum of the `name{...}` series of the `/metrics` text whose label contains `label`.
 pub fn total(text: &str, name: &str, label: &str) -> f64 {
     text.lines()
         .filter(|line| !line.starts_with('#'))
@@ -342,14 +342,14 @@ pub fn total(text: &str, name: &str, label: &str) -> f64 {
         .sum()
 }
 
-/// Espera todos os canais do nó estarem conectados, com a fila de saída vazia e o sinal de vida do
-/// par (ativo, com a versão da tabela atual) já recebido.
+/// Waits for all the node's channels to be connected, with the outgoing queue empty and the peer's
+/// heartbeat (active, with the current table version) already received.
 pub async fn settled(cluster: &TestCluster) {
     let version = cluster.table(1).unwrap().version;
     for number in 1..=cluster.nodes.len() {
         let channels = channels_of(cluster, number);
         let expected = cluster.nodes.len() - 1;
-        eventually("os canais conectados e vazios", move || {
+        eventually("the channels connected and empty", move || {
             let peers = channels.peers();
             peers.len() == expected
                 && peers.iter().all(|p| {
@@ -362,7 +362,7 @@ pub async fn settled(cluster: &TestCluster) {
     }
 }
 
-/// Um nome de tópico cujo dono da definição (o primário da posição dele no anel) é o nó `number`.
+/// A topic name whose definition owner (the primary of its position on the ring) is node `number`.
 pub fn name_owned_by(cluster: &TestCluster, number: usize, prefix: &str) -> String {
     let membership = cluster.node(1).node.cluster().unwrap().membership();
     let wanted = cluster.node_id(number);
@@ -374,7 +374,7 @@ pub fn name_owned_by(cluster: &TestCluster, number: usize, prefix: &str) -> Stri
                 .primary(taba_node::core::ring::definition_position("topic", name))
                 .is_some_and(|owner| owner == wanted)
         })
-        .expect("algum nome cai no nó")
+        .expect("some name falls on the node")
 }
 
 pub async fn create_queue(node: &TestNode, name: &str) {
@@ -384,12 +384,12 @@ pub async fn create_queue(node: &TestNode, name: &str) {
         .json(&json!({"name": name, "type": "queue"}))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201);
 }
 
-/// Sobe o nó `number` isolado da rede: o bootstrap tenta e falha até o teste devolver a rede, o
-/// que dá tempo de armar a pausa da sincronização.
+/// Starts node `number` isolated from the network: the bootstrap tries and fails until the test gives the network back, which
+/// gives time to arm the synchronization pause.
 pub async fn start_isolated(cluster: &mut TestCluster, env: &[(&str, &str)]) -> usize {
     let number = cluster.nodes.len() + 1;
     cluster.network.isolate(&host_of(number));
@@ -400,11 +400,11 @@ pub async fn start_isolated(cluster: &mut TestCluster, env: &[(&str, &str)]) -> 
     cluster
         .spawn_node(builder)
         .await
-        .expect("o nó deveria subir")
+        .expect("the node should start")
 }
 
-/// Faz a sincronização do nó parar ao entrar em `phase` e o devolve à rede. Devolve o portão:
-/// uma licença nele deixa a sincronização seguir.
+/// Makes the node's synchronization stop on entering `phase` and gives it back to the network. Returns the gate:
+/// a permit on it lets the synchronization continue.
 pub fn pause_sync(cluster: &TestCluster, number: usize, phase: &'static str) -> Arc<Semaphore> {
     let gate = Arc::new(Semaphore::new(0));
     cluster
@@ -412,7 +412,7 @@ pub fn pause_sync(cluster: &TestCluster, number: usize, phase: &'static str) -> 
         .node
         .cluster()
         .and_then(|c| c.replication())
-        .expect("replicação")
+        .expect("replication")
         .syncer
         .pause_at(phase, gate.clone());
     cluster.network.restore(&host_of(number));
@@ -421,13 +421,13 @@ pub fn pause_sync(cluster: &TestCluster, number: usize, phase: &'static str) -> 
 
 pub async fn wait_phase(node: &TestNode, phase: &str) {
     let wanted = format!("taba_sync_phase{{taba_phase=\"{phase}\"}}");
-    eventually_async("a fase da sincronização", || async {
+    eventually_async("the synchronization phase", || async {
         super::series(&node.metrics().await, &wanted) == Some(1.0)
     })
     .await;
 }
 
-/// Sem votação: o canal só abre a votação depois de muitas tentativas seguidas.
+/// No vote: the channel only opens the vote after many attempts in a row.
 pub const MANY_RETRIES: (&str, &str) = ("TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES", "1000");
-/// O sinal de vida só quando o teste manda: a primeira chamada de cada par ainda o leva.
+/// The heartbeat only when the test says so: the first call of each pair still carries it.
 pub const QUIET: (&str, &str) = ("TABA_CLUSTER_CHANNEL_KEEPALIVE_INTERVAL", "30s");

@@ -1,13 +1,13 @@
-//! Leitor de JSON mínimo (doc 19, seção 18.5).
+//! Minimal JSON reader (doc 19, section 18.5).
 //!
-//! Percorre o texto sem montar árvore: sabe pular qualquer valor, entrega os campos de um objeto
-//! como pares nome → trecho do texto e decodifica uma string JSON. O `body` de uma mensagem é um
-//! JSON qualquer, então o conector devolve o trecho de texto sem interpretá-lo.
+//! Walks the text without building a tree: it can skip any value, hands out an object's fields
+//! as name → text-span pairs and decodes a JSON string. A message's `body` is
+//! any JSON, so the connector returns the text span without interpreting it.
 
 use std::fmt;
 
-/// Profundidade máxima de aninhamento aceita; acima disso o documento é recusado em vez de estourar
-/// a pilha.
+/// Maximum nesting depth accepted; above it the document is refused instead of overflowing
+/// the stack.
 pub const MAX_DEPTH: usize = 512;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +20,7 @@ impl fmt::Display for JsonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "JSON inválido na posição {}: {}",
+            "invalid JSON at position {}: {}",
             self.position, self.message
         )
     }
@@ -41,24 +41,24 @@ fn ws(b: &[u8], mut i: usize) -> usize {
     i
 }
 
-/// Confere que `s` inteiro é um único valor JSON válido (espaços nas pontas são aceitos).
+/// Checks that the whole of `s` is a single valid JSON value (surrounding spaces are accepted).
 pub fn validate(s: &str) -> Result<()> {
     let end = skip(s.as_bytes(), 0, 0)?;
     finish(s.as_bytes(), end, Vec::new()).map(|_| ())
 }
 
-/// Pula o valor que começa em `start` (depois de espaços) e devolve o índice logo após ele.
+/// Skips the value that starts at `start` (after spaces) and returns the index right after it.
 pub fn skip_value(s: &str, start: usize) -> Result<usize> {
     skip(s.as_bytes(), start, 0)
 }
 
 fn skip(b: &[u8], i: usize, depth: usize) -> Result<usize> {
     if depth > MAX_DEPTH {
-        return err(i, "aninhamento profundo demais");
+        return err(i, "nesting too deep");
     }
     let i = ws(b, i);
     match b.get(i).copied() {
-        None => err(i, "fim inesperado"),
+        None => err(i, "unexpected end"),
         Some(b'{') => {
             let mut i = ws(b, i + 1);
             if b.get(i) == Some(&b'}') {
@@ -75,7 +75,7 @@ fn skip(b: &[u8], i: usize, depth: usize) -> Result<usize> {
                 match b.get(i) {
                     Some(b',') => i = ws(b, i + 1),
                     Some(b'}') => return Ok(i + 1),
-                    _ => return err(i, "esperava ',' ou '}'"),
+                    _ => return err(i, "expected ',' or '}'"),
                 }
             }
         }
@@ -90,7 +90,7 @@ fn skip(b: &[u8], i: usize, depth: usize) -> Result<usize> {
                 match b.get(i) {
                     Some(b',') => i += 1,
                     Some(b']') => return Ok(i + 1),
-                    _ => return err(i, "esperava ',' ou ']'"),
+                    _ => return err(i, "expected ',' or ']'"),
                 }
             }
         }
@@ -99,7 +99,7 @@ fn skip(b: &[u8], i: usize, depth: usize) -> Result<usize> {
         Some(b'f') => literal(b, i, b"false"),
         Some(b'n') => literal(b, i, b"null"),
         Some(b'-' | b'0'..=b'9') => skip_number(b, i),
-        Some(_) => err(i, "valor inesperado"),
+        Some(_) => err(i, "unexpected value"),
     }
 }
 
@@ -107,18 +107,18 @@ fn literal(b: &[u8], i: usize, word: &[u8]) -> Result<usize> {
     if b[i..].starts_with(word) {
         Ok(i + word.len())
     } else {
-        err(i, "literal inválido")
+        err(i, "invalid literal")
     }
 }
 
 fn skip_string(b: &[u8], i: usize) -> Result<usize> {
     if b.get(i) != Some(&b'"') {
-        return err(i, "esperava uma string");
+        return err(i, "expected a string");
     }
     let mut i = i + 1;
     loop {
         match b.get(i).copied() {
-            None => return err(i, "string sem fim"),
+            None => return err(i, "unterminated string"),
             Some(b'"') => return Ok(i + 1),
             Some(b'\\') => match b.get(i + 1).copied() {
                 Some(b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => i += 2,
@@ -127,12 +127,12 @@ fn skip_string(b: &[u8], i: usize) -> Result<usize> {
                     if hex.is_some_and(|h| h.iter().all(u8::is_ascii_hexdigit)) {
                         i += 6;
                     } else {
-                        return err(i, "escape \\u inválido");
+                        return err(i, "invalid \\u escape");
                     }
                 }
-                _ => return err(i, "escape inválido"),
+                _ => return err(i, "invalid escape"),
             },
-            Some(c) if c < 0x20 => return err(i, "caractere de controle na string"),
+            Some(c) if c < 0x20 => return err(i, "control character in string"),
             Some(_) => i += 1,
         }
     }
@@ -152,12 +152,12 @@ fn skip_number(b: &[u8], mut i: usize) -> Result<usize> {
     match b.get(i) {
         Some(b'0') => i += 1,
         Some(b'1'..=b'9') => i = digits(b, i).0,
-        _ => return err(i, "número inválido"),
+        _ => return err(i, "invalid number"),
     }
     if b.get(i) == Some(&b'.') {
         let (next, count) = digits(b, i + 1);
         if count == 0 {
-            return err(i, "número inválido");
+            return err(i, "invalid number");
         }
         i = next;
     }
@@ -168,19 +168,19 @@ fn skip_number(b: &[u8], mut i: usize) -> Result<usize> {
         }
         let (next, count) = digits(b, i);
         if count == 0 {
-            return err(i, "número inválido");
+            return err(i, "invalid number");
         }
         i = next;
     }
     Ok(i)
 }
 
-/// Os campos de um objeto, com o nome ainda entre aspas e o valor como trecho do texto.
+/// The fields of an object, with the name still quoted and the value as a text span.
 fn raw_fields(s: &str) -> Result<Vec<(&str, &str)>> {
     let b = s.as_bytes();
     let mut i = ws(b, 0);
     if b.get(i) != Some(&b'{') {
-        return err(i, "esperava um objeto");
+        return err(i, "expected an object");
     }
     i = ws(b, i + 1);
     let mut out = Vec::new();
@@ -201,7 +201,7 @@ fn raw_fields(s: &str) -> Result<Vec<(&str, &str)>> {
         match b.get(i) {
             Some(b',') => i = ws(b, i + 1),
             Some(b'}') => return finish(b, i + 1, out),
-            _ => return err(i, "esperava ',' ou '}'"),
+            _ => return err(i, "expected ',' or '}'"),
         }
     }
 }
@@ -209,12 +209,12 @@ fn raw_fields(s: &str) -> Result<Vec<(&str, &str)>> {
 fn finish<'a>(b: &[u8], i: usize, out: Vec<(&'a str, &'a str)>) -> Result<Vec<(&'a str, &'a str)>> {
     let i = ws(b, i);
     if i != b.len() {
-        return err(i, "texto depois do documento");
+        return err(i, "text after the document");
     }
     Ok(out)
 }
 
-/// Os campos de um objeto: nome decodificado e o trecho do texto de cada valor.
+/// The fields of an object: decoded name and the text span of each value.
 pub fn object_fields(s: &str) -> Result<Vec<(String, &str)>> {
     raw_fields(s)?
         .into_iter()
@@ -222,12 +222,12 @@ pub fn object_fields(s: &str) -> Result<Vec<(String, &str)>> {
         .collect()
 }
 
-/// Os itens de uma lista, cada um como trecho do texto.
+/// The items of a list, each one as a text span.
 pub fn array_items(s: &str) -> Result<Vec<&str>> {
     let b = s.as_bytes();
     let mut i = ws(b, 0);
     if b.get(i) != Some(&b'[') {
-        return err(i, "esperava uma lista");
+        return err(i, "expected a list");
     }
     i = ws(b, i + 1);
     let mut out = Vec::new();
@@ -245,17 +245,17 @@ pub fn array_items(s: &str) -> Result<Vec<&str>> {
                 finish(b, i + 1, Vec::new())?;
                 return Ok(out);
             }
-            _ => return err(i, "esperava ',' ou ']'"),
+            _ => return err(i, "expected ',' or ']'"),
         }
     }
 }
 
-/// Decodifica uma string JSON (`raw` inclui as aspas): escapes, `\uXXXX` e pares substitutos.
+/// Decodes a JSON string (`raw` includes the quotes): escapes, `\uXXXX` and surrogate pairs.
 pub fn decode_string(raw: &str) -> Result<String> {
     let raw = raw.trim();
     let b = raw.as_bytes();
     if b.len() < 2 || b[0] != b'"' || b[b.len() - 1] != b'"' {
-        return err(0, "esperava uma string");
+        return err(0, "expected a string");
     }
     let inner = &raw[1..raw.len() - 1];
     let mut out = String::with_capacity(inner.len());
@@ -280,7 +280,7 @@ pub fn decode_string(raw: &str) -> Result<String> {
             'u' => {
                 let first = hex4(&mut chars, at)?;
                 if (0xD800..0xDC00).contains(&first) {
-                    // Par substituto: o segundo escape precisa vir logo em seguida.
+                    // Surrogate pair: the second escape must follow right away.
                     let mut ahead = chars.clone();
                     let paired = match (ahead.next(), ahead.next()) {
                         (Some((_, '\\')), Some((_, 'u'))) => {
@@ -299,7 +299,7 @@ pub fn decode_string(raw: &str) -> Result<String> {
                     out.push(char::from_u32(first).unwrap_or('\u{FFFD}'));
                 }
             }
-            _ => return err(at, "escape inválido"),
+            _ => return err(at, "invalid escape"),
         }
     }
     Ok(out)
@@ -311,13 +311,13 @@ fn hex4(chars: &mut std::str::CharIndices<'_>, at: usize) -> Result<u32> {
         let digit = chars.next().and_then(|(_, c)| c.to_digit(16));
         match digit {
             Some(d) => value = value * 16 + d,
-            None => return err(at, "escape \\u inválido"),
+            None => return err(at, "invalid \\u escape"),
         }
     }
     Ok(value)
 }
 
-/// Escreve `s` como string JSON, entre aspas.
+/// Writes `s` as a JSON string, in quotes.
 pub fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -336,7 +336,7 @@ pub fn quote(s: &str) -> String {
     out
 }
 
-/// Os campos de um objeto, com busca por nome.
+/// The fields of an object, searchable by name.
 pub struct Fields<'a>(Vec<(String, &'a str)>);
 
 impl<'a> Fields<'a> {
@@ -344,12 +344,12 @@ impl<'a> Fields<'a> {
         object_fields(s).map(Fields)
     }
 
-    /// O trecho do texto do campo, se existe.
+    /// The field's text span, if it exists.
     pub fn raw(&self, name: &str) -> Option<&'a str> {
         self.0.iter().find(|(k, _)| k == name).map(|(_, v)| *v)
     }
 
-    /// O campo como texto, se existe e é uma string.
+    /// The field as text, if it exists and is a string.
     pub fn string(&self, name: &str) -> Option<String> {
         let raw = self.raw(name)?;
         if raw.starts_with('"') {
@@ -359,12 +359,12 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// O campo como inteiro sem sinal, se existe e é um número assim.
+    /// The field as an unsigned integer, if it exists and is such a number.
     pub fn unsigned(&self, name: &str) -> Option<u64> {
         self.raw(name)?.parse().ok()
     }
 
-    /// O campo como booleano, se existe e é `true` ou `false`.
+    /// The field as a boolean, if it exists and is `true` or `false`.
     pub fn boolean(&self, name: &str) -> Option<bool> {
         match self.raw(name)? {
             "true" => Some(true),
@@ -378,7 +378,7 @@ impl<'a> Fields<'a> {
     }
 }
 
-/// Reindenta um documento JSON com dois espaços, sem mexer no texto de strings e números.
+/// Re-indents a JSON document with two spaces, without touching the text of strings and numbers.
 pub fn pretty(s: &str) -> Result<String> {
     let mut out = String::with_capacity(s.len() * 2);
     pretty_into(s.trim(), &mut out, 0, 0)?;
@@ -387,7 +387,7 @@ pub fn pretty(s: &str) -> Result<String> {
 
 fn pretty_into(s: &str, out: &mut String, indent: usize, depth: usize) -> Result<()> {
     if depth > MAX_DEPTH {
-        return err(0, "aninhamento profundo demais");
+        return err(0, "nesting too deep");
     }
     match s.as_bytes().first() {
         Some(b'{') => {
@@ -425,7 +425,7 @@ fn pretty_into(s: &str, out: &mut String, indent: usize, depth: usize) -> Result
         _ => {
             let end = skip_value(s, 0)?;
             if ws(s.as_bytes(), end) != s.len() {
-                return err(end, "texto depois do documento");
+                return err(end, "text after the document");
             }
             out.push_str(s.trim());
         }

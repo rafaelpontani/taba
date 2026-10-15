@@ -1,5 +1,5 @@
-//! A API de operação: saúde, métricas, estatísticas e drain (doc 19b, seção 18.11.6). Estas rotas
-//! não levam token.
+//! The operations API: health, metrics, statistics and drain (doc 19b, section 18.11.6). These routes
+//! carry no token.
 
 use super::{call, emit, number, one_of, paged, pairs};
 use crate::app::{CliError, Command, Ctx, EXIT_API};
@@ -11,7 +11,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["health", "live"],
             args: "",
-            summary: "O processo está de pé? Sai com 0 se o nó respondeu 200, e com 1 se não.",
+            summary: "Is the process up? Exits 0 if the node answered 200, and 1 if not.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -20,7 +20,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["health", "ready"],
             args: "",
-            summary: "O nó está pronto? Com 503 mostra o motivo.",
+            summary: "Is the node ready? With 503 it shows the reason.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -29,7 +29,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["health", "cluster"],
             args: "",
-            summary: "Estado e condições do cluster; --scope cluster|node.",
+            summary: "Cluster state and conditions; --scope cluster|node.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![val("scope")],
@@ -43,7 +43,8 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["metrics"],
             args: "",
-            summary: "As métricas Prometheus deste nó; --openmetrics pede o formato OpenMetrics.",
+            summary:
+                "This node's Prometheus metrics; --openmetrics asks for the OpenMetrics format.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![flag("openmetrics")],
@@ -52,16 +53,26 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["stats", "topics"],
             args: "",
-            summary: "Métricas dos tópicos: --scope, --tag k=v, --condition, --fields, --group-by, paginação.",
+            summary:
+                "Topic metrics: --scope, --tag k=v, --condition, --fields, --group-by, pagination.",
             min_pos: 0,
             max_pos: 0,
-            opts: vec![val("scope"), val("tag"), val("condition"), val("fields"), val("group-by"), val("limit"), val("cursor"), flag("all")],
+            opts: vec![
+                val("scope"),
+                val("tag"),
+                val("condition"),
+                val("fields"),
+                val("group-by"),
+                val("limit"),
+                val("cursor"),
+                flag("all"),
+            ],
             run: stats_topics,
         },
         Command {
             path: &["stats", "topic"],
-            args: "<nome>",
-            summary: "Métricas e condição de um tópico; --scope cluster|node.",
+            args: "<name>",
+            summary: "Metrics and condition of a topic; --scope cluster|node.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![val("scope")],
@@ -69,8 +80,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["stats", "groups"],
-            args: "<tópico>",
-            summary: "Métricas por grupo de um tópico.",
+            args: "<topic>",
+            summary: "Metrics per group of a topic.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![val("limit"), val("cursor"), flag("all")],
@@ -79,7 +90,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["drain", "start"],
             args: "",
-            summary: "Põe o nó do ops-url do perfil em drain.",
+            summary: "Puts the profile's ops-url node into drain.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -88,7 +99,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["drain", "status"],
             args: "",
-            summary: "O andamento do drain do nó.",
+            summary: "The node's drain progress.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -97,7 +108,8 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["drain", "cancel"],
             args: "",
-            summary: "Cancela o drain, ou faz o nó que já saiu voltar como nó novo.",
+            summary:
+                "Cancels the drain, or makes a node that already left come back as a new node.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -106,9 +118,9 @@ pub fn commands() -> Vec<Command> {
     ]
 }
 
-/// Saúde: o corpo da resposta é do próprio endpoint, não um `ErrorResponse`, então um `503` também
-/// é impresso (na saída padrão) e o código de saída é 1. Sem repetir: o orquestrador pergunta de
-/// novo sozinho.
+/// Health: the response body belongs to the endpoint itself, not an `ErrorResponse`, so a `503` is also
+/// printed (on standard output) and the exit code is 1. Without retrying: the orchestrator asks
+/// again by itself.
 fn health(ctx: &mut Ctx<'_>, path: &str, query: Vec<(String, String)>) -> Result<(), CliError> {
     let client = ctx.ops_client(Some(1))?;
     let mut c = call(ctx, "GET", path);
@@ -146,7 +158,7 @@ fn metrics(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     };
     c.headers.push(("Accept".to_owned(), accept.to_owned()));
     let text = client.call(&c)?.text();
-    // As métricas não são JSON: saem como vieram, qualquer que seja o formato.
+    // Metrics are not JSON: they come out as they came, whatever the format.
     if !ctx.globals.quiet {
         ctx.say(text.trim_end_matches('\n'))?;
     }

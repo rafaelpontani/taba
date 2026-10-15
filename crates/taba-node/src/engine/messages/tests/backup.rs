@@ -1,5 +1,5 @@
-//! O que o motor avisa ao backup em S3 (doc 23): publicação, ack, entrega, dead-letter, mudança de
-//! dono e corpo ausente do disco. O `BackupSink` do teste só registra os avisos.
+//! What the engine notifies the S3 backup of (doc 23): publication, ack, delivery, dead-letter, owner
+//! change and body absent from disk. The test's `BackupSink` only records the notices.
 
 use std::sync::Mutex;
 
@@ -8,7 +8,7 @@ use super::*;
 #[derive(Default)]
 struct Recorder {
     events: Mutex<Vec<String>>,
-    /// O corpo que o S3 devolveria para uma mensagem cujo arquivo a evicção apagou.
+    /// The body S3 would return for a message whose file the eviction deleted.
     s3_body: Mutex<Option<Vec<u8>>>,
     waited_for_disk: Mutex<u32>,
 }
@@ -65,12 +65,12 @@ fn with_recorder() -> (Harness, Arc<Recorder>) {
 #[tokio::test]
 async fn publishing_only_tells_the_backup_and_never_waits_for_it() {
     let (h, recorder) = with_recorder();
-    h.topics.create(queue("pedidos")).await.unwrap();
-    let id = publish_ok(&h, "pedidos", "1");
+    h.topics.create(queue("orders")).await.unwrap();
+    let id = publish_ok(&h, "orders", "1");
     assert_eq!(
         recorder.events(),
-        [format!("stored pedidos {id} owned=true")],
-        "uma linha no outbox; nenhuma chamada ao S3"
+        [format!("stored orders {id} owned=true")],
+        "one row in the outbox; no call to S3"
     );
 }
 
@@ -78,18 +78,18 @@ async fn publishing_only_tells_the_backup_and_never_waits_for_it() {
 #[tokio::test]
 async fn a_delivery_is_a_state_change_and_an_ack_is_a_removal() {
     let (h, recorder) = with_recorder();
-    h.topics.create(queue("pedidos")).await.unwrap();
-    let id = publish_ok(&h, "pedidos", "1");
-    let got = consume(&h, "pedidos", q(Some("1"), Some("60"), None)).await;
+    h.topics.create(queue("orders")).await.unwrap();
+    let id = publish_ok(&h, "orders", "1");
+    let got = consume(&h, "orders", q(Some("1"), Some("60"), None)).await;
     h.messages
-        .ack("pedidos", &got[0].id, Some(&got[0].receipt_token))
+        .ack("orders", &got[0].id, Some(&got[0].receipt_token))
         .unwrap();
     assert_eq!(
         recorder.events(),
         [
-            format!("stored pedidos {id} owned=true"),
-            format!("changed pedidos {id} owned=true"),
-            format!("removed pedidos {id} owned=true"),
+            format!("stored orders {id} owned=true"),
+            format!("changed orders {id} owned=true"),
+            format!("removed orders {id} owned=true"),
         ]
     );
 }
@@ -99,24 +99,24 @@ async fn a_delivery_is_a_state_change_and_an_ack_is_a_removal() {
 async fn a_message_that_goes_to_the_dead_letter_is_removed_from_the_queue_and_stored_in_the_other()
 {
     let (h, recorder) = with_recorder();
-    let mut request = queue("pedidos");
+    let mut request = queue("orders");
     request.max_deliveries = Some(1);
     h.topics.create(request).await.unwrap();
-    let id = publish_ok(&h, "pedidos", "1");
-    consume(&h, "pedidos", q(Some("1"), Some("1"), None)).await;
+    let id = publish_ok(&h, "orders", "1");
+    consume(&h, "orders", q(Some("1"), Some("1"), None)).await;
     h.clock.advance(Duration::from_secs(5));
-    // Qualquer operação acerta a fila e a dead-letter.
+    // Any operation settles the queue and the dead-letter.
     let _ = h
         .messages
-        .consume("pedidos-dead-letter", q(Some("1"), None, None))
+        .consume("orders-dead-letter", q(Some("1"), None, None))
         .await;
     let events = recorder.events();
     assert!(
-        events.contains(&format!("removed pedidos {id} owned=true")),
+        events.contains(&format!("removed orders {id} owned=true")),
         "{events:?}"
     );
     assert!(
-        events.contains(&format!("stored pedidos-dead-letter {id} owned=true")),
+        events.contains(&format!("stored orders-dead-letter {id} owned=true")),
         "{events:?}"
     );
 }
@@ -132,54 +132,50 @@ async fn a_replica_becomes_the_owner_and_adopts_and_the_old_owner_releases() {
         dead_letters: tx,
         ready: Arc::new(|_, _| {}),
     });
-    h.topics.create(queue("pedidos")).await.unwrap();
-    let view = h.topics.get("pedidos").unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
+    let view = h.topics.get("orders").unwrap();
     let request = json_body("1");
     let (meta, body) = h.messages.draft_publish(&view, &request).unwrap();
     let id = meta.id.clone();
-    // Réplica: guarda, mas não é dona.
-    h.messages.apply_publish("pedidos", meta, body).unwrap();
+    // Replica: stores, but is not the owner.
+    h.messages.apply_publish("orders", meta, body).unwrap();
     assert_eq!(
         recorder.events(),
-        [format!("stored pedidos {id} owned=false")]
+        [format!("stored orders {id} owned=false")]
     );
 
-    // O nó passa a ser o dono (o primário caiu): adota.
+    // The node becomes the owner (the primary fell): adopts.
     owners.0.lock().unwrap().insert(id.clone());
     h.messages.reown();
-    assert!(recorder.events().contains(&format!("adopted pedidos {id}")));
+    assert!(recorder.events().contains(&format!("adopted orders {id}")));
 
-    // E deixa de ser: libera.
+    // And stops being: releases.
     owners.0.lock().unwrap().clear();
     h.messages.reown();
-    assert!(
-        recorder
-            .events()
-            .contains(&format!("released pedidos {id}"))
-    );
+    assert!(recorder.events().contains(&format!("released orders {id}")));
 }
 
 /// UC: UC-BKP-029
 #[tokio::test]
 async fn a_body_the_eviction_removed_from_disk_comes_back_from_the_backup() {
     let (h, recorder) = with_recorder();
-    h.topics.create(queue("pedidos")).await.unwrap();
-    let id = publish_ok(&h, "pedidos", "{\"a\":1}");
-    // Para o disco, como no drain.
+    h.topics.create(queue("orders")).await.unwrap();
+    let id = publish_ok(&h, "orders", "{\"a\":1}");
+    // To disk, as in the drain.
     h.messages.drain();
-    assert!(h.store.has_body("pedidos", &id));
-    // A evicção apaga só o arquivo do corpo; a linha fica.
-    assert!(h.store.evict_body("pedidos", &id).unwrap() > 0);
-    assert!(!h.store.has_body("pedidos", &id));
+    assert!(h.store.has_body("orders", &id));
+    // The eviction deletes only the body file; the row stays.
+    assert!(h.store.evict_body("orders", &id).unwrap() > 0);
+    assert!(!h.store.has_body("orders", &id));
     assert!(
-        h.store.get("pedidos", &id).unwrap().is_some(),
-        "a linha fica"
+        h.store.get("orders", &id).unwrap().is_some(),
+        "the row stays"
     );
 
-    // Sem o backup (ou sem a mensagem lá), vale o comportamento de sempre: corpo sumido é perda.
-    // Com ele, o corpo volta do segmento.
+    // Without the backup (or without the message there), the usual behavior applies: a vanished body is a loss.
+    // With it, the body comes back from the segment.
     *recorder.s3_body.lock().unwrap() = Some(b"{\"a\":1}".to_vec());
-    let got = consume(&h, "pedidos", q(Some("1"), None, None)).await;
+    let got = consume(&h, "orders", q(Some("1"), None, None)).await;
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].id, id);
 }
@@ -188,9 +184,9 @@ async fn a_body_the_eviction_removed_from_disk_comes_back_from_the_backup() {
 #[tokio::test]
 async fn the_drain_asks_the_backup_before_each_memory_to_disk_write() {
     let (h, recorder) = with_recorder();
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     for i in 0..3 {
-        publish_ok(&h, "pedidos", &i.to_string());
+        publish_ok(&h, "orders", &i.to_string());
     }
     h.messages.drain();
     assert_eq!(*recorder.waited_for_disk.lock().unwrap(), 3);
@@ -200,14 +196,14 @@ async fn the_drain_asks_the_backup_before_each_memory_to_disk_write() {
 #[tokio::test]
 async fn without_a_backup_nothing_is_told_and_a_missing_body_is_still_a_loss() {
     let h = harness();
-    h.topics.create(queue("pedidos")).await.unwrap();
-    let id = publish_ok(&h, "pedidos", "1");
+    h.topics.create(queue("orders")).await.unwrap();
+    let id = publish_ok(&h, "orders", "1");
     h.messages.drain();
-    h.store.evict_body("pedidos", &id).unwrap();
+    h.store.evict_body("orders", &id).unwrap();
     assert!(
-        consume(&h, "pedidos", q(Some("1"), None, None))
+        consume(&h, "orders", q(Some("1"), None, None))
             .await
             .is_empty(),
-        "sem o S3, o corpo que sumiu do disco é perda, como sempre foi"
+        "without S3, a body that vanished from disk is a loss, as it always was"
     );
 }

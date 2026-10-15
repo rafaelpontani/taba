@@ -1,7 +1,7 @@
-// Exporta o SVG de um diagrama do Archify (HTML gerado) usando o Chrome headless.
-// Uso: node exportar-svg.mjs <entrada.html> <saida.svg>
-// Chrome: variável ARCHIFY_CHROME, ou os caminhos comuns do Chrome/Edge.
-// Sem dependências: usa o WebSocket embutido do Node (>= 22).
+// Exports the SVG of an Archify diagram (generated HTML) using headless Chrome.
+// Usage: node exportar-svg.mjs <entrada.html> <saida.svg>
+// Chrome: the ARCHIFY_CHROME variable, or the usual Chrome/Edge paths.
+// No dependencies: uses Node's built-in WebSocket (>= 22).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 
 const [entrada, saida] = process.argv.slice(2);
 if (!entrada || !saida) {
-  console.error('Uso: node exportar-svg.mjs <entrada.html> <saida.svg>');
+  console.error('Usage: node exportar-svg.mjs <entrada.html> <saida.svg>');
   process.exit(2);
 }
 
@@ -26,7 +26,7 @@ const candidatos = [
 ].filter(Boolean);
 const chrome = candidatos.find((c) => existsSync(c));
 if (!chrome) {
-  console.error('Chrome/Edge não encontrado. Defina ARCHIFY_CHROME com o caminho do executável.');
+  console.error('Chrome/Edge not found. Set ARCHIFY_CHROME to the executable path.');
   process.exit(2);
 }
 
@@ -43,13 +43,13 @@ const encerrar = () => {
 
 const porta = await new Promise((ok, erro) => {
   let buf = '';
-  const t = setTimeout(() => erro(new Error('Chrome não iniciou a tempo')), 30000);
+  const t = setTimeout(() => erro(new Error('Chrome did not start in time')), 30000);
   proc.stderr.on('data', (d) => {
     buf += d;
     const m = buf.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
     if (m) { clearTimeout(t); ok(m[1]); }
   });
-  proc.on('exit', () => erro(new Error('Chrome encerrou antes do esperado')));
+  proc.on('exit', () => erro(new Error('Chrome exited earlier than expected')));
 });
 
 try {
@@ -68,9 +68,9 @@ try {
 
   await cdp('Page.enable');
   await cdp('Page.navigate', { url: pathToFileURL(resolve(entrada)).href });
-  await new Promise((ok) => setTimeout(ok, 2500)); // carga, fontes e layout
+  await new Promise((ok) => setTimeout(ok, 2500)); // load, fonts and layout
 
-  // Captura o blob que o viewer geraria no download "SVG · Auto" (tema claro/escuro pelo host).
+  // Captures the blob the viewer would generate on the "SVG · Auto" download (light/dark theme from the host).
   const expr = `(async () => {
     let blob = null;
     const orig = URL.createObjectURL;
@@ -83,7 +83,7 @@ try {
   const r = await cdp('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
   const svg = r.result?.result?.value;
   if (!svg || !svg.includes('<svg')) {
-    console.error('Falha ao exportar o SVG de', entrada, JSON.stringify(r.result?.exceptionDetails || r.result?.result));
+    console.error('Failed to export the SVG of', entrada, JSON.stringify(r.result?.exceptionDetails || r.result?.result));
     process.exitCode = 1;
   } else {
     writeFileSync(saida, svg);

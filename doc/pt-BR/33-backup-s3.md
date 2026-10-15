@@ -4,7 +4,7 @@ resumo: Como o Taba guarda um backup de falha grave num bucket S3 (ou MinIO) sem
 tipo: explicação
 status: estável
 verificado-em: 2026-10-14 @ efeb47a
-fontes: [crates/taba-node/src/storage/backup, crates/taba-node/src/cluster/backup, crates/taba-node/src/engine/messages/backup.rs, crates/taba-node/src/http/backup.rs, crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/tests/backup.rs, docker-compose.yml, exemplos/backup-s3]
+fontes: [crates/taba-node/src/storage/backup, crates/taba-node/src/cluster/backup, crates/taba-node/src/engine/messages/backup.rs, crates/taba-node/src/http/backup.rs, crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/tests/backup.rs, docker-compose.yml, examples/backup-s3]
 ---
 
 # Backup opcional em S3
@@ -161,7 +161,7 @@ Sem S3 configurado os dois *flush* respondem `422 backup.not-configured` (ningu�
 
 **Exemplo.** Antes de uma janela de manutenção, o operador roda `POST /cluster/stop`. Os cinco nós fazem drain, o coordenador grava a lista `[2,3,4,5,1]` na ordem em que pararam e o cluster fica parado. Na volta, `docker compose start` sobe os processos, o primeiro nó lê a lista, restaura e a restauração não precisa esperar o prazo de morte.
 
-Um passo a passo com os comandos e uma configuração pronta estão em [`exemplos/backup-s3`](../../exemplos/backup-s3/README.md).
+Um passo a passo com os comandos e uma configuração pronta estão em [`examples/backup-s3`](../../examples/backup-s3/README.md).
 
 ## Configuração
 

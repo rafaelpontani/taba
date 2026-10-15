@@ -1,11 +1,11 @@
-//! O que toca a rede entre nós fica atrás de um trait (doc 18, seção 17.5): o `Transport`.
-//! A implementação real (`http`: HTTP e WebSocket, com mTLS) e a de teste (`memory`, que liga vários
-//! nós do mesmo processo por canais em memória, com perda, atraso e partição programáveis) levam
-//! as mesmas duas coisas: chamadas de pedido e resposta e o **canal** permanente entre dois nós.
+//! Whatever touches the network between nodes sits behind a trait (doc 18, section 17.5): the `Transport`.
+//! The real implementation (`http`: HTTP and WebSocket, with mTLS) and the test one (`memory`, which links several
+//! nodes of the same process through in-memory channels, with programmable loss, delay and partition) carry
+//! the same two things: request-and-response calls and the permanent **channel** between two nodes.
 //!
-//! O trait fala em tipos do protocolo (`Request`, `Response`), não em bytes: cada
-//! implementação sabe como levá-los. A parte do nó que **recebe** a chamada é um `Handler`, o
-//! mesmo que as rotas `/cluster/*` usam.
+//! The trait speaks in protocol types (`Request`, `Response`), not bytes: each
+//! implementation knows how to carry them. The part of the node that **receives** the call is a `Handler`, the
+//! same one the `/cluster/*` routes use.
 
 pub mod http;
 pub mod memory;
@@ -22,7 +22,7 @@ use crate::core::error::TabaError;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// O endereço de um nó para as chamadas entre nós: um IP (ou nome) e a porta do cluster.
+/// A node's address for calls between nodes: an IP (or name) and the cluster port.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PeerAddr {
     pub host: String,
@@ -47,35 +47,35 @@ impl fmt::Display for PeerAddr {
 impl FromStr for PeerAddr {
     type Err = String;
 
-    /// `host:porta` (o formato de `cluster.entry-address`).
+    /// `host:port` (the format of `cluster.entry-address`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (host, port) = s
             .trim()
             .rsplit_once(':')
-            .ok_or_else(|| format!("`{s}` não é host:porta"))?;
+            .ok_or_else(|| format!("`{s}` is not host:port"))?;
         let port = port
             .parse::<u16>()
-            .map_err(|_| format!("`{s}` não tem uma porta válida"))?;
+            .map_err(|_| format!("`{s}` does not have a valid port"))?;
         if host.is_empty() {
-            return Err(format!("`{s}` não tem host"));
+            return Err(format!("`{s}` has no host"));
         }
         Ok(Self::new(host, port))
     }
 }
 
-/// Por que uma chamada a outro nó não deu certo.
+/// Why a call to another node did not work out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallError {
-    /// Não houve resposta: conexão recusada, nó fora do ar, partição de rede.
+    /// There was no response: connection refused, node down, network partition.
     Unreachable(String),
-    /// A resposta não veio no prazo.
+    /// The response did not come in time.
     Timeout,
-    /// O nó respondeu com um erro (status 4xx ou 5xx e o `ErrorResponse`).
+    /// The node answered with an error (status 4xx or 5xx and the `ErrorResponse`).
     Remote(TabaError),
 }
 
 impl CallError {
-    /// Falhas de rede: vale tentar de novo (ou outro nó). O erro que o par devolveu não.
+    /// Network failures: worth trying again (or another node). The error the peer returned is not.
     pub fn is_network(&self) -> bool {
         matches!(self, CallError::Unreachable(_) | CallError::Timeout)
     }
@@ -84,30 +84,30 @@ impl CallError {
 impl fmt::Display for CallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CallError::Unreachable(why) => write!(f, "sem resposta: {why}"),
+            CallError::Unreachable(why) => write!(f, "no response: {why}"),
             CallError::Timeout => f.write_str("prazo esgotado"),
             CallError::Remote(error) => write!(f, "{}: {}", error.code, error.message),
         }
     }
 }
 
-/// Quem abre o canal e com quem quer falar: os `nodeId` dos dois lados. O nó que atende confere que
-/// o `to` é ele (um processo novo no mesmo IP e porta tem outro ID: `cluster.wrong-node`, D100).
+/// Who opens the channel and whom it wants to talk to: the `nodeId`s of both sides. The node that serves checks that
+/// the `to` is itself (a new process on the same IP and port has another ID: `cluster.wrong-node`, D100).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelOpen {
     pub from: String,
     pub to: String,
 }
 
-/// Uma ponta do canal: o que se manda ao outro nó e o que ele manda. Soltar a ponta fecha o canal
-/// (e o outro lado vê a recepção terminar).
+/// One end of the channel: what is sent to the other node and what it sends. Dropping the end closes the channel
+/// (and the other side sees reception end).
 pub struct ChannelLink {
     pub tx: mpsc::Sender<ChannelMessage>,
     pub rx: mpsc::Receiver<ChannelMessage>,
 }
 
 impl ChannelLink {
-    /// As duas pontas de um canal em memória.
+    /// The two ends of an in-memory channel.
     pub fn pair() -> (ChannelLink, ChannelLink) {
         let (a_tx, b_rx) = mpsc::channel(CHANNEL_BUFFER);
         let (b_tx, a_rx) = mpsc::channel(CHANNEL_BUFFER);
@@ -118,10 +118,10 @@ impl ChannelLink {
     }
 }
 
-/// Quantas mensagens cabem em cada sentido antes de quem envia esperar.
+/// How many messages fit in each direction before the sender waits.
 pub const CHANNEL_BUFFER: usize = 256;
 
-/// As chamadas entre nós.
+/// The calls between nodes.
 pub trait Transport: Send + Sync + 'static {
     fn call<'a>(
         &'a self,
@@ -129,9 +129,9 @@ pub trait Transport: Send + Sync + 'static {
         request: Request,
     ) -> BoxFuture<'a, Result<Response, CallError>>;
 
-    /// Abre o canal permanente com o nó em `to` (`GET /cluster/channel` com o upgrade para
-    /// WebSocket, na rede real). O erro do nó (não é membro, outro processo no endereço) chega como
-    /// `CallError::Remote`, antes de o canal existir.
+    /// Opens the permanent channel with the node at `to` (`GET /cluster/channel` with the upgrade to
+    /// WebSocket, on the real network). The node's error (not a member, another process at the address) arrives as
+    /// `CallError::Remote`, before the channel exists.
     fn open_channel<'a>(
         &'a self,
         to: &'a PeerAddr,
@@ -139,23 +139,23 @@ pub trait Transport: Send + Sync + 'static {
     ) -> BoxFuture<'a, Result<ChannelLink, CallError>>;
 }
 
-/// Quem atende as chamadas que chegam a um nó pela porta do cluster.
+/// Who serves the calls that arrive at a node through the cluster port.
 pub trait Handler: Send + Sync + 'static {
-    /// `caller` é o endereço de quem chama (o IP de origem da conexão). O membro é reconhecido
-    /// por ele: a conexão não diz mais nada (todos usam o mesmo certificado do cluster).
+    /// `caller` is the address of whoever calls (the connection's source IP). The member is recognized
+    /// by it: the connection says nothing more (everyone uses the same cluster certificate).
     fn handle<'a>(
         &'a self,
         caller: &'a str,
         request: Request,
     ) -> BoxFuture<'a, Result<Response, TabaError>>;
 
-    /// Confere se o canal que `caller` (o IP de origem) quer abrir é aceito: é membro e o `to` é
-    /// este nó. A rota espera esta resposta antes de fazer o upgrade, para o erro virar status HTTP.
+    /// Checks whether the channel `caller` (the source IP) wants to open is accepted: it is a member and the `to` is
+    /// this node. The route waits for this answer before doing the upgrade, so the error becomes an HTTP status.
     fn admit_channel(&self, _caller: &str, _open: &ChannelOpen) -> Result<(), TabaError> {
         Ok(())
     }
 
-    /// O canal foi aberto por `open.from`: passa a usar a ponta `link`.
+    /// The channel was opened by `open.from`: starts using the `link` end.
     fn accept_channel(&self, _open: ChannelOpen, _link: ChannelLink) {}
 }
 

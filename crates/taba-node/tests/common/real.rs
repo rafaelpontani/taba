@@ -1,8 +1,8 @@
-//! O cluster de verdade dos testes de segurança (doc 20c, UC-SEG): nós no mesmo processo, mas
-//! ligados por TCP em `127.0.0.x` com o `Transport` HTTP e, se houver pasta, TLS mútuo. Cada nó
-//! tem o próprio IP de loopback, porque o cluster reconhece o chamador por ele.
+//! The real cluster of the security tests (doc 20c, UC-SEG): nodes in the same process, but
+//! linked by TCP on `127.0.0.x` with the HTTP `Transport` and, if there is a folder, mutual TLS. Each node
+//! has its own loopback IP, because the cluster recognizes the caller by it.
 //!
-//! Também traz um cliente TLS cru, para ver o que a porta do cluster aceita no handshake.
+//! It also brings a raw TLS client, to see what the cluster port accepts in the handshake.
 
 #![allow(dead_code)]
 
@@ -25,29 +25,29 @@ use taba_node::secrets::generate_cert;
 use super::TestNode;
 use super::cluster::{FAST, eventually, wait_joined};
 
-/// O IP do nó `number` (a partir de 1).
+/// The IP of node `number` (starting at 1).
 pub fn ip_of(number: usize) -> String {
     format!("127.0.0.{}", 10 + number)
 }
 
-/// Uma pasta de certificados nova, com um par que vale desde já por 30 dias.
+/// A new certificate folder, with a pair valid from now for 30 days.
 pub fn cert_dir() -> TempDir {
-    let dir = tempfile::tempdir().expect("pasta temporária");
+    let dir = tempfile::tempdir().expect("temporary folder");
     new_pair(dir.path(), None, 30);
     dir
 }
 
-/// Gera um par e devolve o caminho do `.crt`. O nome traz a data de início, então um segundo par
-/// do mesmo dia é renomeado para `name` (se informado).
+/// Generates a pair and returns the path of the `.crt`. The name carries the start date, so a second pair
+/// of the same day is renamed to `name` (if given).
 pub fn new_pair(dir: &Path, starts_in: Option<Duration>, days: u64) -> PathBuf {
     generate_cert(dir, OffsetDateTime::now_utc(), days, starts_in)
         .expect("gerar certificado")
         .certificate
 }
 
-/// Gera um par em uma pasta à parte e o copia para `dir` com o nome `name` (`<name>.crt` e `.key`).
+/// Generates a pair in a separate folder and copies it to `dir` with the name `name` (`<name>.crt` and `.key`).
 pub fn add_named_pair(dir: &Path, name: &str, starts_in: Option<Duration>, days: u64) -> Vec<u8> {
-    let scratch = tempfile::tempdir().expect("pasta temporária");
+    let scratch = tempfile::tempdir().expect("temporary folder");
     let files = generate_cert(scratch.path(), OffsetDateTime::now_utc(), days, starts_in)
         .expect("gerar certificado");
     std::fs::copy(&files.certificate, dir.join(format!("{name}.crt"))).unwrap();
@@ -55,7 +55,7 @@ pub fn add_named_pair(dir: &Path, name: &str, starts_in: Option<Duration>, days:
     std::fs::read(&files.certificate).unwrap()
 }
 
-/// Copia só o `.crt` de todos os pares de `from` para `to` (para confiar neles sem apresentá-los).
+/// Copies only the `.crt` of all the pairs from `from` to `to` (to trust them without presenting them).
 pub fn trust_certs_of(from: &Path, to: &Path) {
     for entry in std::fs::read_dir(from).unwrap().flatten() {
         let path = entry.path();
@@ -72,7 +72,7 @@ pub struct RealCluster {
 }
 
 impl RealCluster {
-    /// Sobe `count` nós, um depois do outro, cada um só depois de o anterior estar no cluster.
+    /// Starts `count` nodes, one after the other, each only after the previous one is in the cluster.
     pub async fn start(count: usize, tls_dir: Option<&Path>) -> Self {
         taba_node::telemetry::init_logging(Some("info"), taba_node::config::LogFormat::Text);
         let mut cluster = Self {
@@ -86,7 +86,7 @@ impl RealCluster {
         cluster
     }
 
-    /// Sobe o próximo nó e espera ele entrar. O primeiro é o `cluster.first-node`.
+    /// Starts the next node and waits for it to join. The first is the `cluster.first-node`.
     pub async fn add_node(&mut self, env: &[(&str, &str)]) -> &TestNode {
         let number = self.nodes.len() + 1;
         let entry = match self.nodes.first() {
@@ -110,7 +110,7 @@ impl RealCluster {
         for (name, value) in env {
             builder = builder.env(name, value);
         }
-        let node = builder.try_start().await.expect("o nó deveria subir");
+        let node = builder.try_start().await.expect("the node should start");
         self.nodes.push(node);
         wait_joined(self.nodes.last().unwrap()).await;
         self.nodes.last().unwrap()
@@ -120,7 +120,7 @@ impl RealCluster {
         &self.nodes[number - 1]
     }
 
-    /// O endereço da porta do cluster do nó.
+    /// The address of the node's cluster port.
     pub fn cluster_addr(&self, number: usize) -> SocketAddr {
         self.node(number)
             .node
@@ -128,14 +128,14 @@ impl RealCluster {
             .expect("porta do cluster")
     }
 
-    /// Espera todos os nós enxergarem `size` membros.
+    /// Waits for all the nodes to see `size` members.
     pub async fn settled(&self, size: usize) {
         let nodes: Vec<_> = self
             .nodes
             .iter()
             .map(|n| n.node.cluster().cloned())
             .collect();
-        eventually("a tabela de membros igual em todos", move || {
+        eventually("the member table equal on all", move || {
             nodes.iter().all(|c| {
                 c.as_ref()
                     .and_then(|c| c.membership().table())
@@ -152,9 +152,9 @@ impl RealCluster {
     }
 }
 
-// ---- cliente TLS cru ----
+// ---- raw TLS client ----
 
-/// Aceita qualquer certificado do servidor (o teste quer ver o que o servidor exige de quem chama).
+/// Accepts any server certificate (the test wants to see what the server demands of whoever calls).
 #[derive(Debug)]
 struct AcceptAny(rustls::crypto::WebPkiSupportedAlgorithms);
 
@@ -193,7 +193,7 @@ impl ServerCertVerifier for AcceptAny {
     }
 }
 
-/// Um cliente sem certificado nenhum, que confia em qualquer servidor.
+/// A client with no certificate at all, which trusts any server.
 pub fn anonymous_client() -> ClientConfig {
     let provider = rustls::crypto::ring::default_provider();
     let algorithms = provider.signature_verification_algorithms;
@@ -205,36 +205,36 @@ pub fn anonymous_client() -> ClientConfig {
         .with_no_client_auth()
 }
 
-/// Um cliente com os certificados de `dir` (apresenta o par válido e confia no que a pasta traz).
+/// A client with the certificates in `dir` (presents the valid pair and trusts what the folder brings).
 pub fn client_of(dir: &Path) -> (ClientConfig, Arc<TlsStore>) {
-    let store = TlsStore::open(dir).expect("pasta de certificados válida");
-    (store.client_config().expect("configuração TLS"), store)
+    let store = TlsStore::open(dir).expect("valid certificate folder");
+    (store.client_config().expect("TLS configuration"), store)
 }
 
-/// O que um `GET` pela conexão TLS devolveu.
+/// What a `GET` over the TLS connection returned.
 #[derive(Debug)]
 pub struct Reply {
     pub status: u16,
     pub body: String,
-    /// O DER do certificado que o servidor apresentou.
+    /// The DER of the certificate the server presented.
     pub server_cert: Vec<u8>,
 }
 
-/// Uma conexão TLS aberta (HTTP/1.1, `keep-alive`).
+/// An open TLS connection (HTTP/1.1, `keep-alive`).
 pub struct Connection {
     stream: tokio_rustls::client::TlsStream<TcpStream>,
     pub server_cert: Vec<u8>,
 }
 
-/// Abre a conexão e faz o handshake. Com TLS 1.3, o servidor só recusa o certificado do cliente
-/// depois do handshake do lado do cliente: quem testa a recusa deve fazer uma requisição.
+/// Opens the connection and does the handshake. With TLS 1.3, the server only refuses the client's certificate
+/// after the handshake on the client side: whoever tests the refusal must make a request.
 pub async fn connect(addr: SocketAddr, config: ClientConfig) -> Result<Connection, String> {
     let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
     let tcp = TcpStream::connect(addr).await.map_err(|e| e.to_string())?;
     let name = ServerName::try_from(addr.ip().to_string()).map_err(|e| e.to_string())?;
     let stream = tokio::time::timeout(Duration::from_secs(5), connector.connect(name, tcp))
         .await
-        .map_err(|_| "handshake sem resposta".to_owned())?
+        .map_err(|_| "handshake without response".to_owned())?
         .map_err(|e| e.to_string())?;
     let server_cert = stream
         .get_ref()
@@ -250,7 +250,7 @@ pub async fn connect(addr: SocketAddr, config: ClientConfig) -> Result<Connectio
 }
 
 impl Connection {
-    /// Um `GET path` pela conexão aberta.
+    /// A `GET path` over the open connection.
     pub async fn get(&mut self, path: &str) -> Result<Reply, String> {
         let request =
             format!("GET {path} HTTP/1.1\r\nHost: cluster\r\nConnection: keep-alive\r\n\r\n");
@@ -263,10 +263,10 @@ impl Connection {
         let (head_end, length) = loop {
             let n = tokio::time::timeout(Duration::from_secs(5), self.stream.read(&mut chunk))
                 .await
-                .map_err(|_| "sem resposta".to_owned())?
+                .map_err(|_| "no response".to_owned())?
                 .map_err(|e| e.to_string())?;
             if n == 0 {
-                return Err("conexão fechada sem resposta".into());
+                return Err("connection closed without response".into());
             }
             data.extend_from_slice(&chunk[..n]);
             if let Some(end) = find(&data, b"\r\n\r\n") {
@@ -295,7 +295,7 @@ impl Connection {
             .split_whitespace()
             .nth(1)
             .and_then(|s| s.parse().ok())
-            .ok_or_else(|| format!("resposta ilegível: {head}"))?;
+            .ok_or_else(|| format!("unreadable response: {head}"))?;
         Ok(Reply {
             status,
             body: String::from_utf8_lossy(&data[head_end..]).into_owned(),
@@ -308,7 +308,7 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
 
-/// Abre uma conexão e faz um `GET`; `Err` se o handshake ou a requisição falham.
+/// Opens a connection and does a `GET`; `Err` if the handshake or the request fails.
 pub async fn get(addr: SocketAddr, config: ClientConfig, path: &str) -> Result<Reply, String> {
     connect(addr, config).await?.get(path).await
 }

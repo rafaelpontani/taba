@@ -29,27 +29,27 @@ fn a_message_is_a_body_file_plus_a_row_in_the_topic_database() {
     m.group_id = Some("g".into());
     m.content_type = "image/png".into();
     let bytes = [0u8, 255, 10, 13, 200];
-    store.put("pedidos", &m, &bytes).unwrap();
+    store.put("orders", &m, &bytes).unwrap();
 
-    assert!(tmp.path().join("pedidos").join(TOPIC_DB_FILE).is_file());
+    assert!(tmp.path().join("orders").join(TOPIC_DB_FILE).is_file());
     assert_eq!(
-        std::fs::read(tmp.path().join("pedidos").join("a1.body")).unwrap(),
+        std::fs::read(tmp.path().join("orders").join("a1.body")).unwrap(),
         bytes,
-        "só os bytes do corpo, como vieram"
+        "only the body bytes, as they came"
     );
-    assert_eq!(store.get("pedidos", "a1").unwrap(), Some(m));
-    assert_eq!(store.body("pedidos", "a1").unwrap(), bytes);
-    assert_eq!(store.count("pedidos").unwrap(), 1);
+    assert_eq!(store.get("orders", "a1").unwrap(), Some(m));
+    assert_eq!(store.body("orders", "a1").unwrap(), bytes);
+    assert_eq!(store.count("orders").unwrap(), 1);
 }
 
 #[test]
 fn reads_do_not_create_folders_for_topics_without_disk() {
     let tmp = tempfile::tempdir().unwrap();
     let store = store(tmp.path());
-    assert_eq!(store.get("nada", "x").unwrap(), None);
-    assert!(store.ready_ids("nada", 0, 10).unwrap().is_empty());
-    assert_eq!(store.count("nada").unwrap(), 0);
-    store.remove("nada", "x").unwrap();
+    assert_eq!(store.get("nothing", "x").unwrap(), None);
+    assert!(store.ready_ids("nothing", 0, 10).unwrap().is_empty());
+    assert_eq!(store.count("nothing").unwrap(), 0);
+    store.remove("nothing", "x").unwrap();
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
 }
 
@@ -58,11 +58,11 @@ fn reads_do_not_create_folders_for_topics_without_disk() {
 fn removing_deletes_the_row_and_then_the_file() {
     let tmp = tempfile::tempdir().unwrap();
     let store = store(tmp.path());
-    store.put("pedidos", &meta("a1"), b"x").unwrap();
-    store.remove("pedidos", "a1").unwrap();
-    store.remove("pedidos", "a1").unwrap();
-    assert_eq!(store.get("pedidos", "a1").unwrap(), None);
-    assert!(!tmp.path().join("pedidos").join("a1.body").exists());
+    store.put("orders", &meta("a1"), b"x").unwrap();
+    store.remove("orders", "a1").unwrap();
+    store.remove("orders", "a1").unwrap();
+    assert_eq!(store.get("orders", "a1").unwrap(), None);
+    assert!(!tmp.path().join("orders").join("a1.body").exists());
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn expired_and_exhausted_queries_use_the_age_base_and_the_counters() {
     assert_eq!(store.exhausted_ids("t", 60_000, 2).unwrap(), ["spent"]);
     assert!(
         store.exhausted_ids("t", 59_999, 2).unwrap().is_empty(),
-        "ainda invisível"
+        "still invisible"
     );
     assert!(store.exhausted_ids("t", 60_000, 3).unwrap().is_empty());
 }
@@ -124,27 +124,27 @@ fn expired_and_exhausted_queries_use_the_age_base_and_the_counters() {
 fn moving_renames_the_body_and_keeps_the_id() {
     let tmp = tempfile::tempdir().unwrap();
     let store = store(tmp.path());
-    store.put("pedidos", &meta("a1"), b"corpo").unwrap();
+    store.put("orders", &meta("a1"), b"corpo").unwrap();
     let mut moved = meta("a1");
     moved.dead_lettered_ms = Some(7);
     moved.dead_letter_reason = Some("max-deliveries".into());
     store
-        .move_to("pedidos", "pedidos-dead-letter", &moved)
+        .move_to("orders", "orders-dead-letter", &moved)
         .unwrap();
 
-    assert_eq!(store.get("pedidos", "a1").unwrap(), None);
-    assert_eq!(store.get("pedidos-dead-letter", "a1").unwrap(), Some(moved));
-    assert_eq!(store.body("pedidos-dead-letter", "a1").unwrap(), b"corpo");
-    assert!(!tmp.path().join("pedidos").join("a1.body").exists());
+    assert_eq!(store.get("orders", "a1").unwrap(), None);
+    assert_eq!(store.get("orders-dead-letter", "a1").unwrap(), Some(moved));
+    assert_eq!(store.body("orders-dead-letter", "a1").unwrap(), b"corpo");
+    assert!(!tmp.path().join("orders").join("a1.body").exists());
 }
 
 /// UC: UC-DEF-024
 #[test]
 fn topic_folders_are_safe_for_case_insensitive_disks() {
-    assert_eq!(dir_name("pedidos"), "pedidos");
-    assert_eq!(dir_name("Pedidos"), "~pedidos");
+    assert_eq!(dir_name("orders"), "orders");
+    assert_eq!(dir_name("Orders"), "~orders");
     assert_eq!(dir_name("aBc-D_1"), "a~bc-~d_1");
-    for name in ["pedidos", "Pedidos", "aBc-D_1", "ABC"] {
+    for name in ["orders", "Orders", "aBc-D_1", "ABC"] {
         assert_eq!(topic_of_dir(&dir_name(name)).as_deref(), Some(name));
     }
     assert_eq!(topic_of_dir("Maiuscula"), None);
@@ -152,13 +152,13 @@ fn topic_folders_are_safe_for_case_insensitive_disks() {
 
     let tmp = tempfile::tempdir().unwrap();
     let store = store(tmp.path());
-    store.put("pedidos", &meta("a"), b"1").unwrap();
-    store.put("Pedidos", &meta("a"), b"2").unwrap();
-    assert_eq!(store.body("pedidos", "a").unwrap(), b"1");
-    assert_eq!(store.body("Pedidos", "a").unwrap(), b"2");
+    store.put("orders", &meta("a"), b"1").unwrap();
+    store.put("Orders", &meta("a"), b"2").unwrap();
+    assert_eq!(store.body("orders", "a").unwrap(), b"1");
+    assert_eq!(store.body("Orders", "a").unwrap(), b"2");
     let mut on_disk = store.topics_on_disk().unwrap();
     on_disk.sort();
-    assert_eq!(on_disk, ["Pedidos", "pedidos"]);
+    assert_eq!(on_disk, ["Orders", "orders"]);
 }
 
 #[test]
@@ -166,18 +166,18 @@ fn dropping_a_topic_removes_its_folder_and_survives_a_reopen() {
     let tmp = tempfile::tempdir().unwrap();
     {
         let store = store(tmp.path());
-        store.put("pedidos", &meta("a"), b"1").unwrap();
+        store.put("orders", &meta("a"), b"1").unwrap();
     }
     let store = store(tmp.path());
     assert_eq!(
-        store.count("pedidos").unwrap(),
+        store.count("orders").unwrap(),
         1,
-        "o disco sobrevive ao reinício"
+        "the disk survives a restart"
     );
-    store.drop_topic("pedidos").unwrap();
-    store.drop_topic("pedidos").unwrap();
-    assert_eq!(store.count("pedidos").unwrap(), 0);
-    assert!(!tmp.path().join("pedidos").exists());
+    store.drop_topic("orders").unwrap();
+    store.drop_topic("orders").unwrap();
+    assert_eq!(store.count("orders").unwrap(), 0);
+    assert!(!tmp.path().join("orders").exists());
 }
 
 /// UC: UC-FIF-036
@@ -193,7 +193,7 @@ fn a_tombstone_keeps_a_short_row_and_drops_the_body() {
 
     store.tombstone("f", &m, 9_000).unwrap();
     assert!(store.body("f", "a1").is_err(), "o corpo saiu");
-    assert_eq!(store.count("f").unwrap(), 0, "a linha curta não conta");
+    assert_eq!(store.count("f").unwrap(), 0, "the short row does not count");
     let rows = store.scan("f").unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].delete_at_ms, Some(9_000));
@@ -217,12 +217,12 @@ fn a_tombstone_works_for_a_message_that_had_no_row() {
 fn sweeping_deletes_only_the_rows_whose_delete_at_passed() {
     let tmp = tempfile::tempdir().unwrap();
     let store = store(tmp.path());
-    store.tombstone("f", &meta("velha"), 1_000).unwrap();
-    store.tombstone("f", &meta("nova"), 9_000).unwrap();
-    store.put("f", &meta("viva"), b"x").unwrap();
+    store.tombstone("f", &meta("old"), 1_000).unwrap();
+    store.tombstone("f", &meta("new"), 9_000).unwrap();
+    store.put("f", &meta("stays"), b"x").unwrap();
     assert_eq!(store.sweep_tombstones("f", 5_000).unwrap(), 1);
     let ids: Vec<String> = store.scan("f").unwrap().into_iter().map(|r| r.id).collect();
-    assert_eq!(ids, ["nova", "viva"]);
+    assert_eq!(ids, ["new", "stays"]);
     assert_eq!(store.sweep_tombstones("missing", 5_000).unwrap(), 0);
 }
 
@@ -230,7 +230,7 @@ fn sweeping_deletes_only_the_rows_whose_delete_at_passed() {
 #[test]
 fn a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place() {
     let tmp = tempfile::tempdir().unwrap();
-    let dir = tmp.path().join("antigo");
+    let dir = tmp.path().join("legacy");
     std::fs::create_dir_all(&dir).unwrap();
     {
         let conn = rusqlite::Connection::open(dir.join(TOPIC_DB_FILE)).unwrap();
@@ -242,19 +242,19 @@ fn a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place() {
                 dead_lettered_at INTEGER, dead_letter_reason TEXT, age_base INTEGER NOT NULL
              ) WITHOUT ROWID;
              INSERT INTO messages (id, content_type, published_at, age_base)
-                VALUES ('velha', 'text/plain', 7, 7);",
+                VALUES ('old', 'text/plain', 7, 7);",
         )
         .unwrap();
     }
     let store = store(tmp.path());
-    let rows = store.scan("antigo").unwrap();
+    let rows = store.scan("legacy").unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(
         (rows[0].deduplication_id.clone(), rows[0].delete_at_ms),
         (None, None)
     );
-    assert_eq!(store.count("antigo").unwrap(), 1);
-    store.tombstone("antigo", &meta("nova"), 100).unwrap();
+    assert_eq!(store.count("legacy").unwrap(), 1);
+    store.tombstone("legacy", &meta("new"), 100).unwrap();
 }
 
 /// UC: UC-SIN-002, UC-ARM-005
@@ -283,7 +283,7 @@ fn the_rows_of_a_block_come_by_position_in_id_order_with_range_and_limit() {
             .collect::<Vec<_>>()
     };
     assert_eq!(ids(&[(0, 60)], None, None, 10), ["a", "b", "e", "f"]);
-    // Um bloco que dá a volta no anel tem duas faixas, e os extremos contam.
+    // A block that wraps around the ring has two ranges, and the extremes count.
     assert_eq!(
         ids(&[(0, 5), (u64::MAX - 1, u64::MAX)], None, None, 10),
         ["a", "d", "e"]
@@ -293,11 +293,11 @@ fn the_rows_of_a_block_come_by_position_in_id_order_with_range_and_limit() {
     assert!(ids(&[(100, 400)], None, None, 10).is_empty());
     assert!(
         store
-            .block_rows("sem-pasta", &[(0, u64::MAX)], None, None, 10)
+            .block_rows("no-folder", &[(0, u64::MAX)], None, None, 10)
             .unwrap()
             .is_empty()
     );
-    // A posição volta como foi gravada.
+    // The position comes back as it was written.
     assert_eq!(store.get("t", "d").unwrap().unwrap().position, u64::MAX);
     assert_eq!(store.get("t", "e").unwrap().unwrap().position, 0);
 }
@@ -320,26 +320,26 @@ fn the_short_fifo_row_is_listed_with_its_delete_at() {
 fn the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one() {
     let tmp = tempfile::tempdir().unwrap();
     let old = store(tmp.path());
-    old.put("pedidos", &meta("a1"), b"antigo").unwrap();
+    old.put("orders", &meta("a1"), b"old").unwrap();
     drop(old);
 
     let store = store(tmp.path());
     let previous = store
         .set_aside_old_disk()
         .unwrap()
-        .expect("havia mensagens no disco");
+        .expect("there were messages on disk");
     assert!(
         store.topics_on_disk().unwrap().is_empty(),
-        "o disco do nó fica vazio"
+        "the node's disk is left empty"
     );
-    assert_eq!(previous.body("pedidos", "a1").unwrap(), b"antigo");
+    assert_eq!(previous.body("orders", "a1").unwrap(), b"old");
 
-    // Um segundo reinício não perde o que já estava de lado: a pasta nova some e a velha fica.
+    // A second restart does not lose what was already set aside: the new folder disappears and the old one stays.
     drop(previous);
-    store.put("pedidos", &meta("a2"), b"novo").unwrap();
-    let previous = store.set_aside_old_disk().unwrap().expect("ainda há");
-    assert!(previous.get("pedidos", "a1").unwrap().is_some());
-    assert!(previous.get("pedidos", "a2").unwrap().is_none());
+    store.put("orders", &meta("a2"), b"new").unwrap();
+    let previous = store.set_aside_old_disk().unwrap().expect("there still is");
+    assert!(previous.get("orders", "a1").unwrap().is_some());
+    assert!(previous.get("orders", "a2").unwrap().is_none());
 
     drop(previous);
     store.drop_old_disk().unwrap();

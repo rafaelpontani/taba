@@ -3,10 +3,10 @@ using System;
 namespace Taba
 {
     /// <summary>
-    /// A única forma de erro do conector (doc 19, seção 18.4): o <c>ErrorResponse</c> da API, ou uma
-    /// falha do próprio cliente, com <see cref="Status"/> zero e <see cref="Code"/>
-    /// <c>client.network</c>, <c>client.timeout</c>, <c>client.invalid-config</c> ou
-    /// <c>client.invalid-response</c>. O programa da aplicação testa o <see cref="Code"/>, nunca o
+    /// The only kind of error of the connector (doc 19, section 18.4): the API <c>ErrorResponse</c>, or a
+    /// failure of the client itself, with <see cref="Status"/> zero and <see cref="Code"/>
+    /// <c>client.network</c>, <c>client.timeout</c>, <c>client.invalid-config</c> or
+    /// <c>client.invalid-response</c>. The application program tests the <see cref="Code"/>, never the
     /// <see cref="Exception.Message"/>.
     /// </summary>
     public sealed class TabaException : Exception
@@ -19,25 +19,25 @@ namespace Taba
             Body = new byte[0];
         }
 
-        /// <summary>O status HTTP, ou zero numa falha do próprio cliente.</summary>
+        /// <summary>The HTTP status, or zero on a failure of the client itself.</summary>
         public int Status { get; }
 
-        /// <summary>O código <c>grupo.motivo</c> do erro.</summary>
+        /// <summary>The error's <c>group.reason</c> code.</summary>
         public string Code { get; }
 
-        /// <summary>O <c>requestId</c> do <c>ErrorResponse</c>, ou o cabeçalho <c>X-Request-Id</c>.</summary>
+        /// <summary>The <c>requestId</c> of the <c>ErrorResponse</c>, or the <c>X-Request-Id</c> header.</summary>
         public string RequestId { get; internal set; }
 
-        /// <summary>Os segundos do <c>Retry-After</c>, se a resposta trouxe.</summary>
+        /// <summary>The seconds of the <c>Retry-After</c>, if the response carried it.</summary>
         public int? RetryAfter { get; internal set; }
 
-        /// <summary>A lista <c>details</c> do <c>ErrorResponse</c>, como texto JSON.</summary>
+        /// <summary>The <c>details</c> list of the <c>ErrorResponse</c>, as JSON text.</summary>
         public string Details { get; internal set; }
 
-        /// <summary>O corpo da resposta, como veio (vazio numa falha do cliente).</summary>
+        /// <summary>The response body, as it came (empty on a client failure).</summary>
         public byte[] Body { get; internal set; }
 
-        /// <summary>Falha do próprio cliente, e não uma resposta do servidor.</summary>
+        /// <summary>A failure of the client itself, not a server response.</summary>
         public bool IsClientSide
         {
             get { return Status == 0; }

@@ -1,7 +1,7 @@
-//! O cliente do S3 (`S3Store`, sobre o `aws-sdk-s3`) contra um S3 de mentira em HTTP: o SDK de
-//! verdade monta as requisições (caminho, `Range`, `If-None-Match`, `If-Match`, `ListObjectsV2`) e
-//! lê as respostas (`ETag`, `412`, `404 NoSuchKey`, XML da listagem). É o que o MinIO e a AWS fazem
-//! do outro lado; o teste vale para o contrato que o backup usa do depósito (`ObjectStore`).
+//! The S3 client (`S3Store`, over `aws-sdk-s3`) against a fake S3 over HTTP: the real SDK
+//! builds the requests (path, `Range`, `If-None-Match`, `If-Match`, `ListObjectsV2`) and
+//! reads the responses (`ETag`, `412`, `404 NoSuchKey`, listing XML). It is what MinIO and AWS do
+//! on the other side; the test holds for the contract the backup uses from the store (`ObjectStore`).
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -19,7 +19,7 @@ use taba_node::storage::backup::{ObjectStore, Prefixed, S3Settings, S3Store};
 struct Bucket {
     objects: BTreeMap<String, (Vec<u8>, String)>,
     version: u64,
-    /// Os cabeçalhos de cada requisição que o SDK mandou (para conferir o que ele pede).
+    /// The headers of each request the SDK sent (to check what it asks for).
     seen: Vec<String>,
 }
 
@@ -180,8 +180,8 @@ async fn client(addr: SocketAddr) -> S3Store {
         bucket: "taba".into(),
         region: Some("us-east-1".into()),
         endpoint: Some(format!("http://{addr}")),
-        access_key: Some("chave".into()),
-        secret_key: Some("segredo".into()),
+        access_key: Some("key".into()),
+        secret_key: Some("secret".into()),
         path_style: true,
     })
     .await
@@ -204,7 +204,7 @@ async fn the_s3_client_does_what_the_object_store_contract_says_against_an_s3_se
     assert_eq!(store.get_suffix("a/1", 4).await.unwrap().unwrap(), b"6789");
     assert!(
         store.get("a/2").await.unwrap().is_none(),
-        "NoSuchKey vira None"
+        "NoSuchKey becomes None"
     );
     assert!(store.get_range("a/2", 0, 1).await.unwrap().is_none());
 
@@ -248,12 +248,12 @@ async fn conditional_writes_use_if_none_match_and_if_match_and_a_412_is_not_an_e
             .put_if_absent("restore/lock.json", b"2".to_vec())
             .await
             .unwrap(),
-        "412: já existe"
+        "412: already exists"
     );
     let etag = store.get("restore/lock.json").await.unwrap().unwrap().etag;
     assert!(
         !store
-            .put_if_match("restore/lock.json", b"3".to_vec(), "\"outro\"")
+            .put_if_match("restore/lock.json", b"3".to_vec(), "\"other\"")
             .await
             .unwrap()
     );
@@ -292,7 +292,7 @@ async fn an_unreachable_s3_is_an_error_the_caller_can_swallow_not_a_panic() {
     let store = S3Store::connect(&S3Settings {
         bucket: "taba".into(),
         region: Some("us-east-1".into()),
-        // Porta fechada: ninguém escuta.
+        // Closed port: no one listens.
         endpoint: Some("http://127.0.0.1:1".into()),
         access_key: Some("a".into()),
         secret_key: Some("b".into()),

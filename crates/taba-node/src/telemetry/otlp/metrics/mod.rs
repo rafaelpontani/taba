@@ -1,7 +1,7 @@
-//! O envio das métricas por OTLP (doc 11, "Como ligar um coletor"). O SDK do OpenTelemetry não
-//! deixa um registro de fora montar os dados de métrica, então o nó monta a requisição OTLP
-//! (protobuf) a partir do mesmo registro que alimenta `GET /metrics` e a envia por `grpc` ou
-//! `http/protobuf`, conforme `OTEL_EXPORTER_OTLP_PROTOCOL`.
+//! Sending the metrics over OTLP (doc 11, "How to attach a collector"). The OpenTelemetry SDK does not
+//! let an outside registry build the metric data, so the node builds the OTLP request
+//! (protobuf) from the same registry that feeds `GET /metrics` and sends it over `grpc` or
+//! `http/protobuf`, according to `OTEL_EXPORTER_OTLP_PROTOCOL`.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -20,7 +20,7 @@ use tonic::transport::Channel;
 use crate::config::{Otlp, OtlpProtocol};
 use crate::telemetry::metrics::{Kind, Snapshot, Value};
 
-/// O nome do escopo de instrumentação das métricas do nó.
+/// The name of the instrumentation scope of the node's metrics.
 pub const SCOPE: &str = "taba";
 
 fn string_attribute(key: &str, value: &str) -> KeyValue {
@@ -38,8 +38,8 @@ fn nanos(time: SystemTime) -> u64 {
         .map_or(0, |d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
 }
 
-/// Monta a requisição com todas as séries do registro. `started` é o início do processo (o início
-/// do período acumulado de contadores e histogramas) e `now` o instante da leitura.
+/// Builds the request with all the registry's series. `started` is the process start (the start
+/// of the accumulated period of counters and histograms) and `now` the instant of the read.
 pub fn build_request(
     snapshot: &[Snapshot],
     resource: &[(String, String)],
@@ -141,10 +141,10 @@ pub fn build_request(
     }
 }
 
-/// O prazo de uma chamada de envio (`OTEL_EXPORTER_OTLP_TIMEOUT` ainda não é lido).
+/// The deadline of a send call (`OTEL_EXPORTER_OTLP_TIMEOUT` is not read yet).
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Quem entrega a requisição ao coletor.
+/// Whoever delivers the request to the collector.
 pub enum Sender {
     Http {
         client: reqwest::Client,
@@ -157,14 +157,14 @@ pub enum Sender {
     },
 }
 
-/// Lê a CA do coletor (`OTEL_EXPORTER_OTLP_CERTIFICATE`).
+/// Reads the collector's CA (`OTEL_EXPORTER_OTLP_CERTIFICATE`).
 pub fn read_certificate(otlp: &Otlp) -> Result<Option<Vec<u8>>, String> {
     otlp.certificate
         .as_ref()
         .map(|path| {
             std::fs::read(path).map_err(|e| {
                 format!(
-                    "OTEL_EXPORTER_OTLP_CERTIFICATE: não foi possível ler `{}`: {e}",
+                    "OTEL_EXPORTER_OTLP_CERTIFICATE: could not read `{}`: {e}",
                     path.display()
                 )
             })
@@ -173,8 +173,8 @@ pub fn read_certificate(otlp: &Otlp) -> Result<Option<Vec<u8>>, String> {
 }
 
 impl Sender {
-    /// Prepara o cliente do protocolo escolhido. Dentro de um runtime do tokio: a conexão gRPC é
-    /// preguiçosa e só abre no primeiro envio.
+    /// Prepares the client of the chosen protocol. Inside a tokio runtime: the gRPC connection is
+    /// lazy and only opens on the first send.
     pub fn new(otlp: &Otlp) -> Result<Self, String> {
         super::install_crypto_provider();
         let certificate = read_certificate(otlp)?;
@@ -183,7 +183,7 @@ impl Sender {
                 let mut builder = reqwest::Client::builder().timeout(SEND_TIMEOUT);
                 if let Some(pem) = &certificate {
                     let cert = reqwest::Certificate::from_pem(pem)
-                        .map_err(|e| format!("OTEL_EXPORTER_OTLP_CERTIFICATE inválido: {e}"))?;
+                        .map_err(|e| format!("OTEL_EXPORTER_OTLP_CERTIFICATE invalid: {e}"))?;
                     builder = builder.add_root_certificate(cert);
                 }
                 Ok(Self::Http {
@@ -194,7 +194,7 @@ impl Sender {
             }
             OtlpProtocol::Grpc => {
                 let mut endpoint = tonic::transport::Endpoint::from_shared(otlp.endpoint.clone())
-                    .map_err(|e| format!("OTEL_EXPORTER_OTLP_ENDPOINT inválido: {e}"))?
+                    .map_err(|e| format!("OTEL_EXPORTER_OTLP_ENDPOINT invalid: {e}"))?
                     .timeout(SEND_TIMEOUT);
                 if otlp.endpoint.starts_with("https://") {
                     let mut tls = tonic::transport::ClientTlsConfig::new().with_native_roots();

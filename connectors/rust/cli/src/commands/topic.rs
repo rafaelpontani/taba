@@ -1,4 +1,4 @@
-//! Tópicos (doc 19b, seção 18.11.4).
+//! Topics (doc 19b, section 18.11.4).
 
 use taba_client::{Nullable, TopicRequest, TopicUpdate};
 
@@ -10,8 +10,8 @@ pub fn commands() -> Vec<Command> {
     vec![
         Command {
             path: &["topic", "create"],
-            args: "<nome>",
-            summary: "Cria um tópico (POST /topics). --type é obrigatório.",
+            args: "<name>",
+            summary: "Creates a topic (POST /topics). --type is required.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![
@@ -30,7 +30,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["topic", "list"],
             args: "",
-            summary: "Lista os tópicos (GET /topics); --all percorre todas as páginas.",
+            summary: "Lists the topics (GET /topics); --all walks through all the pages.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![
@@ -44,8 +44,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["topic", "get"],
-            args: "<nome>",
-            summary: "Mostra um tópico (GET /topics/{topic}).",
+            args: "<name>",
+            summary: "Shows a topic (GET /topics/{topic}).",
             min_pos: 1,
             max_pos: 1,
             opts: vec![],
@@ -53,8 +53,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["topic", "update"],
-            args: "<nome>",
-            summary: "Altera um tópico (PATCH); só o que foi dado é enviado.",
+            args: "<name>",
+            summary: "Changes a topic (PATCH); only what was given is sent.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![
@@ -71,9 +71,9 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["topic", "delete"],
-            args: "<nome>",
+            args: "<name>",
             summary:
-                "Remove um tópico e todas as suas mensagens (pede confirmação; --yes dispensa).",
+                "Removes a topic and all its messages (asks for confirmation; --yes skips it).",
             min_pos: 1,
             max_pos: 1,
             opts: vec![flag("yes")],
@@ -84,7 +84,7 @@ pub fn commands() -> Vec<Command> {
 
 fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let topic_type = one_of(p, "type", &["queue", "distributor"])?
-        .ok_or_else(|| CliError::usage("--type é obrigatório (queue ou distributor)"))?;
+        .ok_or_else(|| CliError::usage("--type is required (queue or distributor)"))?;
     let request = TopicRequest {
         name: p.positional[0].clone(),
         topic_type,
@@ -149,7 +149,7 @@ fn get(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     emit(ctx, &client.call(&c)?.text())
 }
 
-/// `<n>` ou `default` (que envia `null`).
+/// `<n>` or `default` (which sends `null`).
 fn nullable(p: &Parsed, name: &str) -> Result<Nullable<u64>, CliError> {
     match p.value(name) {
         None => Ok(Nullable::Keep),
@@ -160,10 +160,12 @@ fn nullable(p: &Parsed, name: &str) -> Result<Nullable<u64>, CliError> {
 
 fn update(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     if p.flag("clear-tags") && p.has_values("tag") {
-        return Err(CliError::usage("--clear-tags e --tag não combinam"));
+        return Err(CliError::usage("--clear-tags and --tag do not combine"));
     }
     if p.flag("clear-prefixes") && p.has_values("prefix") {
-        return Err(CliError::usage("--clear-prefixes e --prefix não combinam"));
+        return Err(CliError::usage(
+            "--clear-prefixes and --prefix do not combine",
+        ));
     }
     let update = TopicUpdate {
         tags: if p.flag("clear-tags") {
@@ -188,7 +190,7 @@ fn update(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let body = update.to_json();
     if body == "{}" {
         return Err(CliError::usage(
-            "nada para alterar: dê ao menos uma opção (--tag, --ttl, ...)",
+            "nothing to change: give at least one option (--tag, --ttl, ...)",
         ));
     }
     let client = ctx.api_client()?;
@@ -208,7 +210,7 @@ fn delete(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let name = &p.positional[0];
     ctx.require_confirmation(
         p.flag("yes"),
-        &format!("Remover o tópico `{name}` e todas as suas mensagens?"),
+        &format!("Remove the topic `{name}` and all its messages?"),
     )?;
     let client = ctx.api_client()?;
     let mut c = call(

@@ -1,6 +1,6 @@
-//! Mensagens da API de cliente (doc 06a, "Mensagens"): `POST` (publicar) e `GET`
-//! (consumir) em `/topics/{topic}/messages`. Aqui só se lê a requisição e se monta a
-//! resposta; as regras ficam no `engine`.
+//! Client API messages (doc 06a, "Messages"): `POST` (publish) and `GET`
+//! (consume) on `/topics/{topic}/messages`. Here the request is only read and the
+//! response built; the rules live in the `engine`.
 
 use std::collections::HashMap;
 
@@ -33,7 +33,7 @@ pub fn routes() -> Router<AppState> {
         .route("/topics/{topic}/messages/{id}/visibility", put(visibility))
 }
 
-/// Lê o corpo da requisição até `limit` bytes. Passou disso: `413`, sem ler o resto.
+/// Reads the request body up to `limit` bytes. Past that: `413`, without reading the rest.
 async fn read_body(body: Body, limit: u64) -> Result<Vec<u8>, TabaError> {
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     match axum::body::to_bytes(body, limit).await {
@@ -44,19 +44,19 @@ async fn read_body(body: Body, limit: u64) -> Result<Vec<u8>, TabaError> {
             Err(if too_large {
                 TabaError::new(
                     ErrorCode::MessageTooLarge,
-                    format!("O corpo passa do limite de {limit} bytes do tópico."),
+                    format!("The body exceeds the topic's limit of {limit} bytes."),
                 )
             } else {
                 TabaError::new(
                     ErrorCode::ValidationFailed,
-                    "Não foi possível ler o corpo da requisição.",
+                    "Could not read the request body.",
                 )
             })
         }
     }
 }
 
-/// O `Content-Type` como texto. Presente mas ilegível: o `engine` o recusa como inválido.
+/// The `Content-Type` as text. Present but unreadable: the `engine` refuses it as invalid.
 fn content_type(headers: &HeaderMap) -> Option<String> {
     headers.get(header::CONTENT_TYPE).map(|value| {
         value
@@ -65,7 +65,7 @@ fn content_type(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-/// Os atributos de mensageria do span da requisição: o tópico, a operação e as tags dele.
+/// The messaging attributes of the request span: the topic, the operation and its tags.
 fn annotate(state: &AppState, topic: &str, operation: &'static str) {
     match state.topics.get(topic) {
         Ok(view) => trace::annotate_messaging(topic, operation, &view.definition.tags),
@@ -81,7 +81,7 @@ async fn publish(
     body: Body,
 ) -> Result<Response, ApiError> {
     annotate(&state, &topic, "send");
-    // O tópico é conferido (`404`) e o limite descoberto antes de ler o corpo.
+    // The topic is checked (`404`) and the limit found out before reading the body.
     let limit = state.messages.publish_limit(&topic)?;
     let body = read_body(body, limit).await?;
     let request = PublishRequest {
@@ -98,7 +98,7 @@ async fn publish(
         trace::message_id(id);
     }
     Ok(match published {
-        // Só a fila FIFO traz `duplicate`; a duplicata é `200` e a mensagem criada, `201`.
+        // Only the FIFO queue brings `duplicate`; the duplicate is `200` and the created message, `201`.
         Published::Queue {
             id,
             duplicate: None,
@@ -136,7 +136,7 @@ fn delivery_json(delivery: &DistributorDelivery) -> Value {
     Value::Object(item)
 }
 
-/// O `Message` da API (doc 06a, "DTOs").
+/// The API's `Message` (doc 06a, "DTOs").
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MessageDto {
@@ -159,8 +159,8 @@ struct MessageDto {
     dead_letter_reason: Option<String>,
 }
 
-/// `ConsumeResponse`: serializado direto, para o `body` JSON não passar por um `Value` e perder
-/// a forma em que foi enviado.
+/// `ConsumeResponse`: serialized directly, so the JSON `body` does not go through a `Value` and lose
+/// the form in which it was sent.
 #[derive(Serialize)]
 struct ConsumeResponse {
     messages: Vec<MessageDto>,
@@ -271,15 +271,15 @@ async fn visibility(
     })))
 }
 
-/// Roda uma operação de mensagem fora do executor assíncrono: ela bloqueia no disco (doc 18,
-/// seção 17.6).
+/// Runs a message operation outside the async executor: it blocks on disk (doc 18,
+/// section 17.6).
 async fn blocking<T, F>(state: &AppState, operation: F) -> Result<T, ApiError>
 where
     T: Send + 'static,
     F: FnOnce(&Messages) -> Result<T, TabaError> + Send + 'static,
 {
     let messages = state.messages.clone();
-    // O span da requisição segue para a thread do disco: os logs de lá levam o mesmo trace.
+    // The request span follows to the disk thread: the logs there carry the same trace.
     let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || span.in_scope(|| operation(&messages)))
         .await

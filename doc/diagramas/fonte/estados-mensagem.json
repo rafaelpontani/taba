@@ -1,25 +1,95 @@
 {
   "schema_version": 2,
   "diagram_type": "lifecycle",
-  "meta": { "title": "Estados de uma mensagem no dono da entrega", "output": "doc/diagramas/html/estados-mensagem.html", "quality_profile": "showcase" },
+  "meta": {
+    "title": "States of a message on the delivery owner",
+    "output": "doc/diagramas/html/estados-mensagem.html",
+    "quality_profile": "showcase"
+  },
   "lanes": [
-    { "id": "main", "label": "Entrega" },
-    { "id": "terminal", "label": "Fim" }
+    {
+      "id": "main",
+      "label": "Delivery"
+    },
+    {
+      "id": "terminal",
+      "label": "End"
+    }
   ],
   "states": [
-    { "id": "ready", "type": "start", "label": "Pronta", "sublabel": "na lista de prontos", "lane": "main", "col": 0 },
-    { "id": "invisible", "type": "waiting", "label": "Invisível", "sublabel": "invisibleUntil no futuro", "lane": "main", "col": 2 },
-    { "id": "removed", "type": "success", "label": "Removida", "sublabel": "mensagem e metadados apagados", "lane": "terminal", "col": 3 },
-    { "id": "dead", "type": "failure", "label": "Dead-letter", "sublabel": "limite de entregas", "lane": "terminal", "col": 1 }
+    {
+      "id": "ready",
+      "type": "start",
+      "label": "Ready",
+      "sublabel": "in the ready list",
+      "lane": "main",
+      "col": 0
+    },
+    {
+      "id": "invisible",
+      "type": "waiting",
+      "label": "Invisible",
+      "sublabel": "invisibleUntil in the future",
+      "lane": "main",
+      "col": 2
+    },
+    {
+      "id": "removed",
+      "type": "success",
+      "label": "Removed",
+      "sublabel": "message and metadata deleted",
+      "lane": "terminal",
+      "col": 3
+    },
+    {
+      "id": "dead",
+      "type": "failure",
+      "label": "Dead-letter",
+      "sublabel": "delivery limit",
+      "lane": "terminal",
+      "col": 1
+    }
   ],
   "transitions": [
-    { "from": "ready", "to": "invisible", "label": "GET: entrega" },
-    { "from": "invisible", "to": "ready", "label": "prazo vencido ou visibilityTimeout 0", "variant": "dashed" },
-    { "from": "invisible", "to": "removed", "label": "ack", "variant": "emphasis" },
-    { "from": "invisible", "to": "dead", "label": "maxDeliveries esgotado", "variant": "security" }
+    {
+      "from": "ready",
+      "to": "invisible",
+      "label": "GET: delivers"
+    },
+    {
+      "from": "invisible",
+      "to": "ready",
+      "label": "deadline expired or visibilityTimeout 0",
+      "variant": "dashed"
+    },
+    {
+      "from": "invisible",
+      "to": "removed",
+      "label": "ack",
+      "variant": "emphasis"
+    },
+    {
+      "from": "invisible",
+      "to": "dead",
+      "label": "maxDeliveries exhausted",
+      "variant": "security"
+    }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Pelo menos uma vez", "items": ["Sem ack no prazo, a mensagem volta a ser pronta", "Cada entrega nova troca o receiptToken"] },
-    { "dot": "amber", "title": "Propagação", "items": ["Entrega e ack são registro + commit no quórum com o primário"] }
+    {
+      "dot": "cyan",
+      "title": "At least once",
+      "items": [
+        "Without an ack in time, the message becomes ready again",
+        "Each new delivery changes the receiptToken"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Propagation",
+      "items": [
+        "Delivery and ack are register + commit on the quorum with the primary"
+      ]
+    }
   ]
 }

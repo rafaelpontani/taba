@@ -1,4 +1,4 @@
-//! `POST` e `GET /topics/{topic}/messages` contra um nó de verdade (doc 06a, "Mensagens").
+//! `POST` and `GET /topics/{topic}/messages` against a real node (doc 06a, "Messages").
 
 mod common;
 
@@ -64,34 +64,34 @@ async fn consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
 #[tokio::test]
 async fn publishing_json_without_content_type_and_consuming_it_back() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
 
     let response = node
         .client
-        .post(node.client_url("/topics/pedidos/messages"))
-        .header("x-request-id", "meu-pedido-1")
-        .body(r#"{ "pedido": 9001, "valor": 129.90, "itens": ["a", "b"] }"#)
+        .post(node.client_url("/topics/orders/messages"))
+        .header("x-request-id", "my-order-1")
+        .body(r#"{ "order": 9001, "amount": 129.90, "items": ["a", "b"] }"#)
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), 201);
-    assert_eq!(response.headers()["x-request-id"], "meu-pedido-1");
+    assert_eq!(response.headers()["x-request-id"], "my-order-1");
     let published: Value = response.json().await.unwrap();
     assert_eq!(
         published.as_object().unwrap().len(),
         1,
-        "sem `duplicate` numa fila comum"
+        "without `duplicate` on a plain queue"
     );
     let id = published["id"].as_str().unwrap();
     assert!(taba_node::core::id::is_guid_v7(id));
 
-    let messages = consume(&node, "pedidos", "?visibilityTimeout=90").await;
+    let messages = consume(&node, "orders", "?visibilityTimeout=90").await;
     assert_eq!(messages.len(), 1);
     let m = &messages[0];
     assert_eq!(m["id"], id);
     assert_eq!(
         m["body"],
-        json!({ "pedido": 9001, "valor": 129.90, "itens": ["a", "b"] })
+        json!({ "order": 9001, "amount": 129.90, "items": ["a", "b"] })
     );
     assert_eq!(m["contentType"], "application/json");
     assert_eq!(m["deliveryCount"], 1);
@@ -108,15 +108,11 @@ async fn publishing_json_without_content_type_and_consuming_it_back() {
 #[tokio::test]
 async fn the_json_body_comes_back_exactly_as_it_was_sent() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    let sent = r#"{ "valor": 129.90,  "n": 1e3 }"#;
-    publish(&node, "pedidos", sent).await;
+    queue(&node, "orders").await;
+    let sent = r#"{ "amount": 129.90,  "n": 1e3 }"#;
+    publish(&node, "orders", sent).await;
 
-    let text = consume_raw(&node, "pedidos", "")
-        .await
-        .text()
-        .await
-        .unwrap();
+    let text = consume_raw(&node, "orders", "").await.text().await.unwrap();
     assert!(text.contains(sent), "{text}");
     node.shutdown().await;
 }
@@ -125,45 +121,48 @@ async fn the_json_body_comes_back_exactly_as_it_was_sent() {
 #[tokio::test]
 async fn a_mixed_batch_keeps_each_content_type_and_the_exact_bytes() {
     let node = TestNode::development().await;
-    queue(&node, "arquivos").await;
+    queue(&node, "files").await;
     let all_bytes: Vec<u8> = (0..=255).collect();
 
     for (content_type, body, query) in [
         (
             "text/plain; charset=utf-8",
-            "Pedido 9001 aprovado".as_bytes().to_vec(),
+            "Order 9001 approved".as_bytes().to_vec(),
             "",
         ),
-        ("image/png", all_bytes.clone(), "?groupId=cliente-42"),
-        ("application/json", br#"{ "pedido": 9001 }"#.to_vec(), ""),
+        ("image/png", all_bytes.clone(), "?groupId=customer-42"),
+        ("application/json", br#"{ "order": 9001 }"#.to_vec(), ""),
         ("application/vnd.api+json", b"[1, 2]".to_vec(), ""),
         ("text/plain; charset=iso-8859-1", vec![0xe9], ""),
     ] {
-        let response = publish_raw(&node, "arquivos", query, Some(content_type), body).await;
+        let response = publish_raw(&node, "files", query, Some(content_type), body).await;
         assert_eq!(response.status(), 201, "{content_type}");
     }
 
-    // Sem garantia de ordem na fila comum (UC-CNS-013): compara em ordem de `id`.
-    let mut messages = consume(&node, "arquivos", "?maxMessages=10").await;
+    // No ordering guarantee on the plain queue (UC-CNS-013): compares in `id` order.
+    let mut messages = consume(&node, "files", "?maxMessages=10").await;
     messages.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
     assert_eq!(messages.len(), 5);
-    assert_eq!(messages[0]["body"], "Pedido 9001 aprovado");
+    assert_eq!(messages[0]["body"], "Order 9001 approved");
     assert_eq!(messages[0]["contentType"], "text/plain; charset=utf-8");
     assert!(messages[0].get("bodyEncoding").is_none());
 
     assert_eq!(messages[1]["bodyEncoding"], "base64");
     assert_eq!(messages[1]["contentType"], "image/png");
-    assert_eq!(messages[1]["groupId"], "cliente-42");
+    assert_eq!(messages[1]["groupId"], "customer-42");
     let bytes = STANDARD
         .decode(messages[1]["body"].as_str().unwrap())
         .unwrap();
-    assert_eq!(bytes, all_bytes, "os bytes saem exatamente como entraram");
+    assert_eq!(
+        bytes, all_bytes,
+        "the bytes come out exactly as they went in"
+    );
 
-    assert_eq!(messages[2]["body"], json!({ "pedido": 9001 }));
+    assert_eq!(messages[2]["body"], json!({ "order": 9001 }));
     assert_eq!(messages[3]["body"], json!([1, 2]));
     assert_eq!(
         messages[4]["bodyEncoding"], "base64",
-        "text/* com outro charset"
+        "text/* with another charset"
     );
     assert_eq!(messages[4]["body"], "6Q==");
     node.shutdown().await;
@@ -173,43 +172,36 @@ async fn a_mixed_batch_keeps_each_content_type_and_the_exact_bytes() {
 #[tokio::test]
 async fn invalid_content_type_and_invalid_bodies_are_400() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
 
-    let response = publish_raw(
-        &node,
-        "pedidos",
-        "",
-        Some("nao-e-media-type"),
-        b"x".to_vec(),
-    )
-    .await;
+    let response = publish_raw(&node, "orders", "", Some("not-e-media-type"), b"x".to_vec()).await;
     assert_eq!(
         error_code(response, 400).await,
         "validation.invalid-content-type"
     );
     let too_long = format!("text/{}", "a".repeat(251));
-    let response = publish_raw(&node, "pedidos", "", Some(&too_long), b"x".to_vec()).await;
+    let response = publish_raw(&node, "orders", "", Some(&too_long), b"x".to_vec()).await;
     assert_eq!(
         error_code(response, 400).await,
         "validation.invalid-content-type"
     );
     let response = publish_raw(
         &node,
-        "pedidos",
+        "orders",
         "",
         Some("application/json"),
-        b"{ nao".to_vec(),
+        b"{ not".to_vec(),
     )
     .await;
     assert_eq!(error_code(response, 400).await, "validation.invalid-body");
-    let response = publish_raw(&node, "pedidos", "", Some("text/plain"), vec![0xff, 0xfe]).await;
+    let response = publish_raw(&node, "orders", "", Some("text/plain"), vec![0xff, 0xfe]).await;
     assert_eq!(error_code(response, 400).await, "validation.invalid-body");
-    let response = publish_raw(&node, "pedidos", "", None, Vec::new()).await;
+    let response = publish_raw(&node, "orders", "", None, Vec::new()).await;
     assert_eq!(error_code(response, 400).await, "validation.invalid-body");
 
     assert!(
-        consume(&node, "pedidos", "").await.is_empty(),
-        "nada foi aceito"
+        consume(&node, "orders", "").await.is_empty(),
+        "nothing was accepted"
     );
     node.shutdown().await;
 }
@@ -220,13 +212,13 @@ async fn the_size_limit_counts_bytes_and_a_topic_may_exceed_the_general_one() {
     let node = TestNode::development().await;
     create_topic(
         &node,
-        json!({ "name": "pequena", "type": "queue", "maxMessageBytes": 100 }),
+        json!({ "name": "small", "type": "queue", "maxMessageBytes": 100 }),
     )
     .await;
     queue(&node, "padrao").await;
     create_topic(
         &node,
-        json!({ "name": "grande", "type": "queue", "maxMessageBytes": 8 * 1024 * 1024 }),
+        json!({ "name": "big", "type": "queue", "maxMessageBytes": 8 * 1024 * 1024 }),
     )
     .await;
 
@@ -236,32 +228,36 @@ async fn the_size_limit_counts_bytes_and_a_topic_may_exceed_the_general_one() {
         body[n - 1] = b'"';
         body
     };
-    let response = publish_raw(&node, "pequena", "", None, blob(100)).await;
+    let response = publish_raw(&node, "small", "", None, blob(100)).await;
     assert_eq!(response.status(), 201, "exatamente o limite");
-    let response = publish_raw(&node, "pequena", "", None, blob(101)).await;
+    let response = publish_raw(&node, "small", "", None, blob(101)).await;
     assert_eq!(error_code(response, 413).await, "message.too-large");
 
     let five_mb = 5 * 1024 * 1024;
     let response = publish_raw(&node, "padrao", "", None, blob(five_mb)).await;
-    assert_eq!(response.status(), 201, "o geral é 5 MB");
+    assert_eq!(response.status(), 201, "the general limit is 5 MB");
     let response = publish_raw(&node, "padrao", "", None, blob(five_mb + 1)).await;
     assert_eq!(error_code(response, 413).await, "message.too-large");
-    let response = publish_raw(&node, "grande", "", None, blob(five_mb + 1)).await;
-    assert_eq!(response.status(), 201, "o tópico pode passar do geral");
+    let response = publish_raw(&node, "big", "", None, blob(five_mb + 1)).await;
+    assert_eq!(
+        response.status(),
+        201,
+        "the topic may exceed the general limit"
+    );
 
-    // Mudar o limite vale só para as publicações seguintes.
+    // Changing the limit only applies to the following publishes.
     node.client
-        .patch(node.client_url("/topics/pequena"))
+        .patch(node.client_url("/topics/small"))
         .json(&json!({ "maxMessageBytes": 10 }))
         .send()
         .await
         .unwrap();
     assert_eq!(
-        consume(&node, "pequena", "").await.len(),
+        consume(&node, "small", "").await.len(),
         1,
-        "a antiga segue lá"
+        "the old one is still there"
     );
-    let response = publish_raw(&node, "pequena", "", None, blob(11)).await;
+    let response = publish_raw(&node, "small", "", None, blob(11)).await;
     assert_eq!(error_code(response, 413).await, "message.too-large");
     node.shutdown().await;
 }
@@ -272,15 +268,15 @@ async fn unknown_topics_are_404_and_a_distributor_is_not_consumed() {
     let node = TestNode::development().await;
     create_topic(
         &node,
-        json!({ "name": "todos", "type": "distributor", "prefixes": ["a"] }),
+        json!({ "name": "all", "type": "distributor", "prefixes": ["a"] }),
     )
     .await;
 
-    let response = publish_raw(&node, "nada", "", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "nothing", "", None, b"1".to_vec()).await;
     assert_eq!(error_code(response, 404).await, "topic.not-found");
-    let response = consume_raw(&node, "nada", "").await;
+    let response = consume_raw(&node, "nothing", "").await;
     assert_eq!(error_code(response, 404).await, "topic.not-found");
-    let response = consume_raw(&node, "todos", "").await;
+    let response = consume_raw(&node, "all", "").await;
     assert_eq!(error_code(response, 409).await, "topic.wrong-type");
     node.shutdown().await;
 }
@@ -289,41 +285,41 @@ async fn unknown_topics_are_404_and_a_distributor_is_not_consumed() {
 #[tokio::test]
 async fn group_and_deduplication_ids_are_validated() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     create_topic(
         &node,
-        json!({ "name": "ordem", "type": "queue", "fifo": true }),
+        json!({ "name": "order", "type": "queue", "fifo": true }),
     )
     .await;
 
-    let response = publish_raw(&node, "pedidos", "?groupId=cliente-42", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "orders", "?groupId=customer-42", None, b"1".to_vec()).await;
     assert_eq!(response.status(), 201);
-    let messages = consume(&node, "pedidos", "").await;
-    assert_eq!(messages[0]["groupId"], "cliente-42");
+    let messages = consume(&node, "orders", "").await;
+    assert_eq!(messages[0]["groupId"], "customer-42");
 
     for bad in [
         "?groupId=",
-        "?groupId=com%20espaco",
+        "?groupId=with%20space",
         &format!("?groupId={}", "x".repeat(129)),
     ] {
-        let response = publish_raw(&node, "pedidos", bad, None, b"1".to_vec()).await;
+        let response = publish_raw(&node, "orders", bad, None, b"1".to_vec()).await;
         assert_eq!(
             error_code(response, 400).await,
             "validation.failed",
             "{bad}"
         );
     }
-    let response = publish_raw(&node, "pedidos", "?deduplicationId=d1", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "orders", "?deduplicationId=d1", None, b"1".to_vec()).await;
     assert_eq!(error_code(response, 400).await, "validation.not-applicable");
 
-    let response = publish_raw(&node, "ordem", "", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "order", "", None, b"1".to_vec()).await;
     assert_eq!(
         error_code(response, 400).await,
         "validation.group-id-required"
     );
     let response = publish_raw(
         &node,
-        "ordem",
+        "order",
         "?groupId=a&deduplicationId=!",
         None,
         b"1".to_vec(),
@@ -337,26 +333,26 @@ async fn group_and_deduplication_ids_are_validated() {
 #[tokio::test]
 async fn a_delivered_message_is_invisible_and_returns_with_a_new_receipt_after_the_timeout() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
 
-    let response = consume_raw(&node, "pedidos", "").await;
-    assert_eq!(response.status(), 200, "fila vazia é 200, nunca 204");
+    let response = consume_raw(&node, "orders", "").await;
+    assert_eq!(response.status(), 200, "an empty queue is 200, never 204");
     assert_eq!(
         response.json::<Value>().await.unwrap(),
         json!({ "messages": [] })
     );
 
-    let id = publish(&node, "pedidos", "1").await["id"].clone();
-    let first = consume(&node, "pedidos", "?visibilityTimeout=30").await;
+    let id = publish(&node, "orders", "1").await["id"].clone();
+    let first = consume(&node, "orders", "?visibilityTimeout=30").await;
     assert_eq!(
         first.len(),
         1,
-        "devolve o que há, sem esperar completar o lote"
+        "returns what there is, without waiting to complete the batch"
     );
-    assert!(consume(&node, "pedidos", "").await.is_empty());
+    assert!(consume(&node, "orders", "").await.is_empty());
 
     node.clock.advance(Duration::from_secs(30));
-    let again = consume(&node, "pedidos", "").await;
+    let again = consume(&node, "orders", "").await;
     assert_eq!(again[0]["id"], id);
     assert_eq!(again[0]["deliveryCount"], 2);
     assert_ne!(again[0]["receiptToken"], first[0]["receiptToken"]);
@@ -367,16 +363,16 @@ async fn a_delivered_message_is_invisible_and_returns_with_a_new_receipt_after_t
 #[tokio::test]
 async fn consume_parameters_are_checked() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     for i in 0..12 {
-        publish(&node, "pedidos", &i.to_string()).await;
+        publish(&node, "orders", &i.to_string()).await;
     }
     assert_eq!(
-        consume(&node, "pedidos", "").await.len(),
+        consume(&node, "orders", "").await.len(),
         10,
-        "o padrão é 10"
+        "the default is 10"
     );
-    assert_eq!(consume(&node, "pedidos", "?maxMessages=1").await.len(), 1);
+    assert_eq!(consume(&node, "orders", "?maxMessages=1").await.len(), 1);
 
     for query in [
         "?maxMessages=0",
@@ -385,14 +381,14 @@ async fn consume_parameters_are_checked() {
         "?waitTime=21",
         "?waitTime=-1",
     ] {
-        let response = consume_raw(&node, "pedidos", query).await;
+        let response = consume_raw(&node, "orders", query).await;
         assert_eq!(
             error_code(response, 400).await,
             "validation.out-of-range",
             "{query}"
         );
     }
-    let response = consume_raw(&node, "pedidos", "?maxMessages=dez").await;
+    let response = consume_raw(&node, "orders", "?maxMessages=dez").await;
     assert_eq!(error_code(response, 400).await, "validation.failed");
     node.shutdown().await;
 }
@@ -403,12 +399,12 @@ async fn a_message_past_its_ttl_is_not_delivered() {
     let node = TestNode::development().await;
     create_topic(
         &node,
-        json!({ "name": "curta", "type": "queue", "ttl": 60 }),
+        json!({ "name": "short", "type": "queue", "ttl": 60 }),
     )
     .await;
-    publish(&node, "curta", "1").await;
+    publish(&node, "short", "1").await;
     node.clock.advance(Duration::from_secs(60));
-    assert!(consume(&node, "curta", "").await.is_empty());
+    assert!(consume(&node, "short", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -416,10 +412,10 @@ async fn a_message_past_its_ttl_is_not_delivered() {
 #[tokio::test]
 async fn the_dead_letter_can_be_published_to_and_consumed() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos-dead-letter", "1").await;
-    assert_eq!(consume(&node, "pedidos-dead-letter", "").await.len(), 1);
-    assert!(consume(&node, "pedidos", "").await.is_empty());
+    queue(&node, "orders").await;
+    publish(&node, "orders-dead-letter", "1").await;
+    assert_eq!(consume(&node, "orders-dead-letter", "").await.len(), 1);
+    assert!(consume(&node, "orders", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -427,9 +423,9 @@ async fn the_dead_letter_can_be_published_to_and_consumed() {
 #[tokio::test]
 async fn long_polling_returns_as_soon_as_a_message_is_published() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
 
-    let url = node.client_url("/topics/pedidos/messages?waitTime=20&maxMessages=5");
+    let url = node.client_url("/topics/orders/messages?waitTime=20&maxMessages=5");
     let client = node.client.clone();
     let waiter = tokio::spawn(async move {
         let started = std::time::Instant::now();
@@ -438,7 +434,7 @@ async fn long_polling_returns_as_soon_as_a_message_is_published() {
     });
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert!(!waiter.is_finished());
-    publish(&node, "pedidos", "1").await;
+    publish(&node, "orders", "1").await;
 
     let (body, elapsed) = waiter.await.unwrap();
     assert_eq!(body["messages"].as_array().unwrap().len(), 1);
@@ -450,9 +446,9 @@ async fn long_polling_returns_as_soon_as_a_message_is_published() {
 #[tokio::test]
 async fn long_polling_ends_with_an_empty_list_when_nothing_arrives() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     let started = std::time::Instant::now();
-    assert!(consume(&node, "pedidos", "?waitTime=1").await.is_empty());
+    assert!(consume(&node, "orders", "?waitTime=1").await.is_empty());
     assert!(started.elapsed() >= Duration::from_millis(900));
     node.shutdown().await;
 }
@@ -461,7 +457,7 @@ async fn long_polling_ends_with_an_empty_list_when_nothing_arrives() {
 #[tokio::test]
 async fn a_client_that_gives_up_does_not_swallow_the_next_message() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
 
     let impatient = reqwest::Client::builder()
         .no_proxy()
@@ -469,19 +465,19 @@ async fn a_client_that_gives_up_does_not_swallow_the_next_message() {
         .build()
         .unwrap();
     let error = impatient
-        .get(node.client_url("/topics/pedidos/messages?waitTime=20"))
+        .get(node.client_url("/topics/orders/messages?waitTime=20"))
         .send()
         .await
         .unwrap_err();
     assert!(error.is_timeout());
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    publish(&node, "pedidos", "1").await;
-    let messages = consume(&node, "pedidos", "").await;
+    publish(&node, "orders", "1").await;
+    let messages = consume(&node, "orders", "").await;
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0]["deliveryCount"], 1,
-        "ninguém a entregou a uma conexão morta"
+        "no one delivered it to a dead connection"
     );
     node.shutdown().await;
 }
@@ -490,9 +486,9 @@ async fn a_client_that_gives_up_does_not_swallow_the_next_message() {
 #[tokio::test]
 async fn a_distributor_copies_to_matching_queues_and_reports_each_one() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos-eu").await;
-    queue(&node, "pedidos-us").await;
-    queue(&node, "outra").await;
+    queue(&node, "orders-eu").await;
+    queue(&node, "orders-us").await;
+    queue(&node, "other").await;
     create_topic(
         &node,
         json!({ "name": "p-fifo", "type": "queue", "fifo": true }),
@@ -500,51 +496,51 @@ async fn a_distributor_copies_to_matching_queues_and_reports_each_one() {
     .await;
     create_topic(
         &node,
-        json!({ "name": "todos", "type": "distributor", "prefixes": ["pedidos-"] }),
+        json!({ "name": "all", "type": "distributor", "prefixes": ["orders-"] }),
     )
     .await;
     create_topic(
         &node,
-        json!({ "name": "nenhum", "type": "distributor", "prefixes": ["zzz"] }),
+        json!({ "name": "none", "type": "distributor", "prefixes": ["zzz"] }),
     )
     .await;
     create_topic(
         &node,
-        json!({ "name": "com-fifo", "type": "distributor", "prefixes": ["p-"] }),
+        json!({ "name": "with-fifo", "type": "distributor", "prefixes": ["p-"] }),
     )
     .await;
 
-    let response = publish_raw(&node, "todos", "", Some("text/plain"), b"oi".to_vec()).await;
+    let response = publish_raw(&node, "all", "", Some("text/plain"), b"hi".to_vec()).await;
     assert_eq!(response.status(), 200);
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["matched"], 2);
     let deliveries = body["deliveries"].as_array().unwrap();
-    assert_eq!(deliveries[0]["topic"], "pedidos-eu");
-    assert_eq!(deliveries[1]["topic"], "pedidos-us");
+    assert_eq!(deliveries[0]["topic"], "orders-eu");
+    assert_eq!(deliveries[1]["topic"], "orders-us");
     assert_ne!(deliveries[0]["id"], deliveries[1]["id"]);
 
-    let eu = consume(&node, "pedidos-eu", "").await;
-    let us = consume(&node, "pedidos-us", "").await;
+    let eu = consume(&node, "orders-eu", "").await;
+    let us = consume(&node, "orders-us", "").await;
     assert_eq!(eu[0]["id"], deliveries[0]["id"]);
     assert_eq!(
         (eu[0]["body"].clone(), eu[0]["contentType"].clone()),
-        (json!("oi"), json!("text/plain"))
+        (json!("hi"), json!("text/plain"))
     );
     assert_eq!(us[0]["id"], deliveries[1]["id"]);
-    assert!(consume(&node, "outra", "").await.is_empty());
+    assert!(consume(&node, "other", "").await.is_empty());
 
-    let response = publish_raw(&node, "nenhum", "", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "none", "", None, b"1".to_vec()).await;
     assert_eq!(response.status(), 200);
     assert_eq!(
         response.json::<Value>().await.unwrap(),
         json!({ "matched": 0, "deliveries": [] })
     );
 
-    let response = publish_raw(&node, "com-fifo", "", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "with-fifo", "", None, b"1".to_vec()).await;
     assert_eq!(
         response.status(),
         200,
-        "falha parcial não é erro do distribuidor"
+        "partial failure is not a distributor error"
     );
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["deliveries"][0]["topic"], "p-fifo");
@@ -566,11 +562,11 @@ async fn max_targets_refuses_the_whole_publication() {
     queue(&node, "a2").await;
     create_topic(
         &node,
-        json!({ "name": "todos", "type": "distributor", "prefixes": ["a"] }),
+        json!({ "name": "all", "type": "distributor", "prefixes": ["a"] }),
     )
     .await;
 
-    let response = publish_raw(&node, "todos", "", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "all", "", None, b"1".to_vec()).await;
     assert_eq!(
         error_code(response, 422).await,
         "distributor.too-many-targets"
@@ -583,21 +579,21 @@ async fn max_targets_refuses_the_whole_publication() {
 #[tokio::test]
 async fn deleting_a_queue_drops_its_ready_and_in_flight_messages() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
-    publish(&node, "pedidos", "2").await;
-    assert_eq!(consume(&node, "pedidos", "?maxMessages=1").await.len(), 1);
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
+    publish(&node, "orders", "2").await;
+    assert_eq!(consume(&node, "orders", "?maxMessages=1").await.len(), 1);
 
     let response = node
         .client
-        .delete(node.client_url("/topics/pedidos"))
+        .delete(node.client_url("/topics/orders"))
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), 204);
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     node.clock.advance(Duration::from_secs(600));
-    assert!(consume(&node, "pedidos", "").await.is_empty());
+    assert!(consume(&node, "orders", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -612,12 +608,12 @@ async fn ack_raw(node: &TestNode, topic: &str, id: &str, query: &str) -> Respons
 async fn ack(node: &TestNode, message: &Value) -> Response {
     let id = message["id"].as_str().unwrap();
     let receipt = message["receiptToken"].as_str().unwrap();
-    ack_raw(node, "pedidos", id, &format!("?receiptToken={receipt}")).await
+    ack_raw(node, "orders", id, &format!("?receiptToken={receipt}")).await
 }
 
 async fn set_visibility(node: &TestNode, m: &Value, body: Value) -> Response {
     let url = format!(
-        "/topics/pedidos/messages/{}/visibility?receiptToken={}",
+        "/topics/orders/messages/{}/visibility?receiptToken={}",
         m["id"].as_str().unwrap(),
         m["receiptToken"].as_str().unwrap()
     );
@@ -630,7 +626,7 @@ async fn set_visibility(node: &TestNode, m: &Value, body: Value) -> Response {
 }
 
 async fn one_delivered(node: &TestNode, visibility: u32) -> Value {
-    let mut messages = consume(node, "pedidos", &format!("?visibilityTimeout={visibility}")).await;
+    let mut messages = consume(node, "orders", &format!("?visibilityTimeout={visibility}")).await;
     assert_eq!(messages.len(), 1);
     messages.remove(0)
 }
@@ -639,8 +635,8 @@ async fn one_delivered(node: &TestNode, visibility: u32) -> Value {
 #[tokio::test]
 async fn ack_removes_the_message_for_good() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 30).await;
 
     assert_eq!(ack(&node, &m).await.status(), 204);
@@ -649,8 +645,8 @@ async fn ack_removes_the_message_for_good() {
 
     node.clock.advance(Duration::from_secs(3600));
     assert!(
-        consume(&node, "pedidos", "").await.is_empty(),
-        "nem depois do prazo"
+        consume(&node, "orders", "").await.is_empty(),
+        "not even after the deadline"
     );
     node.shutdown().await;
 }
@@ -659,23 +655,23 @@ async fn ack_removes_the_message_for_good() {
 #[tokio::test]
 async fn ack_validates_the_request_and_the_topic() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     create_topic(
         &node,
-        json!({ "name": "todos", "type": "distributor", "prefixes": ["a"] }),
+        json!({ "name": "all", "type": "distributor", "prefixes": ["a"] }),
     )
     .await;
-    publish(&node, "pedidos", "1").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 30).await;
     let id = m["id"].as_str().unwrap();
 
-    let response = ack_raw(&node, "pedidos", id, "").await;
+    let response = ack_raw(&node, "orders", id, "").await;
     assert_eq!(error_code(response, 400).await, "validation.required");
-    let response = ack_raw(&node, "todos", id, "?receiptToken=x").await;
+    let response = ack_raw(&node, "all", id, "?receiptToken=x").await;
     assert_eq!(error_code(response, 409).await, "topic.wrong-type");
-    let response = ack_raw(&node, "nada", id, "?receiptToken=x").await;
+    let response = ack_raw(&node, "nothing", id, "?receiptToken=x").await;
     assert_eq!(error_code(response, 404).await, "topic.not-found");
-    let response = ack_raw(&node, "pedidos", "nao-existe", "?receiptToken=x").await;
+    let response = ack_raw(&node, "orders", "does-not-exist", "?receiptToken=x").await;
     assert_eq!(error_code(response, 404).await, "message.not-found");
     node.shutdown().await;
 }
@@ -684,12 +680,12 @@ async fn ack_validates_the_request_and_the_topic() {
 #[tokio::test]
 async fn a_stale_token_is_409_and_changes_nothing() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let first = one_delivered(&node, 10).await;
 
     node.clock.advance(Duration::from_secs(11));
-    // Vencido mas ainda não reentregue: o token vale.
+    // Expired but not yet redelivered: the token is valid.
     let still = set_visibility(&node, &first, json!({ "visibilityTimeout": 10 })).await;
     assert_eq!(still.status(), 200);
     node.clock.advance(Duration::from_secs(10));
@@ -701,8 +697,8 @@ async fn a_stale_token_is_409_and_changes_nothing() {
     let response = set_visibility(&node, &first, json!({ "visibilityTimeout": 0 })).await;
     assert_eq!(error_code(response, 409).await, "message.stale-receipt");
 
-    // Nada mudou: a mensagem segue com o segundo consumidor, que ainda pode confirmá-la.
-    assert!(consume(&node, "pedidos", "").await.is_empty());
+    // Nothing changed: the message stays with the second consumer, who can still confirm it.
+    assert!(consume(&node, "orders", "").await.is_empty());
     assert_eq!(ack(&node, &second).await.status(), 204);
     node.shutdown().await;
 }
@@ -711,8 +707,8 @@ async fn a_stale_token_is_409_and_changes_nothing() {
 #[tokio::test]
 async fn ack_after_the_deadline_but_before_redelivery_works() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 10).await;
     node.clock.advance(Duration::from_secs(11));
     assert_eq!(ack(&node, &m).await.status(), 204);
@@ -725,10 +721,10 @@ async fn a_message_past_its_ttl_cannot_be_acked_or_extended() {
     let node = TestNode::development().await;
     create_topic(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "ttl": 60 }),
+        json!({ "name": "orders", "type": "queue", "ttl": 60 }),
     )
     .await;
-    publish(&node, "pedidos", "1").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
     node.clock.advance(Duration::from_secs(60));
 
@@ -743,8 +739,8 @@ async fn a_message_past_its_ttl_cannot_be_acked_or_extended() {
 #[tokio::test]
 async fn visibility_replaces_the_deadline_and_keeps_count_and_token() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 30).await;
 
     node.clock.advance(Duration::from_secs(20));
@@ -759,14 +755,17 @@ async fn visibility_replaces_the_deadline_and_keeps_count_and_token() {
 
     node.clock.advance(Duration::from_secs(99));
     assert!(
-        consume(&node, "pedidos", "").await.is_empty(),
-        "o prazo novo ainda não venceu"
+        consume(&node, "orders", "").await.is_empty(),
+        "the new deadline has not expired yet"
     );
     let response = set_visibility(&node, &m, json!({ "visibilityTimeout": 1 })).await;
-    assert_eq!(response.status(), 200, "o token continua o mesmo");
+    assert_eq!(response.status(), 200, "the token stays the same");
     node.clock.advance(Duration::from_secs(1));
     let back = one_delivered(&node, 30).await;
-    assert_eq!(back["deliveryCount"], 2, "o PUT não conta entrega");
+    assert_eq!(
+        back["deliveryCount"], 2,
+        "the PUT does not count a delivery"
+    );
     node.shutdown().await;
 }
 
@@ -774,14 +773,14 @@ async fn visibility_replaces_the_deadline_and_keeps_count_and_token() {
 #[tokio::test]
 async fn visibility_zero_releases_the_message_for_the_next_get() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
 
     let response = set_visibility(&node, &m, json!({ "visibilityTimeout": 0 })).await;
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["invisibleUntil"], "2026-10-06T12:00:00.000Z");
-    let again = consume(&node, "pedidos", "").await;
+    let again = consume(&node, "orders", "").await;
     assert_eq!(again[0]["id"], m["id"]);
     node.shutdown().await;
 }
@@ -793,14 +792,14 @@ async fn visibility_validates_query_and_body() {
         .env("TABA_DELIVERY_VISIBILITY_TIMEOUT_MAX", "300s")
         .start()
         .await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 30).await;
     let id = m["id"].as_str().unwrap();
     let token = m["receiptToken"].as_str().unwrap();
     let with_token = format!("?receiptToken={token}");
     let put = |query: &str, body: Value| {
-        let url = node.client_url(&format!("/topics/pedidos/messages/{id}/visibility{query}"));
+        let url = node.client_url(&format!("/topics/orders/messages/{id}/visibility{query}"));
         let request = node.client.put(url).json(&body);
         async move { request.send().await.unwrap() }
     };
@@ -824,11 +823,11 @@ async fn visibility_validates_query_and_body() {
 #[tokio::test]
 async fn ack_and_visibility_after_the_topic_is_removed_are_404() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
     node.client
-        .delete(node.client_url("/topics/pedidos"))
+        .delete(node.client_url("/topics/orders"))
         .send()
         .await
         .unwrap();
@@ -856,8 +855,8 @@ async fn consume_from(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
 #[tokio::test]
 async fn the_message_goes_to_the_dead_letter_after_max_deliveries_without_ack() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 2).await;
-    let id = publish(&node, "pedidos", r#"{ "pedido": 1 }"#).await["id"].clone();
+    limited_queue(&node, "orders", 2).await;
+    let id = publish(&node, "orders", r#"{ "order": 1 }"#).await["id"].clone();
 
     for expected in [1, 2] {
         let m = one_delivered(&node, 10).await;
@@ -865,18 +864,18 @@ async fn the_message_goes_to_the_dead_letter_after_max_deliveries_without_ack() 
         node.clock.advance(Duration::from_secs(10));
     }
     assert!(
-        consume(&node, "pedidos", "").await.is_empty(),
-        "a terceira entrega nunca acontece"
+        consume(&node, "orders", "").await.is_empty(),
+        "the third delivery never happens"
     );
 
-    let dead = consume_from(&node, "pedidos-dead-letter", "?visibilityTimeout=30").await;
+    let dead = consume_from(&node, "orders-dead-letter", "?visibilityTimeout=30").await;
     assert_eq!(dead.len(), 1);
     let m = &dead[0];
-    assert_eq!(m["id"], id, "mantém o mesmo id");
-    assert_eq!(m["body"], json!({ "pedido": 1 }));
+    assert_eq!(m["id"], id, "keeps the same id");
+    assert_eq!(m["body"], json!({ "order": 1 }));
     assert_eq!(
         m["deliveryCount"], 1,
-        "zerou ao entrar; esta é a primeira entrega lá"
+        "reset on entering; this is the first delivery there"
     );
     assert_eq!(m["deadLetteredAt"], "2026-10-06T12:00:20.000Z");
     assert_eq!(m["deadLetterReason"], "max-deliveries");
@@ -887,12 +886,12 @@ async fn the_message_goes_to_the_dead_letter_after_max_deliveries_without_ack() 
 #[tokio::test]
 async fn an_acked_message_does_not_reach_the_dead_letter() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 1).await;
-    publish(&node, "pedidos", "1").await;
+    limited_queue(&node, "orders", 1).await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 10).await;
     assert_eq!(ack(&node, &m).await.status(), 204);
     node.clock.advance(Duration::from_secs(600));
-    assert!(consume(&node, "pedidos-dead-letter", "").await.is_empty());
+    assert!(consume(&node, "orders-dead-letter", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -900,14 +899,14 @@ async fn an_acked_message_does_not_reach_the_dead_letter() {
 #[tokio::test]
 async fn visibility_zero_on_the_last_delivery_sends_the_message_to_the_dead_letter() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 1).await;
-    publish(&node, "pedidos", "1").await;
+    limited_queue(&node, "orders", 1).await;
+    publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
 
     let response = set_visibility(&node, &m, json!({ "visibilityTimeout": 0 })).await;
     assert_eq!(response.status(), 200);
-    assert!(consume(&node, "pedidos", "").await.is_empty());
-    let dead = consume_from(&node, "pedidos-dead-letter", "").await;
+    assert!(consume(&node, "orders", "").await.is_empty());
+    let dead = consume_from(&node, "orders-dead-letter", "").await;
     assert_eq!(dead[0]["id"], m["id"]);
     node.shutdown().await;
 }
@@ -916,16 +915,16 @@ async fn visibility_zero_on_the_last_delivery_sends_the_message_to_the_dead_lett
 #[tokio::test]
 async fn a_corrected_message_can_be_published_back_and_the_dead_one_acked() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 1).await;
-    publish(&node, "pedidos", r#"{ "ruim": true }"#).await;
+    limited_queue(&node, "orders", 1).await;
+    publish(&node, "orders", r#"{ "ruim": true }"#).await;
     one_delivered(&node, 10).await;
     node.clock.advance(Duration::from_secs(10));
 
-    let dead = consume_from(&node, "pedidos-dead-letter", "?visibilityTimeout=60").await;
-    publish(&node, "pedidos", r#"{ "ruim": false }"#).await;
+    let dead = consume_from(&node, "orders-dead-letter", "?visibilityTimeout=60").await;
+    publish(&node, "orders", r#"{ "ruim": false }"#).await;
     let response = ack_raw(
         &node,
-        "pedidos-dead-letter",
+        "orders-dead-letter",
         dead[0]["id"].as_str().unwrap(),
         &format!(
             "?receiptToken={}",
@@ -936,10 +935,10 @@ async fn a_corrected_message_can_be_published_back_and_the_dead_one_acked() {
     assert_eq!(response.status(), 204);
 
     assert_eq!(
-        consume(&node, "pedidos", "").await[0]["body"],
+        consume(&node, "orders", "").await[0]["body"],
         json!({ "ruim": false })
     );
-    assert!(consume(&node, "pedidos-dead-letter", "").await.is_empty());
+    assert!(consume(&node, "orders-dead-letter", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -947,16 +946,16 @@ async fn a_corrected_message_can_be_published_back_and_the_dead_one_acked() {
 #[tokio::test]
 async fn the_dead_letter_never_has_its_own_dead_letter() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 1).await;
-    publish(&node, "pedidos", "1").await;
+    limited_queue(&node, "orders", 1).await;
+    publish(&node, "orders", "1").await;
     one_delivered(&node, 10).await;
     node.clock.advance(Duration::from_secs(10));
 
     for expected in 1..=4 {
-        let m = consume_from(&node, "pedidos-dead-letter", "?visibilityTimeout=10").await;
+        let m = consume_from(&node, "orders-dead-letter", "?visibilityTimeout=10").await;
         assert_eq!(
             m[0]["deliveryCount"], expected,
-            "segue na dead-letter, sem limite"
+            "stays in the dead-letter, with no limit"
         );
         node.clock.advance(Duration::from_secs(10));
     }
@@ -967,18 +966,18 @@ async fn the_dead_letter_never_has_its_own_dead_letter() {
 #[tokio::test]
 async fn a_distributor_never_copies_into_a_dead_letter() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     create_topic(
         &node,
-        json!({ "name": "todos", "type": "distributor", "prefixes": ["pedidos"] }),
+        json!({ "name": "all", "type": "distributor", "prefixes": ["orders"] }),
     )
     .await;
 
-    let response = publish_raw(&node, "todos", "", None, b"1".to_vec()).await;
+    let response = publish_raw(&node, "all", "", None, b"1".to_vec()).await;
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["matched"], 1);
-    assert_eq!(body["deliveries"][0]["topic"], "pedidos");
-    assert!(consume(&node, "pedidos-dead-letter", "").await.is_empty());
+    assert_eq!(body["deliveries"][0]["topic"], "orders");
+    assert!(consume(&node, "orders-dead-letter", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -986,32 +985,32 @@ async fn a_distributor_never_copies_into_a_dead_letter() {
 #[tokio::test]
 async fn a_shorter_ttl_expires_what_is_already_stored_even_in_flight() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 1).await;
-    publish(&node, "pedidos", "1").await;
-    publish(&node, "pedidos", "2").await;
-    let in_flight = consume(&node, "pedidos", "?maxMessages=1&visibilityTimeout=600").await;
+    limited_queue(&node, "orders", 1).await;
+    publish(&node, "orders", "1").await;
+    publish(&node, "orders", "2").await;
+    let in_flight = consume(&node, "orders", "?maxMessages=1&visibilityTimeout=600").await;
     node.clock.advance(Duration::from_secs(120));
     assert!(
-        !consume(&node, "pedidos", "?visibilityTimeout=0")
+        !consume(&node, "orders", "?visibilityTimeout=0")
             .await
             .is_empty()
     );
 
     let response = node
         .client
-        .patch(node.client_url("/topics/pedidos"))
+        .patch(node.client_url("/topics/orders"))
         .json(&json!({ "ttl": 60 }))
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    assert!(consume(&node, "pedidos", "").await.is_empty());
+    assert!(consume(&node, "orders", "").await.is_empty());
     let response = ack(&node, &in_flight[0]).await;
     assert_eq!(error_code(response, 404).await, "message.not-found");
     assert!(
-        consume(&node, "pedidos-dead-letter", "").await.is_empty(),
-        "o que vence por ttl não vai à dead-letter"
+        consume(&node, "orders-dead-letter", "").await.is_empty(),
+        "what expires by ttl does not go to the dead-letter"
     );
     node.shutdown().await;
 }
@@ -1020,17 +1019,17 @@ async fn a_shorter_ttl_expires_what_is_already_stored_even_in_flight() {
 #[tokio::test]
 async fn the_background_sweeper_moves_it_even_if_nobody_touches_the_source_queue() {
     let node = TestNode::development().await;
-    limited_queue(&node, "pedidos", 1).await;
-    publish(&node, "pedidos", "1").await;
+    limited_queue(&node, "orders", 1).await;
+    publish(&node, "orders", "1").await;
     one_delivered(&node, 10).await;
     node.clock.advance(Duration::from_secs(10));
 
     let started = std::time::Instant::now();
-    let dead = consume_from(&node, "pedidos-dead-letter", "?waitTime=10").await;
+    let dead = consume_from(&node, "orders-dead-letter", "?waitTime=10").await;
     assert_eq!(
         dead.len(),
         1,
-        "a varredura da tarefa de fundo moveu a mensagem"
+        "the background task's sweep moved the message"
     );
     assert!(
         started.elapsed() < Duration::from_secs(5),
@@ -1057,42 +1056,29 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
         .env("TABA_MEMORY_LIMIT", "10")
         .start()
         .await;
-    queue(&node, "arquivos").await;
+    queue(&node, "files").await;
     let all_bytes: Vec<u8> = (0..=255).collect();
 
-    let small = publish_raw(&node, "arquivos", "", Some("text/plain"), b"curta".to_vec()).await;
+    let small = publish_raw(&node, "files", "", Some("text/plain"), b"short".to_vec()).await;
     assert_eq!(small.status(), 201);
-    assert_eq!(body_files(&node, "arquivos"), 0, "coube em memória");
-    let big = publish_raw(&node, "arquivos", "", Some("image/png"), all_bytes.clone()).await;
+    assert_eq!(body_files(&node, "files"), 0, "it fit in memory");
+    let big = publish_raw(&node, "files", "", Some("image/png"), all_bytes.clone()).await;
     assert_eq!(big.status(), 201);
-    assert_eq!(
-        body_files(&node, "arquivos"),
-        1,
-        "o excedente virou um .body"
-    );
-    assert!(
-        node.storage_dir()
-            .join("arquivos")
-            .join("_topic.db")
-            .is_file()
-    );
+    assert_eq!(body_files(&node, "files"), 1, "the excess became a .body");
+    assert!(node.storage_dir().join("files").join("_topic.db").is_file());
 
-    // O arquivo guarda só os bytes, sem reserializar nem codificar.
+    // The file keeps only the bytes, without reserializing or encoding.
     let id = big.json::<Value>().await.unwrap()["id"]
         .as_str()
         .unwrap()
         .to_owned();
-    let on_disk = std::fs::read(
-        node.storage_dir()
-            .join("arquivos")
-            .join(format!("{id}.body")),
-    )
-    .unwrap();
+    let on_disk =
+        std::fs::read(node.storage_dir().join("files").join(format!("{id}.body"))).unwrap();
     assert_eq!(on_disk, all_bytes);
 
-    let messages = consume(&node, "arquivos", "?maxMessages=10&visibilityTimeout=30").await;
+    let messages = consume(&node, "files", "?maxMessages=10&visibilityTimeout=30").await;
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0]["body"], "curta");
+    assert_eq!(messages[0]["body"], "short");
     assert_eq!(messages[1]["id"], id.as_str());
     assert_eq!(messages[1]["contentType"], "image/png");
     assert_eq!(
@@ -1102,10 +1088,10 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
         all_bytes
     );
 
-    // O ack remove a linha e o arquivo.
+    // The ack removes the row and the file.
     let response = ack_raw(
         &node,
-        "arquivos",
+        "files",
         &id,
         &format!(
             "?receiptToken={}",
@@ -1114,7 +1100,7 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
     )
     .await;
     assert_eq!(response.status(), 204);
-    assert_eq!(body_files(&node, "arquivos"), 0);
+    assert_eq!(body_files(&node, "files"), 0);
     node.shutdown().await;
 }
 
@@ -1122,11 +1108,11 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
 #[tokio::test]
 async fn without_a_memory_limit_nothing_goes_to_disk_by_overflow() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     for i in 0..20 {
-        publish(&node, "pedidos", &i.to_string()).await;
+        publish(&node, "orders", &i.to_string()).await;
     }
-    assert!(!node.storage_dir().join("pedidos").exists());
+    assert!(!node.storage_dir().join("orders").exists());
     node.shutdown().await;
 }
 
@@ -1142,39 +1128,43 @@ async fn stopping_saves_memory_to_disk_and_the_next_start_resumes_it() {
     };
 
     let node = start().await.unwrap();
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     let mut grouped = publish_raw(
         &node,
-        "pedidos",
+        "orders",
         "?groupId=g1",
         Some("text/plain"),
-        b"em processamento".to_vec(),
+        b"in processing".to_vec(),
     )
     .await
     .json::<Value>()
     .await
     .unwrap();
-    let ready = publish(&node, "pedidos", r#"{ "pronta": true }"#).await;
-    let in_flight = consume(&node, "pedidos", "?maxMessages=1&visibilityTimeout=600").await;
+    let ready = publish(&node, "orders", r#"{ "ready": true }"#).await;
+    let in_flight = consume(&node, "orders", "?maxMessages=1&visibilityTimeout=600").await;
     assert_eq!(in_flight[0]["id"], grouped["id"]);
-    assert_eq!(body_files(&node, "pedidos"), 0, "tudo em memória até aqui");
-    node.shutdown().await; // o drain grava tudo em disco
+    assert_eq!(
+        body_files(&node, "orders"),
+        0,
+        "everything in memory so far"
+    );
+    node.shutdown().await; // the drain writes everything to disk
     grouped = in_flight[0].clone();
 
     let node = start().await.unwrap();
-    // O que estava em processamento segue invisível, e o mesmo token ainda confirma.
-    let pending = consume(&node, "pedidos", "?maxMessages=10&visibilityTimeout=30").await;
-    assert_eq!(pending.len(), 1, "só a pronta");
+    // What was being processed stays invisible, and the same token still confirms.
+    let pending = consume(&node, "orders", "?maxMessages=10&visibilityTimeout=30").await;
+    assert_eq!(pending.len(), 1, "only the ready one");
     assert_eq!(pending[0]["id"], ready["id"]);
-    assert_eq!(pending[0]["body"], json!({ "pronta": true }));
+    assert_eq!(pending[0]["body"], json!({ "ready": true }));
     let id = grouped["id"].as_str().unwrap();
     let token = grouped["receiptToken"].as_str().unwrap();
-    let response = ack_raw(&node, "pedidos", id, &format!("?receiptToken={token}")).await;
-    assert_eq!(response.status(), 204, "o receiptToken sobreviveu ao save");
+    let response = ack_raw(&node, "orders", id, &format!("?receiptToken={token}")).await;
+    assert_eq!(response.status(), 204, "the receiptToken survived the save");
 
-    // O prazo é um instante absoluto: passado o tempo, a mensagem volta com o contador certo.
+    // The deadline is an absolute instant: once the time passes, the message comes back with the right counter.
     node.clock.advance(Duration::from_secs(60));
-    let again = consume(&node, "pedidos", "").await;
+    let again = consume(&node, "orders", "").await;
     assert_eq!(again[0]["id"], ready["id"]);
     assert_eq!(again[0]["deliveryCount"], 2);
     node.shutdown().await;
@@ -1192,19 +1182,19 @@ async fn without_drain_on_stop_what_was_only_in_memory_is_lost() {
             .try_start()
     };
     let node = start().await.unwrap();
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     node.shutdown().await;
 
     let node = start().await.unwrap();
     assert_eq!(
-        node.client_get("/topics/pedidos").await.status(),
+        node.client_get("/topics/orders").await.status(),
         200,
-        "o tópico sobreviveu"
+        "the topic survived"
     );
     assert!(
-        consume(&node, "pedidos", "").await.is_empty(),
-        "a mensagem só em memória se perdeu"
+        consume(&node, "orders", "").await.is_empty(),
+        "the message only in memory was lost"
     );
     node.shutdown().await;
 }
@@ -1218,12 +1208,12 @@ async fn without_resume_on_start_the_messages_on_disk_are_erased() {
         .env("TABA_STORAGE_DIR", &storage)
         .start()
         .await;
-    queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     node.shutdown().await;
     assert!(
-        tmp.path().join("taba").join("pedidos").is_dir(),
-        "o drain deixou em disco"
+        tmp.path().join("taba").join("orders").is_dir(),
+        "the drain left it on disk"
     );
 
     let node = TestNode::builder()
@@ -1231,9 +1221,9 @@ async fn without_resume_on_start_the_messages_on_disk_are_erased() {
         .env("TABA_DEVELOPMENT_RESUME_ON_START", "false")
         .start()
         .await;
-    assert!(!tmp.path().join("taba").join("pedidos").exists());
-    queue(&node, "pedidos").await;
-    assert!(consume(&node, "pedidos", "").await.is_empty());
+    assert!(!tmp.path().join("taba").join("orders").exists());
+    queue(&node, "orders").await;
+    assert!(consume(&node, "orders", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -1246,20 +1236,20 @@ async fn the_dead_letter_receives_the_body_file_of_a_message_on_disk() {
         .await;
     create_topic(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "maxDeliveries": 1 }),
+        json!({ "name": "orders", "type": "queue", "maxDeliveries": 1 }),
     )
     .await;
-    let id = publish(&node, "pedidos", r#"{ "d": 1 }"#).await["id"].clone();
-    assert_eq!(body_files(&node, "pedidos"), 1);
+    let id = publish(&node, "orders", r#"{ "d": 1 }"#).await["id"].clone();
+    assert_eq!(body_files(&node, "orders"), 1);
     one_delivered(&node, 10).await;
     node.clock.advance(Duration::from_secs(10));
 
-    let dead = consume_from(&node, "pedidos-dead-letter", "?waitTime=5").await;
+    let dead = consume_from(&node, "orders-dead-letter", "?waitTime=5").await;
     assert_eq!(dead[0]["id"], id);
     assert_eq!(dead[0]["body"], json!({ "d": 1 }));
     assert_eq!(dead[0]["deadLetterReason"], "max-deliveries");
-    assert_eq!(body_files(&node, "pedidos"), 0);
-    assert_eq!(body_files(&node, "pedidos-dead-letter"), 1);
+    assert_eq!(body_files(&node, "orders"), 0);
+    assert_eq!(body_files(&node, "orders-dead-letter"), 1);
     node.shutdown().await;
 }
 
@@ -1267,11 +1257,11 @@ async fn the_dead_letter_receives_the_body_file_of_a_message_on_disk() {
 #[tokio::test]
 async fn a_noisy_producer_does_not_delay_a_small_one_over_http() {
     let node = TestNode::development().await;
-    queue(&node, "pedidos").await;
+    queue(&node, "orders").await;
     for i in 0..100 {
         let r = publish_raw(
             &node,
-            "pedidos",
+            "orders",
             "?groupId=barulhento",
             None,
             i.to_string().into_bytes(),
@@ -1282,26 +1272,26 @@ async fn a_noisy_producer_does_not_delay_a_small_one_over_http() {
     for i in 0..3 {
         let r = publish_raw(
             &node,
-            "pedidos",
-            "?groupId=pequeno",
+            "orders",
+            "?groupId=small",
             None,
             i.to_string().into_bytes(),
         )
         .await;
         assert_eq!(r.status(), 201);
     }
-    let first = consume(&node, "pedidos", "?maxMessages=3&visibilityTimeout=600").await;
+    let first = consume(&node, "orders", "?maxMessages=3&visibilityTimeout=600").await;
     let groups: Vec<&str> = first
         .iter()
         .map(|m| m["groupId"].as_str().unwrap())
         .collect();
     assert_eq!(
         groups,
-        ["pequeno", "pequeno", "pequeno"],
-        "o grupo vai junto com a mensagem"
+        ["small", "small", "small"],
+        "the group goes along with the message"
     );
-    // Numa fila comum o grupo não serializa: várias do mesmo grupo vão juntas.
-    let more = consume(&node, "pedidos", "?maxMessages=4&visibilityTimeout=600").await;
+    // On a plain queue the group does not serialize: several of the same group go together.
+    let more = consume(&node, "orders", "?maxMessages=4&visibilityTimeout=600").await;
     assert_eq!(more.len(), 4);
     node.shutdown().await;
 }

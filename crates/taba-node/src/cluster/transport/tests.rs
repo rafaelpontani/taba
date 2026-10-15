@@ -7,7 +7,7 @@ fn a_peer_address_is_host_and_port() {
     assert_eq!(addr.to_string(), "10.0.0.5:8081");
     let named: PeerAddr = "taba-lb.internal:9000".parse().unwrap();
     assert_eq!(named.host, "taba-lb.internal");
-    // IPv6 entre colchetes: o host é tudo antes da última `:`.
+    // IPv6 in brackets: the host is everything before the last `:`.
     let v6: PeerAddr = "[::1]:8081".parse().unwrap();
     assert_eq!((v6.host.as_str(), v6.port), ("[::1]", 8081));
 }

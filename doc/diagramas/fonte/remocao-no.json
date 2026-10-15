@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Remoção de um nó do cluster",
+    "title": "Removal of a node from the cluster",
     "output": "doc/diagramas/html/remocao-no.html",
     "viewBox": [
       1080,
@@ -15,42 +15,42 @@
     {
       "id": "falho",
       "type": "external",
-      "label": "Nó com falha",
-      "sublabel": "canal fora"
+      "label": "Failed node",
+      "sublabel": "channel down"
     },
     {
       "id": "detector",
       "type": "backend",
-      "label": "Nó detector",
-      "sublabel": "primeiro a notar"
+      "label": "Detector node",
+      "sublabel": "first to notice"
     },
     {
       "id": "demais",
       "type": "cloud",
-      "label": "Demais nós",
-      "sublabel": "votantes"
+      "label": "Other nodes",
+      "sublabel": "voters"
     }
   ],
   "segments": [
     {
       "from": 154,
       "to": 218,
-      "label": "Detecção"
+      "label": "Detection"
     },
     {
       "from": 232,
       "to": 328,
-      "label": "Votação"
+      "label": "Vote"
     },
     {
       "from": 342,
       "to": 438,
-      "label": "Desregistro"
+      "label": "Unregistration"
     },
     {
       "from": 452,
       "to": 516,
-      "label": "Retorno"
+      "label": "Return"
     }
   ],
   "messages": [
@@ -59,7 +59,7 @@
       "from": "detector",
       "to": "falho",
       "y": 170,
-      "label": "sinal de vida perdido",
+      "label": "heartbeat lost",
       "variant": "dashed"
     },
     {
@@ -67,16 +67,16 @@
       "from": "detector",
       "to": "falho",
       "y": 202,
-      "label": "reconecta N vezes",
+      "label": "reconnects N times",
       "variant": "dashed",
-      "note": "sinais acumulam na fila"
+      "note": "signals pile up in the queue"
     },
     {
       "id": "voto",
       "from": "detector",
       "to": "demais",
       "y": 248,
-      "label": "abre votação de exclusão",
+      "label": "opens an exclusion vote",
       "variant": "security"
     },
     {
@@ -84,7 +84,7 @@
       "from": "demais",
       "to": "detector",
       "y": 280,
-      "label": "votos (51% dos saudáveis)",
+      "label": "votes (51% of the healthy)",
       "variant": "return"
     },
     {
@@ -92,15 +92,15 @@
       "from": "detector",
       "to": "demais",
       "y": 312,
-      "label": "desregistro (fase 1)",
-      "note": "coordena o de menor ID; os outros esperam a vez"
+      "label": "unregistration (phase 1)",
+      "note": "the lowest ID coordinates; the others wait their turn"
     },
     {
       "id": "des-ok",
       "from": "demais",
       "to": "detector",
       "y": 358,
-      "label": "confirmam (menos os caídos)",
+      "label": "confirm (except the fallen)",
       "variant": "return"
     },
     {
@@ -108,25 +108,25 @@
       "from": "detector",
       "to": "demais",
       "y": 390,
-      "label": "commit (fase 2)",
+      "label": "commit (phase 2)",
       "variant": "emphasis",
-      "note": "descartam filas e rebalanceiam"
+      "note": "discard queues and rebalance"
     },
     {
       "id": "des-fim",
       "from": "demais",
       "to": "detector",
       "y": 422,
-      "label": "nó removido da tabela",
+      "label": "node removed from the table",
       "variant": "return",
-      "note": "o freezing do excluído segue pelo canal"
+      "note": "the excluded node's freezing goes through the channel"
     },
     {
       "id": "volta",
       "from": "falho",
       "to": "demais",
       "y": 468,
-      "label": "consulta losses e envia o que achar",
+      "label": "queries losses and sends what it finds",
       "variant": "emphasis"
     },
     {
@@ -134,32 +134,32 @@
       "from": "falho",
       "to": "demais",
       "y": 500,
-      "label": "limpa estado e refaz o bootstrap",
+      "label": "clears state and redoes the bootstrap",
       "variant": "dashed"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Reconexão a tempo",
+      "title": "Reconnection in time",
       "items": [
-        "Se o canal volta antes do fim da votação, nada muda"
+        "If the channel comes back before the vote ends, nothing changes"
       ]
     },
     {
       "dot": "rose",
-      "title": "Concorrência",
+      "title": "Concurrency",
       "items": [
-        "Durante a votação, novos bootstraps ficam em espera",
-        "Duas mudanças que se cruzam: vence a de menor operationId",
-        "Freezing opcional impede o retorno imediato do nó"
+        "During the vote, new bootstraps wait",
+        "Two crossing changes: the one with the lowest operationId wins",
+        "Optional freezing prevents the node's immediate return"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Tamanho mínimo",
+      "title": "Minimum size",
       "items": [
-        "Produção: 3 nós, para haver quórum de votação"
+        "Production: 3 nodes, so there is a voting quorum"
       ]
     }
   ]

@@ -22,16 +22,16 @@ fn env_name_follows_the_documented_rule() {
 #[test]
 fn keys_and_env_names_are_unique() {
     let keys: HashSet<_> = PARAMS.iter().map(|p| p.key).collect();
-    assert_eq!(keys.len(), PARAMS.len(), "chave repetida");
-    // `-` e `.` viram `_`: duas chaves podem colidir na variável de ambiente.
+    assert_eq!(keys.len(), PARAMS.len(), "repeated key");
+    // `-` and `.` become `_`: two keys may collide on the environment variable.
     let envs: HashSet<_> = PARAMS.iter().map(|p| env_name(p.key)).collect();
     assert_eq!(
         envs.len(),
         PARAMS.len(),
-        "duas chaves com a mesma variável de ambiente"
+        "two keys with the same environment variable"
     );
     assert!(
         !envs.contains("TABA_CONFIG_FILE"),
-        "TABA_CONFIG_FILE é reservada ao caminho do arquivo"
+        "TABA_CONFIG_FILE is reserved for the file path"
     );
 }

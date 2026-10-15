@@ -21,7 +21,7 @@ fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ver
 
 Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo CI **e** pelo release, com a mesma lógica.
 
-![Do pull request ao release](../diagramas/img/ci-cd.svg)
+![Do pull request ao release](../diagramas/img/pt-BR/ci-cd.svg)
 
 ## Os workflows (`.github/workflows/`)
 
@@ -50,7 +50,7 @@ O parâmetro de entrada `version` dos builds é **vazio em pull request**; no re
 
 | Arquivo | Para quê |
 |---|---|
-| `Dockerfile` (raiz) | **Compila tudo dentro do contêiner** (`rust:1-alpine`, build estático musl) e gera a imagem final em Alpine. É o que **qualquer pessoa usa** para `docker build -t taba .` ou `docker compose up --build` |
+| `Dockerfile` (raiz) | **Compila tudo dentro do contêiner** (`rust:1-alpine`, build estático musl) e gera a imagem final em Alpine. É o que **qualquer pessoa usa** para `docker build -t taba .` ou `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
 | `Dockerfile.ci` | **Não compila**: copia o binário `dist/taba-${TARGETARCH}` já compilado (com o cache do runner). Build de segundos. Mesma imagem final |
 | `Dockerfile.cli.ci` | O mesmo, para o `taba-cli` |
 

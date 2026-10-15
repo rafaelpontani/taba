@@ -29,24 +29,24 @@ fn json_is_the_servers_answer_indented_and_raw_is_left_alone() {
 /// UC: UC-CLI-004
 #[test]
 fn table_lists_the_items_of_a_page_with_a_column_per_field() {
-    let page = "{\"items\":[{\"id\":\"i1\",\"name\":\"pedidos\",\"fifo\":true,\"ttl\":null,\"tags\":{\"a\": \"b\"}},{\"id\":\"i2\",\"name\":\"x\",\"extra\":7}],\"nextCursor\":\"c\"}";
+    let page = "{\"items\":[{\"id\":\"i1\",\"name\":\"orders\",\"fifo\":true,\"ttl\":null,\"tags\":{\"a\": \"b\"}},{\"id\":\"i2\",\"name\":\"x\",\"extra\":7}],\"nextCursor\":\"c\"}";
     let out = table(page).unwrap();
     let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines[0], "id  name     fifo  ttl  tags       extra");
-    assert_eq!(lines[1], "i1  pedidos  true  -    {\"a\":\"b\"}  -");
-    assert_eq!(lines[2], "i2  x        -     -    -          7");
+    assert_eq!(lines[0], "id  name    fifo  ttl  tags       extra");
+    assert_eq!(lines[1], "i1  orders  true  -    {\"a\":\"b\"}  -");
+    assert_eq!(lines[2], "i2  x       -     -    -          7");
 }
 
 /// UC: UC-CLI-004
 #[test]
 fn table_of_one_object_is_field_and_value_and_an_empty_list_says_so() {
-    let out = table("{\"health\":\"ready\",\"reason\":\"em drain\"}").unwrap();
-    assert_eq!(out, "campo   valor\nhealth  ready\nreason  em drain");
-    assert_eq!(table("{\"items\":[]}").unwrap(), "(vazio)");
-    assert_eq!(table("{\"messages\":[]}").unwrap(), "(vazio)");
-    assert!(table("texto").is_none());
+    let out = table("{\"health\":\"ready\",\"reason\":\"draining\"}").unwrap();
+    assert_eq!(out, "field   value\nhealth  ready\nreason  draining");
+    assert_eq!(table("{\"items\":[]}").unwrap(), "(empty)");
+    assert_eq!(table("{\"messages\":[]}").unwrap(), "(empty)");
+    assert!(table("text").is_none());
     assert!(table("[1,2]").is_none());
-    // Sem tabela possível, cai para o JSON indentado.
+    // With no possible table, it falls back to the indented JSON.
     assert_eq!(render("[1,2]", Format::Table), "[\n  1,\n  2\n]");
 }
 
@@ -62,24 +62,24 @@ fn long_cells_are_cut() {
 /// UC: UC-CLI-005
 #[test]
 fn api_errors_print_code_message_request_id_details_and_retry_after() {
-    let body = "{\"code\":\"validation.failed\",\"message\":\"Campos inválidos.\",\"requestId\":\"r-1\",\"details\":[{\"field\":\"name\",\"code\":\"validation.required\",\"message\":\"obrigatório\"}]}";
+    let body = "{\"code\":\"validation.failed\",\"message\":\"Invalid fields.\",\"requestId\":\"r-1\",\"details\":[{\"field\":\"name\",\"code\":\"validation.required\",\"message\":\"required\"}]}";
     let mut out = Vec::new();
     write_api_error(&mut out, &api_error(400, body, Some(5)), false).unwrap();
     assert_eq!(
         String::from_utf8(out).unwrap(),
-        "validation.failed: Campos inválidos. (requestId r-1)\n  - name: obrigatório (validation.required)\nRetry-After: 5 s\n"
+        "validation.failed: Invalid fields. (requestId r-1)\n  - name: required (validation.required)\nRetry-After: 5 s\n"
     );
 }
 
 /// UC: UC-CLI-005
 #[test]
 fn with_json_the_error_response_is_printed_as_it_came() {
-    let body = "{\"code\":\"topic.not-found\",\"message\":\"Não existe.\",\"requestId\":\"r\"}";
+    let body = "{\"code\":\"topic.not-found\",\"message\":\"Does not exist.\",\"requestId\":\"r\"}";
     let mut out = Vec::new();
     write_api_error(&mut out, &api_error(404, body, None), true).unwrap();
     assert_eq!(
         String::from_utf8(out).unwrap(),
-        "{\n  \"code\": \"topic.not-found\",\n  \"message\": \"Não existe.\",\n  \"requestId\": \"r\"\n}\n"
+        "{\n  \"code\": \"topic.not-found\",\n  \"message\": \"Does not exist.\",\n  \"requestId\": \"r\"\n}\n"
     );
 }
 
@@ -88,7 +88,7 @@ fn with_json_the_error_response_is_printed_as_it_came() {
 fn the_cluster_status_table_has_one_row_per_node_and_per_condition() {
     let status = "{\"scope\":\"cluster\",\"partial\":false,\"worstCondition\":\"warning\",\"conditions\":[{\"condition\":\"under-replicated\",\"severity\":\"warning\"}],\"summary\":{\"members\":{\"active\":2},\"quorumAvailable\":true},\"nodes\":[{\"nodeId\":\"n1\",\"reachable\":true},{\"nodeId\":\"n2\",\"reachable\":false,\"status\":null}]}";
     let out = cluster_table(status).unwrap();
-    assert!(out.starts_with("campo           valor\nscope           cluster\npartial         false\nworstCondition  warning\n"), "{out}");
+    assert!(out.starts_with("field           value\nscope           cluster\npartial         false\nworstCondition  warning\n"), "{out}");
     assert!(
         out.contains(
             "\n\nnodes\nnodeId  reachable  status\nn1      true       -\nn2      false      -"
@@ -99,5 +99,5 @@ fn the_cluster_status_table_has_one_row_per_node_and_per_condition() {
         out.contains("\n\nconditions\ncondition         severity\nunder-replicated  warning"),
         "{out}"
     );
-    assert!(cluster_table("não é json").is_none());
+    assert!(cluster_table("not json").is_none());
 }

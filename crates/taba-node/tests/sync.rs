@@ -1,6 +1,6 @@
-//! A sincronização de blocos de um nó que entra (doc 05, seção 7.3; doc 04, seções 6.2 e 6.8; doc 20c,
-//! nível **C**): a carga dos blocos, o banco de eventos, a verificação final, a troca para o modo
-//! normal, a concorrência de mudanças de membros e a limpeza dos blocos que um nó perdeu.
+//! The block synchronization of a node that joins (doc 05, section 7.3; doc 04, sections 6.2 and 6.8; doc 20c,
+//! level **C**): the block load, the event database, the final check, the switch to normal
+//! mode, the concurrency of member changes and the cleanup of the blocks a node lost.
 
 mod common;
 
@@ -22,7 +22,7 @@ fn messages_of(node: &TestNode) -> Arc<Messages> {
         .cluster()
         .and_then(|c| c.replication())
         .map(|r| r.messages.messages().clone())
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
 }
 
 async fn create_queue(node: &TestNode, name: &str) {
@@ -32,7 +32,7 @@ async fn create_queue(node: &TestNode, name: &str) {
         .json(&json!({"name": name, "type": "queue"}))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201);
 }
 
@@ -43,7 +43,7 @@ async fn publish(node: &TestNode, topic: &str, body: Value) -> String {
         .json(&body)
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201, "{:?}", response.text().await);
     let value: Value = response.json().await.unwrap();
     value["id"].as_str().unwrap().to_owned()
@@ -55,7 +55,7 @@ async fn consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
         .get(node.client_url(&format!("/topics/{topic}/messages?{query}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 200, "{:?}", response.text().await);
     let value: Value = response.json().await.unwrap();
     value["messages"].as_array().cloned().unwrap_or_default()
@@ -68,7 +68,7 @@ async fn ack(node: &TestNode, topic: &str, id: &str, token: &str) -> u16 {
         )))
         .send()
         .await
-        .expect("requisição")
+        .expect("request")
         .status()
         .as_u16()
 }
@@ -101,10 +101,10 @@ fn owned(node: &TestNode, topic: &str, ids: &[String]) -> usize {
 
 async fn two_nodes_with_messages(count: usize, env: &[(&str, &str)]) -> (TestCluster, Vec<String>) {
     let cluster = TestCluster::start_with(2, env).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     let mut ids = Vec::new();
     for n in 0..count {
-        ids.push(publish(cluster.node(1 + n % 2), "pedidos", json!({"n": n})).await);
+        ids.push(publish(cluster.node(1 + n % 2), "orders", json!({"n": n})).await);
     }
     (cluster, ids)
 }
@@ -119,56 +119,60 @@ async fn a_new_node_loads_its_blocks_but_does_not_deliver_until_it_is_ready() {
     wait_phase(cluster.node(number), "replay").await;
     let node3 = cluster.node(number);
 
-    // O nó consta na tabela, em sincronização, e ainda não atende: o `/health/ready` diz por quê.
+    // The node is in the table, syncing, and does not serve yet: `/health/ready` says why.
     assert_eq!(node3.node.shared().state(), NodeState::Syncing);
     assert_eq!(
         member_state(&cluster, 1, number),
         Some(MemberState::Syncing),
-        "os outros o enxergam em sincronização"
+        "the others see it syncing"
     );
     let ready = node3.client_get_ops("/health/ready").await;
     assert_eq!(ready.status(), 503);
     assert_eq!(ready.json::<Value>().await.unwrap()["reason"], "syncing");
 
-    // A carga já gravou as mensagens dos blocos dele (com fator 3 e 3 nós, são todas), mas ele
-    // não é dono de nenhuma: não entrega.
-    assert_eq!(held(node3, "pedidos", &ids), ids.len());
-    assert_eq!(owned(node3, "pedidos", &ids), 0);
-    let definition = node3.client_get("/topics/pedidos").await;
+    // The load already wrote the messages of its blocks (with factor 3 and 3 nodes, that is all of them), but it
+    // owns none: it does not deliver.
+    assert_eq!(held(node3, "orders", &ids), ids.len());
+    assert_eq!(owned(node3, "orders", &ids), 0);
+    let definition = node3.client_get("/topics/orders").await;
     assert_eq!(
         definition.status(),
         200,
-        "a chamada de cliente foi repassada a outro nó"
+        "the client call was forwarded to another node"
     );
-    let got = consume(node3, "pedidos", "maxMessages=5&visibilityTimeout=300").await;
-    assert_eq!(got.len(), 5, "o GET repassado entrega pelos outros donos");
+    let got = consume(node3, "orders", "maxMessages=5&visibilityTimeout=300").await;
+    assert_eq!(
+        got.len(),
+        5,
+        "the forwarded GET delivers through the other owners"
+    );
 
     gate.add_permits(1);
     common::cluster::wait_joined(node3).await;
     assert_eq!(node3.node.shared().state(), NodeState::Active);
     assert_eq!(node3.client_get_ops("/health/ready").await.status(), 200);
-    // Pronto, ele é o dono das mensagens dos blocos de que é primário.
-    eventually("o nó ser dono das mensagens dos blocos dele", || {
-        owned(node3, "pedidos", &ids) > 0
+    // Ready, it is the owner of the messages of the blocks it is primary of.
+    eventually("the node to own the messages of its blocks", || {
+        owned(node3, "orders", &ids) > 0
     })
     .await;
     let owners: usize = (1..=3)
-        .map(|n| owned(cluster.node(n), "pedidos", &ids))
+        .map(|n| owned(cluster.node(n), "orders", &ids))
         .sum();
     assert!(
         owners >= ids.len() - 5,
-        "cada mensagem tem um dono só: {owners}"
+        "each message has a single owner: {owners}"
     );
     for n in 1..=3 {
         assert_eq!(
             member_state(&cluster, n, number),
             Some(MemberState::Active),
-            "o nó {n} sabe que ele ficou pronto"
+            "node {n} knows it became ready"
         );
     }
     assert!(
         !node3.storage_dir().join("_sync").exists(),
-        "o banco de eventos é descartado"
+        "the event database is discarded"
     );
     cluster.shutdown().await;
 }
@@ -178,10 +182,10 @@ async fn a_new_node_loads_its_blocks_but_does_not_deliver_until_it_is_ready() {
 #[tokio::test]
 async fn events_that_arrive_during_the_sync_are_logged_and_replayed_over_the_load() {
     let (mut cluster, _ids) = two_nodes_with_messages(12, &[]).await;
-    // Uma mensagem entregue (invisível) antes da entrada: o ack virá durante a sincronização.
+    // A message delivered (invisible) before the join: the ack will come during the synchronization.
     let delivered = consume(
         cluster.node(1),
-        "pedidos",
+        "orders",
         "maxMessages=1&visibilityTimeout=300",
     )
     .await;
@@ -203,21 +207,18 @@ async fn events_that_arrive_during_the_sync_are_logged_and_replayed_over_the_loa
         .clone();
     assert!(syncer.is_recording());
     assert_eq!(
-        held(node3, "pedidos", std::slice::from_ref(&acked_id)),
+        held(node3, "orders", std::slice::from_ref(&acked_id)),
         1,
-        "a carga trouxe a mensagem que será confirmada"
+        "the load brought the message that will be confirmed"
     );
 
-    // Durante a sincronização: um ack, uma publicação nova e um tópico novo. O nó em sincronização
-    // confirma o registro gravando o evento, então tudo responde como se ele fosse um nó normal.
-    assert_eq!(
-        ack(cluster.node(2), "pedidos", &acked_id, &token).await,
-        204
-    );
+    // During the synchronization: an ack, a new publish and a new topic. The syncing node
+    // confirms the register by writing the event, so everything answers as if it were a normal node.
+    assert_eq!(ack(cluster.node(2), "orders", &acked_id, &token).await, 204);
     let fresh: Vec<String> = {
         let mut out = Vec::new();
         for n in 0..6 {
-            out.push(publish(cluster.node(1 + n % 2), "pedidos", json!({"novo": n})).await);
+            out.push(publish(cluster.node(1 + n % 2), "orders", json!({"new": n})).await);
         }
         out
     };
@@ -225,34 +226,34 @@ async fn events_that_arrive_during_the_sync_are_logged_and_replayed_over_the_loa
     let metrics = node3.metrics().await;
     assert!(
         common::series(&metrics, "taba_sync_log_events").unwrap() >= 3.0,
-        "os eventos esperam no banco: {metrics}"
+        "the events wait in the database: {metrics}"
     );
     assert!(node3.storage_dir().join("_sync").join("sync.db").is_file());
     assert_eq!(
-        held(node3, "pedidos", &fresh),
+        held(node3, "orders", &fresh),
         0,
-        "o nó em sincronização não processa os eventos: só os guarda"
+        "the syncing node does not process the events: it only stores them"
     );
 
     gate.add_permits(1);
     common::cluster::wait_joined(node3).await;
     let messages = messages_of(node3);
-    // O ack venceu a carga: a mensagem que ela trouxe velha sumiu.
+    // The ack beat the load: the message it brought, now old, disappeared.
     assert!(
         messages
-            .message_info("pedidos", &acked_id)
+            .message_info("orders", &acked_id)
             .unwrap()
             .is_none()
     );
-    // A publicação feita durante a sincronização chegou por evento.
-    assert_eq!(held(node3, "pedidos", &fresh), fresh.len());
-    // O tópico criado durante a sincronização também.
+    // The publish made during the synchronization arrived by event.
+    assert_eq!(held(node3, "orders", &fresh), fresh.len());
+    // The topic created during the synchronization too.
     assert_eq!(node3.client_get("/topics/extras").await.status(), 200);
-    // O banco esvaziou, o nó passou ao modo normal e já processa em tempo real.
+    // The database emptied, the node moved to normal mode and already processes in real time.
     assert!(!syncer.is_recording());
-    let after = publish(cluster.node(1), "pedidos", json!({"depois": true})).await;
-    eventually("o evento em tempo real", || {
-        messages.message_info("pedidos", &after).unwrap().is_some()
+    let after = publish(cluster.node(1), "orders", json!({"after": true})).await;
+    eventually("the real-time event", || {
+        messages.message_info("orders", &after).unwrap().is_some()
     })
     .await;
     assert_eq!(
@@ -270,10 +271,10 @@ async fn no_other_membership_change_takes_effect_until_the_syncing_node_is_ready
     let gate = pause_sync(&cluster, third, "replay");
     wait_phase(cluster.node(third), "replay").await;
 
-    // Um quarto nó pede para entrar, e o dreno do nó 2 pede para sair: os dois esperam.
+    // A fourth node asks to join, and node 2's drain asks to leave: both wait.
     let fourth = {
         let builder = cluster.builder(4, false);
-        cluster.spawn_node(builder).await.expect("sobe")
+        cluster.spawn_node(builder).await.expect("starts")
     };
     let drain = cluster
         .node(2)
@@ -285,7 +286,7 @@ async fn no_other_membership_change_takes_effect_until_the_syncing_node_is_ready
     assert_eq!(drain.status(), 202);
     tokio::time::sleep(Duration::from_millis(600)).await;
     let table = cluster.table(1).unwrap();
-    assert_eq!(table.members.len(), 3, "nada mudou: {table:?}");
+    assert_eq!(table.members.len(), 3, "nothing changed: {table:?}");
     assert!(table.member(&cluster.node_id(fourth)).is_none());
     assert!(table.member(&cluster.node_id(2)).is_some());
     assert_ne!(
@@ -293,9 +294,9 @@ async fn no_other_membership_change_takes_effect_until_the_syncing_node_is_ready
         NodeState::Active
     );
 
-    // O nó fica pronto e as duas mudanças seguem, uma de cada vez.
+    // The node becomes ready and the two changes go on, one at a time.
     gate.add_permits(1);
-    eventually("as duas mudanças de membros", || {
+    eventually("the two member changes", || {
         cluster.table(1).is_some_and(|t| {
             t.member(&cluster.node_id(fourth)).is_some() && t.member(&cluster.node_id(2)).is_none()
         })
@@ -308,25 +309,25 @@ async fn no_other_membership_change_takes_effect_until_the_syncing_node_is_ready
 /// UC: UC-SIN-025, UC-SIN-026, UC-SIN-027, UC-SIN-028, UC-OPS-038
 #[tokio::test]
 async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_sync_goes_on() {
-    // Com a memória no mínimo, as mensagens vão para o disco, e dá para apagar um corpo.
+    // With memory at the minimum, the messages go to disk, and a body can be deleted.
     let (mut cluster, ids) = two_nodes_with_messages(8, &[("TABA_MEMORY_LIMIT", "1B")]).await;
     let target = ids[3].clone();
     for number in 1..=2 {
-        let folder = cluster.node(number).storage_dir().join("pedidos");
+        let folder = cluster.node(number).storage_dir().join("orders");
         let body = folder.join(format!("{target}.body"));
-        assert!(body.is_file(), "a mensagem está em disco no nó {number}");
+        assert!(body.is_file(), "the message is on disk on node {number}");
         std::fs::remove_file(body).unwrap();
     }
     let number = start_isolated(&mut cluster, &[("TABA_MEMORY_LIMIT", "1B")]).await;
     cluster.network.restore(&host_of(number));
     common::cluster::wait_joined(cluster.node(number)).await;
 
-    // As outras mensagens foram carregadas; a que ficou sem conteúdo é uma perda, registrada no
-    // banco do nó, e a sincronização não parou nem o nó entrou em falha.
+    // The other messages were loaded; the one left without content is a loss, recorded in the
+    // node's database, and the synchronization did not stop nor did the node enter failure.
     let node3 = cluster.node(number);
     let others: Vec<String> = ids.iter().filter(|id| **id != target).cloned().collect();
-    assert_eq!(held(node3, "pedidos", &others), others.len());
-    assert_eq!(held(node3, "pedidos", std::slice::from_ref(&target)), 0);
+    assert_eq!(held(node3, "orders", &others), others.len());
+    assert_eq!(held(node3, "orders", std::slice::from_ref(&target)), 0);
     assert_eq!(node3.node.shared().state(), NodeState::Active);
     let db = taba_node::storage::db::NodeDb::open(
         &node3.storage_dir(),
@@ -338,10 +339,10 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
         .unwrap();
     assert_eq!(losses.len(), 1, "{losses:?}");
     assert_eq!(losses[0].id, target);
-    assert_eq!(losses[0].topic, "pedidos");
+    assert_eq!(losses[0].topic, "orders");
 
-    // Quem detecta a perda a manda também aos outros responsáveis pelo bloco, para a informação
-    // sobreviver à queda dele (doc 04, seção 6.6, "Tabela de perdas").
+    // Whoever detects the loss also sends it to the other owners of the block, so the information
+    // survives its fall (doc 04, section 6.6, "Loss table").
     for other in 1..=2 {
         let recovery = cluster
             .node(other)
@@ -349,14 +350,14 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
             .cluster()
             .and_then(|c| c.replication())
             .map(|r| r.recovery.clone())
-            .expect("o nó está no cluster");
-        eventually("a perda chegar ao outro responsável", || {
+            .expect("the node is in the cluster");
+        eventually("the loss to reach the other owner", || {
             recovery
                 .losses()
                 .list(None, 10)
                 .unwrap()
                 .iter()
-                .any(|l| l.id == target && l.topic == "pedidos")
+                .any(|l| l.id == target && l.topic == "orders")
         })
         .await;
     }
@@ -368,14 +369,14 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
 async fn a_node_with_no_source_for_a_load_fails_after_the_timeout() {
     let (mut cluster, _ids) = two_nodes_with_messages(6, &[]).await;
     let number = start_isolated(&mut cluster, &[("TABA_CLUSTER_SYNC_TIMEOUT", "300ms")]).await;
-    // Ninguém serve a listagem de IDs.
+    // No one serves the ID listing.
     for host in [host_of(1), host_of(2)] {
         cluster.network.lose_kind(&host, "block-ids", 1_000_000);
     }
     cluster.network.restore(&host_of(number));
     let node3 = cluster.node(number);
     let shared = node3.node.shared().clone();
-    eventually("o nó entrar em falha", move || {
+    eventually("the node to enter failure", move || {
         shared.state() == NodeState::Failed
     })
     .await;
@@ -391,8 +392,8 @@ async fn a_node_with_no_source_for_a_load_fails_after_the_timeout() {
         .is_some_and(|n| n >= 1.0),
         "{metrics}"
     );
-    // O nó em falha ainda consta como em sincronização e travaria a saída dos outros (até a
-    // votação de exclusão existir): ele sai primeiro.
+    // The node in failure still appears as syncing and would block the others' exit (until the
+    // exclusion vote exists): it leaves first.
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.shutdown().await;
 }
@@ -400,13 +401,13 @@ async fn a_node_with_no_source_for_a_load_fails_after_the_timeout() {
 /// UC: UC-SIN-002, UC-SIN-009, UC-SIN-003, UC-SIN-004
 #[tokio::test]
 async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages() {
-    // Mensagens de sobra: com poucas, o sorteio dos IDs podia não pôr duas no mesmo bloco.
+    // Plenty of messages: with few, the ID draw might not put two in the same block.
     let (cluster, ids) = two_nodes_with_messages(150, &[]).await;
     let service = cluster.node(1).node.cluster().unwrap().clone();
     let ring = service.membership().ring();
     let caller = host_of(2);
 
-    // Todos os blocos juntos listam todas as mensagens, cada uma no bloco da sua posição.
+    // All the blocks together list all the messages, each in the block of its position.
     let mut listed = Vec::new();
     for block in ring.blocks() {
         let reply = service
@@ -420,18 +421,18 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
             .await
             .unwrap();
         let Response::Stream(page) = reply else {
-            panic!("esperava um stream")
+            panic!("expected a stream")
         };
         let block_ids: Vec<String> = page
             .items
             .iter()
             .map(|i| i["id"].as_str().unwrap().to_owned())
             .collect();
-        assert!(block_ids.windows(2).all(|w| w[0] < w[1]), "em ordem de ID");
+        assert!(block_ids.windows(2).all(|w| w[0] < w[1]), "in ID order");
         for id in &block_ids {
             assert_eq!(ring.block_of(message_position(id)), Some(block));
         }
-        assert!(page.items.iter().all(|i| i["topic"] == "pedidos"));
+        assert!(page.items.iter().all(|i| i["topic"] == "orders"));
         assert!(!page.end.has_more);
         listed.extend(block_ids);
     }
@@ -440,7 +441,7 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
     expected.sort();
     assert_eq!(listed, expected);
 
-    // Um bloco com várias mensagens: paginação por `limit`, retomada por `from` e faixa por `to`.
+    // A block with several messages: pagination by `limit`, resumption by `from` and range by `to`.
     let busiest = ring
         .blocks()
         .max_by_key(|b| {
@@ -474,14 +475,14 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
         .await
         .unwrap()
     else {
-        panic!("esperava um stream")
+        panic!("expected a stream")
     };
     assert_eq!(first.items.len(), 2);
     assert_eq!(first.end.has_more, in_block.len() > 2);
     assert_eq!(first.items[0]["id"], in_block[0].as_str());
     assert!(
         first.items[0]["body"].is_object(),
-        "o corpo JSON vai nativo"
+        "the JSON body goes native"
     );
     let Response::Stream(range) = service
         .handle(
@@ -498,12 +499,12 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
         .await
         .unwrap()
     else {
-        panic!("esperava um stream")
+        panic!("expected a stream")
     };
     assert_eq!(range.items.len(), 1);
     assert_eq!(range.items[0]["id"], in_block[1].as_str());
 
-    // A mensagem avulsa: `200` no bloco certo, `404` no outro e num ID que não existe.
+    // The single message: `200` in the right block, `404` in the other and on an ID that does not exist.
     let Response::Record(record) = service
         .handle(
             &caller,
@@ -515,10 +516,10 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
         .await
         .unwrap()
     else {
-        panic!("esperava a mensagem")
+        panic!("expected the message")
     };
     assert_eq!(record.id, in_block[0]);
-    assert_eq!(record.topic, "pedidos");
+    assert_eq!(record.topic, "orders");
     let other_block = ring.blocks().find(|b| *b != busiest).unwrap();
     for (block, id) in [
         (other_block, in_block[0].clone()),
@@ -536,7 +537,7 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
             .unwrap_err();
         assert_eq!(error.code.as_str(), "message.not-found");
     }
-    // Bloco malformado ou que o anel não tem; e quem não é membro.
+    // A malformed block or one the ring does not have; and whoever is not a member.
     let bad = service
         .handle(
             &caller,
@@ -576,22 +577,22 @@ async fn the_block_routes_list_ids_in_order_and_serve_ranges_and_single_messages
 /// UC: UC-ARM-022, UC-ARM-023, UC-SIN-021
 #[tokio::test]
 async fn a_node_that_lost_a_block_keeps_its_messages_until_the_whole_cluster_is_ready() {
-    // Fator 2: com a entrada do terceiro nó, parte dos blocos deixa de ser dos dois primeiros.
+    // Factor 2: with the third node joining, part of the blocks stop being the first two's.
     let (mut cluster, ids) = two_nodes_with_messages(40, &[("TABA_REPLICATION_FACTOR", "2")]).await;
-    assert_eq!(held(cluster.node(1), "pedidos", &ids), 40);
-    assert_eq!(held(cluster.node(2), "pedidos", &ids), 40);
+    assert_eq!(held(cluster.node(1), "orders", &ids), 40);
+    assert_eq!(held(cluster.node(2), "orders", &ids), 40);
 
     let number = start_isolated(&mut cluster, &[("TABA_REPLICATION_FACTOR", "2")]).await;
     let gate = pause_sync(&cluster, number, "replay");
     wait_phase(cluster.node(number), "replay").await;
-    // Com o nó novo em sincronização, ninguém apaga nada: se ele falhar, o anel volta ao anterior.
+    // With the new node syncing, no one deletes anything: if it fails, the ring goes back to the previous one.
     tokio::time::sleep(Duration::from_millis(700)).await;
-    assert_eq!(held(cluster.node(1), "pedidos", &ids), 40);
-    assert_eq!(held(cluster.node(2), "pedidos", &ids), 40);
+    assert_eq!(held(cluster.node(1), "orders", &ids), 40);
+    assert_eq!(held(cluster.node(2), "orders", &ids), 40);
 
     gate.add_permits(1);
     common::cluster::wait_joined(cluster.node(number)).await;
-    // Íntegro o cluster, cada nó fica só com as mensagens dos blocos de que é responsável.
+    // With the cluster sound, each node keeps only the messages of the blocks it is responsible for.
     let ring = cluster.node(1).node.cluster().unwrap().membership().ring();
     for n in 1..=3 {
         let me = cluster.node_id(n);
@@ -602,16 +603,14 @@ async fn a_node_that_lost_a_block_keeps_its_messages_until_the_whole_cluster_is_
             .collect();
         let node = cluster.node(n);
         let ids_all = ids.clone();
-        eventually("o nó guardar só o que é dele", || {
-            held(node, "pedidos", &ids_all) == wanted.len()
+        eventually("the node to keep only what is its own", || {
+            held(node, "orders", &ids_all) == wanted.len()
         })
         .await;
-        assert_eq!(held(node, "pedidos", &wanted), wanted.len());
+        assert_eq!(held(node, "orders", &wanted), wanted.len());
     }
-    let total: usize = (1..=3)
-        .map(|n| held(cluster.node(n), "pedidos", &ids))
-        .sum();
-    assert_eq!(total, 80, "cada mensagem em 2 nós");
+    let total: usize = (1..=3).map(|n| held(cluster.node(n), "orders", &ids)).sum();
+    assert_eq!(total, 80, "each message on 2 nodes");
     cluster.shutdown().await;
 }
 
@@ -619,24 +618,24 @@ async fn a_node_that_lost_a_block_keeps_its_messages_until_the_whole_cluster_is_
 #[tokio::test]
 async fn the_load_is_the_union_of_the_lists_of_the_sources_not_their_intersection() {
     let (mut cluster, mut ids) = two_nodes_with_messages(10, &[]).await;
-    // Uma cópia que só o nó 1 recebeu (por exemplo, o commit nunca chegou ao nó 2).
+    // A copy that only node 1 received (for example, the commit never reached node 2).
     let only_on_one = {
         let node = cluster.node(1);
         let messages = messages_of(node);
-        let view = messages.queue_view("pedidos").unwrap();
+        let view = messages.queue_view("orders").unwrap();
         let request = taba_node::engine::messages::PublishRequest {
             body: br#"{"so":"no-1"}"#.to_vec(),
             ..Default::default()
         };
         let (meta, body) = messages.draft_publish(&view, &request).unwrap();
         let id = meta.id.clone();
-        messages.apply_publish("pedidos", meta, body).unwrap();
+        messages.apply_publish("orders", meta, body).unwrap();
         id
     };
     assert_eq!(
         held(
             cluster.node(2),
-            "pedidos",
+            "orders",
             std::slice::from_ref(&only_on_one)
         ),
         0
@@ -647,9 +646,9 @@ async fn the_load_is_the_union_of_the_lists_of_the_sources_not_their_intersectio
     cluster.network.restore(&host_of(number));
     common::cluster::wait_joined(cluster.node(number)).await;
     assert_eq!(
-        held(cluster.node(number), "pedidos", &ids),
+        held(cluster.node(number), "orders", &ids),
         ids.len(),
-        "o que só uma origem tem também é carregado"
+        "what only one origin has is also loaded"
     );
     cluster.shutdown().await;
 }
@@ -662,15 +661,15 @@ async fn a_message_of_a_topic_created_after_the_topic_load_waits_for_the_definit
     let gate = pause_sync(&cluster, number, "blocks");
     wait_phase(cluster.node(number), "blocks").await;
 
-    // O nó já puxou as definições; este tópico (e a mensagem dele) nasce depois.
-    create_queue(cluster.node(1), "novo").await;
-    let late = publish(cluster.node(2), "novo", json!({"tarde": true})).await;
+    // The node already pulled the definitions; this topic (and its message) is born later.
+    create_queue(cluster.node(1), "new").await;
+    let late = publish(cluster.node(2), "new", json!({"late": true})).await;
 
     gate.add_permits(1);
     common::cluster::wait_joined(cluster.node(number)).await;
     let node3 = cluster.node(number);
-    assert_eq!(node3.client_get("/topics/novo").await.status(), 200);
-    assert_eq!(held(node3, "novo", std::slice::from_ref(&late)), 1);
+    assert_eq!(node3.client_get("/topics/new").await.status(), 200);
+    assert_eq!(held(node3, "new", std::slice::from_ref(&late)), 1);
     cluster.shutdown().await;
 }
 
@@ -683,24 +682,24 @@ async fn the_final_check_drops_what_the_load_brought_and_no_source_lists_anymore
     wait_phase(cluster.node(number), "verification").await;
     let node3 = cluster.node(number);
     assert_eq!(
-        held(node3, "pedidos", &ids),
+        held(node3, "orders", &ids),
         ids.len(),
-        "a carga trouxe tudo"
+        "the load brought everything"
     );
 
-    // Uma confirmação cujo pedido nunca chegou ao nó novo: some das origens sem passar pelo banco
-    // de eventos.
+    // A confirmation whose request never reached the new node: it disappears from the origins without going through the event
+    // database.
     let gone = ids[5].clone();
     for n in 1..=2 {
         messages_of(cluster.node(n))
-            .apply_ack("pedidos", &gone)
+            .apply_ack("orders", &gone)
             .unwrap();
     }
     gate.add_permits(1);
     common::cluster::wait_joined(node3).await;
-    assert_eq!(held(node3, "pedidos", std::slice::from_ref(&gone)), 0);
+    assert_eq!(held(node3, "orders", std::slice::from_ref(&gone)), 0);
     let others: Vec<String> = ids.iter().filter(|id| **id != gone).cloned().collect();
-    assert_eq!(held(node3, "pedidos", &others), others.len());
+    assert_eq!(held(node3, "orders", &others), others.len());
     cluster.shutdown().await;
 }
 
@@ -708,20 +707,20 @@ async fn the_final_check_drops_what_the_load_brought_and_no_source_lists_anymore
 #[tokio::test]
 async fn a_node_whose_join_commit_reaches_the_sources_late_waits_for_them_and_stays_in() {
     let mut cluster = TestCluster::start(3).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for n in 0..12 {
-        publish(cluster.node(1), "pedidos", json!({ "n": n })).await;
+        publish(cluster.node(1), "orders", json!({ "n": n })).await;
     }
     common::cluster::settled(&cluster).await;
 
-    // O commit chega aos outros nós bem depois de `write.commit.timeout` (400 ms): o coordenador
-    // responde `cluster.commit-timeout`, o nó novo começa a sincronizar e as origens ainda não o
-    // conhecem (`cluster.not-member`). Ele espera por elas em vez de falhar.
+    // The commit reaches the other nodes well after `write.commit.timeout` (400 ms): the coordinator
+    // answers `cluster.commit-timeout`, the new node starts syncing and the origins do not yet
+    // know it (`cluster.not-member`). It waits for them instead of failing.
     cluster
         .network
         .set_delay_kind("commit", Duration::from_millis(1500));
     let builder = cluster.builder(4, false);
-    let number = cluster.spawn_node(builder).await.expect("o nó sobe");
+    let number = cluster.spawn_node(builder).await.expect("the node starts");
     common::cluster::wait_joined(cluster.node(number)).await;
     assert_eq!(
         cluster.node(number).node.cluster().unwrap().node_state(),
@@ -737,20 +736,20 @@ async fn a_node_whose_join_commit_reaches_the_sources_late_waits_for_them_and_st
 /// UC: UC-CNC-009
 #[tokio::test]
 async fn two_joins_coordinated_by_different_members_have_a_winner_and_neither_fails() {
-    // Os dois nós novos sorteiam o coordenador entre os três membros: repete até caírem em
-    // coordenadores diferentes (2 de 3 vezes).
+    // The two new nodes draw the coordinator among the three members: repeats until they land on
+    // different coordinators (2 out of 3 times).
     for _ in 0..12 {
         let mut cluster = TestCluster::start(3).await;
         common::cluster::settled(&cluster).await;
-        // O registro demora, para os dois coordenadores deixarem a mudança pendente antes de se
-        // cruzarem.
+        // The register takes a while, so the two coordinators leave the change pending before
+        // crossing paths.
         cluster
             .network
             .set_delay_kind("register", Duration::from_millis(150));
         let builders = [cluster.builder(4, false), cluster.builder(5, false)];
         let mut numbers = Vec::new();
         for builder in builders {
-            numbers.push(cluster.spawn_node(builder).await.expect("o nó sobe"));
+            numbers.push(cluster.spawn_node(builder).await.expect("the node starts"));
         }
         for number in &numbers {
             common::cluster::wait_joined(cluster.node(*number)).await;
@@ -775,13 +774,10 @@ async fn two_joins_coordinated_by_different_members_have_a_winner_and_neither_fa
         let all_in = table.members.len() == 5;
         cluster.shutdown().await;
         if coordinators.len() >= 2 {
-            assert!(all_in, "os cinco nós ficaram na tabela");
-            assert_eq!(
-                refused, 0.0,
-                "nenhum ingresso foi recusado por causa do cruzamento"
-            );
+            assert!(all_in, "the five nodes stayed in the table");
+            assert_eq!(refused, 0.0, "no join was refused because of the crossing");
             return;
         }
     }
-    panic!("os dois ingressos nunca caíram em coordenadores diferentes");
+    panic!("the two joins never landed on different coordinators");
 }

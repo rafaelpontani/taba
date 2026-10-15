@@ -1,11 +1,11 @@
-//! Os sinais entre nós (doc 13, seção 12.8): quais nós têm mensagens prontas de um tópico, quais
-//! têm ouvintes de long polling e quais estão em drain. Cada nó guarda isso **em memória** e só
-//! manda sinal nas **mudanças** de estado; com a tabela, a decisão de a quem pedir um `take` ou
-//! avisar é local.
+//! The signals between nodes (doc 13, section 12.8): which nodes have ready messages of a topic, which
+//! have long-polling listeners and which are in drain. Each node keeps this **in memory** and only
+//! sends a signal on **changes** of state; with the table, the decision of whom to ask for a `take` or
+//! notify is local.
 //!
-//! Os sinais viajam pelo canal entre nós (`cluster::channel`): fila de saída com `seq`,
-//! confirmação e reenvio, mais o sinal de vida, que repete os tópicos com mensagens prontas e o
-//! estado do nó (o que corrige um sinal que se perdeu).
+//! The signals travel through the channel between nodes (`cluster::channel`): outgoing queue with `seq`,
+//! confirmation and resend, plus the heartbeat, which repeats the topics with ready messages and the
+//! node's state (what fixes a signal that got lost).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -26,25 +26,25 @@ use crate::telemetry::metrics::CLUSTER_NOTIFICATIONS;
 
 #[derive(Default)]
 struct Tables {
-    /// Tópico → nós que têm mensagens prontas.
+    /// Topic → nodes that have ready messages.
     ready: HashMap<String, HashSet<String>>,
-    /// Tópico → nós que têm ouvintes.
+    /// Topic → nodes that have listeners.
     listeners: HashMap<String, HashSet<String>>,
-    /// Nós em drain: ninguém pede `take` a eles.
+    /// Nodes in drain: nobody asks them for a `take`.
     draining: HashSet<String>,
-    /// Tópico → quantos `GET` esperam aqui.
+    /// Topic → how many `GET`s wait here.
     local_listeners: HashMap<String, usize>,
-    /// Tópico → o nó que avisou por último: o `GET` acordado tenta o `take` nele primeiro.
+    /// Topic → the node that notified last: the woken `GET` tries the `take` on it first.
     hints: HashMap<String, String>,
-    /// O último nó avisado de cada tópico, para revezar entre os que têm ouvinte.
+    /// The last node notified of each topic, to rotate among those that have a listener.
     last_notified: HashMap<String, String>,
-    /// Tópicos com um ciclo de avisos em andamento (um responsável por tópico).
+    /// Topics with a notice cycle in progress (one responsible party per topic).
     cycles: HashSet<String>,
-    /// Quantos `take` cada nó fez aqui por tópico: o responsável vê se o avisado veio.
+    /// How many `take`s each node made here per topic: the responsible party sees whether the notified one came.
     takes: HashMap<(String, String), u64>,
-    /// Tópico → nós que avisaram e ainda não tiveram o `take` resultante contado.
+    /// Topic → nodes that notified and have not yet had the resulting `take` counted.
     notified: HashMap<String, HashSet<String>>,
-    /// A quantidade do último aviso recebido de cada tópico.
+    /// The quantity of the last notice received for each topic.
     notices: HashMap<String, u64>,
 }
 
@@ -53,12 +53,12 @@ pub struct Signals {
     messages: Arc<Messages>,
     channels: OnceLock<Arc<Channels>>,
     tables: Mutex<Tables>,
-    /// O motor avisa aqui (sem bloquear) quando o tópico passa a ter ou deixa de ter prontas.
+    /// The engine notifies here (without blocking) when the topic starts or stops having ready ones.
     ready_tx: mpsc::UnboundedSender<(String, bool)>,
     ready_rx: Mutex<Option<mpsc::UnboundedReceiver<(String, bool)>>>,
 }
 
-/// Enquanto existe, há um `GET` em espera por mensagem do tópico neste nó.
+/// While it exists, there is a `GET` waiting for a message of the topic on this node.
 pub struct ListenerGuard {
     signals: Arc<Signals>,
     topic: String,
@@ -83,7 +83,7 @@ impl Signals {
         })
     }
 
-    /// Liga os sinais ao canal que os leva.
+    /// Attaches the signals to the channel that carries them.
     pub fn set_channels(&self, channels: Arc<Channels>) {
         let _ = self.channels.set(channels);
     }
@@ -96,12 +96,12 @@ impl Signals {
         self.tables.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// O que o motor chama (de dentro da trava do tópico) quando as prontas mudam.
+    /// What the engine calls (from inside the topic lock) when the ready ones change.
     pub fn ready_sender(&self) -> mpsc::UnboundedSender<(String, bool)> {
         self.ready_tx.clone()
     }
 
-    /// A tarefa que transforma as mudanças de prontas em sinais, até o nó parar.
+    /// The task that turns ready changes into signals, until the node stops.
     pub async fn run(self: Arc<Self>) {
         let Some(mut rx) = self
             .ready_rx
@@ -127,16 +127,16 @@ impl Signals {
         self.service.node_id()
     }
 
-    /// Manda o sinal a todos os outros membros pela fila do canal.
+    /// Sends the signal to all the other members through the channel queue.
     fn broadcast(&self, signal: Signal) {
         if let Some(channels) = self.channels() {
             channels.broadcast(signal);
         }
     }
 
-    // ---- O sinal de vida e o instantâneo ----
+    // ---- The heartbeat and the snapshot ----
 
-    /// O estado do nó como os pares o veem.
+    /// The node's state as the peers see it.
     fn state_name(&self) -> &'static str {
         match (self.service.node_state(), self.service.drain_state()) {
             (_, DrainState::Draining | DrainState::Drained) => "draining",
@@ -148,8 +148,8 @@ impl Signals {
         }
     }
 
-    /// O sinal de vida (doc 06c): data, carga, versão da tabela, estado e os tópicos com mensagens
-    /// prontas (até `max_topics`).
+    /// The heartbeat (doc 06c): date, load, table version, state and the topics with ready messages
+    /// (up to `max_topics`).
     pub fn keepalive(&self, max_topics: usize) -> Keepalive {
         let load: usize = self.lock().local_listeners.values().sum();
         let mut ready: Vec<ReadyCount> = self
@@ -169,8 +169,8 @@ impl Signals {
         }
     }
 
-    /// O instantâneo que se manda a um canal novo ou que voltou (doc 13, seção 12.9): o estado do
-    /// nó, um `listeners` e um `ready` para cada tópico em que o estado é verdadeiro.
+    /// The snapshot sent to a new or returning channel (doc 13, section 12.9): the node's state, a
+    /// `listeners` and a `ready` for each topic where the state is true.
     pub fn snapshot(&self) -> Vec<Signal> {
         let mut out = vec![Signal::NodeState {
             state: self.state_name().to_owned(),
@@ -201,8 +201,8 @@ impl Signals {
         out
     }
 
-    /// Aplica o sinal de vida de um par: os tópicos com prontas dele (a lista é o estado completo,
-    /// então o que não está nela deixa de valer) e o estado do nó.
+    /// Applies a peer's heartbeat: its topics with ready ones (the list is the complete state,
+    /// so what is not on it stops applying) and the node's state.
     pub fn apply_keepalive(&self, from: &str, keepalive: &Keepalive) {
         {
             let mut tables = self.lock();
@@ -226,7 +226,7 @@ impl Signals {
     fn apply_state(&self, from: &str, state: &str) {
         match state {
             "active" => {
-                // O nó que sincronizava ficou pronto: a mudança de membros que esperava pode seguir.
+                // The node that was syncing became ready: the member change that was waiting can proceed.
                 self.service
                     .membership()
                     .set_state(from, MemberState::Active);
@@ -244,10 +244,10 @@ impl Signals {
         }
     }
 
-    // ---- O que este nó diz ----
+    // ---- What this node says ----
 
-    /// As prontas do tópico mudaram aqui: avisa os outros e, se chegou mensagem, abre o ciclo de
-    /// avisos aos nós com ouvinte (doc 13, seção 12.8).
+    /// The topic's ready ones changed here: notifies the others and, if a message arrived, opens the cycle of
+    /// notices to the nodes with a listener (doc 13, section 12.8).
     fn local_ready_changed(self: &Arc<Self>, topic: &str, has_ready: bool) {
         self.broadcast(Signal::Ready {
             topic: topic.to_owned(),
@@ -263,10 +263,10 @@ impl Signals {
         }
     }
 
-    /// O responsável pelos avisos do tópico (um por tópico, ativo só enquanto há mensagem a avisar e
-    /// ouvinte em algum nó): acumula as prontas por `cluster.notify.window`, manda **um** aviso com a
-    /// quantidade a **um** nó com ouvinte, espera `cluster.notify.wait` que ele venha buscar e, se não
-    /// veio (ou veio e ainda sobrou), passa ao próximo, até acabarem as mensagens ou os nós.
+    /// The party responsible for the topic's notices (one per topic, active only while there is a message to notify and
+    /// a listener on some node): accumulates the ready ones for `cluster.notify.window`, sends **one** notice with the
+    /// quantity to **one** node with a listener, waits `cluster.notify.wait` for it to come fetch and, if it
+    /// did not come (or came and some were left), moves to the next, until the messages or the nodes run out.
     async fn notify_cycle(&self, topic: &str) {
         let rules = self.service.rules();
         let cancel = self.service.cancel_token().clone();
@@ -299,7 +299,7 @@ impl Signals {
                     },
                 );
             }
-            // Espera o nó vir buscar; se não vem a tempo, o próximo da vez.
+            // Waits for the node to come fetch; if it does not come in time, the next in turn.
             let deadline = tokio::time::Instant::now() + rules.notify_wait;
             while self.takes_of(topic, &node) == before && tokio::time::Instant::now() < deadline {
                 tokio::select! {
@@ -310,8 +310,8 @@ impl Signals {
         }
     }
 
-    /// O próximo nó com ouvinte a avisar: entre os que ainda não foram tentados neste ciclo,
-    /// revezando a partir do último avisado. Fora os em drain e os que saíram da tabela.
+    /// The next node with a listener to notify: among those not yet tried in this cycle,
+    /// rotating from the last notified. Excluding those in drain and those that left the table.
     fn next_listener(&self, topic: &str, tried: &HashSet<String>) -> Option<String> {
         let mut tables = self.lock();
         let me = self.me();
@@ -347,7 +347,7 @@ impl Signals {
             .unwrap_or(0)
     }
 
-    /// Um nó pediu `take` do tópico aqui: o aviso que se mandou a ele foi atendido.
+    /// A node asked for a `take` of the topic here: the notice sent to it was answered.
     pub fn took(&self, topic: &str, node: &str) {
         *self
             .lock()
@@ -356,8 +356,8 @@ impl Signals {
             .or_default() += 1;
     }
 
-    /// O `take` que um aviso recebido provocou terminou: `fetched` se trouxe mensagens, `empty`
-    /// se o aviso era uma dica velha (doc 13, seção 12.8). Conta uma vez por aviso.
+    /// The `take` that a received notice provoked finished: `fetched` if it brought messages, `empty`
+    /// if the notice was an old hint (doc 13, section 12.8). Counts once per notice.
     pub fn notified_outcome(&self, topic: &str, node: &str, fetched: bool) {
         let was_notified = self
             .lock()
@@ -376,8 +376,8 @@ impl Signals {
         }
     }
 
-    /// Um `GET` começou a esperar mensagem do tópico neste nó. Na primeira (0 → 1) avisa os outros
-    /// nós, uma vez só, não importa quantos esperem.
+    /// A `GET` started waiting for a message of the topic on this node. On the first (0 → 1) it notifies the other
+    /// nodes, once only, no matter how many wait.
     pub fn listener(self: &Arc<Self>, topic: &str) -> ListenerGuard {
         let first = {
             let mut tables = self.lock();
@@ -418,7 +418,7 @@ impl Signals {
         }
     }
 
-    /// Os nós que dizem ter ouvinte do tópico.
+    /// The nodes that say they have a listener for the topic.
     pub fn listener_nodes(&self, topic: &str) -> Vec<String> {
         let mut nodes: Vec<String> = self
             .lock()
@@ -430,25 +430,25 @@ impl Signals {
         nodes
     }
 
-    /// A quantidade de mensagens prontas que o último aviso do tópico trouxe.
+    /// The quantity of ready messages the topic's last notice brought.
     pub fn last_notice_count(&self, topic: &str) -> Option<u64> {
         self.lock().notices.get(topic).copied()
     }
 
-    /// Quantos `GET` esperam o tópico neste nó.
+    /// How many `GET`s wait for the topic on this node.
     pub fn local_listener_count(&self, topic: &str) -> usize {
         self.lock().local_listeners.get(topic).copied().unwrap_or(0)
     }
 
-    /// O drain foi cancelado: os pares voltam a pedir `take` a este nó.
+    /// The drain was cancelled: the peers go back to asking this node for `take`.
     pub fn announce_active(&self) {
         self.broadcast(Signal::NodeState {
             state: "active".to_owned(),
         });
     }
 
-    /// Um nó foi excluído por votação e está em freezing: todos os pares ficam sabendo, inclusive o
-    /// que estava fora do ar no commit (a fila de saída guarda o quadro até o canal voltar).
+    /// A node was excluded by vote and is in freezing: all the peers get to know it, including the one
+    /// that was down at the commit (the outgoing queue keeps the frame until the channel comes back).
     pub fn announce_frozen(&self, node_id: &str, frozen_at: u64) {
         self.broadcast(Signal::Frozen {
             node_id: node_id.to_owned(),
@@ -456,8 +456,8 @@ impl Signals {
         });
     }
 
-    /// Uma mudança de membros foi efetivada neste nó: todos os pares ficam sabendo, inclusive o que
-    /// perdeu o registro ou o commit (a fila de saída guarda o quadro até o `confirm`).
+    /// A member change took effect on this node: all the peers get to know it, including the one that
+    /// lost the register or the commit (the outgoing queue keeps the frame until the `confirm`).
     pub fn announce_membership(&self, operation_id: &str, version: u64, change: &Change) {
         self.broadcast(Signal::Membership {
             operation_id: operation_id.to_owned(),
@@ -466,9 +466,9 @@ impl Signals {
         });
     }
 
-    /// Uma definição aplicada neste nó (como dono ou herdeiro): todos os pares a recebem pelo canal, o
-    /// que estava fora do ar ao voltar (a fila guarda o quadro, e o seguinte da mesma definição o
-    /// substitui).
+    /// A definition applied on this node (as owner or heir): all the peers receive it through the channel, the
+    /// one that was down when it comes back (the queue keeps the frame, and the next of the same definition
+    /// replaces it).
     pub fn announce_definition(&self, change: DefinitionApply) {
         self.broadcast(Signal::Definition {
             kind: change.kind,
@@ -479,23 +479,23 @@ impl Signals {
         });
     }
 
-    /// Este nó entrou em drain: os pares deixam de pedir `take` a ele.
+    /// This node entered drain: the peers stop asking it for `take`.
     pub fn announce_draining(&self) {
         self.broadcast(Signal::NodeState {
             state: "draining".to_owned(),
         });
     }
 
-    /// Este nó entrou em falha: os outros ficam liberados para votar a exclusão dele.
+    /// This node entered failure: the others are free to vote on excluding it.
     pub fn announce_failed(&self) {
         self.broadcast(Signal::NodeState {
             state: "failed".to_owned(),
         });
     }
 
-    /// Avisa **todos** os pares do estado deste nó e espera os `confirm` (o nó que ficou pronto
-    /// precisa que os outros saibam, para voltarem a aceitar mudanças de membros e o escolherem como
-    /// destino).
+    /// Notifies **all** the peers of this node's state and waits for the `confirm`s (the node that became ready
+    /// needs the others to know, so they go back to accepting member changes and choose it as a
+    /// destination).
     pub async fn announce_state_reliably(&self, state: &str) {
         if let Some(channels) = self.channels() {
             channels
@@ -509,14 +509,14 @@ impl Signals {
         }
     }
 
-    /// Esquece o que se sabe dos outros nós (o nó volta como nó novo).
+    /// Forgets what is known about the other nodes (the node comes back as a new node).
     pub fn reset(&self) {
         *self.lock() = Tables::default();
     }
 
-    // ---- O que os outros dizem ----
+    // ---- What the others say ----
 
-    /// Um sinal chegou de outro nó.
+    /// A signal arrived from another node.
     pub fn receive(&self, frame: SignalFrame) {
         let SignalFrame { from, signal } = frame;
         match signal {
@@ -547,8 +547,8 @@ impl Signals {
                     &[("taba.direction", "in"), ("taba.outcome", "received")],
                     1.0,
                 );
-                // Marca quem avisou (o `take` vai primeiro a ele) e acorda os `GET` que esperam,
-                // tantos quantos são.
+                // Marks who notified (the `take` goes to it first) and wakes the waiting `GET`s,
+                // as many as there are.
                 let waiting = {
                     let mut tables = self.lock();
                     tables
@@ -593,8 +593,8 @@ impl Signals {
         }
     }
 
-    /// O freezing de um nó excluído, dito por um par: quem ainda não o conhecia o guarda e o repassa
-    /// a todos; o eco (já conhecido, vencido ou do próprio nó) morre aqui.
+    /// A node's freezing after exclusion, said by a peer: whoever did not know it stores it and passes it on
+    /// to everyone; the echo (already known, expired or from the node itself) dies here.
     fn apply_frozen(&self, node_id: String, frozen_at: u64) {
         if node_id == self.me() {
             return;
@@ -606,15 +606,15 @@ impl Signals {
             self.service.rules().freezing_duration,
         );
         if learned {
-            tracing::info!(node_id = %node_id, "nó em freezing (dito por um par)");
+            tracing::info!(node_id = %node_id, "node in freezing (said by a peer)");
             self.announce_frozen(&node_id, frozen_at);
         }
     }
 
-    /// Os nós que têm mensagens prontas do tópico, sem este, os em drain, os que saíram da tabela e
-    /// os de canal fora do ar: pedir `take` a um par que não responde custa o prazo da chamada
-    /// (5 s) a cada tentativa, e o canal reaberto traz o instantâneo de volta.
-    /// O nó que avisou por último vem primeiro.
+    /// The nodes that have ready messages of the topic, minus this one, those in drain, those that left the table and
+    /// those with a down channel: asking a peer that does not answer for a `take` costs the call deadline
+    /// (5 s) on each attempt, and the reopened channel brings the snapshot back.
+    /// The node that notified last comes first.
     pub fn ready_peers(&self, topic: &str) -> Vec<String> {
         let tables = self.lock();
         let me = self.me();
@@ -633,10 +633,10 @@ impl Signals {
                     .collect()
             })
             .unwrap_or_default();
-        // O sorteio entre os nós é uniforme: o sinal de vida só diz que há prontas.
+        // The draw among the nodes is uniform: the heartbeat only says that there are ready ones.
         for i in (1..peers.len()).rev() {
             let mut bytes = [0u8; 8];
-            getrandom::fill(&mut bytes).expect("o sistema não tem fonte de números aleatórios");
+            getrandom::fill(&mut bytes).expect("the system has no source of random numbers");
             peers.swap(i, (u64::from_le_bytes(bytes) % (i as u64 + 1)) as usize);
         }
         if let Some(hint) = tables.hints.get(topic)
@@ -648,7 +648,7 @@ impl Signals {
         peers
     }
 
-    /// O `take` a um nó voltou vazio: a dica de que ele tinha mensagens estava velha.
+    /// The `take` on a node came back empty: the hint that it had messages was old.
     pub fn mark_empty(&self, topic: &str, node: &str) {
         let mut tables = self.lock();
         if let Some(set) = tables.ready.get_mut(topic) {
@@ -659,15 +659,15 @@ impl Signals {
         }
     }
 
-    /// O nó tem o chamador em drain? (para responder `take` vazio)
+    /// Does the node have the caller in drain? (to answer an empty `take`)
     pub fn is_draining(&self, node: &str) -> bool {
         self.lock().draining.contains(node)
     }
 
     // ---- Membros ----
 
-    /// A tabela de membros mudou: esquece o que se sabia dos que saíram e acerta os canais (o de
-    /// quem entrou abre com o instantâneo; o de quem saiu é descartado com as filas).
+    /// The member table changed: forgets what was known of those that left and adjusts the channels (the one of
+    /// whoever joined opens with the snapshot; the one of whoever left is dropped with the queues).
     pub fn membership_changed(&self) {
         let Some(table) = self.service.membership().table() else {
             return;

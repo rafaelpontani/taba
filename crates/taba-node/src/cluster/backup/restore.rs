@@ -1,19 +1,19 @@
-//! A restauração a partir do bucket (doc 23, "Backup em S3", seção 1.7).
+//! The restore from the bucket (doc 23, "S3 backup", section 1.7).
 //!
-//! **Quem restaura.** O nó que sobe e **não acha ninguém vivo**: observa `nodes/*.json` por
-//! `backup.dead-after`; se algum batimento estiver fresco, ele não está sozinho e entra pelo caminho
-//! normal; se todos estiverem vencidos (ou o cluster foi parado de propósito), ele é o **sobrevivente
-//! único**: começa um cluster de um nó só e restaura.
+//! **Who restores.** The node that starts up and **finds no one alive**: it observes `nodes/*.json` for
+//! `backup.dead-after`; if some heartbeat is fresh, it is not alone and joins through the
+//! normal path; if all are expired (or the cluster was stopped on purpose), it is the **sole
+//! survivor**: it starts a one-node cluster and restores.
 //!
-//! **Dois restauradores ao mesmo tempo.** A trava `restore/lock.json`, com escrita condicional
-//! (`If-None-Match` para criar), decide quem ganha. Quem perde espera e entra como nó normal. A trava
-//! tem validade (`backup.restore.lock-ttl`) e o titular a renova. Num S3 sem escrita condicional a
-//! trava não é segura: o nó avisa e segue (risco aceito).
+//! **Two restorers at once.** The `restore/lock.json` lock, with a conditional write
+//! (`If-None-Match` to create), decides who wins. Whoever loses waits and joins as a normal node. The lock
+//! has a validity (`backup.restore.lock-ttl`) and the holder renews it. On an S3 without conditional writes the
+//! lock is not safe: the node warns and goes on (accepted risk).
 //!
-//! **O que volta.** As definições de tópico e os tokens; as mensagens dos segmentos com o estado do
-//! último diário. As mensagens removidas pelo diário (ack, `ttl`, dead-letter) são descartadas.
+//! **What comes back.** The topic definitions and the tokens; the messages from the segments with the state of the
+//! last journal. Messages removed by the journal (ack, `ttl`, dead-letter) are discarded.
 //!
-//! **Identidade.** Um nó morto que volta entra como nó novo, com id novo.
+//! **Identity.** A dead node that returns joins as a new node, with a new id.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::Ordering;
@@ -31,28 +31,28 @@ use crate::storage::backup::segment::{self, FooterRead, TAIL_GUESS};
 use crate::storage::backup::{SavedRef, SegmentRow, StoreError, keys};
 use crate::storage::messages::MessageMeta;
 
-/// O que a decisão da partida manda fazer.
+/// What the startup decision orders to be done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartupDecision {
-    /// Ninguém vivo e a trava é deste nó: começa um cluster de um nó só e restaura.
+    /// No one alive and the lock is this node's: starts a one-node cluster and restores.
     StartAlone,
-    /// Há um cluster vivo (ou outro nó restaura): segue tentando entrar pelo caminho normal.
+    /// There is a live cluster (or another node restores): keeps trying to join through the normal path.
     KeepTrying,
 }
 
-/// O que a restauração devolveu.
+/// What the restore returned.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RestoreReport {
     pub topics: u64,
     pub tokens: u64,
     pub messages: u64,
-    /// Descartadas porque o diário as removeu.
+    /// Discarded because the journal removed them.
     pub removed: u64,
-    /// Descartadas por `ttl` vencido.
+    /// Discarded because of an expired `ttl`.
     pub expired: u64,
 }
 
-/// O conteúdo de `restore/lock.json`.
+/// The content of `restore/lock.json`.
 #[derive(Debug, Serialize, Deserialize)]
 struct LockBody {
     holder: String,
@@ -60,26 +60,26 @@ struct LockBody {
     at_ms: u64,
 }
 
-/// O resultado de tentar a trava.
+/// The result of trying the lock.
 enum Lock {
-    /// Ganhou a trava.
+    /// Won the lock.
     Held,
-    /// Outro nó restaura.
+    /// Another node restores.
     Busy,
-    /// O S3 não respondeu.
+    /// S3 did not answer.
     Unavailable,
 }
 
 impl Backup {
-    /// A decisão da partida (doc 23, 1.7, exemplo C): chamada quando a listagem de nós pelo
-    /// `cluster.entry-address` não encontra ninguém.
+    /// The startup decision (doc 23, 1.7, example C): called when the node listing through
+    /// `cluster.entry-address` finds no one.
     pub async fn startup_decision(&self, first_node: bool) -> StartupDecision {
         let verdict = self.wait_for_verdict().await;
         let stopped = self.read_stop_list().await.is_some();
         match verdict {
             Verdict::Unavailable => {
                 if first_node {
-                    // Sem S3 o recurso fica desligado e o cluster funciona como hoje.
+                    // Without S3 the feature is off and the cluster works as it does today.
                     StartupDecision::StartAlone
                 } else {
                     StartupDecision::KeepTrying
@@ -88,7 +88,7 @@ impl Backup {
             Verdict::Alive(beats) => {
                 tracing::info!(
                     nodes = ?beats.iter().map(|b| (&b.id, &b.addresses)).collect::<Vec<_>>(),
-                    "backup: há nós batendo no bucket; este nó não está sozinho e segue tentando entrar"
+                    "backup: there are nodes beating in the bucket; this node is not alone and keeps trying to join"
                 );
                 StartupDecision::KeepTrying
             }
@@ -98,12 +98,14 @@ impl Backup {
                     tracing::warn!(
                         node_id = %self.node_id(),
                         stopped,
-                        "backup: nenhum nó bate no bucket; este nó é o sobrevivente único e vai restaurar"
+                        "backup: no node beats in the bucket; this node is the sole survivor and will restore"
                     );
                     StartupDecision::StartAlone
                 }
                 Lock::Busy => {
-                    tracing::info!("backup: outro nó restaura; este espera e entra como nó normal");
+                    tracing::info!(
+                        "backup: another node restores; this one waits and joins as a normal node"
+                    );
                     StartupDecision::KeepTrying
                 }
                 Lock::Unavailable if first_node => StartupDecision::StartAlone,
@@ -112,7 +114,7 @@ impl Backup {
         }
     }
 
-    /// Uma tentativa de pegar a trava de restauração.
+    /// An attempt to take the restore lock.
     async fn try_restore_lock(&self) -> Lock {
         let me = self.node_id();
         let body = |at_ms| {
@@ -120,7 +122,7 @@ impl Backup {
                 holder: me.clone(),
                 at_ms,
             })
-            .expect("a trava serializa")
+            .expect("the lock serializes")
         };
         match self
             .store
@@ -128,23 +130,23 @@ impl Backup {
             .await
         {
             Ok(true) => {
-                self.note::<(), StoreError>("trava de restauração", &Ok(()));
+                self.note::<(), StoreError>("restore lock", &Ok(()));
                 return Lock::Held;
             }
             Ok(false) => {}
             Err(StoreError::Unsupported(why)) => {
                 tracing::warn!(
                     why,
-                    "backup: o S3 não suporta escrita condicional; a trava de restauração não é segura (dois restauradores podem divergir)"
+                    "backup: S3 does not support conditional writes; the restore lock is not safe (two restorers may diverge)"
                 );
                 return Lock::Held;
             }
             Err(e) => {
-                self.note::<(), _>("trava de restauração", &Err(e));
+                self.note::<(), _>("restore lock", &Err(e));
                 return Lock::Unavailable;
             }
         }
-        // Já existe: quem a tem? Sem relógio sincronizado, só se vê o ETag parado.
+        // It already exists: who has it? Without a synchronized clock, all that is seen is the stalled ETag.
         let Ok(Some(object)) = self.store.get(keys::RESTORE_LOCK).await else {
             return Lock::Busy;
         };
@@ -168,7 +170,7 @@ impl Backup {
         if !expired {
             return Lock::Busy;
         }
-        // O titular parou de renovar: toma a trava só se ela ainda é a que vimos.
+        // The holder stopped renewing: takes the lock only if it is still the one we saw.
         match self
             .store
             .put_if_match(
@@ -179,7 +181,7 @@ impl Backup {
             .await
         {
             Ok(true) => {
-                tracing::warn!("backup: a trava de restauração venceu; este nó a assumiu");
+                tracing::warn!("backup: the restore lock expired; this node took it over");
                 Lock::Held
             }
             Ok(false) => Lock::Busy,
@@ -187,13 +189,13 @@ impl Backup {
         }
     }
 
-    /// Roda a restauração em segundo plano (o nó já está ativo, sozinho no cluster) e solta a
-    /// trava ao fim.
+    /// Runs the restore in the background (the node is already active, alone in the cluster) and releases the
+    /// lock at the end.
     pub fn spawn_restore(self: &std::sync::Arc<Self>) {
         let me = self.clone();
         tokio::spawn(async move {
             me.restoring.store(true, Ordering::SeqCst);
-            // Renova a trava enquanto restaura.
+            // Renews the lock while restoring.
             let renew = me.cancel.child_token();
             let renewer = {
                 let (me, renew) = (me.clone(), renew.clone());
@@ -208,18 +210,18 @@ impl Backup {
                             holder: me.node_id(),
                             at_ms: me.clock.now_millis(),
                         })
-                        .expect("a trava serializa");
+                        .expect("the lock serializes");
                         let _ = me.store.put(keys::RESTORE_LOCK, body).await;
                     }
                 })
             };
             let report = me.restore().await;
-            tracing::info!(?report, "backup: restauração concluída");
+            tracing::info!(?report, "backup: restore completed");
             renew.cancel();
             let _ = renewer.await;
             me.restoring.store(false, Ordering::SeqCst);
-            // O cluster voltou a funcionar: solta a trava, apaga a lista da parada e os batimentos
-            // de nós mortos que ninguém reclama.
+            // The cluster is working again: releases the lock, deletes the stop list and the heartbeats
+            // of dead nodes nobody claims.
             let _ = me.store.delete(keys::RESTORE_LOCK).await;
             let _ = me.store.delete(keys::STOP_LIST).await;
             me.cleanup_nodes().await;
@@ -227,13 +229,13 @@ impl Backup {
         });
     }
 
-    /// Lê o bucket e devolve ao nó o que ele guarda: definições, tokens e mensagens.
+    /// Reads the bucket and gives the node back what it keeps: definitions, tokens and messages.
     pub async fn restore(&self) -> RestoreReport {
         let mut report = RestoreReport::default();
 
-        // 1. Definições de tópico.
+        // 1. Topic definitions.
         let listed = self.store.list(keys::TOPICS_PREFIX).await;
-        self.note("LIST de topics/", &listed);
+        self.note("LIST of topics/", &listed);
         let mut restored = Vec::new();
         for object in listed.unwrap_or_default() {
             let Ok(Some(body)) = self.store.get(&object.key).await else {
@@ -251,14 +253,14 @@ impl Backup {
                     restored.push(definition);
                 }
                 Err(e) => {
-                    tracing::error!(topic = %definition.name, error = %e.message, "backup: não foi possível restaurar o tópico")
+                    tracing::error!(topic = %definition.name, error = %e.message, "backup: could not restore the topic")
                 }
             }
         }
 
-        // 2. Tokens (os vencidos ficam de fora).
+        // 2. Tokens (the expired ones are left out).
         let listed = self.store.list(keys::TOKENS_PREFIX).await;
-        self.note("LIST de tokens/", &listed);
+        self.note("LIST of tokens/", &listed);
         let now = self.clock.now_millis();
         for object in listed.unwrap_or_default() {
             let Ok(Some(body)) = self.store.get(&object.key).await else {
@@ -275,7 +277,7 @@ impl Backup {
             }
         }
 
-        // 3. Mensagens, tópico por tópico (a dead-letter de cada fila também).
+        // 3. Messages, topic by topic (each queue's dead-letter too).
         for definition in restored {
             if definition.queue().is_none() {
                 continue;
@@ -302,7 +304,7 @@ impl Backup {
             .store
             .list(&keys::segments_prefix(name, &topic_id))
             .await;
-        self.note("LIST de segmentos", &segments);
+        self.note("LIST of segments", &segments);
         let mut alive: BTreeMap<String, (MessageMeta, Vec<u8>, SavedRef)> = BTreeMap::new();
         let mut sizes: HashMap<String, (u64, u64)> = HashMap::new();
         for object in segments.unwrap_or_default() {
@@ -310,7 +312,7 @@ impl Backup {
                 continue;
             };
             let Ok((footer, messages)) = segment::decode_all(&whole.body) else {
-                tracing::error!(key = %object.key, "backup: segmento ilegível; ignorado");
+                tracing::error!(key = %object.key, "backup: unreadable segment; ignored");
                 continue;
             };
             sizes.insert(
@@ -333,23 +335,23 @@ impl Backup {
                 );
             }
         }
-        // O diário, do mais antigo ao mais novo: o último estado de cada mensagem vence.
+        // The journal, from oldest to newest: each message's last state wins.
         let journals = self
             .store
             .list(&keys::journals_prefix(name, &topic_id))
             .await;
-        self.note("LIST de diários", &journals);
+        self.note("LIST of journals", &journals);
         for object in journals.unwrap_or_default() {
             let Ok(Some(body)) = self.store.get(&object.key).await else {
                 continue;
             };
             let Ok((_, records)) = journal::decode(&body.body) else {
-                tracing::error!(key = %object.key, "backup: diário ilegível; ignorado");
+                tracing::error!(key = %object.key, "backup: unreadable journal; ignored");
                 continue;
             };
             apply_records(&mut alive, &records, &mut report.removed);
         }
-        // Quantas vivas cada segmento tem, para o nó saber apagá-lo quando todas morrerem.
+        // How many live ones each segment has, so the node knows to delete it when all die.
         let mut live: HashMap<String, u64> = HashMap::new();
         for (id, (meta, body, saved)) in alive {
             let _ = self.db.set_saved(name, &id, &saved);
@@ -366,7 +368,7 @@ impl Backup {
                     let _ = self.db.forget(name, &id);
                 }
                 Err(e) => {
-                    tracing::error!(topic = %name, id = %id, error = %e.message, "backup: não foi possível restaurar a mensagem");
+                    tracing::error!(topic = %name, id = %id, error = %e.message, "backup: could not restore the message");
                     let _ = self.db.forget(name, &id);
                 }
             }
@@ -388,9 +390,9 @@ impl Backup {
         }
     }
 
-    /// Se algum membro saiu da tabela desde a última volta (excluído por morte), procura no
-    /// bucket as mensagens dos blocos que este nó passou a guardar e que ele não tem: as que só
-    /// existiam nos nós mortos (doc 23, seção 1.7, exemplo B).
+    /// If some member left the table since the last round (excluded because dead), looks in the
+    /// bucket for the messages of the blocks this node started keeping and does not have: those that only
+    /// existed on the dead nodes (doc 23, section 1.7, example B).
     pub(crate) async fn check_membership_loss(&self) {
         if !self.topology.is_active() || self.restoring.load(Ordering::SeqCst) {
             return;
@@ -407,15 +409,15 @@ impl Backup {
             if recovered > 0 {
                 tracing::warn!(
                     recovered,
-                    "backup: mensagens que só existiam em nós mortos voltaram do S3"
+                    "backup: messages that only existed on dead nodes came back from S3"
                 );
             }
         }
     }
 
-    /// Traz do bucket as mensagens de que este nó é responsável (primário ou réplica) e que ele não
-    /// tem. Lê só o rodapé de cada segmento e, do que falta, a entrada por `Range`; o diário diz o
-    /// que já foi confirmado. Devolve quantas voltaram.
+    /// Brings back from the bucket the messages this node is responsible for (primary or replica) and does not
+    /// have. Reads only each segment's footer and, of what is missing, the entry by `Range`; the journal says
+    /// what was already confirmed. Returns how many came back.
     pub async fn recover_missing(&self) -> u64 {
         let me = self.node_id();
         let mut recovered = 0;
@@ -443,11 +445,11 @@ impl Backup {
                 .store
                 .list(&keys::segments_prefix(&name, &topic_id))
                 .await;
-            self.note("LIST de segmentos", &listed);
+            self.note("LIST of segments", &listed);
             let Ok(segments) = listed else {
                 continue;
             };
-            // O que o diário já removeu.
+            // What the journal already removed.
             let mut removed = std::collections::HashSet::new();
             let mut states: HashMap<String, Record> = HashMap::new();
             if let Ok(journals) = self
@@ -518,8 +520,8 @@ impl Backup {
         recovered
     }
 
-    /// Apaga de `nodes/` os arquivos de ids que não pertencem ao cluster **e** cujo batimento está
-    /// vencido. Um arquivo fresco nunca é apagado: pode ser um nó vivo em outra partição.
+    /// Deletes from `nodes/` the files of ids that do not belong to the cluster **and** whose heartbeat is
+    /// expired. A fresh file is never deleted: it may be a live node in another partition.
     pub async fn cleanup_nodes(&self) {
         if !self.topology.is_active() || self.restoring.load(Ordering::SeqCst) {
             return;
@@ -534,8 +536,8 @@ impl Backup {
         }
     }
 
-    /// A mensagem `id` do tópico, como o bucket a tem (segmentos mais o último estado do diário);
-    /// `None` se ela não está no bucket ou foi removida pelo diário.
+    /// Message `id` of the topic, as the bucket has it (segments plus the journal's last state);
+    /// `None` if it is not in the bucket or was removed by the journal.
     pub async fn find_message(
         &self,
         topic: &str,
@@ -550,7 +552,7 @@ impl Backup {
             .ok()?;
         let mut found: Option<(MessageMeta, Vec<u8>)> = None;
         for object in segments {
-            // O segmento só pode ter a mensagem se o primeiro `id` dele é menor ou igual.
+            // The segment can only have the message if its first `id` is less than or equal.
             if keys::first_id_of(&object.key).is_some_and(|first| first > message_id) {
                 continue;
             }
@@ -587,7 +589,7 @@ impl Backup {
             break;
         }
         let (mut meta, body) = found?;
-        // O estado e a remoção vêm do diário.
+        // State and removal come from the journal.
         let journals = self
             .store
             .list(&keys::journals_prefix(topic, &topic_id))
@@ -612,7 +614,7 @@ impl Backup {
     }
 }
 
-/// Aplica os registros de um diário às mensagens lidas dos segmentos.
+/// Applies a journal's records to the messages read from the segments.
 fn apply_records(
     alive: &mut BTreeMap<String, (MessageMeta, Vec<u8>, SavedRef)>,
     records: &[Record],
@@ -678,7 +680,7 @@ mod tests {
             ],
             &mut removed,
         );
-        assert_eq!(removed, 1, "só conta a que estava nos segmentos");
+        assert_eq!(removed, 1, "only counts the one that was in the segments");
         assert!(!alive.contains_key("b"));
         assert_eq!(alive["a"].0.delivery_count, 4);
         assert_eq!(alive["a"].0.receipt_token.as_deref(), Some("tok"));

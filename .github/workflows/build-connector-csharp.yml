@@ -1,12 +1,12 @@
-# Build e testes do conector C# e pacotes NuGet. Chamado pelo ci.yml (pull request) e pelo release.yml, que
-# passa a versão da tag. Envia os .nupkg como o artefato `nuget-packages`, usado pela GitHub Release.
-name: Build do conector C#
+# Build and tests of the C# connector and NuGet packages. Called by ci.yml (pull request) and by release.yml, which
+# passes the tag version. Uploads the .nupkg files as the `nuget-packages` artifact, used by the GitHub Release.
+name: C# connector build
 
 on:
   workflow_call:
     inputs:
       version:
-        description: Versão do release (X.Y.Z ou X.Y.Z-rc.N). Vazia em pull request.
+        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty on pull requests.
         type: string
         default: ""
 
@@ -15,11 +15,11 @@ permissions:
 
 jobs:
   connector-csharp:
-    name: Conector C# (build e testes)
+    name: C# connector (build and tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Versão do release
+      - name: Release version
         if: inputs.version != ''
         run: .github/scripts/set-version.sh "${{ inputs.version }}"
       - uses: actions/setup-dotnet@v4
@@ -27,9 +27,9 @@ jobs:
           dotnet-version: |
             6.0.x
             8.0.x
-      # Sem TABA_URL os testes de integração são ignorados; o cluster de verdade fica no job `integration`.
+      # Without TABA_URL the integration tests are skipped; the real cluster lives in the `integration` job.
       - run: dotnet test connectors/csharp/Taba.Client.Tests/Taba.Client.Tests.csproj --configuration Release
-      - name: Pacotes NuGet
+      - name: NuGet packages
         run: |
           for p in connectors/csharp/Taba.Client/Taba.Client.csproj \
                    connectors/csharp/Taba.Client.Abstractions/Taba.Client.Abstractions.csproj \

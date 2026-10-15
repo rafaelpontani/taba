@@ -1,6 +1,6 @@
-//! As três APIs HTTP, cada uma num listener próprio (doc 06, seção 8.0): cliente
-//! (`api.port`), operação (`operations.port`, ou a porta da API) e cluster
-//! (`cluster.port`). O mTLS da porta do cluster entra na etapa 16.
+//! The three HTTP APIs, each on a listener of its own (doc 06, section 8.0): client
+//! (`api.port`), operations (`operations.port`, or the API port) and cluster
+//! (`cluster.port`). The cluster port's mTLS comes in at step 16.
 
 pub mod auth;
 pub mod backup;
@@ -40,41 +40,41 @@ use auth::Auth;
 use client_ip::ClientIpRules;
 use ratelimit::RateLimiter;
 
-/// `Retry-After` das chamadas de cliente recusadas durante o drain, em segundos.
+/// `Retry-After` of the client calls refused during the drain, in seconds.
 const DRAIN_RETRY_AFTER_SECS: u64 = 5;
 
-/// O que os handlers compartilham.
+/// What the handlers share.
 #[derive(Clone)]
 pub struct AppState {
     pub clock: Arc<dyn Clock>,
     pub node: Arc<NodeShared>,
-    /// O backup opcional em S3; `None` sem `backup.s3.bucket`.
+    /// The optional S3 backup; `None` without `backup.s3.bucket`.
     pub backup: Option<Arc<crate::cluster::backup::Backup>>,
     pub topics: Arc<Topics>,
     pub messages: Arc<Messages>,
     pub drain: Arc<DrainController>,
-    /// O nó no cluster; só existe em `mode=production`.
+    /// The node in the cluster; only exists in `mode=production`.
     pub cluster: Option<Arc<ClusterService>>,
-    /// As mensagens no cluster (escrita e entrega por quórum); `None` num nó só.
+    /// The messages in the cluster (quorum write and delivery); `None` on a single node.
     pub replicated: Option<Arc<ClusterMessages>>,
-    /// `operations.allowed-ips`; vazia, sem restrição.
+    /// `operations.allowed-ips`; empty, no restriction.
     pub allowed_ips: Arc<Vec<IpNet>>,
     pub client_ip: Arc<ClientIpRules>,
     pub rate_limiter: Arc<RateLimiter>,
     pub auth: Arc<Auth>,
     pub telemetry: Arc<Telemetry>,
-    /// Os limites das condições dos tópicos (`stats.topics.*`).
+    /// The limits of the topic conditions (`stats.topics.*`).
     pub stats_rules: Arc<StatsRules>,
-    /// Os certificados do cluster; `None` sem pasta (a porta do cluster atende em HTTP puro).
+    /// The cluster certificates; `None` without a folder (the cluster port serves plain HTTP).
     pub tls: Option<Arc<crate::cluster::tls::TlsStore>>,
 }
 
-/// Em drain o nó não atende chamada de cliente (doc 04, seção 6.10): num cluster repassa a chamada
-/// ao nó mais livre, e a resposta volta como o destino a deu. Sem outro nó (ou numa chamada que já
-/// chegou por repasse, que nunca é repassada de novo) responde `503` com `Retry-After`. O nó em
-/// falha (`failed`) também não atende: repassa, ou responde `503` `node.failed` (D78.2).
+/// In drain the node does not serve client calls (doc 04, section 6.10): in a cluster it forwards the call
+/// to the freest node, and the response comes back as the destination gave it. With no other node (or on a call that already
+/// arrived by forward, which is never forwarded again) it answers `503` with `Retry-After`. A node in
+/// failure (`failed`) does not serve either: it forwards, or answers `503` `node.failed` (D78.2).
 async fn drain_guard(State(state): State<AppState>, request: Request, next: Next) -> Response {
-    // Um nó que ainda sincroniza também não atende: repassa a chamada a outro (doc 04, seção 6.9).
+    // A node that is still syncing does not serve either: it forwards the call to another (doc 04, section 6.9).
     let syncing = state.cluster.is_some() && state.node.state() == NodeState::Syncing;
     let failed = state.node.state() == NodeState::Failed;
     if state.node.drain_state() == DrainState::Active && !syncing && !failed {
@@ -87,7 +87,7 @@ async fn drain_guard(State(state): State<AppState>, request: Request, next: Next
         return common::ApiError(
             TabaError::new(
                 ErrorCode::NodeFailed,
-                "O nó está em falha e não atende chamadas de cliente.",
+                "The node is in failure and does not serve client calls.",
             )
             .with_retry_after(DRAIN_RETRY_AFTER_SECS),
         )
@@ -95,30 +95,27 @@ async fn drain_guard(State(state): State<AppState>, request: Request, next: Next
     }
     if syncing {
         return common::ApiError(
-            TabaError::new(
-                ErrorCode::ClusterNodeSyncing,
-                "O nó ainda está em sincronização.",
-            )
-            .with_retry_after(DRAIN_RETRY_AFTER_SECS),
+            TabaError::new(ErrorCode::ClusterNodeSyncing, "The node is still syncing.")
+                .with_retry_after(DRAIN_RETRY_AFTER_SECS),
         )
         .into_response();
     }
     common::ApiError(
         TabaError::new(
             ErrorCode::ClusterNodeDraining,
-            "O nó está em drain e não há outro nó para repassar a chamada.",
+            "The node is in drain and there is no other node to forward the call to.",
         )
         .with_retry_after(DRAIN_RETRY_AFTER_SECS),
     )
     .into_response()
 }
 
-/// API de cliente. Sem `operations.port`, serve também as rotas de operação. As rotas `/tokens`
-/// só existem com a autenticação ligada (senão respondem `404`).
+/// Client API. Without `operations.port`, it also serves the operations routes. The `/tokens` routes
+/// only exist with authentication on (otherwise they answer `404`).
 ///
-/// As camadas, de fora para dentro: quem chama (`authenticate`), o rate limit, a recusa do
-/// drain e a autorização (`authorize`). O rate limit vem depois de saber quem chama, para o
-/// token virar a chave do contador, e antes de recusar, para o `401` também contar por IP.
+/// The layers, from the outside in: who is calling (`authenticate`), the rate limit, the drain
+/// refusal and authorization (`authorize`). The rate limit comes after knowing who is calling, so the
+/// token becomes the counter's key, and before refusing, so the `401` also counts by IP.
 pub fn client_router(state: AppState, with_operations: bool) -> Router {
     let mut routes = Router::new()
         .merge(topics::routes())
@@ -148,12 +145,12 @@ pub fn client_router(state: AppState, with_operations: bool) -> Router {
     common::finish(routes, state)
 }
 
-/// API de operação, na porta própria.
+/// Operations API, on its own port.
 pub fn operations_router(state: AppState) -> Router {
     common::finish(operations::routes(&state), state)
 }
 
-/// API do cluster: só `/cluster/*`; o resto responde `404`.
+/// Cluster API: only `/cluster/*`; the rest answers `404`.
 pub fn cluster_router(state: AppState) -> Router {
     common::finish(cluster_api::routes(), state)
 }

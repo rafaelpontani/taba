@@ -16,7 +16,7 @@ fn text(map: &[(String, Node)], path: &[&str]) -> Option<String> {
 /// UC: UC-CLI-028
 #[test]
 fn reads_the_documented_example() {
-    let doc = "default: local\nprofiles:\n  local:\n    url: http://127.0.0.1:8080\n    token-file: C:\\taba\\secrets\\root-token\n  homologacao:\n    url: https://taba.hml.exemplo.com\n    ca-file: /etc/ssl/taba-hml-ca.pem   # CA própria\n    token-file: ~/.taba/hml-token\n";
+    let doc = "default: local\nprofiles:\n  local:\n    url: http://127.0.0.1:8080\n    token-file: C:\\taba\\secrets\\root-token\n  staging:\n    url: https://taba.stg.example.com\n    ca-file: /etc/ssl/taba-stg-ca.pem   # own CA\n    token-file: ~/.taba/stg-token\n";
     let map = parse(doc).unwrap();
     assert_eq!(text(&map, &["default"]).as_deref(), Some("local"));
     assert_eq!(
@@ -28,8 +28,8 @@ fn reads_the_documented_example() {
         Some("C:\\taba\\secrets\\root-token")
     );
     assert_eq!(
-        text(&map, &["profiles", "homologacao", "ca-file"]).as_deref(),
-        Some("/etc/ssl/taba-hml-ca.pem")
+        text(&map, &["profiles", "staging", "ca-file"]).as_deref(),
+        Some("/etc/ssl/taba-stg-ca.pem")
     );
 }
 
@@ -37,8 +37,8 @@ fn reads_the_documented_example() {
 #[test]
 fn handles_comments_blank_lines_bom_and_empty_documents() {
     assert!(parse("").unwrap().is_empty());
-    assert!(parse("# só comentário\n\n   \n").unwrap().is_empty());
-    let map = parse("\u{feff}# topo\na: b # fim\n\nc:   d  \n").unwrap();
+    assert!(parse("# only a comment\n\n   \n").unwrap().is_empty());
+    let map = parse("\u{feff}# top\na: b # end\n\nc:   d  \n").unwrap();
     assert_eq!(text(&map, &["a"]).as_deref(), Some("b"));
     assert_eq!(text(&map, &["c"]).as_deref(), Some("d"));
     let map = parse("profiles: {}\n").unwrap();
@@ -65,11 +65,11 @@ fn reports_the_line_of_invalid_yaml() {
         ("a: b\n- x\n", 2),
         ("a: b\n  c: d\n", 2),
         ("a: b\na: c\n", 2),
-        ("a: \"aberta\n", 1),
+        ("a: \"open\n", 1),
         ("a: [1, 2]\n", 1),
-        ("sem dois pontos\n", 1),
+        ("no colon\n", 1),
         ("a:\n    b: 1\n  c: 2\n", 3),
-        ("a: |\n  texto\n", 1),
+        ("a: |\n  text\n", 1),
         ("a: &x 1\n", 1),
     ] {
         let e = parse(doc).unwrap_err();
@@ -84,15 +84,15 @@ fn rendering_then_parsing_gives_the_same_values_for_awkward_text() {
         "http://127.0.0.1:8080",
         "C:\\taba\\secrets\\root-token",
         "",
-        "tem # cerquilha",
+        "has # hash",
         "dois: pontos",
-        "  espaços  ",
+        "  spaces  ",
         "true",
-        "-começa",
-        "aspas \" e ' juntas",
+        "-starts",
+        "quotes \" and ' together",
         "linha\nnova",
         "çã 中",
-        "termina:",
+        "ends:",
     ];
     for v in values {
         let map = vec![("k".to_owned(), Node::Text(v.to_owned()))];

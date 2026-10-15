@@ -1,11 +1,11 @@
-//! As métricas de tópico em JSON (doc 06b, doc 11): `GET /metrics/topics` (paginada por nome),
-//! `GET /metrics/topics/{topic}` (um tópico, com os maiores grupos) e
-//! `GET /metrics/topics/{topic}/groups` (um grupo por linha).
+//! Topic metrics in JSON (doc 06b, doc 11): `GET /metrics/topics` (paginated by name),
+//! `GET /metrics/topics/{topic}` (one topic, with the largest groups) and
+//! `GET /metrics/topics/{topic}/groups` (one group per line).
 //!
-//! Um nó só: `scope=cluster` e `scope=node` devolvem o mesmo, e o resultado nunca é `partial`. O
-//! filtro e o `limit` valem depois de medir cada tópico, então `condition` acha os tópicos com
-//! problema ao longo de toda a lista. Não há cache (`stats.topics.cache-ttl` só serve ao `fan-out`
-//! entre nós).
+//! A single node: `scope=cluster` and `scope=node` return the same, and the result is never `partial`. The
+//! filter and the `limit` apply after measuring each topic, so `condition` finds the topics with a
+//! problem across the whole list. There is no cache (`stats.topics.cache-ttl` only serves the `fan-out`
+//! between nodes).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -32,7 +32,7 @@ pub fn routes() -> Router<AppState> {
         .route("/metrics/topics/{topic}/groups", get(groups))
 }
 
-/// Os campos de `TopicStats` que `fields` aceita (os de fila e o de distribuidor).
+/// The `TopicStats` fields that `fields` accepts (the queue ones and the distributor one).
 const FIELDS: &[&str] = &[
     "id",
     "name",
@@ -73,7 +73,7 @@ const FIELDS: &[&str] = &[
     "collectedAt",
 ];
 
-/// A identificação do tópico, copiada da definição.
+/// The topic's identification, copied from the definition.
 const IDENTITY: &[&str] = &[
     "id",
     "name",
@@ -87,18 +87,18 @@ const IDENTITY: &[&str] = &[
 ];
 
 fn bad_request(field: &str, code: ErrorCode, message: &str) -> TabaError {
-    TabaError::new(code, "A requisição tem campos inválidos.").with_detail(field, code, message)
+    TabaError::new(code, "The request has invalid fields.").with_detail(field, code, message)
 }
 
 fn unknown(field: &str) -> TabaError {
     bad_request(
         &format!("query.{field}"),
         ErrorCode::ValidationUnknownField,
-        "Parâmetro desconhecido.",
+        "Unknown parameter.",
     )
 }
 
-/// Recusa o parâmetro que a rota não conhece (`sort`, por exemplo): `400 validation.unknown-field`.
+/// Refuses the parameter the route does not know (`sort`, for example): `400 validation.unknown-field`.
 fn check_params(
     params: &HashMap<String, String>,
     allowed: &[&str],
@@ -113,8 +113,8 @@ fn check_params(
     Ok(())
 }
 
-/// `scope`: `cluster` (o padrão) ou `node`. Com um nó só, os dois devolvem o mesmo, menos a
-/// `band` dos grupos, que só aparece em `node`.
+/// `scope`: `cluster` (the default) or `node`. With a single node, both return the same, except the
+/// groups' `band`, which only shows up in `node`.
 fn node_scope(params: &HashMap<String, String>) -> Result<bool, TabaError> {
     match params.get("scope").map(String::as_str) {
         None | Some("cluster") => Ok(false),
@@ -122,7 +122,7 @@ fn node_scope(params: &HashMap<String, String>) -> Result<bool, TabaError> {
         Some(_) => Err(bad_request(
             "query.scope",
             ErrorCode::ValidationFailed,
-            "Esperado `cluster` ou `node`.",
+            "Expected `cluster` or `node`.",
         )),
     }
 }
@@ -135,7 +135,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(|_| TabaError::internal())??)
 }
 
-// ---- Medir um tópico ----
+// ---- Measuring a topic ----
 
 enum Stats {
     Queue {
@@ -157,7 +157,7 @@ impl Stats {
         self.conditions().first().map_or("ok", |c| c.as_str())
     }
 
-    /// Passa pelo filtro `condition=` (`ok` é o tópico sem condição alguma)?
+    /// Does it pass the `condition=` filter (`ok` is the topic with no condition at all)?
     fn matches(&self, wanted: Option<&str>) -> bool {
         match wanted {
             None => true,
@@ -216,7 +216,7 @@ fn identity(view: &TopicView) -> Map<String, Value> {
         .collect()
 }
 
-/// `TopicStats` de um tópico (doc 06b).
+/// A topic's `TopicStats` (doc 06b).
 fn topic_json(
     view: &TopicView,
     stats: &Stats,
@@ -270,7 +270,7 @@ fn topic_json(
     out
 }
 
-/// `GroupStats` (doc 06b). Sem as taxas por grupo (PRB-024).
+/// `GroupStats` (doc 06b). Without the per-group rates (PRB-024).
 fn group_json(group: &GroupSnapshot, depth: u64, node: bool, now: u64) -> Value {
     let mut out = Map::new();
     if let Some(id) = &group.group_id {
@@ -295,7 +295,7 @@ fn group_json(group: &GroupSnapshot, depth: u64, node: bool, now: u64) -> Value 
     Value::Object(out)
 }
 
-/// Os grupos do maior para o menor (e por nome, para empatar).
+/// The groups from largest to smallest (and by name, to break ties).
 fn largest_first(groups: &mut [GroupSnapshot]) {
     groups.sort_by(|a, b| {
         b.messages()
@@ -304,7 +304,7 @@ fn largest_first(groups: &mut [GroupSnapshot]) {
     });
 }
 
-/// `fields=`: só os campos pedidos, mais os que vêm sempre.
+/// `fields=`: only the requested fields, plus those that always come.
 fn parse_fields(params: &HashMap<String, String>) -> Result<Option<BTreeSet<String>>, TabaError> {
     let Some(raw) = params.get("fields") else {
         return Ok(None);
@@ -315,7 +315,7 @@ fn parse_fields(params: &HashMap<String, String>) -> Result<Option<BTreeSet<Stri
             return Err(bad_request(
                 "query.fields",
                 ErrorCode::ValidationUnknownField,
-                &format!("Campo `{field}` desconhecido."),
+                &format!("Unknown field `{field}`."),
             ));
         }
         wanted.insert(field.to_owned());
@@ -347,25 +347,25 @@ fn page(items: Vec<Value>, next_cursor: Option<String>) -> Value {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Cursor {
-    /// A última chave lida: o nome do tópico, ou o valor da tag com `groupBy`.
+    /// The last key read: the topic name, or the tag value with `groupBy`.
     n: String,
-    /// Os filtros que geraram o cursor: com outros, ele é recusado.
+    /// The filters that generated the cursor: with others, it is refused.
     f: String,
 }
 
 fn stale_cursor() -> TabaError {
     TabaError::new(
         ErrorCode::ValidationInvalidCursor,
-        "O cursor não vale para estes filtros.",
+        "The cursor does not apply to these filters.",
     )
     .with_detail(
         "cursor",
         ErrorCode::ValidationInvalidCursor,
-        "Cursor gerado com outros filtros.",
+        "Cursor generated with other filters.",
     )
 }
 
-/// As condições na ordem de severidade e depois a da tabela, sem repetir.
+/// The conditions in severity order and then the table's, with no repeats.
 fn ordered(mut conditions: Vec<Condition>) -> Vec<Condition> {
     let rank = |c: &Condition| {
         (
@@ -378,7 +378,7 @@ fn ordered(mut conditions: Vec<Condition>) -> Vec<Condition> {
     conditions
 }
 
-/// A soma dos tópicos de um valor de tag (`groupBy`).
+/// The sum of the topics of a tag value (`groupBy`).
 #[derive(Default)]
 struct Aggregate {
     topics: u64,
@@ -490,7 +490,7 @@ fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Val
         return Err(bad_request(
             "query.condition",
             ErrorCode::ValidationFailed,
-            "Condição desconhecida.",
+            "Unknown condition.",
         ));
     }
     let group_by = params.get("groupBy").map(String::as_str);
@@ -664,7 +664,7 @@ fn topic_detail(
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GroupCursor {
-    /// O grupo do contador compartilhado vem depois de todos os nomeados.
+    /// The shared counter's group comes after all the named ones.
     o: bool,
     n: String,
 }
@@ -703,14 +703,14 @@ fn topic_groups(
                 bad_request(
                     "query.top",
                     ErrorCode::ValidationFailed,
-                    "Esperado um número inteiro.",
+                    "Expected an integer.",
                 )
             })?;
             if n == 0 {
                 return Err(bad_request(
                     "query.top",
                     ErrorCode::ValidationOutOfRange,
-                    "top deve ser ao menos 1.",
+                    "top must be at least 1.",
                 ));
             }
             Some(usize::try_from(n).unwrap_or(usize::MAX))
@@ -720,7 +720,7 @@ fn topic_groups(
         return Err(bad_request(
             "query.top",
             ErrorCode::ValidationFailed,
-            "`top` não combina com `cursor`: a resposta não é paginada.",
+            "`top` does not combine with `cursor`: the response is not paginated.",
         ));
     }
     let cursor = params
@@ -732,7 +732,7 @@ fn topic_groups(
     if view.definition.queue().is_none() {
         return Err(TabaError::new(
             ErrorCode::TopicWrongType,
-            "Um tópico distribuidor não tem grupos.",
+            "A distributor topic has no groups.",
         ));
     }
     let now = state.clock.now_millis();

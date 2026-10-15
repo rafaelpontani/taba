@@ -13,7 +13,7 @@ namespace Taba
     public sealed partial class TabaClient
     {
         // -----------------------------------------------------------------------------------------
-        // A forma síncrona: espera pela assíncrona
+        // The synchronous form: waits for the asynchronous one
         // -----------------------------------------------------------------------------------------
 
         public Topic CreateTopic(TopicRequest request)
@@ -71,7 +71,7 @@ namespace Taba
             return Wait(ConsumeAsync(topic, options));
         }
 
-        /// <summary>A forma síncrona do <c>ConsumeAsync</c> com handler.</summary>
+        /// <summary>The synchronous form of <c>ConsumeAsync</c> with a handler.</summary>
         public int Consume(string topic, ConsumeOptions options, Action<MessageContext> handler)
         {
             if (handler == null)
@@ -88,13 +88,13 @@ namespace Taba
                 }));
         }
 
-        /// <summary>A forma síncrona do <c>ConsumeAsync</c> com handler, sem opções.</summary>
+        /// <summary>The synchronous form of <c>ConsumeAsync</c> with a handler, without options.</summary>
         public int Consume(string topic, Action<MessageContext> handler)
         {
             return Consume(topic, null, handler);
         }
 
-        /// <summary>A forma síncrona do <c>ConsumeAsync&lt;T&gt;</c>.</summary>
+        /// <summary>The synchronous form of <c>ConsumeAsync&lt;T&gt;</c>.</summary>
         public int Consume<T>(string topic, ConsumeOptions options, Action<MessageContext<T>> handler)
         {
             if (handler == null)
@@ -136,7 +136,7 @@ namespace Taba
             return Wait(ChangeVisibilityAsync(topic, message, seconds));
         }
 
-        /// <summary>A forma síncrona do <see cref="SubscribeAsync"/>: bloqueia a thread até o cancelamento.</summary>
+        /// <summary>The synchronous form of <see cref="SubscribeAsync"/>: blocks the thread until cancellation.</summary>
         public void Subscribe(string topic, ConsumeOptions options, Action<Message> handler, CancellationToken cancellationToken, Action<Message, Exception> onError = null)
         {
             if (handler == null)

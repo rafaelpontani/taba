@@ -1,6 +1,6 @@
-//! Os corpos das rotas de mensagem entre nós (doc 06c, "Mensagens"): a escrita, a
-//! invisibilidade, o ack e o `take`, mais o `MessageRecord`, que é a mensagem como os nós a
-//! trocam.
+//! The bodies of the message routes between nodes (doc 06c, "Messages"): the write,
+//! invisibility, ack and `take`, plus the `MessageRecord`, which is the message as the nodes
+//! exchange it.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -14,12 +14,12 @@ use crate::core::id;
 use crate::core::time;
 use crate::storage::messages::MessageMeta;
 
-/// A mensagem **completa** entre nós: o conteúdo e os metadados (`MessageRecord`, doc 06c).
+/// The **complete** message between nodes: the content and the metadata (`MessageRecord`, doc 06c).
 ///
-/// O corpo guarda os bytes. Na rede ele sai em JSON nativo quando o `contentType` é JSON
-/// (`application/json` ou `*/*+json`) e, nos demais casos (texto e binário), em base64 numa string
-/// com `bodyEncoding: "base64"`: entre nós não há a forma de texto da API de cliente, para o
-/// limite de linha ser previsível.
+/// The body keeps the bytes. On the network it goes out as native JSON when the `contentType` is JSON
+/// (`application/json` or `*/*+json`) and, in the other cases (text and binary), as base64 in a string
+/// with `bodyEncoding: "base64"`: between nodes there is no client-API text form, so the
+/// line limit is predictable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageRecord {
     pub id: String,
@@ -29,23 +29,23 @@ pub struct MessageRecord {
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
     pub delivery_count: u32,
-    /// `None` ou no passado: pronta.
+    /// `None` or in the past: ready.
     pub invisible_until_ms: Option<u64>,
     pub receipt_token: Option<String>,
     pub dead_lettered_ms: Option<u64>,
     pub dead_letter_reason: Option<String>,
-    /// Só na fila FIFO: a linha curta de uma mensagem confirmada (sem corpo), que vale para a
-    /// deduplicação até esta data (doc 17, seção 16.7).
+    /// FIFO queue only: the short row of an acknowledged message (no body), which applies to
+    /// deduplication until this date (doc 17, section 16.7).
     pub delete_at_ms: Option<u64>,
 }
 
 impl MessageRecord {
-    /// O instante da publicação, que o `id` (GUID v7) carrega.
+    /// The publication instant, which the `id` (GUID v7) carries.
     pub fn published_ms(&self) -> u64 {
         id::unix_millis_of(&self.id).unwrap_or(0)
     }
 
-    /// A mensagem como o nó a guarda. A posição no anel fica `0`: quem grava a calcula.
+    /// The message as the node stores it. The ring position stays `0`: whoever stores it computes it.
     pub fn to_meta(&self) -> MessageMeta {
         MessageMeta {
             id: self.id.clone(),
@@ -62,7 +62,7 @@ impl MessageRecord {
         }
     }
 
-    /// O inverso de [`to_meta`](Self::to_meta): a mensagem de um tópico com o corpo.
+    /// The inverse of [`to_meta`](Self::to_meta): a topic's message with the body.
     pub fn from_stored(topic: &str, meta: MessageMeta, body: Vec<u8>) -> Self {
         Self {
             id: meta.id,
@@ -114,11 +114,11 @@ impl Serialize for MessageRecord {
             .is_ok_and(|ct| ct.kind() == BodyKind::Json)
             .then(|| std::str::from_utf8(&self.body).ok())
             .flatten()
-            // Só vai como JSON nativo se o texto sobrevive intacto (sem mexer nos bytes).
+            // It only goes as native JSON if the text survives intact (without touching the bytes).
             .and_then(|text| RawValue::from_string(text.to_owned()).ok())
             .filter(|raw| raw.get().as_bytes() == self.body.as_slice());
         let (body, body_encoding) = match json_body {
-            // A linha curta da FIFO não tem corpo.
+            // The FIFO's short row has no body.
             _ if self.delete_at_ms.is_some() => (None, None),
             Some(raw) => (Some(raw), None),
             None => {
@@ -154,7 +154,7 @@ impl<'de> Deserialize<'de> for MessageRecord {
         let wire = RecordWire::deserialize(deserializer)?;
         let date = |field: &str, text: Option<String>| -> Result<Option<u64>, D::Error> {
             text.map(|t| {
-                time::parse_ms(&t).ok_or_else(|| D::Error::custom(format!("`{field}` inválido")))
+                time::parse_ms(&t).ok_or_else(|| D::Error::custom(format!("`{field}` invalid")))
             })
             .transpose()
         };
@@ -162,10 +162,10 @@ impl<'de> Deserialize<'de> for MessageRecord {
             (None, _) => Vec::new(),
             (Some(raw), Some("base64")) => {
                 let text: String = serde_json::from_str(raw.get())
-                    .map_err(|_| D::Error::custom("`body` em base64 deve ser uma string"))?;
+                    .map_err(|_| D::Error::custom("`body` in base64 must be a string"))?;
                 STANDARD
                     .decode(text)
-                    .map_err(|_| D::Error::custom("`body` não é base64 válido"))?
+                    .map_err(|_| D::Error::custom("`body` is not valid base64"))?
             }
             (Some(_), Some(other)) => {
                 return Err(D::Error::custom(format!(
@@ -191,7 +191,7 @@ impl<'de> Deserialize<'de> for MessageRecord {
     }
 }
 
-/// `kind` do `register` da escrita.
+/// `kind` of the write's `register`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WriteKind {
@@ -199,7 +199,7 @@ pub enum WriteKind {
     DeadLetter,
 }
 
-/// `MessageRegisterRequest` (doc 06c): a fase 1 da publicação e do movimento para a dead-letter.
+/// `MessageRegisterRequest` (doc 06c): phase 1 of the publication and of the move to the dead-letter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageRegisterRequest {
@@ -207,7 +207,7 @@ pub struct MessageRegisterRequest {
     pub coordinator_id: String,
     pub kind: WriteKind,
     pub message: MessageRecord,
-    /// Só em `dead-letter`: a fila de origem, de onde a mensagem sai no commit.
+    /// Only on `dead-letter`: the source queue, from which the message leaves on commit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_topic: Option<String>,
 }
@@ -219,16 +219,16 @@ pub enum VisibilityKind {
     Change,
 }
 
-/// `VisibilityRegisterRequest` (doc 06c): o prazo é um instante **absoluto** calculado pelo dono.
+/// `VisibilityRegisterRequest` (doc 06c): the deadline is an **absolute** instant computed by the owner.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisibilityRegisterRequest {
     pub operation_id: String,
     pub coordinator_id: String,
     pub kind: VisibilityKind,
     pub invisible_until_ms: u64,
-    /// Em `delivery`, o token **novo**; em `change`, o que o cliente enviou.
+    /// On `delivery`, the **new** token; on `change`, what the client sent.
     pub receipt_token: String,
-    /// Só em `delivery`: o contador novo.
+    /// Only on `delivery`: the new counter.
     pub delivery_count: Option<u32>,
 }
 
@@ -266,7 +266,7 @@ impl<'de> Deserialize<'de> for VisibilityRegisterRequest {
             coordinator_id: wire.coordinator_id,
             kind: wire.kind,
             invisible_until_ms: time::parse_ms(&wire.invisible_until)
-                .ok_or_else(|| D::Error::custom("`invisibleUntil` inválido"))?,
+                .ok_or_else(|| D::Error::custom("`invisibleUntil` invalid"))?,
             receipt_token: wire.receipt_token,
             delivery_count: wire.delivery_count,
         })
@@ -279,7 +279,7 @@ pub struct AckRegisterRequest {
     pub operation_id: String,
     pub coordinator_id: String,
     pub receipt_token: String,
-    /// Só na fila FIFO.
+    /// FIFO queue only.
     pub delete_at_ms: Option<u64>,
 }
 
@@ -314,14 +314,14 @@ impl<'de> Deserialize<'de> for AckRegisterRequest {
             receipt_token: wire.receipt_token,
             delete_at_ms: wire
                 .delete_at
-                .map(|t| time::parse_ms(&t).ok_or_else(|| D::Error::custom("`deleteAt` inválido")))
+                .map(|t| time::parse_ms(&t).ok_or_else(|| D::Error::custom("`deleteAt` invalid")))
                 .transpose()?,
         })
     }
 }
 
-/// `TakeRequest` (doc 06c): a quantidade que ainda falta ao `GET` do cliente e o
-/// `visibilityTimeout` que ele pediu.
+/// `TakeRequest` (doc 06c): the quantity the client's `GET` still lacks and the
+/// `visibilityTimeout` it asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TakeRequest {
@@ -329,17 +329,17 @@ pub struct TakeRequest {
     pub visibility_timeout: u64,
 }
 
-/// `TakeResponse` (doc 06c). Lista vazia: a dica de que havia mensagens estava velha, ou o nó está
-/// em drain.
+/// `TakeResponse` (doc 06c). Empty list: the hint that there were messages was old, or the node is
+/// in drain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TakeResponse {
     pub messages: Vec<MessageRecord>,
 }
 
-/// `IdleResponse` (doc 06c, `GET /cluster/topics/{id}/idle`): há quanto tempo foi o último `GET`
-/// do tópico neste nó, como duração (não um instante). `since_start`: o nó não tem registro, e a
-/// duração é o tempo desde que subiu.
+/// `IdleResponse` (doc 06c, `GET /cluster/topics/{id}/idle`): how long ago the topic's last `GET`
+/// was on this node, as a duration (not an instant). `since_start`: the node has no record, and the
+/// duration is the time since it came up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct IdleResponse {
@@ -348,8 +348,8 @@ pub struct IdleResponse {
     pub since_start: bool,
 }
 
-/// `FifoPublished` (doc 06c, `POST /cluster/topics/{topic}/fifo/publish`): o primário do grupo
-/// responde com o `id` da mensagem criada, ou o da original numa duplicata.
+/// `FifoPublished` (doc 06c, `POST /cluster/topics/{topic}/fifo/publish`): the group's primary
+/// answers with the `id` of the created message, or the original's on a duplicate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FifoPublished {
@@ -357,15 +357,15 @@ pub struct FifoPublished {
     pub duplicate: bool,
 }
 
-/// O `id` do `MessageRecord` de uma publicação FIFO repassada: o primário é quem gera o verdadeiro.
+/// The `id` of the `MessageRecord` of a forwarded FIFO publication: the primary is the one that generates the real one.
 pub const FIFO_PLACEHOLDER_ID: &str = "00000000-0000-7000-8000-000000000000";
 
-/// Os campos obrigatórios de um GUID v7 do `id` da mensagem na URL.
+/// The mandatory fields of a GUID v7 for the message `id` in the URL.
 pub fn validate_message_path(topic: &str, id: &str) -> Result<(), TabaError> {
     if topic.is_empty() || !crate::core::id::is_guid_v7(id) {
         return Err(TabaError::new(
             ErrorCode::ValidationFailed,
-            "O caminho tem um tópico ou um id de mensagem inválido.",
+            "The path has an invalid topic or message id.",
         ));
     }
     Ok(())

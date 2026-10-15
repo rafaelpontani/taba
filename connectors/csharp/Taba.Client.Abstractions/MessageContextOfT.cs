@@ -5,8 +5,8 @@ using System.Threading.Tasks;
 namespace Taba
 {
     /// <summary>
-    /// O <see cref="MessageContext"/> de um <c>Consume&lt;T&gt;</c>: além da mensagem, traz o corpo já
-    /// deserializado em <see cref="Body"/>.
+    /// The <see cref="MessageContext"/> of a <c>Consume&lt;T&gt;</c>: besides the message, it carries the body already
+    /// deserialized in <see cref="Body"/>.
     /// </summary>
     public sealed class MessageContext<T> : MessageContext
     {
@@ -16,7 +16,7 @@ namespace Taba
             Body = body;
         }
 
-        /// <summary>O corpo da mensagem deserializado como <typeparamref name="T"/> (pelo <see cref="ITabaJsonSerializer"/>).</summary>
+        /// <summary>The message body deserialized as <typeparamref name="T"/> (by the <see cref="ITabaJsonSerializer"/>).</summary>
         public T Body { get; private set; }
     }
 }

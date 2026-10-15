@@ -1,11 +1,11 @@
-//! O nó gestor das filas voláteis (doc 15, seções 14.5 e 14.6).
+//! The node that manages the volatile queues (doc 15, sections 14.5 and 14.6).
 //!
-//! O gestor de uma fila é o primário da posição do hash do `id` dela no anel, então a lista de
-//! filas gerenciadas é **derivada** a cada volta da tarefa, não guardada: ela muda sozinha com a
-//! tabela de membros e a de tópicos. O gestor só cuida da vida do tópico. No vencimento ele
-//! pergunta a **todos** os nós há quanto tempo foi o último `GET` (`GET /cluster/topics/{id}/idle`)
-//! e, se nenhum teve `GET` dentro do `idleTimeout`, exclui a fila pelo mesmo registro + commit do
-//! `DELETE /topics/{topic}`, com o `id` esperado.
+//! A queue's manager is the primary of the position of the hash of its `id` on the ring, so the list of
+//! managed queues is **derived** on each round of the task, not stored: it changes by itself with the
+//! member table and the topic table. The manager only looks after the topic's life. At expiry it
+//! asks **all** nodes how long ago the last `GET` was (`GET /cluster/topics/{id}/idle`)
+//! and, if none had a `GET` within the `idleTimeout`, deletes the queue by the same register + commit as
+//! `DELETE /topics/{topic}`, with the expected `id`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -21,7 +21,7 @@ use crate::core::error::ErrorCode;
 use crate::core::ring::topic_position;
 use crate::engine::topics::{Topics, VolatileQueue};
 
-/// Quando o gestor volta a olhar uma fila que gerencia.
+/// When the manager looks again at a queue it manages.
 #[derive(Debug, Clone, Copy)]
 struct Entry {
     due_ms: u64,
@@ -30,21 +30,21 @@ struct Entry {
 pub struct VolatileManager {
     service: Arc<ClusterService>,
     topics: Arc<Topics>,
-    /// Os prazos das filas que este nó gerencia, por `id` do tópico.
+    /// The deadlines of the queues this node manages, by topic `id`.
     entries: Mutex<HashMap<String, Entry>>,
-    /// As filas com uma verificação em andamento: uma por vez cada.
+    /// The queues with a check under way: one at a time each.
     running: Mutex<HashSet<String>>,
 }
 
-/// O resultado de perguntar a todos os nós.
+/// The result of asking all the nodes.
 enum Check {
-    /// A menor duração desde o último `GET`, em milissegundos.
+    /// The smallest duration since the last `GET`, in milliseconds.
     Idle(u64),
-    /// Algum nó não respondeu: na dúvida, a fila continua viva.
+    /// Some node did not answer: when in doubt, the queue stays alive.
     Blocked,
 }
 
-/// O atraso estável de uma fila dentro de uma janela de `window_ms`: de 0 a `window_ms`.
+/// A queue's stable delay within a window of `window_ms`: from 0 to `window_ms`.
 fn jitter_in(window_ms: u64, topic_id: &str) -> u64 {
     if window_ms == 0 {
         return 0;
@@ -66,7 +66,7 @@ impl VolatileManager {
         })
     }
 
-    /// A tarefa do gestor, até o cancelamento.
+    /// The manager's task, until cancellation.
     pub async fn run(self: Arc<Self>, cancel: CancellationToken) {
         let mut ticker = tokio::time::interval(Duration::from_millis(200));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -78,10 +78,10 @@ impl VolatileManager {
         }
     }
 
-    /// Os `id` das filas que este nó gerencia agora.
+    /// The `id`s of the queues this node manages now.
     pub fn managed(&self) -> Vec<VolatileQueue> {
-        // Só um nó pronto gerencia: até lá, nenhuma fila do trecho dele é excluída, o mesmo
-        // efeito de um gestor fora do ar (doc 15, seção 14.6).
+        // Only a ready node manages: until then, no queue in its stretch is deleted, the same
+        // effect as a manager that is down (doc 15, section 14.6).
         if self.service.node_state() != NodeState::Active
             || self.service.drain_state() != DrainState::Active
         {
@@ -101,8 +101,8 @@ impl VolatileManager {
             .collect()
     }
 
-    /// Uma volta: esquece as filas que deixaram de ser dele, agenda as que passou a gerenciar
-    /// (verificação imediata, espalhada pelo jitter) e dispara as vencidas.
+    /// One round: forgets the queues that stopped being its own, schedules the ones it started managing
+    /// (immediate check, spread by the jitter) and fires the expired ones.
     fn tick(self: &Arc<Self>) {
         let now = self.service.clock().now_millis();
         let managed = self.managed();
@@ -132,8 +132,8 @@ impl VolatileManager {
         }
     }
 
-    /// Um atraso estável por fila, de 0 até `topics.volatile.takeover.jitter`: muitas filas que
-    /// trocam de gestor de uma vez não consultam todas no mesmo instante.
+    /// A stable delay per queue, from 0 to `topics.volatile.takeover.jitter`: many queues that
+    /// change manager at once do not all query at the same instant.
     fn jitter_ms(&self, topic_id: &str) -> u64 {
         jitter_in(
             self.service.rules().volatile_jitter.as_millis() as u64,
@@ -145,7 +145,7 @@ impl VolatileManager {
         lock(&self.entries).insert(topic_id.to_owned(), Entry { due_ms });
     }
 
-    /// A verificação final (doc 15, seção 14.5, passos 2 a 4).
+    /// The final check (doc 15, section 14.5, steps 2 to 4).
     async fn verify(self: &Arc<Self>, queue: &VolatileQueue) {
         let now = self.service.clock().now_millis();
         let timeout_ms = queue.idle_timeout_secs.saturating_mul(1000);
@@ -156,7 +156,7 @@ impl VolatileManager {
                     event.name = "taba.volatile.check_blocked",
                     messaging.destination.name = %queue.name,
                     topic.id = %queue.id,
-                    "um nó não respondeu à consulta de ociosidade: a fila fica viva por ora"
+                    "a node did not answer the idleness query: the queue stays alive for now"
                 );
                 let retry = self.service.rules().volatile_retry_interval;
                 self.schedule(&queue.id, now + retry.as_millis() as u64);
@@ -164,7 +164,7 @@ impl VolatileManager {
             }
         };
         if idle_ms < timeout_ms {
-            // Alguém teve `GET` mais recente: reagenda para o que falta.
+            // Someone had a more recent `GET`: reschedules for what remains.
             self.schedule(&queue.id, now + (timeout_ms - idle_ms));
             return;
         }
@@ -175,10 +175,10 @@ impl VolatileManager {
                     event.name = "taba.volatile.deleted",
                     messaging.destination.name = %queue.name,
                     topic.id = %queue.id,
-                    "fila volátil excluída por ociosidade"
+                    "volatile queue deleted for idleness"
                 );
             }
-            // Excluída (ou recriada com outro `id`) no meio do caminho: nada a fazer.
+            // Deleted (or recreated with another `id`) midway: nothing to do.
             Err(e) if e.code == ErrorCode::TopicNotFound => {
                 lock(&self.entries).remove(&queue.id);
             }
@@ -186,7 +186,7 @@ impl VolatileManager {
                 tracing::warn!(
                     topic = %queue.name,
                     error = %e,
-                    "não foi possível excluir a fila ociosa: nova tentativa depois"
+                    "could not delete the idle queue: trying again later"
                 );
                 let retry = self.service.rules().volatile_retry_interval;
                 self.schedule(&queue.id, now + retry.as_millis() as u64);
@@ -194,7 +194,7 @@ impl VolatileManager {
         }
     }
 
-    /// Pergunta a todos os membros, este inclusive, há quanto tempo foi o último `GET`.
+    /// Asks all the members, this one included, how long ago the last `GET` was.
     async fn ask_everyone(self: &Arc<Self>, topic_id: &str) -> Check {
         let Some(table) = self.service.membership().table() else {
             return Check::Blocked;
@@ -213,8 +213,8 @@ impl VolatileManager {
                 Ok(Ok(Response::Idle(idle))) => {
                     least = least.min(idle.idle_seconds.saturating_mul(1000));
                 }
-                // Um nó que não conhece o tópico ainda (o commit não chegou a ele) não permite
-                // concluir nada.
+                // A node that does not know the topic yet (the commit has not reached it) does not allow
+                // concluding anything.
                 _ => return Check::Blocked,
             }
         }

@@ -1,15 +1,15 @@
-//! A fila de saída de um canal (doc 13, seção 12.9): os quadros com `seq` que ainda não foram
-//! confirmados pelo outro lado. Com o canal fora ela acumula; os sinais de **estado** do mesmo
-//! tópico se substituem (só o último importa), os avisos velhos são descartados, e a fila que passa
-//! do tamanho ou da idade máximos faz do nó do outro lado um nó **falho** (a votação de exclusão é
-//! aberta sem esperar o fim das reconexões).
+//! A channel's outgoing queue (doc 13, section 12.9): the frames with `seq` that have not yet been
+//! confirmed by the other side. With the channel down it accumulates; the **state** signals of the same
+//! topic replace each other (only the last matters), old notices are discarded, and a queue that exceeds
+//! the maximum size or age makes the node on the other side a **failed** node (the exclusion vote is
+//! opened without waiting for the end of the reconnections).
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use crate::cluster::protocol::{ChannelFrame, DefinitionKind, Signal};
 
-/// Quanto tempo um aviso de mensagem nova vale: é só uma dica, e uma velha só atrapalha.
+/// How long a new-message notice applies: it is only a hint, and an old one only gets in the way.
 pub const NOTIFY_TTL: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ struct Queued {
     at: Instant,
 }
 
-/// O que uma operação da fila descartou, para a métrica `taba.cluster.channel.queue.dropped`.
+/// What an operation on the queue discarded, for the `taba.cluster.channel.queue.dropped` metric.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Dropped {
     pub coalesced: usize,
@@ -34,7 +34,7 @@ pub struct OutQueue {
     max_age: Duration,
 }
 
-/// A chave de um sinal de estado: o que o substitui na fila. Aviso não tem chave.
+/// The key of a state signal: what replaces it in the queue. A notice has no key.
 fn state_key(signal: &Signal) -> Option<(u8, &str)> {
     match signal {
         Signal::Listeners { topic, .. } => Some((0, topic)),
@@ -70,7 +70,7 @@ impl OutQueue {
         self.items.is_empty()
     }
 
-    /// Enfileira o sinal e devolve o `seq` e quantos quadros velhos ele substituiu.
+    /// Queues the signal and returns the `seq` and how many old frames it replaced.
     pub fn push(&mut self, signal: Signal, now: Instant) -> (u64, Dropped) {
         let mut dropped = Dropped::default();
         if let Some(key) = state_key(&signal) {
@@ -89,7 +89,7 @@ impl OutQueue {
         (seq, dropped)
     }
 
-    /// Descarta os avisos que passaram de [`NOTIFY_TTL`].
+    /// Discards the notices that passed [`NOTIFY_TTL`].
     pub fn expire(&mut self, now: Instant) -> Dropped {
         let before = self.items.len();
         self.items.retain(|queued| {
@@ -102,8 +102,8 @@ impl OutQueue {
         }
     }
 
-    /// Os quadros ainda sem confirmação, do mais antigo ao mais novo, no máximo `limit`. Um quadro
-    /// reenviado leva o mesmo `seq`.
+    /// The frames still unconfirmed, from oldest to newest, at most `limit`. A resent frame
+    /// carries the same `seq`.
     pub fn pending(&self, limit: usize) -> Vec<ChannelFrame> {
         self.items
             .iter()
@@ -115,8 +115,8 @@ impl OutQueue {
             .collect()
     }
 
-    /// Os quadros ainda sem confirmação com `seq` maior que `after`, no máximo `limit`: o que uma
-    /// conexão ainda não levou.
+    /// The frames still unconfirmed with `seq` greater than `after`, at most `limit`: what a
+    /// connection has not carried yet.
     pub fn pending_after(&self, after: u64, limit: usize) -> Vec<ChannelFrame> {
         self.items
             .iter()
@@ -129,17 +129,17 @@ impl OutQueue {
             .collect()
     }
 
-    /// Tira da fila os quadros confirmados. O que foi confirmado nunca se repete.
+    /// Takes the confirmed frames out of the queue. What was confirmed is never repeated.
     pub fn confirm(&mut self, seqs: &[u64]) {
         self.items.retain(|queued| !seqs.contains(&queued.seq));
     }
 
-    /// O quadro ainda espera a confirmação?
+    /// Does the frame still await confirmation?
     pub fn contains(&self, seq: u64) -> bool {
         self.items.iter().any(|queued| queued.seq == seq)
     }
 
-    /// A fila passou do tamanho ou da idade máximos?
+    /// Did the queue exceed the maximum size or age?
     pub fn overflowed(&self, now: Instant) -> bool {
         self.items.len() > self.max_size
             || self
@@ -148,7 +148,7 @@ impl OutQueue {
                 .is_some_and(|oldest| now.saturating_duration_since(oldest.at) > self.max_age)
     }
 
-    /// Esvazia a fila (o nó saiu da tabela: as filas para ele são descartadas).
+    /// Empties the queue (the node left the table: the queues to it are discarded).
     pub fn clear(&mut self) -> usize {
         let n = self.items.len();
         self.items.clear();

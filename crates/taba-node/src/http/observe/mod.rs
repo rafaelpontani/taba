@@ -1,11 +1,11 @@
-//! A medição das requisições e das conexões (doc 11, "API HTTP"): `http.server.request.duration`,
-//! `http.server.active_requests`, os tamanhos de corpo e `taba.node.connections`, por porta
+//! Measuring requests and connections (doc 11, "HTTP API"): `http.server.request.duration`,
+//! `http.server.active_requests`, the body sizes and `taba.node.connections`, per port
 //! (`server.port`).
 //!
-//! As requisições passam por uma camada do roteador (depois do roteamento, então o `http.route` é o
-//! **template** da rota casada, nunca o caminho real). As conexões são contadas por um serviço
-//! por conexão, que o `serve` monta no lugar do `into_make_service_with_connect_info` do axum
-//! (e entrega o mesmo `ConnectInfo<SocketAddr>`).
+//! Requests go through a router layer (after routing, so `http.route` is the matched route's
+//! **template**, never the real path). Connections are counted by a per-connection
+//! service, which `serve` assembles in place of axum's `into_make_service_with_connect_info` (and
+//! hands over the same `ConnectInfo<SocketAddr>`).
 
 use std::convert::Infallible;
 use std::future::{Ready, ready};
@@ -36,14 +36,14 @@ use crate::telemetry::metrics::{
 };
 use crate::telemetry::{Telemetry, trace};
 
-/// Onde se mede: o registro e a porta do listener (o atributo `server.port`).
+/// Where it is measured: the registry and the listener's port (the `server.port` attribute).
 #[derive(Clone)]
 pub struct Observer {
     pub telemetry: Arc<Telemetry>,
     pub port: u16,
 }
 
-/// Os verbos que viram atributo como são; os outros viram `_OTHER` (cardinalidade limitada).
+/// The verbs that become an attribute as they are; the others become `_OTHER` (bounded cardinality).
 fn method_label(method: &str) -> &str {
     match method {
         "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "TRACE" | "CONNECT" => {
@@ -53,14 +53,14 @@ fn method_label(method: &str) -> &str {
     }
 }
 
-/// As rotas que contam como operação de cliente para o trace (doc 11, "Traces").
+/// The routes that count as a client operation for the trace (doc 11, "Traces").
 fn is_client_operation(route: &str) -> bool {
     !["/health", "/metrics", "/cluster", "/node"]
         .iter()
         .any(|prefix| route.starts_with(prefix))
 }
 
-/// Subtrai uma requisição ativa ao sair, mesmo que o futuro seja descartado no meio.
+/// Subtracts an active request on exit, even if the future is dropped in the middle.
 struct ActiveRequest {
     observer: Observer,
     method: String,
@@ -108,7 +108,7 @@ async fn observe(State(observer): State<Observer>, request: Request, next: Next)
         .and_then(|v| v.parse::<u64>().ok());
     let _active = ActiveRequest::start(&observer, &method);
     let started = Instant::now();
-    // Um trace por operação de cliente; as rotas de operação e as entre nós não geram trace.
+    // One trace per client operation; the operations routes and the inter-node ones generate no trace.
     let span = route
         .as_deref()
         .filter(|route| is_client_operation(route))
@@ -151,7 +151,7 @@ async fn observe(State(observer): State<Observer>, request: Request, next: Next)
     response
 }
 
-/// Conta uma conexão aberta enquanto o serviço dela existir.
+/// Counts an open connection while its service exists.
 struct ConnectionGuard {
     observer: Observer,
 }
@@ -177,7 +177,7 @@ impl Drop for ConnectionGuard {
     }
 }
 
-/// O serviço de uma conexão: o roteador mais o endereço de quem conectou (`ConnectInfo`).
+/// A connection's service: the router plus the address of whoever connected (`ConnectInfo`).
 #[derive(Clone)]
 struct Connection {
     router: Router,
@@ -200,7 +200,7 @@ impl Service<Request> for Connection {
     }
 }
 
-/// Monta o serviço de cada conexão que o listener aceita.
+/// Builds the service of each connection the listener accepts.
 struct MakeConnection {
     router: Router,
     observer: Observer,
@@ -224,15 +224,15 @@ impl Service<IncomingStream<'_, TcpListener>> for MakeConnection {
     }
 }
 
-/// Quanto o handshake TLS de uma conexão pode levar antes de ela ser derrubada.
+/// How long a connection's TLS handshake can take before it is dropped.
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// Quanto a parada espera as conexões abertas terminarem o que estão fazendo.
+/// How long the stop waits for the open connections to finish what they are doing.
 const GRACEFUL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// Como `serve`, mas com TLS mútuo (a porta do cluster, doc 06 seção 8.0.1): o handshake exige o
-/// certificado do outro lado, e o que falha nele nunca chega a uma rota. Quem chama é reconhecido
-/// pelo IP da conexão (`ConnectInfo`), como na porta em HTTP puro.
+/// Like `serve`, but with mutual TLS (the cluster port, doc 06 section 8.0.1): the handshake requires the
+/// certificate on the other side, and what fails in it never reaches a route. The caller is recognized
+/// by the connection's IP (`ConnectInfo`), as on the plain HTTP port.
 pub async fn serve_tls(
     listener: TcpListener,
     router: Router,
@@ -253,7 +253,7 @@ pub async fn serve_tls(
             accepted = listener.accept() => match accepted {
                 Ok(accepted) => accepted,
                 Err(e) => {
-                    tracing::warn!(error = %e, "falha ao aceitar uma conexão do cluster");
+                    tracing::warn!(error = %e, "failed to accept a cluster connection");
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     continue;
                 }
@@ -271,11 +271,11 @@ pub async fn serve_tls(
             let tls = match handshake {
                 Ok(Ok(tls)) => tls,
                 Ok(Err(e)) => {
-                    tracing::debug!(%peer, error = %e, "handshake TLS do cluster recusado");
+                    tracing::debug!(%peer, error = %e, "cluster TLS handshake refused");
                     return;
                 }
                 Err(_) => {
-                    tracing::debug!(%peer, "handshake TLS do cluster não terminou no prazo");
+                    tracing::debug!(%peer, "cluster TLS handshake did not finish in time");
                     return;
                 }
             };
@@ -288,7 +288,7 @@ pub async fn serve_tls(
             let builder = Builder::new(TokioExecutor::new());
             let served = builder.serve_connection_with_upgrades(TokioIo::new(tls), service);
             if let Err(e) = watcher.watch(served).await {
-                tracing::debug!(%peer, error = %e, "conexão do cluster encerrada com erro");
+                tracing::debug!(%peer, error = %e, "cluster connection ended with an error");
             }
         });
     }
@@ -296,8 +296,8 @@ pub async fn serve_tls(
     Ok(())
 }
 
-/// Atende o listener com o roteador, medindo requisições e conexões, até `cancel`. As chamadas em
-/// andamento terminam antes de a função voltar.
+/// Serves the listener with the router, measuring requests and connections, until `cancel`. Calls in
+/// progress finish before the function returns.
 pub async fn serve(
     listener: TcpListener,
     router: Router,

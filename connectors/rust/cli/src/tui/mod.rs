@@ -1,6 +1,6 @@
-//! A tela interativa dos perfis (doc 19b, seção 18.11.2): uma lista e um formulário navegados com
-//! as setas. A lógica (`screen`, `form`, `keys`) é pura e testada; `term` é a parte fina que põe o
-//! terminal em modo cru.
+//! The interactive profiles screen (doc 19b, section 18.11.2): a list and a form navigated with
+//! the arrows. The logic (`screen`, `form`, `keys`) is pure and tested; `term` is the thin part that puts the
+//! terminal in raw mode.
 
 use std::io;
 use std::time::Instant;
@@ -18,11 +18,11 @@ pub mod term;
 pub use keys::Key;
 use screen::{App, Flow, Services};
 
-/// O que desenhar: as linhas (com sequências ANSI de cor, se `Style.color`) e onde fica o cursor.
+/// What to draw: the lines (with ANSI color sequences, if `Style.color`) and where the cursor is.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Frame {
     pub lines: Vec<String>,
-    /// Linha e coluna (a partir de zero) do cursor; `None` esconde o cursor.
+    /// Line and column (zero-based) of the cursor; `None` hides the cursor.
     pub cursor: Option<(usize, usize)>,
 }
 
@@ -32,7 +32,7 @@ pub struct Style {
 }
 
 impl Style {
-    /// `text` com o código SGR dado (`1` negrito, `2` apagado, `31` vermelho...), se há cor.
+    /// `text` with the given SGR code (`1` bold, `2` dim, `31` red...), if there is color.
     pub fn paint(self, code: &str, text: &str) -> String {
         if self.color && !text.is_empty() {
             format!("\x1b[{code}m{text}\x1b[0m")
@@ -42,17 +42,17 @@ impl Style {
     }
 }
 
-/// O terminal em modo cru. Ao ser descartado, devolve o terminal como estava.
+/// The terminal in raw mode. When dropped, it gives the terminal back as it was.
 pub trait Terminal {
-    /// Colunas e linhas.
+    /// Columns and lines.
     fn size(&self) -> (usize, usize);
-    /// A próxima tecla; `None` quando a entrada acabou.
+    /// The next key; `None` when the input ended.
     fn read_key(&mut self) -> io::Result<Option<Key>>;
     fn draw(&mut self, frame: &Frame) -> io::Result<()>;
     fn color(&self) -> bool;
 }
 
-/// Roda a tela até a pessoa sair.
+/// Runs the screen until the person quits.
 pub fn run(ctx: &mut Ctx<'_>, terminal: &mut dyn Terminal) -> Result<(), CliError> {
     let file = ctx.load_config()?;
     let path = ctx.config_path()?.display().to_string();
@@ -66,7 +66,7 @@ pub fn run(ctx: &mut Ctx<'_>, terminal: &mut dyn Terminal) -> Result<(), CliErro
         let (width, height) = terminal.size();
         terminal
             .draw(&app.render(style, width, height))
-            .map_err(|e| CliError::File(format!("falha ao desenhar a tela: {e}")))?;
+            .map_err(|e| CliError::File(format!("failed to draw the screen: {e}")))?;
         match terminal.read_key() {
             Ok(Some(key)) => {
                 if app.handle(key, &mut services) == Flow::Quit {
@@ -74,7 +74,7 @@ pub fn run(ctx: &mut Ctx<'_>, terminal: &mut dyn Terminal) -> Result<(), CliErro
                 }
             }
             Ok(None) => return Ok(()),
-            Err(e) => return Err(CliError::File(format!("falha ao ler o teclado: {e}"))),
+            Err(e) => return Err(CliError::File(format!("failed to read the keyboard: {e}"))),
         }
     }
 }
@@ -96,10 +96,10 @@ impl Services for CtxServices<'_, '_> {
         let url = config.base_url.clone();
         let client = self.ctx.platform.client(config).map_err(|e| e.message)?;
         let started = Instant::now();
-        // `GET /topics?limit=1` na API de cliente: confere o endereço, o TLS e o token de uma vez.
+        // `GET /topics?limit=1` on the client API: checks the address, TLS and the token all at once.
         match client.call(&Call::new("GET", "/topics").query("limit", 1)) {
             Ok(_) => Ok(format!(
-                "ok: {url} respondeu em {} ms",
+                "ok: {url} answered in {} ms",
                 started.elapsed().as_millis()
             )),
             Err(e) if e.status == 401 || e.status == 403 => Err(format!(
@@ -107,12 +107,12 @@ impl Services for CtxServices<'_, '_> {
                 e.status, e.code
             )),
             Err(e) if e.status > 0 => Err(format!("{url} respondeu {} ({})", e.status, e.code)),
-            Err(e) => Err(format!("falhou: {}", e.message)),
+            Err(e) => Err(format!("failed: {}", e.message)),
         }
     }
 }
 
-/// A configuração de cliente de um perfil, com os valores embutidos onde ele não define nada.
+/// A profile's client configuration, with the built-in values where it defines nothing.
 fn connection_config(profile: &Profile) -> Result<Config, String> {
     let number = |field: &str, default: u64| {
         profile
@@ -137,7 +137,7 @@ fn connection_config(profile: &Profile) -> Result<Config, String> {
     }
     if let Some(path) = profile.get("ca-file") {
         config.ca_pem = Some(
-            std::fs::read(path).map_err(|e| format!("não consegui ler o ca-file {path}: {e}"))?,
+            std::fs::read(path).map_err(|e| format!("could not read the ca-file {path}: {e}"))?,
         );
     }
     Ok(config)

@@ -1,5 +1,5 @@
-//! O terminal de verdade, em modo cru e sem biblioteca: `stty` no Linux e no macOS, o
-//! `SetConsoleMode` do console no Windows (com sequências virtuais, Windows 10 em diante).
+//! The real terminal, in raw mode and with no library: `stty` on Linux and macOS, the console's
+//! `SetConsoleMode` on Windows (with virtual sequences, Windows 10 and later).
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
@@ -14,8 +14,8 @@ pub struct RawTerminal {
 }
 
 impl RawTerminal {
-    /// Põe o terminal em modo cru e entra na tela alternada. Falha se a entrada ou a saída não são
-    /// um terminal.
+    /// Puts the terminal in raw mode and enters the alternate screen. Fails if the input or output are not
+    /// a terminal.
     pub fn open() -> io::Result<RawTerminal> {
         let saved = sys::enter_raw()?;
         let mut out = io::stdout();
@@ -91,7 +91,7 @@ mod sys {
             .stderr(Stdio::null())
             .output()?;
         if !out.status.success() {
-            return Err(io::Error::other("o stty falhou (a entrada é um terminal?)"));
+            return Err(io::Error::other("stty failed (is the input a terminal?)"));
         }
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
     }
@@ -175,7 +175,7 @@ mod sys {
 
     fn mode(handle: Handle) -> io::Result<u32> {
         let mut mode = 0;
-        // SAFETY: `handle` vem do `GetStdHandle` e `mode` é um `u32` válido para escrita.
+        // SAFETY: `handle` comes from `GetStdHandle` and `mode` is a `u32` valid for writing.
         if unsafe { GetConsoleMode(handle, &mut mode) } == 0 {
             return Err(io::Error::last_os_error());
         }
@@ -183,7 +183,7 @@ mod sys {
     }
 
     fn set_mode(handle: Handle, mode: u32) -> io::Result<()> {
-        // SAFETY: só repassa o valor ao console.
+        // SAFETY: only passes the value to the console.
         if unsafe { SetConsoleMode(handle, mode) } == 0 {
             return Err(io::Error::last_os_error());
         }
@@ -191,7 +191,7 @@ mod sys {
     }
 
     pub fn enter_raw() -> io::Result<Saved> {
-        // SAFETY: `GetStdHandle` e `GetConsoleOutputCP` só leem estado do processo.
+        // SAFETY: `GetStdHandle` and `GetConsoleOutputCP` only read process state.
         let (input, output, code_page) = unsafe {
             (
                 GetStdHandle(STD_INPUT),
@@ -216,13 +216,13 @@ mod sys {
             let _ = set_mode(input, saved.input);
             return Err(e);
         }
-        // SAFETY: troca só a página de código de saída, restaurada em `restore`.
+        // SAFETY: only changes the output code page, restored in `restore`.
         unsafe { SetConsoleOutputCP(UTF8) };
         Ok(saved)
     }
 
     pub fn restore(saved: &Saved) {
-        // SAFETY: devolve ao console os valores que ele tinha.
+        // SAFETY: gives the console back the values it had.
         unsafe {
             let _ = SetConsoleMode(GetStdHandle(STD_INPUT), saved.input);
             let _ = SetConsoleMode(GetStdHandle(STD_OUTPUT), saved.output);
@@ -232,7 +232,7 @@ mod sys {
 
     pub fn size() -> Option<(usize, usize)> {
         let mut info = ScreenBufferInfo::default();
-        // SAFETY: `info` é uma estrutura válida para escrita, no formato que o console espera.
+        // SAFETY: `info` is a structure valid for writing, in the format the console expects.
         let ok = unsafe { GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT), &mut info) };
         if ok == 0 {
             return None;
@@ -252,7 +252,7 @@ mod sys {
     pub fn enter_raw() -> io::Result<Saved> {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            "este sistema não tem a tela interativa",
+            "this system does not have the interactive screen",
         ))
     }
 

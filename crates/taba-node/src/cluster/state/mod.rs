@@ -1,5 +1,5 @@
-//! O estado do nó dentro do cluster (`taba.node.state`, `drainState`) e o que ele
-//! diz sobre a prontidão (`/health/ready`, doc 06b).
+//! The node's state inside the cluster (`taba.node.state`, `drainState`) and what it
+//! says about readiness (`/health/ready`, doc 06b).
 
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
@@ -12,7 +12,7 @@ pub enum NodeState {
     Active,
     Syncing,
     Returning,
-    /// Disco cheio ou banco corrompido (doc 05, seção 7.3): só uma nova partida resolve.
+    /// Full disk or corrupt database (doc 05, section 7.3): only a new start fixes it.
     Failed,
 }
 
@@ -45,19 +45,19 @@ impl DrainState {
     }
 }
 
-/// O que o nó sabe de si, compartilhado entre os listeners.
+/// What the node knows of itself, shared among the listeners.
 #[derive(Debug)]
 pub struct NodeShared {
-    /// Muda quando o nó volta do drain como nó novo (doc 04, seção 6.10).
+    /// Changes when the node comes back from the drain as a new node (doc 04, section 6.10).
     node_id: RwLock<String>,
     pub mode: Mode,
     pub started_at: SystemTime,
     state: RwLock<(NodeState, DrainState)>,
-    /// Chamado quando o nó entra em falha (o cluster avisa os pares).
+    /// Called when the node enters failure (the cluster notifies the peers).
     failed_hook: OnceLock<FailedHook>,
 }
 
-/// O gancho de falha do nó (sem `Debug`: é uma função).
+/// The node's failure hook (no `Debug`: it is a function).
 pub struct FailedHook(Box<dyn Fn() + Send + Sync>);
 
 impl std::fmt::Debug for FailedHook {
@@ -67,8 +67,8 @@ impl std::fmt::Debug for FailedHook {
 }
 
 impl NodeShared {
-    /// Em desenvolvimento o nó é um cluster de um só e já nasce `active`. Em produção
-    /// nasce `joining` e só fica pronto quando o bootstrap e a sincronização acabam.
+    /// In development the node is a one-node cluster and is born `active`. In production
+    /// it is born `joining` and only becomes ready when the bootstrap and synchronization end.
     pub fn new(node_id: String, mode: Mode, started_at: SystemTime) -> Self {
         let initial = match mode {
             Mode::Development => NodeState::Active,
@@ -110,7 +110,7 @@ impl NodeShared {
         self.state.write().unwrap_or_else(|e| e.into_inner()).1 = drain;
     }
 
-    /// Muda o `drainState` de `from` para `to` só se ele estiver em `from`; devolve se mudou.
+    /// Changes the `drainState` from `from` to `to` only if it is in `from`; returns whether it changed.
     pub fn transition_drain(&self, from: DrainState, to: DrainState) -> bool {
         let mut guard = self.state.write().unwrap_or_else(|e| e.into_inner());
         if guard.1 == from {
@@ -121,7 +121,7 @@ impl NodeShared {
         }
     }
 
-    /// O nó falhou (disco cheio, banco corrompido): `/health/ready` passa a `503` `failed`.
+    /// The node failed (full disk, corrupt database): `/health/ready` becomes `503` `failed`.
     pub fn set_failed(&self) {
         let changed = {
             let mut guard = self.state.write().unwrap_or_else(|e| e.into_inner());
@@ -134,14 +134,14 @@ impl NodeShared {
         }
     }
 
-    /// Quem é avisado quando o nó entra em falha. Vale só a primeira chamada.
+    /// Who is notified when the node enters failure. Only the first call counts.
     pub fn on_failed(&self, hook: Box<dyn Fn() + Send + Sync>) {
         let _ = self.failed_hook.set(FailedHook(hook));
     }
 
-    /// `None` quando o nó está apto a receber tráfego; senão o `reason` do `HealthResponse`
-    /// (`bootstrapping`, `syncing`, `returning`, `failed`, `draining` ou `drained`). O drain vem
-    /// primeiro, pois tira o nó da rotação seja qual for o estado no cluster.
+    /// `None` when the node is fit to receive traffic; otherwise the `reason` of the `HealthResponse`
+    /// (`bootstrapping`, `syncing`, `returning`, `failed`, `draining` or `drained`). The drain comes
+    /// first, since it takes the node out of rotation whatever the state in the cluster.
     pub fn not_ready_reason(&self) -> Option<&'static str> {
         let (state, drain) = *self.state.read().unwrap_or_else(|e| e.into_inner());
         match (drain, state) {

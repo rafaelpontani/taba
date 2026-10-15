@@ -1,18 +1,19 @@
-# Roda quando o semantic-release (semantic.yml) cria a tag de uma versão: vX.Y.Z (final, da main) ou
-# vX.Y.Z-rc.N (candidata, da release). O semantic.yml o dispara com a ref na tag; o push de tag também serve. Os builds (servidor, conector Rust e conector C#) compilam e
-# testam com a versão da tag e enviam os binários como artefatos. Se os testes passarem, em paralelo: o
-# job de Docker baixa o binário do nó e publica a imagem no Docker Hub, e o job de release anexa os
-# binários e pacotes à GitHub Release. Depois movem as tags flutuantes.
+# Runs when semantic-release (semantic.yml) creates the tag of a version: vX.Y.Z (final, from main) or
+# vX.Y.Z-rc.N (candidate, from release). semantic.yml triggers it with the ref on the tag; a tag push also works.
+# The builds (server, Rust connector and C# connector) compile and test with the tag version and upload the
+# binaries as artifacts. If the tests pass, in parallel: the Docker job downloads the node binary and
+# publishes the image to Docker Hub, and the release job attaches the binaries and packages to the GitHub
+# Release. Afterwards the floating tags move.
 #
-# As tags flutuantes (v0.1, v0, v0.1-rc, v0-rc) NÃO podem disparar este workflow: os filtros abaixo só
-# aceitam tags completas, o job `version` confere de novo, e o floating-tags as envia com o GITHUB_TOKEN,
-# que não dispara workflows.
+# The floating tags (v0.1, v0, v0.1-rc, v0-rc) MUST NOT trigger this workflow: the filters below only
+# accept full tags, the `version` job checks again, and floating-tags pushes them with the GITHUB_TOKEN,
+# which does not trigger workflows.
 #
-# Imagem no Docker Hub e tags git flutuantes (cada uma só avança se a versão for a maior do escopo):
+# Docker Hub image and floating git tags (each one only advances if the version is the highest in its scope):
 #   0.1.0-rc.2 -> 0.1.0-rc.2, 0.1-rc, 0-rc, rc          (git: v0.1-rc, v0-rc)
 #   0.1.0      -> 0.1.0, 0.1, 0, latest                 (git: v0.1, v0)
 #
-# Configuração do semantic-release: .releaserc.json. Fluxo de candidatas e promoção: doc/pt-BR/27-ci-cd.md.
+# semantic-release configuration: .releaserc.json. Candidate and promotion flow: doc/pt-BR/27-ci-cd.md.
 name: Release
 
 on:
@@ -20,8 +21,8 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
-  # O semantic.yml dispara com `--ref vX.Y.Z`: tag criada com o GITHUB_TOKEN não gera o evento de push.
-  # Disparado numa branch ou numa tag flutuante, o job `version` não passa e nada roda.
+  # semantic.yml triggers it with `--ref vX.Y.Z`: a tag created with the GITHUB_TOKEN does not raise the push event.
+  # Triggered on a branch or a floating tag, the `version` job does not pass and nothing runs.
   workflow_dispatch:
 
 concurrency:
@@ -32,15 +33,15 @@ permissions:
   contents: read
 
 jobs:
-  # A versão vem da tag que disparou o workflow. Build e testes usam essa versão.
+  # The version comes from the tag that triggered the workflow. Build and tests use that version.
   version:
-    name: Versão (tag)
+    name: Version (tag)
     runs-on: ubuntu-latest
     outputs:
       published: ${{ steps.tag.outputs.published }}
       version: ${{ steps.tag.outputs.version }}
     steps:
-      # Segunda barreira contra tags flutuantes ou fora do padrão: só segue com vX.Y.Z[-rc.N].
+      # Second barrier against floating or non-standard tags: only proceeds with vX.Y.Z[-rc.N].
       - id: tag
         shell: bash
         env:
@@ -53,13 +54,13 @@ jobs:
           else
             echo "published=false" >> "$GITHUB_OUTPUT"
             echo "version=" >> "$GITHUB_OUTPUT"
-            echo "tag ignorada: $TAG"
+            echo "tag ignored: $TAG"
           fi
 
-  # Os três builds saem em paralelo, cada um com a versão da tag. O que as imagens e a release usam
-  # (servidor e conector Rust) não espera o conector C#, e vice-versa.
+  # The three builds run in parallel, each with the tag version. What the images and the release use
+  # (server and Rust connector) does not wait for the C# connector, and vice versa.
   server:
-    name: Servidor
+    name: Server
     needs: version
     if: needs.version.outputs.published == 'true'
     uses: ./.github/workflows/build-server.yml
@@ -67,7 +68,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
 
   connector-rust:
-    name: Conector Rust
+    name: Rust connector
     needs: version
     if: needs.version.outputs.published == 'true'
     uses: ./.github/workflows/build-connector-rust.yml
@@ -75,7 +76,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
 
   connector-csharp:
-    name: Conector C#
+    name: C# connector
     needs: version
     if: needs.version.outputs.published == 'true'
     uses: ./.github/workflows/build-connector-csharp.yml
@@ -83,7 +84,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
 
   plan:
-    name: Plano de tags
+    name: Tag plan
     needs: version
     if: needs.version.outputs.published == 'true'
     runs-on: ubuntu-latest
@@ -102,14 +103,14 @@ jobs:
           set -euo pipefail
           re='^([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$'
           if [[ ! $VERSION =~ $re ]]; then
-            echo "versão inesperada: $VERSION" >&2
+            echo "unexpected version: $VERSION" >&2
             exit 1
           fi
           major="${BASH_REMATCH[1]}"
           minor="${BASH_REMATCH[2]}"
           rc="${BASH_REMATCH[4]}"
 
-          # A maior versão, entre as tags da mesma família (rc ou final), que casa com o filtro.
+          # The highest version, among the tags of the same family (rc or final), that matches the filter.
           highest() {
             git tag -l 'v*.*.*' | sed 's/^v//' | grep -E "$1" | sort -V | tail -n 1
           }
@@ -139,24 +140,24 @@ jobs:
             echo "git_tags=${git_tags[*]:-}"
           } >> "$GITHUB_OUTPUT"
           echo "docker: ${docker_tags[*]}"
-          echo "git flutuantes: ${git_tags[*]:-nenhuma}"
+          echo "floating git: ${git_tags[*]:-none}"
 
   docker:
-    name: Imagens no Docker Hub
+    name: Images on Docker Hub
     needs: [version, server, connector-rust, plan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: v${{ needs.version.outputs.version }}
-      # Baixa taba-node-* e taba-cli-*: dist/taba-amd64, dist/taba-arm64, dist/taba-cli-amd64 e
+      # Downloads taba-node-* and taba-cli-*: dist/taba-amd64, dist/taba-arm64, dist/taba-cli-amd64 and
       # dist/taba-cli-arm64.
       - uses: actions/download-artifact@v4
         with:
           pattern: taba-*
           merge-multiple: true
           path: dist
-      # O artefato perde a permissão de execução ao ser baixado.
+      # The artifact loses its execute permission when downloaded.
       - run: chmod +x dist/taba-*
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -193,9 +194,9 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.cli }}
 
-  # Os binários e pacotes do ci vão para a GitHub Release da versão, em paralelo com a imagem Docker.
+  # The binaries and packages from ci go to the version's GitHub Release, in parallel with the Docker image.
   release-assets:
-    name: Binários na GitHub Release
+    name: Binaries on the GitHub Release
     needs: [version, server, connector-rust, connector-csharp, docker]
     if: needs.version.outputs.published == 'true'
     runs-on: ubuntu-latest
@@ -203,14 +204,14 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Sem checkout não há .git aqui: o gh precisa saber o repositório por esta variável.
+      # Without a checkout there is no .git here: gh needs to know the repository from this variable.
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      # Baixa uma pasta por artefato: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64 e
+      # Downloads one folder per artifact: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64 and
       # nuget-packages.
-      # Só os artefatos da release: sem filtro, o download pega também os `*.dockerbuild` que o
-      # build-push-action gera, e o download falha depois de 5 tentativas.
+      # Only the release artifacts: without a filter, the download also picks up the `*.dockerbuild` files that
+      # build-push-action generates, and the download fails after 5 attempts.
       - uses: actions/download-artifact@v4
         with:
           pattern: taba-*
@@ -219,8 +220,8 @@ jobs:
         with:
           name: nuget-packages
           path: assets/nuget-packages
-      # Nome com a versão e a arquitetura, para não se confundir com binários de outras releases.
-      - name: Renomeia com a versão
+      # Name with the version and the architecture, so it is not confused with binaries of other releases.
+      - name: Rename with the version
         shell: bash
         run: |
           set -euo pipefail
@@ -231,14 +232,14 @@ jobs:
           mv assets/taba-cli-arm64/taba-cli-arm64 "release/taba-cli-$VERSION-aarch64-unknown-linux-musl"
           cp assets/nuget-packages/*.nupkg release/
           ls -l release
-      - name: Envia para a release
+      - name: Upload to the release
         shell: bash
         run: |
           set -euo pipefail
           gh release upload "v$VERSION" release/* --clobber
 
   floating-tags:
-    name: Tags flutuantes
+    name: Floating tags
     needs: [version, plan, release-assets]
     if: needs.plan.outputs.git_tags != ''
     runs-on: ubuntu-latest

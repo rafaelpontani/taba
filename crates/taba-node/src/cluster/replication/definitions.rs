@@ -1,20 +1,20 @@
-//! A propagação das definições de **tópicos e tokens** a todos os nós (doc 02, seções 3.3 e 3.4;
-//! doc 06c, "Tópicos e tokens"), e os streams `GET /cluster/topics` e `/cluster/tokens` que o nó
-//! novo puxa depois de entrar.
+//! The propagation of **topic and token** definitions to all nodes (doc 02, sections 3.3 and 3.4;
+//! doc 06c, "Topics and tokens"), and the `GET /cluster/topics` and `/cluster/tokens` streams that the new
+//! node pulls after joining.
 //!
-//! Cada definição tem um **dono** no anel: o primeiro nó ativo na posição do hash do nome do tópico
-//! ou do `id` do token. O dono é a fonte da verdade: só ele decide uma mudança, confere se ela cabe
-//! no estado atual (o nome já existe, o tópico não existe...) e dá a ela uma **versão** crescente.
-//! Todos os nós guardam a cópia completa e leem localmente; só a escrita passa pelo dono.
+//! Each definition has an **owner** on the ring: the first active node at the position of the hash of the topic name
+//! or of the token `id`. The owner is the source of truth: only it decides a change, checks whether it fits
+//! the current state (the name already exists, the topic does not exist...) and gives it an increasing **version**.
+//! Every node keeps the full copy and reads locally; only the write goes through the owner.
 //!
-//! Quem recebe a chamada do cliente propõe a mudança ao dono (`DefinitionPropose`). O dono grava
-//! primeiro num **herdeiro** (o primeiro outro dono alcançável da posição, para a mudança sobreviver à queda do
-//! dono), aplica em si e manda a todos os outros nós (`DefinitionApply`). Responde depois dos nós
-//! que respondem dentro de `write.commit.timeout`; o dono e o herdeiro enfileiram o estado da definição para todos os
-//! pares no quadro `definition` do canal (D127), e o nó que não respondeu o recebe quando o canal
-//! volta, ou é excluído se a fila estoura. Cada nó aplica só uma versão que não seja menor que a
-//! sua, então repetir ou chegar fora de ordem não muda o resultado. A remoção deixa uma lápide com
-//! a versão, para uma mudança atrasada não ressuscitar o que foi removido.
+//! Whoever receives the client's call proposes the change to the owner (`DefinitionPropose`). The owner first writes
+//! to an **heir** (the first other reachable owner of the position, so the change survives the owner's
+//! fall), applies it to itself and sends it to all the other nodes (`DefinitionApply`). It answers after the nodes
+//! that answer within `write.commit.timeout`; the owner and the heir queue the definition's state for all
+//! peers in the channel's `definition` frame (D127), and the node that did not answer receives it when the channel
+//! comes back, or is excluded if the queue overflows. Each node applies only a version that is not lower than
+//! its own, so repeating or arriving out of order does not change the result. Removal leaves a tombstone with
+//! the version, so a late change does not resurrect what was removed.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -43,17 +43,17 @@ use crate::engine::tokens::{TokenChange, TokenReplicator, Tokens};
 use crate::engine::topics::{TopicChange, TopicReplicator, Topics};
 use crate::telemetry::metrics::DEFINITION_CONFLICTS;
 
-/// O teto padrão de linhas de um trecho de stream (`cluster.sync.stream.max-items`, a definir).
+/// The default ceiling of lines in a stretch of stream (`cluster.sync.stream.max-items`, to be defined).
 const STREAM_PAGE: usize = 500;
-/// Quanto tempo uma lápide fica guardada (se nenhum nó está pendente para ela).
+/// How long a tombstone is kept (if no node is pending for it).
 const TOMBSTONE_TTL: Duration = Duration::from_secs(3600);
 
 type Key = (DefinitionKind, String);
-/// O SHA-256 do conteúdo de uma versão da definição.
+/// The SHA-256 of the content of a version of the definition.
 type Fingerprint = [u8; 32];
 
-/// O que este nó sabe de uma definição: a versão que aplicou, se ela foi removida e a impressão do
-/// conteúdo (para duas cópias de mesma versão serem desempatadas igual em todo nó).
+/// What this node knows of a definition: the version it applied, whether it was removed and the fingerprint of the
+/// content (so two copies of the same version are tie-broken the same on every node).
 struct Entry {
     version: u64,
     deleted: bool,
@@ -61,7 +61,7 @@ struct Entry {
     at: SystemTime,
 }
 
-/// O que a carga de definições trouxe (nomes dos tópicos e IDs dos tokens).
+/// What the definitions load brought (topic names and token IDs).
 #[derive(Debug, Clone, Default)]
 pub struct Pulled {
     pub topics: HashSet<String>,
@@ -73,7 +73,7 @@ pub struct Definitions {
     topics: Arc<Topics>,
     tokens: Arc<Tokens>,
     versions: Mutex<HashMap<Key, Entry>>,
-    /// Uma mudança por vez em cada definição (a do dono e a aplicação nos nós).
+    /// One change at a time on each definition (the owner's and the application on the nodes).
     locks: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<()>>>>,
 }
 
@@ -89,8 +89,8 @@ fn bad(what: impl Into<String>) -> TabaError {
     TabaError::new(ErrorCode::ValidationFailed, what.into())
 }
 
-/// Apaga o tipo do futuro (o `tokio::spawn` precisa de `Send` e as chamadas entre nós são
-/// recursivas por natureza).
+/// Erases the future's type (`tokio::spawn` needs `Send` and the calls between nodes are
+/// recursive by nature).
 fn boxed<T: Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
 ) -> Pin<Box<dyn Future<Output = T> + Send>> {
@@ -121,17 +121,17 @@ impl Definitions {
         mutex.lock_owned().await
     }
 
-    /// A versão que este nó aplicou (`0` se não conhece a definição).
+    /// The version this node applied (`0` if it does not know the definition).
     fn version_of(&self, kind: DefinitionKind, key: &str) -> u64 {
         lock(&self.versions)
             .get(&(kind, key.to_owned()))
             .map_or(0, |e| e.version)
     }
 
-    // ---- Quem é o dono ----
+    // ---- Who the owner is ----
 
-    /// Os donos da definição: os nós **ativos** da posição no anel, o primeiro é o dono (um
-    /// nó que sincroniza ainda não tem a cópia completa). `503` se nenhum nó ativo a ocupa.
+    /// The definition's owners: the **active** nodes at the ring position, the first is the owner (a
+    /// syncing node does not have the full copy yet). `503` if no active node occupies it.
     fn owners(&self, kind: DefinitionKind, key: &str) -> Result<Vec<Member>, TabaError> {
         let position = ring::definition_position(kind.as_str(), key);
         let owners: Vec<Member> = self
@@ -141,14 +141,14 @@ impl Definitions {
             .filter(|m| m.state == MemberState::Active)
             .collect();
         if owners.is_empty() {
-            return Err(unavailable("Nenhum nó ativo é dono desta definição."));
+            return Err(unavailable("No active node owns this definition."));
         }
         Ok(owners)
     }
 
-    // ---- Quem propõe ----
+    // ---- Who proposes ----
 
-    /// Leva a mudança ao dono e só volta quando ela já vale neste nó também.
+    /// Takes the change to the owner and only returns when it already applies on this node too.
     async fn propose(&self, proposal: DefinitionProposal) -> Result<(), TabaError> {
         let owners = self.owners(proposal.kind, &proposal.key)?;
         let owner = &owners[0];
@@ -162,7 +162,7 @@ impl Definitions {
             .await
         {
             Ok(Response::Definition(done)) => {
-                // O dono esperou este nó; repetir é inofensivo e garante o "li o que escrevi".
+                // The owner waited for this node; repeating is harmless and guarantees "I read what I wrote".
                 let key = (done.kind, done.key.clone());
                 let _guard = self.lock_key(&key).await;
                 self.apply_unlocked(&done).await?;
@@ -171,14 +171,14 @@ impl Definitions {
             Ok(_) => Err(TabaError::internal()),
             Err(CallError::Remote(error)) => Err(error),
             Err(other) => Err(unavailable(format!(
-                "O dono da definição não respondeu: {other}."
+                "The definition's owner did not answer: {other}."
             ))),
         }
     }
 
-    // ---- O dono ----
+    // ---- The owner ----
 
-    /// Decide a mudança: confere com o estado do dono e dá a próxima versão.
+    /// Decides the change: checks it against the owner's state and gives the next version.
     fn decide(&self, proposal: &DefinitionProposal) -> Result<DefinitionApply, TabaError> {
         match proposal.kind {
             DefinitionKind::Topic => self.topics.check_change(&topic_change(proposal)?)?,
@@ -199,17 +199,17 @@ impl Definitions {
         })
     }
 
-    /// Roda no dono: decide, grava no herdeiro, aplica em si e espalha aos demais nós.
+    /// Runs on the owner: decides, writes to the heir, applies to itself and spreads to the other nodes.
     async fn coordinate(&self, proposal: DefinitionProposal) -> Result<DefinitionApply, TabaError> {
         let key = (proposal.kind, proposal.key.clone());
         let _guard = self.lock_key(&key).await;
         let owners = self.owners(proposal.kind, &proposal.key)?;
         if !self.service.is_self(&owners[0]) {
-            return Err(unavailable("Este nó não é o dono da definição."));
+            return Err(unavailable("This node is not the definition's owner."));
         }
         let decided = self.decide(&proposal)?;
-        // A mudança precisa existir em outro nó antes de o dono responder: o primeiro dono
-        // seguinte que confirma é o herdeiro dela (se ele cair, a mudança não se perde).
+        // The change must exist on another node before the owner answers: the first following
+        // owner that confirms is its heir (if it falls, the change is not lost).
         let mut heir: Option<&Member> = None;
         for candidate in &owners[1..] {
             let for_heir = DefinitionApply {
@@ -231,7 +231,7 @@ impl Definitions {
         }
         if owners.len() > 1 && heir.is_none() {
             return Err(unavailable(
-                "Nenhum outro dono da definição confirmou a mudança.",
+                "No other owner of the definition confirmed the change.",
             ));
         }
         self.apply_unlocked(&decided).await?;
@@ -242,8 +242,8 @@ impl Definitions {
         Ok(decided)
     }
 
-    /// Manda a mudança aos demais nós e espera os que respondem em `write.commit.timeout`; os
-    /// outros ficam pendentes e o dono insiste neles.
+    /// Sends the change to the other nodes and waits for those that answer in `write.commit.timeout`; the
+    /// others stay pending and the owner insists on them.
     async fn spread(&self, decided: &DefinitionApply, done: &[String]) {
         let Some(table) = self.service.membership().table() else {
             return;
@@ -272,7 +272,7 @@ impl Definitions {
                         pending.remove(&member.node_id);
                     }
                     Ok((member, Err(CallError::Remote(error)))) if error.status() < 500 => {
-                        tracing::warn!(node_id = %member.node_id, code = %error.code, "definição recusada por um nó");
+                        tracing::warn!(node_id = %member.node_id, code = %error.code, "definition refused by a node");
                         pending.remove(&member.node_id);
                     }
                     _ => {}
@@ -283,7 +283,7 @@ impl Definitions {
         set.detach_all();
     }
 
-    /// O estado mais novo que este nó tem de uma definição (ou a lápide dela).
+    /// The newest state this node has of a definition (or its tombstone).
     fn current(&self, kind: DefinitionKind, key: &str) -> Option<DefinitionApply> {
         let (version, deleted) = lock(&self.versions)
             .get(&(kind, key.to_owned()))
@@ -306,12 +306,12 @@ impl Definitions {
         })
     }
 
-    // ---- Quem recebe ----
+    // ---- Who receives ----
 
-    /// A mudança vale diante do que este nó já tem? Perde a de versão menor. Na mesma versão com
-    /// conteúdo diferente (duas decisões sem saber uma da outra: a nova tentativa que reusa a
-    /// versão, ou dois nós que se achavam donos), vale a de **menor impressão**, a mesma escolha em
-    /// qualquer nó e em qualquer ordem de chegada; o empate é contado e avisado.
+    /// Does the change apply given what this node already has? A lower version loses. On the same version with
+    /// different content (two decisions unaware of each other: the new attempt that reuses the
+    /// version, or two nodes that thought they were owners), the one with the **lowest fingerprint** applies, the same choice on
+    /// any node and in any order of arrival; the tie is counted and warned.
     fn wins_over_held(&self, change: &DefinitionApply, fingerprint: &Fingerprint) -> bool {
         let held = lock(&self.versions)
             .get(&(change.kind, change.key.clone()))
@@ -331,7 +331,7 @@ impl Definitions {
             key = %change.key,
             version,
             replaced = wins,
-            "duas cópias da definição com a mesma versão e conteúdo diferente"
+            "two copies of the definition with the same version and different content"
         );
         self.service.telemetry().registry.add(
             &DEFINITION_CONFLICTS,
@@ -341,8 +341,8 @@ impl Definitions {
         wins
     }
 
-    /// Aplica a mudança neste nó se a versão não é menor que a que ele já tem. Quem chama segura a
-    /// trava da definição. Devolve `false` quando a mudança chegou velha demais.
+    /// Applies the change on this node if the version is not lower than the one it already has. Whoever calls holds the
+    /// definition lock. Returns `false` when the change arrived too old.
     async fn apply_unlocked(&self, change: &DefinitionApply) -> Result<bool, TabaError> {
         let key = (change.kind, change.key.clone());
         let fingerprint = fingerprint(change)?;
@@ -353,7 +353,7 @@ impl Definitions {
             (DefinitionKind::Topic, false) => {
                 let definition = TopicDefinition::from_json(&change.body).map_err(bad)?;
                 if definition.name != change.key {
-                    return Err(bad("O nome do tópico não é a chave da mudança."));
+                    return Err(bad("The topic name is not the change's key."));
                 }
                 self.topics.apply_save(definition).await?;
             }
@@ -361,7 +361,7 @@ impl Definitions {
             (DefinitionKind::Token, false) => {
                 let record = token_from_json(&change.body)?;
                 if record.id != change.key {
-                    return Err(bad("O id do token não é a chave da mudança."));
+                    return Err(bad("The token id is not the change's key."));
                 }
                 self.tokens.apply_save(record).await?;
             }
@@ -387,9 +387,9 @@ impl Definitions {
         Ok(true)
     }
 
-    /// Enfileira para todos os pares o estado atual da definição, no quadro `definition` do canal: o nó
-    /// que não respondeu a tempo (ou estava fora do ar) o recebe quando o canal volta, sem depender
-    /// de quem decidiu (D127). O dono e o herdeiro fazem isso.
+    /// Queues for all peers the definition's current state, in the channel's `definition` frame: the node
+    /// that did not answer in time (or was down) receives it when the channel comes back, without depending
+    /// on whoever decided (D127). The owner and the heir do this.
     fn relay(&self, kind: DefinitionKind, key: &str) {
         let Some(change) = self.current(kind, key) else {
             return;
@@ -399,14 +399,14 @@ impl Definitions {
         }
     }
 
-    /// Uma definição que um par disse pelo canal (quadro `definition`): aplica pela mesma regra do
-    /// `definition-apply` (versão maior vale; a mesma versão com conteúdo diferente, o desempate do
-    /// D124). Quem aprende por aqui não repassa.
+    /// A definition a peer said through the channel (`definition` frame): applies by the same rule as
+    /// `definition-apply` (higher version applies; the same version with different content, the tie-break of
+    /// D124). Whoever learns it here does not forward it.
     pub async fn learn(&self, change: DefinitionApply) {
         let key = (change.kind, change.key.clone());
         let _guard = self.lock_key(&key).await;
         if let Err(error) = self.apply_unlocked(&change).await {
-            tracing::warn!(kind = change.kind.as_str(), key = %change.key, code = %error.code, "definição dita por um par recusada");
+            tracing::warn!(kind = change.kind.as_str(), key = %change.key, code = %error.code, "definition said by a peer refused");
         }
     }
 
@@ -417,7 +417,7 @@ impl Definitions {
     ) -> Pin<Box<dyn Future<Output = Result<Response, TabaError>> + Send + '_>> {
         Box::pin(async move {
             if change.key.trim().is_empty() {
-                return Err(bad("A chave da definição é obrigatória."));
+                return Err(bad("The definition key is required."));
             }
             let key = (change.kind, change.key.clone());
             let _guard = self.lock_key(&key).await;
@@ -429,28 +429,28 @@ impl Definitions {
         })
     }
 
-    /// `POST /cluster/definitions/propose`: o dono decide a mudança.
+    /// `POST /cluster/definitions/propose`: the owner decides the change.
     pub fn handle_propose(
         &self,
         proposal: DefinitionProposal,
     ) -> Pin<Box<dyn Future<Output = Result<Response, TabaError>> + Send + '_>> {
         Box::pin(async move {
             if proposal.key.trim().is_empty() {
-                return Err(bad("A chave da definição é obrigatória."));
+                return Err(bad("The definition key is required."));
             }
             match self.service.node_state() {
                 NodeState::Active => {}
                 NodeState::Failed => {
                     return Err(TabaError::new(
                         ErrorCode::NodeFailed,
-                        "O nó está em falha e não decide definições até ser excluído.",
+                        "The node is in failure and does not decide definitions until it is excluded.",
                     )
                     .with_retry_after(5));
                 }
                 _ => {
                     return Err(TabaError::new(
                         ErrorCode::ClusterNodeSyncing,
-                        "O nó ainda está em sincronização e não decide definições.",
+                        "The node is still syncing and does not decide definitions.",
                     )
                     .with_retry_after(5));
                 }
@@ -467,7 +467,7 @@ impl Definitions {
             .map_or(STREAM_PAGE, |n| (n as usize).clamp(2, STREAM_PAGE))
     }
 
-    /// `GET /cluster/topics`: cada linha é a definição mais a `version` que este nó aplicou.
+    /// `GET /cluster/topics`: each line is the definition plus the `version` this node applied.
     pub fn list_topics(&self, query: &StreamQuery) -> Response {
         let (definitions, more) = self
             .topics
@@ -479,7 +479,7 @@ impl Definitions {
         Response::Stream(StreamPage::new(items, more))
     }
 
-    /// `GET /cluster/tokens`: cada linha é o registro mais a `version` que este nó aplicou.
+    /// `GET /cluster/tokens`: each line is the record plus the `version` this node applied.
     pub fn list_tokens(&self, query: &StreamQuery) -> Response {
         let (records, more) = self
             .tokens
@@ -496,9 +496,9 @@ impl Definitions {
         Response::Stream(StreamPage::new(items, more))
     }
 
-    /// `GET /cluster/definitions/tombstones`: as lápides que este nó guarda (a remoção e a versão
-    /// dela), para o nó que sincroniza saber as versões já usadas e não recriar o que foi removido
-    /// (D125). Cada linha leva `id` (`tipo:chave`, a ordem e o cursor), `kind`, `key` e `version`.
+    /// `GET /cluster/definitions/tombstones`: the tombstones this node keeps (the removal and its
+    /// version), so the syncing node knows the versions already used and does not recreate what was removed
+    /// (D125). Each line carries `id` (`kind:key`, the order and the cursor), `kind`, `key` and `version`.
     pub fn list_tombstones(&self, query: &StreamQuery) -> Response {
         let mut rows: Vec<(String, DefinitionKind, String, u64)> = lock(&self.versions)
             .iter()
@@ -526,7 +526,7 @@ impl Definitions {
         Response::Stream(StreamPage::new(items, more))
     }
 
-    /// Apaga as definições e os tokens locais (o nó volta como nó novo).
+    /// Deletes the local definitions and tokens (the node comes back as a new node).
     pub async fn wipe(&self) {
         for name in self.topics.names() {
             let _ = self.topics.apply_delete(&name).await;
@@ -537,10 +537,10 @@ impl Definitions {
         lock(&self.versions).clear();
     }
 
-    // ---- Nó novo: puxar as tabelas ----
+    // ---- New node: pulling the tables ----
 
-    /// Aplica o que o stream de uma origem trouxe: vale se a versão da origem não é menor que a
-    /// deste nó (um evento que já chegou e é mais novo vence a carga).
+    /// Applies what a source's stream brought: it applies if the source's version is not lower than
+    /// this node's (an event that already arrived and is newer beats the load).
     async fn load(&self, change: DefinitionApply) -> Result<(), TabaError> {
         let key = (change.kind, change.key.clone());
         let _guard = self.lock_key(&key).await;
@@ -554,8 +554,8 @@ impl Definitions {
         self.apply_unlocked(&change).await.map(|_| ())
     }
 
-    /// Puxa de um membro as definições de tópico e os tokens (doc 02, seções 3.3 e 3.4) e devolve
-    /// o que veio, para a verificação final conferir.
+    /// Pulls from a member the topic definitions and the tokens (doc 02, sections 3.3 and 3.4) and returns
+    /// what came, for the final check to verify.
     pub async fn pull(&self, source: &Member) -> Result<Pulled, TabaError> {
         let mut pulled = Pulled::default();
         for (definition, version) in self.list_topics_of(source).await? {
@@ -588,8 +588,8 @@ impl Definitions {
         Ok(pulled)
     }
 
-    /// Guarda a lápide que a origem tem, se este nó não conhece uma versão igual ou maior da
-    /// definição; se tem uma viva de versão menor, ela é removida.
+    /// Stores the tombstone the source has, if this node does not know an equal or greater version of the
+    /// definition; if it has a live one of a lower version, it is removed.
     async fn load_tombstone(
         &self,
         kind: DefinitionKind,
@@ -615,9 +615,9 @@ impl Definitions {
         self.apply_unlocked(&change).await.map(|_| ())
     }
 
-    /// Verificação final (doc 05, seção 7.3, passo 5.5): repete a listagem de tópicos e de tokens e
-    /// descarta o que a carga trouxe e já não aparece na origem (foi removido sem que o evento
-    /// chegasse a este nó). Só mexe no que veio da carga. Devolve quantos apagou.
+    /// Final check (doc 05, section 7.3, step 5.5): repeats the topic and token listing and
+    /// discards what the load brought and no longer shows up at the source (it was removed without the event
+    /// reaching this node). It only touches what came from the load. Returns how many it deleted.
     pub async fn verify(&self, source: &Member, pulled: &Pulled) -> Result<usize, TabaError> {
         let topics: HashSet<String> = self
             .list_topics_of(source)
@@ -716,10 +716,10 @@ impl Definitions {
             };
             for item in &page.items {
                 let kind = serde_json::from_value::<DefinitionKind>(item["kind"].clone())
-                    .map_err(|_| bad("A lápide não diz o tipo da definição."))?;
+                    .map_err(|_| bad("The tombstone does not say the definition's type."))?;
                 let key = item["key"]
                     .as_str()
-                    .ok_or_else(|| bad("A lápide não diz a chave da definição."))?;
+                    .ok_or_else(|| bad("The tombstone does not say the definition's key."))?;
                 out.push((kind, key.to_owned(), version_of_item(item)));
             }
             if !page.end.has_more || page.end.last == from {
@@ -742,9 +742,9 @@ impl Definitions {
     }
 }
 
-/// A impressão do conteúdo de uma mudança: o SHA-256 do corpo normalizado (lido e escrito de novo pelo
-/// tipo da definição, para a ordem dos campos e os campos omitidos não mudarem o resultado). A
-/// remoção tem uma impressão só.
+/// The fingerprint of a change's content: the SHA-256 of the normalized body (read and written again by the
+/// definition's type, so field order and omitted fields do not change the result). Removal
+/// has a single fingerprint.
 fn fingerprint(change: &DefinitionApply) -> Result<Fingerprint, TabaError> {
     let text = if change.deleted {
         b"deleted".to_vec()
@@ -775,7 +775,7 @@ fn topic_change(proposal: &DefinitionProposal) -> Result<TopicChange, TabaError>
     let definition = || {
         let definition = TopicDefinition::from_json(&proposal.body).map_err(bad)?;
         if definition.name != proposal.key {
-            return Err(bad("O nome do tópico não é a chave da proposta."));
+            return Err(bad("The topic name is not the proposal's key."));
         }
         Ok(definition)
     };
@@ -787,7 +787,7 @@ fn topic_change(proposal: &DefinitionProposal) -> Result<TopicChange, TabaError>
                 .body
                 .get("id")
                 .and_then(Value::as_str)
-                .ok_or_else(|| bad("falta `id` na remoção"))?
+                .ok_or_else(|| bad("missing `id` in the removal"))?
                 .to_owned();
             Ok(TopicChange::Delete {
                 name: proposal.key.clone(),
@@ -802,7 +802,7 @@ fn token_change(proposal: &DefinitionProposal) -> Result<TokenChange, TabaError>
     let record = || {
         let record = token_from_json(&proposal.body)?;
         if record.id != proposal.key {
-            return Err(bad("O id do token não é a chave da proposta."));
+            return Err(bad("The token id is not the proposal's key."));
         }
         Ok(record)
     };

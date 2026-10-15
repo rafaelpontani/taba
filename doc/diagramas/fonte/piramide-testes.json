@@ -1,16 +1,92 @@
 {
   "schema_version": 1,
   "diagram_type": "architecture",
-  "meta": { "title": "Níveis de teste", "output": "doc/diagramas/html/piramide-testes.html", "quality_profile": "showcase" },
+  "meta": {
+    "title": "Test levels",
+    "output": "doc/diagramas/html/piramide-testes.html",
+    "quality_profile": "showcase"
+  },
   "components": [
-    { "id": "e2e", "type": "cloud", "label": "Ponta a ponta", "sublabel": "Compose de 3 nós de verdade · validate.sh · poucos, ~5 min", "pos": [330, 40], "size": [420, 64] },
-    { "id": "k", "type": "external", "label": "K · Conector", "sublabel": "transporte de mentira ou Taba real", "pos": [250, 150], "size": [580, 64] },
-    { "id": "c", "type": "security", "label": "C · Cluster", "sublabel": "vários nós no processo, rede em memória e Clock manual", "pos": [170, 260], "size": [740, 64] },
-    { "id": "i", "type": "frontend", "label": "I · Um nó", "sublabel": "nó real em modo desenvolvimento, HTTP e disco reais", "pos": [90, 370], "size": [900, 64] },
-    { "id": "u", "type": "backend", "label": "U · Unitário", "sublabel": "uma peça isolada, sem rede nem disco · a maioria, milissegundos", "pos": [10, 480], "size": [1060, 64] }
+    {
+      "id": "e2e",
+      "type": "cloud",
+      "label": "End to end",
+      "sublabel": "Compose with real nodes · validate.sh · a few, ~5 min",
+      "pos": [
+        330,
+        40
+      ],
+      "size": [
+        420,
+        64
+      ]
+    },
+    {
+      "id": "k",
+      "type": "external",
+      "label": "K · Connector",
+      "sublabel": "fake transport or real Taba",
+      "pos": [
+        250,
+        150
+      ],
+      "size": [
+        580,
+        64
+      ]
+    },
+    {
+      "id": "c",
+      "type": "security",
+      "label": "C · Cluster",
+      "sublabel": "several nodes in the process, in-memory network and manual Clock",
+      "pos": [
+        170,
+        260
+      ],
+      "size": [
+        740,
+        64
+      ]
+    },
+    {
+      "id": "i",
+      "type": "frontend",
+      "label": "I · One node",
+      "sublabel": "real node in development mode, real HTTP and disk",
+      "pos": [
+        90,
+        370
+      ],
+      "size": [
+        900,
+        64
+      ]
+    },
+    {
+      "id": "u",
+      "type": "backend",
+      "label": "U · Unit",
+      "sublabel": "an isolated piece, no network or disk · most of them, milliseconds",
+      "pos": [
+        10,
+        480
+      ],
+      "size": [
+        1060,
+        64
+      ]
+    }
   ],
   "connections": [],
   "cards": [
-    { "dot": "cyan", "title": "Onde fica o determinismo", "items": ["O mundo fica atrás dos traits Transport e Clock", "No nível C a rede e o relógio são do teste"] }
+    {
+      "dot": "cyan",
+      "title": "Where the determinism lives",
+      "items": [
+        "The outside world sits behind the Transport and Clock traits",
+        "At level C the network and the clock belong to the test"
+      ]
+    }
   ]
 }

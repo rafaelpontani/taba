@@ -1,8 +1,8 @@
-//! O canal entre os nós no cluster simulado (doc 04, seção 6.1; doc 13, seções 12.8 e 12.9; doc 06c;
-//! doc 20b, nível **C**): conexões, sinal de vida, `seq` e `confirm`, reenvio, fila de saída,
-//! reconexão e as métricas `taba.cluster.channel.*`.
+//! The channel between the nodes in the simulated cluster (doc 04, section 6.1; doc 13, sections 12.8 and 12.9; doc 06c;
+//! doc 20b, level **C**): connections, heartbeat, `seq` and `confirm`, resend, outgoing queue,
+//! reconnection and the `taba.cluster.channel.*` metrics.
 //!
-//! O canal é emulado sobre o `Transport` (`POST /cluster/channel`): cada lado chama o outro.
+//! The channel is emulated over the `Transport` (`POST /cluster/channel`): each side calls the other.
 
 mod common;
 
@@ -35,8 +35,8 @@ fn frame(seq: u64, signal: Signal) -> ChannelFrame {
     ChannelFrame { seq, signal }
 }
 
-/// Entrega um lote ao canal do nó 1 como se tivesse vindo do par (o que a recepção faz com cada
-/// mensagem da conexão) e devolve o `confirm`.
+/// Delivers a batch to node 1's channel as if it had come from the peer (what the reception does with each
+/// message of the connection) and returns the `confirm`.
 fn deliver(cluster: &TestCluster, batch: ChannelBatch) -> Vec<u64> {
     channels_of(cluster, 1).receive(batch).seqs
 }
@@ -51,15 +51,15 @@ async fn every_node_has_one_channel_to_each_other_node_and_measures_it() {
         let me = cluster.node_id(number);
         let peers = channels_of(&cluster, number).peers();
         let ids: Vec<String> = peers.iter().map(|p| p.node_id.clone()).collect();
-        assert_eq!(peers.len(), 2, "N−1 canais no nó {number}");
-        assert!(!ids.contains(&me), "nenhum canal consigo mesmo");
+        assert_eq!(peers.len(), 2, "N−1 channels on node {number}");
+        assert!(!ids.contains(&me), "no channel with itself");
         for peer in &peers {
-            assert_eq!(peer.version, Some(3), "o sinal de vida traz a versão");
+            assert_eq!(peer.version, Some(3), "the heartbeat carries the version");
             assert_eq!(peer.state.as_deref(), Some("active"));
         }
 
         let node = cluster.node(number);
-        eventually_async("as métricas do canal", || async {
+        eventually_async("the channel metrics", || async {
             let text = node.metrics().await;
             total(&text, "taba_cluster_channel_connections", "") == 2.0
                 && total(&text, "taba_cluster_channel_rtt_seconds_count", "") > 0.0
@@ -74,13 +74,13 @@ async fn every_node_has_one_channel_to_each_other_node_and_measures_it() {
                     &format!("taba_peer=\"{id}\"")
                 ),
                 1.0,
-                "o canal com {id} está conectado"
+                "the channel with {id} is connected"
             );
         }
         assert_eq!(
             total(&text, "taba_cluster_channel_queue_out", ""),
             0.0,
-            "nada pendente"
+            "nothing pending"
         );
     }
     cluster.shutdown().await;
@@ -92,18 +92,18 @@ async fn the_node_that_joins_calls_every_member_and_only_members_are_answered() 
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
 
-    // O nó 3 entrou por último e abriu o canal com cada nó que recebeu na resposta.
+    // Node 3 joined last and opened the channel with each node it received in the response.
     let calls = cluster.network.calls();
     for target in [1, 2] {
         assert!(
             calls.iter().any(|c| c.from == host_of(3)
                 && c.to.host == host_of(target)
                 && c.request == "channel"),
-            "o nó 3 chama o nó {target}"
+            "node 3 calls node {target}"
         );
     }
 
-    // Quem não consta na tabela é recusado pela rede em memória...
+    // Whoever is not in the table is refused by the in-memory network...
     let outsider = cluster.network.transport("10.0.0.50");
     let open = ChannelOpen {
         from: guid(),
@@ -120,13 +120,13 @@ async fn the_node_that_joins_calls_every_member_and_only_members_are_answered() 
         .await
     {
         Err(CallError::Remote(e)) => assert_eq!(e.code, ErrorCode::ClusterNotMember),
-        Err(other) => panic!("esperava o erro do par, veio {other}"),
-        Ok(_) => panic!("quem não é membro não abre o canal"),
+        Err(other) => panic!("expected the peer's error, got {other}"),
+        Ok(_) => panic!("whoever is not a member does not open the channel"),
     }
     let _ = batch;
 
-    // ...e pela rota HTTP do cluster (o teste chama de 127.0.0.1, que não consta na tabela): o
-    // erro sai antes do upgrade, como status.
+    // ...and by the cluster's HTTP route (the test calls from 127.0.0.1, which is not in the table): the
+    // error comes out before the upgrade, as a status.
     let node = cluster.node(1);
     let upgrade = |to: &str| {
         node.client
@@ -139,7 +139,7 @@ async fn the_node_that_joins_calls_every_member_and_only_members_are_answered() 
     };
     let response = upgrade(&cluster.node_id(1)).await.unwrap();
     assert_eq!(error_code(response, 403).await, "cluster.not-member");
-    // Outro processo no endereço (o `to` não é este nó) é recusado antes de olhar quem chama.
+    // Another process at the address (the `to` is not this node) is refused before looking at who calls.
     let response = upgrade(&guid()).await.unwrap();
     assert_eq!(error_code(response, 421).await, "cluster.wrong-node");
     cluster.shutdown().await;
@@ -153,7 +153,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
     let node2 = cluster.node_id(2);
     let signals = signals_of(&cluster, 1);
 
-    // Um `seq` bem acima dos que o nó 2 usa de verdade.
+    // A `seq` well above the ones node 2 really uses.
     let base = 1_000_000;
     let batch = ChannelBatch {
         to: String::new(),
@@ -168,14 +168,14 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
     assert_eq!(
         confirm,
         vec![base + 1, base + 2],
-        "o confirm agrupa os seqs"
+        "the confirm groups the seqs"
     );
-    // O confirm só volta depois de processar.
+    // The confirm only comes back after processing.
     assert_eq!(signals.ready_peers("x"), vec![node2.clone()]);
     assert_eq!(signals.ready_peers("y"), vec![node2.clone()]);
 
-    // A confirmação se perdeu e o emissor reenviou o mesmo `seq`, agora com outro conteúdo: o
-    // receptor devolve o confirm e não processa de novo.
+    // The confirmation got lost and the sender resent the same `seq`, now with other content: the
+    // receiver returns the confirm and does not process again.
     let repeated = ChannelBatch {
         to: String::new(),
         from: node2.clone(),
@@ -187,7 +187,7 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
     assert_eq!(
         signals.ready_peers("x"),
         vec![node2.clone()],
-        "o seq já processado foi ignorado"
+        "the already processed seq was ignored"
     );
     let next = ChannelBatch {
         to: String::new(),
@@ -196,9 +196,9 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
         frames: vec![frame(base + 3, ready("x", false))],
     };
     assert_eq!(deliver(&cluster, next), vec![base + 3]);
-    assert!(signals.ready_peers("x").is_empty(), "o seq novo vale");
+    assert!(signals.ready_peers("x").is_empty(), "the new seq counts");
 
-    // O sinal de vida não tem `seq`: não é confirmado nem fica na fila de ninguém.
+    // The heartbeat has no `seq`: it is neither confirmed nor stays in anyone's queue.
     let alive = ChannelBatch {
         to: String::new(),
         from: node2.clone(),
@@ -216,14 +216,14 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
     };
     assert!(
         deliver(&cluster, alive).is_empty(),
-        "o sinal de vida não tem confirm"
+        "the heartbeat has no confirm"
     );
     let seen = channels_of(&cluster, 1)
         .peers()
         .into_iter()
         .find(|p| p.node_id == node2)
         .unwrap();
-    assert_eq!(seen.version, Some(99), "o sinal de vida foi aplicado");
+    assert_eq!(seen.version, Some(99), "the heartbeat was applied");
     assert_eq!(signals.ready_peers("z"), vec![node2]);
     for number in 1..=2 {
         assert!(
@@ -231,13 +231,13 @@ async fn frames_are_confirmed_after_processing_and_a_repeated_seq_is_ignored() {
                 .peers()
                 .iter()
                 .all(|p| p.queue == 0),
-            "o sinal de vida não fica na fila de saída do nó {number}"
+            "the heartbeat does not stay in node {number}'s outgoing queue"
         );
     }
     cluster.shutdown().await;
 }
 
-/// Um `GET` de long polling no nó 1 (a fila está vazia): o nó avisa os outros que tem ouvinte.
+/// A long-polling `GET` on node 1 (the queue is empty): the node tells the others it has a listener.
 fn listen(
     cluster: &TestCluster,
     number: usize,
@@ -258,7 +258,7 @@ fn listen(
 #[tokio::test]
 async fn a_signal_without_confirm_waits_in_the_queue_and_goes_out_when_the_channel_returns() {
     let cluster = TestCluster::start_with(3, &[MANY_RETRIES]).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     settled(&cluster).await;
     let node2 = cluster.node_id(2);
     let channels = channels_of(&cluster, 1);
@@ -271,10 +271,10 @@ async fn a_signal_without_confirm_waits_in_the_queue_and_goes_out_when_the_chann
     };
 
     cluster.network.partition(&host_of(1), &host_of(2));
-    let waiting = listen(&cluster, 1, "pedidos", 3);
+    let waiting = listen(&cluster, 1, "orders", 3);
     let channels_for_wait = channels.clone();
     let node2_for_wait = node2.clone();
-    eventually("o sinal do ouvinte na fila para o nó 2", move || {
+    eventually("the listener's signal in the queue to node 2", move || {
         let peer = channels_for_wait
             .peers()
             .into_iter()
@@ -283,10 +283,10 @@ async fn a_signal_without_confirm_waits_in_the_queue_and_goes_out_when_the_chann
         !peer.up && peer.queue >= 1
     })
     .await;
-    // O nó 3 continua alcançável: a fila para ele esvazia sozinha.
+    // Node 3 is still reachable: the queue to it empties on its own.
     let third = cluster.node_id(3);
     let channels_for_third = channels.clone();
-    eventually("o nó 3 confirma o sinal", move || {
+    eventually("node 3 to confirm the signal", move || {
         channels_for_third
             .peers()
             .into_iter()
@@ -298,16 +298,19 @@ async fn a_signal_without_confirm_waits_in_the_queue_and_goes_out_when_the_chann
     cluster.network.heal(&host_of(1), &host_of(2));
     let after = channels.clone();
     let node2_after = node2.clone();
-    eventually("o canal volta e a fila esvazia", move || {
-        after
-            .peers()
-            .into_iter()
-            .find(|p| p.node_id == node2_after)
-            .is_some_and(|p| p.up && p.queue == 0)
-    })
+    eventually(
+        "the channel to come back and the queue to empty",
+        move || {
+            after
+                .peers()
+                .into_iter()
+                .find(|p| p.node_id == node2_after)
+                .is_some_and(|p| p.up && p.queue == 0)
+        },
+    )
     .await;
     assert!(pending(&channels).up);
-    // Ninguém foi excluído: o canal voltou antes de a votação ter motivo para abrir.
+    // No one was excluded: the channel came back before the vote had a reason to open.
     assert_eq!(cluster.member_ids(1).len(), 3);
     assert_eq!(cluster.network.count("vote"), 0);
     waiting.await.unwrap();
@@ -325,16 +328,16 @@ async fn a_queue_that_waits_too_long_opens_the_vote_without_waiting_for_the_retr
         ],
     )
     .await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     settled(&cluster).await;
     let version = cluster.table(1).unwrap().version;
 
     cluster.network.partition(&host_of(1), &host_of(2));
-    let waiting = listen(&cluster, 1, "pedidos", 3);
+    let waiting = listen(&cluster, 1, "orders", 3);
 
-    // O sinal envelhece na fila: a votação abre sem esperar as 1000 tentativas.
+    // The signal ages in the queue: the vote opens without waiting for the 1000 attempts.
     let node = cluster.node(1);
-    eventually_async("a fila estourada abre a votação", || async {
+    eventually_async("the overflowed queue to open the vote", || async {
         let text = node.metrics().await;
         total(
             &text,
@@ -346,10 +349,10 @@ async fn a_queue_that_waits_too_long_opens_the_vote_without_waiting_for_the_retr
     .await;
     assert!(
         cluster.network.count("vote") >= 1,
-        "o nó 1 pediu o voto dos outros"
+        "node 1 asked the others for the vote"
     );
 
-    // O nó 3 ainda alcança o nó 2 e vota não: ninguém sai da tabela.
+    // Node 3 still reaches node 2 and votes no: no one leaves the table.
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(cluster.table(1).unwrap().version, version);
     assert_eq!(cluster.member_ids(1).len(), 3);
@@ -363,16 +366,16 @@ async fn a_queue_that_waits_too_long_opens_the_vote_without_waiting_for_the_retr
 #[tokio::test]
 async fn a_channel_that_returns_before_the_retries_end_changes_nothing() {
     let cluster = TestCluster::start(3).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     settled(&cluster).await;
     let version = cluster.table(1).unwrap().version;
 
-    // As duas próximas chamadas do canal ao nó 2 se perdem (menos que as 3 tentativas).
+    // The next two calls of the channel to node 2 are lost (fewer than the 3 attempts).
     cluster.network.lose_kind(&host_of(2), "channel", 2);
-    let waiting = listen(&cluster, 1, "pedidos", 2);
+    let waiting = listen(&cluster, 1, "orders", 2);
 
     let nodes = [cluster.node(1), cluster.node(3)];
-    eventually_async("a reconexão contada", || async {
+    eventually_async("the counted reconnection", || async {
         let mut ok = 0.0;
         for node in nodes {
             let text = node.metrics().await;
@@ -387,19 +390,15 @@ async fn a_channel_that_returns_before_the_retries_end_changes_nothing() {
     .await;
     settled(&cluster).await;
 
-    assert_eq!(
-        cluster.network.count("vote"),
-        0,
-        "nenhuma votação foi aberta"
-    );
+    assert_eq!(cluster.network.count("vote"), 0, "no vote was opened");
     assert_eq!(cluster.table(1).unwrap().version, version);
     assert_eq!(cluster.member_ids(1).len(), 3);
     waiting.await.unwrap();
     cluster.shutdown().await;
 }
 
-/// O envio com confirmação (o que o nó que acabou de ficar pronto usa): volta quando todos os pares
-/// confirmaram e desiste no prazo se algum não confirma, deixando o sinal na fila dele.
+/// The send with confirmation (what the node that just became ready uses): returns when all the peers
+/// confirmed and gives up at the deadline if one does not confirm, leaving the signal in its queue.
 #[tokio::test]
 async fn a_broadcast_with_confirm_returns_when_every_peer_confirmed_and_gives_up_at_the_deadline() {
     let cluster = TestCluster::start_with(3, &[MANY_RETRIES]).await;
@@ -415,11 +414,11 @@ async fn a_broadcast_with_confirm_returns_when_every_peer_confirmed_and_gives_up
         .await;
     assert!(
         started.elapsed() < Duration::from_secs(2),
-        "todos confirmaram: não espera o prazo"
+        "all confirmed: does not wait for the deadline"
     );
     assert!(channels.peers().iter().all(|p| p.queue == 0));
 
-    // O nó 2 não confirma: o envio espera o prazo inteiro e o sinal continua na fila dele.
+    // Node 2 does not confirm: the send waits the whole deadline and the signal stays in its queue.
     cluster.network.partition(&host_of(1), &host_of(2));
     let started = std::time::Instant::now();
     channels
@@ -432,7 +431,10 @@ async fn a_broadcast_with_confirm_returns_when_every_peer_confirmed_and_gives_up
         .into_iter()
         .find(|p| p.node_id == node2)
         .unwrap();
-    assert!(waiting.queue >= 1, "o sinal sem confirmação fica na fila");
+    assert!(
+        waiting.queue >= 1,
+        "the unconfirmed signal stays in the queue"
+    );
     cluster.shutdown().await;
 }
 
@@ -443,7 +445,7 @@ async fn publish_json(node: &common::TestNode, topic: &str, body: serde_json::Va
         .json(&body)
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201);
 }
 
@@ -461,17 +463,25 @@ async fn the_keepalive_carries_the_time_the_state_the_version_and_the_busiest_to
     settled(&cluster).await;
     let version = cluster.table(1).unwrap().version;
 
-    // Cada nó é dono de parte das mensagens de cada tópico; um deles tem prontas em três ou mais.
+    // Each node owns part of each topic's messages; one of them has ready ones in three or more.
     let (richest, all) = (1..=3)
         .map(|n| (n, signals_of(&cluster, n).keepalive(10)))
         .max_by_key(|(_, keepalive)| keepalive.ready.len())
         .unwrap();
-    assert!(all.ready.len() >= 3, "tópicos com prontas: {:?}", all.ready);
+    assert!(
+        all.ready.len() >= 3,
+        "topics with ready ones: {:?}",
+        all.ready
+    );
     assert_eq!(all.state, "active");
     assert_eq!(all.version, version);
-    assert!(all.at.ends_with('Z'), "a data e hora do nó: {}", all.at);
+    assert!(
+        all.at.ends_with('Z'),
+        "the node's date and time: {}",
+        all.at
+    );
 
-    // Só os tópicos com prontas, os de mais mensagens primeiro, até o limite
+    // Only the topics with ready ones, the ones with the most messages first, up to the limit
     // (`cluster.channel.keepalive.max-topics`).
     let limited = signals_of(&cluster, richest).keepalive(2);
     assert_eq!(limited.ready.len(), 2);
@@ -490,7 +500,7 @@ async fn a_channel_opens_with_a_snapshot_of_the_state_the_listeners_and_the_read
     for n in 0..12 {
         publish_json(cluster.node(1), "a", serde_json::json!({ "n": n })).await;
     }
-    // Um `GET` com espera no nó 2 é um ouvinte do tópico `b`.
+    // A waiting `GET` on node 2 is a listener of topic `b`.
     let waiting = {
         let url = cluster.node(2).client_url("/topics/b/messages?waitTime=20");
         let client = cluster.node(2).client.clone();
@@ -498,13 +508,13 @@ async fn a_channel_opens_with_a_snapshot_of_the_state_the_listeners_and_the_read
     };
     let signals = signals_of(&cluster, 2);
     let probe = signals.clone();
-    eventually("o ouvinte do nó 2 aparecer", move || {
+    eventually("node 2's listener to appear", move || {
         probe.local_listener_count("b") == 1
     })
     .await;
 
-    // O instantâneo: o estado primeiro e depois um `listeners` e um `ready` para cada tópico em que
-    // o estado é verdadeiro.
+    // The snapshot: the state first and then a `listeners` and a `ready` for each topic in which
+    // the state is true.
     let snapshot = signals.snapshot();
     assert_eq!(
         snapshot[0],
@@ -523,10 +533,10 @@ async fn a_channel_opens_with_a_snapshot_of_the_state_the_listeners_and_the_read
                 .contains(&ready("a", true))
         })
         .count();
-    assert!(with_ready >= 1, "algum nó é dono de mensagens de `a`");
+    assert!(with_ready >= 1, "some node owns messages of `a`");
     assert!(
         !snapshot.contains(&ready("b", true)),
-        "só o que é verdadeiro vai no instantâneo"
+        "only what is true goes in the snapshot"
     );
     waiting.abort();
     cluster.shutdown().await;
@@ -549,7 +559,7 @@ async fn there_is_no_ping_apart_from_the_channel_between_the_nodes() {
     assert_eq!(
         kinds,
         std::collections::BTreeSet::from(["channel"]),
-        "em repouso só o canal fala: sem ping nem sonda à parte"
+        "at rest only the channel talks: no separate ping or probe"
     );
     cluster.shutdown().await;
 }
@@ -561,8 +571,8 @@ async fn two_connections_at_once_end_with_a_single_channel_per_pair() {
     settled(&cluster).await;
     let (id1, id2) = (cluster.node_id(1), cluster.node_id(2));
 
-    // O nó 2 entrou e abriu o canal. O nó 1 abre outro ao mesmo tempo (como quem detectou a queda
-    // primeiro): o nó 2 tem as duas e fica com a aberta pelo nó de maior hash do ID.
+    // Node 2 joined and opened the channel. Node 1 opens another at the same time (like whoever detected the fall
+    // first): node 2 has both and keeps the one opened by the node with the highest ID hash.
     let mut extra = cluster
         .network
         .transport(host_of(1))
@@ -574,20 +584,20 @@ async fn two_connections_at_once_end_with_a_single_channel_per_pair() {
             },
         )
         .await
-        .expect("o nó 2 aceita o canal de um membro");
+        .expect("node 2 accepts a member's channel");
     let one_wins = taba_node::core::ring::position(id1.as_bytes())
         > taba_node::core::ring::position(id2.as_bytes());
 
-    // Se o nó 1 tem o maior hash, a conexão dele fica e a do nó 2 cai (o nó 1 a reabre, trocando a
-    // do teste, que é do mesmo lado); senão o nó de menor hash (o 1) fecha a que abriu.
+    // If node 1 has the highest hash, its connection stays and node 2's falls (node 1 reopens it, replacing the
+    // test's, which is on the same side); otherwise the node with the lowest hash (1) closes the one it opened.
     if !one_wins {
         let closed = tokio::time::timeout(Duration::from_secs(2), extra.rx.recv())
             .await
-            .expect("a conexão do menor hash deveria fechar");
+            .expect("the connection of the lowest hash should close");
         assert!(closed.is_none());
     }
-    // Em qualquer ordem, no fim há um canal só entre os dois, de pé e falando.
-    eventually_async("o canal único restabelecido", || async {
+    // In any order, in the end there is a single channel between the two, up and talking.
+    eventually_async("the single channel reestablished", || async {
         settled_pair(&cluster)
     })
     .await;
@@ -607,19 +617,19 @@ fn settled_pair(cluster: &TestCluster) -> bool {
 async fn each_peer_has_an_out_queue_and_an_in_queue_that_drain() {
     let cluster = TestCluster::start(2).await;
     settled(&cluster).await;
-    // Uma rajada de sinais do nó 1: cada um passa pela fila de saída para o nó 2 e pela fila de
-    // entrada dele, e as duas voltam a zero.
+    // A burst of signals from node 1: each goes through the outgoing queue to node 2 and through its
+    // incoming queue, and both return to zero.
     let channels = channels_of(&cluster, 1);
     for n in 0..300 {
         channels.broadcast(ready(&format!("t{n}"), true));
     }
     let signals = signals_of(&cluster, 2);
     let node1 = cluster.node_id(1);
-    eventually("a rajada chegar ao nó 2", || {
+    eventually("the burst to reach node 2", || {
         signals.ready_peers("t299") == vec![node1.clone()]
     })
     .await;
-    eventually_async("as filas esvaziam", || async {
+    eventually_async("as queues esvaziam", || async {
         let one = cluster.node(1).metrics().await;
         let two = cluster.node(2).metrics().await;
         total(&one, "taba_cluster_channel_queue_out", "") == 0.0
@@ -630,7 +640,7 @@ async fn each_peer_has_an_out_queue_and_an_in_queue_that_drain() {
     assert!(
         text.contains("taba_cluster_channel_queue_in{")
             && text.contains(&format!("taba_peer=\"{node1}\"")),
-        "a fila de entrada é por nó de origem"
+        "the incoming queue is per origin node"
     );
     cluster.shutdown().await;
 }
@@ -650,13 +660,13 @@ async fn a_channel_call_without_the_destination_id_is_not_checked_against_it() {
             .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
             .send()
     };
-    // Sem `to` (ausente ou vazio) a chamada segue para as outras conferências: quem não é membro
-    // é recusado por isso, não por ser o nó errado.
+    // Without `to` (absent or empty) the call goes on to the other checks: whoever is not a member
+    // is refused for that, not for being the wrong node.
     let response = upgrade(format!("from={}", guid())).await.unwrap();
     assert_eq!(error_code(response, 403).await, "cluster.not-member");
     let response = upgrade(format!("from={}&to=", guid())).await.unwrap();
     assert_eq!(error_code(response, 403).await, "cluster.not-member");
-    // Com um `to` que não é este nó, o erro é outro.
+    // With a `to` that is not this node, the error is another.
     let response = upgrade(format!("from={}&to={}", guid(), guid()))
         .await
         .unwrap();
@@ -680,8 +690,8 @@ fn membership_batch(from: &str, seq: u64, version: u64, change: Change) -> Chann
     }
 }
 
-/// Dois pares dizem mudanças de versões seguidas, cada um pela sua fila, e a da versão maior chega
-/// primeiro: o nó espera a anterior e aplica as duas em ordem (D126).
+/// Two peers tell consecutive version changes, each through its own queue, and the one with the higher version arrives
+/// first: the node waits for the earlier one and applies both in order (D126).
 /// UC: UC-CNC-015
 #[tokio::test]
 async fn membership_changes_from_two_peers_arriving_out_of_order_apply_in_version_order() {
@@ -690,7 +700,7 @@ async fn membership_changes_from_two_peers_arriving_out_of_order_apply_in_versio
     let start = cluster.table(1).unwrap().version;
     let (two, three) = (cluster.node_id(2), cluster.node_id(3));
 
-    // A versão seguinte tira o nó 3 (dita pelo nó 2); a posterior tira o nó 2 (dita pelo nó 3).
+    // The next version removes node 3 (told by node 2); the later one removes node 2 (told by node 3).
     let ahead = membership_batch(
         &three,
         1_000_000,
@@ -702,12 +712,12 @@ async fn membership_changes_from_two_peers_arriving_out_of_order_apply_in_versio
     assert_eq!(
         deliver(&cluster, ahead),
         [1_000_000],
-        "o quadro é confirmado"
+        "the frame is confirmed"
     );
     assert_eq!(
         cluster.table(1).unwrap().version,
         start,
-        "a versão adiante espera a anterior"
+        "the version ahead waits for the earlier one"
     );
     assert_eq!(cluster.member_ids(1).len(), 3);
 
@@ -723,14 +733,14 @@ async fn membership_changes_from_two_peers_arriving_out_of_order_apply_in_versio
     assert_eq!(
         cluster.table(1).unwrap().version,
         start + 2,
-        "as duas aplicadas, em ordem"
+        "both applied, in order"
     );
     assert_eq!(cluster.member_ids(1), [cluster.node_id(1)]);
     cluster.shutdown().await;
 }
 
-/// O quadro que tira o próprio nó da tabela não se aplica: quem trata a saída dele é a regra da
-/// exclusão (os pares dizem que ele não é membro), e não uma mudança que ele recebe (D126).
+/// The frame that removes the node itself from the table is not applied: whoever handles its exit is the
+/// exclusion rule (the peers say it is not a member), and not a change it receives (D126).
 /// UC: UC-CNC-015
 #[tokio::test]
 async fn a_membership_frame_that_removes_the_receiving_node_is_ignored() {
@@ -750,7 +760,7 @@ async fn a_membership_frame_that_removes_the_receiving_node_is_ignored() {
     assert_eq!(
         deliver(&cluster, excluded),
         [1_000_000],
-        "é confirmado mesmo assim"
+        "it is confirmed anyway"
     );
     let drained = membership_batch(
         &two,
@@ -765,11 +775,11 @@ async fn a_membership_frame_that_removes_the_receiving_node_is_ignored() {
     assert_eq!(
         cluster.table(1).unwrap().version,
         start,
-        "a tabela não mudou"
+        "the table did not change"
     );
     assert!(
         cluster.member_ids(1).contains(&me),
-        "o nó segue na própria tabela"
+        "the node stays in its own table"
     );
     cluster.shutdown().await;
 }

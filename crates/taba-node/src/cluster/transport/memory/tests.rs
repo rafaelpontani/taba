@@ -5,7 +5,7 @@ use super::*;
 use crate::cluster::protocol::{Ack, OperationRef};
 use crate::core::error::{ErrorCode, TabaError};
 
-/// Atende tudo com um `Ack` e guarda quem chamou.
+/// Answers everything with an `Ack` and records who called.
 #[derive(Default)]
 struct Echo {
     callers: Mutex<Vec<String>>,
@@ -20,7 +20,7 @@ impl Handler for Echo {
         Box::pin(async move {
             self.callers.lock().unwrap().push(caller.to_owned());
             match request {
-                Request::Rollback(_) => Err(TabaError::new(ErrorCode::ClusterConflict, "não")),
+                Request::Rollback(_) => Err(TabaError::new(ErrorCode::ClusterConflict, "no")),
                 _ => Ok(Response::Ack(Ack {
                     operation_id: "x".into(),
                     accepted: true,
@@ -118,7 +118,7 @@ async fn a_partition_cuts_both_directions_and_heals() {
     );
     one.call(&addr("10.0.0.3"), op())
         .await
-        .expect("a terceira alcança os dois");
+        .expect("the third reaches both");
     three.call(&addr("10.0.0.2"), op()).await.unwrap();
 
     network.heal("10.0.0.1", "10.0.0.2");
@@ -156,7 +156,7 @@ async fn the_next_calls_to_a_node_can_be_lost() {
     assert!(one.call(&addr("10.0.0.2"), op()).await.is_err());
     one.call(&addr("10.0.0.2"), op())
         .await
-        .expect("a terceira passa");
+        .expect("the third gets through");
 }
 
 #[tokio::test]
@@ -166,7 +166,7 @@ async fn a_silent_node_never_answers() {
     network.set_silent("10.0.0.2", true);
     let waited =
         tokio::time::timeout(Duration::from_millis(50), one.call(&addr("10.0.0.2"), op())).await;
-    assert!(waited.is_err(), "só o prazo de quem chama interrompe");
+    assert!(waited.is_err(), "only the caller's deadline interrupts");
     network.set_silent("10.0.0.2", false);
     one.call(&addr("10.0.0.2"), op()).await.unwrap();
 }
@@ -210,7 +210,7 @@ async fn a_balancer_spreads_the_calls_over_the_live_nodes() {
         client.call(&balancer, op()).await.unwrap();
     }
     for handler in &handlers {
-        assert_eq!(handler.callers.lock().unwrap().len(), 2, "rodízio");
+        assert_eq!(handler.callers.lock().unwrap().len(), 2, "round-robin");
     }
 
     network.unregister(&addr("10.0.0.1"));
@@ -221,7 +221,7 @@ async fn a_balancer_spreads_the_calls_over_the_live_nodes() {
     assert_eq!(
         handlers[2].callers.lock().unwrap().len(),
         5,
-        "só o nó 3 sobra"
+        "only node 3 is left"
     );
 
     network.unregister(&addr("10.0.0.3"));
@@ -250,9 +250,9 @@ async fn only_the_chosen_kind_of_call_is_lost() {
     assert!(one.call(&addr("10.0.0.2"), op()).await.is_err());
     one.call(&addr("10.0.0.2"), Request::ListNodes)
         .await
-        .expect("outro tipo passa");
+        .expect("another type gets through");
     assert!(one.call(&addr("10.0.0.2"), op()).await.is_err());
     one.call(&addr("10.0.0.2"), op())
         .await
-        .expect("só duas foram perdidas");
+        .expect("only two were lost");
 }

@@ -1,5 +1,5 @@
-//! O ingresso de nós num cluster simulado (doc 04, seções 6.2 e 6.5; doc 06c; nível **C** do
-//! doc 20): vários nós de verdade no mesmo processo, ligados pela rede em memória.
+//! Nodes joining a simulated cluster (doc 04, sections 6.2 and 6.5; doc 06c; level **C** of
+//! doc 20): several real nodes in the same process, linked by the in-memory network.
 
 mod common;
 
@@ -29,11 +29,11 @@ fn address_of(cluster: &TestCluster, number: usize) -> PeerAddr {
     )
 }
 
-/// O código do erro que o par devolveu.
+/// The error code the peer returned.
 fn remote_code(error: CallError) -> ErrorCode {
     match error {
         CallError::Remote(e) => e.code,
-        other => panic!("esperava um erro do par, veio {other}"),
+        other => panic!("expected a peer error, got {other}"),
     }
 }
 
@@ -51,7 +51,7 @@ fn newcomer(address: &str, port: u16) -> Member {
 async fn the_first_node_starts_the_cluster_alone() {
     let cluster = TestCluster::start(1).await;
 
-    let table = cluster.table(1).expect("o nó tem a tabela");
+    let table = cluster.table(1).expect("the node has the table");
     assert_eq!(table.version, 1);
     assert_eq!(table.members.len(), 1);
     let me = &table.members[0];
@@ -61,7 +61,7 @@ async fn the_first_node_starts_the_cluster_alone() {
     assert_eq!(me.state, MemberState::Active);
 
     let ready = cluster.node(1).client_get_ops("/health/ready").await;
-    assert_eq!(ready.status(), 200, "registrado, o nó está pronto");
+    assert_eq!(ready.status(), 200, "registered, the node is ready");
     cluster.shutdown().await;
 }
 
@@ -72,15 +72,15 @@ async fn without_the_first_node_flag_the_node_keeps_trying_and_stays_out_of_rota
     let builder = cluster.builder(1, false);
     cluster.spawn_node(builder).await.unwrap();
 
-    // A listagem não acha ninguém: sem `cluster.first-node` isso é erro, e o nó tenta de novo.
+    // The listing finds no one: without `cluster.first-node` that is an error, and the node tries again.
     let network = cluster.network.clone();
-    eventually("três tentativas de listagem", || {
+    eventually("three listing attempts", || {
         network.count("list-nodes") >= 3
     })
     .await;
     assert!(
         cluster.table(1).is_none(),
-        "o nó não começa um cluster sozinho"
+        "the node does not start a cluster on its own"
     );
     let ready = cluster.node(1).client_get_ops("/health/ready").await;
     assert_eq!(ready.status(), 503);
@@ -95,7 +95,7 @@ async fn without_the_first_node_flag_the_node_keeps_trying_and_stays_out_of_rota
     );
     assert!(failures.is_some_and(|n| n >= 2.0), "{failures:?}");
 
-    // Aparece um cluster: o nó entra na tentativa seguinte.
+    // A cluster appears: the node joins on the next attempt.
     cluster.add_node(true).await;
     wait_joined(cluster.node(1)).await;
     assert_eq!(cluster.member_ids(1), cluster.member_ids(2));
@@ -114,8 +114,8 @@ async fn the_node_gives_up_after_the_maximum_attempts() {
 
     let reason = tokio::time::timeout(Duration::from_secs(10), cluster.nodes[0].node.fatal())
         .await
-        .expect("o bootstrap deveria esgotar as tentativas");
-    assert!(reason.contains("3 tentativas"), "{reason}");
+        .expect("the bootstrap should run out of attempts");
+    assert!(reason.contains("3 attempts"), "{reason}");
     assert_eq!(cluster.network.count("list-nodes"), 3);
     cluster.shutdown().await;
 }
@@ -127,7 +127,7 @@ async fn nodes_join_through_the_balancer_and_end_with_the_same_table() {
     cluster.network.clear_calls();
     cluster.add_node(false).await;
 
-    // Todos enxergam os quatro membros, na mesma época (um registro efetivado por nó que entrou).
+    // All see the four members, in the same epoch (one register took effect per node that joined).
     let ids: Vec<String> = {
         let mut ids: Vec<String> = (1..=4).map(|n| cluster.node_id(n)).collect();
         ids.sort();
@@ -135,11 +135,11 @@ async fn nodes_join_through_the_balancer_and_end_with_the_same_table() {
     };
     for number in 1..=4 {
         let table = cluster.table(number).unwrap();
-        assert_eq!(table.version, 4, "nó {number}");
-        assert_eq!(cluster.member_ids(number), ids, "nó {number}");
+        assert_eq!(table.version, 4, "node {number}");
+        assert_eq!(cluster.member_ids(number), ids, "node {number}");
     }
 
-    // O anel de cada nó é o mesmo, e o primário de uma mensagem não depende de quem pergunta.
+    // Each node's ring is the same, and a message's primary does not depend on who asks.
     for message in (0..100u64).map(|i| id::new_at(1_791_288_000_000 + i)) {
         let position = message_position(&message);
         let primaries: Vec<Option<String>> = (1..=4)
@@ -158,7 +158,7 @@ async fn nodes_join_through_the_balancer_and_end_with_the_same_table() {
         assert!(primaries.windows(2).all(|w| w[0] == w[1]), "{primaries:?}");
     }
 
-    // Só a listagem passa pelo balanceador; o resto vai direto aos nós, pelos IPs da tabela.
+    // Only the listing goes through the load balancer; the rest goes straight to the nodes, by the table's IPs.
     let calls = cluster.network.calls();
     assert!(
         calls
@@ -168,8 +168,8 @@ async fn nodes_join_through_the_balancer_and_end_with_the_same_table() {
         "{calls:?}"
     );
     assert_eq!(calls.iter().filter(|c| c.to == balancer()).count(), 1);
-    // O membro sorteado conectou de volta ao nó novo (teste de conexão), e a fase 1 foi a
-    // todos os outros membros (os dois que não coordenam) antes de qualquer commit.
+    // The drawn member connected back to the new node (connection test), and phase 1 went to
+    // all the other members (the two that do not coordinate) before any commit.
     let joins = calls.iter().filter(|c| c.request == "join").count();
     assert_eq!(joins, 1);
     let new_host = host_of(4);
@@ -199,10 +199,10 @@ async fn nodes_join_through_the_balancer_and_end_with_the_same_table() {
             .iter()
             .filter(|c| c.request == "register" || c.request == "commit")
             .all(|c| c.to.host != new_host),
-        "o nó novo não participa das fases; recebe a tabela na resposta"
+        "the new node does not take part in the phases; it receives the table in the response"
     );
 
-    // A época e os membros também saem no `/metrics` de cada nó.
+    // The epoch and the members also come out in each node's `/metrics`.
     for number in 1..=4 {
         let metrics = cluster.node(number).metrics().await;
         assert_eq!(series(&metrics, "taba_cluster_members_version"), Some(4.0));
@@ -235,7 +235,11 @@ async fn a_new_node_the_member_cannot_connect_back_to_is_refused() {
         .unwrap_err();
 
     assert_eq!(remote_code(error), ErrorCode::ClusterJoinUnreachable);
-    assert_eq!(cluster.table(1).unwrap().version, 1, "nada foi registrado");
+    assert_eq!(
+        cluster.table(1).unwrap().version,
+        1,
+        "nothing was registered"
+    );
     assert_eq!(cluster.network.count("register"), 0);
     cluster.shutdown().await;
 }
@@ -244,16 +248,16 @@ async fn a_new_node_the_member_cannot_connect_back_to_is_refused() {
 #[tokio::test]
 async fn a_member_that_does_not_confirm_aborts_the_join_and_the_node_tries_again() {
     let mut cluster = TestCluster::start(2).await;
-    // Os dois membros não se falam: quem coordenar o ingresso não alcança o outro.
+    // The two members do not talk to each other: whoever coordinates the join does not reach the other.
     cluster.network.clear_calls();
     cluster.network.partition("10.0.0.1", "10.0.0.2");
     let builder = cluster.builder(3, false);
     cluster.spawn_node(builder).await.unwrap();
 
-    // O registro não é confirmado por todos: rollback, `503 cluster.registration-failed`, e o nó
-    // novo conta a falha da fase 1.
+    // The register is not confirmed by all: rollback, `503 cluster.registration-failed`, and the new
+    // node counts the phase 1 failure.
     let node = cluster.node(3);
-    eventually_async("a falha da fase 1 contada", || async move {
+    eventually_async("the phase 1 failure counted", || async move {
         let metrics = node.metrics().await;
         series(
             &metrics,
@@ -262,26 +266,30 @@ async fn a_member_that_does_not_confirm_aborts_the_join_and_the_node_tries_again
         .is_some_and(|n| n >= 1.0)
     })
     .await;
-    assert_eq!(cluster.network.count("commit"), 0, "sem commit sem todos");
+    assert_eq!(cluster.network.count("commit"), 0, "no commit without all");
     for number in [1, 2] {
         let table = cluster.table(number).unwrap();
-        assert_eq!((table.version, table.members.len()), (2, 2), "nó {number}");
+        assert_eq!(
+            (table.version, table.members.len()),
+            (2, 2),
+            "node {number}"
+        );
         let membership = cluster.node(number).node.cluster().unwrap().membership();
         assert_eq!(
             membership.ring().node_count(),
             2,
-            "o anel segue sem o nó que não entrou"
+            "the ring stays without the node that did not join"
         );
     }
     assert!(cluster.table(3).is_none());
     let ready = cluster.node(3).client_get_ops("/health/ready").await;
     assert_eq!(ready.status(), 503);
 
-    // Curada a partição, a nova tentativa fecha o ingresso: o anel passa a ter os três.
+    // With the partition healed, the new attempt closes the join: the ring now has the three.
     cluster.network.heal("10.0.0.1", "10.0.0.2");
     wait_joined(cluster.node(3)).await;
     for number in 1..=3 {
-        eventually("a tabela com três membros", || {
+        eventually("the table with three members", || {
             cluster.member_ids(number).len() == 3
         })
         .await;
@@ -292,7 +300,7 @@ async fn a_member_that_does_not_confirm_aborts_the_join_and_the_node_tries_again
     assert_eq!(
         cluster.network.count("rollback"),
         0,
-        "só quem tinha confirmado recebe rollback (aqui, ninguém)"
+        "only whoever had confirmed receives a rollback (here, no one)"
     );
     cluster.shutdown().await;
 }
@@ -301,7 +309,7 @@ async fn a_member_that_does_not_confirm_aborts_the_join_and_the_node_tries_again
 #[tokio::test]
 async fn a_commit_that_does_not_arrive_does_not_undo_the_join() {
     let mut cluster = TestCluster::start(2).await;
-    // O commit não chega a nenhum dos dois membros: o que não coordena fica sem confirmar.
+    // The commit reaches neither of the two members: the one that does not coordinate is left unconfirmed.
     cluster.network.clear_calls();
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "commit", 1_000_000);
@@ -309,36 +317,37 @@ async fn a_commit_that_does_not_arrive_does_not_undo_the_join() {
     let builder = cluster.builder(3, false);
     cluster.spawn_node(builder).await.unwrap();
 
-    // O `join` responde `503 cluster.commit-timeout` (o nó foi aceito), e o nó novo confere
-    // na tabela do coordenador, em vez de repetir o pedido.
+    // The `join` answers `503 cluster.commit-timeout` (the node was accepted), and the new node checks
+    // the coordinator's table, instead of repeating the request.
     wait_joined(cluster.node(3)).await;
     assert_eq!(
         cluster.network.count("join"),
         1,
-        "o pedido não foi repetido"
+        "the request was not repeated"
     );
     assert_eq!(cluster.table(3).unwrap().version, 3);
-    // O commit segue perdido, mas o outro membro não fica para trás: a mudança chega pelo quadro
-    // `membership` do canal, que não depende do registro nem do commit (D126).
+    // The commit is still lost, but the other member does not fall behind: the change arrives through the channel's
+    // `membership` frame, which depends on neither the register nor the commit (D126).
     for number in [1, 2] {
-        eventually("a mudança chegar ao outro membro pelo canal", || {
-            cluster.table(number).unwrap().version == 3
-        })
+        eventually(
+            "the change to reach the other member through the channel",
+            || cluster.table(number).unwrap().version == 3,
+        )
         .await;
     }
 
-    // O coordenador segue insistindo no commit em segundo plano: quando a rede volta, nada muda.
+    // The coordinator keeps insisting on the commit in the background: when the network returns, nothing changes.
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "commit", 0);
     }
     for number in [1, 2] {
-        eventually("o commit chegar ao outro membro", || {
+        eventually("the commit to reach the other member", || {
             cluster.table(number).unwrap().version == 3
         })
         .await;
     }
     for number in 1..=3 {
-        assert_eq!(cluster.member_ids(number).len(), 3, "nó {number}");
+        assert_eq!(cluster.member_ids(number).len(), 3, "node {number}");
     }
     let mut timeouts = 0.0;
     for number in [1, 2] {
@@ -349,7 +358,7 @@ async fn a_commit_that_does_not_arrive_does_not_undo_the_join() {
         )
         .unwrap_or(0.0);
     }
-    assert_eq!(timeouts, 1.0, "o teto de commit esgotou uma vez");
+    assert_eq!(timeouts, 1.0, "the commit ceiling ran out once");
     cluster.shutdown().await;
 }
 
@@ -370,13 +379,13 @@ async fn a_second_pending_registration_conflicts_and_unknown_operations_are_refu
     let first = guid();
     let response = member.call(&target, register(first.clone())).await.unwrap();
     assert!(matches!(response, Response::Ack(a) if a.accepted && a.operation_id == first));
-    // Repetir o mesmo `operationId` é idempotente.
+    // Repeating the same `operationId` is idempotent.
     member.call(&target, register(first.clone())).await.unwrap();
 
     let error = member
         .call(&target, register(guid()))
         .await
-        .expect_err("há outra mudança pendente");
+        .expect_err("there is another pending change");
     assert_eq!(remote_code(error), ErrorCode::ClusterConflict);
 
     let unknown = member
@@ -400,7 +409,7 @@ async fn a_second_pending_registration_conflicts_and_unknown_operations_are_refu
         .unwrap_err();
     assert_eq!(remote_code(unknown), ErrorCode::ClusterOperationUnknown);
 
-    // O rollback libera o lugar: nada mudou na tabela.
+    // The rollback frees the spot: nothing changed in the table.
     member
         .call(
             &target,
@@ -412,7 +421,7 @@ async fn a_second_pending_registration_conflicts_and_unknown_operations_are_refu
         .unwrap();
     let last = guid();
     member.call(&target, register(last.clone())).await.unwrap();
-    // Desfaz a pendência: o nó 2 não conseguiria sair do cluster na parada do teste com ela.
+    // Undoes the pending change: node 2 could not leave the cluster at the test's shutdown with it.
     member
         .call(
             &target,
@@ -454,8 +463,8 @@ async fn only_members_call_the_phase_routes_but_anyone_lists_and_asks_to_join() 
         assert_eq!(remote_code(error), ErrorCode::ClusterNotMember, "{name}");
     }
 
-    // Quem ainda não é membro lista os nós e pede o ingresso (aqui o teste de conexão falha, o
-    // que prova que o pedido chegou a ser tratado, sem `403`).
+    // Whoever is not yet a member lists the nodes and asks to join (here the connection test fails, which
+    // proves the request got to be handled, without `403`).
     let listed = stranger.call(&target, Request::ListNodes).await.unwrap();
     assert!(matches!(listed, Response::Members(t) if t.members.len() == 2));
     let join = stranger
@@ -485,7 +494,7 @@ async fn a_node_that_has_no_table_yet_answers_503() {
 
     let error = caller.call(&target, Request::ListNodes).await.unwrap_err();
     assert_eq!(remote_code(error), ErrorCode::ClusterNodeSyncing);
-    // Sem a tabela o nó nem sabe quem é membro: as fases também respondem `503`, não `403`.
+    // Without the table the node does not even know who is a member: the phases also answer `503`, not `403`.
     let error = caller
         .call(
             &target,

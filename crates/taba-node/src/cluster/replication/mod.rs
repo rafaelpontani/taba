@@ -1,14 +1,14 @@
-//! A replicação entre nós (doc 05, seção 7.2; doc 13; doc 14): a escrita, a invisibilidade e o ack
-//! por quórum, o `take` e os sinais entre nós.
+//! Replication between nodes (doc 05, section 7.2; doc 13; doc 14): the write, invisibility and ack
+//! by quorum, `take` and the signals between nodes.
 //!
-//! - [`Replica`]: o lado que **recebe** o registro, o commit e o rollback.
-//! - [`coordinator`]: o lado que **coordena** as duas fases sobre os nós responsáveis.
-//! - [`ClusterMessages`]: a API de mensagens do nó no cluster (publicar, consumir, ack...).
-//! - [`Signals`]: quais nós têm prontas e ouvintes, e quem está em drain.
+//! - [`Replica`]: the side that **receives** the register, the commit and the rollback.
+//! - [`coordinator`]: the side that **coordinates** the two phases over the responsible nodes.
+//! - [`ClusterMessages`]: the node's messages API in the cluster (publish, consume, ack...).
+//! - [`Signals`]: which nodes have ready messages and listeners, and who is in drain.
 //!
-//! - [`Syncer`] e [`BlockSource`]: a sincronização de blocos de um nó que entra e o lado que a serve.
+//! - [`Syncer`] and [`BlockSource`]: the block synchronization of a node that joins and the side that serves it.
 //!
-//! [`Replication`] junta as peças e atende as chamadas de outros nós que não são de membros.
+//! [`Replication`] puts the pieces together and serves the calls of other nodes that are not members'.
 
 pub mod coordinator;
 mod definitions;
@@ -40,12 +40,12 @@ use crate::engine::topics::Topics;
 use crate::storage::losses::LossStore;
 use crate::telemetry::Telemetry;
 
-/// O nó é o dono da entrega de uma mensagem se é o primário do bloco dela no anel (doc 13, 12.7).
+/// The node is a message's delivery owner if it is the primary of its block on the ring (doc 13, 12.7).
 struct RingPlacement(Arc<ClusterService>);
 
 impl Placement for RingPlacement {
-    /// Um nó que ainda sincroniza não é dono de nada: as mensagens dos blocos dele só são entregues
-    /// quando ele fica pronto (doc 13, seção 12.7).
+    /// A node that is still syncing owns nothing: the messages of its blocks are only delivered
+    /// when it becomes ready (doc 13, section 12.7).
     fn is_owner(&self, _topic: &str, _id: &str, _group: Option<&str>, position: u64) -> bool {
         self.0.node_state() == NodeState::Active
             && self
@@ -67,15 +67,15 @@ impl Placement for RingPlacement {
     }
 }
 
-/// O que sobra a quem sobe o nó depois de ligar o cluster ao motor.
+/// What is left to whoever starts the node after attaching the cluster to the engine.
 pub struct Attached {
     pub replication: Arc<Replication>,
-    /// O trabalho de fundo: movimentos para a dead-letter a coordenar.
+    /// The background work: moves to the dead-letter to coordinate.
     pub dead_letters: tokio::sync::mpsc::UnboundedReceiver<DeadLetterJob>,
 }
 
-/// Liga o cluster ao motor de mensagens: quem é o dono, a fila de dead-letters, os sinais de
-/// prontas, e a reavaliação do dono a cada mudança de membros.
+/// Attaches the cluster to the message engine: who the owner is, the dead-letter queue, the signals of
+/// ready, and the owner's re-evaluation on each member change.
 #[allow(clippy::too_many_arguments)]
 pub fn attach(
     service: &Arc<ClusterService>,
@@ -219,8 +219,8 @@ impl Replication {
         })
     }
 
-    /// Limpa o estado local quando o nó volta do drain como nó novo: definições, tokens, mensagens
-    /// e o que se sabia dos outros nós (doc 04, seção 6.10).
+    /// Clears the local state when the node comes back from the drain as a new node: definitions, tokens, messages
+    /// and what it knew of the other nodes (doc 04, section 6.10).
     pub async fn reset_local(&self) {
         self.definitions.wipe().await;
         let messages = self.messages.messages().clone();
@@ -228,7 +228,7 @@ impl Replication {
         self.signals.reset();
     }
 
-    /// Um membro abriu o canal com este nó.
+    /// A member opened the channel with this node.
     pub fn accept_channel(
         &self,
         open: crate::cluster::transport::ChannelOpen,
@@ -237,9 +237,9 @@ impl Replication {
         self.channels.accept(&open.from, link);
     }
 
-    /// Atende uma chamada de outro membro (a conferência de membro já foi feita).
+    /// Serves a call from another member (the member check was already done).
     pub async fn handle(&self, caller: &str, request: Request) -> Result<Response, TabaError> {
-        // Um nó que sincroniza guarda os eventos no banco em vez de processá-los (doc 05, 7.3).
+        // A node that is syncing stores the events in the database instead of processing them (doc 05, 7.3).
         if let Some(reply) = self.syncer.intercept(&request)? {
             return Ok(reply);
         }
@@ -279,12 +279,12 @@ impl Replication {
                 }))
             }
             Request::Take { topic, request } => {
-                // O nó avisado veio buscar: o responsável pelos avisos do tópico pode parar de esperar.
+                // The notified node came to fetch: whoever is responsible for the topic's notices can stop waiting.
                 self.signals.took(&topic, caller);
                 if self.service.node_state() != NodeState::Active {
                     return Err(TabaError::new(
                         ErrorCode::ClusterNodeSyncing,
-                        "O nó ainda está em sincronização e não entrega mensagens.",
+                        "The node is still syncing and does not deliver messages.",
                     )
                     .with_retry_after(5));
                 }

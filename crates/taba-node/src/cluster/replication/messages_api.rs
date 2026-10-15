@@ -1,10 +1,10 @@
-//! A API de mensagens de um nó **no cluster** (doc 06a, "Mensagens"; doc 13): o que o cliente
-//! chama (`POST`, `GET`, ack e `PUT visibility`), agora com a escrita, a invisibilidade e o ack
-//! decididos por quórum nos nós responsáveis e a entrega completada com o `take` em outros nós.
+//! The messages API of a node **in the cluster** (doc 06a, "Messages"; doc 13): what the client
+//! calls (`POST`, `GET`, ack and `PUT visibility`), now with the write, invisibility and ack
+//! decided by quorum on the responsible nodes and delivery completed with `take` on other nodes.
 //!
-//! O nó que recebe a chamada é o coordenador, qualquer que seja ele. O `GET` entrega o que o
-//! próprio nó tem como dono e, se faltar, pede ao dono de outras mensagens (`take`); sem nada,
-//! espera como ouvinte (long polling).
+//! The node that receives the call is the coordinator, whichever it is. `GET` delivers what the
+//! node itself owns and, if short, asks the owner of other messages (`take`); with nothing,
+//! it waits as a listener (long polling).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -34,7 +34,7 @@ use crate::engine::messages::{
 use crate::engine::topics::{TopicView, Topics};
 use crate::telemetry::metrics::{DELIVERY_TAKE, FIFO_FORWARD};
 
-/// Uma trava por (tópico, grupo) FIFO.
+/// One lock per FIFO (topic, group).
 type GroupLocks = Mutex<HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>>;
 
 pub struct ClusterMessages {
@@ -42,15 +42,15 @@ pub struct ClusterMessages {
     messages: Arc<Messages>,
     topics: Arc<Topics>,
     signals: Arc<Signals>,
-    /// Uma publicação por vez em cada grupo FIFO deste nó (o primário): é o que ordena o grupo e
-    /// serializa a deduplicação (doc 17, seções 16.4 e 16.7).
+    /// One publication at a time in each FIFO group of this node (the primary): it is what orders the group and
+    /// serializes deduplication (doc 17, sections 16.4 and 16.7).
     group_locks: GroupLocks,
 }
 
 fn primary_unavailable() -> TabaError {
     TabaError::new(
         ErrorCode::FifoPrimaryUnavailable,
-        "O primário do grupo não está disponível para coordenar a publicação.",
+        "The group's primary is not available to coordinate the publication.",
     )
     .with_retry_after(5)
 }
@@ -58,7 +58,7 @@ fn primary_unavailable() -> TabaError {
 fn delivery_unavailable() -> TabaError {
     TabaError::new(
         ErrorCode::DeliveryUnavailable,
-        "Não foi possível entregar: o quórum não fechou para as mensagens escolhidas.",
+        "Could not deliver: the quorum did not close for the chosen messages.",
     )
     .with_retry_after(5)
 }
@@ -87,8 +87,8 @@ impl ClusterMessages {
         &self.signals
     }
 
-    /// Onde a operação vai: a posição no anel e quantos dos primeiros responsáveis o quórum
-    /// precisa incluir (1 na fila comum; na FIFO, o primário e o secundário).
+    /// Where the operation goes: the ring position and how many of the first responsible nodes the quorum
+    /// must include (1 on the plain queue; on FIFO, the primary and the secondary).
     fn operation_plan(
         &self,
         topic: &str,
@@ -112,8 +112,8 @@ impl ClusterMessages {
         })
     }
 
-    /// A posição e os papéis obrigatórios de um ack ou de uma alteração de invisibilidade. Na FIFO
-    /// a posição é a do grupo, que o recibo carrega (`{posição}-{guid}`); recibo malformado é
+    /// The position and mandatory roles of an ack or an invisibility change. On FIFO
+    /// the position is the group's, which the receipt carries (`{position}-{guid}`); a malformed receipt is
     /// `409 message.stale-receipt`.
     fn route_of(
         &self,
@@ -132,7 +132,7 @@ impl ClusterMessages {
             .ok_or_else(|| {
                 TabaError::new(
                     ErrorCode::MessageStaleReceipt,
-                    "O receiptToken não é o da última entrega desta mensagem.",
+                    "The receiptToken is not that of this message's last delivery.",
                 )
             })
     }
@@ -152,7 +152,7 @@ impl ClusterMessages {
                 return Err(TabaError::new(
                     ErrorCode::MessageTooLarge,
                     format!(
-                        "O corpo passa do limite de {} bytes do tópico.",
+                        "The body exceeds the topic's limit of {} bytes.",
                         self.messages.distributor_limit()
                     ),
                 ));
@@ -166,7 +166,7 @@ impl ClusterMessages {
             .map(|(id, duplicate)| Published::Queue { id, duplicate })
     }
 
-    /// Uma mensagem numa fila: registro em todos os nós responsáveis e commit por quórum.
+    /// A message on a queue: register on all the responsible nodes and commit by quorum.
     async fn publish_queue(
         self: &Arc<Self>,
         view: &TopicView,
@@ -227,11 +227,11 @@ impl ClusterMessages {
         Ok((id, None))
     }
 
-    // ---- Publicar na fila FIFO ----
+    // ---- Publishing to the FIFO queue ----
 
-    /// Publica numa fila FIFO a partir de qualquer nó: acha o primário do grupo e repassa a ele,
-    /// ou coordena aqui se for o próprio (doc 17, seção 16.4). O primário que já não é o dono
-    /// responde `421` e a tabela de membros é relida, até `fifo.forward.max-attempts`.
+    /// Publishes to a FIFO queue from any node: finds the group's primary and forwards to it,
+    /// or coordinates here if it is itself (doc 17, section 16.4). A primary that is no longer the owner
+    /// answers `421` and the member table is re-read, up to `fifo.forward.max-attempts`.
     async fn publish_fifo(
         self: &Arc<Self>,
         view: &TopicView,
@@ -324,7 +324,7 @@ impl ClusterMessages {
         Err(primary_unavailable())
     }
 
-    /// `POST /cluster/topics/{topic}/fifo/publish`: este nó, o primário do grupo, coordena.
+    /// `POST /cluster/topics/{topic}/fifo/publish`: this node, the group's primary, coordinates.
     pub async fn publish_fifo_for_peer(
         self: &Arc<Self>,
         topic: &str,
@@ -344,7 +344,7 @@ impl ClusterMessages {
 
     fn group_lock(&self, topic: &str, group: &str) -> Arc<tokio::sync::Mutex<()>> {
         let mut locks = self.group_locks.lock().unwrap_or_else(|e| e.into_inner());
-        // Os grupos ociosos saem do mapa: só sobra quem alguém ainda segura.
+        // Idle groups leave the map: only whoever someone still holds remains.
         locks.retain(|_, lock| Arc::strong_count(lock) > 1);
         locks
             .entry((topic.to_owned(), group.to_owned()))
@@ -352,9 +352,9 @@ impl ClusterMessages {
             .clone()
     }
 
-    /// O que só o primário do grupo faz: conferir que é o dono (`421` se não for), que está pronto,
-    /// e então deduplicar, gerar o `id` e fazer o registro + commit com o primário e o secundário no
-    /// quórum. Uma publicação por vez no grupo.
+    /// What only the group's primary does: check that it is the owner (`421` if not), that it is ready,
+    /// and then deduplicate, generate the `id` and do the register + commit with the primary and the secondary in the
+    /// quorum. One publication at a time in the group.
     async fn coordinate_fifo(
         self: &Arc<Self>,
         view: &TopicView,
@@ -369,20 +369,20 @@ impl ClusterMessages {
         if !owners.first().is_some_and(|m| self.service.is_self(m)) {
             return Err(TabaError::new(
                 ErrorCode::FifoMisdirected,
-                "Este nó não é o primário do grupo.",
+                "This node is not the group's primary.",
             ));
         }
         if self.service.node_state() != NodeState::Active {
             return Err(TabaError::new(
                 ErrorCode::ClusterNodeSyncing,
-                "O primário do grupo ainda está em sincronização.",
+                "The group's primary is still syncing.",
             )
             .with_retry_after(5));
         }
         if self.service.drain_state() != DrainState::Active {
             return Err(TabaError::new(
                 ErrorCode::ClusterNodeDraining,
-                "O primário do grupo está em drain.",
+                "The group's primary is in drain.",
             )
             .with_retry_after(5));
         }
@@ -439,7 +439,7 @@ impl ClusterMessages {
         Ok((id, false))
     }
 
-    /// Uma cópia independente em cada fila que casa com um prefixo (doc 15, seção 14.2).
+    /// An independent copy in each queue that matches a prefix (doc 15, section 14.2).
     async fn publish_distributor(
         self: &Arc<Self>,
         name: &str,
@@ -452,7 +452,7 @@ impl ClusterMessages {
         {
             return Err(TabaError::new(
                 ErrorCode::DistributorTooManyTargets,
-                format!("A publicação casa com mais de {max} filas."),
+                format!("The publication matches more than {max} queues."),
             ));
         }
         let mut set = JoinSet::new();
@@ -552,7 +552,7 @@ impl ClusterMessages {
         })
     }
 
-    /// Registro + commit da invisibilidade de uma mensagem (entrega ou alteração).
+    /// Register + commit of a message's invisibility (delivery or change).
     #[allow(clippy::too_many_arguments)]
     async fn replicate_visibility(
         self: &Arc<Self>,
@@ -598,8 +598,8 @@ impl ClusterMessages {
 
     // ---- Dead-letter ----
 
-    /// O movimento de uma mensagem para a dead-letter, coordenado pelo dono: uma operação só que
-    /// cria a mensagem na dead-letter e a remove da fila de origem (doc 13, seção 12.10).
+    /// The move of a message to the dead-letter, coordinated by the owner: a single operation that
+    /// creates the message in the dead-letter and removes it from the source queue (doc 13, section 12.10).
     pub async fn move_to_dead_letter(
         self: &Arc<Self>,
         source: &str,
@@ -612,12 +612,12 @@ impl ClusterMessages {
                 .await
                 .map_err(|_| TabaError::internal())??;
         let Some((meta, body)) = held else {
-            // Já não está aqui: ack ou ttl ganharam a corrida.
+            // It is no longer here: ack or ttl won the race.
             return Ok(());
         };
         let target = format!("{source}{}", self.topics.rules().dead_letter_suffix);
         let at_ms = self.messages.now_millis();
-        // A dead-letter de uma FIFO fica no bloco do grupo da fila de origem (doc 17, seção 16.3).
+        // A FIFO's dead-letter stays in the block of the source queue's group (doc 17, section 16.3).
         let fifo = self
             .topics
             .get(source)
@@ -672,7 +672,7 @@ impl ClusterMessages {
         coordinator::run(&self.service, plan).await
     }
 
-    /// A tarefa que esvazia a fila de movimentos para a dead-letter que o motor preenche.
+    /// The task that empties the queue of moves to the dead-letter that the engine fills.
     pub async fn run_dead_letters(
         self: Arc<Self>,
         mut jobs: tokio::sync::mpsc::UnboundedReceiver<crate::engine::messages::DeadLetterJob>,
@@ -688,7 +688,7 @@ impl ClusterMessages {
             tokio::spawn(async move {
                 let moved = me.move_to_dead_letter(&job.topic, &job.id).await;
                 if let Err(error) = &moved {
-                    tracing::warn!(topic = %job.topic, id = %job.id, %error, "movimento para a dead-letter não concluído");
+                    tracing::warn!(topic = %job.topic, id = %job.id, %error, "move to the dead-letter not completed");
                 }
                 let messages = me.messages.clone();
                 let _ = tokio::task::spawn_blocking(move || {
@@ -715,8 +715,8 @@ impl ClusterMessages {
         let mut polling = None;
         let mut listener = None;
         loop {
-            // O interesse é registrado antes de olhar, para não perder uma mensagem que chegue
-            // entre o olhar e a espera.
+            // Interest is registered before looking, so as not to miss a message that arrives
+            // between the look and the wait.
             let notified = notify.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
@@ -761,9 +761,9 @@ impl ClusterMessages {
         }
     }
 
-    /// As mensagens de que este nó é o dono: escolhe, registra a invisibilidade de cada uma nos
-    /// nós responsáveis (todas ao mesmo tempo) e entrega as que o quórum confirmou. As que não
-    /// fecharam voltam a ser prontas. Devolve também quantas falharam.
+    /// The messages this node owns: chooses, registers each one's invisibility on the
+    /// responsible nodes (all at once) and delivers those the quorum confirmed. Those that did not
+    /// close go back to ready. Also returns how many failed.
     async fn take_local(
         self: &Arc<Self>,
         view: &TopicView,
@@ -780,8 +780,8 @@ impl ClusterMessages {
         ))
     }
 
-    /// Como `take_local`, mas devolve os candidatos confirmados (o `take` de outro nó precisa dos
-    /// bytes do corpo).
+    /// Like `take_local`, but returns the confirmed candidates (another node's `take` needs the
+    /// body bytes).
     async fn take_confirmed(
         self: &Arc<Self>,
         view: &TopicView,
@@ -794,9 +794,9 @@ impl ClusterMessages {
         let attempts = self.service.rules().get_max_attempts;
         let (mut confirmed, mut failed) = (Vec::new(), 0usize);
         let mut aborted = Vec::new();
-        // Uma mensagem que falha fica reservada até o fim do `GET` e o laço segue para o próximo
-        // ID da lista, sem esperar (doc 13, seção 12.2): são tolerados até
-        // `delivery.get.max-attempts` registros que não fecham.
+        // A message that fails stays reserved until the end of the `GET` and the loop goes on to the next
+        // ID on the list, without waiting (doc 13, section 12.2): up to
+        // `delivery.get.max-attempts` registers that do not close are tolerated.
         while confirmed.len() < max && failed < attempts {
             let missing = max - confirmed.len();
             let candidates = {
@@ -865,8 +865,8 @@ impl ClusterMessages {
         Ok((confirmed, failed))
     }
 
-    /// Pede a outros nós, que o sinal diz terem mensagens prontas, as `missing` que faltam ao
-    /// `GET` (doc 13, seção 12.8). Tenta no máximo `delivery.take.max-attempts` nós.
+    /// Asks other nodes, which the signal says have ready messages, for the `missing` the
+    /// `GET` lacks (doc 13, section 12.8). Tries at most `delivery.take.max-attempts` nodes.
     async fn take_remote(
         self: &Arc<Self>,
         topic: &str,
@@ -919,8 +919,8 @@ impl ClusterMessages {
         out
     }
 
-    /// `POST /cluster/topics/{topic}/messages/take`: este nó, como dono, entrega até `max`
-    /// mensagens prontas a quem pediu. Em drain responde vazio.
+    /// `POST /cluster/topics/{topic}/messages/take`: this node, as the owner, delivers up to `max`
+    /// ready messages to whoever asked. In drain it answers empty.
     pub async fn take_for_peer(
         self: &Arc<Self>,
         topic: &str,
@@ -970,8 +970,8 @@ impl ClusterMessages {
         })
     }
 
-    /// Os membros que são donos de alguma coisa não precisam ser conhecidos aqui; este método só
-    /// existe para os testes e para o repasse escolherem entre os membros.
+    /// The members that own something need not be known here; this method only
+    /// exists for the tests and for the forward to choose among the members.
     pub fn peers(&self) -> Vec<Member> {
         self.service
             .membership()
@@ -986,10 +986,10 @@ impl ClusterMessages {
     }
 }
 
-/// A mensagem que um `take` trouxe, como o `GET` do cliente a devolve.
+/// The message a `take` brought, as the client's `GET` returns it.
 fn delivered_from(record: MessageRecord) -> Delivered {
     let content_type = ContentType::parse(&record.content_type)
-        .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("válido"));
+        .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("valid"));
     let published_ms = record.published_ms();
     let _: Option<&RawValue> = None;
     Delivered {

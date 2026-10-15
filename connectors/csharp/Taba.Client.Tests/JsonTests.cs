@@ -4,7 +4,7 @@ using NUnit.Framework;
 
 namespace Taba.Tests
 {
-    /// <summary>O leitor de JSON mínimo (doc 19, seção 18.5): os mesmos casos do conector Rust.</summary>
+    /// <summary>The minimal JSON reader (doc 19, section 18.5): the same cases as the Rust connector.</summary>
     [TestFixture]
     public class JsonTests
     {
@@ -34,7 +34,7 @@ namespace Taba.Tests
                 "[1 2]", "{\"a\":1 \"b\":2}", "\"a\nb\"", "{} x", "nul", "[1,]",
             })
             {
-                Assert.Throws<JsonException>(() => Json.Validate(doc), "deveria recusar " + doc);
+                Assert.Throws<JsonException>(() => Json.Validate(doc), "should refuse " + doc);
             }
         }
 
@@ -73,7 +73,7 @@ namespace Taba.Tests
             Assert.That(Json.DecodeString("\"\\u00e9\\u4e2d\""), Is.EqualTo("é中"));
             Assert.That(Json.DecodeString("\"\\ud83d\\ude00\""), Is.EqualTo("😀"));
             Assert.That(Json.DecodeString("\"😀 direto\""), Is.EqualTo("😀 direto"));
-            // Substituto sozinho não derruba: vira o caractere de substituição.
+            // A lone surrogate does not bring it down: it becomes the replacement character.
             Assert.That(Json.DecodeString("\"\\ud83d x\""), Is.EqualTo("\uFFFD x"));
             Assert.That(Json.DecodeString("\"\\ude00\""), Is.EqualTo("\uFFFD"));
             Assert.Throws<JsonException>(() => Json.DecodeString("abc"));
@@ -83,7 +83,7 @@ namespace Taba.Tests
         [Test]
         public void quote_round_trips_through_decode()
         {
-            foreach (string s in new[] { "", "simples", "aspas \" e barra \\", "linha\nnova\ttab", "\u0001ctrl", "çã 中 😀" })
+            foreach (string s in new[] { "", "simple", "quotes \" and backslash \\", "new\nline\ttab", "\u0001ctrl", "çã 中 😀" })
             {
                 Assert.That(Json.DecodeString(Json.Quote(s)), Is.EqualTo(s));
             }

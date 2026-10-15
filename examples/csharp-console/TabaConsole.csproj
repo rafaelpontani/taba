@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Console example for the C# connector (doc/08c, step 4). It uses the connector project directly;
+       outside the repository, replace the reference with the Taba.Client package from nuget.org. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <RootNamespace>TabaConsole</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\connectors\csharp\Taba.Client\Taba.Client.csproj" />
+  </ItemGroup>
+
+</Project>

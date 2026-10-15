@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Reinício do processo de um nó",
+    "title": "Restart of a node's process",
     "output": "doc/diagramas/html/reinicio-processo.html",
     "viewBox": [
       1080,
@@ -15,32 +15,32 @@
     {
       "id": "novo",
       "type": "backend",
-      "label": "Processo reiniciado",
-      "sublabel": "ID novo, disco da vida anterior"
+      "label": "Restarted process",
+      "sublabel": "new ID, previous life's disk"
     },
     {
       "id": "contato",
       "type": "security",
-      "label": "Nó de contato",
-      "sublabel": "coordena o registro"
+      "label": "Contact node",
+      "sublabel": "coordinates the register"
     },
     {
       "id": "demais",
       "type": "cloud",
-      "label": "Demais nós",
-      "sublabel": "membros e donos dos blocos"
+      "label": "Other nodes",
+      "sublabel": "members and block owners"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 330,
-      "label": "Entrada, sem esperar ninguém"
+      "label": "Join, without waiting for anyone"
     },
     {
       "from": 342,
       "to": 502,
-      "label": "Recuperação em segundo plano"
+      "label": "Recovery in the background"
     }
   ],
   "messages": [
@@ -49,41 +49,41 @@
       "from": "novo",
       "to": "contato",
       "y": 172,
-      "label": "GET /cluster/nodes (balanceador)",
+      "label": "GET /cluster/nodes (load balancer)",
       "variant": "dashed",
-      "note": "põe o disco antigo em _previous-life"
+      "note": "puts the old disk in _previous-life"
     },
     {
       "id": "lista-ok",
       "from": "contato",
       "to": "novo",
       "y": 200,
-      "label": "tabela de membros",
+      "label": "member table",
       "variant": "return",
-      "note": "o nó segue com o disco vazio"
+      "note": "the node goes on with an empty disk"
     },
     {
       "id": "boot",
       "from": "novo",
       "to": "contato",
       "y": 236,
-      "label": "pedido de ingresso: IPs e porta",
+      "label": "join request: IPs and port",
       "variant": "emphasis",
-      "note": "nó novo, sem freezing"
+      "note": "new node, without freezing"
     },
     {
       "id": "ingresso",
       "from": "contato",
       "to": "demais",
       "y": 264,
-      "label": "registro e commit em todos"
+      "label": "register and commit on all"
     },
     {
       "id": "tabela",
       "from": "contato",
       "to": "novo",
       "y": 292,
-      "label": "tabela de nós",
+      "label": "node table",
       "variant": "return"
     },
     {
@@ -91,9 +91,9 @@
       "from": "novo",
       "to": "demais",
       "y": 320,
-      "label": "sincroniza e fica ativo",
+      "label": "syncs and becomes active",
       "variant": "dashed",
-      "note": "não fica em returning"
+      "note": "does not stay in returning"
     },
     {
       "id": "perdas",
@@ -102,14 +102,14 @@
       "y": 372,
       "label": "GET /cluster/message-loss",
       "variant": "emphasis",
-      "note": "a cada nó da primeira listagem"
+      "note": "to each node of the first listing"
     },
     {
       "id": "perdas-ok",
       "from": "demais",
       "to": "novo",
       "y": 400,
-      "label": "pares (tópico, ID) perdidos",
+      "label": "lost (topic, ID) pairs",
       "variant": "return"
     },
     {
@@ -117,42 +117,42 @@
       "from": "novo",
       "to": "demais",
       "y": 436,
-      "label": "POST /recover: o que o disco antigo tem",
+      "label": "POST /recover: what the old disk has",
       "variant": "emphasis",
-      "note": "na hora, para cada lista que chega"
+      "note": "right away, for each list that arrives"
     },
     {
       "id": "mudo",
       "from": "novo",
       "to": "demais",
       "y": 472,
-      "label": "repete só o nó que não respondeu",
+      "label": "repeats only the node that did not answer",
       "variant": "dashed",
-      "note": "até cluster.recovery.timeout"
+      "note": "until cluster.recovery.timeout"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Disco da vida anterior",
+      "title": "Previous life's disk",
       "items": [
-        "Fica em _previous-life até a recuperação acabar",
-        "Depois dela, ou no prazo, a pasta é apagada"
+        "Stays in _previous-life until the recovery ends",
+        "After it, or at the deadline, the folder is deleted"
       ]
     },
     {
       "dot": "rose",
-      "title": "Queda no meio",
+      "title": "Fall in the middle",
       "items": [
-        "A pasta velha continua valendo",
-        "A nova do mesmo tópico é apagada"
+        "The old folder keeps counting",
+        "The new one of the same topic is deleted"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Primeiro nó de um cluster novo",
+      "title": "First node of a new cluster",
       "items": [
-        "Não há de quem recuperar: o disco antigo é apagado"
+        "There is no one to recover from: the old disk is deleted"
       ]
     }
   ]

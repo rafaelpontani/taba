@@ -6,6 +6,6 @@ doc/diagramas/html/
 
 /connectors/csharp/**/bin
 /connectors/csharp/**/obj
-/exemplos/**/bin
-/exemplos/**/obj
+/examples/**/bin
+/examples/**/obj
 /dist

@@ -1,6 +1,6 @@
-//! O nó excluído que volta e o período de freezing (doc 04, seções 6.6 e 6.7; doc 20c, nível **C**):
-//! o mesmo processo, com o mesmo ID, é recusado com `403 cluster.node-frozen` até o freezing acabar
-//! e então refaz o ingresso do zero. O `Clock` é manual: o teste anda o relógio em vez de esperar.
+//! The excluded node that comes back and the freezing period (doc 04, sections 6.6 and 6.7; doc 20c, level **C**):
+//! the same process, with the same ID, is refused with `403 cluster.node-frozen` until the freezing ends
+//! and then redoes the join from scratch. The `Clock` is manual: the test advances the clock instead of waiting.
 
 mod common;
 
@@ -16,16 +16,16 @@ use taba_node::cluster::transport::{CallError, Transport};
 use taba_node::core::clock::Clock;
 use taba_node::core::error::ErrorCode;
 
-/// Os 5 minutos de `cluster.freezing.duration`.
+/// The 5 minutes of `cluster.freezing.duration`.
 const FREEZING: Duration = Duration::from_secs(300);
 
-/// Um pedido de ingresso do nó `number`, como ele o faria (mesmo ID, mesmo endereço).
+/// A join request from node `number`, as it would make it (same ID, same address).
 fn join_as(cluster: &TestCluster, number: usize) -> Request {
     let local = cluster
         .node(number)
         .node
         .cluster()
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
         .local();
     Request::Join(JoinRequest {
         node_id: local.node_id,
@@ -35,7 +35,7 @@ fn join_as(cluster: &TestCluster, number: usize) -> Request {
     })
 }
 
-/// O que o cluster responde a um pedido de ingresso do nó `number` feito ao nó `to`.
+/// What the cluster answers to a join request from node `number` made to node `to`.
 async fn join_error(cluster: &TestCluster, number: usize, to: usize) -> Option<(ErrorCode, u64)> {
     let transport = cluster.network.transport(host_of(number));
     match transport
@@ -47,7 +47,7 @@ async fn join_error(cluster: &TestCluster, number: usize, to: usize) -> Option<(
     }
 }
 
-/// Os nós `numbers` guardam o nó `gone` em freezing e têm a tabela sem ele.
+/// Nodes `numbers` keep node `gone` in freezing and have the table without it.
 fn frozen_and_gone(cluster: &TestCluster, numbers: &[usize], gone: usize) -> bool {
     let id = cluster.node_id(gone);
     numbers.iter().all(|n| {
@@ -68,11 +68,11 @@ async fn an_excluded_node_that_stays_the_same_process_is_refused_until_the_freez
     let id = cluster.node_id(3);
 
     cluster.network.isolate(&host_of(3));
-    eventually("os dois saudáveis excluírem o nó 3", || {
+    eventually("the two healthy ones to exclude node 3", || {
         frozen_and_gone(&cluster, &[1, 2], 3)
     })
     .await;
-    // O cluster guarda o ID do excluído e quando ele saiu; um ID que nunca saiu não está em freezing.
+    // The cluster keeps the excluded one's ID and when it left; an ID that never left is not in freezing.
     let service = cluster.node(1).node.cluster().unwrap();
     assert!(
         service
@@ -81,11 +81,11 @@ async fn an_excluded_node_that_stays_the_same_process_is_refused_until_the_freez
             .is_none()
     );
 
-    // A rede volta: os pares respondem `not-member`, o nó 3 vê que foi excluído, apaga o que tinha e
-    // refaz o ingresso do zero (o mesmo processo, o mesmo ID).
+    // The network returns: the peers answer `not-member`, node 3 sees it was excluded, deletes what it had and
+    // redoes the join from scratch (the same process, the same ID).
     cluster.network.restore(&host_of(3));
     let third = cluster.node(3);
-    eventually_async("o nó 3 ser recusado por freezing", || async {
+    eventually_async("node 3 to be refused by freezing", || async {
         total(
             &third.metrics().await,
             "taba_cluster_bootstrap_failures_total",
@@ -96,12 +96,12 @@ async fn an_excluded_node_that_stays_the_same_process_is_refused_until_the_freez
     assert_ne!(
         third.node.shared().state(),
         NodeState::Active,
-        "fora do cluster enquanto o freezing dura"
+        "out of the cluster while the freezing lasts"
     );
-    assert_eq!(third.node.shared().node_id(), id, "continua o mesmo ID");
+    assert_eq!(third.node.shared().node_id(), id, "still the same ID");
 
-    // A recusa é `403 cluster.node-frozen` com o tempo que falta em `Retry-After`; o relógio
-    // anda 2 minutos e faltam 3.
+    // The refusal is `403 cluster.node-frozen` with the remaining time in `Retry-After`; the clock
+    // advances 2 minutes and 3 remain.
     assert_eq!(
         join_error(&cluster, 3, 1).await,
         Some((ErrorCode::ClusterNodeFrozen, 300))
@@ -112,23 +112,23 @@ async fn an_excluded_node_that_stays_the_same_process_is_refused_until_the_freez
         Some((ErrorCode::ClusterNodeFrozen, 180))
     );
 
-    // Não há lista de espera: o cluster não guardou nenhum pedido. As tabelas seguem sem o nó 3,
-    // sem mudança pendente, e o nó 3 é quem insiste (o laço do bootstrap).
+    // There is no waiting list: the cluster kept no request. The tables stay without node 3,
+    // with no pending change, and node 3 is the one that insists (the bootstrap loop).
     for number in [1, 2] {
         let membership = cluster.node(number).node.cluster().unwrap().membership();
         assert!(!membership.has_pending(cluster.clock.now()));
         assert_eq!(cluster.member_ids(number).len(), 2);
     }
     let attempts = cluster.network.count("join");
-    eventually("o nó 3 repetir o pedido", || {
+    eventually("node 3 to repeat the request", || {
         cluster.network.count("join") > attempts + 1
     })
     .await;
 
-    // Passado o freezing o nó volta, com o mesmo ID, e as três tabelas voltam a ser iguais.
+    // With the freezing over the node comes back, with the same ID, and the three tables become equal again.
     cluster.clock.advance(FREEZING);
     wait_joined(cluster.node(3)).await;
-    eventually("as três tabelas iguais com o nó 3", || {
+    eventually("the three tables equal with node 3", || {
         let tables: Vec<_> = (1..=3).map(|n| cluster.table(n)).collect();
         tables.windows(2).all(|w| w[0] == w[1])
             && tables[0]
@@ -162,12 +162,12 @@ async fn the_nodes_in_freezing_show_in_the_metric_and_in_the_node_frozen_conditi
     );
 
     cluster.network.isolate(&host_of(3));
-    eventually("o nó 3 ser excluído", || {
+    eventually("node 3 to be excluded", || {
         frozen_and_gone(&cluster, &[1, 2], 3)
     })
     .await;
 
-    // O nó 3 segue isolado: não volta a pedir ingresso e o freezing é só do que os outros guardam.
+    // Node 3 stays isolated: it does not ask to join again and the freezing is only what the others keep.
     for number in [1, 2] {
         let node = cluster.node(number);
         assert_eq!(frozen_metric(&node.metrics().await), 1.0);
@@ -184,7 +184,7 @@ async fn the_nodes_in_freezing_show_in_the_metric_and_in_the_node_frozen_conditi
         assert_eq!(entry["severity"], "warning");
     }
 
-    // O período passa e o nó deixa de contar.
+    // The period passes and the node stops counting.
     cluster.clock.advance(FREEZING + Duration::from_secs(1));
     for number in [1, 2] {
         let node = cluster.node(number);
@@ -202,32 +202,32 @@ async fn a_node_that_joins_after_the_exclusion_inherits_the_freezing_of_the_excl
     settled(&cluster).await;
     let excluded = cluster.node_id(3);
     cluster.network.isolate(&host_of(3));
-    eventually("os dois saudáveis excluírem o nó 3", || {
+    eventually("the two healthy ones to exclude node 3", || {
         frozen_and_gone(&cluster, &[1, 2], 3)
     })
     .await;
 
-    // O nó 4 entra depois do commit da exclusão: ele não o viu, e recebe o freezing na tabela.
+    // Node 4 joins after the exclusion commit: it did not see it, and receives the freezing in the table.
     cluster.add_node(false).await;
     let membership = cluster.node(4).node.cluster().unwrap().membership();
     assert!(
         membership
             .frozen_remaining(&excluded, cluster.clock.now(), FREEZING)
             .is_some(),
-        "o nó novo herdou o freezing"
+        "the new node inherited the freezing"
     );
-    // A tabela guardada não o leva, e as tabelas dos nós seguem iguais.
+    // The stored table does not carry it, and the nodes' tables stay equal.
     assert!(membership.table().unwrap().frozen.is_empty());
     assert_eq!(cluster.table(4), cluster.table(1));
 
-    // Por isso o pedido do excluído que cair no nó 4 também é recusado.
+    // That is why the excluded one's request that lands on node 4 is also refused.
     let transport = cluster.network.transport(host_of(1));
     let reply = transport
         .call(&address_of(&cluster, 4), join_as(&cluster, 3))
         .await;
     match reply {
         Err(CallError::Remote(error)) => assert_eq!(error.code, ErrorCode::ClusterNodeFrozen),
-        other => panic!("esperava cluster.node-frozen, veio {other:?}"),
+        other => panic!("expected cluster.node-frozen, got {other:?}"),
     }
     cluster.shutdown().await;
 }
@@ -239,53 +239,54 @@ async fn a_member_that_missed_the_exclusion_commit_learns_the_freezing_from_the_
     settled(&cluster).await;
     let excluded = cluster.node_id(4);
 
-    // O nó de maior ID entre os três saudáveis nunca é o que coordena a exclusão (coordena o de
-    // menor ID), e fica sem receber o commit: é o membro "fora do ar" no commit.
+    // The node with the highest ID among the three healthy is never the one that coordinates the exclusion (the one with the
+    // lowest ID coordinates), and it is left without receiving the commit: it is the "down" member in the commit.
     let lagging = (1..=3)
         .max_by_key(|n| cluster.node_id(*n))
-        .expect("três nós saudáveis");
+        .expect("three healthy nodes");
     let others: Vec<usize> = (1..=3).filter(|n| *n != lagging).collect();
     cluster
         .network
         .lose_kind(&host_of(lagging), "commit", 10_000);
     cluster.network.isolate(&host_of(4));
-    eventually("os outros dois saudáveis excluírem o nó 4", || {
+    eventually("the other two healthy ones to exclude node 4", || {
         frozen_and_gone(&cluster, &others, 4)
     })
     .await;
 
-    // O commit não chegou ao retardatário: a tabela dele ainda tem o nó 4. Mesmo assim ele fica
-    // sabendo do freezing, pelo quadro `frozen` do canal.
+    // The commit did not reach the laggard: its table still has node 4. Even so it
+    // learns of the freezing, through the channel's `frozen` frame.
     let membership = cluster.node(lagging).node.cluster().unwrap().membership();
-    eventually("o retardatário saber do freezing", || {
+    eventually("the laggard to learn of the freezing", || {
         membership
             .frozen_remaining(&excluded, cluster.clock.now(), FREEZING)
             .is_some()
     })
     .await;
-    // A tabela dele também se acerta: o quadro `membership` do canal leva a exclusão, sem depender
-    // do registro nem do commit que ele perdeu (D126).
-    eventually("o retardatário tirar o excluído da tabela", || {
-        !membership.is_member(&excluded)
-    })
+    // Its table also gets fixed: the channel's `membership` frame carries the exclusion, without depending
+    // on the register or the commit it lost (D126).
+    eventually(
+        "the laggard to remove the excluded one from the table",
+        || !membership.is_member(&excluded),
+    )
     .await;
     assert_eq!(
         membership.table().unwrap().version,
         cluster.table(others[0]).unwrap().version,
-        "a tabela do retardatário ficou igual à dos outros"
+        "the laggard's table became equal to the others'"
     );
     assert!(membership.table().unwrap().frozen.is_empty());
 
-    // O pedido do excluído que cair nele é recusado, e não aceito como "o mesmo nó repetindo".
+    // The excluded one's request that lands on it is refused, and not accepted as "the same node repeating".
     let transport = cluster.network.transport(host_of(others[0]));
     let reply = transport
         .call(&address_of(&cluster, lagging), join_as(&cluster, 4))
         .await;
     match reply {
         Err(CallError::Remote(error)) => assert_eq!(error.code, ErrorCode::ClusterNodeFrozen),
-        other => panic!("esperava cluster.node-frozen, veio {other:?}"),
+        other => panic!("expected cluster.node-frozen, got {other:?}"),
     }
-    // Sem perder mais commits, o commit que seguia em segundo plano termina e o desligamento não espera.
+    // Without losing more commits, the commit that was going on in the background finishes and the shutdown does not wait.
     cluster.network.lose_kind(&host_of(lagging), "commit", 0);
     cluster.shutdown().await;
 }
@@ -301,10 +302,10 @@ async fn the_channel_snapshot_carries_the_nodes_still_in_freezing() {
             .snapshot()
             .iter()
             .any(|s| matches!(s, Signal::Frozen { .. })),
-        "sem exclusão, o instantâneo não leva freezing"
+        "without an exclusion, the snapshot carries no freezing"
     );
     cluster.network.isolate(&host_of(3));
-    eventually("os dois saudáveis excluírem o nó 3", || {
+    eventually("the two healthy ones to exclude node 3", || {
         frozen_and_gone(&cluster, &[1, 2], 3)
     })
     .await;
@@ -313,10 +314,10 @@ async fn the_channel_snapshot_carries_the_nodes_still_in_freezing() {
         snapshot
             .iter()
             .any(|s| matches!(s, Signal::Frozen { node_id, .. } if *node_id == excluded)),
-        "o instantâneo leva o nó em freezing: {snapshot:?}"
+        "the snapshot carries the node in freezing: {snapshot:?}"
     );
 
-    // Passado o freezing, ele sai do instantâneo.
+    // With the freezing over, it leaves the snapshot.
     cluster.clock.advance(FREEZING + Duration::from_secs(1));
     assert!(
         !signals_of(&cluster, 1)

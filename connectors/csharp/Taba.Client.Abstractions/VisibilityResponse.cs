@@ -1,6 +1,6 @@
 namespace Taba
 {
-    /// <summary>A resposta de <c>changeVisibility</c>.</summary>
+    /// <summary>The <c>changeVisibility</c> response.</summary>
     public sealed class VisibilityResponse
     {
         internal VisibilityResponse()

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Troca de gestor nas mudanças do anel",
+    "title": "Manager change on ring changes",
     "output": "doc/diagramas/html/fila-volatil-troca-gestor.html",
     "viewBox": [
       1080,
@@ -15,37 +15,37 @@
     {
       "id": "mud",
       "type": "external",
-      "label": "Nó que entra ou sai",
-      "sublabel": "comissionamento"
+      "label": "Node that joins or leaves",
+      "sublabel": "commissioning"
     },
     {
       "id": "nos",
       "type": "cloud",
-      "label": "Demais nós",
-      "sublabel": "tabelas de nós e tópicos"
+      "label": "Other nodes",
+      "sublabel": "node and topic tables"
     },
     {
       "id": "novo",
       "type": "backend",
-      "label": "Novo gestor",
-      "sublabel": "primário da posição"
+      "label": "New manager",
+      "sublabel": "primary of the position"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 214,
-      "label": "Mudança do anel"
+      "label": "Ring change"
     },
     {
       "from": 222,
       "to": 278,
-      "label": "Assunção"
+      "label": "Takeover"
     },
     {
       "from": 286,
       "to": 342,
-      "label": "Exclusão em curso"
+      "label": "Deletion in progress"
     }
   ],
   "messages": [
@@ -54,41 +54,41 @@
       "from": "mud",
       "to": "nos",
       "y": 172,
-      "label": "commit de registro ou desregistro",
+      "label": "register or unregister commit",
       "variant": "emphasis",
-      "note": "cada nó recalcula suas filas"
+      "note": "each node recalculates its queues"
     },
     {
       "id": "tab",
       "from": "mud",
       "to": "nos",
       "y": 200,
-      "label": "nó novo puxa a tabela de tópicos (stream)"
+      "label": "new node pulls the topic table (stream)"
     },
     {
       "id": "cons",
       "from": "novo",
       "to": "nos",
       "y": 236,
-      "label": "consulta ociosidade das filas novas",
+      "label": "queries the idleness of the new queues",
       "variant": "security",
-      "note": "espalhada no tempo (jitter)"
+      "note": "spread over time (jitter)"
     },
     {
       "id": "dur",
       "from": "nos",
       "to": "novo",
       "y": 264,
-      "label": "duração do último GET, por nó",
+      "label": "duration of the last GET, per node",
       "variant": "return",
-      "note": "agenda o prazo real"
+      "note": "schedules the real deadline"
     },
     {
       "id": "exc",
       "from": "novo",
       "to": "nos",
       "y": 300,
-      "label": "exclusão com o id, se já venceu",
+      "label": "deletion with the id, if already expired",
       "variant": "dashed"
     },
     {
@@ -96,34 +96,34 @@
       "from": "nos",
       "to": "novo",
       "y": 328,
-      "label": "id já excluído ou recriado: sem efeito",
+      "label": "id already deleted or recreated: no effect",
       "variant": "return"
     }
   ],
   "cards": [
     {
       "dot": "emerald",
-      "title": "Sem transferência",
+      "title": "No transfer",
       "items": [
-        "A lista de filas é derivada do anel",
-        "O estado está nos nós, não no gestor"
+        "The queue list is derived from the ring",
+        "The state is on the nodes, not on the manager"
       ]
     },
     {
       "dot": "cyan",
-      "title": "Eventos do anel",
+      "title": "Ring events",
       "items": [
-        "Entrada: o nó novo assume sua faixa",
-        "Saída: o próximo primário assume",
-        "Falha no registro: volta ao anterior"
+        "Join: the new node takes over its range",
+        "Exit: the next primary takes over",
+        "Register failure: goes back to the previous one"
       ]
     },
     {
       "dot": "rose",
-      "title": "Duas tentativas",
+      "title": "Two attempts",
       "items": [
-        "Gestor antigo e novo podem excluir juntos",
-        "O id do tópico torna a segunda inofensiva"
+        "Old and new manager may delete together",
+        "The topic id makes the second one harmless"
       ]
     }
   ]

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Cenário 3: nenhum nó tem mensagem, o GET espera",
+    "title": "Scenario 3: no node has a message, the GET waits",
     "output": "doc/diagramas/html/consumo-cenario3-espera.html",
     "viewBox": [
       1080,
@@ -15,26 +15,26 @@
     {
       "id": "consumidor",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "cliente HTTP"
+      "label": "Consumer",
+      "sublabel": "HTTP client"
     },
     {
       "id": "a",
       "type": "backend",
-      "label": "Nó A",
-      "sublabel": "ouvinte local"
+      "label": "Node A",
+      "sublabel": "local listener"
     },
     {
       "id": "b",
       "type": "security",
-      "label": "Nó B",
-      "sublabel": "primário da nova mensagem"
+      "label": "Node B",
+      "sublabel": "primary of the new message"
     },
     {
       "id": "produtor",
       "type": "external",
-      "label": "Produtor",
-      "sublabel": "publica depois"
+      "label": "Producer",
+      "sublabel": "publishes later"
     }
   ],
   "messages": [
@@ -45,32 +45,32 @@
       "to": "a",
       "label": "GET ...?waitTime=20",
       "variant": "emphasis",
-      "note": "tabela: nenhum nó tem; A vira ouvinte"
+      "note": "table: no node has any; A becomes a listener"
     },
     {
       "id": "m2",
       "y": 214,
       "from": "a",
       "to": "b",
-      "label": "sinal: A tem ouvinte em pedidos",
+      "label": "signal: A has a listener on orders",
       "variant": "dashed",
-      "note": "uma vez por tópico, não por GET"
+      "note": "once per topic, not per GET"
     },
     {
       "id": "m3",
       "y": 252,
       "from": "produtor",
       "to": "b",
-      "label": "POST publica m7",
+      "label": "POST publishes m7",
       "variant": "emphasis",
-      "note": "B é o primário de m7"
+      "note": "B is the primary of m7"
     },
     {
       "id": "m4",
       "y": 290,
       "from": "b",
       "to": "a",
-      "label": "aviso (agrupado, 100 ms)",
+      "label": "notice (grouped, 100 ms)",
       "variant": "dashed"
     },
     {
@@ -85,9 +85,9 @@
       "y": 366,
       "from": "b",
       "to": "a",
-      "label": "mensagem m7",
+      "label": "message m7",
       "variant": "return",
-      "note": "após registro + commit no quórum"
+      "note": "after register + commit on the quorum"
     },
     {
       "id": "m7",
@@ -101,17 +101,17 @@
   "cards": [
     {
       "dot": "orange",
-      "title": "O aviso é uma dica",
+      "title": "The notice is a hint",
       "items": [
-        "Se se perder, o GET espera até waitTime e responde vazio",
-        "O cliente repete o GET"
+        "If it gets lost, the GET waits up to waitTime and answers empty",
+        "The client repeats the GET"
       ]
     },
     {
       "dot": "cyan",
-      "title": "Sem fan-out",
+      "title": "No fan-out",
       "items": [
-        "N ouvintes no mesmo tópico geram um único sinal de interesse"
+        "N listeners on the same topic generate a single interest signal"
       ]
     }
   ]

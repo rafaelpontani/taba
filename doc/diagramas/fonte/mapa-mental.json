@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Mapa mental do Taba",
+    "title": "Taba mind map",
     "output": "doc/diagramas/html/mapa-mental.html",
     "quality_profile": "showcase"
   },
@@ -11,7 +11,7 @@
       "id": "taba",
       "type": "backend",
       "label": "Taba",
-      "sublabel": "mensageria distribuída",
+      "sublabel": "distributed messaging",
       "pos": [
         420,
         230
@@ -20,13 +20,13 @@
         240,
         90
       ],
-      "tag": "nível 1 · cada ramo (nível 2) tem seu mapa"
+      "tag": "level 1 · each branch (level 2) has its own map"
     },
     {
       "id": "escrita",
       "type": "database",
-      "label": "1. Escrita e quórum",
-      "sublabel": "quórum 2 de 3, com o primário",
+      "label": "1. Write and quorum",
+      "sublabel": "quorum 2 of 3, with the primary",
       "pos": [
         40,
         70
@@ -39,8 +39,8 @@
     {
       "id": "entrega",
       "type": "backend",
-      "label": "2. Entrega",
-      "sublabel": "só o primário, sanfona, índice em memória",
+      "label": "2. Delivery",
+      "sublabel": "primary only, accordion, in-memory index",
       "pos": [
         40,
         175
@@ -53,8 +53,8 @@
     {
       "id": "invis",
       "type": "security",
-      "label": "3. Invisibilidade",
-      "sublabel": "ReceiptToken, PUT, expiração",
+      "label": "3. Invisibility",
+      "sublabel": "ReceiptToken, PUT, expiration",
       "pos": [
         40,
         285
@@ -67,8 +67,8 @@
     {
       "id": "topicos",
       "type": "cloud",
-      "label": "4. Tópicos",
-      "sublabel": "fila, FIFO, distribuidor e volátil",
+      "label": "4. Topics",
+      "sublabel": "queue, FIFO, distributor and volatile",
       "pos": [
         40,
         395
@@ -81,8 +81,8 @@
     {
       "id": "cluster",
       "type": "cloud",
-      "label": "5. Cluster e membros",
-      "sublabel": "balanceador, canal, voto 51%",
+      "label": "5. Cluster and members",
+      "sublabel": "load balancer, channel, 51% vote",
       "pos": [
         790,
         70
@@ -95,8 +95,8 @@
     {
       "id": "sync",
       "type": "backend",
-      "label": "6. Sincronização",
-      "sublabel": "carga + banco de eventos",
+      "label": "6. Synchronization",
+      "sublabel": "load + event database",
       "pos": [
         790,
         175
@@ -109,8 +109,8 @@
     {
       "id": "disco",
       "type": "database",
-      "label": "7. Armazenamento",
-      "sublabel": "SQLite por tópico + corpo .body",
+      "label": "7. Storage",
+      "sublabel": "SQLite per topic + .body body",
       "pos": [
         790,
         285
@@ -123,8 +123,8 @@
     {
       "id": "obs",
       "type": "external",
-      "label": "8. API e observabilidade",
-      "sublabel": "OTLP, /metrics por nó, limite por IP",
+      "label": "8. API and observability",
+      "sublabel": "OTLP, /metrics per node, per-IP limit",
       "pos": [
         790,
         395
@@ -140,7 +140,7 @@
       "id": "c-escrita",
       "from": "taba",
       "to": "escrita",
-      "label": "escrita",
+      "label": "write",
       "variant": "dashed",
       "fromSide": "left",
       "toSide": "right"
@@ -149,7 +149,7 @@
       "id": "c-entrega",
       "from": "taba",
       "to": "entrega",
-      "label": "entrega",
+      "label": "delivery",
       "variant": "dashed",
       "fromSide": "left",
       "toSide": "right"
@@ -158,7 +158,7 @@
       "id": "c-invis",
       "from": "taba",
       "to": "invis",
-      "label": "invisibilidade",
+      "label": "invisibility",
       "variant": "dashed",
       "fromSide": "left",
       "toSide": "right"
@@ -167,7 +167,7 @@
       "id": "c-topicos",
       "from": "taba",
       "to": "topicos",
-      "label": "tópicos",
+      "label": "topics",
       "variant": "dashed",
       "fromSide": "left",
       "toSide": "right"
@@ -185,7 +185,7 @@
       "id": "c-sync",
       "from": "taba",
       "to": "sync",
-      "label": "sincronização",
+      "label": "synchronization",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "left"
@@ -194,7 +194,7 @@
       "id": "c-disco",
       "from": "taba",
       "to": "disco",
-      "label": "armazenamento",
+      "label": "storage",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "left"
@@ -212,29 +212,29 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Dados e consistência",
+      "title": "Data and consistency",
       "items": [
-        "Quórum de escrita único: maioria de replication.factor",
-        "Registro + commit; sem rollback depois do quórum",
-        "Ack sem tombstone; verificação final na sincronização"
+        "Single write quorum: majority of replication.factor",
+        "Register + commit; no rollback after the quorum",
+        "Ack without a tombstone; final check in the synchronization"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Entrega",
+      "title": "Delivery",
       "items": [
-        "Long polling de até 20 s; maxMessages 10",
-        "Lista de prontos em memória por tópico",
-        "Invisibilidade com ReceiptToken, at-least-once"
+        "Long polling up to 20 s; maxMessages 10",
+        "Ready list in memory per topic",
+        "Invisibility with ReceiptToken, at-least-once"
       ]
     },
     {
       "dot": "amber",
-      "title": "Operação",
+      "title": "Operation",
       "items": [
-        "Entrada de nó: uma mudança por vez, nó só pronto ao fim",
-        "Freezing, retry do bootstrap e retorno com recuperação",
-        "Métricas em memória, rate limit por IP, rotas de operação isentas"
+        "Node join: one change at a time, node only ready at the end",
+        "Freezing, bootstrap retry and return with recovery",
+        "In-memory metrics, per-IP rate limit, operations routes exempt"
       ]
     }
   ]

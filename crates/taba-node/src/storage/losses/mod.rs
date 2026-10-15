@@ -1,6 +1,6 @@
-//! A tabela `losses` do `_node.db` (doc 02, seção 3.2; doc 04, seção 6.6): os pares (tópico, ID)
-//! que alguma sincronização declarou perdidos. O nó que volta de uma exclusão a consulta nos
-//! outros nós para recuperar as mensagens que ainda tem. Os registros expiram depois de
+//! The `losses` table of `_node.db` (doc 02, section 3.2; doc 04, section 6.6): the (topic, ID) pairs
+//! that some synchronization declared lost. A node returning from an exclusion queries it on the
+//! other nodes to recover the messages it still has. The records expire after
 //! `cluster.message-loss.ttl`.
 
 use std::io;
@@ -10,12 +10,12 @@ use rusqlite::params;
 
 use super::db::NodeDb;
 
-/// Uma perda registrada.
+/// A recorded loss.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loss {
     pub topic: String,
     pub id: String,
-    /// O bloco do anel a que a mensagem pertence (16 dígitos hexadecimais).
+    /// The ring block the message belongs to (16 hexadecimal digits).
     pub block: String,
     pub detected_ms: u64,
 }
@@ -30,7 +30,7 @@ impl LossStore {
         Self { db }
     }
 
-    /// Grava a perda. A chave é (tópico, ID): repetir não muda nada. `true` se era nova.
+    /// Records the loss. The key is (topic, ID): repeating changes nothing. `true` if it was new.
     pub fn record(&self, loss: &Loss) -> io::Result<bool> {
         let changed = self
             .db
@@ -43,7 +43,7 @@ impl LossStore {
         Ok(changed > 0)
     }
 
-    /// Dá baixa na perda (a mensagem foi recuperada). `true` se existia.
+    /// Acknowledges the loss (the message was recovered). `true` if it existed.
     pub fn remove(&self, topic: &str, id: &str) -> io::Result<bool> {
         let changed = self
             .db
@@ -56,7 +56,7 @@ impl LossStore {
         Ok(changed > 0)
     }
 
-    /// As perdas com `id` a partir de `from` (inclusivo), em ordem de `id`, no máximo `limit`.
+    /// The losses with `id` from `from` (inclusive), in `id` order, at most `limit`.
     pub fn list(&self, from: Option<&str>, limit: usize) -> io::Result<Vec<Loss>> {
         let conn = self.db.conn();
         let mut stmt = conn
@@ -80,7 +80,7 @@ impl LossStore {
         rows.collect::<Result<_, _>>().map_err(|e| self.db.fail(e))
     }
 
-    /// Apaga os registros detectados antes de `before_ms`; devolve quantos.
+    /// Deletes the records detected before `before_ms`; returns how many.
     pub fn expire(&self, before_ms: u64) -> io::Result<u64> {
         let removed = self
             .db

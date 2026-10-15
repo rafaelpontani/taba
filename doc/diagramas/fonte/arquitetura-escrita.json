@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Sistema de Mensagens: escrita no cluster",
+    "title": "Messaging System: write in the cluster",
     "output": "doc/diagramas/html/arquitetura-escrita.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "client",
       "type": "external",
-      "label": "Cliente",
-      "sublabel": "publica / consome",
+      "label": "Client",
+      "sublabel": "publishes / consumes",
       "pos": [
         40,
         200
@@ -24,8 +24,8 @@
     {
       "id": "api-cli",
       "type": "backend",
-      "label": "API de cliente",
-      "sublabel": "nó coordenador",
+      "label": "Client API",
+      "sublabel": "coordinator node",
       "pos": [
         260,
         200
@@ -38,8 +38,8 @@
     {
       "id": "api-int",
       "type": "backend",
-      "label": "API do cluster",
-      "sublabel": "registro, commit, rollback",
+      "label": "Cluster API",
+      "sublabel": "register, commit, rollback",
       "pos": [
         520,
         200
@@ -53,7 +53,7 @@
       "id": "cluster-mgr",
       "type": "security",
       "label": "Cluster manager",
-      "sublabel": "hash circular · membros",
+      "sublabel": "circular hash · members",
       "pos": [
         520,
         60
@@ -67,7 +67,7 @@
       "id": "storage",
       "type": "database",
       "label": "Storage engine",
-      "sublabel": "memória com overflow",
+      "sublabel": "memory with overflow",
       "pos": [
         520,
         340
@@ -80,8 +80,8 @@
     {
       "id": "disk",
       "type": "database",
-      "label": "Disco",
-      "sublabel": "SQLite + corpos .body",
+      "label": "Disk",
+      "sublabel": "SQLite + .body bodies",
       "pos": [
         520,
         480
@@ -94,8 +94,8 @@
     {
       "id": "peers",
       "type": "cloud",
-      "label": "Nós responsáveis",
-      "sublabel": "primário + réplicas",
+      "label": "Responsible nodes",
+      "sublabel": "primary + replicas",
       "pos": [
         830,
         200
@@ -104,13 +104,13 @@
         150,
         60
       ],
-      "tag": "mesma arquitetura"
+      "tag": "same architecture"
     }
   ],
   "boundaries": [
     {
       "kind": "region",
-      "label": "Nó do cluster (idêntico, sem mestre)",
+      "label": "Cluster node (identical, no master)",
       "wraps": [
         "api-cli",
         "api-int",
@@ -132,13 +132,13 @@
       "id": "api-to-internal",
       "from": "api-cli",
       "to": "api-int",
-      "label": "coordena"
+      "label": "coordinates"
     },
     {
       "id": "ring-lookup",
       "from": "api-int",
       "to": "cluster-mgr",
-      "label": "responsáveis pelo ID",
+      "label": "responsible for the ID",
       "fromSide": "top",
       "toSide": "bottom"
     },
@@ -146,14 +146,14 @@
       "id": "two-phase",
       "from": "api-int",
       "to": "peers",
-      "label": "registro → commit (quórum)",
+      "label": "register → commit (quorum)",
       "variant": "emphasis"
     },
     {
       "id": "heartbeat",
       "from": "cluster-mgr",
       "to": "peers",
-      "label": "WebSocket: sinal de vida",
+      "label": "WebSocket: heartbeat",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "top"
@@ -162,7 +162,7 @@
       "id": "local-write",
       "from": "api-int",
       "to": "storage",
-      "label": "grava pendente / commit",
+      "label": "writes pending / commit",
       "fromSide": "bottom",
       "toSide": "top"
     },
@@ -179,27 +179,27 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Escrita",
+      "title": "Write",
       "items": [
-        "Fase 1: registro em todos os responsáveis",
-        "Fase 2: commit ao fechar quórum, primário incluso",
-        "Resposta ao cliente após o quórum confirmar o commit"
+        "Phase 1: register on all the responsible nodes",
+        "Phase 2: commit when the quorum closes, primary included",
+        "Response to the client after the quorum confirms the commit"
       ]
     },
     {
       "dot": "rose",
-      "title": "Falhas",
+      "title": "Failures",
       "items": [
-        "Antes do quórum: retry, depois erro e rollback",
-        "Depois do quórum: sem rollback, insiste até write.commit.timeout"
+        "Before the quorum: retry, then error and rollback",
+        "After the quorum: no rollback, insists until write.commit.timeout"
       ]
     },
     {
       "dot": "violet",
       "title": "Cluster",
       "items": [
-        "Registro de nó e tópicos exigem confirmação de todos",
-        "Canal WebSocket em malha entre cada par de nós"
+        "Node and topic registration require confirmation from all",
+        "WebSocket channel in a mesh between each pair of nodes"
       ]
     }
   ]

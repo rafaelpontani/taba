@@ -1,31 +1,156 @@
 {
   "schema_version": 2,
   "diagram_type": "workflow",
-  "meta": { "title": "Do pull request ao release", "output": "doc/diagramas/html/ci-cd.html", "quality_profile": "showcase" },
+  "meta": {
+    "title": "From pull request to release",
+    "output": "doc/diagramas/html/ci-cd.html",
+    "quality_profile": "showcase"
+  },
   "lanes": [
-    { "id": "pr", "label": "Pull request (ci.yml)" },
-    { "id": "rel", "label": "Push em release ou main (release.yml)" }
+    {
+      "id": "pr",
+      "label": "Pull request (ci.yml)"
+    },
+    {
+      "id": "rel",
+      "label": "Push to release or main (release.yml)"
+    }
   ],
-  "mainPath": ["version", "builds", "plan", "docker", "assets", "float"],
+  "mainPath": [
+    "version",
+    "builds",
+    "plan",
+    "docker",
+    "assets",
+    "float"
+  ],
   "nodes": [
-    { "id": "ci", "lane": "pr", "col": 0, "type": "external", "label": "ci.yml", "sublabel": "sem versão", "width": 104 },
-    { "id": "cibuilds", "lane": "pr", "col": 1, "type": "backend", "label": "3 builds", "sublabel": "servidor, Rust, C#", "width": 104 },
-    { "id": "version", "lane": "rel", "col": 0, "type": "security", "label": "version", "sublabel": "semantic-release, tag", "width": 104 },
-    { "id": "builds", "lane": "rel", "col": 1, "type": "backend", "label": "3 builds", "sublabel": "em paralelo, com a versão", "width": 104 },
-    { "id": "plan", "lane": "rel", "col": 2, "type": "backend", "label": "plan", "sublabel": "calcula as tags", "width": 90 },
-    { "id": "docker", "lane": "rel", "col": 3, "type": "messagebus", "label": "docker", "sublabel": "publica imagens", "width": 104 },
-    { "id": "assets", "lane": "rel", "col": 4, "type": "messagebus", "label": "release-assets", "sublabel": "binários e pacotes", "width": 104 },
-    { "id": "float", "lane": "rel", "col": 5, "type": "database", "label": "floating-tags", "sublabel": "major e minor", "width": 104 }
+    {
+      "id": "ci",
+      "lane": "pr",
+      "col": 0,
+      "type": "external",
+      "label": "ci.yml",
+      "sublabel": "no version",
+      "width": 104
+    },
+    {
+      "id": "cibuilds",
+      "lane": "pr",
+      "col": 1,
+      "type": "backend",
+      "label": "3 builds",
+      "sublabel": "server, Rust, C#",
+      "width": 104
+    },
+    {
+      "id": "version",
+      "lane": "rel",
+      "col": 0,
+      "type": "security",
+      "label": "version",
+      "sublabel": "semantic-release, tag",
+      "width": 104
+    },
+    {
+      "id": "builds",
+      "lane": "rel",
+      "col": 1,
+      "type": "backend",
+      "label": "3 builds",
+      "sublabel": "parallel, with version",
+      "width": 104
+    },
+    {
+      "id": "plan",
+      "lane": "rel",
+      "col": 2,
+      "type": "backend",
+      "label": "plan",
+      "sublabel": "computes the tags",
+      "width": 90
+    },
+    {
+      "id": "docker",
+      "lane": "rel",
+      "col": 3,
+      "type": "messagebus",
+      "label": "docker",
+      "sublabel": "publishes images",
+      "width": 104
+    },
+    {
+      "id": "assets",
+      "lane": "rel",
+      "col": 4,
+      "type": "messagebus",
+      "label": "release-assets",
+      "sublabel": "binaries and packages",
+      "width": 104
+    },
+    {
+      "id": "float",
+      "lane": "rel",
+      "col": 5,
+      "type": "database",
+      "label": "floating-tags",
+      "sublabel": "major and minor",
+      "width": 104
+    }
   ],
   "edges": [
-    { "id": "p1", "from": "ci", "to": "cibuilds", "role": "main", "label": "chama" },
-    { "id": "r1", "from": "version", "to": "builds", "role": "main", "variant": "emphasis", "label": "versão" },
-    { "id": "r2", "from": "builds", "to": "plan", "role": "main", "variant": "emphasis" },
-    { "id": "r3", "from": "plan", "to": "docker", "role": "main", "variant": "emphasis" },
-    { "id": "r4", "from": "docker", "to": "assets", "role": "main", "variant": "emphasis" },
-    { "id": "r5", "from": "assets", "to": "float", "role": "main", "variant": "emphasis" }
+    {
+      "id": "p1",
+      "from": "ci",
+      "to": "cibuilds",
+      "role": "main",
+      "label": "calls"
+    },
+    {
+      "id": "r1",
+      "from": "version",
+      "to": "builds",
+      "role": "main",
+      "variant": "emphasis",
+      "label": "version"
+    },
+    {
+      "id": "r2",
+      "from": "builds",
+      "to": "plan",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r3",
+      "from": "plan",
+      "to": "docker",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r4",
+      "from": "docker",
+      "to": "assets",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r5",
+      "from": "assets",
+      "to": "float",
+      "role": "main",
+      "variant": "emphasis"
+    }
   ],
   "cards": [
-    { "dot": "amber", "title": "Mesmos workflows", "items": ["build-server, build-connector-rust e build-connector-csharp são workflow_call", "O CI e o release usam a mesma lógica"] }
+    {
+      "dot": "amber",
+      "title": "Same workflows",
+      "items": [
+        "build-server, build-connector-rust and build-connector-csharp are workflow_call",
+        "CI and release use the same logic"
+      ]
+    }
   ]
 }

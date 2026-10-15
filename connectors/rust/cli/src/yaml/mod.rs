@@ -1,6 +1,6 @@
-//! O subconjunto de YAML que o `taba-cli` lê e escreve (doc 19b, seção 18.11.2): mapas aninhados por
-//! indentação e textos (simples, entre aspas simples ou duplas), com comentários `#`. Nada de listas,
-//! âncoras, blocos de várias linhas nem mapas de fluxo (exceto `{}` vazio).
+//! The subset of YAML that `taba-cli` reads and writes (doc 19b, section 18.11.2): maps nested by
+//! indentation and texts (plain, in single or double quotes), with `#` comments. No lists,
+//! anchors, multi-line blocks or flow maps (except an empty `{}`).
 
 use std::fmt;
 
@@ -18,7 +18,7 @@ pub struct YamlError {
 
 impl fmt::Display for YamlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "linha {}: {}", self.line, self.message)
+        write!(f, "line {}: {}", self.line, self.message)
     }
 }
 
@@ -35,11 +35,11 @@ struct Line {
     number: usize,
     indent: usize,
     key: String,
-    /// `None` quando depois dos dois-pontos não há nada (vem um mapa filho, ou um mapa vazio).
+    /// `None` when there is nothing after the colon (a child map follows, or an empty map).
     value: Option<String>,
 }
 
-/// Lê um documento. O resultado é sempre um mapa (vazio se o texto só tem comentários).
+/// Reads a document. The result is always a map (empty if the text only has comments).
 pub fn parse(text: &str) -> Result<Vec<(String, Node)>, YamlError> {
     let mut lines = Vec::new();
     for (n, raw) in text.lines().enumerate() {
@@ -54,28 +54,28 @@ pub fn parse(text: &str) -> Result<Vec<(String, Node)>, YamlError> {
             continue;
         }
         if content.starts_with('\t') || content.trim_start_matches(' ').starts_with('\t') {
-            return fail(number, "tabulação na indentação (use espaços)");
+            return fail(number, "tab in the indentation (use spaces)");
         }
         let indent = content.len() - content.trim_start_matches(' ').len();
         let body = content.trim();
         if body.starts_with("- ") || body == "-" {
-            return fail(number, "listas não são suportadas");
+            return fail(number, "lists are not supported");
         }
         if body == "---" || body == "..." {
-            return fail(number, "marcadores de documento não são suportados");
+            return fail(number, "document markers are not supported");
         }
         let (key, rest) = split_key(body, number)?;
         let value = match rest.trim() {
             "" => None,
             "{}" => Some("{}".to_owned()),
             r if r.starts_with('{') || r.starts_with('[') => {
-                return fail(number, "mapas e listas de fluxo não são suportados");
+                return fail(number, "flow maps and lists are not supported");
             }
             r if r.starts_with(['&', '*', '!']) => {
-                return fail(number, "âncoras, aliases e tags não são suportados");
+                return fail(number, "anchors, aliases and tags are not supported");
             }
             r if r.starts_with(['|', '>']) => {
-                return fail(number, "blocos de várias linhas não são suportados");
+                return fail(number, "multi-line blocks are not supported");
             }
             r => Some(r.to_owned()),
         };
@@ -89,7 +89,7 @@ pub fn parse(text: &str) -> Result<Vec<(String, Node)>, YamlError> {
     let mut pos = 0;
     let map = parse_map(&lines, &mut pos, 0)?;
     if pos < lines.len() {
-        return fail(lines[pos].number, "indentação inesperada");
+        return fail(lines[pos].number, "unexpected indentation");
     }
     Ok(map)
 }
@@ -106,13 +106,10 @@ fn parse_map(
             break;
         }
         if line.indent > indent {
-            return fail(line.number, "indentação inesperada");
+            return fail(line.number, "unexpected indentation");
         }
         if out.iter().any(|(k, _)| *k == line.key) {
-            return fail(
-                line.number,
-                format!("a chave `{}` aparece duas vezes", line.key),
-            );
+            return fail(line.number, format!("the key `{}` appears twice", line.key));
         }
         *pos += 1;
         let node = match &line.value {
@@ -130,7 +127,7 @@ fn parse_map(
     Ok(out)
 }
 
-/// Tira o comentário (`#` no começo ou depois de um espaço, fora de aspas).
+/// Strips the comment (`#` at the start or after a space, outside quotes).
 fn strip_comment(line: &str, number: usize) -> Result<String, YamlError> {
     let mut quote: Option<char> = None;
     let mut prev = ' ';
@@ -154,7 +151,7 @@ fn strip_comment(line: &str, number: usize) -> Result<String, YamlError> {
                 }
             }
             None => {
-                // Aspas só abrem um texto no começo do valor (ou da chave); no meio são comuns.
+                // Quotes only open a text at the start of the value (or the key); in the middle they are ordinary.
                 let opens = {
                     let head = line[..i].trim_end();
                     head.is_empty() || head.ends_with(':')
@@ -169,12 +166,12 @@ fn strip_comment(line: &str, number: usize) -> Result<String, YamlError> {
         prev = c;
     }
     if quote.is_some() {
-        return fail(number, "texto entre aspas sem fechar");
+        return fail(number, "unterminated quoted text");
     }
     Ok(line.trim_end().to_owned())
 }
 
-/// Separa `chave: resto`. A chave pode vir entre aspas.
+/// Splits `key: rest`. The key can come in quotes.
 fn split_key(body: &str, number: usize) -> Result<(String, &str), YamlError> {
     if body.starts_with('"') || body.starts_with('\'') {
         let q = body.chars().next().unwrap_or('"');
@@ -190,28 +187,28 @@ fn split_key(body: &str, number: usize) -> Result<(String, &str), YamlError> {
         }
         let end = end.ok_or_else(|| YamlError {
             line: number,
-            message: "chave entre aspas sem fechar".into(),
+            message: "unterminated quoted key".into(),
         })?;
         let key = scalar(&body[..=end], number)?;
         let rest = body[end + 1..].trim_start();
         let rest = rest.strip_prefix(':').ok_or_else(|| YamlError {
             line: number,
-            message: "esperava `:` depois da chave".into(),
+            message: "expected `:` after the key".into(),
         })?;
         return Ok((key, rest));
     }
-    // Chave simples: vai até o primeiro `:` seguido de espaço ou do fim.
+    // Plain key: goes up to the first `:` followed by a space or the end.
     let bytes = body.as_bytes();
     for (i, b) in bytes.iter().enumerate() {
         if *b == b':' && (i + 1 == bytes.len() || bytes[i + 1] == b' ') {
             let key = body[..i].trim();
             if key.is_empty() {
-                return fail(number, "chave vazia");
+                return fail(number, "empty key");
             }
             return Ok((key.to_owned(), &body[i + 1..]));
         }
     }
-    fail(number, "esperava `chave: valor`")
+    fail(number, "expected `key: value`")
 }
 
 fn scalar(text: &str, number: usize) -> Result<String, YamlError> {
@@ -222,7 +219,7 @@ fn scalar(text: &str, number: usize) -> Result<String, YamlError> {
             .filter(|_| text.len() >= 2)
             .ok_or_else(|| YamlError {
                 line: number,
-                message: "texto entre aspas duplas sem fechar".into(),
+                message: "unterminated double-quoted text".into(),
             })?;
         let mut out = String::new();
         let mut chars = inner.chars();
@@ -248,11 +245,11 @@ fn scalar(text: &str, number: usize) -> Result<String, YamlError> {
                         .and_then(char::from_u32)
                         .ok_or_else(|| YamlError {
                             line: number,
-                            message: "escape \\u inválido".into(),
+                            message: "invalid \\u escape".into(),
                         })?;
                     out.push(c);
                 }
-                _ => return fail(number, "escape inválido no texto entre aspas duplas"),
+                _ => return fail(number, "invalid escape in double-quoted text"),
             }
         }
         return Ok(out);
@@ -263,7 +260,7 @@ fn scalar(text: &str, number: usize) -> Result<String, YamlError> {
             .filter(|_| text.len() >= 2)
             .ok_or_else(|| YamlError {
                 line: number,
-                message: "texto entre aspas simples sem fechar".into(),
+                message: "unterminated single-quoted text".into(),
             })?;
         return Ok(inner.replace("''", "'"));
     }
@@ -273,7 +270,7 @@ fn scalar(text: &str, number: usize) -> Result<String, YamlError> {
     Ok(text.to_owned())
 }
 
-/// O texto de um valor, entre aspas só quando precisa.
+/// The text of a value, in quotes only when needed.
 pub fn render_scalar(value: &str) -> String {
     let lower = value.to_ascii_lowercase();
     let needs_quotes = value.is_empty()
@@ -309,7 +306,7 @@ pub fn render_scalar(value: &str) -> String {
     out
 }
 
-/// Escreve o mapa com dois espaços por nível.
+/// Writes the map with two spaces per level.
 pub fn render(map: &[(String, Node)]) -> String {
     let mut out = String::new();
     render_into(map, 0, &mut out);

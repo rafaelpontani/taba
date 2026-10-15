@@ -24,7 +24,10 @@ fn the_join_request_has_the_documented_fields() {
     let extra = serde_json::from_value::<JoinRequest>(json!({
         "nodeId": guid(1), "addresses": ["10.0.0.5"], "port": 8081, "version": "1", "extra": 1
     }));
-    assert!(extra.is_err(), "campo que a rota não define é recusado");
+    assert!(
+        extra.is_err(),
+        "a field the route does not define is refused"
+    );
     let missing = serde_json::from_value::<JoinRequest>(json!({"nodeId": guid(1)}));
     assert!(missing.is_err());
 }
@@ -129,7 +132,7 @@ fn the_ack_carries_the_operation_id() {
     );
 }
 
-// ---- O codec HTTP e os corpos das mensagens ----
+// ---- The HTTP codec and the message bodies ----
 
 use serde_json::Value;
 
@@ -165,9 +168,9 @@ fn a_json_body_goes_native_and_the_rest_goes_in_base64() {
     let text = serde_json::to_string(&plus_json).unwrap();
     assert!(text.contains(r#""body":[1,2]"#), "{text}");
 
-    // Texto e binário vão em base64, com `bodyEncoding`.
+    // Text and binary go in base64, with `bodyEncoding`.
     for (content_type, body) in [
-        ("text/plain", "olá".as_bytes()),
+        ("text/plain", "café".as_bytes()),
         ("application/octet-stream", &[0u8, 255, 7][..]),
     ] {
         let original = record(content_type, body);
@@ -179,7 +182,7 @@ fn a_json_body_goes_native_and_the_rest_goes_in_base64() {
         );
     }
 
-    // JSON com espaços nas pontas não pode mudar os bytes: vai em base64 se não sobrevive intacto.
+    // JSON with spaces at the ends cannot change the bytes: it goes in base64 if it does not survive intact.
     let padded = record("application/json", b"  {\"a\":1}  ");
     let text = serde_json::to_string(&padded).unwrap();
     assert_eq!(
@@ -415,7 +418,7 @@ fn every_request_survives_the_trip_to_http_and_back() {
         assert_eq!(
             back,
             request,
-            "{} em {} {}",
+            "{} in {} {}",
             request.name(),
             call.method,
             call.path
@@ -488,7 +491,7 @@ fn the_routes_are_the_ones_of_the_document() {
     assert!(has("POST", "/cluster/topics/pedidos/fifo/publish"));
 }
 
-/// A linha curta da FIFO (mensagem confirmada) viaja sem corpo e com `deleteAt`.
+/// The FIFO's short row (acknowledged message) travels without a body and with `deleteAt`.
 ///
 /// UC: UC-FIF-041
 #[test]
@@ -503,8 +506,8 @@ fn the_short_line_of_a_confirmed_fifo_message_travels_without_a_body() {
     assert!(back.body.is_empty());
 }
 
-/// O corpo do `recover` é um stream NDJSON: sem a linha final, com a contagem errada ou com outro
-/// `Content-Type`, a requisição é recusada e quem envia reenvia tudo.
+/// The body of `recover` is an NDJSON stream: without the final line, with the wrong count or with another
+/// `Content-Type`, the request is refused and whoever sends resends everything.
 ///
 /// UC: UC-RTN-003, UC-RTN-009
 #[test]
@@ -513,7 +516,7 @@ fn the_recover_body_is_a_stream_with_a_mandatory_last_line() {
     let records = vec![record("text/plain", b"oi"), record("text/plain", b"ola")];
     let body = recover_body(&records);
     let text = String::from_utf8(body.clone()).unwrap();
-    assert_eq!(text.lines().count(), 3, "duas linhas de dados e a final");
+    assert_eq!(text.lines().count(), 3, "two data lines and the final one");
     assert!(text.lines().last().unwrap().contains(r#""end":true"#));
     assert_eq!(parse_recover_body(&body).unwrap(), records);
 
@@ -526,7 +529,7 @@ fn the_recover_body_is_a_stream_with_a_mandatory_last_line() {
     assert_eq!(
         refused(&ndjson, "/cluster/messages/recover", without_end.as_bytes()),
         ErrorCode::ValidationFailed,
-        "um corte entre duas linhas não se distingue de um fim normal sem a linha final"
+        "a cut between two lines is indistinguishable from a normal end without the final line"
     );
     let wrong_count = text.replace(r#""count":2"#, r#""count":3"#);
     assert_eq!(
@@ -538,11 +541,11 @@ fn the_recover_body_is_a_stream_with_a_mandatory_last_line() {
         ErrorCode::MediaUnsupported
     );
     assert_eq!(
-        refused(&ndjson, "/cluster/messages/recover?replicate=talvez", &body),
+        refused(&ndjson, "/cluster/messages/recover?replicate=maybe", &body),
         ErrorCode::ValidationFailed
     );
     assert_eq!(
-        refused(&ndjson, "/cluster/messages/recover?outro=1", &body),
+        refused(&ndjson, "/cluster/messages/recover?other=1", &body),
         ErrorCode::ValidationUnknownField
     );
     let local = Request::from_http(
@@ -637,17 +640,17 @@ fn a_stream_ends_with_the_end_line_and_without_it_the_chunk_is_a_failure() {
     assert_eq!(
         text.lines().count(),
         3,
-        "um objeto por linha e a linha final"
+        "one object per line and the final line"
     );
     assert_eq!(StreamPage::from_ndjson(&text).unwrap(), page);
 
-    // Cortado antes da linha final: falho, mesmo que as linhas de dados estejam inteiras.
+    // Cut before the final line: flawed, even if the data lines are whole.
     let truncated: String = text.lines().take(2).map(|l| format!("{l}\n")).collect();
     assert!(StreamPage::from_ndjson(&truncated).is_err());
-    // A contagem da linha final tem de conferir.
+    // The final line's count must match.
     let wrong = text.replace("\"count\":2", "\"count\":5");
     assert!(StreamPage::from_ndjson(&wrong).is_err());
-    // Erro depois do `200`: o emissor escreve `{"error":...}`.
+    // Error after the `200`: the sender writes `{"error":...}`.
     let failed = format!(
         "{}\n{{\"error\":\"disco\"}}\n",
         text.lines().next().unwrap()
@@ -696,7 +699,7 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     let yes = Response::Vote(VoteResponse { vote: Ballot::Yes });
     assert_eq!(vote.parse_reply(yes.clone().into_http()).unwrap(), yes);
 
-    // O estado do nó é o JSON do `NodeStatus`, sem forma própria no protocolo.
+    // The node's state is the `NodeStatus` JSON, with no form of its own in the protocol.
     let status = Response::Status(serde_json::json!({ "nodeId": guid(1), "state": "active" }));
     assert_eq!(
         Request::Status
@@ -705,7 +708,7 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
         status
     );
 
-    // Uma mensagem do bloco volta inteira; as listas do bloco são streams.
+    // A block's message comes back whole; the block lists are streams.
     let single = Request::BlockMessage {
         block: "00000000000000ab".into(),
         id: guid(4),
@@ -718,7 +721,7 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     };
     assert_eq!(ids.parse_reply(page.clone().into_http()).unwrap(), page);
 
-    // A lista de perdas é um stream; o registro e a baixa devolvem `changed`; o `recover`, a contagem.
+    // The loss list is a stream; the record and acknowledgement return `changed`; `recover`, the count.
     let loss = Request::MessageLoss(StreamQuery::default());
     assert_eq!(loss.parse_reply(page.clone().into_http()).unwrap(), page);
     let register = Request::LossRegister(LossRecord {
@@ -770,7 +773,7 @@ fn a_forwarded_reply_comes_back_as_the_destination_gave_it() {
 
 #[test]
 fn an_error_reply_becomes_the_error_of_the_peer_with_retry_after() {
-    let error = TabaError::new(ErrorCode::ClusterNodeSyncing, "sem tabela")
+    let error = TabaError::new(ErrorCode::ClusterNodeSyncing, "no table")
         .with_detail("x", ErrorCode::ValidationFailed, "y")
         .with_retry_after(7);
     let reply = error_reply(&error, "req-1");
@@ -778,11 +781,11 @@ fn an_error_reply_becomes_the_error_of_the_peer_with_retry_after() {
     let request = Request::ListNodes;
     let back = request.parse_reply(reply).unwrap_err();
     assert_eq!(back.code, ErrorCode::ClusterNodeSyncing);
-    assert_eq!(back.message, "sem tabela");
+    assert_eq!(back.message, "no table");
     assert_eq!(back.retry_after, Some(7));
     assert_eq!(back.details[0].field, "x");
 
-    // Uma resposta que não é o `ErrorResponse` não derruba a leitura.
+    // A response that is not the `ErrorResponse` does not bring the read down.
     let odd = HttpReply {
         status: 500,
         headers: vec![],
@@ -889,12 +892,12 @@ fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_con
         ),
     ];
     for (signal, expected) in signals {
-        // Só o `type` e os campos de contagem e de estado: nada de corpo nem de lista de IDs.
+        // Only the `type` and the count and state fields: nothing of body or ID list.
         assert_eq!(serde_json::to_value(&signal).unwrap(), expected);
         let back: Signal = serde_json::from_value(expected).unwrap();
         assert_eq!(back, signal);
     }
-    // O sinal de vida e o `confirm` completam os seis tipos do doc 06c.
+    // The heartbeat and the `confirm` complete the six types of doc 06c.
     let confirm = serde_json::to_value(Confirm::new(vec![1, 2])).unwrap();
     assert_eq!(confirm, json!({"type": "confirm", "seqs": [1, 2]}));
     let keepalive = serde_json::to_value(Keepalive {
@@ -961,5 +964,5 @@ fn channel_messages_are_json_text_and_the_confirm_is_told_by_its_type() {
     for message in [batch, empty, confirm] {
         assert_eq!(ChannelMessage::from_text(&message.to_text()), Ok(message));
     }
-    assert!(ChannelMessage::from_text("não é JSON").is_err());
+    assert!(ChannelMessage::from_text("not JSON").is_err());
 }

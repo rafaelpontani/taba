@@ -17,11 +17,11 @@ namespace Taba
         // -----------------------------------------------------------------------------------------
 
         /// <summary>
-        /// O laço de consumo (D71.1): long polling (<c>waitTime</c> 20 e uma mensagem por vez, se não
-        /// informados), chama o <paramref name="handler"/> e confirma sozinho **só se ele terminar sem
-        /// exceção** (a mensagem que falha volta à fila ao fim do <c>visibilityTimeout</c>, e o erro vai
-        /// para <paramref name="onError"/>). Termina, sem exceção, quando o <paramref name="cancellationToken"/>
-        /// é cancelado. Um erro do servidor ao consumir sobe.
+        /// The consume loop (D71.1): long polling (<c>waitTime</c> 20 and one message at a time, if not
+        /// set), calls <paramref name="handler"/> and acknowledges by itself **only if it finishes without an
+        /// exception** (a message that fails goes back to the queue at the end of the <c>visibilityTimeout</c>, and the error goes
+        /// to <paramref name="onError"/>). Ends, without an exception, when <paramref name="cancellationToken"/>
+        /// is cancelled. A server error while consuming propagates.
         /// </summary>
         public async Task SubscribeAsync(
             string topic,
@@ -74,12 +74,12 @@ namespace Taba
                     {
                         try
                         {
-                            // Sem o token: a mensagem já foi tratada, e confirmá-la não deve ser cortado pelo cancelamento.
+                            // Without the token: the message was already handled, and acknowledging it must not be cut short by cancellation.
                             await AckAsync(topic, message, CancellationToken.None).ConfigureAwait(false);
                         }
                         catch (TabaException e) when (e.Status == 409 || e.Status == 404)
                         {
-                            // A mensagem já voltou à fila (prazo vencido) ou já foi embora: não há o que confirmar.
+                            // The message already went back to the queue (deadline expired) or is already gone: there is nothing to acknowledge.
                         }
                     }
                     if (cancellationToken.IsCancellationRequested)

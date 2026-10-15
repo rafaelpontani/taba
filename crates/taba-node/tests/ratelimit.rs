@@ -1,4 +1,4 @@
-//! O rate limit por nó e o IP do cliente (doc 12).
+//! The per-node rate limit and the client IP (doc 12).
 
 mod common;
 
@@ -45,25 +45,25 @@ async fn exceeding_a_category_gives_429_with_retry_after_and_only_that_category(
         .env("TABA_RATELIMIT_BURST", "2")
         .start()
         .await;
-    create_queue(&node, "pedidos").await;
+    create_queue(&node, "orders").await;
 
-    assert_eq!(post_message(&node, "pedidos").await.status(), 201);
-    assert_eq!(post_message(&node, "pedidos").await.status(), 201);
-    let limited = post_message(&node, "pedidos").await;
+    assert_eq!(post_message(&node, "orders").await.status(), 201);
+    assert_eq!(post_message(&node, "orders").await.status(), 201);
+    let limited = post_message(&node, "orders").await;
     assert_eq!(limited.headers()["retry-after"], "1");
     assert_eq!(error_code(limited, 429).await, "rate-limit.exceeded");
 
-    // As outras categorias não foram afetadas.
+    // The other categories were not affected.
     assert_eq!(
-        get(&node, "/topics/pedidos/messages", None).await.status(),
+        get(&node, "/topics/orders/messages", None).await.status(),
         200
     );
     assert_eq!(get(&node, "/topics", None).await.status(), 200);
 
-    // O contador se reabastece com o tempo.
+    // The counter refills with time.
     node.clock.advance(Duration::from_secs(1));
-    assert_eq!(post_message(&node, "pedidos").await.status(), 201);
-    assert_eq!(post_message(&node, "pedidos").await.status(), 429);
+    assert_eq!(post_message(&node, "orders").await.status(), 201);
+    assert_eq!(post_message(&node, "orders").await.status(), 429);
     node.shutdown().await;
 }
 
@@ -95,7 +95,7 @@ async fn admin_and_consume_have_their_own_counters() {
         "rate-limit.exceeded"
     );
 
-    // O `GET` de mensagens é consumo: conta à parte (e dá 404 porque o tópico não existe).
+    // The messages `GET` is consumption: it counts separately (and gives 404 because the topic does not exist).
     assert_eq!(get(&node, "/topics/x/messages", None).await.status(), 404);
     assert_eq!(get(&node, "/topics/x/messages", None).await.status(), 429);
     node.shutdown().await;
@@ -136,7 +136,7 @@ async fn probes_are_exempt_and_the_cluster_query_has_its_own_category() {
         200
     );
 
-    // `/node/drain` é administrativa.
+    // `/node/drain` is administrative.
     assert_eq!(get(&node, "/node/drain", None).await.status(), 200);
     assert_eq!(
         error_code(get(&node, "/node/drain", None).await, 429).await,
@@ -162,20 +162,20 @@ async fn without_a_token_the_counter_is_per_client_ip_from_the_headers() {
     assert_eq!(
         get(&node, "/topics", Some("9.9.9.2")).await.status(),
         200,
-        "outro cliente"
+        "another client"
     );
     assert_eq!(
         get(&node, "/topics", Some("9.9.9.1")).await.status(),
         429,
-        "o primeiro endereço manda"
+        "the first address rules"
     );
     assert_eq!(
         get(&node, "/topics", Some("lixo")).await.status(),
         200,
-        "inválido: vale a conexão"
+        "invalid: the connection counts"
     );
     assert_eq!(
-        get(&node, "/topics", Some("outro-lixo")).await.status(),
+        get(&node, "/topics", Some("other-junk")).await.status(),
         429
     );
     node.shutdown().await;
@@ -204,7 +204,7 @@ async fn the_headers_only_count_from_the_trusted_proxies() {
         .env("TABA_CLIENT_IP_TRUSTED_PROXIES", "10.0.0.0/8")
         .start()
         .await;
-    // A conexão é 127.0.0.1, fora da lista: o cabeçalho é ignorado.
+    // The connection is 127.0.0.1, outside the list: the header is ignored.
     assert_eq!(get(&node, "/topics", Some("9.9.9.1")).await.status(), 200);
     assert_eq!(get(&node, "/topics", Some("9.9.9.2")).await.status(), 429);
     node.shutdown().await;

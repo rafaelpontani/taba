@@ -1,5 +1,5 @@
-//! O que vale para as três APIs (doc 06d, seção 8.3): `X-Request-Id` em toda
-//! resposta, `ErrorResponse` em todo erro, `404 route.not-found` e `500 internal.error`.
+//! What holds for the three APIs (doc 06d, section 8.3): `X-Request-Id` in every
+//! response, `ErrorResponse` in every error, `404 route.not-found` and `500 internal.error`.
 
 use std::any::Any;
 use std::sync::Arc;
@@ -19,8 +19,8 @@ use crate::core::id;
 
 const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
-/// Um erro de handler. O corpo só é montado pelo middleware de `X-Request-Id`, que é
-/// quem sabe o `requestId`; até lá o erro viaja numa extensão da resposta.
+/// A handler error. The body is only built by the `X-Request-Id` middleware, which is
+/// the one that knows the `requestId`; until then the error travels in a response extension.
 pub struct ApiError(pub TabaError);
 
 impl From<TabaError> for ApiError {
@@ -53,7 +53,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// `X-Request-Id` do cliente: de 1 a 128 caracteres de `A-Za-z0-9_-.:`.
+/// The client's `X-Request-Id`: 1 to 128 characters of `A-Za-z0-9_-.:`.
 fn client_request_id(request: &Request) -> Option<String> {
     let value = request.headers().get(&REQUEST_ID)?.to_str().ok()?;
     let valid = !value.is_empty()
@@ -95,7 +95,7 @@ fn panic_to_500(_: Box<dyn Any + Send + 'static>) -> Response {
     ApiError(TabaError::internal()).into_response()
 }
 
-/// Acrescenta ao roteador o que as três APIs têm em comum.
+/// Adds to the router what the three APIs have in common.
 pub fn finish(routes: Router<AppState>, state: AppState) -> Router {
     let clock = state.clock.clone();
     routes

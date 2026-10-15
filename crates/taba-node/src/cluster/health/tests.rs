@@ -38,7 +38,7 @@ fn each_signal_raises_its_condition_with_the_severity_of_the_document() {
     s.quorum_available = false;
     s.blocks_below_replication = 9;
     s.blocks_below_quorum = 9;
-    // Os blocos abaixo do quórum são `write-quorum-at-risk`, não `under-replicated`.
+    // Blocks below the quorum are `write-quorum-at-risk`, not `under-replicated`.
     assert_eq!(
         s.conditions(false),
         [Condition::WriteQuorumAtRisk, Condition::QuorumLost]

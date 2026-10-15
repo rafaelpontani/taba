@@ -1,16 +1,16 @@
-//! O `_backup.db` (doc 23, "Backup em S3"): o banco SQLite local do backup, ao lado do `_node.db`.
+//! The `_backup.db` (doc 23, "S3 backup"): the backup's local SQLite database, next to `_node.db`.
 //!
-//! - **`outbox`**: as mensagens que o primário já confirmou e ainda não foram para um segmento.
-//!   Só o `id`: o corpo e os metadados vêm de onde a mensagem está. O commit da mensagem só insere
-//!   uma linha aqui; nada espera o S3.
-//! - **`saved`**: onde cada mensagem salva está no bucket (segmento, deslocamento e tamanho).
-//!   Com isto o nó apaga o corpo do disco (evicção) e lê de volta por `Range`.
-//! - **`segments`**: para cada segmento que **este nó** gravou, quantas mensagens ainda vivem. Com
-//!   isto o primário sabe que um segmento morreu inteiro **sem consultar o S3**.
-//! - **`journal`**: as mensagens com estado alterado (ou removidas) desde o último diário.
+//! - **`outbox`**: the messages the primary has already acknowledged and that have not yet gone into a segment.
+//!   Only the `id`: the body and metadata come from wherever the message is. A message's commit only inserts
+//!   a row here; nothing waits for S3.
+//! - **`saved`**: where each saved message is in the bucket (segment, offset and size).
+//!   With this the node deletes the body from disk (eviction) and reads it back by `Range`.
+//! - **`segments`**: for each segment **this node** wrote, how many messages are still alive. With
+//!   this the primary knows a segment died whole **without querying S3**.
+//! - **`journal`**: the messages with changed state (or removed) since the last journal.
 //!
-//! Sem teto para o `outbox` (Q9): se o disco enche, o nó entra em `failed`, como com qualquer
-//! outra falta de espaço. Os métodos são síncronos: quem chama os roda em `spawn_blocking`.
+//! No cap on the `outbox` (Q9): if the disk fills up, the node goes to `failed`, as with any
+//! other lack of space. The methods are synchronous: whoever calls them runs them in `spawn_blocking`.
 
 use std::io;
 use std::path::Path;
@@ -61,27 +61,27 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
 ";
 
-/// Onde uma mensagem salva está no bucket.
+/// Where a saved message is in the bucket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedRef {
     pub segment: String,
     pub offset: u64,
     pub len: u64,
-    /// Quando o PUT do segmento foi confirmado, no relógio do nó que o gravou (informação, não para
-    /// comparar com o relógio de outro nó). `0`: não se sabe (aviso antigo).
+    /// When the segment's PUT was confirmed, on the clock of the node that wrote it (information, not to
+    /// compare with another node's clock). `0`: unknown (old notice).
     pub saved_at_ms: u64,
 }
 
-/// O resultado de [`BackupDb::commit_segment`].
+/// The result of [`BackupDb::commit_segment`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Committed {
-    /// Quantas mensagens do segmento ainda vivem.
+    /// How many of the segment's messages are still alive.
     pub live: u64,
-    /// As que morreram durante o envio.
+    /// Those that died during the upload.
     pub dead: Vec<String>,
 }
 
-/// Um segmento que este nó gravou.
+/// A segment this node wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SegmentRow {
     pub key: String,
@@ -93,7 +93,7 @@ pub struct SegmentRow {
     pub created_ms: u64,
 }
 
-/// Uma mudança de estado ainda fora do diário.
+/// A state change not yet in the journal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dirty {
     pub topic: String,
@@ -114,7 +114,7 @@ impl BackupDb {
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(to_io)?;
         conn.execute_batch(SCHEMA).map_err(to_io)?;
-        // Um `_backup.db` de antes de `saved_at` ganha a coluna.
+        // A `_backup.db` from before `saved_at` gets the column.
         let has: bool = conn
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('saved') WHERE name = 'saved_at'",
@@ -138,7 +138,7 @@ impl BackupDb {
 
     // ---- outbox ----
 
-    /// Põe a mensagem na fila de envio. Repetir não faz nada.
+    /// Puts the message in the send queue. Repeating does nothing.
     pub fn enqueue(&self, topic: &str, id: &str, now_ms: u64) -> io::Result<()> {
         self.conn()
             .execute(
@@ -149,8 +149,8 @@ impl BackupDb {
         Ok(())
     }
 
-    /// As mensagens da fila adicionadas até `before_ms` (inclusive), das mais antigas, no máximo
-    /// `limit`. `before_ms = u64::MAX`: todas.
+    /// The queue's messages added up to `before_ms` (inclusive), the oldest first, at most
+    /// `limit`. `before_ms = u64::MAX`: all of them.
     pub fn outbox(&self, before_ms: u64, limit: usize) -> io::Result<Vec<(String, String)>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -175,8 +175,8 @@ impl BackupDb {
         Ok(n as u64)
     }
 
-    /// Tira da fila (a mensagem foi consumida antes de a janela fechar, ou deixou de ser deste
-    /// nó). `true` se estava lá.
+    /// Takes it off the queue (the message was consumed before the window closed, or stopped being this
+    /// node's). `true` if it was there.
     pub fn unqueue(&self, topic: &str, id: &str) -> io::Result<bool> {
         let n = self
             .conn()
@@ -188,14 +188,14 @@ impl BackupDb {
         Ok(n > 0)
     }
 
-    // ---- segmentos e referências ----
+    // ---- segments and references ----
 
-    /// Registra um segmento que o PUT confirmou: o segmento, a referência de cada mensagem e a
-    /// saída delas do `outbox`, numa transação só.
+    /// Records a segment the PUT confirmed: the segment, each message's reference and their
+    /// exit from the `outbox`, in a single transaction.
     ///
-    /// A mensagem que já não estava no `outbox` morreu enquanto o segmento subia (ack ou `ttl`):
-    /// ela não conta como viva e entra no diário como remoção, para a restauração não a
-    /// ressuscitar. `segment.live` é recalculado aqui.
+    /// A message that was no longer in the `outbox` died while the segment was going up (ack or `ttl`):
+    /// it does not count as alive and goes into the journal as a removal, so the restore does not
+    /// resurrect it. `segment.live` is recalculated here.
     pub fn commit_segment(
         &self,
         segment: &SegmentRow,
@@ -254,7 +254,7 @@ impl BackupDb {
         Ok(Committed { live, dead })
     }
 
-    /// Registra um segmento que este nó passou a administrar (a restauração o leu do bucket).
+    /// Records a segment this node took over administering (the restore read it from the bucket).
     pub fn put_segment(&self, segment: &SegmentRow) -> io::Result<()> {
         self.conn()
             .execute(
@@ -273,7 +273,7 @@ impl BackupDb {
         Ok(())
     }
 
-    /// Quantas mensagens têm referência no bucket.
+    /// How many messages have a reference in the bucket.
     pub fn saved_len(&self) -> io::Result<u64> {
         let n: i64 = self
             .conn()
@@ -282,7 +282,7 @@ impl BackupDb {
         Ok(n as u64)
     }
 
-    /// A mensagem ainda espera no `outbox`?
+    /// Is the message still waiting in the `outbox`?
     pub fn queued(&self, topic: &str, id: &str) -> io::Result<bool> {
         self.conn()
             .query_row(
@@ -295,8 +295,8 @@ impl BackupDb {
             .map_err(to_io)
     }
 
-    /// Guarda a referência avisada pelo primário (a réplica e o herdeiro a usam para ler do bucket
-    /// o que apagaram do disco).
+    /// Stores the reference announced by the primary (the replica and the heir use it to read from the bucket
+    /// what they deleted from disk).
     pub fn set_saved(&self, topic: &str, id: &str, saved: &SavedRef) -> io::Result<()> {
         self.conn()
             .execute(
@@ -333,7 +333,7 @@ impl BackupDb {
             .map_err(to_io)
     }
 
-    /// As mensagens do tópico que já têm referência no bucket, com ela.
+    /// The topic's messages that already have a reference in the bucket, with it.
     pub fn saved_of_topic(&self, topic: &str) -> io::Result<Vec<(String, SavedRef)>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -355,9 +355,9 @@ impl BackupDb {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
-    /// A mensagem morreu (ack, `ttl`, dead-letter): sai do `outbox` e da lista de salvas, e o
-    /// segmento dela perde uma viva. Devolve o segmento se todas as mensagens dele morreram (o
-    /// primário o apaga do bucket) e se a mensagem estava salva. A remoção entra no diário.
+    /// The message died (ack, `ttl`, dead-letter): it leaves the `outbox` and the saved list, and its
+    /// segment loses a live one. Returns the segment if all its messages died (the
+    /// primary deletes it from the bucket) and whether the message was saved. The removal goes into the journal.
     pub fn mark_dead(&self, topic: &str, id: &str) -> io::Result<Option<String>> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(to_io)?;
@@ -405,16 +405,16 @@ impl BackupDb {
             )
             .map_err(to_io)?;
         } else if was_queued {
-            // Ainda esperava o envio: nunca saiu do nó, não há o que registrar.
+            // It was still waiting to be sent: it never left the node, there is nothing to record.
             tx.execute(
                 "DELETE FROM journal WHERE topic = ?1 AND id = ?2 AND removed = 0",
                 params![topic, id],
             )
             .map_err(to_io)?;
         } else {
-            // Nem salva nem na fila: a mensagem foi herdada de outro primário (que pode tê-la
-            // salvado) ou o segmento dela está em voo. A remoção entra no diário por garantia:
-            // sem ela a restauração ressuscitaria uma mensagem confirmada.
+            // Neither saved nor queued: the message was inherited from another primary (which may have
+            // saved it) or its segment is in flight. The removal goes into the journal to be safe:
+            // without it the restore would resurrect an acknowledged message.
             tx.execute(
                 "INSERT OR REPLACE INTO journal (topic, id, removed) VALUES (?1, ?2, 1)",
                 params![topic, id],
@@ -425,8 +425,8 @@ impl BackupDb {
         Ok(empty)
     }
 
-    /// A mensagem morreu num nó que não é o dono (réplica): só esquece a referência e a fila.
-    /// O diário e a contagem do segmento são do dono.
+    /// The message died on a node that is not the owner (replica): it only forgets the reference and the queue.
+    /// The journal and the segment count belong to the owner.
     pub fn forget(&self, topic: &str, id: &str) -> io::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(to_io)?;
@@ -440,7 +440,7 @@ impl BackupDb {
         tx.commit().map_err(to_io)
     }
 
-    /// O segmento foi apagado do bucket: esquece a linha dele.
+    /// The segment was deleted from the bucket: forget its row.
     pub fn drop_segment(&self, key: &str) -> io::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(to_io)?;
@@ -451,7 +451,7 @@ impl BackupDb {
         tx.commit().map_err(to_io)
     }
 
-    /// Os segmentos que este nó gravou, do tópico.
+    /// The segments this node wrote, for the topic.
     pub fn segments_of(&self, topic: &str) -> io::Result<Vec<SegmentRow>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -478,7 +478,7 @@ impl BackupDb {
             .map_err(to_io)
     }
 
-    /// Quantos segmentos e quantos bytes este nó mantém no bucket.
+    /// How many segments and how many bytes this node keeps in the bucket.
     pub fn segment_totals(&self) -> io::Result<(u64, u64)> {
         self.conn()
             .query_row(
@@ -489,10 +489,10 @@ impl BackupDb {
             .map_err(to_io)
     }
 
-    // ---- diário ----
+    // ---- journal ----
 
-    /// A mensagem mudou de estado (entrega, invisibilidade): entra no próximo diário. Só vale
-    /// para mensagem que já está salva num segmento; as pendentes vão com o estado atual.
+    /// The message changed state (delivery, invisibility): it goes into the next journal. Only applies
+    /// to a message already saved in a segment; pending ones go with the current state.
     pub fn touch(&self, topic: &str, id: &str) -> io::Result<()> {
         self.conn()
             .execute(
@@ -506,7 +506,7 @@ impl BackupDb {
         Ok(())
     }
 
-    /// As mudanças ainda fora do diário.
+    /// The changes not yet in the journal.
     pub fn dirty(&self, limit: usize) -> io::Result<Vec<Dirty>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -524,8 +524,8 @@ impl BackupDb {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
-    /// O diário foi gravado: tira as mudanças dele da lista (as que mudaram de novo no meio ficam,
-    /// porque o `touch` não as duplica: o estado gravado já era o último lido).
+    /// The journal was written: removes its changes from the list (those that changed again in the meantime stay,
+    /// because `touch` does not duplicate them: the written state was already the last one read).
     pub fn clear_dirty(&self, items: &[Dirty]) -> io::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(to_io)?;
@@ -547,9 +547,9 @@ impl BackupDb {
         Ok(n as u64)
     }
 
-    // ---- geral ----
+    // ---- general ----
 
-    /// O próximo número de sequência (para nomear segmentos e diários sem repetir).
+    /// The next sequence number (to name segments and journals without repeating).
     pub fn next_seq(&self) -> io::Result<u64> {
         let conn = self.conn();
         conn.execute(
@@ -566,7 +566,7 @@ impl BackupDb {
         Ok(n as u64)
     }
 
-    /// O tópico foi apagado: esquece tudo dele.
+    /// The topic was deleted: forget everything about it.
     pub fn drop_topic(&self, topic: &str) -> io::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(to_io)?;
@@ -580,7 +580,7 @@ impl BackupDb {
         tx.commit().map_err(to_io)
     }
 
-    /// Apaga tudo (o nó volta como nó novo).
+    /// Deletes everything (the node comes back as a new node).
     pub fn reset(&self) -> io::Result<()> {
         self.conn()
             .execute_batch(

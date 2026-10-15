@@ -1,16 +1,16 @@
-//! As rotas de operação do backup em S3 (doc 23, "Backup em S3", seção 1.11), na API de operação
-//! (como `/node/drain`: sem token, só os IPs de `operations.allowed-ips`, categoria `admin` do rate
+//! The S3 backup operations routes (doc 23, "S3 backup", section 1.11), on the operations API
+//! (like `/node/drain`: no token, only the IPs of `operations.allowed-ips`, `admin` category of the rate
 //! limit).
 //!
-//! | Rota | O que faz |
+//! | Route | What it does |
 //! |---|---|
-//! | `GET /node/backup` | O estado do backup neste nó (fila de envio, S3 no ar, segmentos) |
-//! | `POST /node/backup/flush` | Força o backup neste nó: memória → disco, disco → S3, `outbox` → S3. Não desregistra nem para o nó |
-//! | `POST /cluster/backup/flush` | O nó que recebe repassa a todos os outros e junta as respostas |
-//! | `POST /cluster/stop` | Drain em **todos** os nós e a lista dos nós vivos na parada |
+//! | `GET /node/backup` | The backup state on this node (send queue, S3 up, segments) |
+//! | `POST /node/backup/flush` | Forces the backup on this node: memory → disk, disk → S3, `outbox` → S3. Neither deregisters nor stops the node |
+//! | `POST /cluster/backup/flush` | The node that receives it forwards to all the others and joins the responses |
+//! | `POST /cluster/stop` | Drain on **all** nodes and the list of nodes alive at the stop |
 //!
-//! "Iniciar o cluster" não é uma rota: é subir os processos (`docker compose start`); a restauração
-//! acontece sozinha na partida.
+//! "Starting the cluster" is not a route: it is starting the processes (`docker compose start`); the restore
+//! happens by itself on startup.
 
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ fn backup_of(state: &AppState) -> Result<&Arc<Backup>, ApiError> {
     state.backup.as_ref().ok_or_else(|| not_configured().into())
 }
 
-/// O `BackupStatus` como a API o mostra.
+/// The `BackupStatus` as the API shows it.
 pub fn status_json(status: &BackupStatus) -> Value {
     json!({
         "s3Reachable": status.s3_ok,
@@ -70,8 +70,8 @@ async fn node_flush(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
     Ok(Json(body))
 }
 
-/// Chama `request` em cada membro (a si mesmo sem rede), todos ao mesmo tempo, e devolve as
-/// respostas na ordem em que chegaram: `(nodeId, Ok(json) | Err(motivo))`.
+/// Calls `request` on each member (itself without the network), all at once, and returns the
+/// responses in the order they arrived: `(nodeId, Ok(json) | Err(reason))`.
 async fn ask_all(state: &AppState, request: PeerRequest) -> Vec<(String, Result<Value, String>)> {
     let Some(cluster) = &state.cluster else {
         return Vec::new();
@@ -85,7 +85,7 @@ async fn ask_all(state: &AppState, request: PeerRequest) -> Vec<(String, Result<
         set.spawn(async move {
             let answer = match cluster.call_member(&member, request).await {
                 Ok(PeerResponse::Backup(report)) => Ok(report),
-                Ok(_) => Err("resposta inesperada".to_owned()),
+                Ok(_) => Err("unexpected response".to_owned()),
                 Err(e) => Err(e.to_string()),
             };
             (member.node_id, answer)
@@ -118,7 +118,7 @@ async fn cluster_flush(State(state): State<AppState>) -> Result<Json<Value>, Api
                 report["nodeId"] = json!(node_id);
                 report
             }
-            // O nó lento ou fora do ar aparece como pendente: o operador repete a chamada.
+            // The slow or down node shows up as pending: the operator repeats the call.
             Err(why) => {
                 complete = false;
                 json!({ "nodeId": node_id, "complete": false, "pending": true, "error": why })
@@ -131,7 +131,7 @@ async fn cluster_flush(State(state): State<AppState>) -> Result<Json<Value>, Api
 async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let backup = state.backup.clone();
     let mut warnings: Vec<String> = Vec::new();
-    // Os outros nós param ao mesmo tempo; este, que coordena, para por último e grava a lista.
+    // The other nodes stop at the same time; this one, which coordinates, stops last and writes the list.
     let me = state.node.node_id();
     let mut stopped: Vec<String> = Vec::new();
     let mut nodes: Vec<Value> = Vec::new();
@@ -158,15 +158,15 @@ async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiE
                     if report["drained"].as_bool().unwrap_or(false) {
                         stopped.push(node_id.clone());
                     } else {
-                        warnings.push(format!("o nó {node_id} não concluiu o drain no prazo"));
+                        warnings.push(format!("node {node_id} did not finish the drain in time"));
                     }
                     nodes.push(report);
                 }
                 Ok(_) | Err(_) => {
-                    // O nó silencioso fica fora da lista: ao subir será tratado como morto.
-                    warnings.push(format!("o nó {node_id} não respondeu à parada"));
+                    // The silent node stays out of the list: on starting it will be treated as dead.
+                    warnings.push(format!("node {node_id} did not answer the stop"));
                     nodes.push(
-                        json!({ "nodeId": node_id, "drained": false, "error": "sem resposta" }),
+                        json!({ "nodeId": node_id, "drained": false, "error": "no response" }),
                     );
                 }
             }
@@ -176,7 +176,7 @@ async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiE
     if drained {
         stopped.push(me.clone());
     } else {
-        warnings.push(format!("o nó {me} não concluiu o drain no prazo"));
+        warnings.push(format!("node {me} did not finish the drain in time"));
     }
     nodes.push(json!({ "nodeId": me, "drained": drained }));
     let mut stop_list = false;
@@ -185,14 +185,14 @@ async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiE
             stop_list = backup.write_stop_list(stopped.clone()).await;
             if !stop_list {
                 warnings.push(
-                    "o backup não foi enviado ao S3: a lista da parada não foi gravada (o drain em disco foi feito)"
+                    "the backup was not sent to S3: the stop list was not written (the disk drain was done)"
                         .to_owned(),
                 );
             }
-            // O coordenador é o último a sair: o batimento dele some por último.
+            // The coordinator is the last to leave: its heartbeat disappears last.
             backup.leave().await;
         }
-        None => warnings.push("backup em S3 não configurado: não há lista da parada".to_owned()),
+        None => warnings.push("S3 backup not configured: there is no stop list".to_owned()),
     }
     Ok(Json(json!({
         "stopped": stopped,

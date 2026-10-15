@@ -22,7 +22,7 @@ O nome vem de **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos. E
 
 Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotado numa única imagem Docker. Um cluster são três ou mais nós iguais, sem coordenador, sem banco externo e sem broker à parte. Para testar, um nó basta (modo desenvolvimento).
 
-![Contexto: quem usa o Taba](../diagramas/img/c4-nivel0-contexto.svg)
+![Contexto: quem usa o Taba](../diagramas/img/pt-BR/c4-nivel0-contexto.svg)
 
 ## Para quem serve
 

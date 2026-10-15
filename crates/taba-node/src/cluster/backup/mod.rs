@@ -1,19 +1,19 @@
-//! O backup opcional em S3 (doc 23, "Backup em S3"): a coordenação entre o motor de mensagens, o
-//! `_backup.db` local, o depósito de objetos e o cluster.
+//! The optional S3 backup (doc 23, "S3 backup"): the coordination between the message engine, the
+//! local `_backup.db`, the object store and the cluster.
 //!
-//! O S3 é **só backup de falha total ou grave**: SQLite e memória seguem como armazenamento
-//! primário, e nenhuma publicação, consumo ou sincronização espera o S3. Sem `backup.s3.bucket`
-//! este módulo não existe para o nó. Com o S3 fora do ar o recurso fica parado e o cluster funciona
-//! como sem ele; o que se acumula é só o `outbox` (IDs) no disco.
+//! S3 is **only a backup for total or serious failure**: SQLite and memory remain the primary
+//! storage, and no publication, consumption or synchronization waits for S3. Without `backup.s3.bucket`
+//! this module does not exist for the node. With S3 down the feature stands still and the cluster works
+//! as without it; all that piles up is the `outbox` (IDs) on disk.
 //!
-//! | Arquivo | O que faz |
+//! | File | What it does |
 //! |---|---|
-//! | `upload` | O `outbox` vira segmentos (`.seg`); o estado mutável vira diário (`.jrn`); a limpeza de segmentos mortos; o flush |
-//! | `evict` | Com o disco cheio, apaga o corpo das mensagens já salvas e lê de volta por `Range` |
-//! | `definitions` | Definições de tópico e tokens (`topics/`, `tokens/`), com retentativa e reconciliação |
-//! | `heartbeat` | O batimento de cada nó (`nodes/<id>.json`) e a classificação dos outros (vivo, vivo em outra partição, morto) |
-//! | `restore` | A trava de restauração, a restauração do bucket e a limpeza de `nodes/` |
-//! | `stop` | A lista dos nós vivos na parada programada do cluster |
+//! | `upload` | The `outbox` becomes segments (`.seg`); mutable state becomes a journal (`.jrn`); the cleanup of dead segments; the flush |
+//! | `evict` | With a full disk, deletes the body of already-saved messages and reads it back by `Range` |
+//! | `definitions` | Topic and token definitions (`topics/`, `tokens/`), with retry and reconciliation |
+//! | `heartbeat` | Each node's heartbeat (`nodes/<id>.json`) and the classification of the others (alive, alive in another partition, dead) |
+//! | `restore` | The restore lock, the bucket restore and the cleanup of `nodes/` |
+//! | `stop` | The list of live nodes at the cluster's planned stop |
 
 mod definitions;
 mod evict;
@@ -47,7 +47,7 @@ use crate::engine::topics::Topics;
 use crate::storage::backup::{BackupDb, ObjectStore, SavedRef};
 use crate::storage::messages::MessageStore;
 
-/// Os valores de `backup.*` de que o serviço depende.
+/// The `backup.*` values the service depends on.
 #[derive(Debug, Clone)]
 pub struct BackupRules {
     pub delay: Duration,
@@ -86,28 +86,28 @@ impl BackupRules {
     }
 }
 
-/// Uma definição que precisa ir (ou voltar a ir) ao bucket.
+/// A definition that needs to go (or go again) to the bucket.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum DefRef {
     Topic(String),
-    /// O tópico foi removido: grava a lápide e apaga o prefixo das mensagens (`nome`, `topicId`).
+    /// The topic was removed: writes the tombstone and deletes the messages prefix (`name`, `topicId`).
     TopicDeleted(String, String),
     Token(String),
     TokenRevoked(String),
 }
 
-/// O que o serviço guarda em memória e que muda sem pressa.
+/// What the service keeps in memory and that changes unhurriedly.
 #[derive(Default)]
 pub(crate) struct Runtime {
-    /// O S3 respondeu na última chamada?
+    /// Did S3 answer on the last call?
     pub s3_ok: bool,
     pub last_error: Option<String>,
     pub last_ok_ms: Option<u64>,
-    /// Segmentos mortos inteiros a apagar do bucket.
+    /// Whole dead segments to delete from the bucket.
     pub dead_segments: Vec<String>,
-    /// Definições a gravar (a gravação falhou ou o nó acabou de virar o gestor).
+    /// Definitions to write (the write failed or the node just became the manager).
     pub pending_defs: BTreeSet<DefRef>,
-    /// Tópicos removidos cujo prefixo de mensagens ainda precisa ser apagado: `(nome, topicId)`.
+    /// Removed topics whose message prefix still needs deleting: `(name, topicId)`.
     pub purges: Vec<(String, String)>,
 }
 
@@ -124,19 +124,19 @@ pub(crate) struct Counters {
     pub definitions_written: AtomicU64,
 }
 
-/// Como o backup se vê: o que `GET /node/backup` e as respostas do flush mostram.
+/// How the backup sees itself: what `GET /node/backup` and the flush responses show.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupStatus {
     pub s3_ok: bool,
     pub last_error: Option<String>,
     pub last_ok_ms: Option<u64>,
-    /// Mensagens ainda sem segmento no bucket.
+    /// Messages still without a segment in the bucket.
     pub outbox_pending: u64,
-    /// Mudanças de estado ainda fora do diário.
+    /// State changes still outside the journal.
     pub journal_pending: u64,
     pub segments: u64,
     pub segment_bytes: u64,
-    /// Mensagens com referência no bucket (as que este nó, dono ou réplica, pode ler de lá).
+    /// Messages with a reference in the bucket (those this node, owner or replica, can read from there).
     pub saved: u64,
     pub segments_uploaded: u64,
     pub messages_uploaded: u64,
@@ -146,7 +146,7 @@ pub struct BackupStatus {
 }
 
 impl BackupStatus {
-    /// O que ainda falta enviar: o que o operador confere antes de uma manutenção.
+    /// What is still left to send: what the operator checks before maintenance.
     pub fn pending(&self) -> u64 {
         self.outbox_pending + self.journal_pending + self.definitions_pending
     }
@@ -166,23 +166,23 @@ pub struct Backup {
     pub(crate) runtime: Mutex<Runtime>,
     pub(crate) written: Mutex<definitions::Written>,
     pub(crate) counters: Counters,
-    /// O envio ao bucket (segmentos abertos): uma passada por vez.
+    /// The upload to the bucket (open segments): one pass at a time.
     pub(crate) uploader: tokio::sync::Mutex<upload::Uploader>,
     pub(crate) beats: heartbeat::Beats,
-    /// O batimento do nó está ligado (desliga no drain concluído e na saída).
+    /// The node's heartbeat is on (turns off on a finished drain and on leaving).
     pub(crate) beating: AtomicBool,
     pub(crate) rt: tokio::runtime::Handle,
     pub(crate) restoring: AtomicBool,
-    /// Quem diz o uso do disco (%); os testes o trocam para simular o disco enchendo.
+    /// Who reports the disk usage (%); the tests swap it to simulate the disk filling up.
     pub(crate) disk_probe: Mutex<Option<Arc<dyn Fn() -> u32 + Send + Sync>>>,
-    /// A última leitura real do uso do disco e quando foi feita.
+    /// The last real reading of disk usage and when it was taken.
     pub(crate) disk_usage: Mutex<Option<(std::time::Instant, u32)>>,
-    /// Os membros da tabela na última volta: se algum sumiu, o nó procura no bucket o que só ele
-    /// tinha (doc 23, seção 1.7, exemplo B).
+    /// The table's members on the last round: if one vanished, the node looks in the bucket for what only it
+    /// had (doc 23, section 1.7, example B).
     pub(crate) last_members: Mutex<std::collections::BTreeSet<String>>,
-    /// O ETag da trava de restauração que outro nó segura e desde quando o vemos igual.
+    /// The ETag of the restore lock that another node holds and since when we see it unchanged.
     pub(crate) lock_seen: Mutex<Option<(String, std::time::Instant)>>,
-    /// Acorda o laço de fundo quando há trabalho novo (flush, evicção).
+    /// Wakes the background loop when there is new work (flush, eviction).
     pub(crate) wake: tokio::sync::Notify,
     pub(crate) cancel: CancellationToken,
 }
@@ -191,11 +191,11 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// `backup.not-configured`: o recurso não está ligado neste nó.
+/// `backup.not-configured`: the feature is not on on this node.
 pub fn not_configured() -> TabaError {
     TabaError::new(
         ErrorCode::BackupNotConfigured,
-        "O backup em S3 não está configurado (backup.s3.bucket).",
+        "The S3 backup is not configured (backup.s3.bucket).",
     )
 }
 
@@ -214,8 +214,8 @@ pub struct BackupArgs {
 }
 
 impl Backup {
-    /// Cria o serviço e o liga ao motor (as mensagens), às tabelas (tópicos e tokens) e ao nó.
-    /// Chamar de dentro de um runtime do Tokio.
+    /// Creates the service and attaches it to the engine (the messages), the tables (topics and tokens) and the node.
+    /// Call from inside a Tokio runtime.
     pub fn new(args: BackupArgs) -> Arc<Self> {
         let backup = Arc::new(Self {
             rules: args.rules,
@@ -248,8 +248,8 @@ impl Backup {
         backup
     }
 
-    /// Onde a mensagem está no bucket e quando foi salva, se este nó (dono ou réplica) sabe. É a
-    /// consulta única sobre a referência, que mora no `_backup.db` e não no `_topic.db`.
+    /// Where the message is in the bucket and when it was saved, if this node (owner or replica) knows. It is the
+    /// single query about the reference, which lives in `_backup.db` and not in `_topic.db`.
     pub fn saved_info(&self, topic: &str, id: &str) -> Option<SavedRef> {
         self.db.saved(topic, id).ok().flatten()
     }
@@ -258,7 +258,7 @@ impl Backup {
         &self.rules
     }
 
-    /// Troca a medida do uso do disco (em %): só para os testes simularem o disco enchendo.
+    /// Swaps the disk usage measure (in %): only for the tests to simulate the disk filling up.
     pub fn set_disk_probe(&self, probe: Arc<dyn Fn() -> u32 + Send + Sync>) {
         *lock(&self.disk_probe) = Some(probe);
     }
@@ -267,7 +267,7 @@ impl Backup {
         self.shared.node_id()
     }
 
-    /// Roda de uma vez o que o serviço faz em segundo plano, até o nó parar.
+    /// Runs at once what the service does in the background, until the node stops.
     pub async fn run(self: Arc<Self>) {
         let mut upload = tokio::time::interval(Duration::from_millis(500));
         let mut meta = tokio::time::interval(self.rules.meta_interval);
@@ -283,11 +283,11 @@ impl Backup {
         ] {
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         }
-        // O primeiro `tick` de um `interval` é imediato: o diário e a reconciliação esperam a vez.
+        // The first `tick` of an `interval` is immediate: the journal and the reconciliation wait their turn.
         meta.reset();
         reconcile.reset();
-        // Mensagens que já estavam no nó antes de o backup ligar (ou depois de uma queda) entram no
-        // outbox: o nó adota o que é dele.
+        // Messages that were already on the node before the backup turned on (or after a crash) go into the
+        // outbox: the node adopts what is its own.
         self.adopt_all();
         loop {
             tokio::select! {
@@ -317,8 +317,8 @@ impl Backup {
         }
     }
 
-    /// O nó entra no outbox como dono de tudo o que o motor lhe diz ser dele e que ainda não está
-    /// salvo.
+    /// The node enters the outbox as the owner of everything the engine says is its own and is not yet
+    /// saved.
     pub fn adopt_all(&self) {
         if !self.topology.is_active() {
             return;
@@ -350,7 +350,7 @@ impl Backup {
         }
     }
 
-    /// Anota o resultado de uma chamada ao S3: o recurso vive ou está fora do ar.
+    /// Notes the result of a call to S3: the feature lives or is down.
     pub(crate) fn note<T, E: std::fmt::Display>(&self, what: &str, result: &Result<T, E>) {
         let mut runtime = lock(&self.runtime);
         match result {
@@ -361,7 +361,7 @@ impl Backup {
             }
             Err(e) => {
                 if runtime.s3_ok || runtime.last_error.is_none() {
-                    tracing::warn!(error = %e, "backup: {what} falhou; o S3 está fora do ar? O cluster segue sem ele");
+                    tracing::warn!(error = %e, "backup: {what} failed; is S3 down? The cluster goes on without it");
                 }
                 runtime.s3_ok = false;
                 runtime.last_error = Some(format!("{what}: {e}"));
@@ -370,8 +370,8 @@ impl Backup {
         }
     }
 
-    /// Roda um futuro até o fim numa thread à parte (o motor é síncrono e chama o backup com a
-    /// trava do tópico; ver `BackupSink::fetch_body`).
+    /// Runs a future to the end on a separate thread (the engine is synchronous and calls the backup with
+    /// the topic lock; see `BackupSink::fetch_body`).
     pub(crate) fn block_on<F>(&self, future: F) -> F::Output
     where
         F: Future + Send,
@@ -382,11 +382,11 @@ impl Backup {
             scope
                 .spawn(move || handle.block_on(future))
                 .join()
-                .expect("a thread do backup não deve entrar em pânico")
+                .expect("the backup thread must not panic")
         })
     }
 
-    /// O nó está em drain ou drenado: o batimento e o envio seguem só até o drain terminar.
+    /// The node is in drain or drained: the heartbeat and the upload go on only until the drain finishes.
     pub(crate) fn drained(&self) -> bool {
         self.shared.drain_state() == DrainState::Drained
     }
@@ -401,7 +401,7 @@ impl BackupSink for Backup {
             return;
         }
         if let Err(e) = self.db.enqueue(topic, id, self.clock.now_millis()) {
-            self.disk_failure("não foi possível gravar no _backup.db", &e);
+            self.disk_failure("could not write to _backup.db", &e);
         }
     }
 
@@ -416,13 +416,13 @@ impl BackupSink for Backup {
             self.db.forget(topic, id)
         };
         if let Err(e) = result {
-            self.disk_failure("não foi possível gravar no _backup.db", &e);
+            self.disk_failure("could not write to _backup.db", &e);
         }
     }
 
     fn changed(&self, topic: &str, id: &str, owned: bool) {
         if owned && let Err(e) = self.db.touch(topic, id) {
-            self.disk_failure("não foi possível gravar no _backup.db", &e);
+            self.disk_failure("could not write to _backup.db", &e);
         }
     }
 
@@ -432,7 +432,7 @@ impl BackupSink for Backup {
 
     fn released(&self, topic: &str, id: &str) {
         if let Err(e) = self.db.unqueue(topic, id) {
-            self.disk_failure("não foi possível gravar no _backup.db", &e);
+            self.disk_failure("could not write to _backup.db", &e);
         }
     }
 
@@ -451,8 +451,8 @@ impl BackupSink for Backup {
 }
 
 impl Backup {
-    /// Um erro do `_backup.db` não derruba a publicação: vira log. Disco cheio ou banco corrompido
-    /// derrubam o nó, como em qualquer outro banco dele (doc 23: Q9).
+    /// An `_backup.db` error does not bring the publication down: it becomes a log. A full disk or corrupt database
+    /// bring the node down, as with any other database of its own (doc 23: Q9).
     fn disk_failure(&self, what: &str, e: &std::io::Error) {
         tracing::error!(error = %e, "{what}");
         if crate::storage::is_fatal(e) {
@@ -461,21 +461,21 @@ impl Backup {
     }
 }
 
-/// Como o cluster fala com o backup sem conhecer o resto do nó: o serviço e a parada programada
-/// (que precisa do drain, uma peça do nó). O `ClusterService` guarda só uma referência fraca.
+/// How the cluster talks to the backup without knowing the rest of the node: the service and the planned stop
+/// (which needs the drain, a piece of the node). The `ClusterService` only keeps a weak reference.
 pub trait BackupPort: Send + Sync + 'static {
     fn backup(&self) -> Arc<Backup>;
 
-    /// O drain deste nó para a parada do cluster (`POST /cluster/stop`): sai da rotação, manda
-    /// tudo ao S3 e responde quando o nó concluiu, com o relatório em JSON.
+    /// This node's drain for the cluster stop (`POST /cluster/stop`): leaves rotation, sends
+    /// everything to S3 and answers when the node is done, with the report in JSON.
     fn stop_node(
         &self,
     ) -> std::pin::Pin<Box<dyn Future<Output = Result<serde_json::Value, TabaError>> + Send + '_>>;
 }
 
 impl Backup {
-    /// A réplica recebe o aviso do primário: das mensagens que ela guarda, quais já estão no
-    /// bucket. O que ela não conhece é ignorado.
+    /// The replica receives the primary's notice: of the messages it keeps, which are already in the
+    /// bucket. What it does not know is ignored.
     pub fn accept_saved(&self, saved: &crate::cluster::protocol::BackupSaved) -> usize {
         let mut kept = 0;
         for item in &saved.items {
@@ -499,13 +499,13 @@ impl Backup {
         kept
     }
 
-    /// Antes de excluir `candidate` por voto: espera o batimento dele vencer. Devolve `true` se
-    /// pode seguir com a votação (o batimento venceu, ou o S3 não diz nada: o comportamento é o de
-    /// sempre) e `false` se o canal voltou no meio da espera.
+    /// Before excluding `candidate` by vote: waits for its heartbeat to expire. Returns `true` if
+    /// it can go on with the vote (the heartbeat expired, or S3 says nothing: the behavior is the
+    /// usual one) and `false` if the channel came back in the middle of the wait.
     pub async fn confirm_dead(&self, candidate: &str, reached: impl Fn() -> bool) -> bool {
         let mut announced = false;
-        // O canal de um nó que morre pisca (reconecta e cai de novo): só conta como "voltou" se
-        // estiver aberto em várias conferências seguidas.
+        // The channel of a node that dies flickers (reconnects and drops again): it only counts as "came back" if
+        // it is open on several checks in a row.
         let mut steady = 0;
         loop {
             steady = if reached() { steady + 1 } else { 0 };
@@ -519,7 +519,7 @@ impl Backup {
             if !announced {
                 tracing::warn!(
                     candidate,
-                    "backup: o nó não responde, mas o batimento dele no S3 está fresco (vivo em outra partição?); a exclusão espera o batimento vencer"
+                    "backup: the node does not answer, but its heartbeat in S3 is fresh (alive in another partition?); the exclusion waits for the heartbeat to expire"
                 );
                 announced = true;
             }
@@ -531,8 +531,8 @@ impl Backup {
         }
     }
 
-    /// Espera, por até `2 × backup.dead-after`, todos os outros membros ficarem mortos para o S3.
-    /// Quem exclui os mortos um a um vê o último só depois que o batimento dele vence.
+    /// Waits, for up to `2 × backup.dead-after`, for all the other members to become dead to S3.
+    /// Whoever excludes the dead one by one only sees the last one after its heartbeat expires.
     pub async fn wait_all_others_dead(&self) -> bool {
         let deadline = std::time::Instant::now() + self.rules.dead_after * 2;
         loop {
@@ -546,8 +546,8 @@ impl Backup {
         }
     }
 
-    /// Os outros membros estão todos mortos (para o S3)? É o sobrevivente único, que pode excluir
-    /// os mortos mesmo abaixo de `cluster.vote.min-voters`.
+    /// Are the other members all dead (to S3)? It is the sole survivor, which may exclude
+    /// the dead even below `cluster.vote.min-voters`.
     pub fn all_others_dead(&self) -> bool {
         let me = self.node_id();
         let members = self.topology.members();
@@ -558,7 +558,7 @@ impl Backup {
     }
 }
 
-/// Os nós que o cluster conhece, com o estado do batimento de cada um.
+/// The nodes the cluster knows, with each one's heartbeat state.
 pub type Observed = HashMap<String, Liveness>;
 
 #[cfg(test)]

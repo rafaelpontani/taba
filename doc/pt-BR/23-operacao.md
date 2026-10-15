@@ -50,7 +50,7 @@ Esperado num cluster saudável: `summary.members.active = N`, `quorumAvailable: 
 
 ## Atualizar a versão (rolling)
 
-**Um nó por vez**, esperando `healthy` (`/health/ready`) antes do próximo. Verificado: reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (`docker compose restart <nó>`) com 14 mensagens no tópico e consumir tudo devolveu **14 de 14**.
+**Um nó por vez**, esperando `healthy` (`/health/ready`) antes do próximo. Verificado: reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (`docker/cluster.sh restart <nó>`) com 14 mensagens no tópico e consumir tudo devolveu **14 de 14**.
 
 1. Pare o nó com `SIGTERM` (ele faz drain, grava a memória em disco, se desregistra e encerra com código 0).
 2. Suba a versão nova (ela entra como **nó novo**, sincroniza, fica pronta).
@@ -91,7 +91,7 @@ Sair por drain **não** gera freezing. Se o drain estourar `drain.timeout` pedid
 
 ### Um nó caiu (processo morto ou máquina)
 
-Esperado, **sem ação**: em ~4 s aparecem `write-quorum-at-risk`, `member-unreachable`, `under-replicated`; em ~8 s o nó é excluído (versão da tabela sobe) e fica só `node-frozen`. Nada que foi confirmado se perde (as cópias estão em outros nós). **Suba o nó de novo**: ele entra como nó novo e sincroniza. Verificado com `docker compose kill taba-2` seguido de `start`.
+Esperado, **sem ação**: em ~4 s aparecem `write-quorum-at-risk`, `member-unreachable`, `under-replicated`; em ~8 s o nó é excluído (versão da tabela sobe) e fica só `node-frozen`. Nada que foi confirmado se perde (as cópias estão em outros nós). **Suba o nó de novo**: ele entra como nó novo e sincroniza. Verificado com `kill` do `taba-2` seguido de `start` (feito, na época, pelo `docker compose`; hoje por `docker/cluster.sh kill taba-1`).
 
 Durante a janela de ~4 s, publicações nos blocos do nó caído **podem** responder `503` com `Retry-After`: o cliente repete.
 
@@ -147,7 +147,7 @@ backup:
     region: sa-east-1          # credenciais: a cadeia padrão da AWS (IAM, perfil, papel da tarefa)
 ```
 
-Com MinIO ou outro S3 compatível: `backup.s3.endpoint`, `access-key` e `secret-key`. Em produção o bucket **deve** ter versionamento/retenção do lado do S3 e permissão só de escrita para os nós (leitura é necessária para restaurar). Configuração pronta em [`exemplos/backup-s3`](../../exemplos/backup-s3/README.md). Confira com `GET /node/backup`: `s3Reachable: true` e `pending` indo a zero.
+Com MinIO ou outro S3 compatível: `backup.s3.endpoint`, `access-key` e `secret-key`. Em produção o bucket **deve** ter versionamento/retenção do lado do S3 e permissão só de escrita para os nós (leitura é necessária para restaurar). Configuração pronta em [`examples/backup-s3`](../../examples/backup-s3/README.md). Confira com `GET /node/backup`: `s3Reachable: true` e `pending` indo a zero.
 
 ### Forçar o backup agora (flush)
 
@@ -192,13 +192,15 @@ O repositório **não tem** manifestos nem Helm. O que o nó oferece para encaix
 ## Docker Compose do repositório: comandos úteis
 
 ```bash
-docker compose up --build -d                       # sobe tudo
+docker compose up -d                               # sobe tudo (imagens públicas; TABA_VERSION escolhe a tag)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d   # o mesmo, construindo do repositório
 docker compose ps                                  # saúde dos nós
 docker compose run --rm taba-cli health cluster -o table
-docker compose logs -f taba-1                      # logs coloridos
-docker compose stop taba-3     / start taba-3      # parada normal (drain) e volta
-docker compose kill taba-3                         # simula falha
-docker compose restart taba-2                      # reinício (um por vez!)
+docker compose up -d --scale taba=4                # mais nós: o serviço `taba` tem as réplicas (nós 2 em diante)
+docker compose logs -f taba-0                      # logs coloridos (`taba` mostra as réplicas)
+docker/cluster.sh stop taba-2  / start taba-2      # parada normal (drain) e volta; taba-N é a réplica N (taba-0 é o seed)
+docker/cluster.sh kill taba-2                      # simula falha
+docker/cluster.sh restart taba-1                   # reinício (um por vez!)
 docker compose down                                # ⚠️ PARA TUDO: o cluster nasce vazio no próximo up
 docker compose down -v                             # apaga também os volumes (inclui o token raiz)
 ```

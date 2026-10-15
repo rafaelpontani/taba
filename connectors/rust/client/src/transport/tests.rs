@@ -9,7 +9,7 @@ fn serve_once(reply: &'static [u8]) -> (u16, thread::JoinHandle<Vec<u8>>) {
         let (mut sock, _) = listener.accept().unwrap();
         let mut got = Vec::new();
         let mut buf = [0u8; 1024];
-        // Lê até o fim dos cabeçalhos e do corpo de 2 bytes que os testes mandam.
+        // Reads until the end of the headers and of the 2-byte body the tests send.
         loop {
             let n = sock.read(&mut buf).unwrap();
             got.extend_from_slice(&buf[..n]);
@@ -74,8 +74,8 @@ fn a_refused_connection_is_a_failure_before_sending() {
     let err = TcpTransport::new(None)
         .send(&url, &req, &timeouts())
         .unwrap_err();
-    // No Windows a recusa só aparece depois das retentativas do sistema, e vira o tempo de conexão;
-    // as duas coisas são "não enviou" e o conector as repete do mesmo jeito.
+    // On Windows the refusal only shows up after the system's retries, and becomes the connect timeout;
+    // both are "did not send" and the connector retries them the same way.
     assert!(
         matches!(
             err,
@@ -135,7 +135,7 @@ fn a_connection_dropped_mid_response_is_an_io_failure() {
 #[test]
 fn tls_config_accepts_a_pem_ca_and_rejects_files_without_certificates() {
     assert!(build_tls_config(None).is_ok());
-    assert!(build_tls_config(Some(b"nada de PEM aqui")).is_err());
+    assert!(build_tls_config(Some(b"no PEM here")).is_err());
     assert!(build_tls_config(Some(
         b"-----BEGIN CERTIFICATE-----\n!!!\n-----END CERTIFICATE-----\n"
     ))

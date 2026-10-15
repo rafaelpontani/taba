@@ -1,5 +1,5 @@
-//! A tabela de comandos: o que cada um aceita, a ajuda e a escolha do comando pelas palavras dos
-//! argumentos.
+//! The command table: what each one accepts, the help and the choice of command by the words of the
+//! arguments.
 
 use crate::app::Command;
 use crate::args::GLOBAL;
@@ -10,10 +10,10 @@ mod profile;
 mod token;
 mod topic;
 
-/// A versão do programa e a do contrato da API que ele implementa.
+/// The program's version and that of the API contract it implements.
 pub fn version_text() -> String {
     format!(
-        "taba-cli {} (contrato da API {})",
+        "taba-cli {} (API contract {})",
         env!("CARGO_PKG_VERSION"),
         taba_client::CONTRACT_VERSION
     )
@@ -30,15 +30,15 @@ pub fn table() -> Vec<Command> {
 }
 
 pub enum Invocation<'a> {
-    /// `help [comando]` ou `--help` sem comando: o texto de ajuda do assunto (vazio = geral).
+    /// `help [command]` or `--help` with no command: the help text for the subject (empty = general).
     Help(String),
     Version,
-    /// O comando e os argumentos que sobraram (sem as palavras do comando).
+    /// The command and the arguments left over (without the command words).
     Run(&'a Command, Vec<String>),
 }
 
-/// Acha o comando pelas primeiras palavras. As opções globais com valor (`--profile x`, `-o x`)
-/// podem vir antes: os valores delas não contam como palavras.
+/// Finds the command by the first words. Global options with a value (`--profile x`, `-o x`)
+/// may come first: their values do not count as words.
 pub fn resolve<'a>(table: &'a [Command], args: &[String]) -> Result<Invocation<'a>, String> {
     let mut words: Vec<(usize, &str)> = Vec::new();
     let mut i = 0;
@@ -97,7 +97,7 @@ pub fn resolve<'a>(table: &'a [Command], args: &[String]) -> Result<Invocation<'
                         .map(|c| c.path[1])
                         .collect();
                     return Err(format!(
-                        "`{} {}` não é um comando ({} {})",
+                        "`{} {}` is not a command ({} {})",
                         words[0].1,
                         second.1,
                         words[0].1,
@@ -117,12 +117,12 @@ pub fn resolve<'a>(table: &'a [Command], args: &[String]) -> Result<Invocation<'
                 .map(|c| c.path[1])
                 .collect();
             return Err(format!(
-                "faltou o subcomando de `{}` ({})",
+                "missing the subcommand of `{}` ({})",
                 words[0].1,
                 subs.join(" | ")
             ));
         } else {
-            return Err(format!("`{}` não é um comando", words[0].1));
+            return Err(format!("`{}` is not a command", words[0].1));
         };
     let rest: Vec<String> = args
         .iter()
@@ -134,13 +134,13 @@ pub fn resolve<'a>(table: &'a [Command], args: &[String]) -> Result<Invocation<'
 }
 
 pub fn usage_line(c: &Command) -> String {
-    let mut line = format!("uso: taba-cli {}", c.path.join(" "));
+    let mut line = format!("usage: taba-cli {}", c.path.join(" "));
     if !c.args.is_empty() {
         line.push(' ');
         line.push_str(c.args);
     }
     if !c.opts.is_empty() {
-        line.push_str(" [opções]");
+        line.push_str(" [options]");
     }
     line
 }
@@ -156,7 +156,7 @@ pub fn help_text(table: &[Command], topic: &str) -> String {
     let mut out = String::new();
     if words.is_empty() {
         out.push_str(&format!(
-            "{}\n\nuso: taba-cli <comando> [argumentos] [opções]\n\nComandos:\n",
+            "{}\n\nusage: taba-cli <command> [arguments] [options]\n\nCommands:\n",
             version_text()
         ));
         for c in table {
@@ -166,12 +166,12 @@ pub fn help_text(table: &[Command], topic: &str) -> String {
                 c.summary
             ));
         }
-        out.push_str("  help [comando]               Mostra a ajuda de um comando.\n  version                      Mostra a versão do programa e a do contrato.\n");
-        out.push_str("\nOpções de todos os comandos:\n  --profile <nome>    Perfil de conexão (padrão: o perfil padrão do arquivo)\n  -o, --output <fmt>  json, table ou raw\n  -q, --quiet         Não imprime nada em caso de sucesso\n  --request-id <id>   Vai em X-Request-Id\n  --help, --version\n");
+        out.push_str("  help [command]               Shows the help of a command.\n  version                      Shows the program version and the contract's.\n");
+        out.push_str("\nOptions of every command:\n  --profile <name>    Connection profile (default: the file's default profile)\n  -o, --output <fmt>  json, table or raw\n  -q, --quiet         Prints nothing on success\n  --request-id <id>   Goes in X-Request-Id\n  --help, --version\n");
         return out;
     }
     if matching.is_empty() {
-        return format!("Não há ajuda para `{topic}`. Use `taba-cli help`.\n");
+        return format!("There is no help for `{topic}`. Use `taba-cli help`.\n");
     }
     for c in matching {
         out.push_str(&format!("{}\n  {}\n", usage_line(c), c.summary));
@@ -180,25 +180,25 @@ pub fn help_text(table: &[Command], topic: &str) -> String {
             .iter()
             .map(|o| {
                 if o.takes_value {
-                    format!("--{} <valor>", o.name)
+                    format!("--{} <value>", o.name)
                 } else {
                     format!("--{}", o.name)
                 }
             })
             .collect();
         opts.extend([
-            "--profile <nome>".into(),
+            "--profile <name>".into(),
             "-o <formato>".into(),
             "-q".into(),
             "--request-id <id>".into(),
         ]);
-        out.push_str(&format!("  opções: {}\n\n", opts.join(", ")));
+        out.push_str(&format!("  options: {}\n\n", opts.join(", ")));
     }
     out
 }
 
 // ---------------------------------------------------------------------------------------------
-// Ajudantes dos comandos
+// Command helpers
 // ---------------------------------------------------------------------------------------------
 
 use crate::app::{CliError, Ctx};
@@ -207,14 +207,14 @@ use crate::output;
 use taba_client::json::{self, Fields};
 use taba_client::{Call, Client, Error as ApiError};
 
-/// Uma chamada nova, já com o `--request-id`.
+/// A new call, already with the `--request-id`.
 pub(crate) fn call(ctx: &Ctx<'_>, method: &'static str, path: impl Into<String>) -> Call {
     let mut call = Call::new(method, path);
     call.request_id = ctx.globals.request_id.clone();
     call
 }
 
-/// Imprime o texto de uma resposta no formato escolhido (nada com `--quiet`).
+/// Prints the text of a response in the chosen format (nothing with `--quiet`).
 pub(crate) fn emit(ctx: &mut Ctx<'_>, text: &str) -> Result<(), CliError> {
     if ctx.globals.quiet {
         return Ok(());
@@ -228,14 +228,14 @@ pub(crate) fn number(p: &Parsed, name: &str) -> Result<Option<u64>, CliError> {
     p.number(name).map_err(CliError::Usage)
 }
 
-/// Os pares `chave=valor` de uma opção repetível.
+/// The `key=value` pairs of a repeatable option.
 pub(crate) fn pairs(p: &Parsed, name: &str) -> Result<Vec<(String, String)>, CliError> {
     p.values(name)
         .into_iter()
         .map(|raw| match raw.split_once('=') {
             Some((k, v)) if !k.is_empty() => Ok((k.to_owned(), v.to_owned())),
             _ => Err(CliError::Usage(format!(
-                "--{name}: `{raw}` precisa ter a forma chave=valor"
+                "--{name}: `{raw}` must have the form key=value"
             ))),
         })
         .collect()
@@ -246,14 +246,14 @@ pub(crate) fn one_of(p: &Parsed, name: &str, allowed: &[&str]) -> Result<Option<
         None => Ok(None),
         Some(v) if allowed.contains(&v) => Ok(Some(v.to_owned())),
         Some(v) => Err(CliError::Usage(format!(
-            "--{name}: `{v}` não vale (use {})",
-            allowed.join(" ou ")
+            "--{name}: `{v}` is not valid (use {})",
+            allowed.join(" or ")
         ))),
     }
 }
 
-/// Uma lista paginada: uma página como o servidor devolveu, ou, com `all`, todas as páginas juntas
-/// num só `{"items":[...]}`. Devolve o texto JSON.
+/// A paginated list: a page as the server returned it, or, with `all`, all the pages together
+/// in a single `{"items":[...]}`. Returns the JSON text.
 pub(crate) fn paged(
     ctx: &Ctx<'_>,
     client: &Client,
@@ -277,9 +277,9 @@ pub(crate) fn paged(
         }
         let invalid =
             |m: String| CliError::Api(ApiError::from_message("client.invalid-response", m));
-        let fields = Fields::parse(&text).map_err(|e| invalid(format!("página inválida: {e}")))?;
+        let fields = Fields::parse(&text).map_err(|e| invalid(format!("invalid page: {e}")))?;
         let items = json::array_items(fields.raw("items").unwrap_or("[]"))
-            .map_err(|e| invalid(format!("itens inválidos: {e}")))?;
+            .map_err(|e| invalid(format!("invalid items: {e}")))?;
         collected.extend(items.into_iter().map(str::to_owned));
         match fields.string("nextCursor") {
             Some(next) => cursor = Some(next),

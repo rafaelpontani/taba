@@ -10,11 +10,11 @@ const OPTS: [Opt; 3] = [val("name"), val("tag"), flag("all")];
 #[test]
 fn reads_values_flags_and_positionals_in_any_order() {
     let p = parse(
-        &a(&["pedidos", "--name", "x", "--all", "-o", "table", "extra"]),
+        &a(&["orders", "--name", "x", "--all", "-o", "table", "extra"]),
         &OPTS,
     )
     .unwrap();
-    assert_eq!(p.positional, ["pedidos", "extra"]);
+    assert_eq!(p.positional, ["orders", "extra"]);
     assert_eq!(p.value("name"), Some("x"));
     assert!(p.flag("all"));
     assert_eq!(p.value("output"), Some("table"));
@@ -51,16 +51,16 @@ fn double_dash_ends_options_and_a_lone_dash_is_positional() {
 /// UC: UC-CLI-005
 #[test]
 fn rejects_unknown_options_missing_values_and_values_on_flags() {
-    assert!(parse(&a(&["--nada"]), &OPTS)
+    assert!(parse(&a(&["--nope"]), &OPTS)
         .unwrap_err()
-        .contains("--nada"));
+        .contains("--nope"));
     assert!(parse(&a(&["-z"]), &OPTS).unwrap_err().contains("-z"));
     assert!(parse(&a(&["--name"]), &OPTS)
         .unwrap_err()
-        .contains("precisa de um valor"));
+        .contains("needs a value"));
     assert!(parse(&a(&["--all=1"]), &OPTS)
         .unwrap_err()
-        .contains("não recebe valor"));
+        .contains("takes no value"));
     assert!(parse(&a(&["-qx"]), &OPTS).is_err());
 }
 

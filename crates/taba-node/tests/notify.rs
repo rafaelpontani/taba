@@ -1,6 +1,6 @@
-//! Os avisos de mensagem nova entre os nós (doc 13, seção 12.8; doc 20b, nível **C**): o
-//! responsável por tópico, a janela que agrupa as prontas num aviso só, a espera pelo `take`, a
-//! passagem ao próximo nó com ouvinte e o resultado do aviso no nó que o recebe.
+//! The new-message notices between the nodes (doc 13, section 12.8; doc 20b, level **C**): the
+//! topic owner, the window that groups the ready ones into a single notice, the wait for the `take`, the
+//! pass to the next node with a listener and the result of the notice on the node that receives it.
 
 mod common;
 
@@ -26,7 +26,7 @@ async fn publish(cluster: &TestCluster, topic: &str, count: usize) {
     }
 }
 
-/// Os avisos do tipo `outcome` na direção `direction` que o nó contou até agora.
+/// The notices of type `outcome` in the direction `direction` that the node has counted so far.
 async fn notices(cluster: &TestCluster, number: usize, direction: &str, outcome: &str) -> f64 {
     let text = cluster.node(number).metrics().await;
     total(
@@ -36,7 +36,7 @@ async fn notices(cluster: &TestCluster, number: usize, direction: &str, outcome:
     )
 }
 
-/// Os nós dizem a todos que têm ouvinte do tópico (sem `GET` de verdade: ninguém vem buscar).
+/// The nodes tell everyone that they have a listener on the topic (without a real `GET`: no one comes to fetch).
 async fn silent_listeners(
     cluster: &TestCluster,
     topic: &str,
@@ -49,13 +49,13 @@ async fn silent_listeners(
     for number in 1..=cluster.nodes.len() {
         let signals = signals_of(cluster, number);
         let topic = topic.to_owned();
-        // O próprio nó não guarda o interesse dele na tabela dos outros.
+        // The node itself does not keep its own interest in the others' table.
         let expected: Vec<String> = numbers
             .iter()
             .filter(|n| **n != number)
             .map(|n| cluster.node_id(*n))
             .collect();
-        eventually("o interesse chegar a todos os nós", move || {
+        eventually("the interest to reach all the nodes", move || {
             let known = signals.listener_nodes(&topic);
             expected.iter().all(|id| known.contains(id))
         })
@@ -82,17 +82,17 @@ async fn the_ready_messages_of_a_window_become_one_notice_with_the_quantity() {
     publish(&cluster, "avisos", 24).await;
 
     let signals = signals_of(&cluster, 2);
-    eventually("o aviso chegar ao nó 2", {
+    eventually("the notice to reach node 2", {
         let signals = signals.clone();
         move || signals.last_notice_count("avisos").is_some()
     })
     .await;
-    // Cada dono (os nós 1 e 3) mandou um aviso só, com as prontas da janela e não uma.
+    // Each owner (nodes 1 and 3) sent a single notice, with the window's ready ones and not one.
     tokio::time::sleep(Duration::from_millis(400)).await;
     let received = notices(&cluster, 2, "in", "received").await;
-    assert!(received <= 2.0, "um aviso por dono, vieram {received}");
+    assert!(received <= 2.0, "one notice per owner, got {received}");
     let count = signals.last_notice_count("avisos").unwrap();
-    assert!(count > 1, "o aviso traz a quantidade, veio {count}");
+    assert!(count > 1, "the notice carries the count, got {count}");
     cluster.shutdown().await;
 }
 
@@ -111,18 +111,18 @@ async fn the_notice_goes_to_one_listener_at_a_time_and_passes_on_when_nobody_com
     settled(&cluster).await;
     let _listeners = silent_listeners(&cluster, "avisos", &[2, 3]).await;
 
-    // Com mensagens bastantes, o nó 1 é dono de alguma e abre o ciclo dele.
+    // With enough messages, node 1 owns some and opens its cycle.
     publish(&cluster, "avisos", 30).await;
 
-    eventually_async("o primeiro aviso do nó 1", || async {
+    eventually_async("node 1's first notice", || async {
         notices(&cluster, 1, "out", "sent").await >= 1.0
     })
     .await;
-    // Um nó por vez: enquanto o primeiro tem tempo de vir buscar, o segundo não é avisado.
+    // One node at a time: while the first has time to come fetch, the second is not notified.
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert_eq!(notices(&cluster, 1, "out", "sent").await, 1.0);
-    // Ninguém veio: passa ao próximo, e acabados os nós o ciclo termina.
-    eventually_async("o aviso ao segundo nó", || async {
+    // No one came: it moves on to the next, and with the nodes run out the cycle ends.
+    eventually_async("the notice to the second node", || async {
         notices(&cluster, 1, "out", "sent").await >= 2.0
     })
     .await;
@@ -146,7 +146,7 @@ async fn a_notice_is_a_hint_that_ends_fetched_or_empty() {
     settled(&cluster).await;
     let query = "waitTime=5&maxMessages=1&visibilityTimeout=60";
 
-    // Vazio: o aviso (e a lista de prontas) do nó 1 está velho, e o `take` volta sem nada.
+    // Empty: node 1's notice (and ready list) is old, and the `take` comes back with nothing.
     let waiting = {
         let node = cluster.node(2);
         let client = node.client.clone();
@@ -154,7 +154,7 @@ async fn a_notice_is_a_hint_that_ends_fetched_or_empty() {
         tokio::spawn(async move { client.get(url).send().await })
     };
     let signals = signals_of(&cluster, 2);
-    eventually("o ouvinte do nó 2", {
+    eventually("node 2's listener", {
         let signals = signals.clone();
         move || signals.local_listener_count("avisos") == 1
     })
@@ -174,14 +174,14 @@ async fn a_notice_is_a_hint_that_ends_fetched_or_empty() {
             count: 1,
         },
     });
-    eventually_async("o aviso velho contado como vazio", || async {
+    eventually_async("the old notice counted as empty", || async {
         notices(&cluster, 2, "in", "empty").await >= 1.0
     })
     .await;
     waiting.abort();
 
-    // Buscado: um `GET` espera no nó 2 e a mensagem pronta é de outro nó. Se o dono for o próprio
-    // nó 2 a mensagem não viaja, então repete até um dono de fora.
+    // Fetched: a `GET` waits on node 2 and the ready message is from another node. If the owner is node 2
+    // itself the message does not travel, so it repeats until an outside owner.
     for _ in 0..20 {
         if notices(&cluster, 2, "in", "fetched").await >= 1.0 {
             break;
@@ -190,7 +190,7 @@ async fn a_notice_is_a_hint_that_ends_fetched_or_empty() {
         let client = node.client.clone();
         let url = node.client_url(&format!("/topics/avisos/messages?{query}"));
         let get = tokio::spawn(async move { client.get(url).send().await.unwrap().status() });
-        eventually("o ouvinte do nó 2", {
+        eventually("node 2's listener", {
             let signals = signals.clone();
             move || signals.local_listener_count("avisos") == 1
         })

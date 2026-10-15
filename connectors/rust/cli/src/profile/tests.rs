@@ -75,13 +75,13 @@ fn the_first_profile_becomes_the_default_and_names_are_validated() {
     f.add("local", profile(&[("url", "http://127.0.0.1:8080")]))
         .unwrap();
     assert_eq!(f.default.as_deref(), Some("local"));
-    f.add("hml", Profile::default()).unwrap();
+    f.add("stg", Profile::default()).unwrap();
     assert_eq!(f.default.as_deref(), Some("local"));
     assert!(f
-        .add("hml", Profile::default())
+        .add("stg", Profile::default())
         .unwrap_err()
-        .contains("já existe"));
-    for bad in ["", "com espaço", "a/b", "ç", &"x".repeat(65)] {
+        .contains("already exists"));
+    for bad in ["", "with space", "a/b", "ç", &"x".repeat(65)] {
         assert!(f.add(bad, Profile::default()).is_err(), "{bad:?}");
     }
 }
@@ -98,7 +98,10 @@ fn fields_are_validated_when_set() {
     assert!(p.set("max-attempts", "11").is_err());
     assert!(p.set("connect-timeout", "x").is_err());
     assert!(p.set("token", " ").is_err());
-    assert!(p.set("cor", "azul").unwrap_err().contains("não é um campo"));
+    assert!(p
+        .set("color", "blue")
+        .unwrap_err()
+        .contains("is not a profile field"));
     assert_eq!(p.entries(), [("url", "https://taba")]);
     p.unset("url");
     assert!(p.entries().is_empty());
@@ -140,7 +143,7 @@ fn the_file_round_trips_in_order() {
     )
     .unwrap();
     f.add(
-        "hml",
+        "stg",
         profile(&[
             ("max-attempts", "5"),
             ("output", "table"),
@@ -149,27 +152,27 @@ fn the_file_round_trips_in_order() {
     )
     .unwrap();
     let text = f.render();
-    assert!(text.starts_with("# Perfis do taba-cli."));
+    assert!(text.starts_with("# taba-cli profiles."));
     assert_eq!(ConfigFile::parse(&text).unwrap(), f);
-    assert!(text.find("local").unwrap() < text.find("hml").unwrap());
+    assert!(text.find("local").unwrap() < text.find("stg").unwrap());
 }
 
 /// UC: UC-CLI-028
 #[test]
 fn invalid_content_is_refused_with_a_reason() {
     for (doc, why) in [
-        ("a: 1\n", "chave desconhecida"),
-        ("default: x\n", "não existe"),
-        ("profiles:\n  a: b\n", "precisa ser um mapa"),
+        ("a: 1\n", "unknown key"),
+        ("default: x\n", "does not exist"),
+        ("profiles:\n  a: b\n", "must be a map"),
         ("profiles:\n  a:\n    url: nope\n", "url"),
-        ("profiles:\n  a:\n    cor: azul\n", "não é um campo"),
-        ("profiles:\n  \"a b\": {}\n", "inválido"),
         (
-            "profiles:\n  a:\n    url:\n      x: y\n",
-            "precisa ser um texto",
+            "profiles:\n  a:\n    color: blue\n",
+            "is not a profile field",
         ),
-        ("profiles: x\n", "tipo errado"),
-        ("a: [\n", "linha 1"),
+        ("profiles:\n  \"a b\": {}\n", "invalid"),
+        ("profiles:\n  a:\n    url:\n      x: y\n", "must be a text"),
+        ("profiles: x\n", "wrong type"),
+        ("a: [\n", "line 1"),
     ] {
         let e = ConfigFile::parse(doc).unwrap_err();
         assert!(e.contains(why), "{doc:?}: {e}");
@@ -203,12 +206,12 @@ fn a_missing_file_is_empty_and_saving_replaces_it_atomically() {
     assert_eq!(
         leftovers.len(),
         1,
-        "sobrou arquivo temporário: {leftovers:?}"
+        "temporary file left over: {leftovers:?}"
     );
 
     fs::write(&path, "profiles:\n  a: [\n").unwrap();
     let e = load(&path).unwrap_err();
-    assert!(e.contains("config.yml") && e.contains("linha 2"), "{e}");
+    assert!(e.contains("config.yml") && e.contains("line 2"), "{e}");
     let _ = fs::remove_dir_all(&dir);
 }
 

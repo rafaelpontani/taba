@@ -66,14 +66,14 @@ fn names(result: &ListResult) -> Vec<String> {
 async fn code<T>(result: impl std::future::Future<Output = Result<T, TabaError>>) -> ErrorCode {
     match result.await {
         Err(e) => e.code,
-        Ok(_) => panic!("esperava um erro"),
+        Ok(_) => panic!("expected an error"),
     }
 }
 
 #[tokio::test]
 async fn a_new_queue_has_the_defaults_and_the_cluster_values_in_effect() {
     let h = harness();
-    let view = h.topics.create(queue("pedidos")).await.unwrap();
+    let view = h.topics.create(queue("orders")).await.unwrap();
     let json = view.to_json();
     assert_eq!(json["type"], "queue");
     assert_eq!(json["volatile"], false);
@@ -83,7 +83,7 @@ async fn a_new_queue_has_the_defaults_and_the_cluster_values_in_effect() {
         serde_json::json!({ "maxMessageBytes": 5_242_880, "ttl": 1_209_600, "maxDeliveries": 10 })
     );
     assert!(crate::core::id::is_guid_v7(&view.definition.id));
-    assert_eq!(h.store.names(), ["pedidos"]);
+    assert_eq!(h.store.names(), ["orders"]);
 }
 
 #[tokio::test]
@@ -113,9 +113,9 @@ async fn a_volatile_queue_without_idle_timeout_gets_the_default() {
 #[tokio::test]
 async fn creating_an_existing_name_conflicts_and_names_are_case_sensitive() {
     let h = harness();
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     assert_eq!(
-        code(h.topics.create(queue("pedidos"))).await,
+        code(h.topics.create(queue("orders"))).await,
         ErrorCode::TopicAlreadyExists
     );
     h.topics.create(queue("Pedidos")).await.unwrap();
@@ -124,9 +124,9 @@ async fn creating_an_existing_name_conflicts_and_names_are_case_sensitive() {
 #[tokio::test]
 async fn recreating_after_a_delete_gives_a_new_id() {
     let h = harness();
-    let first = h.topics.create(queue("pedidos")).await.unwrap();
-    h.topics.delete("pedidos").await.unwrap();
-    let second = h.topics.create(queue("pedidos")).await.unwrap();
+    let first = h.topics.create(queue("orders")).await.unwrap();
+    h.topics.delete("orders").await.unwrap();
+    let second = h.topics.create(queue("orders")).await.unwrap();
     assert_ne!(first.definition.id, second.definition.id);
 }
 
@@ -158,7 +158,7 @@ async fn a_failed_write_leaves_nothing_visible() {
 #[tokio::test]
 async fn open_resumes_the_definitions_saved_in_the_store() {
     let h = harness();
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     h.topics
         .create(distributor("dist", &["ped"]))
         .await
@@ -168,8 +168,8 @@ async fn open_resumes_the_definitions_saved_in_the_store() {
         .await
         .unwrap();
     assert_eq!(
-        again.get("pedidos").unwrap().definition,
-        h.topics.get("pedidos").unwrap().definition
+        again.get("orders").unwrap().definition,
+        h.topics.get("orders").unwrap().definition
     );
     assert!(again.get("dist").is_ok());
 
@@ -177,7 +177,7 @@ async fn open_resumes_the_definitions_saved_in_the_store() {
         .await
         .unwrap();
     assert_eq!(
-        code(async { fresh.get("pedidos") }).await,
+        code(async { fresh.get("orders") }).await,
         ErrorCode::TopicNotFound
     );
 }
@@ -186,7 +186,7 @@ async fn open_resumes_the_definitions_saved_in_the_store() {
 #[tokio::test]
 async fn name_and_tags_are_validated_with_the_field_in_details() {
     let h = harness();
-    let err = h.topics.create(queue("com espaço")).await.unwrap_err();
+    let err = h.topics.create(queue("with space")).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::ValidationInvalidName);
     assert_eq!(err.details[0].field, "name");
 
@@ -340,7 +340,7 @@ async fn patch_changes_only_what_is_sent_and_tags_replace_the_whole_map() {
     let created = CreateTopic {
         tags: Some([("a".to_owned(), "1".to_owned())].into()),
         ttl: Some(100),
-        ..queue("pedidos")
+        ..queue("orders")
     };
     h.topics.create(created).await.unwrap();
 
@@ -350,16 +350,16 @@ async fn patch_changes_only_what_is_sent_and_tags_replace_the_whole_map() {
     };
     let json = h
         .topics
-        .update("pedidos", only_tags)
+        .update("orders", only_tags)
         .await
         .unwrap()
         .to_json();
     assert_eq!(json["tags"], serde_json::json!({ "b": "2" }));
-    assert_eq!(json["ttl"], 100, "o que não veio não muda");
+    assert_eq!(json["ttl"], 100, "what did not come does not change");
 
     let json = h
         .topics
-        .update("pedidos", UpdateTopic::default())
+        .update("orders", UpdateTopic::default())
         .await
         .unwrap()
         .to_json();
@@ -373,7 +373,7 @@ async fn patch_null_returns_to_the_cluster_default() {
         ttl: Some(100),
         max_deliveries: Some(3),
         max_message_bytes: Some(1000),
-        ..queue("pedidos")
+        ..queue("orders")
     };
     h.topics.create(created).await.unwrap();
     let reset = UpdateTopic {
@@ -382,7 +382,7 @@ async fn patch_null_returns_to_the_cluster_default() {
         max_message_bytes: Patch::Null,
         ..Default::default()
     };
-    let json = h.topics.update("pedidos", reset).await.unwrap().to_json();
+    let json = h.topics.update("orders", reset).await.unwrap().to_json();
     assert!(json["ttl"].is_null() && json["maxDeliveries"].is_null());
     assert_eq!(json["effective"]["ttl"], 1_209_600);
     assert_eq!(json["effective"]["maxMessageBytes"], 5_242_880);
@@ -392,13 +392,13 @@ async fn patch_null_returns_to_the_cluster_default() {
 #[tokio::test]
 async fn patch_refuses_immutable_fields_even_with_the_current_value() {
     let h = harness();
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     for field in ["name", "id", "type", "volatile", "fifo"] {
         let patch = UpdateTopic {
             immutable_present: vec![field.to_owned()],
             ..Default::default()
         };
-        let err = h.topics.update("pedidos", patch).await.unwrap_err();
+        let err = h.topics.update("orders", patch).await.unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationImmutableField, "{field}");
         assert_eq!(err.details[0].field, field);
     }
@@ -408,7 +408,7 @@ async fn patch_refuses_immutable_fields_even_with_the_current_value() {
 #[tokio::test]
 async fn patch_validates_applicability_and_ranges() {
     let h = harness();
-    h.topics.create(queue("fila")).await.unwrap();
+    h.topics.create(queue("queue")).await.unwrap();
     h.topics.create(distributor("dist", &["p"])).await.unwrap();
 
     let ttl_on_distributor = UpdateTopic {
@@ -424,7 +424,7 @@ async fn patch_validates_applicability_and_ranges() {
         ..Default::default()
     };
     assert_eq!(
-        code(h.topics.update("fila", prefixes_on_queue)).await,
+        code(h.topics.update("queue", prefixes_on_queue)).await,
         ErrorCode::ValidationNotApplicable
     );
     let idle_on_plain_queue = UpdateTopic {
@@ -432,7 +432,7 @@ async fn patch_validates_applicability_and_ranges() {
         ..Default::default()
     };
     assert_eq!(
-        code(h.topics.update("fila", idle_on_plain_queue)).await,
+        code(h.topics.update("queue", idle_on_plain_queue)).await,
         ErrorCode::ValidationNotApplicable
     );
     let out = UpdateTopic {
@@ -440,7 +440,7 @@ async fn patch_validates_applicability_and_ranges() {
         ..Default::default()
     };
     assert_eq!(
-        code(h.topics.update("fila", out)).await,
+        code(h.topics.update("queue", out)).await,
         ErrorCode::ValidationOutOfRange
     );
     let new_prefixes = UpdateTopic {
@@ -459,18 +459,18 @@ async fn patch_validates_applicability_and_ranges() {
 #[tokio::test]
 async fn unknown_topics_are_404_and_dead_letters_are_read_only() {
     let h = harness();
-    h.topics.create(queue("pedidos")).await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
     h.topics.create(distributor("dist", &["p"])).await.unwrap();
 
     assert_eq!(
-        code(h.topics.update("nada", UpdateTopic::default())).await,
+        code(h.topics.update("nothing", UpdateTopic::default())).await,
         ErrorCode::TopicNotFound
     );
     assert_eq!(
-        code(h.topics.delete("nada")).await,
+        code(h.topics.delete("nothing")).await,
         ErrorCode::TopicNotFound
     );
-    for dead_letter in ["pedidos-dead-letter"] {
+    for dead_letter in ["orders-dead-letter"] {
         assert_eq!(
             code(h.topics.update(dead_letter, UpdateTopic::default())).await,
             ErrorCode::TopicReadOnly
@@ -480,8 +480,8 @@ async fn unknown_topics_are_404_and_dead_letters_are_read_only() {
             ErrorCode::TopicReadOnly
         );
     }
-    // Um distribuidor não tem dead-letter, e a de uma fila que não existe também não.
-    for missing in ["dist-dead-letter", "nada-dead-letter"] {
+    // A distributor has no dead-letter, and neither does the dead-letter of a queue that does not exist.
+    for missing in ["dist-dead-letter", "nothing-dead-letter"] {
         assert_eq!(
             code(h.topics.update(missing, UpdateTopic::default())).await,
             ErrorCode::TopicNotFound,
@@ -497,20 +497,20 @@ async fn the_dead_letter_is_derived_from_its_queue_and_never_stored() {
         tags: Some([("time".to_owned(), "fin".to_owned())].into()),
         ttl: Some(500),
         fifo: Some(true),
-        ..queue("pedidos")
+        ..queue("orders")
     };
     let source = h.topics.create(source).await.unwrap();
 
-    let dl = h.topics.get("pedidos-dead-letter").unwrap().to_json();
+    let dl = h.topics.get("orders-dead-letter").unwrap().to_json();
     assert_eq!(dl["deadLetter"], true);
-    assert_eq!(dl["source"], "pedidos");
+    assert_eq!(dl["source"], "orders");
     assert_eq!(dl["ttl"], 500);
     assert_eq!(dl["tags"], serde_json::json!({ "time": "fin" }));
-    assert_eq!(dl["fifo"], false, "a dead-letter de uma FIFO não é FIFO");
+    assert_eq!(dl["fifo"], false, "a FIFO's dead-letter is not FIFO");
     assert_ne!(dl["id"], source.to_json()["id"]);
-    assert_eq!(h.store.names(), ["pedidos"], "nada é gravado para ela");
+    assert_eq!(h.store.names(), ["orders"], "nothing is stored for it");
 
-    let mut json = h.topics.get("pedidos").unwrap().to_json();
+    let mut json = h.topics.get("orders").unwrap().to_json();
     assert!(json.get("deadLetter").is_none() && json.get("source").is_none());
     json = h
         .topics
@@ -523,10 +523,10 @@ async fn the_dead_letter_is_derived_from_its_queue_and_never_stored() {
 #[tokio::test]
 async fn deleting_a_queue_takes_its_dead_letter_with_it() {
     let h = harness();
-    h.topics.create(queue("pedidos")).await.unwrap();
-    h.topics.delete("pedidos").await.unwrap();
+    h.topics.create(queue("orders")).await.unwrap();
+    h.topics.delete("orders").await.unwrap();
     assert_eq!(
-        code(async { h.topics.get("pedidos-dead-letter") }).await,
+        code(async { h.topics.get("orders-dead-letter") }).await,
         ErrorCode::TopicNotFound
     );
     assert!(h.store.names().is_empty());
@@ -600,7 +600,7 @@ async fn sort_accepts_name_id_and_created_at_ascending_and_descending() {
 #[tokio::test]
 async fn name_filter_matches_substrings_and_is_case_sensitive() {
     let h = harness();
-    seeded(&h, &["pedidos-eu", "pedidos-us", "Pedidos", "faturas"]).await;
+    seeded(&h, &["orders-eu", "orders-us", "Pedidos", "faturas"]).await;
     let filtered = |text: &str| {
         let query = ListQuery {
             name: Some(text.into()),
@@ -611,9 +611,9 @@ async fn name_filter_matches_substrings_and_is_case_sensitive() {
             .filter(|n| !n.ends_with("-dead-letter"))
             .collect::<Vec<_>>()
     };
-    assert_eq!(filtered("pedidos"), ["pedidos-eu", "pedidos-us"]);
+    assert_eq!(filtered("orders"), ["orders-eu", "orders-us"]);
     assert_eq!(filtered("Pedidos"), ["Pedidos"]);
-    assert_eq!(filtered("eu"), ["pedidos-eu"]);
+    assert_eq!(filtered("eu"), ["orders-eu"]);
     assert!(filtered("zzz").is_empty());
 }
 
@@ -641,7 +641,7 @@ fn walk(h: &Harness, sort: Option<&str>, limit: usize) -> Vec<String> {
 #[tokio::test]
 async fn walking_every_page_returns_each_item_once_even_with_equal_creation_times() {
     let h = harness();
-    // Sem avançar o relógio: todos têm o mesmo `createdAt` e só o `id` desempata.
+    // Without advancing the clock: all have the same `createdAt` and only the `id` breaks the tie.
     for name in ["a", "b", "c", "d", "e"] {
         h.topics.create(queue(name)).await.unwrap();
     }
@@ -657,7 +657,7 @@ async fn walking_every_page_returns_each_item_once_even_with_equal_creation_time
             let seen = walk(&h, sort, limit);
             let unique: BTreeSet<_> = seen.iter().collect();
             assert_eq!(seen.len(), 10, "{sort:?} limit {limit}: {seen:?}");
-            assert_eq!(unique.len(), 10, "repetido em {sort:?} limit {limit}");
+            assert_eq!(unique.len(), 10, "repeated in {sort:?} limit {limit}");
         }
     }
 }
@@ -675,8 +675,8 @@ async fn inserting_or_removing_before_the_cursor_does_not_shift_the_next_page() 
         .unwrap();
     assert_eq!(names(&first), ["b", "b-dead-letter"]);
 
-    seeded(&h, &["a"]).await; // entra antes da chave do cursor
-    h.topics.delete("b").await.unwrap(); // some, e o cursor continua valendo
+    seeded(&h, &["a"]).await; // comes before the cursor's key
+    h.topics.delete("b").await.unwrap(); // goes away, and the cursor keeps applying
     let second = h
         .topics
         .list(ListQuery {
@@ -687,7 +687,7 @@ async fn inserting_or_removing_before_the_cursor_does_not_shift_the_next_page() 
         .unwrap();
     assert_eq!(names(&second), ["d", "d-dead-letter"]);
 
-    // Repetir o cursor devolve a mesma página enquanto nada muda.
+    // Repeating the cursor returns the same page while nothing changes.
     let again = h
         .topics
         .list(ListQuery {

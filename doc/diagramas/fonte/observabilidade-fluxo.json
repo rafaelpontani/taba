@@ -2,35 +2,35 @@
   "schema_version": 1,
   "diagram_type": "dataflow",
   "meta": {
-    "title": "Caminhos da telemetria",
+    "title": "Telemetry paths",
     "output": "doc/diagramas/html/observabilidade-fluxo.html",
     "quality_profile": "showcase"
   },
   "stages": [
     {
-      "label": "No nó"
+      "label": "On the node"
     },
     {
-      "label": "Saídas"
+      "label": "Outputs"
     },
     {
-      "label": "Quem lê"
+      "label": "Who reads"
     }
   ],
   "nodes": [
     {
       "id": "inst",
       "type": "backend",
-      "label": "Instrumentos",
-      "sublabel": "métricas, traces, logs",
+      "label": "Instruments",
+      "sublabel": "metrics, traces, logs",
       "stage": 0,
       "row": 1
     },
     {
       "id": "peers",
       "type": "backend",
-      "label": "Outros nós",
-      "sublabel": "estado e métricas de tópico",
+      "label": "Other nodes",
+      "sublabel": "state and topic metrics",
       "stage": 0,
       "row": 2
     },
@@ -38,7 +38,7 @@
       "id": "otlp",
       "type": "messagebus",
       "label": "OTLP",
-      "sublabel": "push, tudo",
+      "sublabel": "push, everything",
       "stage": 1,
       "row": 0
     },
@@ -46,7 +46,7 @@
       "id": "prom",
       "type": "messagebus",
       "label": "GET /metrics",
-      "sublabel": "pull, só deste nó",
+      "sublabel": "pull, this node only",
       "stage": 1,
       "row": 1
     },
@@ -54,15 +54,15 @@
       "id": "json",
       "type": "frontend",
       "label": "/health/cluster",
-      "sublabel": "e /metrics/topics, JSON",
+      "sublabel": "and /metrics/topics, JSON",
       "stage": 1,
       "row": 2
     },
     {
       "id": "collector",
       "type": "external",
-      "label": "Coletor OTLP",
-      "sublabel": "qualquer backend",
+      "label": "OTLP collector",
+      "sublabel": "any backend",
       "stage": 2,
       "row": 0
     },
@@ -70,15 +70,15 @@
       "id": "prometheus",
       "type": "external",
       "label": "Prometheus",
-      "sublabel": "soma os nós (PromQL)",
+      "sublabel": "sums the nodes (PromQL)",
       "stage": 2,
       "row": 1
     },
     {
       "id": "operator",
       "type": "external",
-      "label": "Operador",
-      "sublabel": "CLI e scripts",
+      "label": "Operator",
+      "sublabel": "CLI and scripts",
       "stage": 2,
       "row": 2
     }
@@ -87,33 +87,33 @@
     {
       "from": "inst",
       "to": "otlp",
-      "label": "mesma fonte",
+      "label": "same source",
       "variant": "emphasis"
     },
     {
       "from": "inst",
       "to": "prom",
-      "label": "coleta",
+      "label": "pull",
       "route": "straight",
       "labelDx": 30
     },
     {
       "from": "peers",
       "to": "json",
-      "label": "consulta",
+      "label": "queries",
       "variant": "dashed",
       "route": "straight"
     },
     {
       "from": "otlp",
       "to": "collector",
-      "label": "tudo",
+      "label": "all",
       "route": "straight"
     },
     {
       "from": "prom",
       "to": "prometheus",
-      "label": "métricas",
+      "label": "metrics",
       "route": "straight"
     },
     {
@@ -126,10 +126,10 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Sem agregação no servidor",
+      "title": "No aggregation on the server",
       "items": [
-        "Cada nó reporta o seu; o total é do backend",
-        "A exceção são as rotas JSON, que consultam os nós"
+        "Each node reports its own; the total is the backend's",
+        "The exception is the JSON routes, which query the nodes"
       ]
     }
   ]

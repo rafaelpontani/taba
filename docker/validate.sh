@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# A validação de ponta a ponta da versão 0.1 (doc/pt-BR/32-roadmap.md).
+# The end-to-end validation of version 0.1 (doc/pt-BR/32-roadmap.md).
 #
-# Sobe o Compose da raiz do zero e confere, nesta ordem:
-#   1. o cluster forma: três nós saudáveis e `taba-cli health cluster` sem condições;
-#   2. o taba-cli publica e consome (tópico, publish, consume --ack, list);
-#   3. a queda brusca de um nó (`docker compose kill`): é detectada, o nó é excluído por votação, as
-#      publicações e o consumo seguem com dois nós, e o nó volta como nó novo (`docker compose start`);
-#   4. a saída ordenada de outro nó (`docker compose stop`, que dispara o drain) e a volta dele;
-#   5. em nenhum momento uma mensagem publicada (confirmada pelo quórum) se perde: ao fim, o conjunto
-#      de mensagens confirmadas é exatamente o publicado;
-#   6. o backup em S3 (o MinIO do Compose): `POST /cluster/stop`, os discos dos nós apagados, o
-#      cluster sobe de novo e as mensagens publicadas voltam do bucket.
+# Starts the root Compose from scratch and checks, in this order:
+#   1. the cluster forms: three healthy nodes and `taba-cli health cluster` with no conditions;
+#   2. taba-cli publishes and consumes (topic, publish, consume --ack, list);
+#   3. an abrupt node crash (`docker compose kill`): it is detected, the node is excluded by vote,
+#      publishing and consuming go on with two nodes, and the node returns as a new node (`docker compose start`);
+#   4. the orderly exit of another node (`docker compose stop`, which triggers the drain) and its return;
+#   5. at no point is a published message (acknowledged by the quorum) lost: at the end, the set of
+#      confirmed messages is exactly the published one;
+#   6. the S3 backup (the Compose MinIO): `POST /cluster/stop`, the nodes' disks wiped, the
+#      cluster starts again and the published messages come back from the bucket.
 #
-# Só usa o taba-cli: é o teste geral integrado do cluster, e não de um conector. Cada conector tem o seu
-# teste (ex.: connectors/csharp/scripts/integration.sh). Subir, derrubar e provocar falhas no cluster
-# está em docker/cluster.sh, que os testes dos conectores também usam (source ou linha de comando).
+# It only uses taba-cli: it is the general integrated cluster test, not a connector's. Each connector has
+# its own test (e.g. connectors/csharp/scripts/integration.sh). Starting, tearing down and causing failures
+# in the cluster lives in docker/cluster.sh, which the connector tests also use (source or command line).
 #
-# Uso:
-#   docker/validate.sh                  # tudo, do zero; apaga o cluster no fim
-#   docker/validate.sh --keep           # deixa o cluster de pé no fim
-#   docker/validate.sh --no-build       # reaproveita as imagens já construídas
+# Usage:
+#   docker/validate.sh                  # everything, from scratch; deletes the cluster at the end
+#   docker/validate.sh --keep           # leaves the cluster up at the end
+#   docker/validate.sh --no-build       # reuses the images already built
 #
-# Precisa de Docker (com o plugin compose). A porta 8080 do host precisa estar livre.
+# Needs Docker (with the compose plugin). The host's port 8080 must be free.
 
 set -euo pipefail
 
@@ -33,12 +33,12 @@ while [ $# -gt 0 ]; do
     --keep) TABA_KEEP=1 ;;
     --no-build) TABA_BUILD=0 ;;
     -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "opção desconhecida: $1 (veja --help)" >&2; exit 2 ;;
+    *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
 done
 
-# Atalhos para as funções de docker/cluster.sh, a biblioteca que os testes dos conectores também usam.
+# Shortcuts for the functions in docker/cluster.sh, the library the connector tests also use.
 step() { taba_step "$@"; }
 ok() { taba_ok "$@"; }
 die() { taba_die "$@"; }
@@ -56,16 +56,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Publica "$2" mensagens de texto "$1-N" no tópico "$3" e anota cada uma em $PUBLISHED.
+# Publishes "$2" text messages "$1-N" to topic "$3" and records each one in $PUBLISHED.
 publish_many() {
   local prefix="$1" count="$2" topic="$3" n
   for n in $(seq 1 "$count"); do
-    cli publish "$topic" --text "$prefix-$n" --id-only >/dev/null || die "publicar $prefix-$n em $topic"
+    cli publish "$topic" --text "$prefix-$n" --id-only >/dev/null || die "publish $prefix-$n to $topic"
     echo "$prefix-$n" >> "$PUBLISHED"
   done
 }
 
-# Consome e confirma o que houver (até esvaziar), anotando em $ACKED.
+# Consumes and acknowledges whatever there is (until empty), recording it in $ACKED.
 drain_topic() {
   local topic="$1" max_rounds="${2:-20}" round out
   for round in $(seq 1 "$max_rounds"); do
@@ -75,102 +75,103 @@ drain_topic() {
   done
 }
 
-# --- 1. o cluster forma ------------------------------------------------------------------------
+# --- 1. the cluster forms ----------------------------------------------------------------------
 
 taba_up
 
-step "O cluster formou: taba-cli health cluster"
-[ "$(active_members)" = "3" ] || die "esperava 3 membros ativos, achei '$(active_members)'"
-cli health cluster -o json | grep -q '"conditions": \[\]' || die "o cluster tem condições: $(cli health cluster -o table)"
-ok "3 membros ativos e nenhuma condição"
+step "The cluster formed: taba-cli health cluster"
+[ "$(active_members)" = "3" ] || die "expected 3 active members, found '$(active_members)'"
+cli health cluster -o json | grep -q '"conditions": \[\]' || die "the cluster has conditions: $(cli health cluster -o table)"
+ok "3 active members and no conditions"
 
 # --- 2. taba-cli --------------------------------------------------------------------------------
 
-step "taba-cli: criar tópico, publicar e consumir"
-cli topic create validacao-cli --type queue >/dev/null
-cli publish validacao-cli --text "ola do taba-cli" --id-only >/dev/null
-got="$(cli consume validacao-cli --max 1 --wait 5 --ack -o raw)"
-[ "$got" = "ola do taba-cli" ] || die "o consume devolveu '$got'"
-cli topic list --name validacao-cli | grep -q validacao-cli || die "o topic list não mostra o tópico"
-ok "publish, consume --ack e topic list"
+step "taba-cli: create a topic, publish and consume"
+cli topic create validation-cli --type queue >/dev/null
+cli publish validation-cli --text "hello from taba-cli" --id-only >/dev/null
+got="$(cli consume validation-cli --max 1 --wait 5 --ack -o raw)"
+[ "$got" = "hello from taba-cli" ] || die "consume returned '$got'"
+cli topic list --name validation-cli | grep -q validation-cli || die "topic list does not show the topic"
+ok "publish, consume --ack and topic list"
 
-# --- 3. queda brusca ----------------------------------------------------------------------------
+# --- 3. abrupt crash ----------------------------------------------------------------------------
 
-step "Queda brusca do taba-3 (docker compose kill)"
-cli topic create validacao-queda --type queue >/dev/null
-publish_many antes 30 validacao-queda
-ok "30 mensagens publicadas e confirmadas pelo quórum"
+step "Abrupt crash of taba-2 (docker compose kill)"
+cli topic create validation-crash --type queue >/dev/null
+publish_many before 30 validation-crash
+ok "30 messages published and confirmed by the quorum"
 
-taba_kill taba-3
+taba_kill taba-2
 taba_wait_members 2 120
 
-publish_many durante 10 validacao-queda
-ok "10 mensagens publicadas com dois nós"
-drain_topic validacao-queda 2
-[ "$(wc -l < "$ACKED")" -ge 10 ] || die "o consumo com dois nós devolveu menos de 10 mensagens"
-ok "o consumo segue com dois nós ($(wc -l < "$ACKED") confirmadas até aqui)"
+publish_many during 10 validation-crash
+ok "10 messages published with two nodes"
+drain_topic validation-crash 2
+[ "$(wc -l < "$ACKED")" -ge 10 ] || die "consuming with two nodes returned fewer than 10 messages"
+ok "consuming goes on with two nodes ($(wc -l < "$ACKED") acknowledged so far)"
 
-taba_start taba-3
-taba_wait_stable 240
-
-# --- 4. saída ordenada --------------------------------------------------------------------------
-
-step "Saída ordenada do taba-2 (docker compose stop, com drain)"
-publish_many drain 10 validacao-queda
-taba_stop taba-2
-taba_wait_members 2 120
 taba_start taba-2
 taba_wait_stable 240
 
-# --- 5. nada se perdeu --------------------------------------------------------------------------
+# --- 4. orderly exit ----------------------------------------------------------------------------
 
-step "Nenhuma mensagem confirmada se perdeu"
-drain_topic validacao-queda 30
+step "Orderly exit of taba-1 (docker compose stop, with drain)"
+publish_many drain 10 validation-crash
+taba_stop taba-1
+taba_wait_members 2 120
+taba_start taba-1
+taba_wait_stable 240
+
+# --- 5. nothing was lost ------------------------------------------------------------------------
+
+step "No acknowledged message was lost"
+drain_topic validation-crash 30
 sort -u "$PUBLISHED" > /tmp/taba-published.txt
 sort -u "$ACKED" > /tmp/taba-acked.txt
 if ! diff -q /tmp/taba-published.txt /tmp/taba-acked.txt >/dev/null; then
-  echo "publicadas e não recebidas:" >&2
+  echo "published and not received:" >&2
   comm -23 /tmp/taba-published.txt /tmp/taba-acked.txt >&2
-  die "o conjunto recebido difere do publicado"
+  die "the received set differs from the published one"
 fi
-ok "$(wc -l < /tmp/taba-published.txt) mensagens publicadas, todas recebidas e confirmadas"
+ok "$(wc -l < /tmp/taba-published.txt) messages published, all received and acknowledged"
 
-# --- 6. backup em S3 (MinIO) ---------------------------------------------------------------------
+# --- 6. S3 backup (MinIO) ------------------------------------------------------------------------
 
-step "Backup em S3: parar o cluster, apagar os discos dos nós e restaurar do MinIO"
-cli topic create validacao-backup --type queue >/dev/null
+step "S3 backup: stop the cluster, wipe the nodes' disks and restore from MinIO"
+cli topic create validation-backup --type queue >/dev/null
 BACKUP_PUBLISHED="$(mktemp)"
 for n in $(seq 1 20); do
-  cli publish validacao-backup --text "backup-$n" --id-only >/dev/null || die "publicar backup-$n"
+  cli publish validation-backup --text "backup-$n" --id-only >/dev/null || die "publish backup-$n"
   echo "backup-$n" >> "$BACKUP_PUBLISHED"
 done
-ok "20 mensagens publicadas em validacao-backup"
+ok "20 messages published to validation-backup"
 
-stop="$(taba_compose exec -T taba-1 wget -q -O - --post-data='' http://127.0.0.1:9090/cluster/stop)" || die "POST /cluster/stop"
-case "$stop" in *'"stopList":true'*) ok "parada programada: a lista dos nós foi gravada no S3" ;; *) die "o /cluster/stop não gravou a lista: $stop" ;; esac
+stop="$(taba_compose exec -T taba-0 wget -q -O - --post-data='' http://127.0.0.1:9090/cluster/stop)" || die "POST /cluster/stop"
+case "$stop" in *'"stopList":true'*) ok "planned stop: the node list was written to S3" ;; *) die "/cluster/stop did not write the list: $stop" ;; esac
 
-taba_compose stop taba-1 taba-2 taba-3 >/dev/null 2>&1
-taba_compose rm -f taba-1 taba-2 taba-3 >/dev/null 2>&1
-for volume in $(docker volume ls -q | grep -E '(^|_)data-[123]$'); do docker volume rm "$volume" >/dev/null; done
-ok "os discos dos nós foram apagados: só o bucket guarda as mensagens"
+taba_compose stop taba-0 taba >/dev/null 2>&1
+# -v also removes the replicas' anonymous volumes (the first node's `data-0` is a named volume).
+taba_compose rm -f -v taba-0 taba >/dev/null 2>&1
+for volume in $(docker volume ls -q | grep -E '(^|_)data-0$'); do docker volume rm "$volume" >/dev/null; done
+ok "the nodes' disks were wiped: only the bucket keeps the messages"
 
 taba_compose up -d
 taba_wait_healthy 240
 BACKUP_ACKED="$(mktemp)"
 for round in $(seq 1 6); do
-  cli consume validacao-backup --max 10 --wait 5 --ack -o raw >> "$BACKUP_ACKED" || true
+  cli consume validation-backup --max 10 --wait 5 --ack -o raw >> "$BACKUP_ACKED" || true
 done
 sort -u "$BACKUP_PUBLISHED" > /tmp/taba-backup-published.txt
 sort -u "$BACKUP_ACKED" > /tmp/taba-backup-acked.txt
 if ! diff -q /tmp/taba-backup-published.txt /tmp/taba-backup-acked.txt >/dev/null; then
-  echo "publicadas e não restauradas:" >&2
+  echo "published and not restored:" >&2
   comm -23 /tmp/taba-backup-published.txt /tmp/taba-backup-acked.txt >&2
-  die "a restauração do S3 não devolveu tudo"
+  die "the restore from S3 did not return everything"
 fi
 rm -f "$BACKUP_PUBLISHED" "$BACKUP_ACKED"
-ok "as 20 mensagens voltaram do S3 depois de a infraestrutura ser apagada"
+ok "the 20 messages came back from S3 after the infrastructure was wiped"
 
-step "Estado final"
+step "Final state"
 taba_status | sed -n 1,6p
 
-step "A validação passou"
+step "The validation passed"

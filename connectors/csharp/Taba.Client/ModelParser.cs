@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Taba
 {
-    /// <summary>Lê as respostas JSON da API e monta os modelos de <c>Taba.Client.Abstractions</c>.</summary>
+    /// <summary>Reads the API's JSON responses and builds the <c>Taba.Client.Abstractions</c> models.</summary>
     internal static class ModelParser
     {
         public static JsonFields Fields(string raw, string what)
@@ -20,7 +20,7 @@ namespace Taba
 
         public static Topic ParseTopic(string raw)
         {
-            JsonFields f = Fields(raw, "tópico");
+            JsonFields f = Fields(raw, "topic");
             return new Topic
             {
                 Id = f.String("id") ?? string.Empty,
@@ -35,7 +35,7 @@ namespace Taba
 
         public static Message ParseMessage(string raw)
         {
-            JsonFields f = Fields(raw, "mensagem");
+            JsonFields f = Fields(raw, "message");
             string contentType = f.String("contentType") ?? "application/json";
             string body = f.Raw("body");
             byte[] bytes;
@@ -60,11 +60,11 @@ namespace Taba
             }
             catch (FormatException)
             {
-                throw TabaException.Client("client.invalid-response", "corpo base64 inválido");
+                throw TabaException.Client("client.invalid-response", "invalid base64 body");
             }
             catch (JsonException e)
             {
-                throw TabaException.Client("client.invalid-response", "corpo da mensagem: " + e.Message);
+                throw TabaException.Client("client.invalid-response", "message body: " + e.Message);
             }
             return new Message
             {
@@ -85,7 +85,7 @@ namespace Taba
 
         public static PublishResponse ParsePublishResponse(string raw)
         {
-            JsonFields f = Fields(raw, "publicação");
+            JsonFields f = Fields(raw, "publication");
             var deliveries = new List<DistributorDelivery>();
             try
             {

@@ -1,26 +1,168 @@
 {
   "schema_version": 1,
   "diagram_type": "architecture",
-  "meta": { "title": "Exemplo: o que muda quando entra o nó D", "output": "doc/diagramas/html/anel-antes-depois.html", "quality_profile": "showcase" },
+  "meta": {
+    "title": "Example: what changes when node D joins",
+    "output": "doc/diagramas/html/anel-antes-depois.html",
+    "quality_profile": "showcase"
+  },
   "components": [
-    { "id": "a1", "type": "backend", "label": "Nó A", "sublabel": "primário dos blocos 0 e 3", "pos": [40, 70], "size": [200, 64] },
-    { "id": "b1", "type": "backend", "label": "Nó B", "sublabel": "primário dos blocos 1 e 4", "pos": [40, 190], "size": [200, 64] },
-    { "id": "c1", "type": "backend", "label": "Nó C", "sublabel": "primário dos blocos 2 e 5", "pos": [40, 310], "size": [200, 64] },
-    { "id": "a2", "type": "backend", "label": "Nó A", "sublabel": "mantém o bloco 0", "pos": [640, 70], "size": [200, 64] },
-    { "id": "b2", "type": "backend", "label": "Nó B", "sublabel": "mantém os blocos 1 e 4", "pos": [640, 190], "size": [200, 64] },
-    { "id": "c2", "type": "backend", "label": "Nó C", "sublabel": "mantém o bloco 2", "pos": [640, 310], "size": [200, 64] },
-    { "id": "d2", "type": "security", "label": "Nó D (novo)", "sublabel": "assume os blocos 3 e 5", "pos": [640, 430], "size": [200, 64] }
+    {
+      "id": "a1",
+      "type": "backend",
+      "label": "Node A",
+      "sublabel": "primary of blocks 0 and 3",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "b1",
+      "type": "backend",
+      "label": "Node B",
+      "sublabel": "primary of blocks 1 and 4",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "backend",
+      "label": "Node C",
+      "sublabel": "primary of blocks 2 and 5",
+      "pos": [
+        40,
+        310
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "a2",
+      "type": "backend",
+      "label": "Node A",
+      "sublabel": "keeps block 0",
+      "pos": [
+        640,
+        70
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "b2",
+      "type": "backend",
+      "label": "Node B",
+      "sublabel": "keeps blocks 1 and 4",
+      "pos": [
+        640,
+        190
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "backend",
+      "label": "Node C",
+      "sublabel": "keeps block 2",
+      "pos": [
+        640,
+        310
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "d2",
+      "type": "security",
+      "label": "Node D (new)",
+      "sublabel": "takes over blocks 3 and 5",
+      "pos": [
+        640,
+        430
+      ],
+      "size": [
+        200,
+        64
+      ]
+    }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Antes: 3 nós", "wraps": ["a1", "b1", "c1"] },
-    { "kind": "region", "label": "Depois: D entrou", "wraps": ["a2", "b2", "c2", "d2"] }
+    {
+      "kind": "region",
+      "label": "Before: 3 nodes",
+      "wraps": [
+        "a1",
+        "b1",
+        "c1"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "After: D joined",
+      "wraps": [
+        "a2",
+        "b2",
+        "c2",
+        "d2"
+      ]
+    }
   ],
   "connections": [
-    { "id": "m1", "from": "a1", "to": "d2", "label": "A fornece o bloco 3", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
-    { "id": "m2", "from": "c1", "to": "d2", "label": "C fornece o bloco 5", "variant": "emphasis", "fromSide": "right", "toSide": "left" }
+    {
+      "id": "m1",
+      "from": "a1",
+      "to": "d2",
+      "label": "A supplies block 3",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "m2",
+      "from": "c1",
+      "to": "d2",
+      "label": "C supplies block 5",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Ilustrativo", "items": ["Só os blocos que mudam de responsável sincronizam", "A e C só apagam 3 e 5 com o cluster íntegro"] },
-    { "dot": "amber", "title": "Quando um nó sai", "items": ["As réplicas assumem sem carga", "A redundância cai para fator − 1 até entrar outro nó"] }
+    {
+      "dot": "cyan",
+      "title": "Illustrative",
+      "items": [
+        "Only the blocks that change owner synchronize",
+        "A and C only delete 3 and 5 with a sound cluster"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "When a node leaves",
+      "items": [
+        "The replicas take over without a load",
+        "Redundancy drops to factor − 1 until another node joins"
+      ]
+    }
   ]
 }

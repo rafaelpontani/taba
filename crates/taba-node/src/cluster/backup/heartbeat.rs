@@ -1,22 +1,22 @@
-//! O batimento dos nós no bucket e a detecção de morte (doc 23, "Backup em S3", seção 1.6).
+//! The nodes' heartbeat in the bucket and death detection (doc 23, "S3 backup", section 1.6).
 //!
-//! Cada nó grava `nodes/<id>.json` com o **id**, os **ips de acesso**, o estado e um **número de
-//! sequência** que cresce a cada batimento. O `seq` é obrigatório: sem ele o conteúdo se repete, o
-//! ETag não muda, e quem observa não percebe o batimento.
+//! Each node writes `nodes/<id>.json` with the **id**, the **access ips**, the state and a **sequence
+//! number** that grows with each heartbeat. The `seq` is mandatory: without it the content repeats, the
+//! ETag does not change, and whoever watches does not notice the heartbeat.
 //!
-//! **Sem relógio sincronizado:** quem observa não compara horários. Guarda o ETag de cada arquivo e
-//! marca, no próprio relógio monotônico, quando o ETag mudou pela última vez. Se não mudou por
-//! `backup.dead-after`, o nó está morto **para quem observa**. Um arquivo visto pela primeira vez
-//! conta como fresco até completar `backup.dead-after` sem mudar (sem histórico não há como saber).
+//! **No synchronized clock:** whoever watches does not compare times. It keeps each file's ETag and
+//! marks, on its own monotonic clock, when the ETag last changed. If it did not change for
+//! `backup.dead-after`, the node is dead **to whoever is watching**. A file seen for the first time
+//! counts as fresh until `backup.dead-after` passes without changing (without a history there is no way to know).
 //!
-//! **Vivo não é o mesmo que alcançável.** O batimento mostra que o nó está vivo, seja qual for a
-//! rede entre os nós; a rede só responde "consigo falar com ele agora?":
+//! **Alive is not the same as reachable.** The heartbeat shows that the node is alive, whatever the
+//! network between the nodes; the network only answers "can I talk to it right now?":
 //!
-//! | Rede até Y | Batimento de Y | Conclusão | Ação de X |
+//! | Network to Y | Y's heartbeat | Conclusion | X's action |
 //! |---|---|---|---|
-//! | alcançável | fresco | vivo | normal |
-//! | inalcançável | fresco | vivo em outra partição | **não assume** os blocos de Y |
-//! | inalcançável | vencido | morto | pode assumir os blocos |
+//! | reachable | fresh | alive | normal |
+//! | unreachable | fresh | alive in another partition | **does not take over** Y's blocks |
+//! | unreachable | expired | dead | may take over the blocks |
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -28,35 +28,35 @@ use serde::{Deserialize, Serialize};
 use super::{Backup, lock};
 use crate::storage::backup::keys;
 
-/// O conteúdo de `nodes/<id>.json`.
+/// The content of `nodes/<id>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Heartbeat {
     pub id: String,
     pub addresses: Vec<String>,
-    /// A porta do cluster: com ela e os `addresses` outro nó entra pelo caminho normal.
+    /// The cluster port: with it and the `addresses` another node joins through the normal path.
     #[serde(default)]
     pub port: u16,
-    /// Cresce a cada batimento.
+    /// Grows with each heartbeat.
     pub seq: u64,
-    /// `member` (no cluster), `joining` (ainda entrando) ou `draining`.
+    /// `member` (in the cluster), `joining` (still joining) or `draining`.
     pub state: String,
 }
 
-/// O que quem observa conclui de um nó.
+/// What whoever watches concludes about a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Liveness {
-    /// O batimento mudou há menos que `backup.dead-after` (ou o arquivo é novo demais para saber).
+    /// The heartbeat changed less than `backup.dead-after` ago (or the file is too new to know).
     Fresh,
-    /// O arquivo não mudou por `backup.dead-after`, ou o nó saiu limpo e removeu o arquivo.
+    /// The file did not change for `backup.dead-after`, or the node left cleanly and removed the file.
     Dead,
-    /// O S3 não pôde ser lido: nada a dizer. Quem decide cai no comportamento sem o backup.
+    /// S3 could not be read: nothing to say. Whoever decides falls back to the behavior without the backup.
     Unknown,
 }
 
 struct Seen {
     etag: String,
     changed_at: Instant,
-    /// O ETag já mudou desde que o vimos: o nó bate de verdade.
+    /// The ETag has changed since we saw it: the node really beats.
     proven: bool,
     body: Option<Heartbeat>,
 }
@@ -65,7 +65,7 @@ struct Seen {
 struct BeatState {
     seen: HashMap<String, Seen>,
     seq: u64,
-    /// A última listagem de `nodes/` funcionou.
+    /// The last listing of `nodes/` worked.
     listed_ok: bool,
 }
 
@@ -74,16 +74,16 @@ pub(crate) struct Beats {
     state: Mutex<BeatState>,
 }
 
-/// O que `wait_for_verdict` conclui da observação do bucket na partida.
+/// What `wait_for_verdict` concludes from observing the bucket at startup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// Há ao menos um nó batendo: o cluster está vivo, o nó entra pelo caminho normal.
+    /// At least one node is beating: the cluster is alive, the node joins through the normal path.
     Alive(Vec<Heartbeat>),
-    /// Existem arquivos de nós e nenhum bate mais.
+    /// There are node files and none beats any more.
     AllDead,
-    /// Nenhum arquivo de nó no bucket.
+    /// No node file in the bucket.
     Empty,
-    /// O S3 não respondeu.
+    /// S3 did not answer.
     Unavailable,
 }
 
@@ -104,7 +104,7 @@ impl Backup {
         }
     }
 
-    /// Um batimento: grava o próprio arquivo e observa os dos outros.
+    /// One heartbeat: writes its own file and observes the others'.
     pub(crate) async fn heartbeat_pass(&self) {
         if self.beating.load(Ordering::SeqCst) && !self.drained() {
             let seq = {
@@ -120,17 +120,17 @@ impl Backup {
         self.observe().await;
     }
 
-    /// Lista `nodes/` e atualiza o que se sabe de cada nó.
+    /// Lists `nodes/` and updates what is known of each node.
     pub(crate) async fn observe(&self) {
         self.observe_bodies(false).await;
     }
 
-    /// Como `observe`; com `all_bodies`, relê também o conteúdo dos arquivos que só mudaram (o
-    /// estado `member`/`joining` e os ips), que a partida do nó precisa. No dia a dia só o arquivo
-    /// visto pela primeira vez é lido: o ETag basta para saber que o nó bate.
+    /// Like `observe`; with `all_bodies`, it also re-reads the content of files that only changed (the
+    /// `member`/`joining` state and the ips), which the node's startup needs. Day to day only a file
+    /// seen for the first time is read: the ETag is enough to know the node beats.
     pub(crate) async fn observe_bodies(&self, all_bodies: bool) {
         let listed = self.store.list(keys::NODES_PREFIX).await;
-        self.note("LIST de nodes/", &listed);
+        self.note("LIST of nodes/", &listed);
         let Ok(objects) = listed else {
             lock_state(&self.beats.state).listed_ok = false;
             return;
@@ -173,7 +173,7 @@ impl Backup {
             }
             state.seen.retain(|id, _| present.contains(id));
         }
-        // Lê o conteúdo só do que mudou (ips e estado); o próprio arquivo não precisa.
+        // Reads the content only of what changed (ips and state); its own file does not need it.
         for (id, key) in to_read {
             if id == me {
                 continue;
@@ -187,21 +187,21 @@ impl Backup {
         }
     }
 
-    /// O que se conclui do batimento do nó `id` (nunca de si mesmo).
+    /// What is concluded from node `id`'s heartbeat (never from itself).
     pub fn liveness(&self, id: &str) -> Liveness {
         let state = lock_state(&self.beats.state);
         if !state.listed_ok {
             return Liveness::Unknown;
         }
         match state.seen.get(id) {
-            // Sem arquivo: nunca bateu ou saiu limpo.
+            // No file: it never beat or left cleanly.
             None => Liveness::Dead,
             Some(seen) if seen.changed_at.elapsed() >= self.rules.dead_after => Liveness::Dead,
             Some(_) => Liveness::Fresh,
         }
     }
 
-    /// Os outros nós que o bucket mostra, com o que se sabe deles.
+    /// The other nodes the bucket shows, with what is known about them.
     pub fn observed(&self) -> Vec<(String, Option<Heartbeat>, Liveness)> {
         let ids: Vec<String> = lock_state(&self.beats.state).seen.keys().cloned().collect();
         let me = self.node_id();
@@ -218,9 +218,9 @@ impl Backup {
             .collect()
     }
 
-    /// Observa o bucket por `backup.dead-after` e diz se há um cluster batendo (doc 23, 1.7,
-    /// exemplo C). Só conta quem está no estado `member`: um nó que também está subindo não prova
-    /// que o cluster existe.
+    /// Observes the bucket for `backup.dead-after` and says whether there is a cluster beating (doc 23, 1.7,
+    /// example C). Only counts those in the `member` state: a node that is also starting up does not prove
+    /// that the cluster exists.
     pub async fn wait_for_verdict(&self) -> Verdict {
         loop {
             self.observe_bodies(true).await;
@@ -254,7 +254,7 @@ impl Backup {
                 return Verdict::Alive(alive);
             }
             if members.is_empty() {
-                // Nenhum arquivo, ou só de nós que também estão subindo (não provam nada).
+                // No file, or only from nodes that are also starting up (they prove nothing).
                 return Verdict::Empty;
             }
             if members
@@ -266,20 +266,20 @@ impl Backup {
             if self.cancel.is_cancelled() {
                 return Verdict::Unavailable;
             }
-            // Dá ao observador tempo de ver o batimento mudar (ou não) antes de concluir.
+            // Gives the observer time to see the heartbeat change (or not) before concluding.
             let wait = (self.rules.heartbeat_interval / 2).max(Duration::from_millis(50));
             tokio::time::sleep(wait).await;
         }
     }
 
-    /// O nó saiu limpo (drain concluído, parada): remove o próprio arquivo e para de bater.
+    /// The node left cleanly (drain finished, stop): removes its own file and stops beating.
     pub async fn leave(&self) {
         self.beating.store(false, Ordering::SeqCst);
         let deleted = self.store.delete(&keys::node(&self.node_id())).await;
         self.note("DELETE do batimento", &deleted);
     }
 
-    /// O nó voltou do drain como nó novo: o batimento recomeça.
+    /// The node came back from the drain as a new node: the heartbeat starts again.
     pub fn resume_beating(&self) {
         self.beating.store(true, Ordering::SeqCst);
         self.wake.notify_one();

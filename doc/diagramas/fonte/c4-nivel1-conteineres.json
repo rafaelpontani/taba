@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "C4 Nível 1: Contêineres do Sistema de Mensagens",
+    "title": "C4 Level 1: Messaging System Containers",
     "output": "doc/diagramas/html/c4-nivel1-conteineres.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "produtor",
       "type": "external",
-      "label": "Produtor",
-      "sublabel": "[Pessoa/App]",
+      "label": "Producer",
+      "sublabel": "[Person/App]",
       "pos": [
         40,
         40
@@ -24,8 +24,8 @@
     {
       "id": "consumidor",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "[Pessoa/App]",
+      "label": "Consumer",
+      "sublabel": "[Person/App]",
       "pos": [
         40,
         140
@@ -38,8 +38,8 @@
     {
       "id": "operador",
       "type": "external",
-      "label": "Operador",
-      "sublabel": "[Pessoa]",
+      "label": "Operator",
+      "sublabel": "[Person]",
       "pos": [
         40,
         240
@@ -52,8 +52,8 @@
     {
       "id": "obs",
       "type": "external",
-      "label": "Observabilidade",
-      "sublabel": "[Sistema] OTel / Prom.",
+      "label": "Observability",
+      "sublabel": "[System] OTel / Prom.",
       "pos": [
         40,
         340
@@ -66,8 +66,8 @@
     {
       "id": "api-cli",
       "type": "backend",
-      "label": "API HTTP (cliente)",
-      "sublabel": "[Contêiner] coordenador",
+      "label": "HTTP API (client)",
+      "sublabel": "[Container] coordinator",
       "pos": [
         340,
         170
@@ -80,8 +80,8 @@
     {
       "id": "api-int",
       "type": "backend",
-      "label": "API HTTP (interna)",
-      "sublabel": "[Contêiner] registro/commit",
+      "label": "HTTP API (internal)",
+      "sublabel": "[Container] register/commit",
       "pos": [
         620,
         200
@@ -95,7 +95,7 @@
       "id": "cluster-mgr",
       "type": "security",
       "label": "Cluster manager",
-      "sublabel": "[Contêiner] anel e membros",
+      "sublabel": "[Container] ring and members",
       "pos": [
         620,
         60
@@ -109,7 +109,7 @@
       "id": "storage",
       "type": "database",
       "label": "Storage engine",
-      "sublabel": "[Contêiner] memória",
+      "sublabel": "[Container] memory",
       "pos": [
         620,
         340
@@ -122,8 +122,8 @@
     {
       "id": "disk",
       "type": "database",
-      "label": "Disco",
-      "sublabel": "[Volume] SQLite + corpos .json",
+      "label": "Disk",
+      "sublabel": "[Volume] SQLite + .json bodies",
       "pos": [
         620,
         480
@@ -136,8 +136,8 @@
     {
       "id": "peers",
       "type": "cloud",
-      "label": "Outros nós",
-      "sublabel": "[Sistema] mesma imagem",
+      "label": "Other nodes",
+      "sublabel": "[System] same image",
       "pos": [
         940,
         200
@@ -151,7 +151,7 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "Sistema de Mensagens: um nó (N nós idênticos)",
+      "label": "Messaging System: one node (N identical nodes)",
       "wraps": [
         "api-cli",
         "api-int",
@@ -166,14 +166,14 @@
       "id": "publica",
       "from": "produtor",
       "to": "api-cli",
-      "label": "publica",
+      "label": "publishes",
       "variant": "emphasis"
     },
     {
       "id": "consome",
       "from": "consumidor",
       "to": "api-cli",
-      "label": "consome, ack",
+      "label": "consumes, acks",
       "variant": "emphasis"
     },
     {
@@ -194,13 +194,13 @@
       "id": "coordena",
       "from": "api-cli",
       "to": "api-int",
-      "label": "coordena"
+      "label": "coordinates"
     },
     {
       "id": "anel",
       "from": "api-int",
       "to": "cluster-mgr",
-      "label": "responsáveis pelo ID",
+      "label": "responsible for the ID",
       "fromSide": "top",
       "toSide": "bottom"
     },
@@ -208,14 +208,14 @@
       "id": "duas-fases",
       "from": "api-int",
       "to": "peers",
-      "label": "registro → commit",
+      "label": "register → commit",
       "variant": "emphasis"
     },
     {
       "id": "sinal-vida",
       "from": "cluster-mgr",
       "to": "peers",
-      "label": "WebSocket: sinal de vida",
+      "label": "WebSocket: heartbeat",
       "variant": "dashed",
       "fromSide": "right",
       "toSide": "top"
@@ -224,7 +224,7 @@
       "id": "grava",
       "from": "api-int",
       "to": "storage",
-      "label": "grava pendente / commit",
+      "label": "writes pending / commit",
       "fromSide": "bottom",
       "toSide": "top"
     },
@@ -241,18 +241,18 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Contêineres lógicos",
+      "title": "Logical containers",
       "items": [
-        "Todas as camadas rodam no mesmo processo e imagem",
-        "Cada nó é idêntico: sem mestre fixo"
+        "All the layers run in the same process and image",
+        "Each node is identical: no fixed master"
       ]
     },
     {
       "dot": "violet",
       "title": "Cluster",
       "items": [
-        "Escrita: quórum com o primário incluso",
-        "Registro de nó e tópicos: confirmação de todos"
+        "Write: quorum with the primary included",
+        "Node and topic registration: confirmation from all"
       ]
     }
   ]

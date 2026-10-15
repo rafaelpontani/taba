@@ -1,10 +1,10 @@
 # taba-client (Rust)
 
-O conector Rust do Taba ([doc/19-conectores.md](../../../doc/19-conectores.md), [doc/19a](../../../doc/19a-conectores-linguagens.md), seção 18.10.3).
+The Taba Rust connector ([doc/pt-BR/21-conectores.md](../../../doc/pt-BR/21-conectores.md), section 18.10.3).
 
-- **HTTP/1.1 próprio** sobre `std::net::TcpStream` (montar a requisição e ler a resposta são funções puras em `http`), **TLS 1.2 ou superior** pelo `rustls` com as raízes do sistema (mais uma CA própria opcional) e **JSON** e **base64** próprios. As únicas dependências são o `rustls` e o `rustls-native-certs` (mais o `serde`, só na *feature* opcional `serde`).
-- **Seguro entre threads:** o `Client` é `Send + Sync`; um só serve a vários.
-- **Repetição de chamadas** do contrato comum: `429` e `503` (com o `Retry-After`), `502` e `504` só na FIFO, falha de rede antes de enviar; nunca um `4xx` nem um estouro de tempo.
+- **Its own HTTP/1.1** over `std::net::TcpStream` (building the request and reading the response are pure functions in `http`), **TLS 1.2 or later** through `rustls` with the system roots (plus an optional CA of your own) and its own **JSON** and **base64**. The only dependencies are `rustls` and `rustls-native-certs` (plus `serde`, only in the optional `serde` *feature*).
+- **Thread-safe:** `Client` is `Send + Sync`; a single one serves many.
+- **Call retries** of the common contract: `429` and `503` (with `Retry-After`), `502` and `504` only on FIFO, a network failure before sending; never a `4xx` nor a timeout.
 
 ```rust
 use taba_client::{Client, Config, ConsumeOptions, PublishOptions, TopicRequest};
@@ -15,83 +15,83 @@ fn main() -> Result<(), taba_client::Error> {
     let client = Client::new(config)?;
 
     client.create_topic(&TopicRequest {
-        name: "pedidos".into(),
+        name: "orders".into(),
         topic_type: "queue".into(),
         ..TopicRequest::default()
     })?;
-    client.publish("pedidos", br#"{"pedido": 9001}"#, &PublishOptions::default())?;
+    client.publish("orders", br#"{"order": 9001}"#, &PublishOptions::default())?;
 
     let options = ConsumeOptions { wait_time: Some(20), ..ConsumeOptions::default() };
-    for message in client.consume("pedidos", &options)? {
+    for message in client.consume("orders", &options)? {
         println!("{}", String::from_utf8_lossy(&message.body));
-        client.ack("pedidos", &message.id, &message.receipt_token)?;
+        client.ack("orders", &message.id, &message.receipt_token)?;
     }
     Ok(())
 }
 ```
 
-## Consumo com *handler* e objetos (D140)
+## Consuming with a *handler* and objects (D140)
 
-O uso mais simples: publicar e consumir **objetos**, sem serializar nem apagar nada à mão. Com a *feature* `serde` (`taba-client = { features = ["serde"] }`; fora dela o conector segue só com o `rustls`):
+The simplest use: publish and consume **objects**, without serializing or deleting anything by hand. With the `serde` *feature* (`taba-client = { features = ["serde"] }`; without it the connector stays with `rustls` only):
 
 ```rust
 #[derive(serde::Serialize, serde::Deserialize)]
-struct Pedido { numero: u32 }
+struct Order { number: u32 }
 
-client.publish_object("pedidos", &Pedido { numero: 9001 })?;
+client.publish_object("orders", &Order { number: 9001 })?;
 
-client.consume_typed::<Pedido, _>("pedidos", &ConsumeOptions::default(), |d| {
-    processar_pedido(&d.body)?;           // d.body: Pedido já deserializado
+client.consume_typed::<Order, _>("orders", &ConsumeOptions::default(), |d| {
+    process_order(&d.body)?;              // d.body: Order already deserialized
     Ok(())
 })?;
 ```
 
-O `consume_typed` lê com long polling, entrega o corpo já deserializado, **apaga a mensagem se o *handler* devolve `Ok`** e renova a invisibilidade enquanto ele roda. Os detalhes e as personalizações vêm a seguir.
+`consume_typed` reads with long polling, hands over the body already deserialized, **deletes the message if the *handler* returns `Ok`** and renews the invisibility while it runs. The details and customizations follow.
 
-Se o corpo não é um `T`, o `consume_typed` devolve `client.invalid-response` antes do *handler* e a mensagem não é apagada. Rodar os testes com a *feature*: `cargo test --workspace --all-features`.
+If the body is not a `T`, `consume_typed` returns `client.invalid-response` before the *handler* and the message is not deleted. Run the tests with the *feature*: `cargo test --workspace --all-features`.
 
-### Sem o `serde`: `consume_with`
+### Without `serde`: `consume_with`
 
-Além do `consume` que devolve a lista, o `consume_with` lê da fila com **long polling** (20 s), **uma mensagem por vez** e **120 s de invisibilidade** (os padrões deste modo; passe um `ConsumeOptions` para mudar), entrega cada mensagem a um `Delivery` e **apaga a mensagem se o *handler* devolve `Ok`** (`delivery.delete` é `true` por padrão). Enquanto o *handler* roda, uma segunda *thread* **renova a invisibilidade** a cada um terço dela, para nenhum outro consumidor pegar a mensagem. Se o *handler* devolve `Err`, a mensagem não é apagada e o erro sobe como `ConsumeError::Handler`.
+Besides `consume`, which returns the list, `consume_with` reads from the queue with **long polling** (20 s), **one message at a time** and **120 s of invisibility** (this mode's defaults; pass a `ConsumeOptions` to change them), hands each message to a `Delivery` and **deletes the message if the *handler* returns `Ok`** (`delivery.delete` is `true` by default). While the *handler* runs, a second *thread* **renews the invisibility** every third of it, so no other consumer takes the message. If the *handler* returns `Err`, the message is not deleted and the error propagates as `ConsumeError::Handler`.
 
-Mínimo:
+Minimal:
 
 ```rust
 loop {
-    client.consume_with("pedidos", &ConsumeOptions::default(), |d| {
+    client.consume_with("orders", &ConsumeOptions::default(), |d| {
         println!("{}", String::from_utf8_lossy(&d.message.body));
         Ok(())
     })?;
 }
 ```
 
-Completo, com anotações:
+Complete, annotated:
 
 ```rust
-let stop = std::sync::atomic::AtomicBool::new(false); // outro lugar (um sinal) põe true para encerrar
+let stop = std::sync::atomic::AtomicBool::new(false); // elsewhere (a signal) sets true to end
 while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-    // Cada volta é um long polling: sem mensagens devolve 0 após `wait_time`; com mensagens, chama o handler.
+    // Each round is a long polling: with no messages it returns 0 after `wait_time`; with messages, it calls the handler.
     let handled = client.consume_with(
-        "pedidos",
+        "orders",
         &ConsumeOptions {
-            max_messages: Some(1),        // padrão 1
-            wait_time: Some(20),          // padrão 20 s (long polling)
-            visibility_timeout: Some(120), // padrão 120 s; a renovação o repete a cada 1/3
+            max_messages: Some(1),        // default 1
+            wait_time: Some(20),          // default 20 s (long polling)
+            visibility_timeout: Some(120), // default 120 s; the renewal repeats it every 1/3
             ..ConsumeOptions::default()
         },
         |d| {
-            // d.message traz tudo: id, delivery_count, published_at, group_id, receipt_token, body (bytes)...
-            processar(&d.message.body)?;   // o `?` devolve Err: a mensagem NÃO é apagada e volta à fila
-            // Mais tempo de uma vez? Isto muda a invisibilidade e a base das renovações:
+            // d.message carries everything: id, delivery_count, published_at, group_id, receipt_token, body (bytes)...
+            process(&d.message.body)?;     // the `?` returns Err: the message is NOT deleted and goes back to the queue
+            // Need more time in one go? This changes the invisibility and the base of the renewals:
             // d.change_visibility(600)?;
-            d.delete = true;               // padrão true; false deixa a mensagem na fila
-            if d.lease_lost() { /* o servidor recusou uma renovação: a mensagem já voltou à fila */ }
+            d.delete = true;               // default true; false leaves the message in the queue
+            if d.lease_lost() { /* the server refused a renewal: the message already went back to the queue */ }
             Ok(())
         },
-    )?;                                    // devolve quantas mensagens foram tratadas
+    )?;                                    // returns how many messages were handled
 }
 ```
 
-`Client::call` e `Call` são a camada de baixo (rota, query, corpo): é o que o `taba-cli` usa para imprimir as respostas como o servidor as devolveu. `taba_client::testing` é um transporte de mentira para os testes de quem usa o conector.
+`Client::call` and `Call` are the lower layer (route, query, body): it is what `taba-cli` uses to print the responses as the server returned them. `taba_client::testing` is a fake transport for the tests of whoever uses the connector.
 
-**Ainda falta:** a forma `async` (*feature* `async`, `tokio`), o `Transport` trocável pela aplicação e a publicação no crates.io.
+**Still missing:** the `async` form (`async` *feature*, `tokio`), a `Transport` the application can swap, and publishing to crates.io.

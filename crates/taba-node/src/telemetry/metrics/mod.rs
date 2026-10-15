@@ -1,11 +1,11 @@
-//! O registro das métricas do nó (doc 11): uma instrumentação só, de onde `GET /metrics` (e,
-//! mais tarde, o OTLP) lê. Cada métrica é uma [`Def`] com nome, tipo e unidade no vocabulário do
-//! OpenTelemetry (a tabela está em `defs`); o registro guarda as séries (um valor por combinação de
-//! atributos).
+//! The node metrics registry (doc 11): a single instrumentation, from which `GET /metrics` (and,
+//! later, OTLP) reads. Each metric is a [`Def`] with a name, type and unit in the OpenTelemetry
+//! vocabulary (the table is in `defs`); the registry keeps the series (one value per combination of
+//! attributes).
 //!
-//! Dois jeitos de alimentar: quem está no caminho da requisição soma (`add`, `observe`), e o que o
-//! `engine` já conta por conta própria é copiado na hora da leitura (`set`, `set_histogram`). Não
-//! há dependência do resto do nó.
+//! Two ways of feeding it: whoever is on the request path adds up (`add`, `observe`), and what the
+//! `engine` already counts on its own is copied at read time (`set`, `set_histogram`). There is
+//! no dependency on the rest of the node.
 
 mod defs;
 
@@ -18,28 +18,28 @@ use super::histogram::Histogram;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// Só cresce.
+    /// Only grows.
     Counter,
-    /// Sobe e desce e se soma entre nós.
+    /// Goes up and down and adds up across nodes.
     UpDownCounter,
-    /// Um valor que não se soma (limite, idade, estado).
+    /// A value that does not add up (limit, age, state).
     Gauge,
     Histogram,
 }
 
-/// A definição de uma métrica.
+/// A metric's definition.
 #[derive(Debug)]
 pub struct Def {
     pub name: &'static str,
     pub kind: Kind,
-    /// Unidade UCUM: `s`, `By`, `1` (só razões) ou uma contagem entre chaves (`{message}`).
+    /// UCUM unit: `s`, `By`, `1` (ratios only) or a count in braces (`{message}`).
     pub unit: &'static str,
     pub help: &'static str,
-    /// Só em histograma: os limites dos baldes.
+    /// Histogram only: the bucket limits.
     pub buckets: &'static [f64],
 }
 
-/// Os atributos de uma série, ordenados pelo nome.
+/// A series' attributes, sorted by name.
 pub type Labels = Vec<(String, String)>;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,7 +48,7 @@ pub enum Value {
     Histogram(Histogram),
 }
 
-/// Uma métrica com todas as suas séries, como a leitura as vê.
+/// A metric with all its series, as the read sees them.
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     pub def: &'static Def,
@@ -94,7 +94,7 @@ impl Registry {
         update(family.series.entry(labels_of(labels)).or_insert_with(init));
     }
 
-    /// Soma `delta` à série (contador ou contador que sobe e desce).
+    /// Adds `delta` to the series (counter or up-down counter).
     pub fn add(&self, def: &'static Def, labels: &[(&str, &str)], delta: f64) {
         debug_assert!(matches!(def.kind, Kind::Counter | Kind::UpDownCounter));
         self.with_series(
@@ -109,7 +109,7 @@ impl Registry {
         );
     }
 
-    /// Põe o valor da série. Serve ao medidor e ao contador que vem de uma contagem de fora.
+    /// Sets the series' value. Serves the gauge and the counter that comes from an outside count.
     pub fn set(&self, def: &'static Def, labels: &[(&str, &str)], value: f64) {
         debug_assert!(def.kind != Kind::Histogram);
         self.with_series(
@@ -120,7 +120,7 @@ impl Registry {
         );
     }
 
-    /// Acrescenta uma observação ao histograma da série.
+    /// Adds an observation to the series' histogram.
     pub fn observe(&self, def: &'static Def, labels: &[(&str, &str)], value: f64) {
         debug_assert_eq!(def.kind, Kind::Histogram);
         self.with_series(
@@ -135,7 +135,7 @@ impl Registry {
         );
     }
 
-    /// Troca o histograma da série por um que já vem contado.
+    /// Replaces the series' histogram with one that already comes counted.
     pub fn set_histogram(&self, def: &'static Def, labels: &[(&str, &str)], histogram: Histogram) {
         debug_assert_eq!(def.kind, Kind::Histogram);
         self.with_series(
@@ -146,12 +146,12 @@ impl Registry {
         );
     }
 
-    /// Apaga todas as séries da métrica (para as que são refeitas a cada leitura).
+    /// Deletes all the metric's series (for those rebuilt on every read).
     pub fn clear(&self, def: &'static Def) {
         self.families().remove(def.name);
     }
 
-    /// O valor de uma série numérica (para os testes).
+    /// The value of a numeric series (for the tests).
     pub fn get(&self, def: &'static Def, labels: &[(&str, &str)]) -> Option<f64> {
         match self
             .families()
@@ -164,7 +164,7 @@ impl Registry {
         }
     }
 
-    /// O histograma de uma série (para os testes).
+    /// A series' histogram (for the tests).
     pub fn histogram(&self, def: &'static Def, labels: &[(&str, &str)]) -> Option<Histogram> {
         match self
             .families()
@@ -177,7 +177,7 @@ impl Registry {
         }
     }
 
-    /// Uma cópia de tudo o que há, em ordem de nome, para quem escreve a saída.
+    /// A copy of everything there is, in name order, for whoever writes the output.
     pub fn snapshot(&self) -> Vec<Snapshot> {
         self.families()
             .values()

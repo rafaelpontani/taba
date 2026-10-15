@@ -1,14 +1,14 @@
-//! As mensagens que o nó guarda mas de que **não** é o dono da entrega (doc 13, seção 12.7): as
-//! réplicas. Só o primário do bloco coloca a mensagem nas listas de prontos e de invisíveis; as
-//! réplicas ficam aqui, só com o `id` e a idade, para o `ttl` valer nelas também (cada nó apaga as
-//! próprias cópias, doc 13, seção 12.10) e para o nó saber o que tem quando passa a ser o dono
+//! The messages the node keeps but is **not** the delivery owner of (doc 13, section 12.7): the
+//! replicas. Only the block's primary puts the message in the ready and invisible lists; the
+//! replicas stay here, with only the `id` and the age, so the `ttl` applies to them too (each node deletes its
+//! own copies, doc 13, section 12.10) and so the node knows what it has when it becomes the owner
 //! (`Messages::reown`).
 
 use std::collections::{BTreeSet, HashMap};
 
 #[derive(Debug, Default)]
 pub struct ReplicaSet {
-    /// `id` → idade (o instante de onde o `ttl` conta).
+    /// `id` → age (the instant the `ttl` counts from).
     by_id: HashMap<String, u64>,
     by_age: BTreeSet<(u64, String)>,
 }
@@ -48,12 +48,12 @@ impl ReplicaSet {
         self.by_id.get(id).copied()
     }
 
-    /// Os `id`, em ordem de idade.
+    /// The `id`s, in age order.
     pub fn ids(&self) -> Vec<String> {
         self.by_age.iter().map(|(_, id)| id.clone()).collect()
     }
 
-    /// As que passaram do `ttl`: `idade + ttl ≤ agora`.
+    /// Those past the `ttl`: `age + ttl ≤ now`.
     pub fn expired(&self, now_ms: u64, ttl_ms: u64) -> Vec<String> {
         let Some(limit) = now_ms.checked_sub(ttl_ms) else {
             return Vec::new();

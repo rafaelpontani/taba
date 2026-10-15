@@ -1,9 +1,9 @@
-//! A tabela de parâmetros: chave, variável de ambiente e padrão (doc 10).
+//! The parameter table: key, environment variable and default (doc 10).
 //!
-//! É a fonte única das chaves aceitas. Uma chave que não está aqui é recusada no
-//! arquivo `.yml` (um erro de digitação não passa em silêncio), e `Config` só lê
-//! chaves daqui. Padrão `None` quer dizer "sem valor": ou é opcional, ou o valor é
-//! derivado de outro parâmetro, ou ainda está **A definir** em `10-configuracao.md`.
+//! It is the single source of accepted keys. A key that is not here is refused in the
+//! `.yml` file (a typo does not pass silently), and `Config` only reads
+//! keys from here. A `None` default means "no value": either it is optional, or the value is
+//! derived from another parameter, or it is still **To be defined** in `10-configuracao.md`.
 
 pub struct Param {
     pub key: &'static str,
@@ -14,7 +14,7 @@ const fn p(key: &'static str, default: Option<&'static str>) -> Param {
     Param { key, default }
 }
 
-/// A variável de ambiente de uma chave: prefixo `TABA_`, maiúsculas, `.` e `-` viram `_`.
+/// The environment variable of a key: `TABA_` prefix, uppercase, `.` and `-` become `_`.
 pub fn env_name(key: &str) -> String {
     format!("TABA_{}", key.to_ascii_uppercase().replace(['.', '-'], "_"))
 }
@@ -24,38 +24,38 @@ pub fn find(key: &str) -> Option<&'static Param> {
 }
 
 pub static PARAMS: &[Param] = &[
-    // Modo de execução
+    // Execution mode
     p("mode", Some("production")),
     p("development.resume-on-start", Some("true")),
-    // Portas (as sugestões da doc valem como padrão: 8080 e 8081)
+    // Ports (the doc's suggestions apply as defaults: 8080 and 8081)
     p("api.port", Some("8080")),
     p("api.pagination.default-limit", Some("100")),
     p("api.pagination.max-limit", Some("1000")),
     p("cluster.port", Some("8081")),
     p("operations.port", None),
-    // Segurança da porta do cluster
+    // Cluster port security
     p("secrets.dir", Some("/etc/taba/secrets")),
     p("cluster.tls.dir", None), // derivado: <secrets.dir>/tls
     p("cluster.tls.reload-interval", Some("60s")),
     p("cluster.tls.expiry-warning", Some("30d")),
-    // Autenticação da API de cliente
+    // Client API authentication
     p("auth.enabled", Some("auto")),
     p("auth.root-token", None),
     p("auth.root-token-file", None), // derivado: <secrets.dir>/root-token
     p("auth.reload-interval", Some("60s")),
-    // Parada e drain
+    // Stop and drain
     p("drain.on-stop", Some("true")),
     p("drain.timeout", Some("25s")),
-    // Armazenamento e memória
+    // Storage and memory
     p("memory.limit", None),
     p("memory.rate.window", Some("5m")),
     p("memory.topic.reserve", Some("1000")),
     p("storage.dir", Some("/var/lib/taba")),
     p("storage.db.synchronous", Some("NORMAL")),
-    // Mensagens
+    // Messages
     p("message.max-bytes", Some("5MB")),
     p("message.hard-limit", None),
-    // Escrita e durabilidade
+    // Writing and durability
     p("replication.factor", Some("3")),
     p("write.quorum", None), // derivado: floor(replication.factor / 2) + 1
     p("write.retry.attempts", Some("3")),
@@ -90,7 +90,7 @@ pub static PARAMS: &[Param] = &[
     p("cluster.sync.range.size", None),
     p("cluster.sync.log.max-bytes", None),
     p("cluster.sync.timeout", None),
-    // Entrega de mensagens
+    // Message delivery
     p("delivery.visibility-timeout.default", Some("120s")),
     p("delivery.visibility-timeout.max", None),
     p("delivery.ready-list.size", Some("1000")),
@@ -103,7 +103,7 @@ pub static PARAMS: &[Param] = &[
     p("delivery.fair.max-groups", None),
     p("delivery.fair.normal-every", Some("10")),
     p("delivery.take.max-attempts", None),
-    // Retenção e dead-letter
+    // Retention and dead-letter
     p("retention.ttl.default", Some("14d")),
     p("retention.max-deliveries.default", Some("10")),
     p("topics.dead-letter.suffix", Some("-dead-letter")),
@@ -112,13 +112,13 @@ pub static PARAMS: &[Param] = &[
     p("fifo.dedup.window", Some("300s")),
     p("fifo.dedup.index.max-entries", None),
     p("fifo.forward.max-attempts", None),
-    // Tópicos voláteis e distribuidores
+    // Volatile topics and distributors
     p("topics.volatile.idle-timeout.default", Some("600s")),
     p("topics.volatile.idle-check.retry-interval", None),
     p("topics.distributor.max-targets", None),
     p("topics.volatile.max-count", None),
     p("topics.volatile.takeover.jitter", None),
-    // Observabilidade (as variáveis OTEL_* não passam por aqui: são do SDK)
+    // Observability (the OTEL_* variables do not go through here: they belong to the SDK)
     p("telemetry.prometheus.enabled", Some("true")),
     p("operations.allowed-ips", None),
     p("telemetry.topics.mode", Some("off")),
@@ -144,14 +144,14 @@ pub static PARAMS: &[Param] = &[
     p("client-ip.headers.enabled", Some("true")),
     p("client-ip.headers", Some("X-Forwarded-For")),
     p("client-ip.trusted-proxies", None),
-    // Backup opcional em S3 (doc 23, "Backup em S3"): sem `backup.s3.bucket` o recurso fica desligado
+    // Optional S3 backup (doc 23, "S3 backup"): without `backup.s3.bucket` the feature is off
     p("backup.s3.bucket", None),
     p("backup.s3.region", None),
     p("backup.s3.endpoint", None),
     p("backup.s3.prefix", Some("taba")),
     p("backup.s3.access-key", None),
     p("backup.s3.secret-key", None),
-    p("backup.s3.path-style", None), // derivado: `true` quando há `backup.s3.endpoint`
+    p("backup.s3.path-style", None), // derived: `true` when there is `backup.s3.endpoint`
     p("backup.delay", Some("60s")),
     p("backup.meta.interval", Some("60s")),
     p("backup.segment.max-bytes", Some("8MB")),

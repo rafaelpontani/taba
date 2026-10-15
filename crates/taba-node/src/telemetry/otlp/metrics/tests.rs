@@ -29,7 +29,7 @@ fn find<'a>(request: &'a ExportMetricsServiceRequest, name: &str) -> &'a Metric 
         .metrics
         .iter()
         .find(|m| m.name == name)
-        .unwrap_or_else(|| panic!("sem a métrica {name}"))
+        .unwrap_or_else(|| panic!("without the metric {name}"))
 }
 
 /// UC: UC-OPS-013
@@ -44,7 +44,7 @@ fn each_instrument_kind_becomes_the_matching_otlp_aggregation() {
     let request = request(&registry);
 
     let Some(Data::Sum(sum)) = &find(&request, "taba.write.rollbacks").data else {
-        panic!("contador é Sum");
+        panic!("counter is Sum");
     };
     assert!(sum.is_monotonic);
     assert_eq!(
@@ -56,23 +56,23 @@ fn each_instrument_kind_becomes_the_matching_otlp_aggregation() {
     assert_eq!(sum.data_points[0].time_unix_nano, 160_000_000_000);
 
     let Some(Data::Sum(updown)) = &find(&request, "taba.node.connections").data else {
-        panic!("up-down é Sum");
+        panic!("up-down is Sum");
     };
     assert!(!updown.is_monotonic);
     assert_eq!(
         updown.data_points[0].attributes[0].key, "server.port",
-        "os atributos da série vão no ponto"
+        "the series' attributes go on the point"
     );
 
     let Some(Data::Gauge(gauge)) = &find(&request, "taba.node.state").data else {
-        panic!("medidor é Gauge");
+        panic!("gauge is Gauge");
     };
     assert_eq!(gauge.data_points[0].value, Some(Number::AsDouble(1.0)));
 
     let histogram_metric = find(&request, "http.server.request.duration");
     assert_eq!(histogram_metric.unit, "s");
     let Some(Data::Histogram(histogram)) = &histogram_metric.data else {
-        panic!("histograma é Histogram");
+        panic!("histogram is Histogram");
     };
     let point = &histogram.data_points[0];
     assert_eq!(point.count, 2);
@@ -80,13 +80,13 @@ fn each_instrument_kind_becomes_the_matching_otlp_aggregation() {
     assert_eq!(
         point.bucket_counts.len(),
         point.explicit_bounds.len() + 1,
-        "um balde a mais: o +Inf"
+        "one more bucket: the +Inf"
     );
     assert_eq!(point.bucket_counts.iter().sum::<u64>(), 2);
     assert_eq!(
         *point.bucket_counts.last().unwrap(),
         1,
-        "20 s passa de todos os limites"
+        "20 s exceeds all the limits"
     );
 }
 
@@ -95,7 +95,7 @@ fn each_instrument_kind_becomes_the_matching_otlp_aggregation() {
 fn the_request_carries_the_resource_the_scope_and_skips_families_without_series() {
     let registry = Registry::default();
     registry.add(&WRITE_ROLLBACKS, &[], 1.0);
-    // Uma métrica apagada deixa a família vazia.
+    // A deleted metric leaves the family empty.
     registry.set(&NODE_STATE, &[("taba.state", "active")], 1.0);
     registry.clear(&NODE_STATE);
     let request = request(&registry);

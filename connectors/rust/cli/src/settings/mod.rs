@@ -1,38 +1,38 @@
-//! A configuração efetiva de uma chamada: variável `TABA_CLI_*`, perfil escolhido e valor embutido,
-//! campo a campo, lembrando de onde veio cada valor (doc 19b, seção 18.11.2).
+//! The effective configuration of a call: `TABA_CLI_*` variable, chosen profile and built-in value,
+//! field by field, remembering where each value came from (doc 19b, section 18.11.2).
 
 use crate::profile::{self, ConfigFile, Profile, DEFAULT_URL, FIELDS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
-    /// Uma variável de ambiente (`TABA_CLI_URL`).
+    /// An environment variable (`TABA_CLI_URL`).
     Variable(String),
-    /// O perfil com este nome.
+    /// The profile with this name.
     Profile(String),
-    /// O valor embutido.
+    /// The built-in value.
     Default,
 }
 
 impl Source {
     pub fn label(&self) -> String {
         match self {
-            Source::Variable(v) => format!("variável {v}"),
-            Source::Profile(p) => format!("perfil {p}"),
-            Source::Default => "padrão".to_owned(),
+            Source::Variable(v) => format!("variable {v}"),
+            Source::Profile(p) => format!("profile {p}"),
+            Source::Default => "default".to_owned(),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Setting {
-    /// `None` quando o campo não tem valor nem padrão (token, ca-file).
+    /// `None` when the field has no value or default (token, ca-file).
     pub value: Option<String>,
     pub source: Source,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Effective {
-    /// O perfil em uso e por que foi escolhido (`--profile`, `TABA_CLI_PROFILE` ou o padrão do arquivo).
+    /// The profile in use and why it was chosen (`--profile`, `TABA_CLI_PROFILE` or the file's default).
     pub profile: Option<(String, Source)>,
     settings: Vec<(&'static str, Setting)>,
 }
@@ -41,7 +41,7 @@ pub fn variable_name(field: &str) -> String {
     format!("TABA_CLI_{}", field.to_ascii_uppercase().replace('-', "_"))
 }
 
-/// Escolhe o perfil: `--profile`, depois `TABA_CLI_PROFILE`, depois o `default` do arquivo.
+/// Chooses the profile: `--profile`, then `TABA_CLI_PROFILE`, then the file's `default`.
 fn choose_profile(
     file: &ConfigFile,
     flag: Option<&str>,
@@ -57,11 +57,11 @@ fn choose_profile(
     if file.get(&name).is_none() {
         let known = file.names();
         return Err(format!(
-            "o perfil `{name}` não existe{}",
+            "the profile `{name}` does not exist{}",
             if known.is_empty() {
-                " (não há perfis; crie um com `taba-cli profile add`)".to_owned()
+                " (there are no profiles; create one with `taba-cli profile add`)".to_owned()
             } else {
-                format!(" (perfis: {})", known.join(", "))
+                format!(" (profiles: {})", known.join(", "))
             }
         ));
     }
@@ -126,7 +126,7 @@ impl Effective {
             .settings
             .iter()
             .find(|(f, _)| *f == field)
-            .expect("campo conhecido")
+            .expect("known field")
             .1
     }
 
@@ -138,8 +138,8 @@ impl Effective {
         self.get("url").unwrap_or(DEFAULT_URL)
     }
 
-    /// O endereço da API de operação: o `ops-url`, ou o próprio `url`. Sem `operations.port`, o nó
-    /// serve as rotas de operação na porta da API de cliente.
+    /// The operations API address: the `ops-url`, or the `url` itself. Without `operations.port`, the node
+    /// serves the operations routes on the client API port.
     pub fn ops_url(&self) -> String {
         self.get("ops-url").unwrap_or_else(|| self.url()).to_owned()
     }
@@ -148,8 +148,8 @@ impl Effective {
         self.get(field).and_then(|v| v.parse().ok()).unwrap_or(0)
     }
 
-    /// Qual dos dois vale quando há `token` e `token-file`: o de maior precedência (variável, depois
-    /// perfil) e, no mesmo nível, o `token-file`.
+    /// Which of the two applies when there is both `token` and `token-file`: the one of higher precedence (variable, then
+    /// profile) and, at the same level, the `token-file`.
     pub fn token_source(&self) -> TokenSource<'_> {
         let rank = |s: &Setting| match (&s.value, &s.source) {
             (None, _) => 0,
@@ -164,7 +164,7 @@ impl Effective {
         }
     }
 
-    /// Todos os campos, para o `config show`.
+    /// All the fields, for `config show`.
     pub fn settings(&self) -> impl Iterator<Item = (&'static str, &Setting)> {
         self.settings.iter().map(|(f, s)| (*f, s))
     }

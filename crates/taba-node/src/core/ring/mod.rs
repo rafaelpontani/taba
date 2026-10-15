@@ -1,19 +1,19 @@
-//! O anel de hash circular e os blocos de mensagem (doc 05, seção 7.1). Lógica pura: dado só
-//! o conjunto de IDs de nós e o número de nós virtuais, qualquer nó chega ao mesmo primário e
-//! às mesmas réplicas para a mesma posição (UC-ANE-002).
+//! The circular hash ring and the message blocks (doc 05, section 7.1). Pure logic: given only
+//! the set of node IDs and the number of virtual nodes, any node arrives at the same primary and
+//! the same replicas for the same position (UC-ANE-002).
 //!
-//! Uma **posição** é um `u64` (os 8 primeiros bytes do SHA-256 da chave). Cada nó físico ocupa
-//! `ring.virtual-nodes` posições no anel. Um **bloco** é o arco que termina numa posição de nó
-//! virtual: a posição `p` pertence ao primeiro ponto com valor `>= p`, dando a volta ao fim do
-//! anel. O identificador do bloco (`BlockId`) é a posição desse ponto, em 16 dígitos
-//! hexadecimais, e é o `{id}` das rotas `/cluster/blocks/{id}/...` (doc 06c).
+//! A **position** is a `u64` (the first 8 bytes of the key's SHA-256). Each physical node occupies
+//! `ring.virtual-nodes` positions on the ring. A **block** is the arc that ends at a virtual-node
+//! position: position `p` belongs to the first point with value `>= p`, wrapping around the end of the
+//! ring. The block identifier (`BlockId`) is that point's position, in 16 hexadecimal
+//! digits, and is the `{id}` of the `/cluster/blocks/{id}/...` routes (doc 06c).
 
 use std::fmt;
 use std::str::FromStr;
 
 use sha2::{Digest, Sha256};
 
-/// A posição de uma chave no anel.
+/// The position of a key on the ring.
 pub fn position(key: &[u8]) -> u64 {
     let digest = Sha256::digest(key);
     let mut head = [0u8; 8];
@@ -21,33 +21,33 @@ pub fn position(key: &[u8]) -> u64 {
     u64::from_be_bytes(head)
 }
 
-/// A posição de uma mensagem: o hash do ID (GUID v7). O hash desfaz a ordem do tempo que
-/// os bits altos do GUID carregam, então as mensagens se espalham por todo o anel
+/// The position of a message: the hash of the ID (GUID v7). The hash undoes the time order that
+/// the GUID's high bits carry, so messages spread over the whole ring
 /// (UC-ANE-005).
 pub fn message_position(message_id: &str) -> u64 {
     position(message_id.as_bytes())
 }
 
-/// A posição de um grupo de fila FIFO: `hash(id do tópico + ":" + groupId)`. Todas as mensagens
-/// do grupo caem no mesmo bloco (UC-FIF-023, UC-ANE-009).
+/// The position of a FIFO queue group: `hash(topic id + ":" + groupId)`. All the group's messages
+/// fall in the same block (UC-FIF-023, UC-ANE-009).
 pub fn fifo_position(topic_id: &str, group_id: &str) -> u64 {
     position(format!("{topic_id}:{group_id}").as_bytes())
 }
 
-/// A posição de um tópico: o hash do `id` dele. Quem a ocupa é o nó gestor de uma fila volátil
-/// (doc 15, seção 14.5).
+/// The position of a topic: the hash of its `id`. Whoever occupies it is the managing node of a volatile queue
+/// (doc 15, section 14.5).
 pub fn topic_position(topic_id: &str) -> u64 {
     position(topic_id.as_bytes())
 }
 
-/// A posição de uma definição compartilhada (`kind` é `topic` ou `token`): o hash de
-/// `kind:chave`, onde a chave é o **nome** do tópico (único no cluster) ou o `id` do token. Quem a
-/// ocupa é o dono da definição, a fonte da verdade sobre ela.
+/// The position of a shared definition (`kind` is `topic` or `token`): the hash of
+/// `kind:key`, where the key is the topic **name** (unique in the cluster) or the token `id`. Whoever
+/// occupies it is the definition's owner, the source of truth about it.
 pub fn definition_position(kind: &str, key: &str) -> u64 {
     position(format!("{kind}:{key}").as_bytes())
 }
 
-/// O identificador de um bloco: a posição do nó virtual que o fecha.
+/// The identifier of a block: the position of the virtual node that closes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockId(pub u64);
 
@@ -60,7 +60,7 @@ impl fmt::Display for BlockId {
 impl FromStr for BlockId {
     type Err = ();
 
-    /// Só a forma que o `Display` escreve: 16 dígitos hexadecimais minúsculos.
+    /// Only the form `Display` writes: 16 lowercase hexadecimal digits.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let valid = s.len() == 16
             && s.bytes()
@@ -75,22 +75,22 @@ impl FromStr for BlockId {
 #[derive(Debug, Clone, Copy)]
 struct Point {
     position: u64,
-    /// Índice em `Ring.nodes`.
+    /// Index into `Ring.nodes`.
     node: usize,
 }
 
-/// O anel de um conjunto de nós.
+/// The ring of a set of nodes.
 #[derive(Debug, Clone, Default)]
 pub struct Ring {
-    /// Os IDs dos nós, em ordem; a ordem não depende da de entrada.
+    /// The node IDs, in order; the order does not depend on the input's.
     nodes: Vec<String>,
-    /// Os nós virtuais, ordenados por posição.
+    /// The virtual nodes, sorted by position.
     points: Vec<Point>,
     virtual_nodes: u32,
 }
 
 impl Ring {
-    /// Monta o anel. A ordem dos nós e as repetições não mudam o resultado.
+    /// Builds the ring. The order of the nodes and repetitions do not change the result.
     pub fn new<'a>(node_ids: impl IntoIterator<Item = &'a str>, virtual_nodes: u32) -> Self {
         let mut nodes: Vec<String> = node_ids.into_iter().map(str::to_owned).collect();
         nodes.sort();
@@ -105,8 +105,8 @@ impl Ring {
                 });
             }
         }
-        // Duas posições iguais seriam o mesmo bloco; fica a do nó de menor ID (`nodes` já é
-        // ordenado, e a ordenação é estável pelo índice).
+        // Two equal positions would be the same block; the one of the node with the lowest ID stays (`nodes` is already
+        // sorted, and the sort is stable by index).
         points.sort_by_key(|p| (p.position, p.node));
         points.dedup_by_key(|p| p.position);
         Self {
@@ -120,7 +120,7 @@ impl Ring {
         self.nodes.is_empty()
     }
 
-    /// Quantos nós físicos.
+    /// How many physical nodes.
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -129,12 +129,12 @@ impl Ring {
         self.virtual_nodes
     }
 
-    /// Os IDs dos nós, em ordem.
+    /// The node IDs, in order.
     pub fn nodes(&self) -> impl Iterator<Item = &str> {
         self.nodes.iter().map(String::as_str)
     }
 
-    /// Os blocos do anel, em ordem de posição.
+    /// The ring's blocks, in position order.
     pub fn blocks(&self) -> impl Iterator<Item = BlockId> + '_ {
         self.points.iter().map(|p| BlockId(p.position))
     }
@@ -143,7 +143,7 @@ impl Ring {
         self.points.len()
     }
 
-    /// O índice do primeiro ponto com valor `>= position`, dando a volta ao fim do anel.
+    /// The index of the first point with value `>= position`, wrapping around the end of the ring.
     fn start_index(&self, position: u64) -> Option<usize> {
         if self.points.is_empty() {
             return None;
@@ -152,15 +152,15 @@ impl Ring {
         Some(if index == self.points.len() { 0 } else { index })
     }
 
-    /// O bloco a que a posição pertence.
+    /// The block the position belongs to.
     pub fn block_of(&self, position: u64) -> Option<BlockId> {
         self.start_index(position)
             .map(|i| BlockId(self.points[i].position))
     }
 
-    /// Os nós responsáveis pela posição, em ordem (primário, secundário, terciário...): nós
-    /// físicos **distintos**, pulando os nós virtuais de um nó já escolhido (UC-ANE-003). Há no
-    /// máximo `count`, e menos se o anel tem menos nós.
+    /// The nodes responsible for the position, in order (primary, secondary, tertiary...): **distinct**
+    /// physical nodes, skipping the virtual nodes of an already chosen node (UC-ANE-003). There are at
+    /// most `count`, and fewer if the ring has fewer nodes.
     pub fn owners(&self, position: u64, count: usize) -> Vec<&str> {
         let Some(start) = self.start_index(position) else {
             return Vec::new();
@@ -168,7 +168,7 @@ impl Ring {
         self.owners_from(start, count)
     }
 
-    /// Os nós responsáveis por um bloco. `None` se o bloco não existe neste anel.
+    /// The nodes responsible for a block. `None` if the block does not exist on this ring.
     pub fn block_owners(&self, block: BlockId, count: usize) -> Option<Vec<&str>> {
         let start = self
             .points
@@ -192,13 +192,13 @@ impl Ring {
         chosen.into_iter().map(|i| self.nodes[i].as_str()).collect()
     }
 
-    /// O primário da posição: o dono da entrega das mensagens dela (doc 13, seção 12.7).
+    /// The position's primary: the owner of delivering its messages (doc 13, section 12.7).
     pub fn primary(&self, position: u64) -> Option<&str> {
         self.owners(position, 1).into_iter().next()
     }
 
-    /// Os blocos de que o nó é responsável em algum papel (um dos `count` primeiros nós
-    /// responsáveis): o que ele precisa sincronizar ao entrar (doc 05, seção 7.3).
+    /// The blocks the node is responsible for in some role (one of the first `count` responsible
+    /// nodes): what it needs to sync when joining (doc 05, section 7.3).
     pub fn blocks_of(&self, node_id: &str, count: usize) -> Vec<BlockId> {
         (0..self.points.len())
             .filter(|start| self.owners_from(*start, count).contains(&node_id))
@@ -206,9 +206,9 @@ impl Ring {
             .collect()
     }
 
-    /// As posições que o bloco cobre, como faixas inclusivas `(início, fim)`: o arco entre o ponto
-    /// anterior (exclusive) e o ponto do bloco (inclusive). O primeiro bloco do anel dá a volta e
-    /// ganha duas faixas. `None` se o bloco não existe neste anel.
+    /// The positions the block covers, as inclusive ranges `(start, end)`: the arc between the previous
+    /// point (exclusive) and the block's point (inclusive). The ring's first block wraps around and
+    /// gets two ranges. `None` if the block does not exist on this ring.
     pub fn block_ranges(&self, block: BlockId) -> Option<Vec<(u64, u64)>> {
         let index = self
             .points
@@ -229,7 +229,7 @@ impl Ring {
         Some(vec![(self.points[index - 1].position + 1, end)])
     }
 
-    /// Quantos blocos o nó tem como primário.
+    /// How many blocks the node has as primary.
     pub fn primary_blocks_of(&self, node_id: &str) -> usize {
         let Ok(index) = self.nodes.binary_search_by(|n| n.as_str().cmp(node_id)) else {
             return 0;

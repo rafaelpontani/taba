@@ -21,7 +21,7 @@ O Taba separa os públicos **por porta** (não só por caminho), para a rede (fi
 | **Cluster** (`cluster.port`, 8081) | **Só os outros nós** | **TLS mútuo** com o certificado do cluster. Nunca publicar fora da rede dos nós |
 | **Operação** (`operations.port`) | Operador, Prometheus, balanceador | **Sem autenticação**: proteção só de rede (porta própria + `operations.allowed-ips`) |
 
-![Zonas de confiança das três portas](../diagramas/img/zonas-seguranca.svg)
+![Zonas de confiança das três portas](../diagramas/img/pt-BR/zonas-seguranca.svg)
 
 As três portas precisam ser **diferentes entre si**; valor repetido ou porta ocupada impede o nó de subir. A porta de cliente responde `404` a `/cluster/*`; a do cluster responde `404` a tudo que não seja `/cluster/*`.
 
@@ -43,7 +43,7 @@ secrets/
 - **Montar a pasta liga tudo sozinho:** o TLS do cluster (se `tls/` existe) e a autenticação (se há `root-token`).
 - Em produção, **gere uma vez** e entregue como segredo da plataforma (Secret do Kubernetes, Docker secret, volume): **não a cada início de contêiner**.
 
-> **No Windows com Git Bash**, comandos Docker que recebem um caminho (`/secrets/root-token`) têm o caminho "traduzido" para o do Windows. Use `MSYS_NO_PATHCONV=1` (ou `docker compose exec taba-1 cat /etc/taba/secrets/root-token`).
+> **No Windows com Git Bash**, comandos Docker que recebem um caminho (`/secrets/root-token`) têm o caminho "traduzido" para o do Windows. Use `MSYS_NO_PATHCONV=1` (ou `docker compose exec taba-0 cat /etc/taba/secrets/root-token`).
 
 ## Autenticação por token (API de cliente)
 
@@ -82,7 +82,7 @@ Todo token válido consulta `GET /topics` e `GET /topics/{topic}` dentro dos seu
 ### Exemplo verificado (cluster de 3 nós)
 
 ```bash
-TOK=$(docker compose exec -T taba-1 cat /etc/taba/secrets/root-token)
+TOK=$(docker compose exec -T taba-0 cat /etc/taba/secrets/root-token)
 
 curl -s -X POST localhost:8080/tokens -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
   -d '{"name":"servico-pedidos","permissions":["publish","create"],"topicPrefixes":["pedidos"]}'

@@ -1,6 +1,6 @@
 [package]
 name = "taba-node"
-description = "Nó do Taba: o binário `taba` e a biblioteca que os testes de integração usam."
+description = "The Taba node: the `taba` binary and the library the integration tests use."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

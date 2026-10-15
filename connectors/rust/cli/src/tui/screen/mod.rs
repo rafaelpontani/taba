@@ -1,5 +1,5 @@
-//! A tela de perfis: a lista e, por cima dela, o formulário. Também é uma máquina de estados pura;
-//! gravar o arquivo e testar a conexão ficam com quem a dirige (`Services`).
+//! The profiles screen: the list and, over it, the form. Also a pure state machine;
+//! saving the file and testing the connection are left to whoever drives it (`Services`).
 
 use super::form::{window, Form, FormEvent};
 use super::keys::Key;
@@ -9,11 +9,11 @@ use crate::profile::{ConfigFile, Profile};
 pub const MIN_WIDTH: usize = 60;
 pub const MIN_HEIGHT: usize = 16;
 
-/// O que a tela precisa do mundo de fora.
+/// What the screen needs from the outside world.
 pub trait Services {
-    /// Grava o arquivo inteiro.
+    /// Writes the whole file.
     fn save(&mut self, file: &ConfigFile) -> Result<(), String>;
-    /// Testa a conexão com um perfil que talvez ainda não esteja salvo; devolve o resultado em texto.
+    /// Tests the connection with a profile that may not be saved yet; returns the result as text.
     fn check(&mut self, profile: &Profile) -> Result<String, String>;
 }
 
@@ -25,7 +25,7 @@ pub enum Flow {
 
 enum Mode {
     List,
-    /// Esperando o `s` ou `N` de "Remover?".
+    /// Waiting for the `y` or `N` of "Remove?".
     ConfirmRemove(String),
     Form(Box<Form>),
 }
@@ -40,7 +40,7 @@ pub struct App {
 }
 
 impl App {
-    /// `session` é o perfil que `TABA_CLI_PROFILE` escolheu neste terminal.
+    /// `session` is the profile `TABA_CLI_PROFILE` chose in this terminal.
     pub fn new(file: ConfigFile, path: String, session: Option<String>) -> App {
         App {
             file,
@@ -70,10 +70,10 @@ impl App {
         match std::mem::replace(&mut self.mode, Mode::List) {
             Mode::List => self.handle_list(key, services),
             Mode::ConfirmRemove(name) => {
-                if matches!(key, Key::Char('s' | 'S' | 'y' | 'Y')) {
+                if matches!(key, Key::Char('y' | 'Y')) {
                     self.remove(&name, services);
                 } else {
-                    self.status = Some((false, "Nada foi removido.".to_owned()));
+                    self.status = Some((false, "Nothing was removed.".to_owned()));
                 }
                 Flow::Continue
             }
@@ -116,7 +116,7 @@ impl App {
                 if let Some(name) = self.selected_name() {
                     let mut next = self.file.clone();
                     if next.set_default(&name).is_ok() {
-                        self.persist(next, format!("`{name}` é o perfil padrão."), services);
+                        self.persist(next, format!("`{name}` is the default profile."), services);
                     }
                 }
             }
@@ -132,7 +132,7 @@ impl App {
         Flow::Continue
     }
 
-    /// Grava `next`; se der certo ele vira o arquivo da tela, se não o anterior fica como estava.
+    /// Saves `next`; if it works it becomes the screen's file, if not the previous one stays as it was.
     fn persist(
         &mut self,
         next: ConfigFile,
@@ -158,7 +158,7 @@ impl App {
     fn remove(&mut self, name: &str, services: &mut dyn Services) {
         let mut next = self.file.clone();
         if next.remove(name).is_ok() {
-            self.persist(next, format!("Perfil `{name}` removido."), services);
+            self.persist(next, format!("Profile `{name}` removed."), services);
         }
     }
 
@@ -178,10 +178,7 @@ impl App {
                             Err(message) => (true, message),
                         }
                     } else {
-                        (
-                            true,
-                            "Corrija os campos em vermelho antes de testar.".to_owned(),
-                        )
+                        (true, "Fix the fields in red before testing.".to_owned())
                     });
                 }
                 Flow::Continue
@@ -191,10 +188,7 @@ impl App {
                     return Flow::Continue;
                 };
                 if !form.is_valid() {
-                    form.status = Some((
-                        true,
-                        "Corrija os campos em vermelho antes de salvar.".to_owned(),
-                    ));
+                    form.status = Some((true, "Fix the fields in red before saving.".to_owned()));
                     return Flow::Continue;
                 }
                 let name = form.name().to_owned();
@@ -225,7 +219,7 @@ impl App {
                             .unwrap_or(0);
                         self.file = next;
                         self.mode = Mode::List;
-                        self.status = Some((false, format!("Perfil `{name}` salvo.")));
+                        self.status = Some((false, format!("Profile `{name}` saved.")));
                     }
                     Err(e) => {
                         if let Mode::Form(form) = &mut self.mode {
@@ -242,9 +236,9 @@ impl App {
         if width < MIN_WIDTH || height < MIN_HEIGHT {
             return Frame {
                 lines: vec![
-                    style.paint("1;31", "Terminal pequeno demais."),
-                    format!("Preciso de pelo menos {MIN_WIDTH} colunas por {MIN_HEIGHT} linhas (agora: {width}x{height})."),
-                    "Aumente a janela. Ctrl+C sai.".to_owned(),
+                    style.paint("1;31", "Terminal too small."),
+                    format!("I need at least {MIN_WIDTH} columns by {MIN_HEIGHT} lines (now: {width}x{height})."),
+                    "Enlarge the window. Ctrl+C quits.".to_owned(),
                 ],
                 cursor: None,
             };
@@ -259,17 +253,17 @@ impl App {
         let mut lines = vec![
             format!(
                 " {}   {}",
-                style.paint("1", "Perfis do taba-cli"),
+                style.paint("1", "taba-cli profiles"),
                 style.paint("2", &self.path)
             ),
             String::new(),
         ];
         if self.file.profiles.is_empty() {
             lines.push(
-                "   Não há perfis. Sem perfil vale o padrão embutido (http://127.0.0.1:8080)."
+                "   There are no profiles. Without a profile the built-in default applies (http://127.0.0.1:8080)."
                     .to_owned(),
             );
-            lines.push("   Tecle n para criar o primeiro.".to_owned());
+            lines.push("   Press n to create the first one.".to_owned());
         } else {
             let name_w = self
                 .file
@@ -283,8 +277,8 @@ impl App {
             lines.push(style.paint(
                 "2",
                 &format!(
-                    "   {:<2}{:<name_w$}  {:<url_w$}  {:<12}  padrão",
-                    "", "nome", "url", "token-file"
+                    "   {:<2}{:<name_w$}  {:<url_w$}  {:<12}  default",
+                    "", "name", "url", "token-file"
                 ),
             ));
             for (n, (name, profile)) in self.file.profiles.iter().enumerate() {
@@ -315,7 +309,7 @@ impl App {
         if let Mode::ConfirmRemove(name) = &self.mode {
             lines.push(format!(
                 "   {}",
-                style.paint("33", &format!("Remover \"{name}\"? [s/N]"))
+                style.paint("33", &format!("Remove \"{name}\"? [y/N]"))
             ));
         } else if let Some((is_error, message)) = &self.status {
             lines.push(format!(
@@ -323,14 +317,14 @@ impl App {
                 style.paint(if *is_error { "31" } else { "32" }, message)
             ));
         }
-        let footer = " ↑↓ escolher   Enter abrir   n novo   d padrão   Del remover   q sair";
+        let footer = " ↑↓ choose   Enter open   n new   d default   Del remove   q quit";
         window(lines, 0, None, footer, style, width, height)
     }
 }
 
 fn session_suffix(session: &Option<String>, name: &str) -> &'static str {
     if session.as_deref() == Some(name) {
-        " (sessão)"
+        " (session)"
     } else {
         ""
     }
@@ -347,8 +341,8 @@ fn cut(text: &str, max: usize) -> String {
     }
 }
 
-/// Troca o perfil `old` por `profile` sob o nome `name`, no mesmo lugar da lista, levando junto o
-/// padrão se era ele.
+/// Replaces the profile `old` with `profile` under the name `name`, in the same place in the list, carrying along the
+/// default if it was that one.
 fn rename_and_replace(
     file: &mut ConfigFile,
     old: &str,
@@ -359,9 +353,9 @@ fn rename_and_replace(
         .profiles
         .iter()
         .position(|(n, _)| n == old)
-        .ok_or_else(|| format!("o perfil `{old}` não existe mais"))?;
+        .ok_or_else(|| format!("the profile `{old}` no longer exists"))?;
     if name != old && file.get(name).is_some() {
-        return Err(format!("já existe um perfil `{name}`"));
+        return Err(format!("a profile `{name}` already exists"));
     }
     file.profiles[at] = (name.to_owned(), profile);
     if file.default.as_deref() == Some(old) {

@@ -20,21 +20,21 @@ fn loss(topic: &str, id: &str, at: u64) -> Loss {
 #[test]
 fn a_loss_is_keyed_by_topic_and_id_and_listed_by_id() {
     let (_dir, store) = store();
-    assert!(store.record(&loss("pedidos", "b", 10)).unwrap());
+    assert!(store.record(&loss("orders", "b", 10)).unwrap());
     assert!(
-        !store.record(&loss("pedidos", "b", 99)).unwrap(),
-        "repetir a mesma chave não muda nada"
+        !store.record(&loss("orders", "b", 99)).unwrap(),
+        "repeating the same key changes nothing"
     );
-    assert!(store.record(&loss("pedidos", "a", 20)).unwrap());
-    assert!(store.record(&loss("outro", "b", 30)).unwrap());
+    assert!(store.record(&loss("orders", "a", 20)).unwrap());
+    assert!(store.record(&loss("another", "b", 30)).unwrap());
     let all = store.list(None, 10).unwrap();
     assert_eq!(
         all.iter()
             .map(|l| (l.topic.as_str(), l.id.as_str()))
             .collect::<Vec<_>>(),
-        vec![("pedidos", "a"), ("outro", "b"), ("pedidos", "b")]
+        vec![("orders", "a"), ("another", "b"), ("orders", "b")]
     );
-    assert_eq!(all[2].detected_ms, 10, "vale o primeiro registro");
+    assert_eq!(all[2].detected_ms, 10, "the first record counts");
     assert_eq!(store.list(Some("b"), 10).unwrap().len(), 2);
     assert_eq!(store.list(None, 1).unwrap().len(), 1);
 }

@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Taba.Tests
 {
-    /// <summary>Uma requisição como o conector a montou, copiada na hora do envio.</summary>
+    /// <summary>A request as the connector built it, copied at send time.</summary>
     public sealed class Seen
     {
         public string Method { get; set; }
@@ -35,8 +35,8 @@ namespace Taba.Tests
     }
 
     /// <summary>
-    /// O transporte de mentira dos testes: devolve, uma por chamada, as respostas (ou as falhas)
-    /// combinadas, e guarda o que o conector enviou.
+    /// The tests' fake transport: returns, one per call, the agreed responses (or failures)
+    /// and records what the connector sent.
     /// </summary>
     public sealed class ScriptedHandler : HttpMessageHandler
     {
@@ -67,7 +67,7 @@ namespace Taba.Tests
             return this;
         }
 
-        /// <summary>Não responde nunca: só termina quando o conector desiste (tempo ou cancelamento).</summary>
+        /// <summary>Never responds: only ends when the connector gives up (time or cancellation).</summary>
         public ScriptedHandler Hang()
         {
             _script.Enqueue(async token =>
@@ -119,7 +119,7 @@ namespace Taba.Tests
             Func<CancellationToken, Task<HttpResponseMessage>> next;
             if (!_script.TryDequeue(out next))
             {
-                throw new InvalidOperationException("o conector fez mais chamadas do que o roteiro previa: " + request.Method + " " + request.RequestUri);
+                throw new InvalidOperationException("the connector made more calls than the script foresaw: " + request.Method + " " + request.RequestUri);
             }
             return await next(cancellationToken);
         }

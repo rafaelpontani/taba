@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::*;
 
-const PROD: [(&str, &str); 1] = [("TABA_CLUSTER_ENTRY_ADDRESS", "taba-lb.interno:8081")];
+const PROD: [(&str, &str); 1] = [("TABA_CLUSTER_ENTRY_ADDRESS", "taba-lb.internal:8081")];
 
 fn parse_env(pairs: &[(&str, &str)]) -> Result<Config, ConfigError> {
     let env = MapEnv(
@@ -24,7 +24,7 @@ fn prod_with(extra: &[(&str, &str)]) -> Result<Config, ConfigError> {
 fn problems(result: Result<Config, ConfigError>) -> String {
     match result {
         Err(ConfigError::Validation(list)) => list.join("\n"),
-        other => panic!("esperava erro de validação, veio {other:?}"),
+        other => panic!("expected a validation error, got {other:?}"),
     }
 }
 
@@ -80,7 +80,7 @@ fn documented_defaults_apply_when_nothing_is_set() {
     assert!(c.client_ip.trusted_proxies.is_empty() && c.operations_allowed_ips.is_empty());
     assert!(
         !c.auth.enabled,
-        "sem token raiz a autenticação fica desligada"
+        "without a root token authentication is off"
     );
 }
 
@@ -179,7 +179,7 @@ fn development_forces_a_single_node_and_warns_about_ignored_parameters() {
     assert_eq!((c.write.replication_factor, c.write.quorum), (1, 1));
     assert!(
         !c.auth.enabled,
-        "em desenvolvimento a autenticação é sempre desligada"
+        "in development authentication is always off"
     );
     let warning = c.warnings.join("\n");
     for key in [
@@ -218,7 +218,7 @@ fn the_three_ports_must_differ() {
         ]))
         .contains("cluster.port")
     );
-    // `0` (porta livre qualquer, usada nos testes) nunca é repetida.
+    // `0` (any free port, used in the tests) is never repeated.
     assert!(
         prod_with(&[
             ("TABA_API_PORT", "0"),
@@ -227,7 +227,7 @@ fn the_three_ports_must_differ() {
         ])
         .is_ok()
     );
-    // A porta do cluster não é aberta em desenvolvimento, então não conflita.
+    // The cluster port is not opened in development, so it does not conflict.
     let dev = parse_env(&[
         ("TABA_MODE", "development"),
         ("TABA_API_PORT", "9000"),
@@ -242,7 +242,7 @@ fn default_message_size_cannot_pass_the_hard_limit() {
     assert!(prod_with(&[("TABA_MESSAGE_HARD_LIMIT", "10MB")]).is_ok());
     assert!(
         prod_with(&[("TABA_MESSAGE_HARD_LIMIT", "5MB")]).is_ok(),
-        "igual ao limite vale"
+        "equal to the limit is valid"
     );
     assert!(
         problems(prod_with(&[("TABA_MESSAGE_HARD_LIMIT", "1MB")])).contains("message.hard-limit")
@@ -252,7 +252,7 @@ fn default_message_size_cannot_pass_the_hard_limit() {
 /// UC: UC-CFG-005
 #[test]
 fn stream_line_limit_must_fit_the_hard_limit_in_base64() {
-    // 1 MB em base64 são 1_398_104 bytes, mais o envelope.
+    // 1 MB in base64 is 1_398_104 bytes, plus the envelope.
     let base = [
         ("TABA_MESSAGE_MAX_BYTES", "1MB"),
         ("TABA_MESSAGE_HARD_LIMIT", "1MB"),
@@ -300,8 +300,8 @@ fn allowed_ips_must_be_valid_addresses_or_cidr() {
 
 #[test]
 fn storage_dir_must_end_in_taba() {
-    assert!(prod_with(&[("TABA_STORAGE_DIR", "/dados/taba")]).is_ok());
-    assert!(problems(prod_with(&[("TABA_STORAGE_DIR", "/dados/outra")])).contains("storage.dir"));
+    assert!(prod_with(&[("TABA_STORAGE_DIR", "/data/taba")]).is_ok());
+    assert!(problems(prod_with(&[("TABA_STORAGE_DIR", "/data/other")])).contains("storage.dir"));
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn ranges_from_the_fixed_limits_apply_to_the_defaults() {
     assert!(
         problems(prod_with(&[(
             "TABA_TOPICS_DEAD_LETTER_SUFFIX",
-            "com espaco"
+            "with space"
         )]))
         .contains("dead-letter.suffix")
     );
@@ -348,7 +348,7 @@ mod secrets {
         let dir = TempDir::new().unwrap();
         assert!(
             !with_secrets(&dir, &[]).unwrap().auth.enabled,
-            "sem root-token fica desligada"
+            "without a root-token it is off"
         );
 
         fs::write(
@@ -366,7 +366,7 @@ mod secrets {
         let off = with_secrets(&dir, &[("TABA_AUTH_ENABLED", "false")]).unwrap();
         assert!(
             !off.auth.enabled,
-            "auth.enabled=false força desligada, mesmo com a pasta montada"
+            "auth.enabled=false forces it off, even with the folder mounted"
         );
     }
 
@@ -387,10 +387,10 @@ mod secrets {
     #[test]
     fn short_root_token_stops_startup() {
         assert!(
-            problems(prod_with(&[("TABA_AUTH_ROOT_TOKEN", "curto")])).contains("auth.root-token")
+            problems(prod_with(&[("TABA_AUTH_ROOT_TOKEN", "short")])).contains("auth.root-token")
         );
         let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("root-token"), "curto\n").unwrap();
+        fs::write(dir.path().join("root-token"), "short\n").unwrap();
         assert!(problems(with_secrets(&dir, &[])).contains("root-token"));
         fs::write(
             dir.path().join("root-token"),
@@ -399,7 +399,7 @@ mod secrets {
         .unwrap();
         assert!(
             problems(with_secrets(&dir, &[])).contains("root-token"),
-            "no máximo duas linhas"
+            "at most two lines"
         );
     }
 
@@ -413,7 +413,7 @@ mod secrets {
     #[test]
     fn a_named_root_token_file_that_does_not_exist_stops_startup() {
         let dir = TempDir::new().unwrap();
-        let missing = dir.path().join("nao-existe");
+        let missing = dir.path().join("does-not-exist");
         let err = problems(prod_with(&[(
             "TABA_AUTH_ROOT_TOKEN_FILE",
             missing.to_str().unwrap(),
@@ -427,20 +427,20 @@ mod secrets {
         assert_eq!(
             with_secrets(&dir, &[]).unwrap().tls.dir,
             None,
-            "sem pasta: HTTP puro com aviso"
+            "without a folder: plain HTTP with a warning"
         );
 
         let tls = dir.path().join("tls");
         fs::create_dir(&tls).unwrap();
         assert!(
             problems(with_secrets(&dir, &[])).contains("cluster.tls.dir"),
-            "pasta vazia não tem par válido"
+            "an empty folder has no valid pair"
         );
 
         fs::write(tls.join("cluster-2026.crt"), "cert").unwrap();
         assert!(
             problems(with_secrets(&dir, &[])).contains("cluster.tls.dir"),
-            ".crt sem .key só serve para confiar"
+            ".crt without .key only serves for trusting"
         );
 
         fs::write(tls.join("cluster-2026.key"), "key").unwrap();
@@ -450,7 +450,7 @@ mod secrets {
     #[test]
     fn a_named_tls_folder_that_does_not_exist_stops_startup() {
         let dir = TempDir::new().unwrap();
-        let missing = dir.path().join("nao-existe");
+        let missing = dir.path().join("does-not-exist");
         let err = problems(prod_with(&[(
             "TABA_CLUSTER_TLS_DIR",
             missing.to_str().unwrap(),
@@ -492,37 +492,37 @@ fn the_otel_variables_give_the_resource_attributes_and_the_service_name_wins() {
         ("TABA_MODE", "development"),
         (
             "OTEL_RESOURCE_ATTRIBUTES",
-            "service.namespace=prod, deployment.environment.name=staging,service.name=velho,semigual,=vazio",
+            "service.namespace=prod, deployment.environment.name=staging,service.name=old,noequals,=empty",
         ),
-        ("OTEL_SERVICE_NAME", "taba-novo"),
+        ("OTEL_SERVICE_NAME", "taba-new"),
     ]);
     let c = Config::parse(None, &env).unwrap();
     let resource: std::collections::BTreeMap<_, _> = c.telemetry.resource.iter().cloned().collect();
     assert_eq!(resource["service.namespace"], "prod");
     assert_eq!(resource["deployment.environment.name"], "staging");
     assert_eq!(
-        resource["service.name"], "taba-novo",
+        resource["service.name"], "taba-new",
         "OTEL_SERVICE_NAME vence"
     );
     assert_eq!(
         resource.len(),
         3,
-        "o par sem `=` e o sem chave são ignorados"
+        "the pair without `=` and the one without a key are ignored"
     );
 }
 
 /// UC: UC-CFG-010
 #[test]
 fn an_explicit_config_file_that_does_not_exist_stops_startup() {
-    let err = Config::load(Some(std::path::Path::new("/nao/existe/taba.yml"))).unwrap_err();
+    let err = Config::load(Some(std::path::Path::new("/does/not/exist/taba.yml"))).unwrap_err();
     assert!(matches!(err, ConfigError::Read { .. }), "{err}");
     assert!(err.to_string().contains("taba.yml"));
 }
 
 #[test]
 fn every_registered_parameter_is_read_by_the_typed_config() {
-    // Mantém a tabela de `params` e o `Config` em sincronia: parâmetro na tabela que
-    // ninguém lê é configuração que não faz nada.
+    // Keeps the `params` table and `Config` in sync: a parameter in the table that
+    // nobody reads is configuration that does nothing.
     let env = MapEnv(
         PROD.iter()
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
@@ -535,7 +535,7 @@ fn every_registered_parameter_is_read_by_the_typed_config() {
     let missing: Vec<_> = registered.difference(&read).collect();
     assert!(
         missing.is_empty(),
-        "parâmetros que o Config não lê: {missing:?}"
+        "parameters the Config does not read: {missing:?}"
     );
 }
 
@@ -557,9 +557,9 @@ fn without_otel_exporter_otlp_endpoint_the_otlp_is_off() {
     assert_eq!(
         otlp_of(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "  ")]).unwrap(),
         None,
-        "endpoint vazio conta como ausente"
+        "an empty endpoint counts as absent"
     );
-    // As demais variáveis, sozinhas, não ligam nada.
+    // The other variables, on their own, turn nothing on.
     assert_eq!(
         otlp_of(&[("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")]).unwrap(),
         None
@@ -569,20 +569,23 @@ fn without_otel_exporter_otlp_endpoint_the_otlp_is_off() {
 /// UC: UC-OPS-039
 #[test]
 fn the_otlp_protocol_defaults_to_grpc_and_accepts_http_protobuf() {
-    let default = otlp_of(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "http://coletor:4317/")])
+    let default = otlp_of(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4317/")])
         .unwrap()
         .unwrap();
     assert_eq!(default.protocol, OtlpProtocol::Grpc);
-    assert_eq!(default.endpoint, "http://coletor:4317", "sem a barra final");
+    assert_eq!(
+        default.endpoint, "http://collector:4317",
+        "without the trailing slash"
+    );
     assert_eq!(default.metric_interval, DEFAULT_METRIC_INTERVAL);
     assert!(default.headers.is_empty() && default.certificate.is_none());
 
     let http = otlp_of(&[
-        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://coletor:4318"),
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector:4318"),
         ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
         (
             "OTEL_EXPORTER_OTLP_HEADERS",
-            "authorization=Bearer x, k=v=w,sem-igual,=vazio",
+            "authorization=Bearer x, k=v=w,no-equals,=empty",
         ),
         ("OTEL_EXPORTER_OTLP_CERTIFICATE", "/etc/ca.pem"),
         ("OTEL_METRIC_EXPORT_INTERVAL", "5000"),
@@ -608,14 +611,14 @@ fn the_otlp_protocol_defaults_to_grpc_and_accepts_http_protobuf() {
 #[test]
 fn an_invalid_otlp_setting_stops_the_start_with_every_problem_listed() {
     let error = otlp_of(&[
-        ("OTEL_EXPORTER_OTLP_ENDPOINT", "coletor:4317"),
+        ("OTEL_EXPORTER_OTLP_ENDPOINT", "collector:4317"),
         ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json"),
         ("OTEL_METRIC_EXPORT_INTERVAL", "0"),
     ])
     .unwrap_err()
     .to_string();
-    assert!(error.contains("http:// ou https://"), "{error}");
-    assert!(error.contains("grpc ou http/protobuf"), "{error}");
+    assert!(error.contains("http:// or https://"), "{error}");
+    assert!(error.contains("grpc or http/protobuf"), "{error}");
     assert!(error.contains("OTEL_METRIC_EXPORT_INTERVAL"), "{error}");
 }
 
@@ -630,7 +633,7 @@ fn the_sampler_follows_otel_traces_sampler_and_defaults_to_parentbased_traceidra
     assert_eq!(
         with(&[]).unwrap(),
         Sampler::ParentBasedTraceIdRatio(0.1),
-        "padrão provisório (D117)"
+        "provisional default (D117)"
     );
     assert_eq!(
         with(&[("OTEL_TRACES_SAMPLER_ARG", "0.25")]).unwrap(),
@@ -649,7 +652,7 @@ fn the_sampler_follows_otel_traces_sampler_and_defaults_to_parentbased_traceidra
             "{name}"
         );
     }
-    assert!(with(&[("OTEL_TRACES_SAMPLER", "sempre")]).is_err());
+    assert!(with(&[("OTEL_TRACES_SAMPLER", "always")]).is_err());
     assert!(with(&[("OTEL_TRACES_SAMPLER_ARG", "1.5")]).is_err());
     assert!(with(&[("OTEL_TRACES_SAMPLER_ARG", "metade")]).is_err());
 }
@@ -671,7 +674,7 @@ fn advertise_addresses_is_a_list_of_the_ips_the_node_tells_the_others() {
     let none = Config::parse(None, &env(&[])).unwrap();
     assert!(
         none.cluster.advertise_addresses.is_empty(),
-        "sem valor, o nó descobre"
+        "without a value, the node discovers it"
     );
     let set = Config::parse(
         None,
@@ -694,7 +697,7 @@ fn the_log_format_defaults_to_text_and_comes_from_yaml_or_env() {
     let yaml = "telemetry:\n  logs:\n    format: json\n";
     let from_yaml = Config::parse(Some(("taba.yml", yaml)), &MapEnv::new(PROD)).unwrap();
     assert_eq!(from_yaml.telemetry.logs_format, LogFormat::Json);
-    // A variável de ambiente vence o arquivo.
+    // The environment variable beats the file.
     let env = MapEnv::new([PROD[0], ("TABA_TELEMETRY_LOGS_FORMAT", "color")]);
     let both = Config::parse(Some(("taba.yml", yaml)), &env).unwrap();
     assert_eq!(both.telemetry.logs_format, LogFormat::Color);

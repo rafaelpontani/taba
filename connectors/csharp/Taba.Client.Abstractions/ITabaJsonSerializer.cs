@@ -1,10 +1,10 @@
 namespace Taba
 {
     /// <summary>
-    /// Quem converte entre o objeto da aplicação e o texto JSON: serializa no <c>PublishJson</c> e
-    /// deserializa no <c>Consume&lt;T&gt;</c>. O conector traz um padrão (<c>System.Text.Json</c> no .NET 5
-    /// em diante, <c>DataContractJsonSerializer</c> no .NET Framework); para usar outro (Newtonsoft.Json,
-    /// por exemplo), informe-o em <c>TabaConfig.JsonSerializer</c>.
+    /// What converts between the application object and the JSON text: serializes in <c>PublishJson</c> and
+    /// deserializes in <c>Consume&lt;T&gt;</c>. The connector ships a default (<c>System.Text.Json</c> on .NET 5
+    /// and later, <c>DataContractJsonSerializer</c> on .NET Framework); to use another (Newtonsoft.Json,
+    /// for example), set it in <c>TabaConfig.JsonSerializer</c>.
     /// </summary>
     public interface ITabaJsonSerializer
     {

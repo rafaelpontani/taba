@@ -49,12 +49,12 @@ fn register_leaves_the_change_pending_and_commit_makes_it_effective() {
     assert_eq!(
         (table.version, table.members.len()),
         (1, 1),
-        "pendente não muda a tabela"
+        "pending does not change the table"
     );
     assert!(!membership.is_member("bb"));
 
     let table = membership.commit("op1", at(1)).unwrap();
-    assert_eq!(table.version, 2, "a época sobe a cada mudança efetivada");
+    assert_eq!(table.version, 2, "the epoch rises on each effected change");
     assert_eq!(
         table
             .members
@@ -81,9 +81,9 @@ fn all_three_phases_are_idempotent_by_operation_id() {
     let again = membership.commit("op1", at(3)).unwrap();
     assert_eq!(
         again.version, 2,
-        "repetir o commit não sobe a época de novo"
+        "repeating the commit does not raise the epoch again"
     );
-    // Um register repetido depois do commit também não faz nada.
+    // A register repeated after the commit also does nothing.
     membership
         .register("op1", Change::Add(member("bb")), at(4))
         .unwrap();
@@ -119,11 +119,11 @@ fn a_second_change_while_one_is_pending_is_a_conflict() {
 fn commit_and_rollback_of_an_unknown_operation_are_unknown() {
     let membership = alone("a");
     assert_eq!(
-        membership.commit("nunca-chegou", at(0)),
+        membership.commit("never-arrived", at(0)),
         Err(MembershipError::UnknownOperation)
     );
     assert_eq!(
-        membership.rollback("nunca-chegou", at(0)),
+        membership.rollback("never-arrived", at(0)),
         Err(MembershipError::UnknownOperation)
     );
 }
@@ -139,9 +139,9 @@ fn a_pending_change_expires_after_the_pending_ttl() {
     assert_eq!(
         membership.commit("op1", at(31)),
         Err(MembershipError::UnknownOperation),
-        "vencida, a operação é desconhecida"
+        "expired, the operation is unknown"
     );
-    // O lugar fica livre para outra mudança.
+    // The place is free for another change.
     membership
         .register("op2", Change::Add(member("ccc")), at(31))
         .unwrap();
@@ -188,7 +188,7 @@ fn adding_a_member_twice_or_removing_a_stranger_is_a_conflict() {
     ));
     assert!(
         !membership.has_pending(at(0)),
-        "o recusado não deixa pendência"
+        "the refused one leaves nothing pending"
     );
 }
 
@@ -203,7 +203,7 @@ fn the_ring_follows_the_table() {
     assert_eq!(
         membership.ring().node_count(),
         1,
-        "pendente não muda o anel"
+        "pending does not change the ring"
     );
     membership.commit("op1", at(1)).unwrap();
     assert_eq!(membership.ring().node_count(), 2);
@@ -244,7 +244,7 @@ fn the_memory_of_finished_operations_is_bounded() {
     assert_eq!(
         membership.rollback("op0", at(0)),
         Err(MembershipError::UnknownOperation),
-        "as mais antigas foram esquecidas"
+        "the oldest were forgotten"
     );
     membership
         .rollback(&format!("op{}", FINISHED_MEMORY + 9), at(0))
@@ -255,17 +255,17 @@ fn the_memory_of_finished_operations_is_bounded() {
 #[test]
 fn a_coordinator_yields_to_an_older_registration_and_never_to_a_newer_one() {
     let membership = alone("a");
-    // Este nó coordena a operação "op5".
+    // This node coordinates operation "op5".
     membership
         .register_coordinating("op5", Change::Add(member("x")), at(0))
         .unwrap();
-    // Uma mais nova que chega de outro coordenador espera (conflito).
+    // A newer one arriving from another coordinator waits (conflict).
     assert!(matches!(
         membership.register("op7", Change::Add(member("y")), at(0)),
         Err(MembershipError::Conflict(_))
     ));
     assert!(membership.is_pending("op5"));
-    // Uma mais antiga desloca a que este nó coordena, que passa a constar como desfeita.
+    // An older one displaces the one this node coordinates, which is recorded as undone.
     membership
         .register("op3", Change::Add(member("z")), at(0))
         .unwrap();
@@ -281,7 +281,7 @@ fn a_registration_held_for_another_coordinator_is_never_displaced() {
     membership
         .register("op5", Change::Add(member("x")), at(0))
         .unwrap();
-    // Mesmo uma mais antiga espera: quem a recebeu como participante já confirmou à outra.
+    // Even an older one waits: whoever received it as a participant already confirmed to the other.
     assert!(matches!(
         membership.register("op3", Change::Add(member("z")), at(0)),
         Err(MembershipError::Conflict(_))
@@ -302,7 +302,7 @@ fn a_freezing_learned_twice_keeps_the_first_instant_and_only_the_first_is_news()
     assert!(membership.learn_frozen("x", ms(10), at(20), FREEZING));
     assert!(
         !membership.learn_frozen("x", ms(15), at(20), FREEZING),
-        "o eco não é novidade"
+        "the echo is not news"
     );
     assert_eq!(membership.frozen_at("x"), Some(ms(10)));
     assert_eq!(
@@ -318,7 +318,7 @@ fn a_freezing_that_already_ended_is_not_learned() {
     assert!(!membership.learn_frozen("x", ms(10), at(10 + 300), FREEZING));
     assert_eq!(membership.frozen_at("x"), None);
     assert_eq!(membership.frozen_count(at(10 + 300), FREEZING), 0);
-    // Um instante no futuro (relógios que não batem) também vale: o prazo conta dele.
+    // An instant in the future (clocks that do not match) also counts: the deadline counts from it.
     assert!(membership.learn_frozen("y", ms(40), at(30), FREEZING));
 }
 
@@ -335,7 +335,7 @@ fn the_frozen_list_has_only_the_nodes_still_in_freezing() {
             node_id: "new".into(),
             frozen_at: ms(90)
         }],
-        "o vencido sai da lista"
+        "the expired one leaves the list"
     );
 }
 
@@ -352,7 +352,7 @@ fn two_members(a: &str, b: &str) -> Membership {
 /// UC: UC-CNC-010
 #[test]
 fn an_exclusion_and_an_entry_that_cross_follow_the_same_rule_in_both_directions() {
-    // Este nó coordena a exclusão de "b" (op5): um ingresso mais antigo (op3) a desloca.
+    // This node coordinates the exclusion of "b" (op5): an older join (op3) displaces it.
     let membership = two_members("a", "b");
     membership
         .register_coordinating(
@@ -369,8 +369,8 @@ fn an_exclusion_and_an_entry_that_cross_follow_the_same_rule_in_both_directions(
     assert!(!membership.is_pending("op5"));
     assert!(membership.is_pending("op3"));
 
-    // Este nó coordena o ingresso de "c" (op5): uma exclusão mais nova (op7) espera, e uma mais
-    // antiga (op3) o desloca.
+    // This node coordinates the join of "c" (op5): a newer exclusion (op7) waits, and an
+    // older one (op3) displaces it.
     let membership = two_members("a", "b");
     membership
         .register_coordinating("op5", Change::Add(member("c")), at(0))
@@ -430,10 +430,10 @@ fn the_excluded_nodes_kept_for_the_reunion_are_the_last_64_and_leave_when_back_i
         .into_iter()
         .map(|m| m.node_id)
         .collect();
-    assert_eq!(kept.len(), 64, "no máximo 64");
-    assert_eq!(kept, ids[6..], "os mais antigos saem primeiro");
+    assert_eq!(kept.len(), 64, "at most 64");
+    assert_eq!(kept, ids[6..], "the oldest leave first");
 
-    // O que volta à tabela (com o mesmo ID) deixa de ser procurado.
+    // What returns to the table (with the same ID) stops being looked for.
     let mut table = membership.table().unwrap();
     table.members.push(member(&ids[69]));
     membership.install(table);
@@ -451,16 +451,20 @@ fn the_excluded_nodes_kept_for_the_reunion_are_the_last_64_and_leave_when_back_i
 fn a_change_told_by_the_channel_is_applied_without_the_pending_one_and_the_late_commit_is_harmless()
 {
     let membership = alone("a");
-    // O nó nunca viu o registro: a mudança chega já efetivada, na versão seguinte.
+    // The node never saw the register: the change arrives already effected, at the next version.
     let applied = membership.learn("op1", 2, Change::Add(member("bb")), at(1));
     assert_eq!(applied.len(), 1);
     assert_eq!(applied[0].1, 2);
-    assert_eq!(membership.ring().node_count(), 2, "o anel ganhou o novo");
+    assert_eq!(
+        membership.ring().node_count(),
+        2,
+        "the ring gained the new one"
+    );
     let table = membership.table().unwrap();
     assert_eq!(table.version, 2);
     assert!(membership.is_member("bb"));
 
-    // A exclusão também: o nó sai da tabela, entra em freezing e o anel o perde.
+    // The exclusion too: the node leaves the table, enters freezing and the ring loses it.
     let applied = membership.learn(
         "op2",
         3,
@@ -479,10 +483,10 @@ fn a_change_told_by_the_channel_is_applied_without_the_pending_one_and_the_late_
     assert_eq!(
         membership.ring().node_count(),
         1,
-        "o anel perdeu o excluído"
+        "the ring lost the excluded one"
     );
 
-    // O commit que chega depois, da mesma operação, devolve a tabela sem aplicar duas vezes.
+    // The commit that arrives later, of the same operation, returns the table without applying twice.
     let table = membership.commit("op2", at(4)).unwrap();
     assert_eq!(table.version, 3);
 }
@@ -498,7 +502,7 @@ fn a_change_told_by_the_channel_clears_the_pending_one_it_stands_for() {
     membership.learn("op1", 2, Change::Add(member("bb")), at(1));
     assert!(
         !membership.has_pending(at(1)),
-        "o registro virou a mudança efetivada"
+        "the register became the effected change"
     );
     assert_eq!(membership.table().unwrap().version, 2);
     assert_eq!(membership.commit("op1", at(2)).unwrap().version, 2);
@@ -513,13 +517,13 @@ fn a_change_already_applied_or_older_is_ignored() {
         membership
             .learn("op1", 2, Change::Add(member("bb")), at(2))
             .is_empty(),
-        "a mesma versão de novo"
+        "the same version again"
     );
     assert!(
         membership
             .learn("op0", 1, Change::Add(member("cc")), at(2))
             .is_empty(),
-        "uma versão anterior"
+        "an earlier version"
     );
     assert_eq!(membership.table().unwrap().version, 2);
     assert!(!membership.is_member("cc"));
@@ -527,7 +531,7 @@ fn a_change_already_applied_or_older_is_ignored() {
         Membership::new(TTL, 16)
             .learn("op1", 2, Change::Add(member("bb")), at(0))
             .is_empty(),
-        "sem tabela não há o que aplicar"
+        "without a table there is nothing to apply"
     );
 }
 
@@ -535,7 +539,7 @@ fn a_change_already_applied_or_older_is_ignored() {
 #[test]
 fn a_change_ahead_of_the_next_version_waits_for_the_ones_before_it() {
     let membership = alone("a");
-    // A versão 3 chega antes da 2 (vieram de filas de nós diferentes).
+    // Version 3 arrives before 2 (they came from different nodes' queues).
     assert!(
         membership
             .learn("op2", 3, Change::Add(member("cc")), at(1))
@@ -546,11 +550,11 @@ fn a_change_ahead_of_the_next_version_waits_for_the_ones_before_it() {
     assert_eq!(
         applied.iter().map(|(_, v, _)| *v).collect::<Vec<_>>(),
         [2, 3],
-        "aplica as duas, em ordem"
+        "applies both, in order"
     );
     assert!(membership.is_member("bb") && membership.is_member("cc"));
 
-    // O commit normal avança a versão enquanto a seguinte espera: `learn_held` a aplica.
+    // The normal commit advances the version while the next one waits: `learn_held` applies it.
     let membership = alone("a");
     membership.learn("op3", 4, Change::Add(member("dd")), at(1));
     membership.learn("op2", 3, Change::Add(member("cc")), at(1));
@@ -568,7 +572,7 @@ fn a_change_ahead_of_the_next_version_waits_for_the_ones_before_it() {
 #[test]
 fn a_change_that_does_not_fit_the_table_is_dropped_and_the_held_ones_are_bounded() {
     let membership = alone("a");
-    // Remover quem não é membro não cabe: é descartada, sem mexer na tabela.
+    // Removing a non-member does not fit: it is discarded, without touching the table.
     let applied = membership.learn(
         "op1",
         2,
@@ -580,7 +584,7 @@ fn a_change_that_does_not_fit_the_table_is_dropped_and_the_held_ones_are_bounded
     assert!(applied.is_empty());
     assert_eq!(membership.table().unwrap().version, 1);
 
-    // As adiantadas guardadas são no máximo 64, as mais próximas da tabela.
+    // The held-ahead ones number at most 64, the closest to the table.
     for version in 3..=100u64 {
         membership.learn(
             &format!("op{version}"),
@@ -593,12 +597,12 @@ fn a_change_that_does_not_fit_the_table_is_dropped_and_the_held_ones_are_bounded
     assert_eq!(
         applied.len(),
         1 + 63,
-        "a 2 e as 63 seguintes que cabiam nas 64 guardadas"
+        "2 and the following 63 that fit in the 64 stored"
     );
 }
 
-/// O freezing de quem aprende a exclusão pelo quadro `membership` conta do instante em que ele a
-/// aprendeu (o quadro não leva o instante do coordenador) e acaba no prazo (D126).
+/// The freezing of whoever learns the exclusion from the `membership` frame counts from the instant it
+/// learned it (the frame does not carry the coordinator's instant) and ends at the deadline (D126).
 /// UC: UC-CNC-013
 #[test]
 fn the_freezing_of_a_node_learned_by_the_membership_frame_counts_from_the_instant_it_was_learned() {
@@ -618,7 +622,7 @@ fn the_freezing_of_a_node_learned_by_the_membership_frame_counts_from_the_instan
     assert_eq!(
         membership.frozen_remaining("bb", at(10), freezing),
         Some(freezing),
-        "o prazo inteiro, a partir de quando aprendeu"
+        "the whole deadline, from when it learned"
     );
     assert_eq!(
         membership.frozen_remaining("bb", at(70), freezing),
@@ -627,9 +631,9 @@ fn the_freezing_of_a_node_learned_by_the_membership_frame_counts_from_the_instan
     assert_eq!(
         membership.frozen_remaining("bb", at(10 + 300), freezing),
         None,
-        "acaba no prazo"
+        "ends at the deadline"
     );
-    // Uma saída por drain (sem votação) não deixa freezing.
+    // A leave by drain (without a vote) leaves no freezing.
     membership.learn("op3", 4, Change::Add(member("cc")), at(11));
     membership.learn(
         "op4",

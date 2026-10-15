@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Roda o `cargo test` num contêiner Linux com CPU limitada, para reproduzir os testes que só falham
-# nos runners lentos do CI (ubuntu-latest tem 4 vCPU; ubuntu-24.04-arm, 4, mais lentos por núcleo).
+# Runs `cargo test` in a CPU-limited Linux container, to reproduce the tests that only fail on slow CI
+# runners (ubuntu-latest has 4 vCPUs; ubuntu-24.04-arm has 4, slower per core).
 #
-#   docker/test-cpu.sh -- --test failures the_messages_of_the_excluded     # 2 CPUs, uma vez
-#   CPUS=1 REPEAT=10 docker/test-cpu.sh -- --test failures                 # 1 CPU, dez vezes
-#   CPUS=0.5 MEMORY=4g docker/test-cpu.sh -- --workspace                   # meia CPU
+#   docker/test-cpu.sh -- --test failures the_messages_of_the_excluded     # 2 CPUs, once
+#   CPUS=1 REPEAT=10 docker/test-cpu.sh -- --test failures                 # 1 CPU, ten times
+#   CPUS=0.5 MEMORY=4g docker/test-cpu.sh -- --workspace                   # half a CPU
 #
-# Variáveis (todas opcionais):
-#   CPUS      Cota de CPU do contêiner (`docker run --cpus`; aceita fração). Padrão 2.
-#   CPUSET    Núcleos fixos (`--cpuset-cpus`, ex.: 0-1). Vazio: o escalonador escolhe. Com CPUS=2 e
-#             CPUSET=0-1 a limitação é de núcleos de verdade, sem rajada em mais núcleos.
-#   MEMORY    Teto de memória. Padrão 7g (o do runner do GitHub).
-#   REPEAT    Quantas vezes repetir; para na primeira falha. Padrão 1.
-#   IMAGE     Imagem do Rust. Padrão rust:1-bookworm (glibc, como o runner).
-#   THREADS   `RUST_TEST_THREADS` (testes em paralelo). Vazio: um por CPU visível, como no CI.
+# Variables (all optional):
+#   CPUS      The container's CPU quota (`docker run --cpus`; accepts fractions). Default 2.
+#   CPUSET    Pinned cores (`--cpuset-cpus`, e.g. 0-1). Empty: the scheduler chooses. With CPUS=2 and
+#             CPUSET=0-1 the limit is real cores, with no bursting onto more cores.
+#   MEMORY    Memory ceiling. Default 7g (the GitHub runner's).
+#   REPEAT    How many times to repeat; stops at the first failure. Default 1.
+#   IMAGE     Rust image. Default rust:1-bookworm (glibc, like the runner).
+#   THREADS   `RUST_TEST_THREADS` (parallel tests). Empty: one per visible CPU, as in CI.
 #
-# O que vem depois de `--` vai para `cargo test` (ex.: `--test failures nome_do_teste`). Os
-# volumes `taba-cargo` e `taba-target` guardam o cache; `docker volume rm` os apaga.
+# What comes after `--` goes to `cargo test` (e.g. `--test failures test_name`). The volumes
+# `taba-cargo` and `taba-target` keep the cache; `docker volume rm` deletes them.
 set -euo pipefail
 
 CPUS="${CPUS:-2}"
@@ -26,7 +26,7 @@ IMAGE="${IMAGE:-rust:1-bookworm}"
 [ "${1:-}" = "--" ] && shift
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# O Git Bash do Windows converteria `/work` em caminho do Windows.
+# Git Bash on Windows would convert `/work` into a Windows path.
 export MSYS_NO_PATHCONV=1
 
 args=(--rm --cpus "$CPUS" --memory "$MEMORY"
@@ -35,15 +35,15 @@ args=(--rm --cpus "$CPUS" --memory "$MEMORY"
 [ -n "${CPUSET:-}" ] && args+=(--cpuset-cpus "$CPUSET")
 [ -n "${THREADS:-}" ] && args+=(-e "RUST_TEST_THREADS=$THREADS")
 
-# O `nproc` do contêiner mostra os núcleos da máquina, não a cota: o runtime de testes dimensiona
-# as threads pelo cgroup, então o log abaixo confere o que ele enxerga.
+# The container's `nproc` shows the machine's cores, not the quota: the test runtime sizes its
+# threads from the cgroup, so the log below checks what it sees.
 echo "taba: cpus=$CPUS cpuset=${CPUSET:-—} memory=$MEMORY repeat=$REPEAT image=$IMAGE" >&2
 for i in $(seq 1 "$REPEAT"); do
-  echo "taba: execução $i de $REPEAT" >&2
+  echo "taba: run $i of $REPEAT" >&2
   if ! docker run "${args[@]}" "$IMAGE" bash -c \
     'echo "taba: nproc=$(nproc)" >&2; cargo test --locked "$@"' _ "$@"; then
-    echo "taba: falhou na execução $i" >&2
+    echo "taba: failed on run $i" >&2
     exit 1
   fi
 done
-echo "taba: $REPEAT execução(ões) sem falha" >&2
+echo "taba: $REPEAT run(s) without failure" >&2

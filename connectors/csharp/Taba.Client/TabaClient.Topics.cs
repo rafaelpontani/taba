@@ -13,7 +13,7 @@ namespace Taba
     public sealed partial class TabaClient
     {
         // -----------------------------------------------------------------------------------------
-        // As nove operações
+        // The nine operations
         // -----------------------------------------------------------------------------------------
 
         /// <summary><c>POST /topics</c>.</summary>
@@ -41,7 +41,7 @@ namespace Taba
             return ModelParser.ParseTopic(reply.Text);
         }
 
-        /// <summary><c>GET /topics</c>. Os parâmetros <c>null</c> não vão na query.</summary>
+        /// <summary><c>GET /topics</c>. <c>null</c> parameters do not go in the query.</summary>
         public async Task<Page<Topic>> ListTopicsAsync(
             int? limit = null,
             string cursor = null,
@@ -62,7 +62,7 @@ namespace Taba
                 call.With("name", name);
             }
             ApiReply reply = await SendAsync(call, cancellationToken).ConfigureAwait(false);
-            JsonFields fields = ModelParser.Fields(reply.Text, "página");
+            JsonFields fields = ModelParser.Fields(reply.Text, "page");
             var items = new List<Topic>();
             try
             {
@@ -73,12 +73,12 @@ namespace Taba
             }
             catch (JsonException e)
             {
-                throw TabaException.Client("client.invalid-response", "itens da página: " + e.Message);
+                throw TabaException.Client("client.invalid-response", "page items: " + e.Message);
             }
             return new Page<Topic>(items, fields.String("nextCursor"), reply.Text);
         }
 
-        /// <summary>Todos os tópicos, página a página.</summary>
+        /// <summary>All topics, page by page.</summary>
         public async Task<IList<Topic>> ListAllTopicsAsync(string name = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             var all = new List<Topic>();
@@ -93,7 +93,7 @@ namespace Taba
             return all;
         }
 
-        /// <summary><c>PATCH /topics/{topic}</c>. É um <c>PATCH</c> de verdade, sem cabeçalho de troca de verbo.</summary>
+        /// <summary><c>PATCH /topics/{topic}</c>. It is a real <c>PATCH</c>, with no verb-override header.</summary>
         public async Task<Topic> UpdateTopicAsync(string name, TopicUpdate update, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (update == null)

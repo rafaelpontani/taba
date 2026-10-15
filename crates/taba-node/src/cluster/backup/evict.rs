@@ -1,24 +1,24 @@
-//! Disco cheio: a evicção (doc 23, "Backup em S3", seção 1.8).
+//! Full disk: the eviction (doc 23, "S3 backup", section 1.8).
 //!
-//! Acima de `backup.disk.evict-above` (85%) o nó apaga o **arquivo do corpo** das mensagens que já
-//! têm referência no bucket, até o uso cair a `backup.disk.evict-to` (70%). A linha em `_topic.db`
-//! fica, então a ordem "arquivo primeiro, linha depois" do armazenamento continua valendo. Só se
-//! libera o que está em disco: mensagem só em memória não libera nada. Na leitura, o arquivo
-//! ausente vira um `Range` no segmento (`fetch_body`).
+//! Above `backup.disk.evict-above` (85%) the node deletes the **body file** of messages that already
+//! have a reference in the bucket, until usage falls to `backup.disk.evict-to` (70%). The row in `_topic.db`
+//! stays, so the storage's "file first, row after" order still holds. Only what is
+//! on disk is freed: a message only in memory frees nothing. On read, the missing
+//! file becomes a `Range` on the segment (`fetch_body`).
 //!
-//! Durante o flush e o drain, ao chegar a `backup.disk.pause-at` (90%) a passagem da memória para o
-//! disco **pausa** até a evicção liberar espaço, no máximo por `backup.drain.timeout`.
+//! During the flush and the drain, on reaching `backup.disk.pause-at` (90%) the memory-to-disk
+//! pass **pauses** until the eviction frees space, at most for `backup.drain.timeout`.
 
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use super::{Backup, lock};
 
-/// A cada quantas evicções o uso do disco é conferido de novo.
+/// How many evictions between each new check of disk usage.
 const CHECK_EVERY: u32 = 32;
 
 impl Backup {
-    /// O uso do disco (%). A leitura real vale por 200 ms: o drain a pede a cada mensagem.
+    /// Disk usage (%). The real reading holds for 200 ms: the drain asks for it on every message.
     fn usage(&self) -> u32 {
         if let Some(probe) = lock(&self.disk_probe).clone() {
             return probe();
@@ -34,7 +34,7 @@ impl Backup {
         percent
     }
 
-    /// Uma passada de evicção: só age acima de `evict-above`. Devolve quantos corpos apagou.
+    /// One eviction pass: only acts above `evict-above`. Returns how many bodies it deleted.
     pub(crate) fn evict_pass(&self) -> u64 {
         if self.usage() <= self.rules.evict_above {
             return 0;
@@ -42,7 +42,7 @@ impl Backup {
         self.evict_down_to(self.rules.evict_to)
     }
 
-    /// Apaga corpos de mensagens salvas até o uso do disco chegar a `target` (%).
+    /// Deletes bodies of saved messages until disk usage reaches `target` (%).
     pub(crate) fn evict_down_to(&self, target: u32) -> u64 {
         let mut evicted = 0u64;
         let mut since_check = 0;
@@ -58,7 +58,7 @@ impl Backup {
                     }
                     Ok(_) => continue,
                     Err(e) => {
-                        tracing::warn!(error = %e, topic = %topic, "backup: evicção falhou");
+                        tracing::warn!(error = %e, topic = %topic, "backup: eviction failed");
                         continue;
                     }
                 }
@@ -75,15 +75,15 @@ impl Backup {
             tracing::info!(
                 evicted,
                 usage = self.usage(),
-                "backup: corpos de mensagens já salvas no S3 saíram do disco"
+                "backup: bodies of messages already saved in S3 left the disk"
             );
         }
         evicted
     }
 
-    /// Antes de passar uma mensagem da memória para o disco (drain e flush): com o disco em
-    /// `pause-at`, espera a evicção liberar espaço, até `backup.drain.timeout`. Devolve `false` se
-    /// desistiu (o nó segue o comportamento de sempre: falha por disco cheio).
+    /// Before moving a message from memory to disk (drain and flush): with the disk at
+    /// `pause-at`, waits for the eviction to free space, up to `backup.drain.timeout`. Returns `false` if
+    /// it gave up (the node follows the usual behavior: failure by full disk).
     pub(crate) fn wait_for_disk(&self) -> bool {
         if self.usage() < self.rules.pause_at {
             return true;
@@ -98,16 +98,16 @@ impl Backup {
             if !announced {
                 tracing::warn!(
                     usage = self.usage(),
-                    "backup: disco em {}% ou mais; a passagem da memória para o disco pausa até a evicção liberar espaço",
+                    "backup: disk at {}% or more; the memory-to-disk pass pauses until the eviction frees space",
                     self.rules.pause_at
                 );
                 announced = true;
             }
             if Instant::now() >= deadline || self.cancel.is_cancelled() {
-                tracing::error!("backup: o disco não liberou espaço no prazo; seguindo");
+                tracing::error!("backup: the disk did not free space in time; carrying on");
                 return false;
             }
-            // O envio ao S3 é o que cria mais corpos evictáveis.
+            // The upload to S3 is what creates the most evictable bodies.
             self.wake.notify_one();
             std::thread::sleep(Duration::from_millis(100));
         }

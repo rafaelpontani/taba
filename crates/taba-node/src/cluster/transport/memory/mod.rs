@@ -1,11 +1,11 @@
-//! O `Transport` de teste (doc 18, seção 17.5): uma rede em memória que liga vários nós do
-//! mesmo processo, sem soquete. Cada nó registra o seu `Handler` num endereço (`host:porta`)
-//! e chama os outros por um `MemoryTransport` que sabe quem é o chamador.
+//! The test `Transport` (doc 18, section 17.5): an in-memory network that links several nodes of the
+//! same process, without a socket. Each node registers its `Handler` at an address (`host:port`)
+//! and calls the others through a `MemoryTransport` that knows who the caller is.
 //!
-//! O teste programa as falhas: **partição** entre dois nós ou isolamento de um, **perda** das
-//! próximas chamadas a um nó, **atraso** em todas as chamadas (ou só nas de um tipo), um nó **mudo** (aceita e não
-//! responde, para estourar o prazo de quem chama) e um nó que **cai** (some da rede). Um
-//! **balanceador** reparte as chamadas entre nós, como o `cluster.entry-address` real.
+//! The test programs the failures: **partition** between two nodes or the isolation of one, **loss** of the
+//! next calls to a node, **delay** on all calls (or only those of one type), a **mute** node (accepts and does not
+//! answer, so the caller's deadline runs out) and a node that **falls** (vanishes from the network). A
+//! **load balancer** splits the calls among nodes, like the real `cluster.entry-address`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -19,12 +19,12 @@ use super::{
 };
 use crate::cluster::protocol::{ChannelMessage, Request, Response};
 
-/// Uma chamada que passou pela rede, para o teste conferir quem falou com quem.
+/// A call that went through the network, for the test to check who talked to whom.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Call {
-    /// O endereço do chamador.
+    /// The caller's address.
     pub from: String,
-    /// O endereço que o chamador usou (o do balanceador, se foi por ele).
+    /// The address the caller used (the load balancer's, if it went through it).
     pub to: PeerAddr,
     /// `Request::name()`.
     pub request: &'static str,
@@ -44,12 +44,12 @@ struct State {
     delay_kind: HashMap<String, Duration>,
     delay_host_kind: HashMap<(String, String), Duration>,
     calls: Vec<Call>,
-    /// Os canais abertos (os dois hosts e como fechá-los): uma partição os derruba, como a queda de
-    /// uma conexão TCP.
+    /// The open channels (the two hosts and how to close them): a partition brings them down, like the drop of
+    /// a TCP connection.
     links: Vec<(String, String, CancellationToken)>,
 }
 
-/// A rede compartilhada entre os nós de um teste.
+/// The network shared among a test's nodes.
 #[derive(Clone, Default)]
 pub struct MemoryNetwork {
     state: Arc<Mutex<State>>,
@@ -72,19 +72,19 @@ impl MemoryNetwork {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Põe um nó na rede: as chamadas a `addr` chegam ao `handler`.
+    /// Puts a node on the network: calls to `addr` reach the `handler`.
     pub fn register(&self, addr: PeerAddr, handler: Arc<dyn Handler>) {
         self.lock().handlers.insert(addr, handler);
     }
 
-    /// O nó cai: as chamadas a ele deixam de ser atendidas (conexão recusada).
+    /// The node falls: calls to it stop being served (connection refused).
     pub fn unregister(&self, addr: &PeerAddr) {
         let mut state = self.lock();
         state.handlers.remove(addr);
         Self::cut(&mut state, |a, b| a == addr.host || b == addr.host);
     }
 
-    /// Fecha os canais abertos entre os hosts que a condição escolhe.
+    /// Closes the open channels between the hosts the condition chooses.
     fn cut(state: &mut State, mut which: impl FnMut(&str, &str) -> bool) {
         state.links.retain(|(a, b, token)| {
             if which(a, b) {
@@ -96,13 +96,13 @@ impl MemoryNetwork {
         });
     }
 
-    /// Um balanceador em `addr`: cada chamada vai a um dos `backends` que estejam no ar e
-    /// alcançáveis pelo chamador, em rodízio.
+    /// A load balancer at `addr`: each call goes to one of the `backends` that are up and
+    /// reachable by the caller, round-robin.
     pub fn add_balancer(&self, addr: PeerAddr, backends: Vec<PeerAddr>) {
         self.lock().balancers.insert(addr, backends);
     }
 
-    /// O `Transport` de um nó, que se identifica por `local` (o IP dele) nas chamadas.
+    /// A node's `Transport`, which identifies itself by `local` (its IP) on the calls.
     pub fn transport(&self, local: impl Into<String>) -> Arc<MemoryTransport> {
         Arc::new(MemoryTransport {
             network: self.clone(),
@@ -110,7 +110,7 @@ impl MemoryNetwork {
         })
     }
 
-    /// Corta a comunicação entre dois nós, nos dois sentidos.
+    /// Cuts communication between two nodes, in both directions.
     pub fn partition(&self, a: &str, b: &str) {
         let mut state = self.lock();
         state.partitions.insert(pair(a, b));
@@ -121,7 +121,7 @@ impl MemoryNetwork {
         self.lock().partitions.remove(&pair(a, b));
     }
 
-    /// Isola um nó de todos os outros (ele ainda fala consigo mesmo).
+    /// Isolates a node from all the others (it still talks to itself).
     pub fn isolate(&self, host: &str) {
         let mut state = self.lock();
         state.isolated.insert(host.to_owned());
@@ -132,20 +132,20 @@ impl MemoryNetwork {
         self.lock().isolated.remove(host);
     }
 
-    /// Perde as próximas `count` chamadas ao nó (falha de rede pontual).
+    /// Loses the next `count` calls to the node (a one-off network failure).
     pub fn lose_next(&self, host: &str, count: usize) {
         self.lock().lose_next.insert(host.to_owned(), count);
     }
 
-    /// Perde as próximas `count` chamadas **de um tipo** (`Request::name()`) ao nó, e só elas:
-    /// para falhar uma fase do protocolo sem derrubar as outras.
+    /// Loses the next `count` calls **of one type** (`Request::name()`) to the node, and only those:
+    /// to fail a phase of the protocol without bringing the others down.
     pub fn lose_kind(&self, host: &str, request: &str, count: usize) {
         self.lock()
             .lose_kind
             .insert((host.to_owned(), request.to_owned()), count);
     }
 
-    /// O nó recebe as chamadas e não responde: quem chama só sai pelo prazo.
+    /// The node receives the calls and does not answer: whoever calls only leaves by the deadline.
     pub fn set_silent(&self, host: &str, silent: bool) {
         let mut state = self.lock();
         if silent {
@@ -155,26 +155,26 @@ impl MemoryNetwork {
         }
     }
 
-    /// Atraso somado a toda chamada.
+    /// Delay added to every call.
     pub fn set_delay(&self, delay: Duration) {
         self.lock().delay = delay;
     }
 
-    /// Atraso somado só às chamadas de um tipo (`Request::name()`): para alongar uma fase do
-    /// protocolo (por exemplo, a votação) sem estourar o prazo do canal. `Duration::ZERO` o tira.
+    /// Delay added only to the calls of one type (`Request::name()`): to lengthen a phase of the
+    /// protocol (for example, the vote) without blowing the channel's deadline. `Duration::ZERO` removes it.
     pub fn set_delay_kind(&self, request: &str, delay: Duration) {
         self.lock().delay_kind.insert(request.to_owned(), delay);
     }
 
-    /// Atraso somado só às chamadas de um tipo (`Request::name()`) **a um nó**: para fazer a
-    /// resposta de um nó chegar depois das dos outros. `Duration::ZERO` o tira.
+    /// Delay added only to the calls of one type (`Request::name()`) **to a node**: to make a
+    /// node's response arrive after the others'. `Duration::ZERO` removes it.
     pub fn set_delay_host_kind(&self, host: &str, request: &str, delay: Duration) {
         self.lock()
             .delay_host_kind
             .insert((host.to_owned(), request.to_owned()), delay);
     }
 
-    /// As chamadas feitas até agora, na ordem.
+    /// The calls made so far, in order.
     pub fn calls(&self) -> Vec<Call> {
         self.lock().calls.clone()
     }
@@ -183,7 +183,7 @@ impl MemoryNetwork {
         self.lock().calls.clear();
     }
 
-    /// Quantas chamadas daquele tipo foram feitas.
+    /// How many calls of that type were made.
     pub fn count(&self, request: &str) -> usize {
         self.lock()
             .calls
@@ -199,7 +199,7 @@ impl MemoryNetwork {
                 || state.partitions.contains(&pair(from, to)))
     }
 
-    /// Escolhe o destino, aplica as falhas programadas e devolve quem atende.
+    /// Chooses the destination, applies the programmed failures and returns who serves.
     fn route(
         &self,
         from: &str,
@@ -222,7 +222,7 @@ impl MemoryNetwork {
                     .collect();
                 if live.is_empty() {
                     return Err(CallError::Unreachable(format!(
-                        "o balanceador {to} não tem nó disponível"
+                        "the load balancer {to} has no available node"
                     )));
                 }
                 let chosen = live[state.next_backend % live.len()].clone();
@@ -233,7 +233,7 @@ impl MemoryNetwork {
         };
         if Self::blocked(&state, from, &target.host) {
             return Err(CallError::Unreachable(format!(
-                "sem rota de {from} para {target}"
+                "no route from {from} to {target}"
             )));
         }
         if let Some(left) = state
@@ -243,20 +243,18 @@ impl MemoryNetwork {
         {
             *left -= 1;
             return Err(CallError::Unreachable(format!(
-                "chamada {request} a {target} perdida"
+                "call {request} to {target} lost"
             )));
         }
         if let Some(left) = state.lose_next.get_mut(&target.host)
             && *left > 0
         {
             *left -= 1;
-            return Err(CallError::Unreachable(format!(
-                "chamada a {target} perdida"
-            )));
+            return Err(CallError::Unreachable(format!("call to {target} lost")));
         }
         let Some(handler) = state.handlers.get(&target).cloned() else {
             return Err(CallError::Unreachable(format!(
-                "conexão recusada por {target}"
+                "connection refused by {target}"
             )));
         };
         let delay = state.delay
@@ -271,9 +269,9 @@ impl MemoryNetwork {
 }
 
 impl MemoryNetwork {
-    /// Aplica as falhas programadas a uma mensagem do canal de `from` para `to`: `Err` derruba o
-    /// canal (partição, nó isolado, mensagem perdida), `Ok(None)` descarta a mensagem em silêncio (nó
-    /// mudo) e `Ok(Some(atraso))` a entrega depois do atraso.
+    /// Applies the programmed failures to a channel message from `from` to `to`: `Err` brings the
+    /// channel down (partition, isolated node, lost message), `Ok(None)` silently drops the message (mute
+    /// node) and `Ok(Some(delay))` delivers it after the delay.
     fn gate(&self, from: &str, to: &str) -> Result<Option<Duration>, ()> {
         let mut state = self.lock();
         let request = "channel";
@@ -307,8 +305,8 @@ impl MemoryNetwork {
         ))
     }
 
-    /// Um sentido do canal: leva as mensagens de `from` a `to` até um lado fechar, a rede cortar ou
-    /// o canal ser cancelado (o fim de um sentido fecha o outro).
+    /// One direction of the channel: carries the messages from `from` to `to` until a side closes, the network cuts or
+    /// the channel is cancelled (the end of one direction closes the other).
     fn pump(
         &self,
         from: String,
@@ -345,7 +343,7 @@ impl MemoryNetwork {
     }
 }
 
-/// O `Transport` de um nó na rede em memória.
+/// A node's `Transport` on the in-memory network.
 pub struct MemoryTransport {
     network: MemoryNetwork,
     local: String,
@@ -388,7 +386,7 @@ impl Transport for MemoryTransport {
             handler
                 .admit_channel(&self.local, &open)
                 .map_err(CallError::Remote)?;
-            // Um sentido de cada vez, pelas regras da rede.
+            // One direction at a time, by the network's rules.
             let cancel = CancellationToken::new();
             let server_host = to.host.clone();
             self.network.lock().links.push((

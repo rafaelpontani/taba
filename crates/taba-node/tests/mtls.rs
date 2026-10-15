@@ -1,6 +1,6 @@
-//! A segurança da porta do cluster (doc 06, seção 8.0.1; doc 20c, UC-SEG): nós de verdade ligados
-//! por TCP em `127.0.0.x`, com o `Transport` HTTP e TLS mútuo. Os certificados vêm de pastas
-//! temporárias, e o tempo é o real (a validade dos certificados é do relógio do sistema).
+//! The security of the cluster port (doc 06, section 8.0.1; doc 20c, UC-SEG): real nodes linked
+//! by TCP on `127.0.0.x`, with the HTTP `Transport` and mutual TLS. The certificates come from temporary
+//! folders, and the time is real (the certificates' validity is the system clock's).
 
 mod common;
 
@@ -21,7 +21,7 @@ async fn create_queue(node: &TestNode, name: &str) {
         .json(&json!({"name": name, "type": "queue"}))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201);
 }
 
@@ -32,12 +32,12 @@ async fn three_real_nodes_form_a_cluster_over_mutual_tls_and_replicate() {
     let cluster = RealCluster::start(3, Some(certs.path())).await;
     cluster.settled(3).await;
 
-    // Uma fila criada num nó chega aos outros, uma mensagem publicada noutro é consumida no terceiro.
-    create_queue(cluster.node(1), "pedidos").await;
+    // A queue created on one node reaches the others, a message published on another is consumed on the third.
+    create_queue(cluster.node(1), "orders").await;
     let published = cluster
         .node(2)
         .client
-        .post(cluster.node(2).client_url("/topics/pedidos/messages"))
+        .post(cluster.node(2).client_url("/topics/orders/messages"))
         .json(&json!({"n": 1}))
         .send()
         .await
@@ -47,16 +47,15 @@ async fn three_real_nodes_form_a_cluster_over_mutual_tls_and_replicate() {
     let id = body["id"].as_str().unwrap().to_owned();
     let consumed = cluster
         .node(3)
-        .client_get("/topics/pedidos/messages?maxMessages=1&waitTime=10")
+        .client_get("/topics/orders/messages?maxMessages=1&waitTime=10")
         .await;
     assert_eq!(consumed.status(), 200);
     let consumed: Value = consumed.json().await.unwrap();
     assert_eq!(consumed["messages"][0]["id"], id);
 
-    // O certificado do cluster aparece nas métricas (UC-SEG-016).
+    // The cluster certificate shows up in the metrics (UC-SEG-016).
     let text = cluster.node(1).metrics().await;
-    let left =
-        series(&text, "taba_cluster_tls_expires_in_seconds").expect("métrica do certificado");
+    let left = series(&text, "taba_cluster_tls_expires_in_seconds").expect("certificate metric");
     assert!(left > 29.0 * 86_400.0 && left <= 30.0 * 86_400.0, "{left}");
     cluster.shutdown().await;
 }
@@ -85,16 +84,16 @@ async fn the_handshake_refuses_who_does_not_present_a_certificate_the_node_accep
     let cluster = RealCluster::start(1, Some(certs.path())).await;
     let addr = cluster.cluster_addr(1);
 
-    // Quem apresenta o certificado da pasta é atendido; o nome do host não é conferido (conecta por IP).
+    // Whoever presents the folder's certificate is served; the host name is not checked (it connects by IP).
     let (accepted, _) = client_of(certs.path());
     let reply = get(addr, accepted, "/cluster/nodes").await.unwrap();
     assert_eq!(reply.status, 200);
 
-    // Sem certificado: o handshake falha antes de qualquer rota.
+    // Without a certificate: the handshake fails before any route.
     let refused = get(addr, anonymous_client(), "/cluster/nodes").await;
     assert!(refused.is_err(), "{refused:?}");
 
-    // Com o certificado de outro cluster (o cliente confia no do servidor, mas o servidor não nele).
+    // With another cluster's certificate (the client trusts the server's, but the server does not trust it).
     let stranger = tempfile::tempdir().unwrap();
     new_pair(stranger.path(), None, 30);
     trust_certs_of(certs.path(), stranger.path());
@@ -102,7 +101,7 @@ async fn the_handshake_refuses_who_does_not_present_a_certificate_the_node_accep
     let refused = get(addr, stranger_config, "/cluster/nodes").await;
     assert!(refused.is_err(), "{refused:?}");
 
-    // HTTP puro numa porta TLS também não chega a uma rota.
+    // Plain HTTP on a TLS port does not reach a route either.
     let plain = reqwest::Client::new()
         .get(format!("http://{addr}/cluster/nodes"))
         .send()
@@ -118,8 +117,8 @@ async fn an_expired_certificate_is_not_accepted_and_is_not_presented() {
     let cluster = RealCluster::start(1, Some(certs.path())).await;
     let addr = cluster.cluster_addr(1);
 
-    // O cliente só tem um certificado já expirado (gerado há 10 dias, válido por 1): não o
-    // apresenta, e o servidor não o aceitaria.
+    // The client only has an already expired certificate (generated 10 days ago, valid for 1): it does not
+    // present it, and the server would not accept it.
     let old = tempfile::tempdir().unwrap();
     taba_node::secrets::generate_cert(
         old.path(),
@@ -141,7 +140,7 @@ async fn an_expired_certificate_is_not_accepted_and_is_not_presented() {
 async fn a_ca_in_the_folder_makes_the_certificates_it_issued_accepted() {
     use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair};
 
-    // A CA e um par emitido por ela.
+    // The CA and a pair issued by it.
     let ca_key = KeyPair::generate().unwrap();
     let mut ca = CertificateParams::new(Vec::<String>::new()).unwrap();
     ca.distinguished_name.push(DnType::CommonName, "ca");
@@ -154,7 +153,7 @@ async fn a_ca_in_the_folder_makes_the_certificates_it_issued_accepted() {
         .signed_by(&leaf_key, &issuer)
         .unwrap();
 
-    // O nó confia na CA e apresenta o par próprio (autoassinado); o cliente tem o par emitido pela CA.
+    // The node trusts the CA and presents its own pair (self-signed); the client has the pair issued by the CA.
     let node_certs = cert_dir();
     std::fs::write(node_certs.path().join("ca.crt"), ca_cert.pem()).unwrap();
     let client_certs = tempfile::tempdir().unwrap();
@@ -175,7 +174,7 @@ async fn a_ca_in_the_folder_makes_the_certificates_it_issued_accepted() {
 #[tokio::test(flavor = "multi_thread")]
 async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_when_it_starts() {
     let certs = cert_dir();
-    // Recarga rápida, para o teste não esperar o intervalo padrão.
+    // Fast reload, so the test does not wait for the default interval.
     let mut cluster = RealCluster {
         nodes: Vec::new(),
         tls_dir: Some(certs.path().to_owned()),
@@ -185,14 +184,14 @@ async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_w
         .await;
     let addr = cluster.cluster_addr(1);
 
-    // O cliente conhece o certificado do servidor e já tem o par B, que só começa daqui a 3 s.
+    // The client knows the server's certificate and already has pair B, which only starts in 3 s.
     let client_certs = tempfile::tempdir().unwrap();
     trust_certs_of(certs.path(), client_certs.path());
     let b_pem = add_named_pair(client_certs.path(), "b", Some(Duration::from_secs(3)), 30);
     let (client_config, _) = client_of_with_both(&client_certs);
 
-    // Antes do início de B o cliente não tem o que apresentar: recusado. O servidor, por
-    // enquanto, apresenta A e mantém uma conexão aberta com ele.
+    // Before B starts the client has nothing to present: refused. The server, for
+    // now, presents A and keeps a connection open with it.
     let (accepted_now, _) = client_of(certs.path());
     let mut open = connect(addr, accepted_now).await.unwrap();
     let before = open.get("/cluster/nodes").await.unwrap();
@@ -204,8 +203,8 @@ async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_w
             .is_err()
     );
 
-    // O operador acrescenta B à pasta do servidor: ele passa a confiar em B (sem reiniciar), mas
-    // segue apresentando A.
+    // The operator adds B to the server's folder: it starts trusting B (without restarting), but
+    // keeps presenting A.
     std::fs::write(certs.path().join("b.crt"), &b_pem).unwrap();
     std::fs::copy(
         client_certs.path().join("b.key"),
@@ -215,10 +214,10 @@ async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_w
     tokio::time::sleep(Duration::from_millis(700)).await;
     let (probe, _) = client_of(certs.path());
     let still_a = get(addr, probe.clone(), "/cluster/nodes").await.unwrap();
-    assert_eq!(still_a.server_cert, a_der, "ainda apresenta A");
+    assert_eq!(still_a.server_cert, a_der, "still presents A");
 
-    // Quando a data de B chega, todos passam a apresentar B sozinhos: o cliente é aceito e o
-    // servidor apresenta B.
+    // When B's date arrives, all start presenting B on their own: the client is accepted and the
+    // server presents B.
     let mut switched = None;
     for _ in 0..80 {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -229,25 +228,25 @@ async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_w
             break;
         }
     }
-    let switched = switched.expect("depois do início de B o cliente passa a ser aceito");
+    let switched = switched.expect("after B's start the client starts to be accepted");
     assert_ne!(
         switched.server_cert, a_der,
-        "o servidor passou a apresentar B"
+        "the server started presenting B"
     );
 
-    // A conexão que já estava aberta segue com o certificado antigo, e funciona.
+    // The connection that was already open stays with the old certificate, and works.
     let after = open.get("/cluster/nodes").await.unwrap();
     assert_eq!(after.status, 200);
     assert_eq!(after.server_cert, a_der);
 
-    // Uma recarga com a pasta quebrada é recusada: vale o conjunto anterior.
+    // A reload with the broken folder is refused: the previous set applies.
     let (still, _) = client_of(certs.path());
-    std::fs::write(certs.path().join("lixo.crt"), "isto não é PEM").unwrap();
+    std::fs::write(certs.path().join("junk.crt"), "this is not PEM").unwrap();
     tokio::time::sleep(Duration::from_millis(700)).await;
     assert_eq!(
         get(addr, still, "/cluster/nodes").await.unwrap().status,
         200,
-        "o conjunto anterior seguiu valendo"
+        "the previous set stayed in force"
     );
     cluster.shutdown().await;
 }
@@ -269,7 +268,7 @@ async fn only_members_use_the_cluster_routes_and_the_caller_is_the_connection_ip
     cluster.settled(2).await;
     let addr = cluster.cluster_addr(1);
 
-    // Um cliente com o certificado certo, mas de um IP que não está na tabela de membros.
+    // A client with the right certificate, but from an IP that is not in the member table.
     let (config, _) = client_of(certs.path());
     let outsider = reqwest::Client::builder()
         .use_preconfigured_tls(config)
@@ -282,9 +281,9 @@ async fn only_members_use_the_cluster_routes_and_the_caller_is_the_connection_ip
         "/cluster/topics",
         "/cluster/tokens",
         "/cluster/blocks/0000000000000000/ids",
-        "/cluster/topics/qualquer/idle",
+        "/cluster/topics/any/idle",
     ] {
-        // O cabeçalho do cliente não vale na porta do cluster: o IP é o da conexão.
+        // The client's header does not count on the cluster port: the IP is the connection's.
         let response = outsider
             .get(format!("https://{addr}{path}"))
             .header("x-forwarded-for", ip_of(2))
@@ -295,7 +294,7 @@ async fn only_members_use_the_cluster_routes_and_the_caller_is_the_connection_ip
         let body: Value = response.json().await.unwrap();
         assert_eq!(body["code"], "cluster.not-member", "{path}");
     }
-    // As exceções aceitam quem ainda não é membro.
+    // The exceptions accept whoever is not yet a member.
     let listing = outsider
         .get(format!("https://{addr}/cluster/nodes"))
         .send()
@@ -308,8 +307,8 @@ async fn only_members_use_the_cluster_routes_and_the_caller_is_the_connection_ip
 /// UC: UC-SEG-006
 #[tokio::test(flavor = "multi_thread")]
 async fn the_operations_routes_have_no_authentication() {
-    // A autenticação só liga em produção; sem `Transport` o nó fica em `bootstrapping` (o
-    // `/health/ready` responde `503`), o que não importa aqui.
+    // Authentication only turns on in production; without `Transport` the node stays in `bootstrapping` (the
+    // `/health/ready` answers `503`), which does not matter here.
     let node = TestNode::builder()
         .production()
         .env(
@@ -318,10 +317,10 @@ async fn the_operations_routes_have_no_authentication() {
         )
         .start()
         .await;
-    // A API de cliente exige o token...
+    // The client API requires the token...
     let response = node.client_get("/topics").await;
     assert_eq!(response.status(), 401);
-    // ...e as rotas de operação, não.
+    // ...and the operations routes do not.
     for path in ["/health/live", "/health/ready", "/metrics"] {
         let response = node.client_get_ops(path).await;
         assert!(
@@ -337,31 +336,31 @@ async fn the_operations_routes_have_no_authentication() {
 /// UC: UC-SEG-008
 #[tokio::test(flavor = "multi_thread")]
 async fn a_folder_whose_pair_is_not_valid_stops_the_node_from_starting() {
-    // O arquivo existe (a configuração aceita), mas não é um certificado: o nó não sobe.
+    // The file exists (the configuration accepts it), but it is not a certificate: the node does not start.
     let certs = tempfile::tempdir().unwrap();
-    std::fs::write(certs.path().join("a.crt"), "não é um certificado").unwrap();
-    std::fs::write(certs.path().join("a.key"), "não é uma chave").unwrap();
+    std::fs::write(certs.path().join("a.crt"), "not a certificate").unwrap();
+    std::fs::write(certs.path().join("a.key"), "not a key").unwrap();
     let result = TestNode::builder()
         .real(&ip_of(1), "127.0.0.1:1")
         .env("TABA_CLUSTER_TLS_DIR", &certs.path().display().to_string())
         .env("TABA_CLUSTER_FIRST_NODE", "true")
         .try_start()
         .await;
-    let error = result.err().expect("o nó não deveria subir").to_string();
+    let error = result.err().expect("the node should not start").to_string();
     assert!(error.contains("certificados do cluster"), "{error}");
 }
 
 /// UC: UC-SEG-008
 #[tokio::test(flavor = "multi_thread")]
 async fn a_certificates_folder_that_does_not_exist_is_a_start_error() {
-    let missing = std::env::temp_dir().join("taba-pasta-que-nao-existe");
+    let missing = std::env::temp_dir().join("taba-folder-that-does-not-exist");
     let env = taba_node::config::MapEnv::new([
         ("TABA_MODE", "production"),
         ("TABA_CLUSTER_ENTRY_ADDRESS", "127.0.0.1:8081"),
         ("TABA_CLUSTER_TLS_DIR", missing.to_str().unwrap()),
     ]);
     let error = taba_node::config::Config::parse(None, &env)
-        .expect_err("a configuração é recusada")
+        .expect_err("the configuration is refused")
         .to_string();
     assert!(error.contains("cluster.tls.dir"), "{error}");
 }

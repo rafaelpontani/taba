@@ -35,7 +35,7 @@ taba/
     rust/{client,cli}/  csharp/  README.md
   docker/                       cluster.sh, validate.sh, haproxy.cfg, test-cpu.sh
   Dockerfile  Dockerfile.ci  Dockerfile.cli.ci  docker-compose.yml
-  exemplos/csharp-console/      exemplo de uso do conector C#
+  examples/csharp-console/      exemplo de uso do conector C#
   doc/                          registros 08a-c, catálogo de casos 20*, diagramas/
   doc/pt-BR/                    esta documentação
   .github/                      workflows, actions e scripts
@@ -90,7 +90,7 @@ cargo run -- init --out ./secrets                     # certificado e token raiz
 cd connectors/rust && cargo test --workspace --all-features && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all
 cd connectors/csharp && dotnet test Taba.Client.Tests
 
-docker compose up --build -d                          # cluster de 3 nós
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d   # cluster de 3 nós, imagem local
 docker/validate.sh                                    # validação de ponta a ponta (≈ 5 min)
 ```
 

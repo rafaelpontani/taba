@@ -1,5 +1,5 @@
-//! Um coletor OTLP falso para os testes da exportação (doc 11, "Como ligar um coletor"): recebe
-//! métricas, traces e logs por `http/protobuf` ou por `grpc` e guarda o que chegou.
+//! A fake OTLP collector for the export tests (doc 11, "How to connect a collector"): receives
+//! metrics, traces and logs over `http/protobuf` or `grpc` and keeps what arrived.
 
 #![allow(dead_code)]
 
@@ -43,12 +43,12 @@ pub struct Captured {
     metrics: Mutex<Vec<ExportMetricsServiceRequest>>,
     traces: Mutex<Vec<ExportTraceServiceRequest>>,
     logs: Mutex<Vec<ExportLogsServiceRequest>>,
-    /// Os cabeçalhos (ou metadados gRPC) de cada chamada, com o nome em minúsculas.
+    /// The headers (or gRPC metadata) of each call, with the name in lowercase.
     headers: Mutex<Vec<BTreeMap<String, String>>>,
 }
 
 pub struct Collector {
-    /// O endereço para `OTEL_EXPORTER_OTLP_ENDPOINT`.
+    /// The address for `OTEL_EXPORTER_OTLP_ENDPOINT`.
     pub endpoint: String,
     pub captured: Arc<Captured>,
 }
@@ -165,7 +165,7 @@ impl LogsService for Grpc {
 }
 
 impl Collector {
-    /// Um coletor `http/protobuf` em `http://127.0.0.1:<porta>`.
+    /// An `http/protobuf` collector at `http://127.0.0.1:<port>`.
     pub async fn http() -> Self {
         let captured = Arc::new(Captured::default());
         let router = Router::new()
@@ -175,8 +175,8 @@ impl Collector {
             .with_state(captured.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
-            .expect("porta livre");
-        let addr = listener.local_addr().expect("endereço");
+            .expect("free port");
+        let addr = listener.local_addr().expect("address");
         tokio::spawn(async move {
             let _ = axum::serve(listener, router).await;
         });
@@ -186,14 +186,14 @@ impl Collector {
         }
     }
 
-    /// Um coletor `grpc`. Com `tls = Some((certificado, chave))` (PEM) atende em `https`.
+    /// A `grpc` collector. With `tls = Some((certificate, key))` (PEM) it serves on `https`.
     pub async fn grpc(tls: Option<(String, String)>) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let captured = Arc::new(Captured::default());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
-            .expect("porta livre");
-        let addr: SocketAddr = listener.local_addr().expect("endereço");
+            .expect("free port");
+        let addr: SocketAddr = listener.local_addr().expect("address");
         let incoming = tonic::transport::server::TcpIncoming::from(listener);
         let mut server = tonic::transport::Server::builder();
         if let Some((cert, key)) = &tls {
@@ -220,7 +220,7 @@ impl Collector {
         lock(&self.captured.metrics).clone()
     }
 
-    /// Todas as métricas recebidas, a mais recente de cada nome por último.
+    /// All the metrics received, the most recent of each name last.
     pub fn metrics(&self) -> Vec<Metric> {
         self.metric_requests()
             .into_iter()
@@ -248,7 +248,7 @@ impl Collector {
             .collect()
     }
 
-    /// Os atributos de recurso de cada sinal: métricas, traces e logs.
+    /// The resource attributes of each signal: metrics, traces and logs.
     pub fn resources(&self) -> [Vec<BTreeMap<String, String>>; 3] {
         let flatten = |attributes: &[KeyValue]| attributes_of(attributes);
         [
@@ -273,12 +273,12 @@ impl Collector {
         ]
     }
 
-    /// Os cabeçalhos de todas as chamadas recebidas.
+    /// The headers of all the calls received.
     pub fn headers(&self) -> Vec<BTreeMap<String, String>> {
         lock(&self.captured.headers).clone()
     }
 
-    /// Espera `condition` ficar verdadeira (até 20 s).
+    /// Waits for `condition` to become true (up to 20 s).
     pub async fn eventually(&self, what: &str, condition: impl Fn(&Self) -> bool) {
         for _ in 0..400 {
             if condition(self) {
@@ -286,10 +286,10 @@ impl Collector {
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        panic!("o coletor não recebeu a tempo: {what}");
+        panic!("the collector did not receive in time: {what}");
     }
 
-    /// Espera um span com o nome dado (`otel.name`).
+    /// Waits for a span with the given name (`otel.name`).
     pub async fn wait_span(&self, name: &str) -> Span {
         self.eventually(&format!("span {name}"), |c| c.span(name).is_some())
             .await;

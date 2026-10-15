@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Recepção de mensagem (escrita por quórum)",
+    "title": "Message reception (quorum write)",
     "output": "doc/diagramas/html/recepcao.html",
     "viewBox": [
       1080,
@@ -15,49 +15,49 @@
     {
       "id": "cliente",
       "type": "external",
-      "label": "Cliente",
-      "sublabel": "produtor"
+      "label": "Client",
+      "sublabel": "producer"
     },
     {
       "id": "coord",
       "type": "backend",
-      "label": "Coordenador",
-      "sublabel": "nó que recebeu o POST"
+      "label": "Coordinator",
+      "sublabel": "node that received the POST"
     },
     {
       "id": "primario",
       "type": "security",
-      "label": "Primário",
-      "sublabel": "dono do bloco"
+      "label": "Primary",
+      "sublabel": "block owner"
     },
     {
       "id": "replica",
       "type": "database",
-      "label": "Réplica (quórum)",
+      "label": "Replica (quorum)",
       "sublabel": "write.quorum - 1"
     },
     {
       "id": "fora",
       "type": "cloud",
-      "label": "Réplica fora",
-      "sublabel": "fora do quórum"
+      "label": "Replica out",
+      "sublabel": "outside the quorum"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 298,
-      "label": "Fase 1: registro"
+      "label": "Phase 1: register"
     },
     {
       "from": 306,
       "to": 446,
-      "label": "Fase 2: commit"
+      "label": "Phase 2: commit"
     },
     {
       "from": 454,
       "to": 538,
-      "label": "Resposta e 2º plano"
+      "label": "Response and background"
     }
   ],
   "messages": [
@@ -68,35 +68,35 @@
       "y": 172,
       "label": "POST /topics/{t}/messages",
       "variant": "emphasis",
-      "note": "gera GUID v7 e calcula o bloco"
+      "note": "generates GUID v7 and computes the block"
     },
     {
       "id": "reg-p",
       "from": "coord",
       "to": "primario",
       "y": 200,
-      "label": "registro (pendente)"
+      "label": "register (pending)"
     },
     {
       "id": "reg-r",
       "from": "coord",
       "to": "replica",
       "y": 228,
-      "label": "registro (pendente)"
+      "label": "register (pending)"
     },
     {
       "id": "reg-f",
       "from": "coord",
       "to": "fora",
       "y": 256,
-      "label": "registro (pendente)"
+      "label": "register (pending)"
     },
     {
       "id": "ok-p",
       "from": "primario",
       "to": "coord",
       "y": 284,
-      "label": "confirma",
+      "label": "confirms",
       "variant": "return"
     },
     {
@@ -104,7 +104,7 @@
       "from": "replica",
       "to": "coord",
       "y": 320,
-      "label": "confirma: quórum fechado",
+      "label": "confirms: quorum closed",
       "variant": "return"
     },
     {
@@ -152,42 +152,42 @@
       "from": "coord",
       "to": "fora",
       "y": 496,
-      "label": "registro + commit (insiste)",
+      "label": "register + commit (insists)",
       "variant": "dashed",
-      "note": "até write.commit.timeout"
+      "note": "until write.commit.timeout"
     },
     {
       "id": "bg-ok",
       "from": "fora",
       "to": "coord",
       "y": 524,
-      "label": "confirma",
+      "label": "confirms",
       "variant": "return"
     }
   ],
   "cards": [
     {
       "dot": "emerald",
-      "title": "Quórum",
+      "title": "Quorum",
       "items": [
-        "Sempre inclui o primário",
-        "Resposta sai com o commit confirmado no quórum"
+        "Always includes the primary",
+        "The response goes out with the commit confirmed on the quorum"
       ]
     },
     {
       "dot": "rose",
-      "title": "Falha antes do quórum",
+      "title": "Failure before the quorum",
       "items": [
-        "Retry (write.retry.*), depois erro ao cliente",
-        "Rollback nos nós que já confirmaram"
+        "Retry (write.retry.*), then error to the client",
+        "Rollback on the nodes that already confirmed"
       ]
     },
     {
       "dot": "orange",
-      "title": "Falha depois do quórum",
+      "title": "Failure after the quorum",
       "items": [
-        "Nunca há rollback",
-        "Bloco fica abaixo do fator pleno: evento under-replicated"
+        "There is never a rollback",
+        "Block falls below the full factor: under-replicated event"
       ]
     }
   ]

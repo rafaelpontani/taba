@@ -1,9 +1,9 @@
-//! Os spans do nó (doc 11, "Traces"). Nascem no `tracing`; a camada `tracing-opentelemetry`
-//! (ligada por `telemetry::attach_otlp`) os leva ao OTLP. Sem a camada, criar um span custa quase
-//! nada e não exporta nada.
+//! The node's spans (doc 11, "Traces"). They are born in `tracing`; the `tracing-opentelemetry` layer
+//! (attached by `telemetry::attach_otlp`) carries them to OTLP. Without the layer, creating a span costs almost
+//! nothing and exports nothing.
 //!
-//! Os campos que os handlers preenchem depois (`messaging.*`) são declarados vazios na criação do
-//! span HTTP, já que o `tracing` só deixa gravar campo declarado.
+//! The fields the handlers fill in later (`messaging.*`) are declared empty at the creation of the
+//! HTTP span, since `tracing` only lets a declared field be recorded.
 
 use axum::http::HeaderMap;
 use opentelemetry::propagation::{Extractor, TextMapPropagator};
@@ -11,12 +11,12 @@ use opentelemetry_sdk::propagation::TraceContextPropagator;
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-/// O valor de `messaging.system`.
+/// The value of `messaging.system`.
 pub const MESSAGING_SYSTEM: &str = "taba";
 
-/// O span da requisição HTTP de uma operação de cliente: nome `{método} {rota}`, atributos
-/// `http.*` e, se a chamada trouxe um `traceparent`, filho dele (o W3C Trace Context; a decisão
-/// de amostragem do pai vale com o amostrador `parentbased_*`).
+/// The span of an HTTP request of a client operation: name `{method} {route}`, `http.*`
+/// attributes and, if the call carried a `traceparent`, a child of it (the W3C Trace Context; the parent's
+/// sampling decision applies with the `parentbased_*` sampler).
 pub fn server_span(method: &str, route: &str, port: u16, headers: &HeaderMap) -> Span {
     let span = tracing::info_span!(
         "http.server",
@@ -53,8 +53,8 @@ impl Extractor for Headers<'_> {
     }
 }
 
-/// Fecha o span da requisição: o status HTTP e, nas respostas `5xx`, o status de erro do span e a
-/// marca de evento de durabilidade (o Collector as mantém na amostragem por cauda).
+/// Closes the request span: the HTTP status and, on `5xx` responses, the span's error status and the
+/// durability event mark (the Collector keeps them in tail sampling).
 pub fn finish_server_span(span: &Span, status: u16) {
     span.record("http.response.status_code", i64::from(status));
     if status >= 500 {
@@ -63,8 +63,8 @@ pub fn finish_server_span(span: &Span, status: u16) {
     }
 }
 
-/// Os atributos de mensageria do span corrente: o tópico, a operação (`send`, `receive` ou
-/// `settle`) e as tags do tópico como `taba.topic.tag.<chave>`.
+/// The messaging attributes of the current span: the topic, the operation (`send`, `receive` or
+/// `settle`) and the topic's tags as `taba.topic.tag.<key>`.
 pub fn annotate_messaging<'a>(
     topic: &str,
     operation: &'static str,
@@ -79,25 +79,25 @@ pub fn annotate_messaging<'a>(
     }
 }
 
-/// O ID da mensagem no span corrente (vai em traces e logs, nunca em métrica).
+/// The message ID on the current span (goes in traces and logs, never in a metric).
 pub fn message_id(id: &str) {
     Span::current().record("messaging.message.id", id);
 }
 
-/// A quantidade de mensagens de um consumo, no span corrente.
+/// The number of messages of a consume, on the current span.
 pub fn batch_count(count: usize) {
     Span::current().record("messaging.batch.message_count", count as i64);
 }
 
-/// Marca o span corrente como evento de durabilidade (rollback, perda, teto de commit esgotado).
+/// Marks the current span as a durability event (rollback, loss, commit ceiling exhausted).
 pub fn durability_event() {
     Span::current().record("taba.durability_event", true);
 }
 
-/// O span de uma chamada a um nó (registro, commit, rollback, voto...): `name` vira o nome do
-/// span e `peer` o atributo `taba.peer.id`. O número da tentativa
-/// (`taba.attempt`) é gravado por quem repete a chamada. `durability` marca o span como evento de
-/// durabilidade (rollback), que o Collector mantém na amostragem por cauda.
+/// The span of a call to a node (registration, commit, rollback, vote...): `name` becomes the name of the
+/// span and `peer` the `taba.peer.id` attribute. The attempt number
+/// (`taba.attempt`) is recorded by whoever repeats the call. `durability` marks the span as a durability
+/// event (rollback), which the Collector keeps in tail sampling.
 pub fn peer_span(name: &'static str, peer: &str, durability: bool) -> Span {
     let span = tracing::info_span!(
         "peer.call",
@@ -114,7 +114,7 @@ pub fn peer_span(name: &'static str, peer: &str, durability: bool) -> Span {
     span
 }
 
-/// Roda `call` dentro de `span` e marca o span com erro se ela falhar.
+/// Runs `call` inside `span` and marks the span with an error if it fails.
 pub async fn traced<T, E>(
     span: Span,
     call: impl std::future::Future<Output = Result<T, E>>,
@@ -127,13 +127,13 @@ pub async fn traced<T, E>(
     result
 }
 
-/// O número da tentativa no span corrente.
+/// The attempt number on the current span.
 pub fn attempt(number: u32) {
     Span::current().record("taba.attempt", i64::from(number));
 }
 
-/// O span raiz de uma operação do cluster (ingresso, saída, votação): um trace por operação,
-/// com um span filho por nó consultado. `node` é o nó que entra, sai ou é votado
+/// The root span of a cluster operation (join, leave, vote): one trace per operation,
+/// with a child span per node queried. `node` is the node that joins, leaves or is voted on
 /// (`taba.node.id`).
 pub fn operation_span(name: &'static str, node: &str) -> Span {
     tracing::info_span!(
@@ -145,8 +145,8 @@ pub fn operation_span(name: &'static str, node: &str) -> Span {
     )
 }
 
-/// Injeta o contexto do span corrente no cabeçalho `traceparent` de uma chamada a outro nó. Sem
-/// span válido (uma tarefa de fundo, como o sinal de vida) não injeta nada.
+/// Injects the current span's context into the `traceparent` header of a call to another node. Without a
+/// valid span (a background task, like the heartbeat) it injects nothing.
 pub fn inject(headers: &mut Vec<(String, String)>) {
     use opentelemetry::propagation::{Injector, TextMapPropagator};
     use opentelemetry::trace::TraceContextExt;
@@ -164,8 +164,8 @@ pub fn inject(headers: &mut Vec<(String, String)>) {
     }
 }
 
-/// O span de uma chamada que chegou de outro nó. Só nasce se a chamada trouxe um `traceparent`
-/// (veio de uma operação com trace); as de fundo, como o sinal de vida, não geram span.
+/// The span of a call that arrived from another node. It is only born if the call carried a `traceparent`
+/// (came from an operation with a trace); background ones, like the heartbeat, generate no span.
 pub fn inbound_span(name: &str, headers: &[(String, String)]) -> Option<Span> {
     struct In<'a>(&'a [(String, String)]);
     impl Extractor for In<'_> {

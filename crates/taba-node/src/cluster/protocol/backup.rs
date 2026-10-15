@@ -1,12 +1,12 @@
-//! As chamadas do backup em S3 entre nós (doc 23, "Backup em S3"): o aviso das mensagens já salvas
-//! no bucket (`BackupSaved`), o flush num nó (`BackupFlush`) e o drain de parada (`BackupStop`).
+//! The S3 backup calls between nodes (doc 23, "S3 backup"): the notice of messages already saved
+//! in the bucket (`BackupSaved`), the flush on a node (`BackupFlush`) and the stop drain (`BackupStop`).
 
 use serde::{Deserialize, Serialize};
 
 use super::require_guid;
 use crate::core::error::{ErrorCode, TabaError};
 
-/// Uma mensagem salva e onde ela está no bucket.
+/// A saved message and where it is in the bucket.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BackupSavedItem {
@@ -14,13 +14,13 @@ pub struct BackupSavedItem {
     pub segment: String,
     pub offset: u64,
     pub len: u64,
-    /// Quando o primário confirmou o PUT (relógio dele); `0` se o aviso não o traz.
+    /// When the primary confirmed the PUT (its clock); `0` if the notice does not carry it.
     #[serde(default)]
     pub saved_at_ms: u64,
 }
 
-/// `POST /cluster/backup/saved`: o primário avisa a réplica, em lote, de quais mensagens do tópico
-/// já foram para um segmento. Só vale para o que a réplica guarda: o que ela não conhece é ignorado.
+/// `POST /cluster/backup/saved`: the primary tells the replica, in a batch, which messages of the topic
+/// already went into a segment. It only applies to what the replica keeps: what it does not know is ignored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BackupSaved {
@@ -28,7 +28,7 @@ pub struct BackupSaved {
     pub items: Vec<BackupSavedItem>,
 }
 
-/// O teto de itens de um aviso: o primário parte lotes maiores.
+/// The ceiling of items in a notice: the primary splits larger batches.
 pub const BACKUP_SAVED_MAX_ITEMS: usize = 5_000;
 
 impl BackupSaved {
@@ -36,14 +36,14 @@ impl BackupSaved {
         if self.items.len() > BACKUP_SAVED_MAX_ITEMS {
             return Err(TabaError::new(
                 ErrorCode::ValidationFailed,
-                "O aviso de mensagens salvas tem itens demais.",
+                "The saved-messages notice has too many items.",
             )
-            .with_detail("items", ErrorCode::ValidationOutOfRange, "Itens demais."));
+            .with_detail("items", ErrorCode::ValidationOutOfRange, "Too many items."));
         }
         if self.topic.is_empty() {
             return Err(TabaError::new(
                 ErrorCode::ValidationRequired,
-                "O aviso de mensagens salvas não diz o tópico.",
+                "The saved-messages notice does not say the topic.",
             ));
         }
         for item in &self.items {

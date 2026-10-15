@@ -1,6 +1,6 @@
-//! Cursor opaco da paginação por chave (doc 06a, seção 8.1.2): o cliente nunca o monta.
-//! O cursor guarda a última chave lida, mais o `sort` e os filtros em uso, e não tem
-//! estado no servidor, então não expira.
+//! Opaque cursor for key pagination (doc 06a, section 8.1.2): the client never builds it.
+//! The cursor holds the last key read, plus the `sort` and the filters in use, and has no
+//! server-side state, so it does not expire.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -17,17 +17,17 @@ pub fn encode_cursor<T: Serialize>(key: &T) -> String {
 /// Cursor malformado: `400` `validation.invalid-cursor`.
 pub fn decode_cursor<T: DeserializeOwned>(cursor: &str) -> Result<T, TabaError> {
     let invalid = || {
-        TabaError::new(ErrorCode::ValidationInvalidCursor, "O cursor é inválido.").with_detail(
+        TabaError::new(ErrorCode::ValidationInvalidCursor, "The cursor is invalid.").with_detail(
             "cursor",
             ErrorCode::ValidationInvalidCursor,
-            "Use o `nextCursor` da página anterior.",
+            "Use the `nextCursor` of the previous page.",
         )
     };
     let bytes = URL_SAFE_NO_PAD.decode(cursor).map_err(|_| invalid())?;
     serde_json::from_slice(&bytes).map_err(|_| invalid())
 }
 
-/// Valida o `limit` da query: de 1 até o máximo; sem ele, vale o padrão.
+/// Validates the query's `limit`: from 1 up to the maximum; without it, the default applies.
 pub fn parse_limit(raw: Option<&str>, default: u32, max: u32) -> Result<usize, TabaError> {
     let Some(raw) = raw else {
         return Ok(default as usize);
@@ -35,12 +35,12 @@ pub fn parse_limit(raw: Option<&str>, default: u32, max: u32) -> Result<usize, T
     let out_of_range = || {
         TabaError::new(
             ErrorCode::ValidationOutOfRange,
-            format!("limit deve estar entre 1 e {max}."),
+            format!("limit must be between 1 and {max}."),
         )
         .with_detail(
             "query.limit",
             ErrorCode::ValidationOutOfRange,
-            format!("Entre 1 e {max}."),
+            format!("Between 1 and {max}."),
         )
     };
     match raw.trim().parse::<u32>() {

@@ -1,5 +1,5 @@
-//! A API de operação: o drain, `/health/cluster`, o filtro de IP e o estado de falha
-//! (doc 06b; doc 04, seção 6.10).
+//! The operations API: the drain, `/health/cluster`, the IP filter and the failure state
+//! (doc 06b; doc 04, section 6.10).
 
 mod common;
 
@@ -60,20 +60,20 @@ async fn wait_for_drain_state(node: &TestNode, state: &str) -> Value {
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("o nó não chegou a `{state}`");
+    panic!("the node did not reach `{state}`");
 }
 
 /// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-007, UC-DRN-020, UC-OPS-004
 #[tokio::test]
 async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
     let node = TestNode::development().await;
-    create_queue(&node, "pedidos").await;
-    assert_eq!(publish(&node, "pedidos", "1").await.status(), 201);
+    create_queue(&node, "orders").await;
+    assert_eq!(publish(&node, "orders", "1").await.status(), 201);
     let before = node.metrics().await;
     assert_eq!(
         common::series(&before, "taba_node_drain_pending"),
         Some(1.0),
-        "a mensagem ainda está em memória"
+        "the message is still in memory"
     );
     assert_eq!(
         common::series(&before, "taba_node_drain_state{taba_state=\"active\"}"),
@@ -99,7 +99,7 @@ async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
     assert_eq!(done["pendingMessages"], 0);
     assert!(
         node.storage_dir()
-            .join("pedidos")
+            .join("orders")
             .join("_topic.db")
             .is_file()
     );
@@ -114,7 +114,7 @@ async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
         Some(0.0)
     );
 
-    // Fora da rotação: pronto cai a 503 e vivo segue 200.
+    // Out of rotation: ready drops to 503 and live stays 200.
     let ready = node.client_get("/health/ready").await;
     assert_eq!(ready.status(), 503);
     assert_eq!(
@@ -123,16 +123,16 @@ async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
     );
     assert_eq!(node.client_get("/health/live").await.status(), 200);
 
-    // As chamadas de cliente não são atendidas: 503 com Retry-After.
-    let refused = node.client_get("/topics/pedidos/messages").await;
+    // The client calls are not served: 503 with Retry-After.
+    let refused = node.client_get("/topics/orders/messages").await;
     assert_eq!(refused.headers()["retry-after"], "5");
     assert_eq!(error_code(refused, 503).await, "cluster.node-draining");
     assert_eq!(
-        error_code(publish(&node, "pedidos", "2").await, 503).await,
+        error_code(publish(&node, "orders", "2").await, 503).await,
         "cluster.node-draining"
     );
 
-    // Iniciar de novo: 200, sem efeito.
+    // Start again: 200, no effect.
     let again = drain_call(&node, reqwest::Method::POST).await;
     assert_eq!(again.status(), 200);
     assert_eq!(
@@ -146,11 +146,11 @@ async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
 #[tokio::test]
 async fn deleting_the_drain_brings_the_node_back_with_its_messages() {
     let node = TestNode::development().await;
-    create_queue(&node, "pedidos").await;
-    publish(&node, "pedidos", r#"{ "n": 1 }"#).await;
+    create_queue(&node, "orders").await;
+    publish(&node, "orders", r#"{ "n": 1 }"#).await;
 
     let nothing = drain_call(&node, reqwest::Method::DELETE).await;
-    assert_eq!(nothing.status(), 200, "sem drain, nada a cancelar");
+    assert_eq!(nothing.status(), 200, "without a drain, nothing to cancel");
     assert_eq!(
         nothing.json::<Value>().await.unwrap()["drainState"],
         "active"
@@ -163,11 +163,11 @@ async fn deleting_the_drain_brings_the_node_back_with_its_messages() {
     assert_eq!(back.json::<Value>().await.unwrap()["drainState"], "active");
 
     assert_eq!(node.client_get("/health/ready").await.status(), 200);
-    let messages = consume(&node, "pedidos").await;
-    assert_eq!(messages.len(), 1, "o que foi ao disco continua entregável");
+    let messages = consume(&node, "orders").await;
+    assert_eq!(messages.len(), 1, "what went to disk is still deliverable");
     assert_eq!(messages[0]["body"], json!({ "n": 1 }));
-    // Voltou a gravar em memória: a nova mensagem não vai ao disco.
-    publish(&node, "pedidos", "2").await;
+    // It went back to writing in memory: the new message does not go to disk.
+    publish(&node, "orders", "2").await;
     let status: Value = drain_call(&node, reqwest::Method::GET)
         .await
         .json()
@@ -184,7 +184,7 @@ async fn the_operations_routes_only_accept_the_allowed_ips() {
         .env("TABA_OPERATIONS_ALLOWED_IPS", "10.0.0.0/8, 192.168.1.10")
         .start()
         .await;
-    // Só a lista: as rotas de operação ficam na porta da API, e a API de cliente segue aberta.
+    // Only the list: the operations routes stay on the API port, and the client API stays open.
     assert_eq!(node.node.operations_addr(), None);
     for path in [
         "/health/live",
@@ -243,7 +243,7 @@ async fn with_an_operations_port_the_client_port_does_not_serve_the_operations_r
     assert_eq!(
         error_code(ops, 403).await,
         "ops.ip-not-allowed",
-        "porta própria e filtro"
+        "own port and filter"
     );
     node.shutdown().await;
 }
@@ -255,8 +255,8 @@ async fn cluster_health_describes_the_single_node() {
         .env("TABA_MEMORY_LIMIT", "1000")
         .start()
         .await;
-    create_queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    create_queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
 
     for scope in ["", "?scope=node", "?scope=cluster"] {
         let response = node.client_get(&format!("/health/cluster{scope}")).await;
@@ -289,7 +289,7 @@ async fn cluster_health_describes_the_single_node() {
         "node"
     );
 
-    let invalid = node.client_get("/health/cluster?scope=outro").await;
+    let invalid = node.client_get("/health/cluster?scope=other").await;
     assert_eq!(error_code(invalid, 400).await, "validation.failed");
     node.shutdown().await;
 }
@@ -301,15 +301,15 @@ async fn a_corrupt_topic_database_fails_the_node() {
         .env("TABA_MEMORY_LIMIT", "1")
         .start()
         .await;
-    create_queue(&node, "pedidos").await;
-    let folder = node.storage_dir().join("pedidos");
+    create_queue(&node, "orders").await;
+    let folder = node.storage_dir().join("orders");
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("_topic.db"), vec![0xAB; 4096]).unwrap();
 
-    // O corpo passa de `memory.limit`: vai ao disco e acha o banco corrompido. A varredura (a cada
-    // até 1 s) também abre o banco: se ela chegar antes do publish, o nó já está `failed` e o
-    // publish recebe `503` `node.failed`. Os dois desfechos deixam o nó em falha.
-    let response = publish(&node, "pedidos", r#"{ "grande": true }"#).await;
+    // The body goes over `memory.limit`: it goes to disk and finds the corrupted database. The sweep (every
+    // up to 1 s) also opens the database: if it gets there before the publish, the node is already `failed` and the
+    // publish receives `503` `node.failed`. Both outcomes leave the node in failure.
+    let response = publish(&node, "orders", r#"{ "big": true }"#).await;
     let (status, code) = match response.status().as_u16() {
         503 => (503, "node.failed"),
         _ => (500, "internal.error"),
@@ -356,15 +356,15 @@ async fn the_drain_writes_the_save_mark_and_the_next_start_consumes_it() {
     };
 
     let node = start("true").await.unwrap();
-    create_queue(&node, "pedidos").await;
-    publish(&node, "pedidos", "1").await;
+    create_queue(&node, "orders").await;
+    publish(&node, "orders", "1").await;
     node.shutdown().await;
     assert!(
         save_mark(&storage).is_some(),
-        "o drain deixou a marca do save"
+        "the drain left the save mark"
     );
 
-    // A partida consome a marca: uma queda depois dela não passa por save limpo.
+    // The start consumes the mark: a fall after it does not go through a clean save.
     taba_node::storage::state::NodeStateStore::new(std::sync::Arc::new(
         taba_node::storage::db::NodeDb::open(&storage, taba_node::config::DbSynchronous::Normal)
             .unwrap(),
@@ -376,6 +376,6 @@ async fn the_drain_writes_the_save_mark_and_the_next_start_consumes_it() {
     assert_eq!(
         save_mark(&storage),
         None,
-        "sem drain na parada não há marca"
+        "without a drain at the stop there is no mark"
     );
 }

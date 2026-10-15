@@ -1,4 +1,4 @@
-//! Os perfis de conexão e o arquivo `config.yml` (doc 19b, seção 18.11.2).
+//! The connection profiles and the `config.yml` file (doc 19b, section 18.11.2).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::yaml::{self, Node};
 
-/// Os campos de um perfil, na ordem em que são escritos e mostrados.
+/// The fields of a profile, in the order they are written and shown.
 pub const FIELDS: [&str; 9] = [
     "url",
     "ops-url",
@@ -42,7 +42,7 @@ impl Os {
     }
 }
 
-/// Um perfil: só os campos que a pessoa definiu.
+/// A profile: only the fields the person set.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Profile {
     values: BTreeMap<String, String>,
@@ -53,7 +53,7 @@ impl Profile {
         self.values.get(field).map(String::as_str)
     }
 
-    /// Define um campo, depois de validá-lo.
+    /// Sets a field, after validating it.
     pub fn set(&mut self, field: &str, value: &str) -> Result<(), String> {
         validate_field(field, value)?;
         self.values.insert(field.to_owned(), value.to_owned());
@@ -64,7 +64,7 @@ impl Profile {
         self.values.remove(field);
     }
 
-    /// Os campos definidos, na ordem canônica.
+    /// The fields set, in canonical order.
     pub fn entries(&self) -> Vec<(&'static str, &str)> {
         FIELDS
             .iter()
@@ -73,11 +73,11 @@ impl Profile {
     }
 }
 
-/// Confere o valor de um campo sem chamar o servidor nem tocar em arquivos.
+/// Checks a field's value without calling the server or touching files.
 pub fn validate_field(field: &str, value: &str) -> Result<(), String> {
     if !FIELDS.contains(&field) {
         return Err(format!(
-            "`{field}` não é um campo de perfil ({})",
+            "`{field}` is not a profile field ({})",
             FIELDS.join(", ")
         ));
     }
@@ -86,18 +86,18 @@ pub fn validate_field(field: &str, value: &str) -> Result<(), String> {
         "url" | "ops-url" => taba_client::http::Url::parse(value)
             .map(|_| ())
             .or_else(|e| bad(&e)),
-        "output" if !OUTPUTS.contains(&value) => bad("use json, table ou raw"),
+        "output" if !OUTPUTS.contains(&value) => bad("use json, table or raw"),
         "connect-timeout" => number(value, 1, 300)
             .map(|_| ())
-            .or_else(|_| bad("use um número de 1 a 300 segundos")),
+            .or_else(|_| bad("use a number from 1 to 300 seconds")),
         "timeout" => number(value, 1, 3600)
             .map(|_| ())
-            .or_else(|_| bad("use um número de 1 a 3600 segundos")),
+            .or_else(|_| bad("use a number from 1 to 3600 seconds")),
         "max-attempts" => number(value, 1, 10)
             .map(|_| ())
-            .or_else(|_| bad("use um número de 1 a 10")),
+            .or_else(|_| bad("use a number from 1 to 10")),
         "token-file" | "token" | "ca-file" if value.trim().is_empty() => {
-            bad("o valor não pode ser vazio")
+            bad("the value cannot be empty")
         }
         _ => Ok(()),
     }
@@ -111,7 +111,7 @@ fn number(value: &str, min: u64, max: u64) -> Result<u64, ()> {
         .ok_or(())
 }
 
-/// O nome de um perfil: letras ASCII, dígitos, `-` e `_`, de 1 a 64 caracteres.
+/// A profile's name: ASCII letters, digits, `-` and `_`, from 1 to 64 characters.
 pub fn validate_name(name: &str) -> Result<(), String> {
     let ok = !name.is_empty()
         && name.len() <= 64
@@ -122,12 +122,12 @@ pub fn validate_name(name: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "o nome de perfil `{name}` é inválido: use de 1 a 64 letras, dígitos, `-` ou `_`"
+            "the profile name `{name}` is invalid: use 1 to 64 letters, digits, `-` or `_`"
         ))
     }
 }
 
-/// O arquivo inteiro: o perfil padrão e os perfis, na ordem em que foram criados.
+/// The whole file: the default profile and the profiles, in the order they were created.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConfigFile {
     pub default: Option<String>,
@@ -153,11 +153,13 @@ impl ConfigFile {
         self.profiles.iter().map(|(n, _)| n.as_str()).collect()
     }
 
-    /// Cria um perfil. O primeiro perfil do arquivo vira o padrão. Erro se o nome já existe.
+    /// Creates a profile. The file's first profile becomes the default. Error if the name already exists.
     pub fn add(&mut self, name: &str, profile: Profile) -> Result<(), String> {
         validate_name(name)?;
         if self.get(name).is_some() {
-            return Err(format!("o perfil `{name}` já existe (use `profile set`)"));
+            return Err(format!(
+                "the profile `{name}` already exists (use `profile set`)"
+            ));
         }
         self.profiles.push((name.to_owned(), profile));
         if self.profiles.len() == 1 {
@@ -166,12 +168,12 @@ impl ConfigFile {
         Ok(())
     }
 
-    /// Remove um perfil; se era o padrão, o arquivo fica sem padrão.
+    /// Removes a profile; if it was the default, the file is left with no default.
     pub fn remove(&mut self, name: &str) -> Result<(), String> {
         let before = self.profiles.len();
         self.profiles.retain(|(n, _)| n != name);
         if self.profiles.len() == before {
-            return Err(format!("o perfil `{name}` não existe"));
+            return Err(format!("the profile `{name}` does not exist"));
         }
         if self.default.as_deref() == Some(name) {
             self.default = None;
@@ -181,7 +183,7 @@ impl ConfigFile {
 
     pub fn set_default(&mut self, name: &str) -> Result<(), String> {
         if self.get(name).is_none() {
-            return Err(format!("o perfil `{name}` não existe"));
+            return Err(format!("the profile `{name}` does not exist"));
         }
         self.default = Some(name.to_owned());
         Ok(())
@@ -201,24 +203,24 @@ impl ConfigFile {
                     for (name, node) in profiles {
                         validate_name(&name)?;
                         let Node::Map(fields) = node else {
-                            return Err(format!("o perfil `{name}` precisa ser um mapa de campos"));
+                            return Err(format!("the profile `{name}` must be a map of fields"));
                         };
                         let mut profile = Profile::default();
                         for (field, value) in fields {
                             let Node::Text(value) = value else {
-                                return Err(format!("`{name}.{field}` precisa ser um texto"));
+                                return Err(format!("`{name}.{field}` must be a text"));
                             };
                             profile
                                 .set(&field, &value)
-                                .map_err(|e| format!("perfil `{name}`: {e}"))?;
+                                .map_err(|e| format!("profile `{name}`: {e}"))?;
                         }
                         file.profiles.push((name, profile));
                     }
                 }
-                ("default" | "profiles", _) => return Err(format!("`{key}` tem o tipo errado")),
+                ("default" | "profiles", _) => return Err(format!("`{key}` has the wrong type")),
                 _ => {
                     return Err(format!(
-                        "chave desconhecida `{key}` (use `default` e `profiles`)"
+                        "unknown key `{key}` (use `default` and `profiles`)"
                     ))
                 }
             }
@@ -226,7 +228,7 @@ impl ConfigFile {
         if let Some(default) = &file.default {
             if file.get(default).is_none() {
                 return Err(format!(
-                    "o perfil padrão `{default}` não existe em `profiles`"
+                    "the default profile `{default}` does not exist in `profiles`"
                 ));
             }
         }
@@ -252,19 +254,19 @@ impl ConfigFile {
             .collect();
         map.push(("profiles".to_owned(), Node::Map(profiles)));
         format!(
-            "# Perfis do taba-cli. O arquivo é reescrito por `taba-cli profile`; comentários não são mantidos.\n{}",
+            "# taba-cli profiles. The file is rewritten by `taba-cli profile`; comments are not kept.\n{}",
             yaml::render(&map)
         )
     }
 }
 
-/// O caminho do `config.yml`: `TABA_CLI_CONFIG`, ou a pasta de configuração do usuário no sistema.
+/// The path of `config.yml`: `TABA_CLI_CONFIG`, or the user's configuration folder on the system.
 pub fn config_path(os: Os, env: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, String> {
     if let Some(path) = env("TABA_CLI_CONFIG").filter(|p| !p.is_empty()) {
         return Ok(PathBuf::from(path));
     }
     let missing = |var: &str| {
-        format!("não achei a pasta de configuração do usuário (a variável {var} não existe); use TABA_CLI_CONFIG")
+        format!("could not find the user's configuration folder (the variable {var} does not exist); use TABA_CLI_CONFIG")
     };
     let non_empty = |name: &str| env(name).filter(|v| !v.is_empty());
     let dir = match os {
@@ -282,25 +284,24 @@ pub fn config_path(os: Os, env: &dyn Fn(&str) -> Option<String>) -> Result<PathB
     Ok(dir.join("taba").join("config.yml"))
 }
 
-/// Lê o arquivo; se não existe, é um arquivo vazio. Ilegível ou inválido: o erro diz o caminho.
+/// Reads the file; if it does not exist, it is an empty file. Unreadable or invalid: the error gives the path.
 pub fn load(path: &Path) -> Result<ConfigFile, String> {
     match fs::read_to_string(path) {
         Ok(text) => ConfigFile::parse(&text).map_err(|e| format!("{}: {e}", path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ConfigFile::default()),
-        Err(e) => Err(format!("não consegui ler {}: {e}", path.display())),
+        Err(e) => Err(format!("could not read {}: {e}", path.display())),
     }
 }
 
-/// Reescreve o arquivo inteiro de forma atômica: grava um arquivo temporário ao lado e o renomeia
-/// sobre o original. Em Unix o arquivo nasce com permissão `0600`.
+/// Rewrites the whole file atomically: writes a temporary file next to it and renames it
+/// over the original. On Unix the file is created with `0600` permission.
 pub fn save(path: &Path, file: &ConfigFile) -> Result<(), String> {
-    let fail =
-        |what: &str, e: std::io::Error| format!("não consegui {what} {}: {e}", path.display());
+    let fail = |what: &str, e: std::io::Error| format!("could not {what} {}: {e}", path.display());
     let dir = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    fs::create_dir_all(dir).map_err(|e| fail("criar a pasta de", e))?;
+    fs::create_dir_all(dir).map_err(|e| fail("create the folder", e))?;
     let tmp = dir.join(format!(
         ".{}.tmp-{}",
         path.file_name()
@@ -324,7 +325,7 @@ pub fn save(path: &Path, file: &ConfigFile) -> Result<(), String> {
     };
     write().map_err(|e| {
         let _ = fs::remove_file(&tmp);
-        fail("gravar", e)
+        fail("write", e)
     })
 }
 

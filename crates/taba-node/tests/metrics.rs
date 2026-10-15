@@ -1,4 +1,4 @@
-//! `GET /metrics` e as métricas `taba.*` do nó (doc 11).
+//! `GET /metrics` and the node's `taba.*` metrics (doc 11).
 
 mod common;
 
@@ -74,7 +74,7 @@ async fn metrics_is_the_prometheus_text_of_this_node_only() {
     assert!(series(&text, &connections).unwrap() >= 1.0, "{text}");
     assert!(
         !text.contains("taba_cluster_"),
-        "sem cluster não há métricas de cluster"
+        "without a cluster there are no cluster metrics"
     );
     assert!(text.contains("# TYPE taba_node_state gauge\n"));
 
@@ -138,10 +138,10 @@ async fn metrics_is_404_when_off_and_403_for_an_ip_outside_the_list() {
 #[tokio::test]
 async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
     let node = TestNode::development().await;
-    create_queue(&node, json!({ "name": "pedidos", "type": "queue" })).await;
-    assert_eq!(publish(&node, "pedidos", "", "a").await.status(), 201);
-    assert_eq!(publish(&node, "pedidos", "", "b").await.status(), 201);
-    assert_eq!(node.client_get("/nada/aqui").await.status(), 404);
+    create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
+    assert_eq!(publish(&node, "orders", "", "a").await.status(), 201);
+    assert_eq!(publish(&node, "orders", "", "b").await.status(), 201);
+    assert_eq!(node.client_get("/nothing/here").await.status(), 404);
     let text = node.metrics().await;
     let p = port(&node);
 
@@ -164,7 +164,7 @@ async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
             &format!("http_server_request_body_size_bytes_count{labels}")
         ),
         Some(2.0),
-        "o corpo de cada publicação tem tamanho conhecido"
+        "each publish's body has a known size"
     );
     assert!(text.contains("http_server_request_duration_seconds_bucket{"));
     assert_eq!(
@@ -176,7 +176,7 @@ async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
             )
         ),
         Some(1.0),
-        "a rota que não casou não tem `http.route`"
+        "the route that did not match has no `http.route`"
     );
     assert_eq!(
         series(
@@ -187,10 +187,10 @@ async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
             )
         ),
         Some(1.0),
-        "a própria leitura está em andamento"
+        "the read itself is in progress"
     );
-    assert!(!text.contains("pedidos"), "o tópico nunca é rótulo de nó");
-    assert!(!text.contains("/nada/aqui"));
+    assert!(!text.contains("orders"), "the topic is never a node label");
+    assert!(!text.contains("/nothing/here"));
     assert!(!text.contains("http_server_requests_total"), "{text}");
     assert!(!text.contains("msg_"));
     node.shutdown().await;
@@ -203,10 +203,10 @@ async fn storage_metrics_count_overflow_and_reads_by_tier() {
         .env("TABA_MEMORY_LIMIT", "150")
         .start()
         .await;
-    create_queue(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
     let body = "x".repeat(100);
     for _ in 0..3 {
-        assert_eq!(publish(&node, "pedidos", "", &body).await.status(), 201);
+        assert_eq!(publish(&node, "orders", "", &body).await.status(), 201);
     }
     let text = node.metrics().await;
     assert_eq!(
@@ -222,7 +222,7 @@ async fn storage_metrics_count_overflow_and_reads_by_tier() {
     assert_eq!(series(&text, "taba_storage_overflow_total"), Some(2.0));
     assert_eq!(series(&text, "taba_delivery_ready"), Some(3.0));
 
-    assert_eq!(take(&node, "pedidos", "maxMessages=10").await.len(), 3);
+    assert_eq!(take(&node, "orders", "maxMessages=10").await.len(), 3);
     let text = node.metrics().await;
     assert_eq!(
         series(&text, "taba_storage_reads_total{taba_tier=\"memory\"}"),
@@ -243,23 +243,23 @@ async fn redeliveries_dead_letters_and_expirations_are_counted() {
     let node = TestNode::development().await;
     create_queue(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "maxDeliveries": 2 }),
+        json!({ "name": "orders", "type": "queue", "maxDeliveries": 2 }),
     )
     .await;
     create_queue(
         &node,
-        json!({ "name": "curtos", "type": "queue", "ttl": 60 }),
+        json!({ "name": "short", "type": "queue", "ttl": 60 }),
     )
     .await;
-    publish(&node, "pedidos", "", "a").await;
-    publish(&node, "curtos", "", "b").await;
+    publish(&node, "orders", "", "a").await;
+    publish(&node, "short", "", "b").await;
 
-    assert_eq!(take(&node, "pedidos", "visibilityTimeout=1").await.len(), 1);
+    assert_eq!(take(&node, "orders", "visibilityTimeout=1").await.len(), 1);
     node.clock.advance(Duration::from_secs(2));
-    assert_eq!(take(&node, "pedidos", "visibilityTimeout=1").await.len(), 1);
+    assert_eq!(take(&node, "orders", "visibilityTimeout=1").await.len(), 1);
     node.clock.advance(Duration::from_secs(60));
-    // A varredura de fundo (a cada segundo) leva a mensagem esgotada à dead-letter e apaga a
-    // que passou do `ttl`.
+    // The background sweep takes the exhausted message to the dead-letter and deletes the
+    // one that went past the `ttl`.
     tokio::time::sleep(Duration::from_millis(1500)).await;
 
     let text = node.metrics().await;
@@ -276,17 +276,17 @@ async fn redeliveries_dead_letters_and_expirations_are_counted() {
 #[tokio::test]
 async fn the_wait_is_measured_per_band_and_small_groups_wait_less() {
     let node = TestNode::development().await;
-    create_queue(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
     for _ in 0..20 {
-        publish(&node, "pedidos", "?groupId=grande", "a").await;
+        publish(&node, "orders", "?groupId=big", "a").await;
     }
     node.clock.advance(Duration::from_secs(30));
     for _ in 0..2 {
-        publish(&node, "pedidos", "?groupId=pequeno", "b").await;
+        publish(&node, "orders", "?groupId=small", "b").await;
     }
     node.clock.advance(Duration::from_secs(1));
     assert_eq!(
-        take(&node, "pedidos", "maxMessages=22&visibilityTimeout=600")
+        take(&node, "orders", "maxMessages=22&visibilityTimeout=600")
             .await
             .len(),
         22
@@ -307,7 +307,7 @@ async fn the_wait_is_measured_per_band_and_small_groups_wait_less() {
     assert_eq!(
         band("0"),
         Some((2.0, 2.0)),
-        "as duas do grupo pequeno: 1 s cada"
+        "the two of the small group: 1 s each"
     );
     let (mut count, mut sum) = (0.0, 0.0);
     for label in (1..15).map(|n| n.to_string()).chain(["15+".to_owned()]) {
@@ -317,7 +317,7 @@ async fn the_wait_is_measured_per_band_and_small_groups_wait_less() {
         }
     }
     assert_eq!(count, 20.0);
-    assert_eq!(sum / count, 31.0, "o grupo grande esperou 31 s");
+    assert_eq!(sum / count, 31.0, "the big group waited 31 s");
     node.shutdown().await;
 }
 
@@ -330,9 +330,9 @@ async fn rate_limit_rejections_are_counted_by_category_and_key_and_metrics_is_ex
         .env("TABA_RATELIMIT_BURST", "1")
         .start()
         .await;
-    create_queue(&node, json!({ "name": "pedidos", "type": "queue" })).await;
-    assert_eq!(publish(&node, "pedidos", "", "a").await.status(), 201);
-    assert_eq!(publish(&node, "pedidos", "", "b").await.status(), 429);
+    create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
+    assert_eq!(publish(&node, "orders", "", "a").await.status(), 201);
+    assert_eq!(publish(&node, "orders", "", "b").await.status(), 429);
     assert_eq!(node.client_get("/metrics/topics").await.status(), 200);
     assert_eq!(node.client_get("/metrics/topics").await.status(), 429);
 
@@ -340,7 +340,7 @@ async fn rate_limit_rejections_are_counted_by_category_and_key_and_metrics_is_ex
         assert_eq!(
             node.client_get("/metrics").await.status(),
             200,
-            "`/metrics` nunca responde 429"
+            "`/metrics` never answers 429"
         );
     }
     let text = node.metrics().await;
@@ -425,10 +425,10 @@ mod authentication {
         assert_eq!(
             series(&text, "taba_auth_requests_total{taba_outcome=\"ok\"}"),
             Some(1.0),
-            "só a criação do token pelo raiz"
+            "only the token's creation by the root"
         );
         assert_eq!(series(&text, "taba_auth_tokens"), Some(1.0));
-        assert!(!text.contains(&id), "o id do token nunca é rótulo");
+        assert!(!text.contains(&id), "the token id is never a label");
         node.shutdown().await;
     }
 }
@@ -447,18 +447,18 @@ async fn without_authentication_there_are_no_auth_series() {
 #[tokio::test]
 async fn long_polling_is_counted_while_waiting_and_by_outcome() {
     let node = TestNode::development().await;
-    create_queue(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
 
     let waiting = {
         let client = node.client.clone();
-        let url = node.client_url("/topics/pedidos/messages?waitTime=5");
+        let url = node.client_url("/topics/orders/messages?waitTime=5");
         tokio::spawn(async move { client.get(url).send().await.unwrap() })
     };
     tokio::time::sleep(Duration::from_millis(300)).await;
     let text = node.metrics().await;
     assert_eq!(series(&text, "taba_delivery_longpoll_waiting"), Some(1.0));
 
-    publish(&node, "pedidos", "", "a").await;
+    publish(&node, "orders", "", "a").await;
     let response = waiting.await.unwrap();
     assert_eq!(
         response.json::<Value>().await.unwrap()["messages"]
@@ -468,7 +468,7 @@ async fn long_polling_is_counted_while_waiting_and_by_outcome() {
         1
     );
 
-    let empty = node.client_get("/topics/pedidos/messages?waitTime=1").await;
+    let empty = node.client_get("/topics/orders/messages?waitTime=1").await;
     assert_eq!(empty.status(), 200);
     let text = node.metrics().await;
     assert_eq!(series(&text, "taba_delivery_longpoll_waiting"), Some(0.0));
@@ -493,12 +493,12 @@ async fn long_polling_is_counted_while_waiting_and_by_outcome() {
 #[tokio::test]
 async fn topic_metrics_are_off_by_default() {
     let node = TestNode::development().await;
-    create_queue(&node, json!({ "name": "pedidos", "type": "queue" })).await;
-    publish(&node, "pedidos", "", "a").await;
+    create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
+    publish(&node, "orders", "", "a").await;
     let text = node.metrics().await;
     assert!(
         !text.contains("taba_topic_"),
-        "o /metrics não cresce com os tópicos"
+        "/metrics does not grow with the topics"
     );
     node.shutdown().await;
 }
@@ -506,18 +506,18 @@ async fn topic_metrics_are_off_by_default() {
 async fn two_topics(node: &TestNode) {
     create_queue(
         node,
-        json!({ "name": "pedidos", "type": "queue", "tags": { "time": "fin" } }),
+        json!({ "name": "orders", "type": "queue", "tags": { "time": "fin" } }),
     )
     .await;
     create_queue(
         node,
-        json!({ "name": "vazio", "type": "queue", "tags": { "time": "ops" } }),
+        json!({ "name": "quiet", "type": "queue", "tags": { "time": "ops" } }),
     )
     .await;
-    publish(node, "pedidos", "", "a").await;
-    publish(node, "pedidos", "", "b").await;
+    publish(node, "orders", "", "a").await;
+    publish(node, "orders", "", "b").await;
     assert_eq!(
-        take(node, "pedidos", "maxMessages=1&visibilityTimeout=600")
+        take(node, "orders", "maxMessages=1&visibilityTimeout=600")
             .await
             .len(),
         1
@@ -535,53 +535,53 @@ async fn per_topic_mode_has_one_series_per_topic_and_no_oldest_without_messages(
         .await;
     two_topics(&node).await;
     let text = node.metrics().await;
-    let pedidos = "messaging_destination_name=\"pedidos\",taba_topic_tag_time=\"fin\"";
-    let vazio = "messaging_destination_name=\"vazio\",taba_topic_tag_time=\"ops\"";
+    let orders = "messaging_destination_name=\"orders\",taba_topic_tag_time=\"fin\"";
+    let empty = "messaging_destination_name=\"quiet\",taba_topic_tag_time=\"ops\"";
 
     assert_eq!(
-        series(&text, &format!("taba_topic_published_total{{{pedidos}}}")),
+        series(&text, &format!("taba_topic_published_total{{{orders}}}")),
         Some(2.0)
     );
     assert_eq!(
-        series(&text, &format!("taba_topic_consumed_total{{{pedidos}}}")),
+        series(&text, &format!("taba_topic_consumed_total{{{orders}}}")),
         Some(1.0)
     );
     assert_eq!(
-        series(&text, &format!("taba_topic_visible{{{pedidos}}}")),
+        series(&text, &format!("taba_topic_visible{{{orders}}}")),
         Some(1.0)
     );
     assert_eq!(
-        series(&text, &format!("taba_topic_invisible{{{pedidos}}}")),
+        series(&text, &format!("taba_topic_invisible{{{orders}}}")),
         Some(1.0)
     );
     assert_eq!(
-        series(&text, &format!("taba_topic_depth{{{pedidos}}}")),
+        series(&text, &format!("taba_topic_depth{{{orders}}}")),
         Some(2.0)
     );
     assert!(
         series(
             &text,
-            &format!("taba_topic_oldest_timestamp_seconds{{{pedidos}}}")
+            &format!("taba_topic_oldest_timestamp_seconds{{{orders}}}")
         )
         .unwrap()
             > 0.0
     );
     assert_eq!(
-        series(&text, &format!("taba_topic_depth{{{vazio}}}")),
+        series(&text, &format!("taba_topic_depth{{{empty}}}")),
         Some(0.0)
     );
     assert_eq!(
         series(
             &text,
-            &format!("taba_topic_oldest_timestamp_seconds{{{vazio}}}")
+            &format!("taba_topic_oldest_timestamp_seconds{{{empty}}}")
         ),
         None,
-        "sem mensagens não há série da mais antiga"
+        "without messages there is no series for the oldest"
     );
     assert_eq!(
         series(
             &text,
-            "taba_topic_condition{messaging_destination_name=\"pedidos\",\
+            "taba_topic_condition{messaging_destination_name=\"orders\",\
              taba_condition=\"backlog\",taba_topic_tag_time=\"fin\"}"
         ),
         Some(1.0)
@@ -602,7 +602,7 @@ async fn per_topic_mode_folds_the_topics_above_the_ceiling_into_other() {
     assert_eq!(
         series(
             &text,
-            "taba_topic_published_total{messaging_destination_name=\"pedidos\"}"
+            "taba_topic_published_total{messaging_destination_name=\"orders\"}"
         ),
         Some(2.0)
     );
@@ -613,7 +613,7 @@ async fn per_topic_mode_folds_the_topics_above_the_ceiling_into_other() {
         ),
         Some(0.0)
     );
-    assert!(!text.contains("messaging_destination_name=\"vazio\""));
+    assert!(!text.contains("messaging_destination_name=\"quiet\""));
     node.shutdown().await;
 }
 
@@ -646,7 +646,7 @@ async fn by_tags_mode_sums_by_tag_value_and_never_names_a_topic() {
 #[tokio::test]
 async fn the_resource_attributes_come_from_the_otel_variables_and_the_node() {
     let node = TestNode::builder()
-        .env("OTEL_SERVICE_NAME", "taba-teste")
+        .env("OTEL_SERVICE_NAME", "taba-test")
         .env(
             "OTEL_RESOURCE_ATTRIBUTES",
             "service.namespace=cluster-a,deployment.environment.name=staging",
@@ -658,7 +658,7 @@ async fn the_resource_attributes_come_from_the_otel_variables_and_the_node() {
         .lines()
         .find(|l| l.starts_with("target_info{"))
         .expect("target_info");
-    assert!(target.contains("service_name=\"taba-teste\""), "{target}");
+    assert!(target.contains("service_name=\"taba-test\""), "{target}");
     assert!(target.contains("service_namespace=\"cluster-a\""));
     assert!(target.contains("deployment_environment_name=\"staging\""));
     assert!(target.contains(&format!("service_instance_id=\"{}\"", node.node.node_id())));

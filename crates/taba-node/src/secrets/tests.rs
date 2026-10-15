@@ -20,7 +20,7 @@ fn a_certificate_is_self_signed_and_valid_for_server_and_client() {
     let (der, _) = certificate_of(&files);
     let (_, cert) = X509Certificate::from_der(&der).unwrap();
 
-    // Início no futuro (`--starts-in`) e validade contada a partir dele.
+    // Start in the future (`--starts-in`) and validity counted from it.
     let starts = cert.validity().not_before.to_datetime();
     let ends = cert.validity().not_after.to_datetime();
     assert_eq!(starts, datetime!(2026-10-20 12:00:00 UTC));
@@ -30,12 +30,12 @@ fn a_certificate_is_self_signed_and_valid_for_server_and_client() {
     let usage = cert
         .extended_key_usage()
         .unwrap()
-        .expect("tem extended key usage")
+        .expect("has extended key usage")
         .value;
     assert!(usage.server_auth && usage.client_auth);
     assert!(
         cert.subject_alternative_name().unwrap().is_none(),
-        "o nome do host não é verificado: não há SAN"
+        "the host name is not verified: there is no SAN"
     );
 }
 
@@ -82,13 +82,13 @@ fn nothing_is_overwritten_and_no_half_pair_is_left() {
     assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
     assert_eq!(std::fs::read(&first.certificate).unwrap(), before);
 
-    // Só o `.key` existe: recusa sem criar o `.crt`.
+    // Only the `.key` exists: refuses without creating the `.crt`.
     let other = tempfile::tempdir().unwrap();
     std::fs::write(other.path().join("cluster-20261006.key"), "x").unwrap();
     assert!(generate_cert(other.path(), NOW, 10, None).is_err());
     assert!(!other.path().join("cluster-20261006.crt").exists());
 
-    // Datas de início diferentes dão nomes diferentes: uma rotação não sobrescreve.
+    // Different start dates give different names: a rotation does not overwrite.
     let next = generate_cert(dir.path(), NOW, 10, Some(Duration::from_secs(14 * 86_400))).unwrap();
     assert_ne!(next.certificate, first.certificate);
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 4);
@@ -115,7 +115,7 @@ fn init_creates_the_certificate_in_tls_and_a_root_token_of_at_least_32_character
     assert!(token.ends_with('\n'));
     assert!(
         token.trim().len() >= 32,
-        "o token raiz tem ao menos 32 caracteres"
+        "the root token has at least 32 characters"
     );
     assert_eq!(token.trim().len(), 43);
 

@@ -1,7 +1,7 @@
-//! As condições do cluster e o `GET /health/cluster` com todos os nós (doc 06b, 06c e 11; doc 20c,
-//! nível **C**): `GET /cluster/status` em cada nó, a agregação em `scope=cluster`, e cada condição
+//! The cluster conditions and `GET /health/cluster` with all the nodes (doc 06b, 06c and 11; doc 20c,
+//! level **C**): `GET /cluster/status` on each node, the aggregation in `scope=cluster`, and each condition
 //! (`member-unreachable`, `under-replicated`, `write-quorum-at-risk`, `quorum-lost`,
-//! `membership-divergent`, `syncing`), com a severidade do doc 11.
+//! `membership-divergent`, `syncing`), with the doc 11 severity.
 
 mod common;
 
@@ -18,11 +18,11 @@ use taba_node::cluster::protocol::{Request, Response};
 use taba_node::cluster::transport::{CallError, Transport};
 use taba_node::core::error::ErrorCode;
 
-/// Os nomes das condições vigentes, na ordem da resposta.
+/// The names of the conditions in force, in the response order.
 fn names(status: &Value) -> Vec<String> {
     status["conditions"]
         .as_array()
-        .expect("lista de condições")
+        .expect("list of conditions")
         .iter()
         .map(|c| c["condition"].as_str().unwrap().to_owned())
         .collect()
@@ -34,7 +34,7 @@ fn severity_of(status: &Value, condition: &str) -> String {
         .unwrap()
         .iter()
         .find(|c| c["condition"] == condition)
-        .unwrap_or_else(|| panic!("sem a condição {condition} em {status}"))["severity"]
+        .unwrap_or_else(|| panic!("no condition {condition} in {status}"))["severity"]
         .as_str()
         .unwrap()
         .to_owned()
@@ -54,34 +54,34 @@ async fn every_node_answers_its_status_and_a_healthy_cluster_reports_ok() {
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
 
-    // `GET /cluster/status`: o `NodeStatus` do nó, para quem é membro.
+    // `GET /cluster/status`: the node's `NodeStatus`, for whoever is a member.
     let transport = cluster.network.transport(host_of(2));
     for number in 1..=3 {
         let Ok(Response::Status(status)) = transport
             .call(&address_of(&cluster, number), Request::Status)
             .await
         else {
-            panic!("o nó {number} deveria responder o estado");
+            panic!("node {number} should answer the status");
         };
         assert_eq!(status["nodeId"], cluster.node_id(number));
         assert_eq!(status["state"], "active");
         assert_eq!(status["signals"]["quorumAvailable"], true);
         assert_eq!(status["signals"]["channels"].as_object().unwrap().len(), 2);
-        assert!(status.get("metrics").is_none(), "sem as métricas");
+        assert!(status.get("metrics").is_none(), "without the metrics");
     }
-    // Quem não é membro não lê o estado, e não existe `GET /cluster/metrics`.
+    // Whoever is not a member does not read the status, and there is no `GET /cluster/metrics`.
     let stranger = cluster.network.transport("10.0.0.99");
     match stranger
         .call(&address_of(&cluster, 1), Request::Status)
         .await
     {
         Err(CallError::Remote(error)) => assert_eq!(error.code, ErrorCode::ClusterNotMember),
-        other => panic!("esperava `not-member`, veio {other:?}"),
+        other => panic!("expected `not-member`, got {other:?}"),
     }
     let missing = Request::from_http("GET", "/cluster/metrics", &[], &[]).unwrap_err();
     assert_eq!(missing.code, ErrorCode::RouteNotFound);
 
-    // `scope=cluster` (o padrão) junta os três nós; nenhuma condição, `ok`.
+    // `scope=cluster` (the default) joins the three nodes; no condition, `ok`.
     let version = cluster.table(1).unwrap().version;
     let view = cluster_view(cluster.node(1)).await;
     assert_eq!(view["scope"], "cluster");
@@ -101,7 +101,7 @@ async fn every_node_answers_its_status_and_a_healthy_cluster_reports_ok() {
         assert_eq!(entry["status"]["signals"]["frozenNodes"], 0);
     }
 
-    // `scope=node` é só o nó que atende, sem chamar os outros.
+    // `scope=node` is only the node that serves, without calling the others.
     cluster.network.clear_calls();
     let local = node_view(cluster.node(2)).await;
     assert_eq!(local["scope"], "node");
@@ -110,10 +110,10 @@ async fn every_node_answers_its_status_and_a_healthy_cluster_reports_ok() {
     assert_eq!(local["conditions"], json!([]));
     assert_eq!(cluster.network.count("status"), 0);
 
-    // O `scope` desconhecido é `400`; as métricas dizem que nenhuma condição vigora.
+    // The unknown `scope` is `400`; the metrics say that no condition is in force.
     let invalid = cluster
         .node(1)
-        .client_get_ops("/health/cluster?scope=outro")
+        .client_get_ops("/health/cluster?scope=other")
         .await;
     assert_eq!(invalid.status(), 400);
     let metrics = cluster.node(1).metrics().await;
@@ -129,7 +129,10 @@ async fn every_node_answers_its_status_and_a_healthy_cluster_reports_ok() {
             0.0,
             "{condition}"
         );
-        assert!(metrics.contains(&label), "a série {condition} existe com 0");
+        assert!(
+            metrics.contains(&label),
+            "the series {condition} exists with 0"
+        );
     }
     cluster.shutdown().await;
 }
@@ -139,18 +142,18 @@ async fn every_node_answers_its_status_and_a_healthy_cluster_reports_ok() {
 async fn a_node_that_does_not_answer_is_unreachable_and_the_blocks_it_leads_are_at_risk() {
     let cluster = TestCluster::start_with(3, NO_VOTE).await;
     settled(&cluster).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     let third = cluster.node_id(3);
 
     cluster.network.isolate(&host_of(3));
     let channels = channels_of(&cluster, 1);
     let id = third.clone();
-    eventually("o canal do nó 1 com o 3 cair", move || {
+    eventually("node 1's channel with 3 to fall", move || {
         !channels.is_up(&id)
     })
     .await;
 
-    // O nó que não responde aparece com `reachable: false`; a chamada não falha.
+    // The node that does not answer appears with `reachable: false`; the call does not fail.
     let view = cluster_view(cluster.node(1)).await;
     assert_eq!(view["partial"], true);
     let silent = view["nodes"]
@@ -162,8 +165,8 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_blocks_it_leads_are_
     assert_eq!(silent["reachable"], false);
     assert_eq!(silent["status"], Value::Null);
 
-    // Com um dos três fora ainda há quórum de escrita (2), mas ele inclui o primário: nos blocos
-    // cujo primário é o nó fora, as escritas falham até a exclusão, e a condição diz isso (D107).
+    // With one of the three out there is still a write quorum (2), but it includes the primary: in the blocks
+    // whose primary is the node that is out, the writes fail until the exclusion, and the condition says so (D107).
     assert_eq!(
         names(&view),
         [
@@ -178,16 +181,16 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_blocks_it_leads_are_
     assert_eq!(view["worstCondition"], "write-quorum-at-risk");
     assert_eq!(view["summary"]["quorumAvailable"], true);
 
-    // As escritas seguem respondendo (UC-FAL-025), menos as dos blocos cujo primário é o nó fora:
-    // o quórum sempre inclui o primário, então elas falham até a exclusão, que é o que a condição
-    // acima anuncia. O ID é sorteado, então o teste manda várias e confere que as dos outros
-    // blocos fecham.
+    // The writes keep answering (UC-FAL-025), except those of the blocks whose primary is the node that is out:
+    // the quorum always includes the primary, so they fail until the exclusion, which is what the condition
+    // above announces. The ID is drawn, so the test sends several and checks that those of the other
+    // blocks close.
     let mut accepted = 0;
     for n in 0..16 {
         let response = cluster
             .node(1)
             .client
-            .post(cluster.node(1).client_url("/topics/pedidos/messages"))
+            .post(cluster.node(1).client_url("/topics/orders/messages"))
             .json(&json!({ "n": n }))
             .send()
             .await
@@ -203,11 +206,11 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_blocks_it_leads_are_
     }
     assert!(
         accepted > 0,
-        "as escritas dos blocos com primário vivo fecham"
+        "the writes of the blocks with a live primary close"
     );
 
-    // A métrica tem as mesmas condições.
-    eventually_async("a métrica da condição", || async {
+    // The metric has the same conditions.
+    eventually_async("the condition metric", || async {
         let metrics = cluster.node(1).metrics().await;
         total(
             &metrics,
@@ -234,15 +237,15 @@ async fn a_node_that_does_not_answer_is_unreachable_and_the_blocks_it_leads_are_
 async fn with_two_of_three_nodes_out_the_quorum_is_at_risk_and_the_writes_can_fail() {
     let cluster = TestCluster::start_with(3, NO_VOTE).await;
     settled(&cluster).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
 
-    // O nó 1 perde os dois: as réplicas íntegras ficam abaixo de `write.quorum` e os saudáveis
-    // abaixo de `cluster.vote.min-voters`.
+    // Node 1 loses both: the sound replicas fall below `write.quorum` and the healthy ones
+    // below `cluster.vote.min-voters`.
     cluster.network.partition(&host_of(1), &host_of(2));
     cluster.network.partition(&host_of(1), &host_of(3));
     let channels = channels_of(&cluster, 1);
     let (two, three) = (cluster.node_id(2), cluster.node_id(3));
-    eventually("os dois canais do nó 1 caírem", move || {
+    eventually("node 1's two channels to fall", move || {
         !channels.is_up(&two) && !channels.is_up(&three)
     })
     .await;
@@ -261,25 +264,25 @@ async fn with_two_of_three_nodes_out_the_quorum_is_at_risk_and_the_writes_can_fa
     assert!(signals["blocksBelowQuorum"].as_u64().unwrap() > 0);
     assert_eq!(
         signals["blocksBelowQuorum"], signals["blocksBelowReplication"],
-        "todo bloco abaixo do quórum também está abaixo da replicação"
+        "every block below the quorum is also below the replication"
     );
 
-    // Sem quórum a escrita não fecha.
+    // Without a quorum the write does not close.
     let response = cluster
         .node(1)
         .client
-        .post(cluster.node(1).client_url("/topics/pedidos/messages"))
+        .post(cluster.node(1).client_url("/topics/orders/messages"))
         .json(&json!({"n": 1}))
         .send()
         .await
         .unwrap();
     assert!(
         response.status().is_server_error(),
-        "a escrita sem quórum respondeu {}",
+        "the write without a quorum answered {}",
         response.status()
     );
 
-    // Os outros dois se enxergam: nenhuma condição crítica do lado deles além de o nó 1 sumir.
+    // The other two see each other: no critical condition on their side besides node 1 vanishing.
     let others = node_view(cluster.node(2)).await;
     assert!(!names(&others).contains(&"quorum-lost".to_owned()));
     cluster.shutdown().await;
@@ -293,7 +296,7 @@ async fn the_quorum_is_lost_only_for_who_sees_fewer_healthy_nodes_than_the_minim
     cluster.network.isolate(&host_of(3));
 
     let lonely = cluster.node(3);
-    eventually_async("o nó isolado perder o quórum", || async {
+    eventually_async("the isolated node to lose the quorum", || async {
         names(&node_view(lonely).await).contains(&"quorum-lost".to_owned())
     })
     .await;
@@ -303,7 +306,7 @@ async fn the_quorum_is_lost_only_for_who_sees_fewer_healthy_nodes_than_the_minim
     let metric = |text: &str| total(text, "taba_cluster_quorum_available", "");
     assert_eq!(metric(&lonely.metrics().await), 0.0);
 
-    // Os outros dois somam o mínimo de votantes: o quórum existe para eles.
+    // The other two add up the minimum of voters: the quorum exists for them.
     for number in [1, 2] {
         let view = node_view(cluster.node(number)).await;
         assert!(!names(&view).contains(&"quorum-lost".to_owned()));
@@ -313,9 +316,9 @@ async fn the_quorum_is_lost_only_for_who_sees_fewer_healthy_nodes_than_the_minim
     cluster.shutdown().await;
 }
 
-/// O commit do ingresso demora a chegar aos membros, mas a mudança viaja também pelo quadro
-/// `membership` do canal (D126): as tabelas se igualam antes dele e a divergência não dura. O alerta
-/// `membership-divergent` para versões diferentes está nos testes de `health`.
+/// The join commit takes a while to reach the members, but the change also travels through the channel's
+/// `membership` frame (D126): the tables equalize before it and the divergence does not last. The
+/// `membership-divergent` alert for different versions is in the `health` tests.
 /// UC: UC-CNC-014
 #[tokio::test]
 async fn a_delayed_commit_does_not_leave_the_tables_divergent_because_the_channel_carries_the_change()
@@ -327,16 +330,16 @@ async fn a_delayed_commit_does_not_leave_the_tables_divergent_because_the_channe
         .network
         .set_delay_kind("commit", Duration::from_millis(3_000));
     let builder = cluster.builder(4, false);
-    let number = cluster.spawn_node(builder).await.expect("o nó sobe");
+    let number = cluster.spawn_node(builder).await.expect("the node starts");
     wait_joined(cluster.node(number)).await;
 
-    // Com o commit ainda a caminho, os membros antigos já têm a tabela nova.
-    eventually("as tabelas iguais antes do commit chegar", || {
+    // With the commit still on its way, the old members already have the new table.
+    eventually("the tables equal before the commit arrives", || {
         (1..=4).all(|n| cluster.table(n).is_some_and(|t| t.version == 4))
     })
     .await;
     cluster.network.set_delay_kind("commit", Duration::ZERO);
-    eventually_async("as condições sumirem", || async {
+    eventually_async("the conditions to disappear", || async {
         cluster_view(cluster.node(1)).await["conditions"] == json!([])
     })
     .await;
@@ -347,12 +350,12 @@ async fn a_delayed_commit_does_not_leave_the_tables_divergent_because_the_channe
 #[tokio::test]
 async fn a_node_that_syncs_shows_as_syncing_and_under_replicated_but_not_at_risk() {
     let mut cluster = TestCluster::start(3).await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     for n in 0..6 {
         let response = cluster
             .node(1)
             .client
-            .post(cluster.node(1).client_url("/topics/pedidos/messages"))
+            .post(cluster.node(1).client_url("/topics/orders/messages"))
             .json(&json!({"n": n}))
             .send()
             .await
@@ -363,7 +366,7 @@ async fn a_node_that_syncs_shows_as_syncing_and_under_replicated_but_not_at_risk
     let gate = pause_sync(&cluster, fourth, "replay");
     wait_phase(cluster.node(fourth), "replay").await;
 
-    // As réplicas do nó 4 ainda não estão íntegras, mas os três antigos fecham o quórum.
+    // Node 4's replicas are not yet sound, but the three old ones close the quorum.
     let view = cluster_view(cluster.node(1)).await;
     assert_eq!(names(&view), ["syncing", "under-replicated"]);
     assert_eq!(severity_of(&view, "syncing"), "warning");
@@ -383,7 +386,7 @@ async fn a_node_that_syncs_shows_as_syncing_and_under_replicated_but_not_at_risk
 
     gate.add_permits(1);
     wait_joined(cluster.node(fourth)).await;
-    eventually_async("o cluster voltar a ok", || async {
+    eventually_async("the cluster to go back to ok", || async {
         let view = cluster_view(cluster.node(1)).await;
         view["worstCondition"] == "ok" && view["summary"]["members"] == json!({ "active": 4 })
     })

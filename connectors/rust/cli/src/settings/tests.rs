@@ -14,13 +14,13 @@ fn file() -> ConfigFile {
     let mut local = Profile::default();
     local.set("url", "http://10.0.0.1:8080").unwrap();
     local.set("timeout", "60").unwrap();
-    local.set("token-file", "/seg/tok").unwrap();
+    local.set("token-file", "/sec/tok").unwrap();
     f.add("local", local).unwrap();
-    let mut hml = Profile::default();
-    hml.set("url", "https://hml:8443").unwrap();
-    hml.set("ops-url", "https://hml-ops:9443").unwrap();
-    hml.set("token", "tb_literal").unwrap();
-    f.add("hml", hml).unwrap();
+    let mut stg = Profile::default();
+    stg.set("url", "https://stg:8443").unwrap();
+    stg.set("ops-url", "https://stg-ops:9443").unwrap();
+    stg.set("token", "tb_literal").unwrap();
+    f.add("stg", stg).unwrap();
     f
 }
 
@@ -52,10 +52,10 @@ fn the_profile_is_the_flag_then_the_variable_then_the_file_default() {
     let e = resolve(&f, None, &env_of(&[])).unwrap();
     assert_eq!(e.profile, Some(("local".to_owned(), Source::Default)));
     assert_eq!(e.url(), "http://10.0.0.1:8080");
-    let e = resolve(&f, None, &env_of(&[("TABA_CLI_PROFILE", "hml")])).unwrap();
-    assert_eq!(e.profile.as_ref().map(|p| p.0.as_str()), Some("hml"));
-    assert_eq!(e.url(), "https://hml:8443");
-    let e = resolve(&f, Some("local"), &env_of(&[("TABA_CLI_PROFILE", "hml")])).unwrap();
+    let e = resolve(&f, None, &env_of(&[("TABA_CLI_PROFILE", "stg")])).unwrap();
+    assert_eq!(e.profile.as_ref().map(|p| p.0.as_str()), Some("stg"));
+    assert_eq!(e.url(), "https://stg:8443");
+    let e = resolve(&f, Some("local"), &env_of(&[("TABA_CLI_PROFILE", "stg")])).unwrap();
     assert_eq!(e.profile.as_ref().map(|p| p.0.as_str()), Some("local"));
 }
 
@@ -63,13 +63,13 @@ fn the_profile_is_the_flag_then_the_variable_then_the_file_default() {
 #[test]
 fn an_unknown_profile_is_an_error_that_lists_the_known_ones() {
     let f = file();
-    let e = resolve(&f, Some("nada"), &env_of(&[])).unwrap_err();
+    let e = resolve(&f, Some("nothing"), &env_of(&[])).unwrap_err();
     assert!(
-        e.contains("`nada` não existe") && e.contains("local, hml"),
+        e.contains("`nothing` does not exist") && e.contains("local, stg"),
         "{e}"
     );
     let e = resolve(&ConfigFile::default(), Some("x"), &env_of(&[])).unwrap_err();
-    assert!(e.contains("não há perfis"), "{e}");
+    assert!(e.contains("there are no profiles"), "{e}");
     assert!(resolve(&f, None, &env_of(&[("TABA_CLI_PROFILE", "zzz")])).is_err());
 }
 
@@ -81,12 +81,12 @@ fn a_variable_overrides_only_the_field_it_covers() {
         &f,
         None,
         &env_of(&[
-            ("TABA_CLI_URL", "http://outro:1"),
+            ("TABA_CLI_URL", "http://other:1"),
             ("TABA_CLI_MAX_ATTEMPTS", "7"),
         ]),
     )
     .unwrap();
-    assert_eq!(e.url(), "http://outro:1");
+    assert_eq!(e.url(), "http://other:1");
     assert_eq!(
         e.setting("url").source,
         Source::Variable("TABA_CLI_URL".to_owned())
@@ -97,14 +97,14 @@ fn a_variable_overrides_only_the_field_it_covers() {
         e.setting("timeout").source,
         Source::Profile("local".to_owned())
     );
-    assert_eq!(e.get("token-file"), Some("/seg/tok"));
+    assert_eq!(e.get("token-file"), Some("/sec/tok"));
     assert_eq!(e.setting("connect-timeout").source, Source::Default);
 }
 
 /// UC: UC-CLI-026
 #[test]
 fn an_invalid_variable_value_is_reported_with_its_name() {
-    let e = resolve(&file(), None, &env_of(&[("TABA_CLI_TIMEOUT", "muito")])).unwrap_err();
+    let e = resolve(&file(), None, &env_of(&[("TABA_CLI_TIMEOUT", "lots")])).unwrap_err();
     assert!(e.contains("TABA_CLI_TIMEOUT"), "{e}");
     let e = resolve(&file(), None, &env_of(&[("TABA_CLI_URL", "taba")])).unwrap_err();
     assert!(e.contains("TABA_CLI_URL"), "{e}");
@@ -119,16 +119,16 @@ fn ops_url_defaults_to_the_url_itself_because_the_node_serves_both_on_one_port_b
         "http://10.0.0.1:8080"
     );
     assert_eq!(
-        resolve(&f, Some("hml"), &env_of(&[])).unwrap().ops_url(),
-        "https://hml-ops:9443"
+        resolve(&f, Some("stg"), &env_of(&[])).unwrap().ops_url(),
+        "https://stg-ops:9443"
     );
     let e = resolve(
         &f,
         None,
-        &env_of(&[("TABA_CLI_URL", "https://taba.exemplo.com")]),
+        &env_of(&[("TABA_CLI_URL", "https://taba.example.com")]),
     )
     .unwrap();
-    assert_eq!(e.ops_url(), "https://taba.exemplo.com");
+    assert_eq!(e.ops_url(), "https://taba.example.com");
 }
 
 /// UC: UC-CLI-002
@@ -137,17 +137,17 @@ fn the_token_comes_from_the_highest_level_and_the_file_wins_a_tie() {
     let f = file();
     assert_eq!(
         resolve(&f, None, &env_of(&[])).unwrap().token_source(),
-        TokenSource::File("/seg/tok")
+        TokenSource::File("/sec/tok")
     );
     assert_eq!(
-        resolve(&f, Some("hml"), &env_of(&[]))
+        resolve(&f, Some("stg"), &env_of(&[]))
             .unwrap()
             .token_source(),
         TokenSource::Text("tb_literal")
     );
     let e = resolve(&f, None, &env_of(&[("TABA_CLI_TOKEN", "tb_env")])).unwrap();
     assert_eq!(e.token_source(), TokenSource::Text("tb_env"));
-    let e = resolve(&f, Some("hml"), &env_of(&[("TABA_CLI_TOKEN_FILE", "/x")])).unwrap();
+    let e = resolve(&f, Some("stg"), &env_of(&[("TABA_CLI_TOKEN_FILE", "/x")])).unwrap();
     assert_eq!(e.token_source(), TokenSource::File("/x"));
     let e = resolve(
         &f,

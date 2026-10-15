@@ -1,9 +1,9 @@
-//! Persistência das definições de tópico: a tabela `topics` do `_node.db`, uma linha por
-//! tópico, gravada no commit (doc 02, seções 3.2 e 3.3).
+//! Persistence of the topic definitions: the `topics` table of `_node.db`, one row per
+//! topic, written at commit (doc 02, sections 3.2 and 3.3).
 //!
-//! O trait mora aqui, na camada mais baixa de que o `engine` precisa, porque as
-//! dependências só andam para a direita (doc 18, seção 17.3). Os métodos são
-//! síncronos: o `engine` os chama fora do executor assíncrono (`spawn_blocking`).
+//! The trait lives here, in the lowest layer the `engine` needs, because
+//! dependencies only go to the right (doc 18, section 17.3). The methods are
+//! synchronous: the `engine` calls them outside the async executor (`spawn_blocking`).
 
 use std::collections::BTreeMap;
 use std::io;
@@ -16,19 +16,19 @@ use super::db::NodeDb;
 use crate::core::topic::TopicDefinition;
 
 pub trait TopicStore: Send + Sync + 'static {
-    /// Todas as definições gravadas. Uma linha ilegível é erro: o nó não sobe com
-    /// uma tabela de tópicos pela metade.
+    /// All the stored definitions. An unreadable row is an error: the node does not start with
+    /// a half-built topic table.
     fn load_all(&self) -> io::Result<Vec<TopicDefinition>>;
 
-    /// Grava (ou substitui) a definição, de forma atômica: nunca uma linha pela metade.
+    /// Writes (or replaces) the definition, atomically: never a half row.
     fn save(&self, definition: &TopicDefinition) -> io::Result<()>;
 
-    /// Apaga a definição. Apagar o que não existe não é erro.
+    /// Deletes the definition. Deleting what does not exist is no error.
     fn delete(&self, name: &str) -> io::Result<()>;
 }
 
-/// A implementação real, no banco do nó. O nome é a chave e o SQLite compara texto byte a
-/// byte, então `Pedidos` e `pedidos` são tópicos diferentes (UC-TOP-011) em qualquer disco.
+/// The real implementation, on the node database. The name is the key and SQLite compares text byte by
+/// byte, so `Orders` and `orders` are different topics (UC-TOP-011) on any disk.
 #[derive(Debug)]
 pub struct SqliteTopicStore {
     db: Arc<NodeDb>,
@@ -57,7 +57,7 @@ impl TopicStore for SqliteTopicStore {
             let invalid = |reason: String| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("tópico `{name}` em _node.db: {reason}"),
+                    format!("topic `{name}` in _node.db: {reason}"),
                 )
             };
             let value = serde_json::from_str(&text).map_err(|e| invalid(e.to_string()))?;
@@ -88,7 +88,7 @@ impl TopicStore for SqliteTopicStore {
     }
 }
 
-/// A implementação de teste: memória, com falha programável.
+/// The test implementation: memory, with a programmable failure.
 #[derive(Debug, Default)]
 pub struct MemoryTopicStore {
     topics: Mutex<BTreeMap<String, TopicDefinition>>,
@@ -96,7 +96,7 @@ pub struct MemoryTopicStore {
 }
 
 impl MemoryTopicStore {
-    /// Com `true`, `save` e `delete` falham, como um disco cheio.
+    /// With `true`, `save` and `disk` fail, like a full disk.
     pub fn set_failing(&self, failing: bool) {
         self.failing.store(failing, Ordering::SeqCst);
     }
@@ -111,7 +111,7 @@ impl MemoryTopicStore {
 
     fn check(&self) -> io::Result<()> {
         if self.failing.load(Ordering::SeqCst) {
-            return Err(io::Error::other("falha programada pelo teste"));
+            return Err(io::Error::other("failure programmed by the test"));
         }
         Ok(())
     }

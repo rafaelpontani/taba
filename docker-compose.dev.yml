@@ -1,0 +1,29 @@
+# Override for development: builds this repository's images instead of pulling the public ones.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+#
+# To avoid repeating the -f flags, put this in a .env at the root:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
+# (on Windows the separator is ";" instead of ":", or set COMPOSE_PATH_SEPARATOR=:)
+#
+# It only says what changes (build and tag); the rest of the cluster comes from docker-compose.yml. The
+# builds of the root Dockerfile share the same cache and the same tag.
+
+services:
+  init:
+    image: taba:local
+    build: .
+
+  taba-0:
+    image: taba:local
+    build: .
+
+  taba:
+    image: taba:local
+    build: .
+
+  taba-cli:
+    image: taba-cli:local
+    build:
+      context: .
+      dockerfile: connectors/rust/cli/Dockerfile

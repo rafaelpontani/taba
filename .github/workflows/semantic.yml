@@ -1,10 +1,10 @@
-# A cada push na release (candidatas, X.Y.Z-rc.N) ou na main (versões finais, X.Y.Z): o semantic-release
-# calcula a versão pelos commits (Conventional Commits) e cria a tag e a GitHub Release. Só isso. O resto
-# do pipeline (build, testes, Docker, binários na Release, tags flutuantes) está no release.yml, que este
-# workflow dispara para a tag vX.Y.Z recém-criada. Não precisa de PAT: tudo usa o GITHUB_TOKEN.
-# Commits sem feat/fix/perf (docs, chore, ci...) não geram versão: o job termina sem criar tag.
+# On every push to release (candidates, X.Y.Z-rc.N) or main (final versions, X.Y.Z): semantic-release
+# computes the version from the commits (Conventional Commits) and creates the tag and the GitHub Release. Just that. The rest
+# of the pipeline (build, tests, Docker, binaries on the Release, floating tags) is in release.yml, which this
+# workflow triggers for the newly created vX.Y.Z tag. No PAT needed: everything uses the GITHUB_TOKEN.
+# Commits without feat/fix/perf (docs, chore, ci...) do not produce a version: the job ends without creating a tag.
 #
-# Configuração do semantic-release: .releaserc.json. Fluxo de candidatas e promoção: doc/pt-BR/27-ci-cd.md.
+# semantic-release configuration: .releaserc.json. Candidate and promotion flow: doc/pt-BR/27-ci-cd.md.
 name: Semantic
 
 on:
@@ -19,13 +19,13 @@ permissions:
   contents: read
 
 jobs:
-  # Simulação (dry-run): mostra no resumo da execução qual versão sairia, sem criar tag nem Release.
-  # A aprovação é a do MR que leva o commit à branch; a prévia só registra o que vai sair.
+  # Simulation (dry-run): shows in the run summary which version would come out, without creating a tag or a Release.
+  # The approval is the MR that takes the commit to the branch; the preview only records what will come out.
   preview:
-    name: Prévia da versão
+    name: Version preview
     runs-on: ubuntu-latest
-    # O dry-run do semantic-release faz `git push --dry-run` para checar permissão, e isso exige
-    # escrita no token, mesmo sem criar nada. O workflow inteiro está com contents: read.
+    # The semantic-release dry-run does a `git push --dry-run` to check permission, and that requires
+    # write access on the token, even though it creates nothing. The whole workflow has contents: read.
     permissions:
       contents: write
     outputs:
@@ -45,7 +45,7 @@ jobs:
             conventional-changelog-conventionalcommits@8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Resumo
+      - name: Summary
         shell: bash
         env:
           PUBLISHED: ${{ steps.dry.outputs.new_release_published }}
@@ -55,19 +55,19 @@ jobs:
         run: |
           {
             if [[ $PUBLISHED == 'true' ]]; then
-              echo "## Versão que será gerada: \`v$VERSION\` (branch \`$BRANCH\`)"
+              echo "## Version that will be generated: \`v$VERSION\` (branch \`$BRANCH\`)"
               echo
               echo "$NOTES"
             else
-              echo "## Nenhuma versão será gerada"
+              echo "## No version will be generated"
               echo
-              echo "Os commits desde a última tag não têm feat, fix ou perf."
+              echo "The commits since the last tag have no feat, fix or perf."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Cria a tag de verdade, automaticamente, se a prévia achou versão.
+  # Creates the tag for real, automatically, if the preview found a version.
   semantic:
-    name: Semantic (cria a tag)
+    name: Semantic (creates the tag)
     needs: preview
     if: needs.preview.outputs.published == 'true'
     runs-on: ubuntu-latest
@@ -89,10 +89,10 @@ jobs:
             conventional-changelog-conventionalcommits@8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # A tag criada com o GITHUB_TOKEN não dispara o `on: push: tags` do release.yml (regra do GitHub).
-      # O workflow_dispatch é a exceção permitida: dispara o release.yml com a ref na tag, e lá o
-      # github.ref_name é a própria tag.
-      - name: Dispara o release.yml na tag
+      # A tag created with the GITHUB_TOKEN does not trigger the `on: push: tags` of release.yml (a GitHub rule).
+      # workflow_dispatch is the allowed exception: it triggers release.yml with the ref on the tag, and there
+      # github.ref_name is the tag itself.
+      - name: Trigger release.yml on the tag
         if: steps.release.outputs.new_release_published == 'true'
         shell: bash
         env:

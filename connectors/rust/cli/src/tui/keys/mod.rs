@@ -1,5 +1,5 @@
-//! As teclas: decodifica os bytes que o terminal em modo cru entrega (texto UTF-8 e sequências
-//! ANSI de setas e afins).
+//! The keys: decodes the bytes the raw-mode terminal delivers (UTF-8 text and ANSI sequences
+//! for arrows and the like).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -16,11 +16,11 @@ pub enum Key {
     BackTab,
     Esc,
     Char(char),
-    /// Ctrl com uma letra minúscula (`Ctrl('s')`).
+    /// Ctrl with a lowercase letter (`Ctrl('s')`).
     Ctrl(char),
 }
 
-/// Decodifica tudo o que chegou numa leitura. Uma sequência desconhecida é pulada inteira.
+/// Decodes everything that arrived in one read. An unknown sequence is skipped whole.
 pub fn decode(bytes: &[u8]) -> Vec<Key> {
     let mut keys = Vec::new();
     let mut i = 0;
@@ -35,7 +35,7 @@ pub fn decode(bytes: &[u8]) -> Vec<Key> {
                 }
                 match bytes[i + 1] {
                     b'[' | b'O' => {
-                        // CSI / SS3: parâmetros e depois o byte final (0x40..=0x7e).
+                        // CSI / SS3: parameters and then the final byte (0x40..=0x7e).
                         let mut j = i + 2;
                         while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
                             j += 1;
@@ -48,7 +48,7 @@ pub fn decode(bytes: &[u8]) -> Vec<Key> {
                         }
                         i = j + 1;
                     }
-                    // Alt+tecla e outros: ignora o ESC e processa a tecla.
+                    // Alt+key and others: ignores the ESC and processes the key.
                     _ => i += 1,
                 }
             }
@@ -70,7 +70,7 @@ pub fn decode(bytes: &[u8]) -> Vec<Key> {
             }
             0x00 | 0x1c..=0x1f => i += 1,
             _ => {
-                // Um caractere UTF-8 (1 a 4 bytes).
+                // A UTF-8 character (1 to 4 bytes).
                 let len = match b {
                     0x00..=0x7f => 1,
                     0xc0..=0xdf => 2,

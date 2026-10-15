@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- A integração do conector C# do Taba com o Microsoft.Extensions.DependencyInjection e o IOptions:
-       AddTabaClient registra o ITabaClient, lendo o TabaConfig das opções (código ou appsettings.json).
-       Fica num pacote à parte para o Taba.Client continuar sem dependências. -->
+  <!-- The integration of the Taba C# connector with Microsoft.Extensions.DependencyInjection and IOptions:
+       AddTabaClient registers the ITabaClient, reading the TabaConfig from the options (code or appsettings.json).
+       It lives in a separate package so Taba.Client stays dependency-free. -->
   <PropertyGroup>
     <TargetFrameworks>net461;net5.0;net6.0;net8.0</TargetFrameworks>
     <LangVersion>7.3</LangVersion>
@@ -10,7 +10,7 @@
     <RootNamespace>Microsoft.Extensions.DependencyInjection</RootNamespace>
     <PackageId>Taba.Client.Extensions.DependencyInjection</PackageId>
     <Version>0.1.0</Version>
-    <Description>AddTabaClient (DI e IOptions) para o conector C# do Taba.</Description>
+    <Description>AddTabaClient (DI and IOptions) for the Taba C# connector.</Description>
     <Authors>Taba</Authors>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

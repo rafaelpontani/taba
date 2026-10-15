@@ -9,9 +9,9 @@ fn replicas_are_tracked_by_id_and_age() {
     assert_eq!(set.len(), 2);
     assert!(set.contains("a"));
     assert_eq!(set.age_of("b"), Some(20));
-    assert_eq!(set.ids(), ["a", "b"], "em ordem de idade");
+    assert_eq!(set.ids(), ["a", "b"], "in age order");
 
-    // Inserir de novo troca a idade.
+    // Inserting again replaces the age.
     set.insert("a", 30);
     assert_eq!(set.ids(), ["b", "a"]);
     assert_eq!(set.len(), 2);
@@ -28,7 +28,7 @@ fn the_ttl_expires_the_replicas_by_age() {
     set.insert("new", 900);
     assert_eq!(set.expired(1000, 500), ["old"], "100 + 500 <= 1000");
     assert_eq!(set.expired(1400, 500), ["old", "new"]);
-    assert!(set.expired(400, 500).is_empty(), "sem passado para contar");
+    assert!(set.expired(400, 500).is_empty(), "no past to count");
     assert!(set.expired(599, 500).is_empty());
     assert_eq!(set.expired(600, 500), ["old"]);
 }

@@ -34,7 +34,7 @@ fn arrows_and_tab_move_between_fields_and_buttons_wrapping_around() {
 #[test]
 fn text_fields_are_edited_in_place_with_the_cursor_keys() {
     let mut f = Form::new(None, false, vec![]);
-    type_text(&mut f, "producao");
+    type_text(&mut f, "producer");
     f.handle(Key::Home);
     f.handle(Key::Delete);
     f.handle(Key::Char('P'));
@@ -42,7 +42,7 @@ fn text_fields_are_edited_in_place_with_the_cursor_keys() {
     f.handle(Key::Backspace);
     f.handle(Key::Left);
     f.handle(Key::Char('-'));
-    assert_eq!(f.name(), "Produc-a");
+    assert_eq!(f.name(), "Produc-e");
     f.handle(Key::Ctrl('u'));
     assert_eq!(f.name(), "");
     assert!(f.dirty());
@@ -96,16 +96,16 @@ fn empty_fields_show_the_value_that_will_apply_and_the_ops_url_follows_the_url()
         "{shown}"
     );
     assert!(
-        shown.contains("(raízes do sistema)")
+        shown.contains("(system roots)")
             && shown.contains("(5)")
             && shown.contains("(30)")
             && shown.contains("(3)")
     );
     f.handle(Key::Down);
-    type_text(&mut f, "https://taba.exemplo.com");
+    type_text(&mut f, "https://taba.example.com");
     let shown = text_of(&f.render(plain(), 80, 30));
     assert_eq!(
-        shown.matches("(https://taba.exemplo.com)").count(),
+        shown.matches("(https://taba.example.com)").count(),
         1,
         "{shown}"
     );
@@ -135,12 +135,15 @@ fn invalid_values_get_a_message_under_the_field() {
     f.focus = 8;
     type_text(&mut f, "0");
     let errors = f.errors();
-    assert!(errors[NAME].as_ref().unwrap().contains("já existe"));
+    assert!(errors[NAME].as_ref().unwrap().contains("already exists"));
     assert!(errors[1].as_ref().unwrap().contains("http://"));
-    assert!(errors[8].as_ref().unwrap().contains("1 a 3600"));
+    assert!(errors[8].as_ref().unwrap().contains("1 to 3600"));
     assert!(!f.is_valid());
     let shown = text_of(&f.render(plain(), 80, 40));
-    assert!(shown.contains("já existe um perfil `local`"), "{shown}");
+    assert!(
+        shown.contains("a profile `local` already exists"),
+        "{shown}"
+    );
     assert!(f.errors()[3].is_none());
 }
 
@@ -148,14 +151,14 @@ fn invalid_values_get_a_message_under_the_field() {
 #[test]
 fn the_name_is_required_and_checked_but_an_edited_profile_may_keep_its_own_name() {
     let f = Form::new(None, false, vec![]);
-    assert!(f.errors()[NAME].as_ref().unwrap().contains("obrigatório"));
+    assert!(f.errors()[NAME].as_ref().unwrap().contains("required"));
     let mut f = Form::new(None, false, vec![]);
-    type_text(&mut f, "com espaço");
+    type_text(&mut f, "with space");
     assert!(f.errors()[NAME].is_some());
     let own = Form::new(
         Some(("local", &Profile::default())),
         false,
-        vec!["local".into(), "hml".into()],
+        vec!["local".into(), "stg".into()],
     );
     assert!(own.errors()[NAME].is_none());
     assert!(own.is_valid());
@@ -182,8 +185,8 @@ fn escape_cancels_at_once_when_nothing_changed_and_asks_when_it_did() {
     let mut f = Form::new(None, false, vec![]);
     type_text(&mut f, "x");
     assert_eq!(f.handle(Key::Esc), FormEvent::None);
-    assert!(f.status.as_ref().unwrap().1.contains("não salvas"));
-    // Outra tecla volta ao formulário.
+    assert!(f.status.as_ref().unwrap().1.contains("unsaved"));
+    // Any other key goes back to the form.
     f.handle(Key::Char('y'));
     assert_eq!(f.name(), "xy");
     assert!(f.status.is_none());
@@ -204,11 +207,11 @@ fn ctrl_c_quits_from_anywhere() {
 fn the_token_is_shown_in_plain_text() {
     let mut p = Profile::default();
     p.set("token", "tb_segredo_visivel").unwrap();
-    p.set("token-file", "/seg/tok").unwrap();
+    p.set("token-file", "/sec/tok").unwrap();
     let f = Form::new(Some(("x", &p)), false, vec![]);
     let shown = text_of(&f.render(plain(), 80, 40));
     assert!(
-        shown.contains("tb_segredo_visivel") && shown.contains("/seg/tok"),
+        shown.contains("tb_segredo_visivel") && shown.contains("/sec/tok"),
         "{shown}"
     );
 }
@@ -221,8 +224,8 @@ fn a_short_terminal_scrolls_to_keep_the_focused_line_visible() {
     let frame = f.render(plain(), 80, 12);
     assert_eq!(frame.lines.len(), 12);
     let shown = text_of(&frame);
-    assert!(shown.contains("[>Cancelar<]"), "{shown}");
-    assert!(shown.contains("Esc cancelar"));
+    assert!(shown.contains("[>Cancel<]"), "{shown}");
+    assert!(shown.contains("Esc cancel"));
 }
 
 /// UC: UC-CLI-030

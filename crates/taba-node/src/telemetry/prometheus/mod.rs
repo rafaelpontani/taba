@@ -1,8 +1,8 @@
-//! O texto do Prometheus (doc 11, "Endpoint Prometheus"): o formato `text/plain; version=0.0.4`
-//! e, a pedido, o OpenMetrics. Os nomes seguem a especificação de compatibilidade do OpenTelemetry
-//! com o Prometheus: pontos viram `_`, a unidade vira sufixo (`s` → `_seconds`, `By` → `_bytes`,
-//! `1` → `_ratio`; contagens entre chaves não geram sufixo), contadores ganham `_total` e
-//! histogramas viram `_bucket`, `_sum` e `_count`. O recurso vai em `target_info`.
+//! The Prometheus text (doc 11, "Prometheus endpoint"): the `text/plain; version=0.0.4` format
+//! and, on request, OpenMetrics. The names follow the OpenTelemetry-to-Prometheus compatibility
+//! specification: dots become `_`, the unit becomes a suffix (`s` → `_seconds`, `By` → `_bytes`,
+//! `1` → `_ratio`; counts in braces generate no suffix), counters get `_total` and
+//! histograms become `_bucket`, `_sum` and `_count`. The resource goes in `target_info`.
 
 use std::fmt::Write;
 
@@ -12,7 +12,7 @@ pub const TEXT_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 pub const OPENMETRICS_CONTENT_TYPE: &str =
     "application/openmetrics-text; version=1.0.0; charset=utf-8";
 
-/// O nome da família no Prometheus, sem o `_total` do contador.
+/// The family name in Prometheus, without the counter's `_total`.
 pub fn family_name(def: &Def) -> String {
     let mut name = sanitize(def.name);
     let suffix = match def.unit {
@@ -30,7 +30,7 @@ pub fn family_name(def: &Def) -> String {
     name
 }
 
-/// O nome do rótulo: o atributo com os pontos trocados por `_`.
+/// The label name: the attribute with the dots replaced by `_`.
 pub fn label_name(attribute: &str) -> String {
     sanitize(attribute)
 }
@@ -78,9 +78,9 @@ fn label_block(labels: &Labels, extra: Option<(&str, &str)>) -> String {
     }
 }
 
-/// Escreve todas as métricas. `resource` são os atributos de recurso (`service.name`, ...), que
-/// viram `target_info`. Com `open_metrics`, o formato é o OpenMetrics (contador sem `_total` na
-/// família e `# EOF` no fim).
+/// Writes all the metrics. `resource` are the resource attributes (`service.name`, ...), which
+/// become `target_info`. With `open_metrics`, the format is OpenMetrics (counter without `_total` in the
+/// family and `# EOF` at the end).
 pub fn render(snapshot: &[Snapshot], resource: &[(String, String)], open_metrics: bool) -> String {
     let mut out = String::new();
     for family in snapshot {
@@ -148,7 +148,7 @@ pub fn render(snapshot: &[Snapshot], resource: &[(String, String)], open_metrics
         } else {
             ("target_info", "gauge")
         };
-        let _ = writeln!(out, "# HELP {family} Atributos de recurso do nó.");
+        let _ = writeln!(out, "# HELP {family} Resource attributes of the node.");
         let _ = writeln!(out, "# TYPE {family} {kind}");
         let _ = writeln!(out, "target_info{{{}}} 1", block.join(","));
     }

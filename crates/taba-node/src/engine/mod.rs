@@ -1,7 +1,7 @@
-//! Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO e dead-letter
-//! (doc 13, 14, 15 e 17). Cada tópico terá um escritor único: uma task com fila de
-//! comandos (doc 18, seção 17.4). Por enquanto: o registro de tópicos (`topics`) e a
-//! publicação e o consumo em memória (`messages`).
+//! Topics, messages, ready and invisible lists, fair delivery, FIFO and dead-letter
+//! (doc 13, 14, 15 and 17). Each topic will have a single writer: a task with a command
+//! queue (doc 18, section 17.4). For now: the topic registry (`topics`) and the
+//! in-memory publish and consume (`messages`).
 
 pub mod messages;
 pub mod tokens;

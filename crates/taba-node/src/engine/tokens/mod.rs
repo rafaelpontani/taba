@@ -1,9 +1,9 @@
-//! O registro de tokens de acesso do nó (doc 06a, seção 8.1.3; doc 02, seção 3.4): todo token
-//! fica em memória (validar é uma consulta local, sem rede) e é gravado em disco antes de
-//! valer. No cluster este registro passa a ser o lado que recebe o commit; num nó só, criar,
-//! alterar e revogar se resumem a gravar e aplicar aqui.
+//! The node's access-token registry (doc 06a, section 8.1.3; doc 02, section 3.4): every token
+//! stays in memory (validating is a local query, without the network) and is written to disk before
+//! taking effect. In the cluster this registry becomes the side that receives the commit; on a single
+//! node, creating, changing and revoking boil down to writing and applying here.
 //!
-//! O segredo nunca é guardado: só o hash salgado (`core::token`).
+//! The secret is never stored: only the salted hash (`core::token`).
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ impl TokenRules {
     }
 }
 
-/// `POST /tokens`, já lido do JSON.
+/// `POST /tokens`, already read from the JSON.
 #[derive(Debug, Clone, Default)]
 pub struct CreateToken {
     pub name: String,
@@ -48,16 +48,16 @@ pub struct CreateToken {
     pub expires_ms: Option<u64>,
 }
 
-/// `PATCH /tokens/{id}`: só o nome e o prazo; o resto é imutável.
+/// `PATCH /tokens/{id}`: only the name and the deadline; the rest is immutable.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateToken {
-    /// Campos imutáveis que vieram no corpo (`permissions`, `topicPrefixes`...).
+    /// Immutable fields that came in the body (`permissions`, `topicPrefixes`...).
     pub immutable_present: Vec<String>,
     pub name: Option<String>,
     pub expires_ms: Patch<u64>,
 }
 
-/// O token recém-criado: o registro e o segredo completo, que só aparece aqui.
+/// The newly created token: the record and the full secret, which only appears here.
 pub struct Created {
     pub record: TokenRecord,
     pub token: String,
@@ -85,7 +85,7 @@ pub struct ListResult {
     pub next_cursor: Option<String>,
 }
 
-/// Uma mudança na tabela de tokens, como o cluster a propaga a **todos** os nós (doc 02, 3.4).
+/// A change to the token table, as the cluster propagates it to **all** nodes (doc 02, 3.4).
 #[derive(Debug, Clone)]
 pub enum TokenChange {
     Create(TokenRecord),
@@ -93,8 +93,8 @@ pub enum TokenChange {
     Revoke(String),
 }
 
-/// Quem propaga uma mudança aos outros nós antes de ela valer. Ao fim, a mudança já foi aplicada
-/// **neste nó** também, pelo commit.
+/// Who propagates a change to the other nodes before it takes effect. At the end, the change has already been applied
+/// **on this node** too, through the commit.
 pub trait TokenReplicator: Send + Sync + 'static {
     fn replicate(
         &self,
@@ -102,14 +102,14 @@ pub trait TokenReplicator: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
 }
 
-/// O que mudou na tabela de tokens deste nó (o commit de uma criação, alteração ou revogação).
+/// What changed in this node's token table (the commit of a creation, change or revocation).
 #[derive(Debug, Clone)]
 pub enum TokenEvent {
     Saved(TokenRecord),
     Revoked(String),
 }
 
-/// Quem acompanha as mudanças da tabela (o backup em S3). Nunca espera nem falha.
+/// Who follows the table's changes (the S3 backup). Never waits or fails.
 pub type TokenHook = Arc<dyn Fn(&TokenEvent) + Send + Sync>;
 
 pub struct Tokens {
@@ -118,15 +118,15 @@ pub struct Tokens {
     clock: Arc<dyn Clock>,
     ids: IdGenerator,
     map: RwLock<HashMap<String, TokenRecord>>,
-    /// Uma escrita por vez: grava no disco e só então aplica em memória.
+    /// One write at a time: writes to disk and only then applies in memory.
     writer: tokio::sync::Mutex<()>,
-    /// No cluster: a propagação a todos os nós.
+    /// In the cluster: the propagation to all nodes.
     replicator: OnceLock<Arc<dyn TokenReplicator>>,
     event_hooks: std::sync::Mutex<Vec<TokenHook>>,
 }
 
 fn not_found() -> TabaError {
-    TabaError::new(ErrorCode::TokenNotFound, "O token não existe.")
+    TabaError::new(ErrorCode::TokenNotFound, "The token does not exist.")
 }
 
 fn field_error(code: ErrorCode, field: &str, message: &str) -> TabaError {
@@ -157,8 +157,8 @@ impl Tokens {
         }
     }
 
-    /// Abre o registro. Com `load`, retoma os tokens gravados em disco (só em desenvolvimento
-    /// com `development.resume-on-start`, como as definições de tópico).
+    /// Opens the registry. With `load`, resumes the tokens stored on disk (only in development
+    /// with `development.resume-on-start`, like the topic definitions).
     pub async fn open(
         rules: TokenRules,
         store: Arc<dyn TokenStore>,
@@ -189,15 +189,15 @@ impl Tokens {
         tokio::task::spawn_blocking(move || store.save(&record))
             .await
             .map_err(|_| TabaError::internal())?
-            .map_err(|e| disk_error("falha ao gravar o token", &e))
+            .map_err(|e| disk_error("failed to write the token", &e))
     }
 
-    /// Liga a propagação aos outros nós (`mode=production`). Vale só a primeira chamada.
+    /// Attaches the propagation to the other nodes (`mode=production`). Only the first call counts.
     pub fn set_replicator(&self, replicator: Arc<dyn TokenReplicator>) {
         let _ = self.replicator.set(replicator);
     }
 
-    /// Registra quem acompanha cada mudança da tabela (criação, alteração, revogação).
+    /// Registers who follows each change to the table (creation, change, revocation).
     pub fn on_event(&self, hook: TokenHook) {
         self.event_hooks
             .lock()
@@ -216,13 +216,13 @@ impl Tokens {
         }
     }
 
-    /// O `register` de uma mudança no nó que a recebe.
+    /// A change's `register` on the node that receives it.
     pub fn check_change(&self, change: &TokenChange) -> Result<(), TabaError> {
         let map = self.read();
         match change {
             TokenChange::Create(record) if map.contains_key(&record.id) => Err(TabaError::new(
                 ErrorCode::ClusterConflict,
-                "Já existe um token com este id.",
+                "A token with this id already exists.",
             )),
             TokenChange::Update(record) if !map.contains_key(&record.id) => Err(not_found()),
             TokenChange::Revoke(id) if !map.contains_key(id) => Err(not_found()),
@@ -230,7 +230,7 @@ impl Tokens {
         }
     }
 
-    /// O commit de uma criação ou alteração: grava e passa a valer.
+    /// The commit of a creation or change: writes and takes effect.
     pub async fn apply_save(&self, record: TokenRecord) -> Result<(), TabaError> {
         self.save(record.clone()).await?;
         self.write().insert(record.id.clone(), record.clone());
@@ -238,21 +238,21 @@ impl Tokens {
         Ok(())
     }
 
-    /// O commit de uma revogação. Revogar o que não existe não é erro.
+    /// The commit of a revocation. Revoking what does not exist is no error.
     pub async fn apply_revoke(&self, id: &str) -> Result<(), TabaError> {
         let store = self.store.clone();
         let owned = id.to_owned();
         tokio::task::spawn_blocking(move || store.delete(&owned))
             .await
             .map_err(|_| TabaError::internal())?
-            .map_err(|e| disk_error("falha ao apagar o token", &e))?;
+            .map_err(|e| disk_error("failed to delete the token", &e))?;
         self.write().remove(id);
         self.emit(&TokenEvent::Revoked(id.to_owned()));
         Ok(())
     }
 
-    /// Os tokens com `id` a partir de `from` (inclusive), em ordem de `id`: o stream
-    /// `GET /cluster/tokens`. A segunda parte diz se há mais.
+    /// The tokens with `id` from `from` (inclusive), in `id` order: the
+    /// `GET /cluster/tokens` stream. The second part says whether there are more.
     pub fn records_from(&self, from: Option<&str>, limit: usize) -> (Vec<TokenRecord>, bool) {
         let mut all: Vec<TokenRecord> = self
             .read()
@@ -266,7 +266,7 @@ impl Tokens {
         (all, more)
     }
 
-    /// O que o nó novo recebe do stream de tokens.
+    /// What the new node receives from the token stream.
     pub async fn load_remote(&self, record: TokenRecord) -> Result<(), TabaError> {
         if self.read().get(&record.id) == Some(&record) {
             return Ok(());
@@ -274,23 +274,23 @@ impl Tokens {
         self.apply_save(record).await
     }
 
-    /// O registro guardado de um token, vencido ou não (a varredura apaga os vencidos).
+    /// A token's stored record, expired or not (the sweep deletes the expired ones).
     pub fn record(&self, id: &str) -> Option<TokenRecord> {
         self.read().get(id).cloned()
     }
 
-    /// Os `id` dos tokens.
+    /// The tokens' `id`s.
     pub fn ids(&self) -> Vec<String> {
         self.read().keys().cloned().collect()
     }
 
-    /// Quantos tokens o nó conhece (`taba.auth.tokens`).
+    /// How many tokens the node knows (`taba.auth.tokens`).
     pub fn count(&self) -> usize {
         self.read().len()
     }
 
-    /// Valida o token apresentado: formato, `id` conhecido, ainda dentro do prazo e segredo
-    /// certo. É uma consulta local em memória. Qualquer falha é `None`, sem dizer qual.
+    /// Validates the presented token: format, known `id`, still within the deadline and the right
+    /// secret. It is a local in-memory query. Any failure is `None`, without saying which.
     pub fn authenticate(&self, presented: &str) -> Option<TokenRecord> {
         let (id, secret) = token::parse(presented)?;
         let record = self.read().get(id).cloned()?;
@@ -305,13 +305,13 @@ impl Tokens {
         let mut permissions = Vec::new();
         let mut err = TabaError::new(
             ErrorCode::ValidationFailed,
-            "A requisição tem campos inválidos.",
+            "The request has invalid fields.",
         );
         if request.permissions.is_empty() {
             err = err.with_detail(
                 "permissions",
                 ErrorCode::ValidationFailed,
-                "Informe ao menos uma de publish, consume, create ou admin.",
+                "Provide at least one of publish, consume, create or admin.",
             );
         }
         for (i, text) in request.permissions.iter().enumerate() {
@@ -321,7 +321,7 @@ impl Tokens {
                     err = err.with_detail(
                         format!("permissions[{i}]"),
                         ErrorCode::ValidationFailed,
-                        "Use publish, consume, create ou admin.",
+                        "Use publish, consume, create or admin.",
                     );
                 }
             }
@@ -339,7 +339,7 @@ impl Tokens {
             return Err(field_error(
                 ErrorCode::ValidationOutOfRange,
                 "expiresAt",
-                "expiresAt deve estar no futuro.",
+                "expiresAt must be in the future.",
             ));
         }
 
@@ -352,7 +352,7 @@ impl Tokens {
             now,
             request.expires_ms,
         );
-        // Grava antes de valer: uma falha de disco não deixa token visível.
+        // Writes before taking effect: a disk failure leaves no visible token.
         match self.replicator.get() {
             Some(replicator) => {
                 replicator
@@ -361,7 +361,7 @@ impl Tokens {
             }
             None => self.apply_save(new.record.clone()).await?,
         }
-        tracing::info!(token.id = %new.record.id, "token criado");
+        tracing::info!(token.id = %new.record.id, "token created");
         Ok(Created {
             record: new.record,
             token: new.token,
@@ -382,7 +382,7 @@ impl Tokens {
             return Err(field_error(
                 ErrorCode::ValidationImmutableField,
                 field,
-                &format!("`{field}` não pode ser alterado; crie outro token e revogue este."),
+                &format!("`{field}` cannot be changed; create another token and revoke this one."),
             ));
         }
         if let Some(name) = &request.name {
@@ -395,7 +395,7 @@ impl Tokens {
             return Err(field_error(
                 ErrorCode::ValidationOutOfRange,
                 "expiresAt",
-                "expiresAt deve estar no futuro.",
+                "expiresAt must be in the future.",
             ));
         }
         let _writer = self.writer.lock().await;
@@ -416,7 +416,7 @@ impl Tokens {
             }
             None => self.apply_save(record.clone()).await?,
         }
-        tracing::info!(token.id = %record.id, "token alterado");
+        tracing::info!(token.id = %record.id, "token changed");
         Ok(record)
     }
 
@@ -436,8 +436,8 @@ impl Tokens {
         Ok(())
     }
 
-    /// A varredura local dos vencidos: cada nó os ignora e os apaga por conta própria, sem
-    /// propagar nada (doc 06a). Devolve quantos apagou.
+    /// The local sweep of the expired: each node ignores them and deletes them on its own, without
+    /// propagating anything (doc 06a). Returns how many it deleted.
     pub async fn sweep(&self) -> usize {
         let now = self.clock.now_millis();
         let expired: Vec<String> = self
@@ -459,10 +459,10 @@ impl Tokens {
                 Ok(Ok(())) => {
                     self.write().remove(&id);
                     removed += 1;
-                    tracing::info!(token.id = %id, "token vencido apagado");
+                    tracing::info!(token.id = %id, "expired token deleted");
                 }
                 Ok(Err(e)) => {
-                    tracing::warn!(token.id = %id, error = %e, "não foi possível apagar o token vencido")
+                    tracing::warn!(token.id = %id, error = %e, "could not delete the expired token")
                 }
                 Err(_) => {}
             }
@@ -470,8 +470,8 @@ impl Tokens {
         removed
     }
 
-    /// `GET /tokens`: paginada por chave, ordenada por `id` (padrão) ou `createdAt`, com o
-    /// filtro `name` por trecho. Os vencidos não aparecem.
+    /// `GET /tokens`: paginated by key, ordered by `id` (default) or `createdAt`, with the
+    /// `name` filter by fragment. The expired ones do not show up.
     pub fn list(&self, query: ListQuery) -> Result<ListResult, TabaError> {
         let limit = pagination::parse_limit(
             query.limit.as_deref(),
@@ -489,12 +489,12 @@ impl Tokens {
         {
             return Err(TabaError::new(
                 ErrorCode::ValidationInvalidCursor,
-                "O cursor não vale para este `sort` e filtro.",
+                "The cursor does not apply to this `sort` and filter.",
             )
             .with_detail(
                 "cursor",
                 ErrorCode::ValidationInvalidCursor,
-                "Cursor gerado com outro `sort` ou filtro.",
+                "Cursor generated with another `sort` or filter.",
             ));
         }
 
@@ -560,8 +560,8 @@ struct Sort {
 }
 
 impl Sort {
-    /// `id` ou `createdAt`, com `-` na frente para decrescente. `name` não vale: é alterável,
-    /// e a paginação por chave não se sustentaria.
+    /// `id` or `createdAt`, with `-` in front for descending. `name` does not apply: it is changeable,
+    /// and key pagination could not hold up.
     fn parse(raw: Option<&str>) -> Result<Self, TabaError> {
         let raw = raw.unwrap_or("id");
         let (descending, name) = match raw.strip_prefix('-') {
@@ -579,12 +579,12 @@ impl Sort {
             }),
             _ => Err(TabaError::new(
                 ErrorCode::ValidationFailed,
-                "A requisição tem campos inválidos.",
+                "The request has invalid fields.",
             )
             .with_detail(
                 "query.sort",
                 ErrorCode::ValidationFailed,
-                "Use id ou createdAt, com `-` na frente para decrescente.",
+                "Use id or createdAt, with `-` in front for descending.",
             )),
         }
     }

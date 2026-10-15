@@ -11,24 +11,24 @@ using System.Threading.Tasks;
 namespace Taba
 {
     /// <summary>
-    /// O cliente da API de cliente do Taba (doc 19, seção 18.3): as nove operações, todas com a forma
-    /// assíncrona (<c>...Async</c>, que é a implementação) e a síncrona (que espera pela assíncrona), e o
-    /// <c>subscribe</c>. É seguro para uso concorrente: um só objeto serve a várias tarefas e threads.
+    /// The Taba client API client (doc 19, section 18.3): the nine operations, all with the
+    /// asynchronous form (<c>...Async</c>, which is the implementation) and the synchronous one (which waits for the asynchronous), and
+    /// <c>subscribe</c>. It is safe for concurrent use: a single object serves several tasks and threads.
     /// </summary>
     /// <remarks>
-    /// TLS: o conector usa o da plataforma e não o altera. No .NET Framework 4.6.x o protocolo é o do
-    /// <c>ServicePointManager.SecurityProtocol</c> (confira que inclui o TLS 1.2); do 4.7 em diante é o
-    /// do sistema. A verificação do certificado nunca é desligada.
+    /// TLS: the connector uses the platform's and does not change it. On .NET Framework 4.6.x the protocol is the one in
+    /// <c>ServicePointManager.SecurityProtocol</c> (check that it includes TLS 1.2); from 4.7 on it is the
+    /// system's. Certificate verification is never turned off.
     /// </remarks>
     public sealed partial class TabaClient : ITabaClient
     {
-        /// <summary>A versão deste conector.</summary>
+        /// <summary>The version of this connector.</summary>
         public const string Version = "0.1.0";
 
-        /// <summary>A versão do contrato da API que este conector implementa.</summary>
+        /// <summary>The version of the API contract this connector implements.</summary>
         public const string ContractVersion = "1";
 
-        /// <summary>O <c>consume</c> espera <c>waitTime</c> mais esta folga, e não o <c>RequestTimeout</c>.</summary>
+        /// <summary><c>consume</c> waits <c>waitTime</c> plus this slack, not the <c>RequestTimeout</c>.</summary>
         internal static readonly TimeSpan LongPollSlack = TimeSpan.FromSeconds(10);
 
         private static readonly HttpMethod Patch = new HttpMethod("PATCH");
@@ -48,8 +48,8 @@ namespace Taba
         }
 
         /// <summary>
-        /// Para trocar a pilha de rede: um <see cref="HttpMessageHandler"/> próprio (um proxy, um
-        /// transporte de mentira nos testes de quem usa o conector). O cliente não o descarta.
+        /// To swap the network stack: an own <see cref="HttpMessageHandler"/> (a proxy, a
+        /// fake transport in the tests of whoever uses the connector). The client does not dispose it.
         /// </summary>
         public TabaClient(TabaConfig config, HttpMessageHandler handler)
             : this(config, handler, null)
@@ -66,7 +66,7 @@ namespace Taba
             _transport = new HttpTransport(_config, handler, delay);
         }
 
-        /// <summary>Uma cópia da configuração em uso.</summary>
+        /// <summary>A copy of the configuration in use.</summary>
         public TabaConfig Config
         {
             get { return _config.Copy(); }

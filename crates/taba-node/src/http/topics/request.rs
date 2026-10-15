@@ -1,4 +1,4 @@
-//! Do corpo JSON para os pedidos do `engine`.
+//! From the JSON body to the `engine`'s requests.
 
 use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::topics::{CreateTopic, Kind, UpdateTopic};
@@ -17,7 +17,7 @@ const CREATE_FIELDS: &[&str] = &[
     "maxDeliveries",
 ];
 
-/// Campos que o `PATCH` reconhece só para recusá-los: nome, `id`, tipo, `volatile` e `fifo`.
+/// Fields the `PATCH` recognizes only to refuse them: name, `id`, type, `volatile` and `fifo`.
 const IMMUTABLE_FIELDS: &[&str] = &["name", "id", "type", "volatile", "fifo"];
 
 const PATCH_FIELDS: &[&str] = &[
@@ -38,12 +38,12 @@ pub fn create(fields: &Fields) -> Result<CreateTopic, TabaError> {
         _ => {
             return Err(TabaError::new(
                 ErrorCode::ValidationFailed,
-                "A requisição tem campos inválidos.",
+                "The request has invalid fields.",
             )
             .with_detail(
                 "type",
                 ErrorCode::ValidationFailed,
-                "Use `queue` ou `distributor`.",
+                "Use `queue` or `distributor`.",
             ));
         }
     };

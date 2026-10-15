@@ -1,4 +1,4 @@
-//! Mensagens (doc 19b, seção 18.11.5).
+//! Messages (doc 19b, section 18.11.5).
 
 use std::cell::Cell;
 
@@ -13,8 +13,8 @@ pub fn commands() -> Vec<Command> {
     vec![
         Command {
             path: &["publish"],
-            args: "<tópico> [corpo]",
-            summary: "Publica uma mensagem; o corpo vem do argumento, de --file ou de --stdin.",
+            args: "<topic> [body]",
+            summary: "Publishes a message; the body comes from the argument, from --file or from --stdin.",
             min_pos: 1,
             max_pos: 2,
             opts: vec![
@@ -32,8 +32,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["consume"],
-            args: "<tópico>",
-            summary: "Consome mensagens (GET); sem --ack imprime a mensagem inteira, com o receiptToken.",
+            args: "<topic>",
+            summary: "Consumes messages (GET); without --ack it prints the whole message, with the receiptToken.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![
@@ -52,8 +52,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["subscribe"],
-            args: "<tópico>",
-            summary: "Consome em laço com long polling; --exec roda um comando por mensagem e confirma se sai com 0.",
+            args: "<topic>",
+            summary: "Consumes in a loop with long polling; --exec runs a command per message and acknowledges if it exits with 0.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![val("max"), val("visibility"), val("wait"), val("exec"), val("limit")],
@@ -61,8 +61,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["ack"],
-            args: "<tópico> <id>",
-            summary: "Confirma uma mensagem (DELETE); --receipt é o receiptToken da última entrega.",
+            args: "<topic> <id>",
+            summary: "Acknowledges a message (DELETE); --receipt is the receiptToken of the last delivery.",
             min_pos: 2,
             max_pos: 2,
             opts: vec![val("receipt")],
@@ -70,8 +70,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["visibility"],
-            args: "<tópico> <id>",
-            summary: "Define a invisibilidade de uma mensagem entregue (PUT); --seconds 0 a devolve na hora.",
+            args: "<topic> <id>",
+            summary: "Sets the invisibility of a delivered message (PUT); --seconds 0 returns it right away.",
             min_pos: 2,
             max_pos: 2,
             opts: vec![val("receipt"), val("seconds")],
@@ -80,27 +80,27 @@ pub fn commands() -> Vec<Command> {
     ]
 }
 
-/// De onde vem o corpo: o argumento, `--file` ou `--stdin`, e só um deles.
+/// Where the body comes from: the argument, `--file` or `--stdin`, and only one of them.
 fn read_body(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<Vec<u8>, CliError> {
     let sources = usize::from(p.positional.len() > 1)
         + usize::from(p.has_values("file"))
         + usize::from(p.flag("stdin"));
     if sources != 1 {
         return Err(CliError::usage(if sources == 0 {
-            "dê o corpo: como argumento, com --file <arquivo> ou com --stdin"
+            "give the body: as an argument, with --file <file> or with --stdin"
         } else {
-            "o corpo vem de um só lugar: o argumento, --file ou --stdin"
+            "the body comes from a single place: the argument, --file or --stdin"
         }));
     }
     if let Some(path) = p.value("file") {
         return std::fs::read(path)
-            .map_err(|e| CliError::File(format!("não consegui ler {path}: {e}")));
+            .map_err(|e| CliError::File(format!("could not read {path}: {e}")));
     }
     if p.flag("stdin") {
         let mut body = Vec::new();
         ctx.input
             .read_to_end(&mut body)
-            .map_err(|e| CliError::File(format!("não consegui ler a entrada padrão: {e}")))?;
+            .map_err(|e| CliError::File(format!("could not read standard input: {e}")))?;
         return Ok(body);
     }
     Ok(p.positional[1].clone().into_bytes())
@@ -112,7 +112,7 @@ fn content_type(p: &Parsed) -> Result<Option<String>, CliError> {
         + usize::from(p.flag("text"));
     if chosen > 1 {
         return Err(CliError::usage(
-            "use só um de --content-type, --json e --text",
+            "use only one of --content-type, --json and --text",
         ));
     }
     Ok(if p.flag("json") {
@@ -129,7 +129,7 @@ fn publish(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let body = read_body(ctx, p)?;
     let count = number(p, "count")?.unwrap_or(1);
     if count == 0 {
-        return Err(CliError::usage("--count precisa ser pelo menos 1"));
+        return Err(CliError::usage("--count must be at least 1"));
     }
     let mut options = PublishOptions {
         content_type: content_type(p)?,
@@ -141,8 +141,8 @@ fn publish(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let client = ctx.api_client()?;
     for _ in 0..count {
         let response = match client.publish(&topic, &body, &options) {
-            // Fora da FIFO uma publicação que falhou no repasse não se repete (duplicaria); na FIFO o
-            // primário deduplica, então a repetição é segura. Só aqui o CLI descobre qual é o caso.
+            // Outside FIFO a publication that failed on the hand-off is not retried (it would duplicate); on FIFO the
+            // primary deduplicates, so retrying is safe. Only here does the CLI find out which case it is.
             Err(e) if e.status == 502 || e.status == 504 => {
                 let is_fifo = client.get_topic(&topic).ok().and_then(|t| t.fifo) == Some(true);
                 if !is_fifo {
@@ -175,7 +175,7 @@ fn consume(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
             || p.has_values("tag"))
     {
         return Err(CliError::usage(
-            "--persistent, --fifo, --idle-timeout e --tag só valem com --auto-create",
+            "--persistent, --fifo, --idle-timeout and --tag only apply with --auto-create",
         ));
     }
     let options = ConsumeOptions {
@@ -249,15 +249,15 @@ fn subscribe(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
             Some(command) => match ctx.platform.exec(command, &m.body) {
                 Ok(0) => Ok(()),
                 Ok(code) => Err(format!(
-                    "o comando saiu com {code}; a mensagem {} não foi confirmada",
+                    "the command exited with {code}; message {} was not acknowledged",
                     m.id
                 )
                 .into()),
-                Err(e) => Err(format!("não consegui rodar `{command}`: {e}").into()),
+                Err(e) => Err(format!("could not run `{command}`: {e}").into()),
             },
             None => print_message(ctx, m).map_err(|e| {
                 fatal = Some(e);
-                "falha ao imprimir".into()
+                "failed to print".into()
             }),
         }
     });
@@ -269,8 +269,9 @@ fn subscribe(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
 }
 
 fn receipt(p: &Parsed) -> Result<&str, CliError> {
-    p.value("receipt")
-        .ok_or_else(|| CliError::usage("--receipt é obrigatório: o receiptToken da última entrega"))
+    p.value("receipt").ok_or_else(|| {
+        CliError::usage("--receipt is required: the receiptToken of the last delivery")
+    })
 }
 
 fn message_path(topic: &str, id: &str) -> String {
@@ -281,7 +282,7 @@ fn message_path(topic: &str, id: &str) -> String {
     )
 }
 
-/// `DELETE /topics/{topic}/messages/{id}?receiptToken=`, com o `--request-id`.
+/// `DELETE /topics/{topic}/messages/{id}?receiptToken=`, with the `--request-id`.
 fn send_ack(
     ctx: &Ctx<'_>,
     client: &taba_client::Client,
@@ -301,8 +302,9 @@ fn ack(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
 
 fn visibility(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let token = receipt(p)?.to_owned();
-    let seconds = number(p, "seconds")?
-        .ok_or_else(|| CliError::usage("--seconds é obrigatório (0 devolve a mensagem na hora)"))?;
+    let seconds = number(p, "seconds")?.ok_or_else(|| {
+        CliError::usage("--seconds is required (0 returns the message right away)")
+    })?;
     let client = ctx.api_client()?;
     let c = call(
         ctx,

@@ -1,43 +1,43 @@
-//! As mensagens por **bloco** do anel (doc 05, seção 7.3): o que o nó lista e entrega a quem
-//! sincroniza (`GET /cluster/blocks/{id}/ids` e `/messages`), o que ele aplica quando é ele quem
-//! sincroniza, e a limpeza do que deixou de ser dele.
+//! The messages by **block** of the ring (doc 05, section 7.3): what the node lists and hands to whoever
+//! synchronizes (`GET /cluster/blocks/{id}/ids` and `/messages`), what it applies when it is the one
+//! synchronizing, and the cleanup of what stopped being its own.
 //!
-//! Um bloco é um conjunto de faixas de posição do anel (`Ring::block_ranges`). A posição de cada
-//! mensagem está nos metadados (`MessageMeta::position`): em disco, a coluna `position` responde
-//! pela faixa; em memória, a varredura do mapa do tópico.
+//! A block is a set of ring position ranges (`Ring::block_ranges`). Each message's position
+//! is in the metadata (`MessageMeta::position`): on disk, the `position` column answers
+//! for the range; in memory, the scan of the topic's map.
 
 use super::{ErrorCode, Messages, Place, Stored, TabaError, TopicState, lock, message_not_found};
 use crate::storage::messages::MessageMeta;
 
-/// Uma linha da listagem de IDs de um bloco.
+/// A row of a block's ID listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockEntry {
     pub topic: String,
     pub id: String,
-    /// Só na fila FIFO: a mensagem confirmada que a deduplicação ainda lembra.
+    /// FIFO queue only: the acknowledged message that deduplication still remembers.
     pub delete_at_ms: Option<u64>,
 }
 
-/// Uma mensagem do bloco, com o corpo.
+/// A message of the block, with the body.
 #[derive(Debug, Clone)]
 pub struct BlockMessage {
     pub topic: String,
     pub meta: MessageMeta,
     pub body: Vec<u8>,
-    /// Só na FIFO: é a linha curta de uma mensagem confirmada (sem corpo).
+    /// FIFO only: it is the short row of an acknowledged message (no body).
     pub delete_at_ms: Option<u64>,
 }
 
-/// O que `apply_load` fez com uma mensagem que veio de outro nó.
+/// What `apply_load` did with a message that came from another node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Loaded {
-    /// Gravada.
+    /// Stored.
     Stored,
-    /// O nó já a tinha (um evento chegou antes da carga, ou a carga se repetiu).
+    /// The node already had it (an event arrived before the load, or the load repeated).
     Existing,
-    /// Já passou do `ttl`: não vale copiar (doc 13, seção 12.10).
+    /// It already exceeded the `ttl`: not worth copying (doc 13, section 12.10).
     Expired,
-    /// O tópico ainda não existe neste nó.
+    /// The topic does not exist on this node yet.
     UnknownTopic,
 }
 
@@ -48,7 +48,7 @@ fn in_ranges(ranges: &[(u64, u64)], position: u64) -> bool {
 }
 
 impl Messages {
-    /// Os tópicos que têm mensagens aqui, em memória ou em disco.
+    /// The topics that have messages here, in memory or on disk.
     fn message_topics(&self) -> Vec<String> {
         let mut names: Vec<String> = self
             .existing_states()
@@ -64,8 +64,8 @@ impl Messages {
         names
     }
 
-    /// Os IDs que o nó guarda no bloco (as faixas de posição), de todos os tópicos, em ordem de ID,
-    /// entre `from` e `to` (inclusivos), no máximo `limit`. Mensagens em memória e em disco.
+    /// The IDs the node keeps in the block (the position ranges), of all topics, in ID order,
+    /// between `from` and `to` (inclusive), at most `limit`. Messages in memory and on disk.
     pub fn block_entries(
         &self,
         ranges: &[(u64, u64)],
@@ -78,7 +78,7 @@ impl Messages {
             let rows = self
                 .store
                 .block_rows(&topic, ranges, from, to, limit)
-                .map_err(|e| self.disk_error("falha ao listar o bloco em disco", &e))?;
+                .map_err(|e| self.disk_error("failed to list the block on disk", &e))?;
             out.extend(rows.into_iter().map(|row| BlockEntry {
                 topic: topic.clone(),
                 id: row.id,
@@ -111,8 +111,8 @@ impl Messages {
         Ok(out)
     }
 
-    /// Lê a mensagem que o nó guarda (memória ou disco), sem conferir se ela está no índice ou
-    /// entre as réplicas: é a leitura de quem serve a sincronização.
+    /// Reads the message the node keeps (memory or disk), without checking whether it is in the index or
+    /// among the replicas: it is the read of whoever serves the synchronization.
     fn read_held(
         &self,
         topic: &str,
@@ -128,23 +128,23 @@ impl Messages {
         let Some(meta) = self
             .store
             .get(topic, id)
-            .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+            .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
         else {
             return Ok(None);
         };
         if meta.content_type.is_empty() {
-            // A linha curta da FIFO (sem corpo) só serve à deduplicação.
+            // The FIFO's short row (no body) only serves deduplication.
             return Ok(None);
         }
         match self.store.body(topic, id) {
             Ok(body) => Ok(Some((meta, body))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+            Err(e) => Err(self.disk_error("failed to read the body on disk", &e)),
         }
     }
 
-    /// A mensagem que só o disco da vida anterior ainda tem (PRB-048): a recuperação do reinício a
-    /// procura aqui depois de olhar o que o nó guarda hoje.
+    /// The message that only the previous life's disk still has (PRB-048): the restart recovery
+    /// looks for it here after looking at what the node keeps today.
     pub fn held_previous_life(
         &self,
         topic: &str,
@@ -155,7 +155,7 @@ impl Messages {
         };
         let Some(meta) = store
             .get(topic, id)
-            .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+            .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
         else {
             return Ok(None);
         };
@@ -170,13 +170,13 @@ impl Messages {
                 delete_at_ms: None,
             })),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+            Err(e) => Err(self.disk_error("failed to read the body on disk", &e)),
         }
     }
 
-    /// A mensagem que o nó ainda guarda, em memória ou em disco: é o que a recuperação do nó que
-    /// volta procura para cada perda da lista (doc 04, seção 6.6, passo 2). Só o conteúdo que
-    /// existe de fato conta: a linha curta da FIFO e o corpo que sumiu do disco não valem.
+    /// The message the node still keeps, in memory or on disk: it is what the recovery of the returning
+    /// node looks for for each loss on the list (doc 04, section 6.6, step 2). Only content that
+    /// actually exists counts: the FIFO's short row and a body that vanished from disk do not count.
     pub fn held_message(&self, topic: &str, id: &str) -> Result<Option<BlockMessage>, TabaError> {
         Ok(self.read_held(topic, id)?.map(|(meta, body)| BlockMessage {
             topic: topic.to_owned(),
@@ -186,8 +186,8 @@ impl Messages {
         }))
     }
 
-    /// As mensagens do bloco na faixa de IDs `from`–`to`, com o corpo, até `max_items` ou até
-    /// passar de `max_bytes` de corpo (a primeira sempre entra). O segundo valor diz se há mais.
+    /// The block's messages in the ID range `from`–`to`, with the body, up to `max_items` or until
+    /// exceeding `max_bytes` of body (the first always goes in). The second value says whether there are more.
     pub fn block_messages(
         &self,
         ranges: &[(u64, u64)],
@@ -208,11 +208,11 @@ impl Messages {
             for entry in entries.into_iter().take(max_items) {
                 last_seen = Some(entry.id.clone());
                 if let Some(delete_at_ms) = entry.delete_at_ms {
-                    // A linha curta vai sem corpo, com o `deleteAt` (doc 17, seção 16.7).
+                    // The short row goes without a body, with the `deleteAt` (doc 17, section 16.7).
                     if let Some(meta) = self
                         .store
                         .get(&entry.topic, &entry.id)
-                        .map_err(|e| self.disk_error("falha ao ler a linha em disco", &e))?
+                        .map_err(|e| self.disk_error("failed to read the row on disk", &e))?
                     {
                         out.push(BlockMessage {
                             topic: entry.topic,
@@ -223,7 +223,7 @@ impl Messages {
                     }
                     continue;
                 }
-                // A mensagem pode ter sido confirmada entre a listagem e a leitura: simplesmente sai.
+                // The message may have been acknowledged between the listing and the read: it simply drops out.
                 let Some((meta, body)) = self.read_held(&entry.topic, &entry.id)? else {
                     continue;
                 };
@@ -240,8 +240,8 @@ impl Messages {
                 });
             }
             if out.is_empty() && more_listed {
-                // Tudo o que a janela listou sumiu: segue para depois do último, sem devolver um
-                // trecho vazio com "há mais" (o receptor ficaria no mesmo lugar).
+                // Everything the window listed vanished: it goes on to after the last one, without returning an
+                // empty stretch with "there is more" (the receiver would stay in the same place).
                 if let Some(last) = last_seen {
                     cursor = Some(format!("{last} "));
                     continue;
@@ -251,7 +251,7 @@ impl Messages {
         }
     }
 
-    /// Uma mensagem do bloco (`GET /cluster/blocks/{id}/messages/{messageId}`).
+    /// A message of the block (`GET /cluster/blocks/{id}/messages/{messageId}`).
     pub fn block_message(
         &self,
         ranges: &[(u64, u64)],
@@ -277,9 +277,9 @@ impl Messages {
         Err(message_not_found())
     }
 
-    /// Aplica a mensagem que veio de outro nó na sincronização: grava como cópia (o nó em
-    /// sincronização não é dono de nada), a menos que já tenha vencido por `ttl` ou o nó já a
-    /// tenha. Idempotente.
+    /// Applies the message that came from another node in the synchronization: stores it as a copy (the node in
+    /// synchronization owns nothing), unless it has already expired by `ttl` or the node already
+    /// has it. Idempotent.
     pub fn apply_load(
         &self,
         topic: &str,
@@ -292,7 +292,7 @@ impl Messages {
         if view.definition.queue().is_none() {
             return Err(TabaError::new(
                 ErrorCode::TopicWrongType,
-                "Um tópico distribuidor não guarda mensagens.",
+                "A distributor topic does not store messages.",
             ));
         }
         let now = self.clock.now_millis();
@@ -307,9 +307,9 @@ impl Messages {
         Ok(Loaded::Stored)
     }
 
-    /// Aplica a linha curta de uma mensagem FIFO confirmada que veio de outro nó na sincronização
-    /// (doc 17, seção 16.7): fica só para a deduplicação até o `deleteAt`. Se o nó já tem a
-    /// mensagem, nada muda (o evento do ack, repetido, a trata). Idempotente.
+    /// Applies the short row of an acknowledged FIFO message that came from another node in the synchronization
+    /// (doc 17, section 16.7): it only stays for deduplication until the `deleteAt`. If the node already has the
+    /// message, nothing changes (the ack event, repeated, handles it). Idempotent.
     pub fn apply_tombstone(
         &self,
         topic: &str,
@@ -341,21 +341,21 @@ impl Messages {
         }
         self.store
             .tombstone(topic, &meta, delete_at_ms)
-            .map_err(|e| self.disk_error("falha ao gravar a linha de deduplicação", &e))?;
+            .map_err(|e| self.disk_error("failed to write the deduplication row", &e))?;
         Ok(Loaded::Stored)
     }
 
-    /// O nó guarda a mensagem (no índice ou entre as réplicas)?
+    /// Does the node keep the message (in the index or among the replicas)?
     pub fn holds(&self, topic: &str, id: &str) -> bool {
         let state = self.state_of(topic);
         let state = lock(&state);
         state.index.contains(id) || state.replicas.contains(id)
     }
 
-    /// Apaga as cópias que o nó guarda e de que deixou de ser responsável (doc 05, seção 7.3,
-    /// passo 7): `responsible` diz, pela posição no anel, se o nó ainda é um dos nós do bloco. Só
-    /// mexe nas cópias que não são do dono (as do dono, no índice, são sempre do bloco dele).
-    /// Devolve quantas apagou.
+    /// Deletes the copies the node keeps and is no longer responsible for (doc 05, section 7.3,
+    /// step 7): `responsible` says, by ring position, whether the node is still one of the block's nodes. It only
+    /// touches the copies that are not the owner's (the owner's, in the index, always belong to its block).
+    /// Returns how many it deleted.
     pub fn forget_foreign(&self, responsible: &dyn Fn(u64) -> bool) -> usize {
         let mut removed = 0;
         for (name, state) in self.existing_states() {
@@ -363,7 +363,7 @@ impl Messages {
             for id in state.replicas.ids() {
                 let held = self.held_meta(&state, &name, &id);
                 let Some(meta) = held else {
-                    // A cópia sumiu do armazenamento: só sobrou o registro dela.
+                    // The copy vanished from storage: only its record is left.
                     state.replicas.remove(&id);
                     continue;
                 };
@@ -378,7 +378,7 @@ impl Messages {
                 match self.remove_message(&mut state, &name, &id, place) {
                     Ok(()) => removed += 1,
                     Err(_) => {
-                        tracing::error!(topic = %name, id = %id, "falha ao apagar a cópia que deixou de ser do nó");
+                        tracing::error!(topic = %name, id = %id, "failed to delete the copy that stopped being the node's");
                     }
                 }
             }
@@ -387,7 +387,7 @@ impl Messages {
         removed
     }
 
-    /// Os metadados da cópia, onde quer que ela esteja.
+    /// The copy's metadata, wherever it is.
     pub(super) fn held_meta(
         &self,
         state: &TopicState,

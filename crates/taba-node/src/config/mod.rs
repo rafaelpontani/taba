@@ -1,8 +1,8 @@
-//! A configuração do nó (doc 10): arquivo `.yml`, variáveis `TABA_*` e padrões.
+//! The node configuration (doc 10): `.yml` file, `TABA_*` variables and defaults.
 //!
-//! `params` é a tabela de chaves e padrões; `source` junta as três origens e converte
-//! os valores; aqui ficam o `Config` tipado e as validações que impedem a partida.
-//! A leitura do arquivo e do ambiente é injetada, então os testes não tocam o processo.
+//! `params` is the table of keys and defaults; `source` joins the three origins and converts
+//! the values; here live the typed `Config` and the validations that prevent the start.
+//! Reading the file and the environment is injected, so the tests do not touch the process.
 
 mod error;
 mod otlp;
@@ -20,22 +20,22 @@ pub use params::{PARAMS, env_name};
 use source::{Bytes, List, NetList, Parse, Source};
 pub use source::{EnvSource, MapEnv, ProcessEnv};
 
-/// Uma duração com unidade (`100ms`, `60s`, `5m`, `2h`, `30d`), a mesma forma dos parâmetros.
+/// A duration with a unit (`100ms`, `60s`, `5m`, `2h`, `30d`), the same form as the parameters.
 pub fn parse_duration(text: &str) -> Option<Duration> {
     <Duration as Parse>::parse(text)
 }
 
 use crate::core::validation;
 
-/// Caminho que o `.yml` tem se nada for informado. Se não existe, o nó segue só
-/// com as variáveis e os padrões.
+/// The path the `.yml` has if nothing is given. If it does not exist, the node goes on with only
+/// the variables and the defaults.
 pub const DEFAULT_CONFIG_FILE: &str = "/etc/taba/taba.yml";
 
-/// Margem do envelope JSON de uma linha dos streams de sincronização, somada ao
-/// limite rígido em base64 (doc 10, `cluster.sync.stream.max-line-bytes`).
+/// Margin of the JSON envelope of a line of the sync streams, added to the
+/// hard limit in base64 (doc 10, `cluster.sync.stream.max-line-bytes`).
 const LINE_ENVELOPE_MARGIN: u64 = 4096;
 
-/// O token raiz é um segredo de, no mínimo, 32 caracteres.
+/// The root token is a secret of at least 32 characters.
 const ROOT_TOKEN_MIN_LEN: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +54,7 @@ impl Mode {
 }
 
 impl Parse for Mode {
-    const EXPECTED: &'static str = "`production` ou `development`";
+    const EXPECTED: &'static str = "`production` or `development`";
     fn parse(s: &str) -> Option<Self> {
         match s {
             "production" => Some(Mode::Production),
@@ -72,7 +72,7 @@ enum AuthSwitch {
 }
 
 impl Parse for AuthSwitch {
-    const EXPECTED: &'static str = "`auto`, `true` ou `false`";
+    const EXPECTED: &'static str = "`auto`, `true` or `false`";
     fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "auto" => Some(AuthSwitch::Auto),
@@ -91,7 +91,7 @@ pub enum TopicsMetricsMode {
 }
 
 impl Parse for TopicsMetricsMode {
-    const EXPECTED: &'static str = "`off`, `by-tags` ou `per-topic`";
+    const EXPECTED: &'static str = "`off`, `by-tags` or `per-topic`";
     fn parse(s: &str) -> Option<Self> {
         match s {
             "off" => Some(Self::Off),
@@ -102,20 +102,20 @@ impl Parse for TopicsMetricsMode {
     }
 }
 
-/// Formato dos logs no `stdout` (`telemetry.logs.format`).
+/// Format of the logs on `stdout` (`telemetry.logs.format`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LogFormat {
-    /// Texto simples, sem cores (o padrão).
+    /// Plain text, no colors (the default).
     #[default]
     Text,
-    /// Texto com cores ANSI, para terminal e `docker compose logs`.
+    /// Text with ANSI colors, for terminals and `docker compose logs`.
     Color,
-    /// Uma linha JSON por evento.
+    /// One JSON line per event.
     Json,
 }
 
 impl Parse for LogFormat {
-    const EXPECTED: &'static str = "`text`, `color` ou `json`";
+    const EXPECTED: &'static str = "`text`, `color` or `json`";
     fn parse(s: &str) -> Option<Self> {
         match s {
             "text" => Some(Self::Text),
@@ -126,7 +126,7 @@ impl Parse for LogFormat {
     }
 }
 
-/// Modo de sincronização do SQLite (`storage.db.synchronous`).
+/// SQLite synchronization mode (`storage.db.synchronous`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbSynchronous {
     Off,
@@ -136,7 +136,7 @@ pub enum DbSynchronous {
 }
 
 impl Parse for DbSynchronous {
-    const EXPECTED: &'static str = "`OFF`, `NORMAL`, `FULL` ou `EXTRA`";
+    const EXPECTED: &'static str = "`OFF`, `NORMAL`, `FULL` or `EXTRA`";
     fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_uppercase().as_str() {
             "OFF" => Some(Self::Off),
@@ -148,7 +148,7 @@ impl Parse for DbSynchronous {
     }
 }
 
-/// Um segredo que nunca aparece em log nem em `Debug`.
+/// A secret that never shows up in a log or in `Debug`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Secret(String);
 
@@ -164,12 +164,12 @@ impl std::fmt::Debug for Secret {
     }
 }
 
-/// De onde vem o token raiz.
+/// Where the root token comes from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootToken {
     None,
     Inline(Secret),
-    /// Arquivo com o token atual e, opcionalmente, o anterior (duas linhas).
+    /// File with the current token and, optionally, the previous one (two lines).
     File(PathBuf),
 }
 
@@ -183,13 +183,13 @@ pub struct Pagination {
 pub struct Ports {
     pub api: u16,
     pub cluster: u16,
-    /// `None`: as rotas de operação ficam na porta da API.
+    /// `None`: the operations routes stay on the API port.
     pub operations: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Tls {
-    /// `None`: a porta do cluster atende em HTTP puro, com aviso no log.
+    /// `None`: the cluster port serves plain HTTP, with a warning in the log.
     pub dir: Option<PathBuf>,
     pub reload_interval: Duration,
     pub expiry_warning: Duration,
@@ -197,7 +197,7 @@ pub struct Tls {
 
 #[derive(Debug, Clone)]
 pub struct Auth {
-    /// Já resolvido: `auto` virou `true` ou `false`. Sempre `false` em desenvolvimento.
+    /// Already resolved: `auto` became `true` or `false`. Always `false` in development.
     pub enabled: bool,
     pub root_token: RootToken,
     pub reload_interval: Duration,
@@ -209,28 +209,28 @@ pub struct Drain {
     pub timeout: Duration,
 }
 
-/// O backup opcional em S3 (`backup.*`). Sem `s3.bucket` o recurso fica desligado.
+/// The optional S3 backup (`backup.*`). Without `s3.bucket` the feature is off.
 #[derive(Debug, Clone)]
 pub struct Backup {
     pub s3: Option<S3>,
-    /// A mensagem só vai ao S3 depois deste tempo no outbox: a confirmada e consumida antes disso
-    /// nunca chega ao bucket.
+    /// The message only goes to S3 after this time in the outbox: one acknowledged and consumed before that
+    /// never reaches the bucket.
     pub delay: Duration,
-    /// De quanto em quanto tempo o estado mutável das mensagens vira um diário.
+    /// How often the mutable state of the messages becomes a journal.
     pub meta_interval: Duration,
     pub segment_max_bytes: u64,
     pub segment_max_messages: u32,
     pub segment_max_age: Duration,
     pub heartbeat_interval: Duration,
-    /// Um nó é dado como morto para quem observa quando o batimento dele não muda por este tempo.
+    /// A node is considered dead by whoever watches it when its heartbeat does not change for this long.
     pub dead_after: Duration,
-    /// O quanto o drain (parada, flush) espera o envio ao S3.
+    /// How long the drain (stop, flush) waits for the upload to S3.
     pub drain_timeout: Duration,
-    /// Acima deste uso do disco (%), o nó apaga o corpo das mensagens que já estão no S3.
+    /// Above this disk usage (%), the node deletes the body of messages that are already in S3.
     pub evict_above: u32,
-    /// A evicção para quando o uso cai a este valor (%).
+    /// The eviction stops when usage falls to this value (%).
     pub evict_to: u32,
-    /// Durante flush e drain, a passagem da memória para o disco pausa a este uso (%).
+    /// During flush and drain, the memory-to-disk pass pauses at this usage (%).
     pub pause_at: u32,
     pub reconcile_interval: Duration,
     pub restore_lock_ttl: Duration,
@@ -242,7 +242,7 @@ impl Backup {
     }
 }
 
-/// Onde fica o bucket (`backup.s3.*`).
+/// Where the bucket is (`backup.s3.*`).
 #[derive(Clone)]
 pub struct S3 {
     pub bucket: String,
@@ -285,9 +285,9 @@ pub struct Messages {
 
 #[derive(Debug, Clone)]
 pub struct Write {
-    /// Efetivo: 1 em desenvolvimento, seja qual for o valor configurado.
+    /// Effective: 1 in development, whatever the configured value.
     pub replication_factor: u32,
-    /// Efetivo: 1 em desenvolvimento; senão `floor(replication.factor / 2) + 1` se não definido.
+    /// Effective: 1 in development; otherwise `floor(replication.factor / 2) + 1` if not set.
     pub quorum: u32,
     pub retry_attempts: u32,
     pub retry_backoff: Duration,
@@ -309,7 +309,7 @@ pub struct ClusterSync {
 #[derive(Debug, Clone)]
 pub struct Cluster {
     pub entry_address: Option<String>,
-    /// `cluster.advertise-addresses`: os IPs que o nó informa aos outros; vazio, ele descobre.
+    /// `cluster.advertise-addresses`: the IPs the node tells the others; empty, it discovers them.
     pub advertise_addresses: Vec<String>,
     pub first_node: bool,
     pub virtual_nodes: u32,
@@ -325,7 +325,7 @@ pub struct Cluster {
     pub vote_min_voters: u32,
     pub freezing_duration: Option<Duration>,
     pub bootstrap_retry_interval: Duration,
-    /// `0`: sem limite.
+    /// `0`: no limit.
     pub bootstrap_retry_max_attempts: u32,
     pub message_loss_ttl: Option<Duration>,
     pub recovery_timeout: Option<Duration>,
@@ -369,9 +369,9 @@ pub struct Topics {
     pub dead_letter_suffix: String,
     pub volatile_idle_timeout_default: Duration,
     pub volatile_idle_check_retry_interval: Option<Duration>,
-    /// `None`: sem limite.
+    /// `None`: no limit.
     pub distributor_max_targets: Option<u32>,
-    /// `None`: sem limite.
+    /// `None`: no limit.
     pub volatile_max_count: Option<u32>,
     pub volatile_takeover_jitter: Option<Duration>,
 }
@@ -382,19 +382,19 @@ pub struct Telemetry {
     pub topics_mode: TopicsMetricsMode,
     pub topics_group_by_tags: Vec<String>,
     pub topics_max_topics: Option<u32>,
-    /// `None`: o padrão ainda está a definir; o nó usa `info`.
+    /// `None`: the default is still to be defined; the node uses `info`.
     pub logs_level: Option<String>,
-    /// `telemetry.logs.format`: `text` (padrão), `color` ou `json`.
+    /// `telemetry.logs.format`: `text` (default), `color` or `json`.
     pub logs_format: LogFormat,
-    /// Atributos de recurso de `OTEL_SERVICE_NAME` e `OTEL_RESOURCE_ATTRIBUTES` (variáveis do
-    /// SDK do OpenTelemetry, que não têm chave no YAML).
+    /// Resource attributes from `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` (variables of the
+    /// OpenTelemetry SDK, which have no key in the YAML).
     pub resource: Vec<(String, String)>,
-    /// A exportação OTLP (`OTEL_EXPORTER_OTLP_*`); `None` sem endpoint.
+    /// The OTLP export (`OTEL_EXPORTER_OTLP_*`); `None` without an endpoint.
     pub otlp: Option<Otlp>,
 }
 
-/// Lê `OTEL_RESOURCE_ATTRIBUTES` (`chave=valor,chave=valor`) e `OTEL_SERVICE_NAME`, que vence
-/// o `service.name` da primeira. Par sem `=` ou sem chave é ignorado.
+/// Reads `OTEL_RESOURCE_ATTRIBUTES` (`key=value,key=value`) and `OTEL_SERVICE_NAME`, which wins over
+/// the first one's `service.name`. A pair without `=` or without a key is ignored.
 fn resource_attributes(env: &dyn EnvSource) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for pair in env
@@ -472,8 +472,8 @@ pub struct Config {
     pub operations_allowed_ips: Vec<IpNet>,
     pub rate_limit: RateLimit,
     pub client_ip: ClientIp,
-    /// Avisos da leitura (parâmetros ignorados, variáveis desconhecidas). O nó os
-    /// registra no log ao subir.
+    /// Warnings from reading (ignored parameters, unknown variables). The node
+    /// logs them on startup.
     pub warnings: Vec<String>,
 }
 
@@ -482,8 +482,8 @@ impl Config {
         self.mode == Mode::Development
     }
 
-    /// Lê o arquivo (`--config`, `TABA_CONFIG_FILE` ou o padrão) e o ambiente do processo.
-    /// Um caminho informado que não existe impede a subida; o padrão ausente, não.
+    /// Reads the file (`--config`, `TABA_CONFIG_FILE` or the default) and the process environment.
+    /// A given path that does not exist prevents the start; a missing default does not.
     pub fn load(cli_path: Option<&Path>) -> Result<Self, ConfigError> {
         let env = ProcessEnv;
         let explicit = cli_path
@@ -510,7 +510,7 @@ impl Config {
         )
     }
 
-    /// Monta a configuração a partir do conteúdo do arquivo e do ambiente.
+    /// Builds the configuration from the file contents and the environment.
     pub fn parse(yaml: Option<(&str, &str)>, env: &dyn EnvSource) -> Result<Self, ConfigError> {
         let (source, mut warnings) = Source::build(yaml, env)?;
         let mut config = Self::build(&source, &mut warnings)?;
@@ -529,7 +529,7 @@ impl Config {
                 s.set_keys_with_prefix(&["cluster.", "ring.", "replication.", "write.quorum"]);
             if !ignored.is_empty() {
                 warnings.push(format!(
-                    "mode=development: parâmetros ignorados num cluster de um só nó: {}",
+                    "mode=development: parameters ignored in a one-node cluster: {}",
                     ignored.join(", ")
                 ));
             }
@@ -548,11 +548,12 @@ impl Config {
         };
         if pagination.default_limit == 0 || pagination.default_limit > pagination.max_limit {
             problems.push(
-                "api.pagination.default-limit deve estar entre 1 e api.pagination.max-limit".into(),
+                "api.pagination.default-limit must be between 1 and api.pagination.max-limit"
+                    .into(),
             );
         }
 
-        // Segurança: pasta de segredos, TLS do cluster e token raiz
+        // Security: secrets folder, cluster TLS and root token
         let secrets_dir: PathBuf = PathBuf::from(s.get::<String>("secrets.dir")?);
         let tls = Tls {
             dir: if dev {
@@ -570,10 +571,10 @@ impl Config {
             timeout: s.get("drain.timeout")?,
         };
 
-        // Backup opcional em S3
+        // Optional S3 backup
         let backup = backup_config(s, &mut problems)?;
 
-        // Armazenamento e mensagens
+        // Storage and messages
         let storage = Storage {
             dir: PathBuf::from(s.get::<String>("storage.dir")?),
             memory_limit: s.opt::<Bytes>("memory.limit")?.map(|b| b.0),
@@ -583,7 +584,7 @@ impl Config {
         };
         if storage.dir.file_name().is_none_or(|n| n != "taba") {
             problems.push(format!(
-                "storage.dir (`{}`): a última pasta deve se chamar `taba`",
+                "storage.dir (`{}`): the last folder must be named `taba`",
                 storage.dir.display()
             ));
         }
@@ -592,22 +593,22 @@ impl Config {
             hard_limit: s.opt::<Bytes>("message.hard-limit")?.map(|b| b.0),
         };
         if messages.max_bytes == 0 {
-            problems.push("message.max-bytes deve ser maior que zero".into());
+            problems.push("message.max-bytes must be greater than zero".into());
         }
         if let Some(hard) = messages.hard_limit
             && messages.max_bytes > hard
         {
             problems.push(format!(
-                "message.max-bytes ({}) não pode passar de message.hard-limit ({hard})",
+                "message.max-bytes ({}) cannot exceed message.hard-limit ({hard})",
                 messages.max_bytes
             ));
         }
 
-        // Escrita e durabilidade
+        // Writing and durability
         let configured_factor: u32 = s.get("replication.factor")?;
         let configured_quorum: Option<u32> = s.opt("write.quorum")?;
         if configured_factor == 0 {
-            problems.push("replication.factor deve ser de 1 em diante".into());
+            problems.push("replication.factor must be 1 or more".into());
         }
         let default_quorum = configured_factor / 2 + 1;
         let write = if dev {
@@ -620,7 +621,7 @@ impl Config {
             let quorum = configured_quorum.unwrap_or(default_quorum);
             if configured_factor > 0 && !(1..=configured_factor).contains(&quorum) {
                 problems.push(format!(
-                    "write.quorum ({quorum}) deve estar entre 1 e replication.factor ({configured_factor})"
+                    "write.quorum ({quorum}) must be between 1 and replication.factor ({configured_factor})"
                 ));
             }
             Write {
@@ -634,50 +635,50 @@ impl Config {
         let cluster = cluster_config(s)?;
         match (&cluster.entry_address, dev) {
             (None, false) => {
-                problems.push("cluster.entry-address é obrigatório em mode=production".into());
+                problems.push("cluster.entry-address is required in mode=production".into());
             }
             (Some(address), false) if !is_host_port(address) => problems.push(format!(
-                "cluster.entry-address (`{address}`) deve ser host:porta, na porta do cluster"
+                "cluster.entry-address (`{address}`) must be host:port, on the cluster port"
             )),
             _ => {}
         }
         if !(1..=100).contains(&cluster.vote_quorum_percent) {
-            problems.push("cluster.vote.quorum-percent deve estar entre 1 e 100".into());
+            problems.push("cluster.vote.quorum-percent must be between 1 and 100".into());
         }
         if cluster.vote_min_voters == 0 {
-            problems.push("cluster.vote.min-voters deve ser de 1 em diante".into());
+            problems.push("cluster.vote.min-voters must be 1 or more".into());
         }
         if cluster.virtual_nodes == 0 {
-            problems.push("ring.virtual-nodes deve ser de 1 em diante".into());
+            problems.push("ring.virtual-nodes must be 1 or more".into());
         }
         if write.retry_attempts == 0 {
-            problems.push("write.retry.attempts deve ser de 1 em diante".into());
+            problems.push("write.retry.attempts must be 1 or more".into());
         }
         if let (Some(hard), Some(line)) = (messages.hard_limit, cluster.sync.stream_max_line_bytes)
         {
             let needed = hard.div_ceil(3) * 4 + LINE_ENVELOPE_MARGIN;
             if line < needed {
                 problems.push(format!(
-                    "cluster.sync.stream.max-line-bytes ({line}) precisa caber message.hard-limit em base64 \
-                     mais o envelope JSON (pelo menos {needed})"
+                    "cluster.sync.stream.max-line-bytes ({line}) must fit message.hard-limit in base64 \
+                     plus the JSON envelope (at least {needed})"
                 ));
             }
         }
 
-        // Entrega, retenção, FIFO, tópicos
+        // Delivery, retention, FIFO, topics
         let delivery = delivery_config(s)?;
         if let Some(max) = delivery.visibility_timeout_max
             && delivery.visibility_timeout_default > max
         {
-            problems.push("delivery.visibility-timeout.default não pode passar do máximo".into());
+            problems.push("delivery.visibility-timeout.default cannot exceed the maximum".into());
         }
         if let Some(max) = delivery.max_messages_max
             && delivery.max_messages_default > max
         {
-            problems.push("delivery.max-messages.default não pode passar do máximo".into());
+            problems.push("delivery.max-messages.default cannot exceed the maximum".into());
         }
         if !(0.0..=1.0).contains(&delivery.fair_ready_weight) {
-            problems.push("delivery.fair.ready-weight deve estar entre 0 e 1".into());
+            problems.push("delivery.fair.ready-weight must be between 0 and 1".into());
         }
 
         let retention = Retention {
@@ -722,7 +723,8 @@ impl Config {
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
             problems.push(
-                "topics.dead-letter.suffix deve ter ao menos um caractere de A-Za-z0-9_-".into(),
+                "topics.dead-letter.suffix must have at least one character from A-Za-z0-9_-"
+                    .into(),
             );
         }
         if let Err(e) = validation::in_range(
@@ -782,7 +784,7 @@ impl Config {
             && !["trace", "debug", "info", "warn", "error"].contains(&level.as_str())
         {
             problems.push(format!(
-                "telemetry.logs.level (`{level}`) deve ser trace, debug, info, warn ou error"
+                "telemetry.logs.level (`{level}`) must be trace, debug, info, warn or error"
             ));
         }
 
@@ -818,8 +820,8 @@ impl Config {
     }
 }
 
-/// As três portas precisam ser diferentes entre si; `0` (qualquer porta livre, só
-/// nos testes) nunca conta como repetida. Em desenvolvimento a do cluster não é aberta.
+/// The three ports must differ from each other; `0` (any free port, only
+/// in the tests) never counts as repeated. In development the cluster one is not opened.
 fn check_distinct_ports(ports: &Ports, dev: bool, problems: &mut Vec<String>) {
     let mut named = vec![("api.port", ports.api)];
     if !dev {
@@ -831,13 +833,13 @@ fn check_distinct_ports(ports: &Ports, dev: bool, problems: &mut Vec<String>) {
     for (i, (a_name, a)) in named.iter().enumerate() {
         for (b_name, b) in &named[i + 1..] {
             if a == b && *a != 0 {
-                problems.push(format!("{a_name} e {b_name} usam a mesma porta ({a}); as três portas precisam ser diferentes"));
+                problems.push(format!("{a_name} and {b_name} use the same port ({a}); the three ports must be different"));
             }
         }
     }
 }
 
-/// `host:porta`, com a porta de 1 a 65535 (o formato de `cluster.entry-address`).
+/// `host:port`, with the port from 1 to 65535 (the format of `cluster.entry-address`).
 fn is_host_port(address: &str) -> bool {
     address
         .trim()
@@ -845,8 +847,8 @@ fn is_host_port(address: &str) -> bool {
         .is_some_and(|(host, port)| !host.is_empty() && port.parse::<u16>().is_ok_and(|p| p != 0))
 }
 
-/// `cluster.tls.dir`: o definido precisa existir; o padrão (`<secrets.dir>/tls`) só vale
-/// se existir. Com pasta, é preciso ao menos um par `<nome>.crt` + `<nome>.key`.
+/// `cluster.tls.dir`: the one set must exist; the default (`<secrets.dir>/tls`) only applies
+/// if it exists. With a folder, at least one `<name>.crt` + `<name>.key` pair is needed.
 fn resolve_tls_dir(
     s: &Source,
     secrets_dir: &Path,
@@ -857,7 +859,10 @@ fn resolve_tls_dir(
         Some(d) => {
             let d = PathBuf::from(d);
             if !d.is_dir() {
-                problems.push(format!("cluster.tls.dir (`{}`) não existe", d.display()));
+                problems.push(format!(
+                    "cluster.tls.dir (`{}`) does not exist",
+                    d.display()
+                ));
                 return Ok(None);
             }
             d
@@ -872,7 +877,7 @@ fn resolve_tls_dir(
     };
     if !has_cert_pair(&dir) {
         problems.push(format!(
-            "cluster.tls.dir (`{}`) não tem nenhum par <nome>.crt + <nome>.key",
+            "cluster.tls.dir (`{}`) has no <name>.crt + <name>.key pair",
             dir.display()
         ));
     }
@@ -889,8 +894,8 @@ fn has_cert_pair(dir: &Path) -> bool {
         .any(|p| p.extension().is_some_and(|e| e == "crt") && p.with_extension("key").is_file())
 }
 
-/// Token raiz e a chave `auth.enabled`. O arquivo ganha do valor inline; o definido
-/// precisa existir, e o padrão (`<secrets.dir>/root-token`) só vale se existir.
+/// Root token and the `auth.enabled` key. The file wins over the inline value; the one set
+/// must exist, and the default (`<secrets.dir>/root-token`) only applies if it exists.
 fn resolve_auth(
     s: &Source,
     secrets_dir: &Path,
@@ -914,7 +919,7 @@ fn resolve_auth(
             let f = PathBuf::from(f);
             if !f.is_file() {
                 problems.push(format!(
-                    "auth.root-token-file (`{}`) não existe",
+                    "auth.root-token-file (`{}`) does not exist",
                     f.display()
                 ));
                 None
@@ -938,7 +943,7 @@ fn resolve_auth(
                     || lines.iter().any(|l| l.chars().count() < ROOT_TOKEN_MIN_LEN)
                 {
                     problems.push(format!(
-                        "auth.root-token-file (`{}`): use uma ou duas linhas (a atual e a anterior), de no mínimo {ROOT_TOKEN_MIN_LEN} caracteres",
+                        "auth.root-token-file (`{}`): use one or two lines (the current and the previous), of at least {ROOT_TOKEN_MIN_LEN} characters",
                         path.display()
                     ));
                 }
@@ -949,7 +954,7 @@ fn resolve_auth(
     } else if let Some(token) = inline {
         if token.chars().count() < ROOT_TOKEN_MIN_LEN {
             problems.push(format!(
-                "auth.root-token deve ter no mínimo {ROOT_TOKEN_MIN_LEN} caracteres"
+                "auth.root-token must have at least {ROOT_TOKEN_MIN_LEN} characters"
             ));
         }
         RootToken::Inline(Secret(token))
@@ -963,7 +968,7 @@ fn resolve_auth(
         AuthSwitch::Off => false,
         AuthSwitch::On => {
             if !has_token {
-                problems.push("auth.enabled=true exige um token raiz (auth.root-token, auth.root-token-file ou o root-token da pasta de segredos)".into());
+                problems.push("auth.enabled=true requires a root token (auth.root-token, auth.root-token-file or the secrets folder's root-token)".into());
             }
             true
         }
@@ -1047,8 +1052,8 @@ fn delivery_config(s: &Source) -> Result<Delivery, ConfigError> {
 #[cfg(test)]
 mod tests;
 
-/// `backup.*`: sem `backup.s3.bucket` o recurso fica desligado e as demais chaves só são
-/// conferidas.
+/// `backup.*`: without `backup.s3.bucket` the feature is off and the other keys are only
+/// checked.
 fn backup_config(s: &Source, problems: &mut Vec<String>) -> Result<Backup, ConfigError> {
     let endpoint: Option<String> = s.opt("backup.s3.endpoint")?;
     let path_style: Option<bool> = s.opt("backup.s3.path-style")?;
@@ -1056,7 +1061,7 @@ fn backup_config(s: &Source, problems: &mut Vec<String>) -> Result<Backup, Confi
     let secret_key: Option<String> = s.opt("backup.s3.secret-key")?;
     if access_key.is_some() != secret_key.is_some() {
         problems.push(
-            "backup.s3.access-key e backup.s3.secret-key vão juntas (ou nenhuma: a cadeia padrão da AWS)"
+            "backup.s3.access-key and backup.s3.secret-key go together (or neither: the default AWS chain)"
                 .into(),
         );
     }
@@ -1090,8 +1095,7 @@ fn backup_config(s: &Source, problems: &mut Vec<String>) -> Result<Backup, Confi
     };
     if backup.segment_max_bytes == 0 || backup.segment_max_messages == 0 {
         problems.push(
-            "backup.segment.max-bytes e backup.segment.max-messages devem ser de 1 em diante"
-                .into(),
+            "backup.segment.max-bytes and backup.segment.max-messages must be 1 or more".into(),
         );
     }
     if !(backup.evict_to < backup.evict_above
@@ -1104,7 +1108,7 @@ fn backup_config(s: &Source, problems: &mut Vec<String>) -> Result<Backup, Confi
     }
     if backup.dead_after <= backup.heartbeat_interval {
         problems.push(
-            "backup.dead-after deve ser maior que backup.heartbeat.interval (senão todo nó parece morto)"
+            "backup.dead-after must be greater than backup.heartbeat.interval (otherwise every node looks dead)"
                 .into(),
         );
     }

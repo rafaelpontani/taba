@@ -1,5 +1,5 @@
-//! O que o backup precisa saber do cluster, atrás de um trait: quem é dono de quê e quem está no ar.
-//! Um nó sem cluster (`mode=development`) é dono de tudo ([`Solo`]).
+//! What the backup needs to know about the cluster, behind a trait: who owns what and who is up.
+//! A node without a cluster (`mode=development`) owns everything ([`Solo`]).
 
 use std::sync::Arc;
 
@@ -13,37 +13,37 @@ use crate::storage::backup::SavedRef;
 pub trait Topology: Send + Sync + 'static {
     fn node_id(&self) -> String;
 
-    /// Os IPs com que o nó se apresenta aos outros.
+    /// The IPs the node presents to the others.
     fn addresses(&self) -> Vec<String>;
 
-    /// O nó está ativo (já sincronizou): só então ele é dono de algo.
+    /// The node is active (already synchronized): only then does it own anything.
     fn is_active(&self) -> bool;
 
-    /// A porta do cluster do nó.
+    /// The node's cluster port.
     fn port(&self) -> u16;
 
-    /// O nó é o primário da posição no anel (o dono de uma mensagem).
+    /// The node is the primary of the ring position (the owner of a message).
     fn owns_position(&self, position: u64) -> bool;
 
-    /// Os nós responsáveis pela posição, o primário primeiro.
+    /// The nodes responsible for the position, the primary first.
     fn owners(&self, position: u64) -> Vec<String>;
 
-    /// O nó é o **gestor** da definição (o dono dela, como em `09-topicos.md`): `kind` é `topic` ou
+    /// The node is the definition's **manager** (its owner, as in `09-topicos.md`): `kind` is `topic` or
     /// `token`.
     fn manages_definition(&self, kind: &str, key: &str) -> bool;
 
-    /// Os `id` dos membros da tabela, o próprio incluído.
+    /// The `id`s of the table's members, itself included.
     fn members(&self) -> Vec<String>;
 
-    /// O nó fala com `node_id` agora (o canal está aberto e ouviu o par há pouco)?
+    /// Does the node talk to `node_id` right now (the channel is open and heard the peer a moment ago)?
     fn reaches(&self, node_id: &str) -> bool;
 
-    /// Avisa `node_id`, uma réplica, de quais mensagens do tópico já estão no bucket (sem esperar
-    /// resposta: o aviso é melhor esforço, a réplica só ganha a evicção com ele).
+    /// Tells `node_id`, a replica, which of the topic's messages are already in the bucket (without waiting for an
+    /// answer: the notice is best effort, the replica only gets the eviction with it).
     fn send_saved(&self, _node_id: &str, _topic: &str, _items: Vec<(String, SavedRef)>) {}
 }
 
-/// Um cluster de um nó só.
+/// A cluster of a single node.
 pub struct Solo {
     shared: Arc<NodeShared>,
 }
@@ -92,7 +92,7 @@ impl Topology for Solo {
     }
 }
 
-/// O cluster de verdade, pelo `ClusterService`.
+/// The real cluster, through the `ClusterService`.
 pub struct ClusterTopology(pub Arc<ClusterService>);
 
 impl Topology for ClusterTopology {
@@ -137,8 +137,8 @@ impl Topology for ClusterTopology {
         if !self.is_active() {
             return false;
         }
-        // O dono é o primeiro nó **ativo** da posição: um nó que ainda sincroniza não tem a cópia
-        // completa (o mesmo critério de `Definitions::owners`).
+        // The owner is the first **active** node of the position: a node that is still syncing does not have the
+        // complete copy (the same criterion as `Definitions::owners`).
         let Ok(owners) = self.0.owners_of(definition_position(kind, key)) else {
             return false;
         };
@@ -187,7 +187,7 @@ impl Topology for ClusterTopology {
             });
             let (service, member) = (self.0.clone(), member.clone());
             tokio::spawn(async move {
-                // Melhor esforço: sem o aviso a réplica só deixa de poder fazer a evicção.
+                // Best effort: without the notice the replica just cannot do the eviction.
                 let _ = service.call_member(&member, request).await;
             });
         }

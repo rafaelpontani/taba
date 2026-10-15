@@ -17,7 +17,7 @@ fn record(permissions: Vec<Permission>, prefixes: &[&str]) -> Arc<TokenRecord> {
 }
 
 fn secret(text: &str) -> Secret {
-    // O `Secret` só se cria pela configuração; o `serde` não está nele, então usa o parse.
+    // `Secret` is only created through the configuration; `serde` is not on it, so it uses the parse.
     use crate::config::{Config, MapEnv};
     let env = MapEnv::new([
         ("TABA_MODE", "production"),
@@ -26,7 +26,7 @@ fn secret(text: &str) -> Secret {
     ]);
     match Config::parse(None, &env).unwrap().auth.root_token {
         RootToken::Inline(secret) => secret,
-        other => panic!("esperava o token inline, veio {other:?}"),
+        other => panic!("expected the inline token, got {other:?}"),
     }
 }
 
@@ -38,7 +38,7 @@ const ROOT_B: &str = "raiz-raiz-raiz-raiz-raiz-raiz-raiz-bbbb";
 fn root_and_open_reach_everything_and_a_token_only_what_it_has() {
     for all in [Principal::Root, Principal::Open] {
         assert!(all.allows(Permission::Admin));
-        assert!(all.reaches("qualquer"));
+        assert!(all.reaches("anything"));
         assert!(all.prefixes().is_empty());
         assert!(all.covers_distribution_prefix("x"));
     }
@@ -61,16 +61,16 @@ fn a_distribution_prefix_must_sit_inside_the_token_prefixes() {
     assert!(token.covers_distribution_prefix("fin-x"));
     assert!(
         !token.covers_distribution_prefix("ped"),
-        "alcançaria filas fora do token"
+        "would reach queues outside the token"
     );
     assert!(!token.covers_distribution_prefix("estoque"));
     assert!(
         !token.covers_distribution_prefix(""),
-        "o prefixo vazio casaria com tudo"
+        "the empty prefix would match everything"
     );
 
     let open = Principal::Token(record(vec![Permission::Create], &[]));
-    assert!(open.covers_distribution_prefix("qualquer"));
+    assert!(open.covers_distribution_prefix("anything"));
 }
 
 /// UC: UC-AUT-009, UC-AUT-010, UC-AUT-011, UC-AUT-024
@@ -107,7 +107,7 @@ fn each_route_asks_for_its_own_permission() {
 fn without_a_root_token_nothing_matches() {
     let root = RootTokens::from_config(&RootToken::None);
     assert!(!root.matches(""));
-    assert!(!root.matches("qualquer"));
+    assert!(!root.matches("anything"));
     assert!(!root.has_file());
 }
 
@@ -132,15 +132,15 @@ fn the_root_token_file_takes_two_lines_and_is_reloaded() {
     assert!(root.matches(ROOT_A));
     assert!(!root.matches(ROOT_B));
 
-    // Durante a troca valem a atual e a anterior.
+    // During the swap the current and the previous both apply.
     std::fs::write(&path, format!("{ROOT_B}\n{ROOT_A}\n")).unwrap();
     root.reload();
     assert!(root.matches(ROOT_A) && root.matches(ROOT_B));
 
-    // Depois, só a nova; e uma terceira linha é ignorada.
+    // Afterwards, only the new one; and a third line is ignored.
     std::fs::write(
         &path,
-        format!("{ROOT_B}\n\n   \nterceira-linha-terceira-linha-ignorada\n"),
+        format!("{ROOT_B}\n\n   \nthird-line-third-line-ignored\n"),
     )
     .unwrap();
     root.reload();
@@ -157,8 +157,11 @@ fn a_failed_reload_keeps_the_previous_secret() {
     let root = RootTokens::from_config(&RootToken::File(path.clone()));
     std::fs::remove_file(&path).unwrap();
     root.reload();
-    assert!(root.matches(ROOT_A), "arquivo sumiu: segue com o que tinha");
+    assert!(
+        root.matches(ROOT_A),
+        "file vanished: it carries on with what it had"
+    );
     std::fs::write(&path, "   \n").unwrap();
     root.reload();
-    assert!(root.matches(ROOT_A), "arquivo vazio: idem");
+    assert!(root.matches(ROOT_A), "empty file: same");
 }

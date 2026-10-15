@@ -1,16 +1,16 @@
-//! Base dos testes de integração de um nó (doc 20, seção 19.4, nível **I**): sobe um
-//! nó de verdade, com disco real numa pasta temporária e HTTP real em portas livres.
+//! Base of a node's integration tests (doc 20, section 19.4, level **I**): starts a
+//! real node, with real disk in a temporary folder and real HTTP on free ports.
 //!
 //! ```ignore
 //! let node = TestNode::development().await;
 //! let response = node.client_get("/health/live").await;
 //! ```
 //!
-//! Os testes de cluster (nível **C**) usam `cluster::TestCluster`, que sobe vários nós no mesmo
-//! processo, com o `Transport` em memória e um `Clock` manual compartilhado (doc 18, seção
+//! The cluster tests (level **C**) use `cluster::TestCluster`, which starts several nodes in the same
+//! process, with the in-memory `Transport` and a shared manual `Clock` (doc 18, section
 //! 17.5).
 
-#![allow(dead_code)] // cada arquivo de teste usa uma parte deste módulo
+#![allow(dead_code)] // each test file uses a part of this module
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -31,62 +31,62 @@ pub mod real;
 
 pub struct TestNodeBuilder {
     env: Vec<(String, String)>,
-    /// A rede em memória e o IP do nó nela (`mode=production` com `Transport`).
+    /// The in-memory network and the node's IP on it (`mode=production` with `Transport`).
     network: Option<(MemoryNetwork, String)>,
     clock: Option<Arc<ManualClock>>,
-    /// O nó usa o `Transport` HTTP de verdade e escuta neste IP (loopback).
+    /// The node uses the real HTTP `Transport` and listens on this IP (loopback).
     real_ip: Option<IpAddr>,
-    /// O depósito de objetos do backup em S3 (o em memória, compartilhado entre os nós do teste).
+    /// The backup's S3 object store (the in-memory one, shared among the test's nodes).
     backup_store: Option<Arc<dyn ObjectStore>>,
 }
 
 impl TestNodeBuilder {
-    /// Define um parâmetro como uma variável `TABA_*` (`("TABA_API_PORT", "0")`).
+    /// Sets a parameter as a `TABA_*` variable (`("TABA_API_PORT", "0")`).
     pub fn env(mut self, name: &str, value: &str) -> Self {
         self.env.retain(|(n, _)| n != name);
         self.env.push((name.to_owned(), value.to_owned()));
         self
     }
 
-    /// Liga o nó à rede em memória, com o IP `host` (modo produção). Ele tenta entrar no
-    /// cluster pelo balanceador `balancer:8081` da rede (`cluster.entry-address`).
+    /// Connects the node to the in-memory network, with the IP `host` (production mode). It tries to join the
+    /// cluster through the network's `balancer:8081` load balancer (`cluster.entry-address`).
     pub fn in_network(mut self, network: &MemoryNetwork, host: &str) -> Self {
         self.network = Some((network.clone(), host.to_owned()));
         self.env("TABA_MODE", "production")
             .env("TABA_CLUSTER_ENTRY_ADDRESS", "balancer:8081")
     }
 
-    /// Liga o backup em S3 com este depósito (e o bucket `test`).
+    /// Enables the S3 backup with this store (and the `test` bucket).
     pub fn backup_store(mut self, store: Arc<dyn ObjectStore>) -> Self {
         self.backup_store = Some(store);
         self.env("TABA_BACKUP_S3_BUCKET", "test")
     }
 
-    /// O relógio do nó; vários nós de um teste compartilham o mesmo.
+    /// The node's clock; several nodes of a test share the same one.
     pub fn clock(mut self, clock: Arc<ManualClock>) -> Self {
         self.clock = Some(clock);
         self
     }
 
-    /// O nó de verdade: `Transport` HTTP (com TLS mútuo se `TABA_CLUSTER_TLS_DIR` aponta uma
-    /// pasta) e escuta em `ip` (`127.x.y.z`, um por nó, para o cluster reconhecê-los pelo IP).
-    /// `entry` é o `cluster.entry-address`: o primeiro nó usa um endereço qualquer; os outros, o
-    /// endereço do cluster de um nó que já subiu.
+    /// The real node: HTTP `Transport` (with mutual TLS if `TABA_CLUSTER_TLS_DIR` points to a
+    /// folder) and listens on `ip` (`127.x.y.z`, one per node, so the cluster recognizes them by IP).
+    /// `entry` is the `cluster.entry-address`: the first node uses any address; the others, the
+    /// cluster address of a node that is already up.
     pub fn real(mut self, ip: &str, entry: &str) -> Self {
-        self.real_ip = Some(ip.parse().expect("IP de teste"));
+        self.real_ip = Some(ip.parse().expect("test IP"));
         self.env("TABA_MODE", "production")
             .env("TABA_CLUSTER_ENTRY_ADDRESS", entry)
             .env("TABA_CLUSTER_ADVERTISE_ADDRESSES", ip)
     }
 
-    /// Modo produção, **sem** `Transport`: o nó fica em `bootstrapping`.
+    /// Production mode, **without** `Transport`: the node stays in `bootstrapping`.
     pub fn production(self) -> Self {
         self.env("TABA_MODE", "production")
             .env("TABA_CLUSTER_ENTRY_ADDRESS", "127.0.0.1:1")
     }
 
     pub async fn try_start(self) -> Result<TestNode, NodeError> {
-        let dir = TempDir::new().expect("pasta temporária");
+        let dir = TempDir::new().expect("temporary folder");
         let storage = dir.path().join("taba");
         let env = MapEnv(self.env.into_iter().collect());
         let mut env = env;
@@ -97,7 +97,7 @@ impl TestNodeBuilder {
             .entry("TABA_SECRETS_DIR".into())
             .or_insert_with(|| dir.path().join("secrets").display().to_string());
 
-        let config = Config::parse(None, &env).expect("configuração de teste válida");
+        let config = Config::parse(None, &env).expect("valid test configuration");
         let clock = self
             .clock
             .unwrap_or_else(|| Arc::new(ManualClock::at_doc_epoch()));
@@ -119,7 +119,7 @@ impl TestNodeBuilder {
                 deps.clock = clock.clone();
                 deps.bind_ip = ip;
                 deps.backup_store = backup_store.clone();
-                // O cluster reconhece o chamador pelo IP: cada nó chama a partir do seu.
+                // The cluster recognizes the caller by IP: each node calls from its own.
                 if let Some(cluster) = deps.cluster.as_mut() {
                     cluster.transport = Arc::new(
                         HttpTransport::bound_to(deps.tls.as_ref(), ip).expect("transporte"),
@@ -136,7 +136,7 @@ impl TestNodeBuilder {
             },
         };
         let node = node::start(config, deps).await?;
-        let client = Client::builder().no_proxy().build().expect("cliente HTTP");
+        let client = Client::builder().no_proxy().build().expect("HTTP client");
         Ok(TestNode {
             node,
             client,
@@ -146,7 +146,7 @@ impl TestNodeBuilder {
     }
 
     pub async fn start(self) -> TestNode {
-        self.try_start().await.expect("o nó deveria subir")
+        self.try_start().await.expect("the node should start")
     }
 }
 
@@ -154,12 +154,12 @@ pub struct TestNode {
     pub node: RunningNode,
     pub client: Client,
     pub clock: Arc<ManualClock>,
-    /// A pasta temporária: `storage.dir` é `<dir>/taba`. Apagada quando o teste termina.
+    /// The temporary folder: `storage.dir` is `<dir>/taba`. Deleted when the test ends.
     pub dir: TempDir,
 }
 
 impl TestNode {
-    /// Portas livres (`0`), `mode=development` e disco numa pasta temporária.
+    /// Free ports (`0`), `mode=development` and disk in a temporary folder.
     pub fn builder() -> TestNodeBuilder {
         TestNodeBuilder {
             env: vec![
@@ -190,7 +190,7 @@ impl TestNode {
         url(self.node.client_addr(), path)
     }
 
-    /// A porta de operação, se houver; senão a da API (onde as rotas de operação ficam).
+    /// The operations port, if any; otherwise the API's (where the operations routes live).
     pub fn operations_url(&self, path: &str) -> String {
         url(
             self.node
@@ -204,7 +204,7 @@ impl TestNode {
         url(
             self.node
                 .cluster_addr()
-                .expect("o nó não abriu a porta do cluster"),
+                .expect("the node did not open the cluster port"),
             path,
         )
     }
@@ -214,38 +214,38 @@ impl TestNode {
             .get(self.client_url(path))
             .send()
             .await
-            .expect("requisição")
+            .expect("request")
     }
 
-    /// `GET` numa rota de operação.
+    /// `GET` on an operations route.
     pub async fn client_get_ops(&self, path_and_query: &str) -> Response {
         self.client
             .get(self.operations_url(path_and_query))
             .send()
             .await
-            .expect("requisição")
+            .expect("request")
     }
 
-    /// O texto de `GET /metrics`.
+    /// The text of `GET /metrics`.
     pub async fn metrics(&self) -> String {
         let response = self
             .client
             .get(self.operations_url("/metrics"))
             .send()
             .await
-            .expect("requisição");
+            .expect("request");
         assert_eq!(response.status(), 200);
         response.text().await.expect("corpo")
     }
 
-    /// O valor de `GET /metrics/topics...` em JSON.
+    /// The value of `GET /metrics/topics...` as JSON.
     pub async fn stats(&self, path_and_query: &str) -> serde_json::Value {
         let response = self
             .client
             .get(self.operations_url(path_and_query))
             .send()
             .await
-            .expect("requisição");
+            .expect("request");
         assert_eq!(response.status(), 200, "{path_and_query}");
         response.json().await.expect("corpo JSON")
     }
@@ -255,8 +255,8 @@ impl TestNode {
     }
 }
 
-/// O valor da série `nome{rótulos}` num texto do Prometheus, com os rótulos como saem (em ordem
-/// de atributo). `None` se a série não existe.
+/// The value of the series `name{labels}` in a Prometheus text, with the labels as they come out (in
+/// attribute order). `None` if the series does not exist.
 pub fn series(text: &str, wanted: &str) -> Option<f64> {
     text.lines()
         .filter(|line| !line.starts_with('#'))
@@ -270,7 +270,7 @@ fn url(addr: SocketAddr, path: &str) -> String {
     format!("http://{addr}{path}")
 }
 
-/// Confere o corpo de um `ErrorResponse` e devolve o `code`.
+/// Checks the body of an `ErrorResponse` and returns the `code`.
 pub async fn error_code(response: Response, expected_status: u16) -> String {
     let status = response.status().as_u16();
     let header_id = response.headers()["x-request-id"]
@@ -278,8 +278,8 @@ pub async fn error_code(response: Response, expected_status: u16) -> String {
         .unwrap()
         .to_owned();
     let body: serde_json::Value = response.json().await.expect("corpo JSON");
-    // O corpo vai na mensagem: sem ele, um erro inesperado não diz qual foi.
-    assert_eq!(status, expected_status, "corpo da resposta: {body}");
+    // The body goes in the message: without it, an unexpected error does not say what it was.
+    assert_eq!(status, expected_status, "response body: {body}");
     assert_eq!(
         body["requestId"], header_id,
         "requestId do corpo e X-Request-Id divergem"

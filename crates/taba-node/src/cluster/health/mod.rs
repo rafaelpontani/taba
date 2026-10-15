@@ -1,7 +1,7 @@
-//! As condições do cluster (doc 11, "Condição do cluster"): uma **lista**, não um estado único,
-//! derivada dos sinais que cada nó colhe do que enxerga. Os sinais são o campo `signals` do
-//! `NodeStatus` (doc 06b); as condições saem deles aqui e no `GET /health/cluster`, que junta os
-//! sinais de todos os nós.
+//! The cluster conditions (doc 11, "Cluster condition"): a **list**, not a single state,
+//! derived from the signals each node gathers from what it sees. The signals are the `signals` field of the
+//! `NodeStatus` (doc 06b); the conditions come out of them here and in `GET /health/cluster`, which joins the
+//! signals of all the nodes.
 
 use std::collections::BTreeMap;
 
@@ -26,8 +26,8 @@ impl Severity {
     }
 }
 
-/// Uma condição vigente do cluster. A ordem da enum é a de exibição: as críticas primeiro, cada
-/// grupo na ordem da tabela do doc 11.
+/// A condition in force of the cluster. The enum's order is the display order: the critical ones first, each
+/// group in the order of doc 11's table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Condition {
     WriteQuorumAtRisk,
@@ -80,29 +80,29 @@ impl Condition {
     }
 }
 
-/// O que um nó colhe do cluster (`NodeStatus.signals`, doc 06b), do ponto de vista dele.
+/// What a node gathers from the cluster (`NodeStatus.signals`, doc 06b), from its own point of view.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthSignals {
-    /// A versão (época) da tabela de membros deste nó.
+    /// The version (epoch) of this node's member table.
     pub members_version: u64,
-    /// Há saudáveis para votar uma exclusão? (`cluster.vote.min-voters`; ver [`collect`].)
+    /// Are there healthy nodes to vote on an exclusion? (`cluster.vote.min-voters`; see [`collect`].)
     pub quorum_available: bool,
-    /// Cada outro membro: o canal com ele está conectado?
+    /// Each other member: is the channel to it connected?
     pub channels: BTreeMap<String, bool>,
-    /// Blocos com algum dono ainda em sincronização (a entrega está suspensa neles).
+    /// Blocks with some owner still syncing (delivery is suspended on them).
     pub syncing_blocks: u64,
-    /// Blocos com menos réplicas íntegras do que o anel dá (inclui os que estão abaixo do quórum).
+    /// Blocks with fewer intact replicas than the ring gives (includes those below the quorum).
     pub blocks_below_replication: u64,
-    /// Blocos com menos réplicas íntegras do que `write.quorum` ou com o primário fora do ar.
+    /// Blocks with fewer intact replicas than `write.quorum` or with the primary down.
     pub blocks_below_quorum: u64,
-    /// Nós em período de freezing.
+    /// Nodes in a freezing period.
     pub frozen_nodes: u64,
 }
 
 impl HealthSignals {
-    /// As condições que estes sinais, sozinhos, mostram (a divergência de tabelas só aparece
-    /// quando se comparam vários nós; ver [`merge`]).
+    /// The conditions these signals, alone, show (table divergence only shows up
+    /// when several nodes are compared; see [`merge`]).
     pub fn conditions(&self, storage_pressure: bool) -> Vec<Condition> {
         let mut out = Vec::new();
         if self.blocks_below_quorum > 0 {
@@ -131,8 +131,8 @@ impl HealthSignals {
     }
 }
 
-/// Junta as condições de vários nós: a união delas, mais `member-unreachable` se algum membro não
-/// respondeu e `membership-divergent` se os nós que responderam têm versões diferentes da tabela.
+/// Joins the conditions of several nodes: their union, plus `member-unreachable` if some member did not
+/// answer and `membership-divergent` if the nodes that answered have different table versions.
 pub fn merge(
     per_node: impl IntoIterator<Item = (u64, Vec<Condition>)>,
     unreachable: bool,
@@ -154,11 +154,11 @@ pub fn merge(
     all
 }
 
-/// Colhe os sinais deste nó. `None` enquanto ele não tem a tabela de membros.
+/// Gathers this node's signals. `None` while it does not have the member table.
 ///
-/// `quorumAvailable`: os saudáveis (este nó e os pares com o canal conectado) alcançam o mínimo de
-/// votantes. Um cluster de um nó só não tem ninguém a excluir, então o mínimo vale no máximo o
-/// número de membros.
+/// `quorumAvailable`: the healthy ones (this node and the peers with a connected channel) reach the minimum of
+/// voters. A one-node cluster has no one to exclude, so the minimum is worth at most the
+/// number of members.
 pub fn collect(service: &ClusterService) -> Option<HealthSignals> {
     let membership = service.membership();
     let table = membership.table()?;
@@ -198,8 +198,8 @@ pub fn collect(service: &ClusterService) -> Option<HealthSignals> {
             .filter(|id| state_of(id) == Some(MemberState::Active) && reaches(id))
             .count();
         let quorum = (rules.quorum as usize).min(owners.len());
-        // O quórum de escrita sempre inclui o primário do bloco (doc 05, seção 7.2): com ele fora do
-        // ar e ainda na tabela, as escritas do bloco falham até a exclusão (D107).
+        // The write quorum always includes the block's primary (doc 05, section 7.2): with it down
+        // and still in the table, the block's writes fail until the exclusion (D107).
         let primary_down = owners
             .first()
             .is_some_and(|id| state_of(id) == Some(MemberState::Active) && !reaches(id));

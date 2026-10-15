@@ -21,7 +21,7 @@ fn the_save_mark_is_written_and_consumed_once() {
     assert_eq!(
         store.take_save_mark().unwrap(),
         None,
-        "a leitura apaga a marca"
+        "reading deletes the mark"
     );
 }
 

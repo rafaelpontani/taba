@@ -1,38 +1,41 @@
-# Um cluster completo do Taba: três nós atrás de um HAProxy de exemplo (decisão D129).
+# A complete Taba cluster: nodes behind an example HAProxy (decision D129).
 #
-#   docker compose up --build -d        sobe tudo; o primeiro nó forma o cluster e os outros entram
-#   docker compose ps                   os três nós ficam "healthy" quando terminam de sincronizar
+#   docker compose up -d                starts everything with the public Docker Hub images (rafaelpontani/taba);
+#                                       the first node forms the cluster and the others join. The tag comes from
+#                                       TABA_VERSION (default: rc), for example: TABA_VERSION=1.2 docker compose up -d
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+#                                       the same cluster, but building the images from this repository
+#                                       (for developers; see docker-compose.dev.yml)
+#   docker compose ps                   the nodes turn "healthy" when they finish syncing
 #   docker compose run --rm taba-cli health cluster -o table
 #
-# O backup opcional em S3 (doc/pt-BR/33-backup-s3.md) já vem ligado, num MinIO que sobe junto. Em produção o
-# bucket seria o S3 da nuvem (ou um Service do Kubernetes): troque as variáveis TABA_BACKUP_S3_* abaixo
-# (a AWS não precisa de endpoint nem de chaves, só de bucket e região). Para rodar sem backup, apague
-# estas variáveis e os serviços `minio` e `minio-init`.
+# The optional S3 backup (doc/pt-BR/33-backup-s3.md) is already on, in a MinIO that starts alongside. In
+# production the bucket would be the cloud's S3 (or a Kubernetes Service): change the TABA_BACKUP_S3_*
+# variables below (AWS needs no endpoint or keys, only a bucket and a region). To run without backup, delete
+# these variables and the `minio` and `minio-init` services.
 #
-# A API de cliente fica em http://localhost:8080 (HAProxy). O token raiz está no volume `secrets`:
+# The client API is at http://localhost:8080 (HAProxy). The root token is in the `secrets` volume:
 #   docker compose run --rm --entrypoint cat taba-cli /secrets/root-token
 #
-# Para derrubar e apagar os dados: docker compose down -v
+# To tear down and delete the data: docker compose down -v
 
 x-taba: &taba
-  # Cada nó declara o build do Dockerfile da raiz: `docker compose build` ou `up --build` constroem a
-  # imagem sem depender de outro serviço (as quatro construções usam o mesmo cache e a mesma etiqueta).
-  image: taba:local
-  build: .
-  # Maior que drain.timeout (25 s) + backup.drain.timeout (30 s), para o nó terminar o drain, e o envio
-  # ao S3, antes do SIGKILL.
+  # Public image. The local build lives in docker-compose.dev.yml.
+  image: rafaelpontani/taba:${TABA_VERSION:-rc}
+  # Greater than drain.timeout (25 s) + backup.drain.timeout (30 s), so the node finishes the drain, and
+  # the upload to S3, before the SIGKILL.
   stop_grace_period: 70s
   volumes:
     - secrets:/etc/taba/secrets:ro
   environment: &taba-env
-    # Porta própria para as rotas de operação (saúde, métricas, drain); ficam só na rede interna.
+    # Dedicated port for the operations routes (health, metrics, drain); internal network only.
     TABA_OPERATIONS_PORT: "9090"
-    # A descoberta passa pelo HAProxy, na porta do cluster.
+    # Discovery goes through HAProxy, on the cluster port.
     TABA_CLUSTER_ENTRY_ADDRESS: haproxy:8081
     TABA_REPLICATION_FACTOR: "3"
-    # Log em texto colorido no `docker compose logs` (padrão do nó: `text`; também há `json`).
+    # Colored text logs in `docker compose logs` (node default: `text`; `json` is also available).
     TABA_TELEMETRY_LOGS_FORMAT: color
-    # Backup em S3 (MinIO do exemplo). Credenciais de demonstração: troque em qualquer uso real.
+    # S3 backup (the example's MinIO). Demo credentials: change them in any real use.
     TABA_BACKUP_S3_BUCKET: taba
     TABA_BACKUP_S3_ENDPOINT: http://minio:9000
     TABA_BACKUP_S3_ACCESS_KEY: taba
@@ -45,11 +48,10 @@ x-taba: &taba
     start_period: 5s
 
 services:
-  # Cria a pasta de segredos (certificado do cluster e token raiz) uma vez; nas vezes seguintes não
-  # faz nada. Roda como root só para gravar no volume novo e entregar os arquivos ao usuário do nó.
+  # Creates the secrets folder (cluster certificate and root token) once; on later runs it does
+  # nothing. Runs as root only to write to the new volume and hand the files to the node's user.
   init:
-    image: taba:local
-    build: .
+    image: rafaelpontani/taba:${TABA_VERSION:-rc}
     user: "0"
     entrypoint: ["sh", "-c"]
     command:
@@ -60,9 +62,9 @@ services:
       - secrets:/secrets
     restart: "no"
 
-  taba-1:
+  taba-0:
     <<: *taba
-    hostname: taba-1
+    hostname: taba-0
     depends_on:
       init:
         condition: service_completed_successfully
@@ -72,37 +74,32 @@ services:
         condition: service_started
     environment:
       <<: *taba-env
-      # Só o primeiro nó de um cluster novo inicia o cluster sozinho.
+      # Only the first node of a new cluster starts the cluster by itself.
       TABA_CLUSTER_FIRST_NODE: "true"
     volumes:
       - secrets:/etc/taba/secrets:ro
-      - data-1:/var/lib/taba
+      - data-0:/var/lib/taba
 
-  taba-2:
+  # The other nodes: replicas of the same service, which join the cluster formed by taba-0. Three by default
+  # (four nodes in total, counting taba-0); for more, `docker compose up -d --scale taba=4`. HAProxy
+  # discovers the replicas through DNS. Each replica has its own data volume (anonymous: Compose does not
+  # create a named volume per replica), which `docker compose down -v` deletes. To stop or kill one
+  # particular node, use `docker/cluster.sh stop|kill|start taba-2` (taba-N is replica N; the seed is
+  # taba-0) or `docker stop <container>`.
+  taba:
     <<: *taba
-    hostname: taba-2
+    deploy:
+      replicas: 3
     depends_on:
       haproxy:
         condition: service_started
-      taba-1:
+      taba-0:
         condition: service_healthy
     volumes:
       - secrets:/etc/taba/secrets:ro
-      - data-2:/var/lib/taba
+      - /var/lib/taba
 
-  taba-3:
-    <<: *taba
-    hostname: taba-3
-    depends_on:
-      haproxy:
-        condition: service_started
-      taba-1:
-        condition: service_healthy
-    volumes:
-      - secrets:/etc/taba/secrets:ro
-      - data-3:/var/lib/taba
-
-  # O S3 do exemplo (MinIO). Em produção: o S3 da nuvem. Console web em http://localhost:9001 (taba / taba-minio-secret).
+  # The example's S3 (MinIO). In production: the cloud's S3. Web console at http://localhost:9001 (taba / taba-minio-secret).
   minio:
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
@@ -120,7 +117,7 @@ services:
       retries: 20
       start_period: 3s
 
-  # Cria o bucket do backup uma vez; nas vezes seguintes não faz nada.
+  # Creates the backup bucket once; on later runs it does nothing.
   minio-init:
     image: minio/mc:latest
     depends_on:
@@ -140,18 +137,15 @@ services:
     ports:
       - "8080:8080"
 
-  # A linha de comando do cliente, já apontada para o cluster. Só roda sob demanda:
+  # The client command line, already pointed at the cluster. It only runs on demand:
   #   docker compose run --rm taba-cli topic list
   taba-cli:
-    build:
-      context: .
-      dockerfile: connectors/rust/cli/Dockerfile
-    image: taba-cli:local
+    image: rafaelpontani/taba-cli:${TABA_VERSION:-rc}
     profiles: ["tools"]
     environment:
       TABA_CLI_URL: http://haproxy:8080
-      # As rotas de operação não passam pelo HAProxy; este perfil fala com o primeiro nó.
-      TABA_CLI_OPS_URL: http://taba-1:9090
+      # The operations routes do not go through HAProxy; this profile talks to the first node.
+      TABA_CLI_OPS_URL: http://taba-0:9090
       TABA_CLI_TOKEN_FILE: /secrets/root-token
     volumes:
       - secrets:/secrets:ro
@@ -161,6 +155,4 @@ services:
 volumes:
   secrets:
   minio-data:
-  data-1:
-  data-2:
-  data-3:
+  data-0:

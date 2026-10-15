@@ -1,11 +1,11 @@
-//! O lado que **recebe** o registro, o commit e o rollback de uma operação sobre uma mensagem
-//! (doc 05, seção 7.2; doc 06c, "Mensagens"): a publicação, o movimento para a dead-letter, a
-//! invisibilidade e o ack.
+//! The side that **receives** the register, the commit and the rollback of an operation on a message
+//! (doc 05, section 7.2; doc 06c, "Messages"): publication, the move to the dead-letter,
+//! invisibility and the ack.
 //!
-//! O registro (fase 1) só confere e deixa a operação **pendente**, sem mudar nada que um
-//! consumidor veja; o commit (fase 2) a aplica ao motor de mensagens; o rollback a descarta. As
-//! três fases são idempotentes pelo `operationId`. Uma operação pendente sem commit nem rollback
-//! some sozinha depois de `write.pending.ttl`. Só uma operação pendente por mensagem: a segunda é
+//! The register (phase 1) only checks and leaves the operation **pending**, without changing anything a
+//! consumer sees; the commit (phase 2) applies it to the message engine; the rollback discards it. The
+//! three phases are idempotent by `operationId`. A pending operation with neither commit nor rollback
+//! disappears by itself after `write.pending.ttl`. Only one pending operation per message: the second is
 //! `409 cluster.conflict`.
 
 use std::collections::{HashMap, VecDeque};
@@ -24,11 +24,11 @@ use crate::storage::messages::MessageMeta;
 use crate::telemetry::Telemetry;
 use crate::telemetry::metrics::{WRITE_PENDING_EXPIRED, WRITE_RECEIVED};
 
-/// Quantas operações já decididas o nó lembra, para repetir o `Ack` de um commit ou rollback
-/// repetido em vez de dizer que a operação é desconhecida.
+/// How many already-decided operations the node remembers, to repeat the `Ack` of a repeated commit or rollback
+/// instead of saying the operation is unknown.
 const FINISHED_MEMORY: usize = 4096;
 
-/// O que o commit faz.
+/// What the commit does.
 enum Action {
     Publish {
         meta: MessageMeta,
@@ -46,7 +46,7 @@ enum Action {
 }
 
 struct Pending {
-    /// O tópico onde a mensagem está (na dead-letter, o de origem).
+    /// The topic where the message is (on the dead-letter, the source one).
     topic: String,
     id: String,
     registered_at: SystemTime,
@@ -62,7 +62,7 @@ enum Finished {
 #[derive(Default)]
 struct State {
     ops: HashMap<String, Pending>,
-    /// `(tópico, id)` → operação pendente.
+    /// `(topic, id)` → pending operation.
     by_message: HashMap<(String, String), String>,
     finished: VecDeque<(String, Finished)>,
 }
@@ -79,7 +79,7 @@ pub struct Replica {
 fn unknown_operation() -> TabaError {
     TabaError::new(
         ErrorCode::ClusterOperationUnknown,
-        "O nó não conhece essa operação (nunca chegou ou já expirou).",
+        "The node does not know that operation (it never arrived or already expired).",
     )
 }
 
@@ -122,14 +122,14 @@ impl Replica {
             .add(&WRITE_RECEIVED, &[("taba.phase", phase)], 1.0);
     }
 
-    /// Quantas operações estão pendentes (sem as vencidas).
+    /// How many operations are pending (without the expired ones).
     pub fn pending(&self) -> usize {
         let mut state = self.lock();
         self.purge(&mut state);
         state.ops.len()
     }
 
-    /// Descarta as pendências que passaram de `write.pending.ttl`.
+    /// Discards the pendings that passed `write.pending.ttl`.
     fn purge(&self, state: &mut State) {
         let now = self.clock.now();
         let expired: Vec<String> = state
@@ -147,7 +147,7 @@ impl Replica {
                 self.telemetry
                     .registry
                     .add(&WRITE_PENDING_EXPIRED, &[], 1.0);
-                tracing::warn!(operation_id = %id, "registro pendente expirado sem commit nem rollback");
+                tracing::warn!(operation_id = %id, "pending register expired without commit or rollback");
             }
         }
     }
@@ -160,7 +160,7 @@ impl Replica {
         }
     }
 
-    /// Deixa a operação pendente, ou confirma de novo a que já estava (idempotente).
+    /// Leaves the operation pending, or confirms again the one that already was (idempotent).
     fn register(
         &self,
         operation_id: &str,
@@ -177,7 +177,9 @@ impl Replica {
         }
         let key = (topic.to_owned(), id.to_owned());
         if state.by_message.contains_key(&key) {
-            return Err(conflict("Há outra operação pendente para esta mensagem."));
+            return Err(conflict(
+                "There is another pending operation for this message.",
+            ));
         }
         state.by_message.insert(key, operation_id.to_owned());
         state.ops.insert(
@@ -192,7 +194,7 @@ impl Replica {
         Ok(ack(operation_id))
     }
 
-    /// O commit: aplica a operação pendente ao motor.
+    /// The commit: applies the pending operation to the engine.
     async fn commit(&self, operation_id: &str) -> Result<Ack, TabaError> {
         let pending = {
             let mut state = self.lock();
@@ -206,7 +208,7 @@ impl Replica {
                     return match state.finished.iter().find(|(o, _)| o == operation_id) {
                         Some((_, Finished::Committed)) => Ok(ack(operation_id)),
                         Some((_, Finished::RolledBack)) => {
-                            Err(conflict("A operação foi cancelada (rollback)."))
+                            Err(conflict("The operation was cancelled (rollback)."))
                         }
                         None => Err(unknown_operation()),
                     };
@@ -232,8 +234,8 @@ impl Replica {
         })
         .await
         .map_err(|_| TabaError::internal())?;
-        // Aplicada ou não, a operação saiu das pendentes; o erro (mensagem que sumiu, por
-        // exemplo) vai ao coordenador.
+        // Applied or not, the operation left the pendings; the error (a message that vanished, for
+        // example) goes to the coordinator.
         Self::remember(&mut self.lock(), operation_id, Finished::Committed);
         result.map(|()| ack(operation_id))
     }
@@ -249,7 +251,7 @@ impl Replica {
         match state.finished.iter().find(|(o, _)| o == operation_id) {
             Some((_, Finished::RolledBack)) => Ok(ack(operation_id)),
             Some((_, Finished::Committed)) => Err(conflict(
-                "A operação já foi efetivada: não há rollback depois do commit.",
+                "The operation has already taken effect: there is no rollback after the commit.",
             )),
             None => Err(unknown_operation()),
         }
@@ -304,7 +306,7 @@ impl Replica {
         if record.id != id || record.topic != topic {
             return Err(TabaError::new(
                 ErrorCode::ValidationFailed,
-                "O caminho e o corpo falam de mensagens diferentes.",
+                "The path and the body speak of different messages.",
             ));
         }
         let operation_id = request.operation_id;
@@ -336,20 +338,22 @@ impl Replica {
                         if view.definition.queue().is_none() {
                             return Err(TabaError::new(
                                 ErrorCode::TopicWrongType,
-                                "Um tópico distribuidor não guarda mensagens.",
+                                "A distributor topic does not store messages.",
                             ));
                         }
                         match messages.message_info(&topic, &id)? {
                             None => Ok(()),
                             Some(_) => {
-                                // O mesmo conteúdo repetido é idempotente; outro, conflito.
+                                // The same repeated content is idempotent; another, a conflict.
                                 let same = messages
                                     .read_message(&topic, &id)?
                                     .is_some_and(|(_, held)| held == body);
                                 if same {
                                     Ok(())
                                 } else {
-                                    Err(conflict("A mensagem já existe com conteúdo diferente."))
+                                    Err(conflict(
+                                        "The message already exists with different content.",
+                                    ))
                                 }
                             }
                         }
@@ -363,12 +367,12 @@ impl Replica {
                 let source = request.source_topic.ok_or_else(|| {
                     TabaError::new(
                         ErrorCode::ValidationRequired,
-                        "O movimento para a dead-letter exige `sourceTopic`.",
+                        "The move to the dead-letter requires `sourceTopic`.",
                     )
                     .with_detail(
                         "sourceTopic",
                         ErrorCode::ValidationRequired,
-                        "Campo obrigatório.",
+                        "Required field.",
                     )
                 })?;
                 let at_ms = record
@@ -385,7 +389,7 @@ impl Replica {
                         } else {
                             Err(TabaError::new(
                                 ErrorCode::MessageNotFound,
-                                "A mensagem não existe.",
+                                "The message does not exist.",
                             ))
                         }
                     })
@@ -431,12 +435,12 @@ impl Replica {
                             request.delivery_count.ok_or_else(|| {
                                 TabaError::new(
                                     ErrorCode::ValidationRequired,
-                                    "A entrega exige `deliveryCount`.",
+                                    "The delivery requires `deliveryCount`.",
                                 )
                                 .with_detail(
                                     "deliveryCount",
                                     ErrorCode::ValidationRequired,
-                                    "Campo obrigatório.",
+                                    "Required field.",
                                 )
                             })?,
                             request.receipt_token.clone(),
@@ -508,10 +512,10 @@ impl Replica {
         }
     }
 
-    /// Processa um evento que ficou no banco de eventos durante a sincronização (doc 05, seção
-    /// 7.3, passo 5.3). O registro não confere nada: o evento vence a carga, e aplicar de novo o
-    /// que a carga já trazia não muda nada (a aplicação é idempotente). Só as chamadas de
-    /// mensagem passam por aqui; as de definições seguem o caminho normal.
+    /// Processes an event that stayed in the event database during synchronization (doc 05, section
+    /// 7.3, step 5.3). The register checks nothing: the event beats the load, and applying again
+    /// what the load already brought changes nothing (the application is idempotent). Only message
+    /// calls come through here; those of definitions follow the normal path.
     pub async fn replay(&self, request: Request) -> Result<(), TabaError> {
         match request {
             Request::Write { topic, id, step } => {

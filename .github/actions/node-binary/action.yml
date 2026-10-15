@@ -1,14 +1,14 @@
-# Compila o binário `taba` (estático, musl) em dist/taba-<arch>, para a imagem Docker e a release. O job
-# que chama a ação instala o target no toolchain e o cache do Cargo.
-name: Binário do nó (musl)
-description: Compila taba-node estático (musl) em dist/taba-<arch>.
+# Builds the `taba` binary (static, musl) into dist/taba-<arch>, for the Docker image and the release. The job
+# that calls the action installs the target in the toolchain and the Cargo cache.
+name: Node binary (musl)
+description: Builds the static (musl) taba-node into dist/taba-<arch>.
 
 inputs:
   target:
-    description: Target Rust musl (x86_64-unknown-linux-musl ou aarch64-unknown-linux-musl).
+    description: Rust musl target (x86_64-unknown-linux-musl or aarch64-unknown-linux-musl).
     required: true
   arch:
-    description: Arquitetura no nome do arquivo (amd64 ou arm64), a mesma que o Docker usa.
+    description: Architecture in the file name (amd64 or arm64), the same one Docker uses.
     required: true
 
 runs:

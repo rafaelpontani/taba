@@ -1,18 +1,18 @@
-//! A exportação OTLP (doc 11, "Como ligar um coletor"): métricas, traces e logs empurrados para o
-//! coletor, configurados pelas variáveis padrão `OTEL_*` (`config::Otlp`). Sem
-//! `OTEL_EXPORTER_OTLP_ENDPOINT` nada disto existe.
+//! The OTLP export (doc 11, "How to attach a collector"): metrics, traces and logs pushed to the
+//! collector, configured by the standard `OTEL_*` variables (`config::Otlp`). Without
+//! `OTEL_EXPORTER_OTLP_ENDPOINT` none of this exists.
 //!
-//! - **Traces e logs:** o SDK do OpenTelemetry com o exportador OTLP. Os spans nascem no `tracing`
-//!   e a camada `tracing-opentelemetry` os leva ao SDK; os eventos viram *log records*
-//!   ([`logs::LogLayer`]) com o `trace_id` e o `span_id` do span corrente.
-//! - **Métricas:** o mesmo registro de `GET /metrics`, lido a cada `OTEL_METRIC_EXPORT_INTERVAL`
-//!   e enviado em protobuf ([`metrics`]).
+//! - **Traces and logs:** the OpenTelemetry SDK with the OTLP exporter. Spans are born in `tracing`
+//!   and the `tracing-opentelemetry` layer carries them to the SDK; events become *log records*
+//!   ([`logs::LogLayer`]) with the `trace_id` and `span_id` of the current span.
+//! - **Metrics:** the same registry as `GET /metrics`, read every `OTEL_METRIC_EXPORT_INTERVAL`
+//!   and sent as protobuf ([`metrics`]).
 //!
-//! As camadas do `tracing` (spans e logs) entram no assinante global uma vez só, em
-//! [`crate::telemetry::init_logging`], porque o `tracing-opentelemetry` só acha o próprio contexto
-//! se a camada estiver direto no assinante. O que muda a cada nó é o que elas alimentam: o
-//! [`Hub`] guarda o amostrador, o processador de spans e o logger correntes, e [`Pipeline::attach`]
-//! os troca. Sem pipeline ligado o amostrador descarta tudo e os logs não saem.
+//! The `tracing` layers (spans and logs) enter the global subscriber only once, in
+//! [`crate::telemetry::init_logging`], because `tracing-opentelemetry` only finds its own context
+//! if the layer is directly on the subscriber. What changes with each node is what they feed: the
+//! [`Hub`] keeps the current sampler, span processor and logger, and [`Pipeline::attach`]
+//! swaps them. Without an attached pipeline the sampler discards everything and the logs do not go out.
 
 pub mod logs;
 pub mod metrics;
@@ -38,10 +38,10 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 
 use crate::config::{Otlp, OtlpProtocol, Sampler};
 
-/// O escopo de instrumentação dos spans e dos logs.
+/// The instrumentation scope of the spans and logs.
 pub const SCOPE: &str = "taba";
 
-/// O amostrador corrente: o do pipeline ligado, ou `AlwaysOff` sem nenhum.
+/// The current sampler: the attached pipeline's, or `AlwaysOff` without one.
 #[derive(Debug, Clone)]
 struct SwitchSampler(Arc<RwLock<SdkSampler>>);
 
@@ -62,7 +62,7 @@ impl ShouldSample for SwitchSampler {
     }
 }
 
-/// O processador de spans corrente: o lote do pipeline ligado, ou nenhum.
+/// The current span processor: the attached pipeline's batch, or none.
 #[derive(Debug, Clone)]
 struct SwitchProcessor(Arc<RwLock<Option<Arc<BatchSpanProcessor>>>>);
 
@@ -97,13 +97,13 @@ impl SpanProcessor for SwitchProcessor {
     fn set_resource(&mut self, _resource: &Resource) {}
 }
 
-/// O logger corrente dos logs.
+/// The current logger for the logs.
 pub struct LogSlot {
     pub logger: SdkLogger,
     pub max_level: LevelFilter,
 }
 
-/// O que o assinante global alimenta: um por processo.
+/// What the global subscriber feeds: one per process.
 pub struct Hub {
     provider: SdkTracerProvider,
     sampler: Arc<RwLock<SdkSampler>>,
@@ -111,7 +111,7 @@ pub struct Hub {
     logs: Arc<RwLock<Option<LogSlot>>>,
 }
 
-/// O `Hub` do processo, criado no primeiro uso.
+/// The process's `Hub`, created on first use.
 pub fn hub() -> &'static Hub {
     static HUB: OnceLock<Hub> = OnceLock::new();
     HUB.get_or_init(|| {
@@ -131,7 +131,7 @@ pub fn hub() -> &'static Hub {
 }
 
 impl Hub {
-    /// A camada dos spans (`tracing` → OpenTelemetry).
+    /// The spans layer (`tracing` → OpenTelemetry).
     pub fn trace_layer<S>(&self) -> OpenTelemetryLayer<S, SdkTracer>
     where
         S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
@@ -143,7 +143,7 @@ impl Hub {
             .with_tracked_inactivity(false)
     }
 
-    /// A camada dos logs (eventos do `tracing` → *log records*).
+    /// The logs layer (`tracing` events → *log records*).
     pub fn log_layer(&self) -> logs::LogLayer {
         logs::LogLayer {
             slot: self.logs.clone(),
@@ -151,7 +151,7 @@ impl Hub {
     }
 }
 
-/// Os provedores de traces e de logs de um nó.
+/// The trace and log providers of a node.
 pub struct Pipeline {
     processor: Arc<BatchSpanProcessor>,
     logger_provider: SdkLoggerProvider,
@@ -198,32 +198,32 @@ fn grpc_tls(otlp: &Otlp) -> Result<Option<tonic::transport::ClientTlsConfig>, St
     Ok(Some(tls))
 }
 
-/// O cliente HTTP bloqueante do SDK, com a CA do coletor. Criado numa thread à parte: o cliente
-/// bloqueante não pode nascer nem morrer dentro de uma task do tokio.
+/// The SDK's blocking HTTP client, with the collector's CA. Created on a separate thread: the blocking
+/// client can neither be born nor die inside a tokio task.
 fn http_client(otlp: &Otlp) -> Result<reqwest::blocking::Client, String> {
     let certificate = metrics::read_certificate(otlp)?;
     std::thread::spawn(move || {
         let mut builder = reqwest::blocking::Client::builder().timeout(Duration::from_secs(10));
         if let Some(pem) = certificate {
             let cert = reqwest::Certificate::from_pem(&pem)
-                .map_err(|e| format!("OTEL_EXPORTER_OTLP_CERTIFICATE inválido: {e}"))?;
+                .map_err(|e| format!("OTEL_EXPORTER_OTLP_CERTIFICATE invalid: {e}"))?;
             builder = builder.add_root_certificate(cert);
         }
         builder.build().map_err(|e| e.to_string())
     })
     .join()
-    .map_err(|_| "falha ao criar o cliente HTTP do OTLP".to_owned())?
+    .map_err(|_| "failed to create the OTLP HTTP client".to_owned())?
 }
 
-/// O TLS do coletor usa o `ring`; com o `aws-lc` das dependências também ligado, o `rustls` não
-/// escolhe sozinho.
+/// The collector's TLS uses `ring`; with the dependencies' `aws-lc` also on, `rustls` does not
+/// choose by itself.
 pub fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
 impl Pipeline {
-    /// Cria os exportadores de traces e de logs. Chamar dentro de um runtime do tokio (o canal
-    /// gRPC abre a conexão no primeiro envio). Não liga nada ao `tracing`: isso é [`Self::attach`].
+    /// Creates the trace and log exporters. Call inside a tokio runtime (the gRPC
+    /// channel opens the connection on the first send). It attaches nothing to `tracing`: that is [`Self::attach`].
     pub fn start(otlp: &Otlp, resource: &[(String, String)]) -> Result<Self, String> {
         install_crypto_provider();
         let resource = Resource::builder_empty()
@@ -283,8 +283,8 @@ impl Pipeline {
         })
     }
 
-    /// Passa a alimentar as camadas do assinante global (a última chamada vale): os spans vão
-    /// para este pipeline, com o amostrador dele, e os logs de `logs_level` para cima também.
+    /// Starts feeding the global subscriber's layers (the last call counts): spans go
+    /// to this pipeline, with its sampler, and the logs from `logs_level` up too.
     pub fn attach(&self, logs_level: Option<&str>) {
         let hub = hub();
         *hub.sampler.write().unwrap_or_else(|e| e.into_inner()) = self.sampler.clone();
@@ -297,7 +297,7 @@ impl Pipeline {
         });
     }
 
-    /// Solta as camadas, se ainda são as deste pipeline.
+    /// Releases the layers, if they are still this pipeline's.
     pub fn detach(&self) {
         let hub = hub();
         let mut processor = hub.processor.write().unwrap_or_else(|e| e.into_inner());
@@ -311,13 +311,13 @@ impl Pipeline {
         }
     }
 
-    /// Envia já o que está na fila (para os testes e para o encerramento).
+    /// Sends right away what is in the queue (for the tests and for shutdown).
     pub fn flush(&self) {
         let _ = self.processor.force_flush();
         let _ = self.logger_provider.force_flush();
     }
 
-    /// Solta as camadas, esvazia a fila e encerra os provedores.
+    /// Releases the layers, empties the queue and shuts the providers down.
     pub fn shutdown(&self) {
         self.detach();
         let _ = self.processor.shutdown();

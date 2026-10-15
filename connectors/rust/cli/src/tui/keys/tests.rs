@@ -72,7 +72,7 @@ fn decodes_typed_text_including_multibyte_and_pasted_runs() {
 /// UC: UC-CLI-030
 #[test]
 fn unknown_sequences_are_skipped_whole() {
-    // `Ctrl+↑` (`ESC[1;5A`) vale como `↑`; `PageUp` (`ESC[5~`) não tem uso e some.
+    // `Ctrl+↑` (`ESC[1;5A`) counts as `↑`; `PageUp` (`ESC[5~`) has no use and vanishes.
     assert_eq!(
         decode(b"\x1b[5~x\x1b[1;5Ay"),
         [Key::Char('x'), Key::Up, Key::Char('y')]

@@ -1,6 +1,6 @@
-//! Tópicos da API de cliente (doc 06a): `POST` e `GET /topics`, e `GET`, `PATCH` e
-//! `DELETE /topics/{topic}`. Aqui só se lê a requisição e se monta a resposta; as
-//! regras ficam no `engine`.
+//! Client API topics (doc 06a): `POST` and `GET /topics`, and `GET`, `PATCH` and
+//! `DELETE /topics/{topic}`. Here the request is only read and the response built; the
+//! rules live in the `engine`.
 
 mod request;
 
@@ -25,8 +25,8 @@ pub fn routes() -> Router<AppState> {
         .route("/topics/{topic}", get(read).patch(update).delete(remove))
 }
 
-/// O token só cria tópico dentro dos seus prefixos; num distribuidor, também cada prefixo de
-/// distribuição (senão ele injetaria mensagens em filas fora do alcance).
+/// The token only creates a topic within its prefixes; on a distributor, each distribution prefix too
+/// (otherwise it would inject messages into queues out of its reach).
 fn check_scope(
     principal: &Principal,
     name: Option<&str>,

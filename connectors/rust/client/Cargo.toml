@@ -1,6 +1,6 @@
 [package]
 name = "taba-client"
-description = "Conector Rust do Taba: HTTP/1.1 próprio, TLS pelo rustls e leitor de JSON mínimo."
+description = "The Taba Rust connector: its own HTTP/1.1, TLS through rustls and a minimal JSON reader."
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
@@ -13,7 +13,7 @@ serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 
 [features]
-# `publish_object` e `consume_typed`: serializam e deserializam o corpo com o serde (D140).
+# `publish_object` and `consume_typed`: serialize and deserialize the body with serde (D140).
 serde = ["dep:serde", "dep:serde_json"]
 
 [dev-dependencies]

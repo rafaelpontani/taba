@@ -1,6 +1,6 @@
-//! A fila FIFO no cluster (doc 17, seções 16.3 a 16.7; doc 20a, UC-FIF; nível **C**): o grupo decide
-//! o bloco, a publicação é coordenada pelo primário do grupo, o quórum inclui o primário e o
-//! secundário, e a deduplicação e a ordem sobrevivem à troca de primário.
+//! The FIFO queue in the cluster (doc 17, sections 16.3 to 16.7; doc 20a, UC-FIF; level **C**): the group decides
+//! the block, the publish is coordinated by the group's primary, the quorum includes the primary and the
+//! secondary, and the deduplication and the order survive the change of primary.
 
 mod common;
 
@@ -13,7 +13,7 @@ use common::TestNode;
 use common::cluster::{TestCluster, host_of, settled, total};
 use taba_node::core::ring::fifo_position;
 
-const TOPIC: &str = "pedidos";
+const TOPIC: &str = "orders";
 
 async fn fifo_queue(node: &TestNode, name: &str) -> String {
     let response = node
@@ -57,7 +57,7 @@ async fn get(node: &TestNode, max: u32) -> Vec<Value> {
         .clone()
 }
 
-/// Espera o `GET` trazer algo (o aviso entre nós leva um instante).
+/// Waits for the `GET` to bring something (the notice between nodes takes a moment).
 async fn get_some(node: &TestNode, max: u32) -> Vec<Value> {
     for _ in 0..80 {
         let got = get(node, max).await;
@@ -81,7 +81,7 @@ async fn ack(node: &TestNode, message: &Value) -> Response {
         .unwrap()
 }
 
-/// O número do nó que é o primário do grupo (e o do secundário), pela tabela do nó 1.
+/// The number of the node that is the group's primary (and the secondary's), by node 1's table.
 fn owners_of_group(cluster: &TestCluster, topic_id: &str, group: &str) -> Vec<usize> {
     let service = cluster.node(1).node.cluster().unwrap();
     let owners = service.owners_of(fifo_position(topic_id, group)).unwrap();
@@ -90,7 +90,7 @@ fn owners_of_group(cluster: &TestCluster, topic_id: &str, group: &str) -> Vec<us
         .map(|m| {
             (1..=3)
                 .find(|n| cluster.node_id(*n) == m.node_id)
-                .expect("é um dos nós do teste")
+                .expect("it is one of the test's nodes")
         })
         .collect()
 }
@@ -105,7 +105,7 @@ async fn a_publication_from_any_node_is_coordinated_by_the_primary_of_the_group(
     let primary = owners[0];
     let others: Vec<usize> = (1..=3).filter(|n| *n != primary).collect();
 
-    // Publicar no próprio primário não repassa; nos outros, um repasse cada.
+    // Publishing on the primary itself does not forward; on the others, one forward each.
     cluster.network.clear_calls();
     let first = publish(cluster.node(primary), "g1", None, r#"{"n":1}"#).await;
     assert_eq!(first.status(), 201);
@@ -131,10 +131,10 @@ async fn a_publication_from_any_node_is_coordinated_by_the_primary_of_the_group(
         assert_eq!(body["duplicate"], false);
         ids.push(body["id"].as_str().unwrap().to_owned());
     }
-    // Os `id` do grupo crescem na ordem em que o primário aceitou.
+    // The group's `id`s grow in the order the primary accepted.
     assert!(ids.windows(2).all(|w| w[0] < w[1]), "{ids:?}");
 
-    // Repetir o conteúdo no mesmo grupo, de qualquer nó, devolve a original.
+    // Repeating the content in the same group, from any node, returns the original.
     let again = publish(cluster.node(others[0]), "g1", None, r#"{"n":1}"#).await;
     assert_eq!(again.status(), 200);
     let body: Value = again.json().await.unwrap();
@@ -143,8 +143,8 @@ async fn a_publication_from_any_node_is_coordinated_by_the_primary_of_the_group(
         (ids[0].as_str(), Some(true))
     );
 
-    // A entrega é uma por vez, na ordem, de qualquer nó.
-    // O recibo leva a posição do grupo: um recibo malformado é `409`, de qualquer nó.
+    // The delivery is one at a time, in order, from any node.
+    // The receipt carries the group's position: a malformed receipt is `409`, from any node.
     let stale = cluster
         .node(others[0])
         .client
@@ -159,13 +159,13 @@ async fn a_publication_from_any_node_is_coordinated_by_the_primary_of_the_group(
 
     for expected in &ids {
         let got = get_some(cluster.node(others[1]), 10).await;
-        assert_eq!(got.len(), 1, "um grupo, uma mensagem em voo: {got:?}");
+        assert_eq!(got.len(), 1, "one group, one message in flight: {got:?}");
         assert_eq!(got[0]["id"], *expected);
         assert_eq!(ack(cluster.node(others[0]), &got[0]).await.status(), 204);
     }
     assert!(get(cluster.node(1), 10).await.is_empty());
 
-    // `taba.fifo.forward` conta os repasses ao primário do grupo (um por nó que não o é).
+    // `taba.fifo.forward` counts the forwards to the group's primary (one per node that is not it).
     let mut forwarded = 0.0;
     for number in 1..=3 {
         forwarded += total(
@@ -174,7 +174,7 @@ async fn a_publication_from_any_node_is_coordinated_by_the_primary_of_the_group(
             "taba_outcome=\"ok\"",
         );
     }
-    assert_eq!(forwarded, 3.0, "duas publicações repassadas e a duplicata");
+    assert_eq!(forwarded, 3.0, "two forwarded publishes and the duplicate");
     cluster.shutdown().await;
 }
 
@@ -191,7 +191,7 @@ fn messages_of(node: &TestNode) -> std::sync::Arc<taba_node::engine::messages::M
         .cluster()
         .and_then(|c| c.replication())
         .map(|r| r.messages.messages().clone())
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
 }
 
 /// UC: UC-FIF-030, UC-FIF-032, UC-FIF-031
@@ -203,14 +203,14 @@ async fn a_primary_or_a_secondary_that_is_down_but_still_in_the_table_stops_the_
     let owners = owners_of_group(&cluster, &topic_id, "g1");
     let (primary, secondary, third) = (owners[0], owners[1], owners[2]);
 
-    // Primário fora do ar e ainda na tabela: a publicação do grupo, de qualquer nó, é `503`.
+    // Primary down and still in the table: the group's publish, from any node, is `503`.
     cluster.network.isolate(&host_of(primary));
     let blocked = publish(cluster.node(third), "g1", None, r#"{"n":1}"#).await;
     assert_eq!(code_of(blocked, 503).await, "fifo.primary-unavailable");
     cluster.network.restore(&host_of(primary));
 
-    // Secundário fora do ar e ainda na tabela: a escrita, a entrega e o ack do grupo respondem
-    // `503`, mesmo com o terciário saudável (o quórum inclui o secundário).
+    // Secondary down and still in the table: the group's write, delivery and ack answer
+    // `503`, even with the tertiary healthy (the quorum includes the secondary).
     let ok = publish(cluster.node(primary), "g1", None, r#"{"n":1}"#).await;
     assert_eq!(ok.status(), 201);
     let delivered = get_some(cluster.node(primary), 10).await;
@@ -222,7 +222,7 @@ async fn a_primary_or_a_secondary_that_is_down_but_still_in_the_table_stops_the_
     assert_eq!(ack_result.status(), 503);
     cluster.network.restore(&host_of(secondary));
 
-    // Voltou: tudo segue (nada ficou pendente).
+    // It came back: everything goes on (nothing was left pending).
     assert_eq!(ack(cluster.node(third), &delivered[0]).await.status(), 204);
     let after = publish(cluster.node(third), "g1", None, r#"{"n":3}"#).await;
     assert_eq!(after.status(), 201);
@@ -249,38 +249,38 @@ async fn when_the_primary_leaves_the_secondary_takes_the_group_without_reorderin
                 .to_owned(),
         );
     }
-    // m1 é confirmada, e m2 sai em voo (a invisibilidade vale 600 s).
+    // m1 is confirmed, and m2 goes out in flight (the invisibility lasts 600 s).
     let first = get_some(cluster.node(third), 10).await;
     assert_eq!(first[0]["id"], ids[0]);
     assert_eq!(ack(cluster.node(third), &first[0]).await.status(), 204);
     let second = get_some(cluster.node(third), 10).await;
     assert_eq!(second[0]["id"], ids[1]);
 
-    // O primário cai e é excluído; o secundário herda o grupo.
+    // The primary falls and is excluded; the secondary inherits the group.
     let old = cluster.node_id(primary);
     cluster.network.isolate(&host_of(primary));
-    common::cluster::eventually("o primário ser excluído", || {
+    common::cluster::eventually("the primary to be excluded", || {
         [secondary, third]
             .iter()
             .all(|n| !cluster.member_ids(*n).contains(&old))
     })
     .await;
 
-    // Sem reordenação: m1 não volta, e m2 (em voo) segue em voo; nada é entregue ainda.
+    // Without reordering: m1 does not come back, and m2 (in flight) stays in flight; nothing is delivered yet.
     assert!(get(cluster.node(secondary), 10).await.is_empty());
     assert!(get(cluster.node(third), 10).await.is_empty());
 
-    // A deduplicação foi herdada: repetir m3 devolve a original.
+    // The deduplication was inherited: repeating m3 returns the original.
     let duplicate = publish(cluster.node(secondary), "g1", None, r#"{"n":3}"#).await;
     assert_eq!(duplicate.status(), 200);
     let body: Value = duplicate.json().await.unwrap();
     assert_eq!(body["id"], ids[2]);
     assert_eq!(body["duplicate"], true);
-    // E m1, já confirmada, também: a linha curta existe em todos os nós.
+    // And m1, already confirmed, too: the short row exists on all the nodes.
     let again = publish(cluster.node(third), "g1", None, r#"{"n":1}"#).await;
     assert_eq!(again.status(), 200);
 
-    // O `id` do grupo continua crescendo.
+    // The group's `id` keeps growing.
     let next = publish(cluster.node(third), "g1", None, r#"{"n":4}"#).await;
     assert_eq!(next.status(), 201);
     let next_id = next.json::<Value>().await.unwrap()["id"]
@@ -289,7 +289,7 @@ async fn when_the_primary_leaves_the_secondary_takes_the_group_without_reorderin
         .to_owned();
     assert!(next_id > ids[2]);
 
-    // Vencida a invisibilidade, m2 volta como cabeça do grupo, depois m3 e m4, uma por vez.
+    // With the invisibility expired, m2 comes back as the head of the group, then m3 and m4, one at a time.
     cluster.clock.advance(Duration::from_secs(601));
     let redelivered = get_some(cluster.node(third), 10).await;
     assert_eq!(redelivered.len(), 1);
@@ -317,7 +317,7 @@ async fn simultaneous_publications_with_the_same_key_create_one_message() {
         let node = cluster.node(1 + round % 3);
         let client = node.client.clone();
         let url = node.client_url(&format!(
-            "/topics/{TOPIC}/messages?groupId=g7&deduplicationId=mesma"
+            "/topics/{TOPIC}/messages?groupId=g7&deduplicationId=same"
         ));
         set.spawn(async move {
             let response = client
@@ -390,7 +390,7 @@ async fn a_node_that_is_not_the_primary_of_the_group_answers_421() {
     cluster.shutdown().await;
 }
 
-/// Uma publicação feita direto ao motor do nó, como o primário do grupo a decidiria.
+/// A publish made straight to the node's engine, as the group's primary would decide it.
 fn draft(
     node: &TestNode,
     group: &str,
@@ -398,7 +398,7 @@ fn draft(
     body: &str,
 ) -> taba_node::engine::messages::Draft {
     let messages = messages_of(node);
-    let view = messages.queue_view(TOPIC).expect("a fila existe");
+    let view = messages.queue_view(TOPIC).expect("the queue exists");
     messages
         .draft_fifo_publish(
             &view,
@@ -433,12 +433,12 @@ async fn the_ack_line_lives_in_every_node_and_a_new_primary_only_coordinates_onc
             .status(),
         201
     );
-    // O ack da primeira deixa a linha curta (`deleteAt`) em todos os nós, decidida por quórum.
+    // The first one's ack leaves the short row (`deleteAt`) on all the nodes, decided by quorum.
     let got = get_some(cluster.node(2), 10).await;
     assert_eq!(got[0]["id"], first_id);
     assert_eq!(ack(cluster.node(1), &got[0]).await.status(), 204);
     for number in [1, 2] {
-        common::cluster::eventually("a linha curta em todos os nós", || {
+        common::cluster::eventually("the short row on all the nodes", || {
             is_duplicate_of(
                 &draft(cluster.node(number), "g1", "k1", r#"{"n":1}"#),
                 &first_id,
@@ -447,7 +447,7 @@ async fn the_ack_line_lives_in_every_node_and_a_new_primary_only_coordinates_onc
         .await;
     }
 
-    // Um terceiro nó entra e para antes de ficar pronto; ele já está na tabela.
+    // A third node joins and stops before becoming ready; it is already in the table.
     let third = common::cluster::start_isolated(&mut cluster, &[]).await;
     let gate = common::cluster::pause_sync(&cluster, third, "replay");
     common::cluster::wait_phase(cluster.node(third), "replay").await;
@@ -464,7 +464,7 @@ async fn the_ack_line_lives_in_every_node_and_a_new_primary_only_coordinates_onc
     let service = cluster.node(1).node.cluster().unwrap();
     let new_id = cluster.node_id(third);
     let group = (0..400)
-        .map(|n| format!("novo-{n}"))
+        .map(|n| format!("new-{n}"))
         .find(|group| {
             service
                 .owners_of(fifo_position(&topic_id, group))
@@ -472,19 +472,19 @@ async fn the_ack_line_lives_in_every_node_and_a_new_primary_only_coordinates_onc
                 .first()
                 .is_some_and(|m| m.node_id == new_id)
         })
-        .expect("algum grupo tem o nó novo como primário");
+        .expect("some group has the new node as primary");
 
-    // Enquanto o primário novo não está pronto, as publicações do grupo são `503`, e os primários
-    // antigos não coordenam por ele.
+    // While the new primary is not ready, the group's publishes are `503`, and the old
+    // primaries do not coordinate for it.
     for number in [1, 2] {
         let blocked = publish(cluster.node(number), &group, None, r#"{"a":1}"#).await;
         assert_eq!(code_of(blocked, 503).await, "fifo.primary-unavailable");
     }
 
-    // Pronto o nó, ele tem a linha curta da mensagem confirmada, levada pela sincronização.
+    // With the node ready, it has the short row of the confirmed message, carried by the synchronization.
     gate.add_permits(1);
     common::cluster::wait_joined(cluster.node(third)).await;
-    common::cluster::eventually("a linha curta no nó novo", || {
+    common::cluster::eventually("the short row on the new node", || {
         is_duplicate_of(
             &draft(cluster.node(third), "g1", "k1", r#"{"n":1}"#),
             &first_id,
@@ -522,27 +522,27 @@ async fn the_dead_letter_of_a_fifo_stays_in_the_block_of_the_group() {
         .to_owned();
     let got = get_some(cluster.node(owners[2]), 10).await;
     assert_eq!(got[0]["id"], id);
-    // A entrega gastou o único `maxDeliveries`: ao vencer a invisibilidade, vai à dead-letter.
+    // The delivery spent the only `maxDeliveries`: when the invisibility expires, it goes to the dead-letter.
     cluster.clock.advance(Duration::from_secs(601));
     let dead = format!("{TOPIC}-dead-letter");
     for number in 1..=3 {
         let messages = messages_of(cluster.node(number));
         let (dead, id) = (dead.clone(), id.clone());
-        common::cluster::eventually("o movimento para a dead-letter", move || {
+        common::cluster::eventually("the move to the dead-letter", move || {
             messages.message_info(&dead, &id).unwrap().is_some()
         })
         .await;
     }
-    // Uma operação só no bloco do grupo da fila de origem: a posição guardada é a do grupo.
+    // A single operation in the block of the origin queue's group: the stored position is the group's.
     let wanted = fifo_position(&topic_id, "g1");
     for number in 1..=3 {
         let info = messages_of(cluster.node(number))
             .message_info(&dead, &id)
             .unwrap()
             .unwrap();
-        assert_eq!(info.meta.position, wanted, "no nó {number}");
+        assert_eq!(info.meta.position, wanted, "on node {number}");
     }
-    // A dead-letter é uma fila comum: não é FIFO e entrega sem grupo ocupado.
+    // The dead-letter is a plain queue: it is not FIFO and delivers without an occupied group.
     let in_dead_letter: Value = cluster
         .node(1)
         .client_get(&format!("/topics/{dead}/messages?maxMessages=5"))
@@ -564,7 +564,7 @@ async fn a_distributor_keeps_the_order_by_group_in_a_fifo_target() {
         .node(1)
         .client
         .post(cluster.node(1).client_url("/topics"))
-        .json(&json!({ "name": "todos", "type": "distributor", "prefixes": [TOPIC] }))
+        .json(&json!({ "name": "all", "type": "distributor", "prefixes": [TOPIC] }))
         .send()
         .await
         .unwrap();
@@ -577,7 +577,7 @@ async fn a_distributor_keeps_the_order_by_group_in_a_fifo_target() {
             .post(
                 cluster
                     .node(*node)
-                    .client_url("/topics/todos/messages?groupId=g1"),
+                    .client_url("/topics/all/messages?groupId=g1"),
             )
             .header("content-type", "application/json")
             .body(format!(r#"{{"n":{round}}}"#))
@@ -616,7 +616,7 @@ async fn auto_create_accepts_fifo_only_when_the_replication_factor_allows_it() {
             .json()
             .await
             .unwrap();
-        assert_eq!(topic["fifo"], true, "no nó {number}");
+        assert_eq!(topic["fifo"], true, "on node {number}");
     }
     cluster.shutdown().await;
 
@@ -631,7 +631,7 @@ async fn auto_create_accepts_fifo_only_when_the_replication_factor_allows_it() {
         .node(1)
         .client
         .post(single.node(1).client_url("/topics"))
-        .json(&json!({ "name": "fila", "type": "queue", "fifo": true }))
+        .json(&json!({ "name": "queue", "type": "queue", "fifo": true }))
         .send()
         .await
         .unwrap();

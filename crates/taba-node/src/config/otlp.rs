@@ -1,6 +1,6 @@
-//! A exportação OTLP, lida das variáveis padrão do SDK do OpenTelemetry (`OTEL_*`), que não têm
-//! chave no YAML nem o prefixo `TABA_` (doc 10, seção 8.1). Sem `OTEL_EXPORTER_OTLP_ENDPOINT` a
-//! exportação fica desligada.
+//! The OTLP export, read from the OpenTelemetry SDK's standard variables (`OTEL_*`), which have
+//! no key in the YAML or the `TABA_` prefix (doc 10, section 8.1). Without `OTEL_EXPORTER_OTLP_ENDPOINT` the
+//! export is off.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -8,10 +8,10 @@ use std::time::Duration;
 use super::source::EnvSource;
 use super::{ConfigError, parse_duration};
 
-/// O padrão do intervalo de envio das métricas, o do SDK (`OTEL_METRIC_EXPORT_INTERVAL`, 60 s).
+/// The default metrics send interval, the SDK's (`OTEL_METRIC_EXPORT_INTERVAL`, 60 s).
 pub const DEFAULT_METRIC_INTERVAL: Duration = Duration::from_secs(60);
 
-/// A fração de traces mantida enquanto o doc 10 deixa o padrão "a definir" (D117, provisório).
+/// The fraction of traces kept while doc 10 leaves the default "to be defined" (D117, provisional).
 pub const DEFAULT_SAMPLER_RATIO: f64 = 0.1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +20,7 @@ pub enum OtlpProtocol {
     HttpProtobuf,
 }
 
-/// Os amostradores do SDK (`OTEL_TRACES_SAMPLER`).
+/// The SDK's samplers (`OTEL_TRACES_SAMPLER`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Sampler {
     AlwaysOn,
@@ -33,12 +33,12 @@ pub enum Sampler {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Otlp {
-    /// `OTEL_EXPORTER_OTLP_ENDPOINT`, sem a barra final.
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT`, without the trailing slash.
     pub endpoint: String,
     pub protocol: OtlpProtocol,
-    /// `OTEL_EXPORTER_OTLP_HEADERS` (`chave=valor,chave=valor`).
+    /// `OTEL_EXPORTER_OTLP_HEADERS` (`key=value,key=value`).
     pub headers: Vec<(String, String)>,
-    /// `OTEL_EXPORTER_OTLP_CERTIFICATE`: a CA (PEM) que assina o certificado do coletor.
+    /// `OTEL_EXPORTER_OTLP_CERTIFICATE`: the CA (PEM) that signs the collector's certificate.
     pub certificate: Option<PathBuf>,
     /// `OTEL_METRIC_EXPORT_INTERVAL` (milissegundos).
     pub metric_interval: Duration,
@@ -68,7 +68,7 @@ fn sampler(env: &dyn EnvSource, problems: &mut Vec<String>) -> Sampler {
             Ok(r) if (0.0..=1.0).contains(&r) => r,
             _ => {
                 problems.push(format!(
-                    "OTEL_TRACES_SAMPLER_ARG (`{text}`) deve ser um número de 0 a 1"
+                    "OTEL_TRACES_SAMPLER_ARG (`{text}`) must be a number from 0 to 1"
                 ));
                 DEFAULT_SAMPLER_RATIO
             }
@@ -83,15 +83,15 @@ fn sampler(env: &dyn EnvSource, problems: &mut Vec<String>) -> Sampler {
         "parentbased_traceidratio" => Sampler::ParentBasedTraceIdRatio(ratio),
         other => {
             problems.push(format!(
-                "OTEL_TRACES_SAMPLER (`{other}`) deve ser always_on, always_off, traceidratio, \
-                 parentbased_always_on, parentbased_always_off ou parentbased_traceidratio"
+                "OTEL_TRACES_SAMPLER (`{other}`) must be always_on, always_off, traceidratio, \
+                 parentbased_always_on, parentbased_always_off or parentbased_traceidratio"
             ));
             Sampler::ParentBasedTraceIdRatio(ratio)
         }
     }
 }
 
-/// Lê as variáveis `OTEL_*` da exportação. `None` quando não há endpoint.
+/// Reads the export's `OTEL_*` variables. `None` when there is no endpoint.
 pub fn from_env(env: &dyn EnvSource) -> Result<Option<Otlp>, ConfigError> {
     let Some(endpoint) = non_empty(env, "OTEL_EXPORTER_OTLP_ENDPOINT") else {
         return Ok(None);
@@ -99,7 +99,7 @@ pub fn from_env(env: &dyn EnvSource) -> Result<Option<Otlp>, ConfigError> {
     let mut problems = Vec::new();
     if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
         problems.push(format!(
-            "OTEL_EXPORTER_OTLP_ENDPOINT (`{endpoint}`) deve começar com http:// ou https://"
+            "OTEL_EXPORTER_OTLP_ENDPOINT (`{endpoint}`) must start with http:// or https://"
         ));
     }
     let protocol = match non_empty(env, "OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
@@ -107,7 +107,7 @@ pub fn from_env(env: &dyn EnvSource) -> Result<Option<Otlp>, ConfigError> {
         Some("http/protobuf") => OtlpProtocol::HttpProtobuf,
         Some(other) => {
             problems.push(format!(
-                "OTEL_EXPORTER_OTLP_PROTOCOL (`{other}`) deve ser grpc ou http/protobuf"
+                "OTEL_EXPORTER_OTLP_PROTOCOL (`{other}`) must be grpc or http/protobuf"
             ));
             OtlpProtocol::Grpc
         }
@@ -116,12 +116,12 @@ pub fn from_env(env: &dyn EnvSource) -> Result<Option<Otlp>, ConfigError> {
         None => DEFAULT_METRIC_INTERVAL,
         Some(text) => match text.parse::<u64>() {
             Ok(ms) if ms > 0 => Duration::from_millis(ms),
-            // Como nos outros parâmetros, `5s` também vale.
+            // As with the other parameters, `5s` also works.
             _ => parse_duration(&text)
                 .filter(|d| !d.is_zero())
                 .unwrap_or_else(|| {
                     problems.push(format!(
-                        "OTEL_METRIC_EXPORT_INTERVAL (`{text}`) deve ser um número de milissegundos"
+                        "OTEL_METRIC_EXPORT_INTERVAL (`{text}`) must be a number of milliseconds"
                     ));
                     DEFAULT_METRIC_INTERVAL
                 }),

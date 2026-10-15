@@ -1,6 +1,6 @@
-//! O lado que **serve** a sincronização de blocos (doc 06c, "Sincronização e recuperação"): os
-//! streams de IDs e de mensagens de um bloco e a mensagem avulsa. É leitura local, sem estado
-//! pendente. O nó que ainda sincroniza não serve (`503 cluster.node-syncing`).
+//! The side that **serves** the block synchronization (doc 06c, "Synchronization and recovery"): the
+//! ID and message streams of a block and the single message. It is local reading, with no pending
+//! state. A node that is still syncing does not serve (`503 cluster.node-syncing`).
 
 use std::sync::Arc;
 
@@ -30,13 +30,13 @@ impl BlockSource {
         }
     }
 
-    /// As faixas de posição do bloco no anel deste nó. Bloco que o anel não tem é uma tabela de
-    /// membros diferente da de quem pediu: `409`, e quem pediu tenta de novo.
+    /// The block's position ranges on this node's ring. A block the ring does not have is a member table
+    /// different from the requester's: `409`, and the requester tries again.
     fn ranges(&self, block: &str) -> Result<Vec<(u64, u64)>, TabaError> {
         let id: BlockId = block.parse().map_err(|()| {
             TabaError::new(
                 ErrorCode::ValidationFailed,
-                "O identificador do bloco deve ter 16 dígitos hexadecimais minúsculos.",
+                "The block identifier must have 16 lowercase hexadecimal digits.",
             )
         })?;
         self.service
@@ -46,7 +46,7 @@ impl BlockSource {
             .ok_or_else(|| {
                 TabaError::new(
                     ErrorCode::ClusterConflict,
-                    "O bloco não existe no anel deste nó: a tabela de membros é outra.",
+                    "The block does not exist on this node's ring: the member table is another.",
                 )
             })
     }
@@ -61,7 +61,7 @@ impl BlockSource {
         if self.service.node_state() != NodeState::Active {
             return Err(TabaError::new(
                 ErrorCode::ClusterNodeSyncing,
-                "O nó ainda está em sincronização e não serve blocos.",
+                "The node is still syncing and does not serve blocks.",
             )
             .with_retry_after(5));
         }

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace Taba
 {
-    /// <summary>Monta o corpo JSON das requisições <c>POST /topics</c> e <c>PATCH /topics/{topic}</c>.</summary>
+    /// <summary>Builds the JSON body of the <c>POST /topics</c> and <c>PATCH /topics/{topic}</c> requests.</summary>
     internal static class RequestJson
     {
         public static string Create(TopicRequest request)

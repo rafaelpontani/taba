@@ -5,10 +5,10 @@ using System.Threading.Tasks;
 namespace Taba
 {
     /// <summary>
-    /// O que o <c>handler</c> do <c>Consume</c> recebe: a <see cref="Message"/> com todas as propriedades,
-    /// o <see cref="Delete"/> (a mensagem é apagada ao fim se o handler terminar sem exceção; o padrão é
-    /// sim) e <see cref="ChangeVisibilityAsync"/>. Enquanto o handler roda, o conector renova sozinho a
-    /// invisibilidade, para nenhum outro consumidor pegar a mensagem.
+    /// What the <c>Consume</c> <c>handler</c> receives: the <see cref="Message"/> with all its properties,
+    /// the <see cref="Delete"/> flag (the message is deleted at the end if the handler finishes without an exception; the default is
+    /// yes) and <see cref="ChangeVisibilityAsync"/>. While the handler runs, the connector renews the
+    /// invisibility by itself, so no other consumer takes the message.
     /// </summary>
     public class MessageContext
     {
@@ -27,29 +27,29 @@ namespace Taba
         public Message Message { get; private set; }
 
         /// <summary>
-        /// <c>true</c> (o padrão): a mensagem é apagada (ack) quando o handler termina sem exceção. Ponha
-        /// <c>false</c> para deixá-la na fila: ela volta a ficar visível ao fim da invisibilidade.
+        /// <c>true</c> (the default): the message is deleted (ack) when the handler finishes without an exception. Set
+        /// <c>false</c> to leave it in the queue: it becomes visible again at the end of the invisibility.
         /// </summary>
         public bool Delete { get; set; } = true;
 
-        /// <summary>O token do <c>Consume</c>, para o handler repassar às suas próprias chamadas.</summary>
+        /// <summary>The <c>Consume</c> token, for the handler to pass on to its own calls.</summary>
         public CancellationToken CancellationToken { get; private set; }
 
-        /// <summary>Os segundos de invisibilidade que a renovação automática pede a cada volta.</summary>
+        /// <summary>The seconds of invisibility the automatic renewal requests on each round.</summary>
         public int LeaseSeconds
         {
             get { return Volatile.Read(ref _leaseSeconds); }
         }
 
-        /// <summary><c>true</c> quando o servidor recusou a renovação (a mensagem já voltou à fila ou foi apagada).</summary>
+        /// <summary><c>true</c> when the server refused the renewal (the message already went back to the queue or was deleted).</summary>
         public bool LeaseLost
         {
             get { return Volatile.Read(ref _lost) != 0; }
         }
 
         /// <summary>
-        /// Muda a invisibilidade para <paramref name="seconds"/> a partir de agora. O valor passa a ser o
-        /// da renovação automática.
+        /// Changes the invisibility to <paramref name="seconds"/> from now on. The value becomes the one
+        /// of the automatic renewal.
         /// </summary>
         public async Task ChangeVisibilityAsync(int seconds)
         {
@@ -57,7 +57,7 @@ namespace Taba
             Volatile.Write(ref _leaseSeconds, seconds);
         }
 
-        /// <summary>A forma síncrona do <see cref="ChangeVisibilityAsync"/>.</summary>
+        /// <summary>The synchronous form of <see cref="ChangeVisibilityAsync"/>.</summary>
         public void ChangeVisibility(int seconds)
         {
             ChangeVisibilityAsync(seconds).GetAwaiter().GetResult();

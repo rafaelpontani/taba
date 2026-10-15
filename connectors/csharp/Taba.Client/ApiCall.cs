@@ -6,10 +6,10 @@ using System.Net.Http;
 namespace Taba
 {
     /// <summary>
-    /// A descrição de uma requisição à API: método, caminho, query, corpo, cabeçalhos e as regras da
-    /// chamada (tempo limite, repetição de 502/504, respostas que valem sucesso depois de um 503). O
-    /// <see cref="HttpTransport"/> monta um <c>HttpRequestMessage</c> novo dela a cada tentativa, porque
-    /// um <c>HttpRequestMessage</c> não pode ser enviado duas vezes.
+    /// The description of a request to the API: method, path, query, body, headers and the rules of the
+    /// call (timeout, retry of 502/504, responses that count as success after a 503). The
+    /// <see cref="HttpTransport"/> builds a new <c>HttpRequestMessage</c> from it on every attempt, because
+    /// an <c>HttpRequestMessage</c> cannot be sent twice.
     /// </summary>
     internal sealed class ApiCall
     {
@@ -21,7 +21,7 @@ namespace Taba
 
         public HttpMethod Method { get; private set; }
 
-        /// <summary>Caminho já com os segmentos codificados (<c>/topics/pedidos</c>).</summary>
+        /// <summary>Path with the segments already encoded (<c>/topics/orders</c>).</summary>
         public string Path { get; private set; }
 
         public List<KeyValuePair<string, string>> Query { get; } = new List<KeyValuePair<string, string>>();
@@ -34,13 +34,13 @@ namespace Taba
 
         public string Traceparent { get; set; }
 
-        /// <summary>Troca o tempo total da chamada (o <c>consume</c> usa <c>waitTime + 10 s</c>).</summary>
+        /// <summary>Overrides the total time of the call (<c>consume</c> uses <c>waitTime + 10 s</c>).</summary>
         public TimeSpan? Timeout { get; set; }
 
-        /// <summary>Repete <c>502</c> e <c>504</c>: só a publicação em fila FIFO, em que o primário deduplica.</summary>
+        /// <summary>Retries <c>502</c> and <c>504</c>: only publishing to a FIFO queue, where the primary deduplicates.</summary>
         public bool RetryGateway { get; set; }
 
-        /// <summary>Depois de um <c>503</c>, estas respostas contam como sucesso (a operação já tinha sido aplicada).</summary>
+        /// <summary>After a <c>503</c>, these responses count as success (the operation had already been applied).</summary>
         public List<KeyValuePair<int, string>> Recover { get; } = new List<KeyValuePair<int, string>>();
 
         public ApiCall With(string key, object value)
@@ -69,7 +69,7 @@ namespace Taba
     }
     }
 
-    /// <summary>A resposta já lida de uma <see cref="ApiCall"/>.</summary>
+    /// <summary>The already-read response of an <see cref="ApiCall"/>.</summary>
     internal sealed class ApiReply
     {
         public int Status { get; set; }

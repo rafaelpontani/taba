@@ -20,7 +20,7 @@ impl Transport for Arc<Mock> {
             .lock()
             .unwrap()
             .pop_front()
-            .expect("a chamada não tinha resposta combinada")
+            .expect("the call had no agreed response")
     }
 }
 
@@ -93,7 +93,7 @@ fn header<'a>(r: &'a Request, name: &str) -> Option<&'a str> {
         .map(|(_, v)| v.as_str())
 }
 
-const TOPIC: &str = "{\"id\":\"i1\",\"name\":\"pedidos\",\"type\":\"queue\",\"tags\":{},\"createdAt\":\"2026-10-06T12:00:00.000Z\",\"fifo\":true,\"volatile\":false,\"ttl\":null,\"future\":[1]}";
+const TOPIC: &str = "{\"id\":\"i1\",\"name\":\"orders\",\"type\":\"queue\",\"tags\":{},\"createdAt\":\"2026-10-06T12:00:00.000Z\",\"fifo\":true,\"volatile\":false,\"ttl\":null,\"future\":[1]}";
 
 /// UC: UC-CNT-002
 #[test]
@@ -117,7 +117,7 @@ fn headers_carry_the_token_the_agent_and_the_optional_ids() {
     let mut config = Config::new("http://taba:8080");
     config.token = Some("tb_abc".into());
     let rig = rig(config, vec![response(200, &[], TOPIC)]);
-    let mut call = Call::new("GET", "/topics/pedidos");
+    let mut call = Call::new("GET", "/topics/orders");
     call.request_id = Some("req-1".into());
     call.traceparent = Some("00-aa-bb-01".into());
     rig.client.call(&call).unwrap();
@@ -134,7 +134,7 @@ fn headers_carry_the_token_the_agent_and_the_optional_ids() {
 #[test]
 fn without_a_token_no_call_carries_authorization() {
     let rig = simple(vec![response(200, &[], TOPIC)]);
-    rig.client.get_topic("pedidos").unwrap();
+    rig.client.get_topic("orders").unwrap();
     assert_eq!(header(&rig.request(0), "Authorization"), None);
 }
 
@@ -155,7 +155,7 @@ fn topic_operations_build_the_expected_routes() {
     let c = &rig.client;
     let created = c
         .create_topic(&TopicRequest {
-            name: "pedidos".into(),
+            name: "orders".into(),
             topic_type: "queue".into(),
             fifo: Some(true),
             tags: vec![("time".into(), "fin".into())],
@@ -165,9 +165,9 @@ fn topic_operations_build_the_expected_routes() {
         .unwrap();
     assert_eq!(
         (created.name.as_str(), created.fifo, created.volatile),
-        ("pedidos", Some(true), Some(false))
+        ("orders", Some(true), Some(false))
     );
-    c.get_topic("pedidos").unwrap();
+    c.get_topic("orders").unwrap();
     let page = c
         .list_topics(Some(2), Some("cur sor"), Some("ped"))
         .unwrap();
@@ -176,14 +176,14 @@ fn topic_operations_build_the_expected_routes() {
         (1, Some("c2"))
     );
     c.update_topic(
-        "pedidos",
+        "orders",
         &TopicUpdate {
             ttl: Nullable::Default,
             ..TopicUpdate::default()
         },
     )
     .unwrap();
-    c.delete_topic("pedidos").unwrap();
+    c.delete_topic("orders").unwrap();
 
     let t: Vec<(String, String)> = (0..5)
         .map(|n| {
@@ -192,7 +192,7 @@ fn topic_operations_build_the_expected_routes() {
         })
         .collect();
     assert_eq!(t[0], ("POST".into(), "/topics".into()));
-    assert_eq!(t[1], ("GET".into(), "/topics/pedidos".into()));
+    assert_eq!(t[1], ("GET".into(), "/topics/orders".into()));
     assert_eq!(
         t[2],
         (
@@ -200,11 +200,11 @@ fn topic_operations_build_the_expected_routes() {
             "/topics?limit=2&cursor=cur%20sor&name=ped".into()
         )
     );
-    assert_eq!(t[3], ("PATCH".into(), "/topics/pedidos".into()));
-    assert_eq!(t[4], ("DELETE".into(), "/topics/pedidos".into()));
+    assert_eq!(t[3], ("PATCH".into(), "/topics/orders".into()));
+    assert_eq!(t[4], ("DELETE".into(), "/topics/orders".into()));
     assert_eq!(
         String::from_utf8(rig.request(0).body).unwrap(),
-        "{\"name\":\"pedidos\",\"type\":\"queue\",\"tags\":{\"time\":\"fin\"},\"fifo\":true,\"ttl\":86400}"
+        "{\"name\":\"orders\",\"type\":\"queue\",\"tags\":{\"time\":\"fin\"},\"fifo\":true,\"ttl\":86400}"
     );
     assert_eq!(
         String::from_utf8(rig.request(3).body).unwrap(),
@@ -252,12 +252,12 @@ fn publish_sends_raw_bytes_with_content_type_and_query() {
         fifo: true,
     };
     let bytes = [0x89, b'P', 0, 255];
-    let r = rig.client.publish("arquivos", &bytes, &options).unwrap();
+    let r = rig.client.publish("files", &bytes, &options).unwrap();
     assert_eq!((r.id.as_deref(), r.duplicate), (Some("m1"), Some(false)));
     let req = rig.request(0);
     assert_eq!(
         req.target,
-        "/topics/arquivos/messages?groupId=g%201&deduplicationId=d1"
+        "/topics/files/messages?groupId=g%201&deduplicationId=d1"
     );
     assert_eq!(req.body, bytes);
     assert_eq!(header(&req, "Content-Type"), Some("image/png"));
@@ -269,12 +269,12 @@ fn publish_sends_raw_bytes_with_content_type_and_query() {
         header(&rig.request(1), "Content-Type"),
         Some("application/json")
     );
-    rig.client.publish_text("t", "olá").unwrap();
+    rig.client.publish_text("t", "hi").unwrap();
     assert_eq!(
         header(&rig.request(2), "Content-Type"),
         Some("text/plain; charset=utf-8")
     );
-    assert_eq!(rig.request(2).body, "olá".as_bytes());
+    assert_eq!(rig.request(2).body, "hi".as_bytes());
 }
 
 /// UC: UC-CNT-005, UC-CNT-008
@@ -286,10 +286,10 @@ fn consume_sends_only_what_was_given_and_reads_for_wait_time_plus_ten() {
     ]);
     assert!(rig
         .client
-        .consume("fila", &ConsumeOptions::default())
+        .consume("queue", &ConsumeOptions::default())
         .unwrap()
         .is_empty());
-    assert_eq!(rig.request(0).target, "/topics/fila/messages");
+    assert_eq!(rig.request(0).target, "/topics/queue/messages");
     assert_eq!(
         rig.mock.seen.lock().unwrap()[0].1.total,
         Duration::from_secs(10)
@@ -306,12 +306,12 @@ fn consume_sends_only_what_was_given_and_reads_for_wait_time_plus_ten() {
         tags: vec![("time".into(), "fin".into())],
         ..ConsumeOptions::default()
     };
-    rig.client.consume("fila", &options).unwrap();
+    rig.client.consume("queue", &options).unwrap();
     assert_eq!(
         rig.request(1).target,
-        "/topics/fila/messages?maxMessages=5&visibilityTimeout=60&waitTime=20&autoCreate=true&volatile=false&idleTimeout=900&fifo=true&tag.time=fin"
+        "/topics/queue/messages?maxMessages=5&visibilityTimeout=60&waitTime=20&autoCreate=true&volatile=false&idleTimeout=900&fifo=true&tag.time=fin"
     );
-    // 20 s de espera com `requestTimeout` de 30 s não derruba a chamada: o limite é 30 s.
+    // A 20 s wait with a 30 s `requestTimeout` does not bring the call down: the limit is 30 s.
     assert_eq!(
         rig.mock.seen.lock().unwrap()[1].1.total,
         Duration::from_secs(30)
@@ -327,8 +327,8 @@ fn auto_create_parameters_are_left_out_without_auto_create() {
         fifo: Some(true),
         ..ConsumeOptions::default()
     };
-    rig.client.consume("fila", &options).unwrap();
-    assert_eq!(rig.request(0).target, "/topics/fila/messages");
+    rig.client.consume("queue", &options).unwrap();
+    assert_eq!(rig.request(0).target, "/topics/queue/messages");
 }
 
 /// UC: UC-CNT-006
@@ -342,22 +342,22 @@ fn ack_and_visibility_put_the_receipt_token_in_the_query() {
             "{\"id\":\"m1\",\"invisibleUntil\":\"2026-10-06T12:02:30.000Z\"}",
         ),
     ]);
-    rig.client.ack("fila", "m1", "rt 1").unwrap();
+    rig.client.ack("queue", "m1", "rt 1").unwrap();
     let v = rig
         .client
-        .change_visibility("fila", "m1", "rt1", 0)
+        .change_visibility("queue", "m1", "rt1", 0)
         .unwrap();
     assert_eq!(v.invisible_until, "2026-10-06T12:02:30.000Z");
     let (a, b) = (rig.request(0), rig.request(1));
     assert_eq!(
         (a.method.as_str(), a.target.as_str()),
-        ("DELETE", "/topics/fila/messages/m1?receiptToken=rt%201")
+        ("DELETE", "/topics/queue/messages/m1?receiptToken=rt%201")
     );
     assert_eq!(
         (b.method.as_str(), b.target.as_str()),
         (
             "PUT",
-            "/topics/fila/messages/m1/visibility?receiptToken=rt1"
+            "/topics/queue/messages/m1/visibility?receiptToken=rt1"
         )
     );
     assert_eq!(
@@ -370,17 +370,17 @@ fn ack_and_visibility_put_the_receipt_token_in_the_query() {
 #[test]
 fn messages_come_back_as_bytes_for_json_text_and_base64() {
     let body = "{\"messages\":[\
-        {\"id\":\"a\",\"body\":{ \"pedido\": 9001 },\"contentType\":\"application/json\",\"groupId\":\"g\",\"deduplicationId\":\"d\",\"receiptToken\":\"r1\",\"deliveryCount\":2,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\",\"novo\":true},\
-        {\"id\":\"b\",\"body\":\"Pedido \\u00e9 ok\",\"contentType\":\"text/plain; charset=utf-8\",\"receiptToken\":\"r2\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\"},\
+        {\"id\":\"a\",\"body\":{ \"order\": 9001 },\"contentType\":\"application/json\",\"groupId\":\"g\",\"deduplicationId\":\"d\",\"receiptToken\":\"r1\",\"deliveryCount\":2,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\",\"new\":true},\
+        {\"id\":\"b\",\"body\":\"Caf\\u00e9 ok\",\"contentType\":\"text/plain; charset=utf-8\",\"receiptToken\":\"r2\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\"},\
         {\"id\":\"c\",\"body\":\"iVBORw0KGgo=\",\"contentType\":\"image/png\",\"bodyEncoding\":\"base64\",\"receiptToken\":\"r3\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\",\"deadLetteredAt\":\"dl\",\"deadLetterReason\":\"max-deliveries\"},\
         {\"id\":\"d\",\"body\":[1,2],\"contentType\":\"application/vnd.x+json\",\"receiptToken\":\"r4\",\"deliveryCount\":1,\"publishedAt\":\"p\",\"invisibleUntil\":\"i\"}]}";
     let rig = simple(vec![response(200, &[], body)]);
     let m = rig
         .client
-        .consume("fila", &ConsumeOptions::default())
+        .consume("queue", &ConsumeOptions::default())
         .unwrap();
     assert_eq!(m.len(), 4);
-    assert_eq!(m[0].body, b"{ \"pedido\": 9001 }");
+    assert_eq!(m[0].body, b"{ \"order\": 9001 }");
     assert_eq!(
         (
             m[0].group_id.as_deref(),
@@ -389,7 +389,7 @@ fn messages_come_back_as_bytes_for_json_text_and_base64() {
         ),
         (Some("g"), Some("d"), 2)
     );
-    assert_eq!(m[1].body, "Pedido é ok".as_bytes());
+    assert_eq!(m[1].body, "Café ok".as_bytes());
     assert_eq!(m[2].body, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
     assert_eq!(
         (
@@ -409,7 +409,7 @@ fn a_timeout_after_sending_is_not_repeated() {
     let rig = simple(vec![Err(TransportError::Timeout { sent: true })]);
     let err = rig
         .client
-        .consume("fila", &ConsumeOptions::default())
+        .consume("queue", &ConsumeOptions::default())
         .unwrap_err();
     assert_eq!((err.status, err.code.as_str()), (0, "client.timeout"));
     assert!(err.is_client_side());
@@ -428,7 +428,7 @@ fn retries_429_and_503_waiting_for_retry_after_then_backoff() {
         response(503, &[], &error_body("cluster.quorum-unavailable")),
         response(200, &[], TOPIC),
     ]);
-    rig.client.get_topic("pedidos").unwrap();
+    rig.client.get_topic("orders").unwrap();
     assert_eq!(rig.calls(), 3);
     assert_eq!(rig.sleeps(), [7, 2]);
 }
@@ -467,14 +467,14 @@ fn after_a_503_a_409_on_create_and_a_404_on_delete_count_as_success() {
     let t = rig
         .client
         .create_topic(&TopicRequest {
-            name: "pedidos".into(),
+            name: "orders".into(),
             topic_type: "queue".into(),
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(t.name, "pedidos");
+    assert_eq!(t.name, "orders");
     assert_eq!(rig.request(2).method, "GET");
-    rig.client.delete_topic("pedidos").unwrap();
+    rig.client.delete_topic("orders").unwrap();
 }
 
 /// UC: UC-CNT-011, UC-CNT-014
@@ -507,7 +507,7 @@ fn gateway_errors_are_only_repeated_when_publishing_to_a_fifo() {
     let rig = simple(vec![gateway()]);
     assert_eq!(
         rig.client
-            .publish("fila", b"{}", &PublishOptions::default())
+            .publish("queue", b"{}", &PublishOptions::default())
             .unwrap_err()
             .status,
         502
@@ -524,7 +524,7 @@ fn gateway_errors_are_only_repeated_when_publishing_to_a_fifo() {
         group_id: Some("g".into()),
         ..Default::default()
     };
-    let r = rig.client.publish("fila", b"{}", &fifo).unwrap();
+    let r = rig.client.publish("queue", b"{}", &fifo).unwrap();
     assert_eq!(r.duplicate, Some(true));
     assert_eq!(rig.calls(), 3);
 }
@@ -533,7 +533,7 @@ fn gateway_errors_are_only_repeated_when_publishing_to_a_fifo() {
 #[test]
 fn network_failure_before_sending_is_repeated_and_after_is_not() {
     let rig = simple(vec![
-        Err(TransportError::Connect("recusada".into())),
+        Err(TransportError::Connect("refused".into())),
         Err(TransportError::Timeout { sent: false }),
         response(200, &[], TOPIC),
     ]);
@@ -551,7 +551,7 @@ fn network_failure_before_sending_is_repeated_and_after_is_not() {
 
     let rig = simple(
         (0..3)
-            .map(|_| Err(TransportError::Connect("recusada".into())))
+            .map(|_| Err(TransportError::Connect("refused".into())))
             .collect(),
     );
     assert_eq!(
@@ -574,12 +574,12 @@ fn a_4xx_other_than_429_is_never_repeated() {
 /// UC: UC-CNT-017
 #[test]
 fn the_error_carries_the_error_response_fields() {
-    let body = "{\"code\":\"validation.failed\",\"message\":\"A requisição tem campos inválidos.\",\"requestId\":\"abc\",\"details\":[{\"field\":\"name\",\"code\":\"validation.required\",\"message\":\"x\"}],\"novo\":1}";
+    let body = "{\"code\":\"validation.failed\",\"message\":\"The request has invalid fields.\",\"requestId\":\"abc\",\"details\":[{\"field\":\"name\",\"code\":\"validation.required\",\"message\":\"x\"}],\"new\":1}";
     let rig = simple(vec![response(400, &[("X-Request-Id", "hdr")], body)]);
     let err = rig.client.get_topic("x").unwrap_err();
     assert_eq!(err.status, 400);
     assert_eq!(err.code, "validation.failed");
-    assert_eq!(err.message, "A requisição tem campos inválidos.");
+    assert_eq!(err.message, "The request has invalid fields.");
     assert_eq!(err.request_id.as_deref(), Some("abc"));
     assert!(err
         .details
@@ -589,7 +589,7 @@ fn the_error_carries_the_error_response_fields() {
     assert_eq!(err.body, body.as_bytes());
     assert_eq!(
         err.to_string(),
-        "validation.failed: A requisição tem campos inválidos. (requestId abc)"
+        "validation.failed: The request has invalid fields. (requestId abc)"
     );
 }
 
@@ -642,14 +642,14 @@ fn subscribe_acks_only_what_the_handler_accepted_and_stops_on_demand() {
     let handled = std::cell::Cell::new(0);
     rig.client
         .subscribe(
-            "fila",
+            "queue",
             &ConsumeOptions::default(),
             || handled.get() >= 3,
             |m| {
                 seen.push(m.id.clone());
                 handled.set(handled.get() + 1);
                 if m.id == "2" {
-                    Err("falhou".into())
+                    Err("failed".into())
                 } else {
                     Ok(())
                 }
@@ -660,14 +660,14 @@ fn subscribe_acks_only_what_the_handler_accepted_and_stops_on_demand() {
     let targets: Vec<String> = (0..rig.calls()).map(|n| rig.request(n).target).collect();
     assert_eq!(
         targets[0],
-        "/topics/fila/messages?maxMessages=1&waitTime=20"
+        "/topics/queue/messages?maxMessages=1&waitTime=20"
     );
-    assert!(targets.contains(&"/topics/fila/messages/1?receiptToken=rt-1".to_owned()));
+    assert!(targets.contains(&"/topics/queue/messages/1?receiptToken=rt-1".to_owned()));
     assert!(
         !targets.iter().any(|t| t.contains("/messages/2?")),
-        "a 2 não deve ser confirmada: {targets:?}"
+        "message 2 must not be acknowledged: {targets:?}"
     );
-    assert!(targets.contains(&"/topics/fila/messages/3?receiptToken=rt-3".to_owned()));
+    assert!(targets.contains(&"/topics/queue/messages/3?receiptToken=rt-3".to_owned()));
 }
 
 /// UC: UC-CNT-028
@@ -730,11 +730,11 @@ fn the_only_dependencies_are_rustls_and_its_root_certificates() {
         names("[dependencies]", false),
         ["rustls", "rustls-native-certs"]
     );
-    // O serde só entra na feature `serde` (publish_object e consume_typed); fora dela, nada.
+    // serde only comes in with the `serde` feature (publish_object and consume_typed); without it, nothing.
     assert_eq!(names("[dependencies]", true), ["serde", "serde_json"]);
     assert_eq!(
         names("[dev-dependencies]", false),
         ["serde", "serde_json"],
-        "só para os testes"
+        "only for the tests"
     );
 }

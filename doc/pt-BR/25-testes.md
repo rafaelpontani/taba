@@ -27,7 +27,7 @@ Num sistema distribuído, o teste mais valioso **sobe vários nós no mesmo proc
 
 Há mais **testes por TCP e TLS reais** (`tests/mtls.rs`, `tests/common/real.rs`: nós em `127.0.0.x`, `Transport` HTTP e TLS mútuo) e **testes de OTLP** (`tests/otlp.rs`, com um coletor falso).
 
-![Os níveis de teste](../diagramas/img/piramide-testes.svg)
+![Os níveis de teste](../diagramas/img/pt-BR/piramide-testes.svg)
 
 ## Os arquivos de integração (`crates/taba-node/tests/`)
 
@@ -100,7 +100,7 @@ docker/validate.sh                                             # ponta a ponta (
 ## `docker/validate.sh` e `docker/cluster.sh`
 
 - **`cluster.sh`** (biblioteca para `source`, ou comando): `taba_up`, `taba_down`, `taba_kill` (queda brusca), `taba_stop` (saída ordenada, com drain), `taba_start`, `taba_restart`, `taba_wait_healthy`, `taba_wait_members N`, `taba_wait_stable`, `taba_create_token`, `taba_ensure_topic`, `taba_cli …`, `taba_status`. Os testes dos conectores devem **reaproveitá-lo**.
-- **`validate.sh`** (≈ 5 minutos): sobe o Compose do zero e confere (1) o cluster formou (`health cluster` sem condições); (2) `taba-cli`: criar tópico, publicar, consumir; (3) queda brusca do `taba-3` (`kill`); (4) saída ordenada do `taba-2` (`stop`, com drain); (5) **nenhuma mensagem confirmada se perdeu**; (6) estado final. **Rode antes de fechar mudanças que afetem cluster, canal, Compose ou conectores.**
+- **`validate.sh`** (≈ 5 minutos): sobe o Compose do zero e confere (1) o cluster formou (`health cluster` sem condições); (2) `taba-cli`: criar tópico, publicar, consumir; (3) queda brusca do `taba-2` (`kill`; o `docker/cluster.sh` mapeia `taba-N`, N ≥ 1, para a réplica N do serviço `taba`); (4) saída ordenada do `taba-1` (`stop`, com drain); (5) **nenhuma mensagem confirmada se perdeu**; (6) estado final. **Rode antes de fechar mudanças que afetem cluster, canal, Compose ou conectores.**
 
 ## Estratégia: o que cada nível protege
 

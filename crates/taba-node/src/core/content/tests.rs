@@ -16,7 +16,7 @@ fn rejects_what_is_not_a_media_type() {
         "text/plain; charset",
         "text/plain; =utf-8",
         "a b/c",
-        "text/plain; charset=\"aberto",
+        "text/plain; charset=\"open",
     ] {
         let err = ContentType::parse(raw).unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationInvalidContentType, "{raw:?}");
@@ -59,7 +59,7 @@ fn text_is_utf8_only_and_everything_else_is_binary() {
 fn only_json_and_utf8_text_are_validated() {
     let json = ContentType::parse("application/json").unwrap();
     assert!(json.validate_body(br#"{"a": [1, 2.50, null]}"#).is_ok());
-    assert!(json.validate_body(b"\"texto\"").is_ok());
+    assert!(json.validate_body(b"\"text\"").is_ok());
     assert!(json.validate_body(b"42").is_ok());
     for bad in [&b"{ nao"[..], b"", b"{} {}"] {
         let err = json.validate_body(bad).unwrap_err();
@@ -67,7 +67,7 @@ fn only_json_and_utf8_text_are_validated() {
     }
 
     let text = ContentType::parse("text/plain").unwrap();
-    assert!(text.validate_body("olá".as_bytes()).is_ok());
+    assert!(text.validate_body("café".as_bytes()).is_ok());
     assert_eq!(
         text.validate_body(&[0xff, 0xfe]).unwrap_err().code,
         ErrorCode::ValidationInvalidBody
@@ -83,17 +83,20 @@ fn only_json_and_utf8_text_are_validated() {
 #[test]
 fn renders_json_text_and_base64() {
     let json = ContentType::parse("application/json").unwrap();
-    let raw = br#"{ "valor": 129.90,  "itens": ["a"] }"#;
+    let raw = br#"{ "amount": 129.90,  "items": ["a"] }"#;
     let body = Body::render(&json, raw);
     assert_eq!(
         serde_json::to_string(&body).unwrap(),
-        r#"{ "valor": 129.90,  "itens": ["a"] }"#,
-        "o JSON sai exatamente como foi enviado"
+        r#"{ "amount": 129.90,  "items": ["a"] }"#,
+        "the JSON comes out exactly as it was sent"
     );
     assert_eq!(body.encoding(), None);
 
-    let text = Body::render(&ContentType::parse("text/plain").unwrap(), "olá".as_bytes());
-    assert_eq!(serde_json::to_string(&text).unwrap(), "\"olá\"");
+    let text = Body::render(
+        &ContentType::parse("text/plain").unwrap(),
+        "café".as_bytes(),
+    );
+    assert_eq!(serde_json::to_string(&text).unwrap(), "\"café\"");
     assert_eq!(text.encoding(), None);
 
     let png = Body::render(

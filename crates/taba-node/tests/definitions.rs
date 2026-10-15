@@ -1,6 +1,6 @@
-//! As definições de tópico e de token compartilhadas por todos os nós, com dono no anel: quem
-//! decide, a versão, a insistência nos nós que não respondem e a lápide da remoção (nível **C** do
-//! doc 20): vários nós de verdade no mesmo processo, ligados pela rede em memória.
+//! The topic and token definitions shared by all the nodes, with an owner on the ring: who
+//! decides, the version, the insistence on the nodes that do not answer and the removal tombstone (level **C** of
+//! doc 20): several real nodes in the same process, linked by the in-memory network.
 
 mod common;
 
@@ -18,11 +18,11 @@ use taba_node::cluster::transport::{CallError, Transport};
 use taba_node::core::error::ErrorCode;
 use taba_node::core::ring::definition_position;
 
-/// O código do erro que o par devolveu.
+/// The error code the peer returned.
 fn remote_code(error: CallError) -> ErrorCode {
     match error {
         CallError::Remote(e) => e.code,
-        other => panic!("esperava um erro do par, veio {other}"),
+        other => panic!("expected a peer error, got {other}"),
     }
 }
 
@@ -42,10 +42,10 @@ async fn create(cluster: &TestCluster, number: usize, name: &str) -> reqwest::Re
         .json(&json!({"name": name, "type": "queue"}))
         .send()
         .await
-        .expect("requisição")
+        .expect("request")
 }
 
-/// O trecho do stream de tópicos que o nó `number` serve, como um par pediria.
+/// The slice of the topic stream that node `number` serves, as a peer would ask for it.
 async fn stream_of(cluster: &TestCluster, number: usize) -> Vec<serde_json::Value> {
     let peer = cluster
         .network
@@ -59,11 +59,11 @@ async fn stream_of(cluster: &TestCluster, number: usize) -> Vec<serde_json::Valu
         .expect("stream")
     {
         Response::Stream(page) => page.items,
-        other => panic!("esperava um stream, veio {other:?}"),
+        other => panic!("expected a stream, got {other:?}"),
     }
 }
 
-/// Um nó que não responde não impede a criação: o dono insiste nele até ele voltar.
+/// A node that does not answer does not prevent the creation: the owner insists on it until it comes back.
 /// UC: UC-DEF-031
 #[tokio::test]
 async fn a_topic_created_while_a_node_is_unreachable_reaches_it_when_it_returns() {
@@ -72,23 +72,30 @@ async fn a_topic_created_while_a_node_is_unreachable_reaches_it_when_it_returns(
     cluster.network.isolate(&host_of(3));
 
     let response = create(&cluster, 1, &name).await;
-    assert_eq!(response.status(), 201, "sem registro em todos os nós");
+    assert_eq!(
+        response.status(),
+        201,
+        "without a register on all the nodes"
+    );
     assert!(has_topic(&cluster, 1, &name).await);
     assert!(
         has_topic(&cluster, 2, &name).await,
-        "o nó alcançável já tem"
+        "the reachable node already has it"
     );
-    assert!(!has_topic(&cluster, 3, &name).await, "o isolado ainda não");
+    assert!(
+        !has_topic(&cluster, 3, &name).await,
+        "the isolated one not yet"
+    );
 
     cluster.network.restore(&host_of(3));
-    eventually_async("o nó que voltou recebe o tópico", || async {
+    eventually_async("the node that came back to receive the topic", || async {
         has_topic(&cluster, 3, &name).await
     })
     .await;
     cluster.shutdown().await;
 }
 
-/// Quem recebe a chamada não é o dono: propõe ao dono, que decide e espalha.
+/// Whoever receives the call is not the owner: proposes to the owner, who decides and spreads it.
 /// UC: UC-DEF-025, UC-DEF-033
 #[tokio::test]
 async fn a_change_received_by_a_node_that_is_not_the_owner_is_decided_by_the_owner() {
@@ -100,24 +107,24 @@ async fn a_change_received_by_a_node_that_is_not_the_owner_is_decided_by_the_own
     assert_eq!(response.status(), 201);
     assert_eq!(cluster.network.count("definition-propose"), 1);
     for number in 1..=3 {
-        eventually_async("o tópico em todo nó", || async {
+        eventually_async("the topic on every node", || async {
             has_topic(&cluster, number, &name).await
         })
         .await;
     }
-    // O dono deu a versão 1 e todos a guardam.
+    // The owner gave version 1 and all keep it.
     for number in 1..=3 {
         let items = stream_of(&cluster, number).await;
         let item = items
             .iter()
             .find(|i| i["name"] == name.as_str())
-            .expect("o tópico no stream");
-        assert_eq!(item["version"], 1, "nó {number}");
+            .expect("the topic in the stream");
+        assert_eq!(item["version"], 1, "node {number}");
     }
     cluster.shutdown().await;
 }
 
-/// Duas criações do mesmo nome ao mesmo tempo, em nós diferentes: o dono serializa e só uma vale.
+/// Two creations of the same name at the same time, on different nodes: the owner serializes and only one counts.
 /// UC: UC-DEF-028, UC-DEF-029
 #[tokio::test]
 async fn two_nodes_creating_the_same_name_at_once_leave_one_topic_and_one_conflict() {
@@ -133,7 +140,7 @@ async fn two_nodes_creating_the_same_name_at_once_leave_one_topic_and_one_confli
     cluster.shutdown().await;
 }
 
-/// O dono fora do ar e ainda na tabela: a mudança falha com `503` e o cliente repete (D107).
+/// The owner is down and still in the table: the change fails with `503` and the client repeats (D107).
 /// UC: UC-DEF-032
 #[tokio::test]
 async fn a_change_whose_owner_is_unreachable_fails_with_503() {
@@ -146,13 +153,13 @@ async fn a_change_whose_owner_is_unreachable_fails_with_503() {
         error_code(response, 503).await,
         "cluster.quorum-unavailable"
     );
-    assert!(!has_topic(&cluster, 1, &name).await, "nada foi aplicado");
+    assert!(!has_topic(&cluster, 1, &name).await, "nothing was applied");
     assert!(!has_topic(&cluster, 2, &name).await);
     cluster.shutdown().await;
 }
 
-/// A remoção deixa uma lápide com a versão: uma mudança atrasada (versão menor) não ressuscita o
-/// tópico.
+/// The removal leaves a tombstone with the version: a delayed change (lower version) does not resurrect the
+/// topic.
 /// UC: UC-DEF-027, UC-DEF-026
 #[tokio::test]
 async fn a_late_change_does_not_bring_a_removed_topic_back() {
@@ -160,7 +167,7 @@ async fn a_late_change_does_not_bring_a_removed_topic_back() {
     let name = name_owned_by(&cluster, 1, "gone-");
     assert_eq!(create(&cluster, 1, &name).await.status(), 201);
     for number in 1..=3 {
-        eventually_async("o tópico em todo nó", || async {
+        eventually_async("the topic on every node", || async {
             has_topic(&cluster, number, &name).await
         })
         .await;
@@ -169,7 +176,7 @@ async fn a_late_change_does_not_bring_a_removed_topic_back() {
         .await
         .into_iter()
         .find(|i| i["name"] == name.as_str())
-        .expect("o tópico no stream");
+        .expect("the topic in the stream");
 
     let node = cluster.node(1);
     let removed = node
@@ -177,16 +184,16 @@ async fn a_late_change_does_not_bring_a_removed_topic_back() {
         .delete(node.client_url(&format!("/topics/{name}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(removed.status(), 204);
     for number in 1..=3 {
-        eventually_async("o tópico removido em todo nó", || async {
+        eventually_async("the topic removed on every node", || async {
             !has_topic(&cluster, number, &name).await
         })
         .await;
     }
 
-    // A criação (versão 1) chega de novo depois da remoção (versão 2): é ignorada.
+    // The creation (version 1) arrives again after the removal (version 2): it is ignored.
     let late = DefinitionApply {
         kind: DefinitionKind::Topic,
         key: name.clone(),
@@ -202,16 +209,16 @@ async fn a_late_change_does_not_bring_a_removed_topic_back() {
             Request::DefinitionApply(late.clone()),
         )
         .await
-        .expect("o nó aceita a chamada");
+        .expect("the node accepts the call");
         assert!(
             !has_topic(&cluster, number, &name).await,
-            "nó {number} não ressuscita o tópico"
+            "node {number} does not resurrect the topic"
         );
     }
     cluster.shutdown().await;
 }
 
-/// Alterar duas vezes dá versões crescentes, e todos os nós terminam na última.
+/// Changing twice gives increasing versions, and all the nodes end on the last one.
 /// UC: UC-DEF-026
 #[tokio::test]
 async fn each_change_gets_the_next_version_and_every_node_ends_on_the_last() {
@@ -225,11 +232,11 @@ async fn each_change_gets_the_next_version_and_every_node_ends_on_the_last() {
         .json(&json!({"tags": {"team": "pay"}}))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(patched.status(), 200);
 
     for number in 1..=3 {
-        eventually_async("a versão 2 em todo nó", || async {
+        eventually_async("version 2 on every node", || async {
             stream_of(&cluster, number)
                 .await
                 .iter()
@@ -240,9 +247,9 @@ async fn each_change_gets_the_next_version_and_every_node_ends_on_the_last() {
     cluster.shutdown().await;
 }
 
-/// Duas cópias de mesma versão e conteúdo diferente (duas decisões que não souberam uma da outra)
-/// terminam iguais em todo nó, qualquer que seja a ordem de chegada: vale a de menor impressão do
-/// conteúdo. O empate é contado; repetir a mesma cópia não é empate.
+/// Two copies of the same version and different content (two decisions that did not know of each other)
+/// end up equal on every node, whatever the arrival order: the one with the lowest content fingerprint
+/// wins. The tie is counted; repeating the same copy is not a tie.
 /// UC: UC-DEF-035
 #[tokio::test]
 async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
@@ -250,7 +257,7 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
     let name = name_owned_by(&cluster, 1, "tie-");
     assert_eq!(create(&cluster, 1, &name).await.status(), 201);
     for number in 1..=3 {
-        eventually_async("o tópico em todo nó", || async {
+        eventually_async("the topic on every node", || async {
             has_topic(&cluster, number, &name).await
         })
         .await;
@@ -259,7 +266,7 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
         .await
         .into_iter()
         .find(|i| i["name"] == name.as_str())
-        .expect("o tópico no stream");
+        .expect("the topic in the stream");
     let copy = |team: &str| DefinitionApply {
         kind: DefinitionKind::Topic,
         key: name.clone(),
@@ -280,7 +287,7 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
             sender
                 .call(&address, Request::DefinitionApply(change))
                 .await
-                .expect("o nó aceita a chamada");
+                .expect("the node accepts the call");
         }
     };
     send(2, first.clone()).await;
@@ -300,7 +307,7 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
         }
     };
     let (on_two, on_three) = (tags_of(2).await, tags_of(3).await);
-    assert_eq!(on_two, on_three, "os dois nós terminam com a mesma cópia");
+    assert_eq!(on_two, on_three, "the two nodes end with the same copy");
 
     let conflicts = |number: usize| {
         let node = cluster.node(number);
@@ -312,24 +319,24 @@ async fn two_copies_with_the_same_version_end_the_same_in_any_arrival_order() {
             )
         }
     };
-    assert_eq!(conflicts(2).await, 1.0, "o nó 2 contou o empate");
-    assert_eq!(conflicts(3).await, 1.0, "o nó 3 contou o empate");
+    assert_eq!(conflicts(2).await, 1.0, "node 2 counted the tie");
+    assert_eq!(conflicts(3).await, 1.0, "node 3 counted the tie");
 
-    // Repetir a cópia que venceu, ou a que perdeu, não muda nada e a que perdeu é só um novo empate.
+    // Repeating the copy that won, or the one that lost, changes nothing and the one that lost is only a new tie.
     send(2, first.clone()).await;
     send(2, second.clone()).await;
-    assert_eq!(tags_of(2).await, on_two, "a cópia vencedora segue");
+    assert_eq!(tags_of(2).await, on_two, "the winning copy stays");
     assert_eq!(
         conflicts(2).await,
         2.0,
-        "só a cópia perdedora conta como empate de novo"
+        "only the losing copy counts as a tie again"
     );
     cluster.shutdown().await;
 }
 
-/// O nó que entra lê também as lápides do que foi removido: sem elas ele não saberia a versão já usada,
-/// e uma criação atrasada de versão menor (ou a recriação com a versão 1) ressuscitaria ou seria
-/// ignorada pelos outros nós. As lápides saem do stream `GET /cluster/definitions/tombstones`.
+/// The node that joins also reads the tombstones of what was removed: without them it would not know the version already used,
+/// and a delayed creation of a lower version (or the recreation with version 1) would resurrect or be
+/// ignored by the other nodes. The tombstones come out of the `GET /cluster/definitions/tombstones` stream.
 /// UC: UC-DEF-036
 #[tokio::test]
 async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the_topic_back() {
@@ -337,7 +344,7 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
     let name = name_owned_by(&cluster, 1, "gone-");
     assert_eq!(create(&cluster, 1, &name).await.status(), 201);
     for number in 1..=2 {
-        eventually_async("o tópico em todo nó", || async {
+        eventually_async("the topic on every node", || async {
             has_topic(&cluster, number, &name).await
         })
         .await;
@@ -346,17 +353,17 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
         .await
         .into_iter()
         .find(|i| i["name"] == name.as_str())
-        .expect("o tópico no stream");
+        .expect("the topic in the stream");
     let node = cluster.node(1);
     let removed = node
         .client
         .delete(node.client_url(&format!("/topics/{name}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(removed.status(), 204);
     for number in 1..=2 {
-        eventually_async("o tópico removido em todo nó", || async {
+        eventually_async("the topic removed on every node", || async {
             !has_topic(&cluster, number, &name).await
         })
         .await;
@@ -364,7 +371,7 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
 
     cluster.add_node(false).await;
 
-    // O nó novo leu a lápide (versão 2) do nó que serviu a carga.
+    // The new node read the tombstone (version 2) from the node that served the load.
     let tombstones = |number: usize| {
         let (peer, address) = (
             cluster.network.transport(host_of(1)),
@@ -377,7 +384,7 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
                 .expect("stream")
             {
                 Response::Stream(page) => page.items,
-                other => panic!("esperava um stream, veio {other:?}"),
+                other => panic!("expected a stream, got {other:?}"),
             }
         }
     };
@@ -386,11 +393,11 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
         learned
             .iter()
             .any(|i| i["kind"] == "topic" && i["key"] == name.as_str() && i["version"] == 2),
-        "o nó novo guarda a lápide: {learned:?}"
+        "the new node keeps the tombstone: {learned:?}"
     );
     assert_eq!(tombstones(1).await.len(), learned.len());
 
-    // A criação atrasada (versão 1) chega ao nó novo: com a lápide, é ignorada.
+    // The delayed creation (version 1) arrives at the new node: with the tombstone, it is ignored.
     let late = DefinitionApply {
         kind: DefinitionKind::Topic,
         key: name.clone(),
@@ -404,16 +411,16 @@ async fn a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the
         .transport(host_of(1))
         .call(&address_of(&cluster, 3), Request::DefinitionApply(late))
         .await
-        .expect("o nó aceita a chamada");
+        .expect("the node accepts the call");
     assert!(
         !has_topic(&cluster, 3, &name).await,
-        "o nó novo não ressuscita o tópico"
+        "the new node does not resurrect the topic"
     );
     cluster.shutdown().await;
 }
 
-/// Sem nenhum outro dono alcançável a mudança não existe em outro nó: o dono recusa (`503`) em
-/// vez de responder com uma cópia só.
+/// With no other reachable owner the change does not exist on another node: the owner refuses (`503`) instead
+/// of answering with a single copy.
 /// UC: UC-DEF-030
 #[tokio::test]
 async fn a_change_with_no_other_owner_reachable_fails_with_503() {
@@ -427,12 +434,12 @@ async fn a_change_with_no_other_owner_reachable_fails_with_503() {
         error_code(response, 503).await,
         "cluster.quorum-unavailable"
     );
-    assert!(!has_topic(&cluster, 1, &name).await, "nada foi aplicado");
+    assert!(!has_topic(&cluster, 1, &name).await, "nothing was applied");
     cluster.shutdown().await;
 }
 
-/// O dono confere a mudança com o estado dele: tópico desconhecido é `404` e o `expectedId` de uma
-/// remoção que não confere é `409`, sem aplicar nada.
+/// The owner checks the change against its state: an unknown topic is `404` and the `expectedId` of a
+/// removal that does not match is `409`, without applying anything.
 /// UC: UC-DEF-029
 #[tokio::test]
 async fn the_owner_refuses_a_change_that_does_not_fit_the_current_state() {
@@ -468,7 +475,10 @@ async fn the_owner_refuses_a_change_that_does_not_fit_the_current_state() {
         .await
         .unwrap_err();
     assert_eq!(remote_code(stale), ErrorCode::ClusterConflict);
-    assert!(has_topic(&cluster, 2, &name).await, "o tópico segue lá");
+    assert!(
+        has_topic(&cluster, 2, &name).await,
+        "the topic is still there"
+    );
     cluster.shutdown().await;
 }
 
@@ -482,7 +492,7 @@ async fn create_token(node: &TestNode) -> (String, String) {
         .json(&json!({"name": "app", "permissions": ["consume"], "topicPrefixes": []}))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201);
     let body: serde_json::Value = response.json().await.expect("corpo");
     (
@@ -497,20 +507,20 @@ async fn status_with(node: &TestNode, token: &str) -> u16 {
         .header("authorization", format!("Bearer {token}"))
         .send()
         .await
-        .expect("requisição")
+        .expect("request")
         .status()
         .as_u16()
 }
 
-/// O token também tem dono (o `id` dele no anel): a revogação vale na hora nos nós que respondem e
-/// chega ao nó que estava fora do ar quando ele volta.
+/// The token also has an owner (its `id` on the ring): the revocation counts at once on the nodes that answer and
+/// reaches the node that was down when it comes back.
 /// UC: UC-DEF-034, UC-DEF-031
 #[tokio::test]
 async fn a_token_revoked_while_a_node_is_unreachable_stops_working_there_when_it_returns() {
     let cluster = TestCluster::start_with(3, &[("TABA_AUTH_ROOT_TOKEN", ROOT)]).await;
     let third = cluster.node_id(3);
     let membership = cluster.node(1).node.cluster().unwrap().membership();
-    // Um token cujo dono não é o nó que vai ficar isolado.
+    // A token whose owner is not the node that will be isolated.
     let (id, secret) = loop {
         let (id, secret) = create_token(cluster.node(1)).await;
         let owner = membership
@@ -522,7 +532,7 @@ async fn a_token_revoked_while_a_node_is_unreachable_stops_working_there_when_it
         }
     };
     for number in 1..=3 {
-        eventually_async("o token em todo nó", || async {
+        eventually_async("the token on every node", || async {
             status_with(cluster.node(number), &secret).await == 200
         })
         .await;
@@ -536,26 +546,27 @@ async fn a_token_revoked_while_a_node_is_unreachable_stops_working_there_when_it
         .header("authorization", format!("Bearer {ROOT}"))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(revoked.status(), 204);
     assert_eq!(status_with(cluster.node(1), &secret).await, 401);
     assert_eq!(status_with(cluster.node(2), &secret).await, 401);
     assert_eq!(
         status_with(cluster.node(3), &secret).await,
         200,
-        "o isolado ainda não soube"
+        "the isolated one did not learn yet"
     );
 
     cluster.network.restore(&host_of(3));
-    eventually_async("o nó que voltou recebe a revogação", || async {
-        status_with(cluster.node(3), &secret).await == 401
-    })
+    eventually_async(
+        "the node that came back to receive the revocation",
+        || async { status_with(cluster.node(3), &secret).await == 401 },
+    )
     .await;
     cluster.shutdown().await;
 }
 
-/// O dono não alcança um nó, mas o herdeiro sim: a definição chega ao nó pelo quadro `definition`
-/// que o herdeiro enfileira, sem depender do dono (D127). Antes, só o dono insistia.
+/// The owner does not reach a node, but the heir does: the definition reaches the node through the `definition` frame
+/// the heir queues, without depending on the owner (D127). Before, only the owner insisted.
 /// UC: UC-DEF-037
 #[tokio::test]
 async fn the_heir_carries_the_definition_to_a_node_the_owner_cannot_reach() {
@@ -565,31 +576,31 @@ async fn the_heir_carries_the_definition_to_a_node_the_owner_cannot_reach() {
     cluster.network.partition(&host_of(1), &host_of(3));
 
     let response = create(&cluster, 1, &name).await;
-    assert_eq!(response.status(), 201, "o dono responde com o herdeiro");
+    assert_eq!(response.status(), 201, "the owner answers with the heir");
     assert!(has_topic(&cluster, 2, &name).await);
-    eventually_async("o nó 3 receber o tópico pelo herdeiro", || async {
+    eventually_async("node 3 to receive the topic through the heir", || async {
         has_topic(&cluster, 3, &name).await
     })
     .await;
 
-    // A remoção (uma lápide) segue o mesmo caminho.
+    // The removal (a tombstone) follows the same path.
     let node = cluster.node(1);
     let removed = node
         .client
         .delete(node.client_url(&format!("/topics/{name}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(removed.status(), 204);
-    eventually_async("o nó 3 receber a remoção pelo herdeiro", || async {
+    eventually_async("node 3 to receive the removal through the heir", || async {
         !has_topic(&cluster, 3, &name).await
     })
     .await;
     cluster.shutdown().await;
 }
 
-/// O dono reinicia depois de gravar no herdeiro e antes de o nó atrasado confirmar: o herdeiro já
-/// enfileirou o quadro, e o nó o recebe quando volta, sem lista de pendentes do dono (D127).
+/// The owner restarts after writing to the heir and before the delayed node confirms: the heir already
+/// queued the frame, and the node receives it when it comes back, without the owner's list of pending ones (D127).
 /// UC: UC-DEF-038
 #[tokio::test]
 async fn a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_queue() {
@@ -607,12 +618,12 @@ async fn a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_
             .json(&json!({"tags": tags}))
             .send()
             .await
-            .expect("requisição");
+            .expect("request");
         assert_eq!(patched.status(), 200);
     }
 
     cluster.network.restore(&host_of(3));
-    eventually_async("o nó 3 terminar na última versão", || async {
+    eventually_async("node 3 to end on the last version", || async {
         stream_of(&cluster, 3)
             .await
             .iter()
@@ -623,7 +634,7 @@ async fn a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_
     let topic = items
         .iter()
         .find(|i| i["name"] == name.as_str())
-        .expect("o tópico");
+        .expect("the topic");
     assert_eq!(topic["tags"], json!({"v": "2"}));
     cluster.shutdown().await;
 }

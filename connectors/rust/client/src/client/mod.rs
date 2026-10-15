@@ -1,5 +1,5 @@
-//! O cliente: a configuração, a chamada com a repetição do contrato comum (doc 19, seção 18.4) e as
-//! nove operações da superfície (seção 18.3).
+//! The client: the configuration, the call with the common contract's retries (doc 19, section 18.4) and the
+//! nine operations of the surface (section 18.3).
 
 use std::fmt;
 use std::sync::Arc;
@@ -10,23 +10,23 @@ use crate::http::{self, Request, Response, Url};
 use crate::json::{self, Fields};
 use crate::transport::{TcpTransport, Timeouts, Transport, TransportError};
 
-/// A versão do contrato da API que este conector implementa (UC-CNT-028).
+/// The version of the API contract this connector implements (UC-CNT-028).
 pub const CONTRACT_VERSION: &str = "1";
 
-/// Acima disto o `consume` não espera mais que o `waitTime` somado à folga abaixo.
+/// Above this, `consume` waits no more than the `waitTime` plus the slack below.
 const LONG_POLL_SLACK: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Endereço da API de cliente (`http://host:porta` ou `https://...`).
+    /// Address of the client API (`http://host:port` or `https://...`).
     pub base_url: String,
     pub token: Option<String>,
     pub connect_timeout: Duration,
     pub request_timeout: Duration,
-    /// Tentativas, contando a primeira.
+    /// Attempts, counting the first.
     pub max_attempts: u32,
     pub user_agent: String,
-    /// Certificado de CA (PEM) a confiar, além das raízes do sistema.
+    /// CA certificate (PEM) to trust, besides the system roots.
     pub ca_pem: Option<Vec<u8>>,
 }
 
@@ -44,24 +44,24 @@ impl Config {
     }
 }
 
-/// A única forma de erro do conector: o `ErrorResponse` da API, ou uma falha do próprio cliente
-/// (`status` zero e `code` `client.network`, `client.timeout` ou `client.invalid-config`).
+/// The only kind of error of the connector: the API `ErrorResponse`, or a failure of the client itself
+/// (`status` zero and `code` `client.network`, `client.timeout` or `client.invalid-config`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
     pub status: u16,
     pub code: String,
     pub message: String,
     pub request_id: Option<String>,
-    /// Segundos do `Retry-After`, se veio.
+    /// Seconds of the `Retry-After`, if it came.
     pub retry_after: Option<u64>,
-    /// A lista `details` do `ErrorResponse`, como texto JSON.
+    /// The `details` list of the `ErrorResponse`, as JSON text.
     pub details: Option<String>,
-    /// O corpo da resposta, como veio (vazio em falha do cliente).
+    /// The response body, as it came (empty on a client failure).
     pub body: Vec<u8>,
 }
 
 impl Error {
-    /// Um erro do próprio cliente (`status` zero), para quem usa o conector montar o seu.
+    /// An error of the client itself (`status` zero), for whoever uses the connector to build their own.
     pub fn from_message(code: &str, message: impl Into<String>) -> Error {
         Error::client(code, message)
     }
@@ -78,7 +78,7 @@ impl Error {
         }
     }
 
-    /// Falha do próprio cliente, e não uma resposta do servidor.
+    /// A failure of the client itself, not a server response.
     pub fn is_client_side(&self) -> bool {
         self.status == 0
     }
@@ -96,26 +96,26 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Uma chamada à API, antes de virar HTTP.
+/// A call to the API, before it becomes HTTP.
 #[derive(Debug, Clone)]
 pub struct Call {
     pub method: &'static str,
-    /// Caminho já com os segmentos codificados (`/topics/pedidos`).
+    /// Path with the segments already encoded (`/topics/orders`).
     pub path: String,
     pub query: Vec<(String, String)>,
     pub body: Vec<u8>,
-    /// Só vale com corpo; padrão `application/json`.
-    /// Cabeçalhos a mais (um `Accept` próprio troca o padrão `application/json`).
+    /// Only applies with a body; default `application/json`.
+    /// Extra headers (an `Accept` of its own replaces the default `application/json`).
     pub headers: Vec<(String, String)>,
     pub content_type: Option<String>,
     pub request_id: Option<String>,
     pub traceparent: Option<String>,
-    /// Troca o tempo total da chamada (o `consume` usa `waitTime + 10 s`).
+    /// Overrides the total time of the call (`consume` uses `waitTime + 10 s`).
     pub timeout: Option<Duration>,
-    /// Repete `502` e `504`: só a publicação em fila FIFO, em que o primário deduplica.
+    /// Retries `502` and `504`: only publishing to a FIFO queue, where the primary deduplicates.
     pub retry_gateway: bool,
-    /// Depois de um `503`, estas respostas contam como sucesso (a operação já tinha sido aplicada):
-    /// criar tópico (`409 topic.already-exists`) e apagar (`404`).
+    /// After a `503`, these responses count as success (the operation had already been applied):
+    /// creating a topic (`409 topic.already-exists`) and deleting (`404`).
     pub recover: Vec<(u16, &'static str)>,
 }
 
@@ -147,15 +147,15 @@ impl Call {
     }
 }
 
-/// A resposta de uma chamada que deu certo.
+/// The response of a call that succeeded.
 #[derive(Debug, Clone)]
 pub struct Reply {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
     pub request_id: Option<String>,
-    /// `true` quando a resposta é um `409`/`404` aceito como sucesso depois de um `503` (a operação
-    /// tinha sido aplicada na tentativa anterior).
+    /// `true` when the response is a `409`/`404` accepted as success after a `503` (the operation
+    /// had been applied on the previous attempt).
     pub recovered: bool,
 }
 
@@ -180,7 +180,7 @@ impl Client {
         Client::with_transport(config, Box::new(transport), Arc::new(std::thread::sleep))
     }
 
-    /// Para trocar a pilha de rede (e, nos testes, a espera entre tentativas).
+    /// To swap the network stack (and, in tests, the wait between attempts).
     pub fn with_transport(
         config: Config,
         transport: Box<dyn Transport>,
@@ -236,10 +236,10 @@ impl Client {
         }
     }
 
-    /// Faz a chamada, repetindo só o que o contrato manda repetir (seção 18.4):
-    /// `429` e `503` (esperando o `Retry-After`, ou 1 s, 2 s, 4 s), `502` e `504` só com
-    /// `retry_gateway`, e falha de rede **antes** de enviar. Nunca um `4xx` (fora o `429`), nem
-    /// uma falha depois de enviar o corpo, nem um estouro de tempo.
+    /// Makes the call, retrying only what the contract says to retry (section 18.4):
+    /// `429` and `503` (waiting for the `Retry-After`, or 1 s, 2 s, 4 s), `502` and `504` only with
+    /// `retry_gateway`, and a network failure **before** sending. Never a `4xx` (except `429`), nor
+    /// a failure after sending the body, nor a timeout.
     pub fn call(&self, call: &Call) -> Result<Reply, Error> {
         let request = self.wire_request(call);
         let timeouts = Timeouts {
@@ -292,7 +292,7 @@ impl Client {
                     if attempt >= max {
                         return Err(Error::client(
                             "client.timeout",
-                            "estourou o tempo ao abrir a conexão",
+                            "timed out opening the connection",
                         ));
                     }
                     after_503 = true;
@@ -301,7 +301,7 @@ impl Client {
                 Err(TransportError::Timeout { sent: true }) => {
                     return Err(Error::client(
                         "client.timeout",
-                        "estourou o tempo esperando a resposta",
+                        "timed out waiting for the response",
                     ));
                 }
                 Err(TransportError::Io(message)) => {
@@ -310,7 +310,7 @@ impl Client {
                 Err(TransportError::Protocol(message)) => {
                     return Err(Error::client(
                         "client.network",
-                        format!("resposta inválida: {message}"),
+                        format!("invalid response: {message}"),
                     ))
                 }
             }
@@ -334,7 +334,7 @@ fn error_code(response: &Response) -> Option<String> {
     Fields::parse(text).ok()?.string("code")
 }
 
-/// O `ErrorResponse` da resposta; se o corpo não for um, o erro leva o código `http.<status>`.
+/// The response's `ErrorResponse`; if the body is not one, the error carries the code `http.<status>`.
 fn error_from(response: &Response) -> Error {
     let text = String::from_utf8_lossy(&response.body);
     let fields = Fields::parse(&text).ok();
@@ -349,7 +349,7 @@ fn error_from(response: &Response) -> Error {
         _ => (
             format!("http.{}", response.status),
             if text.trim().is_empty() {
-                format!("resposta {} sem corpo", response.status)
+                format!("response {} with no body", response.status)
             } else {
                 text.trim().chars().take(300).collect()
             },
@@ -382,18 +382,18 @@ fn bad_response(what: &str, e: json::JsonError) -> Error {
 pub struct Topic {
     pub id: String,
     pub name: String,
-    /// `queue` ou `distributor`.
+    /// `queue` or `distributor`.
     pub topic_type: String,
     pub created_at: String,
     pub fifo: Option<bool>,
     pub volatile: Option<bool>,
-    /// O JSON do tópico, como o servidor devolveu.
+    /// The topic JSON, as the server returned it.
     pub raw: String,
 }
 
 impl Topic {
     pub fn parse(raw: &str) -> Result<Topic, Error> {
-        let f = Fields::parse(raw).map_err(|e| bad_response("tópico", e))?;
+        let f = Fields::parse(raw).map_err(|e| bad_response("topic", e))?;
         Ok(Topic {
             id: f.string("id").unwrap_or_default(),
             name: f.string("name").unwrap_or_default(),
@@ -406,7 +406,7 @@ impl Topic {
     }
 }
 
-/// Uma página (`Page<T>`): os itens e o cursor da próxima, se houver.
+/// A page (`Page<T>`): the items and the cursor of the next one, if any.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Page<T> {
     pub items: Vec<T>,
@@ -415,10 +415,10 @@ pub struct Page<T> {
 }
 
 fn parse_page<T>(raw: &str, item: impl Fn(&str) -> Result<T, Error>) -> Result<Page<T>, Error> {
-    let f = Fields::parse(raw).map_err(|e| bad_response("página", e))?;
+    let f = Fields::parse(raw).map_err(|e| bad_response("page", e))?;
     let items_raw = f.raw("items").unwrap_or("[]");
     let items = json::array_items(items_raw)
-        .map_err(|e| bad_response("itens da página", e))?
+        .map_err(|e| bad_response("page items", e))?
         .into_iter()
         .map(item)
         .collect::<Result<Vec<_>, _>>()?;
@@ -429,7 +429,7 @@ fn parse_page<T>(raw: &str, item: impl Fn(&str) -> Result<T, Error>) -> Result<P
     })
 }
 
-/// Uma mensagem entregue. O `body` sai sempre como bytes (seção 18.4).
+/// A delivered message. The `body` always comes out as bytes (section 18.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
     pub id: String,
@@ -443,7 +443,7 @@ pub struct Message {
     pub deduplication_id: Option<String>,
     pub dead_lettered_at: Option<String>,
     pub dead_letter_reason: Option<String>,
-    /// O JSON da mensagem, como o servidor devolveu.
+    /// The message JSON, as the server returned it.
     pub raw: String,
 }
 
@@ -459,7 +459,7 @@ fn is_json_type(content_type: &str) -> bool {
 
 impl Message {
     pub fn parse(raw: &str) -> Result<Message, Error> {
-        let f = Fields::parse(raw).map_err(|e| bad_response("mensagem", e))?;
+        let f = Fields::parse(raw).map_err(|e| bad_response("message", e))?;
         let content_type = f
             .string("contentType")
             .unwrap_or_else(|| "application/json".to_owned());
@@ -467,14 +467,14 @@ impl Message {
             None => Vec::new(),
             Some(body) if f.string("bodyEncoding").as_deref() == Some("base64") => {
                 let text =
-                    json::decode_string(body).map_err(|e| bad_response("corpo da mensagem", e))?;
+                    json::decode_string(body).map_err(|e| bad_response("message body", e))?;
                 base64::decode(&text).ok_or_else(|| {
-                    Error::client("client.invalid-response", "corpo base64 inválido")
+                    Error::client("client.invalid-response", "invalid base64 body")
                 })?
             }
             Some(body) if is_json_type(&content_type) => body.as_bytes().to_vec(),
             Some(body) => json::decode_string(body)
-                .map_err(|e| bad_response("corpo da mensagem", e))?
+                .map_err(|e| bad_response("message body", e))?
                 .into_bytes(),
         };
         Ok(Message {
@@ -496,11 +496,11 @@ impl Message {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishResponse {
-    /// O `id` da mensagem (fila). Ausente na resposta de um distribuidor.
+    /// The message `id` (queue). Absent from a distributor's response.
     pub id: Option<String>,
-    /// Só na fila FIFO.
+    /// FIFO queue only.
     pub duplicate: Option<bool>,
-    /// Só no distribuidor: quantas filas casaram.
+    /// Distributor only: how many queues matched.
     pub matched: Option<u64>,
     pub raw: String,
 }
@@ -513,7 +513,7 @@ pub struct VisibilityResponse {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Requisições
+// Requests
 // ---------------------------------------------------------------------------------------------
 
 fn json_map(pairs: &[(String, String)]) -> String {
@@ -529,12 +529,12 @@ fn json_list(items: &[String]) -> String {
     format!("[{}]", items.join(","))
 }
 
-/// `POST /topics`. O conector manda só o que foi preenchido; o que não vale para o tipo, o servidor
-/// recusa.
+/// `POST /topics`. The connector sends only what was filled in; whatever does not apply to the type, the server
+/// refuses.
 #[derive(Debug, Clone, Default)]
 pub struct TopicRequest {
     pub name: String,
-    /// `queue` ou `distributor`.
+    /// `queue` or `distributor`.
     pub topic_type: String,
     pub tags: Vec<(String, String)>,
     pub prefixes: Vec<String>,
@@ -580,13 +580,13 @@ impl TopicRequest {
     }
 }
 
-/// Um campo do `PATCH` que aceita voltar ao padrão do servidor (`null`).
+/// A `PATCH` field that accepts going back to the server default (`null`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Nullable<T> {
-    /// Não envia o campo.
+    /// Does not send the field.
     #[default]
     Keep,
-    /// Envia `null`: volta ao padrão do servidor.
+    /// Sends `null`: goes back to the server default.
     Default,
     Set(T),
 }
@@ -601,10 +601,10 @@ impl<T: fmt::Display> Nullable<T> {
     }
 }
 
-/// `PATCH /topics/{topic}`: só o que foi preenchido é enviado.
+/// `PATCH /topics/{topic}`: only what was filled in is sent.
 #[derive(Debug, Clone, Default)]
 pub struct TopicUpdate {
-    /// Substitui o mapa inteiro (`Some(vazio)` limpa as tags).
+    /// Replaces the whole map (`Some(empty)` clears the tags).
     pub tags: Option<Vec<(String, String)>>,
     pub prefixes: Option<Vec<String>>,
     pub idle_timeout: Option<u64>,
@@ -634,12 +634,12 @@ impl TopicUpdate {
 
 #[derive(Debug, Clone, Default)]
 pub struct PublishOptions {
-    /// Padrão `application/json`.
+    /// Default `application/json`.
     pub content_type: Option<String>,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
     pub request_id: Option<String>,
-    /// Marque quando o tópico é uma fila FIFO: só nela o `502`/`504` pode ser repetido.
+    /// Set it when the topic is a FIFO queue: only there can `502`/`504` be retried.
     pub fifo: bool,
 }
 
@@ -649,7 +649,7 @@ pub struct ConsumeOptions {
     pub visibility_timeout: Option<u32>,
     pub wait_time: Option<u32>,
     pub auto_create: bool,
-    /// Os quatro seguintes só valem com `auto_create`.
+    /// The next four only apply with `auto_create`.
     pub volatile: Option<bool>,
     pub idle_timeout: Option<u32>,
     pub fifo: Option<bool>,
@@ -662,7 +662,7 @@ fn segment(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
-// As nove operações
+// The nine operations
 // ---------------------------------------------------------------------------------------------
 
 impl Client {
@@ -683,7 +683,7 @@ impl Client {
         Topic::parse(&reply.text())
     }
 
-    /// `GET /topics`. Os parâmetros que forem `None` não vão na query.
+    /// `GET /topics`. Parameters that are `None` do not go in the query.
     pub fn list_topics(
         &self,
         limit: Option<u32>,
@@ -703,7 +703,7 @@ impl Client {
         parse_page(&self.call(&call)?.text(), Topic::parse)
     }
 
-    /// Todos os tópicos, página a página.
+    /// All topics, page by page.
     pub fn list_all_topics(&self, name: Option<&str>) -> Result<Vec<Topic>, Error> {
         let mut all = Vec::new();
         let mut cursor: Option<String> = None;
@@ -731,7 +731,7 @@ impl Client {
         self.call(&call).map(|_| ())
     }
 
-    /// `POST /topics/{topic}/messages`. O corpo vai como bytes, sem validação.
+    /// `POST /topics/{topic}/messages`. The body goes as bytes, without validation.
     pub fn publish(
         &self,
         topic: &str,
@@ -754,9 +754,9 @@ impl Client {
         }
         call.request_id = options.request_id.clone();
         call.retry_gateway = options.fifo;
-        // Uma publicação de corpo vazio ainda precisa de `Content-Type`: o corpo vai como veio.
+        // A publication with an empty body still needs a `Content-Type`: the body goes as it came.
         let raw = self.call(&call)?.text();
-        let f = Fields::parse(&raw).map_err(|e| bad_response("publicação", e))?;
+        let f = Fields::parse(&raw).map_err(|e| bad_response("publication", e))?;
         Ok(PublishResponse {
             id: f.string("id"),
             duplicate: f.boolean("duplicate"),
@@ -777,14 +777,14 @@ impl Client {
         self.publish(topic, text.as_bytes(), &options)
     }
 
-    /// `GET /topics/{topic}/messages`. O tempo de leitura é `waitTime + 10 s`, e não o
+    /// `GET /topics/{topic}/messages`. The read time is `waitTime + 10 s`, not the
     /// `requestTimeout`.
     pub fn consume(&self, topic: &str, options: &ConsumeOptions) -> Result<Vec<Message>, Error> {
         let call = self.consume_call(topic, options);
         let raw = self.call(&call)?.text();
         let f = Fields::parse(&raw).map_err(|e| bad_response("consumo", e))?;
         json::array_items(f.raw("messages").unwrap_or("[]"))
-            .map_err(|e| bad_response("mensagens", e))?
+            .map_err(|e| bad_response("messages", e))?
             .into_iter()
             .map(Message::parse)
             .collect()
@@ -863,10 +863,10 @@ impl Client {
         })
     }
 
-    /// O laço de consumo (D71.1): long polling (`waitTime` 20 e uma mensagem por vez, se não
-    /// informados), chama o `handler` e confirma sozinho **só se ele devolver `Ok`**. `stop` é
-    /// consultado antes de cada consumo e depois de cada mensagem; devolvendo `true`, o laço termina.
-    /// Um erro do servidor ao consumir ou confirmar sobe.
+    /// The consume loop (D71.1): long polling (`waitTime` 20 and one message at a time, if not
+    /// set), calls the `handler` and acknowledges by itself **only if it returns `Ok`**. `stop` is
+    /// checked before each consume and after each message; returning `true`, the loop ends.
+    /// A server error while consuming or acknowledging propagates.
     pub fn subscribe<H, S>(
         &self,
         topic: &str,
@@ -885,8 +885,8 @@ impl Client {
             for message in self.consume(topic, &options)? {
                 if handler(&message).is_ok() {
                     match self.ack(topic, &message.id, &message.receipt_token) {
-                        // A mensagem já voltou à fila (prazo vencido, `409`) ou já foi embora (`404`):
-                        // não há o que confirmar, e o laço segue.
+                        // The message already went back to the queue (deadline expired, `409`) or is already gone (`404`):
+                        // there is nothing to acknowledge, and the loop goes on.
                         Err(e) if e.status == 409 || e.status == 404 => {}
                         other => other?,
                     }

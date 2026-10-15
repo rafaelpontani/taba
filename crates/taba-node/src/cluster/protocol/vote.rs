@@ -1,19 +1,19 @@
-//! A votação de exclusão de um nó (doc 04, seção 6.3; doc 06c, `POST /cluster/vote-remove`).
+//! The exclusion vote of a node (doc 04, section 6.3; doc 06c, `POST /cluster/vote-remove`).
 
 use serde::{Deserialize, Serialize};
 
 use super::require_guid;
 use crate::core::error::TabaError;
 
-/// Por que a votação foi aberta.
+/// Why the vote was opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum VoteReason {
-    /// O canal com o nó ficou fora depois das tentativas de reconexão.
+    /// The channel to the node stayed down after the reconnection attempts.
     ChannelDown,
-    /// A fila de saída para o nó estourou o limite.
+    /// The outgoing queue to the node overflowed the limit.
     QueueOverflow,
-    /// O nó entrou em falha e avisou.
+    /// The node entered failure and said so.
     NodeFailed,
 }
 
@@ -52,7 +52,7 @@ pub enum Ballot {
     No,
 }
 
-/// `VoteResponse` (doc 06c): o voto, conforme o que o votante enxerga do candidato.
+/// `VoteResponse` (doc 06c): the vote, according to what the voter sees of the candidate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VoteResponse {

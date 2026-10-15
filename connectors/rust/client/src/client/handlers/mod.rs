@@ -1,8 +1,8 @@
-//! O consumo com *handler* (D140, doc 19 §18.3): `consume_with` (e, com a *feature* `serde`,
-//! `consume_typed`) lê da fila com long polling, entrega cada mensagem a um [`Delivery`], apaga a
-//! mensagem se o *handler* devolve `Ok` e `delete` continua `true`, e **renova sozinho a
-//! invisibilidade** (uma segunda *thread*, a cada um terço dela) enquanto o *handler* roda. Com a
-//! *feature* `serde`, `publish_object` serializa o objeto antes de publicar.
+//! Consuming with a *handler* (D140, doc 19 §18.3): `consume_with` (and, with the `serde` *feature*,
+//! `consume_typed`) reads from the queue with long polling, hands each message to a [`Delivery`], deletes the
+//! message if the *handler* returns `Ok` and `delete` is still `true`, and **renews the
+//! invisibility by itself** (a second *thread*, every third of it) while the *handler* runs. With the
+//! `serde` *feature*, `publish_object` serializes the object before publishing.
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -11,17 +11,17 @@ use std::time::Duration;
 
 use super::{Client, ConsumeOptions, Error, Message, VisibilityResponse};
 
-/// Uma mensagem por vez (o `maxMessages` do consumo com *handler*).
+/// One message at a time (the `maxMessages` of consuming with a *handler*).
 pub const DEFAULT_MAX_MESSAGES: u32 = 1;
-/// O long polling do consumo com *handler*, em segundos.
+/// The long polling of consuming with a *handler*, in seconds.
 pub const DEFAULT_WAIT_TIME: u32 = 20;
-/// A invisibilidade do consumo com *handler*, em segundos, que a renovação mantém.
+/// The invisibility of consuming with a *handler*, in seconds, which the renewal keeps.
 pub const DEFAULT_VISIBILITY_TIMEOUT: u32 = 120;
 
-/// O erro que o *handler* devolve; a mensagem dele **não** é apagada.
+/// The error the *handler* returns; its message is **not** deleted.
 pub type HandlerError = Box<dyn std::error::Error>;
 
-/// O que o consumo com *handler* devolve de errado: a API (ou o próprio cliente) ou o *handler*.
+/// What consuming with a *handler* returns when it goes wrong: the API (or the client itself) or the *handler*.
 #[derive(Debug)]
 pub enum ConsumeError {
     Api(Error),
@@ -45,13 +45,13 @@ impl From<Error> for ConsumeError {
     }
 }
 
-/// O que o *handler* recebe: a mensagem inteira, o corpo (já deserializado no `consume_typed`; `()`
-/// no `consume_with`), `delete` (padrão `true`) e [`Delivery::change_visibility`].
+/// What the *handler* receives: the whole message, the body (already deserialized in `consume_typed`; `()`
+/// in `consume_with`), `delete` (default `true`) and [`Delivery::change_visibility`].
 pub struct Delivery<'a, T = ()> {
     pub message: &'a Message,
     pub body: T,
-    /// `true` (o padrão): a mensagem é apagada (`ack`) se o *handler* devolve `Ok`. Com `false`, ela
-    /// fica na fila e volta a ficar visível ao fim da invisibilidade.
+    /// `true` (the default): the message is deleted (`ack`) if the *handler* returns `Ok`. With `false`, it
+    /// stays in the queue and becomes visible again at the end of the invisibility.
     pub delete: bool,
     client: &'a Client,
     topic: &'a str,
@@ -60,7 +60,7 @@ pub struct Delivery<'a, T = ()> {
 }
 
 impl<T> Delivery<'_, T> {
-    /// Muda a invisibilidade para `seconds` a partir de agora; o valor passa a ser o da renovação.
+    /// Changes the invisibility to `seconds` from now on; the value becomes the renewal's.
     pub fn change_visibility(&self, seconds: u32) -> Result<VisibilityResponse, Error> {
         let reply = self.client.change_visibility(
             self.topic,
@@ -72,18 +72,18 @@ impl<T> Delivery<'_, T> {
         Ok(reply)
     }
 
-    /// Os segundos que a renovação automática pede a cada volta.
+    /// The seconds the automatic renewal requests on each round.
     pub fn lease_seconds(&self) -> u32 {
         self.lease.load(Ordering::SeqCst)
     }
 
-    /// `true` se o servidor recusou uma renovação (a mensagem já voltou à fila ou foi apagada).
+    /// `true` if the server refused a renewal (the message already went back to the queue or was deleted).
     pub fn lease_lost(&self) -> bool {
         self.lost.load(Ordering::SeqCst)
     }
 }
 
-/// Os padrões do consumo com *handler*; o que a pessoa informou vale.
+/// The defaults of consuming with a *handler*; what the caller set applies.
 fn with_defaults(options: &ConsumeOptions) -> ConsumeOptions {
     let mut options = options.clone();
     options.max_messages.get_or_insert(DEFAULT_MAX_MESSAGES);
@@ -94,15 +94,15 @@ fn with_defaults(options: &ConsumeOptions) -> ConsumeOptions {
     options
 }
 
-/// O intervalo da renovação: um terço da invisibilidade, para sobrar tempo de repetir se uma
-/// renovação falhar antes de a mensagem ser liberada a outro consumidor.
+/// The renewal interval: a third of the invisibility, so there is time left to retry if a
+/// renewal fails before the message is released to another consumer.
 fn renewal_interval(lease_seconds: u32) -> Duration {
     Duration::from_secs_f64(f64::from(lease_seconds.max(1)) / 3.0)
 }
 
 impl Client {
-    /// Lê da fila e chama o `handler` para cada mensagem (veja o módulo). Devolve quantas foram
-    /// tratadas. Se o `handler` devolve `Err`, a mensagem não é apagada e o erro sobe.
+    /// Reads from the queue and calls `handler` for each message (see the module). Returns how many were
+    /// handled. If `handler` returns `Err`, the message is not deleted and the error propagates.
     pub fn consume_with<H>(
         &self,
         topic: &str,
@@ -158,7 +158,7 @@ impl Client {
         result.map_err(ConsumeError::Handler)?;
         if delivery.delete {
             match self.ack(topic, &message.id, &message.receipt_token) {
-                // A mensagem já voltou à fila (prazo vencido, `409`) ou já foi embora (`404`).
+                // The message already went back to the queue (deadline expired, `409`) or is already gone (`404`).
                 Err(e) if e.status == 409 || e.status == 404 => {}
                 other => other?,
             }
@@ -166,7 +166,7 @@ impl Client {
         Ok(())
     }
 
-    /// A segunda *thread*: renova a invisibilidade até o *handler* terminar. Nunca falha.
+    /// The second *thread*: renews the invisibility until the *handler* finishes. Never fails.
     fn keep_alive(
         &self,
         topic: &str,
@@ -193,11 +193,11 @@ impl Client {
                 lease.load(Ordering::SeqCst),
             ) {
                 if e.status == 409 || e.status == 404 {
-                    // Já voltou à fila ou foi apagada: renovar não adianta mais.
+                    // It already went back to the queue or was deleted: renewing is no longer of any use.
                     lost.store(true, Ordering::SeqCst);
                     return;
                 }
-                // Falha passageira (rede, 5xx): tenta de novo na próxima volta.
+                // Transient failure (network, 5xx): tries again on the next round.
             }
         }
     }
@@ -205,8 +205,8 @@ impl Client {
 
 #[cfg(feature = "serde")]
 impl Client {
-    /// Serializa `value` em JSON e publica como `application/json`. Para serializar por conta
-    /// própria, use o `publish` com os bytes.
+    /// Serializes `value` to JSON and publishes it as `application/json`. To serialize on your
+    /// own, use `publish` with the bytes.
     pub fn publish_object<T: serde::Serialize>(
         &self,
         topic: &str,
@@ -217,9 +217,9 @@ impl Client {
         self.publish(topic, &json, &super::PublishOptions::default())
     }
 
-    /// O [`Client::consume_with`] com o corpo já deserializado como `T` em `delivery.body`. Se o
-    /// corpo não é um `T`, devolve `client.invalid-response` antes de chamar o *handler*, e a
-    /// mensagem não é apagada.
+    /// [`Client::consume_with`] with the body already deserialized as `T` in `delivery.body`. If the
+    /// body is not a `T`, it returns `client.invalid-response` before calling the *handler*, and the
+    /// message is not deleted.
     pub fn consume_typed<T, H>(
         &self,
         topic: &str,
@@ -240,7 +240,7 @@ impl Client {
             let body: T = serde_json::from_slice(&message.body).map_err(|e| {
                 Error::client(
                     "client.invalid-response",
-                    format!("corpo da mensagem {}: {e}", message.id),
+                    format!("message body {}: {e}", message.id),
                 )
             })?;
             self.handle_one(topic, lease, message, body, &mut handler)?;

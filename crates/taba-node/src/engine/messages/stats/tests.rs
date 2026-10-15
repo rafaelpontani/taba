@@ -75,7 +75,7 @@ fn stalled_needs_messages_and_no_consumption_for_the_whole_period() {
     assert_eq!(
         evaluate(&s, &rules, 10 * MINUTE, 0),
         [],
-        "sem mensagens não há o que consumir"
+        "without messages there is nothing to consume"
     );
     s.invisible = 2;
     assert_eq!(evaluate(&s, &rules, 10 * MINUTE, 0), [Condition::Stalled]);
@@ -99,7 +99,7 @@ fn idle_counts_from_the_last_publish_or_consume_or_the_baseline() {
     assert_eq!(
         evaluate(&s, &rules, 11 * MINUTE, 5 * MINUTE),
         [],
-        "a partida do nó conta como atividade"
+        "the node's start counts as activity"
     );
     s.counters.last_published_ms = Some(9 * MINUTE);
     assert_eq!(evaluate(&s, &rules, 11 * MINUTE, 0), []);
@@ -116,11 +116,11 @@ fn noisy_group_needs_two_groups_and_more_than_the_share() {
     assert_eq!(
         evaluate(&s, &rules, 0, 0),
         [],
-        "um grupo só não é barulhento"
+        "a single group is not noisy"
     );
     s.groups = 2;
     s.largest_group = 50;
-    assert_eq!(evaluate(&s, &rules, 0, 0), [], "exatamente 50% não passa");
+    assert_eq!(evaluate(&s, &rules, 0, 0), [], "exactly 50% does not pass");
     s.largest_group = 51;
     assert_eq!(evaluate(&s, &rules, 0, 0), [Condition::NoisyGroup]);
     assert!((s.noisy_share() - 0.51).abs() < 1e-9);
@@ -141,7 +141,7 @@ fn memory_pressure_is_most_of_the_topic_on_disk() {
 #[test]
 fn group_stalled_follows_what_the_index_found() {
     let mut s = snapshot();
-    s.stalled_group = Some("cliente-1".into());
+    s.stalled_group = Some("customer-1".into());
     assert_eq!(evaluate(&s, &no_rules(), 0, 0), [Condition::GroupStalled]);
 }
 
@@ -190,5 +190,5 @@ fn the_wait_is_kept_per_band_and_the_last_band_is_15_or_more() {
     assert_eq!(waits.len(), BANDS);
     assert_eq!(waits[0].count(), 1);
     assert_eq!(waits[3].count(), 1);
-    assert_eq!(waits[15].count(), 2, "40 e 15 caem em `15+`");
+    assert_eq!(waits[15].count(), 2, "40 and 15 fall in `15+`");
 }

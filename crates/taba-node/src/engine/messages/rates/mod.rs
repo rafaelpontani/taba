@@ -1,15 +1,15 @@
-//! A taxa de publicação e de leitura de um tópico (doc 02, seção 3.2; doc 11): a média móvel
-//! das mensagens por segundo na janela `memory.rate.window` (5 minutos). A taxa de leitura
-//! decide quais tópicos perdem a memória primeiro quando ela enche.
+//! The publish and read rate of a topic (doc 02, section 3.2; doc 11): the moving average
+//! of messages per second in the `memory.rate.window` window (5 minutes). The read rate
+//! decides which topics lose memory first when it fills up.
 //!
-//! Guarda um balde por segundo e descarta o que saiu da janela, então o custo é fixo por tópico.
+//! It keeps one bucket per second and discards what left the window, so the cost is fixed per topic.
 
 use std::collections::VecDeque;
 
-/// Contagens por segundo dentro de uma janela.
+/// Counts per second within a window.
 #[derive(Debug, Clone, Default)]
 pub struct RateWindow {
-    /// `(segundo, quantidade)`, em ordem de segundo.
+    /// `(second, amount)`, in second order.
     buckets: VecDeque<(u64, u64)>,
 }
 
@@ -30,7 +30,7 @@ impl RateWindow {
         }
     }
 
-    /// Mensagens por segundo na janela que termina em `now_ms`.
+    /// Messages per second in the window ending at `now_ms`.
     pub fn per_second(&self, now_ms: u64, window_secs: u64) -> f64 {
         let second = now_ms / 1000;
         let oldest = second.saturating_sub(window_secs.saturating_sub(1));
@@ -44,7 +44,7 @@ impl RateWindow {
     }
 }
 
-/// As taxas de um tópico.
+/// A topic's rates.
 #[derive(Debug, Clone, Default)]
 pub struct Rates {
     pub published: RateWindow,

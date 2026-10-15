@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Ingresso de um novo nó no cluster",
+    "title": "A new node joining the cluster",
     "output": "doc/diagramas/html/ingresso-no.html",
     "viewBox": [
       1080,
@@ -15,48 +15,48 @@
     {
       "id": "novo",
       "type": "backend",
-      "label": "Novo nó",
+      "label": "New node",
       "sublabel": "bootstrap"
     },
     {
       "id": "contato",
       "type": "security",
-      "label": "Nó de contato",
-      "sublabel": "via balanceador; coordena"
+      "label": "Contact node",
+      "sublabel": "via load balancer; coordinates"
     },
     {
       "id": "demais",
       "type": "cloud",
-      "label": "Demais nós",
-      "sublabel": "todos os membros"
+      "label": "Other nodes",
+      "sublabel": "all the members"
     },
     {
       "id": "resp",
       "type": "database",
-      "label": "Nós do bloco",
-      "sublabel": "primário e réplicas"
+      "label": "Block nodes",
+      "sublabel": "primary and replicas"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 214,
-      "label": "Descoberta"
+      "label": "Discovery"
     },
     {
       "from": 222,
       "to": 278,
-      "label": "Teste de conexão"
+      "label": "Connection test"
     },
     {
       "from": 286,
       "to": 398,
-      "label": "Registro e commit em todos"
+      "label": "Register and commit on all"
     },
     {
       "from": 406,
       "to": 546,
-      "label": "Sincronização e prontidão"
+      "label": "Synchronization and readiness"
     }
   ],
   "messages": [
@@ -65,7 +65,7 @@
       "from": "novo",
       "to": "contato",
       "y": 172,
-      "label": "GET /cluster/nodes (balanceador)",
+      "label": "GET /cluster/nodes (load balancer)",
       "variant": "dashed",
       "note": "cluster.entry-address"
     },
@@ -74,7 +74,7 @@
       "from": "contato",
       "to": "novo",
       "y": 200,
-      "label": "tabela de membros (IPs internos)",
+      "label": "member table (internal IPs)",
       "variant": "return"
     },
     {
@@ -82,7 +82,7 @@
       "from": "novo",
       "to": "contato",
       "y": 236,
-      "label": "pedido de ingresso: IPs e porta",
+      "label": "join request: IPs and port",
       "variant": "emphasis"
     },
     {
@@ -90,23 +90,23 @@
       "from": "contato",
       "to": "novo",
       "y": 264,
-      "label": "testa conexão de volta",
-      "note": "se falhar, aborta"
+      "label": "tests connection back",
+      "note": "if it fails, aborts"
     },
     {
       "id": "reg",
       "from": "contato",
       "to": "demais",
       "y": 300,
-      "label": "registro (fase 1)",
-      "note": "em conflito, a mudança mais antiga vence"
+      "label": "register (phase 1)",
+      "note": "on conflict, the older change wins"
     },
     {
       "id": "reg-ok",
       "from": "demais",
       "to": "contato",
       "y": 328,
-      "label": "todos confirmam",
+      "label": "all confirm",
       "variant": "return"
     },
     {
@@ -114,7 +114,7 @@
       "from": "contato",
       "to": "demais",
       "y": 356,
-      "label": "commit (fase 2), confirmado por todos",
+      "label": "commit (phase 2), confirmed by all",
       "variant": "emphasis"
     },
     {
@@ -122,7 +122,7 @@
       "from": "contato",
       "to": "novo",
       "y": 384,
-      "label": "tabela de nós e nós em freezing",
+      "label": "node table and nodes in freezing",
       "variant": "return"
     },
     {
@@ -130,23 +130,23 @@
       "from": "novo",
       "to": "demais",
       "y": 420,
-      "label": "abre canal e puxa tópicos (stream)",
+      "label": "opens channel and pulls topics (stream)",
       "variant": "dashed",
-      "note": "origem: nó de menor carga"
+      "note": "source: lowest-load node"
     },
     {
       "id": "ids",
       "from": "novo",
       "to": "resp",
       "y": 448,
-      "label": "stream de IDs do bloco (união)"
+      "label": "stream of the block's IDs (union)"
     },
     {
       "id": "get",
       "from": "novo",
       "to": "resp",
       "y": 476,
-      "label": "GET por faixa (distribuído)",
+      "label": "GET by range (distributed)",
       "variant": "emphasis"
     },
     {
@@ -154,7 +154,7 @@
       "from": "resp",
       "to": "novo",
       "y": 504,
-      "label": "mensagens (NDJSON) direto no disco",
+      "label": "messages (NDJSON) straight to disk",
       "variant": "return"
     },
     {
@@ -162,35 +162,35 @@
       "from": "novo",
       "to": "resp",
       "y": 532,
-      "label": "verificação final: relista IDs",
+      "label": "final check: relists IDs",
       "variant": "dashed",
-      "note": "depois processa o banco de eventos e fica pronto"
+      "note": "then processes the event database and becomes ready"
     }
   ],
   "cards": [
     {
       "dot": "rose",
-      "title": "Falha antes do commit",
+      "title": "Failure before the commit",
       "items": [
-        "Rollback do registro e o novo nó é excluído",
-        "Conflito com outra mudança: a perdedora recomeça em 100 a 200 ms",
-        "Blocos são rebalanceados sem ele"
+        "Register rollback and the new node is excluded",
+        "Conflict with another change: the loser restarts in 100 to 200 ms",
+        "Blocks are rebalanced without it"
       ]
     },
     {
       "dot": "orange",
-      "title": "Falha no commit",
+      "title": "Failure in the commit",
       "items": [
-        "Sem rollback: insiste até write.commit.timeout"
+        "No rollback: insists until write.commit.timeout"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Durante a sincronização",
+      "title": "During the synchronization",
       "items": [
-        "Eventos que chegam vão para o banco de eventos (SQLite)",
-        "Ao fim, processados linha a linha; esvazia e o nó fica pronto",
-        "Até lá, chamadas de cliente são repassadas a outro nó"
+        "Events that arrive go to the event database (SQLite)",
+        "At the end, processed row by row; it empties and the node becomes ready",
+        "Until then, client calls are forwarded to another node"
       ]
     }
   ]

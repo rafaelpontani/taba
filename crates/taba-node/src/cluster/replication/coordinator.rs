@@ -1,16 +1,16 @@
-//! Quem **coordena** uma operação em duas fases sobre os nós responsáveis por uma mensagem (doc 05,
-//! seção 7.2): registro em todos, commit decidido por quórum, rollback antes da decisão e
-//! insistência depois dela.
+//! Whoever **coordinates** a two-phase operation over the nodes responsible for a message (doc 05,
+//! section 7.2): register on all, commit decided by quorum, rollback before the decision and
+//! insistence after it.
 //!
-//! 1. A fase 1 vai a **todos** os nós responsáveis ao mesmo tempo, cada um com as tentativas de
-//!    `write.retry.*`. O próprio nó, se for um deles, é chamado sem rede.
-//! 2. Assim que o **quórum** confirma, **primário incluso**, o coordenador decide o commit. Antes da
-//!    decisão, se o primário falha ou o quórum não tem mais como fechar, decide o **rollback**
-//!    (`503 cluster.quorum-unavailable`, ou o erro que o primário devolveu).
-//! 3. Decidido o commit, a chamada só responde depois de o commit estar confirmado no quórum
-//!    (o primário e mais `write.quorum − 1` nós). Os demais nós seguem em segundo plano: registram
-//!    e fazem o commit pelo tempo que for preciso, sem rollback, e `write.commit.timeout` esgotado
-//!    sem confirmação só gera o aviso e a métrica (o bloco fica abaixo do fator pleno).
+//! 1. Phase 1 goes to **all** the responsible nodes at the same time, each with the attempts of
+//!    `write.retry.*`. The node itself, if it is one of them, is called without the network.
+//! 2. As soon as the **quorum** confirms, **primary included**, the coordinator decides the commit. Before the
+//!    decision, if the primary fails or the quorum can no longer close, it decides the **rollback**
+//!    (`503 cluster.quorum-unavailable`, or the error the primary returned).
+//! 3. Once the commit is decided, the call only answers after the commit is confirmed on the quorum
+//!    (the primary and `write.quorum − 1` more nodes). The other nodes carry on in the background: they register
+//!    and commit for as long as it takes, without rollback, and an exhausted `write.commit.timeout`
+//!    without confirmation only generates the warning and the metric (the block stays below the full factor).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -30,14 +30,14 @@ use crate::telemetry::metrics::{
 };
 use crate::telemetry::trace;
 
-/// O que o coordenador faz nos nós responsáveis.
+/// What the coordinator does on the responsible nodes.
 pub struct Plan {
-    /// Os nós responsáveis, o primário primeiro.
+    /// The responsible nodes, the primary first.
     pub owners: Vec<Member>,
-    /// `write.quorum`: o primário e mais `quorum − 1` nós.
+    /// `write.quorum`: the primary and `quorum − 1` more nodes.
     pub quorum: usize,
-    /// Quantos dos primeiros responsáveis o quórum precisa incluir: 1 (o primário) na fila comum;
-    /// 2 (o primário e o secundário) na fila FIFO (doc 17, seção 16.5).
+    /// How many of the first responsible nodes the quorum must include: 1 (the primary) on the plain queue;
+    /// 2 (the primary and the secondary) on the FIFO queue (doc 17, section 16.5).
     pub required: usize,
     pub register: Request,
     pub commit: Request,
@@ -62,7 +62,7 @@ enum Event {
 fn quorum_unavailable() -> TabaError {
     TabaError::new(
         ErrorCode::ClusterQuorumUnavailable,
-        "Não há nós responsáveis suficientes para fechar o quórum.",
+        "There are not enough responsible nodes to close the quorum.",
     )
     .with_retry_after(5)
 }
@@ -70,12 +70,12 @@ fn quorum_unavailable() -> TabaError {
 fn commit_timeout() -> TabaError {
     TabaError::new(
         ErrorCode::ClusterCommitTimeout,
-        "O quórum decidiu, mas o commit não foi confirmado no prazo.",
+        "The quorum decided, but the commit was not confirmed in time.",
     )
     .with_retry_after(5)
 }
 
-/// Roda a operação. `Ok` quando o commit está confirmado no quórum.
+/// Runs the operation. `Ok` when the commit is confirmed on the quorum.
 pub async fn run(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaError> {
     let result = run_inner(service, plan).await;
     service.telemetry().registry.add(
@@ -121,7 +121,7 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
     let mut remaining = total;
     let mut primary_error: Option<CallError> = None;
     let mut required_failed = false;
-    // Todas as falhas até aqui foram respostas dos próprios nós (`4xx`), e não falha de rede.
+    // All the failures so far were answers from the nodes themselves (`4xx`), not a network failure.
     let mut only_semantic = true;
     let mut committed: Vec<usize> = Vec::new();
     let mut quorum_set: Vec<usize> = Vec::new();
@@ -146,7 +146,7 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
             Event::Committed(index) => committed.push(index),
             Event::CommitFailed(index, error) => {
                 if decided && quorum_set.contains(&index) {
-                    tracing::error!(%error, "commit recusado por um nó do quórum depois da decisão");
+                    tracing::error!(%error, "commit refused by a quorum node after the decision");
                     return Err(commit_timeout());
                 }
             }
@@ -178,13 +178,13 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
                 tracing::error!(
                     confirmed = confirmed.len(),
                     quorum,
-                    "operação abortada (rollback): o quórum não fechou"
+                    "operation aborted (rollback): the quorum did not close"
                 );
-                // O primário ainda não respondeu e os outros donos só disseram "não" (a mensagem
-                // não existe, o token venceu...): o que o primário diz vale mais que a conta do
-                // quórum. A ordem em que as respostas chegam muda de máquina para máquina (num nó
-                // lento as dos outros donos chegam antes), então espera a dele em vez de devolver
-                // `503` para um erro que é `4xx`. Com falha de rede não espera: o `503` é o certo.
+                // The primary has not answered yet and the other owners only said "no" (the message
+                // does not exist, the token expired...): what the primary says counts for more than the quorum
+                // arithmetic. The order in which answers arrive changes from machine to machine (on a
+                // slow node the other owners' arrive first), so it waits for its own instead of returning
+                // `503` for an error that is `4xx`. With a network failure it does not wait: `503` is right.
                 if only_semantic && primary_error.is_none() && !confirmed.contains(&0) {
                     while let Some(event) = events.recv().await {
                         match event {
@@ -198,7 +198,7 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
                     }
                 }
                 return Err(match primary_error {
-                    // O que o primário diz vale: mensagem que não existe, token vencido...
+                    // What the primary says counts: a message that does not exist, an expired token...
                     Some(CallError::Remote(error)) if error.status() < 500 => error,
                     _ => quorum_unavailable(),
                 });
@@ -211,8 +211,8 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
     Err(commit_timeout())
 }
 
-/// O trabalho de um nó responsável: registrar, esperar a decisão e fazer o commit (ou o rollback).
-/// O futuro é apagado para `dyn`: sem isso o compilador não fecha o ciclo `run` → `owner_task` →
+/// The work of a responsible node: register, wait for the decision and commit (or rollback).
+/// The future is erased to `dyn`: without that the compiler does not close the cycle `run` → `owner_task` →
 /// `ClusterService::handle` → `ClusterMessages` → `run`.
 fn owner_task(
     service: Arc<ClusterService>,
@@ -251,8 +251,8 @@ async fn owner_work(
             if semantic {
                 return;
             }
-            // Falha de rede: se o quórum fechar sem este nó, o registro e o commit seguem aqui
-            // em segundo plano, até ele voltar (doc 05, seção 7.2, passo 7).
+            // Network failure: if the quorum closes without this node, the register and the commit carry on here
+            // in the background, until it comes back (doc 05, section 7.2, step 7).
             false
         }
     };
@@ -263,7 +263,7 @@ async fn owner_work(
             break current;
         }
         if decision.changed().await.is_err() {
-            // O coordenador terminou sem decidir: o registro expira sozinho.
+            // The coordinator finished without deciding: the register expires by itself.
             return;
         }
     };
@@ -277,7 +277,7 @@ async fn owner_work(
         )
         .await
         {
-            tracing::warn!(node_id = %owner.node_id, %error, "rollback sem confirmação: o registro expira sozinho");
+            tracing::warn!(node_id = %owner.node_id, %error, "rollback without confirmation: the register expires by itself");
         }
         return;
     }
@@ -292,8 +292,8 @@ fn count_retry(service: &ClusterService, phase: &str, owner: &Member) {
     );
 }
 
-/// Insiste no commit até o nó confirmar (depois da decisão não há rollback). Se o nó perdeu o
-/// registro (expirou ou reiniciou), registra de novo e repete o commit.
+/// Insists on the commit until the node confirms (after the decision there is no rollback). If the node lost the
+/// register (expired or restarted), it registers again and repeats the commit.
 async fn commit_until_done(
     service: &Arc<ClusterService>,
     plan: &Plan,
@@ -306,7 +306,7 @@ async fn commit_until_done(
     let timeout = service.rules().commit_timeout;
     let mut slow = false;
     loop {
-        // O nó que não chegou a registrar (ou perdeu o registro) registra antes do commit.
+        // The node that did not get to register (or lost the register) registers before the commit.
         let step = if registered {
             trace::traced(
                 trace::peer_span("taba.write.commit", &owner.node_id, false),
@@ -333,7 +333,7 @@ async fn commit_until_done(
                 return;
             }
             Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterOperationUnknown => {
-                // Registra de novo e tenta o commit na volta.
+                // Registers again and tries the commit on the way back.
                 registered = false;
                 continue;
             }
@@ -351,7 +351,7 @@ async fn commit_until_done(
                 .add(&WRITE_COMMIT_TIMEOUTS, &[], 1.0);
             tracing::warn!(
                 node_id = %owner.node_id,
-                "write.commit.timeout esgotado sem commit confirmado: o bloco fica abaixo do fator pleno e a tentativa segue em segundo plano"
+                "write.commit.timeout ran out without a confirmed commit: the block stays below the full factor and the attempt goes on in the background"
             );
             let _ = events.send(Event::CommitSlow(index));
         }
@@ -359,7 +359,7 @@ async fn commit_until_done(
         {
             let _ = events.send(Event::CommitFailed(
                 index,
-                CallError::Unreachable("o nó saiu do cluster".into()),
+                CallError::Unreachable("the node left the cluster".into()),
             ));
             return;
         }

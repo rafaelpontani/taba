@@ -1,7 +1,7 @@
-//! Membros, anel, protocolo entre nós, canal, votação, freezing, sincronização e drain (doc 04, 05
-//! e 13). Por enquanto: o estado do nó e o drain local, a tabela de membros com o ingresso de um
-//! nó novo em duas fases, o protocolo (os tipos das chamadas entre nós) e o `Transport`, que
-//! tem só a versão em memória, a dos testes (doc 18, seção 17.5).
+//! Members, ring, protocol between nodes, channel, voting, freezing, synchronization and drain (doc 04, 05
+//! and 13). For now: the node state and the local drain, the member table with the join of a
+//! new node in two phases, the protocol (the types of calls between nodes) and the `Transport`, which
+//! only has the in-memory version, the tests' (doc 18, section 17.5).
 
 pub mod backup;
 pub mod channel;

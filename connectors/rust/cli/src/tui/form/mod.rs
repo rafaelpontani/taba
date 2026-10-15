@@ -1,5 +1,5 @@
-//! O formulário de um perfil: campos de texto, a escolha do `output`, a caixa "Perfil padrão" e os
-//! botões. Máquina de estados pura: recebe teclas e desenha linhas, sem tocar no terminal.
+//! A profile's form: text fields, the `output` choice, the "Default profile" box and the
+//! buttons. A pure state machine: receives keys and draws lines, without touching the terminal.
 
 use super::keys::Key;
 use super::{Frame, Style};
@@ -15,7 +15,7 @@ const ITEMS: usize = 14;
 const LABEL_WIDTH: usize = 18;
 
 const LABELS: [&str; 11] = [
-    "Nome",
+    "Name",
     "url",
     "ops-url",
     "token-file",
@@ -25,13 +25,13 @@ const LABELS: [&str; 11] = [
     "connect-timeout",
     "timeout",
     "max-attempts",
-    "Perfil padrão",
+    "Default profile",
 ];
 
 #[derive(Debug, Clone, Default)]
 struct Text {
     value: String,
-    /// Posição do cursor, em caracteres.
+    /// Cursor position, in characters.
     cursor: usize,
 }
 
@@ -76,7 +76,7 @@ impl Text {
     }
 }
 
-/// O que o formulário pede a quem o dirige.
+/// What the form asks of whoever drives it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormEvent {
     None,
@@ -88,14 +88,14 @@ pub enum FormEvent {
 
 #[derive(Debug, Clone)]
 pub struct Form {
-    /// O nome do perfil que está sendo editado; `None` num perfil novo.
+    /// The name of the profile being edited; `None` on a new profile.
     pub original: Option<String>,
     texts: Vec<Text>,
-    /// 0 = sem valor (o embutido), depois `json`, `table`, `raw`.
+    /// 0 = no value (the built-in one), then `json`, `table`, `raw`.
     output: usize,
     pub is_default: bool,
     focus: usize,
-    /// A linha de resultado (teste de conexão, erro ao salvar), com `true` se é um erro.
+    /// The result line (connection test, save error), with `true` if it is an error.
     pub status: Option<(bool, String)>,
     dirty: bool,
     confirm_discard: bool,
@@ -103,8 +103,8 @@ pub struct Form {
 }
 
 impl Form {
-    /// Um formulário novo (`existing` vazio) ou preenchido com um perfil. `taken_names` são os
-    /// nomes que já existem, para recusar um repetido.
+    /// A new form (`existing` empty) or filled in with a profile. `taken_names` are the
+    /// names that already exist, to refuse a repeated one.
     pub fn new(
         existing: Option<(&str, &Profile)>,
         is_default: bool,
@@ -158,7 +158,7 @@ impl Form {
         self.texts[item].value.trim().to_owned()
     }
 
-    /// O perfil com os campos preenchidos (os vazios ficam de fora). Ignora campos inválidos.
+    /// The profile with the fields filled in (empty ones are left out). Ignores invalid fields.
     pub fn profile(&self) -> Profile {
         let mut profile = Profile::default();
         for (n, field) in FIELDS.iter().enumerate() {
@@ -170,18 +170,18 @@ impl Form {
         profile
     }
 
-    /// A mensagem de erro de cada item (`None` = válido).
+    /// The error message of each item (`None` = valid).
     pub fn errors(&self) -> Vec<Option<String>> {
         let mut errors = vec![None; ITEMS];
         let name = self.name();
         errors[NAME] = if name.is_empty() {
-            Some("o nome é obrigatório".to_owned())
+            Some("the name is required".to_owned())
         } else if let Err(e) = profile::validate_name(name) {
             Some(e)
         } else if self.original.as_deref() != Some(name)
             && self.taken_names.iter().any(|n| n == name)
         {
-            Some(format!("já existe um perfil `{name}`"))
+            Some(format!("a profile `{name}` already exists"))
         } else {
             None
         };
@@ -223,7 +223,7 @@ impl Form {
                     self.confirm_discard = true;
                     self.status = Some((
                         true,
-                        "Há alterações não salvas. Esc de novo descarta; outra tecla volta."
+                        "There are unsaved changes. Esc again discards; any other key goes back."
                             .to_owned(),
                     ));
                     return FormEvent::None;
@@ -316,7 +316,8 @@ impl Form {
             self.confirm_discard = true;
             self.status = Some((
                 true,
-                "Há alterações não salvas. Esc de novo descarta; outra tecla volta.".to_owned(),
+                "There are unsaved changes. Esc again discards; any other key goes back."
+                    .to_owned(),
             ));
             FormEvent::None
         } else {
@@ -324,7 +325,7 @@ impl Form {
         }
     }
 
-    /// O valor que valerá quando o campo está vazio (ou `None` se não há).
+    /// The value that will apply when the field is empty (or `None` if there is none).
     fn placeholder(&self, item: usize) -> Option<String> {
         match item {
             1 => Some(DEFAULT_URL.to_owned()),
@@ -336,8 +337,8 @@ impl Form {
                     url
                 })
             }
-            3 | 4 => Some("nenhum".to_owned()),
-            5 => Some("raízes do sistema".to_owned()),
+            3 | 4 => Some("none".to_owned()),
+            5 => Some("system roots".to_owned()),
             6 => Some("json".to_owned()),
             7 => Some("5".to_owned()),
             8 => Some("30".to_owned()),
@@ -349,8 +350,8 @@ impl Form {
     pub fn render(&self, style: Style, width: usize, height: usize) -> Frame {
         let errors = self.errors();
         let title = match &self.original {
-            Some(name) => format!(" Perfil  {name}"),
-            None => " Novo perfil".to_owned(),
+            Some(name) => format!(" Profile  {name}"),
+            None => " New profile".to_owned(),
         };
         let mut lines = vec![style.paint("1", &title), String::new()];
         let mut focus_line = 0;
@@ -421,9 +422,9 @@ impl Form {
         }
         lines.push(format!(
             "   {}  {}  {}",
-            button(SAVE, "Salvar"),
-            button(TEST, "Testar conexão"),
-            button(CANCEL, "Cancelar")
+            button(SAVE, "Save"),
+            button(TEST, "Test connection"),
+            button(CANCEL, "Cancel")
         ));
         if let Some((is_error, message)) = &self.status {
             lines.push(String::new());
@@ -432,12 +433,12 @@ impl Form {
                 style.paint(if *is_error { "31" } else { "32" }, message)
             ));
         }
-        let footer = " ↑↓/Tab campo   ←→ opção   Espaço marcar   Ctrl+S salvar   Esc cancelar";
+        let footer = " ↑↓/Tab field   ←→ option   Space toggle   Ctrl+S save   Esc cancel";
         window(lines, focus_line, cursor, footer, style, width, height)
     }
 }
 
-/// Recorta as linhas para caberem na altura, mantendo a linha em foco à vista, e põe o rodapé.
+/// Trims the lines to fit the height, keeping the focused line in view, and adds the footer.
 pub fn window(
     lines: Vec<String>,
     focus_line: usize,

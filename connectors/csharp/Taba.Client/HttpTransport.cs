@@ -11,8 +11,8 @@ using System.Threading.Tasks;
 namespace Taba
 {
     /// <summary>
-    /// O transporte HTTP do cliente: monta a requisição, manda, lê o corpo, transforma o erro da API em
-    /// <see cref="TabaException"/> e faz a repetição de chamadas do contrato comum (doc 19, seção 18.4).
+    /// The client's HTTP transport: builds the request, sends it, reads the body, turns the API error into a
+    /// <see cref="TabaException"/> and does the call retries of the common contract (doc 19, section 18.4).
     /// </summary>
     internal sealed class HttpTransport : IDisposable
     {
@@ -21,9 +21,9 @@ namespace Taba
         private readonly HttpClient _http;
         private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
-        /// <param name="config">Já copiada pelo cliente.</param>
-        /// <param name="handler">Um <see cref="HttpMessageHandler"/> próprio, ou <c>null</c> para o padrão (que o transporte descarta).</param>
-        /// <param name="delay">A espera entre tentativas (os testes a trocam).</param>
+        /// <param name="config">Already copied by the client.</param>
+        /// <param name="handler">An own <see cref="HttpMessageHandler"/>, or <c>null</c> for the default (which the transport disposes).</param>
+        /// <param name="delay">The wait between attempts (tests replace it).</param>
         public HttpTransport(TabaConfig config, HttpMessageHandler handler, Func<TimeSpan, CancellationToken, Task> delay)
         {
             _config = config;
@@ -37,7 +37,7 @@ namespace Taba
             _delay = delay ?? Task.Delay;
         }
 
-        /// <summary>A espera entre tentativas, também usada pela renovação da invisibilidade.</summary>
+        /// <summary>The wait between attempts, also used by the invisibility renewal.</summary>
         public Func<TimeSpan, CancellationToken, Task> Delay
         {
             get { return _delay; }
@@ -61,8 +61,8 @@ namespace Taba
             {
                 throw TabaException.Client(
                     "client.invalid-config",
-                    "baseUrl precisa ser um endereço http:// ou https:// (recebido: "
-                        + (string.IsNullOrWhiteSpace(baseUrl) ? "vazio" : baseUrl) + ")");
+                    "baseUrl must be an http:// or https:// address (received: "
+                        + (string.IsNullOrWhiteSpace(baseUrl) ? "empty" : baseUrl) + ")");
             }
             return baseUrl.Trim().TrimEnd('/');
         }
@@ -157,7 +157,7 @@ namespace Taba
             }
         }
 
-        /// <summary>O <c>ErrorResponse</c> da resposta; se o corpo não for um, o erro leva o código <c>http.&lt;status&gt;</c>.</summary>
+        /// <summary>The response's <c>ErrorResponse</c>; if the body is not one, the error carries the code <c>http.&lt;status&gt;</c>.</summary>
         private static TabaException ErrorFrom(HttpResponseMessage response, byte[] body)
         {
             string text = Utf8.Encoding.GetString(body);
@@ -186,7 +186,7 @@ namespace Taba
                 code = "http." + status.ToString(CultureInfo.InvariantCulture);
                 string trimmed = text.Trim();
                 message = trimmed.Length == 0
-                    ? "resposta " + status.ToString(CultureInfo.InvariantCulture) + " sem corpo"
+                    ? "response " + status.ToString(CultureInfo.InvariantCulture) + " with no body"
                     : trimmed.Substring(0, Math.Min(300, trimmed.Length));
             }
             int retryAfter;
@@ -204,10 +204,10 @@ namespace Taba
         }
 
         /// <summary>
-        /// Faz a chamada, repetindo só o que o contrato manda repetir: <c>429</c> e <c>503</c> (esperando
-        /// o <c>Retry-After</c>, ou 1 s, 2 s, 4 s), <c>502</c> e <c>504</c> só com <c>RetryGateway</c>, e
-        /// falha ao conectar (recusa, DNS). Nunca um <c>4xx</c> (fora o <c>429</c>), nem uma falha
-        /// depois de enviar o corpo, nem um estouro de tempo.
+        /// Makes the call, retrying only what the contract says to retry: <c>429</c> and <c>503</c> (waiting
+        /// for the <c>Retry-After</c>, or 1 s, 2 s, 4 s), <c>502</c> and <c>504</c> only with <c>RetryGateway</c>, and
+        /// a failure to connect (refused, DNS). Never a <c>4xx</c> (except <c>429</c>), nor a failure
+        /// after the body was sent, nor a timeout.
         /// </summary>
         public async Task<ApiReply> SendAsync(ApiCall call, CancellationToken cancellationToken)
         {
@@ -255,8 +255,8 @@ namespace Taba
                         {
                             throw;
                         }
-                        // O tempo estourou. Depois de enviado o corpo não se sabe se foi aplicado.
-                        throw TabaException.Client("client.timeout", "estourou o tempo esperando a resposta");
+                        // The time ran out. After the body is sent there is no knowing whether it was applied.
+                        throw TabaException.Client("client.timeout", "timed out waiting for the response");
                     }
                     catch (HttpRequestException e)
                     {

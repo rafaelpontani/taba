@@ -1,4 +1,4 @@
-//! `POST`, `GET`, `PATCH` e `DELETE /topics` contra um nó de verdade (doc 06a).
+//! `POST`, `GET`, `PATCH` and `DELETE /topics` against a real node (doc 06a).
 
 mod common;
 
@@ -57,15 +57,15 @@ fn names(page: &Value) -> Vec<String> {
 #[tokio::test]
 async fn creating_a_queue_returns_201_with_location_and_the_defaults() {
     let node = TestNode::development().await;
-    let response = create(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    let response = create(&node, json!({ "name": "orders", "type": "queue" })).await;
 
     assert_eq!(response.status(), 201);
-    assert_eq!(response.headers()["location"], "/topics/pedidos");
+    assert_eq!(response.headers()["location"], "/topics/orders");
     let topic = body(response).await;
     assert!(taba_node::core::id::is_guid_v7(
         topic["id"].as_str().unwrap()
     ));
-    assert_eq!(topic["name"], "pedidos");
+    assert_eq!(topic["name"], "orders");
     assert_eq!(topic["type"], "queue");
     assert_eq!(topic["tags"], json!({}));
     assert_eq!(topic["volatile"], false);
@@ -84,10 +84,10 @@ async fn a_distributor_shows_prefixes_and_none_of_the_queue_fields() {
     let node = TestNode::development().await;
     let topic = created(
         &node,
-        json!({ "name": "dist", "type": "distributor", "prefixes": ["pedidos"] }),
+        json!({ "name": "dist", "type": "distributor", "prefixes": ["orders"] }),
     )
     .await;
-    assert_eq!(topic["prefixes"], json!(["pedidos"]));
+    assert_eq!(topic["prefixes"], json!(["orders"]));
     for absent in [
         "volatile",
         "fifo",
@@ -99,7 +99,7 @@ async fn a_distributor_shows_prefixes_and_none_of_the_queue_fields() {
         assert!(topic.get(absent).is_none(), "{absent}");
     }
 
-    let empty = created(&node, json!({ "name": "vazio", "type": "distributor" })).await;
+    let empty = created(&node, json!({ "name": "empty", "type": "distributor" })).await;
     assert_eq!(empty["prefixes"], json!([]));
     node.shutdown().await;
 }
@@ -150,18 +150,18 @@ async fn every_queue_comes_with_a_read_only_dead_letter_in_the_listing() {
     let node = TestNode::development().await;
     created(
         &node,
-        json!({ "name": "pedidos", "type": "queue", "ttl": 500, "tags": { "time": "fin" } }),
+        json!({ "name": "orders", "type": "queue", "ttl": 500, "tags": { "time": "fin" } }),
     )
     .await;
     created(&node, json!({ "name": "dist", "type": "distributor" })).await;
 
     let page = body(node.client_get("/topics").await).await;
-    assert_eq!(names(&page), ["dist", "pedidos", "pedidos-dead-letter"]);
+    assert_eq!(names(&page), ["dist", "orders", "orders-dead-letter"]);
     assert!(page.get("nextCursor").is_none());
 
-    let dl = body(node.client_get("/topics/pedidos-dead-letter").await).await;
+    let dl = body(node.client_get("/topics/orders-dead-letter").await).await;
     assert_eq!(dl["deadLetter"], true);
-    assert_eq!(dl["source"], "pedidos");
+    assert_eq!(dl["source"], "orders");
     assert_eq!(dl["ttl"], 500);
     assert_eq!(dl["tags"], json!({ "time": "fin" }));
     node.shutdown().await;
@@ -173,10 +173,10 @@ async fn invalid_names_and_tags_are_400_with_the_field_in_details() {
     let node = TestNode::development().await;
     for (name, code) in [
         ("", "validation.invalid-name"),
-        ("com espaço", "validation.invalid-name"),
+        ("with space", "validation.invalid-name"),
         ("a/b", "validation.invalid-name"),
-        ("acentuação", "validation.invalid-name"),
-        ("pedidos-dead-letter", "validation.reserved-name"),
+        ("café", "validation.invalid-name"),
+        ("orders-dead-letter", "validation.reserved-name"),
     ] {
         let response = create(&node, json!({ "name": name, "type": "queue" })).await;
         assert_eq!(error_code(response, 400).await, code, "{name:?}");
@@ -193,7 +193,7 @@ async fn invalid_names_and_tags_are_400_with_the_field_in_details() {
 
     let response = create(
         &node,
-        json!({ "name": "t", "type": "queue", "tags": { "k": "valor inválido" } }),
+        json!({ "name": "t", "type": "queue", "tags": { "k": "invalid café" } }),
     )
     .await;
     assert_eq!(response.status(), 400);
@@ -207,15 +207,15 @@ async fn invalid_names_and_tags_are_400_with_the_field_in_details() {
 #[tokio::test]
 async fn names_are_case_sensitive_duplicates_conflict_and_recreating_changes_the_id() {
     let node = TestNode::development().await;
-    let lower = created(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    let lower = created(&node, json!({ "name": "orders", "type": "queue" })).await;
     let upper = created(&node, json!({ "name": "Pedidos", "type": "queue" })).await;
     assert_ne!(lower["id"], upper["id"]);
 
-    let again = create(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    let again = create(&node, json!({ "name": "orders", "type": "queue" })).await;
     assert_eq!(error_code(again, 409).await, "topic.already-exists");
 
-    assert_eq!(delete(&node, "pedidos").await.status(), 204);
-    let recreated = created(&node, json!({ "name": "pedidos", "type": "queue" })).await;
+    assert_eq!(delete(&node, "orders").await.status(), 204);
+    let recreated = created(&node, json!({ "name": "orders", "type": "queue" })).await;
     assert_ne!(recreated["id"], lower["id"]);
     node.shutdown().await;
 }
@@ -355,7 +355,7 @@ async fn unknown_and_missing_fields_are_400_naming_the_field() {
         .collect();
     assert_eq!(fields, BTreeSet::from(["name".into(), "type".into()]));
 
-    let response = create(&node, json!({ "name": "a", "type": "outro" })).await;
+    let response = create(&node, json!({ "name": "a", "type": "other" })).await;
     assert_eq!(error_code(response, 400).await, "validation.failed");
     let response = create(&node, json!({ "name": 5, "type": "queue" })).await;
     assert_eq!(error_code(response, 400).await, "validation.failed");
@@ -420,18 +420,14 @@ async fn listing_sorts_and_filters() {
     let response = node.client_get("/topics?sort=tamanho").await;
     assert_eq!(error_code(response, 400).await, "validation.failed");
 
-    created(
-        &node,
-        json!({ "name": "pedidos-eu", "type": "distributor" }),
-    )
-    .await;
+    created(&node, json!({ "name": "orders-eu", "type": "distributor" })).await;
     created(
         &node,
         json!({ "name": "Pedidos-us", "type": "distributor" }),
     )
     .await;
-    assert_eq!(listed("name=pedidos").await, ["pedidos-eu"]);
-    assert_eq!(listed("name=-").await, ["Pedidos-us", "pedidos-eu"]);
+    assert_eq!(listed("name=orders").await, ["orders-eu"]);
+    assert_eq!(listed("name=-").await, ["Pedidos-us", "orders-eu"]);
     node.shutdown().await;
 }
 
@@ -439,13 +435,13 @@ async fn listing_sorts_and_filters() {
 #[tokio::test]
 async fn reading_a_topic_returns_it_and_an_unknown_one_is_404() {
     let node = TestNode::development().await;
-    let made = created(&node, json!({ "name": "pedidos", "type": "queue" })).await;
-    assert_eq!(body(node.client_get("/topics/pedidos").await).await, made);
+    let made = created(&node, json!({ "name": "orders", "type": "queue" })).await;
+    assert_eq!(body(node.client_get("/topics/orders").await).await, made);
 
-    let response = node.client_get("/topics/nada").await;
+    let response = node.client_get("/topics/nothing").await;
     assert_eq!(error_code(response, 404).await, "topic.not-found");
     assert_eq!(
-        error_code(patch(&node, "nada", json!({})).await, 404).await,
+        error_code(patch(&node, "nothing", json!({})).await, 404).await,
         "topic.not-found"
     );
     node.shutdown().await;
@@ -473,7 +469,7 @@ async fn patch_is_partial_tags_replace_and_null_goes_back_to_the_default() {
     assert_eq!(topic["effective"]["ttl"], 1_209_600);
     assert_eq!(topic["maxDeliveries"], 4);
 
-    // O que mudou vale também para quem lê depois.
+    // What changed also counts for whoever reads afterwards.
     let read = body(node.client_get("/topics/p").await).await;
     assert_eq!(read, topic);
     node.shutdown().await;
@@ -565,7 +561,7 @@ async fn delete_removes_the_topic_and_its_dead_letter() {
         "topic.not-found"
     );
 
-    // Remover o distribuidor não afeta as filas que ele copiava.
+    // Removing the distributor does not affect the queues it copied.
     created(&node, json!({ "name": "q2", "type": "queue" })).await;
     assert_eq!(delete(&node, "d").await.status(), 204);
     assert_eq!(node.client_get("/topics/q2").await.status(), 200);
@@ -591,7 +587,7 @@ async fn pages_carry_next_cursor_only_when_there_is_more_and_bad_params_are_400(
     assert_eq!(names(&last), ["c"]);
     assert!(
         last.get("nextCursor").is_none(),
-        "na última página não existe"
+        "does not exist on the last page"
     );
     for forbidden in ["total", "page", "offset"] {
         assert!(first.get(forbidden).is_none());
@@ -635,7 +631,7 @@ async fn walking_the_pages_returns_everything_once_and_cursors_are_stable_and_bo
     assert_eq!(seen.len(), 14);
     assert_eq!(seen.iter().collect::<BTreeSet<_>>().len(), 14, "{seen:?}");
 
-    // O mesmo cursor devolve a mesma página, sem estado no servidor.
+    // The same cursor returns the same page, without state on the server.
     let url = format!(
         "/topics?limit=3&sort=-createdAt&cursor={}",
         first_cursor.clone().unwrap()
@@ -644,7 +640,7 @@ async fn walking_the_pages_returns_everything_once_and_cursors_are_stable_and_bo
     let two = body(node.client_get(&url).await).await;
     assert_eq!(one, two);
 
-    // Com outro `sort` ou filtro, o cursor é recusado.
+    // With another `sort` or filter, the cursor is refused.
     let other_sort = format!(
         "/topics?limit=3&sort=name&cursor={}",
         first_cursor.clone().unwrap()
@@ -684,7 +680,7 @@ async fn definitions_are_saved_in_the_node_database_and_resumed_after_a_restart(
     .await;
     created(
         &node,
-        json!({ "name": "pedidos", "type": "distributor", "prefixes": ["x"] }),
+        json!({ "name": "orders", "type": "distributor", "prefixes": ["x"] }),
     )
     .await;
     assert!(storage.join("_node.db").is_file());
@@ -697,15 +693,12 @@ async fn definitions_are_saved_in_the_node_database_and_resumed_after_a_restart(
 
     let node = start().await.unwrap();
     assert_eq!(body(node.client_get("/topics/Pedidos").await).await, made);
-    assert_eq!(node.client_get("/topics/pedidos").await.status(), 200);
+    assert_eq!(node.client_get("/topics/orders").await.status(), 200);
     assert_eq!(delete(&node, "Pedidos").await.status(), 204);
-    assert!(
-        !storage.join("_topics").exists(),
-        "nada de arquivo por tópico"
-    );
+    assert!(!storage.join("_topics").exists(), "no file per topic");
     node.shutdown().await;
 
-    // Sem `development.resume-on-start`, o nó começa limpo e apaga o disco.
+    // Without `development.resume-on-start`, the node starts clean and deletes the disk.
     let node = TestNode::builder()
         .env("TABA_STORAGE_DIR", &storage_str)
         .env("TABA_DEVELOPMENT_RESUME_ON_START", "false")
@@ -718,7 +711,7 @@ async fn definitions_are_saved_in_the_node_database_and_resumed_after_a_restart(
     assert!(!storage.join("_topics").exists());
     assert!(
         storage.join("_node.db").is_file(),
-        "o banco é recriado vazio"
+        "the database is recreated empty"
     );
     node.shutdown().await;
 }

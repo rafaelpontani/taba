@@ -33,7 +33,7 @@ O QT é o análogo do Amazon SQS e o DT é o análogo do Amazon SNS. São análo
 | Fila de resposta de um consumidor efêmero, que não quero limpar | **Fila volátil** (pode ser criada pelo próprio `GET`) |
 | Manter a ordem de eventos de uma mesma entidade (um pedido, um cliente) e evitar duplicatas | **Fila FIFO**, com o `groupId` da entidade |
 
-![Como escolher o tipo de tópico](../diagramas/img/decisao-topico.svg)
+![Como escolher o tipo de tópico](../diagramas/img/pt-BR/decisao-topico.svg)
 
 ## Campos da definição de um tópico
 
@@ -66,7 +66,7 @@ Toda fila tem uma fila `{fila}-dead-letter` (sufixo configurável em `topics.dea
 
 Um DT é só uma **definição**: nome, tags e a lista de prefixos. Não tem mensagens, lista de prontos nem dono de entrega. **Nunca é consumido**: `GET` e ack num DT respondem `409 topic.wrong-type`.
 
-![Publicação num distribuidor](../diagramas/img/distribuidor-publicacao.svg)
+![Publicação num distribuidor](../diagramas/img/pt-BR/distribuidor-publicacao.svg)
 
 **Publicar** (`POST /topics/{dt}/messages`):
 
@@ -119,11 +119,11 @@ curl -s "localhost:8080/topics/volat/messages?autoCreate=true&idleTimeout=120&ta
 
 Quem decide excluir uma fila volátil é o **nó gestor** dela: o **primário da posição do hash do `id` do tópico** no anel. Qualquer nó chega ao mesmo gestor sem eleição. O gestor cuida **só da vida do tópico**, nunca das mensagens nem da entrega. A lista de filas que ele gerencia é **derivada** a cada passada (a cada 200 ms), não guardada: muda sozinha com as tabelas de membros e de tópicos.
 
-![Criação de uma fila volátil](../diagramas/img/fila-volatil-criacao.svg)
+![Criação de uma fila volátil](../diagramas/img/pt-BR/fila-volatil-criacao.svg)
 
-![Exclusão de uma fila volátil](../diagramas/img/fila-volatil-exclusao.svg)
+![Exclusão de uma fila volátil](../diagramas/img/pt-BR/fila-volatil-exclusao.svg)
 
-![Troca do nó gestor](../diagramas/img/fila-volatil-troca-gestor.svg)
+![Troca do nó gestor](../diagramas/img/pt-BR/fila-volatil-troca-gestor.svg)
 
 Ciclo para cada fila gerenciada:
 
@@ -170,11 +170,11 @@ curl -s -X POST localhost:8080/topics/ordens/messages -d '{"n":3}'
 
 Na fila comum o bloco vem do `id` da mensagem. Na FIFO a posição é `hash(id do tópico + ":" + groupId)`: **todas as mensagens de um grupo caem no mesmo bloco**, com o mesmo primário e as mesmas réplicas. O primário é o dono da entrega **e** quem **ordena** as publicações do grupo. O tópico fica espalhado **entre grupos**, não dentro de um.
 
-![Grupos de uma fila FIFO nos blocos](../diagramas/img/fifo-grupos.svg)
+![Grupos de uma fila FIFO nos blocos](../diagramas/img/pt-BR/fifo-grupos.svg)
 
 ### Publicar: o primário do grupo coordena
 
-![Publicação numa fila FIFO](../diagramas/img/fifo-publicacao.svg)
+![Publicação numa fila FIFO](../diagramas/img/pt-BR/fifo-publicacao.svg)
 
 1. O cliente publica em **qualquer nó**; ele calcula a posição do grupo, acha o **primário** e **repassa a publicação a ele** (`POST /cluster/topics/{topic}/fifo/publish`).
 2. O **primário coordena**: gera o ID, confere a deduplicação e faz o registro + commit.

@@ -1,6 +1,6 @@
 namespace Taba
 {
-    /// <summary>Um tópico (fila ou distribuidor).</summary>
+    /// <summary>A topic (queue or distributor).</summary>
     public sealed class Topic
     {
         internal Topic()
@@ -11,17 +11,17 @@ namespace Taba
 
         public string Name { get; internal set; }
 
-        /// <summary><c>queue</c> ou <c>distributor</c>.</summary>
+        /// <summary><c>queue</c> or <c>distributor</c>.</summary>
         public string Type { get; internal set; }
 
-        /// <summary>Data de criação, como texto RFC 3339.</summary>
+        /// <summary>Creation date, as RFC 3339 text.</summary>
         public string CreatedAt { get; internal set; }
 
         public bool? Fifo { get; internal set; }
 
         public bool? Volatile { get; internal set; }
 
-        /// <summary>O JSON do tópico, como o servidor devolveu.</summary>
+        /// <summary>The topic JSON, as the server returned it.</summary>
         public string Raw { get; internal set; }
     }
 }

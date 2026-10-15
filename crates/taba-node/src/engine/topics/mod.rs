@@ -1,15 +1,15 @@
-//! O registro de tópicos do nó (doc 02, seção 3.3): toda definição fica em memória e é
-//! gravada em disco antes de valer. Em `mode=development` o nó é o cluster inteiro, então
-//! o "registro + commit" se resume a gravar e aplicar aqui; no cluster, este registro
-//! passa a ser o lado que recebe o commit.
+//! The node's topic registry (doc 02, section 3.3): every definition stays in memory and is
+//! written to disk before taking effect. In `mode=development` the node is the whole cluster, so
+//! the "register + commit" boils down to writing and applying here; in the cluster, this registry
+//! becomes the side that receives the commit.
 //!
-//! A fila de dead-letter não tem definição própria: é derivada da fila de origem, e por
-//! isso não é gravada nem guardada, só montada na leitura (doc 13, seção 12.10).
+//! The dead-letter queue has no definition of its own: it is derived from the source queue, and for
+//! that reason it is neither stored nor kept, only built on read (doc 13, section 12.10).
 
 mod list;
 mod rules;
 
-/// Uma fila volátil e o que o relógio de ociosidade precisa dela.
+/// A volatile queue and what the idleness clock needs from it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VolatileQueue {
     pub name: String,
@@ -36,33 +36,33 @@ use crate::core::topic::{QueueSpec, Spec, TopicDefinition, dead_letter_id};
 use crate::core::validation;
 use crate::storage::topics::TopicStore;
 
-/// Um tópico como a API o mostra: a definição mais o que se deriva dela.
+/// A topic as the API shows it: the definition plus what is derived from it.
 #[derive(Debug, Clone)]
 pub struct TopicView {
     pub definition: TopicDefinition,
-    /// `Some(fila)` quando é a dead-letter de `fila`.
+    /// `Some(queue)` when it is the dead-letter of `queue`.
     pub dead_letter_of: Option<String>,
-    /// `maxMessageBytes`, `ttl` e `maxDeliveries` em vigor, com o padrão aplicado.
+    /// `maxMessageBytes`, `ttl` and `maxDeliveries` in force, with the default applied.
     effective: Option<[u64; 3]>,
 }
 
 impl TopicView {
-    /// `maxMessageBytes` em vigor; `None` num distribuidor.
+    /// `maxMessageBytes` in force; `None` on a distributor.
     pub fn max_message_bytes(&self) -> Option<u64> {
         self.effective.map(|e| e[0])
     }
 
-    /// `maxDeliveries` em vigor; `None` num distribuidor.
+    /// `maxDeliveries` in force; `None` on a distributor.
     pub fn max_deliveries(&self) -> Option<u64> {
         self.effective.map(|e| e[2])
     }
 
-    /// `ttl` em vigor, em segundos; `None` num distribuidor.
+    /// `ttl` in force, in seconds; `None` on a distributor.
     pub fn ttl_secs(&self) -> Option<u64> {
         self.effective.map(|e| e[1])
     }
 
-    /// O `Topic` da API (doc 06a, "DTOs").
+    /// The API's `Topic` (doc 06a, "DTOs").
     pub fn to_json(&self) -> Value {
         let mut json = self.definition.to_json();
         if let (Some([bytes, ttl, deliveries]), Some(object)) =
@@ -81,7 +81,7 @@ impl TopicView {
     }
 }
 
-/// Uma mudança na tabela de tópicos, como o cluster a propaga a **todos** os nós (doc 02, 3.3).
+/// A change to the topic table, as the cluster propagates it to **all** nodes (doc 02, 3.3).
 #[derive(Debug, Clone)]
 pub enum TopicChange {
     Create(TopicDefinition),
@@ -89,13 +89,13 @@ pub enum TopicChange {
     Delete {
         name: String,
         id: String,
-        /// Só o nó gestor de uma fila volátil: o `id` que o tópico deve ter.
+        /// Only the managing node of a volatile queue: the `id` the topic must have.
         expected_id: Option<String>,
     },
 }
 
-/// Quem propaga uma mudança aos outros nós antes de ela valer (registro + commit com a
-/// confirmação de todos). Ao fim, a mudança já foi aplicada **neste nó** também, pelo commit.
+/// Who propagates a change to the other nodes before it takes effect (register + commit with
+/// confirmation from all). At the end, the change has already been applied **on this node** too, through the commit.
 pub trait TopicReplicator: Send + Sync + 'static {
     fn replicate(
         &self,
@@ -103,14 +103,14 @@ pub trait TopicReplicator: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>>;
 }
 
-/// O que mudou na tabela de tópicos deste nó (o commit de uma criação, alteração ou remoção).
+/// What changed in this node's topic table (the commit of a creation, change or removal).
 #[derive(Debug, Clone)]
 pub enum TopicEvent {
     Saved(TopicDefinition),
     Deleted { name: String, id: String },
 }
 
-/// Quem acompanha as mudanças da tabela (o backup em S3). Nunca espera nem falha.
+/// Who follows the table's changes (the S3 backup). Never waits or fails.
 pub type TopicHook = Arc<dyn Fn(&TopicEvent) + Send + Sync>;
 
 pub struct Topics {
@@ -118,22 +118,22 @@ pub struct Topics {
     store: Arc<dyn TopicStore>,
     clock: Arc<dyn Clock>,
     map: RwLock<BTreeMap<String, TopicDefinition>>,
-    /// Uma alteração por vez: valida, grava em disco e só então aplica em memória.
+    /// One change at a time: validates, writes to disk and only then applies in memory.
     writer: tokio::sync::Mutex<()>,
     removed_hooks: Mutex<Vec<RemovedHook>>,
     event_hooks: Mutex<Vec<TopicHook>>,
-    /// No cluster: a propagação a todos os nós.
+    /// In the cluster: the propagation to all nodes.
     replicator: OnceLock<Arc<dyn TopicReplicator>>,
 }
 
-/// Chamada depois que uma fila é removida, com o nome dela e o da sua dead-letter.
+/// Called after a queue is removed, with its name and its dead-letter's.
 pub type RemovedHook = Arc<dyn Fn(&[String]) + Send + Sync>;
 
 fn field_error(code: ErrorCode, field: &str, message: &str) -> TabaError {
     TabaError::new(code, message).with_detail(field, code, message)
 }
 
-/// Garante o campo em `details` num erro de uma validação que só traz o código.
+/// Ensures the field in `details` on an error of a validation that only brings the code.
 fn with_field(error: TabaError, field: &str) -> TabaError {
     if error.details.is_empty() {
         let (code, message) = (error.code, error.message.clone());
@@ -147,7 +147,7 @@ fn not_applicable(field: &str, what: &str) -> TabaError {
     field_error(
         ErrorCode::ValidationNotApplicable,
         field,
-        &format!("`{field}` não vale para {what}."),
+        &format!("`{field}` does not apply to {what}."),
     )
 }
 
@@ -155,13 +155,13 @@ fn out_of_range(field: &str, message: &str) -> TabaError {
     field_error(ErrorCode::ValidationOutOfRange, field, message)
 }
 
-/// Número dentro da faixa; negativo também é fora da faixa.
+/// A number within the range; negative is also outside the range.
 fn in_range(field: &str, value: i64, range: (u64, u64)) -> Result<u64, TabaError> {
     match u64::try_from(value) {
         Ok(v) => validation::in_range(field, v, range).map(|()| v),
         Err(_) => Err(out_of_range(
             field,
-            &format!("{field} deve estar entre {} e {}.", range.0, range.1),
+            &format!("{field} must be between {} and {}.", range.0, range.1),
         )),
     }
 }
@@ -189,7 +189,7 @@ impl Topics {
         }
     }
 
-    /// Abre o registro. Com `load`, retoma as definições gravadas em disco.
+    /// Opens the registry. With `load`, resumes the definitions stored on disk.
     pub async fn open(
         rules: TopicRules,
         store: Arc<dyn TopicStore>,
@@ -207,7 +207,7 @@ impl Topics {
         Ok(Self::new(rules, store, clock, definitions))
     }
 
-    /// Registra quem precisa saber quando um tópico some (as mensagens saem junto).
+    /// Registers who needs to know when a topic disappears (the messages go with it).
     pub fn on_removed(&self, hook: RemovedHook) {
         self.removed_hooks
             .lock()
@@ -215,7 +215,7 @@ impl Topics {
             .push(hook);
     }
 
-    /// Registra quem acompanha cada mudança da tabela (criação, alteração, remoção).
+    /// Registers who follows each change to the table (creation, change, removal).
     pub fn on_event(&self, hook: TopicHook) {
         self.event_hooks
             .lock()
@@ -234,19 +234,19 @@ impl Topics {
         }
     }
 
-    /// Liga a propagação aos outros nós (`mode=production`). Vale só a primeira chamada.
+    /// Attaches the propagation to the other nodes (`mode=production`). Only the first call counts.
     pub fn set_replicator(&self, replicator: Arc<dyn TopicReplicator>) {
         let _ = self.replicator.set(replicator);
     }
 
-    /// O `register` de uma mudança, no nó que a recebe: ela só pode ser aplicada se o estado atual
-    /// deixa (nome que já existe, tópico que não existe, `id` esperado diferente).
+    /// A change's `register`, on the node that receives it: it can only be applied if the current state
+    /// allows it (a name that already exists, a topic that does not exist, a different expected `id`).
     pub fn check_change(&self, change: &TopicChange) -> Result<(), TabaError> {
         let map = self.read();
         match change {
             TopicChange::Create(def) if map.contains_key(&def.name) => Err(TabaError::new(
                 ErrorCode::TopicAlreadyExists,
-                "Já existe um tópico com este nome.",
+                "A topic with this name already exists.",
             )),
             TopicChange::Update(def) if !map.contains_key(&def.name) => Err(Self::not_found()),
             TopicChange::Delete {
@@ -256,7 +256,7 @@ impl Topics {
                 Some(current) if expected_id.as_ref().is_some_and(|id| *id != current.id) => {
                     Err(TabaError::new(
                         ErrorCode::ClusterConflict,
-                        "O tópico atual tem outro id: foi excluído e recriado.",
+                        "The current topic has another id: it was deleted and recreated.",
                     ))
                 }
                 Some(_) => Ok(()),
@@ -265,8 +265,8 @@ impl Topics {
         }
     }
 
-    /// O commit de uma criação ou alteração: grava e passa a valer, sem a trava de escrita (quem
-    /// coordena já a segura). Repetir é inofensivo.
+    /// The commit of a creation or change: writes and takes effect, without the write lock (whoever
+    /// coordinates already holds it). Repeating is harmless.
     pub async fn apply_save(&self, definition: TopicDefinition) -> Result<(), TabaError> {
         let to_save = definition.clone();
         self.persist(move |store| store.save(&to_save)).await?;
@@ -276,8 +276,8 @@ impl Topics {
         Ok(())
     }
 
-    /// O commit de uma remoção: apaga a definição e avisa quem guarda as mensagens do tópico.
-    /// Apagar o que não existe não é erro.
+    /// The commit of a removal: deletes the definition and tells whoever keeps the topic's messages.
+    /// Deleting what does not exist is no error.
     pub async fn apply_delete(&self, name: &str) -> Result<(), TabaError> {
         let Some(current) = self.read().get(name).cloned() else {
             return Ok(());
@@ -304,8 +304,8 @@ impl Topics {
         Ok(())
     }
 
-    /// As definições com `id` a partir de `from` (inclusive), em ordem de `id`, no máximo
-    /// `limit` mais uma (a que sobra diz se há mais): é o stream `GET /cluster/topics`.
+    /// The definitions with `id` from `from` (inclusive), in `id` order, at most
+    /// `limit` plus one (the extra one says whether there are more): it is the `GET /cluster/topics` stream.
     pub fn definitions_from(
         &self,
         from: Option<&str>,
@@ -323,7 +323,7 @@ impl Topics {
         (all, more)
     }
 
-    /// O que o nó novo recebe do stream de tópicos: guarda a definição que ainda não tem.
+    /// What the new node receives from the topic stream: stores the definition it does not have yet.
     pub async fn load_remote(&self, definition: TopicDefinition) -> Result<(), TabaError> {
         let same = self
             .read()
@@ -335,17 +335,17 @@ impl Topics {
         self.apply_save(definition).await
     }
 
-    /// A definição guardada de um tópico (a que o cluster replica), sem a dead-letter.
+    /// A topic's stored definition (the one the cluster replicates), without the dead-letter.
     pub fn definition(&self, name: &str) -> Option<TopicDefinition> {
         self.read().get(name).cloned()
     }
 
-    /// Os nomes dos tópicos (filas e distribuidores).
+    /// The topic names (queues and distributors).
     pub fn names(&self) -> Vec<String> {
         self.read().keys().cloned().collect()
     }
 
-    /// As filas voláteis, para o relógio de ociosidade.
+    /// The volatile queues, for the idleness clock.
     pub fn volatile_queues(&self) -> Vec<VolatileQueue> {
         self.read()
             .values()
@@ -363,7 +363,7 @@ impl Topics {
             .collect()
     }
 
-    /// `true` se existe um tópico com este `id`.
+    /// `true` if a topic with this `id` exists.
     pub fn has_id(&self, id: &str) -> bool {
         self.read().values().any(|d| d.id == id)
     }
@@ -372,7 +372,7 @@ impl Topics {
         &self.rules
     }
 
-    /// Quantos tópicos (filas e distribuidores) existem; as dead-letters não contam.
+    /// How many topics (queues and distributors) exist; dead-letters do not count.
     pub fn count(&self) -> usize {
         self.read().len()
     }
@@ -402,8 +402,8 @@ impl Topics {
         }
     }
 
-    /// A dead-letter de uma fila: os valores são os da origem, somente leitura, e ela
-    /// não é FIFO (doc 13, seção 12.10).
+    /// A queue's dead-letter: the values are the source's, read-only, and it
+    /// is not FIFO (doc 13, section 12.10).
     fn dead_letter_view(&self, source: &TopicDefinition) -> TopicView {
         let mut view = self.view(source);
         view.definition.name = format!("{}{}", source.name, self.rules.dead_letter_suffix);
@@ -415,7 +415,7 @@ impl Topics {
         view
     }
 
-    /// A fila de origem, se `name` é o nome da dead-letter de uma fila que existe.
+    /// The source queue, if `name` is the name of the dead-letter of a queue that exists.
     fn dead_letter_source(&self, name: &str) -> Option<TopicDefinition> {
         let source = name.strip_suffix(self.rules.dead_letter_suffix.as_str())?;
         self.read()
@@ -425,10 +425,10 @@ impl Topics {
     }
 
     fn not_found() -> TabaError {
-        TabaError::new(ErrorCode::TopicNotFound, "O tópico não existe.")
+        TabaError::new(ErrorCode::TopicNotFound, "The topic does not exist.")
     }
 
-    /// `404` se não existe, `409` se é a dead-letter (somente leitura).
+    /// `404` if it does not exist, `409` if it is the dead-letter (read-only).
     fn writable(&self, name: &str) -> Result<TopicDefinition, TabaError> {
         if let Some(definition) = self.read().get(name) {
             return Ok(definition.clone());
@@ -436,7 +436,7 @@ impl Topics {
         if self.dead_letter_source(name).is_some() {
             return Err(TabaError::new(
                 ErrorCode::TopicReadOnly,
-                "A dead-letter é somente leitura: altere a fila de origem.",
+                "The dead-letter is read-only: change the source queue.",
             ));
         }
         Err(Self::not_found())
@@ -450,11 +450,11 @@ impl Topics {
         match tokio::task::spawn_blocking(move || op(store.as_ref())).await {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => {
-                tracing::error!(error = %e, "falha ao gravar a definição do tópico");
+                tracing::error!(error = %e, "failed to write the topic definition");
                 Err(TabaError::internal())
             }
             Err(e) => {
-                tracing::error!(error = %e, "a gravação da definição do tópico falhou");
+                tracing::error!(error = %e, "writing the topic definition failed");
                 Err(TabaError::internal())
             }
         }
@@ -469,9 +469,9 @@ impl Topics {
             .ok_or_else(Self::not_found)
     }
 
-    /// As filas que um distribuidor com estes prefixos alcança: as que têm um deles no
-    /// começo do nome, em ordem de nome. A dead-letter não tem definição guardada, então
-    /// nunca entra aqui, como manda o doc 13, seção 12.10.
+    /// The queues a distributor with these prefixes reaches: those that have one of them at the
+    /// start of the name, in name order. The dead-letter has no stored definition, so it
+    /// never comes in here, as doc 13, section 12.10 dictates.
     pub fn queues_with_prefix(&self, prefixes: &[String]) -> Vec<TopicView> {
         self.read()
             .values()
@@ -484,9 +484,9 @@ impl Topics {
         self.create_checked(request, false).await
     }
 
-    /// Como `create`; com `enforce_volatile_limit` (o `autoCreate`), recusa a fila volátil que
-    /// passaria de `topics.volatile.max-count` (`422`). A conta é local e feita sob a trava de
-    /// escrita (doc 15, seção 14.4).
+    /// Like `create`; with `enforce_volatile_limit` (the `autoCreate`), it refuses the volatile queue that
+    /// would exceed `topics.volatile.max-count` (`422`). The count is local and done under the
+    /// write lock (doc 15, section 14.4).
     pub async fn create_checked(
         &self,
         request: CreateTopic,
@@ -501,13 +501,13 @@ impl Topics {
         {
             return Err(TabaError::new(
                 ErrorCode::TopicVolatileLimit,
-                "O teto de filas voláteis (topics.volatile.max-count) foi atingido.",
+                "The volatile queue ceiling (topics.volatile.max-count) was reached.",
             ));
         }
         if self.read().contains_key(&request.name) {
             return Err(TabaError::new(
                 ErrorCode::TopicAlreadyExists,
-                "Já existe um tópico com este nome.",
+                "A topic with this name already exists.",
             ));
         }
         let now = self.clock.now_millis();
@@ -544,14 +544,14 @@ impl Topics {
         Ok(self.view(&updated))
     }
 
-    /// Remove o tópico. As mensagens saem junto, quando existirem. Sempre funciona,
-    /// sem checar mensagens pendentes (doc 02, seção 3.3).
+    /// Removes the topic. The messages go with it, when there are any. Always works,
+    /// without checking pending messages (doc 02, section 3.3).
     pub async fn delete(&self, name: &str) -> Result<(), TabaError> {
         self.delete_checked(name, None).await
     }
 
-    /// Como `delete`, mas só apaga se o tópico ainda tem o `id` esperado: uma fila excluída e
-    /// **recriada** no meio do caminho não é apagada por engano (doc 15, seção 14.5).
+    /// Like `delete`, but only deletes if the topic still has the expected `id`: a queue deleted and
+    /// **recreated** along the way is not deleted by mistake (doc 15, section 14.5).
     pub async fn delete_expected(&self, name: &str, expected_id: &str) -> Result<(), TabaError> {
         self.delete_checked(name, Some(expected_id)).await
     }
@@ -597,7 +597,7 @@ impl Topics {
                     ("maxDeliveries", request.max_deliveries.is_some()),
                 ] {
                     if present {
-                        return Err(not_applicable(field, "um tópico distribuidor"));
+                        return Err(not_applicable(field, "a distributor topic"));
                     }
                 }
                 let prefixes = request.prefixes.clone().unwrap_or_default();
@@ -606,11 +606,14 @@ impl Topics {
             }
             Kind::Queue => {
                 if request.prefixes.is_some() {
-                    return Err(not_applicable("prefixes", "uma fila"));
+                    return Err(not_applicable("prefixes", "a queue"));
                 }
                 let volatile = request.volatile.unwrap_or(false);
                 if request.idle_timeout.is_some() && !volatile {
-                    return Err(not_applicable("idleTimeout", "uma fila que não é volátil"));
+                    return Err(not_applicable(
+                        "idleTimeout",
+                        "a queue that is not volatile",
+                    ));
                 }
                 let idle_timeout = if volatile {
                     let wanted = request
@@ -628,7 +631,7 @@ impl Topics {
                 if fifo && self.rules.fifo_needs_replication {
                     return Err(TabaError::new(
                         ErrorCode::TopicFifoNeedsReplication,
-                        "A fila FIFO exige replication.factor de pelo menos 2.",
+                        "A FIFO queue requires a replication.factor of at least 2.",
                     ));
                 }
                 Spec::Queue(QueueSpec {
@@ -653,7 +656,7 @@ impl Topics {
         Ok((spec, tags))
     }
 
-    /// `maxMessageBytes`: de 1 até `message.hard-limit` (se houver).
+    /// `maxMessageBytes`: from 1 up to `message.hard-limit` (if there is one).
     fn max_message_bytes(&self, value: i64) -> Result<u64, TabaError> {
         let max = self.rules.hard_limit.unwrap_or(u64::MAX);
         let v = in_range("maxMessageBytes", value, (1, u64::MAX))?;
@@ -661,7 +664,7 @@ impl Topics {
             return Err(field_error(
                 ErrorCode::ValidationMaxBytesAboveHardLimit,
                 "maxMessageBytes",
-                &format!("maxMessageBytes não pode passar de {max} (message.hard-limit)."),
+                &format!("maxMessageBytes cannot exceed {max} (message.hard-limit)."),
             ));
         }
         Ok(v)
@@ -676,7 +679,7 @@ impl Topics {
             return Err(field_error(
                 ErrorCode::ValidationImmutableField,
                 field,
-                &format!("`{field}` não pode ser alterado."),
+                &format!("`{field}` cannot be changed."),
             ));
         }
         if let Some(tags) = request.tags {
@@ -695,7 +698,7 @@ impl Topics {
                     ("maxDeliveries", request.max_deliveries != Patch::Absent),
                 ] {
                     if present {
-                        return Err(not_applicable(field, "um tópico distribuidor"));
+                        return Err(not_applicable(field, "a distributor topic"));
                     }
                 }
                 if let Some(new) = request.prefixes {
@@ -705,11 +708,14 @@ impl Topics {
             }
             Spec::Queue(queue) => {
                 if request.prefixes.is_some() {
-                    return Err(not_applicable("prefixes", "uma fila"));
+                    return Err(not_applicable("prefixes", "a queue"));
                 }
                 if let Some(wanted) = request.idle_timeout {
                     if !queue.volatile {
-                        return Err(not_applicable("idleTimeout", "uma fila que não é volátil"));
+                        return Err(not_applicable(
+                            "idleTimeout",
+                            "a queue that is not volatile",
+                        ));
                     }
                     queue.idle_timeout = Some(in_range(
                         "idleTimeout",

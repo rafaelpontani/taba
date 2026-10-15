@@ -1,7 +1,7 @@
-//! `GET /metrics` (doc 06b, doc 11): as métricas **deste nó** no texto do Prometheus. O que o
-//! caminho das requisições soma (HTTP, rate limit, autenticação) já está no registro; aqui, a cada
-//! leitura, entra o que o nó só sabe dizer na hora (memória, disco, prontas, estado, processo) e,
-//! conforme `telemetry.topics.mode`, as métricas de tópico.
+//! `GET /metrics` (doc 06b, doc 11): this **node's** metrics as Prometheus text. What the
+//! request path adds up (HTTP, rate limit, authentication) is already in the registry; here, on each
+//! read, comes in what the node can only say at the moment (memory, disk, ready, state, process) and,
+//! according to `telemetry.topics.mode`, the topic metrics.
 
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -22,7 +22,7 @@ use crate::engine::messages::stats::{self, NodeObservation, TopicSnapshot};
 use crate::telemetry::metrics::*;
 use crate::telemetry::{process, prometheus};
 
-/// O atributo de faixa de `taba.delivery.fair.wait`: `0` a `14`, e `15+`.
+/// The band attribute of `taba.delivery.fair.wait`: `0` to `14`, and `15+`.
 fn band_label(band: usize) -> String {
     if band >= stats::BANDS - 1 {
         "15+".to_owned()
@@ -57,9 +57,9 @@ pub async fn prometheus(
     Ok(([(header::CONTENT_TYPE, content_type)], body).into_response())
 }
 
-/// O envio periódico das métricas por OTLP: a cada `OTEL_METRIC_EXPORT_INTERVAL` lê o mesmo
-/// registro de `GET /metrics` e o manda ao coletor; ao parar, manda uma última vez. Uma falha de
-/// envio vira `warn` e a próxima rodada tenta de novo.
+/// The periodic sending of metrics over OTLP: every `OTEL_METRIC_EXPORT_INTERVAL` it reads the same
+/// registry as `GET /metrics` and sends it to the collector; on stopping, it sends one last time. A send
+/// failure becomes `warn` and the next round tries again.
 pub async fn run_otlp(
     state: AppState,
     mut sender: crate::telemetry::otlp::metrics::Sender,
@@ -89,7 +89,7 @@ pub async fn run_otlp(
         if let Ok(request) = request
             && let Err(e) = sender.send(request).await
         {
-            tracing::warn!(error = %e, "não foi possível enviar as métricas por OTLP");
+            tracing::warn!(error = %e, "could not send the metrics over OTLP");
         }
         if stop {
             return;
@@ -97,7 +97,7 @@ pub async fn run_otlp(
     }
 }
 
-/// Preenche o registro com o estado de agora.
+/// Fills the registry with the state of right now.
 pub fn collect(state: &AppState) {
     let registry = &state.telemetry.registry;
     collect_process(state);
@@ -135,7 +135,7 @@ fn collect_process(state: &AppState) {
     }
 }
 
-/// O estado do nó e do drain, um medidor `0/1` por estado possível.
+/// The node and drain state, a `0/1` gauge per possible state.
 fn collect_node(state: &AppState) {
     let registry = &state.telemetry.registry;
     let current = state.node.state();
@@ -169,8 +169,8 @@ fn collect_node(state: &AppState) {
     }
 }
 
-/// A tabela de membros e o anel (só em `mode=production` com o nó no cluster): os membros por
-/// estado, a época da tabela e os blocos que este nó atende, por papel (primário, secundário...).
+/// The member table and the ring (only in `mode=production` with the node in the cluster): the members by
+/// state, the table's epoch and the blocks this node serves, by role (primary, secondary...).
 fn collect_cluster(state: &AppState) {
     let Some(cluster) = &state.cluster else {
         return;
@@ -203,7 +203,7 @@ fn collect_cluster(state: &AppState) {
     if let Some(replication) = cluster.replication() {
         registry.set(&WRITE_PENDING, &[], replication.replica.pending() as f64);
     }
-    // Os nós em freezing e as condições do cluster que este nó enxerga (doc 11).
+    // The nodes in freezing and the cluster conditions this node sees (doc 11).
     if let Some(signals) = health::collect(cluster) {
         registry.set(&CLUSTER_FREEZING, &[], signals.frozen_nodes as f64);
         registry.set(
@@ -241,7 +241,7 @@ fn collect_cluster(state: &AppState) {
     }
 }
 
-/// O papel de um nó num bloco, pela posição na ordem das réplicas.
+/// A node's role in a block, by position in the replica order.
 fn role_label(role: usize) -> String {
     match role {
         0 => "primary".to_owned(),
@@ -304,7 +304,7 @@ fn collect_storage(state: &AppState, o: &NodeObservation) {
     }
 }
 
-/// Os totais de uma série de tópico (um tópico, um valor de tag, ou o resto agregado em `_other`).
+/// The totals of a topic series (a topic, a tag value, or the rest aggregated into `_other`).
 #[derive(Default)]
 struct Totals {
     published: u64,
@@ -341,7 +341,7 @@ impl Totals {
         registry.set(&TOPIC_DEPTH, labels, (self.visible + self.invisible) as f64);
         registry.set(&TOPIC_MEMORY_BYTES, labels, self.memory_bytes as f64);
         registry.set(&TOPIC_DISK_BYTES, labels, self.disk_bytes as f64);
-        // Sem mensagem não há data: a série não existe (nunca zero).
+        // Without a message there is no date: the series does not exist (never zero).
         if let Some(ms) = self.oldest_ms {
             registry.set(&TOPIC_OLDEST_TIMESTAMP, labels, ms as f64 / 1000.0);
         }
@@ -352,9 +352,9 @@ fn tag_attribute(key: &str) -> String {
     format!("taba.topic.tag.{key}")
 }
 
-/// As métricas de tópico em `GET /metrics`, conforme `telemetry.topics.mode` (doc 11, "Exportação
-/// das métricas de tópico"). O modo `off`, o padrão, não emite nada: o `/metrics` não cresce com
-/// o número de tópicos.
+/// Topic metrics in `GET /metrics`, according to `telemetry.topics.mode` (doc 11, "Exporting
+/// topic metrics"). The `off` mode, the default, emits nothing: `/metrics` does not grow with
+/// the number of topics.
 fn collect_topics(state: &AppState) {
     let telemetry = &state.telemetry;
     let registry = &telemetry.registry;
@@ -366,7 +366,7 @@ fn collect_topics(state: &AppState) {
     }
     let now = state.clock.now_millis();
     let keys = &telemetry.topics.group_by_tags;
-    // Um tópico por linha, em ordem de nome.
+    // One topic per line, in name order.
     let mut rows = Vec::new();
     for view in state.topics.all_views() {
         let name = &view.definition.name;

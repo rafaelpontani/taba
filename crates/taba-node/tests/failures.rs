@@ -1,9 +1,9 @@
-//! A falha de um nó no cluster simulado (doc 04, seções 6.3 e 6.8; doc 05, seção 7.3; doc 06c;
-//! doc 20c, nível **C**): detecção, votação de exclusão, desregistro por falha, `node-failed`,
-//! partição e a concorrência entre mudanças de membros.
+//! A node's failure in the simulated cluster (doc 04, sections 6.3 and 6.8; doc 05, section 7.3; doc 06c;
+//! doc 20c, level **C**): detection, exclusion vote, unregistration by failure, `node-failed`,
+//! partition and concurrency between member changes.
 //!
-//! "Cair" é isolar o nó da rede em memória (`isolate`): para os outros ele deixa de responder, e ele
-//! próprio deixa de alcançar os outros.
+//! "Falling" is isolating the node from the in-memory network (`isolate`): to the others it stops answering, and it
+//! itself stops reaching the others.
 
 mod common;
 
@@ -31,7 +31,7 @@ fn guid() -> String {
     id::new_at(1_791_288_000_000)
 }
 
-/// As tabelas dos nós `numbers` são iguais, sem o nó `gone`, e têm `size` membros.
+/// The tables of nodes `numbers` are equal, without node `gone`, and have `size` members.
 fn agree_without(cluster: &TestCluster, numbers: &[usize], gone: usize, size: usize) -> bool {
     let tables: Vec<Option<MemberTable>> = numbers.iter().map(|n| cluster.table(*n)).collect();
     let gone = cluster.node_id(gone);
@@ -41,7 +41,7 @@ fn agree_without(cluster: &TestCluster, numbers: &[usize], gone: usize, size: us
     }) && tables.windows(2).all(|w| w[0] == w[1])
 }
 
-/// A soma da série `name` com o rótulo `label` em todos os nós `numbers`.
+/// The sum of series `name` with label `label` on all the nodes `numbers`.
 async fn sum_of(cluster: &TestCluster, numbers: &[usize], name: &str, label: &str) -> f64 {
     let mut sum = 0.0;
     for number in numbers {
@@ -57,7 +57,7 @@ async fn publish(node: &TestNode, topic: &str, body: Value) -> String {
         .json(&body)
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 201, "{:?}", response.text().await);
     let value: Value = response.json().await.unwrap();
     value["id"].as_str().unwrap().to_owned()
@@ -69,7 +69,7 @@ async fn consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
         .get(node.client_url(&format!("/topics/{topic}/messages?{query}")))
         .send()
         .await
-        .expect("requisição");
+        .expect("request");
     assert_eq!(response.status(), 200, "{:?}", response.text().await);
     let value: Value = response.json().await.unwrap();
     value["messages"].as_array().cloned().unwrap_or_default()
@@ -80,16 +80,16 @@ fn messages_of(node: &TestNode) -> std::sync::Arc<taba_node::engine::messages::M
         .cluster()
         .and_then(|c| c.replication())
         .map(|r| r.messages.messages().clone())
-        .expect("o nó está no cluster")
+        .expect("the node is in the cluster")
 }
 
-/// Uma fila com algumas mensagens, publicadas por nós diferentes.
+/// A queue with some messages, published by different nodes.
 async fn queue_with_messages(cluster: &TestCluster, count: usize) -> Vec<String> {
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     let mut ids = Vec::new();
     for n in 0..count {
         let via = 1 + n % cluster.nodes.len();
-        ids.push(publish(cluster.node(via), "pedidos", json!({"n": n})).await);
+        ids.push(publish(cluster.node(via), "orders", json!({"n": n})).await);
     }
     ids
 }
@@ -103,23 +103,23 @@ async fn a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_chan
 
     cluster.network.isolate(&host_of(3));
 
-    eventually("os dois saudáveis excluírem o nó 3", || {
+    eventually("the two healthy ones to exclude node 3", || {
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
     assert_eq!(
         cluster.table(1).unwrap().version,
         before + 1,
-        "uma única mudança de membros"
+        "a single member change"
     );
 
-    // O desregistro seguiu as duas fases, com os dois nós que sobram.
-    assert!(cluster.network.count("vote") >= 1, "pediu o voto");
+    // The unregistration followed the two phases, with the two nodes that remain.
+    assert!(cluster.network.count("vote") >= 1, "asked for the vote");
     assert!(cluster.network.count("unregister") >= 1, "fase 1");
     assert!(cluster.network.count("commit") >= 1, "fase 2");
 
-    // A votação e o voto foram contados, e a mudança de membros também (por fase e motivo).
-    eventually_async("a votação e o resultado nas métricas", || async {
+    // The vote and the ballot were counted, and the member change too (by phase and reason).
+    eventually_async("the vote and the result in the metrics", || async {
         sum_of(
             &cluster,
             &[1, 2],
@@ -142,7 +142,7 @@ async fn a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_chan
         let label = format!(
             "taba_operation=\"unregister\",taba_outcome=\"ok\",taba_phase=\"{phase}\",taba_reason=\"vote\""
         );
-        eventually_async("a fase do desregistro por votação contada", || async {
+        eventually_async("the unregistration phase by vote counted", || async {
             sum_of(
                 &cluster,
                 &[1, 2],
@@ -155,18 +155,18 @@ async fn a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_chan
         .await;
     }
 
-    // O canal do excluído some dos dois que ficaram, e a fila de sinais para ele com ele.
+    // The excluded node's channel disappears from the two that remained, and the signal queue for it with it.
     for number in [1, 2] {
         let channels = channels_of(&cluster, number);
-        eventually("o canal do excluído desaparece", move || {
+        eventually("the excluded node's channel to disappear", move || {
             channels.peers().len() == 1
         })
         .await;
     }
 
-    // O nó isolado enxerga só a si mesmo como saudável: menos que `min-voters`, não exclui ninguém.
+    // The isolated node sees only itself as healthy: fewer than `min-voters`, it excludes no one.
     let lonely = cluster.node(3);
-    eventually_async("o nó isolado sem votantes suficientes", || async {
+    eventually_async("the isolated node without enough voters", || async {
         total(
             &lonely.metrics().await,
             "taba_cluster_vote_total",
@@ -174,7 +174,11 @@ async fn a_node_that_stays_down_is_excluded_by_two_of_three_and_every_table_chan
         ) >= 1.0
     })
     .await;
-    assert_eq!(cluster.member_ids(3).len(), 3, "o nó isolado não exclui");
+    assert_eq!(
+        cluster.member_ids(3).len(),
+        3,
+        "the isolated node excludes no one"
+    );
     cluster.shutdown().await;
 }
 
@@ -186,7 +190,7 @@ async fn with_only_two_nodes_a_cut_excludes_nobody() {
     let version = cluster.table(1).unwrap().version;
 
     cluster.network.isolate(&host_of(2));
-    eventually_async("a votação sem votantes suficientes", || async {
+    eventually_async("the vote without enough voters", || async {
         sum_of(
             &cluster,
             &[1, 2],
@@ -226,26 +230,26 @@ async fn vote_remove_answers_no_to_who_still_reaches_the_candidate_and_yes_to_wh
             });
             match transport.call(&node1, request).await {
                 Ok(Response::Vote(answer)) => answer.vote,
-                other => panic!("esperava um voto, veio {other:?}"),
+                other => panic!("expected a vote, got {other:?}"),
             }
         }
     };
 
-    // O nó 1 alcança o nó 3: vota não. Quem não é membro e o próprio votante também são não.
+    // Node 1 reaches node 3: votes no. Whoever is not a member and the voter itself are also no.
     assert_eq!(ask(third.clone()).await, Ballot::No);
     assert_eq!(ask(guid()).await, Ballot::No);
     assert_eq!(ask(cluster.node_id(1)).await, Ballot::No, "estou vivo");
 
-    // Cortado o nó 1 do nó 3, ele não o alcança mais e vota sim.
+    // With node 1 cut off from node 3, it no longer reaches it and votes yes.
     cluster.network.partition(&host_of(1), &host_of(3));
     let channels = channels_of(&cluster, 1);
-    eventually("o canal do nó 1 com o nó 3 cair", move || {
+    eventually("node 1's channel with node 3 to fall", move || {
         channels.peers().iter().any(|p| !p.up)
     })
     .await;
     assert_eq!(ask(third.clone()).await, Ballot::Yes);
 
-    // Os votos foram contados, e dar o voto não exclui ninguém.
+    // The votes were counted, and giving the vote excludes no one.
     let text = cluster.node(1).metrics().await;
     assert!(total(&text, "taba_cluster_vote_total", "taba_outcome=\"yes\"") >= 1.0);
     assert!(total(&text, "taba_cluster_vote_total", "taba_outcome=\"no\"") >= 3.0);
@@ -261,11 +265,12 @@ async fn a_node_that_announces_its_failure_is_excluded_while_its_channel_is_stil
 
     cluster.node(3).node.shared().set_failed();
 
-    eventually("os dois saudáveis excluírem o nó que falhou", || {
-        agree_without(&cluster, &[1, 2], 3, 2)
-    })
+    eventually(
+        "the two healthy ones to exclude the node that failed",
+        || agree_without(&cluster, &[1, 2], 3, 2),
+    )
     .await;
-    // O canal nunca caiu: foi o aviso do nó, não a conexão, que abriu a votação.
+    // The channel never fell: it was the node's notice, not the connection, that opened the vote.
     assert_eq!(
         sum_of(
             &cluster,
@@ -286,7 +291,7 @@ async fn a_node_that_announces_its_failure_is_excluded_while_its_channel_is_stil
         .await
             >= 1.0
     );
-    // O nó segue em `failed`, fora do rodízio, e não tenta voltar sozinho.
+    // The node stays in `failed`, out of rotation, and does not try to come back on its own.
     let ready = cluster.node(3).client_get_ops("/health/ready").await;
     assert_eq!(ready.status(), 503);
     assert_eq!(ready.json::<Value>().await.unwrap()["reason"], "failed");
@@ -304,20 +309,20 @@ async fn a_queue_that_overflows_opens_the_vote_that_excludes_the_unreachable_nod
         ],
     )
     .await;
-    create_queue(cluster.node(1), "pedidos").await;
+    create_queue(cluster.node(1), "orders").await;
     settled(&cluster).await;
 
     cluster.network.isolate(&host_of(3));
-    // Um ouvinte no nó 1 gera um sinal para o nó 3 que não sai: a fila envelhece e estoura.
+    // A listener on node 1 generates a signal for node 3 that does not leave: the queue ages and overflows.
     let node = cluster.node(1);
     let client = node.client.clone();
     let url =
-        node.client_url("/topics/pedidos/messages?waitTime=3&maxMessages=1&visibilityTimeout=60");
+        node.client_url("/topics/orders/messages?waitTime=3&maxMessages=1&visibilityTimeout=60");
     let waiting = tokio::spawn(async move {
         let _ = client.get(url).send().await;
     });
 
-    eventually("o nó 3 excluído depois do estouro da fila", || {
+    eventually("node 3 excluded after the queue overflow", || {
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
@@ -341,9 +346,9 @@ async fn a_node_that_stops_answering_with_the_connection_open_is_detected_and_ex
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
 
-    // O nó 3 recebe as chamadas e não responde: a conexão está aberta, mas nada volta.
+    // Node 3 receives the calls and does not answer: the connection is open, but nothing comes back.
     cluster.network.set_silent(&host_of(3), true);
-    eventually("o nó mudo ser excluído pela falta de resposta", || {
+    eventually("the mute node to be excluded for not answering", || {
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
@@ -357,13 +362,13 @@ async fn an_exclusion_that_fails_before_the_commit_rolls_back_and_the_vote_is_he
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
 
-    // A fase 1 do desregistro se perde nas três tentativas de cada coordenador possível.
+    // Phase 1 of the unregistration is lost in the three attempts of each possible coordinator.
     for host in [host_of(1), host_of(2)] {
         cluster.network.lose_kind(&host, "unregister", 3);
     }
     cluster.network.isolate(&host_of(3));
 
-    eventually("a exclusão depois do rollback", || {
+    eventually("the exclusion after the rollback", || {
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
@@ -376,7 +381,7 @@ async fn an_exclusion_that_fails_before_the_commit_rolls_back_and_the_vote_is_he
         )
         .await
             >= 1.0,
-        "a primeira votação não efetivou a exclusão"
+        "the first vote did not make the exclusion take effect"
     );
     assert!(
         sum_of(
@@ -387,7 +392,7 @@ async fn an_exclusion_that_fails_before_the_commit_rolls_back_and_the_vote_is_he
         )
         .await
             >= 1.0,
-        "o rollback foi contado"
+        "the rollback was counted"
     );
     cluster.shutdown().await;
 }
@@ -402,15 +407,15 @@ async fn once_the_exclusion_is_decided_the_commit_is_insisted_until_every_node_c
     }
     cluster.network.isolate(&host_of(3));
 
-    eventually("a exclusão apesar dos commits perdidos", || {
+    eventually("the exclusion despite the lost commits", || {
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
-    // O coordenador insiste no commit; o quadro `membership` do canal também leva a mudança, e quem
-    // chega primeiro acerta o nó (D126), então não se sabe quantos commits ainda foram precisos.
+    // The coordinator insists on the commit; the channel's `membership` frame also carries the change, and whoever
+    // arrives first fixes the node (D126), so it is not known how many commits were still needed.
     assert!(
         cluster.network.count("commit") >= 1,
-        "o coordenador tentou o commit"
+        "the coordinator tried the commit"
     );
     assert_eq!(
         sum_of(
@@ -421,7 +426,7 @@ async fn once_the_exclusion_is_decided_the_commit_is_insisted_until_every_node_c
         )
         .await,
         0.0,
-        "decidido, não há volta"
+        "decided, there is no going back"
     );
     cluster.shutdown().await;
 }
@@ -433,28 +438,31 @@ async fn when_several_nodes_fall_together_the_vote_goes_on_among_the_healthy_one
     settled(&cluster).await;
     let before = cluster.table(1).unwrap().version;
 
-    // Uma zona inteira cai: três dos cinco. Só dois saudáveis restam, e os três não entram na base
-    // (senão 2 de 5 não fechariam o quórum).
+    // A whole zone falls: three of the five. Only two healthy remain, and the three do not enter the base
+    // (otherwise 2 of 5 would not close the quorum).
     for number in [3, 4, 5] {
         cluster.network.isolate(&host_of(number));
     }
-    eventually("os três nós fora da tabela dos dois que restam", || {
-        [1, 2].iter().all(|n| {
-            cluster
-                .table(*n)
-                .is_some_and(|t| t.members.len() == 2 && t.version == before + 3)
-        }) && cluster.table(1) == cluster.table(2)
-    })
+    eventually(
+        "the three nodes out of the table of the two that remain",
+        || {
+            [1, 2].iter().all(|n| {
+                cluster
+                    .table(*n)
+                    .is_some_and(|t| t.members.len() == 2 && t.version == before + 3)
+            }) && cluster.table(1) == cluster.table(2)
+        },
+    )
     .await;
-    // Cada nó isolado enxerga só a si mesmo e não exclui ninguém.
+    // Each isolated node sees only itself and excludes no one.
     for number in [3, 4, 5] {
         assert_eq!(cluster.member_ids(number).len(), 5);
     }
     cluster.shutdown().await;
 }
 
-/// Nenhum UC: cada lado da partição exclui o outro (UC-FAL-013, primeira metade). A volta do
-/// excluído é provada na 15b3 e a dos dois lados é o PRB-040.
+/// No UC: each side of the partition excludes the other (UC-FAL-013, first half). The return of the
+/// excluded is proved in 15b3 and that of both sides is PRB-040.
 #[tokio::test]
 async fn a_partition_with_enough_healthy_nodes_on_both_sides_makes_each_side_exclude_the_other() {
     let cluster = TestCluster::start(4).await;
@@ -465,7 +473,7 @@ async fn a_partition_with_enough_healthy_nodes_on_both_sides_makes_each_side_exc
             cluster.network.partition(&host_of(left), &host_of(right));
         }
     }
-    eventually("cada lado ficar só com os seus dois nós", || {
+    eventually("each side to be left with only its two nodes", || {
         let (a, b) = (cluster.member_ids(1), cluster.member_ids(3));
         a.len() == 2
             && b.len() == 2
@@ -480,7 +488,7 @@ async fn a_partition_with_enough_healthy_nodes_on_both_sides_makes_each_side_exc
 /// UC: UC-FAL-021, UC-FAL-022
 #[tokio::test]
 async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_primary() {
-    // Sem votação automática: o teste abre a votação quando quer.
+    // No automatic vote: the test opens the vote when it wants.
     let cluster = TestCluster::start_with(4, NO_VOTE).await;
     let ids = queue_with_messages(&cluster, 40).await;
     let victim = cluster.node_id(4);
@@ -490,31 +498,31 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
         .filter(|id| ring.primary(message_position(id)) == Some(victim.as_str()))
         .cloned()
         .collect();
-    assert!(!owned_by_victim.is_empty(), "o nó 4 é dono de alguma");
+    assert!(!owned_by_victim.is_empty(), "node 4 owns some");
     let others: Vec<String> = ids
         .iter()
         .filter(|id| !owned_by_victim.contains(id))
         .cloned()
         .collect();
 
-    // O nó 4 cai: as mensagens dele ficam sem entrega, e as dos outros seguem saindo.
+    // Node 4 falls: its messages are left without delivery, and the others' keep going out.
     cluster.network.isolate(&host_of(4));
     let channels = channels_of(&cluster, 1);
     let victim_for_wait = victim.clone();
-    eventually("o canal com o nó 4 cair", move || {
+    eventually("the channel with node 4 to fall", move || {
         channels
             .peers()
             .iter()
             .any(|p| p.node_id == victim_for_wait && !p.up)
     })
     .await;
-    // Prazo de 10 s, como o `eventually`: runners lentos (arm64 no CI) levam mais que 5 s.
+    // Deadline of 10 s, like `eventually`: slow runners (arm64 on CI) take more than 5 s.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     let mut delivered: Vec<String> = Vec::new();
     while tokio::time::Instant::now() < deadline {
         for message in consume(
             cluster.node(1),
-            "pedidos",
+            "orders",
             "maxMessages=10&visibilityTimeout=300",
         )
         .await
@@ -528,14 +536,14 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
     }
     assert!(
         others.iter().all(|id| delivered.contains(id)),
-        "as mensagens dos outros nós saem"
+        "the other nodes' messages go out"
     );
     assert!(
         owned_by_victim.iter().all(|id| !delivered.contains(id)),
-        "as do nó caído esperam o desregistro"
+        "the fallen node's wait for the unregistration"
     );
 
-    // O desregistro: o anel é recalculado e as mensagens passam a um novo primário.
+    // The unregistration: the ring is recalculated and the messages go to a new primary.
     let voting = cluster
         .node(1)
         .node
@@ -545,7 +553,7 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
         .voting
         .clone();
     voting.open(victim.clone(), VoteReason::ChannelDown).await;
-    eventually("o nó 4 fora da tabela", || {
+    eventually("node 4 out of the table", || {
         agree_without(&cluster, &[1, 2, 3], 4, 3)
     })
     .await;
@@ -556,27 +564,27 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
             .map(|n| ring.primary_blocks_of(&cluster.node_id(n)))
             .sum::<usize>(),
         ring.block_count(),
-        "os blocos do nó removido foram para os que ficaram"
+        "the removed node's blocks went to the ones that remained"
     );
 
-    // Cada mensagem segue em pelo menos `replication.factor − 1` = 2 nós.
+    // Each message remains on at least `replication.factor − 1` = 2 nodes.
     for id in &ids {
         let copies = (1..=3)
             .filter(|n| {
                 messages_of(cluster.node(*n))
-                    .message_info("pedidos", id)
+                    .message_info("orders", id)
                     .unwrap()
                     .is_some()
             })
             .count();
-        assert!(copies >= 2, "a mensagem {id} tem {copies} cópia(s)");
+        assert!(copies >= 2, "message {id} has {copies} copy(ies)");
     }
 
-    // As que esperavam agora saem, entregues pelo novo primário.
+    // The ones that were waiting now go out, delivered by the new primary.
     for _ in 0..200 {
         for message in consume(
             cluster.node(1),
-            "pedidos",
+            "orders",
             "maxMessages=10&visibilityTimeout=300",
         )
         .await
@@ -590,7 +598,7 @@ async fn the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_pri
     }
     assert!(
         owned_by_victim.iter().all(|id| delivered.contains(id)),
-        "o novo primário entrega as mensagens do nó removido"
+        "the new primary delivers the removed node's messages"
     );
     cluster.shutdown().await;
 }
@@ -604,13 +612,13 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
     let port = cluster.node(3).node.cluster_addr().unwrap().port();
     cluster.network.clear_calls();
 
-    // O desregistro demora: a votação fica em andamento tempo suficiente para o nó novo chegar.
+    // The unregistration takes a while: the vote stays in progress long enough for the new node to arrive.
     cluster
         .network
         .set_delay_kind("unregister", Duration::from_millis(1500));
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
-    eventually("a votação de exclusão abrir", || {
+    eventually("the exclusion vote to open", || {
         [1, 2].iter().any(|n| {
             cluster
                 .node(*n)
@@ -621,24 +629,24 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
     })
     .await;
 
-    // Com a votação aberta, o nó reinicia no mesmo IP e porta e pede para entrar.
+    // With the vote open, the node restarts at the same IP and port and asks to join.
     let number = cluster
         .respawn_node(3, |builder| {
             builder.env("TABA_CLUSTER_PORT", &port.to_string())
         })
         .await
-        .expect("o nó reinicia");
+        .expect("the node restarts");
     let new_id = cluster.node_id(number);
-    assert_ne!(new_id, old_id, "o ID é novo");
+    assert_ne!(new_id, old_id, "the ID is new");
 
-    // Em nenhum instante a tabela tem o nó antigo e o novo juntos.
+    // At no instant does the table have the old and the new node together.
     let mut both = false;
     let mut joined = false;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
     while !joined {
         assert!(
             tokio::time::Instant::now() < deadline,
-            "o nó novo não entrou"
+            "the new node did not join"
         );
         for observer in [1, 2] {
             if let Some(table) = cluster.table(observer) {
@@ -648,8 +656,11 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    assert!(!both, "o pedido do nó novo esperou o fim da votação");
-    // O reinício é outro ID: só o antigo, excluído, fica em freezing, e o novo entrou sem esperar.
+    assert!(
+        !both,
+        "the new node's request waited for the end of the vote"
+    );
+    // The restart is another ID: only the old one, excluded, goes into freezing, and the new one joined without waiting.
     let membership = cluster.node(1).node.cluster().unwrap().membership();
     let freezing = Duration::from_secs(300);
     let now = cluster.clock.now();
@@ -663,8 +674,8 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
             .frozen_remaining(&new_id, now, freezing)
             .is_none()
     );
-    // O balanceador também repete o pedido ao próprio nó novo (mesmo endereço): só vale o ingresso
-    // que chegou a um membro, e ele chegou depois da votação aberta e antes do commit da exclusão.
+    // The load balancer also repeats the request to the new node itself (same address): only the join
+    // that reached a member counts, and it arrived after the vote opened and before the exclusion commit.
     let calls = cluster.network.calls();
     let first = |name: &str| calls.iter().position(|c| c.request == name);
     let join = calls
@@ -672,7 +683,7 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
         .position(|c| c.request == "join" && c.to.host != host_of(3));
     assert!(
         first("vote") < join && join < first("commit"),
-        "o pedido de ingresso chegou no meio da votação"
+        "the join request arrived in the middle of the vote"
     );
     assert_eq!(cluster.member_ids(1).len(), 3);
     wait_joined(cluster.node(number)).await;
@@ -688,17 +699,21 @@ async fn a_node_that_falls_while_another_syncs_is_excluded_only_when_the_sync_en
     let gate = pause_sync(&cluster, third, "replay");
     wait_phase(cluster.node(third), "replay").await;
 
-    // O nó 2 cai com o 3 sincronizando: a votação fecha, mas o desregistro espera.
+    // Node 2 falls with node 3 syncing: the vote closes, but the unregistration waits.
     cluster.network.isolate(&host_of(2));
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    assert_eq!(cluster.member_ids(1).len(), 3, "nada mudou durante a carga");
+    assert_eq!(
+        cluster.member_ids(1).len(),
+        3,
+        "nothing changed during the load"
+    );
     assert_eq!(
         cluster.node(third).node.shared().state(),
         NodeState::Syncing
     );
 
     gate.add_permits(1);
-    eventually("o nó 2 sair depois de o 3 ficar pronto", || {
+    eventually("node 2 to leave after node 3 is ready", || {
         cluster
             .table(1)
             .is_some_and(|t| t.members.len() == 2 && t.member(&cluster.node_id(2)).is_none())
@@ -714,28 +729,28 @@ async fn a_syncing_node_that_fails_is_excluded_by_the_others() {
     let mut cluster = TestCluster::start(2).await;
     queue_with_messages(&cluster, 6).await;
     let number = start_isolated(&mut cluster, &[("TABA_CLUSTER_SYNC_TIMEOUT", "300ms")]).await;
-    // Ninguém serve a listagem de IDs: o nó esgota o prazo e entra em falha.
+    // No one serves the ID listing: the node runs out the deadline and enters failure.
     for host in [host_of(1), host_of(2)] {
         cluster.network.lose_kind(&host, "block-ids", 1_000_000);
     }
     cluster.network.restore(&host_of(number));
 
     let shared = cluster.node(number).node.shared().clone();
-    eventually("o nó entrar em falha", move || {
+    eventually("the node to enter failure", move || {
         shared.state() == NodeState::Failed
     })
     .await;
-    // O sinal de falha libera a votação, e a saída de um nó em sincronização é a exceção da regra
-    // de uma mudança por vez.
-    eventually("os outros excluírem o nó que falhou", || {
+    // The failure signal releases the vote, and the exit of a syncing node is the exception to the
+    // one-change-at-a-time rule.
+    eventually("the others to exclude the node that failed", || {
         agree_without(&cluster, &[1, 2], number, 2)
     })
     .await;
     cluster.shutdown().await;
 }
 
-/// O nó que reinicia no mesmo endereço espera a porta do cluster ficar livre, em vez de falhar com
-/// `AddrInUse`: a porta é efêmera e, nesse intervalo, outra conexão ou outro teste pode tomá-la.
+/// The node that restarts at the same address waits for the cluster port to become free, instead of failing with
+/// `AddrInUse`: the port is ephemeral and, in that interval, another connection or another test may take it.
 #[tokio::test]
 async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_holds() {
     let mut cluster = TestCluster::start(3).await;
@@ -743,7 +758,7 @@ async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_hol
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
 
-    // Alguém pega a porta e só a solta depois de um tempo.
+    // Someone takes the port and only releases it after a while.
     let mut holder = None;
     for _ in 0..100 {
         if let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) {
@@ -752,7 +767,7 @@ async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_hol
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    let holder = holder.expect("a porta fica livre depois do desligamento");
+    let holder = holder.expect("the port becomes free after the shutdown");
     let release = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(400));
         drop(holder);
@@ -763,7 +778,7 @@ async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_hol
             builder.env("TABA_CLUSTER_PORT", &port.to_string())
         })
         .await
-        .expect("o nó reinicia quando a porta é liberada");
+        .expect("the node restarts when the port is released");
     release.join().unwrap();
     assert_eq!(
         cluster.node(number).node.cluster_addr().unwrap().port(),
@@ -775,7 +790,7 @@ async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_hol
 /// UC: UC-CAN-025, UC-CAN-014, UC-CNC-007
 #[tokio::test]
 async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and_is_replaced() {
-    // 40 tentativas de 50 ms: o nó reinicia muito antes de a queda ser declarada.
+    // 40 attempts of 50 ms: the node restarts well before the fall is declared.
     let mut cluster = TestCluster::start_with(
         3,
         &[
@@ -795,13 +810,13 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
             builder.env("TABA_CLUSTER_PORT", &port.to_string())
         })
         .await
-        .expect("o nó reinicia");
+        .expect("the node restarts");
     let new_id = cluster.node_id(number);
     assert_ne!(new_id, old_id);
 
-    // Antes de a votação abrir, o processo novo já não passa pelo antigo: o canal dos outros lados
-    // recebe `cluster.wrong-node` e conta como caído.
-    eventually("a votação do nó antigo", || {
+    // Before the vote opens, the new process no longer goes through the old one: the other sides' channel
+    // receives `cluster.wrong-node` and counts as fallen.
+    eventually("the old node's vote", || {
         [1, 2].iter().any(|n| {
             cluster
                 .node(*n)
@@ -812,7 +827,7 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
         })
     })
     .await;
-    eventually("o nó novo substituir o antigo na tabela", || {
+    eventually("the new node to replace the old one in the table", || {
         [1, 2].iter().all(|n| {
             let ids = cluster.member_ids(*n);
             ids.contains(&new_id) && !ids.contains(&old_id)
@@ -834,7 +849,7 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
             cluster.network.partition(&host_of(left), &host_of(right));
         }
     }
-    eventually("cada lado ficar só com os seus dois nós", || {
+    eventually("each side to be left with only its two nodes", || {
         cluster.member_ids(1).len() == 2
             && cluster.member_ids(3).len() == 2
             && cluster.table(1) == cluster.table(2)
@@ -842,8 +857,8 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
     })
     .await;
 
-    // A rede volta, mas as duas tabelas têm a mesma versão e nenhum canal liga um lado ao outro.
-    // O freezing de cada lado já passou.
+    // The network returns, but the two tables have the same version and no channel links one side to the other.
+    // Each side's freezing has already passed.
     for left in [1, 2] {
         for right in [3, 4] {
             cluster.network.heal(&host_of(left), &host_of(right));
@@ -852,9 +867,9 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
     cluster.network.clear_calls();
     cluster.clock.advance(Duration::from_secs(301));
 
-    // Cada lado consulta a tabela de quem excluiu: o perdedor (o do menor `nodeId`, num empate)
-    // refaz o ingresso e as quatro tabelas voltam a ser uma só.
-    eventually("os quatro nós numa tabela só", || {
+    // Each side queries the table of whoever excluded it: the loser (the one with the lowest `nodeId`, in a tie)
+    // redoes the join and the four tables become one again.
+    eventually("the four nodes in a single table", || {
         let tables: Vec<_> = (1..=4).map(|n| cluster.table(n)).collect();
         tables.windows(2).all(|w| w[0] == w[1])
             && tables[0].as_ref().is_some_and(|t| t.members.len() == 4)
@@ -864,7 +879,7 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
         wait_joined(cluster.node(number)).await;
     }
 
-    // Só o lado perdedor refez o ingresso: o que tem o menor `nodeId` de todos (empate de 2 a 2).
+    // Only the losing side redid the join: the one with the lowest `nodeId` of all (a 2-to-2 tie).
     let smallest = (1..=4).min_by_key(|n| cluster.node_id(*n)).unwrap();
     let losers: Vec<String> = if smallest <= 2 {
         vec![host_of(1), host_of(2)]
@@ -881,7 +896,7 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
     assert!(!joiners.is_empty(), "o perdedor refez o ingresso");
     assert!(
         joiners.iter().all(|host| losers.contains(host)),
-        "o vencedor não refez: {joiners:?}"
+        "the winner did not redo: {joiners:?}"
     );
     cluster.shutdown().await;
 }
@@ -891,12 +906,12 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
 async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leaves() {
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
-    // A exclusão demora: o nó em falha segue na tabela e recebe chamadas por um instante.
+    // The exclusion takes a while: the failed node stays in the table and receives calls for a moment.
     cluster
         .network
         .set_delay_kind("unregister", Duration::from_millis(1500));
-    // O dono da definição não pode ser o nó em falha (ele só deixa de ser dono quando é excluído).
-    let name = name_owned_by(&cluster, 1, "pedidos-");
+    // The definition's owner cannot be the failed node (it only stops being owner when it is excluded).
+    let name = name_owned_by(&cluster, 1, "orders-");
     cluster.node(3).node.shared().set_failed();
 
     let created = cluster
@@ -907,7 +922,11 @@ async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leave
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 201, "a chamada foi repassada a um nó são");
+    assert_eq!(
+        created.status(),
+        201,
+        "the call was forwarded to a healthy node"
+    );
     assert_eq!(
         total(
             &cluster.node(3).metrics().await,
@@ -915,9 +934,9 @@ async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leave
             "taba_outcome=\"ok\""
         ),
         1.0,
-        "o nó em falha repassou, não atendeu"
+        "the failed node forwarded, it did not serve"
     );
-    // O tópico foi criado no cluster, mas o nó em falha não o atende por conta própria.
+    // The topic was created in the cluster, but the failed node does not serve it on its own.
     let listed = cluster
         .node(1)
         .client
@@ -940,7 +959,7 @@ async fn a_failed_single_node_refuses_the_client_calls_with_503() {
     assert!(response.headers().contains_key("retry-after"));
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["code"], "node.failed");
-    // As rotas de operação continuam: é por elas que se vê a falha.
+    // The operations routes continue: that is how the failure is seen.
     let ready = node.client_get_ops("/health/ready").await;
     assert_eq!(ready.status(), 503);
     assert_eq!(ready.json::<Value>().await.unwrap()["reason"], "failed");
@@ -955,17 +974,17 @@ async fn once_the_exclusion_is_decided_the_nodes_drop_the_channel_and_the_return
     settled(&cluster).await;
     let third = cluster.node_id(3);
     cluster.network.isolate(&host_of(3));
-    eventually("os dois saudáveis excluírem o nó 3", || {
+    eventually("the two healthy ones to exclude node 3", || {
         agree_without(&cluster, &[1, 2], 3, 2)
     })
     .await;
 
-    // O canal e as filas para o excluído foram descartados: não acumulam mais.
+    // The channel and the queues to the excluded were discarded: they no longer accumulate.
     for number in [1, 2] {
         let peers = channels_of(&cluster, number).peers();
         assert!(
             peers.iter().all(|p| p.node_id != third),
-            "nó {number}: o canal com o excluído foi descartado"
+            "node {number}: the channel with the excluded was discarded"
         );
     }
     let label = format!("taba_peer=\"{third}\"");
@@ -974,11 +993,11 @@ async fn once_the_exclusion_is_decided_the_nodes_drop_the_channel_and_the_return
         0.0
     );
 
-    // Se o nó volta, refaz o bootstrap e os canais nascem novos e vazios.
+    // If the node comes back, it redoes the bootstrap and the channels are born new and empty.
     cluster.network.restore(&host_of(3));
     cluster.clock.advance(Duration::from_secs(301));
     wait_joined(cluster.node(3)).await;
-    eventually("os canais novos, de pé e vazios", || {
+    eventually("the new channels, up and empty", || {
         [1, 2].iter().all(|n| {
             channels_of(&cluster, *n)
                 .peers()
@@ -997,17 +1016,17 @@ async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
     settled(&cluster).await;
     let lowest = (1..=4)
         .min_by_key(|n| cluster.node_id(*n))
-        .expect("quatro saudáveis");
+        .expect("four healthy");
     cluster.network.clear_calls();
 
     cluster.network.isolate(&host_of(5));
-    eventually("os quatro saudáveis excluírem o nó 5", || {
+    eventually("the four healthy ones to exclude node 5", || {
         agree_without(&cluster, &[1, 2, 3, 4], 5, 4)
     })
     .await;
 
-    // Todos abriram a votação, mas só o de menor ID registrou o desregistro nos outros: os demais
-    // esperaram a vez e acharam o nó já fora da tabela.
+    // All opened the vote, but only the one with the lowest ID registered the unregistration on the others: the rest
+    // waited their turn and found the node already out of the table.
     let coordinators: std::collections::BTreeSet<String> = cluster
         .network
         .calls()
@@ -1018,11 +1037,11 @@ async fn only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion() {
     assert_eq!(
         coordinators,
         std::collections::BTreeSet::from([host_of(lowest)]),
-        "o coordenador da exclusão"
+        "the exclusion's coordinator"
     );
     assert!(
         cluster.network.count("vote") >= 4,
-        "todos os saudáveis votaram"
+        "all the healthy ones voted"
     );
     cluster.shutdown().await;
 }

@@ -20,7 +20,7 @@ A **0.1 fecha** quando uma pessoa sobe um cluster de três nós com um comando, 
 | 1 — `taba-cli`, o primeiro conector (comandos, perfis, TUI, imagem Docker, binários para 6 plataformas) | ✅ |
 | 2 — Docker e Compose (`Dockerfile`, `docker-compose.yml` de três nós, HAProxy de exemplo, `taba init`) | ✅ |
 | 3 — Conector C# (nove operações, `subscribe`, injeção de dependência, testes unitários e de integração) | ✅ |
-| 4 — Exemplo de console em C# (`exemplos/csharp-console/`) | ✅ |
+| 4 — Exemplo de console em C# (`examples/csharp-console/`) | ✅ |
 | 5 — Validação de ponta a ponta (`docker/validate.sh`: cluster, `taba-cli`, queda e volta de nós, sem perda de mensagem) | ✅ |
 
 Também está pronto o **servidor** inteiro (nó, cluster, FIFO, volátil, distribuidor, tokens, mTLS, observabilidade) e o **CI/CD** com versionamento automático ([27-ci-cd.md](27-ci-cd.md)).

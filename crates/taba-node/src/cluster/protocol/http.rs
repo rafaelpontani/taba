@@ -1,8 +1,8 @@
-//! A tradução entre as chamadas tipadas e a API HTTP do cluster (doc 06c): cada [`Request`] vira
-//! um método, um caminho e um corpo, e volta. Quem serve a porta do cluster usa
-//! [`Request::from_http`] e [`Response::into_http`]; o `Transport` HTTP (etapa 16) usa
-//! [`Request::to_http`] e [`Request::parse_reply`]. Os testes conferem que as duas pontas se
-//! entendem para todas as chamadas.
+//! The translation between the typed calls and the cluster HTTP API (doc 06c): each [`Request`] becomes
+//! a method, a path and a body, and back. Whoever serves the cluster port uses
+//! [`Request::from_http`] and [`Response::into_http`]; the HTTP `Transport` (step 16) uses
+//! [`Request::to_http`] and [`Request::parse_reply`]. The tests check that both ends
+//! understand each other for every call.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -18,20 +18,20 @@ use super::{
 use crate::cluster::members::MemberTable;
 use crate::core::error::{ErrorCode, ErrorDetail, TabaError};
 
-/// O cabeçalho interno com o IP do cliente já resolvido, só no repasse.
+/// The internal header with the already-resolved client IP, only on the forward.
 pub const CLIENT_IP_HEADER: &str = "x-taba-client-ip";
 
-/// Uma chamada HTTP pronta para sair.
+/// An HTTP call ready to go out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpCall {
     pub method: String,
-    /// O caminho com a query.
+    /// The path with the query.
     pub path: String,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
 
-/// Uma resposta HTTP, como chegou ou vai sair.
+/// An HTTP response, as it arrived or will go out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpReply {
     pub status: u16,
@@ -94,7 +94,7 @@ fn bad_body(message: String) -> TabaError {
     TabaError::new(ErrorCode::ValidationFailed, message)
 }
 
-/// `415` se o corpo não é `application/json`; o corpo vazio vale como `{}`.
+/// `415` if the body is not `application/json`; an empty body counts as `{}`.
 fn parse_body<T: DeserializeOwned>(
     headers: &[(String, String)],
     body: &[u8],
@@ -118,20 +118,19 @@ fn parse_body<T: DeserializeOwned>(
         let message = e.to_string();
         let field = message.split('`').nth(1).unwrap_or_default().to_owned();
         if message.starts_with("missing field") {
-            TabaError::new(ErrorCode::ValidationRequired, "Faltam campos obrigatórios.")
-                .with_detail(field, ErrorCode::ValidationRequired, "Campo obrigatório.")
+            TabaError::new(
+                ErrorCode::ValidationRequired,
+                "Required fields are missing.",
+            )
+            .with_detail(field, ErrorCode::ValidationRequired, "Required field.")
         } else if message.starts_with("unknown field") {
             TabaError::new(
                 ErrorCode::ValidationUnknownField,
-                format!("O campo `{field}` não existe nesta rota."),
+                format!("The field `{field}` does not exist on this route."),
             )
-            .with_detail(
-                field,
-                ErrorCode::ValidationUnknownField,
-                "Campo desconhecido.",
-            )
+            .with_detail(field, ErrorCode::ValidationUnknownField, "Unknown field.")
         } else {
-            bad_body(format!("O corpo não é válido: {message}."))
+            bad_body(format!("The body is not valid: {message}."))
         }
     })
 }
@@ -149,7 +148,7 @@ fn parse_step<R: DeserializeOwned>(
     })
 }
 
-/// `replicate` da query do `recover` (`true` se ausente); qualquer outro parâmetro é recusado.
+/// `replicate` from the `recover` query (`true` if absent); any other parameter is refused.
 fn parse_replicate(query: &str) -> Result<bool, TabaError> {
     let mut replicate = true;
     for pair in query.split('&').filter(|p| !p.is_empty()) {
@@ -159,23 +158,23 @@ fn parse_replicate(query: &str) -> Result<bool, TabaError> {
             ("replicate", _) => {
                 return Err(TabaError::new(
                     ErrorCode::ValidationFailed,
-                    "`replicate` deve ser `true` ou `false`.",
+                    "`replicate` must be `true` or `false`.",
                 )
                 .with_detail(
                     "replicate",
                     ErrorCode::ValidationFailed,
-                    "Esperado true ou false.",
+                    "Expected true or false.",
                 ));
             }
             (other, _) => {
                 return Err(TabaError::new(
                     ErrorCode::ValidationUnknownField,
-                    format!("O parâmetro `{other}` não existe nesta rota."),
+                    format!("The parameter `{other}` does not exist on this route."),
                 )
                 .with_detail(
                     other,
                     ErrorCode::ValidationUnknownField,
-                    "Parâmetro desconhecido.",
+                    "Unknown parameter.",
                 ));
             }
         }
@@ -183,7 +182,7 @@ fn parse_replicate(query: &str) -> Result<bool, TabaError> {
     Ok(replicate)
 }
 
-/// `from`, `to` e `limit` da query de um stream; qualquer outro parâmetro é recusado.
+/// `from`, `to` and `limit` of a stream's query; any other parameter is refused.
 fn parse_stream_query(query: &str) -> Result<StreamQuery, TabaError> {
     let mut out = StreamQuery::default();
     for pair in query.split('&').filter(|p| !p.is_empty()) {
@@ -193,19 +192,19 @@ fn parse_stream_query(query: &str) -> Result<StreamQuery, TabaError> {
             "to" => out.to = Some(value.to_owned()),
             "limit" => {
                 out.limit = Some(value.parse().map_err(|_| {
-                    TabaError::new(ErrorCode::ValidationFailed, "`limit` deve ser um inteiro.")
-                        .with_detail("limit", ErrorCode::ValidationFailed, "Esperado um inteiro.")
+                    TabaError::new(ErrorCode::ValidationFailed, "`limit` must be an integer.")
+                        .with_detail("limit", ErrorCode::ValidationFailed, "Expected an integer.")
                 })?);
             }
             other => {
                 return Err(TabaError::new(
                     ErrorCode::ValidationUnknownField,
-                    format!("O parâmetro `{other}` não existe nesta rota."),
+                    format!("The parameter `{other}` does not exist on this route."),
                 )
                 .with_detail(
                     other,
                     ErrorCode::ValidationUnknownField,
-                    "Parâmetro desconhecido.",
+                    "Unknown parameter.",
                 ));
             }
         }
@@ -214,7 +213,7 @@ fn parse_stream_query(query: &str) -> Result<StreamQuery, TabaError> {
 }
 
 impl Request {
-    /// A chamada HTTP desta requisição (doc 06c).
+    /// This request's HTTP call (doc 06c).
     pub fn to_http(&self) -> HttpCall {
         match self {
             Request::ListNodes => get_call("/cluster/nodes".to_owned()),
@@ -323,8 +322,8 @@ impl Request {
         }
     }
 
-    /// O inverso de [`to_http`](Self::to_http): lê uma chamada que chegou à porta do cluster.
-    /// Caminho ou verbo que não existem: `404 route.not-found`; corpo inválido: `400`/`415`.
+    /// The inverse of [`to_http`](Self::to_http): reads a call that arrived on the cluster port.
+    /// A path or verb that does not exist: `404 route.not-found`; invalid body: `400`/`415`.
     pub fn from_http(
         method: &str,
         path_and_query: &str,
@@ -495,8 +494,8 @@ impl Request {
         }
     }
 
-    /// Lê a resposta HTTP que veio a esta requisição. `4xx` e `5xx` viram o erro do par (exceto no
-    /// repasse, em que qualquer status é a resposta do destino); o que não dá para ler vira
+    /// Reads the HTTP response that came back to this request. `4xx` and `5xx` become the peer's error (except in the
+    /// forward, where any status is the destination's response); what cannot be read becomes
     /// `502 forward.bad-gateway`.
     pub fn parse_reply(&self, reply: HttpReply) -> Result<Response, TabaError> {
         if let Request::Forward(_) = self {
@@ -512,7 +511,7 @@ impl Request {
         let unreadable = |what: &str| {
             TabaError::new(
                 ErrorCode::ForwardBadGateway,
-                format!("A resposta do nó não pôde ser lida: {what}."),
+                format!("The node's response could not be read: {what}."),
             )
         };
         let json = |reply: &HttpReply| -> Result<Value, TabaError> {
@@ -529,7 +528,7 @@ impl Request {
             | Request::ListTombstones(_)
             | Request::BlockIds { .. }
             | Request::BlockMessages { .. } => {
-                let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;
+                let text = String::from_utf8(reply.body).map_err(|_| unreadable("not UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
             }
             Request::Idle { .. } => {
@@ -560,7 +559,7 @@ impl Request {
                 Ok(Response::Definition(change))
             }
             Request::MessageLoss(_) => {
-                let text = String::from_utf8(reply.body).map_err(|_| unreadable("não é UTF-8"))?;
+                let text = String::from_utf8(reply.body).map_err(|_| unreadable("not UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
             }
             Request::LossRegister(_) | Request::LossRemove { .. } => {
@@ -578,7 +577,7 @@ impl Request {
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Recovered(result))
             }
-            Request::Forward(_) => unreachable!("tratado acima"),
+            Request::Forward(_) => unreachable!("handled above"),
             _ => {
                 let ack =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
@@ -588,7 +587,7 @@ impl Request {
     }
 }
 
-/// O erro de uma resposta `4xx`/`5xx`: o `ErrorResponse` do corpo e o `Retry-After`.
+/// The error of a `4xx`/`5xx` response: the body's `ErrorResponse` and the `Retry-After`.
 pub fn error_from_reply(reply: &HttpReply) -> TabaError {
     let value: Value = serde_json::from_slice(&reply.body).unwrap_or(Value::Null);
     let code = value
@@ -599,7 +598,7 @@ pub fn error_from_reply(reply: &HttpReply) -> TabaError {
     let message = value
         .get("message")
         .and_then(Value::as_str)
-        .unwrap_or("O nó respondeu com um erro.")
+        .unwrap_or("The node answered with an error.")
         .to_owned();
     let mut error = TabaError::new(code, message);
     if let Some(details) = value.get("details").and_then(Value::as_array) {
@@ -632,7 +631,7 @@ pub fn error_from_reply(reply: &HttpReply) -> TabaError {
     error
 }
 
-/// O `ErrorResponse` de um erro, com o `Retry-After`.
+/// The `ErrorResponse` of an error, with the `Retry-After`.
 pub fn error_reply(error: &TabaError, request_id: &str) -> HttpReply {
     let mut headers = json_headers();
     if let Some(seconds) = error.retry_after {
@@ -646,7 +645,7 @@ pub fn error_reply(error: &TabaError, request_id: &str) -> HttpReply {
 }
 
 impl Response {
-    /// A resposta HTTP `200` (ou o status do destino, no repasse).
+    /// The `200` HTTP response (or the destination's status, in the forward).
     pub fn into_http(self) -> HttpReply {
         let json = |value: &dyn erased::Json| HttpReply {
             status: 200,
@@ -680,7 +679,7 @@ impl Response {
     }
 }
 
-/// Serializar sem nomear o tipo.
+/// Serialize without naming the type.
 mod erased {
     pub trait Json {
         fn to_bytes(&self) -> Vec<u8>;

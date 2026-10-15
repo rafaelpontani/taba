@@ -40,18 +40,22 @@ fn a_database_from_a_newer_schema_is_refused() {
     drop(db);
 
     let err = NodeDb::open(tmp.path(), DbSynchronous::Normal).unwrap_err();
-    assert!(err.to_string().contains("versão 99"), "{err}");
+    assert!(err.to_string().contains("version 99"), "{err}");
 }
 
 #[test]
 fn a_file_that_is_not_a_database_is_an_error() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join(NODE_DB_FILE), "isto não é um banco sqlite").unwrap();
+    std::fs::write(
+        tmp.path().join(NODE_DB_FILE),
+        "this is not a sqlite database",
+    )
+    .unwrap();
     assert!(NodeDb::open(tmp.path(), DbSynchronous::Normal).is_err());
 }
 
-/// Enche o banco até a última página que o SQLite deixa usar, para o próximo `INSERT` falhar
-/// com `SQLITE_FULL`.
+/// Fills the database up to the last page SQLite lets be used, so the next `INSERT` fails
+/// with `SQLITE_FULL`.
 fn fill_up(db: &NodeDb) {
     let pages: i64 = db
         .conn()
@@ -83,7 +87,7 @@ fn a_full_disk_in_the_node_database_fails_the_node_from_any_of_its_tables() {
     let losses = LossStore::new(db.clone());
     let topics = SqliteTopicStore::new(db.clone());
 
-    // Com espaço, nada falha.
+    // With space, nothing fails.
     let small = Loss {
         topic: "t".into(),
         id: "0".into(),
@@ -116,7 +120,7 @@ fn a_full_disk_in_the_node_database_fails_the_node_from_any_of_its_tables() {
         }),
     };
     assert!(topics.save(&definition).is_err());
-    assert_eq!(failures.load(Ordering::SeqCst), 2, "definições");
+    assert_eq!(failures.load(Ordering::SeqCst), 2, "definitions");
 }
 
 /// UC: UC-FAL-028

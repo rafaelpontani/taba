@@ -22,7 +22,7 @@ TABA_UC_WRITE=1 cargo test --test uc_coverage  # regenerates the "Testes" column
 cargo run -- init --out ./secrets             # cluster certificate and root token (taba init)
 ```
 
-- **Docker:** `docker compose up --build -d` starts the three-node cluster (Dockerfile and docker-compose.yml at the root, `docker/haproxy.cfg`); `docker compose run --rm taba-cli ...` uses the CLI; `docker compose down -v` deletes everything. `docker compose stop` sends `SIGTERM`, which triggers a graceful drain; use `docker compose kill` to simulate a failure.
+- **Docker:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d` starts the three-node cluster building the local images (plain `docker compose up -d` pulls the public `rafaelpontani/taba` images instead; Dockerfile, docker-compose.yml and docker-compose.dev.yml at the root, `docker/haproxy.cfg`); `docker compose run --rm taba-cli ...` uses the CLI; `docker compose down -v` deletes everything. `docker compose stop` sends `SIGTERM`, which triggers a graceful drain; use `docker/cluster.sh kill taba-2` to simulate a failure (`taba-0` is the seed service; `taba-1`, `taba-2`... are replicas of the `taba` service, so `docker compose kill` cannot pick one; `cluster.sh` maps `taba-N` to replica N).
 - **Rust connectors:** `taba-client` and `taba-cli` live in `connectors/`, in their own Cargo workspace (`cd connectors/rust && cargo test --workspace --all-features`, plus `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all`). They follow the same test rules (a `tests.rs` file next to the module, `/// UC:`), and the server's `uc_coverage` reads the citations from here too. The binary: `connectors/rust/cli/scripts/build.sh` (or `build.ps1`); the image: `connectors/rust/cli/scripts/docker.sh`.
 - **C# connector:** `connectors/csharp/` (`Taba.Client` and `Taba.Client.Tests`, NUnit; `cd connectors/csharp && dotnet test Taba.Client.Tests`). C# 7.3, no dependencies, five targets (D137). The tests cite `/// UC: UC-CNT-NNN` (a plain line, no XML) and `uc_coverage` reads them. Integration tests only run with `TABA_URL`: `connectors/csharp/scripts/integration.sh` starts Compose, creates tokens and queues and runs everything.
 - **Cluster for integrated tests:** `docker/cluster.sh` (a library to `source`, or a command) starts/stops Compose, provokes failures (`taba_kill`, `taba_stop`, `taba_start`), waits for the cluster to settle and creates tokens/topics; connector tests should reuse it.
@@ -79,31 +79,34 @@ Diagrams are generated with [Archify](https://github.com/tt-a1i/archify) from JS
 
 ```
 doc/diagramas/
-  fonte/   *.json          source, versioned. This is what you edit.
-  img/     *.svg           exported, versioned. This is what the .md files embed.
-  html/    *.html          interactive, NOT versioned (only exists with --html).
-  scripts/gerar.sh         validates, renders and exports the SVG
+  fonte/   *.json          source (English), versioned. This is what you edit.
+  i18n/    <lang>.json     one translation table per extra language (pt-BR.json), versioned.
+  img/<lang>/ *.svg        exported per language (en, pt-BR, ...), versioned. This is what the .md files embed.
+  html/<lang>/ *.html      interactive, NOT versioned (only exists with --html).
+  scripts/gerar.sh         validates, renders and exports the SVG of every language
+  scripts/traduzir.mjs     applies a language table to a source JSON (used by gerar.sh)
   scripts/reespacar.mjs    recomputes the y of the messages of sequence diagrams
   scripts/exportar-svg.mjs used by gerar.sh (headless Chrome)
 ```
 
-The documentation in `doc/pt-BR/` embeds these SVGs (`![…](../diagramas/img/<name>.svg)`); the table of which diagram is used where is in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas). A spot that still needs a diagram is marked `🖼️ DIAGRAMA PLANEJADO` with its type and goal.
+The documentation in `doc/pt-BR/` embeds the `pt-BR` SVGs (`![…](../diagramas/img/pt-BR/<name>.svg)`) and the English `README.md` embeds the `en` ones; the table of which diagram is used where is in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas). A spot that still needs a diagram is marked `🖼️ DIAGRAMA PLANEJADO` with its type and goal.
 
 ### Rules
 
 - Always edit `doc/diagramas/fonte/<name>.json`. Never edit the SVG or the HTML: they are overwritten at every generation.
-- After editing, run `doc/diagramas/scripts/gerar.sh <name>` and commit the JSON **and** the SVG together. With no name, it generates all of them.
+- After editing, run `doc/diagramas/scripts/gerar.sh <name>` and commit the JSON **and** the SVGs of every language together. With no name, it generates all of them; `--lang <code>` limits it to one language.
 - Run the commands from the repository root. The JSON `meta.output` is relative to it (`doc/diagramas/html/<name>.html`) and must not be changed.
 - `--html` keeps the interactive HTML in `doc/diagramas/html/` to open in a browser. It is ignored by git (`.gitignore`).
 - The `.archify/` folder is Archify's work area and is also ignored. New diagrams are born there, but only enter the repository after being copied to `doc/diagramas/fonte/` with a stable name (no date) and `meta.output` pointing to `doc/diagramas/html/`.
-- The text of the diagrams is in Portuguese (the English `README.md` uses `c4-nivel0-contexto-en.json`, a translated copy: keep it in step with the Portuguese one); the legend and the Archify viewer interface are fixed in English.
+- English is the source language: `fonte/*.json` holds the English text. Every other language is a flat table in `doc/diagramas/i18n/<lang>.json` (`"English string": "translation"`) applied to the display keys (`title`, `label`, `sublabel`, `note`, `items`, `tag`) at generation time. A string missing from a table stays in English and `gerar.sh` warns about it, so when you add or reword a string in a source JSON, add the translation to every table. If a translation does not fit (the Archify gates complain), shorten it in the table.
+- **To add a language:** create `doc/diagramas/i18n/<lang>.json` (copy `pt-BR.json` and translate the values), run `gerar.sh`, `node doc/diagramas/scripts/gerar-hash.mjs` and `node doc/diagramas/scripts/gerar-hero.mjs`, and embed `../diagramas/img/<lang>/<name>.svg` from that language's docs. The legend and the Archify viewer interface are fixed in English.
 - When you change the behaviour described in a `.md`, update the matching diagram (table in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas)) and regenerate.
 
 ### Script-drawn diagrams (exception)
 
-`anel-hash.svg`, `topico-espalhado.svg` and `fifo-grupos.svg` do not go through Archify (it does not draw rings or matrices) and **have no JSON**: the source is `doc/diagramas/scripts/gerar-hash.mjs`. `--lang=en` also generates `anel-hash-en.svg` and `topico-espalhado-en.svg` (used by the English `README.md`; translations are the `EN` table at the top of the script, so add the English text there for every new string). Edit the script constants (nodes, ring positions, messages, matrix) and run `node doc/diagramas/scripts/gerar-hash.mjs`; `gerar.sh` does not generate them. Commit the script **and** the SVGs together. The script does not validate the layout: open the SVG (or take a Chrome capture) and check for overlapping text.
+`anel-hash.svg`, `topico-espalhado.svg` and `fifo-grupos.svg` do not go through Archify (it does not draw rings or matrices) and **have no JSON**: the source is `doc/diagramas/scripts/gerar-hash.mjs`. Edit the script constants (nodes, ring positions, messages, matrix) and run `node doc/diagramas/scripts/gerar-hash.mjs` (all languages; `--lang=<code>` for one; the strings go through the same `i18n/<lang>.json` tables); `gerar.sh` does not generate them. Commit the script **and** the SVGs together. The script does not validate the layout: open the SVG (or take a Chrome capture) and check for overlapping text.
 
-The same applies to the root README hero (`hero.svg` and `hero.gif`): the source is `doc/diagramas/scripts/gerar-hero.mjs`. Edit the texts, colours and timeline (`PRODUTORES`, `CONSUMIDORES`, `MSGS`, `LEGENDA`) and run `node doc/diagramas/scripts/gerar-hero.mjs`. `hero.svg` is the static frame (instant `ESTATICO`) and `hero.gif` is what the README embeds; the GIF uses headless Chrome and `ffmpeg` (variable `FFMPEG` if it is not on the PATH). `--so-svg` generates only the SVG. `--lang=en` generates `hero-en.svg`/`hero-en.gif` (the banner of the English `README.md`; the Portuguese one, `hero.gif`, is used by `README-pt-BR.md`): when you change the texts, update the `TXT` table for both languages and run the script twice. Commit the script **and** both files together.
+The same applies to the root README hero (`hero.svg` and `hero.gif`): the source is `doc/diagramas/scripts/gerar-hero.mjs`. Edit the texts, colours and timeline (`PRODUTORES`, `CONSUMIDORES`, `MSGS`, `LEGENDA`) and run `node doc/diagramas/scripts/gerar-hero.mjs` (all languages; `--lang=<code>` for one; the texts come from the `i18n/<lang>.json` tables). `hero.svg` is the static frame (instant `ESTATICO`) and `hero.gif` is what the README embeds; the GIF uses headless Chrome and `ffmpeg` (variable `FFMPEG` if it is not on the PATH). `--so-svg` generates only the SVG. Commit the script **and** both files together.
 
 ### Prerequisites
 

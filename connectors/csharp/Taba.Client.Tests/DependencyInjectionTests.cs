@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace Taba.Tests
 {
-    /// <summary>O <c>AddTabaClient</c>: o <see cref="ITabaClient"/> como singleton, com o <see cref="TabaConfig"/> das opções.</summary>
+    /// <summary><c>AddTabaClient</c>: the <see cref="ITabaClient"/> as a singleton, with the <see cref="TabaConfig"/> from the options.</summary>
     [TestFixture]
     public class DependencyInjectionTests
     {
@@ -38,7 +38,7 @@ namespace Taba.Tests
             using (ServiceProvider provider = services.BuildServiceProvider())
             {
                 ITabaClient first = provider.GetRequiredService<ITabaClient>();
-                Assert.That(provider.GetRequiredService<ITabaClient>(), Is.SameAs(first), "um só por aplicação");
+                Assert.That(provider.GetRequiredService<ITabaClient>(), Is.SameAs(first), "only one per application");
                 var client = (TabaClient)first;
                 Assert.That(client.Config.BaseUrl, Is.EqualTo("http://taba.test:8080/"));
                 Assert.That(client.Config.Token, Is.EqualTo("tb_x"));
@@ -50,7 +50,7 @@ namespace Taba.Tests
         [Test]
         public void add_taba_client_binds_a_configuration_section_and_uses_a_registered_serializer()
         {
-            string json = "{\"Taba\":{\"BaseUrl\":\"https://taba.interno:8443\",\"Token\":\"tb_y\",\"RequestTimeout\":\"00:00:45\",\"MaxAttempts\":2}}";
+            string json = "{\"Taba\":{\"BaseUrl\":\"https://taba.internal:8443\",\"Token\":\"tb_y\",\"RequestTimeout\":\"00:00:45\",\"MaxAttempts\":2}}";
             IConfiguration configuration = new ConfigurationBuilder()
                 .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 .Build();
@@ -60,11 +60,11 @@ namespace Taba.Tests
             using (ServiceProvider provider = services.BuildServiceProvider())
             {
                 var client = (TabaClient)provider.GetRequiredService<ITabaClient>();
-                Assert.That(client.Config.BaseUrl, Is.EqualTo("https://taba.interno:8443"));
+                Assert.That(client.Config.BaseUrl, Is.EqualTo("https://taba.internal:8443"));
                 Assert.That(client.Config.Token, Is.EqualTo("tb_y"));
                 Assert.That(client.Config.RequestTimeout, Is.EqualTo(TimeSpan.FromSeconds(45)));
                 Assert.That(client.Config.MaxAttempts, Is.EqualTo(2));
-                Assert.That(client.Config.JsonSerializer, Is.InstanceOf<FixedSerializer>(), "o serializador do contêiner vale");
+                Assert.That(client.Config.JsonSerializer, Is.InstanceOf<FixedSerializer>(), "the container's serializer applies");
             }
         }
 
@@ -73,13 +73,13 @@ namespace Taba.Tests
         public void add_taba_client_with_a_section_path_reads_the_configuration_only_when_the_client_is_resolved()
         {
             var services = new ServiceCollection();
-            services.AddTabaClient("Servicos:Taba");   // o IConfiguration ainda nem foi registrado
+            services.AddTabaClient("Services:Taba");   // the IConfiguration has not even been registered yet
 
-            string json = "{\"Servicos\":{\"Taba\":{\"BaseUrl\":\"http://taba.test:8080\",\"Token\":\"tb_z\"}}}";
+            string json = "{\"Services\":{\"Taba\":{\"BaseUrl\":\"http://taba.test:8080\",\"Token\":\"tb_z\"}}}";
             IConfiguration configuration = new ConfigurationBuilder()
                 .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 .Build();
-            services.AddSingleton(configuration);      // registrado depois, antes de resolver
+            services.AddSingleton(configuration);      // registered later, before resolving
 
             using (ServiceProvider provider = services.BuildServiceProvider())
             {
@@ -95,7 +95,7 @@ namespace Taba.Tests
         public void an_invalid_base_url_fails_when_the_client_is_resolved_with_client_invalid_config()
         {
             var services = new ServiceCollection();
-            services.AddTabaClient(config => config.BaseUrl = "isto não é um endereço");
+            services.AddTabaClient(config => config.BaseUrl = "this is not an address");
             using (ServiceProvider provider = services.BuildServiceProvider())
             {
                 var e = Assert.Throws<TabaException>(() => provider.GetRequiredService<ITabaClient>());

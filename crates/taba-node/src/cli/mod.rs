@@ -1,5 +1,5 @@
-//! A linha de comando do binário `taba`: `--config` para subir o nó e os subcomandos da pasta
-//! de segredos, `init`, `cert generate` e `token generate` (doc 06, seção 8.0.1).
+//! The command line of the `taba` binary: `--config` to start the node and the secrets-folder
+//! subcommands, `init`, `cert generate` and `token generate` (doc 06, section 8.0.1).
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -7,21 +7,21 @@ use std::time::Duration;
 use crate::config::parse_duration;
 use crate::secrets::DEFAULT_DAYS;
 
-/// O que o binário faz.
+/// What the binary does.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub enum Command {
-    /// Sobe o nó.
+    /// Starts the node.
     #[default]
     Run,
-    /// `taba init --out <pasta> [--days <n>]`: a pasta de segredos (certificado e token raiz).
+    /// `taba init --out <folder> [--days <n>]`: the secrets folder (certificate and root token).
     Init { out: PathBuf, days: u64 },
-    /// `taba cert generate --days <n> [--starts-in <duração>] --out <pasta>`.
+    /// `taba cert generate --days <n> [--starts-in <duration>] --out <folder>`.
     CertGenerate {
         out: PathBuf,
         days: u64,
         starts_in: Option<Duration>,
     },
-    /// `taba token generate`: imprime um segredo aleatório de 256 bits.
+    /// `taba token generate`: prints a random 256-bit secret.
     TokenGenerate,
 }
 
@@ -34,23 +34,23 @@ pub struct Args {
 }
 
 pub const USAGE: &str = "\
-Uso: taba [--config <arquivo.yml>]
-     taba init --out <pasta> [--days <n>]
-     taba cert generate --days <n> [--starts-in <duração>] --out <pasta>
+Usage: taba [--config <file.yml>]
+     taba init --out <folder> [--days <n>]
+     taba cert generate --days <n> [--starts-in <duration>] --out <folder>
      taba token generate
 
-  --config <arquivo>   arquivo de configuração YAML (ou TABA_CONFIG_FILE)
-  --version            mostra a versão
-  --help               mostra esta ajuda
+  --config <file>   YAML configuration file (or TABA_CONFIG_FILE)
+  --version            shows the version
+  --help               shows this help
 
 Subcomandos:
-  init            cria a pasta de segredos: o primeiro certificado do cluster (em tls/) e o
-                  token raiz (root-token). --days é a validade (padrão 1825)
-  cert generate   cria só um par de certificado do cluster, para uma rotação.
-                  --starts-in (ex.: 14d) adia o início da validade
-  token generate  imprime um segredo aleatório de 256 bits (um token raiz avulso)
+  init            creates the secrets folder: the cluster's first certificate (in tls/) and the
+                  root token (root-token). --days is the validity (default 1825)
+  cert generate   creates only a cluster certificate pair, for a rotation.
+                  --starts-in (e.g. 14d) postpones the start of the validity
+  token generate  prints a random 256-bit secret (a standalone root token)
 
-Os parâmetros também vêm das variáveis TABA_*; a variável vence o arquivo.";
+The parameters also come from the TABA_* variables; the variable beats the file.";
 
 pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Args, String> {
     let args: Vec<String> = args.into_iter().collect();
@@ -76,14 +76,14 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Args, String> {
                 None => None,
                 Some(text) => Some(parse_duration(text).ok_or_else(|| {
                     format!(
-                        "--starts-in `{text}` inválido: use uma duração com unidade (`30m`, `14d`)"
+                        "--starts-in `{text}` is invalid: use a duration with a unit (`30m`, `14d`)"
                     )
                 })?),
             };
             Ok(Args {
                 command: Command::CertGenerate {
                     out: flags.required_path("--out")?,
-                    days: flags.days()?.ok_or("--days é obrigatório")?,
+                    days: flags.days()?.ok_or("--days is required")?,
                     starts_in,
                 },
                 ..Args::default()
@@ -108,7 +108,7 @@ fn parse_run(args: Vec<String>) -> Result<Args, String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--config" => {
-                let path = args.next().ok_or("--config pede o caminho do arquivo")?;
+                let path = args.next().ok_or("--config needs the file path")?;
                 out.config = Some(PathBuf::from(path));
             }
             "--help" | "-h" => out.help = true,
@@ -122,7 +122,7 @@ fn parse_run(args: Vec<String>) -> Result<Args, String> {
     Ok(out)
 }
 
-/// Os pares `--nome valor` (ou `--nome=valor`) de um subcomando.
+/// The `--name value` (or `--name=value`) pairs of a subcommand.
 struct Flags(Vec<(String, String)>);
 
 impl Flags {
@@ -135,7 +135,7 @@ impl Flags {
                     (name.to_owned(), value.to_owned())
                 }
                 _ if arg.starts_with("--") => {
-                    let value = iter.next().ok_or(format!("{arg} pede um valor"))?;
+                    let value = iter.next().ok_or(format!("{arg} needs a value"))?;
                     (arg.clone(), value.clone())
                 }
                 _ => return Err(format!("argumento desconhecido: {arg}")),
@@ -148,7 +148,7 @@ impl Flags {
         Ok(Self(pairs))
     }
 
-    /// Recusa o argumento que o subcomando não conhece.
+    /// Refuses the argument the subcommand does not know.
     fn only(&self, known: &[&str]) -> Result<(), String> {
         match self
             .0
@@ -171,7 +171,7 @@ impl Flags {
         self.value(name)
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
-            .ok_or_else(|| format!("{name} é obrigatório"))
+            .ok_or_else(|| format!("{name} is required"))
     }
 
     fn days(&self) -> Result<Option<u64>, String> {
@@ -180,7 +180,7 @@ impl Flags {
             Some(text) => match text.parse::<u64>() {
                 Ok(n) if n > 0 => Ok(Some(n)),
                 _ => Err(format!(
-                    "--days `{text}` inválido: use um número de dias maior que zero"
+                    "--days `{text}` is invalid: use a number of days greater than zero"
                 )),
             },
         }

@@ -1,6 +1,6 @@
-//! O núcleo do programa: o contexto de uma execução, os erros e os códigos de saída, e o despacho
-//! do comando. Tudo que toca o sistema (ambiente, terminal, rede, processos) passa pelo `Platform`,
-//! para os testes trocarem por um de mentira.
+//! The core of the program: the context of a run, the errors and exit codes, and the dispatch
+//! of the command. Everything that touches the system (environment, terminal, network, processes) goes through `Platform`,
+//! so the tests can swap in a fake one.
 
 use std::io::{self, BufRead, Write};
 
@@ -22,13 +22,13 @@ pub const EXIT_EMPTY: i32 = 6;
 
 #[derive(Debug)]
 pub enum CliError {
-    /// Uso errado: comando ou opção desconhecida, argumento que falta, valor inválido.
+    /// Wrong usage: unknown command or option, missing argument, invalid value.
     Usage(String),
-    /// A API respondeu com erro, ou o cliente não conseguiu falar com ela.
+    /// The API answered with an error, or the client could not talk to it.
     Api(ApiError),
-    /// Arquivo ilegível (o `--file`, o `token-file`, o `ca-file` ou o `config.yml`).
+    /// Unreadable file (`--file`, the `token-file`, the `ca-file` or `config.yml`).
     File(String),
-    /// Termina com este código sem imprimir mais nada (a mensagem já saiu).
+    /// Ends with this code without printing anything else (the message already came out).
     Exit(i32),
 }
 
@@ -65,22 +65,22 @@ impl From<String> for CliError {
     }
 }
 
-/// O que o programa pede ao sistema.
+/// What the program asks of the system.
 pub trait Platform {
     fn env(&self, name: &str) -> Option<String>;
     fn os(&self) -> Os;
     fn stdin_is_tty(&self) -> bool;
     fn stdout_is_tty(&self) -> bool;
-    /// O cliente da API para esta configuração.
+    /// The API client for this configuration.
     fn client(&self, config: Config) -> Result<Client, ApiError>;
-    /// Roda `command` pelo interpretador de comandos do sistema, com `stdin` na entrada padrão, e
-    /// devolve o código de saída.
+    /// Runs `command` through the system's command interpreter, with `stdin` on standard input, and
+    /// returns the exit code.
     fn exec(&self, command: &str, stdin: &[u8]) -> io::Result<i32>;
-    /// O terminal em modo cru para a tela interativa, se houver um.
+    /// The terminal in raw mode for the interactive screen, if there is one.
     fn terminal(&self) -> Option<Box<dyn Terminal>>;
 }
 
-/// As opções globais lidas da linha de comando.
+/// The global options read from the command line.
 #[derive(Debug, Clone, Default)]
 pub struct Globals {
     pub profile: Option<String>,
@@ -89,7 +89,7 @@ pub struct Globals {
     pub quiet: bool,
 }
 
-/// Uma execução: a plataforma, as saídas e a configuração, lida só quando um comando precisa dela.
+/// A run: the platform, the outputs and the configuration, read only when a command needs it.
 pub struct Ctx<'a> {
     pub platform: &'a dyn Platform,
     pub out: &'a mut dyn Write,
@@ -121,12 +121,12 @@ impl<'a> Ctx<'a> {
         self.platform.env(name)
     }
 
-    /// O caminho do `config.yml`.
+    /// The path of `config.yml`.
     pub fn config_path(&self) -> Result<std::path::PathBuf, CliError> {
         profile::config_path(self.platform.os(), &|k| self.platform.env(k)).map_err(CliError::File)
     }
 
-    /// O arquivo de perfis (vazio se ainda não existe).
+    /// The profiles file (empty if it does not exist yet).
     pub fn load_config(&self) -> Result<ConfigFile, CliError> {
         profile::load(&self.config_path()?).map_err(CliError::File)
     }
@@ -135,7 +135,7 @@ impl<'a> Ctx<'a> {
         profile::save(&self.config_path()?, file).map_err(CliError::File)
     }
 
-    /// A configuração efetiva: variáveis, perfil escolhido e valores embutidos.
+    /// The effective configuration: variables, chosen profile and built-in values.
     pub fn settings(&mut self) -> Result<&Effective, CliError> {
         if self.effective.is_none() {
             let file = self.load_config()?;
@@ -145,11 +145,11 @@ impl<'a> Ctx<'a> {
                     .map_err(CliError::Usage)?;
             self.effective = Some(effective);
         }
-        Ok(self.effective.as_ref().expect("acabou de ser definida"))
+        Ok(self.effective.as_ref().expect("it was just defined"))
     }
 
-    /// `true` quando a pessoa escolheu `json` (na linha de comando, no ambiente ou no perfil), e não
-    /// quando é só o valor embutido: só então o erro sai como o `ErrorResponse` do servidor.
+    /// `true` when the person chose `json` (on the command line, in the environment or in the profile), and not
+    /// when it is only the built-in value: only then does the error come out as the server's `ErrorResponse`.
     pub fn json_chosen(&mut self) -> bool {
         if let Some(name) = &self.globals.output {
             return name == "json";
@@ -202,20 +202,20 @@ impl<'a> Ctx<'a> {
         if let Some(path) = ca_file {
             config.ca_pem =
                 Some(std::fs::read(&path).map_err(|e| {
-                    CliError::File(format!("não consegui ler o ca-file {path}: {e}"))
+                    CliError::File(format!("could not read the ca-file {path}: {e}"))
                 })?);
         }
         Ok(config)
     }
 
-    /// O cliente da API de cliente (com o token do perfil).
+    /// The client API client (with the profile's token).
     pub fn api_client(&mut self) -> Result<Client, CliError> {
         let url = self.settings()?.url().to_owned();
         let config = self.client_config(url, true)?;
         Ok(self.platform.client(config)?)
     }
 
-    /// O cliente da API de operação: sem token. `attempts` troca o `max-attempts` do perfil.
+    /// The operations API client: no token. `attempts` overrides the profile's `max-attempts`.
     pub fn ops_client(&mut self, attempts: Option<u32>) -> Result<Client, CliError> {
         let url = self.settings()?.ops_url();
         let mut config = self.client_config(url, false)?;
@@ -225,45 +225,45 @@ impl<'a> Ctx<'a> {
         Ok(self.platform.client(config)?)
     }
 
-    /// Escreve uma linha na saída padrão.
+    /// Writes a line to standard output.
     pub fn say(&mut self, text: &str) -> Result<(), CliError> {
         writeln!(self.out, "{text}").map_err(|e| {
-            // Quem lê a saída fechou o pipe (`| head`): parar em silêncio, sem erro.
+            // Whoever reads the output closed the pipe (`| head`): stop silently, with no error.
             if e.kind() == io::ErrorKind::BrokenPipe {
                 CliError::Exit(0)
             } else {
-                CliError::File(format!("falha ao escrever a saída: {e}"))
+                CliError::File(format!("failed to write the output: {e}"))
             }
         })
     }
 
-    /// Pergunta `[s/N]` num terminal. Fora de um terminal não pergunta: o chamador exige `--yes`.
+    /// Asks `[y/N]` on a terminal. Off a terminal it does not ask: the caller requires `--yes`.
     pub fn confirm(&mut self, question: &str) -> Result<bool, CliError> {
-        let _ = write!(self.err, "{question} [s/N] ");
+        let _ = write!(self.err, "{question} [y/N] ");
         let _ = self.err.flush();
         let mut line = String::new();
         let _ = self.input.read_line(&mut line);
         Ok(matches!(
             line.trim().to_ascii_lowercase().as_str(),
-            "s" | "sim" | "y" | "yes"
+            "y" | "yes"
         ))
     }
 
-    /// Pede a confirmação de uma ação que apaga: `--yes` basta; sem ele, pergunta num terminal e
-    /// recusa (código 2) fora de um.
+    /// Asks for confirmation of an action that deletes: `--yes` is enough; without it, it asks on a terminal and
+    /// refuses (code 2) off one.
     pub fn require_confirmation(&mut self, yes: bool, question: &str) -> Result<(), CliError> {
         if yes {
             return Ok(());
         }
         if !self.platform.stdin_is_tty() {
             return Err(CliError::Usage(format!(
-                "{question}\nFora de um terminal a confirmação não pode ser pedida: use --yes."
+                "{question}\nOff a terminal the confirmation cannot be asked for: use --yes."
             )));
         }
         if self.confirm(question)? {
             Ok(())
         } else {
-            let _ = writeln!(self.err, "Cancelado.");
+            let _ = writeln!(self.err, "Cancelled.");
             Err(CliError::Exit(EXIT_USAGE))
         }
     }
@@ -271,15 +271,15 @@ impl<'a> Ctx<'a> {
 
 pub(crate) fn read_token_file(path: &str) -> Result<String, CliError> {
     let text = std::fs::read_to_string(path)
-        .map_err(|e| CliError::File(format!("não consegui ler o token-file {path}: {e}")))?;
+        .map_err(|e| CliError::File(format!("could not read the token-file {path}: {e}")))?;
     let token = text.lines().next().unwrap_or_default().trim();
     if token.is_empty() {
-        return Err(CliError::File(format!("o token-file {path} está vazio")));
+        return Err(CliError::File(format!("the token-file {path} is empty")));
     }
     Ok(token.to_owned())
 }
 
-/// Roda o programa com os argumentos (sem o nome do binário) e devolve o código de saída.
+/// Runs the program with the arguments (without the binary name) and returns the exit code.
 pub fn run(
     platform: &dyn Platform,
     args: &[String],
@@ -330,7 +330,7 @@ pub fn run(
         let what = if parsed.positional.len() < command.min_pos {
             "faltam argumentos"
         } else {
-            "argumentos demais"
+            "too many arguments"
         };
         return report_usage(err, &format!("{what}\n{}", commands::usage_line(command)));
     }
@@ -355,7 +355,7 @@ pub fn run(
 fn report_usage(err: &mut dyn Write, message: &str) -> i32 {
     let _ = writeln!(
         err,
-        "taba-cli: {message}\nUse `taba-cli help` para ver os comandos."
+        "taba-cli: {message}\nUse `taba-cli help` to see the commands."
     );
     EXIT_USAGE
 }
@@ -378,10 +378,10 @@ fn report(ctx: &mut Ctx<'_>, error: CliError) -> i32 {
     code
 }
 
-/// Para os comandos: as opções, um nome de comando e uma lista de opções dentro de uma tabela.
+/// For the commands: the options, a command name and a list of options inside a table.
 pub struct Command {
     pub path: &'static [&'static str],
-    /// Os argumentos posicionais, para a linha de uso (`<nome>`).
+    /// The positional arguments, for the usage line (`<name>`).
     pub args: &'static str,
     pub summary: &'static str,
     pub min_pos: usize,

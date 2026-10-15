@@ -10,16 +10,16 @@ using NUnit.Framework;
 namespace Taba.Tests
 {
     /// <summary>
-    /// Os cenários de integração (UC-CNT-027), contra um Taba de verdade. Só rodam com <c>TABA_URL</c>;
-    /// o <c>scripts/integration.sh</c> sobe o Compose, cria os tokens e as filas e define estas variáveis:
+    /// The integration scenarios (UC-CNT-027), against a real Taba. They only run with <c>TABA_URL</c>;
+    /// <c>scripts/integration.sh</c> starts Compose, creates the tokens and the queues and sets these variables:
     /// <list type="bullet">
-    /// <item><c>TABA_URL</c>: a API de cliente (o HAProxy do Compose).</item>
-    /// <item><c>TABA_TOKEN</c>: um token com <c>publish</c>, <c>consume</c>, <c>create</c> e <c>admin</c> nos tópicos <c>csharp-*</c>.</item>
-    /// <item><c>TABA_TOKEN_READONLY</c>: um token só com <c>consume</c> nos tópicos <c>csharp-*</c>.</item>
+    /// <item><c>TABA_URL</c>: the client API (the Compose HAProxy).</item>
+    /// <item><c>TABA_TOKEN</c>: a token with <c>publish</c>, <c>consume</c>, <c>create</c> and <c>admin</c> on the <c>csharp-*</c> topics.</item>
+    /// <item><c>TABA_TOKEN_READONLY</c>: a token with only <c>consume</c> on the <c>csharp-*</c> topics.</item>
     /// </list>
-    /// As filas <c>csharp-shared</c>, <c>csharp-shared-fifo</c>, <c>csharp-fan</c> (distribuidor de prefixo
-    /// <c>csharp-fan-</c>), <c>csharp-fan-a</c> (fila) e <c>csharp-fan-b</c> (FIFO) também vêm do script.
-    /// Sem <c>TABA_URL</c>, os testes são ignorados.
+    /// The queues <c>csharp-shared</c>, <c>csharp-shared-fifo</c>, <c>csharp-fan</c> (distributor with prefix
+    /// <c>csharp-fan-</c>), <c>csharp-fan-a</c> (queue) and <c>csharp-fan-b</c> (FIFO) also come from the script.
+    /// Without <c>TABA_URL</c>, the tests are ignored.
     /// </summary>
     [TestFixture]
     [Category("Integration")]
@@ -36,7 +36,7 @@ namespace Taba.Tests
             _url = Environment.GetEnvironmentVariable("TABA_URL");
             if (string.IsNullOrEmpty(_url))
             {
-                Assert.Ignore("TABA_URL não definida: rode connectors/csharp/scripts/integration.sh");
+                Assert.Ignore("TABA_URL is not set: run connectors/csharp/scripts/integration.sh");
             }
             _token = Environment.GetEnvironmentVariable("TABA_TOKEN");
             _readOnlyToken = Environment.GetEnvironmentVariable("TABA_TOKEN_READONLY");
@@ -62,7 +62,7 @@ namespace Taba.Tests
             return new TabaClient(new TabaConfig(_url) { Token = token });
         }
 
-        /// <summary>Cria uma fila só deste teste e a apaga no fim.</summary>
+        /// <summary>Creates a queue just for this test and deletes it at the end.</summary>
         private async Task<string> NewQueueAsync(string kind, bool fifo = false)
         {
             string name = Unique(kind);
@@ -70,7 +70,7 @@ namespace Taba.Tests
             return name;
         }
 
-        /// <summary>Tira da fila tudo o que há, para o teste começar de um ponto conhecido.</summary>
+        /// <summary>Drains everything from the queue, so the test starts from a known point.</summary>
         private async Task DrainAsync(string topic)
         {
             while (true)
@@ -101,7 +101,7 @@ namespace Taba.Tests
             {
                 Name = name,
                 Type = "queue",
-                Tags = new Dictionary<string, string> { { "time", "pedidos" } },
+                Tags = new Dictionary<string, string> { { "time", "orders" } },
             });
             try
             {
@@ -110,7 +110,7 @@ namespace Taba.Tests
                 Assert.That(created.Id, Is.Not.Empty);
 
                 Assert.That((await _client.GetTopicAsync(name)).Id, Is.EqualTo(created.Id));
-                Assert.That((await _client.ListAllTopicsAsync(name)).Select(t => t.Name), Does.Contain(name), "a busca é por \"contém\": a dead-letter da fila também aparece");
+                Assert.That((await _client.ListAllTopicsAsync(name)).Select(t => t.Name), Does.Contain(name), "the search is \"contains\": the queue's dead-letter also shows up");
 
                 Page<Topic> page = await _client.ListTopicsAsync(1, null, "csharp-");
                 Assert.That(page.Items.Count, Is.EqualTo(1));
@@ -126,7 +126,7 @@ namespace Taba.Tests
                 Topic reset = await _client.UpdateTopicAsync(name, new TopicUpdate { Ttl = Field<long>.UseDefault });
                 Assert.That(reset.Raw, Does.Not.Contain("3600"));
 
-                // Criar de novo é um conflito de verdade (sem o 503 antes).
+                // Creating again is a real conflict (without the 503 before).
                 var conflict = Assert.ThrowsAsync<TabaException>(() => _client.CreateTopicAsync(new TopicRequest { Name = name, Type = "queue" }));
                 Assert.That(conflict.Code, Is.EqualTo("topic.already-exists"));
                 Assert.That(conflict.Status, Is.EqualTo(409));
@@ -138,7 +138,7 @@ namespace Taba.Tests
             var gone = Assert.ThrowsAsync<TabaException>(() => _client.GetTopicAsync(name));
             Assert.That(gone.Code, Is.EqualTo("topic.not-found"));
             var missing = Assert.ThrowsAsync<TabaException>(() => _client.DeleteTopicAsync(name));
-            Assert.That(missing.Status, Is.EqualTo(404), "apagar o que não existe, sem 503 antes, é um 404");
+            Assert.That(missing.Status, Is.EqualTo(404), "deleting what does not exist, without a 503 before, is a 404");
         }
 
         /// UC: UC-CNT-027
@@ -148,7 +148,7 @@ namespace Taba.Tests
             string topic = await NewQueueAsync("basico");
             try
             {
-                PublishResponse published = await _client.PublishRawJsonAsync(topic, "{ \"pedido\": 9001, \"itens\": [\"a\", \"b\"] }");
+                PublishResponse published = await _client.PublishRawJsonAsync(topic, "{ \"order\": 9001, \"items\": [\"a\", \"b\"] }");
                 Assert.That(published.Id, Is.Not.Empty);
 
                 IList<Message> messages = await _client.ConsumeAsync(topic, new ConsumeOptions { MaxMessages = 5, VisibilityTimeout = 30, WaitTime = 5 });
@@ -160,13 +160,13 @@ namespace Taba.Tests
                 Assert.That(message.ReceiptToken, Is.Not.Empty);
                 Assert.That(message.PublishedAt, Is.Not.Empty);
                 Assert.That(message.InvisibleUntil, Is.Not.Empty);
-                Assert.That(message.BodyText.Replace(" ", string.Empty), Is.EqualTo("{\"pedido\":9001,\"itens\":[\"a\",\"b\"]}"));
+                Assert.That(message.BodyText.Replace(" ", string.Empty), Is.EqualTo("{\"order\":9001,\"items\":[\"a\",\"b\"]}"));
 
                 await _client.AckAsync(topic, message);
-                Assert.That(await _client.ConsumeAsync(topic), Is.Empty, "confirmada, não volta");
+                Assert.That(await _client.ConsumeAsync(topic), Is.Empty, "acknowledged, it does not come back");
 
                 var again = Assert.ThrowsAsync<TabaException>(() => _client.AckAsync(topic, message));
-                Assert.That(again.Status, Is.AnyOf(404, 409), "o recibo já foi usado");
+                Assert.That(again.Status, Is.AnyOf(404, 409), "the receipt was already used");
             }
             finally
             {
@@ -182,7 +182,7 @@ namespace Taba.Tests
             try
             {
                 byte[] png = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe };
-                await _client.PublishTextAsync(topic, "olá, 世界 😀");
+                await _client.PublishTextAsync(topic, "café, 世界 😀");
                 await _client.PublishAsync(topic, png, new PublishOptions { ContentType = "image/png" });
                 await _client.PublishAsync(topic, Utf8("[1,2,3]"), new PublishOptions { ContentType = "application/vnd.lote+json" });
 
@@ -196,7 +196,7 @@ namespace Taba.Tests
                     }
                 }
 
-                Assert.That(Encoding.UTF8.GetString(bodies["text/plain"]), Is.EqualTo("olá, 世界 😀"));
+                Assert.That(Encoding.UTF8.GetString(bodies["text/plain"]), Is.EqualTo("café, 世界 😀"));
                 Assert.That(bodies["image/png"], Is.EqualTo(png));
                 Assert.That(Encoding.UTF8.GetString(bodies["application/vnd.lote+json"]), Is.EqualTo("[1,2,3]"));
             }
@@ -213,7 +213,7 @@ namespace Taba.Tests
             string topic = await NewQueueAsync("invalido");
             try
             {
-                var e = Assert.ThrowsAsync<TabaException>(() => _client.PublishRawJsonAsync(topic, "{isto não é json"));
+                var e = Assert.ThrowsAsync<TabaException>(() => _client.PublishRawJsonAsync(topic, "{this is not json"));
                 Assert.That(e.Status, Is.EqualTo(400));
                 Assert.That(e.Code, Is.EqualTo("validation.invalid-body"));
                 Assert.That(e.RequestId, Is.Not.Empty);
@@ -228,21 +228,21 @@ namespace Taba.Tests
         [Test]
         public async Task long_polling_waits_on_an_empty_queue_and_returns_as_soon_as_a_message_arrives()
         {
-            string topic = await NewQueueAsync("espera");
+            string topic = await NewQueueAsync("wait");
             try
             {
                 var watch = Stopwatch.StartNew();
                 IList<Message> empty = await _client.ConsumeAsync(topic, new ConsumeOptions { WaitTime = 2 });
                 Assert.That(empty, Is.Empty);
-                Assert.That(watch.Elapsed, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(1.5)), "esperou o waitTime");
+                Assert.That(watch.Elapsed, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(1.5)), "it waited the waitTime");
 
                 Task<IList<Message>> waiting = _client.ConsumeAsync(topic, new ConsumeOptions { WaitTime = 15, VisibilityTimeout = 30 });
                 await Task.Delay(500);
                 watch.Restart();
-                await _client.PublishRawJsonAsync(topic, "{\"chegou\":true}");
+                await _client.PublishRawJsonAsync(topic, "{\"arrived\":true}");
                 IList<Message> got = await waiting;
                 Assert.That(got.Count, Is.EqualTo(1));
-                Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(8)), "voltou antes de esgotar o waitTime");
+                Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(8)), "it returned before waitTime ran out");
                 await _client.AckAsync(topic, got[0]);
             }
             finally
@@ -260,7 +260,7 @@ namespace Taba.Tests
             {
                 await _client.PublishRawJsonAsync(topic, "{\"n\":1}");
                 Message first = (await _client.ConsumeAsync(topic, new ConsumeOptions { VisibilityTimeout = 60, WaitTime = 5 })).Single();
-                Assert.That(await _client.ConsumeAsync(topic, new ConsumeOptions { VisibilityTimeout = 60 }), Is.Empty, "invisível");
+                Assert.That(await _client.ConsumeAsync(topic, new ConsumeOptions { VisibilityTimeout = 60 }), Is.Empty, "invisible");
 
                 VisibilityResponse extended = await _client.ChangeVisibilityAsync(topic, first, 120);
                 Assert.That(extended.Id, Is.EqualTo(first.Id));
@@ -272,7 +272,7 @@ namespace Taba.Tests
                 {
                     second = (await _client.ConsumeAsync(topic, new ConsumeOptions { VisibilityTimeout = 30, WaitTime = 1 })).FirstOrDefault();
                 }
-                Assert.That(second, Is.Not.Null, "a mensagem liberada volta");
+                Assert.That(second, Is.Not.Null, "the released message comes back");
                 Assert.That(second.Id, Is.EqualTo(first.Id));
                 Assert.That(second.DeliveryCount, Is.EqualTo(2));
                 await _client.AckAsync(topic, second);
@@ -290,27 +290,27 @@ namespace Taba.Tests
             string topic = await NewQueueAsync("fifo", fifo: true);
             try
             {
-                var options = new PublishOptions { Fifo = true, GroupId = "cliente-42", DeduplicationId = "pedido-9001" };
+                var options = new PublishOptions { Fifo = true, GroupId = "customer-42", DeduplicationId = "order-9001" };
                 PublishResponse first = await _client.PublishAsync(topic, Utf8("{\"n\":1}"), options);
                 PublishResponse repeated = await _client.PublishAsync(topic, Utf8("{\"n\":1}"), options);
                 Assert.That(first.Duplicate, Is.False);
                 Assert.That(repeated.Duplicate, Is.True);
-                Assert.That(repeated.Id, Is.EqualTo(first.Id), "numa duplicata vem o id da original");
+                Assert.That(repeated.Id, Is.EqualTo(first.Id), "on a duplicate the original's id comes back");
 
-                await _client.PublishAsync(topic, Utf8("{\"n\":2}"), new PublishOptions { Fifo = true, GroupId = "cliente-42", DeduplicationId = "pedido-9002" });
-                await _client.PublishAsync(topic, Utf8("{\"n\":3}"), new PublishOptions { Fifo = true, GroupId = "cliente-42", DeduplicationId = "pedido-9003" });
+                await _client.PublishAsync(topic, Utf8("{\"n\":2}"), new PublishOptions { Fifo = true, GroupId = "customer-42", DeduplicationId = "order-9002" });
+                await _client.PublishAsync(topic, Utf8("{\"n\":3}"), new PublishOptions { Fifo = true, GroupId = "customer-42", DeduplicationId = "order-9003" });
 
                 var order = new List<string>();
                 for (int i = 0; i < 10 && order.Count < 3; i++)
                 {
                     foreach (Message message in await _client.ConsumeAsync(topic, new ConsumeOptions { MaxMessages = 5, VisibilityTimeout = 30, WaitTime = 1 }))
                     {
-                        Assert.That(message.GroupId, Is.EqualTo("cliente-42"));
+                        Assert.That(message.GroupId, Is.EqualTo("customer-42"));
                         order.Add(message.BodyText);
                         await _client.AckAsync(topic, message);
                     }
                 }
-                Assert.That(order, Is.EqualTo(new[] { "{\"n\":1}", "{\"n\":2}", "{\"n\":3}" }), "uma só mensagem do grupo por vez, em ordem");
+                Assert.That(order, Is.EqualTo(new[] { "{\"n\":1}", "{\"n\":2}", "{\"n\":3}" }), "a single message of the group at a time, in order");
 
                 var noGroup = Assert.ThrowsAsync<TabaException>(() => _client.PublishAsync(topic, Utf8("{}"), new PublishOptions { Fifo = true }));
                 Assert.That(noGroup.Code, Is.EqualTo("validation.group-id-required"));
@@ -325,9 +325,9 @@ namespace Taba.Tests
         [Test]
         public async Task a_distributor_copies_to_each_matching_queue_and_a_partial_failure_is_not_an_error()
         {
-            // As filas vêm do script: csharp-fan-a (comum) e csharp-fan-b (FIFO), sob o distribuidor csharp-fan.
+            // The queues come from the script: csharp-fan-a (plain) and csharp-fan-b (FIFO), under the csharp-fan distributor.
             await DrainAsync("csharp-fan-a");
-            PublishResponse response = await _client.PublishRawJsonAsync("csharp-fan", "{\"evento\":\"criado\"}");
+            PublishResponse response = await _client.PublishRawJsonAsync("csharp-fan", "{\"event\":\"created\"}");
 
             Assert.That(response.Matched, Is.EqualTo(2));
             Assert.That(response.Deliveries.Count, Is.EqualTo(2));
@@ -335,18 +335,18 @@ namespace Taba.Tests
             DistributorDelivery failed = response.Deliveries.Single(d => d.Topic == "csharp-fan-b");
             Assert.That(copy.Succeeded, Is.True);
             Assert.That(copy.Id, Is.Not.Empty);
-            Assert.That(failed.Succeeded, Is.False, "sem groupId a cópia para a FIFO falha, só ela");
+            Assert.That(failed.Succeeded, Is.False, "without a groupId the copy to the FIFO fails, only that one");
             Assert.That(failed.ErrorCode, Is.EqualTo("validation.group-id-required"));
 
             Message delivered = (await _client.ConsumeAsync("csharp-fan-a", new ConsumeOptions { VisibilityTimeout = 30, WaitTime = 3 })).Single();
             Assert.That(delivered.Id, Is.EqualTo(copy.Id));
             await _client.AckAsync("csharp-fan-a", delivered);
 
-            // Com o groupId, as duas copiam.
+            // With the groupId, both copy.
             await DrainAsync("csharp-fan-b");
             PublishResponse both = await _client.PublishAsync(
                 "csharp-fan",
-                Utf8("{\"evento\":\"alterado\"}"),
+                Utf8("{\"event\":\"changed\"}"),
                 new PublishOptions { GroupId = "g1" });
             Assert.That(both.Deliveries.All(d => d.Succeeded), Is.True);
             await DrainAsync("csharp-fan-a");
@@ -360,11 +360,11 @@ namespace Taba.Tests
             string topic = "csharp-shared";
             await DrainAsync(topic);
             string marker = Guid.NewGuid().ToString("N");
-            await _client.PublishRawJsonAsync(topic, "{\"marca\":\"" + marker + "\"}");
+            await _client.PublishRawJsonAsync(topic, "{\"mark\":\"" + marker + "\"}");
             Message message = (await _client.ConsumeAsync(topic, new ConsumeOptions { WaitTime = 5, VisibilityTimeout = 30 })).Single();
             Assert.That(message.BodyText, Does.Contain(marker));
 
-            // O token só de leitura consome a mesma fila.
+            // The read-only token consumes the same queue.
             using (TabaClient reader = As(_readOnlyToken))
             {
                 Assert.That((await reader.GetTopicAsync(topic)).Name, Is.EqualTo(topic));
@@ -376,17 +376,17 @@ namespace Taba.Tests
         [Test]
         public async Task a_token_without_the_permission_or_outside_its_prefixes_is_refused()
         {
-            Assume.That(_readOnlyToken, Is.Not.Null.And.Not.Empty, "TABA_TOKEN_READONLY não definida");
+            Assume.That(_readOnlyToken, Is.Not.Null.And.Not.Empty, "TABA_TOKEN_READONLY is not set");
             using (TabaClient reader = As(_readOnlyToken))
             {
                 var publish = Assert.ThrowsAsync<TabaException>(() => reader.PublishRawJsonAsync("csharp-shared", "{}"));
                 Assert.That(publish.Status, Is.EqualTo(403));
                 Assert.That(publish.Code, Is.EqualTo("auth.forbidden"));
 
-                var create = Assert.ThrowsAsync<TabaException>(() => reader.CreateTopicAsync(new TopicRequest { Name = Unique("negado"), Type = "queue" }));
+                var create = Assert.ThrowsAsync<TabaException>(() => reader.CreateTopicAsync(new TopicRequest { Name = Unique("denied"), Type = "queue" }));
                 Assert.That(create.Code, Is.EqualTo("auth.forbidden"));
 
-                // Consumir é permitido.
+                // Consuming is allowed.
                 IList<Message> none = await reader.ConsumeAsync("csharp-shared", new ConsumeOptions { MaxMessages = 1, VisibilityTimeout = 1 });
                 Assert.That(none.Count, Is.LessThanOrEqualTo(1));
                 foreach (Message message in none)
@@ -395,19 +395,19 @@ namespace Taba.Tests
                 }
             }
 
-            // Fora dos prefixos do token da aplicação.
-            var outside = Assert.ThrowsAsync<TabaException>(() => _client.CreateTopicAsync(new TopicRequest { Name = "outro-" + Guid.NewGuid().ToString("N").Substring(0, 6), Type = "queue" }));
+            // Outside the application token's prefixes.
+            var outside = Assert.ThrowsAsync<TabaException>(() => _client.CreateTopicAsync(new TopicRequest { Name = "other-" + Guid.NewGuid().ToString("N").Substring(0, 6), Type = "queue" }));
             Assert.That(outside.Status, Is.EqualTo(403));
             Assert.That(outside.Code, Is.EqualTo("auth.out-of-scope"));
 
-            // Sem token válido.
+            // Without a valid token.
             using (TabaClient anonymous = As(null))
             {
                 var unauthorized = Assert.ThrowsAsync<TabaException>(() => anonymous.GetTopicAsync("csharp-shared"));
                 Assert.That(unauthorized.Status, Is.EqualTo(401));
                 Assert.That(unauthorized.Code, Is.EqualTo("auth.unauthorized"));
             }
-            using (TabaClient forged = As("tk_isto-nao-e-um-token"))
+            using (TabaClient forged = As("tk_this-is-not-a-token"))
             {
                 var unauthorized = Assert.ThrowsAsync<TabaException>(() => forged.GetTopicAsync("csharp-shared"));
                 Assert.That(unauthorized.Status, Is.EqualTo(401));
@@ -446,7 +446,7 @@ namespace Taba.Tests
                         cts.Token);
                 }
                 Assert.That(received.OrderBy(x => x), Is.EqualTo(new[] { "{\"n\":1}", "{\"n\":2}", "{\"n\":3}" }));
-                Assert.That(await _client.ConsumeAsync(topic), Is.Empty, "tudo foi confirmado");
+                Assert.That(await _client.ConsumeAsync(topic), Is.Empty, "everything was acknowledged");
             }
             finally
             {

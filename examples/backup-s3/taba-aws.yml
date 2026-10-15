@@ -1,0 +1,14 @@
+# Optional S3 backup on AWS. No keys here: the SDK uses the default AWS credential chain
+# (task role on ECS, instance IAM on EC2, IRSA on Kubernetes, profile or the variables
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). Doc: doc/pt-BR/33-backup-s3.md.
+#
+# Minimum role permissions, on the bucket and the prefix: s3:PutObject, s3:GetObject, s3:DeleteObject and
+# s3:ListBucket. The restore lock uses conditional writes (If-None-Match / If-Match), which AWS S3
+# supports; the bucket must NOT have lifecycle rules that delete what Taba still uses
+# (segments are deleted by Taba itself, once all their messages are dead).
+
+backup:
+  s3:
+    bucket: my-company-taba-backup
+    region: sa-east-1
+    prefix: taba/production        # one prefix per cluster, if the bucket is shared

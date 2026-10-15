@@ -1,22 +1,22 @@
-//! A sincronização de blocos de um nó que entra (doc 05, seção 7.3).
+//! The block synchronization of a node that joins (doc 05, section 7.3).
 //!
-//! O nó novo já consta na tabela de membros e recebe o protocolo normal do cluster, mas não pode
-//! processar os eventos: guarda cada um no banco de eventos (`_sync/sync.db`) e confirma o
-//! registro depois de gravar. Enquanto isso ele carrega, em ordem:
+//! The new node is already in the member table and receives the normal cluster protocol, but cannot
+//! process the events: it stores each one in the event database (`_sync/sync.db`) and confirms the
+//! register after writing. Meanwhile it loads, in order:
 //!
-//! 1. **tópicos e tokens**, puxados de um membro;
-//! 2. **blocos**: para cada bloco de que é responsável, a lista de IDs de todas as outras origens
-//!    (união, por *merge* ordenado), as mensagens em faixas balanceadas entre elas, e o que faltou
-//!    em outra origem, na rota de ID único e, por fim, na relistagem (o que ainda consta e não tem
-//!    conteúdo em nenhum nó é uma **perda**);
-//! 3. **eventos**, por cima da carga: sempre o mais antigo, aplicado e apagado, até esvaziar;
-//! 4. **verificação final**: repete as listagens e descarta o que a carga trouxe e já não aparece;
-//! 5. **troca para o modo normal** (*cutover*): quando o banco esvazia, sob a mesma trava que a
-//!    recepção usa para decidir o destino de cada evento, o nó passa a processar em tempo real.
+//! 1. **topics and tokens**, pulled from a member;
+//! 2. **blocks**: for each block it is responsible for, the ID list of all the other sources
+//!    (union, by ordered *merge*), the messages in ranges balanced among them, and what was missing
+//!    from another source, on the single-ID route and, finally, on the relisting (what still shows up and has no
+//!    content on any node is a **loss**);
+//! 3. **events**, on top of the load: always the oldest, applied and deleted, until empty;
+//! 4. **final check**: repeats the listings and discards what the load brought and no longer shows up;
+//! 5. **switch to normal mode** (*cutover*): when the database empties, under the same lock the
+//!    reception uses to decide each event's destination, the node starts processing in real time.
 //!
-//! Só então o nó fica pronto e passa a ser dono das mensagens dos blocos dele. Este módulo é
-//! também o **lado que serve** a sincronização (`source`) e a limpeza do que o nó deixou de ter de
-//! guardar (passo 7).
+//! Only then does the node become ready and start owning the messages of its blocks. This module is
+//! also the **side that serves** the synchronization (`source`) and the cleanup of what the node no longer has to
+//! keep (step 7).
 
 mod source;
 
@@ -50,18 +50,18 @@ use crate::telemetry::metrics::{
 };
 use crate::telemetry::trace;
 
-/// Os parâmetros `cluster.sync.*` (doc 10) com os padrões escolhidos pela implementação.
+/// The `cluster.sync.*` parameters (doc 10) with the defaults chosen by the implementation.
 #[derive(Debug, Clone)]
 pub struct SyncRules {
     /// `cluster.sync.stream.max-items`.
     pub max_items: usize,
     /// `cluster.sync.stream.max-bytes`.
     pub max_bytes: u64,
-    /// `cluster.sync.range.size`: IDs por faixa pedida a uma origem.
+    /// `cluster.sync.range.size`: IDs per range asked of a source.
     pub range_size: usize,
     /// `cluster.sync.log.max-bytes`.
     pub log_max_bytes: u64,
-    /// `cluster.sync.timeout`: quanto tempo se tenta de novo uma origem que não serve.
+    /// `cluster.sync.timeout`: how long to keep trying a source that does not serve.
     pub timeout: Duration,
     pub storage_dir: PathBuf,
 }
@@ -80,16 +80,16 @@ impl SyncRules {
     }
 }
 
-/// Por que a sincronização não terminou.
+/// Why the synchronization did not finish.
 #[derive(Debug, thiserror::Error)]
 pub enum SyncError {
-    #[error("nenhum nó de origem atendeu: {0}")]
+    #[error("no source node answered: {0}")]
     NoSource(String),
-    #[error("falha de disco: {0}")]
+    #[error("disk failure: {0}")]
     Disk(String),
-    #[error("o banco de eventos passou de cluster.sync.log.max-bytes")]
+    #[error("the event database exceeded cluster.sync.log.max-bytes")]
     LogOverflow,
-    #[error("o nó parou durante a sincronização")]
+    #[error("the node stopped during the synchronization")]
     Cancelled,
 }
 
@@ -114,7 +114,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Uma chamada que o nó em sincronização guarda no banco de eventos em vez de processar.
+/// A call the syncing node stores in the event database instead of processing.
 fn is_event(request: &Request) -> bool {
     matches!(
         request,
@@ -144,14 +144,14 @@ fn operation_of(request: &Request) -> String {
     }
 }
 
-/// Uma linha da listagem de IDs de um bloco.
+/// A row of a block's ID listing.
 #[derive(Debug, Clone)]
 struct IdLine {
     id: String,
     topic: String,
 }
 
-/// Um ID da união das listas, com as origens que o têm (índices na lista de origens).
+/// An ID of the union of the lists, with the sources that have it (indexes into the source list).
 #[derive(Debug, Clone)]
 struct Merged {
     line: IdLine,
@@ -165,8 +165,8 @@ struct Cursor {
     dead: bool,
 }
 
-/// O *merge* ordenado das listas de IDs de várias origens, sem materializá-las: cada origem tem
-/// um trecho em memória e o seguinte só é pedido quando o anterior acaba.
+/// The ordered *merge* of the ID lists from several sources, without materializing them: each source has
+/// a stretch in memory and the next is only requested when the previous one ends.
 struct MergedIds<'a> {
     syncer: &'a Syncer,
     block: String,
@@ -192,7 +192,7 @@ impl<'a> MergedIds<'a> {
         }
     }
 
-    /// Alguma origem deixou de responder: a união está incompleta.
+    /// Some source stopped answering: the union is incomplete.
     fn degraded(&self) -> bool {
         self.cursors.iter().any(|c| c.dead)
     }
@@ -214,7 +214,7 @@ impl<'a> MergedIds<'a> {
                 tracing::warn!(
                     block = %self.block,
                     peer = %self.sources[index].node_id,
-                    "a origem não listou os IDs do bloco"
+                    "the source did not list the block's IDs"
                 );
                 cursor.dead = true;
                 cursor.more = false;
@@ -223,7 +223,7 @@ impl<'a> MergedIds<'a> {
         };
         for item in &page.items {
             let id = item.get("id").and_then(|v| v.as_str()).unwrap_or_default();
-            // A retomada devolve de novo a última linha lida: é ignorada.
+            // The resumption returns the last line read again: it is ignored.
             if cursor.last.as_deref() == Some(id) {
                 continue;
             }
@@ -241,7 +241,7 @@ impl<'a> MergedIds<'a> {
         Ok(())
     }
 
-    /// Até `count` IDs da união, em ordem. Vazio quando acabou.
+    /// Up to `count` IDs of the union, in order. Empty when it is over.
     async fn next_batch(&mut self, count: usize) -> Result<Vec<Merged>, SyncError> {
         let mut out = Vec::new();
         while out.len() < count {
@@ -255,7 +255,7 @@ impl<'a> MergedIds<'a> {
             }
             if self.cursors.iter().all(|c| c.dead) {
                 return Err(SyncError::NoSource(format!(
-                    "nenhuma origem listou o bloco {}",
+                    "no source listed block {}",
                     self.block
                 )));
             }
@@ -295,17 +295,17 @@ pub struct Syncer {
     replica: Arc<Replica>,
     losses: LossStore,
     rules: SyncRules,
-    /// `Some` enquanto o nó grava os eventos no banco (modo de sincronização). A trava também
-    /// decide, a cada evento, entre o banco e o processamento normal (*cutover*).
+    /// `Some` while the node writes the events to the database (synchronization mode). The lock also
+    /// decides, on each event, between the database and normal processing (*cutover*).
     recording: Mutex<Option<Arc<SyncLog>>>,
     overflow: AtomicBool,
     pulled: Mutex<Pulled>,
     round_robin: AtomicUsize,
-    /// A versão da tabela para a qual a limpeza já rodou.
+    /// The table version for which the cleanup already ran.
     cleaned_version: Mutex<Option<u64>>,
-    /// Quando as definições foram puxadas de novo por causa de um tópico desconhecido.
+    /// When the definitions were pulled again because of an unknown topic.
     refreshed_at: Mutex<Option<Instant>>,
-    /// Gancho dos testes: espera o semáforo ao entrar na fase.
+    /// Test hook: waits on the semaphore on entering the phase.
     pause: Mutex<Option<(&'static str, Arc<tokio::sync::Semaphore>)>>,
 }
 
@@ -339,13 +339,13 @@ impl Syncer {
         &self.rules
     }
 
-    /// O nó está gravando os eventos no banco?
+    /// Is the node writing the events to the database?
     pub fn is_recording(&self) -> bool {
         lock(&self.recording).is_some()
     }
 
-    /// Abre o banco de eventos e passa a gravar. Vem antes de o nó instalar a tabela de membros:
-    /// a partir daí ele recebe o protocolo normal.
+    /// Opens the event database and starts writing. It comes before the node installs the member table:
+    /// from then on it receives the normal protocol.
     pub fn begin(&self) -> io::Result<()> {
         let log = SyncLog::create(&self.rules.storage_dir)?;
         self.overflow.store(false, Ordering::SeqCst);
@@ -353,17 +353,17 @@ impl Syncer {
         Ok(())
     }
 
-    /// Larga o banco de eventos sem processá-lo (o nó volta a ser novo).
+    /// Drops the event database without processing it (the node goes back to being new).
     pub fn abandon(&self) {
         if let Some(log) = lock(&self.recording).take() {
             let _ = log.discard();
         }
     }
 
-    // ---- Receber eventos durante a sincronização ----
+    // ---- Receiving events during the synchronization ----
 
-    /// Guarda o evento no banco em vez de processá-lo e devolve a confirmação do registro. `None`
-    /// quando o nó processa normalmente (não é um evento, ou a sincronização já terminou).
+    /// Stores the event in the database instead of processing it and returns the register's confirmation. `None`
+    /// when the node processes normally (it is not an event, or the synchronization already ended).
     pub fn intercept(&self, request: &Request) -> Result<Option<Response>, TabaError> {
         if !is_event(request) {
             return Ok(None);
@@ -375,7 +375,7 @@ impl Syncer {
         let call = request.to_http();
         log.append(&call.method, &call.path, &call.headers, &call.body)
             .map_err(|e| {
-                tracing::error!(error = %e, "falha ao gravar o evento no banco de eventos");
+                tracing::error!(error = %e, "failed to write the event to the event database");
                 TabaError::internal()
             })?;
         let registry = &self.service.telemetry().registry;
@@ -397,9 +397,9 @@ impl Syncer {
 
     // ---- Sincronizar ----
 
-    /// Só para os testes: a sincronização para ao entrar em `phase` e segue quando o semáforo
-    /// ganha uma licença. Serve para o teste agir (publicar, confirmar, mudar a tabela) com o nó
-    /// em sincronização.
+    /// Only for the tests: the synchronization stops on entering `phase` and goes on when the semaphore
+    /// gains a permit. It lets the test act (publish, acknowledge, change the table) with the node
+    /// in synchronization.
     #[doc(hidden)]
     pub fn pause_at(&self, phase: &'static str, gate: Arc<tokio::sync::Semaphore>) {
         *lock(&self.pause) = Some((phase, gate));
@@ -428,7 +428,7 @@ impl Syncer {
     fn log(&self) -> Result<Arc<SyncLog>, SyncError> {
         lock(&self.recording)
             .clone()
-            .ok_or_else(|| SyncError::Disk("o banco de eventos não foi aberto".into()))
+            .ok_or_else(|| SyncError::Disk("the event database was not opened".into()))
     }
 
     fn check(&self) -> Result<(), SyncError> {
@@ -441,8 +441,8 @@ impl Syncer {
         Ok(())
     }
 
-    /// Carrega tudo o que o nó precisa e troca para o modo normal. `sources` são os membros
-    /// de onde puxar as definições (o que coordenou o ingresso primeiro).
+    /// Loads everything the node needs and switches to normal mode. `sources` are the members
+    /// to pull the definitions from (the one that coordinated the join first).
     pub async fn run(&self, sources: &[Member]) -> Result<(), SyncError> {
         let result = self.run_phases(sources).await;
         if let Err(e) = &result {
@@ -487,16 +487,16 @@ impl Syncer {
         Ok(())
     }
 
-    /// `sync_block` que, se nenhuma origem atendeu, tenta de novo até `cluster.sync.timeout`. As
-    /// origens podem ainda não conhecer este nó, porque o commit do ingresso delas é mais lento que
-    /// `write.commit.timeout` e elas respondem `cluster.not-member` até ele chegar (D105).
+    /// `sync_block` that, if no source answered, tries again until `cluster.sync.timeout`. The
+    /// sources may not know this node yet, because their join commit is slower than
+    /// `write.commit.timeout` and they answer `cluster.not-member` until it arrives (D105).
     async fn sync_block_waiting(
         &self,
         ring: &Ring,
         block: BlockId,
         log: &Arc<SyncLog>,
     ) -> Result<(), SyncError> {
-        // Um trace por bloco sincronizado (doc 11, "Traces"); cada chamada a uma origem é um span.
+        // One trace per synchronized block (doc 11, "Traces"); each call to a source is a span.
         let span = tracing::info_span!(
             "sync.block",
             otel.name = "taba.sync.block",
@@ -508,7 +508,7 @@ impl Syncer {
             loop {
                 match self.sync_block(ring, block, log).await {
                     Err(SyncError::NoSource(why)) if Instant::now() < deadline => {
-                        tracing::warn!(%why, "nenhuma origem atendeu o bloco: tentando de novo");
+                        tracing::warn!(%why, "no source answered the block: trying again");
                         self.check()?;
                         self.nap().await;
                     }
@@ -524,12 +524,12 @@ impl Syncer {
         result
     }
 
-    /// Puxa as definições de um membro; tenta os outros e repete até `cluster.sync.timeout`.
+    /// Pulls the definitions from a member; tries the others and repeats until `cluster.sync.timeout`.
     async fn pull_definitions(&self, sources: &[Member]) -> Result<Pulled, SyncError> {
         let deadline = Instant::now() + self.rules.timeout;
         loop {
             self.check()?;
-            let mut last = String::from("sem origem");
+            let mut last = String::from("no source");
             for source in sources {
                 match self.definitions.pull(source).await {
                     Ok(pulled) => return Ok(pulled),
@@ -550,8 +550,8 @@ impl Syncer {
         }
     }
 
-    /// Chama uma origem. Falha de rede, `5xx` e `409` (a tabela de lá ainda é outra) repetem até
-    /// `cluster.sync.timeout`; o resto é a resposta da origem.
+    /// Calls a source. A network failure, `5xx` and `409` (the table there is still another) repeat until
+    /// `cluster.sync.timeout`; the rest is the source's response.
     async fn call_source(&self, source: &Member, request: Request) -> Result<Response, TabaError> {
         let span = trace::peer_span("taba.sync.fetch", &source.node_id, false);
         trace::traced(span, self.call_source_inner(source, request)).await
@@ -565,7 +565,10 @@ impl Syncer {
         let deadline = Instant::now() + self.rules.timeout;
         loop {
             if self.service.cancel_token().is_cancelled() {
-                return Err(TabaError::new(ErrorCode::ClusterNodeSyncing, "o nó parou"));
+                return Err(TabaError::new(
+                    ErrorCode::ClusterNodeSyncing,
+                    "the node stopped",
+                ));
             }
             let failure = match self
                 .service
@@ -588,7 +591,7 @@ impl Syncer {
         }
     }
 
-    /// As origens de um bloco: os outros nós responsáveis por ele.
+    /// A block's sources: the other nodes responsible for it.
     fn sources_of(&self, ring: &Ring, block: BlockId) -> Vec<Member> {
         let me = self.service.node_id();
         let factor = self.service.rules().replication_factor.max(1) as usize;
@@ -648,7 +651,7 @@ impl Syncer {
         }
     }
 
-    /// Pede as mensagens de uma faixa de IDs a uma origem, e o que faltou, às outras.
+    /// Asks a source for the messages of an ID range, and the others for what was missing.
     async fn pull_range(
         &self,
         block: &str,
@@ -660,7 +663,7 @@ impl Syncer {
         let (Some(first), Some(last)) = (wanted.first(), wanted.last()) else {
             return Ok(Vec::new());
         };
-        // A origem da faixa é a que tem mais dos IDs; empatando, as origens se revezam.
+        // The range's source is the one that has more of the IDs; on a tie, the sources take turns.
         let turn = self.round_robin.fetch_add(1, Ordering::Relaxed);
         let score = |index: usize| wanted.iter().filter(|m| m.holders.contains(&index)).count();
         let best = (0..sources.len()).map(score).max().unwrap_or(0);
@@ -685,7 +688,7 @@ impl Syncer {
                 .filter(|m| !got.contains(&m.line.id))
                 .collect()
         };
-        // O que faltou na faixa é buscado em outra origem que o tenha.
+        // What was missing from the range is fetched from another source that has it.
         for index in (0..sources.len()).filter(|i| *i != chosen) {
             let missing = missing_now(&got);
             let from_here: Vec<&&Merged> = missing
@@ -699,7 +702,7 @@ impl Syncer {
             self.stream_range(block, &sources[index], &low, &high, log, &mut got)
                 .await;
         }
-        // O último recurso: a rota de ID único.
+        // The last resort: the single-ID route.
         let still: Vec<Merged> = missing_now(&got).into_iter().cloned().collect();
         let mut gone = Vec::new();
         for entry in still {
@@ -729,8 +732,8 @@ impl Syncer {
         Ok(gone)
     }
 
-    /// Lê o stream de mensagens `from`–`to` de uma origem, de trecho em trecho, e aplica cada uma.
-    /// Uma falha da origem só deixa de somar ao `got`: o que faltar é buscado em outro lugar.
+    /// Reads the message stream `from`–`to` from a source, stretch by stretch, and applies each one.
+    /// A source failure only stops adding to `got`: what is missing is fetched elsewhere.
     async fn stream_range(
         &self,
         block: &str,
@@ -756,7 +759,9 @@ impl Syncer {
             for item in &page.items {
                 match serde_json::from_value::<MessageRecord>(item.clone()) {
                     Ok(record) => self.apply_record(block, source, record, log, got).await,
-                    Err(e) => tracing::warn!(error = %e, "mensagem ilegível na sincronização"),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "unreadable message in the synchronization")
+                    }
                 }
             }
             if !page.end.has_more || page.end.last == cursor || page.items.is_empty() {
@@ -766,8 +771,8 @@ impl Syncer {
         }
     }
 
-    /// Grava uma mensagem da carga. Uma de tópico ainda desconhecido faz o nó puxar as definições
-    /// de novo (o tópico foi criado depois da primeira carga).
+    /// Stores a message of the load. One of a topic still unknown makes the node pull the definitions
+    /// again (the topic was created after the first load).
     async fn apply_record(
         &self,
         block: &str,
@@ -778,7 +783,7 @@ impl Syncer {
     ) {
         let (topic, id) = (record.topic.clone(), record.id.clone());
         let size = record.body.len() as f64;
-        // A linha curta da FIFO é levada sem corpo; não há o que perder se ela faltar.
+        // The FIFO's short row is carried without a body; there is nothing to lose if it is missing.
         let mut outcome = self.load(&record).await;
         if matches!(outcome, Ok(Loaded::UnknownTopic)) {
             self.refresh_definitions(source).await;
@@ -794,16 +799,16 @@ impl Syncer {
                 );
                 registry.add(&SYNC_BYTES, &[("taba.peer", &source.node_id)], size);
                 if let Err(e) = log.mark_loaded(block, &[(topic, id.clone())]) {
-                    tracing::error!(error = %e, "falha ao anotar a mensagem carregada");
+                    tracing::error!(error = %e, "failed to record the loaded message");
                 }
                 got.insert(id);
             }
-            // Venceu por ttl, ou o tópico foi removido: não há o que guardar nem o que cobrar.
+            // It expired by ttl, or the topic was removed: there is nothing to store or to charge for.
             Ok(Loaded::Expired | Loaded::UnknownTopic) => {
                 got.insert(id);
             }
             Err(e) => {
-                tracing::error!(topic = %topic, id = %id, error = %e.message, "falha ao gravar a mensagem carregada");
+                tracing::error!(topic = %topic, id = %id, error = %e.message, "failed to store the loaded message");
             }
         }
     }
@@ -838,13 +843,13 @@ impl Syncer {
                 all.tokens.extend(pulled.tokens);
             }
             Err(e) => {
-                tracing::warn!(error = %e.message, "não foi possível puxar as definições de novo")
+                tracing::warn!(error = %e.message, "could not pull the definitions again")
             }
         }
     }
 
-    /// As mensagens listadas que nenhuma origem entregou: a relistagem diz se foram confirmadas
-    /// (somem das listas, e o caso é descartado em silêncio) ou se são uma perda.
+    /// The listed messages that no source delivered: the relisting says whether they were acknowledged
+    /// (they vanish from the lists, and the case is silently discarded) or whether they are a loss.
     async fn settle_missing(
         &self,
         block: &str,
@@ -875,8 +880,8 @@ impl Syncer {
             if !listed {
                 continue;
             }
-            // Antes de declarar a perda, o bucket (doc 23, seção 1.7, exemplo B): a mensagem que
-            // nenhum nó vivo tem é buscada no S3. Só se o S3 também não a tiver ela vira perda.
+            // Before declaring the loss, the bucket (doc 23, section 1.7, example B): the message that
+            // no live node has is fetched from S3. Only if S3 does not have it either does it become a loss.
             if let Some(port) = self.service.backup()
                 && let Some((meta, body)) = port
                     .backup()
@@ -892,7 +897,7 @@ impl Syncer {
                     messaging.destination.name = %entry.line.topic,
                     message.id = %entry.line.id,
                     block,
-                    "nenhum nó vivo tinha a mensagem: restaurada do backup em S3"
+                    "no live node had the message: restored from the S3 backup"
                 );
                 continue;
             }
@@ -902,7 +907,7 @@ impl Syncer {
                 message.id = %entry.line.id,
                 block,
                 nodes = ?consulted,
-                "mensagem perdida: consta nas listas e nenhum nó tem o conteúdo"
+                "message lost: it is on the lists and no node has the content"
             );
             let loss = Loss {
                 topic: entry.line.topic.clone(),
@@ -911,15 +916,15 @@ impl Syncer {
                 detected_ms: self.service.clock().now_millis(),
             };
             if let Err(e) = self.losses.record(&loss) {
-                tracing::error!(error = %e, "falha ao registrar a perda");
+                tracing::error!(error = %e, "failed to record the loss");
             }
             self.share_loss(&loss);
         }
         Ok(())
     }
 
-    /// Manda a perda aos outros nós responsáveis pelo bloco, sem esperar (melhor esforço): a
-    /// informação sobrevive à queda de quem a detectou (doc 04, seção 6.6, "Tabela de perdas").
+    /// Sends the loss to the other nodes responsible for the block, without waiting (best effort): the
+    /// information survives the fall of whoever detected it (doc 04, section 6.6, "Loss table").
     fn share_loss(&self, loss: &Loss) {
         let Ok(block) = loss.block.parse::<BlockId>() else {
             return;
@@ -955,8 +960,8 @@ impl Syncer {
 
     // ---- Eventos ----
 
-    /// Processa os eventos do banco, sempre o mais antigo, até esvaziar. Com `cutover`, quando o
-    /// banco esvazia o nó passa ao modo normal sob a mesma trava da recepção.
+    /// Processes the database events, always the oldest, until empty. With `cutover`, when the
+    /// database empties the node switches to normal mode under the same lock as the reception.
     async fn replay(&self, log: &SyncLog, cutover: bool) -> Result<(), SyncError> {
         loop {
             self.check()?;
@@ -989,12 +994,12 @@ impl Syncer {
         ) {
             Ok(request) => request,
             Err(e) => {
-                tracing::warn!(path = %event.path, error = %e.message, "evento ilegível descartado");
+                tracing::warn!(path = %event.path, error = %e.message, "unreadable event discarded");
                 return;
             }
         };
-        // O evento vence a carga e é idempotente: um erro (a mensagem já não está aqui, a
-        // definição já existe) não muda nada.
+        // The event beats the load and is idempotent: an error (the message is no longer here, the
+        // definition already exists) changes nothing.
         let result = match request {
             Request::DefinitionApply(change) => {
                 self.definitions.handle_apply(change).await.map(|_| ())
@@ -1002,14 +1007,14 @@ impl Syncer {
             other => self.replica.replay(other).await,
         };
         if let Err(e) = result {
-            tracing::debug!(path = %event.path, code = %e.code, "evento da sincronização sem efeito");
+            tracing::debug!(path = %event.path, code = %e.code, "synchronization event with no effect");
         }
     }
 
-    // ---- Verificação final ----
+    // ---- Final check ----
 
-    /// Repete as listagens só para o que o nó pretende manter e descarta o que a carga trouxe e já
-    /// não aparece em nenhuma origem (doc 05, seção 7.3, passo 5.5).
+    /// Repeats the listings only for what the node means to keep and discards what the load brought and
+    /// no longer shows up on any source (doc 05, section 7.3, step 5.5).
     async fn verify(
         &self,
         ring: &Ring,
@@ -1026,7 +1031,7 @@ impl Syncer {
         for source in sources {
             if let Ok(dropped) = self.definitions.verify(source, &pulled).await {
                 if dropped > 0 {
-                    tracing::info!(dropped, "definições removidas na verificação final");
+                    tracing::info!(dropped, "definitions removed in the final check");
                 }
                 break;
             }
@@ -1052,8 +1057,8 @@ impl Syncer {
                 listed.extend(batch.into_iter().map(|m| m.line.id));
             }
             if ids.degraded() {
-                // Uma origem não respondeu: a união está incompleta e não prova que algo sumiu.
-                tracing::warn!(block = %text, "verificação do bloco adiada: uma origem não respondeu");
+                // A source did not answer: the union is incomplete and does not prove that something vanished.
+                tracing::warn!(block = %text, "block check postponed: a source did not answer");
                 continue;
             }
             for (topic, id) in loaded {
@@ -1063,17 +1068,17 @@ impl Syncer {
                 let messages = self.messages.clone();
                 let (t, i) = (topic.clone(), id.clone());
                 let _ = tokio::task::spawn_blocking(move || messages.apply_ack(&t, &i)).await;
-                tracing::info!(topic = %topic, id = %id, "mensagem confirmada durante a carga descartada na verificação final");
+                tracing::info!(topic = %topic, id = %id, "message acknowledged during the load discarded in the final check");
             }
         }
         Ok(())
     }
 
-    // ---- Limpeza dos blocos que o nó perdeu ----
+    // ---- Cleanup of the blocks the node lost ----
 
-    /// A limpeza dos nós que perderam o bloco (doc 05, seção 7.3, passo 7): só com todo o cluster
-    /// íntegro (nenhum nó em sincronização, nenhuma mudança de membros pendente), e uma vez por
-    /// versão da tabela.
+    /// The cleanup of the nodes that lost the block (doc 05, section 7.3, step 7): only with the whole cluster
+    /// healthy (no node syncing, no pending member change), and once per
+    /// table version.
     pub async fn clean_once(&self) {
         if self.service.node_state() != NodeState::Active {
             return;
@@ -1081,8 +1086,8 @@ impl Syncer {
         let Some(table) = self.service.membership().table() else {
             return;
         };
-        // Quem saiu da tabela (drain) guarda o que tem: é o que a recuperação de perdas procura ao
-        // voltar (doc 04, seção 6.6), e nenhum bloco é mais dele para limpar.
+        // Whoever left the table (drain) keeps what it has: it is what the loss recovery looks for on
+        // returning (doc 04, section 6.6), and no block is its own any more to clean.
         if table.member(&self.service.node_id()).is_none() {
             return;
         }
@@ -1108,12 +1113,12 @@ impl Syncer {
         if removed > 0 {
             tracing::info!(
                 removed,
-                "cópias de blocos que deixaram de ser do nó apagadas"
+                "copies of blocks that stopped being the node's deleted"
             );
         }
     }
 
-    /// A tarefa da limpeza, até o nó parar.
+    /// The cleanup task, until the node stops.
     pub async fn run_cleanup(self: Arc<Self>) {
         let cancel = self.service.cancel_token().clone();
         let mut ticker = tokio::time::interval(self.service.rules().keepalive_interval);

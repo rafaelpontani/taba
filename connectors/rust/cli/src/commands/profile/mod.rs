@@ -1,5 +1,5 @@
-//! Os comandos locais: `version`, `config show` e `profile ...` (doc 19b, seção 18.11.2). Nenhum
-//! deles chama o servidor.
+//! The local commands: `version`, `config show` and `profile ...` (doc 19b, section 18.11.2). None
+//! of them calls the server.
 
 use taba_client::json;
 
@@ -9,7 +9,7 @@ use crate::args::{flag, val, Opt, Parsed};
 use crate::profile::{self, ConfigFile, Profile, FIELDS};
 use crate::settings;
 
-/// As opções que são campos de perfil.
+/// The options that are profile fields.
 const FIELD_OPTS: [Opt; 9] = [
     val("url"),
     val("ops-url"),
@@ -27,7 +27,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["version"],
             args: "",
-            summary: "Mostra a versão do programa e a do contrato da API.",
+            summary: "Shows the program version and that of the API contract.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -36,7 +36,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["config", "show"],
             args: "",
-            summary: "A configuração efetiva e de onde veio cada valor (sem o token).",
+            summary: "The effective configuration and where each value came from (without the token).",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -45,7 +45,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["profile"],
             args: "",
-            summary: "Sem subcomando, abre a tela interativa dos perfis (só num terminal).",
+            summary: "Without a subcommand, opens the interactive profiles screen (only on a terminal).",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -54,7 +54,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["profile", "list"],
             args: "",
-            summary: "Lista os perfis, marcando o padrão e o que está em uso na sessão.",
+            summary: "Lists the profiles, marking the default and the one in use in the session.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -62,8 +62,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["profile", "show"],
-            args: "[nome]",
-            summary: "Mostra um perfil (o em uso, se sem nome), sem o token.",
+            args: "[name]",
+            summary: "Shows a profile (the one in use, if no name), without the token.",
             min_pos: 0,
             max_pos: 1,
             opts: vec![],
@@ -71,8 +71,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["profile", "add"],
-            args: "<nome>",
-            summary: "Cria um perfil; o primeiro vira o padrão, e --default torna outro o padrão.",
+            args: "<name>",
+            summary: "Creates a profile; the first becomes the default, and --default makes another the default.",
             min_pos: 1,
             max_pos: 1,
             opts: ADD_OPTS.to_vec(),
@@ -80,8 +80,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["profile", "set"],
-            args: "<nome>",
-            summary: "Altera os campos dados e apaga os de --unset <campo> (repetível).",
+            args: "<name>",
+            summary: "Changes the given fields and deletes those in --unset <field> (repeatable).",
             min_pos: 1,
             max_pos: 1,
             opts: SET_OPTS.to_vec(),
@@ -89,8 +89,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["profile", "remove"],
-            args: "<nome>",
-            summary: "Remove um perfil (pede confirmação; --yes dispensa).",
+            args: "<name>",
+            summary: "Removes a profile (asks for confirmation; --yes skips it).",
             min_pos: 1,
             max_pos: 1,
             opts: vec![flag("yes")],
@@ -98,8 +98,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["profile", "default"],
-            args: "[nome]",
-            summary: "Sem nome mostra o perfil padrão; com nome o define; --none o remove.",
+            args: "[name]",
+            summary: "Without a name shows the default profile; with a name sets it; --none removes it.",
             min_pos: 0,
             max_pos: 1,
             opts: vec![flag("none")],
@@ -108,7 +108,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["profile", "path"],
             args: "",
-            summary: "Imprime o caminho do arquivo de configuração.",
+            summary: "Prints the path of the configuration file.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![],
@@ -119,8 +119,8 @@ pub fn commands() -> Vec<Command> {
         },
         Command {
             path: &["profile", "session"],
-            args: "[nome]",
-            summary: "Imprime as linhas que fazem o terminal usar um perfil, ou campos soltos, só na sessão.",
+            args: "[name]",
+            summary: "Prints the lines that make the terminal use a profile, or loose fields, for the session only.",
             min_pos: 0,
             max_pos: 1,
             opts: SESSION_OPTS.to_vec(),
@@ -163,7 +163,7 @@ const fn with_extra(extra: Opt) -> [Opt; 10] {
     ]
 }
 
-/// O perfil montado com as opções de campo dadas.
+/// The profile built from the given field options.
 fn profile_from(p: &Parsed) -> Result<Profile, CliError> {
     let mut profile = Profile::default();
     for field in FIELDS {
@@ -176,7 +176,7 @@ fn profile_from(p: &Parsed) -> Result<Profile, CliError> {
 
 fn mask(field: &str, value: &str) -> String {
     if field == "token" {
-        "(definido)".to_owned()
+        "(set)".to_owned()
     } else {
         value.to_owned()
     }
@@ -221,12 +221,12 @@ fn show(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
             .as_ref()
             .map(|(n, _)| n.clone())
             .ok_or_else(|| {
-                CliError::usage("nenhum perfil em uso; dê o nome ou crie um com `profile add`")
+                CliError::usage("no profile in use; give the name or create one with `profile add`")
             })?,
     };
     let profile = file
         .get(&name)
-        .ok_or_else(|| CliError::usage(format!("o perfil `{name}` não existe")))?;
+        .ok_or_else(|| CliError::usage(format!("the profile `{name}` does not exist")))?;
     let text = profile_json(
         &name,
         file.default.as_deref() == Some(name.as_str()),
@@ -252,7 +252,7 @@ fn add(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         file.set_default(&name).map_err(CliError::Usage)?;
     }
     ctx.save_config(&file)?;
-    say_done(ctx, &format!("Perfil `{name}` criado."))
+    say_done(ctx, &format!("Profile `{name}` created."))
 }
 
 fn set(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
@@ -262,19 +262,21 @@ fn set(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     for field in &unset {
         if !FIELDS.contains(field) {
             return Err(CliError::usage(format!(
-                "--unset: `{field}` não é um campo de perfil ({})",
+                "--unset: `{field}` is not a profile field ({})",
                 FIELDS.join(", ")
             )));
         }
     }
     if changes.entries().is_empty() && unset.is_empty() {
         return Err(CliError::usage(
-            "nada para alterar: dê campos (--url, ...) ou --unset <campo>",
+            "nothing to change: give fields (--url, ...) or --unset <field>",
         ));
     }
     let mut file = ctx.load_config()?;
     let profile = file.get_mut(name).ok_or_else(|| {
-        CliError::usage(format!("o perfil `{name}` não existe (use `profile add`)"))
+        CliError::usage(format!(
+            "the profile `{name}` does not exist (use `profile add`)"
+        ))
     })?;
     for field in unset {
         profile.unset(field);
@@ -283,30 +285,32 @@ fn set(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         profile.set(field, value).map_err(CliError::Usage)?;
     }
     ctx.save_config(&file)?;
-    say_done(ctx, &format!("Perfil `{name}` alterado."))
+    say_done(ctx, &format!("Profile `{name}` changed."))
 }
 
 fn remove(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let name = &p.positional[0];
     let mut file = ctx.load_config()?;
     if file.get(name).is_none() {
-        return Err(CliError::usage(format!("o perfil `{name}` não existe")));
+        return Err(CliError::usage(format!(
+            "the profile `{name}` does not exist"
+        )));
     }
-    ctx.require_confirmation(p.flag("yes"), &format!("Remover o perfil `{name}`?"))?;
+    ctx.require_confirmation(p.flag("yes"), &format!("Remove the profile `{name}`?"))?;
     file.remove(name).map_err(CliError::Usage)?;
     ctx.save_config(&file)?;
-    say_done(ctx, &format!("Perfil `{name}` removido."))
+    say_done(ctx, &format!("Profile `{name}` removed."))
 }
 
 fn default(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let mut file = ctx.load_config()?;
     if p.flag("none") {
         if !p.positional.is_empty() {
-            return Err(CliError::usage("--none não combina com um nome"));
+            return Err(CliError::usage("--none does not combine with a name"));
         }
         file.default = None;
         ctx.save_config(&file)?;
-        return say_done(ctx, "O arquivo ficou sem perfil padrão.");
+        return say_done(ctx, "The file is left with no default profile.");
     }
     match p.positional.first() {
         None => match &file.default {
@@ -314,12 +318,12 @@ fn default(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
                 let name = name.clone();
                 ctx.say(&name)
             }
-            None => say_done(ctx, "(nenhum)"),
+            None => say_done(ctx, "(none)"),
         },
         Some(name) => {
             file.set_default(name).map_err(CliError::Usage)?;
             ctx.save_config(&file)?;
-            say_done(ctx, &format!("`{name}` é o perfil padrão."))
+            say_done(ctx, &format!("`{name}` is the default profile."))
         }
     }
 }
@@ -355,7 +359,7 @@ fn config_show(ctx: &mut Ctx<'_>, _: &Parsed) -> Result<(), CliError> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Perfil de sessão
+// Session profile
 // ---------------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -372,7 +376,7 @@ impl Shell {
             "powershell" => Ok(Shell::Ps),
             "cmd" => Ok(Shell::Cmd),
             other => Err(format!(
-                "--shell: `{other}` não vale (use sh, powershell ou cmd)"
+                "--shell: `{other}` is not valid (use sh, powershell or cmd)"
             )),
         }
     }
@@ -383,7 +387,7 @@ impl Shell {
             Shell::Ps => format!("$env:{var} = '{}'", value.replace('\'', "''")),
             Shell::Cmd => {
                 if value.contains(['"', '\n', '\r']) {
-                    return Err(format!("o valor de {var} tem aspas ou quebra de linha, que o cmd não consegue guardar com segurança"));
+                    return Err(format!("the value of {var} has quotes or a line break, which cmd cannot store safely"));
                 }
                 format!("set \"{var}={value}\"")
             }
@@ -399,7 +403,7 @@ impl Shell {
     }
 }
 
-/// As linhas do perfil de sessão, sem tocar em disco nem no ambiente deste processo.
+/// The lines of the session profile, without touching the disk or this process's environment.
 pub fn session_lines(
     shell: Shell,
     name: Option<&str>,
@@ -434,18 +438,20 @@ fn session(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     let fields = profile_from(p)?;
     if clear && (name.is_some() || !fields.entries().is_empty()) {
         return Err(CliError::usage(
-            "--clear não combina com um nome nem com campos",
+            "--clear does not combine with a name or with fields",
         ));
     }
     if !clear && name.is_none() && fields.entries().is_empty() {
         return Err(CliError::usage(
-            "dê um nome de perfil, campos (--url, ...) ou --clear",
+            "give a profile name, fields (--url, ...) or --clear",
         ));
     }
     if let Some(name) = name {
         let file: ConfigFile = ctx.load_config()?;
         if file.get(name).is_none() {
-            return Err(CliError::usage(format!("o perfil `{name}` não existe")));
+            return Err(CliError::usage(format!(
+                "the profile `{name}` does not exist"
+            )));
         }
     }
     let lines = session_lines(shell, name, &fields, clear).map_err(CliError::Usage)?;
@@ -456,7 +462,7 @@ fn session(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tela interativa
+// Interactive screen
 // ---------------------------------------------------------------------------------------------
 
 fn interactive(ctx: &mut Ctx<'_>, _: &Parsed) -> Result<(), CliError> {
@@ -471,7 +477,7 @@ fn interactive(ctx: &mut Ctx<'_>, _: &Parsed) -> Result<(), CliError> {
             let all = super::table();
             let text = help_text(&all, "profile");
             Err(CliError::Usage(format!(
-                "a tela interativa precisa de um terminal; use os subcomandos.\n{text}"
+                "the interactive screen needs a terminal; use the subcommands.\n{text}"
             )))
         }
     }

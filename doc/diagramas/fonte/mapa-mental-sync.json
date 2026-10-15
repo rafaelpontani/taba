@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Mapa mental: 6. Sincronização",
+    "title": "Mind map: 6. Synchronization",
     "output": "doc/diagramas/html/mapa-mental-sync.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "sync-d0-0",
       "type": "security",
-      "label": "Tópicos primeiro",
-      "sublabel": "decisão",
+      "label": "Topics first",
+      "sublabel": "decision",
       "pos": [
         450,
         70
@@ -24,8 +24,8 @@
     {
       "id": "sync-d0-0x",
       "type": "database",
-      "label": "origem: nó de menor carga",
-      "sublabel": "detalhe",
+      "label": "source: lowest-load node",
+      "sublabel": "detail",
       "pos": [
         745,
         70
@@ -38,8 +38,8 @@
     {
       "id": "sync-d0-1",
       "type": "security",
-      "label": "Blocos por faixas",
-      "sublabel": "decisão",
+      "label": "Blocks by ranges",
+      "sublabel": "decision",
       "pos": [
         450,
         136
@@ -52,8 +52,8 @@
     {
       "id": "sync-d0-1x",
       "type": "database",
-      "label": "streams NDJSON retomáveis",
-      "sublabel": "detalhe",
+      "label": "resumable NDJSON streams",
+      "sublabel": "detail",
       "pos": [
         745,
         136
@@ -66,8 +66,8 @@
     {
       "id": "sync-t0",
       "type": "cloud",
-      "label": "Carga",
-      "sublabel": "tema",
+      "label": "Load",
+      "sublabel": "theme",
       "pos": [
         225,
         103
@@ -80,8 +80,8 @@
     {
       "id": "sync-d1-0",
       "type": "security",
-      "label": "Banco de eventos SQLite",
-      "sublabel": "decisão",
+      "label": "SQLite event database",
+      "sublabel": "decision",
       "pos": [
         450,
         202
@@ -94,8 +94,8 @@
     {
       "id": "sync-d1-0x",
       "type": "database",
-      "label": "lê a mais antiga e apaga",
-      "sublabel": "detalhe",
+      "label": "reads the oldest and deletes",
+      "sublabel": "detail",
       "pos": [
         745,
         202
@@ -108,8 +108,8 @@
     {
       "id": "sync-d1-1",
       "type": "security",
-      "label": "Troca para tempo real",
-      "sublabel": "decisão",
+      "label": "Switch to real time",
+      "sublabel": "decision",
       "pos": [
         450,
         268
@@ -122,8 +122,8 @@
     {
       "id": "sync-d1-1x",
       "type": "database",
-      "label": "quando a tabela esvazia",
-      "sublabel": "detalhe",
+      "label": "when the table empties",
+      "sublabel": "detail",
       "pos": [
         745,
         268
@@ -136,8 +136,8 @@
     {
       "id": "sync-t1",
       "type": "cloud",
-      "label": "Eventos",
-      "sublabel": "tema",
+      "label": "Events",
+      "sublabel": "theme",
       "pos": [
         225,
         235
@@ -150,8 +150,8 @@
     {
       "id": "sync-d2-0",
       "type": "security",
-      "label": "Tabela losses",
-      "sublabel": "decisão",
+      "label": "Losses table",
+      "sublabel": "decision",
       "pos": [
         450,
         334
@@ -164,8 +164,8 @@
     {
       "id": "sync-d2-0x",
       "type": "database",
-      "label": "tópico e ID, com validade",
-      "sublabel": "detalhe",
+      "label": "topic and ID, with expiry",
+      "sublabel": "detail",
       "pos": [
         745,
         334
@@ -178,8 +178,8 @@
     {
       "id": "sync-d2-1",
       "type": "security",
-      "label": "Nó que volta recupera",
-      "sublabel": "decisão",
+      "label": "Returning node recovers",
+      "sublabel": "decision",
       "pos": [
         450,
         400
@@ -192,8 +192,8 @@
     {
       "id": "sync-d2-1x",
       "type": "database",
-      "label": "quarentena até terminar",
-      "sublabel": "detalhe",
+      "label": "quarantine until it finishes",
+      "sublabel": "detail",
       "pos": [
         745,
         400
@@ -207,7 +207,7 @@
       "id": "sync-d2-2",
       "type": "security",
       "label": "Recover",
-      "sublabel": "decisão",
+      "sublabel": "decision",
       "pos": [
         450,
         466
@@ -220,8 +220,8 @@
     {
       "id": "sync-d2-2x",
       "type": "database",
-      "label": "grava direto, idempotente por ID",
-      "sublabel": "detalhe",
+      "label": "writes directly, idempotent by ID",
+      "sublabel": "detail",
       "pos": [
         745,
         466
@@ -234,8 +234,8 @@
     {
       "id": "sync-t2",
       "type": "cloud",
-      "label": "Perdas",
-      "sublabel": "tema",
+      "label": "Losses",
+      "sublabel": "theme",
       "pos": [
         225,
         400
@@ -248,8 +248,8 @@
     {
       "id": "sync",
       "type": "backend",
-      "label": "Sincronização",
-      "sublabel": "área",
+      "label": "Synchronization",
+      "sublabel": "area",
       "pos": [
         20,
         252

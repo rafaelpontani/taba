@@ -1,5 +1,5 @@
-//! O `main` é a raiz de composição: lê a configuração, cria as peças e espera o sinal
-//! de parada (doc 18, seção 17.3).
+//! `main` is the composition root: it reads the configuration, creates the pieces and waits for the
+//! stop signal (doc 18, section 17.3).
 
 use std::process::ExitCode;
 
@@ -58,7 +58,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    // O nó também para sozinho quando o bootstrap esgota as tentativas (doc 04, seção 6.5).
+    // The node also stops by itself when the bootstrap runs out of attempts (doc 04, section 6.5).
     let fatal = tokio::select! {
         () = wait_for_stop() => None,
         reason = running.fatal() => Some(reason),
@@ -67,9 +67,9 @@ async fn main() -> ExitCode {
         tracing::error!("{reason}");
         eprintln!("taba: {reason}");
     } else {
-        tracing::info!("sinal de parada recebido; encerrando");
+        tracing::info!("stop signal received; shutting down");
     }
-    // Um segundo sinal durante o drain encerra na hora, sem terminar (doc 04, seção 6.10).
+    // A second signal during the drain ends it at once, without finishing (doc 04, section 6.10).
     let success = if fatal.is_some() {
         ExitCode::FAILURE
     } else {
@@ -78,14 +78,14 @@ async fn main() -> ExitCode {
     tokio::select! {
         () = running.shutdown() => success,
         () = wait_for_stop() => {
-            tracing::warn!("segundo sinal durante o drain: encerrando na hora");
+            tracing::warn!("second signal during the drain: shutting down at once");
             ExitCode::FAILURE
         }
     }
 }
 
-/// `SIGINT` (Ctrl+C) em qualquer plataforma e `SIGTERM` onde existe. O drain ao receber o
-/// sinal (`drain.on-stop`) está em `RunningNode::shutdown`.
+/// `SIGINT` (Ctrl+C) on any platform and `SIGTERM` where it exists. The drain on receiving the
+/// signal (`drain.on-stop`) is in `RunningNode::shutdown`.
 async fn wait_for_stop() {
     #[cfg(unix)]
     {
@@ -108,26 +108,26 @@ async fn wait_for_stop() {
     }
 }
 
-/// Os subcomandos da pasta de segredos: criam arquivos, imprimem o que fizeram e saem.
+/// The secrets-folder subcommands: they create files, print what they did and exit.
 fn run_secrets_command(command: &Command) -> ExitCode {
     use taba_node::secrets;
     let now = time::OffsetDateTime::now_utc();
     let result = match command {
         Command::Init { out, days } => secrets::init(out, now, *days).map(|files| {
-            println!("Pasta de segredos criada em {}", out.display());
+            println!("Secrets folder created at {}", out.display());
             println!(
                 "  certificado do cluster: {}",
                 files.certificate.certificate.display()
             );
             println!(
-                "  chave do certificado:   {}",
+                "  certificate key:        {}",
                 files.certificate.key.display()
             );
             println!("  token raiz:             {}", files.root_token.display());
             println!();
-            println!("Monte a pasta em todos os nós (secrets.dir, padrão /etc/taba/secrets):");
+            println!("Mount the folder on every node (secrets.dir, default /etc/taba/secrets):");
             println!(
-                "a autenticação e o TLS do cluster ligam sozinhos. Guarde o token raiz num cofre."
+                "authentication and the cluster TLS turn on by themselves. Keep the root token in a vault."
             );
         }),
         Command::CertGenerate {

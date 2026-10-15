@@ -1,21 +1,21 @@
 #!/bin/sh
-# Constrói o taba-cli (doc/pt-BR/20-cli.md) no Linux e no macOS.
+# Builds taba-cli (doc/pt-BR/20-cli.md) on Linux and macOS.
 #
-#   build.sh                  a plataforma desta máquina
-#   build.sh --target <alvo>  um alvo da tabela abaixo
-#   build.sh --all            todos os alvos que esta máquina consegue
+#   build.sh                  this machine's platform
+#   build.sh --target <target>  one target from the table below
+#   build.sh --all            every target this machine can build
 #
-# Alvos: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin,
-#        aarch64-apple-darwin (os do Windows: build.ps1).
-# O resultado vai para connectors/rust/cli/dist/<alvo>/, com o binário e um SHA256SUMS.
+# Targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin,
+#          aarch64-apple-darwin (the Windows ones: build.ps1).
+# The result goes to connectors/rust/cli/dist/<target>/, with the binary and a SHA256SUMS.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-workspace=$(cd "$here/../.." && pwd)   # connectors/rust/, o workspace do Cargo dos conectores
+workspace=$(cd "$here/../.." && pwd)   # connectors/rust/, the Cargo workspace of the connectors
 dist="$here/../dist"
 dist=$(mkdir -p "$dist" && cd "$dist" && pwd)
 
-# Binário pequeno e reprodutível: o Cargo.lock vale (--locked), sem símbolos, otimizado para tamanho.
+# Small, reproducible binary: Cargo.lock applies (--locked), no symbols, optimized for size.
 export CARGO_PROFILE_RELEASE_OPT_LEVEL=z
 export CARGO_PROFILE_RELEASE_LTO=true
 export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
@@ -27,10 +27,10 @@ host=$(rustc -vV | sed -n 's/^host: //p')
 case "$host" in
   *-apple-darwin) reachable="x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl" ;;
   *-linux-*)      reachable="x86_64-unknown-linux-musl aarch64-unknown-linux-musl" ;;
-  *) echo "build.sh: sistema não suportado ($host); no Windows use build.ps1" >&2; exit 2 ;;
+  *) echo "build.sh: unsupported system ($host); on Windows use build.ps1" >&2; exit 2 ;;
 esac
 
-# O alvo da mesma arquitetura e do mesmo sistema desta máquina: constrói sem ferramenta extra.
+# The target of the same architecture and the same system as this machine: builds with no extra tool.
 host_arch="${host%%-*}"
 native() {
   case "$1" in
@@ -53,7 +53,7 @@ build_one() {
   cd "$workspace"
   case "$target" in
     *-linux-musl)
-      # Estático, ligado à musl. Fora do mesmo sistema e arquitetura, cruza com o zigbuild ou o cross.
+      # Static, linked against musl. Outside the same system and architecture, it crosses with zigbuild or cross.
       if native "$target"; then
         RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+crt-static" cargo build --release --locked -p taba-cli --target "$target"
       elif has cargo-zigbuild; then
@@ -61,7 +61,7 @@ build_one() {
       elif has cross; then
         cross build --release --locked -p taba-cli --target "$target"
       else
-        echo "build.sh: para $target instale o cargo-zigbuild (cargo install cargo-zigbuild) ou o cross" >&2
+        echo "build.sh: for $target install cargo-zigbuild (cargo install cargo-zigbuild) or cross" >&2
         return 1
       fi
       ;;
@@ -81,9 +81,9 @@ target=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) mode=all ;;
-    --target) shift; target="${1:?--target precisa de um alvo}"; mode=one ;;
+    --target) shift; target="${1:?--target needs a target}"; mode=one ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "build.sh: opção desconhecida: $1" >&2; exit 2 ;;
+    *) echo "build.sh: unknown option: $1" >&2; exit 2 ;;
   esac
   shift
 done
@@ -96,7 +96,7 @@ case "$mode" in
     esac ;;
   one)
     ok=no; for t in $reachable; do [ "$t" = "$target" ] && ok=yes; done
-    [ "$ok" = yes ] || { echo "build.sh: esta máquina ($host) não constrói $target (alcança: $reachable)" >&2; exit 2; }
+    [ "$ok" = yes ] || { echo "build.sh: this machine ($host) does not build $target (it reaches: $reachable)" >&2; exit 2; }
     build_one "$target" ;;
   all)
     failed=0

@@ -1,30 +1,30 @@
-//! O catálogo de códigos de erro (doc 06d, seção 8.3.6) e o `ErrorResponse`.
+//! The error code catalog (doc 06d, section 8.3.6) and the `ErrorResponse`.
 //!
-//! Cada código tem um status HTTP fixo. O status vai só na linha de status do
-//! HTTP, nunca no corpo, e o `Retry-After` só no cabeçalho (seção 8.3.3).
+//! Each code has a fixed HTTP status. The status goes only in the HTTP
+//! status line, never in the body, and `Retry-After` only in the header (section 8.3.3).
 
 use serde::Serialize;
 
 macro_rules! catalog {
     ($( $variant:ident => ($code:literal, $status:literal) ),+ $(,)?) => {
-        /// Código estável de erro, no formato `grupo.motivo`.
+        /// Stable error code, in the `group.reason` format.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub enum ErrorCode { $($variant),+ }
 
         impl ErrorCode {
-            /// Todos os códigos do catálogo.
+            /// All the catalog's codes.
             pub const ALL: &'static [ErrorCode] = &[$(ErrorCode::$variant),+];
 
             pub const fn as_str(self) -> &'static str {
                 match self { $(ErrorCode::$variant => $code),+ }
             }
 
-            /// O inverso de `as_str`: `None` para um texto que não é código do catálogo.
+            /// The inverse of `as_str`: `None` for a text that is not a catalog code.
             pub fn parse(code: &str) -> Option<ErrorCode> {
                 Self::ALL.iter().copied().find(|c| c.as_str() == code)
             }
 
-            /// O status HTTP fixo do código.
+            /// The code's fixed HTTP status.
             pub const fn status(self) -> u16 {
                 match self { $(ErrorCode::$variant => $status),+ }
             }
@@ -33,7 +33,7 @@ macro_rules! catalog {
 }
 
 catalog! {
-    // Validação (400)
+    // Validation (400)
     ValidationFailed => ("validation.failed", 400),
     ValidationRequired => ("validation.required", 400),
     ValidationUnknownField => ("validation.unknown-field", 400),
@@ -47,14 +47,14 @@ catalog! {
     ValidationGroupIdRequired => ("validation.group-id-required", 400),
     ValidationInvalidCursor => ("validation.invalid-cursor", 400),
     ValidationMaxBytesAboveHardLimit => ("validation.max-bytes-above-hard-limit", 400),
-    // Autenticação e autorização (401 e 403)
+    // Authentication and authorization (401 and 403)
     AuthUnauthorized => ("auth.unauthorized", 401),
     AuthForbidden => ("auth.forbidden", 403),
     AuthOutOfScope => ("auth.out-of-scope", 403),
     OpsIpNotAllowed => ("ops.ip-not-allowed", 403),
     ClusterNotMember => ("cluster.not-member", 403),
     ClusterNodeFrozen => ("cluster.node-frozen", 403),
-    // Não encontrado (404)
+    // Not found (404)
     TopicNotFound => ("topic.not-found", 404),
     MessageNotFound => ("message.not-found", 404),
     TokenNotFound => ("token.not-found", 404),
@@ -67,7 +67,7 @@ catalog! {
     MessageStaleReceipt => ("message.stale-receipt", 409),
     DrainConflict => ("drain.conflict", 409),
     ClusterConflict => ("cluster.conflict", 409),
-    // Limites e configuração (413, 415, 421, 422, 429)
+    // Limits and configuration (413, 415, 421, 422, 429)
     MessageTooLarge => ("message.too-large", 413),
     MediaUnsupported => ("media.unsupported", 415),
     FifoMisdirected => ("fifo.misdirected", 421),
@@ -78,7 +78,7 @@ catalog! {
     ClusterJoinUnreachable => ("cluster.join-unreachable", 422),
     BackupNotConfigured => ("backup.not-configured", 422),
     RateLimitExceeded => ("rate-limit.exceeded", 429),
-    // Disponibilidade e falhas (5xx)
+    // Availability and failures (5xx)
     InternalError => ("internal.error", 500),
     ForwardBadGateway => ("forward.bad-gateway", 502),
     ForwardTimeout => ("forward.timeout", 504),
@@ -104,7 +104,7 @@ impl Serialize for ErrorCode {
     }
 }
 
-/// Um problema pontual dentro de um erro de validação (`details`).
+/// A specific problem inside a validation error (`details`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ErrorDetail {
     pub field: String,
@@ -112,13 +112,13 @@ pub struct ErrorDetail {
     pub message: String,
 }
 
-/// O erro do Taba. Mapeia direto para o catálogo e vira o `ErrorResponse`.
+/// The Taba error. Maps straight to the catalog and becomes the `ErrorResponse`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TabaError {
     pub code: ErrorCode,
     pub message: String,
     pub details: Vec<ErrorDetail>,
-    /// Segundos até valer a pena tentar de novo (`Retry-After`, só no cabeçalho).
+    /// Seconds until it is worth trying again (`Retry-After`, only in the header).
     pub retry_after: Option<u64>,
 }
 
@@ -156,14 +156,17 @@ impl TabaError {
     }
 
     pub fn route_not_found() -> Self {
-        Self::new(ErrorCode::RouteNotFound, "A rota não existe nesta porta.")
+        Self::new(
+            ErrorCode::RouteNotFound,
+            "The route does not exist on this port.",
+        )
     }
 
     pub fn internal() -> Self {
-        Self::new(ErrorCode::InternalError, "Falha inesperada do nó.")
+        Self::new(ErrorCode::InternalError, "Unexpected node failure.")
     }
 
-    /// O corpo de erro, com o `requestId` do cabeçalho `X-Request-Id`.
+    /// The error body, with the `requestId` from the `X-Request-Id` header.
     pub fn to_response(&self, request_id: &str) -> ErrorResponse {
         ErrorResponse {
             code: self.code,
@@ -182,7 +185,7 @@ impl std::fmt::Display for TabaError {
 
 impl std::error::Error for TabaError {}
 
-/// Corpo de toda resposta de erro (`4xx` e `5xx`) de uma rota JSON.
+/// Body of every error response (`4xx` and `5xx`) of a JSON route.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {

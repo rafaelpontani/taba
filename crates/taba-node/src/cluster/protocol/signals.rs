@@ -1,16 +1,16 @@
-//! Os quadros do canal entre nós (doc 13, seções 12.8 e 12.9; doc 06c, `GET /cluster/channel`) e o
-//! repasse de uma chamada de cliente (`* /cluster/forward/{caminho}`).
+//! The channel frames between nodes (doc 13, sections 12.8 and 12.9; doc 06c, `GET /cluster/channel`) and the
+//! forward of a client call (`* /cluster/forward/{path}`).
 //!
-//! O canal é uma conexão WebSocket por par de nós (`GET /cluster/channel`), e cada mensagem de
-//! texto é um [`ChannelMessage`]: um lote (o sinal de vida e os quadros ainda sem confirmação) ou o
-//! `confirm` do que o outro lado processou. A fila de saída, o `seq` e o reenvio são os do canal.
+//! The channel is a WebSocket connection per pair of nodes (`GET /cluster/channel`), and each text
+//! message is a [`ChannelMessage`]: a batch (the heartbeat and the frames still unconfirmed) or the
+//! `confirm` of what the other side processed. The outgoing queue, the `seq` and the resend are the channel's.
 
 use serde::{Deserialize, Serialize};
 
 use crate::cluster::members::Change;
 use crate::cluster::protocol::DefinitionKind;
 
-/// Um quadro do canal (`type` e os campos do doc 06c).
+/// A channel frame (`type` and the fields of doc 06c).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -18,21 +18,21 @@ use crate::cluster::protocol::DefinitionKind;
     rename_all_fields = "camelCase"
 )]
 pub enum Signal {
-    /// O tópico passou a ter (ou deixou de ter) ouvintes de long polling no nó que envia.
+    /// The topic started (or stopped) having long-polling listeners on the sending node.
     Listeners { topic: String, has_listeners: bool },
-    /// O nó que envia passou a ter (ou deixou de ter) mensagens prontas do tópico.
+    /// The sending node started (or stopped) having ready messages of the topic.
     Ready { topic: String, has_ready: bool },
-    /// Aviso de mensagem nova: há `count` prontas; venha buscar com `take`.
+    /// New-message notice: there are `count` ready; come fetch them with `take`.
     Notify { topic: String, count: u64 },
-    /// O estado do nó: `draining` (os pares deixam de pedir `take`), `active` (ficou pronto ou
-    /// cancelou o drain) ou `failed` (os outros ficam liberados para votar a exclusão).
+    /// The node's state: `draining` (the peers stop asking for `take`), `active` (it became ready or
+    /// cancelled the drain) or `failed` (the others are free to vote on the exclusion).
     NodeState { state: String },
-    /// O nó `node_id` foi excluído por votação e está em freezing desde `frozen_at` (ms desde 1970;
-    /// doc 04, seção 6.7). Quem ainda não o conhecia o guarda e o repassa; não mexe na tabela.
+    /// Node `node_id` was excluded by vote and is in freezing since `frozen_at` (ms since 1970;
+    /// doc 04, section 6.7). Whoever did not know it stores it and passes it on; it does not touch the table.
     Frozen { node_id: String, frozen_at: u64 },
-    /// Uma definição de tópico ou de token, no estado que o nó que envia a aplicou (`version`, `deleted`
-    /// e o corpo): quem está atrás a aplica pela mesma regra do `definition-apply`. Enfileirado pelo
-    /// dono e pelo herdeiro; o quadro novo da mesma definição substitui o antigo na fila (D127).
+    /// A topic or token definition, in the state the sending node applied it (`version`, `deleted`
+    /// and the body): whoever is behind applies it by the same rule as `definition-apply`. Queued by the
+    /// owner and the heir; the new frame of the same definition replaces the old one in the queue (D127).
     Definition {
         kind: DefinitionKind,
         key: String,
@@ -40,10 +40,10 @@ pub enum Signal {
         deleted: bool,
         body: serde_json::Value,
     },
-    /// Uma mudança de membros já efetivada (entrada, saída ou exclusão), com a versão que a tabela
-    /// passou a ter e o `operationId` dela (doc 04, seção 6.2). Quem perdeu o registro ou o commit a
-    /// aplica ao receber, sem depender da mudança pendente; o quadro fica na fila de saída até o
-    /// `confirm` e nunca é substituído nem expira (D126).
+    /// A member change already effected (join, leave or exclusion), with the version the table
+    /// took on and its `operationId` (doc 04, section 6.2). Whoever lost the register or the commit
+    /// applies it on receipt, without depending on the pending change; the frame stays in the outgoing queue until
+    /// `confirm` and is never replaced or expires (D126).
     Membership {
         operation_id: String,
         version: u64,
@@ -51,17 +51,17 @@ pub enum Signal {
     },
 }
 
-/// Um sinal com quem o enviou.
+/// A signal with who sent it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignalFrame {
-    /// O `nodeId` de quem envia.
+    /// The `nodeId` of the sender.
     pub from: String,
     #[serde(flatten)]
     pub signal: Signal,
 }
 
-/// Quantas mensagens prontas um tópico tem no nó que envia o sinal de vida.
+/// How many ready messages a topic has on the node sending the heartbeat.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadyCount {
@@ -69,25 +69,25 @@ pub struct ReadyCount {
     pub count: u64,
 }
 
-/// O sinal de vida (`keepalive`, doc 06c): sem `seq`, não é confirmado nem reenviado, o seguinte o
-/// substitui. Leva o estado do nó e a versão da tabela de membros (a época), o que as condições do
-/// cluster comparam.
+/// The heartbeat (`keepalive`, doc 06c): without `seq`, it is neither confirmed nor resent, the next one
+/// replaces it. It carries the node's state and the member table's version (the epoch), which the cluster
+/// conditions compare.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Keepalive {
-    /// A data e hora do nó que envia.
+    /// The date and time of the sending node.
     pub at: String,
-    /// O indicador de carga: chamadas de cliente repassadas em andamento.
+    /// The load indicator: client calls being forwarded in progress.
     pub load: u64,
-    /// A versão (época) da tabela de membros do nó, ou `0` sem tabela.
+    /// The version (epoch) of the node's member table, or `0` without a table.
     pub version: u64,
     /// `active`, `syncing`, `draining`, `failed`...
     pub state: String,
-    /// Só os tópicos com mensagens prontas, até `cluster.channel.keepalive.max-topics`.
+    /// Only the topics with ready messages, up to `cluster.channel.keepalive.max-topics`.
     pub ready: Vec<ReadyCount>,
 }
 
-/// Um quadro com `seq`: o emissor só o tira da fila de saída ao receber o `confirm`.
+/// A frame with `seq`: the sender only takes it out of the outgoing queue on receiving the `confirm`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelFrame {
@@ -96,14 +96,14 @@ pub struct ChannelFrame {
     pub signal: Signal,
 }
 
-/// O que uma chamada ao canal leva: o sinal de vida (quando é hora) e os quadros pendentes.
+/// What a channel call carries: the heartbeat (when it is time) and the pending frames.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChannelBatch {
-    /// O `nodeId` de quem envia.
+    /// The `nodeId` of the sender.
     pub from: String,
-    /// O `nodeId` de quem deve receber. Um processo novo no mesmo IP e porta (outro ID) responde
-    /// `421` `cluster.wrong-node` em vez de passar pelo nó antigo (D100). Vazio: não confere.
+    /// The `nodeId` of whoever must receive. A new process on the same IP and port (another ID) answers
+    /// `421` `cluster.wrong-node` instead of passing through the old node (D100). Empty: it does not check.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub to: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,8 +112,8 @@ pub struct ChannelBatch {
     pub frames: Vec<ChannelFrame>,
 }
 
-/// O que viaja pelo canal, em mensagens de texto JSON: o lote de quem envia ou o `confirm` de quem
-/// recebe. O `confirm` se reconhece pelo `"type":"confirm"`.
+/// What travels through the channel, in JSON text messages: the sender's batch or the receiver's `confirm`.
+/// The `confirm` is recognized by `"type":"confirm"`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChannelMessage {
     Batch(ChannelBatch),
@@ -126,7 +126,7 @@ impl ChannelMessage {
             ChannelMessage::Batch(batch) => serde_json::to_string(batch),
             ChannelMessage::Confirm(confirm) => serde_json::to_string(confirm),
         }
-        .expect("o lote do canal sempre vira JSON")
+        .expect("the channel batch always becomes JSON")
     }
 
     pub fn from_text(text: &str) -> Result<Self, String> {
@@ -143,7 +143,7 @@ impl ChannelMessage {
     }
 }
 
-/// O `confirm`: os `seq` já **processados** (inclusive os que já tinham sido, num reenvio).
+/// The `confirm`: the `seq`s already **processed** (including those that already had been, on a resend).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Confirm {
@@ -161,20 +161,20 @@ impl Confirm {
     }
 }
 
-/// Uma chamada de cliente repassada a outro nó: método, caminho com a query, cabeçalhos e corpo
-/// como vieram.
+/// A client call forwarded to another node: method, path with the query, headers and body
+/// as they came.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForwardRequest {
     pub method: String,
-    /// O caminho original da API de cliente, com a query (`/topics/pedidos/messages?waitTime=5`).
+    /// The original client API path, with the query (`/topics/orders/messages?waitTime=5`).
     pub path_and_query: String,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
-    /// O IP do cliente já resolvido por quem repassa (o destino não conta o rate limit de novo).
+    /// The client IP already resolved by whoever forwards (the destination does not count the rate limit again).
     pub client_ip: Option<String>,
 }
 
-/// A resposta de uma chamada de cliente repassada, como o destino a deu.
+/// The response of a forwarded client call, as the destination gave it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForwardResponse {
     pub status: u16,

@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Alinha a versão de todos os componentes à da tag do release (sem commitar nada: vale só para o build).
+# Aligns the version of every component with the release tag (committing nothing: it only applies to the build).
 #
 #   .github/scripts/set-version.sh 0.1.0-rc.2
 #
-# Ajusta o Cargo.toml e o Cargo.lock do servidor, os Cargo.toml e o Cargo.lock dos conectores Rust
-# e o <Version> dos pacotes do conector C#.
+# Adjusts the server Cargo.toml and Cargo.lock, the Rust connectors' Cargo.toml and Cargo.lock
+# and the <Version> of the C# connector packages.
 
 set -euo pipefail
 
-version="${1:?uso: set-version.sh X.Y.Z[-rc.N]}"
+version="${1:?usage: set-version.sh X.Y.Z[-rc.N]}"
 if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
-  echo "versão inválida: $version (use X.Y.Z ou X.Y.Z-rc.N)" >&2
+  echo "invalid version: $version (use X.Y.Z or X.Y.Z-rc.N)" >&2
   exit 1
 fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-# Troca só a primeira linha `version = "..."` do arquivo (a do [package] ou do [workspace.package]).
+# Replaces only the first `version = "..."` line of the file (the one in [package] or [workspace.package]).
 set_toml_version() {
   sed -i "0,/^version = \".*\"/s//version = \"$version\"/" "$1"
 }
 
-# No Cargo.lock, a linha `version` que vem logo depois de `name = "<pacote>"`.
+# In Cargo.lock, the `version` line that comes right after `name = "<package>"`.
 set_lock_version() {
   local file="$1"; shift
   local name tmp
@@ -49,4 +49,4 @@ for csproj in connectors/csharp/Taba.Client*/*.csproj; do
   fi
 done
 
-echo "versão $version aplicada"
+echo "version $version applied"

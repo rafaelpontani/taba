@@ -61,13 +61,13 @@ async fn creating_returns_the_full_token_once_and_it_authenticates() {
     assert_eq!(
         created.record.permissions,
         [Permission::Publish, Permission::Create],
-        "sem repetição, na ordem fixa"
+        "no repetition, in the fixed order"
     );
     assert_eq!(created.record.created_ms, 1_791_288_000_000);
 
-    let record = h.tokens.authenticate(&created.token).expect("token válido");
+    let record = h.tokens.authenticate(&created.token).expect("valid token");
     assert_eq!(record.id, created.record.id);
-    // A leitura nunca devolve o segredo: o registro só tem o hash.
+    // Reading never returns the secret: the record only has the hash.
     let (_, secret) = token::parse(&created.token).unwrap();
     assert!(!format!("{:?}", h.tokens.get(&record.id).unwrap()).contains(secret));
 }
@@ -104,7 +104,7 @@ async fn invalid_requests_are_400_with_the_field() {
             "name",
         ),
         (
-            request("com espaço", &["publish"]),
+            request("with space", &["publish"]),
             ErrorCode::ValidationInvalidName,
             "name",
         ),
@@ -125,7 +125,7 @@ async fn invalid_requests_are_400_with_the_field() {
         ),
         (
             CreateToken {
-                topic_prefixes: vec!["com espaço".into()],
+                topic_prefixes: vec!["with space".into()],
                 ..request("ok", &["publish"])
             },
             ErrorCode::ValidationFailed,
@@ -175,7 +175,7 @@ async fn a_failed_write_leaves_no_visible_token() {
     assert!(h.tokens.revoke(&created.record.id).await.is_err());
     assert!(
         h.tokens.authenticate(&created.token).is_some(),
-        "revogar que falhou no disco não revoga"
+        "revoking that failed on disk does not revoke"
     );
 }
 
@@ -187,18 +187,18 @@ async fn an_expired_token_is_refused_and_the_sweep_erases_it() {
         .tokens
         .create(CreateToken {
             expires_ms: Some(1_791_288_000_000 + 60_000),
-            ..request("curto", &["consume"])
+            ..request("short", &["consume"])
         })
         .await
         .unwrap();
-    let forever = create(&h, "longo").await;
+    let forever = create(&h, "long").await;
     assert!(h.tokens.authenticate(&created.token).is_some());
 
     h.clock.advance(Duration::from_secs(60));
     assert!(h.tokens.authenticate(&created.token).is_none(), "vencido");
     assert!(h.tokens.get(&created.record.id).is_err());
     assert_eq!(h.tokens.list(ListQuery::default()).unwrap().items.len(), 1);
-    assert_eq!(h.tokens.count(), 2, "ainda na memória até a varredura");
+    assert_eq!(h.tokens.count(), 2, "still in memory until the sweep");
 
     assert_eq!(h.tokens.sweep().await, 1);
     assert_eq!(h.tokens.count(), 1);
@@ -210,7 +210,7 @@ async fn an_expired_token_is_refused_and_the_sweep_erases_it() {
 #[tokio::test]
 async fn patch_changes_only_the_name_and_the_expiry() {
     let h = harness();
-    let created = create(&h, "antigo").await;
+    let created = create(&h, "old").await;
     let id = created.record.id.clone();
 
     let updated = h
@@ -218,19 +218,19 @@ async fn patch_changes_only_the_name_and_the_expiry() {
         .update(
             &id,
             UpdateToken {
-                name: Some("novo".into()),
+                name: Some("new".into()),
                 expires_ms: Patch::Value(1_791_288_000_000 + 1000),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
-    assert_eq!(updated.name, "novo");
+    assert_eq!(updated.name, "new");
     assert_eq!(updated.expires_ms, Some(1_791_288_001_000));
     assert_eq!(updated.secret_hash, created.record.secret_hash);
     assert!(
         h.tokens.authenticate(&created.token).is_some(),
-        "o segredo segue valendo"
+        "the secret keeps applying"
     );
 
     let cleared = h
@@ -245,7 +245,7 @@ async fn patch_changes_only_the_name_and_the_expiry() {
         .await
         .unwrap();
     assert_eq!(cleared.expires_ms, None);
-    assert_eq!(cleared.name, "novo", "ausente não mexe");
+    assert_eq!(cleared.name, "new", "absent does not touch");
 
     for field in ["permissions", "topicPrefixes", "id"] {
         let error = h
@@ -278,7 +278,7 @@ async fn patch_changes_only_the_name_and_the_expiry() {
     assert_eq!(past.code, ErrorCode::ValidationOutOfRange);
     assert_eq!(
         h.tokens
-            .update("nao-existe", UpdateToken::default())
+            .update("does-not-exist", UpdateToken::default())
             .await
             .unwrap_err()
             .code,
@@ -355,13 +355,13 @@ async fn listing_is_paginated_by_id_or_creation_and_filters_by_name() {
     let named = page(None, Some("alfa"), None, "10").unwrap();
     assert_eq!(named.items.len(), 2);
 
-    // `name` não é chave de ordenação (é alterável).
+    // `name` is not an ordering key (it is changeable).
     let (code, fields) = code_of(page(Some("name"), None, None, "10").err().unwrap());
     assert_eq!(
         (code, fields),
         (ErrorCode::ValidationFailed, vec!["query.sort".to_owned()])
     );
-    // O cursor só vale para o `sort` e o filtro que o geraram.
+    // The cursor only applies to the `sort` and filter that generated it.
     let stale = page(Some("createdAt"), None, first.next_cursor, "2")
         .err()
         .unwrap();

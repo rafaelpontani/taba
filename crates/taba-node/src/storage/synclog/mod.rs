@@ -1,14 +1,14 @@
-//! O banco de eventos de um nó em sincronização: `${storage.dir}/_sync/sync.db` (doc 05, seção
-//! 7.3, passo 4). Enquanto o nó carrega os blocos ele já consta na tabela de membros e recebe o
-//! protocolo normal do cluster, mas não pode processar os eventos: guarda cada um aqui, na ordem
-//! de chegada (número de sequência crescente), e os processa por cima da carga.
+//! The event database of a node in synchronization: `${storage.dir}/_sync/sync.db` (doc 05, section
+//! 7.3, step 4). While the node loads the blocks it is already in the member table and receives the
+//! normal cluster protocol, but cannot process the events: it stores each one here, in
+//! arrival order (increasing sequence number), and processes them on top of the load.
 //!
-//! O evento é a chamada HTTP como chegou (método, caminho, cabeçalhos e corpo): quem a processa
-//! lê pelo mesmo caminho que leria uma chamada de rede. A tabela `loaded` guarda os IDs que a
-//! carga trouxe, para a verificação final saber o que conferir. O arquivo existe só durante a
-//! sincronização e é apagado no fim.
+//! The event is the HTTP call as it arrived (method, path, headers and body): whoever processes it
+//! reads it through the same path it would read a network call. The `loaded` table keeps the IDs the
+//! load brought, so the final check knows what to verify. The file only exists during
+//! the synchronization and is deleted at the end.
 //!
-//! Uma única conexão atrás de um `Mutex` é a thread única de gravação do doc.
+//! A single connection behind a `Mutex` is the doc's single write thread.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -37,7 +37,7 @@ const SCHEMA: &str = "
     CREATE INDEX IF NOT EXISTS loaded_block ON loaded (block, id);
 ";
 
-/// Um evento guardado: a chamada como chegou.
+/// A stored event: the call as it arrived.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredEvent {
     pub seq: i64,
@@ -54,7 +54,7 @@ pub struct SyncLog {
 }
 
 impl SyncLog {
-    /// Cria o banco, apagando o que uma sincronização anterior deixou.
+    /// Creates the database, deleting what an earlier synchronization left.
     pub fn create(storage_dir: &Path) -> io::Result<Self> {
         let dir = storage_dir.join(SYNC_DIR);
         match std::fs::remove_dir_all(&dir) {
@@ -66,7 +66,7 @@ impl SyncLog {
         let conn = Connection::open(&path).map_err(to_io)?;
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(to_io)?;
-        // Um banco que existe só até o fim da sincronização: a durabilidade não vale o custo.
+        // A database that only exists until the synchronization ends: durability is not worth the cost.
         conn.pragma_update(None, "synchronous", "OFF")
             .map_err(to_io)?;
         conn.execute_batch(SCHEMA).map_err(to_io)?;
@@ -80,7 +80,7 @@ impl SyncLog {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Acrescenta o evento ao fim e devolve o número de sequência.
+    /// Appends the event to the end and returns the sequence number.
     pub fn append(
         &self,
         method: &str,
@@ -98,7 +98,7 @@ impl SyncLog {
         Ok(conn.last_insert_rowid())
     }
 
-    /// O evento mais antigo (menor número de sequência).
+    /// The oldest event (lowest sequence number).
     pub fn oldest(&self) -> io::Result<Option<StoredEvent>> {
         let row = self
             .conn()
@@ -129,7 +129,7 @@ impl SyncLog {
         .transpose()
     }
 
-    /// Apaga o evento já processado.
+    /// Deletes the already-processed event.
     pub fn delete(&self, seq: i64) -> io::Result<()> {
         self.conn()
             .execute("DELETE FROM events WHERE seq = ?1", params![seq])
@@ -137,7 +137,7 @@ impl SyncLog {
             .map_err(to_io)
     }
 
-    /// Quantos eventos faltam processar.
+    /// How many events are left to process.
     pub fn len(&self) -> io::Result<u64> {
         let n: i64 = self
             .conn()
@@ -150,7 +150,7 @@ impl SyncLog {
         self.len().map(|n| n == 0)
     }
 
-    /// O tamanho do banco em disco (páginas × tamanho da página), para `cluster.sync.log.max-bytes`.
+    /// The database size on disk (pages × page size), for `cluster.sync.log.max-bytes`.
     pub fn size_bytes(&self) -> io::Result<u64> {
         let conn = self.conn();
         let pages: i64 = conn
@@ -162,7 +162,7 @@ impl SyncLog {
         Ok((pages.max(0) * size.max(0)) as u64)
     }
 
-    /// Guarda que a carga trouxe a mensagem (do bloco), para a verificação final.
+    /// Records that the load brought the message (of the block), for the final check.
     pub fn mark_loaded(&self, block: &str, items: &[(String, String)]) -> io::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(to_io)?;
@@ -179,7 +179,7 @@ impl SyncLog {
         tx.commit().map_err(to_io)
     }
 
-    /// As mensagens que a carga trouxe do bloco, `(tópico, id)` em ordem de `id`.
+    /// The messages the load brought from the block, `(topic, id)` in `id` order.
     pub fn loaded_in(&self, block: &str) -> io::Result<Vec<(String, String)>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -191,9 +191,9 @@ impl SyncLog {
         rows.collect::<Result<_, _>>().map_err(to_io)
     }
 
-    /// Fecha o banco e apaga a pasta `_sync` (a sincronização terminou).
+    /// Closes the database and deletes the `_sync` folder (the synchronization ended).
     pub fn discard(&self) -> io::Result<()> {
-        // Troca a conexão por uma em memória: a do arquivo fecha (o Windows não apaga arquivo aberto).
+        // Swaps the connection for an in-memory one: the file's closes (Windows does not delete an open file).
         *self.conn() = Connection::open_in_memory().map_err(to_io)?;
         match self.path.parent().map(std::fs::remove_dir_all) {
             Some(Err(e)) if e.kind() != io::ErrorKind::NotFound => Err(e),

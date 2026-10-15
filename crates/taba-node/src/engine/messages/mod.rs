@@ -1,37 +1,37 @@
-//! Publicar e consumir mensagens (doc 06a, "Mensagens"; doc 13).
+//! Publishing and consuming messages (doc 06a, "Messages"; doc 13).
 //!
-//! **Onde a mensagem mora.** Em memória, enquanto couber em `memory.limit`; o que passa do
-//! limite (ou chega durante o drain) vai para o disco: o corpo em `${topic}/${id}.body` e o
-//! resto numa linha do banco do tópico (doc 02, seção 3.2, `storage::messages`). Cada
-//! mensagem está em **um só** lugar, e as operações (entrega, ack, invisibilidade, `ttl`,
-//! dead-letter) funcionam igual nos dois. Quando a memória enche, a divisão entre os tópicos
-//! segue a taxa de leitura de cada um, com uma reserva por tópico (`rates`, `reserve_memory`).
+//! **Where the message lives.** In memory, while it fits in `memory.limit`; what goes past the
+//! limit (or arrives during the drain) goes to disk: the body in `${topic}/${id}.body` and the
+//! rest in a row of the topic's database (doc 02, section 3.2, `storage::messages`). Each
+//! message is in **one** place only, and the operations (delivery, ack, invisibility, `ttl`,
+//! dead-letter) work the same in both. When memory fills up, the split between topics
+//! follows each one's read rate, with a reserve per topic (`rates`, `reserve_memory`).
 //!
-//! **Um dono por tópico.** Cada tópico tem o seu estado atrás de uma trava própria: uma
-//! operação de um tópico (inclusive a de disco) nunca espera a de outro. É o escritor único por
-//! tópico do doc 02 e do doc 18 (seção 17.4), como trava em vez de task com fila de comandos.
-//! A única operação que olha dois tópicos de uma vez é a ida à dead-letter, sempre da fila de
-//! origem para a dead-letter; o rebaixamento de memória só usa `try_lock` nos outros.
+//! **One owner per topic.** Each topic has its state behind a lock of its own: an
+//! operation on one topic (including a disk one) never waits for another's. It is the single writer per
+//! topic of doc 02 and doc 18 (section 17.4), as a lock instead of a task with a command queue.
+//! The only operation that looks at two topics at once is the trip to the dead-letter, always from the source
+//! queue to the dead-letter; the memory demotion only uses `try_lock` on the others.
 //!
-//! **Índice.** Cada tópico mantém um índice derivado (`index`): a lista de prontos, a de
-//! invisíveis, a idade (para o `ttl`) e os contadores por grupo da entrega justa (doc 13,
-//! seção 12.11). Ele é refeito dos metadados (memória e linhas do banco) quando o tópico é
-//! aberto, então a perda dele nunca perde mensagem.
+//! **Index.** Each topic keeps a derived index (`index`): the ready list, the
+//! invisible one, the age (for the `ttl`) and the per-group counters of fair delivery (doc 13,
+//! section 12.11). It is rebuilt from the metadata (memory and database rows) when the topic is
+//! opened, so losing it never loses a message.
 //!
-//! **Entrega.** O `GET` pega as mensagens prontas pelo índice (a justiça entre grupos e o efeito
-//! sanfona), incrementa o `deliveryCount`, troca o `receiptToken` e as deixa invisíveis por
-//! `visibilityTimeout`. Passado o prazo a mensagem volta a ser entregável (*at-least-once*). O
-//! ack e o `PUT visibility` conferem o `receiptToken` da última entrega. O `ttl` e o
-//! `maxDeliveries` (com a dead-letter) são aplicados por `settle`, antes de cada operação e
-//! pela varredura de fundo. Os `GET` em espera (long polling) são atendidos na ordem de chegada.
+//! **Delivery.** `GET` takes the ready messages through the index (fairness between groups and the
+//! accordion effect), increments `deliveryCount`, swaps the `receiptToken` and leaves them invisible for
+//! `visibilityTimeout`. Once the deadline passes the message becomes deliverable again (*at-least-once*). The
+//! ack and `PUT visibility` check the last delivery's `receiptToken`. The `ttl` and
+//! `maxDeliveries` (with the dead-letter) are applied by `settle`, before each operation and
+//! by the background sweep. Waiting `GET`s (long polling) are served in order of arrival.
 //!
-//! **Fila FIFO** (doc 17). A entrega serializa por grupo (`index`): uma mensagem em voo por grupo,
-//! na ordem do `id`. A publicação é deduplicada por `(grupo, deduplicationId)` dentro de
-//! `fifo.dedup.window`, e o ack não apaga a linha: deixa uma linha curta com `deleteAt` para a
-//! deduplicação valer pela janela inteira.
+//! **FIFO queue** (doc 17). Delivery serializes by group (`index`): one message in flight per group,
+//! in `id` order. Publication is deduplicated by `(group, deduplicationId)` within
+//! `fifo.dedup.window`, and the ack does not delete the row: it leaves a short row with `deleteAt` so
+//! deduplication holds for the whole window.
 //!
-//! Os métodos são síncronos e bloqueiam no disco:
-//! quem chama de código assíncrono usa `spawn_blocking`.
+//! The methods are synchronous and block on disk:
+//! whoever calls from async code uses `spawn_blocking`.
 
 mod backup;
 mod blocks;
@@ -69,16 +69,16 @@ use stats::{
     TopicCounters, TopicSnapshot,
 };
 
-/// `waitTime` do `GET`: de 0 a 20 segundos (doc 12).
+/// `waitTime` of `GET`: from 0 to 20 seconds (doc 12).
 const WAIT_TIME_SECS: (u64, u64) = (0, 20);
 
-/// Quantos `GET` em espera, no máximo, um evento acorda de uma vez.
+/// How many waiting `GET`s, at most, an event wakes at once.
 const MAX_WAKE: usize = 16;
 
-/// Acima disto, a publicação na FIFO poda do mapa de deduplicação o que já saiu da janela.
+/// Above this, the FIFO publication prunes from the deduplication map what already left the window.
 const DEDUP_PRUNE_ABOVE: usize = 10_000;
 
-/// O SHA-256 dos bytes do corpo, em hexadecimal (a chave de deduplicação padrão, doc 17).
+/// The SHA-256 of the body bytes, in hexadecimal (the default deduplication key, doc 17).
 fn body_hash(body: &[u8]) -> String {
     Sha256::digest(body)
         .iter()
@@ -86,32 +86,32 @@ fn body_hash(body: &[u8]) -> String {
         .collect()
 }
 
-/// Os valores de configuração de que o consumo e a publicação dependem (doc 10).
+/// The configuration values that consuming and publishing depend on (doc 10).
 #[derive(Debug, Clone)]
 pub struct MessageRules {
-    /// `message.max-bytes`: vale num distribuidor e nas filas sem `maxMessageBytes`.
+    /// `message.max-bytes`: applies on a distributor and on queues without `maxMessageBytes`.
     pub max_bytes: u64,
-    /// `delivery.max-messages.default` e `.max` (sem teto, se não houver `.max`).
+    /// `delivery.max-messages.default` and `.max` (no ceiling, if there is no `.max`).
     pub max_messages_default: u64,
     pub max_messages_max: Option<u64>,
-    /// `delivery.visibility-timeout.default` e `.max`, em segundos.
+    /// `delivery.visibility-timeout.default` and `.max`, in seconds.
     pub visibility_default_secs: u64,
     pub visibility_max_secs: Option<u64>,
     /// `topics.distributor.max-targets`.
     pub distributor_max_targets: Option<u64>,
-    /// `retention.sweep.interval`: de quanto em quanto tempo a varredura apaga o vencido.
+    /// `retention.sweep.interval`: how often the sweep deletes what has expired.
     pub sweep_interval: Duration,
-    /// `memory.limit`: bytes de corpo em memória; sem ele, nada vai para o disco por overflow.
+    /// `memory.limit`: bytes of body in memory; without it, nothing goes to disk by overflow.
     pub memory_limit: Option<u64>,
-    /// `memory.rate.window`, em segundos: a janela da taxa de leitura.
+    /// `memory.rate.window`, in seconds: the read-rate window.
     pub rate_window_secs: u64,
-    /// `memory.topic.reserve`: mensagens em memória garantidas a cada tópico.
+    /// `memory.topic.reserve`: messages in memory guaranteed to each topic.
     pub topic_reserve: u64,
-    /// `delivery.fair.ready-weight`, `.max-groups` e `.normal-every` (doc 13, seção 12.11).
+    /// `delivery.fair.ready-weight`, `.max-groups` and `.normal-every` (doc 13, section 12.11).
     pub fair_ready_weight: f64,
     pub fair_max_groups: Option<usize>,
     pub fair_normal_every: u32,
-    /// `fifo.dedup.window`, em milissegundos.
+    /// `fifo.dedup.window`, in milliseconds.
     pub fifo_dedup_window_ms: u64,
 }
 
@@ -146,8 +146,8 @@ impl MessageRules {
     }
 }
 
-/// `POST /topics/{topic}/messages`: o corpo são os bytes da mensagem; o resto vem do
-/// `Content-Type` e da query.
+/// `POST /topics/{topic}/messages`: the body is the message's bytes; the rest comes from the
+/// `Content-Type` and the query.
 #[derive(Debug, Clone, Default)]
 pub struct PublishRequest {
     pub body: Vec<u8>,
@@ -156,13 +156,13 @@ pub struct PublishRequest {
     pub deduplication_id: Option<String>,
 }
 
-/// O resultado de uma publicação.
+/// The result of a publication.
 #[derive(Debug)]
 pub enum Published {
-    /// Numa fila: o `id` da mensagem criada (ou, numa duplicata, o da original). `duplicate` só
-    /// existe na fila FIFO.
+    /// On a queue: the `id` of the created message (or, on a duplicate, of the original). `duplicate` only
+    /// exists on the FIFO queue.
     Queue { id: String, duplicate: Option<bool> },
-    /// Num distribuidor: uma cópia por fila que casou.
+    /// On a distributor: one copy per queue that matched.
     Distributor {
         deliveries: Vec<DistributorDelivery>,
     },
@@ -171,138 +171,139 @@ pub enum Published {
 #[derive(Debug)]
 pub struct DistributorDelivery {
     pub topic: String,
-    /// O `id` da cópia, ou o erro daquela fila.
+    /// The copy's `id`, or that queue's error.
     pub result: Result<String, TabaError>,
 }
 
-/// Os parâmetros de query de `GET /topics/{topic}/messages`, como vieram, para o `engine`
-/// validar.
+/// The query parameters of `GET /topics/{topic}/messages`, as they came, for the `engine` to
+/// validate.
 #[derive(Debug, Clone, Default)]
 pub struct ConsumeQuery {
     pub max_messages: Option<String>,
     pub visibility_timeout: Option<String>,
     pub wait_time: Option<String>,
-    /// `autoCreate`: cria a fila se ela não existir (doc 15, seção 14.4). Os quatro campos
-    /// seguintes só valem na criação.
+    /// `autoCreate`: creates the queue if it does not exist (doc 15, section 14.4). The next four
+    /// fields only apply on creation.
     pub auto_create: Option<String>,
     pub volatile: Option<String>,
     pub idle_timeout: Option<String>,
     pub fifo: Option<String>,
-    /// `tag.<chave>=<valor>`, sem o prefixo `tag.`.
+    /// `tag.<key>=<value>`, without the `tag.` prefix.
     pub tags: BTreeMap<String, String>,
-    /// O chamador tem a permissão `create` (sem autenticação, sempre): o `autoCreate` que
-    /// criaria a fila sem ela é `403`.
+    /// The caller has the `create` permission (without authentication, always): the `autoCreate` that
+    /// would create the queue without it is `403`.
     pub can_create: bool,
 }
 
-/// Uma mensagem entregue, como o `Message` da API (doc 06a, "DTOs").
+/// A delivered message, as the API's `Message` (doc 06a, "DTOs").
 #[derive(Debug)]
 pub struct Delivered {
     pub id: String,
     pub body: Body,
     pub content_type: String,
     pub group_id: Option<String>,
-    /// Só na fila FIFO: a chave de deduplicação (a informada, ou o hash do corpo).
+    /// FIFO queue only: the deduplication key (the given one, or the body's hash).
     pub deduplication_id: Option<String>,
     pub receipt_token: String,
     pub delivery_count: u32,
     pub published_ms: u64,
     pub invisible_until_ms: u64,
-    /// Só na dead-letter: quando a mensagem entrou nela e por quê.
+    /// Dead-letter only: when the message entered it and why.
     pub dead_lettered_ms: Option<u64>,
     pub dead_letter_reason: Option<String>,
 }
 
-/// O resultado de `PUT .../visibility`.
+/// The result of `PUT .../visibility`.
 #[derive(Debug)]
 pub struct VisibilityUpdated {
     pub id: String,
     pub invisible_until_ms: u64,
 }
 
-/// O que o drain fez (doc 04, seção 6.10).
+/// What the drain did (doc 04, section 6.10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DrainReport {
-    /// Mensagens que saíram da memória para o disco.
+    /// Messages that left memory for disk.
     pub moved: u64,
-    /// Mensagens que ficaram em memória por erro de disco.
+    /// Messages that stayed in memory because of a disk error.
     pub failed: u64,
-    /// Mensagens ainda em memória ao terminar (as `failed` e as que a parada antecipada deixou).
+    /// Messages still in memory at the end (the `failed` ones and those the early stop left).
     pub remaining: u64,
 }
 
-/// O que `NodeStatus.storage` mostra do disco e da memória (doc 06b).
+/// What `NodeStatus.storage` shows of disk and memory (doc 06b).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StorageStats {
     pub memory_bytes: u64,
-    /// `memory.limit`; `None` sem limite.
+    /// `memory.limit`; `None` without a limit.
     pub memory_limit_bytes: Option<u64>,
     pub memory_messages: u64,
     pub disk_messages: u64,
 }
 
-/// Uma mensagem em memória: os metadados são os mesmos da linha do banco.
+/// A message in memory: the metadata is the same as the database row's.
 struct Stored {
     meta: MessageMeta,
     body: Vec<u8>,
 }
 
-/// Onde uma mensagem está.
+/// Where a message is.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Place {
     Memory,
     Disk,
 }
 
-/// O estado de um tópico, atrás da trava do tópico.
+/// A topic's state, behind the topic lock.
 struct TopicState {
-    /// Em ordem de `id`: o GUID v7 em minúsculas ordena pelo instante da publicação.
+    /// In `id` order: the lowercase GUID v7 sorts by publication instant.
     memory: BTreeMap<String, Stored>,
-    /// Tudo o que o tópico tem (memória e disco), derivado dos metadados.
+    /// Everything the topic has (memory and disk), derived from the metadata.
     index: TopicIndex,
     rates: Rates,
-    /// Só na fila FIFO: `(grupo, deduplicationId)` → `(id da original, instante do id)`. Vale até
-    /// a janela passar, inclusive depois do ack.
+    /// FIFO queue only: `(group, deduplicationId)` → `(id of the original, instant of the id)`. Valid until
+    /// the window passes, including after the ack.
     dedup: HashMap<(String, String), (String, u64)>,
-    /// Só na fila FIFO: o instante (ms) do `id` mais recente de cada grupo que este nó conhece, em
-    /// qualquer papel. O novo primário de um grupo parte daqui para o `id` continuar crescendo
-    /// (doc 17, seção 16.4, passo 3).
+    /// FIFO queue only: the instant (ms) of the most recent `id` of each group this node knows, in
+    /// any role. A group's new primary starts from here so the `id` keeps growing
+    /// (doc 17, section 16.4, step 3).
     group_ms: HashMap<String, u64>,
-    /// O `maxDeliveries` com que as prontas foram conferidas por último: se o `PATCH` o mudar,
-    /// as que já passam do novo limite vão à dead-letter.
+    /// The `maxDeliveries` the ready ones were last checked against: if the `PATCH` changes it,
+    /// those already past the new limit go to the dead-letter.
     checked_max_deliveries: Option<Option<u64>>,
-    /// O que o tópico conta desde que o nó o abriu (doc 11).
+    /// What the topic counts since the node opened it (doc 11).
     stats: TopicCounters,
-    /// No cluster: as mensagens guardadas aqui de que o nó **não** é o dono da entrega. Só o
-    /// primário do bloco as põe no índice (doc 13, seção 12.7).
+    /// In the cluster: the messages kept here that the node is **not** the delivery owner of. Only the
+    /// block's primary puts them in the index (doc 13, section 12.7).
     replicas: ReplicaSet,
-    /// No cluster: as mensagens que o dono já mandou para a dead-letter e esperam o commit.
+    /// In the cluster: the messages the owner already sent to the dead-letter and that await the commit.
     dead_letter_inflight: HashSet<String>,
-    /// O último "tem mensagens prontas" avisado aos outros nós.
+    /// The last "has ready messages" notified to the other nodes.
     ready_signaled: bool,
 }
 
 fn message_not_found() -> TabaError {
-    TabaError::new(ErrorCode::MessageNotFound, "A mensagem não existe.")
+    TabaError::new(ErrorCode::MessageNotFound, "The message does not exist.")
 }
 
 fn stale_receipt() -> TabaError {
     TabaError::new(
         ErrorCode::MessageStaleReceipt,
-        "O receiptToken não é o da última entrega desta mensagem.",
+        "The receiptToken is not that of this message's last delivery.",
     )
 }
 
-/// Chamado quando um erro de disco derruba o nó (disco cheio, banco corrompido).
+/// Called when a disk error brings the node down (full disk, corrupt database).
 pub type FailureHook = Arc<dyn Fn() + Send + Sync>;
 
-/// `validation.required`, com cada campo que falta em `details`.
+/// `validation.required`, with each missing field in `details`.
 fn required(fields: &[&str]) -> TabaError {
     fields.iter().fold(
-        TabaError::new(ErrorCode::ValidationRequired, "Faltam campos obrigatórios."),
-        |error, field| {
-            error.with_detail(*field, ErrorCode::ValidationRequired, "Campo obrigatório.")
-        },
+        TabaError::new(
+            ErrorCode::ValidationRequired,
+            "Required fields are missing.",
+        ),
+        |error, field| error.with_detail(*field, ErrorCode::ValidationRequired, "Required field."),
     )
 }
 
@@ -310,7 +311,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// `autoCreate=true` na query? Valor que não é `true` nem `false` é `400`.
+/// `autoCreate=true` in the query? A value that is neither `true` nor `false` is `400`.
 fn wants_auto_create(query: &ConsumeQuery) -> Result<bool, TabaError> {
     Ok(optional_bool("autoCreate", query.auto_create.as_deref())?.unwrap_or(false))
 }
@@ -318,7 +319,7 @@ fn wants_auto_create(query: &ConsumeQuery) -> Result<bool, TabaError> {
 fn query_failed(field: &str, message: &str) -> TabaError {
     TabaError::new(
         ErrorCode::ValidationFailed,
-        "A requisição tem campos inválidos.",
+        "The request has invalid fields.",
     )
     .with_detail(field, ErrorCode::ValidationFailed, message)
 }
@@ -328,7 +329,7 @@ fn optional_bool(field: &str, text: Option<&str>) -> Result<Option<bool>, TabaEr
         None => Ok(None),
         Some("true") => Ok(Some(true)),
         Some("false") => Ok(Some(false)),
-        Some(_) => Err(query_failed(field, "Use true ou false.")),
+        Some(_) => Err(query_failed(field, "Use true or false.")),
     }
 }
 
@@ -339,39 +340,39 @@ fn optional_int(field: &str, text: Option<&str>) -> Result<Option<i64>, TabaErro
             .trim()
             .parse::<i64>()
             .map(Some)
-            .map_err(|_| query_failed(field, "Esperado um número inteiro.")),
+            .map_err(|_| query_failed(field, "Expected an integer.")),
     }
 }
 
 fn wrong_type() -> TabaError {
     TabaError::new(
         ErrorCode::TopicWrongType,
-        "Um tópico distribuidor não é consumido.",
+        "A distributor topic is not consumed.",
     )
 }
 
 fn too_large(limit: u64) -> TabaError {
     TabaError::new(
         ErrorCode::MessageTooLarge,
-        format!("O corpo passa do limite de {limit} bytes do tópico."),
+        format!("The body exceeds the topic's limit of {limit} bytes."),
     )
 }
 
-/// Um inteiro de query dentro da faixa: texto que não é inteiro é `validation.failed`, e
-/// inteiro fora da faixa (inclusive negativo) é `validation.out-of-range`.
+/// A query integer within the range: text that is not an integer is `validation.failed`, and an
+/// integer outside the range (including negative) is `validation.out-of-range`.
 fn query_number(field: &str, text: &str, range: (u64, u64)) -> Result<u64, TabaError> {
     let Ok(value) = text.trim().parse::<i64>() else {
-        let message = "Esperado um número inteiro.";
+        let message = "Expected an integer.";
         return Err(TabaError::new(
             ErrorCode::ValidationFailed,
-            "A requisição tem campos inválidos.",
+            "The request has invalid fields.",
         )
         .with_detail(field, ErrorCode::ValidationFailed, message));
     };
     validation::in_range_signed(field, value, range)
 }
 
-/// Os parâmetros de um `GET`, já conferidos.
+/// The parameters of a `GET`, already checked.
 #[derive(Debug, Clone, Copy)]
 pub struct ConsumeParams {
     pub max_messages: u64,
@@ -379,68 +380,68 @@ pub struct ConsumeParams {
     pub wait_secs: u64,
 }
 
-/// O que o primário do grupo decide ao receber uma publicação FIFO.
+/// What the group's primary decides on receiving a FIFO publication.
 #[derive(Debug, Clone)]
 pub enum Draft {
-    /// Uma mensagem nova, com `id` e posição já definidos.
+    /// A new message, with `id` and position already defined.
     New { meta: MessageMeta, body: Vec<u8> },
-    /// A chave já existe no grupo dentro da janela: vale o `id` da original.
+    /// The key already exists in the group within the window: the original's `id` applies.
     Duplicate { id: String },
 }
 
-/// Quem diz se este nó é o **dono da entrega** de uma mensagem (doc 13, seção 12.7): o primário do
-/// bloco dela no anel. Sem ele (`mode=development`) o nó é dono de tudo.
+/// Who says whether this node is the **delivery owner** of a message (doc 13, section 12.7): the primary of its
+/// block on the ring. Without it (`mode=development`) the node owns everything.
 pub trait Placement: Send + Sync + 'static {
-    /// `position` é a posição de colocação da mensagem no anel: o hash do `id` ou, na fila FIFO,
-    /// o do grupo (doc 17, seção 16.3).
+    /// `position` is the message's placement position on the ring: the hash of the `id` or, on the FIFO queue,
+    /// of the group (doc 17, section 16.3).
     fn is_owner(&self, topic: &str, id: &str, group: Option<&str>, position: u64) -> bool;
 
-    /// O nó é um dos nós responsáveis (primário ou réplica) pelo bloco da posição? A cópia de uma
-    /// mensagem de que ele deixou de ser responsável pode ser apagada (doc 05, seção 7.3, passo 7).
+    /// Is the node one of the nodes responsible (primary or replica) for the position's block? The copy of a
+    /// message the node stopped being responsible for can be deleted (doc 05, section 7.3, step 7).
     fn is_responsible(&self, _position: u64) -> bool {
         true
     }
 }
 
-/// Uma mensagem que o dono mandou para a dead-letter e que os nós responsáveis ainda têm de mover.
+/// A message the owner sent to the dead-letter and that the responsible nodes still have to move.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeadLetterJob {
     pub topic: String,
     pub id: String,
 }
 
-/// Avisa o cluster quando o tópico passa a ter (ou deixa de ter) mensagens prontas.
+/// Notifies the cluster when the topic starts (or stops) having ready messages.
 pub type ReadyHook = Arc<dyn Fn(&str, bool) + Send + Sync>;
 
-/// O que o cluster entrega ao motor de mensagens.
+/// What the cluster hands to the message engine.
 pub struct ClusterHooks {
     pub placement: Arc<dyn Placement>,
-    /// A fila de movimentos para a dead-letter, esvaziada por quem coordena a escrita.
+    /// The queue of moves to the dead-letter, emptied by whoever coordinates the write.
     pub dead_letters: tokio::sync::mpsc::UnboundedSender<DeadLetterJob>,
-    /// Chamado quando o tópico passa a ter (ou deixa de ter) mensagens prontas neste nó.
+    /// Called when the topic starts (or stops) having ready messages on this node.
     pub ready: ReadyHook,
 }
 
-/// O que o nó guarda de uma mensagem: os metadados e se ele é o dono.
+/// What the node keeps of a message: the metadata and whether it is the owner.
 #[derive(Debug, Clone)]
 pub struct MessageInfo {
     pub meta: MessageMeta,
     pub owned: bool,
 }
 
-/// Como o registro de uma invisibilidade é conferido (doc 14, seção 13.3).
+/// How an invisibility record is checked (doc 14, section 13.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VisibilityCheck {
-    /// Entrega: a mensagem não pode estar invisível.
+    /// Delivery: the message cannot be invisible.
     Delivery,
-    /// Alteração (e ack): o `receiptToken` tem de conferir.
+    /// Change (and ack): the `receiptToken` must match.
     Receipt,
 }
 
-/// Uma mensagem escolhida para entrega, já com o contador, o prazo e o token novos, mas ainda não
-/// confirmada pelo quórum: até o commit ela fica reservada (em processamento) no índice do dono.
+/// A message chosen for delivery, already with the new counter, deadline and token, but not yet
+/// confirmed by the quorum: until the commit it is reserved (in processing) in the owner's index.
 pub struct Candidate {
-    /// A mensagem como ficará depois da entrega.
+    /// The message as it will be after the delivery.
     pub meta: MessageMeta,
     pub body: Vec<u8>,
     previous_deliveries: u32,
@@ -448,10 +449,10 @@ pub struct Candidate {
 }
 
 impl Candidate {
-    /// A mensagem como a API de cliente a mostra.
+    /// The message as the client API shows it.
     pub fn into_delivered(self) -> Delivered {
         let content_type = ContentType::parse(&self.meta.content_type)
-            .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("válido"));
+            .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("valid"));
         Delivered {
             id: self.meta.id,
             body: Body::render(&content_type, &self.body),
@@ -468,17 +469,17 @@ impl Candidate {
     }
 }
 
-/// O que um `take` devolve.
+/// What a `take` returns.
 struct Taken {
     delivered: Vec<Delivered>,
-    /// Quando a próxima invisível volta a ser entregável, para o long polling saber até quando
-    /// dormir.
+    /// When the next invisible one becomes deliverable again, so long polling knows how long to
+    /// sleep.
     next_visible_ms: Option<u64>,
-    /// Ainda há mensagem pronta: o próximo ouvinte em espera deve acordar.
+    /// There is still a ready message: the next waiting listener should wake up.
     more_ready: bool,
 }
 
-/// De quanto em quanto tempo o resumo do overflow vai para o log (provisório, D118).
+/// How often the overflow summary goes to the log (provisional, D118).
 pub const OVERFLOW_SUMMARY_EVERY: Duration = Duration::from_secs(60);
 
 pub struct Messages {
@@ -487,40 +488,40 @@ pub struct Messages {
     rules: MessageRules,
     ids: IdGenerator,
     store: Arc<MessageStore>,
-    /// O estado de cada tópico, criado (e o índice refeito do disco) no primeiro uso.
+    /// The state of each topic, created (and the index rebuilt from disk) on first use.
     states: RwLock<HashMap<String, Arc<Mutex<TopicState>>>>,
-    /// Bytes de corpo em memória, de todos os tópicos, contra `memory.limit`.
+    /// Bytes of body in memory, of all topics, against `memory.limit`.
     memory_bytes: AtomicU64,
-    /// No drain o limite de memória efetivo é zero: toda mensagem nova vai para o disco.
+    /// In the drain the effective memory limit is zero: every new message goes to disk.
     draining: AtomicBool,
-    /// O disco da vida anterior espera a recuperação do reinício: a varredura não o apaga.
+    /// The previous life's disk awaits the restart recovery: the sweep does not delete it.
     keep_old_disk: AtomicBool,
-    /// O disco da vida anterior, posto de lado até a recuperação do reinício acabar (PRB-048).
+    /// The previous life's disk, set aside until the restart recovery ends (PRB-048).
     previous_life: Mutex<Option<Arc<MessageStore>>>,
-    /// Acorda os `GET` em espera (long polling) quando chega mensagem ou o tópico some.
+    /// Wakes the waiting `GET`s (long polling) when a message arrives or the topic goes away.
     notifiers: Mutex<HashMap<String, Arc<Notify>>>,
-    /// Avisa o nó de que o disco falhou de um jeito que o derruba (estado `failed`).
+    /// Notifies the node that the disk failed in a way that brings it down (`failed` state).
     on_failure: OnceLock<FailureHook>,
-    /// O instante do último `GET` de cada fila, por `id` do tópico (o nome pode ser reusado por
-    /// uma fila recriada). Vale para o relógio de ociosidade das filas voláteis.
+    /// The instant of each queue's last `GET`, by topic `id` (the name can be reused by
+    /// a recreated queue). Applies to the volatile queues' idleness clock.
     last_get: Mutex<HashMap<String, u64>>,
-    /// A partida do nó, em milissegundos: o relógio de ociosidade nunca conta o tempo parado.
+    /// The node's start, in milliseconds: the idleness clock never counts the stopped time.
     started_ms: u64,
-    /// O que o nó todo conta (doc 11): lido por `GET /metrics`.
+    /// What the whole node counts (doc 11): read by `GET /metrics`.
     counters: NodeCounters,
-    /// O que cada distribuidor conta, por nome.
+    /// What each distributor counts, by name.
     distributors: Mutex<HashMap<String, DistributorCounters>>,
-    /// Só em `mode=production`: quem diz se o nó é o dono, onde vão as dead-letters e os sinais.
+    /// Only in `mode=production`: who says whether the node is the owner, where the dead-letters go and the signals.
     cluster: OnceLock<ClusterHooks>,
-    /// O backup opcional em S3: o motor só o avisa do que acontece (doc 23, "Backup em S3").
+    /// The optional S3 backup: the engine only notifies it of what happens (doc 23, "S3 backup").
     backup: OnceLock<Arc<dyn BackupSink>>,
 }
 
-/// Fecha a espera de um `GET` em long polling: se o chamador desistiu antes do fim (a conexão
-/// caiu e o futuro foi descartado), conta como `disconnected`.
+/// Closes the wait of a long-polling `GET`: if the caller gave up before the end (the connection
+/// dropped and the future was dropped), it counts as `disconnected`.
 pub struct LongPoll<'a> {
     counters: &'a NodeCounters,
-    /// `Some(true)`: terminou entregando; `Some(false)`: terminou vazio; `None`: foi descartado.
+    /// `Some(true)`: ended delivering; `Some(false)`: ended empty; `None`: was dropped.
     pub delivered: Option<bool>,
 }
 
@@ -549,13 +550,13 @@ impl Drop for LongPoll<'_> {
 }
 
 impl Messages {
-    /// Registra quem é avisado de um erro de disco fatal. Vale só a primeira chamada.
+    /// Registers who is warned of a fatal disk error. Only the first call counts.
     pub fn on_failure(&self, hook: FailureHook) {
         let _ = self.on_failure.set(hook);
     }
 
-    /// Erro de disco: vira `500`, e o detalhe vai para o log. Disco cheio ou banco corrompido
-    /// também avisam o nó, que passa a `failed` (doc 05, seção 7.3).
+    /// Disk error: becomes `500`, and the detail goes to the log. A full disk or a corrupt database
+    /// also warn the node, which goes to `failed` (doc 05, section 7.3).
     fn disk_error(&self, what: &str, e: &io::Error) -> TabaError {
         tracing::error!(error = %e, "{what}");
         NodeCounters::add(&self.counters.disk_errors, 1);
@@ -571,10 +572,10 @@ impl Messages {
         }
     }
 
-    /// `resume`: retoma as mensagens que estão em disco (desenvolvimento com
-    /// `development.resume-on-start`). Sem ele, o que sobrou em disco de uma execução
-    /// anterior é apagado: o nó começa vazio. Pastas de tópicos que não existem mais também
-    /// são apagadas, para um tópico recriado com o mesmo nome não ressuscitar mensagens.
+    /// `resume`: resumes the messages that are on disk (development with
+    /// `development.resume-on-start`). Without it, what is left on disk from an earlier
+    /// run is deleted: the node starts empty. Folders of topics that no longer exist are also
+    /// deleted, so a topic recreated with the same name does not resurrect messages.
     pub fn new(
         topics: Arc<Topics>,
         clock: Arc<dyn Clock>,
@@ -585,9 +586,9 @@ impl Messages {
         Self::build(topics, clock, rules, store, resume, false)
     }
 
-    /// Como `new`, para o nó de produção num cluster: o que sobrou no disco da vida anterior **não**
-    /// é apagado na partida nem pela varredura. O nó a consulta primeiro, no bootstrap, para
-    /// devolver o que os outros declararam perdido (doc 04, seção 6.6; D111), e só então apaga
+    /// Like `new`, for the production node in a cluster: what is left on the previous life's disk is **not**
+    /// deleted at startup or by the sweep. The node queries it first, in the bootstrap, to
+    /// return what the others declared lost (doc 04, section 6.6; D111), and only then deletes it
     /// ([`Messages::release_old_disk`]).
     pub fn new_keeping_disk(
         topics: Arc<Topics>,
@@ -598,8 +599,8 @@ impl Messages {
         Self::build(topics, clock, rules, store, false, true)
     }
 
-    /// Põe de lado o disco da vida anterior e deixa o nó com o disco vazio, para entrar sem esperar
-    /// a recuperação (PRB-048). Devolve se há algo a recuperar.
+    /// Sets aside the previous life's disk and leaves the node with an empty disk, so it can join without waiting for
+    /// the recovery (PRB-048). Returns whether there is anything to recover.
     pub fn set_aside_old_disk(&self) -> io::Result<bool> {
         let previous = self.store.set_aside_old_disk()?.map(Arc::new);
         let some = previous.is_some();
@@ -607,15 +608,15 @@ impl Messages {
         Ok(some)
     }
 
-    /// Acabou a recuperação do reinício: o disco da vida anterior é apagado.
+    /// The restart recovery is over: the previous life's disk is deleted.
     pub fn finish_previous_life(&self) {
         *lock(&self.previous_life) = None;
         if let Err(e) = self.store.drop_old_disk() {
-            tracing::warn!(error = %e, "não foi possível apagar o disco da vida anterior");
+            tracing::warn!(error = %e, "could not delete the previous life's disk");
         }
     }
 
-    /// Acabou a recuperação do reinício: a varredura volta a apagar o que é de tópico desconhecido.
+    /// The restart recovery is over: the sweep goes back to deleting what belongs to an unknown topic.
     pub fn release_old_disk(&self) {
         self.keep_old_disk.store(false, Ordering::SeqCst);
     }
@@ -632,15 +633,15 @@ impl Messages {
             Ok(on_disk) if !keep_old_disk => {
                 for name in on_disk {
                     if !resume || topics.get(&name).is_err() {
-                        tracing::info!(topic = %name, "apagando mensagens antigas do disco");
+                        tracing::info!(topic = %name, "deleting old messages from disk");
                         if let Err(e) = store.drop_topic(&name) {
-                            tracing::warn!(topic = %name, error = %e, "não foi possível apagar");
+                            tracing::warn!(topic = %name, error = %e, "could not delete");
                         }
                     }
                 }
             }
             Ok(_) => {}
-            Err(e) => tracing::warn!(error = %e, "não foi possível listar as mensagens do disco"),
+            Err(e) => tracing::warn!(error = %e, "could not list the messages on disk"),
         }
         let started_ms = clock.now_millis();
         let messages = Arc::new(Self {
@@ -663,7 +664,7 @@ impl Messages {
             cluster: OnceLock::new(),
             backup: OnceLock::new(),
         });
-        // As mensagens saem junto com o tópico (doc 02, seção 3.3).
+        // The messages go with the topic (doc 02, section 3.3).
         let weak = Arc::downgrade(&messages);
         topics.on_removed(Arc::new(move |names| {
             if let Some(messages) = weak.upgrade() {
@@ -675,9 +676,9 @@ impl Messages {
         messages
     }
 
-    // ---- Backup opcional em S3 ----
+    // ---- Optional S3 backup ----
 
-    /// Liga o backup. Vale só a primeira chamada.
+    /// Attaches the backup. Only the first call counts.
     pub fn set_backup(&self, sink: Arc<dyn BackupSink>) {
         let _ = self.backup.set(sink);
     }
@@ -700,14 +701,14 @@ impl Messages {
         }
     }
 
-    /// O corpo de uma mensagem que a evicção tirou do disco, buscado no S3.
+    /// The body of a message the eviction took off disk, fetched from S3.
     fn backup_body(&self, topic: &str, id: &str) -> Option<Vec<u8>> {
         self.backup
             .get()
             .and_then(|sink| sink.fetch_body(topic, id))
     }
 
-    /// Os tópicos que o nó conhece, em memória ou em disco.
+    /// The topics the node knows, in memory or on disk.
     pub fn topic_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
             .existing_states()
@@ -722,14 +723,14 @@ impl Messages {
         names
     }
 
-    /// Os `id` das mensagens de que o nó é dono no tópico (as que o primário envia ao S3).
+    /// The `id`s of the messages the node owns in the topic (those the primary sends to S3).
     pub fn owned_ids(&self, topic: &str) -> Vec<String> {
         let state = self.state_of(topic);
         lock(&state).index.ids()
     }
 
-    /// Os metadados e o corpo de uma mensagem que o nó guarda, para o backup. `None` se ela não
-    /// existe mais ou se o corpo não está no disco.
+    /// The metadata and body of a message the node keeps, for the backup. `None` if it
+    /// no longer exists or if the body is not on disk.
     pub fn backup_load(&self, topic: &str, id: &str) -> Option<(MessageMeta, Vec<u8>)> {
         let state = self.state_of(topic);
         let state = lock(&state);
@@ -744,7 +745,7 @@ impl Messages {
         Some((meta, body))
     }
 
-    /// Devolve ao nó uma mensagem lida do backup (restauração): é uma publicação já decidida.
+    /// Gives the node a message read from the backup (restore): it is an already-decided publication.
     pub fn restore_message(
         &self,
         topic: &str,
@@ -754,10 +755,10 @@ impl Messages {
         self.apply_publish(topic, meta, body)
     }
 
-    // ---- Estado dos tópicos ----
+    // ---- Topic state ----
 
-    /// O estado do tópico. No primeiro uso o índice é refeito das linhas do banco do tópico
-    /// (reinício ou tópico retomado do disco).
+    /// The topic's state. On first use the index is rebuilt from the topic database rows
+    /// (restart or topic resumed from disk).
     fn state_of(&self, name: &str) -> Arc<Mutex<TopicState>> {
         if let Some(state) = self
             .states
@@ -798,7 +799,7 @@ impl Messages {
                             (row.id.clone(), row.published_ms),
                         );
                     }
-                    // A linha curta do ack só serve à deduplicação.
+                    // The ack's short row only serves deduplication.
                     if row.delete_at_ms.is_some() {
                         continue;
                     }
@@ -813,7 +814,7 @@ impl Messages {
                 }
             }
             Err(e) => {
-                self.disk_error("falha ao ler o índice do tópico em disco", &e);
+                self.disk_error("failed to read the topic index on disk", &e);
             }
         }
         let state = Arc::new(Mutex::new(TopicState {
@@ -856,7 +857,7 @@ impl Messages {
             self.memory_bytes.fetch_sub(bytes, Ordering::SeqCst);
         }
         if let Err(e) = self.store.drop_topic(name) {
-            tracing::warn!(topic = %name, error = %e, "não foi possível apagar o disco do tópico");
+            tracing::warn!(topic = %name, error = %e, "could not delete the topic's disk");
         }
         if let Some(notify) = lock(&self.notifiers).get(name) {
             notify.notify_waiters();
@@ -870,8 +871,8 @@ impl Messages {
             .clone()
     }
 
-    /// Acorda até `count` `GET` em espera, na ordem em que chegaram (cada `notify_one` leva o
-    /// primeiro da fila de ouvintes, doc 13, seção 12.8).
+    /// Wakes up to `count` waiting `GET`s, in the order they arrived (each `notify_one` takes the
+    /// first in the listener queue, doc 13, section 12.8).
     fn wake(&self, name: &str, count: usize) {
         let notify = self.notifier(name);
         for _ in 0..count.clamp(1, MAX_WAKE) {
@@ -879,7 +880,7 @@ impl Messages {
         }
     }
 
-    // ---- Memória ----
+    // ---- Memory ----
 
     fn add_memory(&self, size: u64) {
         self.memory_bytes.fetch_add(size, Ordering::SeqCst);
@@ -889,7 +890,7 @@ impl Messages {
         self.memory_bytes.fetch_sub(size, Ordering::SeqCst);
     }
 
-    /// Reserva `size` bytes sem passar do limite. `false` se não cabe.
+    /// Reserves `size` bytes without exceeding the limit. `false` if it does not fit.
     fn try_reserve(&self, size: u64, limit: u64) -> bool {
         self.memory_bytes
             .try_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
@@ -898,7 +899,7 @@ impl Messages {
             .is_ok()
     }
 
-    /// Tira a mensagem da memória do tópico, devolvendo os bytes ao total.
+    /// Takes the message out of the topic's memory, giving the bytes back to the total.
     fn take_from_memory(&self, state: &mut TopicState, id: &str) -> Option<Stored> {
         let stored = state.memory.remove(id)?;
         self.sub_memory(stored.body.len() as u64);
@@ -912,12 +913,12 @@ impl Messages {
         }
     }
 
-    /// Decide se a mensagem nova de `size` bytes fica em memória (e já reserva o espaço).
+    /// Decides whether the new message of `size` bytes stays in memory (and already reserves the space).
     ///
-    /// Com a memória cheia (doc 02, seção 3.2): o tópico dentro da sua **reserva** abre espaço
-    /// rebaixando as mensagens que os outros guardam acima da reserva deles, começando pelo de
-    /// menor taxa de leitura; o tópico que já passou da reserva só rebaixa os de taxa **menor**
-    /// que a dele. Não achando espaço, a mensagem vai para o disco.
+    /// With memory full (doc 02, section 3.2): the topic within its **reserve** makes room by
+    /// demoting the messages the others keep above their reserve, starting with the one with the lowest
+    /// read rate; the topic that already passed its reserve only demotes those with a **lower** rate
+    /// than its own. Not finding room, the message goes to disk.
     fn reserve_memory(&self, state: &TopicState, name: &str, size: u64, now: u64) -> bool {
         if self.draining.load(Ordering::SeqCst) {
             return false;
@@ -944,8 +945,8 @@ impl Messages {
             .per_second(now, self.rules.rate_window_secs)
     }
 
-    /// Rebaixa para o disco ao menos `need` bytes de outros tópicos, acima da reserva deles. Só
-    /// usa `try_lock`: um tópico ocupado é pulado, o que evita travar um no outro.
+    /// Demotes to disk at least `need` bytes of other topics, above their reserve. It only
+    /// uses `try_lock`: a busy topic is skipped, which avoids locking one against another.
     fn demote(&self, exclude: &str, need: u64, below_rate: Option<f64>, now: u64) {
         let mut victims: Vec<(f64, String, Arc<Mutex<TopicState>>)> = Vec::new();
         for (name, state) in self.existing_states() {
@@ -984,7 +985,7 @@ impl Messages {
                         NodeCounters::add(&self.counters.overflow, 1);
                     }
                     Err(e) => {
-                        self.disk_error("falha ao rebaixar a mensagem para o disco", &e);
+                        self.disk_error("failed to demote the message to disk", &e);
                         self.put_in_memory(&mut guard, stored);
                         break;
                     }
@@ -996,9 +997,9 @@ impl Messages {
         }
     }
 
-    /// Quem sai da memória primeiro: o que está em processamento (só volta a ser lido depois do
-    /// prazo) e, depois, o **meio** da lista de prontas, o último que o efeito sanfona
-    /// alcançaria. As pontas ficam: são as próximas a entregar.
+    /// Who leaves memory first: what is in processing (only read again after the
+    /// deadline) and, then, the **middle** of the ready list, the last one the accordion effect
+    /// would reach. The ends stay: they are the next to be delivered.
     fn demotion_candidate(state: &TopicState) -> Option<String> {
         state
             .memory
@@ -1008,10 +1009,10 @@ impl Messages {
             .cloned()
     }
 
-    // ---- Publicação ----
+    // ---- Publishing ----
 
-    /// O maior corpo que a rota de publicação lê: o `maxMessageBytes` da fila, ou o geral
-    /// num distribuidor. Responde `404` se o tópico não existe antes de ler o corpo.
+    /// The largest body the publish route reads: the queue's `maxMessageBytes`, or the general one
+    /// on a distributor. Answers `404` if the topic does not exist before reading the body.
     pub fn publish_limit(&self, topic: &str) -> Result<u64, TabaError> {
         let view = self.topics.get(topic)?;
         Ok(view.max_message_bytes().unwrap_or(self.rules.max_bytes))
@@ -1053,8 +1054,8 @@ impl Messages {
             .map(|(id, duplicate)| Published::Queue { id, duplicate })
     }
 
-    /// Uma publicação que voltou erro ao cliente (validação, tamanho, disco). O distribuidor
-    /// não entra: ele conta publicações aceitas e cópias.
+    /// A publication that returned an error to the client (validation, size, disk). The distributor
+    /// does not count: it counts accepted publications and copies.
     fn count_publish_error(&self, view: &TopicView) {
         if view.definition.queue().is_some() {
             lock(&self.state_of(&view.definition.name))
@@ -1063,8 +1064,8 @@ impl Messages {
         }
     }
 
-    /// Valida os campos da publicação que dependem do tipo da fila e guarda a mensagem, em
-    /// memória ou, se não couber, em disco (primeiro o corpo, depois a linha).
+    /// Validates the publication fields that depend on the queue type and stores the message, in
+    /// memory or, if it does not fit, on disk (first the body, then the row).
     fn store(
         &self,
         view: &TopicView,
@@ -1076,27 +1077,27 @@ impl Messages {
         if fifo && request.group_id.is_none() {
             return Err(TabaError::new(
                 ErrorCode::ValidationGroupIdRequired,
-                "A fila FIFO exige `groupId`.",
+                "A FIFO queue requires `groupId`.",
             )
             .with_detail(
                 "groupId",
                 ErrorCode::ValidationGroupIdRequired,
-                "Obrigatório numa fila FIFO.",
+                "Required on a FIFO queue.",
             ));
         }
         if !fifo && request.deduplication_id.is_some() {
             return Err(TabaError::new(
                 ErrorCode::ValidationNotApplicable,
-                "`deduplicationId` só vale numa fila FIFO.",
+                "`deduplicationId` only applies on a FIFO queue.",
             )
             .with_detail(
                 "deduplicationId",
                 ErrorCode::ValidationNotApplicable,
-                "Só vale numa fila FIFO.",
+                "Only applies on a FIFO queue.",
             ));
         }
         let now = self.clock.now_millis();
-        // Na FIFO toda mensagem tem chave de deduplicação: a informada, ou o hash do corpo.
+        // On FIFO every message has a deduplication key: the given one, or the body's hash.
         let dedup_key = fifo.then(|| {
             (
                 request.group_id.clone().unwrap_or_default(),
@@ -1125,7 +1126,7 @@ impl Messages {
         {
             let state = self.state_of(&name);
             let mut state = lock(&state);
-            // O primário do grupo (aqui, este nó) confere a duplicata antes de criar qualquer coisa.
+            // The group's primary (here, this node) checks for a duplicate before creating anything.
             if let Some(key) = &dedup_key {
                 if let Some(original) = self.duplicate_of(&mut state, &name, key, now) {
                     return Ok((original, Some(true)));
@@ -1148,8 +1149,8 @@ impl Messages {
             } else {
                 self.store
                     .put(&name, &meta, &request.body)
-                    .map_err(|e| self.disk_error("falha ao gravar a mensagem em disco", &e))?;
-                // No drain toda mensagem vai ao disco: isso não é falta de memória.
+                    .map_err(|e| self.disk_error("failed to write the message to disk", &e))?;
+                // In the drain every message goes to disk: that is not a lack of memory.
                 if !self.draining.load(Ordering::SeqCst) {
                     NodeCounters::add(&self.counters.overflow, 1);
                 }
@@ -1177,8 +1178,8 @@ impl Messages {
         Ok((id, fifo.then_some(false)))
     }
 
-    /// Se a chave de deduplicação já existe no grupo dentro da janela, conta a duplicata e devolve
-    /// o `id` da original (doc 17, seção 16.7).
+    /// If the deduplication key already exists in the group within the window, it counts the duplicate and returns
+    /// the original's `id` (doc 17, section 16.7).
     fn duplicate_of(
         &self,
         state: &mut TopicState,
@@ -1199,13 +1200,13 @@ impl Messages {
             group_id = %key.0,
             deduplication_id = %key.1,
             message.id = %original,
-            "publicação descartada por deduplicação"
+            "publication dropped by deduplication"
         );
         Some(original)
     }
 
-    /// Uma cópia independente, com `id` próprio, em cada fila que casa com um prefixo. Zero
-    /// filas não é erro: a mensagem é descartada (doc 15, seção 14.2).
+    /// An independent copy, with its own `id`, in each queue matching a prefix. Zero
+    /// queues is not an error: the message is discarded (doc 15, section 14.2).
     fn publish_to_distributor(
         &self,
         name: &str,
@@ -1219,13 +1220,13 @@ impl Messages {
         {
             return Err(TabaError::new(
                 ErrorCode::DistributorTooManyTargets,
-                format!("A publicação casa com mais de {max} filas."),
+                format!("The publication matches more than {max} queues."),
             ));
         }
         let deliveries = targets
             .iter()
             .map(|view| {
-                // A chave de deduplicação só vale nas filas FIFO: nas comuns a cópia a ignora.
+                // The deduplication key only applies to FIFO queues: on plain ones the copy ignores it.
                 let is_fifo = view.definition.queue().is_some_and(|q| q.fifo);
                 let copy;
                 let request = if is_fifo || request.deduplication_id.is_none() {
@@ -1257,7 +1258,7 @@ impl Messages {
             tracing::info!(
                 event.name = "taba.distributor.no_target",
                 messaging.destination.name = %name,
-                "publicação sem nenhuma fila que case: a mensagem foi descartada"
+                "publication with no matching queue: the message was discarded"
             );
         } else if failed > 0 {
             tracing::warn!(
@@ -1265,7 +1266,7 @@ impl Messages {
                 messaging.destination.name = %name,
                 failed,
                 copies = deliveries.len(),
-                "ao menos uma cópia da publicação falhou"
+                "at least one copy of the publication failed"
             );
         }
         Ok(Published::Distributor { deliveries })
@@ -1273,8 +1274,8 @@ impl Messages {
 
     // ---- Ack e invisibilidade ----
 
-    /// A fila de um tópico que aceita ack e `PUT visibility`: `404` se não existe, `409` se
-    /// é um distribuidor.
+    /// A topic's queue that accepts ack and `PUT visibility`: `404` if it does not exist, `409` if
+    /// it is a distributor.
     pub fn queue_view(&self, topic: &str) -> Result<TopicView, TabaError> {
         let view = self.topics.get(topic)?;
         if view.definition.queue().is_none() {
@@ -1283,8 +1284,8 @@ impl Messages {
         Ok(view)
     }
 
-    /// Acha a mensagem, na memória ou no disco, e confere o `receiptToken`: um token que não
-    /// é o da última entrega é `409`.
+    /// Finds the message, in memory or on disk, and checks the `receiptToken`: a token that
+    /// is not the last delivery's is `409`.
     fn locate(
         &self,
         state: &TopicState,
@@ -1300,7 +1301,7 @@ impl Messages {
             None => self
                 .store
                 .get(topic, id)
-                .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
                 .map(|meta| (meta, Place::Disk)),
         };
         let (meta, place) = found.ok_or_else(message_not_found)?;
@@ -1310,10 +1311,10 @@ impl Messages {
         Ok((meta, place))
     }
 
-    /// Confirma o consumo e remove a mensagem (doc 13, seção 12.4). O `receiptToken` é o da
-    /// **última** entrega; um token antigo é `409` e nada muda. Passado o prazo de
-    /// invisibilidade, mas antes de uma nova entrega, o token ainda vale. Em disco remove a
-    /// linha e depois o arquivo.
+    /// Confirms the consumption and removes the message (doc 13, section 12.4). The `receiptToken` is the
+    /// **last** delivery's; an old token is `409` and nothing changes. Once the invisibility
+    /// deadline has passed, but before a new delivery, the token still applies. On disk it removes the
+    /// row and then the file.
     pub fn ack(&self, topic: &str, id: &str, receipt_token: Option<&str>) -> Result<(), TabaError> {
         let view = self.queue_view(topic)?;
         let receipt_token = receipt_token.ok_or_else(|| required(&["receiptToken"]))?;
@@ -1342,10 +1343,10 @@ impl Messages {
         Ok(())
     }
 
-    /// O ack da fila FIFO não apaga a linha: grava `deleteAt` (o instante do id mais a janela de
-    /// deduplicação) e apaga só o corpo e os metadados de entrega, para a deduplicação valer pela
-    /// janela inteira (doc 17, seção 16.7). Se `deleteAt` já passou, apaga na hora, como na fila
-    /// comum.
+    /// The FIFO queue's ack does not delete the row: it writes `deleteAt` (the id's instant plus the
+    /// deduplication window) and deletes only the body and delivery metadata, so deduplication holds for the
+    /// whole window (doc 17, section 16.7). If `deleteAt` already passed, it deletes right away, as on the
+    /// plain queue.
     fn fifo_ack(
         &self,
         state: &mut TopicState,
@@ -1362,7 +1363,7 @@ impl Messages {
         }
         self.store
             .tombstone(topic, &meta, delete_at)
-            .map_err(|e| self.disk_error("falha ao gravar o ack da fila FIFO", &e))?;
+            .map_err(|e| self.disk_error("failed to write the FIFO queue's ack", &e))?;
         let owned = state.index.contains(&meta.id);
         self.take_from_memory(state, &meta.id);
         state.index.remove(&meta.id);
@@ -1370,7 +1371,7 @@ impl Messages {
         Ok(())
     }
 
-    /// Tira a mensagem de onde ela está e do índice.
+    /// Takes the message from wherever it is and from the index.
     fn remove_message(
         &self,
         state: &mut TopicState,
@@ -1386,7 +1387,7 @@ impl Messages {
             Place::Disk => self
                 .store
                 .remove(topic, id)
-                .map_err(|e| self.disk_error("falha ao remover a mensagem do disco", &e))?,
+                .map_err(|e| self.disk_error("failed to remove the message from disk", &e))?,
         }
         state.index.remove(id);
         state.replicas.remove(id);
@@ -1394,7 +1395,7 @@ impl Messages {
         Ok(())
     }
 
-    /// Grava a mensagem de volta onde ela está, depois de mudar os metadados de entrega.
+    /// Writes the message back where it is, after changing the delivery metadata.
     fn save_meta(
         &self,
         state: &mut TopicState,
@@ -1413,7 +1414,7 @@ impl Messages {
             Place::Disk => self
                 .store
                 .update_delivery(topic, meta)
-                .map_err(|e| self.disk_error("falha ao gravar a entrega em disco", &e)),
+                .map_err(|e| self.disk_error("failed to write the delivery to disk", &e)),
         };
         if saved.is_ok() {
             self.backup_changed(topic, &meta.id, owned);
@@ -1421,9 +1422,9 @@ impl Messages {
         saved
     }
 
-    /// Define a invisibilidade a partir de agora (doc 06a, `PUT .../visibility`): substitui o
-    /// prazo, não soma, e não mexe em `deliveryCount` nem no `receiptToken`. `0` libera a
-    /// mensagem na hora.
+    /// Sets the invisibility from now on (doc 06a, `PUT .../visibility`): replaces the
+    /// deadline, does not add, and does not touch `deliveryCount` or the `receiptToken`. `0` releases the
+    /// message right away.
     pub fn set_visibility(
         &self,
         topic: &str,
@@ -1459,8 +1460,8 @@ impl Messages {
             meta.invisible_until_ms = now + secs * 1000;
             self.save_meta(&mut state, name, &meta, place)?;
             state.index.set_until(id, meta.invisible_until_ms, now);
-            // Liberar uma mensagem que já gastou as entregas a manda à dead-letter, em vez de
-            // devolvê-la à fila (doc 13, seção 12.10).
+            // Releasing a message that already used up its deliveries sends it to the dead-letter, instead of
+            // returning it to the queue (doc 13, section 12.10).
             if secs == 0 && self.exhausted(&view, meta.delivery_count) {
                 exhausted = true;
                 self.dead_letter(&mut state, &view, vec![id.to_owned()], now);
@@ -1476,7 +1477,7 @@ impl Messages {
         })
     }
 
-    /// Os parâmetros do `PUT .../visibility`, já conferidos: o `receiptToken` e os segundos.
+    /// The parameters of `PUT .../visibility`, already checked: the `receiptToken` and the seconds.
     pub fn visibility_params(
         &self,
         receipt_token: Option<&str>,
@@ -1501,35 +1502,35 @@ impl Messages {
         Ok((receipt_token.to_owned(), secs))
     }
 
-    /// Falta alguma coisa na query do ack? (o `receiptToken`).
+    /// Is something missing from the ack's query? (the `receiptToken`).
     pub fn ack_params(&self, receipt_token: Option<&str>) -> Result<String, TabaError> {
         receipt_token
             .map(str::to_owned)
             .ok_or_else(|| required(&["receiptToken"]))
     }
 
-    /// O `GET` em espera é contado como long polling enquanto esta guarda existir.
+    /// The waiting `GET` is counted as long polling while this guard exists.
     pub fn begin_long_poll(&self) -> LongPoll<'_> {
         LongPoll::start(&self.counters)
     }
 
-    /// Para o long polling saber até quando dormir e se sobrou pronta: quando a próxima invisível
-    /// volta a ser entregável e se o dono ainda tem mensagem pronta.
+    /// So long polling knows how long to sleep and whether a ready one is left: when the next invisible one
+    /// becomes deliverable again and whether the owner still has a ready message.
     pub fn wait_hints(&self, topic: &str) -> (Option<u64>, bool) {
         let state = self.state_of(topic);
         let state = lock(&state);
         (state.index.next_visible(), state.index.has_ready())
     }
 
-    /// O instante de agora no relógio do nó.
+    /// The present instant on the node's clock.
     pub fn now_millis(&self) -> u64 {
         self.clock.now_millis()
     }
 
     // ---- Consumo ----
 
-    /// Entrega até `maxMessages` mensagens prontas. Com `waitTime` maior que zero e nada
-    /// pronto, espera por mensagem nova (long polling) e devolve a primeira que chegar.
+    /// Delivers up to `maxMessages` ready messages. With a `waitTime` greater than zero and nothing
+    /// ready, it waits for a new message (long polling) and returns the first one that arrives.
     pub async fn consume(
         self: &Arc<Self>,
         topic: &str,
@@ -1544,11 +1545,11 @@ impl Messages {
         let name = view.definition.name.clone();
         let notify = self.notifier(&name);
         let deadline = tokio::time::Instant::now() + Duration::from_secs(wait);
-        // Só a chamada que chega a dormir é um long polling para as métricas.
+        // Only the call that ends up sleeping is a long polling for the metrics.
         let mut polling: Option<LongPoll<'_>> = None;
         loop {
-            // Registra o interesse antes de olhar a fila, para não perder uma mensagem que
-            // chegue entre o olhar e a espera. A ordem do registro é a ordem de atendimento.
+            // Registers interest before looking at the queue, so as not to miss a message that
+            // arrives between the look and the wait. The order of registration is the order of service.
             let notified = notify.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
@@ -1560,11 +1561,11 @@ impl Messages {
             })
             .await
             .map_err(|_| TabaError::internal())??;
-            // Sobrou mensagem pronta: o próximo ouvinte em espera também pode ser atendido.
+            // A ready message is left: the next waiting listener can also be served.
             if !taken.delivered.is_empty() && taken.more_ready {
                 notify.notify_one();
             }
-            // Em drain o `GET` em espera responde vazio na hora, para o cliente reconectar.
+            // In the drain the waiting `GET` answers empty right away, for the client to reconnect.
             if !taken.delivered.is_empty()
                 || tokio::time::Instant::now() >= deadline
                 || self.is_draining()
@@ -1575,7 +1576,7 @@ impl Messages {
                 return Ok(taken.delivered);
             }
             polling.get_or_insert_with(|| LongPoll::start(&self.counters));
-            // Dorme até chegar mensagem, o prazo acabar ou a próxima invisível vencer.
+            // Sleeps until a message arrives, the deadline ends or the next invisible one expires.
             let mut until = deadline;
             if let Some(at) = taken.next_visible_ms {
                 let in_ms = at.saturating_sub(self.clock.now_millis()).max(10);
@@ -1585,8 +1586,8 @@ impl Messages {
         }
     }
 
-    /// O começo de todo `GET`: acha (ou cria, com `autoCreate`) a fila, conta o consumidor e lê os
-    /// parâmetros da query. Serve ao consumo de um nó só e ao do cluster.
+    /// The start of every `GET`: finds (or creates, with `autoCreate`) the queue, counts the consumer and reads the
+    /// query parameters. Serves single-node consuming and the cluster's.
     pub async fn prepare_consume(
         &self,
         topic: &str,
@@ -1601,8 +1602,8 @@ impl Messages {
         if view.definition.queue().is_none() {
             return Err(wrong_type());
         }
-        // Qualquer `GET` conta como consumidor, no começo da chamada, com ou sem mensagem. O da
-        // dead-letter não conta (doc 15, seção 14.3).
+        // Any `GET` counts as a consumer, at the start of the call, with or without a message. The
+        // dead-letter's does not count (doc 15, section 14.3).
         if view.dead_letter_of.is_none() {
             lock(&self.last_get).insert(view.definition.id.clone(), self.clock.now_millis());
         }
@@ -1637,13 +1638,13 @@ impl Messages {
         ))
     }
 
-    /// O `autoCreate`: cria a fila (volátil por padrão) e já a devolve. Quem perde a disputa pela
-    /// criação trata como "já existe" e segue como um consumo normal.
+    /// The `autoCreate`: creates the queue (volatile by default) and returns it right away. Whoever loses the race for
+    /// creation treats it as "already exists" and goes on as a normal consume.
     async fn auto_create(&self, topic: &str, query: &ConsumeQuery) -> Result<TopicView, TabaError> {
         if !query.can_create {
             return Err(TabaError::new(
                 ErrorCode::AuthForbidden,
-                "Criar a fila pelo autoCreate exige a permissão create.",
+                "Creating the queue through autoCreate requires the create permission.",
             ));
         }
         let request = CreateTopic {
@@ -1665,7 +1666,7 @@ impl Messages {
         }
     }
 
-    /// A tarefa que exclui as filas voláteis ociosas, até `cancel`.
+    /// The task that deletes idle volatile queues, until `cancel`.
     pub async fn run_idle_sweeper(self: Arc<Self>, cancel: tokio_util::sync::CancellationToken) {
         let mut ticker = tokio::time::interval(Duration::from_secs(1));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -1677,10 +1678,10 @@ impl Messages {
         }
     }
 
-    /// Exclui as filas voláteis sem consumidor há `idleTimeout`, com as mensagens e a
-    /// dead-letter. O prazo é `max(criação, partida, último GET) + idleTimeout`: a partida entra
-    /// para um nó que retomou do disco não excluir a fila pelo tempo em que esteve parado.
-    /// Devolve os nomes excluídos.
+    /// Deletes the volatile queues with no consumer for `idleTimeout`, with the messages and the
+    /// dead-letter. The deadline is `max(creation, start, last GET) + idleTimeout`: the start comes in
+    /// so a node that resumed from disk does not delete the queue for the time it was stopped.
+    /// Returns the names deleted.
     pub async fn expire_idle(&self) -> Vec<String> {
         let now = self.clock.now_millis();
         let queues = self.topics.volatile_queues();
@@ -1696,14 +1697,14 @@ impl Messages {
             if now < last.saturating_add(queue.idle_timeout_secs.saturating_mul(1000)) {
                 continue;
             }
-            // Só apaga o `id` que se verificou: uma fila recriada no meio do caminho fica.
+            // Only deletes the `id` that was verified: a queue recreated along the way stays.
             match self.topics.delete_expected(&queue.name, &queue.id).await {
                 Ok(()) => {
                     tracing::info!(
                         event.name = "taba.volatile.deleted",
                         messaging.destination.name = %queue.name,
                         topic.id = %queue.id,
-                        "fila volátil excluída por ociosidade"
+                        "volatile queue deleted for idleness"
                     );
                     deleted.push(queue.name);
                 }
@@ -1711,7 +1712,7 @@ impl Messages {
                 Err(e) => tracing::warn!(
                     topic = %queue.name,
                     error = %e,
-                    "não foi possível excluir a fila ociosa"
+                    "could not delete the idle queue"
                 ),
             }
         }
@@ -1719,10 +1720,10 @@ impl Messages {
         deleted
     }
 
-    // ---- Retenção ----
+    // ---- Retention ----
 
-    /// `true` se a mensagem já gastou as entregas permitidas (`deliveryCount ≥ maxDeliveries`).
-    /// A dead-letter não tem limite: não há dead-letter da dead-letter.
+    /// `true` if the message already used up the allowed deliveries (`deliveryCount ≥ maxDeliveries`).
+    /// The dead-letter has no limit: there is no dead-letter of the dead-letter.
     fn exhausted(&self, view: &TopicView, delivery_count: u32) -> bool {
         view.dead_letter_of.is_none()
             && view
@@ -1730,12 +1731,12 @@ impl Messages {
                 .is_some_and(|max| u64::from(delivery_count) >= max)
     }
 
-    /// Aplica o `ttl` e o limite de entregas ao que está guardado, no instante `now`:
-    /// apaga o que venceu (em qualquer estado, inclusive invisível), devolve a prontas o que
-    /// teve a invisibilidade vencida e manda à dead-letter a mensagem que a teve vencida depois
-    /// de gastar as entregas. A dead-letter de uma fila é acertada junto, porque é lá que as
-    /// mensagens aparecem (doc 13, seção 12.10, e doc 14, seção 13.6). Cada tópico é acertado
-    /// com a trava dele, uma de cada vez.
+    /// Applies the `ttl` and the delivery limit to what is stored, at instant `now`:
+    /// deletes what expired (in any state, including invisible), returns to ready what
+    /// had its invisibility expire and sends to the dead-letter the message that had it expire after
+    /// spending the deliveries. A queue's dead-letter is settled together, because that is where the
+    /// messages show up (doc 13, section 12.10, and doc 14, section 13.6). Each topic is settled
+    /// with its own lock, one at a time.
     fn settle(&self, view: &TopicView, now: u64) {
         if let Some(source) = &view.dead_letter_of
             && let Ok(source_view) = self.topics.get(source)
@@ -1764,14 +1765,16 @@ impl Messages {
                         event.name = "taba.message.expired",
                         messaging.destination.name = %name,
                         message.id = %id,
-                        "mensagem descartada por ttl"
+                        "message discarded by ttl"
                     );
                 }
-                Err(_) => tracing::error!(topic = %name, id = %id, "falha ao apagar vencida"),
+                Err(_) => {
+                    tracing::error!(topic = %name, id = %id, "failed to delete the expired one")
+                }
             }
         }
-        // Cada nó apaga as próprias cópias pela mesma regra (doc 13, seção 12.10); a réplica não
-        // conta na estatística, que é só do dono.
+        // Each node deletes its own copies by the same rule (doc 13, section 12.10); the replica does not
+        // count in the statistics, which are the owner's only.
         for id in state.replicas.expired(now, ttl_ms) {
             let place = if state.memory.contains_key(&id) {
                 Place::Memory
@@ -1779,11 +1782,11 @@ impl Messages {
                 Place::Disk
             };
             if self.remove_message(&mut state, name, &id, place).is_err() {
-                tracing::error!(topic = %name, id = %id, "falha ao apagar a réplica vencida");
+                tracing::error!(topic = %name, id = %id, "failed to delete the expired replica");
             }
         }
-        // A invisibilidade que venceu devolve a mensagem a pronta; a que já tinha gastado as
-        // entregas vai à dead-letter em vez de voltar à fila.
+        // Invisibility that expired returns the message to ready; one that had already used up the
+        // deliveries goes to the dead-letter instead of going back to the queue.
         let released = state.index.release_due(now);
         let mut exhausted: Vec<String> = released
             .iter()
@@ -1795,8 +1798,8 @@ impl Messages {
             })
             .cloned()
             .collect();
-        // Primeira vez que o tópico é visto, ou o `maxDeliveries` mudou por `PATCH`: as prontas
-        // que já passam do limite também saem.
+        // First time the topic is seen, or `maxDeliveries` changed through `PATCH`: the ready ones
+        // that already exceed the limit also leave.
         let max = view.max_deliveries();
         if state.checked_max_deliveries != Some(max) {
             state.checked_max_deliveries = Some(max);
@@ -1818,10 +1821,10 @@ impl Messages {
         }
     }
 
-    /// Manda as mensagens à dead-letter. Num nó só o movimento é local e na hora; no cluster o
-    /// dono pede o movimento aos nós responsáveis (registro + commit, doc 13, seção 12.10): aqui
-    /// só entram na fila de trabalho, e a mensagem sai da lista de prontas até o movimento
-    /// terminar, para ninguém a entregar de novo.
+    /// Sends the messages to the dead-letter. On a single node the move is local and immediate; in the cluster the
+    /// owner asks the responsible nodes for the move (register + commit, doc 13, section 12.10): here they
+    /// only enter the work queue, and the message leaves the ready list until the move
+    /// finishes, so nobody delivers it again.
     fn dead_letter(&self, state: &mut TopicState, view: &TopicView, ids: Vec<String>, now: u64) {
         let Some(hooks) = self.cluster.get() else {
             self.move_to_dead_letter(state, view, ids, now);
@@ -1838,10 +1841,10 @@ impl Messages {
         }
     }
 
-    /// Move as mensagens para a dead-letter da fila: o mesmo `id`, `deliveryCount` e prazo
-    /// zerados, e `deadLetteredAt` e `deadLetterReason` preenchidos (doc 13, seção 12.10). A
-    /// mensagem continua onde estava (memória ou disco); em disco o arquivo só é renomeado
-    /// para a pasta da dead-letter. A ordem das travas é sempre fila de origem, depois
+    /// Moves the messages to the queue's dead-letter: the same `id`, `deliveryCount` and deadline
+    /// zeroed, and `deadLetteredAt` and `deadLetterReason` filled in (doc 13, section 12.10). The
+    /// message stays where it was (memory or disk); on disk the file is only renamed
+    /// into the dead-letter's folder. The lock order is always source queue, then
     /// dead-letter.
     fn move_to_dead_letter(
         &self,
@@ -1857,7 +1860,7 @@ impl Messages {
         let mut moved = 0;
         let fifo = view.definition.queue().is_some_and(|q| q.fifo);
         for id in ids {
-            // No cluster a réplica também faz o movimento, mas só o dono conta e indexa.
+            // In the cluster the replica also does the move, but only the owner counts and indexes.
             let owned = source_state.index.contains(&id);
             source_state.dead_letter_inflight.remove(&id);
             let original: Option<MessageMeta>;
@@ -1867,7 +1870,7 @@ impl Messages {
                 meta.receipt_token = None;
                 meta.dead_lettered_ms = Some(now);
                 meta.dead_letter_reason = Some("max-deliveries".to_owned());
-                // A dead-letter é uma fila comum: não deduplica.
+                // The dead-letter is a plain queue: it does not deduplicate.
                 meta.deduplication_id = None;
                 meta
             };
@@ -1886,7 +1889,7 @@ impl Messages {
                         if let Err(e) = self.store.move_to(source, &target, &meta) {
                             tracing::error!(
                                 error = %e, topic = %source, id = %id,
-                                "falha ao mover para a dead-letter"
+                                "failed to move to the dead-letter"
                             );
                             continue;
                         }
@@ -1897,7 +1900,7 @@ impl Messages {
                         continue;
                     }
                     Err(e) => {
-                        tracing::error!(error = %e, topic = %source, "falha ao ler a mensagem");
+                        tracing::error!(error = %e, topic = %source, "failed to read the message");
                         continue;
                     }
                 }
@@ -1914,10 +1917,10 @@ impl Messages {
                     messaging.destination.name = %source,
                     message.id = %id,
                     delivery_count = original.as_ref().map_or(0, |m| m.delivery_count),
-                    "mensagem enviada à dead-letter por atingir maxDeliveries"
+                    "message sent to the dead-letter for reaching maxDeliveries"
                 );
             }
-            // Na FIFO a deduplicação segue valendo depois da saída da mensagem (doc 17, 16.7).
+            // On FIFO deduplication keeps applying after the message leaves (doc 17, 16.7).
             if fifo
                 && let Some(original) = original
                 && let delete_at = original
@@ -1926,7 +1929,7 @@ impl Messages {
                 && delete_at > now
                 && let Err(e) = self.store.tombstone(source, &original, delete_at)
             {
-                tracing::error!(error = %e, topic = %source, id = %id, "falha ao gravar a linha de deduplicação");
+                tracing::error!(error = %e, topic = %source, id = %id, "failed to write the deduplication row");
             }
             if owned {
                 target_state
@@ -1944,8 +1947,8 @@ impl Messages {
         }
     }
 
-    /// Uma passada da varredura sobre todas as filas: apaga o que venceu por `ttl` e manda
-    /// à dead-letter o que gastou as entregas. Cada nó faz a sua, sem propagar nada.
+    /// One pass of the sweep over all the queues: deletes what expired by `ttl` and sends
+    /// to the dead-letter what used up its deliveries. Each node does its own, propagating nothing.
     pub fn sweep(&self) {
         let now = self.clock.now_millis();
         let mut names: Vec<String> = self
@@ -1955,7 +1958,7 @@ impl Messages {
             .collect();
         match self.store.topics_on_disk() {
             Ok(on_disk) => names.extend(on_disk),
-            Err(e) => tracing::error!(error = %e, "falha ao listar o disco na varredura"),
+            Err(e) => tracing::error!(error = %e, "failed to list the disk in the sweep"),
         }
         names.sort();
         names.dedup();
@@ -1973,21 +1976,21 @@ impl Messages {
         }
     }
 
-    /// Na fila FIFO: apaga as chaves de deduplicação que saíram da janela e as linhas curtas com
-    /// `deleteAt` vencido, pelo índice, sem propagar nada (doc 17, seção 16.7).
+    /// On the FIFO queue: deletes the deduplication keys that left the window and the short rows with an
+    /// expired `deleteAt`, by the index, propagating nothing (doc 17, section 16.7).
     fn sweep_dedup(&self, name: &str, now: u64) {
         let window = self.rules.fifo_dedup_window_ms;
         lock(&self.state_of(name))
             .dedup
             .retain(|_, (_, at)| at.saturating_add(window) > now);
         if let Err(e) = self.store.sweep_tombstones(name, now) {
-            tracing::error!(error = %e, topic = %name, "falha ao varrer as linhas de deduplicação");
+            tracing::error!(error = %e, topic = %name, "failed to sweep the deduplication rows");
         }
     }
 
-    /// A tarefa da varredura, até `cancel`. O intervalo é `retention.sweep.interval`, mas
-    /// nunca passa de 1 s: a mesma passada leva à dead-letter a mensagem cuja invisibilidade
-    /// venceu, e quem consome a dead-letter não deve esperar o intervalo inteiro.
+    /// The sweep task, until `cancel`. The interval is `retention.sweep.interval`, but
+    /// it never exceeds 1 s: the same pass takes to the dead-letter the message whose invisibility
+    /// expired, and whoever consumes the dead-letter should not wait for the whole interval.
     pub async fn run_sweeper(self: Arc<Self>, cancel: tokio_util::sync::CancellationToken) {
         let period = self.rules.sweep_interval.min(Duration::from_secs(1));
         let mut ticker = tokio::time::interval(period);
@@ -2008,9 +2011,9 @@ impl Messages {
         }
     }
 
-    /// O resumo periódico do overflow de memória para disco (doc 11, "Logs"): um log `info` com
-    /// quantas mensagens foram para o disco desde o resumo anterior, em vez de um log por
-    /// mensagem. Sem overflow na janela não há log. Devolve a quantidade resumida.
+    /// The periodic summary of the memory-to-disk overflow (doc 11, "Logs"): an `info` log with
+    /// how many messages went to disk since the previous summary, instead of one log per
+    /// message. Without overflow in the window there is no log. Returns the summarized amount.
     pub fn log_overflow_summary(&self, window: Duration) -> u64 {
         let total = self.counters.overflow.load(Ordering::Relaxed);
         let reported = self
@@ -2023,7 +2026,7 @@ impl Messages {
                 event.name = "taba.storage.overflow",
                 messages = moved,
                 window_secs = window.as_secs(),
-                "overflow de memória para disco: {moved} mensagens na última janela"
+                "memory-to-disk overflow: {moved} messages in the last window"
             );
         }
         moved
@@ -2031,19 +2034,19 @@ impl Messages {
 
     // ---- Drain ----
 
-    /// O drain local, que no desenvolvimento serve de *save* (doc 04, seção 6.10): o limite
-    /// de memória cai a zero, então toda mensagem nova vai direto para o disco, e as que
-    /// estão em memória são gravadas com os metadados (`deliveryCount`, `invisibleUntil`,
-    /// `receiptToken`, `groupId`, `contentType`) e saem da memória. Erro de disco numa
-    /// mensagem não interrompe o resto: ela fica em memória e entra no relatório.
+    /// The local drain, which in development serves as the *save* (doc 04, section 6.10): the memory
+    /// limit drops to zero, so every new message goes straight to disk, and those
+    /// in memory are written with the metadata (`deliveryCount`, `invisibleUntil`,
+    /// `receiptToken`, `groupId`, `contentType`) and leave memory. A disk error on one
+    /// message does not interrupt the rest: it stays in memory and goes into the report.
     pub fn drain(&self) -> DrainReport {
         self.begin_drain();
         self.drain_until(|| false)
     }
 
-    /// Entra em drain: o limite de memória efetivo cai a zero (toda mensagem nova vai para o
-    /// disco) e os `GET` em espera são acordados, para responderem vazios e o cliente
-    /// reconectar (doc 04, seção 6.10, passo 1).
+    /// Enters drain: the effective memory limit drops to zero (every new message goes to
+    /// disk) and the waiting `GET`s are woken, so they answer empty and the client
+    /// reconnects (doc 04, section 6.10, step 1).
     pub fn begin_drain(&self) {
         self.draining.store(true, Ordering::SeqCst);
         for notify in lock(&self.notifiers).values() {
@@ -2051,7 +2054,7 @@ impl Messages {
         }
     }
 
-    /// Cancela o drain: o nó volta a gravar em memória (`DELETE /node/drain`).
+    /// Cancels the drain: the node goes back to writing in memory (`DELETE /node/drain`).
     pub fn cancel_drain(&self) {
         self.draining.store(false, Ordering::SeqCst);
     }
@@ -2060,9 +2063,9 @@ impl Messages {
         self.draining.load(Ordering::SeqCst)
     }
 
-    /// Move a memória para o disco, uma mensagem por vez (a trava do tópico é solta entre elas),
-    /// até acabar ou `stop` devolver `true` (cancelamento ou `drain.timeout`). Os tópicos saem
-    /// na ordem do overflow: primeiro o de **menor taxa de leitura**, e, empatando, por nome.
+    /// Moves memory to disk, one message at a time (the topic lock is released between them),
+    /// until done or `stop` returns `true` (cancellation or `drain.timeout`). Topics go out
+    /// in overflow order: first the one with the **lowest read rate**, and, on a tie, by name.
     pub fn drain_until(&self, stop: impl Fn() -> bool) -> DrainReport {
         let mut report = DrainReport {
             moved: 0,
@@ -2089,7 +2092,7 @@ impl Messages {
                 if stop() {
                     break 'topics;
                 }
-                // Disco perto de encher: espera a evicção (S3) liberar espaço (doc 23, 1.8).
+                // Disk close to full: waits for the eviction (S3) to free space (doc 23, 1.8).
                 if let Some(sink) = self.backup.get() {
                     sink.before_disk_write();
                 }
@@ -2100,7 +2103,7 @@ impl Messages {
                 match self.store.put(&topic, &stored.meta, &stored.body) {
                     Ok(()) => report.moved += 1,
                     Err(e) => {
-                        tracing::error!(error = %e, topic = %topic, id = %id, "falha no drain");
+                        tracing::error!(error = %e, topic = %topic, id = %id, "drain failure");
                         report.failed += 1;
                         self.put_in_memory(&mut state, stored);
                         if storage::is_fatal(&e) {
@@ -2114,7 +2117,7 @@ impl Messages {
         report
     }
 
-    /// Mensagens que ainda estão em memória (`pendingMessages` do `DrainStatus`).
+    /// Messages still in memory (`pendingMessages` of `DrainStatus`).
     pub fn pending(&self) -> u64 {
         self.existing_states()
             .iter()
@@ -2122,8 +2125,8 @@ impl Messages {
             .sum()
     }
 
-    /// Armazenamento do nó (`NodeStatus.storage`): corpos e mensagens em memória, e
-    /// mensagens em disco.
+    /// The node's storage (`NodeStatus.storage`): bodies and messages in memory, and
+    /// messages on disk.
     pub fn storage_stats(&self) -> StorageStats {
         let disk_messages = self
             .store
@@ -2140,7 +2143,7 @@ impl Messages {
         }
     }
 
-    /// Bytes de corpo em memória e mensagens em disco de um tópico (para testes e métricas).
+    /// Bytes of body in memory and messages on disk of a topic (for tests and metrics).
     pub fn usage(&self, topic: &str) -> (u64, u64) {
         let state = self.state_of(topic);
         let memory = lock(&state)
@@ -2151,8 +2154,8 @@ impl Messages {
         (memory, self.store.count(topic).unwrap_or(0))
     }
 
-    /// A taxa de publicação e a de leitura do tópico, em mensagens por segundo na janela
-    /// `memory.rate.window` (doc 11).
+    /// The topic's publish rate and read rate, in messages per second in the
+    /// `memory.rate.window` window (doc 11).
     pub fn rates(&self, topic: &str) -> (f64, f64) {
         let state = self.state_of(topic);
         let state = lock(&state);
@@ -2169,11 +2172,11 @@ impl Messages {
         )
     }
 
-    // ---- Estatística (doc 11) ----
+    // ---- Statistics (doc 11) ----
 
-    /// O retrato de uma fila para `GET /metrics/topics*`. Acerta antes o `ttl` e as invisibilidades
-    /// vencidas, para a contagem de prontas e em processamento ser a de agora. `404` se o tópico
-    /// não existe e `409` num distribuidor (que tem [`Messages::distributor_counters`]).
+    /// The snapshot of a queue for `GET /metrics/topics*`. First settles the `ttl` and the expired invisibilities,
+    /// so the count of ready and in-processing is that of now. `404` if the topic
+    /// does not exist and `409` on a distributor (which has [`Messages::distributor_counters`]).
     pub fn topic_snapshot(
         &self,
         topic: &str,
@@ -2214,15 +2217,15 @@ impl Messages {
                 consume_latency: Percentiles::of(&state.stats.consume_latency),
             }
         };
-        // Os bytes em disco vêm do tamanho dos arquivos, fora da trava do tópico.
+        // The bytes on disk come from the files' sizes, outside the topic lock.
         if snapshot.disk_messages > 0 {
             snapshot.disk_bytes = self.store.body_bytes(name).unwrap_or(0);
         }
         Ok(snapshot)
     }
 
-    /// Os grupos de uma fila, com as contagens e a faixa de hoje (sem ordem). Um grupo sem
-    /// mensagens não existe no índice, então não aparece.
+    /// A queue's groups, with the counts and today's band (unordered). A group without
+    /// messages does not exist in the index, so it does not show up.
     pub fn group_snapshots(&self, topic: &str) -> Result<Vec<GroupSnapshot>, TabaError> {
         let view = self.queue_view(topic)?;
         self.settle(&view, self.clock.now_millis());
@@ -2249,7 +2252,7 @@ impl Messages {
             .collect())
     }
 
-    /// O que o distribuidor contou desde a partida do nó.
+    /// What the distributor counted since the node started.
     pub fn distributor_counters(&self, name: &str) -> DistributorCounters {
         lock(&self.distributors)
             .get(name)
@@ -2257,9 +2260,9 @@ impl Messages {
             .unwrap_or_default()
     }
 
-    /// O que `GET /metrics` mostra do nó: memória, disco, prontas, grupos ocupados e os
-    /// contadores. Conta pelos índices dos tópicos abertos (todo tópico com mensagem em disco é
-    /// aberto na primeira varredura depois da partida).
+    /// What `GET /metrics` shows of the node: memory, disk, ready, busy groups and the
+    /// counters. Counts by the indexes of the open topics (every topic with a message on disk is
+    /// opened in the first sweep after the start).
     pub fn observe_node(&self) -> NodeObservation {
         let (mut ready, mut busy_groups, mut memory_messages, mut disk_messages) = (0, 0, 0, 0);
         for (_, state) in self.existing_states() {
@@ -2298,19 +2301,19 @@ impl Messages {
         }
     }
 
-    /// O espaço livre no volume de `storage.dir`, em bytes; `None` se o sistema não disse.
+    /// The free space on the `storage.dir` volume, in bytes; `None` if the system did not say.
     pub fn disk_free_bytes(&self) -> Option<u64> {
         self.store.free_bytes().ok()
     }
 
-    /// Há quanto tempo foi o último `GET` do tópico **neste nó**, em segundos inteiros, e se a conta
-    /// vem da partida do nó (sem registro de `GET`: o nó subiu agora ou reiniciou), de modo que um
-    /// reinício só pode adiar a exclusão de uma fila volátil (doc 15, seção 14.5).
+    /// How long ago the topic's last `GET` was **on this node**, in whole seconds, and whether the count
+    /// comes from the node's start (no `GET` record: the node just came up or restarted), so that a
+    /// restart can only postpone the deletion of a volatile queue (doc 15, section 14.5).
     pub fn idle_of(&self, topic_id: &str) -> Result<(u64, bool), TabaError> {
         if !self.topics.has_id(topic_id) {
             return Err(TabaError::new(
                 ErrorCode::TopicNotFound,
-                "O tópico não existe.",
+                "The topic does not exist.",
             ));
         }
         let now = self.clock.now_millis();
@@ -2321,16 +2324,16 @@ impl Messages {
         Ok((now.saturating_sub(since) / 1000, from_start))
     }
 
-    /// A partida do nó, em milissegundos: onde a conta de ociosidade de um tópico sem atividade
-    /// começa quando ele é mais velho que o nó.
+    /// The node's start, in milliseconds: where the idleness count of a topic with no activity
+    /// begins when it is older than the node.
     pub fn started_ms(&self) -> u64 {
         self.started_ms
     }
 
     // ---- Entrega ----
 
-    /// Pega as mensagens prontas pelo índice (a justiça entre grupos e o efeito sanfona),
-    /// juntando memória e disco.
+    /// Takes the ready messages through the index (fairness between groups and the accordion effect),
+    /// joining memory and disk.
     fn take(&self, view: &TopicView, max: usize, visibility_secs: u64) -> Result<Taken, TabaError> {
         let started = Instant::now();
         let name = &view.definition.name;
@@ -2359,19 +2362,19 @@ impl Messages {
                     let Some(meta) = self
                         .store
                         .get(name, &id)
-                        .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                        .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
                     else {
                         state.index.remove(&id);
                         continue;
                     };
                     match self.store.body(name, &id) {
                         Ok(body) => (meta, body),
-                        // O corpo que a evicção tirou do disco volta do S3 (doc 23).
+                        // The body the eviction took off disk comes back from S3 (doc 23).
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {
                             match self.backup_body(name, &id) {
                                 Some(body) => (meta, body),
                                 None => {
-                                    // Linha sem arquivo (uma queda no meio da gravação): perdida.
+                                    // Row without a file (a crash in the middle of writing): lost.
                                     tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
                                     let _ = self.store.remove(name, &id);
                                     state.index.remove(&id);
@@ -2379,7 +2382,9 @@ impl Messages {
                                 }
                             }
                         }
-                        Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+                        Err(e) => {
+                            return Err(self.disk_error("failed to read the body on disk", &e));
+                        }
                     }
                 }
             };
@@ -2388,7 +2393,7 @@ impl Messages {
                 Place::Disk => NodeCounters::add(&self.counters.reads_disk, 1),
             }
             if meta.delivery_count == 0 {
-                // A espera até a primeira entrega, pela faixa do grupo na hora de entregar.
+                // The wait until the first delivery, by the group's band at delivery time.
                 let band = state.index.band_of_entry(&id).unwrap_or(0);
                 let waited_ms = now.saturating_sub(meta.age_base_ms());
                 self.counters.observe_wait(band, waited_ms as f64 / 1000.0);
@@ -2401,14 +2406,13 @@ impl Messages {
             let receipt_token = self.ids.new_at(now);
             meta.receipt_token = Some(receipt_token.clone());
             self.save_meta(&mut state, name, &meta, place)?;
-            // Dentro do laço a mensagem fica em processamento ao menos até o instante seguinte,
-            // para o mesmo `GET` não a escolher de novo (com `visibilityTimeout=0`).
+            // Inside the loop the message stays in processing at least until the next instant,
+            // so the same `GET` does not choose it again (with `visibilityTimeout=0`).
             state
                 .index
                 .deliver(&id, until.max(now + 1), now, meta.delivery_count);
-            let content_type = ContentType::parse(&meta.content_type).unwrap_or_else(|_| {
-                ContentType::parse("application/octet-stream").expect("válido")
-            });
+            let content_type = ContentType::parse(&meta.content_type)
+                .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("valid"));
             delivered.push(Delivered {
                 id,
                 body: Body::render(&content_type, &body),
@@ -2448,17 +2452,17 @@ impl Messages {
     }
 }
 
-/// Os blocos de construção do cluster (doc 05, seção 7.2; doc 13, seção 12.2; doc 14, seção 13.3).
-/// O motor continua síncrono e local: quem fala com os outros nós é o `cluster/replication`, que
-/// chama estes métodos no nó que coordena e nos nós que recebem o registro e o commit.
+/// The cluster's building blocks (doc 05, section 7.2; doc 13, section 12.2; doc 14, section 13.3).
+/// The engine remains synchronous and local: whoever talks to the other nodes is `cluster/replication`, which
+/// calls these methods on the coordinating node and on the nodes that receive the register and the commit.
 impl Messages {
-    /// Liga o nó ao cluster. Vale só a primeira chamada.
+    /// Attaches the node to the cluster. Only the first call counts.
     pub fn enable_cluster(&self, hooks: ClusterHooks) {
         let _ = self.cluster.set(hooks);
     }
 
-    /// A posição no anel de uma mensagem do tópico (doc 05, seção 7.1): o hash do `id`; na fila
-    /// FIFO, o do grupo (todas as mensagens de um grupo caem no mesmo bloco).
+    /// The ring position of a topic's message (doc 05, section 7.1): the hash of the `id`; on the
+    /// FIFO queue, the group's (all of a group's messages fall in the same block).
     fn position_of(&self, view: &TopicView, id: &str, group: Option<&str>) -> u64 {
         if view.definition.queue().is_some_and(|q| q.fifo) {
             fifo_position(&view.definition.id, group.unwrap_or(""))
@@ -2467,7 +2471,7 @@ impl Messages {
         }
     }
 
-    /// O mesmo, pelo nome do tópico. Tópico que não existe (mais) conta como fila comum.
+    /// The same, by topic name. A topic that does not exist (any more) counts as a plain queue.
     pub fn position_for(&self, topic: &str, id: &str, group: Option<&str>) -> u64 {
         match self.topics.get(topic) {
             Ok(view) => self.position_of(&view, id, group),
@@ -2475,7 +2479,7 @@ impl Messages {
         }
     }
 
-    /// O nó é o dono da entrega da mensagem? Sem cluster, sempre.
+    /// Is the node the message's delivery owner? Without a cluster, always.
     fn owns(&self, topic: &str, id: &str, group: Option<&str>) -> bool {
         self.cluster.get().is_none_or(|hooks| {
             hooks
@@ -2484,7 +2488,7 @@ impl Messages {
         })
     }
 
-    /// Avisa o cluster quando o tópico passa a ter (ou deixa de ter) mensagens prontas aqui.
+    /// Notifies the cluster when the topic starts (or stops) having ready messages here.
     fn ready_changed(&self, name: &str, state: &mut TopicState) {
         let has = state.index.has_ready();
         if state.ready_signaled != has {
@@ -2495,8 +2499,8 @@ impl Messages {
         }
     }
 
-    /// Os tópicos com estado aberto e, em cada um, se há mensagem pronta (o instantâneo que um nó
-    /// novo recebe dos sinais).
+    /// The topics with open state and, in each, whether there is a ready message (the snapshot a new
+    /// node receives from the signals).
     pub fn ready_topics(&self) -> Vec<String> {
         self.existing_states()
             .into_iter()
@@ -2505,7 +2509,7 @@ impl Messages {
             .collect()
     }
 
-    /// Os tópicos com mensagens prontas e quantas (o que o sinal de vida carrega).
+    /// The topics with ready messages and how many (what the heartbeat carries).
     pub fn ready_counts(&self) -> Vec<(String, u64)> {
         self.existing_states()
             .into_iter()
@@ -2516,7 +2520,7 @@ impl Messages {
             .collect()
     }
 
-    /// Quantas mensagens prontas o tópico tem aqui (o que o aviso informa).
+    /// How many ready messages the topic has here (what the notice reports).
     pub fn ready_count_of(&self, topic: &str) -> u64 {
         self.existing_states()
             .into_iter()
@@ -2524,17 +2528,17 @@ impl Messages {
             .map_or(0, |(_, state)| lock(&state).index.ready_count() as u64)
     }
 
-    /// Acorda até `count` `GET` em espera neste nó (um aviso de mensagem nova veio de outro).
+    /// Wakes up to `count` waiting `GET`s on this node (a new-message notice came from another).
     pub fn wake_listeners(&self, topic: &str, count: usize) {
         self.wake(topic, count);
     }
 
-    /// Quem espera mensagem nova do tópico neste nó é avisado por aqui.
+    /// Whoever waits for a new message of the topic on this node is notified through here.
     pub fn listener_notify(&self, topic: &str) -> Arc<Notify> {
         self.notifier(topic)
     }
 
-    /// O nó é responsável pela posição do anel, num papel qualquer? Sem cluster, sempre.
+    /// Is the node responsible for the ring position, in any role? Without a cluster, always.
     pub fn responsible_for(&self, position: u64) -> bool {
         self.cluster
             .get()
@@ -2545,7 +2549,7 @@ impl Messages {
         self.cluster.get().is_some()
     }
 
-    /// O nó guarda esta mensagem? Devolve os metadados e se ele é o dono.
+    /// Does the node keep this message? Returns the metadata and whether it is the owner.
     pub fn message_info(&self, topic: &str, id: &str) -> Result<Option<MessageInfo>, TabaError> {
         let state = self.state_of(topic);
         let state = lock(&state);
@@ -2558,7 +2562,7 @@ impl Messages {
             None => match self
                 .store
                 .get(topic, id)
-                .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
             {
                 Some(meta) => meta,
                 None => return Ok(None),
@@ -2567,7 +2571,7 @@ impl Messages {
         Ok(Some(MessageInfo { meta, owned }))
     }
 
-    /// Os metadados e o corpo da mensagem que o nó guarda.
+    /// The metadata and body of the message the node keeps.
     pub fn read_message(
         &self,
         topic: &str,
@@ -2584,7 +2588,7 @@ impl Messages {
         let Some(meta) = self
             .store
             .get(topic, id)
-            .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+            .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
         else {
             return Ok(None);
         };
@@ -2592,16 +2596,16 @@ impl Messages {
             Ok(body) => body,
             Err(e) if e.kind() == io::ErrorKind::NotFound => match self.backup_body(topic, id) {
                 Some(body) => body,
-                None => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+                None => return Err(self.disk_error("failed to read the body on disk", &e)),
             },
-            Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+            Err(e) => return Err(self.disk_error("failed to read the body on disk", &e)),
         };
         Ok(Some((meta, body)))
     }
 
-    /// Prepara uma publicação para o cluster: confere tudo o que o nó de uma fila conferiria e
-    /// gera o `id`, mas **não guarda** nada. O coordenador manda o resultado aos nós
-    /// responsáveis. A fila FIFO precisa do primário do grupo e ainda não existe no cluster.
+    /// Prepares a publication for the cluster: checks everything a queue's node would check and
+    /// generates the `id`, but **stores** nothing. The coordinator sends the result to the responsible
+    /// nodes. The FIFO queue needs the group's primary and does not exist in the cluster yet.
     pub fn draft_publish(
         &self,
         view: &TopicView,
@@ -2615,23 +2619,23 @@ impl Messages {
         if view.definition.queue().is_some_and(|q| q.fifo) {
             return Err(TabaError::new(
                 ErrorCode::InternalError,
-                "A fila FIFO tem o seu rascunho (`draft_fifo_publish`).",
+                "The FIFO queue has its own draft (`draft_fifo_publish`).",
             ));
         }
         if request.deduplication_id.is_some() {
             return Err(TabaError::new(
                 ErrorCode::ValidationNotApplicable,
-                "`deduplicationId` só vale numa fila FIFO.",
+                "`deduplicationId` only applies on a FIFO queue.",
             )
             .with_detail(
                 "deduplicationId",
                 ErrorCode::ValidationNotApplicable,
-                "Só vale numa fila FIFO.",
+                "Only applies on a FIFO queue.",
             ));
         }
         let now = self.clock.now_millis();
         let id = self.ids.new_at(now);
-        // A publicação vale do instante que o `id` guarda: é daí que o `ttl` conta em todo nó.
+        // The publication counts from the instant the `id` holds: that is where the `ttl` counts from on every node.
         let published_ms = crate::core::id::unix_millis_of(&id).unwrap_or(now);
         let meta = MessageMeta {
             id,
@@ -2649,8 +2653,8 @@ impl Messages {
         Ok((meta, request.body.clone()))
     }
 
-    /// O que qualquer nó confere antes de repassar a publicação FIFO ao primário: corpo, tipo,
-    /// tamanho e `groupId` (obrigatório). Devolve o conteúdo conferido e o grupo.
+    /// What any node checks before forwarding the FIFO publication to the primary: body, type,
+    /// size and `groupId` (required). Returns the checked content and the group.
     pub fn check_fifo_request(
         &self,
         view: &TopicView,
@@ -2664,29 +2668,29 @@ impl Messages {
         let Some(group) = request.group_id.clone() else {
             return Err(TabaError::new(
                 ErrorCode::ValidationGroupIdRequired,
-                "A fila FIFO exige `groupId`.",
+                "A FIFO queue requires `groupId`.",
             )
             .with_detail(
                 "groupId",
                 ErrorCode::ValidationGroupIdRequired,
-                "Obrigatório numa fila FIFO.",
+                "Required on a FIFO queue.",
             ));
         };
         Ok((prepared, group))
     }
 
-    /// O `deleteAt` da linha de deduplicação de uma mensagem FIFO: o instante do `id` mais a janela
-    /// (doc 17, seção 16.7).
+    /// The `deleteAt` of a FIFO message's deduplication row: the `id`'s instant plus the window
+    /// (doc 17, section 16.7).
     pub fn fifo_delete_at(&self, id: &str) -> u64 {
         crate::core::id::unix_millis_of(id)
             .unwrap_or(0)
             .saturating_add(self.rules.fifo_dedup_window_ms)
     }
 
-    /// O rascunho de uma publicação na fila FIFO, feito pelo **primário do grupo** (doc 17, seção
-    /// 16.4): confere o `groupId`, a deduplicação (uma duplicata devolve o `id` da original, sem
-    /// registro nem commit) e gera o `id` como `max(agora, último do grupo + 1)`, para a ordem do
-    /// grupo ser a do `id` mesmo que o relógio de um primário anterior estivesse adiantado.
+    /// The draft of a publication on the FIFO queue, made by the **group's primary** (doc 17, section
+    /// 16.4): checks the `groupId`, deduplication (a duplicate returns the original's `id`, without a
+    /// register or commit) and generates the `id` as `max(now, group's last + 1)`, so the group's
+    /// order is the `id`'s even if a previous primary's clock was ahead.
     pub fn draft_fifo_publish(
         &self,
         view: &TopicView,
@@ -2710,8 +2714,8 @@ impl Messages {
         let at = now.max(state.group_ms.get(&group).map_or(0, |last| last + 1));
         let id = self.ids.new_at(at);
         let published_ms = crate::core::id::unix_millis_of(&id).unwrap_or(at);
-        // Reserva o instante já: a próxima publicação do grupo parte de depois dele, mesmo que esta
-        // ainda não tenha feito o commit.
+        // Reserves the instant right away: the group's next publication starts from after it, even if this one
+        // has not committed yet.
         state.group_ms.insert(group.clone(), published_ms);
         let meta = MessageMeta {
             position: self.position_of(view, &id, Some(&group)),
@@ -2732,8 +2736,8 @@ impl Messages {
         })
     }
 
-    /// Guarda a mensagem no commit da publicação. O dono a põe no índice e acorda os `GET` em
-    /// espera; a réplica só a guarda. Repetir o commit não faz nada.
+    /// Stores the message on the publication commit. The owner puts it in the index and wakes the waiting
+    /// `GET`s; the replica only stores it. Repeating the commit does nothing.
     pub fn apply_publish(
         &self,
         topic: &str,
@@ -2749,8 +2753,8 @@ impl Messages {
             if state.index.contains(&meta.id) || state.replicas.contains(&meta.id) {
                 return Ok(());
             }
-            // Na FIFO toda cópia lembra a chave de deduplicação e o instante do último `id` do grupo:
-            // quem assumir o grupo herda os dois sem perda (doc 17, seções 16.5 e 16.7).
+            // On FIFO every copy remembers the deduplication key and the instant of the group's last `id`:
+            // whoever takes over the group inherits both without loss (doc 17, sections 16.5 and 16.7).
             if state.index.is_fifo()
                 && let Some(group) = &meta.group_id
             {
@@ -2773,7 +2777,7 @@ impl Messages {
             } else {
                 self.store
                     .put(topic, &meta, &body)
-                    .map_err(|e| self.disk_error("falha ao gravar a mensagem em disco", &e))?;
+                    .map_err(|e| self.disk_error("failed to write the message to disk", &e))?;
                 if !self.draining.load(Ordering::SeqCst) {
                     NodeCounters::add(&self.counters.overflow, 1);
                 }
@@ -2801,8 +2805,8 @@ impl Messages {
         Ok(())
     }
 
-    /// Confere o registro de uma invisibilidade (ou de um ack): a mensagem existe, e a entrega
-    /// não pode pegá-la invisível nem a alteração e o ack com o `receiptToken` errado.
+    /// Checks the register of an invisibility (or of an ack): the message exists, and delivery
+    /// cannot catch it invisible, nor a change and ack with the wrong `receiptToken`.
     pub fn check_visibility(
         &self,
         topic: &str,
@@ -2817,7 +2821,7 @@ impl Messages {
         match check {
             VisibilityCheck::Delivery if info.meta.invisible_until_ms > now => Err(TabaError::new(
                 ErrorCode::ClusterConflict,
-                "A mensagem já está invisível.",
+                "The message is already invisible.",
             )),
             VisibilityCheck::Delivery => Ok(()),
             VisibilityCheck::Receipt
@@ -2829,8 +2833,8 @@ impl Messages {
         }
     }
 
-    /// Grava no commit o prazo (e, numa entrega, o contador e o token) nos metadados; no dono, o
-    /// índice acompanha. O prazo é absoluto e vem pronto do dono.
+    /// Writes the deadline (and, on a delivery, the counter and token) into the metadata on commit; on the owner, the
+    /// index follows. The deadline is absolute and comes ready from the owner.
     pub fn apply_visibility(
         &self,
         topic: &str,
@@ -2855,7 +2859,7 @@ impl Messages {
             Place::Disk => self
                 .store
                 .get(topic, id)
-                .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
                 .ok_or_else(message_not_found)?,
         };
         meta.invisible_until_ms = until_ms;
@@ -2871,7 +2875,7 @@ impl Messages {
             }
         }
         let released = owned && delivery.is_none() && until_ms <= now;
-        // Liberar uma mensagem que já gastou as entregas a manda à dead-letter (doc 13, 12.10).
+        // Releasing a message that already used up its deliveries sends it to the dead-letter (doc 13, 12.10).
         if released
             && let Ok(view) = self.topics.get(topic)
             && self.exhausted(&view, meta.delivery_count)
@@ -2886,8 +2890,8 @@ impl Messages {
         Ok(())
     }
 
-    /// Remove a mensagem no commit do ack (sem deixar rastro, doc 13, seção 12.4). Só o dono
-    /// conta o ack na estatística. Repetir o commit não faz nada.
+    /// Removes the message on the ack commit (leaving no trace, doc 13, section 12.4). Only the owner
+    /// counts the ack in the statistics. Repeating the commit does nothing.
     pub fn apply_ack(&self, topic: &str, id: &str) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
@@ -2902,13 +2906,13 @@ impl Messages {
             Place::Disk
         };
         if state.index.is_fifo() {
-            // Na FIFO o ack não apaga a linha: deixa a de deduplicação até o `deleteAt`.
+            // On FIFO the ack does not delete the row: it leaves the deduplication one until `deleteAt`.
             let meta = match state.memory.get(id) {
                 Some(stored) => Some(stored.meta.clone()),
                 None => self
                     .store
                     .get(topic, id)
-                    .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?,
+                    .map_err(|e| self.disk_error("failed to read the message on disk", &e))?,
             };
             match meta {
                 Some(meta) => self.fifo_ack(&mut state, topic, meta, place, now)?,
@@ -2930,8 +2934,8 @@ impl Messages {
         Ok(())
     }
 
-    /// Faz no commit o movimento para a dead-letter da cópia que o nó tem (doc 13, seção 12.10).
-    /// `at_ms` é o instante que o dono fixou: é de onde o `ttl` conta na dead-letter.
+    /// Does on commit the move to the dead-letter of the copy the node has (doc 13, section 12.10).
+    /// `at_ms` is the instant the owner fixed: it is where the `ttl` counts from in the dead-letter.
     pub fn apply_dead_letter(&self, source: &str, id: &str, at_ms: u64) -> Result<(), TabaError> {
         let view = self.topics.get(source)?;
         let state = self.state_of(source);
@@ -2941,8 +2945,8 @@ impl Messages {
         Ok(())
     }
 
-    /// O movimento para a dead-letter terminou (ou falhou): se falhou, a mensagem volta a ser
-    /// pronta e a próxima passada da varredura tenta de novo.
+    /// The move to the dead-letter finished (or failed): if it failed, the message becomes
+    /// ready again and the next pass of the sweep tries again.
     pub fn dead_letter_done(&self, topic: &str, id: &str, moved: bool) {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
@@ -2950,16 +2954,16 @@ impl Messages {
         state.dead_letter_inflight.remove(id);
         if !moved {
             state.index.set_until(id, 0, now);
-            // A próxima acertada confere de novo as prontas que gastaram as entregas e refaz o pedido.
+            // The next settle checks again the ready ones that used up their deliveries and redoes the request.
             state.checked_max_deliveries = None;
             self.ready_changed(topic, &mut state);
         }
     }
 
-    /// Escolhe até `max` mensagens prontas do dono, calcula o contador, o prazo e o token novos e
-    /// as **reserva** no índice (em processamento) sem gravar nada: a entrega só vale depois do
-    /// commit no quórum (`apply_visibility` mais `finish_take`); se o quórum não fecha,
-    /// `abort_take` devolve a mensagem a pronta.
+    /// Chooses up to `max` ready messages of the owner, computes the new counter, deadline and token and
+    /// **reserves** them in the index (in processing) without writing anything: the delivery only counts after the
+    /// commit on the quorum (`apply_visibility` plus `finish_take`); if the quorum does not close,
+    /// `abort_take` returns the message to ready.
     pub fn take_candidates(
         &self,
         view: &TopicView,
@@ -2984,7 +2988,7 @@ impl Messages {
                 let Some(meta) = self
                     .store
                     .get(name, &id)
-                    .map_err(|e| self.disk_error("falha ao ler a mensagem em disco", &e))?
+                    .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
                 else {
                     state.index.remove(&id);
                     continue;
@@ -3008,15 +3012,15 @@ impl Messages {
                             }
                         }
                     }
-                    Err(e) => return Err(self.disk_error("falha ao ler o corpo em disco", &e)),
+                    Err(e) => return Err(self.disk_error("failed to read the body on disk", &e)),
                 }
             };
             let band = state.index.band_of_entry(&id).unwrap_or(0);
             let previous_deliveries = meta.delivery_count;
             meta.delivery_count += 1;
             meta.invisible_until_ms = until;
-            // Na FIFO o recibo leva a posição do grupo: quem recebe o ack ou a alteração de qualquer
-            // nó acha o bloco sem saber o grupo (doc 17, seção 16.3).
+            // On FIFO the receipt carries the group's position: whoever receives the ack or the change from any
+            // node finds the block without knowing the group (doc 17, section 16.3).
             let token = self.ids.new_at(now);
             meta.receipt_token = Some(if state.index.is_fifo() {
                 format!("{:016x}-{token}", meta.position)
@@ -3037,7 +3041,7 @@ impl Messages {
         Ok(out)
     }
 
-    /// O quórum não fechou: a mensagem reservada volta a ser pronta, como estava.
+    /// The quorum did not close: the reserved message goes back to ready, as it was.
     pub fn abort_take(&self, topic: &str, candidate: &Candidate) {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
@@ -3050,8 +3054,8 @@ impl Messages {
         self.wake(topic, 1);
     }
 
-    /// Conta as entregas que o quórum confirmou: consumo, reentregas, espera até a primeira
-    /// entrega e as taxas (só o dono conta, doc 11).
+    /// Counts the deliveries the quorum confirmed: consumption, redeliveries, the wait until the first
+    /// delivery and the rates (only the owner counts, doc 11).
     pub fn finish_take(&self, topic: &str, delivered: &[&Candidate], started: Instant) {
         if delivered.is_empty() {
             return;
@@ -3081,10 +3085,10 @@ impl Messages {
             .record(started.elapsed().as_secs_f64());
     }
 
-    /// Reavalia quem é o dono depois de uma mudança de membros (entrada, saída, rebalanceamento):
-    /// as mensagens de que o nó deixou de ser dono saem do índice e viram réplicas, e as réplicas de
-    /// que ele passou a ser dono entram no índice, prontas ou invisíveis conforme os metadados
-    /// (doc 14, seção 13.7).
+    /// Re-evaluates who the owner is after a member change (join, leave, rebalancing):
+    /// the messages the node stopped owning leave the index and become replicas, and the replicas it
+    /// became the owner of enter the index, ready or invisible according to the metadata
+    /// (doc 14, section 13.7).
     pub fn reown(&self) {
         let now = self.clock.now_millis();
         for (name, state) in self.existing_states() {
@@ -3093,7 +3097,7 @@ impl Messages {
                 let mut state = lock(&state);
                 let fifo = state.index.is_fifo();
                 for id in state.index.ids() {
-                    // Na FIFO o dono vem do grupo, que só os metadados dizem.
+                    // On FIFO the owner comes from the group, which only the metadata tells.
                     let group = if fifo {
                         self.held_meta(&state, &name, &id).and_then(|m| m.group_id)
                     } else {
@@ -3142,8 +3146,8 @@ impl Messages {
         }
     }
 
-    /// Apaga tudo o que o nó guarda de mensagens, em memória e em disco (o nó volta do drain como
-    /// nó novo e não aproveita o que tinha, doc 04, seção 6.10).
+    /// Deletes everything the node keeps of messages, in memory and on disk (the node comes back from the drain as a
+    /// new node and does not reuse what it had, doc 04, section 6.10).
     pub fn reset_all(&self) {
         let mut names: Vec<String> = self
             .existing_states()
@@ -3160,8 +3164,8 @@ impl Messages {
         }
     }
 
-    /// O `publish` de um distribuidor, depois de cada cópia ter sido publicada: as contagens e os
-    /// eventos de `no_target` e `partial`.
+    /// A distributor's `publish`, after each copy has been published: the counts and the
+    /// `no_target` and `partial` events.
     pub fn record_distributor(&self, name: &str, deliveries: &[DistributorDelivery]) {
         let failed = deliveries.iter().filter(|d| d.result.is_err()).count() as u64;
         {
@@ -3175,7 +3179,7 @@ impl Messages {
             tracing::info!(
                 event.name = "taba.distributor.no_target",
                 messaging.destination.name = %name,
-                "publicação sem nenhuma fila que case: a mensagem foi descartada"
+                "publication with no matching queue: the message was discarded"
             );
         } else if failed > 0 {
             tracing::warn!(
@@ -3183,34 +3187,34 @@ impl Messages {
                 messaging.destination.name = %name,
                 failed,
                 copies = deliveries.len(),
-                "ao menos uma cópia da publicação falhou"
+                "at least one copy of the publication failed"
             );
         }
     }
 
-    /// O tamanho máximo de corpo que uma publicação no tópico aceita (para quem lê o corpo antes).
+    /// The maximum body size a publication to the topic accepts (for whoever reads the body first).
     pub fn message_limit(&self, view: &TopicView) -> u64 {
         view.max_message_bytes().unwrap_or(self.rules.max_bytes)
     }
 
-    /// O limite do distribuidor (o geral).
+    /// The distributor's limit (the general one).
     pub fn distributor_limit(&self) -> u64 {
         self.rules.max_bytes
     }
 
-    /// O teto de destinos de um distribuidor.
+    /// The ceiling of a distributor's destinations.
     pub fn distributor_max_targets(&self) -> Option<u64> {
         self.rules.distributor_max_targets
     }
 
-    /// Valida o que a publicação traz antes de saber o tipo do tópico (`Content-Type`, corpo,
+    /// Validates what the publication brings before knowing the topic's type (`Content-Type`, body,
     /// `groupId`, `deduplicationId`).
     pub fn validate_publish(&self, request: &PublishRequest) -> Result<(), TabaError> {
         Prepared::new(request).map(|_| ())
     }
 }
 
-/// O que se valida na publicação antes de saber o tipo do tópico.
+/// What is validated in the publication before knowing the topic's type.
 pub struct Prepared {
     content_type: ContentType,
 }

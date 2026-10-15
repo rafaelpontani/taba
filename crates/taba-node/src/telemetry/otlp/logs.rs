@@ -1,6 +1,6 @@
-//! Os logs do nó como *log records* do OpenTelemetry (doc 11, "Logs"): cada evento do `tracing`
-//! vira um registro com a severidade do OpenTelemetry, os campos como atributos (inclusive
-//! `event.name`) e o `trace_id` e o `span_id` do span em que o evento aconteceu.
+//! The node's logs as OpenTelemetry *log records* (doc 11, "Logs"): each `tracing` event
+//! becomes a record with the OpenTelemetry severity, the fields as attributes (including
+//! `event.name`) and the `trace_id` and `span_id` of the span in which the event happened.
 
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, Severity};
 use opentelemetry::trace::TraceContextExt;
@@ -14,8 +14,8 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 
-/// A camada dos logs. Fica no assinante desde o início; o logger (e o nível mínimo, conferido aqui
-/// e não por um filtro do `tracing`) é o do pipeline ligado, e sem pipeline nada sai.
+/// The logs layer. It sits in the subscriber from the start; the logger (and the minimum level, checked here
+/// and not by a `tracing` filter) is that of the attached pipeline, and without a pipeline nothing goes out.
 pub struct LogLayer {
     pub slot: Arc<RwLock<Option<LogSlot>>>,
 }

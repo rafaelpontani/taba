@@ -1,10 +1,10 @@
-//! O banco do nó: `${storage.dir}/_node.db`, SQLite estritamente local (doc 02, seção 3.2).
+//! The node database: `${storage.dir}/_node.db`, strictly local SQLite (doc 02, section 3.2).
 //!
-//! Guarda a tabela `topics` (as definições) e a `state` (chave e valor do estado do nó,
-//! como a marca do save) e a `tokens` (os tokens de acesso, só com o hash salgado do segredo);
-//! `losses` (as mensagens declaradas perdidas na sincronização, doc 05, seção 7.3). Uma única conexão atrás de um `Mutex` é o escritor único do
-//! banco: quem grava espera a vez, e o SQLite nunca vê duas escritas ao mesmo tempo.
-//! Os métodos são síncronos: o `engine` os chama fora do executor assíncrono.
+//! It keeps the `topics` table (the definitions) and `state` (key and value of the node's state,
+//! like the save mark) and `tokens` (the access tokens, only with the salted hash of the secret);
+//! `losses` (the messages declared lost in synchronization, doc 05, section 7.3). A single connection behind a `Mutex` is the database's
+//! single writer: whoever writes waits their turn, and SQLite never sees two writes at the same time.
+//! The methods are synchronous: the `engine` calls them outside the async executor.
 
 use std::io;
 use std::path::Path;
@@ -16,8 +16,8 @@ use crate::config::DbSynchronous;
 
 pub const NODE_DB_FILE: &str = "_node.db";
 
-/// Versão do esquema, guardada em `PRAGMA user_version`. Um banco de versão maior é de um
-/// nó mais novo: não se mexe nele.
+/// Schema version, kept in `PRAGMA user_version`. A database of a greater version belongs to a
+/// newer node: it is not touched.
 const SCHEMA_VERSION: i64 = 4;
 
 const SCHEMA: &str = "
@@ -48,7 +48,7 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
 ";
 
-/// Quem é avisado de um erro de disco fatal no banco do nó (cheio ou corrompido).
+/// Who is warned of a fatal disk error in the node database (full or corrupt).
 pub type FailureHook = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Default)]
@@ -67,9 +67,9 @@ pub struct NodeDb {
 }
 
 impl NodeDb {
-    /// Abre (criando, se preciso) `<storage_dir>/_node.db` em modo WAL, com o
-    /// `storage.db.synchronous` configurado. Banco ilegível ou de versão desconhecida
-    /// é erro: o nó não sobe (doc 02, seção 3.2).
+    /// Opens (creating, if needed) `<storage_dir>/_node.db` in WAL mode, with the configured
+    /// `storage.db.synchronous`. An unreadable database or one of an unknown version
+    /// is an error: the node does not start (doc 02, section 3.2).
     pub fn open(storage_dir: &Path, synchronous: DbSynchronous) -> io::Result<Self> {
         std::fs::create_dir_all(storage_dir)?;
         let conn = Connection::open(storage_dir.join(NODE_DB_FILE)).map_err(to_io)?;
@@ -84,7 +84,7 @@ impl NodeDb {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "{NODE_DB_FILE} é da versão {version} do esquema, mais nova que a {SCHEMA_VERSION} deste nó"
+                    "{NODE_DB_FILE} is schema version {version}, newer than this node's {SCHEMA_VERSION}"
                 ),
             ));
         }
@@ -97,14 +97,14 @@ impl NodeDb {
         })
     }
 
-    /// Registra quem é avisado de um erro de disco fatal (doc 04, seção 6.3, D78.1). Vale só a
-    /// primeira chamada.
+    /// Registers who is warned of a fatal disk error (doc 04, section 6.3, D78.1). Only the
+    /// first call counts.
     pub fn on_failure(&self, hook: FailureHook) {
         let _ = self.on_failure.0.set(hook);
     }
 
-    /// O erro do SQLite como `io::Error`. Disco cheio ou banco corrompido também avisam o nó,
-    /// que passa a `failed`: sem o `_node.db` ele não guarda o que o cluster já confirmou.
+    /// The SQLite error as `io::Error`. A full disk or a corrupt database also warns the node,
+    /// which goes to `failed`: without `_node.db` it does not keep what the cluster already acknowledged.
     pub fn fail(&self, e: rusqlite::Error) -> io::Error {
         let error = to_io(e);
         if super::is_fatal(&error)
@@ -119,7 +119,7 @@ impl NodeDb {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Valor de um `PRAGMA` de leitura (para os testes e o diagnóstico).
+    /// Value of a read `PRAGMA` (for the tests and diagnostics).
     pub fn pragma(&self, name: &str) -> io::Result<String> {
         self.conn()
             .pragma_query_value(None, name, |row| {

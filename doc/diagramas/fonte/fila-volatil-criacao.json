@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Criação automática de uma fila volátil",
+    "title": "Automatic creation of a volatile queue",
     "output": "doc/diagramas/html/fila-volatil-criacao.html",
     "viewBox": [
       1080,
@@ -15,37 +15,37 @@
     {
       "id": "cons",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "cliente"
+      "label": "Consumer",
+      "sublabel": "client"
     },
     {
       "id": "no",
       "type": "backend",
-      "label": "Nó que recebe o GET",
-      "sublabel": "coordenador"
+      "label": "Node that receives the GET",
+      "sublabel": "coordinator"
     },
     {
       "id": "todos",
       "type": "cloud",
-      "label": "Todos os nós",
-      "sublabel": "tabela de tópicos"
+      "label": "All nodes",
+      "sublabel": "topic table"
     }
   ],
   "segments": [
     {
       "from": 158,
       "to": 186,
-      "label": "Consumo"
+      "label": "Consumption"
     },
     {
       "from": 194,
       "to": 306,
-      "label": "Criação"
+      "label": "Creation"
     },
     {
       "from": 314,
       "to": 370,
-      "label": "Entrega"
+      "label": "Delivery"
     }
   ],
   "messages": [
@@ -56,14 +56,14 @@
       "y": 172,
       "label": "GET messages?autoCreate=true",
       "variant": "security",
-      "note": "fila não existe; conta como consumidor"
+      "note": "queue does not exist; counts as a consumer"
     },
     {
       "id": "reg",
       "from": "no",
       "to": "todos",
       "y": 208,
-      "label": "registro do tópico (fase 1)",
+      "label": "topic register (phase 1)",
       "note": "id GUID v7, volatile, idleTimeout"
     },
     {
@@ -71,7 +71,7 @@
       "from": "todos",
       "to": "no",
       "y": 236,
-      "label": "todos confirmam",
+      "label": "all confirm",
       "variant": "return"
     },
     {
@@ -79,16 +79,16 @@
       "from": "no",
       "to": "todos",
       "y": 264,
-      "label": "commit (fase 2)",
+      "label": "commit (phase 2)",
       "variant": "emphasis",
-      "note": "grava _topics/ e define o gestor"
+      "note": "writes _topics/ and defines the manager"
     },
     {
       "id": "fim",
       "from": "todos",
       "to": "no",
       "y": 292,
-      "label": "fila na tabela de tópicos",
+      "label": "queue in the topic table",
       "variant": "return"
     },
     {
@@ -96,7 +96,7 @@
       "from": "no",
       "to": "cons",
       "y": 328,
-      "label": "mensagem ou vazio (long polling)",
+      "label": "message or empty (long polling)",
       "variant": "return"
     },
     {
@@ -104,37 +104,37 @@
       "from": "cons",
       "to": "no",
       "y": 356,
-      "label": "GETs seguintes: a fila já existe",
+      "label": "following GETs: the queue already exists",
       "variant": "dashed",
-      "note": "parâmetros de criação ignorados"
+      "note": "creation parameters ignored"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Padrões",
+      "title": "Defaults",
       "items": [
-        "Volátil por padrão (volatile=true)",
-        "idleTimeout de 10 min, se não informado",
-        "Só cria Tópico Fila, nunca Distribuidor"
+        "Volatile by default (volatile=true)",
+        "idleTimeout of 10 min, if not given",
+        "Only creates a Queue Topic, never a Distributor"
       ]
     },
     {
       "dot": "orange",
-      "title": "Disputa",
+      "title": "Contention",
       "items": [
-        "Vários consumidores criam ao mesmo tempo",
-        "O nome duplicado é rejeitado no registro",
-        "Quem perde trata como fila existente"
+        "Several consumers create at the same time",
+        "The duplicate name is rejected at the register",
+        "Whoever loses treats it as an existing queue"
       ]
     },
     {
       "dot": "rose",
-      "title": "Erros",
+      "title": "Errors",
       "items": [
-        "Nome inválido: 400; Distribuidor: 409",
-        "Teto de filas voláteis atingido: 422",
-        "Sem autoCreate e sem fila: 404"
+        "Invalid name: 400; Distributor: 409",
+        "Volatile queue ceiling reached: 422",
+        "Without autoCreate and without a queue: 404"
       ]
     }
   ]

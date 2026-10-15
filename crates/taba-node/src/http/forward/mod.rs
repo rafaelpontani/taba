@@ -1,9 +1,9 @@
-//! O repasse das chamadas de cliente de um nó em drain (doc 04, seção 6.9): a ponta que **envia**
-//! (`forward_call`, usada pelo `drain_guard`) e a que **executa** o repasse recebido
-//! (`executor`, que roda a chamada contra a API de cliente deste nó).
+//! Forwarding the client calls of a draining node (doc 04, section 6.9): the end that **sends**
+//! (`forward_call`, used by `drain_guard`) and the one that **executes** the received forward
+//! (`executor`, which runs the call against this node's client API).
 //!
-//! A chamada repassada leva o marcador [`Forwarded`] e o IP do cliente que quem repassou já
-//! resolveu: o destino não conta o rate limit de novo (quem repassou contou, por IP) e usa esse IP.
+//! The forwarded call carries the [`Forwarded`] marker and the client IP that whoever forwarded it already
+//! resolved: the destination does not count the rate limit again (whoever forwarded counted, by IP) and uses that IP.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -21,14 +21,14 @@ use crate::cluster::protocol::{ForwardRequest, ForwardResponse};
 use crate::cluster::replication::ForwardExecutor;
 use crate::core::error::{ErrorCode, TabaError};
 
-/// O marcador de uma chamada que chegou por repasse: a porta do cluster é quem o põe, nunca o
-/// cliente.
+/// The marker of a call that arrived by forward: the cluster port is what sets it, never the
+/// client.
 #[derive(Debug, Clone, Copy)]
 pub struct Forwarded {
     pub client_ip: IpAddr,
 }
 
-/// Cabeçalhos que não atravessam um repasse: dizem respeito a uma conexão, não à chamada.
+/// Headers that do not cross a forward: they concern a connection, not the call.
 fn hop_by_hop(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -36,14 +36,14 @@ fn hop_by_hop(name: &str) -> bool {
     )
 }
 
-/// O maior corpo de cliente que um repasse carrega: bem acima de `message.hard-limit`.
+/// The largest client body a forward carries: well above `message.hard-limit`.
 const MAX_BODY: usize = 256 * 1024 * 1024;
 
 fn bad_forward(what: &str) -> TabaError {
     TabaError::new(ErrorCode::ValidationFailed, what.to_owned())
 }
 
-/// Executa a chamada repassada contra a API de cliente deste nó.
+/// Executes the forwarded call against this node's client API.
 pub fn executor(router: Router) -> ForwardExecutor {
     Arc::new(move |forward| {
         let router = router.clone();
@@ -68,7 +68,7 @@ async fn run(router: Router, forward: ForwardRequest) -> Result<ForwardResponse,
     }
     let mut request = builder
         .body(Body::from(forward.body))
-        .map_err(|_| bad_forward("A chamada repassada é inválida."))?;
+        .map_err(|_| bad_forward("The forwarded call is invalid."))?;
     let client_ip = forward
         .client_ip
         .and_then(|ip| ip.parse::<IpAddr>().ok())
@@ -84,7 +84,7 @@ async fn run(router: Router, forward: ForwardRequest) -> Result<ForwardResponse,
     let (parts, body) = response.into_parts();
     let body = to_bytes(body, MAX_BODY)
         .await
-        .map_err(|_| bad_forward("A resposta repassada é grande demais."))?;
+        .map_err(|_| bad_forward("The forwarded response is too large."))?;
     Ok(ForwardResponse {
         status: parts.status.as_u16(),
         headers: parts
@@ -99,7 +99,7 @@ async fn run(router: Router, forward: ForwardRequest) -> Result<ForwardResponse,
     })
 }
 
-/// Repassa a chamada de cliente ao nó mais livre e devolve a resposta dele como veio.
+/// Forwards the client call to the freest node and returns its response as it came.
 pub async fn forward_call(state: &AppState, request: Request) -> Response {
     let Some(forwarder) = state
         .cluster
@@ -111,8 +111,7 @@ pub async fn forward_call(state: &AppState, request: Request) -> Response {
     };
     let (parts, body) = request.into_parts();
     let Ok(body) = to_bytes(body, MAX_BODY).await else {
-        return ApiError(bad_forward("Não foi possível ler o corpo da requisição."))
-            .into_response();
+        return ApiError(bad_forward("Could not read the request body.")).into_response();
     };
     let client_ip = parts
         .extensions
@@ -158,7 +157,7 @@ pub async fn forward_call(state: &AppState, request: Request) -> Response {
 fn no_cluster() -> TabaError {
     TabaError::new(
         ErrorCode::ClusterNodeDraining,
-        "O nó está em drain e não há outro nó para repassar a chamada.",
+        "The node is in drain and there is no other node to forward the call to.",
     )
     .with_retry_after(5)
 }

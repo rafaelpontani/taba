@@ -1,6 +1,6 @@
-//! O drain num cluster (doc 04, seções 6.9 e 6.10; doc 20c, DRN e FWD; nível **C**): o nó avisa os
-//! pares, repassa as chamadas de cliente ao nó mais livre, sai do cluster sem votação e pode voltar
-//! como nó novo.
+//! The drain in a cluster (doc 04, sections 6.9 and 6.10; doc 20c, DRN and FWD; level **C**): the node notifies the
+//! peers, forwards the client calls to the freest node, leaves the cluster without a vote and can come back
+//! as a new node.
 
 mod common;
 
@@ -79,49 +79,49 @@ async fn a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_
     node3
         .client
         .post(node3.client_url("/topics"))
-        .json(&json!({"name": "pedidos", "type": "queue"}))
+        .json(&json!({"name": "orders", "type": "queue"}))
         .send()
         .await
         .unwrap();
     let mut published = Vec::new();
     for n in 0..12 {
-        published.push(publish(cluster.node(1), "pedidos", json!({"n": n})).await);
+        published.push(publish(cluster.node(1), "orders", json!({"n": n})).await);
     }
     let version_before = cluster.table(1).unwrap().version;
 
     start_drain(node3).await;
     wait_drain_state(node3, "drained").await;
 
-    // Saiu da tabela dos outros por desregistro de duas fases (`reason: drain`), sem votação.
+    // It left the others' table by a two-phase unregistration (`reason: drain`), without a vote.
     for number in [1, 2] {
         let table = cluster.table(number).unwrap();
-        assert_eq!(table.members.len(), 2, "nó {number}");
+        assert_eq!(table.members.len(), 2, "node {number}");
         assert_eq!(table.version, version_before + 1);
         assert!(!cluster.member_ids(number).contains(&cluster.node_id(3)));
     }
     assert!(cluster.network.count("unregister") >= 1);
     assert_eq!(cluster.network.count("rollback"), 0);
 
-    // Os pares foram avisados antes de qualquer outra coisa: nenhum `take` vai mais a ele.
+    // The peers were notified before anything else: no `take` goes to it anymore.
     let ready = node3.client_get_ops("/health/ready").await;
     assert_eq!(ready.status(), 503);
     assert_eq!(ready.json::<Value>().await.unwrap()["reason"], "drained");
 
-    // As chamadas de cliente que ainda chegam a ele são repassadas, inclusive a publicação.
+    // The client calls that still reach it are forwarded, the publish included.
     let listed = node3
         .client
-        .get(node3.client_url("/topics/pedidos"))
+        .get(node3.client_url("/topics/orders"))
         .send()
         .await
         .unwrap();
     assert_eq!(listed.status(), 200);
-    let id = publish(node3, "pedidos", json!({"depois": true})).await;
+    let id = publish(node3, "orders", json!({"after": true})).await;
     published.push(id);
     assert!(cluster.network.count("forward") >= 2);
 
-    // As mensagens de que ele era o dono ficaram com o novo dono, que já tinha a cópia.
+    // The messages it owned stayed with the new owner, which already had the copy.
     cluster.network.clear_calls();
-    let got = consume_all(cluster.node(1), "pedidos", published.len()).await;
+    let got = consume_all(cluster.node(1), "orders", published.len()).await;
     let mut ids: Vec<String> = got
         .iter()
         .map(|m| m["id"].as_str().unwrap().to_owned())
@@ -136,13 +136,13 @@ async fn a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_
             .calls()
             .iter()
             .all(|c| !(c.request == "take" && c.to.host == "10.0.0.3")),
-        "ninguém pede `take` a um nó fora do cluster"
+        "no one asks a `take` of a node outside the cluster"
     );
 
-    // O `GET` repassado também funciona pelo nó em drain (o destino entrega).
+    // The forwarded `GET` also works through the node in drain (the destination delivers).
     let via_drained = node3
         .client
-        .get(node3.client_url("/topics/pedidos/messages?maxMessages=1"))
+        .get(node3.client_url("/topics/orders/messages?maxMessages=1"))
         .send()
         .await
         .unwrap();
@@ -154,7 +154,7 @@ async fn a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_
 #[tokio::test]
 async fn canceling_before_the_node_left_keeps_it_in_the_cluster() {
     let cluster = TestCluster::start_with(3, NO_VOTE).await;
-    // Os outros não alcançam o nó 3: o desregistro não fecha e o drain fica em `draining`.
+    // The others do not reach node 3: the unregistration does not close and the drain stays in `draining`.
     cluster.network.isolate("10.0.0.3");
     let node3 = cluster.node(3);
     start_drain(node3).await;
@@ -193,8 +193,8 @@ async fn after_leaving_the_node_returns_as_a_new_node_with_a_new_id() {
         .unwrap();
     assert_eq!(back.status(), 202);
 
-    // ID novo, bootstrap completo e a volta à tabela, sem freezing.
-    eventually("o nó voltar ao cluster", || {
+    // New ID, full bootstrap and the return to the table, without freezing.
+    eventually("the node to come back to the cluster", || {
         let id = node3.node.node_id();
         id != old_id
             && cluster
@@ -204,7 +204,7 @@ async fn after_leaving_the_node_returns_as_a_new_node_with_a_new_id() {
     .await;
     assert_eq!(drain_state(node3).await, "active");
     assert!(!cluster.member_ids(1).contains(&old_id));
-    eventually("o nó pronto de novo", || {
+    eventually("the node ready again", || {
         node3.node.shared().state() == taba_node::cluster::state::NodeState::Active
     })
     .await;
@@ -217,7 +217,7 @@ async fn after_leaving_the_node_returns_as_a_new_node_with_a_new_id() {
 #[tokio::test]
 async fn canceling_a_drain_that_is_leaving_is_a_conflict() {
     let cluster = TestCluster::start(3).await;
-    // O commit do desregistro fica preso: a saída está decidida mas não termina.
+    // The unregistration commit gets stuck: the exit is decided but does not finish.
     cluster.network.set_delay(Duration::from_millis(150));
     let node3 = cluster.node(3);
     start_drain(node3).await;
@@ -234,13 +234,16 @@ async fn canceling_a_drain_that_is_leaving_is_a_conflict() {
             conflict = true;
             break;
         }
-        // O cancelamento passou (o drain ainda esvaziava a memória): começa de novo.
+        // The cancellation went through (the drain was still emptying the memory): it starts again.
         if drain_state(node3).await == "active" {
             start_drain(node3).await;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert!(conflict, "devia haver uma janela com a saída em andamento");
+    assert!(
+        conflict,
+        "there should have been a window with the exit in progress"
+    );
     cluster.network.set_delay(Duration::ZERO);
     cluster.shutdown().await;
 }
@@ -256,15 +259,15 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
     node3
         .client
         .post(node3.client_url("/topics"))
-        .json(&json!({"name": "pedidos", "type": "queue"}))
+        .json(&json!({"name": "orders", "type": "queue"}))
         .send()
         .await
         .unwrap();
     for n in 0..9 {
-        publish(cluster.node(1), "pedidos", json!({"n": n})).await;
+        publish(cluster.node(1), "orders", json!({"n": n})).await;
     }
-    // A saída não fecha (o desregistro não chega aos pares): o nó fica em `draining`, ainda na
-    // tabela e alcançável.
+    // The exit does not close (the unregistration does not reach the peers): the node stays in `draining`, still in the
+    // table and reachable.
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "unregister", 1_000_000);
     }
@@ -272,14 +275,14 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
     tokio::time::sleep(Duration::from_millis(400)).await;
     assert_eq!(drain_state(node3).await, "draining");
 
-    // Um `take` que ainda chegue é respondido vazio, mesmo havendo mensagens prontas.
+    // A `take` that still arrives is answered empty, even with ready messages.
     let asker = cluster.network.transport("10.0.0.1");
     let port = node3.node.cluster_addr().unwrap().port();
     let reply = asker
         .call(
             &PeerAddr::new("10.0.0.3", port),
             Request::Take {
-                topic: "pedidos".into(),
+                topic: "orders".into(),
                 request: TakeRequest {
                     max_messages: 10,
                     visibility_timeout: 60,
@@ -290,10 +293,10 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
         .unwrap();
     assert!(matches!(reply, Response::Taken(t) if t.messages.is_empty()));
 
-    // Os pares foram avisados por sinal e não pedem mais `take` a ele.
+    // The peers were notified by signal and no longer ask it for a `take`.
     assert!(cluster.network.count("channel") >= 2);
     cluster.network.clear_calls();
-    let got = consume_all(cluster.node(1), "pedidos", 1).await;
+    let got = consume_all(cluster.node(1), "orders", 1).await;
     assert!(!got.is_empty());
     assert!(
         cluster
@@ -305,7 +308,7 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "unregister", 0);
     }
-    // Cancela o drain: o nó volta a ativo e a parada do teste não espera `drain.timeout`.
+    // Cancels the drain: the node goes back to active and the test's shutdown does not wait for `drain.timeout`.
     let cancel = node3
         .client
         .delete(node3.operations_url("/node/drain"))
@@ -324,12 +327,12 @@ async fn while_it_drains_the_node_writes_every_new_replica_straight_to_disk() {
     node3
         .client
         .post(node3.client_url("/topics"))
-        .json(&json!({"name": "pedidos", "type": "queue"}))
+        .json(&json!({"name": "orders", "type": "queue"}))
         .send()
         .await
         .unwrap();
     for n in 0..6 {
-        publish(cluster.node(1), "pedidos", json!({"n": n})).await;
+        publish(cluster.node(1), "orders", json!({"n": n})).await;
     }
     let messages = node3
         .node
@@ -337,28 +340,28 @@ async fn while_it_drains_the_node_writes_every_new_replica_straight_to_disk() {
         .and_then(|c| c.replication())
         .map(|r| r.messages.messages().clone())
         .unwrap();
-    eventually("a memória do nó 3 com as réplicas", || {
+    eventually("node 3's memory with the replicas", || {
         messages.pending() > 0
     })
     .await;
 
-    // A saída não fecha: o nó fica em `draining`, recebendo registros e commits dos pares.
+    // The exit does not close: the node stays in `draining`, receiving registers and commits from the peers.
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "unregister", 1_000_000);
     }
     start_drain(node3).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(messages.pending(), 0, "a memória foi toda para o disco");
+    assert_eq!(messages.pending(), 0, "the memory all went to disk");
     let disk_before = messages.storage_stats().disk_messages;
     assert!(disk_before > 0);
     for n in 0..6 {
-        publish(cluster.node(1), "pedidos", json!({"depois": n})).await;
+        publish(cluster.node(1), "orders", json!({"after": n})).await;
     }
-    eventually("as réplicas novas em disco", || {
+    eventually("the new replicas on disk", || {
         messages.storage_stats().disk_messages > disk_before
     })
     .await;
-    assert_eq!(messages.pending(), 0, "nada novo ficou em memória");
+    assert_eq!(messages.pending(), 0, "nothing new stayed in memory");
 
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "unregister", 0);
@@ -383,7 +386,7 @@ async fn two_nodes_draining_at_once_leave_one_after_the_other() {
     wait_drain_state(node2, "drained").await;
     wait_drain_state(node3, "drained").await;
 
-    // As duas saídas se efetivaram, uma depois da outra: sobrou só o nó 1, na época +2.
+    // Both exits took effect, one after the other: only node 1 remained, in epoch +2.
     let table = cluster.table(1).unwrap();
     assert_eq!(table.members.len(), 1);
     assert_eq!(table.version, 3 + 2);

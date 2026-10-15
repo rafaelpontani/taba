@@ -1,8 +1,8 @@
-//! A exportação OTLP (doc 11, "Como ligar um coletor", "Traces" e "Logs"; doc 20c): o nó empurra
-//! métricas, traces e logs para um coletor falso, configurado só pelas variáveis `OTEL_*`.
+//! The OTLP export (doc 11, "How to connect a collector", "Traces" and "Logs"; doc 20c): the node pushes
+//! metrics, traces and logs to a fake collector, configured only by the `OTEL_*` variables.
 //!
-//! Os spans e os logs saem pelo assinante global do `tracing`, e há um só por processo; por isso os
-//! testes deste arquivo andam um de cada vez (`serial`).
+//! The spans and logs go out through `tracing`'s global subscriber, and there is only one per process; so the
+//! tests in this file run one at a time (`serial`).
 
 mod common;
 
@@ -14,7 +14,7 @@ use common::cluster::TestCluster;
 use common::otlp::{Collector, hex, log_attributes, span_attributes};
 use common::{TestNode, series};
 
-/// Um de cada vez: o assinante global e o encaixe do OTLP são do processo.
+/// One at a time: the global subscriber and the OTLP hook are the process's.
 async fn serial() -> tokio::sync::MutexGuard<'static, ()> {
     static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let guard = LOCK.lock().await;
@@ -50,7 +50,7 @@ async fn publish(node: &TestNode, topic: &str, query: &str) -> Value {
         .client
         .post(node.client_url(&format!("/topics/{topic}/messages{query}")))
         .header("content-type", "text/plain")
-        .body("olá")
+        .body("hello")
         .send()
         .await
         .unwrap();
@@ -58,15 +58,15 @@ async fn publish(node: &TestNode, topic: &str, query: &str) -> Value {
     response.json().await.unwrap()
 }
 
-/// Um nó com a exportação ligada, uma fila com tag e uma publicação já feita.
+/// A node with the export on, a queue with a tag and a publish already made.
 async fn busy_node(collector: &Collector, env: &[(&str, &str)]) -> (TestNode, String) {
     let node = node_with(collector, env).start().await;
     create_queue(
         &node,
-        json!({"name": "pedidos", "type": "queue", "tags": {"team": "cobranca"}}),
+        json!({"name": "orders", "type": "queue", "tags": {"team": "cobranca"}}),
     )
     .await;
-    let id = publish(&node, "pedidos", "").await["id"]
+    let id = publish(&node, "orders", "").await["id"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -95,21 +95,21 @@ async fn otlp_over_http_protobuf_sends_metrics_traces_and_logs_with_the_headers(
     .await;
     node.node.flush_otlp().await;
     collector
-        .eventually("métricas, traces e logs", |c| {
+        .eventually("metrics, traces and logs", |c| {
             !c.metrics().is_empty() && !c.spans().is_empty() && !c.log_records().is_empty()
         })
         .await;
 
-    // Os cabeçalhos do coletor vão em todas as chamadas.
+    // The collector's headers go on all the calls.
     assert!(!collector.headers().is_empty());
     for headers in collector.headers() {
         assert_eq!(headers["authorization"], "Bearer abc");
         assert_eq!(headers["x-tenant"], "t1");
     }
 
-    // Os atributos de recurso estão nos três sinais (UC-OPS-040).
+    // The resource attributes are in the three signals (UC-OPS-040).
     for (signal, resources) in collector.resources().iter().enumerate() {
-        assert!(!resources.is_empty(), "sinal {signal} sem recurso");
+        assert!(!resources.is_empty(), "signal {signal} without a resource");
         for resource in resources {
             assert_eq!(resource["service.name"], "taba", "sinal {signal}");
             assert_eq!(resource["service.namespace"], "prod");
@@ -119,8 +119,8 @@ async fn otlp_over_http_protobuf_sends_metrics_traces_and_logs_with_the_headers(
         }
     }
 
-    // O OTLP lê o mesmo registro de `GET /metrics` (UC-OPS-013): os mesmos nomes, no vocabulário
-    // do OpenTelemetry (com pontos) em vez do do Prometheus (com `_`).
+    // The OTLP reads the same register as `GET /metrics` (UC-OPS-013): the same names, in the OpenTelemetry
+    // vocabulary (with dots) instead of Prometheus's (with `_`).
     let text = node.metrics().await;
     let metrics = collector.metrics();
     assert!(!metrics.is_empty());
@@ -129,7 +129,7 @@ async fn otlp_over_http_protobuf_sends_metrics_traces_and_logs_with_the_headers(
         assert!(
             text.lines()
                 .any(|l| l.starts_with("# TYPE ") && l.contains(&prefix)),
-            "`{}` está no OTLP e não em /metrics",
+            "`{}` is in the OTLP and not in /metrics",
             metric.name
         );
     }
@@ -148,7 +148,7 @@ async fn otlp_defaults_to_grpc_and_sends_the_three_signals() {
     let (node, _) = busy_node(&collector, &[("OTEL_EXPORTER_OTLP_HEADERS", "x-tenant=t1")]).await;
     node.node.flush_otlp().await;
     collector
-        .eventually("métricas, traces e logs por gRPC", |c| {
+        .eventually("metrics, traces and logs over gRPC", |c| {
             !c.metrics().is_empty() && !c.spans().is_empty() && !c.log_records().is_empty()
         })
         .await;
@@ -178,7 +178,7 @@ async fn otlp_over_grpc_trusts_the_certificate_in_otel_exporter_otlp_certificate
     .await;
     node.node.flush_otlp().await;
     collector
-        .eventually("métricas e traces por gRPC com TLS", |c| {
+        .eventually("metrics and traces over gRPC with TLS", |c| {
             !c.metrics().is_empty() && !c.spans().is_empty()
         })
         .await;
@@ -196,7 +196,7 @@ async fn messaging_spans_carry_the_semantic_attributes_and_the_topic_tags() {
     )
     .await;
     let got = node
-        .client_get("/topics/pedidos/messages?maxMessages=1")
+        .client_get("/topics/orders/messages?maxMessages=1")
         .await;
     assert_eq!(got.status(), 200);
     let body: Value = got.json().await.unwrap();
@@ -204,7 +204,7 @@ async fn messaging_spans_carry_the_semantic_attributes_and_the_topic_tags() {
     let ack = node
         .client
         .delete(node.client_url(&format!(
-            "/topics/pedidos/messages/{}?receiptToken={}",
+            "/topics/orders/messages/{}?receiptToken={}",
             message["id"].as_str().unwrap(),
             message["receiptToken"].as_str().unwrap()
         )))
@@ -217,7 +217,7 @@ async fn messaging_spans_carry_the_semantic_attributes_and_the_topic_tags() {
     let send = collector.wait_span("POST /topics/{topic}/messages").await;
     let attributes = span_attributes(&send);
     assert_eq!(attributes["messaging.system"], "taba");
-    assert_eq!(attributes["messaging.destination.name"], "pedidos");
+    assert_eq!(attributes["messaging.destination.name"], "orders");
     assert_eq!(attributes["messaging.operation.type"], "send");
     assert_eq!(attributes["messaging.message.id"], id);
     assert_eq!(attributes["taba.topic.tag.team"], "cobranca");
@@ -250,12 +250,12 @@ async fn a_failed_operation_span_carries_the_durability_event_mark() {
     )
     .start()
     .await;
-    // Um nó em `failed` responde `503` a uma publicação: erro do servidor, evento de durabilidade.
-    create_queue(&node, json!({"name": "falha", "type": "queue"})).await;
+    // A node in `failed` answers `503` to a publish: a server error, a durability event.
+    create_queue(&node, json!({"name": "failure", "type": "queue"})).await;
     node.node.shared().set_failed();
     let response = node
         .client
-        .post(node.client_url("/topics/falha/messages"))
+        .post(node.client_url("/topics/failure/messages"))
         .header("content-type", "text/plain")
         .body("x")
         .send()
@@ -264,7 +264,7 @@ async fn a_failed_operation_span_carries_the_durability_event_mark() {
     assert_eq!(response.status(), 503);
     node.node.flush_otlp().await;
     collector
-        .eventually("span da falha", |c| {
+        .eventually("the failure span", |c| {
             c.spans().iter().any(|s| {
                 span_attributes(s)
                     .get("taba.durability_event")
@@ -306,7 +306,7 @@ async fn logs_carry_trace_id_span_id_severity_and_the_event_name() {
     node.node.flush_otlp().await;
 
     collector
-        .eventually("o log da deduplicação", |c| {
+        .eventually("the deduplication log", |c| {
             c.log_records().iter().any(|r| {
                 log_attributes(r).get("event.name").map(String::as_str)
                     == Some("taba.message.deduplicated")
@@ -326,9 +326,9 @@ async fn logs_carry_trace_id_span_id_severity_and_the_event_name() {
     assert_eq!(record.trace_id.len(), 16);
     assert_ne!(hex(&record.trace_id), "0".repeat(32));
     assert_ne!(hex(&record.span_id), "0".repeat(16));
-    // O log pertence ao trace da publicação duplicada.
+    // The log belongs to the duplicate publish's trace.
     collector
-        .eventually("o span da publicação", |c| {
+        .eventually("the publish span", |c| {
             c.spans().iter().any(|s| s.trace_id == record.trace_id)
         })
         .await;
@@ -349,21 +349,21 @@ async fn the_otlp_log_level_follows_telemetry_logs_level() {
     )
     .start()
     .await;
-    tracing::info!(marker = "info-fora", "não deve sair");
-    tracing::warn!(marker = "warn-dentro", "deve sair");
+    tracing::info!(marker = "info-out", "must not come out");
+    tracing::warn!(marker = "warn-in", "must come out");
     node.node.flush_otlp().await;
     collector
         .eventually("o log warn", |c| {
             c.log_records()
                 .iter()
-                .any(|r| log_attributes(r).get("marker").map(String::as_str) == Some("warn-dentro"))
+                .any(|r| log_attributes(r).get("marker").map(String::as_str) == Some("warn-in"))
         })
         .await;
     assert!(
         !collector
             .log_records()
             .iter()
-            .any(|r| log_attributes(r).get("marker").map(String::as_str) == Some("info-fora"))
+            .any(|r| log_attributes(r).get("marker").map(String::as_str) == Some("info-out"))
     );
     node.shutdown().await;
 }
@@ -377,8 +377,8 @@ fn traceparent(trace: &str, span: &str, sampled: bool) -> String {
 async fn a_sampled_traceparent_is_respected_and_the_ratio_sampler_drops_the_rest() {
     let _serial = serial().await;
     let collector = Collector::http().await;
-    // `parentbased_traceidratio` com fração 0: sem pai, nada é amostrado; com pai amostrado, vale a
-    // decisão do pai.
+    // `parentbased_traceidratio` with fraction 0: without a parent, nothing is sampled; with a sampled parent, the
+    // parent's decision counts.
     let node = node_with(
         &collector,
         &[
@@ -434,7 +434,7 @@ async fn a_sampled_traceparent_is_respected_and_the_ratio_sampler_drops_the_rest
         .find(|s| hex(&s.trace_id) == trace)
         .expect("span filho do traceparent");
     assert_eq!(hex(&sampled.parent_span_id), "00f067aa0ba902b7");
-    // O sem pai (fração 0) e o de pai não amostrado não saem.
+    // The one without a parent (fraction 0) and the one with an unsampled parent do not go out.
     assert!(
         spans
             .iter()
@@ -446,7 +446,7 @@ async fn a_sampled_traceparent_is_respected_and_the_ratio_sampler_drops_the_rest
             .filter(|s| s.name == "POST /topics/{topic}/messages")
             .count(),
         1,
-        "só o do pai amostrado"
+        "only the sampled parent's"
     );
     node.shutdown().await;
 }
@@ -469,7 +469,7 @@ async fn always_off_exports_no_spans() {
     publish(&node, "mudo", "").await;
     node.node.flush_otlp().await;
     collector
-        .eventually("as métricas, que seguem saindo", |c| {
+        .eventually("the metrics, which keep going out", |c| {
             !c.metrics().is_empty()
         })
         .await;
@@ -493,9 +493,9 @@ async fn a_cluster_write_is_one_trace_with_a_register_and_a_commit_span_per_node
         ],
     )
     .await;
-    // O ingresso dos nós já é um trace por operação, com um span por nó consultado.
-    common::cluster::create_queue(cluster.node(1), "pedidos").await;
-    let id = publish(cluster.node(1), "pedidos", "").await["id"]
+    // The nodes' join is already a trace per operation, with a span per node queried.
+    common::cluster::create_queue(cluster.node(1), "orders").await;
+    let id = publish(cluster.node(1), "orders", "").await["id"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -505,7 +505,7 @@ async fn a_cluster_write_is_one_trace_with_a_register_and_a_commit_span_per_node
     let root = collector.wait_span("POST /topics/{topic}/messages").await;
     assert_eq!(span_attributes(&root)["messaging.message.id"], id);
     collector
-        .eventually("os spans de registro e de commit da escrita", |c| {
+        .eventually("the register and commit spans of the write", |c| {
             let in_trace = |name: &str| {
                 c.spans()
                     .iter()
@@ -525,10 +525,10 @@ async fn a_cluster_write_is_one_trace_with_a_register_and_a_commit_span_per_node
             assert!(span_attributes(span).contains_key("taba.attempt"));
         }
     }
-    // O ingresso do terceiro nó: um trace por operação, com um span por nó consultado.
+    // The third node's join: a trace per operation, with a span per node queried.
     collector
         .eventually(
-            "o trace do ingresso com o registro e o commit nos pares",
+            "the join trace with the register and the commit on the peers",
             |c| {
                 let spans = c.spans();
                 spans
@@ -567,13 +567,13 @@ async fn a_synced_block_is_one_trace_with_a_span_per_batch_naming_the_source_nod
     for _ in 0..5 {
         publish(cluster.node(1), "carga", "").await;
     }
-    // Um terceiro nó entra e sincroniza os blocos de que passa a ser responsável.
+    // A third node joins and syncs the blocks it becomes responsible for.
     cluster.add_node(false).await;
     for node in &cluster.nodes {
         node.node.flush_otlp().await;
     }
     collector
-        .eventually("os spans de bloco e de busca da sincronização", |c| {
+        .eventually("the block and fetch spans of the synchronization", |c| {
             let spans = c.spans();
             spans
                 .iter()
@@ -609,7 +609,7 @@ async fn an_exclusion_vote_is_one_trace_with_a_span_per_voter() {
     .await;
     common::cluster::settled(&cluster).await;
     cluster.network.isolate(&common::cluster::host_of(3));
-    common::cluster::eventually("os dois saudáveis excluírem o nó 3", || {
+    common::cluster::eventually("the two healthy ones to exclude node 3", || {
         cluster.member_ids(1).len() == 2 && cluster.member_ids(2).len() == 2
     })
     .await;
@@ -617,7 +617,7 @@ async fn an_exclusion_vote_is_one_trace_with_a_span_per_voter() {
         node.node.flush_otlp().await;
     }
     collector
-        .eventually("o trace da votação e o da exclusão", |c| {
+        .eventually("the vote trace and the exclusion one", |c| {
             let spans = c.spans();
             spans
                 .iter()
@@ -653,20 +653,23 @@ async fn the_trace_context_travels_to_the_other_nodes_of_a_real_cluster() {
     cluster.settled(2).await;
     common::cluster::create_queue(cluster.node(1), "viagem").await;
 
-    // A publicação entra por um nó; o registro e o commit chegam ao outro por HTTP.
+    // The publish enters through one node; the register and the commit reach the other over HTTP.
     publish(cluster.node(2), "viagem", "").await;
     for node in &cluster.nodes {
         node.node.flush_otlp().await;
     }
     let root = collector.wait_span("POST /topics/{topic}/messages").await;
     collector
-        .eventually("a chamada recebida pelo outro nó, no mesmo trace", |c| {
-            c.spans().iter().any(|s| {
-                s.name.starts_with("POST /cluster/")
-                    && s.trace_id == root.trace_id
-                    && s.parent_span_id != root.span_id
-            })
-        })
+        .eventually(
+            "the call received by the other node, in the same trace",
+            |c| {
+                c.spans().iter().any(|s| {
+                    s.name.starts_with("POST /cluster/")
+                        && s.trace_id == root.trace_id
+                        && s.parent_span_id != root.span_id
+                })
+            },
+        )
         .await;
     cluster.shutdown().await;
 }

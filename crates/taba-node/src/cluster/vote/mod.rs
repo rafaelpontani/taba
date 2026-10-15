@@ -1,13 +1,13 @@
-//! A votação de exclusão de um nó (doc 04, seção 6.3).
+//! The vote to exclude a node (doc 04, section 6.3).
 //!
-//! Quando o canal com um nó fica fora depois das tentativas de reconexão, quando a fila de saída
-//! para ele estoura ou quando ele mesmo avisa que entrou em falha, o nó que detectou abre uma
-//! votação entre os nós **saudáveis**: os que ele enxerga e que respondem ao pedido de voto. Os nós
-//! fora do ar não votam e não entram na base. Cada votante diz `yes` se também não alcança o
-//! candidato, e `no` se o alcança. A exclusão exige `ceil(S × cluster.vote.quorum-percent)` votos
-//! de `S` saudáveis, com pelo menos `cluster.vote.min-voters` votantes; atingido o quórum, o
-//! desregistro segue o protocolo de duas fases (`reason: vote`), e o nó excluído entra em freezing.
-//! Uma votação por vez em cada nó (as exclusões pendentes são votadas uma de cada vez).
+//! When the channel with a node stays down after the reconnection attempts, when the outgoing queue
+//! to it overflows or when it itself announces it entered failure, the node that detected it opens a
+//! vote among the **healthy** nodes: the ones it sees and that answer the vote request. Nodes
+//! that are down do not vote and do not enter the base. Each voter says `yes` if it also cannot reach the
+//! candidate, and `no` if it can. The exclusion requires `ceil(S × cluster.vote.quorum-percent)` votes
+//! of `S` healthy, with at least `cluster.vote.min-voters` voters; once the quorum is reached, the
+//! unregistration follows the two-phase protocol (`reason: vote`), and the excluded node enters freezing.
+//! One vote at a time on each node (pending exclusions are voted one at a time).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,7 +26,7 @@ use crate::core::error::{ErrorCode, TabaError};
 use crate::telemetry::metrics::CLUSTER_VOTE;
 use crate::telemetry::trace;
 
-/// Quantos votos são exigidos de `healthy` votantes: `ceil(healthy × percent / 100)`.
+/// How many votes are required of `healthy` voters: `ceil(healthy × percent / 100)`.
 pub fn required_votes(healthy: u32, percent: u32) -> u32 {
     (healthy * percent).div_ceil(100).max(1)
 }
@@ -34,7 +34,7 @@ pub fn required_votes(healthy: u32, percent: u32) -> u32 {
 pub struct Voting {
     service: Arc<ClusterService>,
     channels: Arc<Channels>,
-    /// Uma votação por vez neste nó.
+    /// One vote at a time on this node.
     turn: Mutex<()>,
 }
 
@@ -55,24 +55,24 @@ impl Voting {
         );
     }
 
-    /// Abre a votação sem esperar (é o que o canal e o sinal de falha chamam).
+    /// Opens the vote without waiting (what the channel and the failure signal call).
     pub fn open_in_background(self: &Arc<Self>, candidate: String, reason: VoteReason) {
         let me = self.clone();
         let span = trace::operation_span("taba.vote.open", &candidate);
         tokio::spawn(async move { me.open(candidate, reason).await }.instrument(span));
     }
 
-    /// Abre a votação de exclusão de `candidate` e, se o quórum fecha, o exclui.
+    /// Opens the vote to exclude `candidate` and, if the quorum closes, excludes it.
     pub async fn open(self: Arc<Self>, candidate: String, reason: VoteReason) {
-        // Só um nó íntegro conduz votação; um nó que ainda sincroniza ou está em falha não.
+        // Only a sound node runs a vote; a node that is still syncing or is in failure does not.
         if self.service.node_state() != NodeState::Active
             || candidate == self.service.node_id()
             || self.service.cancel_token().is_cancelled()
         {
             return;
         }
-        // Com o backup em S3, "inalcançável" não basta: o nó pode estar vivo em outra partição, e
-        // o batimento dele no bucket diz. A exclusão espera o batimento vencer (doc 23, 1.6).
+        // With the S3 backup, "unreachable" is not enough: the node may be alive in another partition, and
+        // its heartbeat in the bucket says so. The exclusion waits for the heartbeat to expire (doc 23, 1.6).
         if reason != VoteReason::NodeFailed
             && let Some(port) = self.service.backup()
         {
@@ -93,7 +93,7 @@ impl Voting {
         if table.member(&candidate).is_none() {
             return;
         }
-        // Se o canal voltou enquanto esperava a vez, nada muda (doc 04, seção 6.3).
+        // If the channel came back while waiting for its turn, nothing changes (doc 04, section 6.3).
         if reason != VoteReason::NodeFailed && self.channels.is_live(&candidate) {
             return;
         }
@@ -104,10 +104,10 @@ impl Voting {
         tracing::warn!(
             candidate = %candidate,
             reason = reason.as_str(),
-            "votação de exclusão aberta"
+            "exclusion vote opened"
         );
 
-        // Os votantes: os outros membros que o candidato não é. Quem não responde não entra na base.
+        // The voters: the other members that are not the candidate. Whoever does not answer does not enter the base.
         let mut set = JoinSet::new();
         for member in table
             .members
@@ -131,7 +131,7 @@ impl Voting {
                 .instrument(span),
             );
         }
-        // Eu voto por último e sempre `yes`: quem abre a votação já viu o nó cair.
+        // I vote last and always `yes`: whoever opens the vote has already seen the node fall.
         let (mut healthy, mut yes) = (1u32, 1u32);
         let mut voters = vec![me.clone()];
         while let Some(joined) = set.join_next().await {
@@ -144,8 +144,8 @@ impl Voting {
             }
         }
         let rules = self.service.rules();
-        // O sobrevivente único: todos os outros membros estão mortos para o bucket, então não há
-        // quem votar, e o nó pode excluí-los mesmo abaixo de `cluster.vote.min-voters`.
+        // The sole survivor: all the other members are dead to the bucket, so there is no
+        // one to vote, and the node may exclude them even below `cluster.vote.min-voters`.
         let alone = match self.service.backup() {
             Some(port) if healthy < rules.vote_min_voters => {
                 port.backup().wait_all_others_dead().await
@@ -157,14 +157,14 @@ impl Voting {
                 candidate = %candidate,
                 healthy,
                 min = rules.vote_min_voters,
-                "menos nós saudáveis que o mínimo de votantes: nenhuma exclusão se efetiva (quorum-lost)"
+                "fewer healthy nodes than the minimum of voters: no exclusion takes effect (quorum-lost)"
             );
             "quorum-lost"
         } else if yes < required_votes(healthy, rules.vote_quorum_percent) {
-            tracing::info!(candidate = %candidate, yes, healthy, "a votação não atingiu o quórum");
+            tracing::info!(candidate = %candidate, yes, healthy, "the vote did not reach the quorum");
             "rejected"
         } else {
-            tracing::warn!(candidate = %candidate, yes, healthy, "quórum atingido: excluindo o nó");
+            tracing::warn!(candidate = %candidate, yes, healthy, "quorum reached: excluding the node");
             self.exclude(&candidate, voters).await
         };
         self.count("opened", outcome);
@@ -174,11 +174,11 @@ impl Voting {
         }
     }
 
-    /// Efetiva a exclusão. Quando o nó cai, todos os saudáveis o percebem juntos e abrem a mesma
-    /// votação; se todos coordenassem o desregistro, cada um recusaria o do outro (`cluster.conflict`)
-    /// e ninguém o concluiria. Por isso coordena o de menor ID entre os saudáveis, e os outros
-    /// esperam a sua vez (o de ordem `k` espera `k × write.commit.timeout`) e só então tentam, caso
-    /// o nó ainda conste da tabela.
+    /// Carries out the exclusion. When the node falls, all the healthy ones notice it together and open the same
+    /// vote; if all coordinated the unregistration, each would refuse the other's (`cluster.conflict`)
+    /// and no one would finish it. So the one with the lowest ID among the healthy coordinates, and the others
+    /// wait their turn (the one of order `k` waits `k × write.commit.timeout`) and only then try, in case
+    /// the node is still in the table.
     async fn exclude(&self, candidate: &str, mut voters: Vec<String>) -> &'static str {
         voters.sort();
         let me = self.service.node_id();
@@ -203,7 +203,7 @@ impl Voting {
                 .await
             {
                 Ok(()) => return "excluded",
-                // Outra mudança de membros em curso: espera um pouco e vê se o nó já saiu.
+                // Another member change under way: waits a little and sees whether the node already left.
                 Err(error)
                     if error.code == ErrorCode::ClusterConflict
                         && tokio::time::Instant::now() < give_up_at
@@ -215,25 +215,25 @@ impl Voting {
                     }
                 }
                 Err(error) => {
-                    tracing::error!(candidate = %candidate, %error.message, "a exclusão não se efetivou");
+                    tracing::error!(candidate = %candidate, %error.message, "the exclusion did not take effect");
                     return "failed";
                 }
             }
         }
     }
 
-    /// `POST /cluster/vote-remove`: o voto deste nó conforme o que ele enxerga do candidato.
+    /// `POST /cluster/vote-remove`: this node's vote according to what it sees of the candidate.
     pub async fn cast(&self, request: VoteRequest) -> Result<Response, TabaError> {
         request.validate()?;
         let candidate = request.candidate_node_id.clone();
         let known = self.service.membership().is_member(&candidate);
         let vote = if !known || candidate == self.service.node_id() {
-            // Quem não consta na tabela já saiu; e eu estou vivo.
+            // Whoever is not in the table already left; and I am alive.
             Ballot::No
         } else if request.reason == VoteReason::NodeFailed
             && self.channels.peer_state(&candidate).as_deref() == Some("failed")
         {
-            // O candidato avisou que entrou em falha: está vivo, mas não serve ao cluster.
+            // The candidate announced it entered failure: it is alive, but does not serve the cluster.
             Ballot::Yes
         } else if self.reaches(&candidate).await {
             Ballot::No
@@ -253,7 +253,7 @@ impl Voting {
         Ok(Response::Vote(VoteResponse { vote }))
     }
 
-    /// O votante alcança o candidato? O canal dele está aberto e o par falou há pouco.
+    /// Does the voter reach the candidate? Its channel is open and the peer spoke a moment ago.
     async fn reaches(&self, candidate: &str) -> bool {
         self.channels.is_live(candidate)
     }

@@ -1,6 +1,6 @@
-//! A subida do nó: prepara o disco, cria o estado e abre os listeners. É o que o
-//! `main` e os testes de integração usam (doc 18, seção 17.3: o `main` cria as
-//! peças e as entrega aos construtores).
+//! The node startup: prepares the disk, creates the state and opens the listeners. It is what
+//! `main` and the integration tests use (doc 18, section 17.3: `main` creates the
+//! pieces and hands them to the constructors).
 
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -49,64 +49,64 @@ use crate::telemetry::otlp::{self, Pipeline};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NodeError {
-    #[error("não foi possível usar storage.dir `{}`: {source}", .dir.display())]
+    #[error("could not use storage.dir `{}`: {source}", .dir.display())]
     Storage {
         dir: std::path::PathBuf,
         source: io::Error,
     },
 
-    #[error("não foi possível abrir a porta {name} ({addr}): {source}")]
+    #[error("could not open the port {name} ({addr}): {source}")]
     Bind {
         name: &'static str,
         addr: SocketAddr,
         source: io::Error,
     },
 
-    #[error("exportação OTLP: {0}")]
+    #[error("OTLP export: {0}")]
     Otlp(String),
 
     #[error("certificados do cluster: {0}")]
     Tls(String),
 
-    #[error("transporte entre nós: {0}")]
+    #[error("transport between nodes: {0}")]
     Transport(String),
 }
 
-/// Registra o nó numa rede (a em memória dos testes): recebe o endereço dele e o `Handler`.
+/// Registers the node on a network (the in-memory one of the tests): receives its address and the `Handler`.
 pub type AttachFn = Arc<dyn Fn(PeerAddr, Arc<dyn Handler>) + Send + Sync>;
 
-/// Como o nó fala com os outros (doc 18, seção 17.5). Sem isto, um nó em `mode=production`
-/// fica em `bootstrapping`: o `Transport` real (HTTP com mTLS) ainda não existe, e os testes de
-/// cluster entregam o da rede em memória.
+/// How the node talks to the others (doc 18, section 17.5). Without it, a node in `mode=production`
+/// stays in `bootstrapping`: the real `Transport` (HTTP with mTLS) does not exist yet, and the
+/// cluster tests hand in the in-memory network's.
 pub struct ClusterDeps {
     pub transport: Arc<dyn Transport>,
-    /// Os IPs que o nó informa aos outros para se alcançarem (`addresses` do `join`).
+    /// The IPs the node tells the others so they can reach it (`addresses` of the `join`).
     pub addresses: Vec<String>,
-    /// Chamado, para cada IP, com o endereço do nó e o `Handler` que atende a porta do cluster,
-    /// antes de o bootstrap começar. A rede em memória registra o nó aqui; a real não precisa,
-    /// pois a porta já está aberta.
+    /// Called, for each IP, with the node's address and the `Handler` that serves the cluster port,
+    /// before the bootstrap starts. The in-memory network registers the node here; the real one does not need to,
+    /// since the port is already open.
     pub attach: Option<AttachFn>,
 }
 
-/// O que o `main` entrega ao nó: o relógio, o endereço em que os listeners escutam e o
-/// `Transport` entre nós.
+/// What `main` hands to the node: the clock, the address the listeners listen on and the
+/// `Transport` between nodes.
 pub struct Deps {
     pub clock: Arc<dyn Clock>,
     pub bind_ip: IpAddr,
     pub cluster: Option<ClusterDeps>,
-    /// Os certificados do cluster, se quem monta o nó já os abriu (o `Transport` real usa os
-    /// mesmos). Sem eles, o nó abre a pasta de `cluster.tls.dir`, se houver.
+    /// The cluster certificates, if whoever assembles the node has already opened them (the real `Transport` uses the
+    /// same ones). Without them, the node opens the `cluster.tls.dir` folder, if there is one.
     pub tls: Option<Arc<TlsStore>>,
-    /// O depósito de objetos do backup (os testes entregam o em memória). Sem ele, com
-    /// `backup.s3.bucket`, o nó abre o cliente do S3.
+    /// The backup object store (the tests hand in the in-memory one). Without it, with
+    /// `backup.s3.bucket`, the node opens the S3 client.
     pub backup_store: Option<Arc<dyn ObjectStore>>,
 }
 
 impl Deps {
-    /// As peças de um nó de verdade (`taba`): o relógio do sistema e, em `mode=production`, o
-    /// `Transport` HTTP (com TLS mútuo se há pasta de certificados) e os IPs que o nó informa aos
-    /// outros: `cluster.advertise-addresses` ou, sem ele, a interface que sai para o
-    /// `cluster.entry-address` (D95). Em desenvolvimento não há cluster.
+    /// The pieces of a real node (`taba`): the system clock and, in `mode=production`, the
+    /// HTTP `Transport` (with mutual TLS if there is a certificates folder) and the IPs the node tells the
+    /// others: `cluster.advertise-addresses` or, without it, the interface that goes out to
+    /// `cluster.entry-address` (D95). In development there is no cluster.
     pub fn production(config: &Config) -> Result<Self, NodeError> {
         let mut deps = Self::default();
         if config.is_development() {
@@ -130,7 +130,7 @@ impl Deps {
                 .map_err(NodeError::Transport)?;
             vec![discover_address(&entry).map_err(|why| {
                 NodeError::Transport(format!(
-                    "{why}; defina cluster.advertise-addresses com os IPs deste nó"
+                    "{why}; set cluster.advertise-addresses to this node's IPs"
                 ))
             })?]
         } else {
@@ -158,7 +158,7 @@ impl Default for Deps {
     }
 }
 
-/// O que o cluster usa do backup sem conhecer o resto do nó: o serviço e o drain da parada.
+/// What the cluster uses of the backup without knowing the rest of the node: the service and the stop drain.
 struct NodeBackupPort {
     backup: Arc<Backup>,
     drain: Arc<DrainController>,
@@ -190,7 +190,7 @@ impl BackupPort for NodeBackupPort {
     }
 }
 
-/// Abre o depósito de objetos do backup: o que os testes entregam, ou o S3 de `backup.s3.*`.
+/// Opens the backup object store: what the tests hand in, or the S3 of `backup.s3.*`.
 async fn open_backup_store(
     s3: &crate::config::S3,
     injected: Option<Arc<dyn ObjectStore>>,
@@ -215,8 +215,8 @@ async fn open_backup_store(
 pub struct RunningNode {
     shared: Arc<NodeShared>,
     cluster: Option<Arc<ClusterService>>,
-    /// O bootstrap esgotou as tentativas: o nó deve encerrar com erro (doc 04, seção 6.5).
-    /// Fica aqui para o canal nunca fechar: sem falha, `fatal` espera para sempre.
+    /// The bootstrap ran out of attempts: the node must exit with an error (doc 04, section 6.5).
+    /// It lives here so the channel never closes: without a failure, `fatal` waits forever.
     _fatal_keepalive: tokio::sync::mpsc::UnboundedSender<String>,
     fatal_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
     client_addr: SocketAddr,
@@ -225,15 +225,15 @@ pub struct RunningNode {
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
     drain: Arc<DrainController>,
-    /// `drain.on-stop`: ao parar, as mensagens em memória vão para o disco.
+    /// `drain.on-stop`: on stopping, the in-memory messages go to disk.
     drain_on_stop: bool,
-    /// O gestor das filas voláteis deste nó (só num cluster).
+    /// The manager of this node's volatile queues (only in a cluster).
     volatile: Option<Arc<VolatileManager>>,
-    /// Os provedores de traces e de logs do OTLP (só com `OTEL_EXPORTER_OTLP_ENDPOINT`).
+    /// The OTLP trace and log providers (only with `OTEL_EXPORTER_OTLP_ENDPOINT`).
     otlp: Option<Arc<Pipeline>>,
-    /// O backup opcional em S3 (só com `backup.s3.bucket`).
+    /// The optional S3 backup (only with `backup.s3.bucket`).
     backup: Option<Arc<Backup>>,
-    /// O cluster só guarda uma referência fraca: o nó segura o serviço do backup vivo.
+    /// The cluster only keeps a weak reference: the node keeps the backup service alive.
     _backup_port: Option<Arc<dyn BackupPort>>,
 }
 
@@ -246,13 +246,13 @@ impl RunningNode {
         &self.shared
     }
 
-    /// O nó no cluster; só existe em `mode=production` com um `Transport`.
+    /// The node in the cluster; only exists in `mode=production` with a `Transport`.
     pub fn cluster(&self) -> Option<&Arc<ClusterService>> {
         self.cluster.as_ref()
     }
 
-    /// Os `id` das filas voláteis que este nó gerencia agora (doc 15, seção 14.5); vazio fora de
-    /// um cluster e enquanto o nó não está pronto.
+    /// The `id`s of the volatile queues this node manages right now (doc 15, section 14.5); empty outside
+    /// a cluster and while the node is not ready.
     pub fn volatile_managed(&self) -> Vec<String> {
         self.volatile
             .as_ref()
@@ -266,57 +266,57 @@ impl RunningNode {
             .unwrap_or_default()
     }
 
-    /// Espera o nó dizer que não consegue seguir (o bootstrap esgotou as tentativas) e devolve
-    /// o motivo. Sem falha, nunca termina.
+    /// Waits for the node to say it cannot go on (the bootstrap ran out of attempts) and returns
+    /// the reason. Without a failure, it never ends.
     pub async fn fatal(&mut self) -> String {
-        // O canal não fecha (o nó guarda um emissor), então o `unwrap_or_default` é só pelo tipo.
+        // The channel does not close (the node keeps a sender), so the `unwrap_or_default` is only for the type.
         self.fatal_rx.recv().await.unwrap_or_default()
     }
 
-    /// Endereço da API de cliente (com a porta realmente aberta).
+    /// Address of the client API (with the port actually opened).
     pub fn client_addr(&self) -> SocketAddr {
         self.client_addr
     }
 
-    /// `None`: as rotas de operação ficam na porta da API.
+    /// `None`: the operations routes stay on the API port.
     pub fn operations_addr(&self) -> Option<SocketAddr> {
         self.operations_addr
     }
 
-    /// `None` em modo desenvolvimento: a porta do cluster não é aberta.
+    /// `None` in development mode: the cluster port is not opened.
     pub fn cluster_addr(&self) -> Option<SocketAddr> {
         self.cluster_addr
     }
 
-    /// O backup em S3 deste nó; `None` sem `backup.s3.bucket`.
+    /// This node's S3 backup; `None` without `backup.s3.bucket`.
     pub fn backup(&self) -> Option<&Arc<Backup>> {
         self.backup.as_ref()
     }
 
-    /// Envia já os spans e os logs que estão na fila do OTLP (para os testes).
+    /// Sends right away the spans and logs that are in the OTLP queue (for the tests).
     pub async fn flush_otlp(&self) {
         if let Some(pipeline) = self.otlp.clone() {
             let _ = tokio::task::spawn_blocking(move || pipeline.flush()).await;
         }
     }
 
-    /// Faz o drain local (se `drain.on-stop`), para os listeners e espera as chamadas em
-    /// andamento terminarem. No desenvolvimento o drain é o *save*: a partida seguinte
-    /// retoma do disco (doc 04, seção 6.10).
+    /// Does the local drain (if `drain.on-stop`), stops the listeners and waits for the calls in
+    /// progress to finish. In development the drain is the *save*: the next start
+    /// resumes from disk (doc 04, section 6.10).
     pub async fn shutdown(mut self) {
         if self.drain_on_stop {
             self.drain.stop_by_signal().await;
         }
         self.cancel.cancel();
         if let Some(pipeline) = self.otlp.take() {
-            // Os spans e logs que ainda estão na fila saem antes de o processo terminar.
+            // The spans and logs still in the queue go out before the process ends.
             let _ = tokio::task::spawn_blocking(move || pipeline.shutdown()).await;
         }
         while let Some(result) = self.tasks.join_next().await {
             match result {
                 Ok(Ok(())) => {}
-                Ok(Err(e)) => tracing::error!(error = %e, "listener terminou com erro"),
-                Err(e) => tracing::error!(error = %e, "task do listener falhou"),
+                Ok(Err(e)) => tracing::error!(error = %e, "listener ended with an error"),
+                Err(e) => tracing::error!(error = %e, "listener task failed"),
             }
         }
     }
@@ -329,9 +329,9 @@ async fn bind(name: &'static str, ip: IpAddr, port: u16) -> Result<TcpListener, 
         .map_err(|source| NodeError::Bind { name, addr, source })
 }
 
-/// Sobe o nó: cria `storage.dir`, abre as portas e passa a atender. Todas as portas
-/// são abertas antes de qualquer uma atender, então uma porta ocupada não deixa
-/// meio nó no ar.
+/// Starts the node: creates `storage.dir`, opens the ports and starts serving. All ports
+/// are opened before any of them serves, so a busy port does not leave
+/// half a node up.
 pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError> {
     for warning in &config.warnings {
         tracing::warn!("{warning}");
@@ -342,15 +342,15 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     })?;
 
     let dev = config.is_development();
-    // Os certificados do cluster: ao menos um par válido na pasta, senão o nó não sobe.
+    // The cluster certificates: at least one valid pair in the folder, otherwise the node does not start.
     let tls = match (dev, deps.tls.clone(), config.tls.dir.as_deref()) {
         (true, ..) | (false, None, None) => None,
         (false, Some(store), _) => Some(store),
         (false, None, Some(dir)) => Some(TlsStore::open(dir).map_err(NodeError::Tls)?),
     };
-    let client = bind("da API de cliente", deps.bind_ip, config.ports.api).await?;
+    let client = bind("of the client API", deps.bind_ip, config.ports.api).await?;
     let operations = match config.ports.operations {
-        Some(port) => Some(bind("de operação", deps.bind_ip, port).await?),
+        Some(port) => Some(bind("of operations", deps.bind_ip, port).await?),
         None => None,
     };
     let cluster = if dev {
@@ -370,11 +370,11 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         dir: storage_dir.clone(),
         source,
     };
-    // Em desenvolvimento o nó retoma o que está em disco (o drain serve de save); em
-    // produção toda partida é de nó novo, e as definições vêm do cluster.
+    // In development the node resumes what is on disk (the drain serves as the save); in
+    // production every start is a new node, and the definitions come from the cluster.
     if dev && !config.resume_on_start {
         tracing::warn!(
-            "development.resume-on-start=false: apagando o conteúdo de {}",
+            "development.resume-on-start=false: deleting the contents of {}",
             config.storage.dir.display()
         );
         storage::wipe_dir_contents(&config.storage.dir).map_err(storage_error)?;
@@ -409,7 +409,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     ));
     let disk_store = message_store.clone();
     let messages = if !dev && deps.cluster.is_some() {
-        // Num cluster o disco da vida anterior espera a recuperação do reinício (D111).
+        // In a cluster the previous life's disk waits for the restart recovery (D111).
         Messages::new_keeping_disk(
             topics.clone(),
             deps.clock.clone(),
@@ -429,14 +429,14 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     {
         let shared = shared.clone();
         messages.on_failure(Arc::new(move || {
-            tracing::error!("disco cheio ou banco corrompido: o nó passa a `failed`");
+            tracing::error!("disk full or corrupt database: the node goes to `failed`");
             shared.set_failed();
         }));
     }
     {
         let shared = shared.clone();
         node_db.on_failure(Arc::new(move || {
-            tracing::error!("disco cheio ou banco do nó corrompido: o nó passa a `failed`");
+            tracing::error!("disk full or corrupt node database: the node goes to `failed`");
             shared.set_failed();
         }));
     }
@@ -450,7 +450,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
 
     let addr_of = |l: &TcpListener| {
         l.local_addr().map_err(|source| NodeError::Bind {
-            name: "(endereço)",
+            name: "(address)",
             addr: SocketAddr::new(deps.bind_ip, 0),
             source,
         })
@@ -460,8 +460,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let cluster_addr = cluster.as_ref().map(addr_of).transpose()?;
     let cancel = CancellationToken::new();
 
-    // Em produção, com um `Transport`, o nó entra num cluster; sem ele, fica em
-    // `bootstrapping` (o `Transport` real ainda não existe).
+    // In production, with a `Transport`, the node joins a cluster; without it, it stays in
+    // `bootstrapping` (the real `Transport` does not exist yet).
     let cluster_node = match (cluster_addr, deps.cluster) {
         (Some(addr), Some(cluster_deps)) => {
             let local = Member {
@@ -483,7 +483,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         }
         _ => None,
     };
-    // O cluster liga ao motor de mensagens: quem é o dono, os sinais e as dead-letters.
+    // The cluster connects to the message engine: who the owner is, the signals and the dead-letters.
     let attached = cluster_node.as_ref().map(|(service, _)| {
         replication::attach(
             service,
@@ -496,14 +496,14 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             SyncRules::from_config(&config),
         )
     });
-    // O backup opcional em S3: sem `backup.s3.bucket` nada disto existe e o nó é o de sempre.
+    // The optional S3 backup: without `backup.s3.bucket` none of this exists and the node is the usual one.
     let backup_parts = match &config.backup.s3 {
         Some(s3) => {
             let store = open_backup_store(s3, deps.backup_store.clone()).await;
             let db = Arc::new(BackupDb::open(&config.storage.dir).map_err(storage_error)?);
             if !dev || !config.resume_on_start {
-                // Toda partida em produção é de nó novo: o que o `_backup.db` da vida anterior
-                // guardava (fila de envio, referências) não vale para a identidade nova.
+                // Every start in production is a new node: what the previous life's `_backup.db`
+                // kept (send queue, references) does not apply to the new identity.
                 db.reset().map_err(storage_error)?;
             }
             let topology: Arc<dyn Topology> = match &cluster_node {
@@ -569,15 +569,15 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     };
 
     if dev {
-        tracing::warn!(node_id = %shared.node_id(), "mode=development: o nó é um cluster de um só, sem réplicas; não use em produção");
+        tracing::warn!(node_id = %shared.node_id(), "mode=development: the node is a cluster of one, with no replicas; do not use in production");
     } else {
         if cluster_node.is_none() {
             tracing::warn!(
-                "sem transporte entre nós: o nó fica em `bootstrapping` e /health/ready responde 503"
+                "no transport between nodes: the node stays in `bootstrapping` and /health/ready answers 503"
             );
         }
         if tls.is_none() {
-            tracing::warn!("sem pasta de certificados: a porta do cluster atende em HTTP puro");
+            tracing::warn!("no certificates folder: the cluster port serves plain HTTP");
         }
     }
 
@@ -596,7 +596,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let state_topics = state.topics.clone();
     let token_sweep_interval = config.retention.sweep_interval.min(Duration::from_secs(1));
     let reload_interval = config.auth.reload_interval;
-    // Cada listener é medido com a sua porta no atributo `server.port` (doc 11).
+    // Each listener is measured with its port in the `server.port` attribute (doc 11).
     let mut serve = |listener: TcpListener,
                      router: axum::Router,
                      port: u16,
@@ -614,7 +614,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         };
     };
     let client_router = http::client_router(state.clone(), operations.is_none());
-    // O repasse recebido de um nó em drain roda contra esta mesma API de cliente.
+    // The hand-off received from a draining node runs against this same client API.
     if let Some(replication) = state.cluster.as_ref().and_then(|c| c.replication()) {
         replication
             .forwarder
@@ -622,7 +622,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     }
     if let Some(cluster) = &state.cluster {
         drain.set_cluster(cluster.clone());
-        // O `GET /cluster/status` responde com o mesmo `NodeStatus` do `/health/cluster`.
+        // `GET /cluster/status` answers with the same `NodeStatus` as `/health/cluster`.
         let parts = http::operations::StatusParts::of(&state);
         let weak = Arc::downgrade(cluster);
         cluster.set_status_source(Arc::new(move || {
@@ -653,7 +653,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         );
     }
     if let Some(store) = tls.clone() {
-        // A pasta é relida de tempos em tempos e o certificado em uso é vigiado.
+        // The folder is re-read from time to time and the certificate in use is watched.
         let (cancel, interval, warning) = (
             cancel.clone(),
             config.tls.reload_interval,
@@ -730,14 +730,14 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         .as_ref()
         .map(|(service, _)| VolatileManager::new(service.clone(), state_topics.clone()));
     if let Some(manager) = volatile.clone() {
-        // No cluster, quem exclui a fila volátil ociosa é o nó gestor dela (doc 15, seção 14.5).
+        // In a cluster, whoever deletes the idle volatile queue is its managing node (doc 15, section 14.5).
         let cancel = cancel.clone();
         tasks.spawn(async move {
             manager.run(cancel).await;
             Ok(())
         });
     } else {
-        // Um nó só: a fila volátil sem consumidor há `idleTimeout` é excluída (doc 15, seção 14.3).
+        // A single node: a volatile queue with no consumer for `idleTimeout` is deleted (doc 15, section 14.3).
         let cancel = cancel.clone();
         let messages = state_messages.clone();
         tasks.spawn(async move {
@@ -746,7 +746,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         });
     }
     {
-        // Cada nó apaga por conta própria os tokens vencidos, sem propagar (doc 06a).
+        // Each node deletes the expired tokens on its own, without propagating (doc 06a).
         let (cancel, auth) = (cancel.clone(), auth.clone());
         tasks.spawn(async move {
             let mut ticker = tokio::time::interval(token_sweep_interval);
@@ -760,7 +760,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         });
     }
     if auth.root.has_file() {
-        // O arquivo do token raiz é relido, para trocar o segredo sem reiniciar.
+        // The root token file is re-read, to change the secret without restarting.
         let (cancel, auth) = (cancel.clone(), auth.clone());
         tasks.spawn(async move {
             let mut ticker = tokio::time::interval(reload_interval);
@@ -779,7 +779,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         client = %client_addr,
         operations = ?operations_addr,
         cluster = ?cluster_addr,
-        "nó no ar"
+        "node is up"
     );
     Ok(RunningNode {
         shared,
@@ -800,22 +800,22 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     })
 }
 
-/// Consome a marca do save (a partida a apaga, para uma queda depois dela não passar por save
-/// limpo). Retomando e com tópicos em disco, sem a marca o nó avisa que o que só estava em
-/// memória se perdeu (doc 04, seção 6.10).
+/// Consumes the save mark (the start deletes it, so a crash after it does not count as a clean save). Resuming
+/// with topics on disk, without the mark the node warns that what was only in
+/// memory was lost (doc 04, section 6.10).
 fn check_save_mark(saves: &NodeStateStore, resuming: bool, topics: usize) {
     match saves.take_save_mark() {
         Ok(Some(at_ms)) if resuming => {
             tracing::info!(
                 save_completed_at_ms = at_ms,
-                "retomando do disco: o save anterior foi concluído"
+                "resuming from disk: the previous save was completed"
             );
         }
         Ok(None) if resuming && topics > 0 => tracing::warn!(
-            "o nó anterior não concluiu o save (queda ou drain interrompido): \
-             o que estava só em memória se perdeu"
+            "the previous node did not complete the save (crash or interrupted drain): \
+             what was only in memory was lost"
         ),
         Ok(_) => {}
-        Err(e) => tracing::warn!(error = %e, "não foi possível ler a marca do save"),
+        Err(e) => tracing::warn!(error = %e, "could not read the save mark"),
     }
 }

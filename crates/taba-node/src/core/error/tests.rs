@@ -4,7 +4,7 @@ use std::collections::HashSet;
 /// UC: UC-CNV-008
 #[test]
 fn every_code_has_the_documented_status() {
-    // Tabela escrita à mão a partir de 06d, seção 8.3.6: não derivar da implementação.
+    // Table written by hand from 06d, section 8.3.6: do not derive it from the implementation.
     let expected: &[(&str, u16)] = &[
         ("validation.failed", 400),
         ("validation.required", 400),
@@ -66,23 +66,23 @@ fn every_code_has_the_documented_status() {
     for (code, status) in expected {
         assert!(
             actual.contains(&(*code, *status)),
-            "{code} deveria ser {status}"
+            "{code} should be {status}"
         );
     }
     assert_eq!(
         actual.len(),
         expected.len(),
-        "o catálogo e a tabela do teste divergem"
+        "the catalog and the test table diverge"
     );
     let unique: HashSet<_> = actual.iter().map(|(c, _)| *c).collect();
-    assert_eq!(unique.len(), actual.len(), "código repetido");
+    assert_eq!(unique.len(), actual.len(), "repeated code");
 }
 
 /// UC: UC-CNV-006
 #[test]
 fn codes_follow_group_dot_reason() {
     for code in ErrorCode::ALL {
-        let (group, reason) = code.as_str().split_once('.').expect("grupo.motivo");
+        let (group, reason) = code.as_str().split_once('.').expect("group.reason");
         assert!(!group.is_empty() && !reason.is_empty());
         assert!(
             code.as_str()
@@ -95,14 +95,13 @@ fn codes_follow_group_dot_reason() {
 /// UC: UC-CNV-006
 #[test]
 fn error_response_has_no_status_nor_retry_after() {
-    let err =
-        TabaError::new(ErrorCode::ClusterQuorumUnavailable, "Sem quórum.").with_retry_after(5);
+    let err = TabaError::new(ErrorCode::ClusterQuorumUnavailable, "No quorum.").with_retry_after(5);
     let json = serde_json::to_value(err.to_response("abc")).unwrap();
     assert_eq!(
         json,
         serde_json::json!({
             "code": "cluster.quorum-unavailable",
-            "message": "Sem quórum.",
+            "message": "No quorum.",
             "requestId": "abc"
         })
     );
@@ -115,15 +114,15 @@ fn error_response_has_no_status_nor_retry_after() {
 fn details_carry_field_code_and_message() {
     let err = TabaError::new(
         ErrorCode::ValidationFailed,
-        "A requisição tem campos inválidos.",
+        "The request has invalid fields.",
     )
     .with_detail(
         "name",
         ErrorCode::ValidationInvalidName,
-        "Use de 1 a 100 caracteres.",
+        "Use 1 to 100 characters.",
     );
     let json = serde_json::to_value(err.to_response("id-1")).unwrap();
     assert_eq!(json["details"][0]["field"], "name");
     assert_eq!(json["details"][0]["code"], "validation.invalid-name");
-    assert_eq!(json["details"][0]["message"], "Use de 1 a 100 caracteres.");
+    assert_eq!(json["details"][0]["message"], "Use 1 to 100 characters.");
 }

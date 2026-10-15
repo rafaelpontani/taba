@@ -1,7 +1,7 @@
-//! O `taba-cli`: a linha de comando do cliente do Taba (doc 19b). A biblioteca existe para os
-//! testes; o programa é o `main.rs`.
+//! `taba-cli`: the Taba client command line (doc 19b). The library exists for the
+//! tests; the program is `main.rs`.
 
-// O erro da API carrega o corpo da resposta e só existe no caminho de falha, então seu tamanho não pesa.
+// The API error carries the response body and only exists on the failure path, so its size does not matter.
 #![allow(clippy::result_large_err)]
 
 pub mod app;

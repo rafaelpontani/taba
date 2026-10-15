@@ -1,66 +1,32 @@
 #!/usr/bin/env node
-// Gera à mão os três diagramas do hash circular (não passam pelo Archify, que não desenha anéis
-// nem matrizes): doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg e
+// Generates by hand the three circular hash diagrams (they do not go through Archify, which does not draw rings
+// or matrices): doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg and
 // doc/diagramas/img/fifo-grupos.svg.
-// Esta é a fonte: para mudar o desenho, edite as constantes abaixo e rode
+// This is the source: to change the drawing, edit the constants below and run
 //   node doc/diagramas/scripts/gerar-hash.mjs
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const saida = (nome) => resolve(raiz, 'doc/diagramas/img', nome);
-mkdirSync(resolve(raiz, 'doc/diagramas/img'), { recursive: true });
+// ---------- language ----------
+// English is the source language. --lang=<code> uses doc/diagramas/i18n/<code>.json (flat table
+// "English string": "translation"; a missing string stays in English) and writes to img/<code>/.
+// Without --lang, every language is generated.
+const arg = process.argv.find((a) => a.startsWith('--lang='));
+const IDIOMAS = arg ? [arg.slice(7)] : ['en', ...readdirSync(resolve(raiz, 'doc/diagramas/i18n')).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5))];
+let LANG = 'en';
+let TABELA = {};
+const tr = (t) => TABELA[t] ?? t;
+const saida = (nome) => resolve(raiz, 'doc/diagramas/img', LANG, nome);
 
-// ---------- idioma ----------
-// --lang=en gera anel-hash-en.svg e topico-espalhado-en.svg (README em inglês); sem a opção, o português.
-const LANG = (process.argv.find((a) => a.startsWith('--lang=')) || '--lang=pt').slice(7);
-const SUF = LANG === 'pt' ? '' : '-' + LANG;
-const EN = {
-  'Anel de hash circular: blocos e papéis': 'Circular hash ring: blocks and roles',
-  'cluster de 4 nós físicos, cada um em 3 posições do anel (nós virtuais), fator de replicação 3': '4 physical nodes, each at 3 ring positions (virtual nodes), replication factor 3',
-  'sentido horário': 'clockwise',
-  'Como ler o anel': 'How to read the ring',
-  'O ID da mensagem vira um hash: um ponto no anel (losango).': 'The message ID becomes a hash: a point on the ring (diamond).',
-  'Andando no sentido horário, o primeiro nó virtual é o primário (P): o dono da entrega.': 'Walking clockwise, the first virtual node is the primary (P): the owner of delivery.',
-  'Os próximos nós físicos ainda não usados são o secundário (S) e o terciário (T), até completar o fator de replicação.': 'The next physical nodes not used yet are the secondary (S) and the tertiary (T), until the replication factor is met.',
-  'Nó virtual de um nó físico já escolhido é pulado: as réplicas ficam sempre em máquinas distintas.': 'A virtual node of an already chosen physical node is skipped: replicas always sit on different machines.',
-  'Cada nó físico ocupa várias posições, então recebe blocos espalhados pelo anel, e não uma faixa contínua.': 'Each physical node holds several positions, so it gets blocks spread around the ring, not one continuous stretch.',
-  'Resultado dos dois exemplos': 'Result of the two examples',
-  'Blocos diferentes têm primários diferentes: m1 tem A como dono; m2 tem B.': 'Different blocks have different primaries: m1 is owned by A; m2 by B.',
-  'Nós físicos': 'Physical nodes',
-  'A1, A2, A3: nós virtuais do nó físico A': 'A1, A2, A3: virtual nodes of physical node A',
-  'pulado': 'skipped',
-  'Anel com 12 posições de 4 nós físicos. Duas mensagens caem em pontos do anel e, andando no sentido horário, o primeiro nó virtual é o primário, seguido do secundário e do terciário, pulando nós virtuais de um nó físico já escolhido.': 'A ring with 12 positions of 4 physical nodes. Two messages land on points of the ring and, walking clockwise, the first virtual node is the primary, followed by the secondary and the tertiary, skipping virtual nodes of an already chosen physical node.',
-  'Um tópico espalhado e redundante': 'A spread, redundant topic',
-  'tópico `pedidos`: 6 mensagens em 4 nós, fator de replicação 3 (m1 e m2 são as do diagrama do anel)': 'topic `orders`: 6 messages on 4 nodes, replication factor 3 (m1 and m2 are the ones in the ring diagram)',
-  'mensagem': 'message',
-  'cada nó guarda': 'each node stores',
-  'de': 'of',
-  'primário (dono)': 'primary (owner)',
-  'secundário': 'secondary',
-  'terciário': 'tertiary',
-  'não tem a mensagem': 'does not have the message',
-  'Espalhado': 'Spread',
-  'O ID decide o bloco, não o tópico: as mensagens caem em todo o anel.': 'The ID decides the block, not the topic: messages land all around the ring.',
-  'Nenhum nó guarda tudo, nem é dono do tópico. Cada um tem 4 ou 5 das 6.': 'No node stores everything or owns the topic. Each one has 4 or 5 of the 6.',
-  'Os primários se revezam entre A, B, C e D.': 'The primaries take turns among A, B, C and D.',
-  'Redundante': 'Redundant',
-  'Cada mensagem existe em 3 nós físicos distintos.': 'Each message exists on 3 different physical nodes.',
-  'Com quórum de 2 de 3, a escrita continua com uma réplica fora do ar.': 'With a quorum of 2 out of 3, writes continue with one replica down.',
-  'Se o nó B cair': 'If node B goes down',
-  'm1, m2, m5 e m6 continuam em 2 nós; nenhuma se perde.': 'm1, m2, m5 and m6 stay on 2 nodes; none is lost.',
-  'Os blocos de B passam ao próximo nó do anel e as réplicas são refeitas pela sincronização (seção 7.3).': 'The blocks of B move to the next node on the ring and the replicas are rebuilt by synchronization.',
-  'Matriz com as mensagens m1 a m6 do tópico pedidos nas linhas e os nós A, B, C e D nas colunas. Cada mensagem tem um primário e duas réplicas em nós distintos, e nenhum nó guarda todas as mensagens.': 'A matrix with messages m1 to m6 of topic orders in the rows and nodes A, B, C and D in the columns. Each message has a primary and two replicas on different nodes, and no node stores all the messages.',
-};
-const tr = (t) => (LANG === 'en' ? (EN[t] ?? t) : t);
 
-// ---------- dados ----------
+// ---------- data ----------
 const FONTE = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace";
-// tema escuro, mesma família de cores dos diagramas do Archify
+// dark theme, same color family as the Archify diagrams
 const BG = '#020617', PAINEL = '#0b1220', TINTA = '#f8fafc', SUAVE = '#94a3b8', LINHA = '#334155';
 
-// nós físicos: cor de contorno e de preenchimento
+// physical nodes: outline and fill color
 const NOS = {
   A: { cor: '#22d3ee', tom: '#0b2a35' },
   B: { cor: '#a78bfa', tom: '#241a4a' },
@@ -68,17 +34,17 @@ const NOS = {
   D: { cor: '#fb7185', tom: '#3a121e' },
 };
 
-// posições do anel no sentido horário, a partir do topo: cada nó físico aparece em 3 posições (nós virtuais)
+// ring positions clockwise, from the top: each physical node appears in 3 positions (virtual nodes)
 const ANEL = ['A1', 'C1', 'B1', 'D1', 'A2', 'A3', 'C2', 'B2', 'D2', 'B3', 'C3', 'D3'];
 
-// mensagens do exemplo: posição do anel onde o hash cai (o bloco começa no primeiro nó virtual à frente)
-// papéis por posição do anel; "pulado" = nó virtual de um nó físico já escolhido
+// the example messages: ring position where the hash lands (the block starts at the first virtual node ahead)
+// roles by ring position; "skipped" = virtual node of an already chosen physical node
 const MSGS = [
-  { id: 'm1', cor: '#34d399', gap: 4, papeis: { 4: 'P', 5: 'pulado', 6: 'S', 7: 'T' } },
+  { id: 'm1', cor: '#34d399', gap: 4, papeis: { 4: 'P', 5: 'skipped', 6: 'S', 7: 'T' } },
   { id: 'm2', cor: '#60a5fa', gap: 9, papeis: { 9: 'P', 10: 'S', 11: 'T' } },
 ];
 
-// matriz do tópico `pedidos` (m1 e m2 iguais às do anel): papel de cada nó em cada mensagem
+// the `orders` topic matrix (m1 and m2 equal to the ring's): each node's role in each message
 const TOPICO = [
   { id: 'm1', A: 'P', C: 'S', B: 'T' },
   { id: 'm2', B: 'P', C: 'S', D: 'T' },
@@ -88,7 +54,7 @@ const TOPICO = [
   { id: 'm6', B: 'P', D: 'S', C: 'T' },
 ];
 
-// ---------- utilitários ----------
+// ---------- utilities ----------
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const n = (v) => Math.round(v * 100) / 100;
 
@@ -96,9 +62,9 @@ function texto(x, y, s, { tam = 12, peso = 400, cor = TINTA, ancora = 'start' } 
   return `<text x="${n(x)}" y="${n(y)}" font-size="${tam}" font-weight="${peso}" fill="${cor}" text-anchor="${ancora}">${esc(tr(s))}</text>`;
 }
 
-// quebra em linhas de até `max` caracteres (fonte monoespaçada)
+// breaks into lines of up to `max` characters (monospaced font)
 function quebrar(s, max) {
-  s = tr(s);
+
   const linhas = [];
   let atual = '';
   for (const p of s.split(' ')) {
@@ -116,7 +82,7 @@ function paragrafo(x, y, s, max, { tam = 12, cor = TINTA, passo = 17 } = {}) {
 
 function envolver(largura, altura, titulo, descricao, corpo) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" lang="${LANG === 'en' ? 'en' : 'pt-BR'}" aria-labelledby="t d" font-family="${FONTE}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" lang="${LANG}" aria-labelledby="t d" font-family="${FONTE}">
 <title id="t">${esc(tr(titulo))}</title>
 <desc id="d">${esc(tr(descricao))}</desc>
 <rect width="${largura}" height="${altura}" fill="${BG}"/>
@@ -128,7 +94,7 @@ ${corpo}
 // ---------- diagrama A: o anel ----------
 function anel() {
   const W = 1080, H = 700, cx = 350, cy = 336, R = 200, r = 24;
-  const ang = (k) => k * 30; // graus, no sentido horário a partir do topo
+  const ang = (k) => k * 30; // graus, no clockwise a partir do topo
   const pt = (graus, raio) => {
     const t = (graus * Math.PI) / 180;
     return [cx + raio * Math.sin(t), cy - raio * Math.cos(t)];
@@ -140,31 +106,31 @@ function anel() {
   };
 
   let s = '';
-  s += texto(40, 44, 'Anel de hash circular: blocos e papéis', { tam: 20, peso: 700 });
-  s += texto(40, 66, 'cluster de 4 nós físicos, cada um em 3 posições do anel (nós virtuais), fator de replicação 3', { tam: 12, cor: SUAVE });
+  s += texto(40, 44, 'Circular hash ring: blocks and roles', { tam: 20, peso: 700 });
+  s += texto(40, 66, '4 physical nodes, each at 3 ring positions (virtual nodes), replication factor 3', { tam: 12, cor: SUAVE });
 
   // anel
   s += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${LINHA}" stroke-width="3"/>`;
-  s += texto(cx, cy - 6, 'sentido horário', { tam: 13, peso: 700, cor: SUAVE, ancora: 'middle' });
+  s += texto(cx, cy - 6, 'clockwise', { tam: 13, peso: 700, cor: SUAVE, ancora: 'middle' });
   s += texto(cx, cy + 14, '↻', { tam: 26, cor: SUAVE, ancora: 'middle' });
 
-  // trechos percorridos por cada mensagem
+  // stretches walked by each message
   for (const m of MSGS) {
     const ks = Object.keys(m.papeis).map(Number);
     s += arco(ang(m.gap) - 15, ang(Math.max(...ks)), m.cor);
   }
 
-  // nós virtuais
+  // virtual nodes
   ANEL.forEach((nome, k) => {
     const [x, y] = pt(ang(k), R);
     const { cor, tom } = NOS[nome[0]];
-    const pulado = MSGS.some((m) => m.papeis[k] === 'pulado');
-    s += `<circle cx="${n(x)}" cy="${n(y)}" r="${r}" fill="${tom}" stroke="${cor}" stroke-width="2.5"${pulado ? ' stroke-dasharray="4 3"' : ''}/>`;
+    const skipped = MSGS.some((m) => m.papeis[k] === 'skipped');
+    s += `<circle cx="${n(x)}" cy="${n(y)}" r="${r}" fill="${tom}" stroke="${cor}" stroke-width="2.5"${skipped ? ' stroke-dasharray="4 3"' : ''}/>`;
     s += texto(x, y + 5, nome, { tam: 14, peso: 700, cor: TINTA, ancora: 'middle' });
-    if (pulado) s += `<line x1="${n(x - 17)}" y1="${n(y + 17)}" x2="${n(x + 17)}" y2="${n(y - 17)}" stroke="${cor}" stroke-width="2.5"/>`;
+    if (skipped) s += `<line x1="${n(x - 17)}" y1="${n(y + 17)}" x2="${n(x + 17)}" y2="${n(y - 17)}" stroke="${cor}" stroke-width="2.5"/>`;
   });
 
-  // marcadores das mensagens (no intervalo antes do bloco) e selos de papel
+  // message markers (in the gap before the block) and role badges
   for (const m of MSGS) {
     const a = ang(m.gap) - 15;
     const [mx, my] = pt(a, R);
@@ -175,27 +141,27 @@ function anel() {
 
     for (const [k, papel] of Object.entries(m.papeis)) {
       const [bx, by] = pt(ang(Number(k)), R + 56);
-      const rotulo = papel === 'pulado' ? `${m.id} ${tr('pulado')}` : `${m.id} ${papel}`;
-      const w = papel === 'pulado' ? 92 : 56;
+      const rotulo = papel === 'skipped' ? `${m.id} ${tr('skipped')}` : `${m.id} ${papel}`;
+      const w = papel === 'skipped' ? 92 : 56;
       const cheio = papel === 'P';
-      const fundo = papel === 'pulado' ? '#1e293b' : cheio ? m.cor : BG;
-      const tracoCor = papel === 'pulado' ? SUAVE : m.cor;
-      const letra = papel === 'pulado' ? SUAVE : cheio ? BG : m.cor;
+      const fundo = papel === 'skipped' ? '#1e293b' : cheio ? m.cor : BG;
+      const tracoCor = papel === 'skipped' ? SUAVE : m.cor;
+      const letra = papel === 'skipped' ? SUAVE : cheio ? BG : m.cor;
       s += `<rect x="${n(bx - w / 2)}" y="${n(by - 12)}" width="${w}" height="24" rx="12" fill="${fundo}" stroke="${tracoCor}" stroke-width="2"/>`;
       s += texto(bx, by + 4.5, rotulo, { tam: 12, peso: 700, cor: letra, ancora: 'middle' });
     }
   }
 
-  // painel à direita
+  // right panel
   const px = 700;
   s += `<line x1="${px - 24}" y1="96" x2="${px - 24}" y2="${H - 40}" stroke="${LINHA}" stroke-width="1.5"/>`;
-  s += texto(px, 112, 'Como ler o anel', { tam: 15, peso: 700 });
+  s += texto(px, 112, 'How to read the ring', { tam: 15, peso: 700 });
   const passos = [
-    'O ID da mensagem vira um hash: um ponto no anel (losango).',
-    'Andando no sentido horário, o primeiro nó virtual é o primário (P): o dono da entrega.',
-    'Os próximos nós físicos ainda não usados são o secundário (S) e o terciário (T), até completar o fator de replicação.',
-    'Nó virtual de um nó físico já escolhido é pulado: as réplicas ficam sempre em máquinas distintas.',
-    'Cada nó físico ocupa várias posições, então recebe blocos espalhados pelo anel, e não uma faixa contínua.',
+    'The message ID becomes a hash: a point on the ring (diamond).',
+    'Walking clockwise, the first virtual node is the primary (P): the owner of delivery.',
+    'The next physical nodes not used yet are the secondary (S) and the tertiary (T), until the replication factor is met.',
+    'A virtual node of an already chosen physical node is skipped: replicas always sit on different machines.',
+    'Each physical node holds several positions, so it gets blocks spread around the ring, not one continuous stretch.',
   ];
   let y = 138;
   passos.forEach((p, i) => {
@@ -206,9 +172,9 @@ function anel() {
     y = par.fim + 12;
   });
 
-  // resultado
+  // result
   y += 6;
-  s += texto(px, y, 'Resultado dos dois exemplos', { tam: 15, peso: 700 });
+  s += texto(px, y, 'Result of the two examples', { tam: 15, peso: 700 });
   y += 14;
   const cab = ['', 'P', 'S', 'T'];
   const colX = [px, px + 70, px + 160, px + 250];
@@ -226,35 +192,35 @@ function anel() {
     y += 42;
   });
   y += 14;
-  const nota = paragrafo(px, y, 'Blocos diferentes têm primários diferentes: m1 tem A como dono; m2 tem B.', 44, { tam: 12, cor: SUAVE });
+  const nota = paragrafo(px, y, 'Different blocks have different primaries: m1 is owned by A; m2 by B.', 44, { tam: 12, cor: SUAVE });
   s += nota.svg;
 
-  // legenda dos nós
+  // node legend
   const ly = H - 34;
-  s += texto(40, ly - 4, 'Nós físicos', { tam: 12, peso: 700, cor: SUAVE });
+  s += texto(40, ly - 4, 'Physical nodes', { tam: 12, peso: 700, cor: SUAVE });
   Object.entries(NOS).forEach(([nome, c], i) => {
     const x = 150 + i * 70;
     s += `<circle cx="${x}" cy="${ly - 8}" r="11" fill="${c.tom}" stroke="${c.cor}" stroke-width="2"/>`;
     s += texto(x, ly - 3.5, nome, { tam: 12, peso: 700, ancora: 'middle' });
   });
-  s += texto(450, ly - 4, 'A1, A2, A3: nós virtuais do nó físico A', { tam: 12, cor: SUAVE });
+  s += texto(450, ly - 4, 'A1, A2, A3: virtual nodes of physical node A', { tam: 12, cor: SUAVE });
 
-  return envolver(W, H, 'Anel de hash circular: blocos e papéis',
-    'Anel com 12 posições de 4 nós físicos. Duas mensagens caem em pontos do anel e, andando no sentido horário, o primeiro nó virtual é o primário, seguido do secundário e do terciário, pulando nós virtuais de um nó físico já escolhido.', s);
+  return envolver(W, H, 'Circular hash ring: blocks and roles',
+    'A ring with 12 positions of 4 physical nodes. Two messages land on points of the ring and, walking clockwise, the first virtual node is the primary, followed by the secondary and the tertiary, skipping virtual nodes of an already chosen physical node.', s);
 }
 
-// ---------- diagrama B: o tópico espalhado ----------
+// ---------- diagram B: the spread topic ----------
 function topico() {
   const W = 1080, H = 640;
   const nos = Object.keys(NOS);
   const x0 = 200, larg = 118, y0 = 150, alt = 54, cw = 92, ch = 38;
 
   let s = '';
-  s += texto(40, 44, 'Um tópico espalhado e redundante', { tam: 20, peso: 700 });
-  s += texto(40, 66, 'tópico `pedidos`: 6 mensagens em 4 nós, fator de replicação 3 (m1 e m2 são as do diagrama do anel)', { tam: 12, cor: SUAVE });
+  s += texto(40, 44, 'A spread, redundant topic', { tam: 20, peso: 700 });
+  s += texto(40, 66, 'topic `orders`: 6 messages on 4 nodes, replication factor 3 (m1 and m2 are the ones in the ring diagram)', { tam: 12, cor: SUAVE });
 
-  // cabeçalho das colunas
-  s += texto(60, y0 - 26, 'mensagem', { tam: 12, peso: 700, cor: SUAVE });
+  // column headers
+  s += texto(60, y0 - 26, 'message', { tam: 12, peso: 700, cor: SUAVE });
   nos.forEach((no, j) => {
     const cx = x0 + j * larg + larg / 2;
     s += `<circle cx="${cx}" cy="${y0 - 34}" r="15" fill="${NOS[no].tom}" stroke="${NOS[no].cor}" stroke-width="2.5"/>`;
@@ -282,23 +248,23 @@ function topico() {
     });
   });
 
-  // totais por nó
+  // totals per node
   const yt = y0 + TOPICO.length * alt + 6;
   s += `<line x1="40" y1="${yt}" x2="${x0 + nos.length * larg + 10}" y2="${yt}" stroke="${LINHA}" stroke-width="1.5"/>`;
-  s += texto(60, yt + 24, 'cada nó guarda', { tam: 12, peso: 700, cor: SUAVE });
+  s += texto(60, yt + 24, 'each node stores', { tam: 12, peso: 700, cor: SUAVE });
   nos.forEach((no, j) => {
     const t = totais[no];
     const cx = x0 + j * larg + larg / 2;
-    s += texto(cx, yt + 22, `${t.P + t.S + t.T} ${tr('de')} ${TOPICO.length}`, { tam: 14, peso: 700, ancora: 'middle' });
+    s += texto(cx, yt + 22, `${t.P + t.S + t.T} ${tr('of')} ${TOPICO.length}`, { tam: 14, peso: 700, ancora: 'middle' });
     s += texto(cx, yt + 40, `${t.P}P ${t.S}S ${t.T}T`, { tam: 11, cor: SUAVE, ancora: 'middle' });
   });
 
   // legenda
   const yl = yt + 78;
   const leg = [
-    ['P', 'primário (dono)', 'cheio', 60],
-    ['S', 'secundário', 'meio', 240],
-    ['T', 'terciário', 'vazio', 380],
+    ['P', 'primary (owner)', 'cheio', 60],
+    ['S', 'secondary', 'meio', 240],
+    ['T', 'tertiary', 'vazio', 380],
   ];
   leg.forEach(([l, d, tipo, x]) => {
     s += `<rect x="${x}" y="${yl - 14}" width="30" height="22" rx="6" fill="${tipo === 'cheio' ? '#94a3b8' : tipo === 'meio' ? '#1e293b' : BG}" stroke="#94a3b8" stroke-width="2"/>`;
@@ -306,9 +272,9 @@ function topico() {
     s += texto(x + 40, yl + 2, d, { tam: 11, cor: SUAVE });
   });
   s += `<rect x="510" y="${yl - 14}" width="30" height="22" rx="6" fill="none" stroke="${LINHA}" stroke-dasharray="3 4"/>`;
-  s += texto(550, yl + 2, 'não tem a mensagem', { tam: 11, cor: SUAVE });
+  s += texto(550, yl + 2, 'does not have the message', { tam: 11, cor: SUAVE });
 
-  // cartões à direita
+  // cards on the right
   const px = 770, cw2 = 270;
   const cartao = (y, titulo, cor, itens) => {
     let g = '';
@@ -324,28 +290,28 @@ function topico() {
     });
     return { g, fim: y + altura };
   };
-  const c1 = cartao(112, 'Espalhado', '#22d3ee', [
-    'O ID decide o bloco, não o tópico: as mensagens caem em todo o anel.',
-    'Nenhum nó guarda tudo, nem é dono do tópico. Cada um tem 4 ou 5 das 6.',
-    'Os primários se revezam entre A, B, C e D.',
+  const c1 = cartao(112, 'Spread', '#22d3ee', [
+    'The ID decides the block, not the topic: messages land all around the ring.',
+    'No node stores everything or owns the topic. Each one has 4 or 5 of the 6.',
+    'The primaries take turns among A, B, C and D.',
   ]);
-  const c2 = cartao(c1.fim + 16, 'Redundante', '#34d399', [
-    'Cada mensagem existe em 3 nós físicos distintos.',
-    'Com quórum de 2 de 3, a escrita continua com uma réplica fora do ar.',
+  const c2 = cartao(c1.fim + 16, 'Redundant', '#34d399', [
+    'Each message exists on 3 different physical nodes.',
+    'With a quorum of 2 out of 3, writes continue with one replica down.',
   ]);
-  const c3 = cartao(c2.fim + 16, 'Se o nó B cair', '#fb7185', [
-    'm1, m2, m5 e m6 continuam em 2 nós; nenhuma se perde.',
-    'Os blocos de B passam ao próximo nó do anel e as réplicas são refeitas pela sincronização (seção 7.3).',
+  const c3 = cartao(c2.fim + 16, 'If node B goes down', '#fb7185', [
+    'm1, m2, m5 and m6 stay on 2 nodes; none is lost.',
+    'The blocks of B move to the next node on the ring and the replicas are rebuilt by synchronization.',
   ]);
   s += c1.g + c2.g + c3.g;
 
-  return envolver(W, Math.max(H, c3.fim + 30), 'Um tópico espalhado e redundante',
-    'Matriz com as mensagens m1 a m6 do tópico pedidos nas linhas e os nós A, B, C e D nas colunas. Cada mensagem tem um primário e duas réplicas em nós distintos, e nenhum nó guarda todas as mensagens.', s);
+  return envolver(W, Math.max(H, c3.fim + 30), 'A spread, redundant topic',
+    'A matrix with messages m1 to m6 of topic orders in the rows and nodes A, B, C and D in the columns. Each message has a primary and two replicas on different nodes, and no node stores all the messages.', s);
 }
 
-// ---------- diagrama C: os grupos de uma fila FIFO ----------
-// fila FIFO `pedidos-fifo`: cada grupo tem uma posição no anel (hash do id do tópico + groupId),
-// logo um só bloco; as mensagens do grupo (na ordem de publicação) vivem todas nesse bloco
+// ---------- diagram C: the groups of a FIFO queue ----------
+// FIFO queue `orders-fifo`: each group has a position on the ring (hash of the topic id + groupId),
+// so a single block; the group's messages (in publish order) all live in that block
 const GRUPOS = [
   { id: 'g1', msgs: ['m1', 'm3', 'm5'], A: 'P', C: 'S', B: 'T' },
   { id: 'g2', msgs: ['m2', 'm4'], B: 'P', C: 'S', D: 'T' },
@@ -359,10 +325,10 @@ function fifo() {
   const x0 = 200, larg = 118, y0 = 150, alt = 54, cw = 92, ch = 38;
 
   let s = '';
-  s += texto(40, 44, 'Os grupos de uma fila FIFO no anel', { tam: 20, peso: 700 });
-  s += texto(40, 66, 'fila `pedidos-fifo`: 4 grupos em 4 nós, fator de replicação 3; o grupo decide o bloco, e não o ID da mensagem', { tam: 12, cor: SUAVE });
+  s += texto(40, 44, 'The groups of a FIFO queue on the ring', { tam: 20, peso: 700 });
+  s += texto(40, 66, 'queue `orders-fifo`: 4 groups on 4 nodes, replication factor 3; the group decides the block, not the message ID', { tam: 12, cor: SUAVE });
 
-  s += texto(60, y0 - 26, 'grupo', { tam: 12, peso: 700, cor: SUAVE });
+  s += texto(60, y0 - 26, 'group', { tam: 12, peso: 700, cor: SUAVE });
   nos.forEach((no, j) => {
     const cx = x0 + j * larg + larg / 2;
     s += `<circle cx="${cx}" cy="${y0 - 34}" r="15" fill="${NOS[no].tom}" stroke="${NOS[no].cor}" stroke-width="2.5"/>`;
@@ -393,19 +359,19 @@ function fifo() {
 
   const yt = y0 + GRUPOS.length * alt + 6;
   s += `<line x1="40" y1="${yt}" x2="${x0 + nos.length * larg + 10}" y2="${yt}" stroke="${LINHA}" stroke-width="1.5"/>`;
-  s += texto(60, yt + 24, 'cada nó é primário de', { tam: 12, peso: 700, cor: SUAVE });
+  s += texto(60, yt + 24, 'each node is primary of', { tam: 12, peso: 700, cor: SUAVE });
   nos.forEach((no, j) => {
     const t = totais[no];
     const cx = x0 + j * larg + larg / 2;
-    s += texto(cx, yt + 22, `${t.P} grupo${t.P === 1 ? '' : 's'}`, { tam: 14, peso: 700, ancora: 'middle' });
+    s += texto(cx, yt + 22, `${t.P} ${tr(t.P === 1 ? 'group' : 'groups')}`, { tam: 14, peso: 700, ancora: 'middle' });
     s += texto(cx, yt + 40, `${t.P}P ${t.S}S ${t.T}T`, { tam: 11, cor: SUAVE, ancora: 'middle' });
   });
 
   const yl = yt + 78;
   const leg = [
-    ['P', 'primário: ordena e entrega', 'cheio', 60],
-    ['S', 'secundário: no quórum', 'meio', 290],
-    ['T', 'terciário', 'vazio', 510],
+    ['P', 'primary: orders and delivers', 'cheio', 60],
+    ['S', 'secondary: in the quorum', 'meio', 290],
+    ['T', 'tertiary', 'vazio', 510],
   ];
   leg.forEach(([l, d, tipo, x]) => {
     s += `<rect x="${x}" y="${yl - 14}" width="30" height="22" rx="6" fill="${tipo === 'cheio' ? '#94a3b8' : tipo === 'meio' ? '#1e293b' : BG}" stroke="#94a3b8" stroke-width="2"/>`;
@@ -428,26 +394,30 @@ function fifo() {
     });
     return { g, fim: y + altura };
   };
-  const c1 = cartao(112, 'Um grupo, um bloco', '#22d3ee', [
-    'O hash do id do tópico mais o groupId decide o bloco: todas as mensagens do grupo ficam nos mesmos 3 nós.',
-    'O primário gera os IDs em ordem crescente e entrega uma mensagem do grupo por vez.',
+  const c1 = cartao(112, 'One group, one block', '#22d3ee', [
+    'The hash of the topic id plus the groupId decides the block: all messages of the group stay on the same 3 nodes.',
+    'The primary generates the IDs in increasing order and delivers one message of the group at a time.',
   ]);
-  const c2 = cartao(c1.fim + 16, 'Espalhado entre grupos', '#34d399', [
-    'Grupos diferentes caem em blocos diferentes: os primários se revezam.',
-    'Um grupo grande não passa de um primário (grupo quente).',
+  const c2 = cartao(c1.fim + 16, 'Spread across groups', '#34d399', [
+    'Different groups land in different blocks: the primaries take turns.',
+    'A big group never goes beyond one primary (hot group).',
   ]);
-  const c3 = cartao(c2.fim + 16, 'Se o primário de g1 cair', '#fb7185', [
-    'O secundário C assume g1 já em dia, pois o quórum sempre o incluiu.',
-    'A ordem de g1 e a deduplicação seguem sem perda.',
+  const c3 = cartao(c2.fim + 16, 'If the primary of g1 goes down', '#fb7185', [
+    'Secondary C takes over g1 already up to date, since the quorum always included it.',
+    'The order of g1 and the deduplication carry on without loss.',
   ]);
   s += c1.g + c2.g + c3.g;
 
-  return envolver(W, Math.max(H, c3.fim + 30), 'Os grupos de uma fila FIFO no anel',
-    'Matriz com os grupos g1 a g4 da fila pedidos-fifo nas linhas e os nós A, B, C e D nas colunas. Cada grupo tem um primário, um secundário e um terciário, e todas as mensagens de um grupo ficam nos mesmos nós.', s);
+  return envolver(W, Math.max(H, c3.fim + 30), 'The groups of a FIFO queue on the ring',
+    'A matrix with groups g1 to g4 of queue orders-fifo in the rows and nodes A, B, C and D in the columns. Each group has a primary, a secondary and a tertiary, and all the messages of a group stay on the same nodes.', s);
 }
 
-writeFileSync(saida(`anel-hash${SUF}.svg`), anel());
-writeFileSync(saida(`topico-espalhado${SUF}.svg`), topico());
-// o diagrama FIFO só existe em português (não está nos README da raiz)
-if (LANG === 'pt') writeFileSync(saida('fifo-grupos.svg'), fifo());
-console.log('gerados: doc/diagramas/img/anel-hash.svg, doc/diagramas/img/topico-espalhado.svg, doc/diagramas/img/fifo-grupos.svg');
+for (const lang of IDIOMAS) {
+  LANG = lang;
+  TABELA = lang === 'en' ? {} : JSON.parse(readFileSync(resolve(raiz, 'doc/diagramas/i18n', lang + '.json'), 'utf8'));
+  mkdirSync(resolve(raiz, 'doc/diagramas/img', lang), { recursive: true });
+  writeFileSync(saida('anel-hash.svg'), anel());
+  writeFileSync(saida('topico-espalhado.svg'), topico());
+  writeFileSync(saida('fifo-grupos.svg'), fifo());
+  console.log(`generated (${lang}): doc/diagramas/img/${lang}/anel-hash.svg, topico-espalhado.svg, fifo-grupos.svg`);
+}

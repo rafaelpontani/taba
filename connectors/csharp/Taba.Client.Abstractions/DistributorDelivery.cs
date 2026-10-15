@@ -1,6 +1,6 @@
 namespace Taba
 {
-    /// <summary>A cópia de uma publicação feita por um distribuidor para uma fila.</summary>
+    /// <summary>The copy of a publication made by a distributor to a queue.</summary>
     public sealed class DistributorDelivery
     {
         internal DistributorDelivery(string topic, string id, string errorCode, string errorMessage)
@@ -11,13 +11,13 @@ namespace Taba
             ErrorMessage = errorMessage;
         }
 
-        /// <summary>A fila de destino.</summary>
+        /// <summary>The destination queue.</summary>
         public string Topic { get; private set; }
 
-        /// <summary>O <c>id</c> da cópia, quando foi criada.</summary>
+        /// <summary>The <c>id</c> of the copy, when it was created.</summary>
         public string Id { get; private set; }
 
-        /// <summary>O <c>code</c> do erro, quando a cópia falhou (falha parcial não é erro do distribuidor).</summary>
+        /// <summary>The error <c>code</c>, when the copy failed (a partial failure is not a distributor error).</summary>
         public string ErrorCode { get; private set; }
 
         public string ErrorMessage { get; private set; }

@@ -1,18 +1,18 @@
-//! Os nomes dos objetos no bucket (`backup.s3.prefix` já vem na frente, do `Prefixed`).
+//! The object names in the bucket (`backup.s3.prefix` already comes in front, from `Prefixed`).
 //!
 //! ```text
-//! topics/<tópico>.json                                  definição (ou lápide)
+//! topics/<topic>.json                                  definition (or tombstone)
 //! tokens/<id>.json                                      token
-//! nodes/<id>.json                                       batimento do nó
-//! messages/<tópico>/<topicId>/<primeiroId>_<escritor>_<seq>.seg
-//! journal/<tópico>/<topicId>/<instante>_<escritor>_<seq>.jrn
-//! restore/lock.json                                     trava de quem restaura
-//! cluster/stop.json                                     lista da parada programada
+//! nodes/<id>.json                                       node heartbeat
+//! messages/<topic>/<topicId>/<firstId>_<writer>_<seq>.seg
+//! journal/<topic>/<topicId>/<instant>_<writer>_<seq>.jrn
+//! restore/lock.json                                     lock of whoever restores
+//! cluster/stop.json                                     list of the planned stop
 //! ```
 //!
-//! O `topicId` no caminho impede que as mensagens de um tópico apagado ressuscitem num tópico novo
-//! com o mesmo nome. O nome do segmento começa pelo `id` da primeira mensagem (GUID v7): os nomes
-//! ordenam por tempo e dão a idade para o `ttl`.
+//! The `topicId` in the path stops the messages of a deleted topic from being resurrected in a new topic
+//! with the same name. The segment name starts with the `id` of the first message (GUID v7): the names
+//! sort by time and give the age for the `ttl`.
 
 pub const TOPICS_PREFIX: &str = "topics/";
 pub const TOKENS_PREFIX: &str = "tokens/";
@@ -34,12 +34,12 @@ pub fn node(id: &str) -> String {
     format!("{NODES_PREFIX}{id}.json")
 }
 
-/// O `id` de um `nodes/<id>.json`.
+/// The `id` of a `nodes/<id>.json`.
 pub fn node_id_of(key: &str) -> Option<&str> {
     key.strip_prefix(NODES_PREFIX)?.strip_suffix(".json")
 }
 
-/// Tudo o que é das mensagens de um tópico (todas as encarnações dele).
+/// Everything that belongs to a topic's messages (all its incarnations).
 pub fn topic_messages_prefix(topic: &str) -> String {
     format!("{MESSAGES_PREFIX}{topic}/")
 }
@@ -70,7 +70,7 @@ pub fn journal(topic: &str, topic_id: &str, at_ms: u64, writer: &str, seq: u64) 
     )
 }
 
-/// O `(tópico, topicId)` de um segmento ou diário.
+/// The `(topic, topicId)` of a segment or journal.
 pub fn topic_of(key: &str) -> Option<(&str, &str)> {
     let rest = key
         .strip_prefix(MESSAGES_PREFIX)
@@ -79,13 +79,13 @@ pub fn topic_of(key: &str) -> Option<(&str, &str)> {
     Some((parts.next()?, parts.next()?))
 }
 
-/// O `id` da primeira mensagem de um segmento, pelo nome.
+/// The `id` of a segment's first message, by name.
 pub fn first_id_of(segment_key: &str) -> Option<&str> {
     let name = segment_key.rsplit('/').next()?;
     name.split('_').next()
 }
 
-/// Quem gravou o segmento (o `id` do nó), pelo nome.
+/// Who wrote the segment (the node's `id`), by name.
 pub fn writer_of(segment_key: &str) -> Option<&str> {
     let name = segment_key.rsplit('/').next()?.strip_suffix(".seg")?;
     name.split('_').nth(1)

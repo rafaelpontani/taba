@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "C4 Nível 0: Contexto do Sistema de Mensagens",
+    "title": "C4 Level 0: Messaging System Context",
     "output": "doc/diagramas/html/c4-nivel0-contexto.html",
     "quality_profile": "showcase"
   },
@@ -10,8 +10,8 @@
     {
       "id": "produtor",
       "type": "external",
-      "label": "Produtor",
-      "sublabel": "[Pessoa/App] publica",
+      "label": "Producer",
+      "sublabel": "[Person/App] publishes",
       "pos": [
         40,
         110
@@ -24,8 +24,8 @@
     {
       "id": "consumidor",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "[Pessoa/App] consome",
+      "label": "Consumer",
+      "sublabel": "[Person/App] consumes",
       "pos": [
         40,
         290
@@ -38,8 +38,8 @@
     {
       "id": "sistema",
       "type": "backend",
-      "label": "Sistema de Mensagens",
-      "sublabel": "[Sistema] fila e pub/sub",
+      "label": "Messaging System",
+      "sublabel": "[System] queue and pub/sub",
       "pos": [
         450,
         190
@@ -48,13 +48,13 @@
         220,
         90
       ],
-      "tag": "inspirado em SQS e SNS"
+      "tag": "inspired by SQS and SNS"
     },
     {
       "id": "operador",
       "type": "external",
-      "label": "Operador",
-      "sublabel": "[Pessoa] inspeciona",
+      "label": "Operator",
+      "sublabel": "[Person] inspects",
       "pos": [
         920,
         290
@@ -67,8 +67,8 @@
     {
       "id": "obs",
       "type": "external",
-      "label": "Observabilidade",
-      "sublabel": "[Sistema] OTel / Prometheus",
+      "label": "Observability",
+      "sublabel": "[System] OTel / Prometheus",
       "pos": [
         920,
         110
@@ -82,7 +82,7 @@
       "id": "k8s",
       "type": "cloud",
       "label": "Kubernetes / Docker",
-      "sublabel": "[Plataforma] executa nós",
+      "sublabel": "[Platform] runs the nodes",
       "pos": [
         450,
         400
@@ -98,34 +98,34 @@
       "id": "publica",
       "from": "produtor",
       "to": "sistema",
-      "label": "publica (HTTP)",
+      "label": "publishes (HTTP)",
       "variant": "emphasis"
     },
     {
       "id": "consome",
       "from": "consumidor",
       "to": "sistema",
-      "label": "consome e ack (HTTP)",
+      "label": "consumes and acks (HTTP)",
       "variant": "emphasis"
     },
     {
       "id": "telemetria",
       "from": "sistema",
       "to": "obs",
-      "label": "OTLP push · /metrics pull (por nó)"
+      "label": "OTLP push · /metrics pull (per node)"
     },
     {
       "id": "stats",
       "from": "operador",
       "to": "sistema",
-      "label": "tópicos, /metrics e /health",
+      "label": "topics, /metrics and /health",
       "variant": "dashed"
     },
     {
       "id": "orquestra",
       "from": "k8s",
       "to": "sistema",
-      "label": "executa os nós",
+      "label": "runs the nodes",
       "variant": "dashed",
       "fromSide": "top",
       "toSide": "bottom"
@@ -134,18 +134,18 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Tópicos",
+      "title": "Topics",
       "items": [
-        "Entrega única (fila): um consumidor por mensagem",
-        "Broadcast (pub/sub): todos os assinantes"
+        "Single delivery (queue): one consumer per message",
+        "Broadcast (pub/sub): every subscriber"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Escopo do sistema",
+      "title": "System scope",
       "items": [
-        "Cluster de nós idênticos, sem mestre",
-        "Uma única imagem Docker, nativo em Kubernetes"
+        "Cluster of identical nodes, no master",
+        "A single Docker image, Kubernetes-native"
       ]
     }
   ]

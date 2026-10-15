@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 namespace Taba
 {
     /// <summary>
-    /// O contrato do cliente da API de cliente do Taba (doc 19, seção 18.3): as nove operações, nas
-    /// formas assíncrona e síncrona, e o <c>subscribe</c>. Dependa desta interface (e não do
-    /// <c>TabaClient</c>) para injetar o cliente e para simulá-lo nos testes.
+    /// The contract of the Taba client API client (doc 19, section 18.3): the nine operations, in the
+    /// asynchronous and synchronous forms, and <c>subscribe</c>. Depend on this interface (and not on
+    /// <c>TabaClient</c>) to inject the client and to mock it in tests.
     /// </summary>
     public interface ITabaClient : IDisposable
     {
@@ -18,10 +18,10 @@ namespace Taba
         /// <summary><c>GET /topics/{topic}</c>.</summary>
         Task<Topic> GetTopicAsync(string name, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary><c>GET /topics</c>. Os parâmetros <c>null</c> não vão na query.</summary>
+        /// <summary><c>GET /topics</c>. <c>null</c> parameters do not go in the query.</summary>
         Task<Page<Topic>> ListTopicsAsync(int? limit = null, string cursor = null, string name = null, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>Todos os tópicos, página a página.</summary>
+        /// <summary>All topics, page by page.</summary>
         Task<IList<Topic>> ListAllTopicsAsync(string name = null, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary><c>PATCH /topics/{topic}</c>.</summary>
@@ -30,52 +30,52 @@ namespace Taba
         /// <summary><c>DELETE /topics/{topic}</c>.</summary>
         Task DeleteTopicAsync(string name, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary><c>POST /topics/{topic}/messages</c>. O corpo vai como bytes, sem validação.</summary>
+        /// <summary><c>POST /topics/{topic}/messages</c>. The body goes as bytes, without validation.</summary>
         Task<PublishResponse> PublishAsync(string topic, byte[] body, PublishOptions options = null, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>Serializa o objeto em JSON e publica (<c>Content-Type: application/json</c>). Para serializar por conta própria, use o <see cref="PublishAsync"/>.</summary>
+        /// <summary>Serializes the object to JSON and publishes it (<c>Content-Type: application/json</c>). To serialize on your own, use <see cref="PublishAsync"/>.</summary>
         Task<PublishResponse> PublishJsonAsync<T>(string topic, T value, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>Publica um texto JSON que a aplicação já montou, sem serializar.</summary>
+        /// <summary>Publishes a JSON text the application already built, without serializing.</summary>
         Task<PublishResponse> PublishRawJsonAsync(string topic, string json, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>Publica um texto (<c>Content-Type: text/plain; charset=utf-8</c>).</summary>
+        /// <summary>Publishes a text (<c>Content-Type: text/plain; charset=utf-8</c>).</summary>
         Task<PublishResponse> PublishTextAsync(string topic, string text, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary><c>GET /topics/{topic}/messages</c>. Devolve uma lista vazia se não há mensagens.</summary>
+        /// <summary><c>GET /topics/{topic}/messages</c>. Returns an empty list if there are no messages.</summary>
         Task<IList<Message>> ConsumeAsync(string topic, ConsumeOptions options = null, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// Lê da fila e entrega cada mensagem ao handler, com <see cref="MessageContext.Delete"/> (padrão sim)
-        /// e <see cref="MessageContext.ChangeVisibilityAsync"/>; enquanto o handler roda, a invisibilidade é
-        /// renovada sozinha. Devolve quantas mensagens foram tratadas.
+        /// Reads from the queue and hands each message to the handler, with <see cref="MessageContext.Delete"/> (default yes)
+        /// and <see cref="MessageContext.ChangeVisibilityAsync"/>; while the handler runs, the invisibility is
+        /// renewed automatically. Returns how many messages were handled.
         /// </summary>
         Task<int> ConsumeAsync(string topic, ConsumeOptions options, Func<MessageContext, Task> handler, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>O consumo com handler, com o corpo já deserializado como <typeparamref name="T"/> em <see cref="MessageContext{T}.Body"/>.</summary>
+        /// <summary>Consuming with a handler, with the body already deserialized as <typeparamref name="T"/> in <see cref="MessageContext{T}.Body"/>.</summary>
         Task<int> ConsumeAsync<T>(string topic, ConsumeOptions options, Func<MessageContext<T>, Task> handler, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>O <c>ConsumeAsync&lt;T&gt;</c> sem opções.</summary>
+        /// <summary><c>ConsumeAsync&lt;T&gt;</c> without options.</summary>
         Task<int> ConsumeAsync<T>(string topic, Func<MessageContext<T>, Task> handler, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>O consumo com handler, sem opções: valem os padrões do servidor.</summary>
+        /// <summary>Consuming with a handler, without options: the server defaults apply.</summary>
         Task<int> ConsumeAsync(string topic, Func<MessageContext, Task> handler, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary><c>DELETE /topics/{topic}/messages/{id}?receiptToken=</c>.</summary>
         Task AckAsync(string topic, string messageId, string receiptToken, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>Confirma a mensagem recebida do <see cref="ConsumeAsync"/>.</summary>
+        /// <summary>Acknowledges the message received from <see cref="ConsumeAsync"/>.</summary>
         Task AckAsync(string topic, Message message, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary><c>PUT /topics/{topic}/messages/{id}/visibility?receiptToken=</c>.</summary>
         Task<VisibilityResponse> ChangeVisibilityAsync(string topic, string messageId, string receiptToken, int seconds, CancellationToken cancellationToken = default(CancellationToken));
 
-        /// <summary>Muda a invisibilidade da mensagem recebida do <see cref="ConsumeAsync"/>.</summary>
+        /// <summary>Changes the invisibility of the message received from <see cref="ConsumeAsync"/>.</summary>
         Task<VisibilityResponse> ChangeVisibilityAsync(string topic, Message message, int seconds, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// O laço de consumo: long polling, chama o <paramref name="handler"/> e confirma sozinho só se
-        /// ele terminar sem exceção. Termina, sem exceção, quando o token é cancelado.
+        /// The consume loop: long polling, calls <paramref name="handler"/> and acknowledges by itself only if
+        /// it finishes without an exception. Ends, without an exception, when the token is cancelled.
         /// </summary>
         Task SubscribeAsync(string topic, ConsumeOptions options, Func<Message, Task> handler, CancellationToken cancellationToken, Action<Message, Exception> onError = null);
 
@@ -117,7 +117,7 @@ namespace Taba
 
         VisibilityResponse ChangeVisibility(string topic, Message message, int seconds);
 
-        /// <summary>A forma síncrona do <see cref="SubscribeAsync"/>: bloqueia a thread até o cancelamento.</summary>
+        /// <summary>The synchronous form of <see cref="SubscribeAsync"/>: blocks the thread until cancellation.</summary>
         void Subscribe(string topic, ConsumeOptions options, Action<Message> handler, CancellationToken cancellationToken, Action<Message, Exception> onError = null);
     }
 }

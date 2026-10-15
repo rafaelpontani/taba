@@ -18,7 +18,7 @@ fn id_carries_its_timestamp() {
 fn rejects_other_versions_and_uppercase() {
     assert!(!is_guid_v7("550e8400-e29b-41d4-a716-446655440000"));
     assert!(!is_guid_v7(&new_at(1).to_uppercase()));
-    assert!(!is_guid_v7("nao-e-um-id"));
+    assert!(!is_guid_v7("not-an-id"));
     assert_eq!(unix_millis_of("550e8400-e29b-41d4-a716-446655440000"), None);
 }
 
@@ -36,6 +36,6 @@ fn generator_is_strictly_increasing_even_within_the_same_millisecond() {
     let ids: Vec<String> = (0..1000)
         .map(|_| generator.new_at(1_791_288_000_000))
         .collect();
-    assert!(ids.windows(2).all(|w| w[0] < w[1]), "fora de ordem");
+    assert!(ids.windows(2).all(|w| w[0] < w[1]), "out of order");
     assert!(ids.iter().all(|id| is_guid_v7(id)));
 }

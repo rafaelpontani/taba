@@ -112,9 +112,9 @@ fn parses_urls_with_default_ports_ipv6_and_prefix() {
         (u.https, u.host.as_str(), u.port, u.base_path.as_str()),
         (false, "127.0.0.1", 8080, "")
     );
-    let u = Url::parse("https://taba.exemplo.com/api/").unwrap();
+    let u = Url::parse("https://taba.example.com/api/").unwrap();
     assert_eq!((u.https, u.port, u.base_path.as_str()), (true, 443, "/api"));
-    assert_eq!(u.host_header(), "taba.exemplo.com");
+    assert_eq!(u.host_header(), "taba.example.com");
     let u = Url::parse("http://[::1]:9090").unwrap();
     assert_eq!((u.host.as_str(), u.port), ("::1", 9090));
     assert_eq!(u.host_header(), "[::1]:9090");

@@ -15,8 +15,8 @@ use crate::storage::backup::{BackupDb, MemoryStore, ObjectStore, keys};
 use crate::storage::tokens::MemoryTokenStore;
 use crate::storage::topics::MemoryTopicStore;
 
-/// Um nó só (sem cluster) com o backup ligado a um depósito em memória. Os prazos de tempo real
-/// (batimento e morte) são curtos.
+/// A single node (no cluster) with the backup attached to an in-memory store. The real-time deadlines
+/// (heartbeat and death) are short.
 struct Fixture {
     backup: Arc<Backup>,
     s3: Arc<MemoryStore>,
@@ -28,7 +28,7 @@ fn fixture_on(s3: Arc<MemoryStore>, node_id: &str) -> Fixture {
         None,
         &MapEnv::new([
             ("TABA_MODE", "development"),
-            ("TABA_BACKUP_S3_BUCKET", "teste"),
+            ("TABA_BACKUP_S3_BUCKET", "test"),
             ("TABA_BACKUP_HEARTBEAT_INTERVAL", "50ms"),
             ("TABA_BACKUP_DEAD_AFTER", "400ms"),
             ("TABA_BACKUP_RESTORE_LOCK_TTL", "300ms"),
@@ -108,26 +108,26 @@ async fn put_beat(s3: &MemoryStore, id: &str, seq: u64, state: &str) {
 #[tokio::test]
 async fn a_heartbeat_is_fresh_while_its_etag_changes_and_dead_when_it_stops() {
     let f = fixture();
-    put_beat(&f.s3, "outro", 1, "member").await;
+    put_beat(&f.s3, "other", 1, "member").await;
     f.backup.observe().await;
     assert_eq!(
-        f.backup.liveness("outro"),
+        f.backup.liveness("other"),
         Liveness::Fresh,
-        "sem histórico: fresco"
+        "without a history: fresh"
     );
 
-    // Bate de novo: o ETag muda e o prazo recomeça.
+    // Beats again: the ETag changes and the deadline starts over.
     tokio::time::sleep(Duration::from_millis(250)).await;
-    put_beat(&f.s3, "outro", 2, "member").await;
+    put_beat(&f.s3, "other", 2, "member").await;
     f.backup.observe().await;
     tokio::time::sleep(Duration::from_millis(250)).await;
     f.backup.observe().await;
-    assert_eq!(f.backup.liveness("outro"), Liveness::Fresh);
+    assert_eq!(f.backup.liveness("other"), Liveness::Fresh);
 
-    // Pára de bater: vence por `backup.dead-after`, sem comparar horário nenhum.
+    // Stops beating: it expires by `backup.dead-after`, without comparing any time.
     tokio::time::sleep(Duration::from_millis(450)).await;
     f.backup.observe().await;
-    assert_eq!(f.backup.liveness("outro"), Liveness::Dead);
+    assert_eq!(f.backup.liveness("other"), Liveness::Dead);
 }
 
 /// UC: UC-BKP-020
@@ -136,16 +136,16 @@ async fn a_node_without_a_file_is_dead_and_an_unreadable_bucket_says_nothing() {
     let f = fixture();
     f.backup.observe().await;
     assert_eq!(
-        f.backup.liveness("quem"),
+        f.backup.liveness("who"),
         Liveness::Dead,
-        "saiu limpo ou nunca bateu"
+        "left cleanly or never beat"
     );
     f.s3.set_down(true);
     f.backup.observe().await;
     assert_eq!(
-        f.backup.liveness("quem"),
+        f.backup.liveness("who"),
         Liveness::Unknown,
-        "o S3 fora do ar não diz nada: vale o comportamento sem o backup"
+        "S3 down says nothing: the behavior without the backup applies"
     );
 }
 
@@ -160,32 +160,36 @@ async fn the_node_writes_its_own_heartbeat_with_a_growing_sequence() {
     let second: Heartbeat =
         serde_json::from_slice(&f.s3.peek(&keys::node("no-a")).unwrap()).unwrap();
     assert_eq!(first.id, "no-a");
-    assert_eq!(second.seq, first.seq + 1, "sem o seq o ETag não mudaria");
+    assert_eq!(
+        second.seq,
+        first.seq + 1,
+        "without the seq the ETag would not change"
+    );
     assert_eq!(second.state, "member");
     f.backup.leave().await;
     assert!(
         f.s3.peek(&keys::node("no-a")).is_none(),
-        "sair limpo remove o arquivo"
+        "leaving cleanly removes the file"
     );
     f.backup.heartbeat_pass().await;
     assert!(
         f.s3.peek(&keys::node("no-a")).is_none(),
-        "depois de sair o nó não bate mais"
+        "after leaving the node no longer beats"
     );
 }
 
 /// UC: UC-BKP-023, UC-BKP-024
 #[tokio::test]
 async fn the_verdict_tells_a_live_cluster_from_a_dead_one_from_an_empty_bucket() {
-    // Bucket vazio.
+    // Empty bucket.
     let f = fixture();
     assert_eq!(f.backup.wait_for_verdict().await, Verdict::Empty);
 
-    // Um nó que só está subindo não prova que o cluster existe.
+    // A node that is only starting up does not prove the cluster exists.
     put_beat(&f.s3, "subindo", 1, "joining").await;
     assert_eq!(f.backup.wait_for_verdict().await, Verdict::Empty);
 
-    // Um nó que bate: o cluster está vivo e o nó entra pelo caminho normal.
+    // A node that beats: the cluster is alive and the node joins through the normal path.
     put_beat(&f.s3, "vivo", 1, "member").await;
     let beater = {
         let s3 = f.s3.clone();
@@ -199,18 +203,18 @@ async fn the_verdict_tells_a_live_cluster_from_a_dead_one_from_an_empty_bucket()
     match f.backup.wait_for_verdict().await {
         Verdict::Alive(beats) => {
             assert_eq!(beats[0].id, "vivo");
-            assert_eq!(beats[0].addresses, ["10.0.0.9"], "os ips para entrar");
+            assert_eq!(beats[0].addresses, ["10.0.0.9"], "the ips to join");
         }
-        other => panic!("esperava um cluster vivo, veio {other:?}"),
+        other => panic!("expected a live cluster, got {other:?}"),
     }
     beater.abort();
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Parou de bater: todos vencidos, o nó é o sobrevivente único.
+    // Stopped beating: all expired, the node is the sole survivor.
     f.s3.delete(&keys::node("subindo")).await.unwrap();
     assert_eq!(f.backup.wait_for_verdict().await, Verdict::AllDead);
 
-    // O S3 fora do ar.
+    // S3 down.
     f.s3.set_down(true);
     assert_eq!(f.backup.wait_for_verdict().await, Verdict::Unavailable);
 }
@@ -222,7 +226,7 @@ async fn only_one_survivor_gets_the_restore_lock_and_the_other_waits_as_a_normal
     put_beat(&s3, "morto", 1, "member").await;
     let a = fixture_on(s3.clone(), "no-a");
     let b = fixture_on(s3.clone(), "no-b");
-    // Os dois veem o único arquivo parado (vencido) e disputam a trava.
+    // Both see the single stalled (expired) file and compete for the lock.
     let (da, db) = tokio::join!(
         a.backup.startup_decision(false),
         b.backup.startup_decision(false)
@@ -231,10 +235,10 @@ async fn only_one_survivor_gets_the_restore_lock_and_the_other_waits_as_a_normal
         .iter()
         .filter(|d| ***d == StartupDecision::StartAlone)
         .count();
-    assert_eq!(winners, 1, "uma trava, um restaurador: {da:?} / {db:?}");
+    assert_eq!(winners, 1, "one lock, one restorer: {da:?} / {db:?}");
     assert!(s3.peek(keys::RESTORE_LOCK).is_some());
 
-    // O titular some sem renovar: a trava vence por `backup.restore.lock-ttl` e o outro a toma.
+    // The holder vanishes without renewing: the lock expires by `backup.restore.lock-ttl` and the other takes it.
     let loser = if da == StartupDecision::StartAlone {
         &b
     } else {
@@ -251,7 +255,7 @@ async fn only_one_survivor_gets_the_restore_lock_and_the_other_waits_as_a_normal
     assert_eq!(
         decision,
         StartupDecision::StartAlone,
-        "a trava vencida foi tomada"
+        "the expired lock was taken"
     );
 }
 
@@ -265,7 +269,7 @@ async fn without_conditional_writes_the_lock_is_unsafe_but_the_node_still_starts
     assert_eq!(
         a.backup.startup_decision(false).await,
         StartupDecision::StartAlone,
-        "risco aceito (documentado): sem escrita condicional a trava não é segura"
+        "accepted risk (documented): without conditional writes the lock is not safe"
     );
 }
 
@@ -277,7 +281,7 @@ async fn a_node_with_no_cluster_in_the_bucket_only_starts_alone_if_it_is_the_fir
     assert_eq!(
         f.backup.startup_decision(false).await,
         StartupDecision::KeepTrying,
-        "sem o `first-node` e sem rastro de cluster, espera um cluster aparecer"
+        "without `first-node` and without any trace of a cluster, it waits for a cluster to appear"
     );
     let first = fixture();
     assert_eq!(
@@ -285,7 +289,7 @@ async fn a_node_with_no_cluster_in_the_bucket_only_starts_alone_if_it_is_the_fir
         StartupDecision::StartAlone
     );
 
-    // Parada programada: a lista diz que o cluster existia e parou de propósito.
+    // Planned stop: the list says the cluster existed and stopped on purpose.
     let stopped = fixture();
     assert!(
         stopped
@@ -294,13 +298,13 @@ async fn a_node_with_no_cluster_in_the_bucket_only_starts_alone_if_it_is_the_fir
             .await
     );
     let list = stopped.backup.read_stop_list().await.unwrap();
-    assert_eq!(list.nodes, ["a", "b"], "na ordem em que pararam");
+    assert_eq!(list.nodes, ["a", "b"], "in the order they stopped");
     assert_eq!(
         stopped.backup.startup_decision(false).await,
         StartupDecision::StartAlone
     );
 
-    // O S3 fora do ar: o recurso fica desligado e vale o comportamento de sempre.
+    // S3 down: the feature stays off and the usual behavior applies.
     let down = fixture();
     down.s3.set_down(true);
     assert_eq!(
@@ -318,17 +322,17 @@ async fn a_node_with_no_cluster_in_the_bucket_only_starts_alone_if_it_is_the_fir
 async fn cleaning_nodes_removes_only_dead_files_of_nodes_that_are_not_in_the_cluster() {
     let f = fixture();
     put_beat(&f.s3, "fantasma", 1, "member").await;
-    put_beat(&f.s3, "outra-particao", 1, "member").await;
+    put_beat(&f.s3, "other-partition", 1, "member").await;
     let beater = {
         let s3 = f.s3.clone();
         tokio::spawn(async move {
             for seq in 2..=u64::MAX {
-                put_beat(&s3, "outra-particao", seq, "member").await;
+                put_beat(&s3, "other-partition", seq, "member").await;
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         })
     };
-    // Vê os arquivos por mais que `dead-after`: o do fantasma não muda.
+    // Sees the files for longer than `dead-after`: the ghost's does not change.
     for _ in 0..12 {
         f.backup.observe().await;
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -337,15 +341,15 @@ async fn cleaning_nodes_removes_only_dead_files_of_nodes_that_are_not_in_the_clu
     f.backup.cleanup_nodes().await;
     assert!(
         f.s3.peek(&keys::node("fantasma")).is_none(),
-        "morto e fora do cluster"
+        "dead and outside the cluster"
     );
     assert!(
-        f.s3.peek(&keys::node("outra-particao")).is_some(),
-        "um arquivo fresco nunca é apagado: pode ser um nó vivo em outra partição"
+        f.s3.peek(&keys::node("other-partition")).is_some(),
+        "a fresh file is never deleted: it may be a live node in another partition"
     );
     assert!(
         f.s3.peek(&keys::node("no-a")).is_some(),
-        "o do próprio nó, membro"
+        "the node's own, a member"
     );
     beater.abort();
 }
@@ -356,7 +360,7 @@ fn the_backup_rules_come_from_the_configuration_with_the_documented_defaults() {
     let config = Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap();
     assert!(
         !config.backup.enabled(),
-        "sem bucket o recurso fica desligado"
+        "without a bucket the feature is off"
     );
     let rules = BackupRules::from_config(&config);
     assert_eq!(rules.delay, Duration::from_secs(60));
@@ -391,7 +395,7 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
     assert_eq!(s3.prefix, "taba");
     assert!(
         s3.access_key.is_none(),
-        "sem chaves: a cadeia padrão da AWS"
+        "without keys: the default AWS chain"
     );
     assert!(!s3.path_style);
 
@@ -401,24 +405,24 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
             ("TABA_MODE", "development"),
             ("TABA_BACKUP_S3_BUCKET", "taba"),
             ("TABA_BACKUP_S3_ENDPOINT", "http://minio:9000"),
-            ("TABA_BACKUP_S3_ACCESS_KEY", "chave"),
+            ("TABA_BACKUP_S3_ACCESS_KEY", "key"),
             ("TABA_BACKUP_S3_SECRET_KEY", "segredo"),
         ]),
     )
     .unwrap();
     let s3 = minio.backup.s3.unwrap();
-    assert!(s3.path_style, "fora da AWS o bucket vai no caminho");
+    assert!(s3.path_style, "outside AWS the bucket goes in the path");
     assert_eq!(s3.secret_key.as_ref().unwrap().expose(), "segredo");
     assert!(
         !format!("{s3:?}").contains("segredo"),
-        "o segredo nunca aparece em log nem em Debug"
+        "the secret never shows up in a log or in Debug"
     );
 
-    // Uma chave sem a outra, ou limites que se contradizem, impedem a partida.
+    // One key without the other, or limits that contradict each other, prevent the start.
     for bad in [
         vec![
             ("TABA_BACKUP_S3_BUCKET", "b"),
-            ("TABA_BACKUP_S3_ACCESS_KEY", "so-uma"),
+            ("TABA_BACKUP_S3_ACCESS_KEY", "only-one"),
         ],
         vec![("TABA_BACKUP_DISK_EVICT_TO", "90")],
         vec![("TABA_BACKUP_DISK_PAUSE_AT", "101")],
@@ -434,7 +438,7 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
         }
         assert!(
             Config::parse(None, &map).is_err(),
-            "{bad:?} deveria ser recusado"
+            "{bad:?} should be refused"
         );
     }
 }
@@ -445,11 +449,11 @@ fn the_example_configuration_files_are_valid() {
     for (name, text) in [
         (
             "taba-minio.yml",
-            include_str!("../../../../../exemplos/backup-s3/taba-minio.yml"),
+            include_str!("../../../../../examples/backup-s3/taba-minio.yml"),
         ),
         (
             "taba-aws.yml",
-            include_str!("../../../../../exemplos/backup-s3/taba-aws.yml"),
+            include_str!("../../../../../examples/backup-s3/taba-aws.yml"),
         ),
     ] {
         let config = Config::parse(
@@ -461,13 +465,13 @@ fn the_example_configuration_files_are_valid() {
             .backup
             .s3
             .as_ref()
-            .unwrap_or_else(|| panic!("{name}: sem bucket"));
+            .unwrap_or_else(|| panic!("{name}: without a bucket"));
         assert!(!s3.bucket.is_empty(), "{name}");
     }
     let minio = Config::parse(
         Some((
             "taba-minio.yml",
-            include_str!("../../../../../exemplos/backup-s3/taba-minio.yml"),
+            include_str!("../../../../../examples/backup-s3/taba-minio.yml"),
         )),
         &MapEnv::new([("TABA_MODE", "development")]),
     )

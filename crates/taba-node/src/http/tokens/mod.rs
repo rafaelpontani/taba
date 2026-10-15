@@ -1,7 +1,7 @@
-//! Tokens de acesso da API de cliente (doc 06a, "Tokens de acesso"): `POST` e `GET /tokens` e
-//! `GET`, `PATCH` e `DELETE /tokens/{id}`. Só existem com a autenticação ligada, e só o token
-//! raiz as usa (a camada `authorize` recusa os demais). O segredo completo aparece **só** na
-//! resposta da criação.
+//! Client API access tokens (doc 06a, "Access tokens"): `POST` and `GET /tokens` and
+//! `GET`, `PATCH` and `DELETE /tokens/{id}`. They only exist with authentication on, and only the root
+//! token uses them (the `authorize` layer refuses the rest). The full secret shows up **only** in the
+//! creation response.
 
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ use crate::engine::tokens::{CreateToken, ListQuery, UpdateToken};
 
 const CREATE_FIELDS: &[&str] = &["name", "permissions", "topicPrefixes", "expiresAt"];
 const PATCH_FIELDS: &[&str] = &["name", "expiresAt"];
-/// Campos que o `PATCH` reconhece só para recusá-los como imutáveis.
+/// Fields the `PATCH` recognizes only to refuse them as immutable.
 const IMMUTABLE_FIELDS: &[&str] = &["permissions", "topicPrefixes", "id", "createdAt", "token"];
 
 pub fn routes() -> Router<AppState> {
@@ -30,7 +30,7 @@ pub fn routes() -> Router<AppState> {
         .route("/tokens/{id}", get(read).patch(update).delete(revoke))
 }
 
-/// O `Token` do doc 06a: nunca leva o segredo nem o hash.
+/// The doc 06a `Token`: never carries the secret or the hash.
 fn token_json(record: &TokenRecord) -> Map<String, Value> {
     let mut object = Map::new();
     object.insert("id".into(), json!(record.id));

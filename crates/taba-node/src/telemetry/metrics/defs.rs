@@ -1,9 +1,9 @@
-//! As métricas de nó que existem (doc 11, "Métricas de nó"), com o nome, o tipo e a unidade da
-//! tabela do documento. O que ainda não existe (canal, votação, sincronização) não está aqui.
+//! The node metrics that exist (doc 11, "Node metrics"), with the name, type and unit from the
+//! document's table. What does not exist yet (channel, voting, synchronization) is not here.
 
 use super::{Def, Kind};
 
-/// Os baldes sugeridos pela convenção semântica de HTTP (5 ms a 10 s).
+/// The buckets suggested by the HTTP semantic convention (5 ms to 10 s).
 const HTTP_SECONDS: &[f64] = &[
     0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0,
 ];
@@ -51,19 +51,19 @@ pub static PROCESS_UPTIME: Def = def(
     "process.uptime",
     Kind::Gauge,
     "s",
-    "Tempo desde o início do processo.",
+    "Time since the process started.",
 );
 pub static PROCESS_CPU_UTILIZATION: Def = def(
     "process.cpu.utilization",
     Kind::Gauge,
     "1",
-    "Uso de CPU do processo, de 0 a 1 do total de núcleos, desde a leitura anterior.",
+    "Process CPU usage, from 0 to 1 of the total cores, since the previous reading.",
 );
 pub static PROCESS_MEMORY_USAGE: Def = def(
     "process.memory.usage",
     Kind::UpDownCounter,
     "By",
-    "Memória residente do processo.",
+    "Resident memory of the process.",
 );
 pub static PROCESS_THREAD_COUNT: Def = def(
     "process.thread.count",
@@ -75,13 +75,13 @@ pub static PROCESS_OPEN_FILES: Def = def(
     "process.open_file_descriptor.count",
     Kind::UpDownCounter,
     "{file}",
-    "Descritores de arquivo abertos.",
+    "Open file descriptors.",
 );
 pub static NODE_CONNECTIONS: Def = def(
     "taba.node.connections",
     Kind::UpDownCounter,
     "{connection}",
-    "Conexões HTTP abertas, por porta.",
+    "Open HTTP connections, by port.",
 );
 
 // ---- Armazenamento ----
@@ -90,49 +90,49 @@ pub static STORAGE_MEMORY_USAGE: Def = def(
     "taba.storage.memory.usage",
     Kind::UpDownCounter,
     "By",
-    "Memória ocupada por corpos de mensagem.",
+    "Memory taken by message bodies.",
 );
 pub static STORAGE_MEMORY_LIMIT: Def = def(
     "taba.storage.memory.limit",
     Kind::Gauge,
     "By",
-    "Limite de memória de mensagens (memory.limit).",
+    "Message memory limit (memory.limit).",
 );
 pub static STORAGE_MEMORY_MESSAGES: Def = def(
     "taba.storage.memory.messages",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens mantidas em memória.",
+    "Messages kept in memory.",
 );
 pub static STORAGE_DISK_MESSAGES: Def = def(
     "taba.storage.disk.messages",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens em disco.",
+    "Messages on disk.",
 );
 pub static STORAGE_DISK_FREE: Def = def(
     "taba.storage.disk.free",
     Kind::Gauge,
     "By",
-    "Espaço livre no volume de storage.dir.",
+    "Free space on the storage.dir volume.",
 );
 pub static STORAGE_OVERFLOW: Def = def(
     "taba.storage.overflow",
     Kind::Counter,
     "{message}",
-    "Mensagens que foram da memória para o disco por falta de espaço.",
+    "Messages that went from memory to disk for lack of space.",
 );
 pub static STORAGE_READS: Def = def(
     "taba.storage.reads",
     Kind::Counter,
     "{read}",
-    "Leituras de mensagem, por onde foram atendidas (memória ou disco).",
+    "Message reads, by where they were served from (memory or disk).",
 );
 pub static STORAGE_DISK_ERRORS: Def = def(
     "taba.storage.disk.errors",
     Kind::Counter,
     "{error}",
-    "Falhas de entrada e saída em disco.",
+    "Disk input/output failures.",
 );
 
 // ---- API HTTP ----
@@ -140,44 +140,44 @@ pub static STORAGE_DISK_ERRORS: Def = def(
 pub static HTTP_SERVER_DURATION: Def = histogram(
     "http.server.request.duration",
     "s",
-    "Latência das requisições recebidas; a contagem é o total de requisições.",
+    "Latency of the requests received; the count is the total number of requests.",
     HTTP_SECONDS,
 );
 pub static HTTP_SERVER_ACTIVE: Def = def(
     "http.server.active_requests",
     Kind::UpDownCounter,
     "{request}",
-    "Requisições em andamento.",
+    "Requests in progress.",
 );
 pub static HTTP_SERVER_REQUEST_BODY: Def = histogram(
     "http.server.request.body.size",
     "By",
-    "Tamanho do corpo das requisições (quando o tamanho é conhecido).",
+    "Size of the request body (when the size is known).",
     BODY_BYTES,
 );
 pub static HTTP_SERVER_RESPONSE_BODY: Def = histogram(
     "http.server.response.body.size",
     "By",
-    "Tamanho do corpo das respostas (quando o tamanho é conhecido).",
+    "Size of the response body (when the size is known).",
     BODY_BYTES,
 );
 pub static RATELIMIT_REJECTED: Def = def(
     "taba.ratelimit.rejected",
     Kind::Counter,
     "{request}",
-    "Requisições recusadas com 429.",
+    "Requests refused with 429.",
 );
 pub static AUTH_REQUESTS: Def = def(
     "taba.auth.requests",
     Kind::Counter,
     "{request}",
-    "Autenticação por token: aceitas, recusadas com 401 e recusadas com 403.",
+    "Token authentication: accepted, refused with 401 and refused with 403.",
 );
 pub static AUTH_TOKENS: Def = def(
     "taba.auth.tokens",
     Kind::Gauge,
     "{token}",
-    "Tokens de acesso que este nó conhece.",
+    "Access tokens this node knows.",
 );
 
 // ---- Entrega ----
@@ -186,142 +186,142 @@ pub static DELIVERY_READY: Def = def(
     "taba.delivery.ready",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens prontas para entrega neste nó (todos os tópicos).",
+    "Messages ready for delivery on this node (all topics).",
 );
 pub static DELIVERY_FAIR_WAIT: Def = histogram(
     "taba.delivery.fair.wait",
     "s",
-    "Tempo entre a publicação e a primeira entrega, por faixa do grupo.",
+    "Time between publication and first delivery, by group band.",
     WAIT_SECONDS,
 );
 pub static DELIVERY_REDELIVERIES: Def = def(
     "taba.delivery.redeliveries",
     Kind::Counter,
     "{message}",
-    "Entregas de mensagens já entregues antes.",
+    "Deliveries of messages already delivered before.",
 );
 pub static DELIVERY_DEAD_LETTERED: Def = def(
     "taba.delivery.dead_lettered",
     Kind::Counter,
     "{message}",
-    "Mensagens enviadas à dead-letter por atingirem maxDeliveries.",
+    "Messages sent to the dead-letter for reaching maxDeliveries.",
 );
 pub static RETENTION_EXPIRED: Def = def(
     "taba.retention.expired",
     Kind::Counter,
     "{message}",
-    "Mensagens descartadas por ttl.",
+    "Messages dropped by ttl.",
 );
 pub static FIFO_DEDUPLICATED: Def = def(
     "taba.fifo.deduplicated",
     Kind::Counter,
     "{message}",
-    "Publicações em fila FIFO descartadas por deduplicação.",
+    "Publications to a FIFO queue dropped by deduplication.",
 );
 pub static FIFO_GROUPS_BUSY: Def = def(
     "taba.fifo.groups.busy",
     Kind::UpDownCounter,
     "{group}",
-    "Grupos de filas FIFO com mensagem em voo neste nó.",
+    "FIFO queue groups with a message in flight on this node.",
 );
 pub static LONGPOLL_WAITING: Def = def(
     "taba.delivery.longpoll.waiting",
     Kind::UpDownCounter,
     "{request}",
-    "Chamadas de long polling aguardando neste nó.",
+    "Long-polling calls waiting on this node.",
 );
 pub static LONGPOLL_OUTCOME: Def = def(
     "taba.delivery.longpoll.outcome",
     Kind::Counter,
     "{request}",
-    "Como terminaram as chamadas de long polling.",
+    "How the long-polling calls ended.",
 );
 
-// ---- Estado do nó ----
+// ---- Node state ----
 
 pub static NODE_STATE: Def = def(
     "taba.node.state",
     Kind::Gauge,
     "{flag}",
-    "1 no estado atual do nó.",
+    "1 in the node's current state.",
 );
 pub static NODE_DRAIN_STATE: Def = def(
     "taba.node.drain.state",
     Kind::Gauge,
     "{flag}",
-    "1 no estado do drain do nó.",
+    "1 in the node's drain state.",
 );
 pub static NODE_DRAIN_PENDING: Def = def(
     "taba.node.drain.pending",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens ainda em memória (chega a 0 quando o nó está drained).",
+    "Messages still in memory (reaches 0 when the node is drained).",
 );
 
-// ---- Cluster e anel (só em mode=production) ----
+// ---- Cluster and ring (only in mode=production) ----
 
 pub static CLUSTER_MEMBERS: Def = def(
     "taba.cluster.members",
     Kind::Gauge,
     "{node}",
-    "Membros na tabela deste nó, por estado.",
+    "Members in this node's table, by state.",
 );
 pub static CLUSTER_MEMBERS_VERSION: Def = def(
     "taba.cluster.members.version",
     Kind::Gauge,
     "{version}",
-    "Versão (época) da tabela de membros; divergência entre nós indica propagação incompleta.",
+    "Version (epoch) of the member table; divergence between nodes indicates incomplete propagation.",
 );
 pub static CLUSTER_MEMBERSHIP_CHANGES: Def = def(
     "taba.cluster.membership.changes",
     Kind::Counter,
     "{change}",
-    "Registros e desregistros de nós, por fase.",
+    "Node registrations and deregistrations, by phase.",
 );
 pub static CLUSTER_BOOTSTRAP_FAILURES: Def = def(
     "taba.cluster.bootstrap.failures",
     Kind::Counter,
     "{failure}",
-    "Falhas de bootstrap deste nó, por motivo.",
+    "Bootstrap failures of this node, by reason.",
 );
 pub static RING_VIRTUAL_NODES: Def = def(
     "taba.ring.virtual_nodes",
     Kind::Gauge,
     "{vnode}",
-    "Nós virtuais deste nó no anel (ring.virtual-nodes).",
+    "This node's virtual nodes on the ring (ring.virtual-nodes).",
 );
 pub static RING_BLOCKS: Def = def(
     "taba.ring.blocks",
     Kind::UpDownCounter,
     "{block}",
-    "Blocos que o nó atende, por papel e integridade.",
+    "Blocks the node serves, by role and integrity.",
 );
 
-// ---- Escrita, entrega e repasse entre nós (só em mode=production) ----
+// ---- Writing, delivery and forwarding between nodes (only in mode=production) ----
 
 pub static WRITE_COORDINATED: Def = def(
     "taba.write.coordinated",
     Kind::Counter,
     "{message}",
-    "Operações sobre mensagens coordenadas por este nó (publicação, invisibilidade, ack, dead-letter).",
+    "Message operations coordinated by this node (publish, invisibility, ack, dead-letter).",
 );
 pub static WRITE_RETRIES: Def = def(
     "taba.write.retries",
     Kind::Counter,
     "{retry}",
-    "Retries por fase e por nó de destino.",
+    "Retries by phase and by destination node.",
 );
 pub static WRITE_ROLLBACKS: Def = def(
     "taba.write.rollbacks",
     Kind::Counter,
     "{rollback}",
-    "Rollbacks enviados por falha em fechar o quórum (fase 1).",
+    "Rollbacks sent for failing to close the quorum (phase 1).",
 );
 pub static WRITE_COMMIT_TIMEOUTS: Def = def(
     "taba.write.commit_timeouts",
     Kind::Counter,
     "{timeout}",
-    "Vezes que write.commit.timeout esgotou sem commit confirmado numa réplica.",
+    "Times write.commit.timeout ran out without a confirmed commit on a replica.",
 );
 pub static WRITE_RECEIVED: Def = def(
     "taba.write.received",
@@ -333,256 +333,256 @@ pub static WRITE_PENDING: Def = def(
     "taba.write.pending",
     Kind::UpDownCounter,
     "{message}",
-    "Registros pendentes (sem commit).",
+    "Pending records (no commit).",
 );
 pub static WRITE_PENDING_EXPIRED: Def = def(
     "taba.write.pending.expired",
     Kind::Counter,
     "{message}",
-    "Registros descartados por expiração (sem commit nem rollback).",
+    "Records dropped by expiry (neither commit nor rollback).",
 );
 pub static DELIVERY_TAKE: Def = def(
     "taba.delivery.take",
     Kind::Counter,
     "{request}",
-    "Pedidos de entrega a outro dono (take), enviados e recebidos.",
+    "Requests for delivery to another owner (take), sent and received.",
 );
 pub static CLUSTER_NOTIFICATIONS: Def = def(
     "taba.cluster.channel.notifications",
     Kind::Counter,
     "{message}",
-    "Avisos de mensagem nova enviados e recebidos.",
+    "New-message notices sent and received.",
 );
 pub static CLUSTER_FORWARDED: Def = def(
     "taba.cluster.forwarded",
     Kind::Counter,
     "{request}",
-    "Chamadas de cliente repassadas a outro nó (drain), por resultado.",
+    "Client calls forwarded to another node (drain), by result.",
 );
 
-// ---- Canal entre nós, votação e freezing (doc 04, seções 6.3 e 6.7; doc 13, seção 12.9) ----
+// ---- Channel between nodes, voting and freezing (doc 04, sections 6.3 and 6.7; doc 13, section 12.9) ----
 
 pub static CHANNEL_CONNECTIONS: Def = def(
     "taba.cluster.channel.connections",
     Kind::UpDownCounter,
     "{connection}",
-    "Canais abertos com outros nós (esperado: nós do cluster − 1).",
+    "Channels open with other nodes (expected: nodes in the cluster − 1).",
 );
 pub static CHANNEL_STATE: Def = def(
     "taba.cluster.channel.state",
     Kind::Gauge,
     "{flag}",
-    "1 se o canal com o peer está conectado, 0 se caído.",
+    "1 if the channel to the peer is connected, 0 if down.",
 );
 pub static CHANNEL_RTT: Def = histogram(
     "taba.cluster.channel.rtt",
     "s",
-    "Latência da chamada do canal (sinal de vida e quadros), por peer.",
+    "Latency of the channel call (heartbeat and frames), by peer.",
     WAIT_SECONDS,
 );
 pub static CHANNEL_RECONNECTS: Def = def(
     "taba.cluster.channel.reconnects",
     Kind::Counter,
     "{attempt}",
-    "Tentativas de reconexão do canal e resultado.",
+    "Channel reconnection attempts and result.",
 );
 pub static CHANNEL_QUEUE_OUT: Def = def(
     "taba.cluster.channel.queue.out",
     Kind::UpDownCounter,
     "{signal}",
-    "Quadros na fila de saída para o peer.",
+    "Frames in the outgoing queue to the peer.",
 );
 pub static CHANNEL_QUEUE_IN: Def = def(
     "taba.cluster.channel.queue.in",
     Kind::UpDownCounter,
     "{batch}",
-    "Mensagens do peer lidas do canal e ainda não processadas (fila de entrada).",
+    "Peer messages read from the channel and not yet processed (incoming queue).",
 );
 pub static CHANNEL_QUEUE_DROPPED: Def = def(
     "taba.cluster.channel.queue.dropped",
     Kind::Counter,
     "{signal}",
-    "Quadros substituídos, descartados por idade ou por estouro da fila de saída.",
+    "Frames replaced, dropped by age or by outgoing queue overflow.",
 );
 pub static DEFINITION_CONFLICTS: Def = def(
     "taba.cluster.definitions.conflicts",
     Kind::Counter,
     "{conflict}",
-    "Definições de tópico ou token recebidas com a mesma versão e conteúdo diferente do que o nó tem.",
+    "Topic or token definitions received with the same version and different content from what the node has.",
 );
 pub static CLUSTER_VOTE: Def = def(
     "taba.cluster.vote",
     Kind::Counter,
     "{vote}",
-    "Votações de exclusão abertas ou votadas e o resultado.",
+    "Exclusion votes opened or voted and the result.",
 );
 pub static CLUSTER_FREEZING: Def = def(
     "taba.cluster.freezing",
     Kind::Gauge,
     "{node}",
-    "Nós atualmente em período de freezing.",
+    "Nodes currently in a freezing period.",
 );
 pub static FIFO_FORWARD: Def = def(
     "taba.fifo.forward",
     Kind::Counter,
     "{request}",
-    "Publicações FIFO repassadas ao primário do grupo.",
+    "FIFO publications forwarded to the group's primary.",
 );
 pub static CLUSTER_TLS_EXPIRES_IN: Def = def(
     "taba.cluster.tls.expires_in",
     Kind::Gauge,
     "s",
-    "Tempo até a expiração (notAfter) do certificado do cluster em uso.",
+    "Time until the in-use cluster certificate expires (notAfter).",
 );
 pub static CLUSTER_QUORUM_AVAILABLE: Def = def(
     "taba.cluster.quorum.available",
     Kind::Gauge,
     "{flag}",
-    "1 se há nós saudáveis suficientes para votar (cluster.vote.min-voters).",
+    "1 if there are enough healthy nodes to vote (cluster.vote.min-voters).",
 );
 pub static CLUSTER_CONDITION: Def = def(
     "taba.cluster.condition",
     Kind::Gauge,
     "{flag}",
-    "1 para cada condição vigente do cluster.",
+    "1 for each condition currently in force of the cluster.",
 );
 
-// ---- Sincronização de blocos (doc 05, seção 7.3) ----
+// ---- Block synchronization (doc 05, section 7.3) ----
 
 pub static SYNC_BLOCKS_ACTIVE: Def = def(
     "taba.sync.blocks.active",
     Kind::UpDownCounter,
     "{block}",
-    "Blocos em sincronização agora (entrega suspensa nesses blocos).",
+    "Blocks synchronizing right now (delivery suspended on those blocks).",
 );
 pub static SYNC_DURATION: Def = histogram(
     "taba.sync.duration",
     "s",
-    "Tempo para tornar um bloco íntegro.",
+    "Time to make a block intact.",
     WAIT_SECONDS,
 );
 pub static SYNC_IDS_LISTED: Def = def(
     "taba.sync.ids.listed",
     Kind::Counter,
     "{id}",
-    "IDs consolidados (união) nas listas de origem.",
+    "IDs consolidated (union) in the source lists.",
 );
 pub static SYNC_MESSAGES_PULLED: Def = def(
     "taba.sync.messages.pulled",
     Kind::Counter,
     "{message}",
-    "Mensagens obtidas por nó de origem.",
+    "Messages obtained per source node.",
 );
 pub static SYNC_BYTES: Def = def(
     "taba.sync.bytes",
     Kind::Counter,
     "By",
-    "Volume de corpo transferido na sincronização.",
+    "Body volume transferred in the synchronization.",
 );
 pub static SYNC_LOG_EVENTS: Def = def(
     "taba.sync.log.events",
     Kind::UpDownCounter,
     "{event}",
-    "Eventos no banco de eventos (sync.db) ainda por processar.",
+    "Events in the event database (sync.db) still to process.",
 );
 pub static SYNC_LOG_BYTES: Def = def(
     "taba.sync.log.bytes",
     Kind::Gauge,
     "By",
-    "Tamanho do banco de eventos em disco.",
+    "Size of the event database on disk.",
 );
 pub static SYNC_PHASE: Def = def(
     "taba.sync.phase",
     Kind::Gauge,
     "{flag}",
-    "1 na fase atual da sincronização do nó.",
+    "1 in the node's current synchronization phase.",
 );
 pub static SYNC_FAILURES: Def = def(
     "taba.sync.failures",
     Kind::Counter,
     "{failure}",
-    "Falhas de sincronização.",
+    "Synchronization failures.",
 );
 
-// ---- Recuperação de perdas (doc 04, seção 6.6) ----
+// ---- Loss recovery (doc 04, section 6.6) ----
 
 pub static RECOVER_MESSAGES: Def = def(
     "taba.recover.messages",
     Kind::Counter,
     "{message}",
-    "Mensagens enviadas, aplicadas ou ignoradas pela recuperação do nó que volta.",
+    "Messages sent, applied or ignored by the recovery of a returning node.",
 );
 pub static CLUSTER_RECOVER: Def = def(
     "taba.cluster.recover",
     Kind::Counter,
     "{message}",
-    "Mensagens recuperadas na volta de um nó, por direção.",
+    "Messages recovered when a node returns, by direction.",
 );
 
-// ---- Métricas de tópico (só nos modos by-tags e per-topic) ----
+// ---- Topic metrics (only in the by-tags and per-topic modes) ----
 
 pub static TOPIC_PUBLISHED: Def = def(
     "taba.topic.published",
     Kind::Counter,
     "{message}",
-    "Mensagens publicadas no tópico.",
+    "Messages published to the topic.",
 );
 pub static TOPIC_CONSUMED: Def = def(
     "taba.topic.consumed",
     Kind::Counter,
     "{message}",
-    "Mensagens entregues em GET.",
+    "Messages delivered on GET.",
 );
 pub static TOPIC_ACKED: Def = def(
     "taba.topic.acked",
     Kind::Counter,
     "{message}",
-    "Confirmações (ack) do tópico.",
+    "Acknowledgements (ack) of the topic.",
 );
 pub static TOPIC_VISIBLE: Def = def(
     "taba.topic.visible",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens prontas para entrega.",
+    "Messages ready for delivery.",
 );
 pub static TOPIC_INVISIBLE: Def = def(
     "taba.topic.invisible",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens em processamento.",
+    "Messages being processed.",
 );
 pub static TOPIC_DEPTH: Def = def(
     "taba.topic.depth",
     Kind::UpDownCounter,
     "{message}",
-    "Mensagens ainda não confirmadas.",
+    "Messages not yet acknowledged.",
 );
 pub static TOPIC_OLDEST_TIMESTAMP: Def = def(
     "taba.topic.oldest_timestamp",
     Kind::Gauge,
     "s",
-    "Segundos Unix da mensagem não confirmada mais antiga.",
+    "Unix seconds of the oldest unacknowledged message.",
 );
 pub static TOPIC_MEMORY_BYTES: Def = def(
     "taba.topic.memory_bytes",
     Kind::UpDownCounter,
     "By",
-    "Bytes do tópico em memória.",
+    "Bytes of the topic in memory.",
 );
 pub static TOPIC_DISK_BYTES: Def = def(
     "taba.topic.disk_bytes",
     Kind::UpDownCounter,
     "By",
-    "Bytes do tópico em disco.",
+    "Bytes of the topic on disk.",
 );
 pub static TOPIC_CONDITION: Def = def(
     "taba.topic.condition",
     Kind::Gauge,
     "{flag}",
-    "1 para cada condição vigente do tópico.",
+    "1 for each condition currently in force of the topic.",
 );
 
-/// As métricas de tópico, para apagá-las juntas.
+/// The topic metrics, to delete them together.
 pub static TOPIC_DEFS: [&Def; 10] = [
     &TOPIC_PUBLISHED,
     &TOPIC_CONSUMED,

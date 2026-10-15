@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Consumo de mensagem (entrega e ack)",
+    "title": "Message consumption (delivery and ack)",
     "output": "doc/diagramas/html/consumo.html",
     "viewBox": [
       1080,
@@ -15,38 +15,38 @@
     {
       "id": "consumidor",
       "type": "external",
-      "label": "Consumidor",
-      "sublabel": "cliente HTTP"
+      "label": "Consumer",
+      "sublabel": "HTTP client"
     },
     {
       "id": "no",
       "type": "backend",
-      "label": "Nó coordenador",
-      "sublabel": "dono da entrega no GET"
+      "label": "Coordinator node",
+      "sublabel": "delivery owner on the GET"
     },
     {
       "id": "replica",
       "type": "database",
-      "label": "Réplica (quórum)",
-      "sublabel": "confirma com o dono"
+      "label": "Replica (quorum)",
+      "sublabel": "confirms with the owner"
     },
     {
       "id": "fora",
       "type": "cloud",
-      "label": "Réplica fora",
-      "sublabel": "fora do quórum"
+      "label": "Replica out",
+      "sublabel": "outside the quorum"
     }
   ],
   "segments": [
     {
       "from": 156,
       "to": 352,
-      "label": "Entrega (GET)"
+      "label": "Delivery (GET)"
     },
     {
       "from": 360,
       "to": 528,
-      "label": "Confirmação (ack)"
+      "label": "Confirmation (ack)"
     }
   ],
   "messages": [
@@ -57,28 +57,28 @@
       "y": 170,
       "label": "GET .../messages?maxMessages=10",
       "variant": "emphasis",
-      "note": "escolhe um ID da lista de prontos"
+      "note": "picks an ID from the ready list"
     },
     {
       "id": "reg-r",
       "from": "no",
       "to": "replica",
       "y": 198,
-      "label": "registro: invisível até T, count+1, token"
+      "label": "register: invisible until T, count+1, token"
     },
     {
       "id": "reg-f",
       "from": "no",
       "to": "fora",
       "y": 226,
-      "label": "registro: invisível até T"
+      "label": "register: invisible until T"
     },
     {
       "id": "ok-r",
       "from": "replica",
       "to": "no",
       "y": 254,
-      "label": "confirma: quórum fechado",
+      "label": "confirms: quorum closed",
       "variant": "return"
     },
     {
@@ -88,14 +88,14 @@
       "y": 282,
       "label": "commit",
       "variant": "emphasis",
-      "note": "remove o ID da lista de prontos"
+      "note": "removes the ID from the ready list"
     },
     {
       "id": "resp-get",
       "from": "no",
       "to": "consumidor",
       "y": 310,
-      "label": "200 mensagens + receiptToken",
+      "label": "200 messages + receiptToken",
       "variant": "return"
     },
     {
@@ -103,7 +103,7 @@
       "from": "no",
       "to": "fora",
       "y": 338,
-      "label": "commit (2º plano)",
+      "label": "commit (background)",
       "variant": "dashed"
     },
     {
@@ -113,21 +113,21 @@
       "y": 374,
       "label": "DELETE .../{id}?receiptToken",
       "variant": "emphasis",
-      "note": "antes de invisibleUntil expirar"
+      "note": "before invisibleUntil expires"
     },
     {
       "id": "ack-reg",
       "from": "no",
       "to": "replica",
       "y": 402,
-      "label": "registro da remoção"
+      "label": "removal register"
     },
     {
       "id": "ack-ok",
       "from": "replica",
       "to": "no",
       "y": 430,
-      "label": "confirma: quórum fechado",
+      "label": "confirms: quorum closed",
       "variant": "return"
     },
     {
@@ -135,7 +135,7 @@
       "from": "no",
       "to": "replica",
       "y": 458,
-      "label": "commit: apaga mensagem",
+      "label": "commit: deletes the message",
       "variant": "emphasis"
     },
     {
@@ -143,7 +143,7 @@
       "from": "no",
       "to": "consumidor",
       "y": 486,
-      "label": "204 sem conteúdo",
+      "label": "204 no content",
       "variant": "return"
     },
     {
@@ -151,7 +151,7 @@
       "from": "no",
       "to": "fora",
       "y": 514,
-      "label": "remoção (2º plano)",
+      "label": "removal (background)",
       "variant": "dashed"
     }
   ],
@@ -160,24 +160,24 @@
       "dot": "emerald",
       "title": "At-least-once",
       "items": [
-        "Sem ack, invisibleUntil expira e a mensagem volta à lista de prontos",
-        "deliveryCount sobe a cada entrega"
+        "Without an ack, invisibleUntil expires and the message goes back to the ready list",
+        "deliveryCount goes up on each delivery"
       ]
     },
     {
       "dot": "cyan",
-      "title": "Lista local não completa",
+      "title": "Local list not complete",
       "items": [
-        "Completa com outros nós (rota interna take) até maxMessages",
-        "Sem nenhuma, vira ouvinte local até waitTime (0 a 20 s)"
+        "Completes with other nodes (internal take route) up to maxMessages",
+        "With none, becomes a local listener up to waitTime (0 to 20 s)"
       ]
     },
     {
       "dot": "rose",
-      "title": "Falhas",
+      "title": "Failures",
       "items": [
-        "Antes do quórum: rollback, mensagem continua disponível",
-        "Depois do quórum: sem rollback, insiste em 2º plano"
+        "Before the quorum: rollback, message stays available",
+        "After the quorum: no rollback, insists in the background"
       ]
     }
   ]

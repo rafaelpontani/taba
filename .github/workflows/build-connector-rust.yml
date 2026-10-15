@@ -1,13 +1,13 @@
-# Build e testes do conector Rust (taba-cli), para x86_64 e arm64 em runners nativos. Chamado pelo ci.yml
-# (pull request) e pelo release.yml, que passa a versão da tag. Envia o binário estático como o artefato
-# `taba-cli-<arch>`, usado pela imagem Docker do CLI e pela GitHub Release.
-name: Build do conector Rust
+# Build and tests of the Rust connector (taba-cli), for x86_64 and arm64 on native runners. Called by ci.yml
+# (pull request) and by release.yml, which passes the tag version. Uploads the static binary as the artifact
+# `taba-cli-<arch>`, used by the CLI Docker image and the GitHub Release.
+name: Rust connector build
 
 on:
   workflow_call:
     inputs:
       version:
-        description: Versão do release (X.Y.Z ou X.Y.Z-rc.N). Vazia em pull request.
+        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty on pull requests.
         type: string
         default: ""
 
@@ -20,7 +20,7 @@ env:
 
 jobs:
   connector-rust:
-    name: Conector Rust (build e testes, ${{ matrix.arch }})
+    name: Rust connector (build and tests, ${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - name: Versão do release
+      - name: Release version
         if: inputs.version != ''
         run: .github/scripts/set-version.sh "${{ inputs.version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -53,12 +53,12 @@ jobs:
         working-directory: connectors/rust
       - run: cargo test --workspace --locked
         working-directory: connectors/rust
-      # Binário estático (musl), para a imagem Docker e a release.
+      # Static (musl) binary, for the Docker image and the release.
       - run: cargo build --release --locked -p taba-cli --target ${{ matrix.triple }}-unknown-linux-musl
         env:
           RUSTFLAGS: "-C target-feature=+crt-static"
         working-directory: connectors/rust
-      - name: Binário em dist
+      - name: Binary in dist
         run: |
           mkdir -p dist
           cp "connectors/rust/target/${{ matrix.triple }}-unknown-linux-musl/release/taba-cli" "dist/taba-cli-${{ matrix.arch }}"

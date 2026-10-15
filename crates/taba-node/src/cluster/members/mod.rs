@@ -1,11 +1,11 @@
-//! A tabela de membros e o registro em duas fases de uma entrada ou saída de nó (doc 04,
-//! seções 6.2 e 6.3; doc 06c, "Membros e canal").
+//! The member table and the two-phase register of a node join or leave (doc 04,
+//! sections 6.2 and 6.3; doc 06c, "Members and channel").
 //!
-//! Uma mudança de membros é decidida só com a confirmação de **todos** os nós (sem quórum
-//! reduzido): a fase 1 (`register`) deixa a mudança pendente, e a fase 2 (`commit`) a efetiva e
-//! sobe a `version` da tabela. O que é pendente não muda a tabela, e há **uma mudança por vez**
-//! (seção 6.8): um segundo `register` com outro `operationId` é um conflito. Os três passos são
-//! idempotentes pelo `operationId`.
+//! A member change is decided only with the confirmation of **all** nodes (no reduced
+//! quorum): phase 1 (`register`) leaves the change pending, and phase 2 (`commit`) makes it effective and
+//! raises the table's `version`. What is pending does not change the table, and there is **one change at a time**
+//! (section 6.8): a second `register` with another `operationId` is a conflict. The three steps are
+//! idempotent by `operationId`.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -15,14 +15,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::ring::Ring;
 
-/// Quantas operações já decididas o nó lembra, para repetir a resposta de um `commit` ou
-/// `rollback` repetido em vez de dizer que a operação é desconhecida.
+/// How many already-decided operations the node remembers, to repeat the answer of a repeated `commit` or
+/// `rollback` instead of saying the operation is unknown.
 const FINISHED_MEMORY: usize = 256;
 
-/// Quantas mudanças de versões adiante o nó guarda, à espera das que faltam antes delas.
+/// How many versions-ahead changes the node keeps, waiting for the ones missing before them.
 const HELD_LIMIT: usize = 64;
 
-/// Milissegundos desde 1970.
+/// Milliseconds since 1970.
 fn millis(at: SystemTime) -> u64 {
     at.duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -49,28 +49,28 @@ impl MemberState {
     }
 }
 
-/// Um nó da tabela (`Member`, doc 06c).
+/// A table node (`Member`, doc 06c).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Member {
     pub node_id: String,
-    /// Os IPs internos do nó.
+    /// The node's internal IPs.
     pub addresses: Vec<String>,
     /// A porta do cluster.
     pub port: u16,
     pub state: MemberState,
 }
 
-/// A tabela de membros (`MemberTable`, doc 06c). A `version` é a época: sobe a cada mudança
-/// efetivada, e versões diferentes entre nós indicam propagação incompleta.
+/// The member table (`MemberTable`, doc 06c). The `version` is the epoch: it rises on each change
+/// made effective, and different versions between nodes indicate incomplete propagation.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MemberTable {
     pub version: u64,
     pub members: Vec<Member>,
-    /// Os nós em freezing que quem responde conhece (D106). Só viaja nas respostas que levam a
-    /// tabela a um nó novo; a tabela guardada nunca o tem (o freezing vive à parte, sem subir a
-    /// `version`), e ele não conta na igualdade das tabelas.
+    /// The nodes in freezing that whoever answers knows (D106). It only travels in the responses that bring the
+    /// table to a new node; the stored table never has it (freezing lives apart, without raising the
+    /// `version`), and it does not count in table equality.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub frozen: Vec<FrozenNode>,
 }
@@ -83,12 +83,12 @@ impl PartialEq for MemberTable {
 
 impl Eq for MemberTable {}
 
-/// Um nó excluído por votação e o instante da exclusão (doc 04, seção 6.7).
+/// A node excluded by vote and the instant of the exclusion (doc 04, section 6.7).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FrozenNode {
     pub node_id: String,
-    /// Milissegundos desde 1970.
+    /// Milliseconds since 1970.
     pub frozen_at: u64,
 }
 
@@ -102,7 +102,7 @@ impl MemberTable {
     }
 }
 
-/// O que uma operação pendente faz com a tabela. Também viaja no quadro `membership` do canal.
+/// What a pending operation does to the table. It also travels in the channel's `membership` frame.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "operation",
@@ -111,11 +111,11 @@ impl MemberTable {
 )]
 pub enum Change {
     Add(Member),
-    /// A saída voluntária (drain): sem freezing.
+    /// The voluntary exit (drain): no freezing.
     Remove {
         node_id: String,
     },
-    /// A exclusão por votação: o nó entra em freezing (doc 04, seção 6.7).
+    /// The exclusion by vote: the node enters freezing (doc 04, section 6.7).
     Exclude {
         node_id: String,
     },
@@ -123,11 +123,11 @@ pub enum Change {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MembershipError {
-    /// O nó ainda não tem a tabela (está entrando).
+    /// The node does not have the table yet (it is joining).
     NoTable,
-    /// Há outra mudança pendente, ou o estado atual impede esta (já é membro, não é membro).
+    /// There is another pending change, or the current state prevents this one (already a member, not a member).
     Conflict(String),
-    /// O `commit` ou `rollback` de uma operação que o nó não conhece (nunca chegou ou expirou).
+    /// The `commit` or `rollback` of an operation the node does not know (it never arrived or expired).
     UnknownOperation,
 }
 
@@ -142,7 +142,7 @@ struct Pending {
     operation_id: String,
     change: Change,
     registered_at: SystemTime,
-    /// Este nó é quem coordena a mudança (e não só um participante dela).
+    /// This node is the one coordinating the change (and not just a participant in it).
     coordinated: bool,
 }
 
@@ -152,24 +152,24 @@ struct Inner {
     ring: Arc<Ring>,
     pending: Option<Pending>,
     finished: VecDeque<(String, Finished)>,
-    /// Os nós que saíram por drain: ainda podem repassar chamadas de cliente a quem está no
-    /// cluster (doc 04, seção 6.9). Só em memória; sai quando um nó novo entra no mesmo endereço.
+    /// The nodes that left by drain: they can still forward client calls to whoever is in the
+    /// cluster (doc 04, section 6.9). In memory only; it goes away when a new node joins at the same address.
     departed: Vec<Member>,
-    /// Os nós excluídos por votação e quando, para o período de freezing (doc 04, seção 6.7).
+    /// The nodes excluded by vote and when, for the freezing period (doc 04, section 6.7).
     frozen: HashMap<String, SystemTime>,
-    /// Os nós excluídos por votação, com os endereços: depois de uma partição em que os dois lados
-    /// se excluem, é por eles que um lado procura o outro (D101). Só em memória, até 64.
+    /// The nodes excluded by vote, with the addresses: after a partition in which both sides
+    /// excluded each other, it is through them that one side looks for the other (D101). In memory only, up to 64.
     excluded: Vec<Member>,
-    /// As mudanças efetivadas que chegaram pelo canal antes da versão anterior a elas, por versão
-    /// (`operationId` e mudança). Só em memória, até [`HELD_LIMIT`].
+    /// The effected changes that arrived through the channel before the version prior to them, by version
+    /// (`operationId` and change). In memory only, up to [`HELD_LIMIT`].
     held: std::collections::BTreeMap<u64, (String, Change)>,
 }
 
-/// A tabela de membros de um nó, com a mudança pendente e o anel derivado dela.
+/// A node's member table, with the pending change and the ring derived from it.
 #[derive(Debug)]
 pub struct Membership {
     inner: Mutex<Inner>,
-    /// `write.pending.ttl`: depois dele um registro sem commit nem rollback some sozinho.
+    /// `write.pending.ttl`: after it a register with neither commit nor rollback disappears by itself.
     pending_ttl: Duration,
     virtual_nodes: u32,
 }
@@ -197,11 +197,11 @@ impl Membership {
         });
     }
 
-    /// Instala a tabela: a do primeiro nó (ele sozinho) ou a que o `join` devolveu.
+    /// Installs the table: the first node's (itself alone) or the one `join` returned.
     pub fn install(&self, mut table: MemberTable) {
         table.sort();
         let mut inner = self.lock();
-        // O freezing que veio com a tabela é herdado; o que o nó já conhece vale mais.
+        // The freezing that came with the table is inherited; what the node already knows counts for more.
         for node in std::mem::take(&mut table.frozen) {
             inner
                 .frozen
@@ -213,7 +213,7 @@ impl Membership {
         self.rebuild_ring(&mut inner);
     }
 
-    /// Esquece a tabela (o nó volta a ser novo).
+    /// Forgets the table (the node goes back to being new).
     pub fn clear(&self) {
         let mut inner = self.lock();
         *inner = Inner::default();
@@ -223,7 +223,7 @@ impl Membership {
         self.lock().table.clone()
     }
 
-    /// A tabela com os nós em freezing que ainda valem, para quem está entrando (D106).
+    /// The table with the nodes in freezing that still apply, for whoever is joining (D106).
     pub fn table_with_frozen(&self, now: SystemTime, duration: Duration) -> Option<MemberTable> {
         let mut inner = self.lock();
         inner
@@ -249,7 +249,7 @@ impl Membership {
         self.lock().table.as_ref().map(|t| t.version)
     }
 
-    /// O anel dos membros atuais (vazio enquanto o nó não tem a tabela).
+    /// The ring of the current members (empty while the node has no table).
     pub fn ring(&self) -> Arc<Ring> {
         self.lock().ring.clone()
     }
@@ -261,7 +261,7 @@ impl Membership {
             .is_some_and(|t| t.member(node_id).is_some())
     }
 
-    /// O membro está na tabela e `active`? (Um nó em sincronização ainda não atende nada.)
+    /// Is the member in the table and `active`? (A syncing node does not serve anything yet.)
     pub fn is_active(&self, node_id: &str) -> bool {
         self.lock().table.as_ref().is_some_and(|t| {
             t.member(node_id)
@@ -269,8 +269,8 @@ impl Membership {
         })
     }
 
-    /// Algum membro está em sincronização? Enquanto houver, nenhuma outra entrada, saída ou
-    /// rebalanceamento é efetivada (doc 04, seção 6.8).
+    /// Is some member syncing? While there is one, no other join, leave or
+    /// rebalancing is made effective (doc 04, section 6.8).
     pub fn syncing(&self) -> Vec<String> {
         self.lock()
             .table
@@ -285,8 +285,8 @@ impl Membership {
             .unwrap_or_default()
     }
 
-    /// Muda o estado de um membro na tabela, sem subir a `version` (não é uma mudança de membros:
-    /// é o nó dizendo em que pé está). `true` se mudou.
+    /// Changes a member's state in the table, without raising the `version` (it is not a member change:
+    /// it is the node saying where it stands). `true` if it changed.
     pub fn set_state(&self, node_id: &str, state: MemberState) -> bool {
         let mut inner = self.lock();
         let Some(member) = inner
@@ -301,7 +301,7 @@ impl Membership {
         changed
     }
 
-    /// Algum membro tem este endereço? É como a porta do cluster reconhece quem chama.
+    /// Does some member have this address? It is how the cluster port recognizes who is calling.
     pub fn is_member_address(&self, address: &str) -> bool {
         self.lock().table.as_ref().is_some_and(|t| {
             t.members
@@ -310,7 +310,7 @@ impl Membership {
         })
     }
 
-    /// O endereço é de um nó que saiu por drain e pode ainda repassar chamadas?
+    /// Is the address that of a node that left by drain and may still forward calls?
     pub fn is_departed_address(&self, address: &str) -> bool {
         self.lock()
             .departed
@@ -318,7 +318,7 @@ impl Membership {
             .any(|m| m.addresses.iter().any(|a| a == address))
     }
 
-    /// Os nós que este nó viu serem excluídos por votação e que não voltaram à tabela (D101).
+    /// The nodes this node saw excluded by vote and that did not return to the table (D101).
     pub fn excluded_members(&self) -> Vec<Member> {
         let inner = self.lock();
         inner
@@ -334,7 +334,7 @@ impl Membership {
             .collect()
     }
 
-    /// Quanto falta do freezing do nó (excluído por votação), ou `None` se ele não está em freezing.
+    /// How much of the node's freezing (excluded by vote) is left, or `None` if it is not in freezing.
     pub fn frozen_remaining(
         &self,
         node_id: &str,
@@ -347,9 +347,9 @@ impl Membership {
         duration.checked_sub(elapsed).filter(|left| !left.is_zero())
     }
 
-    /// Guarda o freezing de um nó que outro nó viu ser excluído (o quadro `frozen` do canal).
-    /// Devolve `true` se era novidade: o que o nó já conhece vale mais (o eco não muda o instante),
-    /// e um freezing que já acabou não é guardado.
+    /// Stores the freezing of a node that another node saw excluded (the channel's `frozen` frame).
+    /// Returns `true` if it was news: what the node already knows counts for more (the echo does not change the instant),
+    /// and a freezing that already ended is not stored.
     pub fn learn_frozen(
         &self,
         node_id: &str,
@@ -372,12 +372,12 @@ impl Membership {
         true
     }
 
-    /// O instante (ms desde 1970) em que o nó entrou em freezing, se ele está guardado.
+    /// The instant (ms since 1970) the node entered freezing, if it is stored.
     pub fn frozen_at(&self, node_id: &str) -> Option<u64> {
         self.lock().frozen.get(node_id).map(|at| millis(*at))
     }
 
-    /// Os nós ainda em freezing, em ordem de ID (os vencidos são esquecidos).
+    /// The nodes still in freezing, in ID order (the expired ones are forgotten).
     pub fn frozen_nodes(&self, now: SystemTime, duration: Duration) -> Vec<FrozenNode> {
         let mut inner = self.lock();
         inner
@@ -394,7 +394,7 @@ impl Membership {
         nodes.sort_by(|a, b| a.node_id.cmp(&b.node_id));
         nodes
     }
-    /// Quantos nós estão em freezing agora (os vencidos são esquecidos).
+    /// How many nodes are in freezing now (the expired ones are forgotten).
     pub fn frozen_count(&self, now: SystemTime, duration: Duration) -> usize {
         let mut inner = self.lock();
         inner
@@ -403,7 +403,7 @@ impl Membership {
         inner.frozen.len()
     }
 
-    /// Há uma mudança pendente (e ainda não vencida)?
+    /// Is there a pending change (and not yet expired)?
     pub fn has_pending(&self, now: SystemTime) -> bool {
         let mut inner = self.lock();
         self.drop_expired(&mut inner, now);
@@ -436,10 +436,10 @@ impl Membership {
             .map(|(_, f)| *f)
     }
 
-    /// Fase 1 como participante: deixa a mudança pendente. Repetir o mesmo `operationId` não muda
-    /// nada. Se a pendente é uma que **este nó coordena** e a que chega tem o `operationId` menor (a
-    /// mais antiga), este nó cede: descarta a sua e aceita a outra, de modo que dois coordenadores
-    /// simultâneos sempre têm um vencedor (D94).
+    /// Phase 1 as a participant: leaves the change pending. Repeating the same `operationId` changes
+    /// nothing. If the pending one is one **this node coordinates** and the one arriving has the lower `operationId` (the
+    /// oldest), this node yields: discards its own and accepts the other, so two simultaneous
+    /// coordinators always have a winner (D94).
     pub fn register(
         &self,
         operation_id: &str,
@@ -449,7 +449,7 @@ impl Membership {
         self.register_as(operation_id, change, now, false)
     }
 
-    /// Fase 1 de quem coordena a mudança.
+    /// Phase 1 of whoever coordinates the change.
     pub fn register_coordinating(
         &self,
         operation_id: &str,
@@ -459,8 +459,8 @@ impl Membership {
         self.register_as(operation_id, change, now, true)
     }
 
-    /// A mudança com esse `operationId` ainda está pendente aqui? Quem coordena confere antes do
-    /// commit: um participante mais antigo pode tê-la deslocado.
+    /// Is the change with that `operationId` still pending here? Whoever coordinates checks before the
+    /// commit: an older participant may have displaced it.
     pub fn is_pending(&self, operation_id: &str) -> bool {
         self.lock()
             .pending
@@ -485,10 +485,10 @@ impl Membership {
                 !coordinated && pending.coordinated && operation_id < pending.operation_id.as_str();
             if !yields {
                 return Err(MembershipError::Conflict(
-                    "Há outra mudança de membros em andamento.".into(),
+                    "There is another member change in progress.".into(),
                 ));
             }
-            let displaced = inner.pending.take().expect("conferido acima");
+            let displaced = inner.pending.take().expect("checked above");
             Self::remember(&mut inner, displaced.operation_id, Finished::RolledBack);
         }
         if Self::finished(&inner, operation_id).is_some() {
@@ -500,7 +500,7 @@ impl Membership {
         match &change {
             Change::Add(member) if table.member(&member.node_id).is_some() => {
                 return Err(MembershipError::Conflict(format!(
-                    "O nó {} já é membro.",
+                    "Node {} is already a member.",
                     member.node_id
                 )));
             }
@@ -508,7 +508,7 @@ impl Membership {
                 if table.member(node_id).is_none() =>
             {
                 return Err(MembershipError::Conflict(format!(
-                    "O nó {node_id} não é membro."
+                    "Node {node_id} is not a member."
                 )));
             }
             _ => {}
@@ -522,7 +522,7 @@ impl Membership {
         Ok(())
     }
 
-    /// A mudança pendente com esse `operationId` (para o commit e o rollback saberem o que contam).
+    /// The pending change with that `operationId` (for the commit and rollback to know what they count).
     pub fn pending_change(&self, operation_id: &str) -> Option<Change> {
         let inner = self.lock();
         inner
@@ -532,7 +532,7 @@ impl Membership {
             .map(|p| p.change.clone())
     }
 
-    /// Fase 2: efetiva a mudança pendente e devolve a tabela nova.
+    /// Phase 2: makes the pending change effective and returns the new table.
     pub fn commit(
         &self,
         operation_id: &str,
@@ -550,19 +550,19 @@ impl Membership {
                     inner.table.clone().ok_or(MembershipError::UnknownOperation)
                 }
                 Some(Finished::RolledBack) => Err(MembershipError::Conflict(
-                    "A operação foi cancelada (rollback).".into(),
+                    "The operation was cancelled (rollback).".into(),
                 )),
                 None => Err(MembershipError::UnknownOperation),
             };
         }
-        let pending = inner.pending.take().expect("conferido acima");
+        let pending = inner.pending.take().expect("checked above");
         let table = self.apply_change(&mut inner, pending.change, now)?;
         Self::remember(&mut inner, operation_id.to_owned(), Finished::Committed);
         Ok(table)
     }
 
-    /// Aplica a mudança à tabela: a mesma coisa para o commit e para a mudança que chega pelo canal.
-    /// Sobe a versão, guarda o freezing e quem saiu, refaz o anel e devolve a tabela nova.
+    /// Applies the change to the table: the same thing for the commit and for the change that arrives through the channel.
+    /// Raises the version, stores the freezing and who left, rebuilds the ring and returns the new table.
     fn apply_change(
         &self,
         inner: &mut Inner,
@@ -615,11 +615,11 @@ impl Membership {
         Ok(table)
     }
 
-    /// Uma mudança já efetivada que um par disse pelo canal (quadro `membership`): o nó que perdeu o
-    /// registro ou o commit (D126) a aplica sem depender da mudança pendente. Só vale a versão
-    /// **seguinte** à da tabela; uma igual ou menor já foi aplicada e é ignorada, e uma adiante fica
-    /// guardada até as anteriores chegarem. Devolve o que foi aplicado agora, em ordem:
-    /// `(operationId, versão, mudança)`.
+    /// An already-effected change that a peer said through the channel (`membership` frame): the node that lost the
+    /// register or the commit (D126) applies it without depending on the pending change. Only the **next** version
+    /// after the table's applies; an equal or lower one was already applied and is ignored, and one ahead stays
+    /// stored until the earlier ones arrive. Returns what was applied now, in order:
+    /// `(operationId, version, change)`.
     pub fn learn(
         &self,
         operation_id: &str,
@@ -643,8 +643,8 @@ impl Membership {
         self.apply_held(&mut inner, now)
     }
 
-    /// Aplica as mudanças guardadas que agora são as seguintes à tabela (o commit normal pode ter
-    /// avançado a versão enquanto elas esperavam). Mesmo retorno de [`Membership::learn`].
+    /// Applies the stored changes that are now the next ones after the table (the normal commit may have
+    /// advanced the version while they waited). Same return as [`Membership::learn`].
     pub fn learn_held(&self, now: SystemTime) -> Vec<(String, u64, Change)> {
         let mut inner = self.lock();
         self.apply_held(&mut inner, now)
@@ -664,7 +664,7 @@ impl Membership {
                 }
             });
             if !fits {
-                tracing::warn!(%operation_id, version = current + 1, "mudança de membros que não cabe na tabela: ignorada");
+                tracing::warn!(%operation_id, version = current + 1, "member change that does not fit the table: ignored");
                 continue;
             }
             let Ok(table) = self.apply_change(inner, change.clone(), now) else {
@@ -683,7 +683,7 @@ impl Membership {
         applied
     }
 
-    /// Descarta a mudança pendente (só antes do commit).
+    /// Discards the pending change (only before the commit).
     pub fn rollback(&self, operation_id: &str, now: SystemTime) -> Result<(), MembershipError> {
         let mut inner = self.lock();
         self.drop_expired(&mut inner, now);
@@ -699,7 +699,8 @@ impl Membership {
         match Self::finished(&inner, operation_id) {
             Some(Finished::RolledBack) => Ok(()),
             Some(Finished::Committed) => Err(MembershipError::Conflict(
-                "A operação já foi efetivada: não há rollback depois do commit.".into(),
+                "The operation has already taken effect: there is no rollback after the commit."
+                    .into(),
             )),
             None => Err(MembershipError::UnknownOperation),
         }

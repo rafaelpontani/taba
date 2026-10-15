@@ -1,14 +1,14 @@
-//! O diário (`.jrn`) do backup (doc 23, "Backup em S3"): o **estado mutável** das mensagens, que
-//! não está nos segmentos (`delivery_count`, `invisible_until`, `receipt_token`, dead-letter).
+//! The backup's journal (`.jrn`) (doc 23, "S3 backup"): the messages' **mutable state**, which
+//! is not in the segments (`delivery_count`, `invisible_until`, `receipt_token`, dead-letter).
 //!
-//! Um diário é um arquivo de linhas JSON, gravado em lote a cada `backup.meta.interval`: só o
-//! **último estado** de cada mensagem alterada entra. Um ack entra como **remoção**: nunca se apaga
-//! uma mensagem solta do bucket (só o segmento inteiro, quando todas as dele morreram).
+//! A journal is a file of JSON lines, written in batch every `backup.meta.interval`: only the
+//! **last state** of each changed message goes in. An ack goes in as a **removal**: a loose message is
+//! never deleted from the bucket (only the whole segment, when all of its messages died).
 //!
 //! ```text
-//! { "topic", "topicId", "writer", "atMs" }          primeira linha
-//! { "id", "removed": true }                         remoção (ack, `ttl`, dead-letter)
-//! { "id", "deliveryCount", "invisibleUntilMs", ... } estado
+//! { "topic", "topicId", "writer", "atMs" }          first line
+//! { "id", "removed": true }                         removal (ack, `ttl`, dead-letter)
+//! { "id", "deliveryCount", "invisibleUntilMs", ... } state
 //! ```
 
 use std::io;
@@ -27,7 +27,7 @@ pub struct Header {
     pub at_ms: u64,
 }
 
-/// O estado de uma mensagem, ou a sua remoção.
+/// The state of a message, or its removal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Record {
     pub id: String,
@@ -82,7 +82,7 @@ impl Record {
         }
     }
 
-    /// Aplica o estado gravado aos metadados lidos do segmento.
+    /// Applies the written state to the metadata read from the segment.
     pub fn apply_to(&self, meta: &mut MessageMeta) {
         meta.delivery_count = self.delivery_count;
         meta.invisible_until_ms = self.invisible_until_ms;
@@ -93,7 +93,7 @@ impl Record {
 }
 
 pub fn encode(header: &Header, records: &[Record]) -> Vec<u8> {
-    let mut out = serde_json::to_vec(header).expect("cabeçalho serializa");
+    let mut out = serde_json::to_vec(header).expect("header serializes");
     out.push(b'\n');
     for record in records {
         out.extend_from_slice(&serde_json::to_vec(record).expect("registro serializa"));
@@ -104,12 +104,12 @@ pub fn encode(header: &Header, records: &[Record]) -> Vec<u8> {
 
 pub fn decode(bytes: &[u8]) -> io::Result<(Header, Vec<Record>)> {
     let invalid =
-        |what: String| io::Error::new(io::ErrorKind::InvalidData, format!("diário: {what}"));
+        |what: String| io::Error::new(io::ErrorKind::InvalidData, format!("journal: {what}"));
     let text = std::str::from_utf8(bytes).map_err(|e| invalid(e.to_string()))?;
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
     let header = lines
         .next()
-        .ok_or_else(|| invalid("vazio".into()))
+        .ok_or_else(|| invalid("empty".into()))
         .and_then(|l| serde_json::from_str(l).map_err(|e| invalid(e.to_string())))?;
     let records = lines
         .map(|l| serde_json::from_str(l).map_err(|e| invalid(e.to_string())))

@@ -1,9 +1,9 @@
-//! O envio ao bucket: o `outbox` vira segmentos (`.seg`), o estado mutável vira diário (`.jrn`), os
-//! segmentos que morreram inteiros são apagados, e o `flush` força tudo (doc 23, "Backup em S3").
+//! The upload to the bucket: the `outbox` becomes segments (`.seg`), mutable state becomes a journal (`.jrn`), the
+//! segments that died whole are deleted, and the `flush` forces everything (doc 23, "S3 backup").
 //!
-//! Nada aqui roda no caminho da publicação: o commit de uma mensagem só inseriu uma linha no
-//! `_backup.db`. Uma falha do S3 deixa tudo como está (o `outbox` guarda os IDs) e o envio tenta de
-//! novo; só **depois do PUT confirmar** as linhas do lote saem do `outbox`.
+//! Nothing here runs on the publication path: a message's commit only inserted a row into
+//! `_backup.db`. An S3 failure leaves everything as it is (the `outbox` keeps the IDs) and the upload tries
+//! again; only **after the PUT confirms** do the batch's rows leave the `outbox`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
@@ -16,14 +16,14 @@ use crate::storage::backup::segment::{self, Footer, FooterRead, SegmentBuilder, 
 use crate::storage::backup::{SavedRef, SegmentRow, keys};
 use crate::storage::messages::MessageMeta;
 
-/// Quantas mensagens do `outbox` uma passada puxa de cada vez.
+/// How many `outbox` messages a pass pulls at a time.
 const PAGE: usize = 5_000;
 
-/// Quanto o envio espera depois de uma falha do S3, antes de tentar de novo.
+/// How long the upload waits after an S3 failure, before trying again.
 const RETRY_AFTER: Duration = Duration::from_secs(2);
 
-/// O segmento que ainda está aberto para um tópico: mensagens que já passaram do `backup.delay` e
-/// esperam o segmento fechar (por tamanho, quantidade ou idade).
+/// The segment still open for a topic: messages that already passed the `backup.delay` and
+/// wait for the segment to close (by size, count or age).
 struct OpenSegment {
     topic_id: String,
     items: Vec<(MessageMeta, Vec<u8>)>,
@@ -34,33 +34,33 @@ struct OpenSegment {
 #[derive(Default)]
 pub(crate) struct Uploader {
     open: HashMap<String, OpenSegment>,
-    /// As mensagens que estão em segmento aberto: a próxima passada não as puxa de novo.
+    /// The messages that are in an open segment: the next pass does not pull them again.
     in_open: HashSet<(String, String)>,
-    /// O S3 falhou há pouco: espera até este instante.
+    /// S3 failed a moment ago: waits until this instant.
     retry_at: Option<Instant>,
 }
 
-/// O que o `flush` fez (a resposta de `POST /node/backup/flush`).
+/// What the `flush` did (the response of `POST /node/backup/flush`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FlushReport {
-    /// Etapa 1: mensagens que saíram da memória para o disco.
+    /// Step 1: messages that left memory for disk.
     pub memory_moved: u64,
-    /// Mensagens que continuaram em memória (erro de disco ou prazo).
+    /// Messages that stayed in memory (disk error or deadline).
     pub memory_remaining: u64,
-    /// Etapa 2 e 3: segmentos enviados e mensagens neles.
+    /// Steps 2 and 3: segments uploaded and the messages in them.
     pub segments_uploaded: u64,
     pub messages_uploaded: u64,
     pub journals_uploaded: u64,
-    /// O que ainda falta (zero quando completo).
+    /// What is still left (zero when complete).
     pub outbox_pending: u64,
     pub journal_pending: u64,
-    /// O prazo (`backup.drain.timeout`) estourou antes de terminar.
+    /// The deadline (`backup.drain.timeout`) ran out before finishing.
     pub timed_out: bool,
     pub s3_reachable: bool,
 }
 
 impl FlushReport {
-    /// O relatório como a API o mostra.
+    /// The report as the API shows it.
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "memoryMoved": self.memory_moved,
@@ -85,9 +85,9 @@ impl FlushReport {
 }
 
 impl Backup {
-    /// Uma passada do envio. Sem `force`, só sobem as mensagens que passaram de `backup.delay` e os
-    /// segmentos que fecharam; com `force` (flush, drain), sobe tudo agora. Devolve quantos segmentos
-    /// subiram.
+    /// One pass of the upload. Without `force`, only the messages past `backup.delay` and the
+    /// segments that closed go up; with `force` (flush, drain), everything goes up now. Returns how many segments
+    /// went up.
     pub(crate) async fn upload_pass(&self, force: bool) -> u64 {
         let mut up = self.uploader.lock().await;
         if !force && up.retry_at.is_some_and(|at| Instant::now() < at) {
@@ -109,7 +109,7 @@ impl Backup {
             let rows = match self.db.outbox(before, PAGE + up.in_open.len()) {
                 Ok(rows) => rows,
                 Err(e) => {
-                    tracing::error!(error = %e, "backup: não foi possível ler o outbox");
+                    tracing::error!(error = %e, "backup: could not read the outbox");
                     return uploaded;
                 }
             };
@@ -120,7 +120,7 @@ impl Backup {
             let pulled = fresh.len();
             for (topic, id) in fresh {
                 self.admit(&mut up, topic.clone(), id).await;
-                // Chegou a um limite de tamanho ou de quantidade: fecha já, sem esperar a página.
+                // Reached a size or count limit: closes now, without waiting for the page.
                 if up.open.get(&topic).is_some_and(|open| {
                     open.items.len() >= self.rules.segment_max_messages
                         || open.bytes >= self.rules.segment_max_bytes
@@ -132,8 +132,8 @@ impl Backup {
                 }
             }
             uploaded += self.close_ready(&mut up, force).await;
-            // Sem `force` uma página basta (a próxima passada continua); com `force` repete até o
-            // outbox esvaziar ou o S3 falhar.
+            // Without `force` one page is enough (the next pass continues); with `force` it repeats until the
+            // outbox empties or S3 fails.
             if !force || pulled == 0 || up.retry_at.is_some() {
                 break;
             }
@@ -141,7 +141,7 @@ impl Backup {
         uploaded
     }
 
-    /// Põe a mensagem no segmento aberto do tópico. Se ela já não está no nó (ack, `ttl`), sai do
+    /// Puts the message in the topic's open segment. If it is no longer on the node (ack, `ttl`), it leaves the
     /// `outbox`.
     async fn admit(&self, up: &mut Uploader, topic: String, id: String) {
         let Ok(view) = self.topics.get(&topic) else {
@@ -164,7 +164,7 @@ impl Backup {
             bytes: 0,
             opened: Instant::now(),
         });
-        // O tópico foi apagado e recriado com o mesmo nome: o segmento antigo fecha antes.
+        // The topic was deleted and recreated with the same name: the old segment closes first.
         if open.topic_id != view.definition.id {
             return;
         }
@@ -173,7 +173,7 @@ impl Backup {
         up.in_open.insert((topic, id));
     }
 
-    /// Fecha e envia os segmentos que bateram num limite (ou todos, com `force`).
+    /// Closes and uploads the segments that hit a limit (or all, with `force`).
     async fn close_ready(&self, up: &mut Uploader, force: bool) -> u64 {
         let ready: Vec<String> = up
             .open
@@ -196,8 +196,8 @@ impl Backup {
         uploaded
     }
 
-    /// Fecha e envia o segmento aberto do tópico. Devolve `1` se um segmento subiu. Se o S3
-    /// falhar, as linhas continuam no `outbox` e a próxima passada tenta de novo.
+    /// Closes and uploads the topic's open segment. Returns `1` if a segment went up. If S3
+    /// fails, the rows stay in the `outbox` and the next pass tries again.
     async fn close_topic(&self, up: &mut Uploader, topic: &str) -> u64 {
         let Some(open) = up.open.remove(topic) else {
             return 0;
@@ -215,10 +215,10 @@ impl Backup {
         }
     }
 
-    /// Monta o segmento, envia e, **só depois do PUT confirmar**, registra as referências e tira as
-    /// mensagens do `outbox`. `Ok(false)`: nada a enviar.
+    /// Builds the segment, uploads it and, **only after the PUT confirms**, records the references and takes the
+    /// messages off the `outbox`. `Ok(false)`: nothing to send.
     async fn send_segment(&self, topic: &str, open: OpenSegment) -> Result<bool, ()> {
-        // Só entra o que ainda espera no outbox: o que morreu enquanto esperava não vai ao bucket.
+        // Only what still waits in the outbox goes in: what died while waiting does not go to the bucket.
         let items: Vec<_> = open
             .items
             .into_iter()
@@ -261,7 +261,7 @@ impl Backup {
         let committed = match self.db.commit_segment(&row, &entries) {
             Ok(committed) => committed,
             Err(e) => {
-                tracing::error!(error = %e, "backup: não foi possível registrar o segmento");
+                tracing::error!(error = %e, "backup: could not record the segment");
                 return Err(());
             }
         };
@@ -275,7 +275,7 @@ impl Backup {
             .bytes_uploaded
             .fetch_add(size, Ordering::Relaxed);
         if committed.live == 0 {
-            // Todas morreram durante o envio: o segmento nasce morto.
+            // All died during the upload: the segment is born dead.
             lock(&self.runtime).dead_segments.push(key.clone());
         }
         let saved: Vec<(String, SavedRef)> = entries
@@ -297,8 +297,8 @@ impl Backup {
         Ok(true)
     }
 
-    /// Avisa as réplicas de quais mensagens já estão no bucket, em lote (`BackupSaved`). Sem
-    /// cluster, não há a quem avisar.
+    /// Tells the replicas which messages are already in the bucket, in a batch (`BackupSaved`). Without a
+    /// cluster, there is no one to tell.
     fn announce_saved(
         &self,
         topic: &str,
@@ -329,7 +329,7 @@ impl Backup {
         }
     }
 
-    /// Apaga do bucket os segmentos em que todas as mensagens morreram.
+    /// Deletes from the bucket the segments in which all the messages died.
     pub(crate) async fn purge_dead_segments(&self) {
         let pending: Vec<String> = std::mem::take(&mut lock(&self.runtime).dead_segments);
         let mut failed = Vec::new();
@@ -351,8 +351,8 @@ impl Backup {
         }
     }
 
-    /// O diário: só o **último estado** de cada mensagem alterada desde o último, por tópico. Um
-    /// ack entra como remoção.
+    /// The journal: only the **last state** of each message changed since the last one, by topic. An
+    /// ack goes in as a removal.
     pub(crate) async fn journal_pass(&self) -> u64 {
         if !self.topology.is_active() {
             return 0;
@@ -369,7 +369,7 @@ impl Backup {
             } else {
                 match self.messages.message_info(&item.topic, &item.id) {
                     Ok(Some(info)) => Some(Record::state(&info.meta)),
-                    // Já não está no nó: o ack virá como remoção.
+                    // It is no longer on the node: the ack will come as a removal.
                     _ => None,
                 }
             };
@@ -400,7 +400,7 @@ impl Backup {
                 .store
                 .put(&key, journal::encode(&header, &records))
                 .await;
-            self.note("PUT do diário", &put);
+            self.note("PUT of the journal", &put);
             if put.is_ok() {
                 ok_topics.insert(topic);
                 written += 1;
@@ -409,7 +409,7 @@ impl Backup {
                     .fetch_add(1, Ordering::Relaxed);
             }
         }
-        // Só sai da lista o que foi para o bucket: o resto tenta na próxima.
+        // Only what went to the bucket leaves the list: the rest tries on the next pass.
         let sent: Vec<_> = done
             .into_iter()
             .filter(|item| ok_topics.contains(&item.topic))
@@ -418,14 +418,14 @@ impl Backup {
         written
     }
 
-    /// `POST /node/backup/flush` (doc 23, seção 1.11): em três etapas em sequência, sem desregistrar
-    /// nem parar o nó.
+    /// `POST /node/backup/flush` (doc 23, section 1.11): in three steps in sequence, without deregistering
+    /// or stopping the node.
     ///
-    /// 1. memória → disco, pelo mesmo caminho do drain (o limite de memória cai a zero);
-    /// 2. disco → S3: os segmentos e o diário pendentes, com prioridade;
-    /// 3. `outbox` → S3: as mensagens que ainda não saíram.
+    /// 1. memory → disk, through the same path as the drain (the memory limit drops to zero);
+    /// 2. disk → S3: the pending segments and journal, with priority;
+    /// 3. `outbox` → S3: the messages that have not gone out yet.
     ///
-    /// Termina quando as três acabam ou quando `backup.drain.timeout` estoura.
+    /// Ends when all three finish or when `backup.drain.timeout` runs out.
     pub async fn flush(&self) -> FlushReport {
         let deadline = Instant::now() + self.rules.drain_timeout;
         let mut report = FlushReport::default();
@@ -440,7 +440,7 @@ impl Backup {
             messages.drain_until(|| Instant::now() >= deadline)
         })
         .await;
-        // Um drain de verdade que começou no meio do flush segue com o limite de memória em zero.
+        // A real drain that started in the middle of the flush keeps the memory limit at zero.
         if !was_draining && self.shared.drain_state() == crate::cluster::state::DrainState::Active {
             self.messages.cancel_drain();
         }
@@ -454,8 +454,8 @@ impl Backup {
         report
     }
 
-    /// O envio do drain (a memória já está em disco): tudo o que há vai ao S3, com prioridade,
-    /// dentro de `backup.drain.timeout`.
+    /// The drain's upload (memory is already on disk): everything there is goes to S3, with priority,
+    /// within `backup.drain.timeout`.
     pub async fn drain_upload(&self) -> FlushReport {
         let deadline = Instant::now() + self.rules.drain_timeout;
         let mut report = FlushReport::default();
@@ -463,7 +463,7 @@ impl Backup {
         report
     }
 
-    /// Etapas 2 e 3 do flush: os segmentos, o diário e o `outbox`, até esvaziar ou o prazo.
+    /// Steps 2 and 3 of the flush: the segments, the journal and the `outbox`, until empty or the deadline.
     async fn upload_everything(&self, deadline: Instant, report: &mut FlushReport) {
         let before = self.counters_snapshot();
         loop {
@@ -482,7 +482,7 @@ impl Backup {
                 report.timed_out = true;
                 break;
             }
-            // O S3 falhou: espera um pouco e tenta de novo, até o prazo.
+            // S3 failed: waits a bit and tries again, until the deadline.
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         let after = self.counters_snapshot();
@@ -503,7 +503,7 @@ impl Backup {
         )
     }
 
-    /// Lê do bucket o corpo de uma mensagem salva, por `Range` (a evicção o tirou do disco).
+    /// Reads from the bucket the body of a saved message, by `Range` (the eviction took it off disk).
     pub(crate) async fn read_saved(&self, saved: &SavedRef) -> Option<Vec<u8>> {
         let raw = self
             .store
@@ -516,7 +516,7 @@ impl Backup {
 }
 
 impl Backup {
-    /// O rodapé de um segmento do bucket, lido pelo fim (sem baixar o segmento).
+    /// The footer of a bucket segment, read from the end (without downloading the segment).
     pub(crate) async fn footer_of(&self, key: &str) -> Option<Footer> {
         let tail = self
             .store
@@ -536,10 +536,10 @@ impl Backup {
         }
     }
 
-    /// Apaga os segmentos em que todas as mensagens já passaram do `ttl` do tópico: quem os gravou
-    /// pode ter parado de ser o primário (ou ter morrido), e ninguém mais os contaria como mortos.
-    /// Só o gestor do tópico varre, e a dead-letter fica de fora (o `ttl` dela conta da entrada
-    /// nela, não da publicação).
+    /// Deletes the segments in which all the messages are already past the topic's `ttl`: whoever wrote them
+    /// may have stopped being the primary (or died), and no one else would count them as dead.
+    /// Only the topic's manager sweeps, and the dead-letter stays out (its `ttl` counts from the entry
+    /// into it, not from the publication).
     pub(crate) async fn sweep_expired_segments(&self) {
         if !self.topology.is_active() || self.restoring.load(Ordering::SeqCst) {
             return;
@@ -561,7 +561,7 @@ impl Backup {
                 .store
                 .list(&keys::segments_prefix(&name, &view.definition.id))
                 .await;
-            self.note("LIST de segmentos", &listed);
+            self.note("LIST of segments", &listed);
             for object in listed.unwrap_or_default().into_iter().take(50) {
                 let Some(footer) = self.footer_of(&object.key).await else {
                     continue;

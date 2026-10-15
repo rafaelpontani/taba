@@ -19,7 +19,7 @@ fn counters_add_up_per_series() {
             &[("taba.key", "token"), ("taba.category", "consume")]
         ),
         Some(1.0),
-        "a ordem dos atributos não importa"
+        "the order of the attributes does not matter"
     );
     assert_eq!(registry.get(&RATELIMIT_REJECTED, &[]), None);
 }
@@ -57,7 +57,7 @@ fn histograms_observe_and_can_be_replaced() {
     assert_eq!(h.count(), 1);
 }
 
-/// Nenhuma métrica usa o prefixo antigo `msg.`, e cada nome é único.
+/// No metric uses the old `msg.` prefix, and each name is unique.
 ///
 /// UC: UC-OPS-041
 #[test]
@@ -107,10 +107,10 @@ fn names_follow_the_opentelemetry_vocabulary() {
             "{}",
             def.name
         );
-        assert!(seen.insert(def.name), "nome repetido: {}", def.name);
+        assert!(seen.insert(def.name), "repeated name: {}", def.name);
         assert!(
             matches!(def.unit, "s" | "By" | "1") || def.unit.starts_with('{'),
-            "unidade `{}` de {}",
+            "unit `{}` of {}",
             def.unit,
             def.name
         );

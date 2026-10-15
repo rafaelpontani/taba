@@ -1,6 +1,6 @@
 [package]
 name = "taba-cli"
-description = "A linha de comando do cliente do Taba."
+description = "The Taba client command line."
 version = "0.1.0"
 edition = "2021"
 license.workspace = true

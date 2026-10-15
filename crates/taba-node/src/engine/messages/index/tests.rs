@@ -17,7 +17,7 @@ fn named(name: &str) -> GroupKey {
     GroupKey::Named(name.to_owned())
 }
 
-/// Entrega o que o `pick` escolher, como o `GET` faz, até acabar.
+/// Delivers what `pick` chooses, as `GET` does, until it runs out.
 fn drain_order(index: &mut TopicIndex, now: u64) -> Vec<String> {
     let mut order = Vec::new();
     while let Some(id) = index.pick() {
@@ -62,12 +62,12 @@ fn messages_without_a_group_are_one_group_of_the_empty_name() {
 fn the_counters_follow_publish_delivery_expiry_ack_and_dead_letter() {
     let mut index = index();
     let g = named("g");
-    index.insert("a", Some("g"), 1, 0, 0, 100); // publicação: +1 pronta
+    index.insert("a", Some("g"), 1, 0, 0, 100); // publication: +1 ready
     index.insert("b", Some("g"), 2, 0, 0, 100);
     assert_eq!(index.group_counts(&g), Some((2, 0)));
     assert_eq!(index.counts(), (2, 0));
 
-    index.deliver("a", 5_000, 100, 1); // entrega: pronta vira em processamento
+    index.deliver("a", 5_000, 100, 1); // delivery: ready becomes in processing
     assert_eq!(index.group_counts(&g), Some((1, 1)));
     assert_eq!(index.counts(), (1, 1));
     assert_eq!(index.next_visible(), Some(5_000));
@@ -76,24 +76,24 @@ fn the_counters_follow_publish_delivery_expiry_ack_and_dead_letter() {
     assert_eq!(
         index.release_due(5_000),
         ["a"],
-        "vencimento: volta a pronta"
+        "expiry: goes back to ready"
     );
     assert_eq!(index.group_counts(&g), Some((2, 0)));
     assert_eq!(index.next_visible(), None);
 
     index.deliver("a", 9_000, 5_000, 2);
-    index.set_until("a", 5_000, 5_000); // `PUT visibility` com 0: volta a pronta
+    index.set_until("a", 5_000, 5_000); // `PUT visibility` with 0: goes back to ready
     assert_eq!(index.group_counts(&g), Some((2, 0)));
-    index.set_until("b", 8_000, 5_000); // `PUT` com prazo: fica em processamento de novo
+    index.set_until("b", 8_000, 5_000); // `PUT` with a deadline: goes into processing again
     assert_eq!(index.group_counts(&g), Some((1, 1)));
 
-    assert!(
-        index.remove("b"),
-        "ack: desconta o que estava em processamento"
-    );
+    assert!(index.remove("b"), "ack: discounts what was in processing");
     assert_eq!(index.group_counts(&g), Some((1, 0)));
-    assert!(index.remove("a"), "ttl ou dead-letter: desconta a pronta");
-    assert_eq!(index.group_counts(&g), None, "grupo vazio some");
+    assert!(
+        index.remove("a"),
+        "ttl or dead-letter: discounts the ready one"
+    );
+    assert_eq!(index.group_counts(&g), None, "an empty group disappears");
     assert!(index.is_empty());
     assert!(!index.remove("a"));
 }
@@ -106,14 +106,14 @@ fn the_group_size_weighs_ready_messages_by_the_configured_weight() {
         for n in 0..100 {
             index.insert(&format!("{n:03}"), Some("g"), n, 0, 0, 0);
         }
-        // 100 prontas: tamanho 0 (peso 0), 10 (peso 0,1) ou 100 (peso 1).
+        // 100 ready: size 0 (weight 0), 10 (weight 0.1) or 100 (weight 1).
         assert_eq!(
             index.group_band(&named("g")),
             Some(expected_band),
             "peso {weight}"
         );
     }
-    // Cada mensagem entregue sobe o tamanho em `1 − peso`.
+    // Each delivered message raises the size by `1 − weight`.
     let mut index = TopicIndex::new(rules(0.5, None, 0));
     for n in 0..8 {
         index.insert(&format!("{n}"), Some("g"), n, 0, 0, 0);
@@ -122,7 +122,7 @@ fn the_group_size_weighs_ready_messages_by_the_configured_weight() {
     for n in 0..4 {
         index.deliver(&format!("{n}"), 1_000, 0, 1);
     }
-    // 4 em processamento + 0,5 × 4 prontas = 6.
+    // 4 in processing + 0.5 × 4 ready = 6.
     assert_eq!(index.group_band(&named("g")), Some(2));
     index.deliver("4", 1_000, 0, 1);
     index.deliver("5", 1_000, 0, 1);
@@ -134,7 +134,7 @@ fn the_group_size_weighs_ready_messages_by_the_configured_weight() {
     assert_eq!(
         index.group_band(&named("g")),
         Some(3),
-        "8 em processamento: faixa 3"
+        "8 in processing: band 3"
     );
     assert_eq!(index.group_counts(&named("g")), Some((0, 8)));
 }
@@ -143,12 +143,12 @@ fn the_group_size_weighs_ready_messages_by_the_configured_weight() {
 #[test]
 fn the_small_group_is_served_before_the_big_one_is_exhausted() {
     let mut index = index();
-    // Os 100 do barulhento chegam primeiro, depois os 5 do pequeno.
+    // The 100 of the noisy one arrive first, then the 5 of the small one.
     for n in 0..100 {
-        index.insert(&format!("a{n:03}"), Some("barulhento"), n, 0, 0, 0);
+        index.insert(&format!("a{n:03}"), Some("noisy"), n, 0, 0, 0);
     }
     for n in 0..5 {
-        index.insert(&format!("b{n}"), Some("pequeno"), 1000 + n, 0, 0, 0);
+        index.insert(&format!("b{n}"), Some("small"), 1000 + n, 0, 0, 0);
     }
     let first_five: Vec<String> = (0..5)
         .map(|_| {
@@ -159,9 +159,9 @@ fn the_small_group_is_served_before_the_big_one_is_exhausted() {
         .collect();
     assert!(
         first_five.iter().all(|id| id.starts_with('b')),
-        "as 5 do grupo pequeno saem antes de qualquer do grande: {first_five:?}"
+        "the 5 of the small group come out before any of the big one: {first_five:?}"
     );
-    assert_eq!(index.group_counts(&named("barulhento")), Some((100, 0)));
+    assert_eq!(index.group_counts(&named("noisy")), Some((100, 0)));
 }
 
 /// UC: UC-GRP-009
@@ -172,7 +172,7 @@ fn the_band_is_checked_again_at_every_pick() {
         index.insert(&format!("a{n}"), Some("a"), n, 0, 0, 0);
         index.insert(&format!("b{n}"), Some("b"), 10 + n, 0, 0, 0);
     }
-    // Os dois grupos empatam; entregando de um, a faixa dele sobe e o outro passa à frente.
+    // The two groups tie; delivering from one, its band rises and the other moves ahead.
     let mut groups = Vec::new();
     for _ in 0..8 {
         let id = index.pick().unwrap();
@@ -184,7 +184,7 @@ fn the_band_is_checked_again_at_every_pick() {
     let changes = groups.windows(2).filter(|w| w[0] != w[1]).count();
     assert!(
         changes >= 3,
-        "alterna entre os dois à medida que a faixa muda: {groups:?}"
+        "alternates between the two as the band changes: {groups:?}"
     );
 }
 
@@ -203,10 +203,10 @@ fn inside_a_band_the_oldest_and_the_newest_alternate_like_an_accordion() {
 fn every_nth_delivery_takes_the_oldest_of_any_group() {
     let mut index = TopicIndex::new(rules(0.1, None, 3));
     for n in 0..100 {
-        index.insert(&format!("a{n:02}"), Some("grande"), n, 0, 0, 0);
+        index.insert(&format!("a{n:02}"), Some("big"), n, 0, 0, 0);
     }
     for n in 0..30 {
-        index.insert(&format!("b{n:02}"), Some("pequeno"), 100 + n, 0, 0, 0);
+        index.insert(&format!("b{n:02}"), Some("small"), 100 + n, 0, 0, 0);
     }
     let mut order = Vec::new();
     for _ in 0..9 {
@@ -214,7 +214,7 @@ fn every_nth_delivery_takes_the_oldest_of_any_group() {
         index.deliver(&id, 1_000_000, 0, 1);
         order.push(id);
     }
-    // A 3ª, 6ª e 9ª entregas ignoram a faixa e levam as mais antigas da lista (o grupo grande).
+    // The 3rd, 6th and 9th deliveries ignore the band and take the oldest on the list (the big group).
     for (position, expected) in [(2, "a00"), (5, "a01"), (8, "a02")] {
         assert_eq!(order[position], expected, "{order:?}");
     }
@@ -226,10 +226,10 @@ fn every_nth_delivery_takes_the_oldest_of_any_group() {
 fn with_normal_every_zero_the_guarantee_is_off() {
     let mut index = TopicIndex::new(rules(0.1, None, 0));
     for n in 0..100 {
-        index.insert(&format!("a{n:02}"), Some("grande"), n, 0, 0, 0);
+        index.insert(&format!("a{n:02}"), Some("big"), n, 0, 0, 0);
     }
     for n in 0..20 {
-        index.insert(&format!("b{n:02}"), Some("pequeno"), 100 + n, 0, 0, 0);
+        index.insert(&format!("b{n:02}"), Some("small"), 100 + n, 0, 0, 0);
     }
     let order: Vec<String> = (0..5)
         .map(|_| {
@@ -254,7 +254,7 @@ fn groups_above_the_ceiling_share_one_counter() {
     assert_eq!(index.entry_group("m2"), Some(&GroupKey::Overflow));
     assert_eq!(index.entry_group("m3"), Some(&GroupKey::Overflow));
 
-    // Quando um grupo acompanhado esvazia, o lugar volta a ficar livre.
+    // When a followed group empties, the place becomes free again.
     index.remove("m1");
     assert_eq!(index.group_counts(&named("g2")), None);
     index.insert("m5", Some("g5"), 5, 0, 0, 0);
@@ -265,20 +265,20 @@ fn groups_above_the_ceiling_share_one_counter() {
 #[test]
 fn messages_past_their_ttl_are_found_by_age() {
     let mut index = index();
-    index.insert("velha", None, 1_000, 0, 0, 5_000);
-    index.insert("nova", None, 4_000, 0, 0, 5_000);
-    index.insert("em-voo", None, 500, 9_000, 1, 5_000);
+    index.insert("old", None, 1_000, 0, 0, 5_000);
+    index.insert("new", None, 4_000, 0, 0, 5_000);
+    index.insert("in-flight", None, 500, 9_000, 1, 5_000);
     assert_eq!(index.expired(5_000, 10_000), Vec::<String>::new());
     assert_eq!(
         index.expired(6_000, 5_000),
-        ["em-voo", "velha"],
-        "qualquer estado, por idade"
+        ["in-flight", "old"],
+        "any state, by age"
     );
-    assert_eq!(index.expired(9_000, 5_000), ["em-voo", "velha", "nova"]);
+    assert_eq!(index.expired(9_000, 5_000), ["in-flight", "old", "new"]);
     assert_eq!(
         index.expired(100, 5_000),
         Vec::<String>::new(),
-        "sem estourar a conta"
+        "without overflowing the count"
     );
 }
 
@@ -295,7 +295,7 @@ fn an_inserted_message_with_a_future_deadline_starts_in_processing() {
     assert!(index.has_ready());
     assert_eq!(index.ready_ids(), ["a"]);
 
-    // Inserir de novo o mesmo ID troca o que havia, sem contar duas vezes.
+    // Inserting the same ID again replaces what was there, without counting twice.
     index.insert("a", Some("h"), 1, 0, 0, 10_000);
     assert_eq!(index.len(), 1);
     assert_eq!(index.group_counts(&named("g")), None);
@@ -315,8 +315,8 @@ fn fifo_index() -> TopicIndex {
 #[test]
 fn the_fifo_list_has_one_entry_per_free_group_the_oldest_head_first() {
     let mut index = fifo_index();
-    // Os grupos "a" e "b" intercalados; "c" tem muitas mensagens. Faixas e `normal-every` não
-    // valem, e o teto de grupos também não (um grupo por contador só os misturaria).
+    // Groups "a" and "b" interleaved; "c" has many messages. Bands and `normal-every` do not
+    // apply, and the group ceiling does not either (one group per counter would only mix them).
     index.insert("1-a", Some("a"), 1, 0, 0, 0);
     index.insert("2-b", Some("b"), 2, 0, 0, 0);
     index.insert("3-a", Some("a"), 3, 0, 0, 0);
@@ -327,12 +327,12 @@ fn the_fifo_list_has_one_entry_per_free_group_the_oldest_head_first() {
 
     assert_eq!(index.pick().as_deref(), Some("1-a"));
     index.deliver("1-a", 1_000, 0, 1);
-    // O grupo "a" ficou ocupado: some da lista, mesmo com "3-a" pronta.
+    // Group "a" became busy: it vanishes from the list, even with "3-a" ready.
     assert_eq!(index.pick().as_deref(), Some("2-b"));
     index.deliver("2-b", 1_000, 0, 1);
     assert_eq!(index.pick().as_deref(), Some("5-c00"));
     index.deliver("5-c00", 1_000, 0, 1);
-    assert_eq!(index.pick(), None, "todos os grupos estão ocupados");
+    assert_eq!(index.pick(), None, "all the groups are busy");
     assert!(!index.has_ready());
 }
 
@@ -345,17 +345,17 @@ fn a_group_is_freed_by_the_end_of_the_invisibility_the_ack_or_the_expiry_of_the_
     index.deliver("1", 100, 0, 1);
     assert_eq!(index.pick(), None);
 
-    // Vencida a invisibilidade, a mesma cabeça volta.
+    // With the invisibility expired, the same head comes back.
     assert_eq!(index.release_due(100), ["1"]);
     assert_eq!(index.pick().as_deref(), Some("1"));
     index.deliver("1", 200, 100, 2);
     assert_eq!(index.pick(), None);
 
-    // O ack da cabeça libera a seguinte.
+    // The head's ack releases the next one.
     index.remove("1");
     assert_eq!(index.pick().as_deref(), Some("2"));
     index.deliver("2", 300, 200, 1);
-    // A cabeça que vence por `ttl` também libera o grupo.
+    // The head that expires by `ttl` also releases the group.
     index.insert("3", Some("g"), 3, 0, 0, 200);
     assert_eq!(index.pick(), None);
     index.remove("2");
@@ -369,10 +369,14 @@ fn with_a_zero_visibility_the_group_is_free_again_after_the_batch() {
     index.insert("1", Some("g"), 1, 0, 0, 0);
     index.insert("2", Some("g"), 2, 0, 0, 0);
     let id = index.pick().unwrap();
-    // Dentro do lote a mensagem fica em processamento ao menos até o instante seguinte...
+    // Within the batch the message stays in processing at least until the next instant...
     index.deliver(&id, 1, 0, 1);
-    assert_eq!(index.pick(), None, "nunca duas do mesmo grupo no lote");
-    // ...e, com a invisibilidade zero, volta a pronta no fim.
+    assert_eq!(
+        index.pick(),
+        None,
+        "never two of the same group in the batch"
+    );
+    // ...and, with zero invisibility, it goes back to ready at the end.
     index.set_until(&id, 0, 0);
     assert_eq!(index.pick().as_deref(), Some("1"));
 }

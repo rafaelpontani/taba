@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- O conector C# do Taba (doc/19a-conectores-linguagens.md, "C#"). Um só código para o .NET clássico
-       (net461, o Framework 4.6.1 a 4.8) e o moderno (net5.0 em diante), em C# 7.3 nos dois, sem
-       dependências além da biblioteca-padrão. -->
+  <!-- The Taba C# connector (doc/19a-conectores-linguagens.md, "C#"). A single codebase for classic .NET
+       (net461, Framework 4.6.1 to 4.8) and modern (net5.0 and later), in C# 7.3 on both, with no
+       dependencies beyond the standard library. -->
   <PropertyGroup>
     <TargetFrameworks>net461;net5.0;net6.0;net8.0</TargetFrameworks>
     <LangVersion>7.3</LangVersion>
@@ -10,29 +10,29 @@
     <RootNamespace>Taba</RootNamespace>
     <PackageId>Taba.Client</PackageId>
     <Version>0.1.0</Version>
-    <Description>Conector C# do Taba, a fila de mensagens em cluster.</Description>
+    <Description>Taba C# connector, the clustered message queue.</Description>
     <Authors>Taba</Authors>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <!-- O SDK avisa que o .NET 5 saiu de suporte; ele é o piso da linha moderna (doc 19a). -->
+    <!-- The SDK warns that .NET 5 is out of support; it is the floor of the modern line (doc 19a). -->
     <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
 
-  <!-- O net10.0 só existe a partir do SDK 10; com o SDK 8 o conector compila os outros cinco alvos. -->
+  <!-- net10.0 only exists from SDK 10 on; with SDK 8 the connector builds the other five targets. -->
   <PropertyGroup Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '10.0'))">
     <TargetFrameworks>$(TargetFrameworks);net10.0</TargetFrameworks>
   </PropertyGroup>
 
-  <!-- No net461, o HttpClient vem do assembly System.Net.Http do Framework. Os reference assemblies
-       deixam um SDK em qualquer sistema (Linux, macOS) compilar o alvo clássico. -->
+  <!-- On net461, HttpClient comes from the Framework's System.Net.Http assembly. The reference assemblies
+       let an SDK on any system (Linux, macOS) build the classic target. -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net461'">
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Runtime.Serialization" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- Os contratos (ITabaClient, os modelos e a TabaException) ficam no Taba.Client.Abstractions. -->
+  <!-- The contracts (ITabaClient, the models and the TabaException) live in Taba.Client.Abstractions. -->
   <ItemGroup>
     <ProjectReference Include="..\Taba.Client.Abstractions\Taba.Client.Abstractions.csproj" />
   </ItemGroup>
