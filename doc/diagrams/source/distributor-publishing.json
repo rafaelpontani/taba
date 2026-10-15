@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Publishing to a Distributor Topic",
+    "output": "doc/diagrams/html/distributor-publishing.html",
+    "viewBox": [
+      1080,
+      500
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "prod",
+      "type": "external",
+      "label": "Producer",
+      "sublabel": "client"
+    },
+    {
+      "id": "coord",
+      "type": "backend",
+      "label": "Receiving node",
+      "sublabel": "coordinator"
+    },
+    {
+      "id": "queues",
+      "type": "cloud",
+      "label": "Each queue's nodes",
+      "sublabel": "primary + replicas"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 186,
+      "label": "Reception"
+    },
+    {
+      "from": 194,
+      "to": 306,
+      "label": "Copies"
+    },
+    {
+      "from": 314,
+      "to": 370,
+      "label": "Answer"
+    }
+  ],
+  "messages": [
+    {
+      "id": "pub",
+      "from": "prod",
+      "to": "coord",
+      "y": 172,
+      "label": "POST to the Distributor Topic",
+      "variant": "security",
+      "note": "matches prefixes in the local table"
+    },
+    {
+      "id": "reg1",
+      "from": "coord",
+      "to": "queues",
+      "y": 208,
+      "label": "queue A: register (own ID)",
+      "note": "only queues (QT) match"
+    },
+    {
+      "id": "ok1",
+      "from": "queues",
+      "to": "coord",
+      "y": 236,
+      "label": "quorum confirms (primary included)",
+      "variant": "return"
+    },
+    {
+      "id": "com1",
+      "from": "coord",
+      "to": "queues",
+      "y": 264,
+      "label": "queue A: commit by quorum",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reg2",
+      "from": "coord",
+      "to": "queues",
+      "y": 292,
+      "label": "queue B: same flow, another ID",
+      "variant": "dashed",
+      "note": "independent copies"
+    },
+    {
+      "id": "resp",
+      "from": "coord",
+      "to": "prod",
+      "y": 328,
+      "label": "200: result per queue (ID or error)",
+      "variant": "return"
+    },
+    {
+      "id": "empty",
+      "from": "coord",
+      "to": "prod",
+      "y": 356,
+      "label": "no queue matched: 200 and discards",
+      "variant": "dashed",
+      "note": "distributor-no-target event"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Matching",
+      "items": [
+        "The queue name starts with some prefix",
+        "One copy per queue, even with several prefixes",
+        "Only at publish time, not retroactive"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Partial failure",
+      "items": [
+        "Each copy is independent",
+        "No global rollback across queues",
+        "Error per queue in the response, not on the distributor",
+        "FIFO queue without groupId: error only on that queue"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "No destination or above the ceiling",
+      "items": [
+        "Not an error: the distributor received it",
+        "Message discarded and event recorded",
+        "Above the destination ceiling (if defined): 422"
+      ]
+    }
+  ]
+}

@@ -34,7 +34,7 @@ ${storage.dir}/
 
 Tudo é **estritamente local**: nenhum desses arquivos é copiado entre nós. O que trafega são as mensagens e os metadados pelo protocolo de registro + commit.
 
-![Mapa do disco de um nó](../diagramas/img/pt-BR/armazenamento-disco.svg)
+![Mapa do disco de um nó](../diagrams/img/pt-BR/disk-storage.svg)
 
 ## Memória e overflow
 

@@ -141,7 +141,7 @@ O que acontece por baixo ([07-cluster.md](07-cluster.md)): na **falha**, os outr
 
 > ⚠️ **Não derrube um segundo nó antes de o primeiro voltar.** Com 3 nós, a perda de dois em sequência rápida deixa um único sobrevivente (menos que `cluster.vote.min-voters`, 2): o cluster fica em `quorum-lost` e os nós reiniciados não conseguem reentrar. Veja [23-operacao.md](23-operacao.md).
 
-![O que o docker compose up cria](../diagramas/img/pt-BR/implantacao-compose.svg)
+![O que o docker compose up cria](../diagrams/img/pt-BR/compose-deployment.svg)
 
 ### Limpeza
 

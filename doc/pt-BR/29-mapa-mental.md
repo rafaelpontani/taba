@@ -110,23 +110,23 @@ fontes: [doc/pt-BR]
 | "Como monitoro?" | [13](13-observabilidade.md) |
 | "Como mexo no código?" | [24](24-convencoes.md), [25](25-testes.md), [26](26-casos-de-uso.md) |
 
-![Mapa mental geral](../diagramas/img/pt-BR/mapa-mental.svg)
+![Mapa mental geral](../diagrams/img/pt-BR/mind-map.svg)
 
-![1. Escrita e quórum](../diagramas/img/pt-BR/mapa-mental-escrita.svg)
+![1. Escrita e quórum](../diagrams/img/pt-BR/mind-map-write.svg)
 
-![2. Entrega](../diagramas/img/pt-BR/mapa-mental-entrega.svg)
+![2. Entrega](../diagrams/img/pt-BR/mind-map-delivery.svg)
 
-![3. Invisibilidade](../diagramas/img/pt-BR/mapa-mental-invisibilidade.svg)
+![3. Invisibilidade](../diagrams/img/pt-BR/mind-map-invisibility.svg)
 
-![4. Tópicos](../diagramas/img/pt-BR/mapa-mental-topicos.svg)
+![4. Tópicos](../diagrams/img/pt-BR/mind-map-topics.svg)
 
-![5. Cluster e membros](../diagramas/img/pt-BR/mapa-mental-cluster.svg)
+![5. Cluster e membros](../diagrams/img/pt-BR/mind-map-cluster.svg)
 
-![6. Sincronização](../diagramas/img/pt-BR/mapa-mental-sync.svg)
+![6. Sincronização](../diagrams/img/pt-BR/mind-map-sync.svg)
 
-![7. Armazenamento](../diagramas/img/pt-BR/mapa-mental-disco.svg)
+![7. Armazenamento](../diagrams/img/pt-BR/mind-map-disk.svg)
 
-![8. API e observabilidade](../diagramas/img/pt-BR/mapa-mental-obs.svg)
+![8. API e observabilidade](../diagrams/img/pt-BR/mind-map-observability.svg)
 
 ## Fontes e provas
 

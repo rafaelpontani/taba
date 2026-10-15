@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Deletion of a volatile queue by the manager",
+    "output": "doc/diagrams/html/volatile-queue-deletion.html",
+    "viewBox": [
+      1080,
+      500
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "cons",
+      "type": "external",
+      "label": "Consumer",
+      "sublabel": "client"
+    },
+    {
+      "id": "manager",
+      "type": "backend",
+      "label": "Manager node",
+      "sublabel": "hash of the id on the ring"
+    },
+    {
+      "id": "nodes",
+      "type": "cloud",
+      "label": "All nodes",
+      "sublabel": "last GET per topic"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 186,
+      "label": "Wait"
+    },
+    {
+      "from": 194,
+      "to": 250,
+      "label": "Final check"
+    },
+    {
+      "from": 258,
+      "to": 370,
+      "label": "Exclusion"
+    }
+  ],
+  "messages": [
+    {
+      "id": "get",
+      "from": "cons",
+      "to": "nodes",
+      "y": 172,
+      "label": "any GET on the queue",
+      "variant": "dashed",
+      "note": "the node records the instant at the start"
+    },
+    {
+      "id": "expiry",
+      "from": "manager",
+      "to": "nodes",
+      "y": 208,
+      "label": "deadline expired: how long ago was the last GET?",
+      "variant": "security",
+      "note": "local read on each node"
+    },
+    {
+      "id": "dur",
+      "from": "nodes",
+      "to": "manager",
+      "y": 236,
+      "label": "duration since the last GET, per node",
+      "variant": "return",
+      "note": "no GET within the idleTimeout"
+    },
+    {
+      "id": "reg",
+      "from": "manager",
+      "to": "nodes",
+      "y": 272,
+      "label": "deletion (phase 1) with the topic id"
+    },
+    {
+      "id": "ok",
+      "from": "nodes",
+      "to": "manager",
+      "y": 300,
+      "label": "all confirm, if the id matches",
+      "variant": "return"
+    },
+    {
+      "id": "commit",
+      "from": "manager",
+      "to": "nodes",
+      "y": 328,
+      "label": "commit (phase 2)",
+      "variant": "emphasis",
+      "note": "delete messages and definition"
+    },
+    {
+      "id": "end",
+      "from": "nodes",
+      "to": "manager",
+      "y": 356,
+      "label": "queue removed",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Recent GET",
+      "items": [
+        "Some node saw a GET within the deadline",
+        "The manager reschedules for the remaining time"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "When in doubt, it does not delete",
+      "items": [
+        "Node without response: tries again later",
+        "A just-started node answers the time since it started"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Residual race",
+      "items": [
+        "A GET between the check and the commit gets 404",
+        "With autoCreate, recreates with a new id"
+      ]
+    }
+  ]
+}

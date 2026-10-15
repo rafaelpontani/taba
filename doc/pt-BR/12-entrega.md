@@ -23,7 +23,7 @@ Do ponto de vista do **dono da entrega**, uma mensagem está sempre em um destes
 | **Invisível** | `invisibleUntil` no futuro | Lista de invisíveis (ordenada por prazo) |
 | **Removida** | Ack confirmado | Nada: mensagem e metadados apagados |
 
-![Estados de uma mensagem no dono da entrega](../diagramas/img/pt-BR/estados-mensagem.svg)
+![Estados de uma mensagem no dono da entrega](../diagrams/img/pt-BR/message-states.svg)
 
 ## Metadados da mensagem entregue
 
@@ -54,7 +54,7 @@ A resposta traz **de 1 a `maxMessages`** mensagens: devolve o que está pronto, 
 
 ### O que acontece por dentro
 
-![Consumo: entrega e ack](../diagramas/img/pt-BR/consumo.svg)
+![Consumo: entrega e ack](../diagrams/img/pt-BR/consumption.svg)
 
 1. O nó que atende escolhe um ID da **lista de prontos** do tópico, que só contém mensagens de que ele é o **dono da entrega**.
 2. Calcula os nós responsáveis pelo bloco do ID.
@@ -140,11 +140,11 @@ Cluster de 3 nós (A, B, C), tópico `pedidos` com 6 mensagens, cada nó primár
 | **2. Lista local vazia, outro nó tem** | A esvaziou e avisou "sem prontas em `pedidos`"; B e C têm a tabela `{A: não, B: sim, C: sim}` em memória. A sorteia um (com peso pela quantidade informada), chama `take` em B (`POST /cluster/topics/{topic}/messages/take`); B, o dono, faz o registro + commit e devolve a mensagem a A, que a repassa. Se B já esvaziou, A tenta C, até `delivery.take.max-attempts` (padrão 3) |
 | **3. Nenhum nó tem** | A vira **ouvinte local** e avisa os demais, **uma vez**, "`pedidos` tem ouvintes em A". Quando chega mensagem pronta em B, B vê o ouvinte em A e manda "há mensagens novas aqui"; A chama `take` em B e entrega ao ouvinte. Sem mensagem até `waitTime`, responde vazio |
 
-![Cenário 1: lista local](../diagramas/img/pt-BR/consumo-cenario1-lista-local.svg)
+![Cenário 1: lista local](../diagrams/img/pt-BR/consumption-scenario1-local-list.svg)
 
-![Cenário 2: completa com outro nó](../diagramas/img/pt-BR/consumo-cenario2-outro-no.svg)
+![Cenário 2: completa com outro nó](../diagrams/img/pt-BR/consumption-scenario2-other-node.svg)
 
-![Cenário 3: espera](../diagramas/img/pt-BR/consumo-cenario3-espera.svg)
+![Cenário 3: espera](../diagrams/img/pt-BR/consumption-scenario3-waiting.svg)
 
 O custo de saber onde há mensagens é pago só nas **transições** (de "tem" para "não tem"), com sinais pequenos:
 

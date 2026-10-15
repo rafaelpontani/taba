@@ -27,7 +27,7 @@ Num sistema distribuído, o teste mais valioso **sobe vários nós no mesmo proc
 
 Há mais **testes por TCP e TLS reais** (`tests/mtls.rs`, `tests/common/real.rs`: nós em `127.0.0.x`, `Transport` HTTP e TLS mútuo) e **testes de OTLP** (`tests/otlp.rs`, com um coletor falso).
 
-![Os níveis de teste](../diagramas/img/pt-BR/piramide-testes.svg)
+![Os níveis de teste](../diagrams/img/pt-BR/test-pyramid.svg)
 
 ## Os arquivos de integração (`crates/taba-node/tests/`)
 

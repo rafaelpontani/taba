@@ -4,7 +4,7 @@ Repository of the Taba messaging system: the documentation in `doc/` (one folder
 
 ## Where to read first
 
-- **Current documentation (Brazilian Portuguese):** [doc/pt-BR/README.md](doc/pt-BR/README.md), written *after* the code and checked against it. A machine-readable index is [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt). Every file there starts with metadata (`resumo`, `status`, `verificado-em`, `fontes`) and ends with "Fontes e provas" (the code paths and `UC-…` cases that back it up).
+- **Current documentation (Brazilian Portuguese and US English, with the same content):** [doc/pt-BR/README.md](doc/pt-BR/README.md) and [doc/en-US/README.md](doc/en-US/README.md), written *after* the code and checked against it. Machine-readable indexes are [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt) and [doc/en-US/llms.txt](doc/en-US/llms.txt). Every file there starts with metadata (`resumo`, `status`, `verificado-em`, `fontes` in `pt-BR`; `summary`, `status`, `verified-on`, `sources` in `en-US`) and ends with "Fontes e provas" / "Sources and evidence" (the code paths and `UC-…` cases that back it up).
 - **Registers still in `doc/` (no language folder):** the use-case catalogue that `uc_coverage` checks (`doc/20*.md`) and the decision/pending registers (`doc/08a`, `08b`, `08c`). The original pre-code design documents were removed (see the git history); where old comments in the code cite "doc 05, section 7" and similar, the matching text is in `doc/pt-BR/`. The known disagreements between the old design and the code are in [doc/pt-BR/_divergencias.md](doc/pt-BR/_divergencias.md).
 - To look up code, prefer the module map in [doc/pt-BR/04-arquitetura.md](doc/pt-BR/04-arquitetura.md) and the `//!` comment at the top of each `mod.rs`.
 
@@ -42,7 +42,7 @@ cargo run -- init --out ./secrets             # cluster certificate and root tok
 
 ## Language
 
-- **Documentation:** in Brazilian Portuguese, in `doc/pt-BR/`. In the end it will be translated and live in sibling folders, one per language. **The repository root files (`README.md`, this `AGENTS.md`) are in English (en-US).**
+- **Documentation:** one folder per language under `doc/`, named by the language code: `doc/pt-BR/` (Brazilian Portuguese) and `doc/en-US/` (US English). A folder holds the same files as the others: the number prefix (`NN-`) is the identity of a document and the rest of the name is in the language of the folder (`22-configuracao.md` in `pt-BR`, `22-configuration.md` in `en-US`). **Every change to the documentation must be applied to ALL the language folders in the same change** (content, metadata date, "Sources and evidence" and links); if you cannot translate one, say so in the commit message and record a `PRB-NNN` in the pending items naming the file, never leave a folder silently behind. What is an identifier or output of the program (routes, keys, error codes, JSON fields, `UC-…` codes, the text the server returns today) stays as it is in every language. **The repository root files (`README.md`, this `AGENTS.md`) are in English (en-US)**; `README-pt-BR.md` is the Portuguese version of the README (a language in the file name).
 - **Code:** names of variables, functions, types, modules, fields, tests, configuration keys, routes, error codes and events in **English**, to ease international collaboration. No identifier in Portuguese, not even in tests.
 - **Comments and user-facing messages** (API errors, logs, command-line help): in **Portuguese** during development; they will be translated together with the documentation.
 - On-disk names (SQLite tables and columns, `_topic.db`, `${topic}` in folders, `state` keys) are also in English, in the documents and in the code.
@@ -51,7 +51,7 @@ cargo run -- init --out ./secrets             # cluster certificate and root tok
 
 There is no chronological log of the implementation any more: the history is git, with commit messages that say what changed and why. In the same change as the code:
 
-1. **Fix the technical `.md`** when the code decided something the document did not say or contradicts it. The design lives in the documents, and the code is checked against them. Update the matching file in `doc/pt-BR/` (the file whose "fontes" metadata names the code you changed), and run `node doc/pt-BR/scripts/verificar.mjs` (it checks links, metadata, configuration keys, error codes, routes, metrics and use-case codes against the code).
+1. **Fix the technical `.md`** when the code decided something the document did not say or contradicts it. The design lives in the documents, and the code is checked against them. Update the matching file **in every language folder** (`doc/pt-BR/` and `doc/en-US/`; the file whose "fontes"/"sources" metadata names the code you changed), and run `node doc/pt-BR/scripts/verificar.mjs` (it checks links, metadata, configuration keys, error codes, routes, metrics and use-case codes against the code).
 2. A **firm decision** goes to [doc/08a-decisoes-tomadas.md](doc/08a-decisoes-tomadas.md); a **question** or **problem**, to [doc/08b-pendencias.md](doc/08b-pendencias.md) (section below). Then run `node doc/pt-BR/scripts/gerar-historico.mjs`.
 3. **New or changed use cases** go to `doc/20a`, `20b` or `20c`, and each test cites them with `/// UC: UC-XXX-NNN`. Run `TABA_UC_WRITE=1 cargo test --test uc_coverage` to regenerate the "Testes" column, then `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` to regenerate [doc/pt-BR/26a-casos-de-uso-implementados.md](doc/pt-BR/26a-casos-de-uso-implementados.md) and `26b`. A case without a test keeps "—", and the reason goes in the case itself.
 4. **A new module** goes in the module map of [doc/pt-BR/04-arquitetura.md](doc/pt-BR/04-arquitetura.md), and its `mod.rs` starts with a `//!` comment saying what it does and which document holds the design.
@@ -78,35 +78,35 @@ The use cases that guide the tests are in [doc/20-casos-de-uso.md](doc/20-casos-
 Diagrams are generated with [Archify](https://github.com/tt-a1i/archify) from JSON. **The JSON is the source of truth**; the SVG and the HTML are generated outputs.
 
 ```
-doc/diagramas/
-  fonte/   *.json          source (English), versioned. This is what you edit.
+doc/diagrams/
+  source/  *.json          source (English, en-US), versioned. This is what you edit.
   i18n/    <lang>.json     one translation table per extra language (pt-BR.json), versioned.
-  img/<lang>/ *.svg        exported per language (en, pt-BR, ...), versioned. This is what the .md files embed.
+  img/<lang>/ *.svg        exported per language (en-US, pt-BR, ...), versioned. This is what the .md files embed.
   html/<lang>/ *.html      interactive, NOT versioned (only exists with --html).
-  scripts/gerar.sh         validates, renders and exports the SVG of every language
-  scripts/traduzir.mjs     applies a language table to a source JSON (used by gerar.sh)
-  scripts/reespacar.mjs    recomputes the y of the messages of sequence diagrams
-  scripts/exportar-svg.mjs used by gerar.sh (headless Chrome)
+  scripts/generate.sh      validates, renders and exports the SVG of every language
+  scripts/translate.mjs    applies a language table to a source JSON (used by generate.sh)
+  scripts/respace.mjs      recomputes the y of the messages of sequence diagrams
+  scripts/export-svg.mjs   used by generate.sh (headless Chrome)
 ```
 
-The documentation in `doc/pt-BR/` embeds the `pt-BR` SVGs (`![…](../diagramas/img/pt-BR/<name>.svg)`) and the English `README.md` embeds the `en` ones; the table of which diagram is used where is in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas). A spot that still needs a diagram is marked `🖼️ DIAGRAMA PLANEJADO` with its type and goal.
+The documentation in `doc/pt-BR/` embeds the `pt-BR` SVGs (`![…](../diagrams/img/pt-BR/<name>.svg)`), the documentation in `doc/en-US/` and the English `README.md` embed the `en-US` ones; the table of which diagram is used where is in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas). A spot that still needs a diagram is marked `🖼️ DIAGRAMA PLANEJADO` with its type and goal.
 
 ### Rules
 
-- Always edit `doc/diagramas/fonte/<name>.json`. Never edit the SVG or the HTML: they are overwritten at every generation.
-- After editing, run `doc/diagramas/scripts/gerar.sh <name>` and commit the JSON **and** the SVGs of every language together. With no name, it generates all of them; `--lang <code>` limits it to one language.
-- Run the commands from the repository root. The JSON `meta.output` is relative to it (`doc/diagramas/html/<name>.html`) and must not be changed.
-- `--html` keeps the interactive HTML in `doc/diagramas/html/` to open in a browser. It is ignored by git (`.gitignore`).
-- The `.archify/` folder is Archify's work area and is also ignored. New diagrams are born there, but only enter the repository after being copied to `doc/diagramas/fonte/` with a stable name (no date) and `meta.output` pointing to `doc/diagramas/html/`.
-- English is the source language: `fonte/*.json` holds the English text. Every other language is a flat table in `doc/diagramas/i18n/<lang>.json` (`"English string": "translation"`) applied to the display keys (`title`, `label`, `sublabel`, `note`, `items`, `tag`) at generation time. A string missing from a table stays in English and `gerar.sh` warns about it, so when you add or reword a string in a source JSON, add the translation to every table. If a translation does not fit (the Archify gates complain), shorten it in the table.
-- **To add a language:** create `doc/diagramas/i18n/<lang>.json` (copy `pt-BR.json` and translate the values), run `gerar.sh`, `node doc/diagramas/scripts/gerar-hash.mjs` and `node doc/diagramas/scripts/gerar-hero.mjs`, and embed `../diagramas/img/<lang>/<name>.svg` from that language's docs. The legend and the Archify viewer interface are fixed in English.
+- Always edit `doc/diagrams/source/<name>.json`. Never edit the SVG or the HTML: they are overwritten at every generation.
+- After editing, run `doc/diagrams/scripts/generate.sh <name>` and commit the JSON **and** the SVGs of every language together. With no name, it generates all of them; `--lang <code>` limits it to one language.
+- Run the commands from the repository root. The JSON `meta.output` is relative to it (`doc/diagrams/html/<name>.html`) and must not be changed.
+- `--html` keeps the interactive HTML in `doc/diagrams/html/` to open in a browser. It is ignored by git (`.gitignore`).
+- The `.archify/` folder is Archify's work area and is also ignored. New diagrams are born there, but only enter the repository after being copied to `doc/diagrams/source/` with a stable name (no date) and `meta.output` pointing to `doc/diagrams/html/`.
+- English is the source language: `source/*.json` holds the English text. Every other language is a flat table in `doc/diagrams/i18n/<lang>.json` (`"English string": "translation"`) applied to the display keys (`title`, `label`, `sublabel`, `note`, `items`, `tag`) at generation time. A string missing from a table stays in English and `generate.sh` warns about it, so when you add or reword a string in a source JSON, add the translation to every table. If a translation does not fit (the Archify gates complain), shorten it in the table.
+- **To add a language:** create `doc/diagrams/i18n/<lang>.json` (copy `pt-BR.json` and translate the values), run `generate.sh`, `node doc/diagrams/scripts/generate-hash.mjs` and `node doc/diagrams/scripts/generate-hero.mjs`, and embed `../diagrams/img/<lang>/<name>.svg` from that language's docs. Adding a documentation language also means copying a complete `doc/<lang>/` folder (see the Documentation rule in the Language section above). The legend and the Archify viewer interface are fixed in English.
 - When you change the behaviour described in a `.md`, update the matching diagram (table in [doc/pt-BR/24-convencoes.md](doc/pt-BR/24-convencoes.md#índice-dos-diagramas)) and regenerate.
 
 ### Script-drawn diagrams (exception)
 
-`anel-hash.svg`, `topico-espalhado.svg` and `fifo-grupos.svg` do not go through Archify (it does not draw rings or matrices) and **have no JSON**: the source is `doc/diagramas/scripts/gerar-hash.mjs`. Edit the script constants (nodes, ring positions, messages, matrix) and run `node doc/diagramas/scripts/gerar-hash.mjs` (all languages; `--lang=<code>` for one; the strings go through the same `i18n/<lang>.json` tables); `gerar.sh` does not generate them. Commit the script **and** the SVGs together. The script does not validate the layout: open the SVG (or take a Chrome capture) and check for overlapping text.
+`ring-hash.svg`, `spread-topic.svg` and `fifo-groups.svg` do not go through Archify (it does not draw rings or matrices) and **have no JSON**: the source is `doc/diagrams/scripts/generate-hash.mjs`. Edit the script constants (nodes, ring positions, messages, matrix) and run `node doc/diagrams/scripts/generate-hash.mjs` (all languages; `--lang=<code>` for one; the strings go through the same `i18n/<lang>.json` tables); `generate.sh` does not generate them. Commit the script **and** the SVGs together. The script does not validate the layout: open the SVG (or take a Chrome capture) and check for overlapping text.
 
-The same applies to the root README hero (`hero.svg` and `hero.gif`): the source is `doc/diagramas/scripts/gerar-hero.mjs`. Edit the texts, colours and timeline (`PRODUTORES`, `CONSUMIDORES`, `MSGS`, `LEGENDA`) and run `node doc/diagramas/scripts/gerar-hero.mjs` (all languages; `--lang=<code>` for one; the texts come from the `i18n/<lang>.json` tables). `hero.svg` is the static frame (instant `ESTATICO`) and `hero.gif` is what the README embeds; the GIF uses headless Chrome and `ffmpeg` (variable `FFMPEG` if it is not on the PATH). `--so-svg` generates only the SVG. Commit the script **and** both files together.
+The same applies to the root README hero (`hero.svg` and `hero.gif`): the source is `doc/diagrams/scripts/generate-hero.mjs`. Edit the texts, colours and timeline (`PRODUCERS`, `CONSUMERS`, `MSGS`, `CAPTIONS`) and run `node doc/diagrams/scripts/generate-hero.mjs` (all languages; `--lang=<code>` for one; the texts come from the `i18n/<lang>.json` tables). `hero.svg` is the static frame (instant `STATIC_AT`) and `hero.gif` is what the README embeds; the GIF uses headless Chrome and `ffmpeg` (variable `FFMPEG` if it is not on the PATH). `--svg-only` generates only the SVG. Commit the script **and** both files together.
 
 ### Prerequisites
 
@@ -116,16 +116,16 @@ The same applies to the root README hero (`hero.svg` and `hero.gif`): the source
 
 ### Editing a sequence diagram
 
-The `messages` array defines the order; `y` is recomputed by `scripts/reespacar.mjs`.
+The `messages` array defines the order; `y` is recomputed by `scripts/respace.mjs`.
 
 1. Insert, remove or reorder messages in the array. For a new message, use any `y` (if there are `segments`, use the `y` of a neighbouring message of the same phase).
-2. `node doc/diagramas/scripts/reespacar.mjs doc/diagramas/fonte/<name>.json` reassigns the `y` values (28 px step, gap between phases), rebuilds the `segments` bands and adjusts `meta.viewBox`.
-3. `doc/diagramas/scripts/gerar.sh <name>`.
+2. `node doc/diagrams/scripts/respace.mjs doc/diagrams/source/<name>.json` reassigns the `y` values (28 px step, gap between phases), rebuilds the `segments` bands and adjusts `meta.viewBox`.
+3. `doc/diagrams/scripts/generate.sh <name>`.
 
-Archify limits (the `showcase` profile) that `scripts/gerar.sh` enforces:
+Archify limits (the `showcase` profile) that `scripts/generate.sh` enforces:
 
 - Messages that share horizontal space need at least 28 px between them.
-- The `viewBox` aspect ratio may not be taller than about 1.55 (width/height) at a width of 1080. If `scripts/reespacar.mjs` warns, split the diagram in two. That is how consumption became `consumo` (delivery and ack) plus three scenarios.
+- The `viewBox` aspect ratio may not be taller than about 1.55 (width/height) at a width of 1080. If `scripts/respace.mjs` warns, split the diagram in two. That is how consumption became `consumo` (delivery and ack) plus three scenarios.
 - With a width above about 1085, the secondary text gets too small on screen and the check fails.
 
 ### Editing an architecture diagram (including C4)
@@ -138,12 +138,12 @@ There is no automatic respacing. Adjust the components' `pos` and `size` in the 
 
 ### Diagnostics
 
-When Archify rejects a diagram, `scripts/gerar.sh` prints the codes and messages. The most common:
+When Archify rejects a diagram, `scripts/generate.sh` prints the codes and messages. The most common:
 
 | Message | Fix |
 |---|---|
-| `less than 28px apart` | run `scripts/reespacar.mjs` |
-| `leaving no room for the legend` | increase the `viewBox` height (`scripts/reespacar.mjs` already computes it) |
+| `less than 28px apart` | run `scripts/respace.mjs` |
+| `leaving no room for the legend` | increase the `viewBox` height (`scripts/respace.mjs` already computes it) |
 | `composition/viewport-height` | diagram too tall: split it |
 | `composition/desktop-readability` | reduce the `viewBox` width |
 

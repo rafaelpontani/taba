@@ -1,5 +1,5 @@
 .archify/
-doc/diagramas/html/
+doc/diagrams/html/
 /target
 /connectors/rust/target
 /connectors/rust/cli/dist

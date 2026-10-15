@@ -1,0 +1,767 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mind map: 5. Cluster and members",
+    "output": "doc/diagrams/html/mind-map-cluster.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "cluster-d0-0",
+      "type": "security",
+      "label": "Load balancer address",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        70
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-0x",
+      "type": "database",
+      "label": "cluster.entry-address, required",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        70
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-1",
+      "type": "security",
+      "label": "One change at a time",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        136
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-1x",
+      "type": "database",
+      "label": "until the node is ready",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        136
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-2",
+      "type": "security",
+      "label": "Call forwarding",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        202
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d0-2x",
+      "type": "database",
+      "label": "while the node syncs",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        202
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t0",
+      "type": "cloud",
+      "label": "Entry",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        136
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-0",
+      "type": "security",
+      "label": "Permanent WebSocket",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        268
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-0x",
+      "type": "database",
+      "label": "full mesh among the nodes",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        268
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-1",
+      "type": "security",
+      "label": "Own heartbeat",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        334
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-1x",
+      "type": "database",
+      "label": "date, monitoring, ready ones",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        334
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-2",
+      "type": "security",
+      "label": "Signals with an identifier",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        400
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d1-2x",
+      "type": "database",
+      "label": "confirmed after processing",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        400
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t1",
+      "type": "cloud",
+      "label": "Channel",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        334
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-0",
+      "type": "security",
+      "label": "Exclusion vote",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        466
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-0x",
+      "type": "database",
+      "label": "51% of the healthy, minimum 2",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        466
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-1",
+      "type": "security",
+      "label": "Freezing",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        532
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-1x",
+      "type": "database",
+      "label": "join rejected with Retry-After",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        532
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-2",
+      "type": "security",
+      "label": "Bootstrap retry",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        598
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d2-2x",
+      "type": "database",
+      "label": "configurable retry.interval",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        598
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t2",
+      "type": "cloud",
+      "label": "Failures",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        532
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster",
+      "type": "backend",
+      "label": "Cluster and members",
+      "sublabel": "area",
+      "pos": [
+        20,
+        565
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "cluster-d3-0",
+      "type": "security",
+      "label": "Everything on disk",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        664
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-0x",
+      "type": "database",
+      "label": "memory limit at zero",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        664
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-1",
+      "type": "security",
+      "label": "Voluntary exit",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        730
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-1x",
+      "type": "database",
+      "label": "unregistration without a vote",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        730
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-2",
+      "type": "security",
+      "label": "Call forwarding",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        796
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-2x",
+      "type": "database",
+      "label": "to the freest node",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        796
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-3",
+      "type": "security",
+      "label": "Comes back as a new node",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        862
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d3-3x",
+      "type": "database",
+      "label": "new ID, full bootstrap",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        862
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t3",
+      "type": "cloud",
+      "label": "Stop and drain",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        763
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-0",
+      "type": "security",
+      "label": "Single node",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        928
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-0x",
+      "type": "database",
+      "label": "mode=development",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        928
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-1",
+      "type": "security",
+      "label": "No vote or quorum",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        994
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-1x",
+      "type": "database",
+      "label": "replication and quorum are 1",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        994
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "cluster-t4",
+      "type": "cloud",
+      "label": "Development mode",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        994
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-2",
+      "type": "security",
+      "label": "Drain as save",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        1060
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "cluster-d4-2x",
+      "type": "database",
+      "label": "resumes from disk at startup",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        1060
+      ],
+      "size": [
+        295,
+        52
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c4-cluster-d0-0",
+      "from": "cluster-d0-0",
+      "to": "cluster-d0-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d0-1",
+      "from": "cluster-d0-1",
+      "to": "cluster-d0-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d0-2",
+      "from": "cluster-d0-2",
+      "to": "cluster-d0-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t0-0",
+      "from": "cluster-t0",
+      "to": "cluster-d0-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t0-1",
+      "from": "cluster-t0",
+      "to": "cluster-d0-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t0-2",
+      "from": "cluster-t0",
+      "to": "cluster-d0-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d1-0",
+      "from": "cluster-d1-0",
+      "to": "cluster-d1-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d1-1",
+      "from": "cluster-d1-1",
+      "to": "cluster-d1-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d1-2",
+      "from": "cluster-d1-2",
+      "to": "cluster-d1-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t1-0",
+      "from": "cluster-t1",
+      "to": "cluster-d1-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t1-1",
+      "from": "cluster-t1",
+      "to": "cluster-d1-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t1-2",
+      "from": "cluster-t1",
+      "to": "cluster-d1-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d2-0",
+      "from": "cluster-d2-0",
+      "to": "cluster-d2-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d2-1",
+      "from": "cluster-d2-1",
+      "to": "cluster-d2-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d2-2",
+      "from": "cluster-d2-2",
+      "to": "cluster-d2-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t2-0",
+      "from": "cluster-t2",
+      "to": "cluster-d2-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t2-1",
+      "from": "cluster-t2",
+      "to": "cluster-d2-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t2-2",
+      "from": "cluster-t2",
+      "to": "cluster-d2-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-cluster-t0",
+      "from": "cluster",
+      "to": "cluster-t0",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-cluster-t1",
+      "from": "cluster",
+      "to": "cluster-t1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-cluster-t2",
+      "from": "cluster",
+      "to": "cluster-t2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-cluster-d3-0",
+      "from": "cluster-d3-0",
+      "to": "cluster-d3-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-0",
+      "from": "cluster-t3",
+      "to": "cluster-d3-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d3-1",
+      "from": "cluster-d3-1",
+      "to": "cluster-d3-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-1",
+      "from": "cluster-t3",
+      "to": "cluster-d3-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d3-2",
+      "from": "cluster-d3-2",
+      "to": "cluster-d3-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-2",
+      "from": "cluster-t3",
+      "to": "cluster-d3-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d3-3",
+      "from": "cluster-d3-3",
+      "to": "cluster-d3-3x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t3-3",
+      "from": "cluster-t3",
+      "to": "cluster-d3-3",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-cluster-t3",
+      "from": "cluster",
+      "to": "cluster-t3",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-cluster-d4-0",
+      "from": "cluster-d4-0",
+      "to": "cluster-d4-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t4-0",
+      "from": "cluster-t4",
+      "to": "cluster-d4-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-cluster-d4-1",
+      "from": "cluster-d4-1",
+      "to": "cluster-d4-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t4-1",
+      "from": "cluster-t4",
+      "to": "cluster-d4-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-cluster-t4",
+      "from": "cluster",
+      "to": "cluster-t4",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c4-cluster-d4-2",
+      "from": "cluster-d4-2",
+      "to": "cluster-d4-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-cluster-t4-2",
+      "from": "cluster-t4",
+      "to": "cluster-d4-2",
+      "variant": "dashed"
+    }
+  ]
+}

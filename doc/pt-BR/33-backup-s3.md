@@ -26,7 +26,7 @@ O Taba guarda tudo em **memória e SQLite** e garante a mensagem pela **replica�
 | **Todas as filas** | Voláteis e dead-letter também entram |
 | **Cliente oficial** | O `aws-sdk-s3` (fala com AWS e com MinIO). Credenciais opcionais: sem elas, vale a cadeia padrão da AWS (IAM, perfil, papel da tarefa) |
 
-> 🖼️ **DIAGRAMA PLANEJADO** — tipo: sequência; objetivo: mostrar o commit da mensagem inserindo só uma linha no outbox, a thread de envio montando o segmento depois de `backup.delay`, o PUT confirmando e só então o outbox sendo esvaziado; reaproveita: `doc/diagramas/fonte/arquitetura-escrita.json`
+> 🖼️ **DIAGRAMA PLANEJADO** — tipo: sequência; objetivo: mostrar o commit da mensagem inserindo só uma linha no outbox, a thread de envio montando o segmento depois de `backup.delay`, o PUT confirmando e só então o outbox sendo esvaziado; reaproveita: `doc/diagrams/source/write-architecture.json`
 
 ## O que vai ao bucket, e quem grava
 

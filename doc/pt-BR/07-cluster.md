@@ -38,7 +38,7 @@ O nó tem um **estado** (`taba.node.state`) e, separado, um **estado de drain**:
 
 `drainState`: `active` → `draining` → `drained`.
 
-![Estados de um nó](../diagramas/img/pt-BR/estados-no.svg)
+![Estados de um nó](../diagrams/img/pt-BR/node-states.svg)
 
 > O **freezing** não é um estado do nó: é uma propriedade de um membro excluído, exposta como a condição `node-frozen` ([13-observabilidade.md](13-observabilidade.md)).
 
@@ -51,9 +51,9 @@ O nó tem um **estado** (`taba.node.state`) e, separado, um **estado de drain**:
 
 ## 2. Como um nó entra
 
-![Ingresso de um nó](../diagramas/img/pt-BR/ingresso-no.svg)
+![Ingresso de um nó](../diagrams/img/pt-BR/node-join.svg)
 
-![Falha no registro de um novo nó](../diagramas/img/pt-BR/falha-registro-no.svg)
+![Falha no registro de um novo nó](../diagrams/img/pt-BR/node-register-failure.svg)
 
 1. **Descoberta.** O nó chama a listagem de nós (`GET /cluster/nodes`) pelo endereço do balanceador (`cluster.entry-address`, host e **porta do cluster**). Se a chave falta, o nó não sobe (exceto o primeiro nó e o modo desenvolvimento).
 2. **Primeiro nó.** Só com `cluster.first-node=true`, e só se **ninguém responde pela rede** (conexão recusada ou tempo esgotado), o nó inicia o cluster sozinho como único membro. Quem responde, mesmo com erro (`503`), foi encontrado: o nó tenta de novo a cada `cluster.bootstrap.retry.interval` (padrão 5 s), até `cluster.bootstrap.retry.max-attempts` (padrão 0 = sem limite).
@@ -75,7 +75,7 @@ Se duas mudanças são coordenadas ao mesmo tempo por membros diferentes, vence 
 
 ## 3. Como a falha é detectada
 
-![Remoção de um nó por falha](../diagramas/img/pt-BR/remocao-no.svg)
+![Remoção de um nó por falha](../diagrams/img/pt-BR/node-removal.svg)
 
 1. O canal permanente carrega um **sinal de vida** (*keepalive*) a cada `cluster.channel.keepalive.interval` (padrão **2 s**). **Não há ping separado.**
 2. O canal com um par **cai** quando uma chamada falha, ou nada chega por `2 × keepalive.interval` (no mínimo 500 ms). As chamadas seguintes, a cada `cluster.channel.reconnect.backoff` (padrão 1 s), são as tentativas; esgotadas `cluster.channel.reconnect.retries` (padrão **3**), abre-se a **votação**.
@@ -103,9 +103,9 @@ A base de votantes é só quem o votante enxerga. Numa **partição de rede** em
 
 ## 4. Freezing e retorno do nó excluído
 
-![Retorno de um nó excluído](../diagramas/img/pt-BR/retorno-no-excluido.svg)
+![Retorno de um nó excluído](../diagrams/img/pt-BR/excluded-node-return.svg)
 
-![Reinício do processo](../diagramas/img/pt-BR/reinicio-processo.svg)
+![Reinício do processo](../diagrams/img/pt-BR/process-restart.svg)
 
 **Freezing.** Um nó excluído por **falha** que **continua o mesmo processo** (mesmo ID) fica impedido de reentrar por `cluster.freezing.duration` (padrão **5 min**), para não entrar e sair em laço. Durante o freezing o pedido de ingresso é **rejeitado** com `Retry-After`; o nó segue tentando no laço normal do bootstrap. Quem executou o commit da exclusão guarda `(ID, instante)` e o repassa aos pares pelo canal (quadro `frozen`), então um membro que estava fora do ar também recusa o `join` do excluído. O **drain** e o **reinício** do processo **não** geram freezing (são voluntários, ou o ID é novo).
 
@@ -122,7 +122,7 @@ A base de votantes é só quem o votante enxerga. Numa **partição de rede** em
 
 ## 5. Sincronização de um nó que entra
 
-![Fases da sincronização](../diagramas/img/pt-BR/sincronizacao-fases.svg)
+![Fases da sincronização](../diagrams/img/pt-BR/sync-phases.svg)
 
 O nó novo já consta na tabela e **recebe** o protocolo normal, mas **não pode processar** os eventos até terminar. A sincronização é **escopada aos blocos que ele assumiu**; o resto do cluster segue normal.
 

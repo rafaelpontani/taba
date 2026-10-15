@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Manager change on ring changes",
+    "output": "doc/diagrams/html/volatile-queue-manager-change.html",
+    "viewBox": [
+      1080,
+      480
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "mute",
+      "type": "external",
+      "label": "Node that joins or leaves",
+      "sublabel": "commissioning"
+    },
+    {
+      "id": "nodes",
+      "type": "cloud",
+      "label": "Other nodes",
+      "sublabel": "node and topic tables"
+    },
+    {
+      "id": "new",
+      "type": "backend",
+      "label": "New manager",
+      "sublabel": "primary of the position"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 214,
+      "label": "Ring change"
+    },
+    {
+      "from": 222,
+      "to": 278,
+      "label": "Takeover"
+    },
+    {
+      "from": 286,
+      "to": 342,
+      "label": "Deletion in progress"
+    }
+  ],
+  "messages": [
+    {
+      "id": "commit",
+      "from": "mute",
+      "to": "nodes",
+      "y": 172,
+      "label": "register or unregister commit",
+      "variant": "emphasis",
+      "note": "each node recalculates its queues"
+    },
+    {
+      "id": "tab",
+      "from": "mute",
+      "to": "nodes",
+      "y": 200,
+      "label": "new node pulls the topic table (stream)"
+    },
+    {
+      "id": "cons",
+      "from": "new",
+      "to": "nodes",
+      "y": 236,
+      "label": "queries the idleness of the new queues",
+      "variant": "security",
+      "note": "spread over time (jitter)"
+    },
+    {
+      "id": "dur",
+      "from": "nodes",
+      "to": "new",
+      "y": 264,
+      "label": "duration of the last GET, per node",
+      "variant": "return",
+      "note": "schedules the real deadline"
+    },
+    {
+      "id": "exc",
+      "from": "new",
+      "to": "nodes",
+      "y": 300,
+      "label": "deletion with the id, if already expired",
+      "variant": "dashed"
+    },
+    {
+      "id": "none",
+      "from": "nodes",
+      "to": "new",
+      "y": 328,
+      "label": "id already deleted or recreated: no effect",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "No transfer",
+      "items": [
+        "The queue list is derived from the ring",
+        "The state is on the nodes, not on the manager"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Ring events",
+      "items": [
+        "Join: the new node takes over its range",
+        "Exit: the next primary takes over",
+        "Register failure: goes back to the previous one"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Two attempts",
+      "items": [
+        "Old and new manager may delete together",
+        "The topic id makes the second one harmless"
+      ]
+    }
+  ]
+}

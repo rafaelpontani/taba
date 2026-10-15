@@ -26,7 +26,7 @@ O Taba usa **um único anel**. A implementação é lógica pura em `core/ring` 
 3. **Bloco.** Um **bloco** é o arco que **termina** numa posição de nó virtual. Uma posição `p` pertence ao primeiro nó virtual com posição `>= p`, dando a volta no fim do anel. O identificador do bloco (`BlockId`) é a posição desse nó virtual, escrita em **16 dígitos hexadecimais minúsculos**; é o `{id}` das rotas `/cluster/blocks/{id}/...`.
 4. **Papéis.** O dono do nó virtual que fecha o bloco é o **primário**. As réplicas seguem **no sentido do anel**, sempre em **nós físicos distintos**: posições de nós virtuais de um nó já escolhido são puladas. O número de réplicas é `replication.factor` (padrão **3**): primário, secundário, terciário.
 
-![O anel de hash com nós virtuais](../diagramas/img/pt-BR/anel-hash.svg)
+![O anel de hash com nós virtuais](../diagrams/img/pt-BR/ring-hash.svg)
 
 ## O primário é o dono da entrega
 
@@ -42,7 +42,7 @@ O bloco é decidido pelo **ID da mensagem** (que é um GUID v7, ordenável no te
 - Cada mensagem tem primário e réplicas próprios.
 - Perdido um nó, cada mensagem ainda está em pelo menos `replication.factor − 1` nós.
 
-![Um tópico espalhado por quatro nós](../diagramas/img/pt-BR/topico-espalhado.svg)
+![Um tópico espalhado por quatro nós](../diagrams/img/pt-BR/spread-topic.svg)
 
 ## Um anel, quatro perguntas
 
@@ -66,7 +66,7 @@ O anel é **derivado da tabela de membros**: quando um nó entra ou sai, todos r
 | Nó **perde** um bloco | **Não apaga na hora**: guarda as mensagens e pode servir de origem de sincronização. Só apaga quando **todo o cluster está íntegro** (nenhum nó sincronizando, nenhuma votação ou mudança de membros). Assim, se o nó novo falhar, o antigo volta a ser o responsável sem perder nada. |
 | Primário fora do ar, mas ainda na tabela | As escritas do bloco **falham** com `503` e `Retry-After` (`cluster.quorum-unavailable`); o secundário **não** assume a coordenação. Quando a exclusão sai, o herdeiro do bloco vira primário. |
 
-![Blocos que mudam de responsável quando entra um nó](../diagramas/img/pt-BR/anel-antes-depois.svg)
+![Blocos que mudam de responsável quando entra um nó](../diagrams/img/pt-BR/ring-before-after.svg)
 
 ## Modo desenvolvimento
 

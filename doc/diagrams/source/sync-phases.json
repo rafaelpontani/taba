@@ -1,0 +1,159 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Synchronization of a joining node",
+    "output": "doc/diagrams/html/sync-phases.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "source",
+      "label": "Cluster (sources)"
+    },
+    {
+      "id": "new",
+      "label": "Joining node"
+    },
+    {
+      "id": "disk",
+      "label": "Node disk"
+    }
+  ],
+  "mainPath": [
+    "topics",
+    "blocks",
+    "replay",
+    "verify",
+    "ready"
+  ],
+  "nodes": [
+    {
+      "id": "events",
+      "lane": "source",
+      "col": 0,
+      "type": "external",
+      "label": "Register and commit",
+      "sublabel": "arrive during the load",
+      "width": 150
+    },
+    {
+      "id": "topics",
+      "lane": "new",
+      "col": 0,
+      "type": "backend",
+      "label": "1. topics",
+      "sublabel": "topics and tokens",
+      "width": 132
+    },
+    {
+      "id": "blocks",
+      "lane": "new",
+      "col": 1,
+      "type": "backend",
+      "label": "2. blocks",
+      "sublabel": "IDs and ranges per block",
+      "width": 132
+    },
+    {
+      "id": "replay",
+      "lane": "new",
+      "col": 3,
+      "type": "backend",
+      "label": "3. replay",
+      "sublabel": "oldest first",
+      "width": 132
+    },
+    {
+      "id": "verify",
+      "lane": "new",
+      "col": 4,
+      "type": "backend",
+      "label": "4. verification",
+      "sublabel": "relists the sources",
+      "width": 132
+    },
+    {
+      "id": "ready",
+      "lane": "new",
+      "col": 5,
+      "type": "security",
+      "label": "5. ready",
+      "sublabel": "active, normal mode",
+      "width": 132
+    },
+    {
+      "id": "syncdb",
+      "lane": "disk",
+      "col": 2,
+      "type": "database",
+      "label": "_sync/sync.db",
+      "sublabel": "event database",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "topics",
+      "to": "blocks",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e2",
+      "from": "blocks",
+      "to": "replay",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "replay",
+      "to": "verify",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e4",
+      "from": "verify",
+      "to": "ready",
+      "role": "main",
+      "variant": "emphasis",
+      "label": "empty database"
+    },
+    {
+      "id": "e5",
+      "from": "events",
+      "to": "syncdb",
+      "role": "async",
+      "variant": "dashed",
+      "label": "writes in order"
+    },
+    {
+      "id": "e6",
+      "from": "syncdb",
+      "to": "replay",
+      "role": "branch",
+      "label": "reads and deletes"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Scope",
+      "items": [
+        "Only the blocks the node took over",
+        "The rest of the cluster goes on normally"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Failures",
+      "items": [
+        "Disk full or sync.db above the limit: failed",
+        "No source until cluster.sync.timeout: failed"
+      ]
+    }
+  ]
+}

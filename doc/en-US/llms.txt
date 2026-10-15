@@ -1,0 +1,70 @@
+# Taba (en-US documentation)
+
+> Taba is an open-source messaging system, shipped as a single Docker image, that combines queue (each message goes to one consumer) and distribution (each publication is copied to several queues) in one HTTP API. A cluster is three or more identical nodes, with no coordinator. Server in Rust (crate `taba-node`, binary `taba`); connectors in Rust and C#; command line `taba-cli`. This documentation describes the **current state of the code** (verified against the commit named in each file) and was written for someone who has never seen the project. Where the original design documents (removed from the tree, in the git history) and the code disagree, the code wins. Each file has metadata (summary, status, verified-on, sources) and ends with "Sources and evidence". Badges: ✅ implemented, 🟡 partial, ⬜ planned, ⚠️ known limit. This folder mirrors `doc/pt-BR/` file by file.
+
+## Start here
+
+- [README](README.md): index and reading order by profile (user, operator, contributor, AI)
+- [01 Overview](01-overview.md): what it is, what it is not, goals and requirements (RF/RNF) with the state of each one
+- [02 Quick start](02-quick-start.md): start one node or the three-node cluster, publish, consume, bring a node down
+- [03 Concepts](03-concepts.md): node, cluster, topic, message, block, ring, quorum, invisibility, ack on one page
+
+## How it works inside
+
+- [04 Architecture](04-architecture.md): layers (core ← storage ← engine ← cluster ← http ← node), the three ports, test traits, module map
+- [05 Dependencies](05-dependencies.md): server libraries and why, environment, dependency-free connectors, tools
+- [06 Ring and replication](06-ring-and-replication.md): circular hash, blocks, primary/secondary/tertiary, the same ring for four questions
+- [07 Cluster](07-cluster.md): node join, failure detection, voting, freezing, return, synchronization, hand-off, drain, development mode, conditions
+- [08 Storage](08-storage.md): memory first, disk overflow, SQLite per topic, node database, definition owner
+
+## Functional specification
+
+- [09 Topics](09-topics.md): queue, distributor, volatile (managing node, autoCreate), FIFO (groups, deduplication, quorum), dead-letter
+- [10 Publishing](10-publishing.md): register + commit, quorum with the primary, rollback before the decision, failures
+- [11 Durability](11-durability.md): guarantees per failure scenario, limits (a total stop loses everything), retention
+- [12 Delivery](12-delivery.md): invisibility, receiptToken, delivery owner, long polling, node channel, ttl, maxDeliveries, fair delivery
+- [13 Observability](13-observability.md): 84 metrics, 8 cluster conditions, topic conditions, OTLP, Prometheus, traces, logs, events
+- [14 Security](14-security.md): tokens, mutual TLS and certificate rotation, rate limit, client IP, operations routes without authentication
+
+## Interfaces
+
+- [15 APIs: overview and conventions](15-api-overview.md): the three APIs, format, headers, ErrorResponse, pagination, status, when to retry
+- [16 Client API](16-client-api.md): topics, messages (publish, consume, invisibility, ack) and tokens, route by route
+- [17 Operations API](17-operations-api.md): health, metrics, drain
+- [18 Cluster API](18-cluster-api.md): node-to-node routes, WebSocket channel, NDJSON streams (internal, no stability guarantee)
+- [19 Errors and limits](19-errors-and-limits.md): the 50 error codes with fixed status, fixed limits, rate limits
+- [20 Command lines](20-cli.md): `taba` (server) and `taba-cli` (client, profiles, TUI, exit codes)
+- [21 Connectors](21-connectors.md): common contract, Rust and C# ready, eight planned, how to write a new one
+
+## Operate
+
+- [22 Configuration](22-configuration.md): all parameters, effective default, startup validations
+- [23 Operations (runbook)](23-operations.md): start, scale, upgrade, drain, what to do on each condition, stuck cluster, backup, stop and start the cluster
+- [33 Optional S3 backup](33-s3-backup.md): what goes to the bucket (segments, journal, definitions, heartbeat), restore of the single survivor, disk eviction, flush and cluster stop
+
+## Contribute
+
+- [24 Conventions](24-conventions.md): language, folders, code rules, commands, when you finish an implementation, diagrams, commits
+- [25 Testing](25-testing.md): levels U/I/C/K, TestNode, TestCluster, in-memory network, manual clock, how to write and run
+- [26 Use cases](26-use-cases.md): the UC-AREA-NNN code and the coverage rule
+- [26a Implemented cases](26a-implemented-use-cases.md): the catalogue with a test (generated)
+- [26b Planned cases](26b-planned-use-cases.md): the catalogue without a test (generated)
+- [27 CI/CD](27-ci-cd.md): workflows, images, semantic-release, floating tags, what is missing
+
+## Reference and project
+
+- [28 Glossary](28-glossary.md)
+- [29 Mind map](29-mind-map.md)
+- [30 Decisions](30-decisions.md): the why, with the D… and PRB-… codes (generated)
+- [31 Pending items](31-pending-items.md): what is open and the findings of this documentation (generated + manual)
+- [32 Roadmap](32-roadmap.md): what comes next, in milestones
+
+## More
+
+- [Plan of this documentation](00-documentation-plan.md)
+- [Divergences: original design × code](_divergences.md)
+
+## Optional
+
+- [Server code](../../crates/taba-node/src/lib.rs)
+- [AGENTS.md](../../AGENTS.md): instructions for AI agents

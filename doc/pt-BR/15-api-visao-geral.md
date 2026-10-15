@@ -23,7 +23,7 @@ fontes: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, cra
 
 Cada API tem **o seu público** e a rede restringe cada porta. A porta de cliente responde `404 route.not-found` a `/cluster/*`; a do cluster, a tudo que não seja `/cluster/*`. Em modo desenvolvimento, a porta do cluster não existe.
 
-![As três APIs do nó e suas rotas](../diagramas/img/pt-BR/portas-do-no.svg)
+![As três APIs do nó e suas rotas](../diagrams/img/pt-BR/node-ports.svg)
 
 ## Resumo das rotas
 

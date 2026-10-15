@@ -98,8 +98,9 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 
 ## Convenções desta documentação
 
+- Esta pasta tem uma **versão espelho em inglês**, [`../en-US/`](../en-US/README.md), com os mesmos arquivos (o prefixo `NN-` é a identidade; o resto do nome está em inglês). **Toda mudança aqui deve ser aplicada também lá** ([24-convencoes.md](24-convencoes.md#documentação-em-vários-idiomas)).
 - Texto em português do Brasil. Identificadores (rotas, chaves de configuração, campos, códigos de erro) ficam em inglês, em `código`.
 - Um nome como `05-particionamento-replicacao.md`, sem pasta, é um documento do desenho original (escrito antes do código), **removido** da árvore: está no histórico do git, no commit `71183b9` e anteriores. Onde ele e o código divergem, vale o código ([_divergencias.md](_divergencias.md)).
 - Todo arquivo começa com metadados (`resumo`, `status`, `verificado-em`, `fontes`) e termina com **Fontes e provas**: os caminhos no código e os casos de uso `UC-…` que comprovam o que foi dito.
-- Os diagramas são imagens SVG geradas de JSON em `doc/diagramas/fonte/` (o índice está em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); o SVG é a saída, o JSON é a fonte.
+- Os diagramas são imagens SVG geradas de JSON em `doc/diagrams/source/` (o índice está em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); o SVG é a saída, o JSON é a fonte.
 - Links entre arquivos usam o nome do arquivo; não há numeração de seções contínua entre arquivos como na documentação histórica.

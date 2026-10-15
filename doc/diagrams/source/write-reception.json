@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Message reception (quorum write)",
+    "output": "doc/diagrams/html/write-reception.html",
+    "viewBox": [
+      1080,
+      668
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Client",
+      "sublabel": "producer"
+    },
+    {
+      "id": "coord",
+      "type": "backend",
+      "label": "Coordinator",
+      "sublabel": "node that received the POST"
+    },
+    {
+      "id": "primary",
+      "type": "security",
+      "label": "Primary",
+      "sublabel": "block owner"
+    },
+    {
+      "id": "replica",
+      "type": "database",
+      "label": "Replica (quorum)",
+      "sublabel": "write.quorum - 1"
+    },
+    {
+      "id": "out",
+      "type": "cloud",
+      "label": "Replica out",
+      "sublabel": "outside the quorum"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 298,
+      "label": "Phase 1: register"
+    },
+    {
+      "from": 306,
+      "to": 446,
+      "label": "Phase 2: commit"
+    },
+    {
+      "from": 454,
+      "to": 538,
+      "label": "Response and background"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post",
+      "from": "client",
+      "to": "coord",
+      "y": 172,
+      "label": "POST /topics/{t}/messages",
+      "variant": "emphasis",
+      "note": "generates GUID v7 and computes the block"
+    },
+    {
+      "id": "reg-p",
+      "from": "coord",
+      "to": "primary",
+      "y": 200,
+      "label": "register (pending)"
+    },
+    {
+      "id": "reg-r",
+      "from": "coord",
+      "to": "replica",
+      "y": 228,
+      "label": "register (pending)"
+    },
+    {
+      "id": "reg-f",
+      "from": "coord",
+      "to": "out",
+      "y": 256,
+      "label": "register (pending)"
+    },
+    {
+      "id": "ok-p",
+      "from": "primary",
+      "to": "coord",
+      "y": 284,
+      "label": "confirms",
+      "variant": "return"
+    },
+    {
+      "id": "ok-r",
+      "from": "replica",
+      "to": "coord",
+      "y": 320,
+      "label": "confirms: quorum closed",
+      "variant": "return"
+    },
+    {
+      "id": "commit-p",
+      "from": "coord",
+      "to": "primary",
+      "y": 348,
+      "label": "commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "commit-r",
+      "from": "coord",
+      "to": "replica",
+      "y": 376,
+      "label": "commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cok-p",
+      "from": "primary",
+      "to": "coord",
+      "y": 404,
+      "label": "ok",
+      "variant": "return"
+    },
+    {
+      "id": "cok-r",
+      "from": "replica",
+      "to": "coord",
+      "y": 432,
+      "label": "ok",
+      "variant": "return"
+    },
+    {
+      "id": "resp",
+      "from": "coord",
+      "to": "client",
+      "y": 468,
+      "label": "201 {id}",
+      "variant": "return"
+    },
+    {
+      "id": "bg",
+      "from": "coord",
+      "to": "out",
+      "y": 496,
+      "label": "register + commit (insists)",
+      "variant": "dashed",
+      "note": "until write.commit.timeout"
+    },
+    {
+      "id": "bg-ok",
+      "from": "out",
+      "to": "coord",
+      "y": 524,
+      "label": "confirms",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Quorum",
+      "items": [
+        "Always includes the primary",
+        "The response goes out with the commit confirmed on the quorum"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failure before the quorum",
+      "items": [
+        "Retry (write.retry.*), then error to the client",
+        "Rollback on the nodes that already confirmed"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Failure after the quorum",
+      "items": [
+        "There is never a rollback",
+        "Block falls below the full factor: under-replicated event"
+      ]
+    }
+  ]
+}

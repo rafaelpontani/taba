@@ -25,7 +25,7 @@ OTLP e `/metrics` saem dos **mesmos instrumentos**: as métricas são as mesmas,
 
 **Nenhum nó consulta outro para montar uma métrica.** Cada nó reporta o seu trabalho e a sua visão do cluster; o total do cluster é feito pelo backend (PromQL ou o Collector). Não há lista de alvos central nem agregação no servidor. (A exceção é o JSON de `/health/cluster` e `/metrics/topics`, que consultam os nós sob demanda.)
 
-![Caminhos da telemetria](../diagramas/img/pt-BR/observabilidade-fluxo.svg)
+![Caminhos da telemetria](../diagrams/img/pt-BR/observability-flow.svg)
 
 A telemetria tem **dois níveis**, tratados de formas diferentes:
 

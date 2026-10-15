@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Restart of a node's process",
+    "output": "doc/diagrams/html/process-restart.html",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "new",
+      "type": "backend",
+      "label": "Restarted process",
+      "sublabel": "new ID, previous life's disk"
+    },
+    {
+      "id": "contact",
+      "type": "security",
+      "label": "Contact node",
+      "sublabel": "coordinates the register"
+    },
+    {
+      "id": "others",
+      "type": "cloud",
+      "label": "Other nodes",
+      "sublabel": "members and block owners"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 330,
+      "label": "Join, without waiting for anyone"
+    },
+    {
+      "from": 342,
+      "to": 502,
+      "label": "Recovery in the background"
+    }
+  ],
+  "messages": [
+    {
+      "id": "list",
+      "from": "new",
+      "to": "contact",
+      "y": 172,
+      "label": "GET /cluster/nodes (load balancer)",
+      "variant": "dashed",
+      "note": "puts the old disk in _previous-life"
+    },
+    {
+      "id": "list-ok",
+      "from": "contact",
+      "to": "new",
+      "y": 200,
+      "label": "member table",
+      "variant": "return",
+      "note": "the node goes on with an empty disk"
+    },
+    {
+      "id": "boot",
+      "from": "new",
+      "to": "contact",
+      "y": 236,
+      "label": "join request: IPs and port",
+      "variant": "emphasis",
+      "note": "new node, without freezing"
+    },
+    {
+      "id": "join",
+      "from": "contact",
+      "to": "others",
+      "y": 264,
+      "label": "register and commit on all"
+    },
+    {
+      "id": "table",
+      "from": "contact",
+      "to": "new",
+      "y": 292,
+      "label": "node table",
+      "variant": "return"
+    },
+    {
+      "id": "active",
+      "from": "new",
+      "to": "others",
+      "y": 320,
+      "label": "syncs and becomes active",
+      "variant": "dashed",
+      "note": "does not stay in returning"
+    },
+    {
+      "id": "losses",
+      "from": "new",
+      "to": "others",
+      "y": 372,
+      "label": "GET /cluster/message-loss",
+      "variant": "emphasis",
+      "note": "to each node of the first listing"
+    },
+    {
+      "id": "losses-ok",
+      "from": "others",
+      "to": "new",
+      "y": 400,
+      "label": "lost (topic, ID) pairs",
+      "variant": "return"
+    },
+    {
+      "id": "recovers",
+      "from": "new",
+      "to": "others",
+      "y": 436,
+      "label": "POST /recover: what the old disk has",
+      "variant": "emphasis",
+      "note": "right away, for each list that arrives"
+    },
+    {
+      "id": "mute",
+      "from": "new",
+      "to": "others",
+      "y": 472,
+      "label": "repeats only the node that did not answer",
+      "variant": "dashed",
+      "note": "until cluster.recovery.timeout"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Previous life's disk",
+      "items": [
+        "Stays in _previous-life until the recovery ends",
+        "After it, or at the deadline, the folder is deleted"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Fall in the middle",
+      "items": [
+        "The old folder keeps counting",
+        "The new one of the same topic is deleted"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "First node of a new cluster",
+      "items": [
+        "There is no one to recover from: the old disk is deleted"
+      ]
+    }
+  ]
+}

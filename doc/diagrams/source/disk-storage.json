@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "A node's disk map",
+    "output": "doc/diagrams/html/disk-storage.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Engine",
+      "sublabel": "messages and topics",
+      "pos": [
+        30,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "cluster",
+      "type": "backend",
+      "label": "Cluster",
+      "sublabel": "state, losses",
+      "pos": [
+        30,
+        190
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "backend",
+      "label": "Synchronization",
+      "sublabel": "only on joining",
+      "pos": [
+        30,
+        320
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "restart",
+      "type": "backend",
+      "label": "Restart",
+      "sublabel": "previous life's disk",
+      "pos": [
+        30,
+        440
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "nodedb",
+      "type": "database",
+      "label": "_node.db",
+      "sublabel": "topics, tokens, state, losses",
+      "pos": [
+        430,
+        60
+      ],
+      "size": [
+        210,
+        64
+      ]
+    },
+    {
+      "id": "topicdb",
+      "type": "database",
+      "label": "<topic>/_topic.db",
+      "sublabel": "messages on disk",
+      "pos": [
+        430,
+        190
+      ],
+      "size": [
+        210,
+        64
+      ]
+    },
+    {
+      "id": "body",
+      "type": "database",
+      "label": "<topic>/<id>.body",
+      "sublabel": "body bytes",
+      "pos": [
+        740,
+        190
+      ],
+      "size": [
+        210,
+        64
+      ]
+    },
+    {
+      "id": "syncdb",
+      "type": "database",
+      "label": "_sync/sync.db",
+      "sublabel": "events during the load",
+      "pos": [
+        430,
+        320
+      ],
+      "size": [
+        210,
+        64
+      ]
+    },
+    {
+      "id": "prev",
+      "type": "database",
+      "label": "_previous-life/",
+      "sublabel": "returned in the background",
+      "pos": [
+        430,
+        440
+      ],
+      "size": [
+        210,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "storage.dir (the last folder is named taba)",
+      "wraps": [
+        "nodedb",
+        "topicdb",
+        "body",
+        "syncdb",
+        "prev"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "w1",
+      "from": "engine",
+      "to": "nodedb",
+      "label": "definitions"
+    },
+    {
+      "id": "w2",
+      "from": "engine",
+      "to": "topicdb",
+      "label": "overflow"
+    },
+    {
+      "id": "w3",
+      "from": "topicdb",
+      "to": "body",
+      "label": "points to"
+    },
+    {
+      "id": "w4",
+      "from": "cluster",
+      "to": "nodedb",
+      "label": "state"
+    },
+    {
+      "id": "w5",
+      "from": "sync",
+      "to": "syncdb",
+      "label": "writes and deletes"
+    },
+    {
+      "id": "w6",
+      "from": "restart",
+      "to": "prev",
+      "label": "sets aside"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Everything is local",
+      "items": [
+        "None of these files is copied between nodes",
+        "The message is in memory or on disk, never both"
+      ]
+    }
+  ]
+}

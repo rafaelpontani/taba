@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Taba mind map",
+    "output": "doc/diagrams/html/mind-map.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "taba",
+      "type": "backend",
+      "label": "Taba",
+      "sublabel": "distributed messaging",
+      "pos": [
+        420,
+        230
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "tag": "level 1 · each branch (level 2) has its own map"
+    },
+    {
+      "id": "write",
+      "type": "database",
+      "label": "1. Write and quorum",
+      "sublabel": "quorum 2 of 3, with the primary",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "delivery",
+      "type": "backend",
+      "label": "2. Delivery",
+      "sublabel": "primary only, accordion, in-memory index",
+      "pos": [
+        40,
+        175
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "invis",
+      "type": "security",
+      "label": "3. Invisibility",
+      "sublabel": "ReceiptToken, PUT, expiration",
+      "pos": [
+        40,
+        285
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "topics",
+      "type": "cloud",
+      "label": "4. Topics",
+      "sublabel": "queue, FIFO, distributor and volatile",
+      "pos": [
+        40,
+        395
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "cluster",
+      "type": "cloud",
+      "label": "5. Cluster and members",
+      "sublabel": "load balancer, channel, 51% vote",
+      "pos": [
+        790,
+        70
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "backend",
+      "label": "6. Synchronization",
+      "sublabel": "load + event database",
+      "pos": [
+        790,
+        175
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "disk",
+      "type": "database",
+      "label": "7. Storage",
+      "sublabel": "SQLite per topic + .body body",
+      "pos": [
+        790,
+        285
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "external",
+      "label": "8. API and observability",
+      "sublabel": "OTLP, /metrics per node, per-IP limit",
+      "pos": [
+        790,
+        395
+      ],
+      "size": [
+        250,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c-write",
+      "from": "taba",
+      "to": "write",
+      "label": "write",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-delivery",
+      "from": "taba",
+      "to": "delivery",
+      "label": "delivery",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-invis",
+      "from": "taba",
+      "to": "invis",
+      "label": "invisibility",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-topics",
+      "from": "taba",
+      "to": "topics",
+      "label": "topics",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "c-cluster",
+      "from": "taba",
+      "to": "cluster",
+      "label": "cluster",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c-sync",
+      "from": "taba",
+      "to": "sync",
+      "label": "synchronization",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c-disk",
+      "from": "taba",
+      "to": "disk",
+      "label": "storage",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "c-obs",
+      "from": "taba",
+      "to": "obs",
+      "label": "api",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Data and consistency",
+      "items": [
+        "Single write quorum: majority of replication.factor",
+        "Register + commit; no rollback after the quorum",
+        "Ack without a tombstone; final check in the synchronization"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Delivery",
+      "items": [
+        "Long polling up to 20 s; maxMessages 10",
+        "Ready list in memory per topic",
+        "Invisibility with ReceiptToken, at-least-once"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Operation",
+      "items": [
+        "Node join: one change at a time, node only ready at the end",
+        "Freezing, bootstrap retry and return with recovery",
+        "In-memory metrics, per-IP rate limit, operations routes exempt"
+      ]
+    }
+  ]
+}

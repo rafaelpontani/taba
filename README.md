@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/diagramas/img/en/hero.gif" width="100%" alt="Taba: open-source messaging that replaces SQS, SNS, Kafka and RabbitMQ with a single Docker image. Animation: 3 nodes, each drawn as a 3-story building. Several producers come and go and publish messages; each message has a primary node, which replicates it to the other two, and every node is the primary of some of them. Consumers arrive later, read asynchronously and confirm with an ack.">
+  <img src="doc/diagrams/img/en-US/hero.gif" width="100%" alt="Taba: open-source messaging that replaces SQS, SNS, Kafka and RabbitMQ with a single Docker image. Animation: 3 nodes, each drawn as a 3-story building. Several producers come and go and publish messages; each message has a primary node, which replicates it to the other two, and every node is the primary of some of them. Consumers arrive later, read asynchronously and confirm with an ack.">
 </p>
 
 🇺🇸 **English** | 🇧🇷 [Português (Brasil)](README-pt-BR.md)
@@ -42,7 +42,7 @@ docker compose up -d              # three "healthy" nodes in about a minute (pub
 
 To build the images from this repository instead (for development): `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`.
 
-Then, with the [`taba-cli`](doc/pt-BR/20-cli.md), which already ships in the Compose file pointed at the cluster (and with the root token):
+Then, with the [`taba-cli`](doc/en-US/20-cli.md), which already ships in the Compose file pointed at the cluster (and with the root token):
 
 ```bash
 docker compose run --rm taba-cli health cluster -o table             # the three nodes, no conditions
@@ -53,11 +53,11 @@ docker compose run --rm taba-cli consume orders --wait 5 --ack      # receive an
 
 The client API is also at `http://localhost:8080` for any HTTP client (with `Authorization: Bearer <root token>`; the token is in the `secrets` volume: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; on Windows Git Bash prefix the command with `MSYS_NO_PATHCONV=1`). `docker compose down -v` deletes everything. HAProxy is just an example: any load balancer works. For a single node, with no cluster, use `docker run -p 8080:8080 -e TABA_MODE=development taba`.
 
-> **Careful in production:** stop and update nodes **one at a time** (`docker compose stop` sends `SIGTERM`, which triggers a graceful *drain*). Stopping **all** nodes at once loses the messages and topics, and losing **two nodes in a row** locks a 3-node cluster. See the [operations guide](doc/pt-BR/23-operacao.md).
+> **Careful in production:** stop and update nodes **one at a time** (`docker compose stop` sends `SIGTERM`, which triggers a graceful *drain*). Stopping **all** nodes at once loses the messages and topics, and losing **two nodes in a row** locks a 3-node cluster. See the [operations guide](doc/en-US/23-operations.md).
 
 ## The API in four calls
 
-Everything is HTTP. The formal contract (OpenAPI) is not defined yet; the calls below are described in the [client API reference](doc/pt-BR/16-api-cliente.md).
+Everything is HTTP. The formal contract (OpenAPI) is not defined yet; the calls below are described in the [client API reference](doc/en-US/16-client-api.md).
 
 | What you want | Call |
 |---|---|
@@ -70,7 +70,7 @@ If the consumer does not confirm in time, the message becomes available again an
 
 ## Connectors
 
-The API is HTTP, so any language can already talk to Taba with the HTTP client it has. On top of that, the project provides **easy-to-use connectors** for the main languages, so you can publish and consume messages in a few lines. They have no external dependencies and run on old versions, up to 15 years old, as long as the platform speaks **TLS 1.2 or higher** (see each one's [base version](doc/pt-BR/21-conectores.md)):
+The API is HTTP, so any language can already talk to Taba with the HTTP client it has. On top of that, the project provides **easy-to-use connectors** for the main languages, so you can publish and consume messages in a few lines. They have no external dependencies and run on old versions, up to 15 years old, as long as the platform speaks **TLS 1.2 or higher** (see each one's [base version](doc/en-US/21-connectors.md)):
 
 | Language | Folder | Base version | State | Usage example |
 |---|---|---|---|---|
@@ -87,15 +87,15 @@ The API is HTTP, so any language can already talk to Taba with the HTTP client i
 
 The `taba-cli`, the client command line ([connectors/rust/cli](connectors/rust/cli/README.md)), is ready and is the shortest way to try a cluster.
 
-Other languages use their own HTTP client or the C library. The design is in [the connectors guide](doc/pt-BR/21-conectores.md).
+Other languages use their own HTTP client or the C library. The design is in [the connectors guide](doc/en-US/21-connectors.md).
 
 <!-- TODO: add usage examples (create topic, publish, consume with long polling and ack) for each language, once the connectors exist. -->
 
-> The base versions are proposals and may change until confirmed (pending item D68, see [pending items](doc/pt-BR/31-pendencias.md)).
+> The base versions are proposals and may change until confirmed (pending item D68, see [pending items](doc/en-US/31-pending-items.md)).
 
 ## Status and limits
 
-- **Version 0.1 validated end to end:** the three-node cluster comes up with `docker compose up`, forms itself, serves through the `taba-cli`, detects a node going down, excludes it by vote and takes it back without losing confirmed messages (script in [docker/validate.sh](docker/validate.sh)). The complete documentation is in [doc/](doc/README.md). Still missing: the remaining connectors, the OpenAPI contract and publishing to package registries. See the [roadmap](doc/pt-BR/32-roadmap.md).
+- **Version 0.1 validated end to end:** the three-node cluster comes up with `docker compose up`, forms itself, serves through the `taba-cli`, detects a node going down, excludes it by vote and takes it back without losing confirmed messages (script in [docker/validate.sh](docker/validate.sh)). The complete documentation is in [doc/](doc/README.md). Still missing: the remaining connectors, the OpenAPI contract and publishing to package registries. See the [roadmap](doc/en-US/32-roadmap.md).
 - **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP, MQTT or Kafka protocol compatibility, so switching brokers means switching the client.
 - **Not a streaming platform:** stream processing and replaying message history are out of scope. For queues and pub/sub, yes; for re-reading the past, no.
 - **Out of scope for now:** graphical interface, advanced authentication and multi-region.
@@ -104,7 +104,7 @@ Other languages use their own HTTP client or the C library. The design is in [th
 
 **Taba** comes from **T**opics, **A**synchronous, **B**alanced and **A**utonomous (in Portuguese: **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos). In Tupi, *taba* is the **village**: each node is a hut, the cluster is the village, and messages move between them without you having to take care of it.
 
-![C4 level 0: Taba context](doc/diagramas/img/en/c4-nivel0-contexto.svg)
+![C4 level 0: Taba context](doc/diagrams/img/en-US/c4-level0-context.svg)
 
 | Letter | Promise | How Taba delivers |
 |---|---|---|
@@ -113,17 +113,17 @@ Other languages use their own HTTP client or the C library. The design is in [th
 | **B**alanced | No node carries everything alone. | A consistent-hash ring splits topics into blocks and replicates them across several nodes. |
 | **A**utonomous | No coordinator and no manual operation. | Nodes discover each other, monitor each other and vote out whoever fails. When the node returns, it is re-admitted. |
 
-![Hash ring: blocks and roles](doc/diagramas/img/en/anel-hash.svg)
+![Hash ring: blocks and roles](doc/diagrams/img/en-US/ring-hash.svg)
 
 *The hash ring splits the work among the nodes.*
 
-![Spread, redundant topic](doc/diagramas/img/en/topico-espalhado.svg)
+![Spread, redundant topic](doc/diagrams/img/en-US/spread-topic.svg)
 
 *A topic spread across the cluster and replicated: if a node goes down, the village stays up.*
 
 ## Documentation
 
-The documentation lives in [doc/](doc/README.md), one folder per language. **It is currently written in Brazilian Portuguese**: start at [doc/pt-BR/README.md](doc/pt-BR/README.md) (an AI-friendly index is in [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt)). Other languages will be added as sibling folders. The code, identifiers, routes, configuration keys and error codes are in English.
+The documentation lives in [doc/](doc/README.md), one folder per language: start at [doc/en-US/README.md](doc/en-US/README.md) for English (an AI-friendly index is in [doc/en-US/llms.txt](doc/en-US/llms.txt)) or at [doc/pt-BR/README.md](doc/pt-BR/README.md) for Brazilian Portuguese. Both folders have the same content and every change goes to all of them. Other languages will be added as sibling folders. The code, identifiers, routes, configuration keys and error codes are in English.
 
 ## License
 

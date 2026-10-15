@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C4 Level 1: Messaging System Containers",
+    "output": "doc/diagrams/html/c4-level1-containers.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "producer",
+      "type": "external",
+      "label": "Producer",
+      "sublabel": "[Person/App]",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "consumer",
+      "type": "external",
+      "label": "Consumer",
+      "sublabel": "[Person/App]",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "operator",
+      "type": "external",
+      "label": "Operator",
+      "sublabel": "[Person]",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "external",
+      "label": "Observability",
+      "sublabel": "[System] OTel / Prom.",
+      "pos": [
+        40,
+        340
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "api-cli",
+      "type": "backend",
+      "label": "HTTP API (client)",
+      "sublabel": "[Container] coordinator",
+      "pos": [
+        340,
+        170
+      ],
+      "size": [
+        160,
+        110
+      ]
+    },
+    {
+      "id": "api-int",
+      "type": "backend",
+      "label": "HTTP API (internal)",
+      "sublabel": "[Container] register/commit",
+      "pos": [
+        620,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "cluster-mgr",
+      "type": "security",
+      "label": "Cluster manager",
+      "sublabel": "[Container] ring and members",
+      "pos": [
+        620,
+        60
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "Storage engine",
+      "sublabel": "[Container] memory",
+      "pos": [
+        620,
+        340
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "disk",
+      "type": "database",
+      "label": "Disk",
+      "sublabel": "[Volume] SQLite + .json bodies",
+      "pos": [
+        620,
+        480
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "peers",
+      "type": "cloud",
+      "label": "Other nodes",
+      "sublabel": "[System] same image",
+      "pos": [
+        940,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Messaging System: one node (N identical nodes)",
+      "wraps": [
+        "api-cli",
+        "api-int",
+        "cluster-mgr",
+        "storage",
+        "disk"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "publishes",
+      "from": "producer",
+      "to": "api-cli",
+      "label": "publishes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "consumes",
+      "from": "consumer",
+      "to": "api-cli",
+      "label": "consumes, acks",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stats",
+      "from": "operator",
+      "to": "api-cli",
+      "label": "/topics, /metrics, /health",
+      "variant": "dashed"
+    },
+    {
+      "id": "telemetry",
+      "from": "api-cli",
+      "to": "obs",
+      "label": "OTLP · /metrics",
+      "variant": "dashed"
+    },
+    {
+      "id": "coordinates",
+      "from": "api-cli",
+      "to": "api-int",
+      "label": "coordinates"
+    },
+    {
+      "id": "ring",
+      "from": "api-int",
+      "to": "cluster-mgr",
+      "label": "responsible for the ID",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "two-phases",
+      "from": "api-int",
+      "to": "peers",
+      "label": "register → commit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "signal-life",
+      "from": "cluster-mgr",
+      "to": "peers",
+      "label": "WebSocket: heartbeat",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "writes",
+      "from": "api-int",
+      "to": "storage",
+      "label": "writes pending / commit",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "overflow",
+      "from": "storage",
+      "to": "disk",
+      "label": "overflow",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Logical containers",
+      "items": [
+        "All the layers run in the same process and image",
+        "Each node is identical: no fixed master"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Cluster",
+      "items": [
+        "Write: quorum with the primary included",
+        "Node and topic registration: confirmation from all"
+      ]
+    }
+  ]
+}

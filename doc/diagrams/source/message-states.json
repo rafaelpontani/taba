@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "States of a message on the delivery owner",
+    "output": "doc/diagrams/html/message-states.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Delivery"
+    },
+    {
+      "id": "terminal",
+      "label": "End"
+    }
+  ],
+  "states": [
+    {
+      "id": "ready",
+      "type": "start",
+      "label": "Ready",
+      "sublabel": "in the ready list",
+      "lane": "main",
+      "col": 0
+    },
+    {
+      "id": "invisible",
+      "type": "waiting",
+      "label": "Invisible",
+      "sublabel": "invisibleUntil in the future",
+      "lane": "main",
+      "col": 2
+    },
+    {
+      "id": "removed",
+      "type": "success",
+      "label": "Removed",
+      "sublabel": "message and metadata deleted",
+      "lane": "terminal",
+      "col": 3
+    },
+    {
+      "id": "dead",
+      "type": "failure",
+      "label": "Dead-letter",
+      "sublabel": "delivery limit",
+      "lane": "terminal",
+      "col": 1
+    }
+  ],
+  "transitions": [
+    {
+      "from": "ready",
+      "to": "invisible",
+      "label": "GET: delivers"
+    },
+    {
+      "from": "invisible",
+      "to": "ready",
+      "label": "deadline expired or visibilityTimeout 0",
+      "variant": "dashed"
+    },
+    {
+      "from": "invisible",
+      "to": "removed",
+      "label": "ack",
+      "variant": "emphasis"
+    },
+    {
+      "from": "invisible",
+      "to": "dead",
+      "label": "maxDeliveries exhausted",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "At least once",
+      "items": [
+        "Without an ack in time, the message becomes ready again",
+        "Each new delivery changes the receiptToken"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Propagation",
+      "items": [
+        "Delivery and ack are register + commit on the quorum with the primary"
+      ]
+    }
+  ]
+}

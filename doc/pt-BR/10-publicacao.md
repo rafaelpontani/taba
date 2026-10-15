@@ -19,9 +19,9 @@ Um cliente publica em **qualquer nó**. Esse nó vira o **coordenador** da requi
 2. **Commit**, decidido assim que um **quórum** confirmou o registro (sempre com o **primário**).
 3. **Resposta** ao cliente, com o `id`, quando o **commit está confirmado no quórum**. As réplicas fora do quórum terminam em segundo plano.
 
-![Quem participa de uma escrita](../diagramas/img/pt-BR/arquitetura-escrita.svg)
+![Quem participa de uma escrita](../diagrams/img/pt-BR/write-architecture.svg)
 
-![Registro e commit passo a passo](../diagramas/img/pt-BR/recepcao.svg)
+![Registro e commit passo a passo](../diagrams/img/pt-BR/write-reception.svg)
 
 ## Passo a passo
 

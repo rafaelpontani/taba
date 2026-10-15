@@ -4,7 +4,7 @@ resumo: As regras de quem altera o código — idioma, estrutura de pastas, regr
 tipo: guia
 status: estável
 verificado-em: 2026-10-13 @ 71183b9
-fontes: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagramas]
+fontes: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagrams]
 ---
 
 # Convenções
@@ -15,11 +15,19 @@ fontes: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .r
 
 | O quê | Idioma |
 |---|---|
-| **Documentação** | Português do Brasil (será traduzida para outros idiomas, em pastas irmãs: `doc/pt-BR/` hoje) |
+| **Documentação** | Uma pasta por idioma em `doc/`, com o código do idioma: `doc/pt-BR/` (português do Brasil) e `doc/en-US/` (inglês dos EUA). **Toda mudança vale para todas as pastas** (ver [Documentação em vários idiomas](#documentação-em-vários-idiomas)) |
 | **Nomes no código**: variáveis, funções, tipos, módulos, campos, **testes**, chaves de configuração, rotas, **códigos de erro**, eventos | **Inglês**. Nada de identificador em português, **nem em teste** |
 | **Comentários** e **mensagens para o usuário** (erro da API, log, ajuda da linha de comando) | Português durante o desenvolvimento (serão traduzidos junto com a documentação) |
 | **Nomes em disco**: tabelas e colunas do SQLite, `_topic.db`, `${topic}`, chaves do `state` | Inglês |
-| **Raiz do repositório** (`README.md`, `AGENTS.md`) | Deve ser **en-US** (hoje ainda em português; ver [32-roadmap.md](32-roadmap.md)) |
+| **Raiz do repositório** (`README.md`, `AGENTS.md`) | **en-US** (`README-pt-BR.md` é a versão em português do README) |
+
+## Documentação em vários idiomas
+
+- Cada idioma fica numa pasta própria, `doc/<idioma>/` (hoje `pt-BR` e `en-US`), com os **mesmos arquivos**: o prefixo numérico (`NN-`) é a identidade do documento, e o resto do nome está no idioma da pasta (`22-configuracao.md` em `pt-BR`, `22-configuration.md` em `en-US`). `README.md`, `llms.txt` e os `scripts/` seguem a mesma regra.
+- **Toda mudança na documentação deve ser aplicada a todas as pastas de idioma** na mesma alteração: o conteúdo, os metadados (`verificado-em` / `verified-on`), a seção "Fontes e provas" e os links. Uma pasta que fica para trás faz a documentação se contradizer. Quem não domina um idioma altera as outras pastas mesmo assim e registra a lacuna em [31-pendencias.md](31-pendencias.md) (um `PRB-NNN` com o nome do arquivo), em vez de deixá-la em silêncio.
+- O que é **identificador ou saída do programa** não se traduz em idioma nenhum: rotas, chaves, códigos de erro, campos JSON, códigos `UC-…` e o que o servidor devolve hoje (o `message` de um erro e o texto dos logs seguem em português até o código ser traduzido).
+- Os arquivos gerados (`26a`, `26b`, `30`, `31`) saem por idioma dos scripts de cada pasta; edite a fonte, não a saída.
+- Para acrescentar um idioma: copie uma pasta completa para `doc/<idioma>/`, traduza, ponha o idioma na tabela de [`doc/README.md`](../README.md) e nas tabelas de tradução dos diagramas ([Índice dos diagramas](#índice-dos-diagramas)).
 
 ## Estrutura de pastas
 
@@ -36,8 +44,9 @@ taba/
   docker/                       cluster.sh, validate.sh, haproxy.cfg, test-cpu.sh
   Dockerfile  Dockerfile.ci  Dockerfile.cli.ci  docker-compose.yml
   examples/csharp-console/      exemplo de uso do conector C#
-  doc/                          registros 08a-c, catálogo de casos 20*, diagramas/
+  doc/                          README.md, diagrams/, uma pasta por idioma
   doc/pt-BR/                    esta documentação
+  doc/en-US/                    a mesma documentação em inglês
   .github/                      workflows, actions e scripts
 ```
 
@@ -131,74 +140,75 @@ Formato `UC-<ÁREA>-<NNN>` (três letras e três dígitos). Um caso que deixa de
 Gerados com o **Archify** a partir de JSON. **A fonte da verdade é o JSON**; SVG e HTML são saídas.
 
 ```
-doc/diagramas/
-  fonte/   *.json           fonte, versionada: é o que se edita
-  img/     *.svg            exportado, versionado: é o que os .md embutem
-  html/    *.html           interativo, NÃO versionado (só com --html)
-  scripts/gerar.sh          valida, renderiza e exporta o SVG
-  scripts/reespacar.mjs     recalcula o y das mensagens de diagramas de sequência
+doc/diagrams/
+  source/  *.json           fonte (em inglês, en-US), versionada: é o que se edita
+  i18n/    <idioma>.json    uma tabela de tradução por idioma extra (pt-BR.json)
+  img/<idioma>/ *.svg       exportado por idioma, versionado: é o que os .md embutem
+  html/<idioma>/ *.html     interativo, NÃO versionado (só com --html)
+  scripts/generate.sh       valida, renderiza e exporta o SVG de todos os idiomas
+  scripts/respace.mjs       recalcula o y das mensagens de diagramas de sequência
 ```
 
-- **Nunca edite SVG ou HTML.** Edite `fonte/<nome>.json` e rode `doc/diagramas/scripts/gerar.sh <nome>` (sem nome, gera todos), a partir da **raiz**; faça commit do JSON **e** do SVG juntos.
-- **Diagramas de sequência:** insira/remova/reordene no array `messages` (qualquer `y` na nova), rode `node doc/diagramas/scripts/reespacar.mjs doc/diagramas/fonte/<nome>.json`, depois `gerar.sh`. Limites do perfil `showcase`: ≥ 28 px entre mensagens que dividem espaço; proporção do `viewBox` ≤ ~1,55 (se estourar, **divida o diagrama**); largura ≤ ~1085 px.
+- **Nunca edite SVG ou HTML.** Edite `source/<nome>.json` e rode `doc/diagrams/scripts/generate.sh <nome>` (sem nome, gera todos), a partir da **raiz**; faça commit do JSON **e** do SVG juntos.
+- **Diagramas de sequência:** insira/remova/reordene no array `messages` (qualquer `y` na nova), rode `node doc/diagrams/scripts/respace.mjs doc/diagrams/source/<nome>.json`, depois `generate.sh`. Limites do perfil `showcase`: ≥ 28 px entre mensagens que dividem espaço; proporção do `viewBox` ≤ ~1,55 (se estourar, **divida o diagrama**); largura ≤ ~1085 px.
 - **Diagramas de arquitetura (incl. C4):** sem reespaçamento automático; ajuste `pos` e `size` mantendo vizinhos conectados adjacentes (folga de `6,5 px × caracteres + 21 px` por rótulo de conexão), `boundaries` só `region`/`security-group` e `meta.viewBox` omitido nos novos.
-- **Desenhados por script** (sem JSON): `anel-hash.svg`, `topico-espalhado.svg`, `fifo-grupos.svg` (`gerar-hash.mjs`) e o hero do README (`gerar-hero.mjs`, com Chrome headless e `ffmpeg`).
+- **Desenhados por script** (sem JSON): `ring-hash.svg`, `spread-topic.svg`, `fifo-groups.svg` (`generate-hash.mjs`) e o hero do README (`generate-hero.mjs`, com Chrome headless e `ffmpeg`).
 - **Pré-requisitos:** Node ≥ 22, Archify (`~/.claude/skills/archify` ou `ARCHIFY_BIN`), Chrome/Edge (`ARCHIFY_CHROME`).
 - Ao mudar o comportamento descrito num `.md`, **atualize o diagrama** correspondente e regere. Um ponto novo de diagrama, ainda por desenhar, é marcado com um bloco `🖼️ DIAGRAMA PLANEJADO` com `tipo:` e `objetivo:` (o `verificar.mjs` confere).
 
 ### Índice dos diagramas
 
-Gerado pelo levantamento dos `![…](../diagramas/img/…)` desta pasta. Um diagrama com "—" na última coluna não é usado por esta documentação (ver a nota abaixo da tabela).
+Gerado pelo levantamento dos `![…](../diagrams/img/…)` desta pasta. Um diagrama com "—" na última coluna não é usado por esta documentação (ver a nota abaixo da tabela).
 
 | Diagrama | Tipo | Fonte | Usado em |
 |---|---|---|---|
-| `anel-antes-depois` | architecture | `fonte/anel-antes-depois.json` | [06](06-anel-e-replicacao.md) |
-| `anel-hash` | script | `doc/diagramas/scripts/gerar-hash.mjs` | [06](06-anel-e-replicacao.md) |
-| `armazenamento-disco` | architecture | `fonte/armazenamento-disco.json` | [08](08-armazenamento.md) |
-| `arquitetura-escrita` | architecture | `fonte/arquitetura-escrita.json` | [10](10-publicacao.md) |
-| `c4-nivel0-contexto` | architecture | `fonte/c4-nivel0-contexto.json` | [01](01-visao-geral.md) |
-| `c4-nivel1-conteineres` | architecture | `fonte/c4-nivel1-conteineres.json` | — |
-| `camadas` | architecture | `fonte/camadas.json` | [04](04-arquitetura.md) |
-| `ci-cd` | workflow | `fonte/ci-cd.json` | [27](27-ci-cd.md) |
-| `consumo` | sequence | `fonte/consumo.json` | [12](12-entrega.md) |
-| `consumo-cenario1-lista-local` | sequence | `fonte/consumo-cenario1-lista-local.json` | [12](12-entrega.md) |
-| `consumo-cenario2-outro-no` | sequence | `fonte/consumo-cenario2-outro-no.json` | [12](12-entrega.md) |
-| `consumo-cenario3-espera` | sequence | `fonte/consumo-cenario3-espera.json` | [12](12-entrega.md) |
-| `decisao-topico` | workflow | `fonte/decisao-topico.json` | [09](09-topicos.md) |
-| `distribuidor-publicacao` | sequence | `fonte/distribuidor-publicacao.json` | [09](09-topicos.md) |
-| `entidades` | architecture | `fonte/entidades.json` | [03](03-conceitos.md) |
-| `estados-mensagem` | lifecycle | `fonte/estados-mensagem.json` | [12](12-entrega.md) |
-| `estados-no` | lifecycle | `fonte/estados-no.json` | [07](07-cluster.md) |
-| `falha-registro-no` | sequence | `fonte/falha-registro-no.json` | [07](07-cluster.md) |
-| `fifo-grupos` | script | `doc/diagramas/scripts/gerar-hash.mjs` | [09](09-topicos.md) |
-| `fifo-publicacao` | sequence | `fonte/fifo-publicacao.json` | [09](09-topicos.md) |
-| `fila-volatil-criacao` | sequence | `fonte/fila-volatil-criacao.json` | [09](09-topicos.md) |
-| `fila-volatil-exclusao` | sequence | `fonte/fila-volatil-exclusao.json` | [09](09-topicos.md) |
-| `fila-volatil-troca-gestor` | sequence | `fonte/fila-volatil-troca-gestor.json` | [09](09-topicos.md) |
-| `hero` | script | `doc/diagramas/scripts/gerar-hero.mjs` | — |
-| `implantacao-compose` | architecture | `fonte/implantacao-compose.json` | [02](02-inicio-rapido.md) |
-| `ingresso-no` | sequence | `fonte/ingresso-no.json` | [07](07-cluster.md) |
-| `invisibilidade` | sequence | `fonte/invisibilidade.json` | — |
-| `mapa-mental` | architecture | `fonte/mapa-mental.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-cluster` | architecture | `fonte/mapa-mental-cluster.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-disco` | architecture | `fonte/mapa-mental-disco.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-entrega` | architecture | `fonte/mapa-mental-entrega.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-escrita` | architecture | `fonte/mapa-mental-escrita.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-invisibilidade` | architecture | `fonte/mapa-mental-invisibilidade.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-obs` | architecture | `fonte/mapa-mental-obs.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-sync` | architecture | `fonte/mapa-mental-sync.json` | [29](29-mapa-mental.md) |
-| `mapa-mental-topicos` | architecture | `fonte/mapa-mental-topicos.json` | [29](29-mapa-mental.md) |
-| `no-visao-geral` | architecture | `fonte/no-visao-geral.json` | [04](04-arquitetura.md) |
-| `observabilidade-fluxo` | dataflow | `fonte/observabilidade-fluxo.json` | [13](13-observabilidade.md) |
-| `piramide-testes` | architecture | `fonte/piramide-testes.json` | [25](25-testes.md) |
-| `portas-do-no` | architecture | `fonte/portas-do-no.json` | [15](15-api-visao-geral.md) |
-| `recepcao` | sequence | `fonte/recepcao.json` | [10](10-publicacao.md) |
-| `reinicio-processo` | sequence | `fonte/reinicio-processo.json` | [07](07-cluster.md) |
-| `remocao-no` | sequence | `fonte/remocao-no.json` | [07](07-cluster.md) |
-| `retorno-no-excluido` | sequence | `fonte/retorno-no-excluido.json` | [07](07-cluster.md) |
-| `sincronizacao-fases` | workflow | `fonte/sincronizacao-fases.json` | [07](07-cluster.md) |
-| `topico-espalhado` | script | `doc/diagramas/scripts/gerar-hash.mjs` | [06](06-anel-e-replicacao.md) |
-| `zonas-seguranca` | architecture | `fonte/zonas-seguranca.json` | [14](14-seguranca.md) |
+| `ring-before-after` | architecture | `source/ring-before-after.json` | [06](06-anel-e-replicacao.md) |
+| `ring-hash` | script | `doc/diagrams/scripts/generate-hash.mjs` | [06](06-anel-e-replicacao.md) |
+| `disk-storage` | architecture | `source/disk-storage.json` | [08](08-armazenamento.md) |
+| `write-architecture` | architecture | `source/write-architecture.json` | [10](10-publicacao.md) |
+| `c4-level0-context` | architecture | `source/c4-level0-context.json` | [01](01-visao-geral.md) |
+| `c4-level1-containers` | architecture | `source/c4-level1-containers.json` | — |
+| `layers` | architecture | `source/layers.json` | [04](04-arquitetura.md) |
+| `ci-cd` | workflow | `source/ci-cd.json` | [27](27-ci-cd.md) |
+| `consumption` | sequence | `source/consumption.json` | [12](12-entrega.md) |
+| `consumption-scenario1-local-list` | sequence | `source/consumption-scenario1-local-list.json` | [12](12-entrega.md) |
+| `consumption-scenario2-other-node` | sequence | `source/consumption-scenario2-other-node.json` | [12](12-entrega.md) |
+| `consumption-scenario3-waiting` | sequence | `source/consumption-scenario3-waiting.json` | [12](12-entrega.md) |
+| `topic-decision` | workflow | `source/topic-decision.json` | [09](09-topicos.md) |
+| `distributor-publishing` | sequence | `source/distributor-publishing.json` | [09](09-topicos.md) |
+| `entities` | architecture | `source/entities.json` | [03](03-conceitos.md) |
+| `message-states` | lifecycle | `source/message-states.json` | [12](12-entrega.md) |
+| `node-states` | lifecycle | `source/node-states.json` | [07](07-cluster.md) |
+| `node-register-failure` | sequence | `source/node-register-failure.json` | [07](07-cluster.md) |
+| `fifo-groups` | script | `doc/diagrams/scripts/generate-hash.mjs` | [09](09-topicos.md) |
+| `fifo-publishing` | sequence | `source/fifo-publishing.json` | [09](09-topicos.md) |
+| `volatile-queue-creation` | sequence | `source/volatile-queue-creation.json` | [09](09-topicos.md) |
+| `volatile-queue-deletion` | sequence | `source/volatile-queue-deletion.json` | [09](09-topicos.md) |
+| `volatile-queue-manager-change` | sequence | `source/volatile-queue-manager-change.json` | [09](09-topicos.md) |
+| `hero` | script | `doc/diagrams/scripts/generate-hero.mjs` | — |
+| `compose-deployment` | architecture | `source/compose-deployment.json` | [02](02-inicio-rapido.md) |
+| `node-join` | sequence | `source/node-join.json` | [07](07-cluster.md) |
+| `invisibility` | sequence | `source/invisibility.json` | — |
+| `mind-map` | architecture | `source/mind-map.json` | [29](29-mapa-mental.md) |
+| `mind-map-cluster` | architecture | `source/mind-map-cluster.json` | [29](29-mapa-mental.md) |
+| `mind-map-disk` | architecture | `source/mind-map-disk.json` | [29](29-mapa-mental.md) |
+| `mind-map-delivery` | architecture | `source/mind-map-delivery.json` | [29](29-mapa-mental.md) |
+| `mind-map-write` | architecture | `source/mind-map-write.json` | [29](29-mapa-mental.md) |
+| `mind-map-invisibility` | architecture | `source/mind-map-invisibility.json` | [29](29-mapa-mental.md) |
+| `mind-map-observability` | architecture | `source/mind-map-observability.json` | [29](29-mapa-mental.md) |
+| `mind-map-sync` | architecture | `source/mind-map-sync.json` | [29](29-mapa-mental.md) |
+| `mind-map-topics` | architecture | `source/mind-map-topics.json` | [29](29-mapa-mental.md) |
+| `node-overview` | architecture | `source/node-overview.json` | [04](04-arquitetura.md) |
+| `observability-flow` | dataflow | `source/observability-flow.json` | [13](13-observabilidade.md) |
+| `test-pyramid` | architecture | `source/test-pyramid.json` | [25](25-testes.md) |
+| `node-ports` | architecture | `source/node-ports.json` | [15](15-api-visao-geral.md) |
+| `write-reception` | sequence | `source/write-reception.json` | [10](10-publicacao.md) |
+| `process-restart` | sequence | `source/process-restart.json` | [07](07-cluster.md) |
+| `node-removal` | sequence | `source/node-removal.json` | [07](07-cluster.md) |
+| `excluded-node-return` | sequence | `source/excluded-node-return.json` | [07](07-cluster.md) |
+| `sync-phases` | workflow | `source/sync-phases.json` | [07](07-cluster.md) |
+| `spread-topic` | script | `doc/diagrams/scripts/generate-hash.mjs` | [06](06-anel-e-replicacao.md) |
+| `security-zones` | architecture | `source/security-zones.json` | [14](14-seguranca.md) |
 
 > `hero` é usado pelo `README.md` da raiz. `c4-nivel1-conteineres` e `invisibilidade` ficaram da documentação histórica e **estão desatualizados** (descrevem a API "interna" e a lista de invisíveis em disco, que o código não tem): foram substituídos por `no-visao-geral`, `estados-mensagem` e `consumo`.
 
@@ -210,5 +220,5 @@ Gerado pelo levantamento dos `![…](../diagramas/img/…)` desta pasta. Um diag
 
 ## Fontes e provas
 
-- `AGENTS.md` (as regras de código, idioma, fim de implementação, pendências, casos de uso e diagramas), `Cargo.toml` (perfil `dev`), `.releaserc.json`, `18-estrutura-codigo.md` (17.3 a 17.7), `doc/diagramas/scripts/`.
+- `AGENTS.md` (as regras de código, idioma, fim de implementação, pendências, casos de uso e diagramas), `Cargo.toml` (perfil `dev`), `.releaserc.json`, `18-estrutura-codigo.md` (17.3 a 17.7), `doc/diagrams/scripts/`.
 - Casos de uso: UC-CFG (tabela de parâmetros lida), UC-CNV (erros e status); veja [26a](26a-casos-de-uso-implementados.md).

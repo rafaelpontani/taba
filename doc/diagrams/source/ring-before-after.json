@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Example: what changes when node D joins",
+    "output": "doc/diagrams/html/ring-before-after.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "a1",
+      "type": "backend",
+      "label": "Node A",
+      "sublabel": "primary of blocks 0 and 3",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "b1",
+      "type": "backend",
+      "label": "Node B",
+      "sublabel": "primary of blocks 1 and 4",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "backend",
+      "label": "Node C",
+      "sublabel": "primary of blocks 2 and 5",
+      "pos": [
+        40,
+        310
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "a2",
+      "type": "backend",
+      "label": "Node A",
+      "sublabel": "keeps block 0",
+      "pos": [
+        640,
+        70
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "b2",
+      "type": "backend",
+      "label": "Node B",
+      "sublabel": "keeps blocks 1 and 4",
+      "pos": [
+        640,
+        190
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "backend",
+      "label": "Node C",
+      "sublabel": "keeps block 2",
+      "pos": [
+        640,
+        310
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "d2",
+      "type": "security",
+      "label": "Node D (new)",
+      "sublabel": "takes over blocks 3 and 5",
+      "pos": [
+        640,
+        430
+      ],
+      "size": [
+        200,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Before: 3 nodes",
+      "wraps": [
+        "a1",
+        "b1",
+        "c1"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "After: D joined",
+      "wraps": [
+        "a2",
+        "b2",
+        "c2",
+        "d2"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "m1",
+      "from": "a1",
+      "to": "d2",
+      "label": "A supplies block 3",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "m2",
+      "from": "c1",
+      "to": "d2",
+      "label": "C supplies block 5",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Illustrative",
+      "items": [
+        "Only the blocks that change owner synchronize",
+        "A and C only delete 3 and 5 with a sound cluster"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "When a node leaves",
+      "items": [
+        "The replicas take over without a load",
+        "Redundancy drops to factor − 1 until another node joins"
+      ]
+    }
+  ]
+}

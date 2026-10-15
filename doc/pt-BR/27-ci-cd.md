@@ -21,7 +21,7 @@ fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ver
 
 Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo CI **e** pelo release, com a mesma lógica.
 
-![Do pull request ao release](../diagramas/img/pt-BR/ci-cd.svg)
+![Do pull request ao release](../diagrams/img/pt-BR/ci-cd.svg)
 
 ## Os workflows (`.github/workflows/`)
 
@@ -121,9 +121,9 @@ nuget.org e crates.io **não permitem apagar versão publicada**: a publicação
 | Rotas | Uma rota registrada no código (`.route(…)` e o mapa do cluster) não é citada nos documentos de API |
 | Casos de uso | Um `UC-…` citado nos documentos não existe em `doc/20a-c` |
 | Métricas | Uma métrica de `telemetry/metrics/defs.rs` não aparece em [13-observabilidade.md](13-observabilidade.md) |
-| Diagramas | Toda imagem `../diagramas/img/…` existe, e todo bloco `🖼️ DIAGRAMA PLANEJADO` que sobrar traz `tipo:` e `objetivo:` |
+| Diagramas | Toda imagem `../diagrams/img/…` existe, e todo bloco `🖼️ DIAGRAMA PLANEJADO` que sobrar traz `tipo:` e `objetivo:` |
 
-Pode entrar no CI como um job de PR barato (só Node).
+Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que as pastas de idioma dizem a mesma coisa: todo documento existe em todas as pastas (pelo prefixo numérico), os metadados têm as chaves de cada idioma (`summary`, `sources`, `verified-on` em `en-US`), links e âncoras resolvem dentro de cada pasta, e os códigos `UC-…`, `D…` e `PRB-…`, os blocos de código, as imagens e as tabelas são os mesmos dos dois lados. Os dois podem entrar no CI como um job de PR barato (só Node).
 
 ## Fontes e provas
 

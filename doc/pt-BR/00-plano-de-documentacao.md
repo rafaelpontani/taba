@@ -205,7 +205,7 @@ Uma pendência é uma tabela com: **código** (`D…`/`PRB-…`), **tipo**, **on
 Em cada arquivo, o ponto fica marcado com um bloco:
 
 ```
-> 🖼️ **DIAGRAMA PLANEJADO** — tipo: …; objetivo: …; reaproveita: `doc/diagramas/fonte/….json`
+> 🖼️ **DIAGRAMA PLANEJADO** — tipo: …; objetivo: …; reaproveita: `doc/diagrams/source/….json`
 ```
 
 | Arquivo | Diagrama | Tipo | Objetivo (o que o leitor deve entender) | Reaproveitar |
@@ -215,8 +215,8 @@ Em cada arquivo, o ponto fica marcado com um bloco:
 | 03 | Mapa de conceitos | Relações entre entidades | Como nó, cluster, tópico, mensagem, bloco e anel se ligam | novo |
 | 04 | Contêineres e portas | C4 nível 1 | As 3 portas do nó e quem fala com quem | `c4-nivel1-conteineres` |
 | 04 | Camadas do nó | Arquitetura em camadas | Dependência entre módulos (`core` → `storage` → `engine` → `cluster` → `http`) | novo |
-| 06 | Anel e papéis | Desenho por script (anel) | Como posições mapeiam para blocos e P/S/T | `anel-hash.svg` |
-| 06 | Tópico espalhado | Matriz mensagem × nó | Redundância: quem guarda o quê | `topico-espalhado.svg` |
+| 06 | Anel e papéis | Desenho por script (anel) | Como posições mapeiam para blocos e P/S/T | `ring-hash.svg` |
+| 06 | Tópico espalhado | Matriz mensagem × nó | Redundância: quem guarda o quê | `spread-topic.svg` |
 | 06 | Anel muda (nó entra/sai) | Antes/depois do anel | Quais blocos migram e por quê | novo |
 | 07 | Entrada de nó | Sequência | Passos do `join` até o nó estar ativo | `ingresso-no` |
 | 07 | Remoção de nó | Sequência | Detecção, votação e exclusão | `remocao-no` |
@@ -227,7 +227,7 @@ Em cada arquivo, o ponto fica marcado com um bloco:
 | 09 | Escolha do tipo de tópico | Árvore de decisão | Qual tipo usar para cada necessidade | novo |
 | 09 | Distribuidor | Sequência | Publicação em DT e fan-out | `distribuidor-publicacao` |
 | 09 | Fila volátil | Sequência (3) | Criação automática, exclusão, troca de gestor | `fila-volatil-*` |
-| 09 | Grupos FIFO no anel | Matriz grupo × nó | Onde cada grupo mora | `fifo-grupos.svg` |
+| 09 | Grupos FIFO no anel | Matriz grupo × nó | Onde cada grupo mora | `fifo-groups.svg` |
 | 10 | Caminho da escrita | Arquitetura (fluxo) | Receber, encaminhar, registrar, commitar | `arquitetura-escrita`, `recepcao` |
 | 10 | Publicação FIFO | Sequência | Como o primário do grupo coordena | `fifo-publicacao` |
 | 11 | Garantias por cenário | Tabela visual (cenários × resultado) | O que sobrevive a cada falha | novo |
@@ -243,7 +243,7 @@ Em cada arquivo, o ponto fica marcado com um bloco:
 | 27 | Pipeline de CI/CD | Fluxo (workflows) | Do PR ao release | novo |
 | 29 | Mapa mental geral e por área | Mapa mental | Visão de tudo e de cada área | `mapa-mental*` |
 
-As regras de geração (JSON fonte → SVG, Archify) do `AGENTS.md` continuam valendo quando chegar a vez dos diagramas; a nova doc usará a mesma pasta `doc/diagramas/` para não duplicar.
+As regras de geração (JSON fonte → SVG, Archify) do `AGENTS.md` continuam valendo quando chegar a vez dos diagramas; a nova doc usará a mesma pasta `doc/diagrams/` para não duplicar.
 
 ## 7. Como escrever (método e fases)
 
@@ -300,7 +300,7 @@ Ou seja, E e F não são extras soltos: a sua lista já tinha quase tudo de F; E
 | 6 | 28 a 32 | ✅ (30 e 31 e os catálogos 26a/26b são gerados por script) |
 | 7 | Verificação automática | ✅ `node doc/pt-BR/scripts/verificar.mjs`: links, metadados, 105 chaves de configuração, 50 códigos de erro, 43 rotas, 84 métricas, 896 códigos `UC-`, 31 diagramas planejados |
 | 8 | Raiz em en-US | ✅ `README.md` e `AGENTS.md` traduzidos; `doc/README.md` lista os idiomas |
-| 9 | Diagramas | ✅ Os 31 pontos resolvidos: 15 diagramas novos em `doc/diagramas/fonte/`, os demais reaproveitados (os de escrita e de mapa mental tiveram textos corrigidos contra o código), a tela da TUI em texto e a tabela de durabilidade em Markdown. Índice em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas) |
+| 9 | Diagramas | ✅ Os 31 pontos resolvidos: 15 diagramas novos em `doc/diagrams/source/`, os demais reaproveitados (os de escrita e de mapa mental tiveram textos corrigidos contra o código), a tela da TUI em texto e a tabela de durabilidade em Markdown. Índice em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas) |
 
 **Como foi escrito:** cada documento partiu do **código** (módulos, `//!`, catálogos, tabelas) e usou a doc histórica só para o "porquê". Os exemplos de API, CLI, cluster, segurança e operação foram **executados** contra um nó em modo desenvolvimento e contra um cluster de três nós subido por `docker compose`. As divergências entre a doc histórica e o código estão em [_divergencias.md](_divergencias.md) (25) e as descobertas, em [31-pendencias.md](31-pendencias.md).
 

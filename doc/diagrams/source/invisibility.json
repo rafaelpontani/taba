@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "A message's invisibility cycle",
+    "output": "doc/diagrams/html/invisibility.html",
+    "viewBox": [
+      1080,
+      584
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Consumer",
+      "sublabel": "GET and ack"
+    },
+    {
+      "id": "owner",
+      "type": "backend",
+      "label": "Owner node",
+      "sublabel": "block primary"
+    },
+    {
+      "id": "replicas",
+      "type": "cloud",
+      "label": "Replicas",
+      "sublabel": "in the quorum and outside it"
+    },
+    {
+      "id": "ready",
+      "type": "messagebus",
+      "label": "Ready list",
+      "sublabel": "owner memory"
+    },
+    {
+      "id": "disk",
+      "type": "database",
+      "label": "Expiration table",
+      "sublabel": "local SQLite, overflow"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 326,
+      "label": "Delivery and propagation"
+    },
+    {
+      "from": 334,
+      "to": 362,
+      "label": "Overflow on disk"
+    },
+    {
+      "from": 370,
+      "to": 454,
+      "label": "Expiration"
+    }
+  ],
+  "messages": [
+    {
+      "id": "get",
+      "from": "client",
+      "to": "owner",
+      "y": 172,
+      "label": "GET (visibilityTimeout)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reg",
+      "from": "owner",
+      "to": "replicas",
+      "y": 200,
+      "label": "register: invisibleUntil, token, delivery + 1"
+    },
+    {
+      "id": "reg-ok",
+      "from": "replicas",
+      "to": "owner",
+      "y": 228,
+      "label": "quorum confirms",
+      "variant": "return"
+    },
+    {
+      "id": "commit",
+      "from": "owner",
+      "to": "replicas",
+      "y": 256,
+      "label": "commit (quorum)",
+      "variant": "emphasis",
+      "note": "owner keeps ID and deadline in the invisible list"
+    },
+    {
+      "id": "removes",
+      "from": "owner",
+      "to": "ready",
+      "y": 284,
+      "label": "removes the ID",
+      "variant": "dashed"
+    },
+    {
+      "id": "msg",
+      "from": "owner",
+      "to": "client",
+      "y": 312,
+      "label": "message delivered",
+      "variant": "return"
+    },
+    {
+      "id": "full",
+      "from": "owner",
+      "to": "disk",
+      "y": 348,
+      "label": "list full: writes the one with the farthest deadline",
+      "variant": "security"
+    },
+    {
+      "id": "refills",
+      "from": "owner",
+      "to": "ready",
+      "y": 384,
+      "label": "deadline expires without ack: ID goes back to the list",
+      "variant": "emphasis",
+      "note": "no traffic between nodes"
+    },
+    {
+      "id": "window",
+      "from": "owner",
+      "to": "disk",
+      "y": 412,
+      "label": "list empties: reads the next to expire",
+      "variant": "dashed"
+    },
+    {
+      "id": "window-ok",
+      "from": "disk",
+      "to": "owner",
+      "y": 440,
+      "label": "IDs and deadlines",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ack or PUT visibility",
+      "items": [
+        "Register + commit on the quorum, require the receiptToken",
+        "PUT sets the new deadline from now; 0 releases"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Expiration does not propagate",
+      "items": [
+        "A deadline in the past in the metadata already means visible",
+        "The next delivery records the new deadline"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "The table is derived",
+      "items": [
+        "The source of truth is the metadata",
+        "Ack, PUT and delivery update the row at once"
+      ]
+    }
+  ]
+}

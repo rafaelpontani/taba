@@ -21,7 +21,7 @@ O Taba separa os públicos **por porta** (não só por caminho), para a rede (fi
 | **Cluster** (`cluster.port`, 8081) | **Só os outros nós** | **TLS mútuo** com o certificado do cluster. Nunca publicar fora da rede dos nós |
 | **Operação** (`operations.port`) | Operador, Prometheus, balanceador | **Sem autenticação**: proteção só de rede (porta própria + `operations.allowed-ips`) |
 
-![Zonas de confiança das três portas](../diagramas/img/pt-BR/zonas-seguranca.svg)
+![Zonas de confiança das três portas](../diagrams/img/pt-BR/security-zones.svg)
 
 As três portas precisam ser **diferentes entre si**; valor repetido ou porta ocupada impede o nó de subir. A porta de cliente responde `404` a `/cluster/*`; a do cluster responde `404` a tudo que não seja `/cluster/*`.
 

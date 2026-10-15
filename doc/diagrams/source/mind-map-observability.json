@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mind map: 8. API and observability",
+    "output": "doc/diagrams/html/mind-map-observability.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "obs-d0-0",
+      "type": "security",
+      "label": "Key pagination",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        70
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d0-0x",
+      "type": "database",
+      "label": "limit, cursor and sort",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        70
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-d0-1",
+      "type": "security",
+      "label": "Maximum message",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        136
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d0-1x",
+      "type": "database",
+      "label": "5 MB; hard limit",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        136
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-d0-2",
+      "type": "security",
+      "label": "Rate limit per token or IP",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        202
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d0-2x",
+      "type": "database",
+      "label": "load balancer header",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        202
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-t0",
+      "type": "cloud",
+      "label": "Client API",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        136
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "obs-d1-0",
+      "type": "security",
+      "label": "One target per node",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        268
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d1-0x",
+      "type": "database",
+      "label": "total computed in PromQL",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        268
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-d1-1",
+      "type": "security",
+      "label": "Standard OTLP",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        334
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d1-1x",
+      "type": "database",
+      "label": "OTEL_* variables",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        334
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-d1-2",
+      "type": "security",
+      "label": "Synchronization streams",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        400
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d1-2x",
+      "type": "database",
+      "label": "taba.sync.streams",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        400
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-t1",
+      "type": "cloud",
+      "label": "Metrics",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        334
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "obs-d2-0",
+      "type": "security",
+      "label": "Routes exempt from the limit",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        466
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d2-0x",
+      "type": "database",
+      "label": "health, metrics, health/cluster?scope=node",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        466
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-d2-1",
+      "type": "security",
+      "label": "Authorized IPs",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        532
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "obs-d2-1x",
+      "type": "database",
+      "label": "trusted proxies; secure network",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        532
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "obs-t2",
+      "type": "cloud",
+      "label": "Operation",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        499
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "backend",
+      "label": "API and observability",
+      "sublabel": "area",
+      "pos": [
+        20,
+        318
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c4-obs-d0-0",
+      "from": "obs-d0-0",
+      "to": "obs-d0-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d0-1",
+      "from": "obs-d0-1",
+      "to": "obs-d0-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d0-2",
+      "from": "obs-d0-2",
+      "to": "obs-d0-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t0-0",
+      "from": "obs-t0",
+      "to": "obs-d0-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t0-1",
+      "from": "obs-t0",
+      "to": "obs-d0-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t0-2",
+      "from": "obs-t0",
+      "to": "obs-d0-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d1-0",
+      "from": "obs-d1-0",
+      "to": "obs-d1-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d1-1",
+      "from": "obs-d1-1",
+      "to": "obs-d1-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d1-2",
+      "from": "obs-d1-2",
+      "to": "obs-d1-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t1-0",
+      "from": "obs-t1",
+      "to": "obs-d1-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t1-1",
+      "from": "obs-t1",
+      "to": "obs-d1-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t1-2",
+      "from": "obs-t1",
+      "to": "obs-d1-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d2-0",
+      "from": "obs-d2-0",
+      "to": "obs-d2-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-obs-d2-1",
+      "from": "obs-d2-1",
+      "to": "obs-d2-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t2-0",
+      "from": "obs-t2",
+      "to": "obs-d2-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-obs-t2-1",
+      "from": "obs-t2",
+      "to": "obs-d2-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-obs-t0",
+      "from": "obs",
+      "to": "obs-t0",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-obs-t1",
+      "from": "obs",
+      "to": "obs-t1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-obs-t2",
+      "from": "obs",
+      "to": "obs-t2",
+      "variant": "emphasis"
+    }
+  ]
+}

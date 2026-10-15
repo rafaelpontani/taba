@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Publishing to a FIFO queue",
+    "output": "doc/diagrams/html/fifo-publishing.html",
+    "viewBox": [
+      1080,
+      556
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "prod",
+      "type": "external",
+      "label": "Producer",
+      "sublabel": "client"
+    },
+    {
+      "id": "recv",
+      "type": "backend",
+      "label": "Receiving node",
+      "sublabel": "any node"
+    },
+    {
+      "id": "prim",
+      "type": "security",
+      "label": "Group primary",
+      "sublabel": "coordinates and orders"
+    },
+    {
+      "id": "reps",
+      "type": "cloud",
+      "label": "Secondary and replicas",
+      "sublabel": "same block as the group"
+    }
+  ],
+  "segments": [
+    {
+      "from": 158,
+      "to": 214,
+      "label": "Forwarding"
+    },
+    {
+      "from": 222,
+      "to": 334,
+      "label": "Primary coordinates"
+    },
+    {
+      "from": 342,
+      "to": 426,
+      "label": "Answer"
+    }
+  ],
+  "messages": [
+    {
+      "id": "pub",
+      "from": "prod",
+      "to": "recv",
+      "y": 172,
+      "label": "POST with groupId",
+      "variant": "security",
+      "note": "hash(topic id + groupId)"
+    },
+    {
+      "id": "fwd",
+      "from": "recv",
+      "to": "prim",
+      "y": 200,
+      "label": "forwards to the group's primary",
+      "note": "421 if not the owner"
+    },
+    {
+      "id": "reg",
+      "from": "prim",
+      "to": "reps",
+      "y": 236,
+      "label": "register (monotonic ID, deduplicationId)"
+    },
+    {
+      "id": "ok",
+      "from": "reps",
+      "to": "prim",
+      "y": 264,
+      "label": "quorum: primary + secondary",
+      "variant": "return"
+    },
+    {
+      "id": "commit",
+      "from": "prim",
+      "to": "reps",
+      "y": 292,
+      "label": "commit by quorum",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bg",
+      "from": "prim",
+      "to": "reps",
+      "y": 320,
+      "label": "other replicas in the background",
+      "variant": "dashed"
+    },
+    {
+      "id": "r1",
+      "from": "prim",
+      "to": "recv",
+      "y": 356,
+      "label": "201 with the ID",
+      "variant": "return"
+    },
+    {
+      "id": "r2",
+      "from": "recv",
+      "to": "prod",
+      "y": 384,
+      "label": "201 with the message ID",
+      "variant": "return"
+    },
+    {
+      "id": "dup",
+      "from": "prim",
+      "to": "recv",
+      "y": 412,
+      "label": "duplicate: 200, ID of the original",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Placement",
+      "items": [
+        "Position on the ring: topic id + groupId",
+        "One group, one block, one primary",
+        "The primary generates the ID: max(now, last + 1)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Quorum",
+      "items": [
+        "Always the primary and the secondary",
+        "The secondary is the block's heir",
+        "replication.factor minimum of 2"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failures",
+      "items": [
+        "Primary syncing or down: 503",
+        "Forwarding and client may repeat: the primary deduplicates",
+        "Old table on the forward: 421 and retry"
+      ]
+    }
+  ]
+}

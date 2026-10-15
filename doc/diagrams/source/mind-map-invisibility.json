@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mind map: 3. Invisibility",
+    "output": "doc/diagrams/html/mind-map-invisibility.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "invisibility-d0-0",
+      "type": "security",
+      "label": "absolute invisibleUntil",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        70
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d0-0x",
+      "type": "database",
+      "label": "calculated by the owner",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        70
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d0-1",
+      "type": "security",
+      "label": "PUT /visibility",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        136
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d0-1x",
+      "type": "database",
+      "label": "new time from now; 0 releases",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        136
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-t0",
+      "type": "cloud",
+      "label": "Deadline",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        103
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d1-0",
+      "type": "security",
+      "label": "Generated on each delivery",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        202
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d1-0x",
+      "type": "database",
+      "label": "stored with the invisibility",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        202
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d1-1",
+      "type": "security",
+      "label": "Required on the ack and the PUT",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        268
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d1-1x",
+      "type": "database",
+      "label": "old token gets 409",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        268
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-t1",
+      "type": "cloud",
+      "label": "ReceiptToken",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        235
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d2-0",
+      "type": "security",
+      "label": "Invisible list",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        334
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d2-0x",
+      "type": "database",
+      "label": "all of them, derived from invisible_until",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        334
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d2-1",
+      "type": "security",
+      "label": "No expiry table",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        400
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d2-1x",
+      "type": "database",
+      "label": "the source is the metadata",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        400
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d2-2",
+      "type": "security",
+      "label": "Expiry does not propagate",
+      "sublabel": "decision",
+      "pos": [
+        450,
+        466
+      ],
+      "size": [
+        260,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-d2-2x",
+      "type": "database",
+      "label": "owner puts it back on the ready list",
+      "sublabel": "detail",
+      "pos": [
+        745,
+        466
+      ],
+      "size": [
+        295,
+        52
+      ]
+    },
+    {
+      "id": "invisibility-t2",
+      "type": "cloud",
+      "label": "Expiration",
+      "sublabel": "theme",
+      "pos": [
+        225,
+        400
+      ],
+      "size": [
+        190,
+        52
+      ]
+    },
+    {
+      "id": "invisibility",
+      "type": "backend",
+      "label": "Invisibility",
+      "sublabel": "area",
+      "pos": [
+        20,
+        252
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c4-invisibility-d0-0",
+      "from": "invisibility-d0-0",
+      "to": "invisibility-d0-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-invisibility-d0-1",
+      "from": "invisibility-d0-1",
+      "to": "invisibility-d0-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t0-0",
+      "from": "invisibility-t0",
+      "to": "invisibility-d0-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t0-1",
+      "from": "invisibility-t0",
+      "to": "invisibility-d0-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-invisibility-d1-0",
+      "from": "invisibility-d1-0",
+      "to": "invisibility-d1-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-invisibility-d1-1",
+      "from": "invisibility-d1-1",
+      "to": "invisibility-d1-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t1-0",
+      "from": "invisibility-t1",
+      "to": "invisibility-d1-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t1-1",
+      "from": "invisibility-t1",
+      "to": "invisibility-d1-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-invisibility-d2-0",
+      "from": "invisibility-d2-0",
+      "to": "invisibility-d2-0x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-invisibility-d2-1",
+      "from": "invisibility-d2-1",
+      "to": "invisibility-d2-1x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c4-invisibility-d2-2",
+      "from": "invisibility-d2-2",
+      "to": "invisibility-d2-2x",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t2-0",
+      "from": "invisibility-t2",
+      "to": "invisibility-d2-0",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t2-1",
+      "from": "invisibility-t2",
+      "to": "invisibility-d2-1",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3-invisibility-t2-2",
+      "from": "invisibility-t2",
+      "to": "invisibility-d2-2",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2-invisibility-t0",
+      "from": "invisibility",
+      "to": "invisibility-t0",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-invisibility-t1",
+      "from": "invisibility",
+      "to": "invisibility-t1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2-invisibility-t2",
+      "from": "invisibility",
+      "to": "invisibility-t2",
+      "variant": "emphasis"
+    }
+  ]
+}

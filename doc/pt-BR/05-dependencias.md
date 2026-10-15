@@ -74,7 +74,7 @@ O Taba **não precisa** de banco de dados externo, broker, coordenador (ZooKeepe
 |---|---|
 | **Rust** (estável; `rustup`) | Compilar o servidor e o conector Rust. No Windows com Git Bash, o `link.exe` do coreutils esconde o do MSVC: use `cargo +stable-x86_64-pc-windows-gnu` se o link falhar |
 | **.NET SDK 8 ou 10** | Compilar e testar o conector C# |
-| **Node.js 22+** | Os scripts de diagramas (`doc/diagramas/scripts`) |
+| **Node.js 22+** | Os scripts de diagramas (`doc/diagrams/scripts`) |
 | **Chrome ou Edge** (variável `ARCHIFY_CHROME`) | Exportar os SVG e o GIF do herói do README |
 | **Archify** (`~/.claude/skills/archify`, variável `ARCHIFY_BIN`) | Gerar os diagramas a partir do JSON |
 | **ffmpeg** (variável `FFMPEG`) | O GIF do herói |

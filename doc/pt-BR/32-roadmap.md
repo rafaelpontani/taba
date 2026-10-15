@@ -92,9 +92,9 @@ As pendências "sem bloqueio" de [31-pendencias.md](31-pendencias.md) são, em s
 | **Idioma da raiz** ✅ | `README.md` e `AGENTS.md` em **en-US**, apontando para `doc/README.md` (que lista a documentação de cada idioma) |
 | **`uc_coverage` lendo os catálogos novos** ⬜ | Hoje lê `doc/20a-c`; migrar para `doc/pt-BR/26a`/`26b` (mudança de código, fora da documentação) |
 | **Diagramas desta documentação** ✅ | Os 31 pontos estão desenhados (índice em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); a fonte é o JSON do Archify |
-| **Verificação automática** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` num job de PR ([27-ci-cd.md](27-ci-cd.md)) |
+| **Verificação automática** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` e `verificar-idiomas.mjs` num job de PR ([27-ci-cd.md](27-ci-cd.md)) |
 | **Job de integração no CI** ⬜ | `integration.sh` e `validate.sh` (hoje só à mão) |
-| **Traduções** ⬜ | Outras pastas de idioma ao lado de `doc/pt-BR/` |
+| **Traduções** 🟡 | ✅ `doc/en-US/` espelha `doc/pt-BR/`. ⬜ Outras pastas de idioma ao lado delas; toda mudança vale para todas ([24-convencoes.md](24-convencoes.md#documentação-em-vários-idiomas)) |
 
 ## Fora do escopo (por enquanto)
 

@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How the concepts connect",
+    "output": "doc/diagrams/html/entities.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "cluster",
+      "type": "backend",
+      "label": "Cluster",
+      "sublabel": "member table",
+      "pos": [
+        30,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "node",
+      "type": "backend",
+      "label": "Node",
+      "sublabel": "a taba process",
+      "pos": [
+        320,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "ring",
+      "type": "messagebus",
+      "label": "Ring",
+      "sublabel": "128 positions per node",
+      "pos": [
+        610,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "block",
+      "type": "messagebus",
+      "label": "Block",
+      "sublabel": "ring arc",
+      "pos": [
+        610,
+        210
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "role",
+      "type": "security",
+      "label": "Responsible",
+      "sublabel": "primary, secondary, tertiary",
+      "pos": [
+        880,
+        210
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "topic",
+      "type": "frontend",
+      "label": "Topic",
+      "sublabel": "queue or distributor",
+      "pos": [
+        30,
+        360
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "msg",
+      "type": "database",
+      "label": "Message",
+      "sublabel": "GUID v7 ID",
+      "pos": [
+        320,
+        360
+      ],
+      "size": [
+        170,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "r1",
+      "from": "cluster",
+      "to": "node",
+      "label": "has N nodes"
+    },
+    {
+      "id": "r2",
+      "from": "node",
+      "to": "ring",
+      "label": "occupies positions"
+    },
+    {
+      "id": "r3",
+      "from": "ring",
+      "to": "block",
+      "label": "divides into"
+    },
+    {
+      "id": "r4",
+      "from": "block",
+      "to": "role",
+      "label": "has R"
+    },
+    {
+      "id": "r5",
+      "from": "msg",
+      "to": "block",
+      "label": "falls in one",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "r6",
+      "from": "topic",
+      "to": "msg",
+      "label": "keeps"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Cardinalities",
+      "items": [
+        "R = replication.factor (default 3)",
+        "The P/S/T role comes from the block's position on the ring"
+      ]
+    }
+  ]
+}
