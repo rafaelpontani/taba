@@ -3,7 +3,7 @@ título: Erros e limites
 resumo: O catálogo completo de códigos de erro (cada um com o status HTTP fixo), os limites fixos de validação, os limites configuráveis e os rate limits.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/validation/mod.rs, crates/taba-node/src/http/ratelimit, crates/taba-node/src/config/params/mod.rs]
 ---
 
@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/valid
 
 ## Regra do catálogo
 
-Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status HTTP fixo**: o mesmo código sempre vem com o mesmo status. O catálogo tem **50 códigos**. Código novo exige a linha neste documento **e** o caso na tabela de teste (regra de [24-convencoes.md](24-convencoes.md)). Os códigos são estáveis; a `message` **não** (não a use em lógica).
+Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status HTTP fixo**: o mesmo código sempre vem com o mesmo status. O catálogo tem **53 códigos**. Código novo exige a linha neste documento **e** o caso na tabela de teste (regra de [24-convencoes.md](24-convencoes.md)). Os códigos são estáveis; a `message` **não** (não a use em lógica).
 
 ## Validação — `400`
 
@@ -38,7 +38,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | Código | Status | Quando |
 |---|---|---|
 | `auth.unauthorized` | 401 | Sem token, mal formado, desconhecido, revogado ou vencido. **A resposta não diz qual** |
-| `auth.forbidden` | 403 | Token válido sem a permissão da rota (inclui `/tokens`, só do raiz) |
+| `auth.forbidden` | 403 | Token válido sem a permissão da rota (inclui `/tokens`, o cluster e os nós: só o raiz). O corpo traz **`required`**: `root`, ou o nome da permissão que faltou (`admin`, `publish`…), para o cliente poder dizer o que o token precisa |
 | `auth.out-of-scope` | 403 | O tópico (ou um `prefix` de distribuidor) está fora dos prefixos do token |
 | `ops.ip-not-allowed` | 403 | Rota de operação chamada de um IP fora de `operations.allowed-ips` |
 | `cluster.not-member` | 403 | Rota do cluster chamada por quem não consta na tabela de membros |
@@ -51,6 +51,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `topic.not-found` | O tópico não existe (e não há `autoCreate`) |
 | `message.not-found` | A mensagem não existe: já confirmada, vencida por `ttl` ou removida com o tópico. **Um segundo ack** dá este erro |
 | `token.not-found` | O token não existe ou já foi revogado |
+| `node.not-found` | `/nodes/{nodeId}/…` com um `nodeId` que não está no cluster (nem entre os nós que saíram por drain) |
 | `route.not-found` | Caminho que não existe naquela porta (`/cluster/*` na porta de cliente; `/tokens` com autenticação desligada) |
 | `cluster.operation-unknown` | Entre nós: `commit`/`rollback` de uma operação que o nó não conhece (expirou) |
 
@@ -89,6 +90,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `forward.timeout` | 504 | O repasse estourou o tempo depois de enviado o corpo |
 | `cluster.quorum-unavailable` | 503 | Sem nós suficientes para fechar o quórum de escrita, entrega ou ack |
 | `cluster.registration-failed` | 503 | Um registro (tópico, token, nó) não foi confirmado por todos e foi cancelado. **Nada foi aplicado** |
+| `cluster.prune-incomplete` | 503 | O prune de uma fila falhou em alguns nós (nomeados na mensagem e em `details`). A fila pode estar vazia nos outros; repetir a chamada é seguro |
 | `cluster.commit-timeout` | 503 | O registro foi confirmado, mas o commit não chegou a todos em `write.commit.timeout`. **A operação continua em segundo plano e vai se completar** |
 | `cluster.node-syncing` | 503 | O nó está sincronizando e não achou outro para repassar |
 | `cluster.node-draining` | 503 | O nó está em drain e não achou outro para repassar (em desenvolvimento, sempre) |

@@ -51,7 +51,10 @@ pub fn executor(router: Router) -> ForwardExecutor {
     })
 }
 
-async fn run(router: Router, forward: ForwardRequest) -> Result<ForwardResponse, TabaError> {
+pub(super) async fn run(
+    router: Router,
+    forward: ForwardRequest,
+) -> Result<ForwardResponse, TabaError> {
     let mut builder = HttpRequest::builder()
         .method(forward.method.as_str())
         .uri(forward.path_and_query.as_str());
@@ -135,23 +138,25 @@ pub async fn forward_call(state: &AppState, request: Request) -> Response {
         client_ip,
     };
     match forwarder.forward(forward).await {
-        Ok(reply) => {
-            let mut response = Response::new(Body::from(reply.body));
-            *response.status_mut() =
-                StatusCode::from_u16(reply.status).unwrap_or(StatusCode::BAD_GATEWAY);
-            for (name, value) in reply.headers {
-                if let (Ok(name), Ok(value)) = (
-                    HeaderName::from_bytes(name.as_bytes()),
-                    HeaderValue::from_str(&value),
-                ) && name != header::CONTENT_LENGTH
-                {
-                    response.headers_mut().append(name, value);
-                }
-            }
-            response
-        }
+        Ok(reply) => response_of(reply),
         Err(error) => ApiError(error).into_response(),
     }
+}
+
+/// The response another node gave to a call this node sent it, as it came.
+pub(super) fn response_of(reply: ForwardResponse) -> Response {
+    let mut response = Response::new(Body::from(reply.body));
+    *response.status_mut() = StatusCode::from_u16(reply.status).unwrap_or(StatusCode::BAD_GATEWAY);
+    for (name, value) in reply.headers {
+        if let (Ok(name), Ok(value)) = (
+            HeaderName::from_bytes(name.as_bytes()),
+            HeaderValue::from_str(&value),
+        ) && name != header::CONTENT_LENGTH
+        {
+            response.headers_mut().append(name, value);
+        }
+    }
+    response
 }
 
 fn no_cluster() -> TabaError {

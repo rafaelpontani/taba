@@ -238,10 +238,17 @@ pub struct ClusterService {
     old_disk_peers: StdMutex<Vec<Member>>,
     /// Who builds this node's `NodeStatus` (the operations layer; `GET /cluster/status`).
     status_source: OnceLock<StatusSource>,
+    /// Who runs a call of the operations API against this node (`Request::NodeCall`).
+    node_calls: OnceLock<crate::cluster::replication::ForwardExecutor>,
+    /// Who reads what this node sees of its topics (`Request::TopicStats`, `Request::TopicGroups`).
+    reads: OnceLock<ReadSource>,
     /// The optional S3 backup (doc 23): its service, by weak reference (the service keeps the
     /// cluster, and the cluster cannot hold it back).
     backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
 }
+
+/// Answers a read of what this node sees (`Request::TopicStats`, `Request::TopicGroups`), as JSON.
+pub type ReadSource = Arc<dyn Fn(&Request) -> Result<serde_json::Value, TabaError> + Send + Sync>;
 
 /// Returns this node's `NodeStatus` (doc 06b), as JSON.
 pub type StatusSource = Arc<dyn Fn() -> serde_json::Value + Send + Sync>;
@@ -345,6 +352,8 @@ impl ClusterService {
             boot_recovered: AtomicBool::new(false),
             old_disk_peers: StdMutex::new(Vec::new()),
             status_source: OnceLock::new(),
+            node_calls: OnceLock::new(),
+            reads: OnceLock::new(),
             backup: OnceLock::new(),
         })
     }
@@ -357,6 +366,16 @@ impl ClusterService {
     /// The S3 backup, if the node has it.
     pub fn backup(&self) -> Option<Arc<dyn BackupPort>> {
         self.backup.get().and_then(std::sync::Weak::upgrade)
+    }
+
+    /// Attaches whoever runs the operations API calls other nodes send (`/nodes/{nodeId}/...`).
+    pub fn set_node_calls(&self, executor: crate::cluster::replication::ForwardExecutor) {
+        let _ = self.node_calls.set(executor);
+    }
+
+    /// Attaches whoever reads the node's topic statistics for the other nodes.
+    pub fn set_read_source(&self, source: ReadSource) {
+        let _ = self.reads.set(source);
     }
 
     /// Attaches whoever builds the `NodeStatus`, so `GET /cluster/status` can answer.
@@ -723,6 +742,24 @@ impl ClusterService {
                     .get()
                     .ok_or_else(TabaError::route_not_found)?;
                 Ok(Response::Status(source()))
+            }
+            read @ (Request::TopicStats | Request::TopicGroups { .. }) => {
+                self.require_member(caller)?;
+                let source = self.reads.get().ok_or_else(TabaError::route_not_found)?;
+                source(&read).map(Response::Json)
+            }
+            Request::BackupStatus => {
+                self.require_member(caller)?;
+                let port = self.backup().ok_or_else(not_configured)?;
+                Ok(Response::Backup(port.backup().status().to_json()))
+            }
+            Request::NodeCall(call) => {
+                self.require_member(caller)?;
+                let executor = self
+                    .node_calls
+                    .get()
+                    .ok_or_else(TabaError::route_not_found)?;
+                executor(call).await.map(Response::Forwarded)
             }
             Request::BackupFlush => {
                 self.require_member(caller)?;

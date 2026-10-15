@@ -3,7 +3,7 @@ title: Architecture
 summary: How a Taba node is built inside — layers, direction of dependencies, the three ports, the test boundaries and the module map.
 type: explanation
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-15 @ 56121c9
 sources: [crates/taba-node/src/lib.rs, crates/taba-node/src/node.rs, crates/taba-node/src/main.rs, crates/taba-node/src/http/mod.rs, crates/taba-node/src/cluster/transport/mod.rs]
 ---
 
@@ -109,7 +109,7 @@ crates/taba-node/src/
                      channel drain health members protocol recovery replication
                      service state sync tls transport (http, memory) vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
-                     operations ratelimit tokens topic_stats topics
+                     nodes operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 

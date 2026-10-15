@@ -2,21 +2,30 @@
 //! `GET /metrics/topics/{topic}` (one topic, with the largest groups) and
 //! `GET /metrics/topics/{topic}/groups` (one group per line).
 //!
-//! A single node: `scope=cluster` and `scope=node` return the same, and the result is never `partial`. The
-//! filter and the `limit` apply after measuring each topic, so `condition` finds the topics with a
-//! problem across the whole list. There is no cache (`stats.topics.cache-ttl` only serves the `fan-out`
-//! between nodes).
+//! **Operations API** (`/metrics/topics*`): the view of the node that answers; `scope=cluster` and
+//! `scope=node` return the same. **Client API** (`/stats/topics*`): by default the **cluster's**: the node that
+//! receives asks every member what it sees (`GET /cluster/stats/topics`, [`raw`]), joins the numbers and
+//! evaluates the conditions on the joined numbers; a node that does not answer in time makes the response
+//! `partial: true` with `missingNodes` ([`super::consolidate`]). `scope=node` is this node's view only.
+//!
+//! The filter and the `limit` apply after measuring each topic, so `condition` finds the topics with a
+//! problem across the whole list. There is no cache (`stats.topics.cache-ttl` has no effect).
+
+mod raw;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::AppState;
+use super::auth::Principal;
 use super::common::ApiError;
+use super::consolidate::{self, Missing};
+use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse};
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::pagination;
 use crate::core::time::format_ms;
@@ -24,12 +33,23 @@ use crate::engine::messages::stats::{
     self, Condition, DistributorCounters, GroupSnapshot, Percentiles, Severity, TopicSnapshot,
 };
 use crate::engine::topics::TopicView;
+use raw::{NodeStats, RawDistributor, RawGroup, RawKind, RawQueue, RawTopic};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/metrics/topics", get(list))
         .route("/metrics/topics/{topic}", get(detail))
         .route("/metrics/topics/{topic}/groups", get(groups))
+}
+
+/// The same measures in the client API (doc 34, D-TUI-9), for any valid token, **consolidated across the
+/// cluster**: the list only shows the topics within the token's prefixes (and `/stats/topics/{topic}...`
+/// answers `403 auth.out-of-scope` outside them, in the `authorize` layer).
+pub fn client_routes() -> Router<AppState> {
+    Router::new()
+        .route("/stats/topics", get(client_list))
+        .route("/stats/topics/{topic}", get(client_detail))
+        .route("/stats/topics/{topic}/groups", get(client_groups))
 }
 
 /// The `TopicStats` fields that `fields` accepts (the queue ones and the distributor one).
@@ -167,20 +187,221 @@ impl Stats {
     }
 }
 
-fn measure(state: &AppState, view: &TopicView, now: u64) -> Result<Stats, TabaError> {
-    let name = &view.definition.name;
-    if view.definition.queue().is_none() {
-        return Ok(Stats::Distributor(
-            state.messages.distributor_counters(name),
-        ));
+/// The numbers of every topic, joined across the nodes that answered, and the nodes that did not.
+struct Source {
+    memory_total: u64,
+    queues: HashMap<String, RawQueue>,
+    distributors: HashMap<String, RawDistributor>,
+    missing: Vec<Missing>,
+}
+
+impl Source {
+    fn of(nodes: Vec<NodeStats>, missing: Vec<Missing>) -> Self {
+        let mut source = Self {
+            memory_total: 0,
+            queues: HashMap::new(),
+            distributors: HashMap::new(),
+            missing,
+        };
+        for node in nodes {
+            source.memory_total += node.memory_total_bytes;
+            for topic in node.topics {
+                match topic.kind {
+                    RawKind::Queue(queue) => match source.queues.get_mut(&topic.name) {
+                        Some(joined) => joined.join(&queue),
+                        None => {
+                            source.queues.insert(topic.name, *queue);
+                        }
+                    },
+                    RawKind::Distributor(d) => match source.distributors.get_mut(&topic.name) {
+                        Some(joined) => joined.join(&d),
+                        None => {
+                            source.distributors.insert(topic.name, d);
+                        }
+                    },
+                }
+            }
+        }
+        source
     }
-    let snapshot = state.messages.topic_snapshot(name, &state.stats_rules)?;
-    let baseline = view.definition.created_ms.max(state.messages.started_ms());
-    let conditions = stats::evaluate(&snapshot, &state.stats_rules, now, baseline);
-    Ok(Stats::Queue {
-        snapshot: Box::new(snapshot),
-        conditions,
-    })
+
+    /// This node alone.
+    fn local(state: &AppState) -> Self {
+        Self::of(vec![local_stats(state)], Vec::new())
+    }
+
+    fn partial(&self) -> bool {
+        !self.missing.is_empty()
+    }
+
+    fn measure(&self, state: &AppState, view: &TopicView, now: u64) -> Result<Stats, TabaError> {
+        let name = &view.definition.name;
+        if view.definition.queue().is_none() {
+            let counters = self
+                .distributors
+                .get(name)
+                .copied()
+                .unwrap_or_default()
+                .counters();
+            return Ok(Stats::Distributor(counters));
+        }
+        let snapshot = self
+            .queues
+            .get(name)
+            .ok_or_else(TabaError::internal)?
+            .snapshot();
+        let baseline = view.definition.created_ms.max(state.messages.started_ms());
+        let conditions = stats::evaluate(&snapshot, &state.stats_rules, now, baseline);
+        Ok(Stats::Queue {
+            snapshot: Box::new(snapshot),
+            conditions,
+        })
+    }
+}
+
+/// What this node sees of every topic: the answer of `GET /cluster/stats/topics`.
+fn local_stats(state: &AppState) -> NodeStats {
+    let topics = state
+        .topics
+        .all_views()
+        .into_iter()
+        .filter_map(|view| {
+            let name = view.definition.name.clone();
+            let kind = if view.definition.queue().is_none() {
+                RawKind::Distributor(RawDistributor::of(
+                    state.messages.distributor_counters(&name),
+                ))
+            } else {
+                let snapshot = state
+                    .messages
+                    .topic_snapshot(&name, &state.stats_rules)
+                    .ok()?;
+                RawKind::Queue(Box::new(RawQueue::of(&snapshot)))
+            };
+            Some(RawTopic { name, kind })
+        })
+        .collect();
+    NodeStats {
+        node_id: state.node.node_id(),
+        memory_total_bytes: state.messages.observe_node().memory_bytes,
+        topics,
+    }
+}
+
+/// Answers the other nodes' reads of what this node sees (`Request::TopicStats`, `Request::TopicGroups`).
+pub fn answer_peer(state: &AppState, request: &PeerRequest) -> Result<Value, TabaError> {
+    match request {
+        PeerRequest::TopicStats => {
+            serde_json::to_value(local_stats(state)).map_err(|_| TabaError::internal())
+        }
+        PeerRequest::TopicGroups { topic } => {
+            state.messages.queue_view(topic)?;
+            let groups: Vec<RawGroup> = state
+                .messages
+                .group_snapshots(topic)?
+                .iter()
+                .map(RawGroup::of)
+                .collect();
+            serde_json::to_value(groups).map_err(|_| TabaError::internal())
+        }
+        _ => Err(TabaError::route_not_found()),
+    }
+}
+
+/// Asks every member what it sees of the topics and joins it. `node_only`: this node alone.
+async fn gather(state: &AppState, node_only: bool) -> Source {
+    let answers = if node_only {
+        None
+    } else {
+        consolidate::ask_all(state, &PeerRequest::TopicStats).await
+    };
+    let Some(answers) = answers else {
+        let state = state.clone();
+        let local = tokio::task::spawn_blocking(move || Source::local(&state)).await;
+        return local.unwrap_or_else(|_| Source::of(Vec::new(), Vec::new()));
+    };
+    let mut missing = consolidate::missing_of(&answers);
+    let mut nodes = Vec::new();
+    for (node_id, answer) in answers {
+        if let Ok(PeerResponse::Json(value)) = answer {
+            match serde_json::from_value::<NodeStats>(value) {
+                Ok(stats) => nodes.push(stats),
+                Err(_) => missing.push(Missing {
+                    node_id,
+                    reason: "error",
+                }),
+            }
+        } else if let Ok(_other) = answer {
+            missing.push(Missing {
+                node_id,
+                reason: "error",
+            });
+        }
+    }
+    Source::of(nodes, missing)
+}
+
+/// The groups of a queue, joined across the nodes (each group adds its messages). Also says who did not answer.
+async fn gather_groups(
+    state: &AppState,
+    topic: &str,
+    node_only: bool,
+) -> Result<(Vec<GroupSnapshot>, Vec<Missing>), TabaError> {
+    state.messages.queue_view(topic)?;
+    let answers = if node_only {
+        None
+    } else {
+        consolidate::ask_all(
+            state,
+            &PeerRequest::TopicGroups {
+                topic: topic.to_owned(),
+            },
+        )
+        .await
+    };
+    let Some(answers) = answers else {
+        let (state, topic) = (state.clone(), topic.to_owned());
+        let local = tokio::task::spawn_blocking(move || state.messages.group_snapshots(&topic))
+            .await
+            .map_err(|_| TabaError::internal())??;
+        return Ok((local, Vec::new()));
+    };
+    let mut missing = consolidate::missing_of(&answers);
+    let mut per_node = Vec::new();
+    for (node_id, answer) in answers {
+        match answer {
+            Ok(PeerResponse::Json(value)) => match serde_json::from_value::<Vec<RawGroup>>(value) {
+                Ok(groups) => per_node.push(groups.iter().map(RawGroup::snapshot).collect()),
+                Err(_) => missing.push(Missing {
+                    node_id,
+                    reason: "error",
+                }),
+            },
+            Ok(_) => missing.push(Missing {
+                node_id,
+                reason: "error",
+            }),
+            Err(_) => {}
+        }
+    }
+    Ok((raw::join_groups(per_node), missing))
+}
+
+/// The envelope of a consolidated read: `partial` and `missingNodes`.
+fn with_envelope(mut value: Value, missing: &[Missing]) -> Value {
+    if let Value::Object(map) = &mut value {
+        consolidate::put_envelope(map, missing);
+    }
+    value
+}
+
+fn joined_missing(mut a: Vec<Missing>, b: Vec<Missing>) -> Vec<Missing> {
+    for m in b {
+        if !a.iter().any(|x| x.node_id == m.node_id) {
+            a.push(m);
+        }
+    }
+    a
 }
 
 // ---- JSON ----
@@ -223,6 +444,7 @@ fn topic_json(
     memory_total: u64,
     now: u64,
     collected_at: &str,
+    partial: bool,
 ) -> Map<String, Value> {
     let mut out = identity(view);
     match stats {
@@ -265,7 +487,7 @@ fn topic_json(
     }
     out.insert("worstCondition".into(), json!(stats.worst()));
     out.insert("conditions".into(), conditions_json(stats.conditions()));
-    out.insert("partial".into(), json!(false));
+    out.insert("partial".into(), json!(partial));
     out.insert("collectedAt".into(), json!(collected_at));
     out
 }
@@ -426,7 +648,14 @@ impl Aggregate {
         self.conditions.extend_from_slice(conditions);
     }
 
-    fn json(self, tag: &str, value: &str, now: u64, collected_at: &str) -> Map<String, Value> {
+    fn json(
+        self,
+        tag: &str,
+        value: &str,
+        now: u64,
+        collected_at: &str,
+        partial: bool,
+    ) -> Map<String, Value> {
         let conditions = ordered(self.conditions);
         let mut out = Map::new();
         out.insert("tag".into(), json!(tag));
@@ -455,7 +684,7 @@ impl Aggregate {
             json!(conditions.first().map_or("ok", |c| c.as_str())),
         );
         out.insert("conditions".into(), conditions_json(&conditions));
-        out.insert("partial".into(), json!(false));
+        out.insert("partial".into(), json!(partial));
         out.insert("collectedAt".into(), json!(collected_at));
         out
     }
@@ -465,10 +694,39 @@ async fn list(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
-    Ok(Json(blocking(move || list_topics(&state, &params)).await?))
+    Ok(Json(
+        blocking(move || {
+            let source = Source::local(&state);
+            list_topics(&state, &params, &[], &source)
+        })
+        .await?,
+    ))
 }
 
-fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Value, TabaError> {
+async fn client_list(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let scope = principal.prefixes().to_vec();
+    let node_only = node_scope(&params)?;
+    let source = gather(&state, node_only).await;
+    Ok(Json(
+        blocking(move || {
+            let page = list_topics(&state, &params, &scope, &source)?;
+            Ok(with_envelope(page, &source.missing))
+        })
+        .await?,
+    ))
+}
+
+/// `scope`: the prefixes of the token that asked (empty: every topic).
+fn list_topics(
+    state: &AppState,
+    params: &HashMap<String, String>,
+    scope: &[String],
+    source: &Source,
+) -> Result<Value, TabaError> {
     check_params(
         params,
         &["limit", "cursor", "scope", "condition", "fields", "groupBy"],
@@ -521,11 +779,13 @@ fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Val
 
     let now = state.clock.now_millis();
     let collected_at = format_ms(now);
-    let memory_total = state.messages.observe_node().memory_bytes;
+    let memory_total = source.memory_total;
+    let partial = source.partial();
     let views = state.topics.all_views().into_iter().filter(|view| {
-        tag_filters
-            .iter()
-            .all(|(k, v)| view.definition.tags.get(*k).is_some_and(|t| t == v))
+        crate::core::token::reaches(scope, &view.definition.name)
+            && tag_filters
+                .iter()
+                .all(|(k, v)| view.definition.tags.get(*k).is_some_and(|t| t == v))
     });
 
     if let Some(tag) = group_by {
@@ -534,7 +794,7 @@ fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Val
             let Some(value) = view.definition.tags.get(tag) else {
                 continue;
             };
-            let Ok(stats) = measure(state, &view, now) else {
+            let Ok(stats) = source.measure(state, &view, now) else {
                 continue;
             };
             if let (
@@ -570,7 +830,7 @@ fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Val
             .into_iter()
             .map(|(value, aggregate)| {
                 project(
-                    aggregate.json(tag, &value, now, &collected_at),
+                    aggregate.json(tag, &value, now, &collected_at, partial),
                     fields.as_ref(),
                     &["tag", "value", "topics"],
                 )
@@ -587,7 +847,7 @@ fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Val
         if items.len() > limit {
             break;
         }
-        let Ok(stats) = measure(state, &view, now) else {
+        let Ok(stats) = source.measure(state, &view, now) else {
             continue;
         };
         if stats.matches(condition) {
@@ -609,7 +869,7 @@ fn list_topics(state: &AppState, params: &HashMap<String, String>) -> Result<Val
         .iter()
         .map(|(view, stats)| {
             project(
-                topic_json(view, stats, memory_total, now, &collected_at),
+                topic_json(view, stats, memory_total, now, &collected_at, partial),
                 fields.as_ref(),
                 &["id", "name"],
             )
@@ -626,7 +886,43 @@ async fn detail(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(
-        blocking(move || topic_detail(&state, &topic, &params)).await?,
+        blocking(move || {
+            let source = Source::local(&state);
+            let groups = match state.topics.get(&topic)?.definition.queue() {
+                Some(_) => state.messages.group_snapshots(&topic)?,
+                None => Vec::new(),
+            };
+            topic_detail(&state, &topic, &params, &source, groups)
+        })
+        .await?,
+    ))
+}
+
+async fn client_detail(
+    State(state): State<AppState>,
+    Path(topic): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    check_params(&params, &["scope"], false)?;
+    let node_only = node_scope(&params)?;
+    state.topics.get(&topic)?;
+    let is_queue = state.topics.get(&topic)?.definition.queue().is_some();
+    let (source, grouped) = tokio::join!(gather(&state, node_only), async {
+        if is_queue {
+            gather_groups(&state, &topic, node_only).await
+        } else {
+            Ok((Vec::new(), Vec::new()))
+        }
+    });
+    let (groups, group_missing) = grouped?;
+    let mut source = source;
+    source.missing = joined_missing(std::mem::take(&mut source.missing), group_missing);
+    Ok(Json(
+        blocking(move || {
+            let detail = topic_detail(&state, &topic, &params, &source, groups)?;
+            Ok(with_envelope(detail, &source.missing))
+        })
+        .await?,
     ))
 }
 
@@ -634,16 +930,25 @@ fn topic_detail(
     state: &AppState,
     topic: &str,
     params: &HashMap<String, String>,
+    source: &Source,
+    groups: Vec<GroupSnapshot>,
 ) -> Result<Value, TabaError> {
     check_params(params, &["scope"], false)?;
     let node = node_scope(params)?;
     let view = state.topics.get(topic)?;
     let now = state.clock.now_millis();
-    let stats = measure(state, &view, now)?;
-    let memory_total = state.messages.observe_node().memory_bytes;
-    let mut out = topic_json(&view, &stats, memory_total, now, &format_ms(now));
+    let stats = source.measure(state, &view, now)?;
+    let memory_total = source.memory_total;
+    let mut out = topic_json(
+        &view,
+        &stats,
+        memory_total,
+        now,
+        &format_ms(now),
+        source.partial(),
+    );
     if matches!(stats, Stats::Queue { .. }) {
-        let mut groups = state.messages.group_snapshots(topic)?;
+        let mut groups = groups;
         let depth: u64 = groups.iter().map(GroupSnapshot::messages).sum();
         largest_first(&mut groups);
         groups.truncate(state.stats_rules.top_groups);
@@ -675,7 +980,34 @@ async fn groups(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(
-        blocking(move || topic_groups(&state, &topic, &params)).await?,
+        blocking(move || {
+            let all = match state.topics.get(&topic)?.definition.queue() {
+                Some(_) => state.messages.group_snapshots(&topic)?,
+                None => Vec::new(),
+            };
+            topic_groups(&state, &topic, &params, all)
+        })
+        .await?,
+    ))
+}
+
+async fn client_groups(
+    State(state): State<AppState>,
+    Path(topic): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let node_only = node_scope(&params)?;
+    state.topics.get(&topic)?;
+    let (all, missing) = match state.topics.get(&topic)?.definition.queue() {
+        Some(_) => gather_groups(&state, &topic, node_only).await?,
+        None => (Vec::new(), Vec::new()),
+    };
+    Ok(Json(
+        blocking(move || {
+            let page = topic_groups(&state, &topic, &params, all)?;
+            Ok(with_envelope(page, &missing))
+        })
+        .await?,
     ))
 }
 
@@ -683,6 +1015,7 @@ fn topic_groups(
     state: &AppState,
     topic: &str,
     params: &HashMap<String, String>,
+    all: Vec<GroupSnapshot>,
 ) -> Result<Value, TabaError> {
     check_params(
         params,
@@ -736,7 +1069,7 @@ fn topic_groups(
         ));
     }
     let now = state.clock.now_millis();
-    let mut all = state.messages.group_snapshots(topic)?;
+    let mut all = all;
     let depth: u64 = all.iter().map(GroupSnapshot::messages).sum();
     if let Some(wanted) = params.get("groupId") {
         all.retain(|g| g.group_id.as_deref() == Some(wanted.as_str()));

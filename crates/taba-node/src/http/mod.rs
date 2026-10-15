@@ -7,15 +7,17 @@ pub mod backup;
 pub mod client_ip;
 pub mod cluster_api;
 mod common;
+pub mod consolidate;
 pub mod forward;
 mod json;
 pub mod messages;
 pub mod metrics;
+pub mod nodes;
 pub mod observe;
 pub mod operations;
 pub mod ratelimit;
 pub mod tokens;
-mod topic_stats;
+pub mod topic_stats;
 pub mod topics;
 
 use std::sync::Arc;
@@ -122,6 +124,15 @@ pub fn client_router(state: AppState, with_operations: bool) -> Router {
         .merge(messages::routes());
     if state.auth.enabled {
         routes = routes.merge(tokens::routes());
+    }
+    // Who the token is, the nodes and the cluster. The cluster-wide routes share their names with the
+    // operations API's, which already serve them on this port when it has no port of its own.
+    routes = routes
+        .merge(auth::routes())
+        .merge(nodes::routes())
+        .merge(topic_stats::client_routes());
+    if !with_operations {
+        routes = routes.merge(nodes::cluster_wide());
     }
     let routes = routes
         .route_layer(middleware::from_fn_with_state(

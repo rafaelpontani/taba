@@ -302,6 +302,11 @@ impl Replication {
                 .publish_fifo_for_peer(&topic, record)
                 .await
                 .map(Response::FifoPublished),
+            Request::Prune { topic, prune_id } => {
+                crate::cluster::protocol::require_guid("pruneId", &prune_id)?;
+                let removed = self.messages.messages().prune(&topic, &prune_id)?;
+                Ok(Response::Json(serde_json::json!({ "removed": removed })))
+            }
             Request::MessageLoss(query) => self.recovery.serve_losses(&query),
             Request::LossRegister(record) => self.recovery.register_loss(record),
             Request::LossRemove { topic, id } => self.recovery.remove_loss(&topic, &id),

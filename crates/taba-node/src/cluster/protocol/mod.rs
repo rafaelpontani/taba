@@ -195,6 +195,20 @@ pub enum Request {
     /// `POST /cluster/backup/saved`: the primary tells the replica which messages are already in the
     /// bucket.
     BackupSaved(BackupSaved),
+    /// `* /cluster/node-call/{path}`: a call of the **operations** API (`/metrics`, `/node/drain`,
+    /// `/node/backup`...) that the receiving node runs against itself, for a client call addressed to
+    /// this node (`/nodes/{nodeId}/...`). The token was already checked by whoever sent it. The response
+    /// is the one the route gave, as it came.
+    NodeCall(ForwardRequest),
+    /// `GET /cluster/stats/topics`: what **this node** sees of every topic (the numbers, not the
+    /// presentation), for the client API's `/stats/topics` to consolidate.
+    TopicStats,
+    /// `GET /cluster/stats/topics/{topic}/groups`: the groups of a queue as this node sees them.
+    TopicGroups { topic: String },
+    /// `GET /cluster/backup/status`: the S3 backup state on this node.
+    BackupStatus,
+    /// `POST /cluster/topics/{topic}/prune`: empties the queue on this node. Idempotent by `prune_id`.
+    Prune { topic: String, prune_id: String },
 }
 
 impl Request {
@@ -264,6 +278,11 @@ impl Request {
             Request::BackupStop => "backup-stop",
             Request::BackupSaved(_) => "backup-saved",
             Request::FifoPublish { .. } => "fifo-publish",
+            Request::NodeCall(_) => "node-call",
+            Request::TopicStats => "topic-stats",
+            Request::TopicGroups { .. } => "topic-groups",
+            Request::BackupStatus => "backup-status",
+            Request::Prune { .. } => "prune",
         }
     }
 }
@@ -295,6 +314,8 @@ pub enum Response {
     FifoPublished(FifoPublished),
     /// The S3 backup report (flush or stop), as JSON.
     Backup(serde_json::Value),
+    /// A small JSON answer (the result of a prune).
+    Json(serde_json::Value),
 }
 
 fn invalid(field: &str, code: ErrorCode, message: &str) -> TabaError {

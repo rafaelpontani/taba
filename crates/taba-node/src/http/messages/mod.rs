@@ -1,6 +1,8 @@
-//! Client API messages (doc 06a, "Messages"): `POST` (publish) and `GET`
-//! (consume) on `/topics/{topic}/messages`. Here the request is only read and the
+//! Client API messages (doc 06a, "Messages"): `POST` (publish), `GET`
+//! (consume) and `DELETE` (prune, `prune.rs`) on `/topics/{topic}/messages`. Here the request is only read and the
 //! response built; the rules live in the `engine`.
+
+mod prune;
 
 use std::collections::HashMap;
 
@@ -28,7 +30,10 @@ use crate::telemetry::trace;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/topics/{topic}/messages", get(consume).post(publish))
+        .route(
+            "/topics/{topic}/messages",
+            get(consume).post(publish).delete(prune::prune),
+        )
         .route("/topics/{topic}/messages/{id}", delete(ack))
         .route("/topics/{topic}/messages/{id}/visibility", put(visibility))
 }

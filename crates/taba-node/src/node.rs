@@ -629,6 +629,15 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             let cluster = weak.upgrade();
             http::operations::node_status(&parts, cluster.as_deref())
         }));
+        // What this node sees of its topics, for the other nodes' consolidated reads.
+        let reads_state = state.clone();
+        cluster.set_read_source(Arc::new(move |request| {
+            http::topic_stats::answer_peer(&reads_state, request)
+        }));
+        // The operations calls another member sends for `/nodes/{nodeId}/...` run against this node.
+        cluster.set_node_calls(http::forward::executor(http::operations::local_router(
+            state.clone(),
+        )));
     }
     serve(client, client_router, client_addr.port(), None);
     if let (Some(listener), Some(addr)) = (operations, operations_addr) {

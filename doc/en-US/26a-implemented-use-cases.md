@@ -3,7 +3,7 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-15 @ 56121c9
 sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md]
 ---
 
@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Generated.** This file is produced by `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`, which reads the `/// UC: UC-XXX-NNN` lines of the code: it is not edited by hand. Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-14, commit efeb47a):** **742** of **925** cases have at least one test (80.2%); **183** do not; **11** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI written by hand, see K in [31-pending-items.md](31-pending-items.md)):** **757** of **940** cases have at least one test (80.5%); **183** do not; **11** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -19,7 +19,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 | Area | Subject | With test | Without test |
 |---|---|---:|---:|
-| `TOP` | Topics: create, list, read, change and remove | 39 | 4 |
+| `TOP` | Topics: create, list, read, change and remove | 45 | 4 |
 | `MSG` | Publishing and the message body | 19 | 1 |
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 39 | 1 |
 | `ACK` | Confirmation of consumption | 13 | 0 |
@@ -29,7 +29,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `VOL` | Volatile queue and managing node | 23 | 0 |
 | `FIF` | FIFO queue | 47 | 0 |
 | `GRP` | Message groups and fair delivery | 16 | 1 |
-| `AUT` | Authentication and access tokens | 30 | 6 |
+| `AUT` | Authentication and access tokens | 33 | 6 |
 | `LIM` | Rate limit and client IP | 13 | 2 |
 | `PAG` | Pagination | 7 | 2 |
 | `CNV` | Common API conventions (format, headers, errors, status) | 10 | 7 |
@@ -53,7 +53,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
 | `DEV` | Development mode | 3 | 10 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 21 | 0 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 33 | 9 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 39 | 9 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 3 | 7 |
 | `CFG` | Configuration and startup validations | 10 | 2 |
 | `BKP` | Optional S3 backup | 40 | 0 |
@@ -456,6 +456,66 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `tests/topics.rs::delete_removes_the_topic_and_its_dead_letter`
+
+---
+
+### UC-TOP-044
+
+**Case:** Prune on one node: `Messages::prune` empties the queue (visible and invisible messages, owned or replica, in memory or on disk)  
+**Then:** It returns how many messages the node **owned**; the topic stays; a message published afterwards is delivered normally.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/tests/prune.rs::pruning_removes_the_visible_and_the_invisible_messages_and_counts_them`
+
+---
+
+### UC-TOP-045
+
+**Case:** The same `pruneId` arrives again at a node  
+**Then:** It answers the first count and removes nothing new (a message published after the first prune stays); a new `pruneId` prunes again.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/tests/prune.rs::a_repeated_prune_id_answers_the_same_and_removes_nothing_new`
+
+---
+
+### UC-TOP-046
+
+**Case:** Prune of a topic that does not exist, or of a distributor  
+**Then:** `404 topic.not-found`; `409 topic.wrong-type`.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/tests/prune.rs::pruning_an_unknown_topic_is_404_and_a_distributor_is_a_wrong_type`
+
+---
+
+### UC-TOP-047
+
+**Case:** `DELETE /topics/{topic}/messages` on a cluster with messages visible and invisible, received by any node  
+**Then:** `200` `{pruneId, removed, nodes}`: every node was emptied (nothing is delivered from any), `removed` counts each message once and not once per copy, the receiver prunes itself without the network, and the queue still publishes and delivers.  
+**Level:** C  
+**Tests:**
+  - `tests/nodes_api.rs::pruning_empties_the_queue_on_every_node_and_the_queue_keeps_working`
+
+---
+
+### UC-TOP-048
+
+**Case:** Prune with a token without `admin`, or of a topic that does not exist  
+**Then:** `403 auth.forbidden` (with `required: "admin"`); `404 topic.not-found`; with `admin` on the topic, `200`.  
+**Level:** I  
+**Tests:**
+  - `tests/nodes_api.rs::pruning_an_unknown_topic_is_404_and_needs_the_admin_permission`
+
+---
+
+### UC-TOP-049
+
+**Case:** A prune while a node does not answer  
+**Then:** `503 cluster.prune-incomplete` naming that node (in the message and in `details`); the other nodes were emptied; repeating the call after the node returns empties it and answers `200`.  
+**Level:** C  
+**Tests:**
+  - `tests/nodes_api.rs::a_prune_that_fails_on_a_node_names_it_and_repeating_it_is_safe`
 
 ---
 
@@ -2763,6 +2823,38 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `tests/metrics.rs::auth_requests_are_counted_by_outcome_and_the_token_id_is_never_a_label`
   - `tests/metrics.rs::without_authentication_there_are_no_auth_series`
+
+---
+
+### UC-AUT-037
+
+**Case:** A valid token calls a route it has no permission for  
+**Then:** `403 auth.forbidden` carries `required`: `root` for the root-only routes, the name of the permission (`admin`...) for the others; the other errors have no such field.  
+**Level:** U, I  
+**Tests:**
+  - `src/core/error/tests.rs::a_forbidden_error_says_what_was_missing_and_other_errors_leave_the_field_out`
+  - `tests/nodes_api.rs::a_forbidden_answer_says_what_the_token_lacked`
+
+---
+
+### UC-AUT-038
+
+**Case:** `GET /auth/me`  
+**Then:** Any valid token gets its `id`, `name`, `permissions`, `topicPrefixes`, `expiresAt` and `root: false`; the root token gets `root: true` and every permission; without a token, `401`.  
+**Level:** I  
+**Tests:**
+  - `tests/nodes_api.rs::auth_me_says_who_the_token_is_and_what_it_can_do`
+
+---
+
+### UC-AUT-039
+
+**Case:** What a token that is not the root may see: `GET /nodes`, `GET /stats/topics`, `/stats/topics/{topic}` and `/groups`  
+**Then:** `GET /nodes` lists the nodes without addresses; the statistics list only has the topics within the token's prefixes and `/stats/topics/{topic}` outside them is `403 auth.out-of-scope`; the cluster and node routes ask for the root token.  
+**Level:** U, I  
+**Tests:**
+  - `src/http/auth/tests.rs::the_monitoring_routes_split_between_any_token_and_the_root_token`
+  - `tests/nodes_api.rs::any_valid_token_lists_the_nodes_and_sees_the_statistics_of_its_prefixes`
 
 ---
 
@@ -7492,6 +7584,67 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
+
+---
+
+### UC-OPS-046
+
+**Case:** `GET /cluster/status` and `/nodes/{nodeId}/metrics`, `/drain`, `/backup`, `/stats/topics` with a token that is not the root, and with an unknown `nodeId`  
+**Then:** `403 auth.forbidden` with `required: "root"`; with the root token, the cluster status, the node's Prometheus text and the drain status; an unknown `nodeId` is `404 node.not-found`.  
+**Level:** I  
+**Tests:**
+  - `tests/nodes_api.rs::the_cluster_and_node_routes_need_the_root_token_and_an_unknown_node_is_404`
+
+---
+
+### UC-OPS-047
+
+**Case:** `/nodes/{nodeId}/…` received by a node that is, or is not, the `nodeId`  
+**Then:** The node that is it answers from its own data and nothing crosses the cluster port; otherwise it calls the target **once** (`node-call`) and returns the answer as it came; starting the drain of another node through any node drains that one; a drained node stays in `GET /nodes` as `drained` and stays addressable; an unknown `nodeId` calls no one.  
+**Level:** C  
+**Tests:**
+  - `tests/nodes_api.rs::a_node_answers_for_itself_or_calls_the_node_that_has_the_data_once`
+
+---
+
+### UC-OPS-048
+
+**Case:** `/nodes/{nodeId}/…` for a node that does not answer  
+**Then:** `502 forward.bad-gateway` naming the node, after a single attempt (no retry).  
+**Level:** C  
+**Tests:**
+  - `tests/nodes_api.rs::a_node_that_does_not_answer_is_a_failure_that_names_it_with_no_retry`
+
+---
+
+### UC-OPS-049
+
+**Case:** `GET /stats/topics`, `/stats/topics/{topic}` and `/stats/topics/{topic}/groups` through any node of a cluster  
+**Then:** The cluster's numbers, complete (12 messages published on three nodes show 12 through every node), with `partial: false` and `missingNodes: []`; `?scope=node` is that node alone and the three nodes add up to the cluster; each group shows once with the messages of every node.  
+**Level:** I, C  
+**Tests:**
+  - `tests/nodes_api.rs::the_statistics_are_the_clusters_not_one_nodes`
+
+---
+
+### UC-OPS-050
+
+**Case:** A node does not answer a consolidated read (`/stats/topics…`, `/nodes`, `/cluster/status`)  
+**Then:** `200` with `partial: true` and `missingNodes: [{ nodeId, reason }]` (`timeout` or `unreachable`) naming that node; the numbers are those of the others; when the node returns, `partial` is `false` and the numbers are complete.  
+**Level:** C  
+**Tests:**
+  - `tests/nodes_api.rs::a_node_that_does_not_answer_makes_the_consolidated_reads_partial_and_says_which`
+
+---
+
+### UC-OPS-051
+
+**Case:** `GET /cluster/status` and `GET /cluster/backup` with the root token  
+**Then:** Each node's `NodeStatus` carries `runtime` (`activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`) beside memory and disk; `/cluster/backup` lists the S3 backup state of every node with `nodeId`; without a backup, `422 backup.not-configured`.  
+**Level:** C  
+**Tests:**
+  - `tests/nodes_api.rs::the_cluster_status_carries_the_load_of_each_node_and_the_backup_is_consolidated`
+  - `tests/nodes_api.rs::without_a_backup_the_cluster_backup_route_says_so`
 
 ---
 

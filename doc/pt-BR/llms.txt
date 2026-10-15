@@ -58,6 +58,7 @@
 - [30 Decisões](30-decisoes.md): o porquê, com os códigos D… e PRB-… (gerado)
 - [31 Pendências](31-pendencias.md): o que está em aberto e as descobertas desta documentação (gerado + manual)
 - [32 Roadmap](32-roadmap.md): o que vem a seguir, em marcos
+- [34 Plano da TUI](34-plano-tui.md): plano e requisitos por tela do `taba-cli tui` (ratatui) — cluster, tokens, tópicos, mensagens, idiomas, fases (planejado)
 
 ## Mais
 

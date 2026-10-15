@@ -3,7 +3,7 @@ título: Pendências
 resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…) e problemas de lógica, risco ou limite (PRB-…) — mais as divergências e descobertas desta documentação, ainda sem código.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [doc/08b-pendencias.md, doc/pt-BR/_divergencias.md]
 ---
 
@@ -47,6 +47,17 @@ Achados ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)); e
 | **PRB-057** | **A busca no bucket depois de uma exclusão por morte custa o tamanho do bucket do tópico** (listagem, diários inteiros, um rodapé por segmento) e roda em cada sobrevivente | Um índice leve de ids por segmento mantido pelo gestor |
 
 Também ficam registrados como **limites aceitos** (cenários 2, 7, 8 e 10 de [33-backup-s3.md](33-backup-s3.md)): S3 fora só para um nó vivo, mensagem confirmada e consumida antes de `backup.delay` quando **todos** os nós caem, estado defasado pela janela do diário (consumidor idempotente), e S3 sem escrita condicional (a trava de restauração não é segura). A votação de exclusão **rejeitada** não é repetida sozinha (herdado do protocolo de votação; no backup o atraso até o batimento vencer deixa isso raro).
+
+## Trabalho de servidor da TUI (problemas e limites novos)
+
+Achados ao implementar D152 a D155 ([30-decisoes.md](30-decisoes.md)); entram aqui à mão (veja K). Cada um tem o **efeito** e a **proposta**.
+
+| Código | Efeito | Proposta |
+|---|---|---|
+| **PRB-058** | **Um prune não cobre um nó que está sincronizando, nem uma mensagem publicada enquanto ele corre.** Um nó sincronizando esvazia o que tem, mas os blocos que copia depois, ou os eventos que gravou, podem trazer mensagens de volta; uma mensagem publicada durante o prune pode sobreviver. Não foi exercitado em teste se o backup em S3 restaura uma mensagem esvaziada depois de um reinício | Fazer o nó sincronizando responder o prune com `503 cluster.node-syncing` (a pessoa repete quando ele estiver pronto), ou gravar o prune como evento do log de sincronização; acrescentar um caso de prune com o backup em S3 |
+| **PRB-059** | **As estatísticas consolidadas são aproximações em dois campos, e o `/metrics/topics*` da API de operação continua a visão de um nó só** (achado A, em parte resolvido pela D156: o `/stats/topics…` da API de cliente junta o cluster). Os percentis de latência são o **máximo** dos nós (o percentil real do cluster exige os histogramas), e `groups` e o maior grupo são o máximo (um limite inferior; a condição de grupo ruidoso pode não ver um grupo espalhado entre nós); quem lê o percentil do cluster recebe um limite superior | Mandar os histogramas de latência e as listas de grupos entre os nós; ou fazer o `/metrics/topics*` da API de operação consolidar também |
+| **PRB-060** | **Sem `operations.port` as operações do cluster inteiro ficam sem token na porta de cliente** (`POST /cluster/stop`, `/cluster/backup/flush`, `/node/drain`...): a API de cliente só monta suas cópias autenticadas quando a API de operação tem porta própria, porque os nomes são os mesmos. Herdado de D63 e D150, mas agora existe um gêmeo protegido por token que não pode ser montado | Com a autenticação ligada, não juntar as rotas de operação à porta de cliente (ou protegê-las com o token raiz) |
+| **PRB-061** | **Um nó que saiu por drain só é listado e endereçável enquanto o nó que recebe se lembra dele** (até 64, em memória): depois que o receptor reinicia, `GET /nodes` já não o mostra e `/nodes/{nodeId}/drain` responde `404`, então ele não pode ser devolvido pela API | Guardar os nós que saíram no banco do nó, ou derivá-los da lista de parada e dos batimentos do S3 |
 
 ## 1. Sem bloqueio
 

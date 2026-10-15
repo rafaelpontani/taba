@@ -95,6 +95,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | [30-decisoes.md](30-decisoes.md) | Por que cada coisa é como é |
 | [31-pendencias.md](31-pendencias.md) | O que ainda está em aberto |
 | [32-roadmap.md](32-roadmap.md) | O que vem a seguir |
+| [34-plano-tui.md](34-plano-tui.md) | Plano e requisitos por tela da interface interativa (TUI) do `taba-cli` |
 
 ## Convenções desta documentação
 

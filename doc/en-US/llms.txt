@@ -58,6 +58,7 @@
 - [30 Decisions](30-decisions.md): the why, with the D… and PRB-… codes (generated)
 - [31 Pending items](31-pending-items.md): what is open and the findings of this documentation (generated + manual)
 - [32 Roadmap](32-roadmap.md): what comes next, in milestones
+- [34 TUI plan](34-tui-plan.md): plan and per-screen requirements of `taba-cli tui` (ratatui) — cluster, tokens, topics, messages, languages, phases (planned)
 
 ## More
 

@@ -29,6 +29,7 @@ fn every_code_has_the_documented_status() {
         ("message.not-found", 404),
         ("token.not-found", 404),
         ("route.not-found", 404),
+        ("node.not-found", 404),
         ("cluster.operation-unknown", 404),
         ("topic.already-exists", 409),
         ("topic.wrong-type", 409),
@@ -51,6 +52,7 @@ fn every_code_has_the_documented_status() {
         ("forward.timeout", 504),
         ("cluster.quorum-unavailable", 503),
         ("cluster.registration-failed", 503),
+        ("cluster.prune-incomplete", 503),
         ("cluster.commit-timeout", 503),
         ("node.failed", 503),
         ("cluster.node-syncing", 503),
@@ -125,4 +127,14 @@ fn details_carry_field_code_and_message() {
     assert_eq!(json["details"][0]["field"], "name");
     assert_eq!(json["details"][0]["code"], "validation.invalid-name");
     assert_eq!(json["details"][0]["message"], "Use 1 to 100 characters.");
+}
+
+/// UC: UC-AUT-037
+#[test]
+fn a_forbidden_error_says_what_was_missing_and_other_errors_leave_the_field_out() {
+    let forbidden = TabaError::new(ErrorCode::AuthForbidden, "no").with_required("root");
+    let body = serde_json::to_value(forbidden.to_response("r1")).unwrap();
+    assert_eq!(body["required"], "root");
+    let other = serde_json::to_value(TabaError::internal().to_response("r2")).unwrap();
+    assert!(other.get("required").is_none());
 }

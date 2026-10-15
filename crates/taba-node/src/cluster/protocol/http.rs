@@ -46,6 +46,13 @@ fn json_headers() -> Vec<(String, String)> {
     vec![("content-type".to_owned(), JSON.to_owned())]
 }
 
+/// Body of `POST /cluster/topics/{topic}/prune`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PruneBody {
+    prune_id: String,
+}
+
 fn json_call<T: Serialize>(method: &str, path: String, body: &T) -> HttpCall {
     HttpCall {
         method: method.to_owned(),
@@ -307,6 +314,28 @@ impl Request {
             Request::BackupSaved(body) => {
                 json_call("POST", "/cluster/backup/saved".to_owned(), body)
             }
+            Request::Prune { topic, prune_id } => json_call(
+                "POST",
+                format!("/cluster/topics/{topic}/prune"),
+                &serde_json::json!({ "pruneId": prune_id }),
+            ),
+            Request::TopicStats => get_call("/cluster/stats/topics".to_owned()),
+            Request::TopicGroups { topic } => {
+                get_call(format!("/cluster/stats/topics/{topic}/groups"))
+            }
+            Request::BackupStatus => get_call("/cluster/backup/status".to_owned()),
+            Request::NodeCall(call) => {
+                let mut headers = call.headers.clone();
+                if let Some(ip) = &call.client_ip {
+                    headers.push((CLIENT_IP_HEADER.to_owned(), ip.clone()));
+                }
+                HttpCall {
+                    method: call.method.clone(),
+                    path: format!("/cluster/node-call{}", call.path_and_query),
+                    headers,
+                    body: call.body.clone(),
+                }
+            }
             Request::Forward(forward) => {
                 let mut headers = forward.headers.clone();
                 if let Some(ip) = &forward.client_ip {
@@ -362,6 +391,34 @@ impl Request {
                     body: body.to_vec(),
                     client_ip,
                 }))
+            }
+            ["cluster", "node-call", rest @ ..] => {
+                let mut called = format!("/{}", rest.join("/"));
+                if !query.is_empty() {
+                    called.push('?');
+                    called.push_str(query);
+                }
+                Ok(Request::NodeCall(ForwardRequest {
+                    method: method.to_ascii_uppercase(),
+                    path_and_query: called,
+                    headers: headers.to_vec(),
+                    body: body.to_vec(),
+                    client_ip: None,
+                }))
+            }
+            ["cluster", "stats", "topics"] if is("GET") => Ok(Request::TopicStats),
+            ["cluster", "stats", "topics", topic, "groups"] if is("GET") => {
+                Ok(Request::TopicGroups {
+                    topic: (*topic).to_owned(),
+                })
+            }
+            ["cluster", "backup", "status"] if is("GET") => Ok(Request::BackupStatus),
+            ["cluster", "topics", topic, "prune"] if post() => {
+                let body: PruneBody = parse_body(headers, body)?;
+                Ok(Request::Prune {
+                    topic: (*topic).to_owned(),
+                    prune_id: body.prune_id,
+                })
             }
             ["cluster", "nodes"] if is("GET") => Ok(Request::ListNodes),
             ["cluster", "nodes", "join"] if post() => {
@@ -498,7 +555,7 @@ impl Request {
     /// forward, where any status is the destination's response); what cannot be read becomes
     /// `502 forward.bad-gateway`.
     pub fn parse_reply(&self, reply: HttpReply) -> Result<Response, TabaError> {
-        if let Request::Forward(_) = self {
+        if let Request::Forward(_) | Request::NodeCall(_) = self {
             return Ok(Response::Forwarded(ForwardResponse {
                 status: reply.status,
                 headers: reply.headers,
@@ -552,7 +609,9 @@ impl Request {
                 Ok(Response::Vote(vote))
             }
             Request::Status => Ok(Response::Status(json(&reply)?)),
-            Request::BackupFlush | Request::BackupStop => Ok(Response::Backup(json(&reply)?)),
+            Request::BackupFlush | Request::BackupStop | Request::BackupStatus => {
+                Ok(Response::Backup(json(&reply)?))
+            }
             Request::DefinitionPropose(_) | Request::DefinitionApply(_) => {
                 let change: DefinitionApply =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
@@ -577,7 +636,10 @@ impl Request {
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Recovered(result))
             }
-            Request::Forward(_) => unreachable!("handled above"),
+            Request::Forward(_) | Request::NodeCall(_) => unreachable!("handled above"),
+            Request::Prune { .. } | Request::TopicStats | Request::TopicGroups { .. } => {
+                Ok(Response::Json(json(&reply)?))
+            }
             _ => {
                 let ack =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
@@ -665,6 +727,7 @@ impl Response {
             Response::Recovered(result) => json(&result),
             Response::Status(status) => json(&status),
             Response::Backup(report) => json(&report),
+            Response::Json(value) => json(&value),
             Response::Stream(page) => HttpReply {
                 status: 200,
                 headers: vec![("content-type".to_owned(), NDJSON.to_owned())],

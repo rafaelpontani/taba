@@ -1,10 +1,10 @@
 ---
 título: API de cliente
-resumo: Manual rota a rota da API que as aplicações usam — tópicos, mensagens (publicar, consumir, invisibilidade, ack) e tokens — com parâmetros, DTOs, status e exemplos.
+resumo: Manual rota a rota da API que as aplicações usam — tópicos, mensagens (publicar, consumir, invisibilidade, ack, prune), tokens, quem é o token, os nós e as estatísticas, e as operações de cluster e de nó para o token raiz — com parâmetros, DTOs, status e exemplos.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
-fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
+verificado-em: 2026-10-15 @ 56121c9
+fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
 # API de cliente
@@ -24,7 +24,16 @@ fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, c
 | `GET` | `/topics/{topic}/messages` | `consume` | consumo | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | consumo | `200` |
 | `DELETE` | `/topics/{topic}/messages/{id}` | `consume` | consumo | `204` |
+| `DELETE` | `/topics/{topic}/messages` | `admin` | admin | `200` `PruneResult` |
 | `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | só o raiz | admin | ver abaixo |
+| `GET` | `/auth/me` | token válido | isento | `200` `Me` |
+| `GET` | `/nodes` | token válido | ops | `200` `Page<Node>` |
+| `GET` | `/stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | token válido, **dentro dos seus prefixos** | ops | `200` |
+| `GET` | `/cluster/status` | só o raiz | ops | `200` `ClusterStatus` |
+| `GET` | `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/backup` | só o raiz | ops | `200` |
+| `GET` | `/cluster/backup` | só o raiz | ops | `200` `ClusterBackup` |
+| `GET` `POST` `DELETE` | `/nodes/{nodeId}/drain` | só o raiz | admin | `200` / `202` `DrainStatus` |
+| `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush`, `/cluster/stop` | só o raiz | admin | `200` |
 
 Os exemplos usam `localhost:8080` sem autenticação (modo desenvolvimento). Com autenticação, acrescente `-H "Authorization: Bearer $TOKEN"`.
 
@@ -272,6 +281,22 @@ Erros: `400` (`required`, `out-of-range`), `404` (`topic.not-found`, `message.no
 
 Erros: `400 validation.required` (sem `receiptToken`), `404` (inexistente, **inclusive um segundo ack** ou mensagem vencida por `ttl`), `409` (`message.stale-receipt`: foi reentregue a outro; `topic.wrong-type`: distribuidor), `429`, `503 cluster.quorum-unavailable` (o ack foi cancelado).
 
+### `DELETE /topics/{topic}/messages`: prune (esvaziar a fila)
+
+Remove **todas as mensagens** da fila — visíveis e invisíveis, e as cópias que as réplicas guardam — em **todo o cluster**. Permissão `admin` sobre o tópico. O tópico, sua definição e seus contadores ficam. Só filas (um distribuidor dá `409 topic.wrong-type`).
+
+O nó que recebe a chamada pede a **cada membro** (ele inclusive) que esvazie a própria cópia, todos ao mesmo tempo, sob um `pruneId` (o id torna a chamada idempotente em cada nó), e espera todos. **Só responde sucesso se todos tiverem conseguido.** É um ato raro, por isso não há nova tentativa nem desfazer.
+
+```bash
+curl -s -X DELETE localhost:8080/topics/orders/messages
+```
+
+**`PruneResult`**: `pruneId`, `removed` (mensagens removidas, cada uma contada **uma vez**: quem é dono da mensagem a conta, as réplicas não) e `nodes` (`nodeId` e `removed` de cada um).
+
+Se algum nó falhar: `503 cluster.prune-incomplete`, com os nós na mensagem e em `details`. A fila pode ter ficado vazia só em alguns nós; **repetir a chamada é seguro**. Uma mensagem publicada enquanto o prune corre pode sobreviver a ele, e um nó que ainda está sincronizando não é coberto ([31-pendencias.md](31-pendencias.md)).
+
+Erros: `403` (`auth.forbidden` com `required: "admin"`, `auth.out-of-scope`), `404 topic.not-found`, `409 topic.wrong-type`, `429`, `503`.
+
 ---
 
 ## Tokens
@@ -290,9 +315,58 @@ Só existem com a **autenticação ligada** e só aceitam o **token raiz**. Sem 
 
 Erros: `400` (`validation.*`: permissão desconhecida, lista vazia, prefixo inválido, `expiresAt` no passado), `401`/`403` (só o raiz), `404`, `503` (registro não confirmado: tente de novo).
 
+## Quem é o token, os nós e as estatísticas
+
+Rotas para **qualquer token válido** (com a autenticação desligada, para todos). Mostram o que um token simples pode ver dentro do seu escopo, sem ser administrador.
+
+| Rota | Responde |
+|---|---|
+| `GET /auth/me` | `Me`: `authEnabled`, `root`, `id` (`null` para o token raiz), `name`, `permissions`, `topicPrefixes`, `expiresAt`. Com a autenticação desligada o chamador é `open`, com todas as permissões. Um cliente a usa para habilitar ou desabilitar o que mostra **antes** de chamar |
+| `GET /nodes` | `collectedAt`, `membersVersion`, `partial`, `missingNodes` e `items`: um `Node` por membro — `nodeId`, `self` (é o nó que respondeu), `reachable`, `state` (`active`, `syncing`, `drained`...), `drainState`, `version`, `memberState`. **Sem endereços.** Um nó que saiu por drain aparece com `state: "drained"` |
+| `GET /stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | Os mesmos DTOs e parâmetros de `/metrics/topics*` da API de operação ([17-api-operacao.md](17-api-operacao.md)), mas **do cluster inteiro**, com `partial` e `missingNodes`. A lista só traz os tópicos **dentro dos prefixos do token** (como o `GET /topics`); `/stats/topics/{topic}` fora deles é `403 auth.out-of-scope`. `?scope=node` dá a visão só do nó que responde |
+
+### Leituras consolidadas (`partial` e `missingNodes`)
+
+`GET /nodes`, `GET /cluster/status`, `GET /cluster/backup` e `GET /stats/topics…` respondem pelo **cluster inteiro**. Cada nó diz o que **ele** vê, na API do cluster ([18-api-cluster.md](18-api-cluster.md)); o nó que recebe a chamada pergunta a todos os membros ao mesmo tempo (ele mesmo sem rede) e junta as respostas. Cada chamada tem prazo de 5 s (fixo). Um nó que não responde no prazo **não** derruba a leitura: a resposta é `200` e diz que está incompleta.
+
+```json
+{ "partial": true, "missingNodes": [{ "nodeId": "01a1…", "reason": "timeout" }] }
+```
+
+`reason` é `timeout`, `unreachable` (nenhuma resposta) ou `error` (o nó respondeu com um erro). Os números são então os dos nós que **responderam**, e o cliente deve mostrá-los com um aviso e continuar perguntando. Uma **escrita** que falha em algum nó é diferente: é um `503` que nomeia os nós (o prune).
+
+**Como as estatísticas de tópico se juntam** (uma mensagem é contada pelo nó que é dono dela, então as contagens somam):
+
+| Campo | Junção |
+|---|---|
+| contagens e taxas (`published`, `consumed`, `acked`, `visibleMessages`, `invisibleMessages`, `depth`, `bytes`, memória e disco...) | soma |
+| `oldestMessageAt` | a mais antiga |
+| `publishLatency`, `consumeLatency` (p50, p95, p99) | o **máximo** dos nós: percentis não se somam, e o máximo erra para o lado cauteloso |
+| `groups`, `noisyShare` | `groups` e o maior grupo são o máximo dos nós (um grupo pode ter mensagens em vários nós, então somar o contaria duas vezes): um **limite inferior** |
+| `conditions`, `worstCondition` | avaliadas de novo sobre os números juntos |
+| `memoryShare` | a memória do tópico sobre a memória dos nós que responderam |
+| `/stats/topics/{topic}/groups` | cada grupo uma vez, com suas mensagens de todos os nós |
+
+## Cluster e nós (token raiz)
+
+A API de operação ([17-api-operacao.md](17-api-operacao.md)) não tem token e serve ao monitoramento contínuo. Estas rotas são as cópias dela na API de cliente, para um cliente que tem uma URL e um token, e exigem o **token raiz**: a permissão `admin` é por tópico, e estas rotas mostram a topologia e o interior dos nós. Um token que não é o raiz recebe `403 auth.forbidden` com `"required": "root"` no corpo, para o cliente poder dizer o que falta.
+
+**A regra do nó** (a mesma de uma mensagem). O nó que recebe `/nodes/{nodeId}/…` compara o `nodeId` com o seu. Se **é** esse nó, responde com os próprios dados; se **não é**, chama **uma vez** o nó que tem o dado, pela porta do cluster (`/cluster/node-call/{caminho}`, só membros, [18-api-cluster.md](18-api-cluster.md)), e devolve a resposta como veio. Nunca repassa uma chamada que já foi repassada. Um `nodeId` desconhecido é `404 node.not-found`; um nó que não responde é `502 forward.bad-gateway` (ou `504 forward.timeout`) que o nomeia, sem nova tentativa. Um nó que saiu por drain continua endereçável, para devolvê-lo.
+
+| Rota | Faz |
+|---|---|
+| `GET /cluster/status` | O que o `GET /health/cluster` responde: as condições e o `NodeStatus` de cada nó (que agora traz `runtime`: `activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`), com `partial` e `missingNodes`. Aceita `scope=node` |
+| `GET /cluster/backup` | O estado do backup em S3 de **cada** nó, cada um como o `GET /nodes/{nodeId}/backup` o dá, com `partial` e `missingNodes` (`422 backup.not-configured` sem ele) |
+| `GET /nodes/{nodeId}/metrics` | O texto Prometheus do nó (o que o `GET /metrics` dá) |
+| `GET`, `POST`, `DELETE /nodes/{nodeId}/drain` | Estado, início e retorno do drain daquele nó: o que o `/node/drain` faz |
+| `GET /nodes/{nodeId}/backup`, `POST /nodes/{nodeId}/backup/flush` | O backup em S3 daquele nó (`422 backup.not-configured` sem ele) |
+| `POST /cluster/backup/flush`, `POST /cluster/stop` | O cluster inteiro: o mesmo da API de operação. Só montadas quando a API de operação tem porta própria; sem `operations.port` as rotas de operação já servem esses nomes na porta de cliente, sem token |
+
+Ligar ou matar **processos** não é oferecido: é tarefa do orquestrador (o `drain` faz o nó parar de receber, e o retorno o traz de volta como um nó novo).
+
 ## Fontes e provas
 
-- `http/topics`, `http/messages`, `http/tokens`, `http/auth`, `core/topic` (definição), `core/validation` (faixas), `core/content` (forma do corpo), `engine/topics`, `engine/messages`.
+- `http/nodes`, `http/topic_stats` (`client_routes`), `http/messages/prune.rs`, `http/topics`, `http/messages`, `http/tokens`, `http/auth`, `core/topic` (definição), `core/validation` (faixas), `core/content` (forma do corpo), `engine/topics`, `engine/messages`.
 - Todos os exemplos acima foram executados contra um nó real; as respostas são cópias.
-- Casos de uso: UC-TOP, UC-MSG (publicação e corpo), UC-CNS (consumo), UC-ACK, UC-VIS, UC-AUT (tokens), UC-PAG; veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`.
+- Casos de uso: UC-TOP (prune: 044 a 048), UC-MSG (publicação e corpo), UC-CNS (consumo), UC-ACK, UC-VIS, UC-AUT (tokens; 037 a 039: `required`, `auth/me`, quem vê o quê), UC-OPS (046 a 051: os nós e as leituras consolidadas), UC-PAG; veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`, `nodes_api.rs`.
 - Histórico: `06a-api-cliente.md`.

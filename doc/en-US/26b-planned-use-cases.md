@@ -3,7 +3,7 @@ title: Planned use cases
 summary: The documented use cases that do not yet have a test citing them — what is left to prove — by area, with the reason when the case itself gives it.
 type: reference
 status: partial
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-15 @ 56121c9
 sources: [doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, crates/taba-node/tests/uc_coverage.rs]
 ---
 
@@ -19,14 +19,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 | Area | Subject | Without test | With test |
 |---|---|---:|---:|
-| `TOP` | Topics: create, list, read, change and remove | 4 | 39 |
+| `TOP` | Topics: create, list, read, change and remove | 4 | 45 |
 | `MSG` | Publishing and the message body | 1 | 19 |
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 1 | 39 |
 | `VIS` | Change of invisibility | 2 | 10 |
 | `RET` | Expiration (`ttl`), delivery limit and dead-letter | 6 | 14 |
 | `DST` | Distributor Topic | 12 | 6 |
 | `GRP` | Message groups and fair delivery | 1 | 16 |
-| `AUT` | Authentication and access tokens | 6 | 30 |
+| `AUT` | Authentication and access tokens | 6 | 33 |
 | `LIM` | Rate limit and client IP | 2 | 13 |
 | `PAG` | Pagination | 2 | 7 |
 | `CNV` | Common API conventions (format, headers, errors, status) | 7 | 10 |
@@ -45,7 +45,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `FWD` | Forwarding of client calls | 8 | 4 |
 | `DRN` | Stop and drain mode (includes drain as save) | 3 | 25 |
 | `DEV` | Development mode | 10 | 3 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 9 | 33 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 9 | 39 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 7 | 3 |
 | `CFG` | Configuration and startup validations | 2 | 10 |
 

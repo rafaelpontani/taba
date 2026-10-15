@@ -102,6 +102,39 @@ fn each_route_asks_for_its_own_permission() {
     assert_eq!(want(Method::GET, "/health/live"), "none");
 }
 
+/// UC: UC-AUT-039
+#[test]
+fn the_monitoring_routes_split_between_any_token_and_the_root_token() {
+    let want = |method: Method, route: &str| match need(&method, route) {
+        Some(Need::Permission(p)) => p.as_str().to_string(),
+        Some(Need::Any) => "any".into(),
+        Some(Need::Root) => "root".into(),
+        None => "none".into(),
+    };
+    for route in [
+        "/auth/me",
+        "/nodes",
+        "/stats/topics",
+        "/stats/topics/{topic}",
+    ] {
+        assert_eq!(want(Method::GET, route), "any", "{route}");
+    }
+    assert_eq!(want(Method::GET, "/stats/topics/{topic}/groups"), "any");
+    for route in [
+        "/cluster/status",
+        "/nodes/{node_id}/metrics",
+        "/nodes/{node_id}/drain",
+        "/nodes/{node_id}/backup",
+        "/nodes/{node_id}/backup/flush",
+        "/cluster/backup",
+        "/cluster/backup/flush",
+        "/cluster/stop",
+    ] {
+        assert_eq!(want(Method::POST, route), "root", "{route}");
+    }
+    assert_eq!(want(Method::DELETE, "/topics/{topic}/messages"), "admin");
+}
+
 /// UC: UC-AUT-001
 #[test]
 fn without_a_root_token_nothing_matches() {

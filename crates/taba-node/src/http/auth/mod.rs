@@ -14,16 +14,20 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use axum::extract::{MatchedPath, RawPathParams, Request, State};
+use axum::extract::{Extension, MatchedPath, RawPathParams, Request, State};
 use axum::http::{HeaderMap, Method, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use axum::{Json, Router};
+use serde_json::{Value, json};
 
 use super::AppState;
 use super::common::ApiError;
 use crate::cluster::state::DrainState;
 use crate::config::{Auth as AuthConfig, RootToken};
 use crate::core::error::{ErrorCode, TabaError};
+use crate::core::time::format_ms;
 use crate::core::token::{Permission, TokenRecord, constant_time_eq};
 use crate::engine::tokens::Tokens;
 use crate::telemetry::metrics::AUTH_REQUESTS;
@@ -78,7 +82,7 @@ impl Principal {
         }
     }
 
-    fn is_root(&self) -> bool {
+    pub(super) fn is_root(&self) -> bool {
         matches!(self, Principal::Open | Principal::Root)
     }
 }
@@ -216,6 +220,10 @@ enum Need {
 
 fn need(method: &Method, route: &str) -> Option<Need> {
     match route {
+        // Pruning a queue empties it: the `admin` permission of the topic.
+        "/topics/{topic}/messages" if method == Method::DELETE => {
+            Some(Need::Permission(Permission::Admin))
+        }
         "/topics" if method == Method::POST => Some(Need::Permission(Permission::Create)),
         "/topics" | "/topics/{topic}" if method == Method::GET => Some(Need::Any),
         "/topics/{topic}" => Some(Need::Permission(Permission::Admin)),
@@ -226,6 +234,20 @@ fn need(method: &Method, route: &str) -> Option<Need> {
         | "/topics/{topic}/messages/{id}"
         | "/topics/{topic}/messages/{id}/visibility" => Some(Need::Permission(Permission::Consume)),
         "/tokens" | "/tokens/{id}" => Some(Need::Root),
+        // What any valid token sees within its scope: who it is, the nodes, the topic statistics.
+        "/auth/me" | "/nodes" => Some(Need::Any),
+        "/stats/topics" | "/stats/topics/{topic}" | "/stats/topics/{topic}/groups" => {
+            Some(Need::Any)
+        }
+        // The cluster and the nodes' insides: the root token.
+        "/cluster/status"
+        | "/cluster/backup"
+        | "/cluster/backup/flush"
+        | "/cluster/stop"
+        | "/nodes/{node_id}/metrics"
+        | "/nodes/{node_id}/drain"
+        | "/nodes/{node_id}/backup"
+        | "/nodes/{node_id}/backup/flush" => Some(Need::Root),
         _ => None,
     }
 }
@@ -238,11 +260,15 @@ fn unauthorized() -> ApiError {
     ))
 }
 
-fn forbidden() -> ApiError {
-    ApiError(TabaError::new(
-        ErrorCode::AuthForbidden,
-        "The token does not have the permission this route requires.",
-    ))
+/// `403 auth.forbidden`, saying what was missing: `root` or the permission's name.
+fn forbidden(required: &str) -> ApiError {
+    ApiError(
+        TabaError::new(
+            ErrorCode::AuthForbidden,
+            "The token does not have the permission this route requires.",
+        )
+        .with_required(required),
+    )
 }
 
 pub fn out_of_scope() -> TabaError {
@@ -283,14 +309,16 @@ pub async fn authorize(
         .map(|m| m.as_str().to_owned())
         .unwrap_or_default();
     let refused = match need(request.method(), &route) {
-        Some(Need::Root) => !principal.is_root(),
-        Some(Need::Permission(permission)) => !principal.allows(permission),
-        Some(Need::Any) | None => false,
+        Some(Need::Root) if !principal.is_root() => Some("root"),
+        Some(Need::Permission(permission)) if !principal.allows(permission) => {
+            Some(permission.as_str())
+        }
+        _ => None,
     };
-    if refused {
+    if let Some(required) = refused {
         count("forbidden");
         tracing::warn!(token.id = %principal.log_id(), route = %route, "call refused: no permission");
-        return forbidden().into_response();
+        return forbidden(required).into_response();
     }
     if route.contains("{topic}") {
         let (mut parts, body) = request.into_parts();
@@ -318,6 +346,39 @@ pub async fn authorize(
     count("ok");
     request.extensions_mut().insert(principal);
     next.run(request).await
+}
+
+pub fn routes() -> Router<AppState> {
+    Router::new().route("/auth/me", get(me))
+}
+
+/// `GET /auth/me`: who the token is and what it can do, so a client can enable or disable what it
+/// shows before calling. With authentication off everyone is the `open` caller, with every permission.
+async fn me(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+) -> Json<Value> {
+    let all: Vec<&str> = Permission::ALL.iter().map(|p| p.as_str()).collect();
+    Json(match &principal {
+        Principal::Token(record) => json!({
+            "authEnabled": state.auth.enabled,
+            "root": false,
+            "id": record.id,
+            "name": record.name,
+            "permissions": record.permissions.iter().map(|p| p.as_str()).collect::<Vec<_>>(),
+            "topicPrefixes": record.topic_prefixes,
+            "expiresAt": record.expires_ms.map(format_ms),
+        }),
+        Principal::Root | Principal::Open => json!({
+            "authEnabled": state.auth.enabled,
+            "root": true,
+            "id": Value::Null,
+            "name": if state.auth.enabled { "root" } else { "open" },
+            "permissions": all,
+            "topicPrefixes": Vec::<String>::new(),
+            "expiresAt": Value::Null,
+        }),
+    })
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ título: API do cluster
 resumo: As rotas que os nós usam entre si — membros e canal, definições, mensagens, sincronização, recuperação, observabilidade e repasse — com o protocolo de duas fases, os streams NDJSON e os DTOs.
 tipo: referência
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
 ---
 
@@ -48,11 +48,11 @@ Extraído de `cluster/protocol/http.rs`, o tradutor entre `Request` e HTTP.
 |---|---|
 | **Membros e canal** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
 | **Definições** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
-| **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish` |
+| **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
-| **Observabilidade** | `GET /cluster/status` |
-| **Backup em S3** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved` |
-| **Repasse** | `* /cluster/forward/{caminho}` |
+| **Observabilidade** | `GET /cluster/status`; `GET /cluster/stats/topics`; `GET /cluster/stats/topics/{topic}/groups` |
+| **Backup em S3** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved`; `GET /cluster/backup/status` |
+| **Repasse** | `* /cluster/forward/{caminho}`; `* /cluster/node-call/{caminho}` |
 
 > A doc histórica também lista `GET /cluster/metrics/topics`; **essa rota não existe no código** (a agregação entre nós das métricas de tópico não foi implementada: [13-observabilidade.md](13-observabilidade.md)).
 
@@ -132,6 +132,7 @@ Todas levam o `topic` e o `id` no caminho e o `operationId` no corpo. `register`
 | Rota | Faz |
 |---|---|
 | `POST /cluster/topics/{topic}/messages/take` | Pede ao **dono** que entregue até `maxMessages` mensagens prontas (`TakeRequest`: `maxMessages`, `visibilityTimeout`). Ele faz o registro + commit de invisibilidade e devolve `TakeResponse` (`messages`: lista de `MessageRecord`). **Vazia** se a dica estava velha, ou se o nó está em **drain** |
+| `POST /cluster/topics/{topic}/prune` | Esvazia a fila **neste nó** (corpo `{ "pruneId" }`, um GUID v7 que torna a chamada idempotente: o mesmo id responde a mesma contagem e não remove nada novo; o nó lembra os últimos 64). Responde `{ "removed" }`: quantas mensagens ele **era dono** e removeu (as réplicas também são removidas, mas não contadas). A distribuição do `DELETE /topics/{topic}/messages` ([16-api-cliente.md](16-api-cliente.md)). Erros: `404 topic.not-found`, `409 topic.wrong-type` |
 | `POST /cluster/topics/{topic}/fifo/publish` | Repasse da publicação FIFO ao **primário do grupo** (corpo `MessageRecord`, com `id` marcador `00000000-0000-7000-8000-000000000000`; quem gera o `id` é o primário). `421 fifo.misdirected` se o nó não é o primário. Usado também pelas cópias de um distribuidor para uma fila FIFO |
 
 ## Sincronização e recuperação
@@ -165,6 +166,10 @@ Só existem com o backup configurado ([33-backup-s3.md](33-backup-s3.md)); sem e
 | Rota | Faz |
 |---|---|
 | `GET /cluster/status` | O `NodeStatus` local ([17-api-operacao.md](17-api-operacao.md)), para o `GET /health/cluster?scope=cluster` agregar |
+| `GET /cluster/stats/topics` | O que **este nó** vê de cada tópico: os números (contagens, taxas, profundidade, mensagem mais antiga, percentis de latência, memória e disco, grupos acompanhados) e a memória do nó em uso, não a apresentação. O `/stats/topics` da API de cliente pergunta a todos os membros e os junta ([16-api-cliente.md](16-api-cliente.md)). Responde `{ "nodeId", "memoryTotalBytes", "topics": [{ "name", "kind": "queue" \| "distributor", … }] }` |
+| `GET /cluster/stats/topics/{topic}/groups` | Os grupos de uma fila como este nó os vê (`groupId`, `overflow`, `visible`, `invisible`, `band`, `oldestMs`). `404 topic.not-found`, `409 topic.wrong-type` |
+| `GET /cluster/backup/status` | O estado do backup em S3 **deste** nó (o mesmo corpo do `GET /node/backup`). `422 backup.not-configured` |
+| `* /cluster/node-call/{caminho}` | Uma chamada da **API de operação** (`/metrics`, `/metrics/topics…`, `/node/drain`, `/node/backup`, `/node/backup/flush`) que o nó que recebe executa contra **si mesmo**, para uma chamada de cliente endereçada a ele (`/nodes/{nodeId}/…`, [16-api-cliente.md](16-api-cliente.md)). Aceita qualquer verbo; a resposta é a que a rota deu, com status e corpo como vieram. O token já foi conferido por quem enviou, e a chamada só vai às rotas de operação, nunca às de cliente. Funciona mesmo com o nó em drain (é assim que um nó drenado é devolvido). Aceita só de membros |
 | `* /cluster/forward/{caminho}` | **Repasse** de uma chamada de cliente de um nó sincronizando, em drain ou em falha. Aceita **qualquer verbo**; método, query, corpo e cabeçalhos seguem como vieram e a resposta volta como o destino a deu. O IP do cliente já resolvido vai no cabeçalho `x-taba-client-ip`; o destino **confere o token de novo** e **não conta o rate limit**. Prazo de 60 s (cabe um long polling). **Quem recebe nunca repassa de novo**. Aceita só de membros e de nós que saíram por drain |
 
 ## Streams NDJSON

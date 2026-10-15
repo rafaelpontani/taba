@@ -1,10 +1,10 @@
 ---
 title: Client API
-summary: Route-by-route manual of the API that applications use — topics, messages (publish, consume, invisibility, ack) and tokens — with parameters, DTOs, statuses and examples.
+summary: Route-by-route manual of the API that applications use — topics, messages (publish, consume, invisibility, ack, prune), tokens, who the token is, the nodes and the statistics, and the cluster and node operations for the root token — with parameters, DTOs, statuses and examples.
 type: reference
 status: stable
-verified-on: 2026-10-13 @ 71183b9
-sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
+verified-on: 2026-10-15 @ 56121c9
+sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
 # Client API
@@ -24,7 +24,16 @@ sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, 
 | `GET` | `/topics/{topic}/messages` | `consume` | consumption | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | consumption | `200` |
 | `DELETE` | `/topics/{topic}/messages/{id}` | `consume` | consumption | `204` |
+| `DELETE` | `/topics/{topic}/messages` | `admin` | admin | `200` `PruneResult` |
 | `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | root only | admin | see below |
+| `GET` | `/auth/me` | valid token | exempt | `200` `Me` |
+| `GET` | `/nodes` | valid token | ops | `200` `Page<Node>` |
+| `GET` | `/stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | valid token, **within its prefixes** | ops | `200` |
+| `GET` | `/cluster/status` | root only | ops | `200` `ClusterStatus` |
+| `GET` | `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/backup` | root only | ops | `200` |
+| `GET` | `/cluster/backup` | root only | ops | `200` `ClusterBackup` |
+| `GET` `POST` `DELETE` | `/nodes/{nodeId}/drain` | root only | admin | `200` / `202` `DrainStatus` |
+| `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush`, `/cluster/stop` | root only | admin | `200` |
 
 The examples use `localhost:8080` without authentication (development mode). With authentication, add `-H "Authorization: Bearer $TOKEN"`.
 
@@ -272,6 +281,22 @@ Errors: `400` (`required`, `out-of-range`), `404` (`topic.not-found`, `message.n
 
 Errors: `400 validation.required` (without `receiptToken`), `404` (nonexistent, **including a second ack** or a message expired by `ttl`), `409` (`message.stale-receipt`: it was redelivered to another; `topic.wrong-type`: distributor), `429`, `503 cluster.quorum-unavailable` (the ack was canceled).
 
+### `DELETE /topics/{topic}/messages`: prune (empty the queue)
+
+Removes **every message** of the queue — visible and invisible, and the copies the replicas keep — in the **whole cluster**. Permission `admin` on the topic. The topic, its definition and its counters stay. Queues only (a distributor is `409 topic.wrong-type`).
+
+The node that receives the call asks **every member** (itself included) to empty its own copy, all at once, under one `pruneId` (the id makes the call idempotent on each node), and waits for all of them. **It answers success only if all succeeded.** It is a rare act, so there is no retry or rollback.
+
+```bash
+curl -s -X DELETE localhost:8080/topics/orders/messages
+```
+
+**`PruneResult`**: `pruneId`, `removed` (messages removed, each counted **once**: the node that owns a message counts it, the replicas do not) and `nodes` (`nodeId` and `removed` of each).
+
+If any node fails: `503 cluster.prune-incomplete`, naming the nodes in the message and in `details`. The queue may then be empty on some nodes only; **repeating the call is safe**. A message published while the prune runs may survive it, and a node that is still synchronizing is not covered ([31-pending-items.md](31-pending-items.md)).
+
+Errors: `403` (`auth.forbidden` with `required: "admin"`, `auth.out-of-scope`), `404 topic.not-found`, `409 topic.wrong-type`, `429`, `503`.
+
 ---
 
 ## Tokens
@@ -290,9 +315,58 @@ They only exist with **authentication on** and only accept the **root token**. W
 
 Errors: `400` (`validation.*`: unknown permission, empty list, invalid prefix, `expiresAt` in the past), `401`/`403` (root only), `404`, `503` (register not confirmed: try again).
 
+## Who the token is, the nodes and the statistics
+
+Routes for **any valid token** (with authentication off, everyone). They show what a plain token may see within its scope, without being an administrator.
+
+| Route | Answers |
+|---|---|
+| `GET /auth/me` | `Me`: `authEnabled`, `root`, `id` (`null` for the root token), `name`, `permissions`, `topicPrefixes`, `expiresAt`. With authentication off the caller is `open`, with every permission. A client uses it to enable or disable what it shows **before** calling |
+| `GET /nodes` | `collectedAt`, `membersVersion`, `partial`, `missingNodes` and `items`: one `Node` per member — `nodeId`, `self` (it is the node that answered), `reachable`, `state` (`active`, `syncing`, `drained`...), `drainState`, `version`, `memberState`. **No addresses.** A node that left by drain shows `state: "drained"` |
+| `GET /stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | The same DTOs and parameters as `/metrics/topics*` of the operations API ([17-operations-api.md](17-operations-api.md)), but **of the whole cluster**, with `partial` and `missingNodes`. The list only has the topics **within the token's prefixes** (as `GET /topics` does); `/stats/topics/{topic}` outside them is `403 auth.out-of-scope`. `?scope=node` gives the view of the node that answers alone |
+
+### Consolidated reads (`partial` and `missingNodes`)
+
+`GET /nodes`, `GET /cluster/status`, `GET /cluster/backup` and `GET /stats/topics…` answer for the **whole cluster**. Each node says what **it** sees, on the cluster API ([18-cluster-api.md](18-cluster-api.md)); the node that receives the call asks every member at once (itself without the network) and joins the answers. Each call has a deadline of 5 s (fixed). A node that does not answer in time does **not** fail the read: the response is `200` and says it is incomplete.
+
+```json
+{ "partial": true, "missingNodes": [{ "nodeId": "01a1…", "reason": "timeout" }] }
+```
+
+`reason` is `timeout`, `unreachable` (no answer at all) or `error` (the node answered with an error). The numbers are then those of the nodes that **did** answer, and a client should show them with a warning and keep asking. A **write** that fails on some node is different: it is a `503` naming the nodes (the prune).
+
+**How the topic statistics join** (a message is counted by the node that owns it, so the counts add up):
+
+| Field | Join |
+|---|---|
+| counts and rates (`published`, `consumed`, `acked`, `visibleMessages`, `invisibleMessages`, `depth`, `bytes`, memory and disk...) | sum |
+| `oldestMessageAt` | the oldest |
+| `publishLatency`, `consumeLatency` (p50, p95, p99) | the **maximum** of the nodes': percentiles do not add up, and the maximum errs on the cautious side |
+| `groups`, `noisyShare` | `groups` and the largest group are the maximum of the nodes' (a group can have messages on several nodes, so adding would count it twice): a **lower bound** |
+| `conditions`, `worstCondition` | evaluated again on the joined numbers |
+| `memoryShare` | the topic's memory over the memory of the nodes that answered |
+| `/stats/topics/{topic}/groups` | each group once, with its messages from every node |
+
+## Cluster and nodes (root token)
+
+The operations API ([17-operations-api.md](17-operations-api.md)) has no token and is for continuous monitoring. These routes are its copies in the client API, for a client that has one URL and one token, and they need the **root token**: the `admin` permission is per topic, and these routes show the topology and the inside of the nodes. A token that is not the root gets `403 auth.forbidden` with `"required": "root"` in the body, so that the client can say what is missing.
+
+**The node rule** (the same as for a message). The node that receives `/nodes/{nodeId}/…` compares the `nodeId` with its own. If it **is** that node, it answers from its own data; if it is **not**, it calls the node that has the data **once**, on the cluster port (`/cluster/node-call/{path}`, members only, [18-cluster-api.md](18-cluster-api.md)), and returns the answer as it came. It never forwards a call that was already forwarded. An unknown `nodeId` is `404 node.not-found`; a node that does not answer is `502 forward.bad-gateway` (or `504 forward.timeout`) naming it, with no retry. A node that left by drain is still addressable, to return it.
+
+| Route | Does |
+|---|---|
+| `GET /cluster/status` | What `GET /health/cluster` answers: the conditions and the `NodeStatus` of every node (which now carries `runtime`: `activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`), with `partial` and `missingNodes`. Accepts `scope=node` |
+| `GET /cluster/backup` | The S3 backup state of **every** node, each as `GET /nodes/{nodeId}/backup` gives it, with `partial` and `missingNodes` (`422 backup.not-configured` without it) |
+| `GET /nodes/{nodeId}/metrics` | The node's Prometheus text (what `GET /metrics` gives) |
+| `GET`, `POST`, `DELETE /nodes/{nodeId}/drain` | Status, start and return from the drain of that node: what `/node/drain` does |
+| `GET /nodes/{nodeId}/backup`, `POST /nodes/{nodeId}/backup/flush` | The S3 backup of that node (`422 backup.not-configured` without it) |
+| `POST /cluster/backup/flush`, `POST /cluster/stop` | The whole cluster: the same as the operations API's. Only mounted when the operations API has a port of its own; without `operations.port` the operations routes already serve these names on the client port, with no token |
+
+Starting or killing **processes** is not offered: it is the orchestrator's job (`drain` stops the node from receiving, and the return brings it back as a new node).
+
 ## Sources and evidence
 
-- `http/topics`, `http/messages`, `http/tokens`, `http/auth`, `core/topic` (definition), `core/validation` (ranges), `core/content` (body form), `engine/topics`, `engine/messages`.
+- `http/nodes`, `http/topic_stats` (`client_routes`), `http/messages/prune.rs`, `http/topics`, `http/messages`, `http/tokens`, `http/auth`, `core/topic` (definition), `core/validation` (ranges), `core/content` (body form), `engine/topics`, `engine/messages`.
 - All the examples above were run against a real node; the responses are copies.
-- Use cases: UC-TOP, UC-MSG (publishing and body), UC-CNS (consumption), UC-ACK, UC-VIS, UC-AUT (tokens), UC-PAG; see [26a](26a-implemented-use-cases.md). Tests: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`.
+- Use cases: UC-TOP (prune: 044 to 048), UC-MSG (publishing and body), UC-CNS (consumption), UC-ACK, UC-VIS, UC-AUT (tokens; 037 to 039: `required`, `auth/me`, who sees what), UC-OPS (046 to 051: the nodes and the consolidated reads), UC-PAG; see [26a](26a-implemented-use-cases.md). Tests: `tests/topics.rs`, `messages.rs`, `auth.rs`, `definitions.rs`, `nodes_api.rs`.
 - History: `06a-api-cliente.md`.

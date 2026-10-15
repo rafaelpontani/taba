@@ -3,7 +3,7 @@ title: Operations API
 summary: Manual of the routes for the operator, Prometheus and orchestrator — health, node and topic metrics, drain and S3 backup — with parameters, DTOs and examples.
 type: reference
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-15 @ 56121c9
 sources: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operations.rs, crates/taba-node/src/http/metrics, crates/taba-node/src/http/topic_stats, crates/taba-node/src/cluster/drain, crates/taba-node/src/cluster/health, crates/taba-node/src/cluster/state]
 ---
 
@@ -14,6 +14,8 @@ sources: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operati
 **Port:** `operations.port` or, if absent, the **client port**. **Authentication: none**; protection is by network (own port, `operations.allowed-ips`). IP outside the list: `403 ops.ip-not-allowed`. Without `operations.port`, these routes **do not use the client token**.
 
 > The `/node/drain` routes apply **only to the node that receives the call**: the operator calls them on the node (operations port directly), **not through the load balancer**.
+
+> **A client with a token has copies of these routes in the client API** ([16-client-api.md](16-client-api.md)): `GET /cluster/status`, `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/drain`, `/nodes/{nodeId}/backup`..., addressed by `nodeId` (they work through the load balancer) and for the **root token**. The routes of this document do not change: no token, for continuous monitoring.
 
 | Verb | Route | Rate limit | Success |
 |---|---|---|---|

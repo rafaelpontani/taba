@@ -42,7 +42,7 @@ pub mod stats;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
@@ -307,6 +307,9 @@ fn required(fields: &[&str]) -> TabaError {
     )
 }
 
+/// How many `pruneId`s a node remembers to answer a repeated call.
+const MAX_REMEMBERED_PRUNES: usize = 64;
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -505,6 +508,9 @@ pub struct Messages {
     /// The instant of each queue's last `GET`, by topic `id` (the name can be reused by
     /// a recreated queue). Applies to the volatile queues' idleness clock.
     last_get: Mutex<HashMap<String, u64>>,
+    /// The latest prunes this node did (`pruneId` → messages removed), so that a repeated call does not
+    /// prune again and answers the same.
+    prunes: Mutex<VecDeque<(String, u64)>>,
     /// The node's start, in milliseconds: the idleness clock never counts the stopped time.
     started_ms: u64,
     /// What the whole node counts (doc 11): read by `GET /metrics`.
@@ -658,6 +664,7 @@ impl Messages {
             notifiers: Mutex::new(HashMap::new()),
             on_failure: OnceLock::new(),
             last_get: Mutex::new(HashMap::new()),
+            prunes: Mutex::new(VecDeque::new()),
             started_ms,
             counters: NodeCounters::new(),
             distributors: Mutex::new(HashMap::new()),
@@ -2932,6 +2939,53 @@ impl Messages {
         }
         self.ready_changed(topic, &mut state);
         Ok(())
+    }
+
+    /// Empties the queue **on this node**: removes every message it keeps (as owner or replica, visible or
+    /// invisible, in memory or on disk) and returns how many it was the **owner** of, so that the sum
+    /// over the cluster counts each message once. The topic, its counters and the FIFO
+    /// deduplication window stay. Idempotent by `prune_id`: a repeated id answers the first count without
+    /// removing again (a message published after the first prune stays).
+    pub fn prune(&self, topic: &str, prune_id: &str) -> Result<u64, TabaError> {
+        self.queue_view(topic)?;
+        {
+            let done = lock(&self.prunes);
+            if let Some((_, removed)) = done.iter().find(|(id, _)| id == prune_id) {
+                return Ok(*removed);
+            }
+        }
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let mut ids: BTreeSet<String> = state.memory.keys().cloned().collect();
+        let rows = self
+            .store
+            .scan(topic)
+            .map_err(|e| self.disk_error("failed to list the messages on disk", &e))?;
+        // The FIFO queue's short rows (`deleteAt`) are the deduplication window, not messages.
+        ids.extend(
+            rows.into_iter()
+                .filter(|row| row.delete_at_ms.is_none())
+                .map(|row| row.id),
+        );
+        let mut removed = 0;
+        for id in &ids {
+            let place = if state.memory.contains_key(id) {
+                Place::Memory
+            } else {
+                Place::Disk
+            };
+            removed += u64::from(state.index.contains(id));
+            self.remove_message(&mut state, topic, id, place)?;
+        }
+        state.dead_letter_inflight.clear();
+        self.ready_changed(topic, &mut state);
+        drop(state);
+        let mut done = lock(&self.prunes);
+        done.push_back((prune_id.to_owned(), removed));
+        while done.len() > MAX_REMEMBERED_PRUNES {
+            done.pop_front();
+        }
+        Ok(removed)
     }
 
     /// Does on commit the move to the dead-letter of the copy the node has (doc 13, section 12.10).

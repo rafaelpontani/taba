@@ -3,7 +3,7 @@ title: Cluster API
 summary: The routes the nodes use among themselves — members and channel, definitions, messages, synchronization, recovery, observability and forwarding — with the two-phase protocol, the NDJSON streams and the DTOs.
 type: reference
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-15 @ 56121c9
 sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/cluster/protocol/http.rs, crates/taba-node/src/cluster/protocol, crates/taba-node/src/http/cluster_api, crates/taba-node/src/cluster/service, crates/taba-node/src/cluster/channel]
 ---
 
@@ -48,11 +48,11 @@ Extracted from `cluster/protocol/http.rs`, the translator between `Request` and 
 |---|---|
 | **Members and channel** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
 | **Definitions** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
-| **Messages** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish` |
+| **Messages** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
 | **Synchronization and recovery** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
-| **Observability** | `GET /cluster/status` |
-| **S3 backup** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved` |
-| **Forwarding** | `* /cluster/forward/{path}` |
+| **Observability** | `GET /cluster/status`; `GET /cluster/stats/topics`; `GET /cluster/stats/topics/{topic}/groups` |
+| **S3 backup** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved`; `GET /cluster/backup/status` |
+| **Forwarding** | `* /cluster/forward/{path}`; `* /cluster/node-call/{path}` |
 
 > The original design documents also list `GET /cluster/metrics/topics`; **that route does not exist in the code** (the aggregation of topic metrics across nodes was not implemented: [13-observability.md](13-observability.md)).
 
@@ -132,6 +132,7 @@ All carry the `topic` and the `id` in the path and the `operationId` in the body
 | Route | Does |
 |---|---|
 | `POST /cluster/topics/{topic}/messages/take` | Asks the **owner** to deliver up to `maxMessages` ready messages (`TakeRequest`: `maxMessages`, `visibilityTimeout`). It does the invisibility register + commit and returns `TakeResponse` (`messages`: list of `MessageRecord`). **Empty** if the hint was stale, or if the node is in **drain** |
+| `POST /cluster/topics/{topic}/prune` | Empties the queue **on this node** (body `{ "pruneId" }`, a GUID v7 that makes the call idempotent: the same id answers the same count and removes nothing new; the node remembers the last 64). Answers `{ "removed" }`: how many messages it **owned** and removed (the replicas are removed too, but not counted). The fan-out of `DELETE /topics/{topic}/messages` ([16-client-api.md](16-client-api.md)). Errors: `404 topic.not-found`, `409 topic.wrong-type` |
 | `POST /cluster/topics/{topic}/fifo/publish` | Forwarding of the FIFO publication to the **group's primary** (body `MessageRecord`, with marker `id` `00000000-0000-7000-8000-000000000000`; whoever generates the `id` is the primary). `421 fifo.misdirected` if the node is not the primary. Also used by the copies of a distributor to a FIFO queue |
 
 ## Synchronization and recovery
@@ -165,6 +166,10 @@ They only exist with the backup configured ([33-s3-backup.md](33-s3-backup.md));
 | Route | Does |
 |---|---|
 | `GET /cluster/status` | The local `NodeStatus` ([17-operations-api.md](17-operations-api.md)), for `GET /health/cluster?scope=cluster` to aggregate |
+| `GET /cluster/stats/topics` | What **this node** sees of every topic: the numbers (counts, rates, depth, oldest message, latency percentiles, memory and disk, groups followed) and the node's memory in use, not the presentation. The client API's `/stats/topics` asks every member and joins them ([16-client-api.md](16-client-api.md)). Answers `{ "nodeId", "memoryTotalBytes", "topics": [{ "name", "kind": "queue" \| "distributor", … }] }` |
+| `GET /cluster/stats/topics/{topic}/groups` | The groups of a queue as this node sees them (`groupId`, `overflow`, `visible`, `invisible`, `band`, `oldestMs`). `404 topic.not-found`, `409 topic.wrong-type` |
+| `GET /cluster/backup/status` | The S3 backup state of **this** node (the same body as `GET /node/backup`). `422 backup.not-configured` |
+| `* /cluster/node-call/{path}` | A call of the **operations API** (`/metrics`, `/metrics/topics…`, `/node/drain`, `/node/backup`, `/node/backup/flush`) that the receiving node runs against **itself**, for a client call addressed to it (`/nodes/{nodeId}/…`, [16-client-api.md](16-client-api.md)). Accepts any verb; the response is the one the route gave, status and body as they came. The token was already checked by whoever sent it, and the call goes only to the operations routes, never to the client ones. Works even if the node is in drain (that is how a drained node is returned). Accepts only from members |
 | `* /cluster/forward/{path}` | **Forwarding** of a client call from a synchronizing node, in drain or in failure. Accepts **any verb**; method, query, body and headers go as they came and the response comes back as the destination gave it. The already resolved client IP goes in the `x-taba-client-ip` header; the destination **checks the token again** and **does not count the rate limit**. Deadline of 60 s (fits a long polling). **Whoever receives never forwards again**. Accepts only from members and from nodes that left by drain |
 
 ## NDJSON streams

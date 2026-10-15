@@ -3,7 +3,7 @@ título: Arquitetura
 resumo: Como um nó do Taba é montado por dentro — camadas, direção das dependências, as três portas, as fronteiras de teste e o mapa de módulos.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [crates/taba-node/src/lib.rs, crates/taba-node/src/node.rs, crates/taba-node/src/main.rs, crates/taba-node/src/http/mod.rs, crates/taba-node/src/cluster/transport/mod.rs]
 ---
 
@@ -109,7 +109,7 @@ crates/taba-node/src/
                      channel drain health members protocol recovery replication
                      service state sync tls transport (http, memory) vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
-                     operations ratelimit tokens topic_stats topics
+                     nodes operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 

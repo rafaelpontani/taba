@@ -19,6 +19,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::common::ApiError;
+use super::consolidate::{self, Missing};
 use super::{AppState, ratelimit};
 use crate::cluster::drain::{Cancelled, DrainStatus, Started};
 use crate::cluster::health::{self, HealthSignals};
@@ -67,8 +68,9 @@ fn unix_ms(at: SystemTime) -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// The operations routes, already with the `operations.allowed-ips` filter.
-pub fn routes(state: &AppState) -> Router<AppState> {
+/// The operations routes without the IP filter and the rate limit: what a node serves to itself and to
+/// the other members (`/nodes/{nodeId}/...` of the client API).
+fn bare_routes(state: &AppState) -> Router<AppState> {
     let mut routes = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
@@ -84,6 +86,17 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         routes = routes.route("/metrics", get(super::metrics::prometheus));
     }
     routes
+}
+
+/// The operations routes as a router of their own, with no IP filter or rate limit: the calls that come
+/// from another member (`Request::NodeCall`) and the node's own, already authorized by the client API.
+pub fn local_router(state: AppState) -> Router {
+    super::common::finish(bare_routes(&state), state)
+}
+
+/// The operations routes, already with the `operations.allowed-ips` filter.
+pub fn routes(state: &AppState) -> Router<AppState> {
+    bare_routes(state)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             ratelimit::rate_limit,
@@ -145,6 +158,7 @@ pub struct StatusParts {
     node: Arc<NodeShared>,
     messages: Arc<Messages>,
     stats_rules: Arc<StatsRules>,
+    telemetry: Arc<crate::telemetry::Telemetry>,
 }
 
 impl StatusParts {
@@ -154,6 +168,7 @@ impl StatusParts {
             node: state.node.clone(),
             messages: state.messages.clone(),
             stats_rules: state.stats_rules.clone(),
+            telemetry: state.telemetry.clone(),
         }
     }
 
@@ -197,7 +212,36 @@ pub fn node_status(parts: &StatusParts, cluster: Option<&ClusterService>) -> Val
         "startedAt": format_ms(unix_ms(node.started_at)),
         "collectedAt": now,
         "storage": storage_json,
+        "runtime": runtime_json(&parts.telemetry),
         "signals": signals,
+    })
+}
+
+/// What the node's registry says about its load, for a client that cannot read the Prometheus text:
+/// the requests in progress, the requests refused with `429` since the start, and the worst `p95` of the
+/// round trip of its channels to the other nodes (`null` with no observation).
+fn runtime_json(telemetry: &crate::telemetry::Telemetry) -> Value {
+    use crate::telemetry::metrics::Value as Metric;
+    let (mut active, mut rejected, mut rtt) = (0.0_f64, 0.0_f64, None::<f64>);
+    for family in telemetry.registry.snapshot() {
+        for (_, value) in &family.series {
+            match (family.def.name, value) {
+                ("http.server.active_requests", Metric::Number(n)) => active += n,
+                ("taba.ratelimit.rejected", Metric::Number(n)) => rejected += n,
+                ("taba.cluster.channel.rtt", Metric::Histogram(h)) => {
+                    rtt = match (rtt, h.percentile(0.95)) {
+                        (Some(a), Some(b)) => Some(a.max(b)),
+                        (a, b) => a.or(b),
+                    };
+                }
+                _ => {}
+            }
+        }
+    }
+    json!({
+        "activeRequests": active.max(0.0),
+        "rateLimitRejected": rejected,
+        "channelRttP95Seconds": rtt,
     })
 }
 
@@ -208,7 +252,7 @@ type Reported = (String, Option<Value>);
 /// `GET /cluster/status` and joins the conditions; one that does not answer shows up with `reachable: false`.
 /// With `scope=node`, or without the member table (a node in development, or one that has not joined yet),
 /// the cluster is this node.
-async fn cluster_health(
+pub(super) async fn cluster_health(
     State(state): State<AppState>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
@@ -231,11 +275,14 @@ async fn cluster_health(
     let parts = StatusParts::of(&state);
     let local = node_status(&parts, state.cluster.as_deref());
     let table = state.cluster.as_ref().and_then(|c| c.membership().table());
-    let reported: Vec<Reported> = match (&state.cluster, &table) {
+    let (reported, missing): (Vec<Reported>, Vec<Missing>) = match (&state.cluster, &table) {
         (Some(cluster), Some(table)) if scope == "cluster" => {
             ask_members(cluster, &table.members).await
         }
-        _ => vec![(state.node.node_id(), Some(local.clone()))],
+        _ => (
+            vec![(state.node.node_id(), Some(local.clone()))],
+            Vec::new(),
+        ),
     };
 
     let (members, members_version) = match &table {
@@ -293,6 +340,7 @@ async fn cluster_health(
         "scope": scope,
         "collectedAt": format_ms(state.clock.now_millis()),
         "partial": unreachable,
+        "missingNodes": missing.iter().map(Missing::json).collect::<Vec<_>>(),
         "worstCondition": worst,
         "conditions": conditions.iter().map(|c| c.entry()).collect::<Vec<_>>(),
         "summary": {
@@ -305,26 +353,35 @@ async fn cluster_health(
     })))
 }
 
-/// Asks each member for its `NodeStatus` (itself without the network), all at once, and returns
-/// in table order.
-async fn ask_members(cluster: &Arc<ClusterService>, members: &[Member]) -> Vec<Reported> {
-    let mut set = tokio::task::JoinSet::new();
-    for (index, member) in members.iter().enumerate() {
-        let (cluster, member) = (cluster.clone(), member.clone());
-        set.spawn(async move {
-            let status = match cluster.call_member(&member, PeerRequest::Status).await {
-                Ok(PeerResponse::Status(status)) => Some(status),
-                _ => None,
-            };
-            (index, (member.node_id, status))
-        });
+/// Asks each member for its `NodeStatus` (itself without the network), all at once, and returns in table
+/// order what each said and who did not answer (and why).
+pub(super) async fn ask_members(
+    cluster: &Arc<ClusterService>,
+    members: &[Member],
+) -> (Vec<Reported>, Vec<Missing>) {
+    let answers = consolidate::ask_members(cluster, members, &PeerRequest::Status).await;
+    let mut reported = Vec::with_capacity(answers.len());
+    let mut missing = Vec::new();
+    for (node_id, answer) in answers {
+        match answer {
+            Ok(PeerResponse::Status(status)) => reported.push((node_id, Some(status))),
+            Ok(_) => {
+                missing.push(Missing {
+                    node_id: node_id.clone(),
+                    reason: "error",
+                });
+                reported.push((node_id, None));
+            }
+            Err(reason) => {
+                missing.push(Missing {
+                    node_id: node_id.clone(),
+                    reason,
+                });
+                reported.push((node_id, None));
+            }
+        }
     }
-    let mut answers = Vec::with_capacity(members.len());
-    while let Some(Ok(answer)) = set.join_next().await {
-        answers.push(answer);
-    }
-    answers.sort_by_key(|(index, _)| *index);
-    answers.into_iter().map(|(_, reported)| reported).collect()
+    (reported, missing)
 }
 
 async fn drain_status(State(state): State<AppState>) -> Json<DrainStatusDto> {

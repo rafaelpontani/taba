@@ -146,6 +146,26 @@ pub struct BackupStatus {
 }
 
 impl BackupStatus {
+    /// The state as the APIs show it.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "s3Reachable": self.s3_ok,
+            "lastError": self.last_error,
+            "lastSuccessAt": self.last_ok_ms.map(crate::core::time::format_ms),
+            "outboxPending": self.outbox_pending,
+            "journalPending": self.journal_pending,
+            "definitionsPending": self.definitions_pending,
+            "pending": self.pending(),
+            "segments": self.segments,
+            "segmentBytes": self.segment_bytes,
+            "saved": self.saved,
+            "segmentsUploaded": self.segments_uploaded,
+            "messagesUploaded": self.messages_uploaded,
+            "bodiesEvicted": self.bodies_evicted,
+            "errors": self.errors,
+        })
+    }
+
     /// What is still left to send: what the operator checks before maintenance.
     pub fn pending(&self) -> u64 {
         self.outbox_pending + self.journal_pending + self.definitions_pending

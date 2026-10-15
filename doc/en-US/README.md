@@ -97,6 +97,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [30-decisions.md](30-decisions.md) | Why each thing is the way it is |
 | [31-pending-items.md](31-pending-items.md) | What is still open |
 | [32-roadmap.md](32-roadmap.md) | What comes next |
+| [34-tui-plan.md](34-tui-plan.md) | Plan and per-screen requirements of the interactive interface (TUI) of `taba-cli` |
 
 ## Conventions of this documentation
 

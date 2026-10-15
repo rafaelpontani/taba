@@ -3,7 +3,7 @@ título: Casos de uso planejados
 resumo: Os casos de uso documentados que ainda não têm teste que os cite — o que falta provar — por área, com o motivo quando o próprio caso o diz.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, crates/taba-node/tests/uc_coverage.rs]
 ---
 
@@ -19,14 +19,14 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 | Área | Assunto | Sem teste | Com teste |
 |---|---|---:|---:|
-| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 4 | 39 |
+| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 4 | 45 |
 | `MSG` | Publicação e o corpo da mensagem | 1 | 19 |
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 1 | 39 |
 | `VIS` | Alteração da invisibilidade | 2 | 10 |
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 6 | 14 |
 | `DST` | Tópico Distribuidor | 12 | 6 |
 | `GRP` | Grupos de mensagens e entrega justa | 1 | 16 |
-| `AUT` | Autenticação e tokens de acesso | 6 | 30 |
+| `AUT` | Autenticação e tokens de acesso | 6 | 33 |
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 2 | 7 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 7 | 10 |
@@ -45,7 +45,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `FWD` | Repasse de chamadas de cliente | 8 | 4 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | 3 | 25 |
 | `DEV` | Modo desenvolvimento | 10 | 3 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 9 | 33 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 9 | 39 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 7 | 3 |
 | `CFG` | Configuração e validações de partida | 2 | 10 |
 

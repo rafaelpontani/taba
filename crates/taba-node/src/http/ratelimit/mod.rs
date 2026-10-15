@@ -6,8 +6,9 @@
 //! (the root has the `root` counter), and the **client IP** otherwise (authentication off,
 //! `401`, operations routes). A `403` also counts against the token, because authorization comes later.
 //!
-//! Categories: publish, consume and admin (the topic routes, `/tokens` and `/node/drain`) and that
-//! of the operations queries that talk to other nodes (`/health/cluster?scope=cluster`).
+//! Categories: publish, consume and admin (the topic routes, `/tokens`, the drain and emptying a queue) and that
+//! of the operations queries that talk to other nodes (`/health/cluster?scope=cluster`, the nodes, the
+//! statistics).
 //! `/health/live`, `/health/ready` and `/health/cluster?scope=node` are exempt.
 
 use std::collections::HashMap;
@@ -166,7 +167,11 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         | "/node/drain"
         | "/node/backup/flush"
         | "/cluster/backup/flush"
-        | "/cluster/stop" => Some(Category::Admin),
+        | "/cluster/stop"
+        | "/nodes/{node_id}/drain"
+        | "/nodes/{node_id}/backup/flush" => Some(Category::Admin),
+        // Emptying a queue is an administrative act.
+        "/topics/{topic}/messages" if method == Method::DELETE => Some(Category::Admin),
         "/topics/{topic}/messages" if method == Method::POST => Some(Category::Publish),
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
@@ -175,6 +180,15 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         "/metrics/topics" | "/metrics/topics/{topic}" | "/metrics/topics/{topic}/groups" => {
             Some(Category::Ops)
         }
+        // The client API's copies of the monitoring routes: they too measure or ask other nodes.
+        "/stats/topics"
+        | "/stats/topics/{topic}"
+        | "/stats/topics/{topic}/groups"
+        | "/nodes"
+        | "/cluster/status"
+        | "/cluster/backup"
+        | "/nodes/{node_id}/metrics"
+        | "/nodes/{node_id}/backup" => Some(Category::Ops),
         // Only `scope=cluster` (the default) queries other nodes.
         "/health/cluster" => {
             let node_only = query

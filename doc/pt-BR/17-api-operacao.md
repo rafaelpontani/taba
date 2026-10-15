@@ -3,7 +3,7 @@ título: API de operação
 resumo: Manual das rotas para operador, Prometheus e orquestrador — saúde, métricas do nó e de tópicos, drain e backup em S3 — com parâmetros, DTOs e exemplos.
 tipo: referência
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operations.rs, crates/taba-node/src/http/metrics, crates/taba-node/src/http/topic_stats, crates/taba-node/src/cluster/drain, crates/taba-node/src/cluster/health, crates/taba-node/src/cluster/state]
 ---
 
@@ -14,6 +14,8 @@ fontes: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operatio
 **Porta:** `operations.port` ou, se ausente, a **porta de cliente**. **Autenticação: nenhuma**; a proteção é de rede (porta própria, `operations.allowed-ips`). IP fora da lista: `403 ops.ip-not-allowed`. Sem `operations.port`, essas rotas **não usam o token** de cliente.
 
 > As rotas `/node/drain` valem **só para o nó que recebe a chamada**: o operador as chama no nó (porta de operação direta), **não pelo balanceador**.
+
+> **Um cliente com token tem cópias destas rotas na API de cliente** ([16-api-cliente.md](16-api-cliente.md)): `GET /cluster/status`, `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/drain`, `/nodes/{nodeId}/backup`..., endereçadas pelo `nodeId` (funcionam pelo balanceador) e para o **token raiz**. As rotas deste documento não mudam: sem token, para o monitoramento contínuo.
 
 | Verbo | Rota | Rate limit | Sucesso |
 |---|---|---|---|

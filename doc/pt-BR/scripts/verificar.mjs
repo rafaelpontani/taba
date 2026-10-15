@@ -133,7 +133,7 @@ for (const [f, t] of Object.entries(texts)) {
   const problems = [];
   const apiText = ['15-api-visao-geral.md', '16-api-cliente.md', '17-api-operacao.md', '18-api-cluster.md'].map((f) => texts[f]).join('\n');
   const norm = (s) => s.replace(/\{[^}]*\}/g, '{}').replace(/\/+$/, '');
-  const docRoutes = new Set([...apiText.matchAll(/(\/(?:topics|tokens|health|metrics|node|cluster)[A-Za-z0-9_{}\-/.]*)/g)].map((m) => norm(m[1])));
+  const docRoutes = new Set([...apiText.matchAll(/(\/(?:topics|tokens|health|metrics|node|cluster|auth|stats)[A-Za-z0-9_{}\-/.]*)/g)].map((m) => norm(m[1])));
   const routes = [];
   for (const f of walk(path.join(src, 'http')).filter((p) => p.endsWith('.rs') && !p.endsWith('tests.rs'))) {
     for (const m of read(f).matchAll(/\.route\(\s*"([^"]+)"/g)) routes.push(m[1]);

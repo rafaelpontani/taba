@@ -3,7 +3,7 @@ title: Errors and limits
 summary: The complete catalogue of error codes (each with its fixed HTTP status), the fixed validation limits, the configurable limits and the rate limits.
 type: reference
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-15 @ 56121c9
 sources: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/validation/mod.rs, crates/taba-node/src/http/ratelimit, crates/taba-node/src/config/params/mod.rs]
 ---
 
@@ -13,7 +13,7 @@ sources: [crates/taba-node/src/core/error/mod.rs, crates/taba-node/src/core/vali
 
 ## Catalogue rule
 
-Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **fixed HTTP status**: the same code always comes with the same status. The catalogue has **50 codes**. A new code requires its line in this document **and** its case in the test table (rule of [24-conventions.md](24-conventions.md)). The codes are stable; the `message` is **not** (do not use it in logic).
+Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **fixed HTTP status**: the same code always comes with the same status. The catalogue has **53 codes**. A new code requires its line in this document **and** its case in the test table (rule of [24-conventions.md](24-conventions.md)). The codes are stable; the `message` is **not** (do not use it in logic).
 
 ## Validation — `400`
 
@@ -38,7 +38,7 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | Code | Status | When |
 |---|---|---|
 | `auth.unauthorized` | 401 | No token, malformed, unknown, revoked or expired. **The response does not say which** |
-| `auth.forbidden` | 403 | Valid token without the route's permission (includes `/tokens`, root only) |
+| `auth.forbidden` | 403 | Valid token without the route's permission (includes `/tokens`, the cluster and the nodes: root only). The body carries **`required`**: `root`, or the name of the missing permission (`admin`, `publish`…), so a client can say what the token needs |
 | `auth.out-of-scope` | 403 | The topic (or a distributor `prefix`) is outside the token's prefixes |
 | `ops.ip-not-allowed` | 403 | Operations route called from an IP outside `operations.allowed-ips` |
 | `cluster.not-member` | 403 | Cluster route called by someone who is not in the member table |
@@ -51,6 +51,7 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `topic.not-found` | The topic does not exist (and there is no `autoCreate`) |
 | `message.not-found` | The message does not exist: already confirmed, expired by `ttl` or removed with the topic. **A second ack** gives this error |
 | `token.not-found` | The token does not exist or was already revoked |
+| `node.not-found` | `/nodes/{nodeId}/…` with a `nodeId` that is not in the cluster (nor among the nodes that left by drain) |
 | `route.not-found` | Path that does not exist on that port (`/cluster/*` on the client port; `/tokens` with authentication off) |
 | `cluster.operation-unknown` | Between nodes: `commit`/`rollback` of an operation the node does not know (expired) |
 
@@ -89,6 +90,7 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `forward.timeout` | 504 | The forwarding timed out after the body was sent |
 | `cluster.quorum-unavailable` | 503 | Not enough nodes to close the write, delivery or ack quorum |
 | `cluster.registration-failed` | 503 | A register (topic, token, node) was not confirmed by all and was canceled. **Nothing was applied** |
+| `cluster.prune-incomplete` | 503 | The prune of a queue failed on some nodes (named in the message and in `details`). The queue may be empty on the others; repeating the call is safe |
 | `cluster.commit-timeout` | 503 | The register was confirmed, but the commit did not reach all within `write.commit.timeout`. **The operation continues in the background and will complete** |
 | `cluster.node-syncing` | 503 | The node is synchronizing and found no other to forward to |
 | `cluster.node-draining` | 503 | The node is in drain and found no other to forward to (in development, always) |

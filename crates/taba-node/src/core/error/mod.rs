@@ -59,6 +59,7 @@ catalog! {
     MessageNotFound => ("message.not-found", 404),
     TokenNotFound => ("token.not-found", 404),
     RouteNotFound => ("route.not-found", 404),
+    NodeNotFound => ("node.not-found", 404),
     ClusterOperationUnknown => ("cluster.operation-unknown", 404),
     // Conflito (409)
     TopicAlreadyExists => ("topic.already-exists", 409),
@@ -84,6 +85,7 @@ catalog! {
     ForwardTimeout => ("forward.timeout", 504),
     ClusterQuorumUnavailable => ("cluster.quorum-unavailable", 503),
     ClusterRegistrationFailed => ("cluster.registration-failed", 503),
+    ClusterPruneIncomplete => ("cluster.prune-incomplete", 503),
     ClusterCommitTimeout => ("cluster.commit-timeout", 503),
     ClusterNodeSyncing => ("cluster.node-syncing", 503),
     ClusterNodeDraining => ("cluster.node-draining", 503),
@@ -120,6 +122,8 @@ pub struct TabaError {
     pub details: Vec<ErrorDetail>,
     /// Seconds until it is worth trying again (`Retry-After`, only in the header).
     pub retry_after: Option<u64>,
+    /// What the caller's token lacked, in a `403 auth.forbidden`: `root` or a permission name.
+    pub required: Option<String>,
 }
 
 impl TabaError {
@@ -129,7 +133,14 @@ impl TabaError {
             message: message.into(),
             details: Vec::new(),
             retry_after: None,
+            required: None,
         }
+    }
+
+    /// Says what the token needed (`root`, or the name of a permission).
+    pub fn with_required(mut self, required: impl Into<String>) -> Self {
+        self.required = Some(required.into());
+        self
     }
 
     pub fn with_detail(
@@ -173,6 +184,7 @@ impl TabaError {
             message: self.message.clone(),
             request_id: request_id.to_owned(),
             details: self.details.clone(),
+            required: self.required.clone(),
         }
     }
 }
@@ -194,6 +206,8 @@ pub struct ErrorResponse {
     pub request_id: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub details: Vec<ErrorDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<String>,
 }
 
 #[cfg(test)]

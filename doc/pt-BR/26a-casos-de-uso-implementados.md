@@ -3,7 +3,7 @@ título: Casos de uso implementados
 resumo: O catálogo dos casos de uso do Taba que têm ao menos um teste que os cita, por área, com o caso, o nível e os testes que o provam.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-15 @ 56121c9
 fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md]
 ---
 
@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Gerado.** Este arquivo é produzido por `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`, que lê as linhas `/// UC: UC-XXX-NNN` do código: não se edita à mão. Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-14, commit efeb47a):** **742** de **925** casos têm ao menos um teste (80.2%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI escritos à mão, veja K em [31-pendencias.md](31-pendencias.md)):** **757** de **940** casos têm ao menos um teste (80.5%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -19,7 +19,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 | Área | Assunto | Com teste | Sem teste |
 |---|---|---:|---:|
-| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 39 | 4 |
+| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 45 | 4 |
 | `MSG` | Publicação e o corpo da mensagem | 19 | 1 |
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 39 | 1 |
 | `ACK` | Confirmação do consumo | 13 | 0 |
@@ -29,7 +29,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `VOL` | Fila volátil e nó gestor | 23 | 0 |
 | `FIF` | Fila FIFO | 47 | 0 |
 | `GRP` | Grupos de mensagens e entrega justa | 16 | 1 |
-| `AUT` | Autenticação e tokens de acesso | 30 | 6 |
+| `AUT` | Autenticação e tokens de acesso | 33 | 6 |
 | `LIM` | Rate limit e IP do cliente | 13 | 2 |
 | `PAG` | Paginação | 7 | 2 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 10 | 7 |
@@ -53,7 +53,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
 | `DEV` | Modo desenvolvimento | 3 | 10 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 21 | 0 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 33 | 9 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 39 | 9 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 3 | 7 |
 | `CFG` | Configuração e validações de partida | 10 | 2 |
 | `BKP` | Backup opcional em S3 | 40 | 0 |
@@ -456,6 +456,66 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `tests/topics.rs::delete_removes_the_topic_and_its_dead_letter`
+
+---
+
+### UC-TOP-044
+
+**Caso:** Prune em um nó: `Messages::prune` esvazia a fila (mensagens visíveis e invisíveis, próprias ou réplicas, em memória ou em disco)  
+**Então:** Devolve quantas mensagens o nó **era dono**; o tópico fica; uma mensagem publicada depois é entregue normalmente.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/tests/prune.rs::pruning_removes_the_visible_and_the_invisible_messages_and_counts_them`
+
+---
+
+### UC-TOP-045
+
+**Caso:** O mesmo `pruneId` chega de novo a um nó  
+**Então:** Responde a primeira contagem e não remove nada novo (uma mensagem publicada depois do primeiro prune fica); um `pruneId` novo esvazia de novo.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/tests/prune.rs::a_repeated_prune_id_answers_the_same_and_removes_nothing_new`
+
+---
+
+### UC-TOP-046
+
+**Caso:** Prune de um tópico que não existe, ou de um distribuidor  
+**Então:** `404 topic.not-found`; `409 topic.wrong-type`.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/tests/prune.rs::pruning_an_unknown_topic_is_404_and_a_distributor_is_a_wrong_type`
+
+---
+
+### UC-TOP-047
+
+**Caso:** `DELETE /topics/{topic}/messages` num cluster com mensagens visíveis e invisíveis, recebido por qualquer nó  
+**Então:** `200` `{pruneId, removed, nodes}`: todos os nós foram esvaziados (nenhum entrega nada), `removed` conta cada mensagem uma vez e não uma por cópia, o nó que recebe esvazia a si mesmo sem rede, e a fila continua publicando e entregando.  
+**Nível:** C  
+**Testes:**
+  - `tests/nodes_api.rs::pruning_empties_the_queue_on_every_node_and_the_queue_keeps_working`
+
+---
+
+### UC-TOP-048
+
+**Caso:** Prune com um token sem `admin`, ou de um tópico que não existe  
+**Então:** `403 auth.forbidden` (com `required: "admin"`); `404 topic.not-found`; com `admin` sobre o tópico, `200`.  
+**Nível:** I  
+**Testes:**
+  - `tests/nodes_api.rs::pruning_an_unknown_topic_is_404_and_needs_the_admin_permission`
+
+---
+
+### UC-TOP-049
+
+**Caso:** Um prune enquanto um nó não responde  
+**Então:** `503 cluster.prune-incomplete` nomeando esse nó (na mensagem e em `details`); os outros nós foram esvaziados; repetir a chamada depois que o nó volta o esvazia e responde `200`.  
+**Nível:** C  
+**Testes:**
+  - `tests/nodes_api.rs::a_prune_that_fails_on_a_node_names_it_and_repeating_it_is_safe`
 
 ---
 
@@ -2763,6 +2823,38 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `tests/metrics.rs::auth_requests_are_counted_by_outcome_and_the_token_id_is_never_a_label`
   - `tests/metrics.rs::without_authentication_there_are_no_auth_series`
+
+---
+
+### UC-AUT-037
+
+**Caso:** Um token válido chama uma rota para a qual não tem permissão  
+**Então:** O `403 auth.forbidden` traz `required`: `root` nas rotas só do raiz, o nome da permissão (`admin`...) nas demais; os outros erros não têm esse campo.  
+**Nível:** U, I  
+**Testes:**
+  - `src/core/error/tests.rs::a_forbidden_error_says_what_was_missing_and_other_errors_leave_the_field_out`
+  - `tests/nodes_api.rs::a_forbidden_answer_says_what_the_token_lacked`
+
+---
+
+### UC-AUT-038
+
+**Caso:** `GET /auth/me`  
+**Então:** Qualquer token válido recebe seu `id`, `name`, `permissions`, `topicPrefixes`, `expiresAt` e `root: false`; o token raiz recebe `root: true` e todas as permissões; sem token, `401`.  
+**Nível:** I  
+**Testes:**
+  - `tests/nodes_api.rs::auth_me_says_who_the_token_is_and_what_it_can_do`
+
+---
+
+### UC-AUT-039
+
+**Caso:** O que um token que não é o raiz pode ver: `GET /nodes`, `GET /stats/topics`, `/stats/topics/{topic}` e `/groups`  
+**Então:** `GET /nodes` lista os nós sem endereços; a lista de estatísticas só traz os tópicos dentro dos prefixos do token e `/stats/topics/{topic}` fora deles é `403 auth.out-of-scope`; as rotas de cluster e de nó pedem o token raiz.  
+**Nível:** U, I  
+**Testes:**
+  - `src/http/auth/tests.rs::the_monitoring_routes_split_between_any_token_and_the_root_token`
+  - `tests/nodes_api.rs::any_valid_token_lists_the_nodes_and_sees_the_statistics_of_its_prefixes`
 
 ---
 
@@ -7492,6 +7584,67 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
+
+---
+
+### UC-OPS-046
+
+**Caso:** `GET /cluster/status` e `/nodes/{nodeId}/metrics`, `/drain`, `/backup`, `/stats/topics` com um token que não é o raiz, e com um `nodeId` desconhecido  
+**Então:** `403 auth.forbidden` com `required: "root"`; com o token raiz, o estado do cluster, o texto Prometheus do nó e o estado do drain; um `nodeId` desconhecido é `404 node.not-found`.  
+**Nível:** I  
+**Testes:**
+  - `tests/nodes_api.rs::the_cluster_and_node_routes_need_the_root_token_and_an_unknown_node_is_404`
+
+---
+
+### UC-OPS-047
+
+**Caso:** `/nodes/{nodeId}/…` recebido por um nó que é, ou não é, o `nodeId`  
+**Então:** O nó que é ele responde com os próprios dados e nada cruza a porta do cluster; senão chama o destino **uma vez** (`node-call`) e devolve a resposta como veio; iniciar o drain de outro nó por qualquer nó drena aquele; um nó drenado continua em `GET /nodes` como `drained` e continua endereçável; um `nodeId` desconhecido não chama ninguém.  
+**Nível:** C  
+**Testes:**
+  - `tests/nodes_api.rs::a_node_answers_for_itself_or_calls_the_node_that_has_the_data_once`
+
+---
+
+### UC-OPS-048
+
+**Caso:** `/nodes/{nodeId}/…` para um nó que não responde  
+**Então:** `502 forward.bad-gateway` nomeando o nó, depois de uma única tentativa (sem nova tentativa).  
+**Nível:** C  
+**Testes:**
+  - `tests/nodes_api.rs::a_node_that_does_not_answer_is_a_failure_that_names_it_with_no_retry`
+
+---
+
+### UC-OPS-049
+
+**Caso:** `GET /stats/topics`, `/stats/topics/{topic}` e `/stats/topics/{topic}/groups` por qualquer nó de um cluster  
+**Então:** Os números do cluster, completos (12 mensagens publicadas em três nós aparecem como 12 por qualquer nó), com `partial: false` e `missingNodes: []`; `?scope=node` é só aquele nó e os três nós somam o cluster; cada grupo aparece uma vez, com as mensagens de todos os nós.  
+**Nível:** I, C  
+**Testes:**
+  - `tests/nodes_api.rs::the_statistics_are_the_clusters_not_one_nodes`
+
+---
+
+### UC-OPS-050
+
+**Caso:** Um nó não responde a uma leitura consolidada (`/stats/topics…`, `/nodes`, `/cluster/status`)  
+**Então:** `200` com `partial: true` e `missingNodes: [{ nodeId, reason }]` (`timeout` ou `unreachable`) nomeando esse nó; os números são os dos outros; quando o nó volta, `partial` é `false` e os números estão completos.  
+**Nível:** C  
+**Testes:**
+  - `tests/nodes_api.rs::a_node_that_does_not_answer_makes_the_consolidated_reads_partial_and_says_which`
+
+---
+
+### UC-OPS-051
+
+**Caso:** `GET /cluster/status` e `GET /cluster/backup` com o token raiz  
+**Então:** O `NodeStatus` de cada nó traz `runtime` (`activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`) ao lado de memória e disco; `/cluster/backup` lista o estado do backup em S3 de cada nó com o `nodeId`; sem backup, `422 backup.not-configured`.  
+**Nível:** C  
+**Testes:**
+  - `tests/nodes_api.rs::the_cluster_status_carries_the_load_of_each_node_and_the_backup_is_consolidated`
+  - `tests/nodes_api.rs::without_a_backup_the_cluster_backup_route_says_so`
 
 ---
 

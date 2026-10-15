@@ -318,6 +318,12 @@ impl Membership {
             .any(|m| m.addresses.iter().any(|a| a == address))
     }
 
+    /// The nodes that left by drain and have not come back (up to 64, in memory only): a client can still
+    /// address them to return them from the drain.
+    pub fn departed_members(&self) -> Vec<Member> {
+        self.lock().departed.clone()
+    }
+
     /// The nodes this node saw excluded by vote and that did not return to the table (D101).
     pub fn excluded_members(&self) -> Vec<Member> {
         let inner = self.lock();

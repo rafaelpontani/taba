@@ -3,7 +3,7 @@ title: Pending items
 summary: Everything that remains open in the project — design questions (D…) and problems of logic, risk or limit (PRB-…) — plus the divergences and findings of this documentation, still without code.
 type: reference
 status: partial
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-15 @ 56121c9
 sources: [doc/08b-pendencias.md, doc/pt-BR/_divergencias.md]
 ---
 
@@ -47,6 +47,17 @@ Found while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)); t
 | **PRB-057** | **The search in the bucket after an exclusion by death costs the size of the topic's bucket** (listing, whole journals, one footer per segment) and runs on each survivor | A light index of ids per segment kept by the manager |
 
 Also recorded as **accepted limits** (scenarios 2, 7, 8 and 10 of [33-s3-backup.md](33-s3-backup.md)): S3 down only for one live node, a message confirmed and consumed before `backup.delay` when **all** nodes go down, state lagging by the journal window (idempotent consumer), and S3 without conditional write (the restore lock is not safe). A **rejected** exclusion vote is not repeated by itself (inherited from the voting protocol; in the backup the delay until the heartbeat expires makes this rare).
+
+## TUI server work (new problems and limits)
+
+Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)); they enter here by hand (see K). Each has the **effect** and the **proposal**.
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-058** | **A prune does not cover a node that is synchronizing, nor a message published while it runs.** A node that is syncing prunes what it has, but the blocks it copies afterwards, or the events it recorded, can bring messages back; a message published during the prune may survive. Whether the S3 backup restores a pruned message after a restart was not exercised in a test | Make a syncing node answer the prune with `503 cluster.node-syncing` (the person repeats after it is ready), or record the prune as an event of the sync log; add a prune case with the S3 backup |
+| **PRB-059** | **The consolidated statistics are approximations in two fields, and the operations API's `/metrics/topics*` are still the view of one node** (finding A, in part resolved by D156: the client API's `/stats/topics…` joins the cluster). The latency percentiles are the **maximum** of the nodes' (the real percentile of the cluster needs the histograms), and `groups` and the largest group are the maximum (a lower bound; the noisy-group condition can miss a group spread over nodes); a client that reads the percentile of the cluster gets an upper bound | Send the latency histograms and the group lists between nodes; or make `/metrics/topics*` of the operations API consolidate too |
+| **PRB-060** | **Without `operations.port` the cluster-wide operations stay without a token on the client port** (`POST /cluster/stop`, `/cluster/backup/flush`, `/node/drain`...): the client API only mounts its authenticated copies when the operations API has a port of its own, because the names are the same. Inherited from D63 and D150, but now a token-protected twin exists that cannot be mounted | With authentication on, do not merge the operations routes into the client port (or protect them with the root token) |
+| **PRB-061** | **A node that left by drain is listed and addressable only while the receiving node remembers it** (up to 64, in memory): after the receiver restarts, `GET /nodes` no longer shows it and `/nodes/{nodeId}/drain` answers `404`, so it cannot be returned through the API | Keep the nodes that left in the node database, or derive them from the S3 stop list and heartbeats |
 
 ## 1. Unblocked
 

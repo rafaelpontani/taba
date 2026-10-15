@@ -23,7 +23,6 @@ use super::AppState;
 use super::common::ApiError;
 use crate::cluster::backup::{Backup, BackupStatus, not_configured};
 use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse};
-use crate::core::time::format_ms;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -39,22 +38,7 @@ fn backup_of(state: &AppState) -> Result<&Arc<Backup>, ApiError> {
 
 /// The `BackupStatus` as the API shows it.
 pub fn status_json(status: &BackupStatus) -> Value {
-    json!({
-        "s3Reachable": status.s3_ok,
-        "lastError": status.last_error,
-        "lastSuccessAt": status.last_ok_ms.map(format_ms),
-        "outboxPending": status.outbox_pending,
-        "journalPending": status.journal_pending,
-        "definitionsPending": status.definitions_pending,
-        "pending": status.pending(),
-        "segments": status.segments,
-        "segmentBytes": status.segment_bytes,
-        "saved": status.saved,
-        "segmentsUploaded": status.segments_uploaded,
-        "messagesUploaded": status.messages_uploaded,
-        "bodiesEvicted": status.bodies_evicted,
-        "errors": status.errors,
-    })
+    status.to_json()
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
@@ -98,7 +82,7 @@ async fn ask_all(state: &AppState, request: PeerRequest) -> Vec<(String, Result<
     answers
 }
 
-async fn cluster_flush(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+pub(super) async fn cluster_flush(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let backup = backup_of(&state)?;
     if state.cluster.is_none() {
         let mut body = backup.flush().await.to_json();
@@ -128,7 +112,7 @@ async fn cluster_flush(State(state): State<AppState>) -> Result<Json<Value>, Api
     Ok(Json(json!({ "complete": complete, "nodes": nodes })))
 }
 
-async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+pub(super) async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let backup = state.backup.clone();
     let mut warnings: Vec<String> = Vec::new();
     // The other nodes stop at the same time; this one, which coordinates, stops last and writes the list.
