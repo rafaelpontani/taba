@@ -18,22 +18,23 @@ fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, c
 | `POST` | `/topics` | `create` | admin | `201` `Topic` |
 | `GET` | `/topics` | token válido | admin | `200` `Page<Topic>` |
 | `GET` | `/topics/{topic}` | token válido | admin | `200` `Topic` |
-| `PATCH` | `/topics/{topic}` | `admin` | admin | `200` `Topic` |
-| `DELETE` | `/topics/{topic}` | `admin` | admin | `204` |
+| `PATCH` | `/topics/{topic}` | `manage` | admin | `200` `Topic` |
+| `DELETE` | `/topics/{topic}` | `manage` | admin | `204` |
 | `POST` | `/topics/{topic}/messages` | `publish` | publicação | `201` / `200` |
 | `GET` | `/topics/{topic}/messages` | `consume` | consumo | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | consumo | `200` |
 | `DELETE` | `/topics/{topic}/messages/{id}` | `consume` | consumo | `204` |
-| `DELETE` | `/topics/{topic}/messages` | `admin` | admin | `200` `PruneResult` |
-| `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | só o raiz | admin | ver abaixo |
+| `DELETE` | `/topics/{topic}/messages` | `manage` | admin | `200` `PruneResult` |
+| `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | `admin` (token `admin`: só o raiz) | admin | ver abaixo |
 | `GET` | `/auth/me` | token válido | isento | `200` `Me` |
 | `GET` | `/nodes` | token válido | ops | `200` `Page<Node>` |
 | `GET` | `/stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | token válido, **dentro dos seus prefixos** | ops | `200` |
-| `GET` | `/cluster/status` | só o raiz | ops | `200` `ClusterStatus` |
-| `GET` | `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/backup` | só o raiz | ops | `200` |
-| `GET` | `/cluster/backup` | só o raiz | ops | `200` `ClusterBackup` |
-| `GET` `POST` `DELETE` | `/nodes/{nodeId}/drain` | só o raiz | admin | `200` / `202` `DrainStatus` |
-| `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush`, `/cluster/stop` | só o raiz | admin | `200` |
+| `GET` | `/cluster/status` | `admin` | ops | `200` `ClusterStatus` |
+| `GET` | `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/backup` | `admin` | ops | `200` |
+| `GET` | `/cluster/backup` | `admin` | ops | `200` `ClusterBackup` |
+| `GET` `POST` `DELETE` | `/nodes/{nodeId}/drain` | `admin` | admin | `200` / `202` `DrainStatus` |
+| `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush` | `admin` | admin | `200` |
+| `POST` | `/cluster/stop` | só o raiz | admin | `200` |
 
 Os exemplos usam `localhost:8080` sem autenticação (modo desenvolvimento). Com autenticação, acrescente `-H "Authorization: Bearer $TOKEN"`.
 
@@ -283,7 +284,7 @@ Erros: `400 validation.required` (sem `receiptToken`), `404` (inexistente, **inc
 
 ### `DELETE /topics/{topic}/messages`: prune (esvaziar a fila)
 
-Remove **todas as mensagens** da fila — visíveis e invisíveis, e as cópias que as réplicas guardam — em **todo o cluster**. Permissão `admin` sobre o tópico. O tópico, sua definição e seus contadores ficam. Só filas (um distribuidor dá `409 topic.wrong-type`).
+Remove **todas as mensagens** da fila — visíveis e invisíveis, e as cópias que as réplicas guardam — em **todo o cluster**. Permissão `manage` sobre o tópico. O tópico, sua definição e seus contadores ficam. Só filas (um distribuidor dá `409 topic.wrong-type`).
 
 O nó que recebe a chamada pede a **cada membro** (ele inclusive) que esvazie a própria cópia, todos ao mesmo tempo, sob um `pruneId` (o id torna a chamada idempotente em cada nó), e espera todos. **Só responde sucesso se todos tiverem conseguido.** É um ato raro, por isso não há nova tentativa nem desfazer.
 
@@ -295,7 +296,7 @@ curl -s -X DELETE localhost:8080/topics/orders/messages
 
 Se algum nó falhar: `503 cluster.prune-incomplete`, com os nós na mensagem e em `details`. A fila pode ter ficado vazia só em alguns nós; **repetir a chamada é seguro**. Uma mensagem publicada enquanto o prune corre pode sobreviver a ele, e um nó que ainda está sincronizando não é coberto ([31-pendencias.md](31-pendencias.md)).
 
-Erros: `403` (`auth.forbidden` com `required: "admin"`, `auth.out-of-scope`), `404 topic.not-found`, `409 topic.wrong-type`, `429`, `503`.
+Erros: `403` (`auth.forbidden` com `required: "manage"`, `auth.out-of-scope`), `404 topic.not-found`, `409 topic.wrong-type`, `429`, `503`.
 
 ---
 
@@ -347,9 +348,9 @@ Rotas para **qualquer token válido** (com a autenticação desligada, para todo
 | `memoryShare` | a memória do tópico sobre a memória dos nós que responderam |
 | `/stats/topics/{topic}/groups` | cada grupo uma vez, com suas mensagens de todos os nós |
 
-## Cluster e nós (token raiz)
+## Cluster e nós (permissão `admin`)
 
-A API de operação ([17-api-operacao.md](17-api-operacao.md)) não tem token e serve ao monitoramento contínuo. Estas rotas são as cópias dela na API de cliente, para um cliente que tem uma URL e um token, e exigem o **token raiz**: a permissão `admin` é por tópico, e estas rotas mostram a topologia e o interior dos nós. Um token que não é o raiz recebe `403 auth.forbidden` com `"required": "root"` no corpo, para o cliente poder dizer o que falta.
+A API de operação ([17-api-operacao.md](17-api-operacao.md)) não tem token e serve ao monitoramento contínuo. Estas rotas são as cópias dela na API de cliente, para um cliente que tem uma URL e um token, e exigem a **permissão `admin`** (ou o token raiz): a permissão `manage` é por tópico, e estas rotas mostram a topologia e o interior dos nós. Um token sem ela recebe `403 auth.forbidden` com `"required": "admin"` no corpo, para o cliente poder dizer o que falta. Só `POST /cluster/stop` pede o próprio token raiz (`"required": "root"`).
 
 **A regra do nó** (a mesma de uma mensagem). O nó que recebe `/nodes/{nodeId}/…` compara o `nodeId` com o seu. Se **é** esse nó, responde com os próprios dados; se **não é**, chama **uma vez** o nó que tem o dado, pela porta do cluster (`/cluster/node-call/{caminho}`, só membros, [18-api-cluster.md](18-api-cluster.md)), e devolve a resposta como veio. Nunca repassa uma chamada que já foi repassada. Um `nodeId` desconhecido é `404 node.not-found`; um nó que não responde é `502 forward.bad-gateway` (ou `504 forward.timeout`) que o nomeia, sem nova tentativa. Um nó que saiu por drain continua endereçável, para devolvê-lo.
 

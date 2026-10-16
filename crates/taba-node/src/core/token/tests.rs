@@ -69,16 +69,37 @@ fn malformed_tokens_do_not_parse() {
 
 /// UC: UC-AUT-009
 #[test]
-fn admin_includes_create_and_nothing_else_does() {
+fn manage_includes_create_and_admin_includes_manage_and_nothing_else_does() {
+    let manager = sample(vec![Permission::Manage], &[]).record;
+    assert!(manager.allows(Permission::Manage));
+    assert!(manager.allows(Permission::Create));
+    assert!(!manager.allows(Permission::Admin));
+    assert!(!manager.allows(Permission::Publish));
+    assert!(!manager.allows(Permission::Consume));
+
     let admin = sample(vec![Permission::Admin], &[]).record;
     assert!(admin.allows(Permission::Admin));
+    assert!(admin.allows(Permission::Manage));
     assert!(admin.allows(Permission::Create));
     assert!(!admin.allows(Permission::Publish));
     assert!(!admin.allows(Permission::Consume));
 
     let creator = sample(vec![Permission::Create], &[]).record;
     assert!(creator.allows(Permission::Create));
+    assert!(!creator.allows(Permission::Manage));
     assert!(!creator.allows(Permission::Admin));
+}
+
+/// UC: UC-AUT-009
+#[test]
+fn the_name_admin_of_schema_one_reads_as_manage() {
+    assert_eq!(Permission::parse_legacy("admin"), Some(Permission::Manage));
+    assert_eq!(Permission::parse_legacy("manage"), Some(Permission::Manage));
+    assert_eq!(
+        Permission::parse_legacy("publish"),
+        Some(Permission::Publish)
+    );
+    assert_eq!(Permission::parse("admin"), Some(Permission::Admin));
 }
 
 /// UC: UC-AUT-012, UC-AUT-015

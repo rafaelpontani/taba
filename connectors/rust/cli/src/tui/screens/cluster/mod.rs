@@ -168,6 +168,9 @@ pub fn status_of<'a>(m: &'a Model, id: &str) -> Option<&'a NodeStatus> {
 /// Why an action cannot run now; `None` means it can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gate {
+    /// Needs the `admin` permission (or the root token).
+    NotAdmin,
+    /// Needs the root token itself (stopping the cluster).
     NotRoot,
     NoNode,
     Unreachable,
@@ -179,6 +182,7 @@ pub enum Gate {
 impl Gate {
     pub fn key(self) -> &'static str {
         match self {
+            Gate::NotAdmin => "gate.not-admin",
             Gate::NotRoot => "gate.not-root",
             Gate::NoNode => "gate.no-node",
             Gate::Unreachable => "gate.unreachable",
@@ -194,7 +198,10 @@ pub fn gate(m: &Model, action: Action) -> Option<Gate> {
     if m.busy.is_some() {
         return Some(Gate::Busy);
     }
-    if !m.is_root() {
+    if !m.is_admin() {
+        return Some(Gate::NotAdmin);
+    }
+    if action == Action::StopCluster && !m.is_root() {
         return Some(Gate::NotRoot);
     }
     let node_gate = |needs: fn(&Row) -> Option<Gate>| match selected_row(m) {

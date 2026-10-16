@@ -34,8 +34,8 @@ Each API has **its own audience** and the network restricts each port. The clien
 | `POST` | `/topics` | `create` | `201` |
 | `GET` | `/topics` | any valid token | `200` (paginated) |
 | `GET` | `/topics/{topic}` | any valid token | `200` |
-| `PATCH` | `/topics/{topic}` | `admin` | `200` |
-| `DELETE` | `/topics/{topic}` | `admin` | `204` |
+| `PATCH` | `/topics/{topic}` | `manage` | `200` |
+| `DELETE` | `/topics/{topic}` | `manage` | `204` |
 | `POST` | `/topics/{topic}/messages` | `publish` | `201` (`200` on FIFO duplicate and on distributor) |
 | `GET` | `/topics/{topic}/messages` | `consume` (+ `create` on `autoCreate`) | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | `200` |

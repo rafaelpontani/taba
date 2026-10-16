@@ -33,6 +33,54 @@ fn creates_the_directory_and_the_file_and_reopens_keeping_the_data() {
 }
 
 #[test]
+fn opening_a_schema_four_database_renames_the_old_admin_to_manage() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = NodeDb::open(tmp.path(), DbSynchronous::Normal).unwrap();
+    for (id, permissions) in [
+        ("a", "publish,admin"),
+        ("b", "consume"),
+        ("c", "create,manage"),
+    ] {
+        db.conn()
+            .execute(
+                "INSERT INTO tokens VALUES (?1, 'n', ?2, '[]', 1, NULL, 's', 'h')",
+                rusqlite::params![id, permissions],
+            )
+            .unwrap();
+    }
+    db.conn().pragma_update(None, "user_version", 4).unwrap();
+    drop(db);
+
+    let db = NodeDb::open(tmp.path(), DbSynchronous::Normal).unwrap();
+    let stored = |id: &str| -> String {
+        db.conn()
+            .query_row("SELECT permissions FROM tokens WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap()
+    };
+    assert_eq!(stored("a"), "publish,manage");
+    assert_eq!(stored("b"), "consume");
+    assert_eq!(stored("c"), "create,manage");
+    drop(db);
+
+    // Opened again at schema 5, an `admin` is the new general one and stays.
+    let db = NodeDb::open(tmp.path(), DbSynchronous::Normal).unwrap();
+    db.conn()
+        .execute("UPDATE tokens SET permissions = 'admin' WHERE id = 'b'", [])
+        .unwrap();
+    drop(db);
+    let db = NodeDb::open(tmp.path(), DbSynchronous::Normal).unwrap();
+    let kept: String = db
+        .conn()
+        .query_row("SELECT permissions FROM tokens WHERE id = 'b'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(kept, "admin");
+}
+
+#[test]
 fn a_database_from_a_newer_schema_is_refused() {
     let tmp = tempfile::tempdir().unwrap();
     let db = NodeDb::open(tmp.path(), DbSynchronous::Normal).unwrap();

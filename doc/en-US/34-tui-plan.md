@@ -198,11 +198,11 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 | ID | Requirement | Source |
 |---|---|---|
 | TUI-TOK-01 | Table: name, id, permissions, prefixes, expiry; sort by `id` or `createdAt`; filter by name. The secret is never in the list. Expired in red; expiring within 7 days in yellow. | `GET /tokens` |
-| TUI-TOK-02 | Create: name, the four permissions (`publish`, `consume`, `create`, `admin`), prefixes, expiry or none. | `POST /tokens` |
+| TUI-TOK-02 | Create: name, the five permissions (`publish`, `consume`, `create`, `manage`, `admin`; D157), prefixes, expiry or none. `admin` takes no prefixes and only the root token can tick it. | `POST /tokens` |
 | TUI-TOK-03 | The secret shows **once**, in a popup: copy (OSC 52), save to a `0600` file; masked after 30 s or on losing focus; never in a log, the palette history or an error; closing without copying asks again. | `token` of the `201` |
 | TUI-TOK-04 | Edit changes only name and expiry (`none` removes the deadline); permissions and prefixes show locked with the reason and a hint to Clone. | `PATCH` |
 | TUI-TOK-05 | Clone (`c`) opens Create pre-filled; after creating, offers to revoke the old one (default **No**). Revoke asks for confirmation and says it applies on every node. | `DELETE` |
-| TUI-TOK-06 | Without the root token the tab explains the `403` and which profile/token is in use, instead of an empty list. | `required` |
+| TUI-TOK-06 | Without the root token or the `admin` permission the tab explains the `403` and which profile/token is in use, instead of an empty list. | `required` |
 
 ### 6.6 Messages — the workbench
 
@@ -278,7 +278,8 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 | Create a topic | `create` |
 | Change, delete or prune a topic | `admin` on the topic |
 | Publish · listen, browse, ack, visibility | `publish` · `consume` |
-| Tokens; cluster detail; a node's metrics, drain, return and backup; stop the cluster | root token |
+| Tokens; cluster detail; a node's metrics, drain, return and backup | `admin` permission (or the root token; D157) |
+| Stop the cluster; create, change or revoke an `admin` token | root token |
 
 ## 10. Tests
 

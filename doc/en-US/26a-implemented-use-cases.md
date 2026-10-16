@@ -501,11 +501,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-TOP-048
 
-**Case:** Prune with a token without `admin`, or of a topic that does not exist  
-**Then:** `403 auth.forbidden` (with `required: "admin"`); `404 topic.not-found`; with `admin` on the topic, `200`.  
+**Case:** Prune with a token without `manage`, or of a topic that does not exist  
+**Then:** `403 auth.forbidden` (with `required: "manage"`); `404 topic.not-found`; with `manage` on the topic, `200`.  
 **Level:** I  
 **Tests:**
-  - `tests/nodes_api.rs::pruning_an_unknown_topic_is_404_and_needs_the_admin_permission`
+  - `tests/nodes_api.rs::pruning_an_unknown_topic_is_404_and_needs_the_manage_permission`
 
 ---
 
@@ -2582,11 +2582,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-AUT-009
 
-**Case:** `publish` allows only `POST /topics/{topic}/messages`; `consume` allows `GET`, `PUT .../visibility` and `DELETE` of messages; `create` allows `POST /topics` and `autoCreate` (together with `consume`); `admin` allows `PATCH` and `DELETE` on `/topics/{topic}` **and includes `create`**. Each route outside the permission  
+**Case:** `publish` allows only `POST /topics/{topic}/messages`; `consume` allows `GET`, `PUT .../visibility` and `DELETE` of messages; `create` allows `POST /topics` and `autoCreate` (together with `consume`); `manage` allows `PATCH` and `DELETE` on `/topics/{topic}` **and includes `create`**; `admin` (the tokens and the cluster) includes `manage` and `create`. Each route outside the permission  
 **Then:** `403` `auth.forbidden`.  
 **Level:** U, I  
 **Tests:**
-  - `src/core/token/tests.rs::admin_includes_create_and_nothing_else_does`
+  - `src/core/token/tests.rs::manage_includes_create_and_admin_includes_manage_and_nothing_else_does`
   - `src/http/auth/tests.rs::each_route_asks_for_its_own_permission`
   - `tests/auth.rs::permissions_gate_each_route`
 
@@ -2595,7 +2595,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-AUT-010
 
 **Case:** `create` only **creates**  
-**Then:** changing and removing topics requires `admin`.  
+**Then:** changing and removing topics requires `manage` (or `admin`, which includes it).  
 **Level:** I  
 **Tests:**
   - `src/http/auth/tests.rs::each_route_asks_for_its_own_permission`
@@ -2829,7 +2829,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-AUT-037
 
 **Case:** A valid token calls a route it has no permission for  
-**Then:** `403 auth.forbidden` carries `required`: `root` for the root-only routes, the name of the permission (`admin`...) for the others; the other errors have no such field.  
+**Then:** `403 auth.forbidden` carries `required`: `root` for the root-only routes, the name of the permission (`manage`, `admin`...) for the others; the other errors have no such field.  
 **Level:** U, I  
 **Tests:**
   - `src/core/error/tests.rs::a_forbidden_error_says_what_was_missing_and_other_errors_leave_the_field_out`

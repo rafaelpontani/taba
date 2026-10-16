@@ -83,7 +83,7 @@ fontes: [doc/pt-BR]
 
 ## 7. Segurança ([14](14-seguranca.md))
 
-- **Cliente:** token `tb_<id>.<segredo>` (hash salgado) · permissões `publish`/`consume`/`create`/`admin` · prefixos · token **raiz**
+- **Cliente:** token `tb_<id>.<segredo>` (hash salgado) · permissões `publish`/`consume`/`create`/`manage`/`admin` · prefixos · token **raiz**
 - **Cluster:** **TLS mútuo**, certificado único em pasta recarregada, **rotação** com `--starts-in`
 - **Operação:** sem autenticação → **rede** + `operations.allowed-ips`
 - **Rate limit** por token ou IP (desligado por padrão) · IP do cliente + `trusted-proxies`

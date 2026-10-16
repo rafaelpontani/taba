@@ -70,11 +70,11 @@ taba_status
 
 taba_step "Creating the test tokens"
 read -r APP_ID APP_TOKEN < <(taba_create_token "csharp-tests-app-$RUN_ID" \
-  --permission publish,consume,create,admin --prefix csharp-)
+  --permission publish,consume,create,manage --prefix csharp-)
 read -r RO_ID RO_TOKEN < <(taba_create_token "csharp-tests-readonly-$RUN_ID" \
   --permission consume --prefix csharp-)
 TOKEN_IDS=("$APP_ID" "$RO_ID")
-echo "  application token: $APP_ID (publish, consume, create, admin on csharp-*)"
+echo "  application token: $APP_ID (publish, consume, create, manage on csharp-*)"
 echo "  read-only token:   $RO_ID (consume on csharp-*)"
 
 taba_step "Creating the test queues"

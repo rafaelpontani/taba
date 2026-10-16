@@ -198,11 +198,11 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 | ID | Requisito | Fonte |
 |---|---|---|
 | TUI-TOK-01 | Tabela: nome, id, permissões, prefixos, validade; ordena por `id` ou `createdAt`; filtra por nome. O segredo nunca está na lista. Expirado em vermelho; expira em até 7 dias em amarelo. | `GET /tokens` |
-| TUI-TOK-02 | Criar: nome, as quatro permissões (`publish`, `consume`, `create`, `admin`), prefixos, validade ou nenhuma. | `POST /tokens` |
+| TUI-TOK-02 | Criar: nome, as cinco permissões (`publish`, `consume`, `create`, `manage`, `admin`; D157), prefixos, validade ou nenhuma. `admin` não tem prefixos e só o token raiz pode marcá-lo. | `POST /tokens` |
 | TUI-TOK-03 | O segredo aparece **uma vez**, num popup: copiar (OSC 52), salvar em arquivo `0600`; mascarado após 30 s ou ao perder o foco; nunca em log, histórico da paleta ou erro; fechar sem copiar pergunta de novo. | `token` do `201` |
 | TUI-TOK-04 | Editar muda só nome e validade (`none` remove o prazo); permissões e prefixos aparecem travados com o motivo e a indicação do Clonar. | `PATCH` |
 | TUI-TOK-05 | Clonar (`c`) abre Criar preenchido; depois de criar, oferece revogar o antigo (padrão **Não**). Revogar pede confirmação e diz que vale em todos os nós. | `DELETE` |
-| TUI-TOK-06 | Sem token raiz a aba explica o `403` e qual perfil/token está em uso, em vez de lista vazia. | `required` |
+| TUI-TOK-06 | Sem o token raiz nem a permissão `admin` a aba explica o `403` e qual perfil/token está em uso, em vez de lista vazia. | `required` |
 
 ### 6.6 Mensagens — a bancada
 
@@ -278,7 +278,8 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 | Criar um tópico | `create` |
 | Alterar, apagar ou podar um tópico | `admin` sobre o tópico |
 | Publicar · escutar, navegar, ack, visibilidade | `publish` · `consume` |
-| Tokens; detalhe do cluster; métricas, drain, retorno e backup de nó; parar o cluster | token raiz |
+| Tokens; detalhe do cluster; métricas, drain, retorno e backup de nó | permissão `admin` (ou o token raiz; D157) |
+| Parar o cluster; criar, alterar ou revogar um token `admin` | token raiz |
 
 ## 10. Testes
 

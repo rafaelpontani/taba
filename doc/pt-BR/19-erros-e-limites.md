@@ -38,7 +38,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | Código | Status | Quando |
 |---|---|---|
 | `auth.unauthorized` | 401 | Sem token, mal formado, desconhecido, revogado ou vencido. **A resposta não diz qual** |
-| `auth.forbidden` | 403 | Token válido sem a permissão da rota (inclui `/tokens`, o cluster e os nós: só o raiz). O corpo traz **`required`**: `root`, ou o nome da permissão que faltou (`admin`, `publish`…), para o cliente poder dizer o que o token precisa |
+| `auth.forbidden` | 403 | Token válido sem a permissão da rota (inclui `/tokens`, o cluster e os nós: `admin`; parar o cluster e os tokens `admin`: só o raiz). O corpo traz **`required`**: `root`, ou o nome da permissão que faltou (`manage`, `admin`, `publish`…), para o cliente poder dizer o que o token precisa |
 | `auth.out-of-scope` | 403 | O tópico (ou um `prefix` de distribuidor) está fora dos prefixos do token |
 | `ops.ip-not-allowed` | 403 | Rota de operação chamada de um IP fora de `operations.allowed-ips` |
 | `cluster.not-member` | 403 | Rota do cluster chamada por quem não consta na tabela de membros |
@@ -114,7 +114,7 @@ Regras de formato, **não configuráveis**, aplicadas na criação e na alteraç
 | `maxDeliveries` | 1 a 1000 |
 | `groupId`, `deduplicationId` | 1 a 128, `A-Za-z0-9_-.:` |
 | Token: `name` | 1 a 100, `A-Za-z0-9_-.:` |
-| Token: `permissions` | ao menos uma de `publish`, `consume`, `create`, `admin` |
+| Token: `permissions` | ao menos uma de `publish`, `consume`, `create`, `manage`, `admin`; `admin` não aceita `topicPrefixes` |
 | Token: `topicPrefixes` | até 20, de 1 a 100, `A-Za-z0-9_-` |
 | Token: `expiresAt` | no futuro |
 | `contentType` | media type de 1 a 255 caracteres; padrão `application/json` |

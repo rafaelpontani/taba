@@ -820,6 +820,32 @@ fn the_token_json_round_trips() {
     assert!(token_from_json(&serde_json::json!({"id": "x"})).is_err());
 }
 
+/// A token without `permissionsSchema` comes from a node or a backup of schema 1, where `admin` was the topic manager.
+#[test]
+fn an_admin_of_schema_one_on_the_wire_becomes_manage_and_never_the_general_admin() {
+    use crate::core::token::{Permission, TokenRecord};
+    let token = TokenRecord {
+        id: guid(1),
+        name: "app".into(),
+        permissions: vec![Permission::Publish, Permission::Admin],
+        topic_prefixes: vec![],
+        created_ms: 1_791_288_000_000,
+        expires_ms: None,
+        salt: "c2FsdA".into(),
+        secret_hash: "aGFzaA".into(),
+    };
+    let mut body = token_to_json(&token);
+    assert_eq!(body["permissionsSchema"], 2);
+    assert_eq!(token_from_json(&body).unwrap(), token);
+
+    body.as_object_mut().unwrap().remove("permissionsSchema");
+    let legacy = token_from_json(&body).unwrap();
+    assert_eq!(
+        legacy.permissions,
+        vec![Permission::Publish, Permission::Manage]
+    );
+}
+
 /// UC: UC-CAN-002, UC-CAN-004
 #[test]
 fn channel_frames_are_small_json_signals_with_a_type_and_never_carry_message_content() {

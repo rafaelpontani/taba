@@ -6,7 +6,7 @@ using Taba;
 // Creates a queue, publishes three orders, consumes with long polling, acknowledges each one and deletes the queue.
 //
 //   TABA_URL    client API address (default http://localhost:8080, the Compose HAProxy)
-//   TABA_TOKEN  token with publish, consume, create and admin (the root token works)
+//   TABA_TOKEN  token with publish, consume, create and manage (the root token works)
 //
 // The Compose root token:
 //   docker compose run --rm --entrypoint cat taba-cli /secrets/root-token

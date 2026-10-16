@@ -638,7 +638,7 @@ fn poll_tokens(m: &mut Model, effects: &mut Vec<Effect>) {
 }
 
 fn poll_node(m: &mut Model, effects: &mut Vec<Effect>) {
-    if m.tab != Tab::Cluster || m.cluster.view != ClusterView::Detail || !m.is_root() {
+    if m.tab != Tab::Cluster || m.cluster.view != ClusterView::Detail || !m.is_admin() {
         return;
     }
     let Some(row) = cluster::selected_row(m) else {

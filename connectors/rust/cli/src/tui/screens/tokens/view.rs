@@ -25,7 +25,7 @@ pub fn draw(f: &mut Frame, area: Rect, m: &Model) {
             message(f, area, tx.t("tokens.no-auth"), th.warning());
             return;
         }
-        Availability::NotRoot => {
+        Availability::NotAdmin => {
             let who =
                 m.me.data
                     .as_ref()

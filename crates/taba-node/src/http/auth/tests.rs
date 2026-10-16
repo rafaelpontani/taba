@@ -85,8 +85,8 @@ fn each_route_asks_for_its_own_permission() {
     assert_eq!(want(Method::POST, "/topics"), "create");
     assert_eq!(want(Method::GET, "/topics"), "any");
     assert_eq!(want(Method::GET, "/topics/{topic}"), "any");
-    assert_eq!(want(Method::PATCH, "/topics/{topic}"), "admin");
-    assert_eq!(want(Method::DELETE, "/topics/{topic}"), "admin");
+    assert_eq!(want(Method::PATCH, "/topics/{topic}"), "manage");
+    assert_eq!(want(Method::DELETE, "/topics/{topic}"), "manage");
     assert_eq!(want(Method::POST, "/topics/{topic}/messages"), "publish");
     assert_eq!(want(Method::GET, "/topics/{topic}/messages"), "consume");
     assert_eq!(
@@ -97,8 +97,8 @@ fn each_route_asks_for_its_own_permission() {
         want(Method::PUT, "/topics/{topic}/messages/{id}/visibility"),
         "consume"
     );
-    assert_eq!(want(Method::GET, "/tokens"), "root");
-    assert_eq!(want(Method::DELETE, "/tokens/{id}"), "root");
+    assert_eq!(want(Method::GET, "/tokens"), "admin");
+    assert_eq!(want(Method::DELETE, "/tokens/{id}"), "admin");
     assert_eq!(want(Method::GET, "/health/live"), "none");
 }
 
@@ -128,11 +128,11 @@ fn the_monitoring_routes_split_between_any_token_and_the_root_token() {
         "/nodes/{node_id}/backup/flush",
         "/cluster/backup",
         "/cluster/backup/flush",
-        "/cluster/stop",
     ] {
-        assert_eq!(want(Method::POST, route), "root", "{route}");
+        assert_eq!(want(Method::POST, route), "admin", "{route}");
     }
-    assert_eq!(want(Method::DELETE, "/topics/{topic}/messages"), "admin");
+    assert_eq!(want(Method::POST, "/cluster/stop"), "root");
+    assert_eq!(want(Method::DELETE, "/topics/{topic}/messages"), "manage");
 }
 
 /// UC: UC-AUT-001

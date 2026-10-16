@@ -14,7 +14,7 @@ namespace Taba.Tests
     /// <c>scripts/integration.sh</c> starts Compose, creates the tokens and the queues and sets these variables:
     /// <list type="bullet">
     /// <item><c>TABA_URL</c>: the client API (the Compose HAProxy).</item>
-    /// <item><c>TABA_TOKEN</c>: a token with <c>publish</c>, <c>consume</c>, <c>create</c> and <c>admin</c> on the <c>csharp-*</c> topics.</item>
+    /// <item><c>TABA_TOKEN</c>: a token with <c>publish</c>, <c>consume</c>, <c>create</c> and <c>manage</c> on the <c>csharp-*</c> topics.</item>
     /// <item><c>TABA_TOKEN_READONLY</c>: a token with only <c>consume</c> on the <c>csharp-*</c> topics.</item>
     /// </list>
     /// The queues <c>csharp-shared</c>, <c>csharp-shared-fifo</c>, <c>csharp-fan</c> (distributor with prefix

@@ -501,11 +501,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-TOP-048
 
-**Caso:** Prune com um token sem `admin`, ou de um tópico que não existe  
-**Então:** `403 auth.forbidden` (com `required: "admin"`); `404 topic.not-found`; com `admin` sobre o tópico, `200`.  
+**Caso:** Prune com um token sem `manage`, ou de um tópico que não existe  
+**Então:** `403 auth.forbidden` (com `required: "manage"`); `404 topic.not-found`; com `manage` sobre o tópico, `200`.  
 **Nível:** I  
 **Testes:**
-  - `tests/nodes_api.rs::pruning_an_unknown_topic_is_404_and_needs_the_admin_permission`
+  - `tests/nodes_api.rs::pruning_an_unknown_topic_is_404_and_needs_the_manage_permission`
 
 ---
 
@@ -2582,11 +2582,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-AUT-009
 
-**Caso:** `publish` permite só `POST /topics/{topic}/messages`; `consume` permite `GET`, `PUT .../visibility` e `DELETE` de mensagens; `create` permite `POST /topics` e o `autoCreate` (junto de `consume`); `admin` permite `PATCH` e `DELETE` em `/topics/{topic}` **e inclui `create`**. Cada rota fora da permissão  
+**Caso:** `publish` permite só `POST /topics/{topic}/messages`; `consume` permite `GET`, `PUT .../visibility` e `DELETE` de mensagens; `create` permite `POST /topics` e o `autoCreate` (junto de `consume`); `manage` permite `PATCH` e `DELETE` em `/topics/{topic}` **e inclui `create`**; `admin` (os tokens e o cluster) inclui `manage` e `create`. Cada rota fora da permissão  
 **Então:** `403` `auth.forbidden`.  
 **Nível:** U, I  
 **Testes:**
-  - `src/core/token/tests.rs::admin_includes_create_and_nothing_else_does`
+  - `src/core/token/tests.rs::manage_includes_create_and_admin_includes_manage_and_nothing_else_does`
   - `src/http/auth/tests.rs::each_route_asks_for_its_own_permission`
   - `tests/auth.rs::permissions_gate_each_route`
 
@@ -2595,7 +2595,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-AUT-010
 
 **Caso:** `create` só **cria**  
-**Então:** alterar e remover tópicos exige `admin`.  
+**Então:** alterar e remover tópicos exige `manage` (ou `admin`, que o inclui).  
 **Nível:** I  
 **Testes:**
   - `src/http/auth/tests.rs::each_route_asks_for_its_own_permission`
@@ -2829,7 +2829,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-AUT-037
 
 **Caso:** Um token válido chama uma rota para a qual não tem permissão  
-**Então:** O `403 auth.forbidden` traz `required`: `root` nas rotas só do raiz, o nome da permissão (`admin`...) nas demais; os outros erros não têm esse campo.  
+**Então:** O `403 auth.forbidden` traz `required`: `root` nas rotas só do raiz, o nome da permissão (`manage`, `admin`...) nas demais; os outros erros não têm esse campo.  
 **Nível:** U, I  
 **Testes:**
   - `src/core/error/tests.rs::a_forbidden_error_says_what_was_missing_and_other_errors_leave_the_field_out`

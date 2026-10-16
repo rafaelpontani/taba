@@ -16,13 +16,22 @@ fn the_gate_explains_why_an_action_cannot_run() {
         Action::Monitor,
         Action::Detail,
     ] {
-        assert_eq!(gate(&plain.m, action), Some(Gate::NotRoot), "{action:?}");
+        assert_eq!(gate(&plain.m, action), Some(Gate::NotAdmin), "{action:?}");
     }
     let root = Sim::root_with_status(Lang::EnUs);
     assert_eq!(gate(&root.m, Action::Drain), None);
     assert_eq!(gate(&root.m, Action::Return), Some(Gate::NotDraining));
     assert_eq!(gate(&root.m, Action::FlushAll), None);
     assert_eq!(gate(&root.m, Action::StopCluster), None);
+
+    // A token with the `admin` permission operates the cluster, but stopping it is the root token's alone.
+    let mut admin = Sim::root_with_status(Lang::EnUs);
+    let me = admin.m.me.data.as_mut().unwrap();
+    me.root = false;
+    me.permissions = vec!["admin".to_owned()];
+    assert_eq!(gate(&admin.m, Action::Drain), None);
+    assert_eq!(gate(&admin.m, Action::FlushAll), None);
+    assert_eq!(gate(&admin.m, Action::StopCluster), Some(Gate::NotRoot));
 
     let drained =
         status_json(false).replacen(r#""drainState":"active""#, r#""drainState":"drained""#, 1);
@@ -40,6 +49,7 @@ fn the_gate_explains_why_an_action_cannot_run() {
 fn every_gate_reason_has_a_text_in_both_languages() {
     for lang in [Lang::EnUs, Lang::PtBr] {
         for gate in [
+            Gate::NotAdmin,
             Gate::NotRoot,
             Gate::NoNode,
             Gate::Unreachable,

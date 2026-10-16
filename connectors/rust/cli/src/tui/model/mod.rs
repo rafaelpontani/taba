@@ -576,14 +576,20 @@ impl Model {
         Tx(self.lang)
     }
 
-    /// `true` when this token may read the cluster's detail (root, or no authentication).
+    /// `true` when this token may read the cluster's detail and manage the tokens (root, no authentication, or the
+    /// `admin` permission).
+    pub fn is_admin(&self) -> bool {
+        self.me.data.as_ref().is_some_and(Me::is_admin)
+    }
+
+    /// `true` for the root token (or no authentication): stopping the cluster and the `admin` tokens are its alone.
     pub fn is_root(&self) -> bool {
         self.me.data.as_ref().is_some_and(Me::is_root)
     }
 
     /// The cluster-wide status is read with this token.
     pub fn uses_status(&self) -> bool {
-        self.is_root() && self.status_denied.is_none()
+        self.is_admin() && self.status_denied.is_none()
     }
 
     /// Any feed that ended in a connection failure: the server cannot be reached.

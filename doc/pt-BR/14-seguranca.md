@@ -61,8 +61,8 @@ O token raiz precisa de **pelo menos 32 caracteres**, senão o nó não sobe. As
 
 ### Os dois tipos de token
 
-- **Token raiz:** vem da configuração, igual em todos os nós. **Acesso total**, sem limite de prefixos, e é o **único** que gerencia os tokens (`/tokens`). Existe desde o primeiro instante (não vem da tabela), então **não há "primeiro admin" para criar**. Nos logs e traces aparece como `token.id=root`. O `auth.root-token-file` é relido a cada `auth.reload-interval` (padrão 60 s) e aceita **duas linhas** (a atual e a anterior): dá para trocar o segredo sem reiniciar nenhum nó.
-- **Token de acesso** (`tb_<id>.<segredo>`): criado pelo raiz via `POST /tokens`. O `id` é um GUID v7; o segredo tem 256 bits. **O cluster guarda só o hash salgado** (`SHA-256(sal ‖ segredo)`, sal aleatório de 128 bits por token), **nunca** o segredo, que aparece **só na resposta da criação**. O `id` do prefixo permite achar o token e identificá-lo em logs e traces **sem expor o segredo** (o token inteiro nunca é registrado).
+- **Token raiz:** vem da configuração, igual em todos os nós. **Acesso total**, sem limite de prefixos, e é o **único** que para o cluster (`POST /cluster/stop`) e cria, altera ou revoga tokens `admin`. Existe desde o primeiro instante (não vem da tabela), então **não há "primeiro admin" para criar**. Nos logs e traces aparece como `token.id=root`. O `auth.root-token-file` é relido a cada `auth.reload-interval` (padrão 60 s) e aceita **duas linhas** (a atual e a anterior): dá para trocar o segredo sem reiniciar nenhum nó.
+- **Token de acesso** (`tb_<id>.<segredo>`): criado pelo raiz, ou por um token com a permissão `admin`, via `POST /tokens`. O `id` é um GUID v7; o segredo tem 256 bits. **O cluster guarda só o hash salgado** (`SHA-256(sal ‖ segredo)`, sal aleatório de 128 bits por token), **nunca** o segredo, que aparece **só na resposta da criação**. O `id` do prefixo permite achar o token e identificá-lo em logs e traces **sem expor o segredo** (o token inteiro nunca é registrado).
 
 Todo nó conhece todos os tokens: **validar é uma consulta local em memória**, sem rede. Criação, alteração e revogação passam pelo **dono da definição** e se espalham a todos ([08-armazenamento.md](08-armazenamento.md)); só o sal e o hash trafegam entre nós.
 
@@ -73,9 +73,12 @@ Todo nó conhece todos os tokens: **validar é uma consulta local em memória**,
 | `publish` | `POST /topics/{topic}/messages` |
 | `consume` | `GET`, `PUT .../visibility` e `DELETE` (ack) de mensagens |
 | `create` | `POST /topics` e o `autoCreate` do `GET` (que exige também `consume`). **Só cria** |
-| `admin` | `PATCH` e `DELETE` em `/topics/{topic}`. **Inclui `create`** |
+| `manage` | `PATCH` e `DELETE` em `/topics/{topic}` e esvaziar uma fila (`DELETE /topics/{topic}/messages`). **Inclui `create`** e respeita os prefixos |
+| `admin` | Os tokens (`/tokens`) e a operação do cluster e dos nós (`/cluster/*`, `/nodes/{nodeId}/…`: estado, drain, backup, métricas). **Inclui `manage` e `create`**, **não tem prefixos** (alcança todos os tópicos) e não publica nem consome. **Não** para o cluster e não cria, altera nem revoga outro token `admin`: isso é só do token raiz |
 
 Todo token válido consulta `GET /topics` e `GET /topics/{topic}` dentro dos seus prefixos.
+
+**O `admin` de antes é o `manage`.** Até o esquema 2 das permissões, `admin` queria dizer o que hoje é `manage` (gestor de tópicos). O nó renomeia ao abrir um banco de esquema antigo (`_node.db`, esquema 4 para 5), e um token que chega de outro nó ou de um backup **sem** `permissionsSchema` lê o seu `admin` como `manage`, de modo que nenhum token ganha o novo `admin` pela troca de nome.
 
 **`topicPrefixes`** (até 20, de 1 a 100 caracteres): o token só alcança tópicos cujo nome **começa com** algum prefixo; vazio = todos. `GET /topics` devolve só os tópicos dentro dos prefixos; `POST /topics` só aceita nome (e, num distribuidor, **cada `prefix`** de distribuição) dentro deles, para um token restrito não injetar mensagens em filas fora do alcance. A dead-letter é alcançada pelo prefixo da fila de origem. Na publicação num distribuidor, a permissão é conferida **só no distribuidor**.
 

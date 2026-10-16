@@ -61,8 +61,8 @@ The root token needs **at least 32 characters**, otherwise the node does not sta
 
 ### The two kinds of token
 
-- **Root token:** comes from the configuration, the same on all nodes. **Full access**, no prefix limit, and is the **only** one that manages tokens (`/tokens`). It exists from the first instant (it does not come from the table), so there is **no "first admin" to create**. In logs and traces it appears as `token.id=root`. `auth.root-token-file` is re-read every `auth.reload-interval` (default 60 s) and accepts **two lines** (the current one and the previous one): you can change the secret without restarting any node.
-- **Access token** (`tb_<id>.<secret>`): created by the root through `POST /tokens`. The `id` is a GUID v7; the secret has 256 bits. **The cluster stores only the salted hash** (`SHA-256(salt ‖ secret)`, random 128-bit salt per token), **never** the secret, which appears **only in the creation response**. The `id` in the prefix lets you find the token and identify it in logs and traces **without exposing the secret** (the whole token is never logged).
+- **Root token:** comes from the configuration, the same on all nodes. **Full access**, no prefix limit, and is the **only** one that stops the cluster (`POST /cluster/stop`) and creates, changes or revokes `admin` tokens. It exists from the first instant (it does not come from the table), so there is **no "first admin" to create**. In logs and traces it appears as `token.id=root`. `auth.root-token-file` is re-read every `auth.reload-interval` (default 60 s) and accepts **two lines** (the current one and the previous one): you can change the secret without restarting any node.
+- **Access token** (`tb_<id>.<secret>`): created by the root, or by a token with the `admin` permission, through `POST /tokens`. The `id` is a GUID v7; the secret has 256 bits. **The cluster stores only the salted hash** (`SHA-256(salt ‖ secret)`, random 128-bit salt per token), **never** the secret, which appears **only in the creation response**. The `id` in the prefix lets you find the token and identify it in logs and traces **without exposing the secret** (the whole token is never logged).
 
 Every node knows all the tokens: **validating is a local in-memory lookup**, with no network. Creation, change and revocation go through the **definition owner** and spread to all ([08-storage.md](08-storage.md)); only the salt and the hash travel between nodes.
 
@@ -73,9 +73,12 @@ Every node knows all the tokens: **validating is a local in-memory lookup**, wit
 | `publish` | `POST /topics/{topic}/messages` |
 | `consume` | `GET`, `PUT .../visibility` and `DELETE` (ack) of messages |
 | `create` | `POST /topics` and the `autoCreate` of the `GET` (which also requires `consume`). **Only creates** |
-| `admin` | `PATCH` and `DELETE` on `/topics/{topic}`. **Includes `create`** |
+| `manage` | `PATCH` and `DELETE` on `/topics/{topic}` and emptying a queue (`DELETE /topics/{topic}/messages`). **Includes `create`** and respects the prefixes |
+| `admin` | The tokens (`/tokens`) and the operation of the cluster and of the nodes (`/cluster/*`, `/nodes/{nodeId}/…`: status, drain, backup, metrics). **Includes `manage` and `create`**, takes **no prefixes** (it reaches every topic) and does not publish or consume. It does **not** stop the cluster and does not create, change or revoke another `admin` token: those are the root token's alone |
 
 Every valid token queries `GET /topics` and `GET /topics/{topic}` within its prefixes.
+
+**`admin` was `manage`.** Until the schema 2 of the permissions, `admin` meant what `manage` means now (a manager of topics). The node renames it when it opens a database of an older schema (`_node.db`, schema 4 to 5), and a token that arrives from another node or from a backup **without** `permissionsSchema` reads its `admin` as `manage`, so no token gains the new `admin` by the rename.
 
 **`topicPrefixes`** (up to 20, 1 to 100 characters): the token only reaches topics whose name **starts with** some prefix; empty = all. `GET /topics` returns only the topics within the prefixes; `POST /topics` only accepts a name (and, on a distributor, **each distribution `prefix`**) within them, so a restricted token does not inject messages into queues out of reach. The dead-letter is reached by the prefix of the source queue. When publishing to a distributor, the permission is checked **only on the distributor**.
 

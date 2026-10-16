@@ -18,7 +18,7 @@ use crate::tui::update::run;
 pub mod view;
 
 /// The permissions a token can have, in the order the form lists them.
-pub const PERMISSIONS: [&str; 4] = ["publish", "consume", "create", "admin"];
+pub const PERMISSIONS: [&str; 5] = ["publish", "consume", "create", "manage", "admin"];
 
 /// After this long the secret on the screen is masked (TUI-TOK-03), in milliseconds.
 pub const MASK_AFTER_MS: u64 = 30_000;
@@ -36,8 +36,8 @@ pub enum Availability {
     Unknown,
     /// The server runs without authentication: there are no tokens (`404`).
     NoAuth,
-    /// Only the root token manages tokens.
-    NotRoot,
+    /// Only the root token and the `admin` tokens manage tokens.
+    NotAdmin,
     Ready,
 }
 
@@ -45,7 +45,7 @@ pub fn availability(m: &Model) -> Availability {
     match &m.me.data {
         None => Availability::Unknown,
         Some(me) if !me.auth_enabled => Availability::NoAuth,
-        Some(me) if !me.root => Availability::NotRoot,
+        Some(me) if !me.is_admin() => Availability::NotAdmin,
         Some(_) => Availability::Ready,
     }
 }
@@ -94,7 +94,7 @@ pub fn gate(m: &Model, action: Action) -> Option<&'static str> {
     match availability(m) {
         Availability::Unknown => return Some("gate.tokens-unknown"),
         Availability::NoAuth => return Some("gate.tokens-no-auth"),
-        Availability::NotRoot => return Some("gate.not-root"),
+        Availability::NotAdmin => return Some("gate.not-admin"),
         Availability::Ready => {}
     }
     if m.busy.is_some() {
@@ -103,6 +103,13 @@ pub fn gate(m: &Model, action: Action) -> Option<&'static str> {
     match action {
         Action::TokenEdit | Action::TokenClone | Action::TokenRevoke if selected(m).is_none() => {
             Some("gate.no-token")
+        }
+        // An `admin` token is only changed and revoked by the root token (the server answers `403` otherwise).
+        Action::TokenEdit | Action::TokenRevoke
+            if !m.is_root()
+                && selected(m).is_some_and(|t| t.permissions.iter().any(|p| p == "admin")) =>
+        {
+            Some("gate.root-for-admin")
         }
         _ => None,
     }
@@ -170,11 +177,16 @@ fn open_create(m: &mut Model, from: Option<Token>) {
     };
     let mut fields = vec![Field::text("name", "editor.field.name", &name)];
     for permission in PERMISSIONS {
-        fields.push(Field::check(
+        let mut field = Field::check(
             permission,
             permission_label(permission),
-            perms.iter().any(|p| p == permission),
-        ));
+            perms.iter().any(|p| p == permission) && (permission != "admin" || m.is_root()),
+        );
+        // Only the root token creates an `admin` token.
+        if permission == "admin" && !m.is_root() {
+            field = field.locked("editor.locked.root");
+        }
+        fields.push(field);
     }
     fields.push(Field::text("prefixes", "editor.field.prefixes", &prefixes));
     fields.push(Field::text("expires", "editor.field.expires", ""));
@@ -189,6 +201,7 @@ fn permission_label(permission: &str) -> &'static str {
         "publish" => "editor.perm.publish",
         "consume" => "editor.perm.consume",
         "create" => "editor.perm.create",
+        "manage" => "editor.perm.manage",
         _ => "editor.perm.admin",
     }
 }

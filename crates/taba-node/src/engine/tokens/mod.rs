@@ -311,7 +311,7 @@ impl Tokens {
             err = err.with_detail(
                 "permissions",
                 ErrorCode::ValidationFailed,
-                "Provide at least one of publish, consume, create or admin.",
+                "Provide at least one of publish, consume, create, manage or admin.",
             );
         }
         for (i, text) in request.permissions.iter().enumerate() {
@@ -321,7 +321,7 @@ impl Tokens {
                     err = err.with_detail(
                         format!("permissions[{i}]"),
                         ErrorCode::ValidationFailed,
-                        "Use publish, consume, create or admin.",
+                        "Use publish, consume, create, manage or admin.",
                     );
                 }
             }
@@ -332,6 +332,14 @@ impl Tokens {
         permissions.sort();
         permissions.dedup();
         validation::prefixes_of("topicPrefixes", &request.topic_prefixes)?;
+        // `admin` acts on the cluster, not on a topic: a prefix would only suggest a limit it does not have.
+        if permissions.contains(&Permission::Admin) && !request.topic_prefixes.is_empty() {
+            return Err(field_error(
+                ErrorCode::ValidationFailed,
+                "topicPrefixes",
+                "A token with admin reaches every topic; use manage to limit it to prefixes.",
+            ));
+        }
         let now = self.clock.now_millis();
         if let Some(at) = request.expires_ms
             && at <= now

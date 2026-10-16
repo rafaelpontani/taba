@@ -387,7 +387,7 @@ fn an_action_that_cannot_run_says_why_and_opens_nothing() {
     assert!(sim.m.modal.is_none());
     assert_eq!(
         sim.m.notice.as_ref().unwrap().text,
-        "This needs the root token."
+        "This needs the admin permission or the root token."
     );
     assert_eq!(sim.m.notice.as_ref().unwrap().severity, Severity::Warning);
 
@@ -417,7 +417,7 @@ fn a_plain_token_sees_the_node_list_and_no_detail() {
     assert_eq!(sim.m.cluster.view, ClusterView::List);
     assert_eq!(
         sim.m.notice.as_ref().unwrap().text,
-        "This needs the root token."
+        "This needs the admin permission or the root token."
     );
 }
 

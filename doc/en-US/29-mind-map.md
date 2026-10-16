@@ -83,7 +83,7 @@ sources: [doc/pt-BR]
 
 ## 7. Security ([14](14-security.md))
 
-- **Client:** token `tb_<id>.<secret>` (salted hash) · permissions `publish`/`consume`/`create`/`admin` · prefixes · **root** token
+- **Client:** token `tb_<id>.<secret>` (salted hash) · permissions `publish`/`consume`/`create`/`manage`/`admin` · prefixes · **root** token
 - **Cluster:** **mutual TLS**, single certificate in a reloaded folder, **rotation** with `--starts-in`
 - **Operations:** no authentication → **network** + `operations.allowed-ips`
 - **Rate limit** per token or IP (off by default) · client IP + `trusted-proxies`

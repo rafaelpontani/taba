@@ -34,8 +34,8 @@ Cada API tem **o seu público** e a rede restringe cada porta. A porta de client
 | `POST` | `/topics` | `create` | `201` |
 | `GET` | `/topics` | qualquer token válido | `200` (paginada) |
 | `GET` | `/topics/{topic}` | qualquer token válido | `200` |
-| `PATCH` | `/topics/{topic}` | `admin` | `200` |
-| `DELETE` | `/topics/{topic}` | `admin` | `204` |
+| `PATCH` | `/topics/{topic}` | `manage` | `200` |
+| `DELETE` | `/topics/{topic}` | `manage` | `204` |
 | `POST` | `/topics/{topic}/messages` | `publish` | `201` (`200` em duplicata FIFO e em distribuidor) |
 | `GET` | `/topics/{topic}/messages` | `consume` (+ `create` no `autoCreate`) | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | `200` |

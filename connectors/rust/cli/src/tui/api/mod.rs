@@ -162,8 +162,18 @@ impl Me {
         self.root || !self.auth_enabled
     }
 
+    /// Root, no authentication, or a token with the `admin` permission: the cluster and the tokens are open to it.
+    pub fn is_admin(&self) -> bool {
+        self.is_root() || self.permissions.iter().any(|p| p == "admin")
+    }
+
+    /// `manage` includes `create`, and `admin` includes `manage` and `create` (the same rule as the server).
     pub fn can(&self, permission: &str) -> bool {
-        self.is_root() || self.permissions.iter().any(|p| p == permission)
+        let has = |name: &str| self.permissions.iter().any(|p| p == name);
+        self.is_root()
+            || has(permission)
+            || (permission == "create" && (has("manage") || has("admin")))
+            || (permission == "manage" && has("admin"))
     }
 }
 

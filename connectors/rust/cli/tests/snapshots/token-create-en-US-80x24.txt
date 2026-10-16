@@ -7,18 +7,18 @@
 │ │  publish        [ ]                                                      │ │
 │ │  consume        [ ]                                                      │ │
 │ │  create         [ ]                                                      │ │
+│ │  manage         [ ]                                                      │ │
 │ │  admin          [ ]                                                      │ │
 │ │  Topic prefixes                                                          │ │
 │ │  Expires                                                                 │ │
-│ │                                                                          │ │
 └─│                                                                          │─┘
-┌ │Prefixes: separated by spaces, empty for every topic. Expires: 30d, 12h,  │─┐
-│N│90m, a date such as 2027-01-31, or empty for never.                       │ │
-│I│                                                                          │ │
+┌ │                                                                          │─┐
+│N│Prefixes: separated by spaces, empty for every topic. Expires: 30d, 12h,  │ │
+│I│90m, a date such as 2027-01-31, or empty for never.                       │ │
 │P│                                                                          │ │
-│T│Tab next field · Space ticks · Enter on the last field or Ctrl+S saves · E│ │
-│C└──────────────────────────────────────────────────────────────────────────┘ │
-│Expires        2026-10-18 00:00:00 (expires soon)                             │
+│T│                                                                          │ │
+│C│Tab next field · Space ticks · Enter on the last field or Ctrl+S saves · E│ │
+│E└──────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
  n new  e edit  c clone  Del revoke  l language  ? help  q quit  ⟳ 5s · L en-US

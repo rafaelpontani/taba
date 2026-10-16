@@ -18,22 +18,23 @@ sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, 
 | `POST` | `/topics` | `create` | admin | `201` `Topic` |
 | `GET` | `/topics` | valid token | admin | `200` `Page<Topic>` |
 | `GET` | `/topics/{topic}` | valid token | admin | `200` `Topic` |
-| `PATCH` | `/topics/{topic}` | `admin` | admin | `200` `Topic` |
-| `DELETE` | `/topics/{topic}` | `admin` | admin | `204` |
+| `PATCH` | `/topics/{topic}` | `manage` | admin | `200` `Topic` |
+| `DELETE` | `/topics/{topic}` | `manage` | admin | `204` |
 | `POST` | `/topics/{topic}/messages` | `publish` | publishing | `201` / `200` |
 | `GET` | `/topics/{topic}/messages` | `consume` | consumption | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | consumption | `200` |
 | `DELETE` | `/topics/{topic}/messages/{id}` | `consume` | consumption | `204` |
-| `DELETE` | `/topics/{topic}/messages` | `admin` | admin | `200` `PruneResult` |
-| `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | root only | admin | see below |
+| `DELETE` | `/topics/{topic}/messages` | `manage` | admin | `200` `PruneResult` |
+| `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | `admin` (an `admin` token: root only) | admin | see below |
 | `GET` | `/auth/me` | valid token | exempt | `200` `Me` |
 | `GET` | `/nodes` | valid token | ops | `200` `Page<Node>` |
 | `GET` | `/stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | valid token, **within its prefixes** | ops | `200` |
-| `GET` | `/cluster/status` | root only | ops | `200` `ClusterStatus` |
-| `GET` | `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/backup` | root only | ops | `200` |
-| `GET` | `/cluster/backup` | root only | ops | `200` `ClusterBackup` |
-| `GET` `POST` `DELETE` | `/nodes/{nodeId}/drain` | root only | admin | `200` / `202` `DrainStatus` |
-| `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush`, `/cluster/stop` | root only | admin | `200` |
+| `GET` | `/cluster/status` | `admin` | ops | `200` `ClusterStatus` |
+| `GET` | `/nodes/{nodeId}/metrics`, `/nodes/{nodeId}/backup` | `admin` | ops | `200` |
+| `GET` | `/cluster/backup` | `admin` | ops | `200` `ClusterBackup` |
+| `GET` `POST` `DELETE` | `/nodes/{nodeId}/drain` | `admin` | admin | `200` / `202` `DrainStatus` |
+| `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush` | `admin` | admin | `200` |
+| `POST` | `/cluster/stop` | root only | admin | `200` |
 
 The examples use `localhost:8080` without authentication (development mode). With authentication, add `-H "Authorization: Bearer $TOKEN"`.
 
@@ -283,7 +284,7 @@ Errors: `400 validation.required` (without `receiptToken`), `404` (nonexistent, 
 
 ### `DELETE /topics/{topic}/messages`: prune (empty the queue)
 
-Removes **every message** of the queue — visible and invisible, and the copies the replicas keep — in the **whole cluster**. Permission `admin` on the topic. The topic, its definition and its counters stay. Queues only (a distributor is `409 topic.wrong-type`).
+Removes **every message** of the queue — visible and invisible, and the copies the replicas keep — in the **whole cluster**. Permission `manage` on the topic. The topic, its definition and its counters stay. Queues only (a distributor is `409 topic.wrong-type`).
 
 The node that receives the call asks **every member** (itself included) to empty its own copy, all at once, under one `pruneId` (the id makes the call idempotent on each node), and waits for all of them. **It answers success only if all succeeded.** It is a rare act, so there is no retry or rollback.
 
@@ -295,7 +296,7 @@ curl -s -X DELETE localhost:8080/topics/orders/messages
 
 If any node fails: `503 cluster.prune-incomplete`, naming the nodes in the message and in `details`. The queue may then be empty on some nodes only; **repeating the call is safe**. A message published while the prune runs may survive it, and a node that is still synchronizing is not covered ([31-pending-items.md](31-pending-items.md)).
 
-Errors: `403` (`auth.forbidden` with `required: "admin"`, `auth.out-of-scope`), `404 topic.not-found`, `409 topic.wrong-type`, `429`, `503`.
+Errors: `403` (`auth.forbidden` with `required: "manage"`, `auth.out-of-scope`), `404 topic.not-found`, `409 topic.wrong-type`, `429`, `503`.
 
 ---
 
@@ -347,9 +348,9 @@ Routes for **any valid token** (with authentication off, everyone). They show wh
 | `memoryShare` | the topic's memory over the memory of the nodes that answered |
 | `/stats/topics/{topic}/groups` | each group once, with its messages from every node |
 
-## Cluster and nodes (root token)
+## Cluster and nodes (`admin` permission)
 
-The operations API ([17-operations-api.md](17-operations-api.md)) has no token and is for continuous monitoring. These routes are its copies in the client API, for a client that has one URL and one token, and they need the **root token**: the `admin` permission is per topic, and these routes show the topology and the inside of the nodes. A token that is not the root gets `403 auth.forbidden` with `"required": "root"` in the body, so that the client can say what is missing.
+The operations API ([17-operations-api.md](17-operations-api.md)) has no token and is for continuous monitoring. These routes are its copies in the client API, for a client that has one URL and one token, and they need the **`admin` permission** (or the root token): the `manage` permission is per topic, and these routes show the topology and the inside of the nodes. A token without it gets `403 auth.forbidden` with `"required": "admin"` in the body, so that the client can say what is missing. Only `POST /cluster/stop` asks for the root token itself (`"required": "root"`).
 
 **The node rule** (the same as for a message). The node that receives `/nodes/{nodeId}/…` compares the `nodeId` with its own. If it **is** that node, it answers from its own data; if it is **not**, it calls the node that has the data **once**, on the cluster port (`/cluster/node-call/{path}`, members only, [18-cluster-api.md](18-cluster-api.md)), and returns the answer as it came. It never forwards a call that was already forwarded. An unknown `nodeId` is `404 node.not-found`; a node that does not answer is `502 forward.bad-gateway` (or `504 forward.timeout`) naming it, with no retry. A node that left by drain is still addressable, to return it.
 

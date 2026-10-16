@@ -16,14 +16,24 @@ pub enum Permission {
     Publish,
     Consume,
     Create,
+    /// Changes and deletes topics and empties queues, inside the token's prefixes. Includes `create`.
+    /// Until the schema 2 of the permissions this was called `admin`.
+    Manage,
+    /// Manages the tokens and operates the nodes and the cluster (what only the root token did), with no prefixes.
+    /// Includes `manage` and `create`.
     Admin,
 }
 
+/// The version of the permission names: schema 1 called the topic manager `admin`; schema 2 calls it `manage`
+/// and `admin` became the general administrator. A stored or transmitted token without a version is schema 1.
+pub const PERMISSIONS_SCHEMA: u64 = 2;
+
 impl Permission {
-    pub const ALL: [Permission; 4] = [
+    pub const ALL: [Permission; 5] = [
         Permission::Publish,
         Permission::Consume,
         Permission::Create,
+        Permission::Manage,
         Permission::Admin,
     ];
 
@@ -32,7 +42,16 @@ impl Permission {
             Permission::Publish => "publish",
             Permission::Consume => "consume",
             Permission::Create => "create",
+            Permission::Manage => "manage",
             Permission::Admin => "admin",
+        }
+    }
+
+    /// Reads a name of schema 1: its `admin` is today's `manage`.
+    pub fn parse_legacy(text: &str) -> Option<Self> {
+        match text {
+            "admin" => Some(Permission::Manage),
+            other => Self::parse(other),
         }
     }
 
@@ -58,10 +77,13 @@ pub struct TokenRecord {
 }
 
 impl TokenRecord {
-    /// `admin` inclui `create` (doc 06a).
+    /// `manage` includes `create`; `admin` includes `manage` and `create` (doc 06a).
     pub fn allows(&self, permission: Permission) -> bool {
-        self.permissions.contains(&permission)
-            || (permission == Permission::Create && self.permissions.contains(&Permission::Admin))
+        let has = |p: Permission| self.permissions.contains(&p);
+        has(permission)
+            || (permission == Permission::Create
+                && (has(Permission::Manage) || has(Permission::Admin)))
+            || (permission == Permission::Manage && has(Permission::Admin))
     }
 
     /// The token reaches the topic: with no prefixes, all of them; otherwise the name **starts with** one of them.

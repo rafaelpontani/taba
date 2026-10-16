@@ -83,13 +83,13 @@ async fn a_forbidden_answer_says_what_the_token_lacked() {
     let node = start_single().await;
     let reader = token(&node, &["consume"], &["orders"]).await;
 
-    // A root-only route: `required` is `root`.
+    // A route of the `admin` permission: `required` is `admin`.
     node.clock.advance(Duration::from_secs(1));
     let denied = get(&node, "/cluster/status", Some(&reader)).await;
     assert_eq!(denied.status(), 403);
     let body: Value = denied.json().await.unwrap();
     assert_eq!(body["code"], "auth.forbidden");
-    assert_eq!(body["required"], "root");
+    assert_eq!(body["required"], "admin");
 
     // A permission route: `required` is the permission.
     queue(&node, "orders").await;
@@ -102,7 +102,7 @@ async fn a_forbidden_answer_says_what_the_token_lacked() {
     )
     .await;
     assert_eq!(pruned.status(), 403);
-    assert_eq!(pruned.json::<Value>().await.unwrap()["required"], "admin");
+    assert_eq!(pruned.json::<Value>().await.unwrap()["required"], "manage");
 
     // Other errors do not carry the field.
     let missing = get(&node, "/topics/orders/nothing", Some(ROOT)).await;
@@ -128,7 +128,7 @@ async fn auth_me_says_who_the_token_is_and_what_it_can_do() {
     assert_eq!(root["authEnabled"], true);
     assert_eq!(
         root["permissions"],
-        json!(["publish", "consume", "create", "admin"])
+        json!(["publish", "consume", "create", "manage", "admin"])
     );
     assert_eq!(root["topicPrefixes"], json!([]));
 
@@ -191,8 +191,9 @@ async fn any_valid_token_lists_the_nodes_and_sees_the_statistics_of_its_prefixes
 
 /// UC: UC-OPS-046
 #[tokio::test]
-async fn the_cluster_and_node_routes_need_the_root_token_and_an_unknown_node_is_404() {
+async fn the_cluster_and_node_routes_need_the_admin_permission_and_an_unknown_node_is_404() {
     let node = start_single().await;
+    let manager = token(&node, &["manage"], &[]).await;
     let admin = token(&node, &["admin"], &[]).await;
     let nodes = json_of(get(&node, "/nodes", Some(ROOT)).await, 200).await;
     let id = nodes["items"][0]["nodeId"].as_str().unwrap().to_owned();
@@ -204,9 +205,16 @@ async fn the_cluster_and_node_routes_need_the_root_token_and_an_unknown_node_is_
         format!("/nodes/{id}/backup"),
         "/cluster/backup".to_owned(),
     ] {
-        let denied = get(&node, &path, Some(&admin)).await;
+        node.clock.advance(Duration::from_secs(1));
+        let denied = get(&node, &path, Some(&manager)).await;
         assert_eq!(denied.status(), 403, "{path}");
-        assert_eq!(denied.json::<Value>().await.unwrap()["required"], "root");
+        assert_eq!(denied.json::<Value>().await.unwrap()["required"], "admin");
+        node.clock.advance(Duration::from_secs(1));
+        assert_ne!(
+            get(&node, &path, Some(&admin)).await.status(),
+            403,
+            "{path}"
+        );
     }
 
     let status = json_of(get(&node, "/cluster/status", Some(ROOT)).await, 200).await;
@@ -388,7 +396,7 @@ async fn pruning_empties_the_queue_on_every_node_and_the_queue_keeps_working() {
 
 /// UC: UC-TOP-048
 #[tokio::test]
-async fn pruning_an_unknown_topic_is_404_and_needs_the_admin_permission() {
+async fn pruning_an_unknown_topic_is_404_and_needs_the_manage_permission() {
     let node = start_single().await;
     let missing = call(
         &node,
@@ -412,7 +420,7 @@ async fn pruning_an_unknown_topic_is_404_and_needs_the_admin_permission() {
     .await;
     assert_eq!(error_code(refused, 403).await, "auth.forbidden");
 
-    let admin = token(&node, &["admin"], &["orders"]).await;
+    let admin = token(&node, &["manage"], &["orders"]).await;
     publish(&node, "orders", 1).await;
     let pruned = call(
         &node,

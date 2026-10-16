@@ -18,7 +18,7 @@ pub const NODE_DB_FILE: &str = "_node.db";
 
 /// Schema version, kept in `PRAGMA user_version`. A database of a greater version belongs to a
 /// newer node: it is not touched.
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS topics (
@@ -89,6 +89,9 @@ impl NodeDb {
             ));
         }
         conn.execute_batch(SCHEMA).map_err(to_io)?;
+        if version < 5 {
+            rename_admin_to_manage(&conn).map_err(to_io)?;
+        }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)
             .map_err(to_io)?;
         Ok(Self {
@@ -131,6 +134,31 @@ impl NodeDb {
             })
             .map_err(to_io)
     }
+}
+
+/// Schema 5: the topic manager, which was called `admin`, is now `manage`; `admin` became the general
+/// administrator and no stored token may gain it by the rename. Runs once, in a single transaction.
+fn rename_admin_to_manage(conn: &Connection) -> rusqlite::Result<()> {
+    let rows: Vec<(String, String)> = conn
+        .prepare("SELECT id, permissions FROM tokens")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let tx = conn.unchecked_transaction()?;
+    for (id, permissions) in rows {
+        if !permissions.split(',').any(|p| p == "admin") {
+            continue;
+        }
+        let renamed = permissions
+            .split(',')
+            .map(|p| if p == "admin" { "manage" } else { p })
+            .collect::<Vec<_>>()
+            .join(",");
+        tx.execute(
+            "UPDATE tokens SET permissions = ?1 WHERE id = ?2",
+            rusqlite::params![renamed, id],
+        )?;
+    }
+    tx.commit()
 }
 
 pub fn to_io(e: rusqlite::Error) -> io::Error {

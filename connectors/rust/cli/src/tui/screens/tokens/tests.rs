@@ -123,14 +123,14 @@ fn the_list_is_filtered_by_name_and_sorted_and_the_selection_follows_the_token()
 
 /// TUI: TUI-TOK-06
 #[test]
-fn only_the_root_token_manages_tokens_and_a_server_without_authentication_has_none() {
+fn only_root_and_admin_tokens_manage_tokens_and_a_server_without_authentication_has_none() {
     let mut sim = Sim::new(Lang::EnUs);
     let effects = sim.tick(0);
     sim.answer(&effects[0], ok(me_plain()));
     sim.press('4');
-    assert_eq!(availability(&sim.m), Availability::NotRoot);
+    assert_eq!(availability(&sim.m), Availability::NotAdmin);
     assert!(!sim.poll(5_000).contains(&ApiCall::Tokens(None)));
-    assert_eq!(gate(&sim.m, Action::TokenNew), Some("gate.not-root"));
+    assert_eq!(gate(&sim.m, Action::TokenNew), Some("gate.not-admin"));
 
     let mut open = Sim::new(Lang::EnUs);
     let effects = open.tick(0);
@@ -162,7 +162,7 @@ fn a_new_token_is_sent_as_the_form_was_filled_and_its_secret_is_shown_once() {
     sim.press(' ');
     sim.code(KeyCode::Tab);
     sim.press(' ');
-    for _ in 0..3 {
+    for _ in 0..4 {
         sim.code(KeyCode::Tab);
     }
     type_text(&mut sim, "reports. audit.");
@@ -415,4 +415,33 @@ fn an_action_that_cannot_run_says_why_instead_of_doing_nothing() {
     sim.press('e');
     assert!(sim.m.modal.is_none());
     assert_eq!(sim.m.notice.as_ref().unwrap().text, "Select a token first.");
+}
+
+/// TUI: TUI-TOK-06
+#[test]
+fn a_token_with_admin_manages_tokens_but_only_the_root_changes_or_creates_admin_ones() {
+    let mut sim = on_tokens(Lang::EnUs);
+    // The root session: the `billing` token has `admin`, and the form offers the permission.
+    sim.m.tokens.selected = Some("0191-b".into());
+    assert_eq!(gate(&sim.m, Action::TokenRevoke), None);
+
+    let me = sim.m.me.data.as_mut().unwrap();
+    me.root = false;
+    me.permissions = vec!["admin".to_owned()];
+    assert_eq!(availability(&sim.m), Availability::Ready);
+    assert_eq!(gate(&sim.m, Action::TokenNew), None);
+    assert_eq!(
+        gate(&sim.m, Action::TokenRevoke),
+        Some("gate.root-for-admin")
+    );
+    assert_eq!(gate(&sim.m, Action::TokenEdit), Some("gate.root-for-admin"));
+    sim.m.tokens.selected = Some("0191-a".into());
+    assert_eq!(gate(&sim.m, Action::TokenRevoke), None);
+
+    open_create(&mut sim.m, None);
+    let Some(Modal::Editor(editor)) = &sim.m.modal else {
+        panic!("the form did not open");
+    };
+    assert!(editor.field("admin").unwrap().locked.is_some());
+    assert!(editor.field("manage").unwrap().locked.is_none());
 }

@@ -6,14 +6,14 @@ use super::{call, emit, number, paged};
 use crate::app::{CliError, Command, Ctx};
 use crate::args::{flag, val, Parsed};
 
-const PERMISSIONS: [&str; 4] = ["publish", "consume", "create", "admin"];
+const PERMISSIONS: [&str; 5] = ["publish", "consume", "create", "manage", "admin"];
 
 pub fn commands() -> Vec<Command> {
     vec![
         Command {
             path: &["token", "create"],
             args: "",
-            summary: "Creates a token (root token only). The secret shows up only in this response.",
+            summary: "Creates a token (admin permission or root token). The secret shows up only in this response.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![
@@ -93,7 +93,7 @@ fn create(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         .collect();
     if permissions.is_empty() {
         return Err(CliError::usage(
-            "--permission is required (publish, consume, create, admin)",
+            "--permission is required (publish, consume, create, manage, admin)",
         ));
     }
     if let Some(bad) = permissions

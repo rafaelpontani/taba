@@ -37,7 +37,7 @@ use crate::telemetry::metrics::AUTH_REQUESTS;
 pub enum Principal {
     /// Authentication off: full access, no checking.
     Open,
-    /// The root token: all permissions, no prefixes, and the only one that manages `/tokens`.
+    /// The root token: all permissions, no prefixes, and the only one that stops the cluster and handles `admin` tokens.
     Root,
     Token(Arc<TokenRecord>),
 }
@@ -225,40 +225,42 @@ enum Need {
     /// Any valid token (topic reads, within the prefixes).
     Any,
     Permission(Permission),
-    /// Only the root token (`/tokens`).
+    /// Only the root token (`/cluster/stop`).
     Root,
 }
 
 fn need(method: &Method, route: &str) -> Option<Need> {
     match route {
-        // Pruning a queue empties it: the `admin` permission of the topic.
+        // Pruning a queue empties it: the `manage` permission of the topic.
         "/topics/{topic}/messages" if method == Method::DELETE => {
-            Some(Need::Permission(Permission::Admin))
+            Some(Need::Permission(Permission::Manage))
         }
         "/topics" if method == Method::POST => Some(Need::Permission(Permission::Create)),
         "/topics" | "/topics/{topic}" if method == Method::GET => Some(Need::Any),
-        "/topics/{topic}" => Some(Need::Permission(Permission::Admin)),
+        "/topics/{topic}" => Some(Need::Permission(Permission::Manage)),
         "/topics/{topic}/messages" if method == Method::POST => {
             Some(Need::Permission(Permission::Publish))
         }
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
         | "/topics/{topic}/messages/{id}/visibility" => Some(Need::Permission(Permission::Consume)),
-        "/tokens" | "/tokens/{id}" => Some(Need::Root),
+        // The tokens (an `admin` token itself is only created, changed and revoked by the root: see `http::tokens`).
+        "/tokens" | "/tokens/{id}" => Some(Need::Permission(Permission::Admin)),
         // What any valid token sees within its scope: who it is, the nodes, the topic statistics.
         "/auth/me" | "/nodes" => Some(Need::Any),
         "/stats/topics" | "/stats/topics/{topic}" | "/stats/topics/{topic}/groups" => {
             Some(Need::Any)
         }
-        // The cluster and the nodes' insides: the root token.
+        // Stopping the whole cluster is the root token's alone.
+        "/cluster/stop" => Some(Need::Root),
+        // The cluster and the nodes' insides: the `admin` permission.
         "/cluster/status"
         | "/cluster/backup"
         | "/cluster/backup/flush"
-        | "/cluster/stop"
         | "/nodes/{node_id}/metrics"
         | "/nodes/{node_id}/drain"
         | "/nodes/{node_id}/backup"
-        | "/nodes/{node_id}/backup/flush" => Some(Need::Root),
+        | "/nodes/{node_id}/backup/flush" => Some(Need::Permission(Permission::Admin)),
         _ => None,
     }
 }
@@ -272,7 +274,7 @@ fn unauthorized() -> ApiError {
 }
 
 /// `403 auth.forbidden`, saying what was missing: `root` or the permission's name.
-fn forbidden(required: &str) -> ApiError {
+pub(super) fn forbidden(required: &str) -> ApiError {
     ApiError(
         TabaError::new(
             ErrorCode::AuthForbidden,

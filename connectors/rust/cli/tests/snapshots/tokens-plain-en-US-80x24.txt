@@ -3,7 +3,7 @@
 Your token must be the root token to see this.
 
 You are using the token app of the profile prod. Choose another profile (o) or
-ask for the root token.
+ask for a token with the admin permission.
 
 
 

@@ -86,7 +86,7 @@ fn draw_list(f: &mut Frame, area: Rect, m: &Model) {
         }
         return;
     }
-    if !m.is_root() || m.status.data.is_none() {
+    if !m.is_admin() || m.status.data.is_none() {
         draw_limited(f, area, m, &rows);
         return;
     }

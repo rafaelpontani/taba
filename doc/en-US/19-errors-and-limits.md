@@ -38,7 +38,7 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | Code | Status | When |
 |---|---|---|
 | `auth.unauthorized` | 401 | No token, malformed, unknown, revoked or expired. **The response does not say which** |
-| `auth.forbidden` | 403 | Valid token without the route's permission (includes `/tokens`, the cluster and the nodes: root only). The body carries **`required`**: `root`, or the name of the missing permission (`admin`, `publish`…), so a client can say what the token needs |
+| `auth.forbidden` | 403 | Valid token without the route's permission (includes `/tokens`, the cluster and the nodes: `admin`; stopping the cluster and the `admin` tokens: root only). The body carries **`required`**: `root`, or the name of the missing permission (`manage`, `admin`, `publish`…), so a client can say what the token needs |
 | `auth.out-of-scope` | 403 | The topic (or a distributor `prefix`) is outside the token's prefixes |
 | `ops.ip-not-allowed` | 403 | Operations route called from an IP outside `operations.allowed-ips` |
 | `cluster.not-member` | 403 | Cluster route called by someone who is not in the member table |
@@ -114,7 +114,7 @@ Format rules, **not configurable**, applied on creation and on change (`core/val
 | `maxDeliveries` | 1 to 1000 |
 | `groupId`, `deduplicationId` | 1 to 128, `A-Za-z0-9_-.:` |
 | Token: `name` | 1 to 100, `A-Za-z0-9_-.:` |
-| Token: `permissions` | at least one of `publish`, `consume`, `create`, `admin` |
+| Token: `permissions` | at least one of `publish`, `consume`, `create`, `manage`, `admin`; `admin` takes no `topicPrefixes` |
 | Token: `topicPrefixes` | up to 20, 1 to 100, `A-Za-z0-9_-` |
 | Token: `expiresAt` | in the future |
 | `contentType` | media type of 1 to 255 characters; default `application/json` |

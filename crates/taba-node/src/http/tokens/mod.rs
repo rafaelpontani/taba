@@ -1,22 +1,24 @@
 //! Client API access tokens (doc 06a, "Access tokens"): `POST` and `GET /tokens` and
 //! `GET`, `PATCH` and `DELETE /tokens/{id}`. They only exist with authentication on, and only the root
-//! token uses them (the `authorize` layer refuses the rest). The full secret shows up **only** in the
+//! token and the `admin` tokens use them (the `authorize` layer refuses the rest); an `admin` token itself
+//! is only created, changed and revoked by the root. The full secret shows up **only** in the
 //! creation response.
 
 use std::collections::HashMap;
 
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{Map, Value, json};
 
+use super::auth::{Principal, forbidden};
 use super::common::ApiError;
 use super::{AppState, json as body};
 use crate::core::time::format_ms;
-use crate::core::token::TokenRecord;
+use crate::core::token::{Permission, TokenRecord};
 use crate::engine::tokens::{CreateToken, ListQuery, UpdateToken};
 
 const CREATE_FIELDS: &[&str] = &["name", "permissions", "topicPrefixes", "expiresAt"];
@@ -56,8 +58,26 @@ fn token_json(record: &TokenRecord) -> Map<String, Value> {
     object
 }
 
+/// An `admin` token is only created, changed and revoked by the root token: otherwise an `admin` could
+/// raise others to its own level or remove its peers.
+fn root_for_admin_tokens(principal: &Principal, is_admin_token: bool) -> Result<(), ApiError> {
+    if is_admin_token && !principal.is_root() {
+        return Err(forbidden("root"));
+    }
+    Ok(())
+}
+
+fn is_admin_token(state: &AppState, id: &str) -> bool {
+    state
+        .auth
+        .tokens
+        .record(id)
+        .is_some_and(|record| record.permissions.contains(&Permission::Admin))
+}
+
 async fn create(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     headers: HeaderMap,
     bytes: Bytes,
 ) -> Result<Response, ApiError> {
@@ -70,6 +90,7 @@ async fn create(
         topic_prefixes: fields.string_list("topicPrefixes")?.unwrap_or_default(),
         expires_ms: fields.date("expiresAt")?,
     };
+    root_for_admin_tokens(&principal, request.permissions.iter().any(|p| p == "admin"))?;
     let created = state.auth.tokens.create(request).await?;
     let mut object = token_json(&created.record);
     object.insert("token".into(), json!(created.token));
@@ -121,9 +142,11 @@ async fn read(
 async fn update(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Extension(principal): Extension<Principal>,
     headers: HeaderMap,
     bytes: Bytes,
 ) -> Result<Json<Value>, ApiError> {
+    root_for_admin_tokens(&principal, is_admin_token(&state, &id))?;
     let fields = body::object(&headers, &bytes)?;
     let known: Vec<&str> = PATCH_FIELDS
         .iter()
@@ -147,7 +170,9 @@ async fn update(
 async fn revoke(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Extension(principal): Extension<Principal>,
 ) -> Result<StatusCode, ApiError> {
+    root_for_admin_tokens(&principal, is_admin_token(&state, &id))?;
     state.auth.tokens.revoke(&id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

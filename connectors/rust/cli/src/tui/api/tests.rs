@@ -78,7 +78,21 @@ fn me_says_what_the_token_can_do() {
     )
     .unwrap();
     assert!(!me.is_root());
-    assert!(me.can("publish") && !me.can("admin"));
+    assert!(me.can("publish") && !me.can("admin") && !me.can("manage") && !me.can("create"));
+    assert!(!me.is_admin());
+    let manager =
+        parse_me(r#"{"authEnabled":true,"root":false,"permissions":["manage"]}"#).unwrap();
+    assert!(
+        manager.can("manage")
+            && manager.can("create")
+            && !manager.can("admin")
+            && !manager.is_admin()
+    );
+    let admin = parse_me(r#"{"authEnabled":true,"root":false,"permissions":["admin"]}"#).unwrap();
+    assert!(admin.is_admin() && !admin.is_root());
+    assert!(
+        admin.can("admin") && admin.can("manage") && admin.can("create") && !admin.can("publish")
+    );
     let open = parse_me(r#"{"authEnabled":false,"root":false,"permissions":[]}"#).unwrap();
     assert!(open.is_root() && open.can("admin"));
 }

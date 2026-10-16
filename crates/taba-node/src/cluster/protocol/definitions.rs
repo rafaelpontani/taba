@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time;
-use crate::core::token::{Permission, TokenRecord};
+use crate::core::token::{PERMISSIONS_SCHEMA, Permission, TokenRecord};
 
 /// The type of a definition shared by all nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -78,6 +78,7 @@ pub fn token_to_json(token: &TokenRecord) -> Value {
         "id": token.id,
         "name": token.name,
         "permissions": token.permissions.iter().map(|p| p.as_str()).collect::<Vec<_>>(),
+        "permissionsSchema": PERMISSIONS_SCHEMA,
         "topicPrefixes": token.topic_prefixes,
         "createdAt": time::format_ms(token.created_ms),
         "expiresAt": token.expires_ms.map(time::format_ms),
@@ -124,14 +125,23 @@ pub fn token_from_json(value: &Value) -> Result<TokenRecord, TabaError> {
             })
             .collect()
     };
+    // A token without `permissionsSchema` comes from a node (or a backup) of schema 1, where `admin` was the
+    // topic manager: it becomes `manage`, never the general `admin`.
+    let legacy = object
+        .get("permissionsSchema")
+        .and_then(Value::as_u64)
+        .is_none_or(|schema| schema < PERMISSIONS_SCHEMA);
     let mut permissions = Vec::new();
     for name in list("permissions")? {
-        let permission = Permission::ALL
-            .into_iter()
-            .find(|p| p.as_str() == name)
-            .ok_or_else(|| bad(&format!("unknown permission `{name}`")))?;
-        permissions.push(permission);
+        let found = if legacy {
+            Permission::parse_legacy(&name)
+        } else {
+            Permission::parse(&name)
+        };
+        permissions.push(found.ok_or_else(|| bad(&format!("unknown permission `{name}`")))?);
     }
+    permissions.sort();
+    permissions.dedup();
     Ok(TokenRecord {
         id: text("id")?,
         name: text("name")?,

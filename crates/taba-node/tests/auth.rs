@@ -292,9 +292,9 @@ async fn an_invalid_token_request_is_400() {
 
 /// UC: UC-AUT-024, UC-AUT-017
 #[tokio::test]
-async fn only_the_root_token_manages_tokens() {
+async fn only_the_root_and_admin_tokens_manage_tokens() {
     let node = start().await;
-    let (_, admin) = token(&node, &["admin", "publish", "consume"], &[]).await;
+    let (_, admin) = token(&node, &["manage", "publish", "consume"], &[]).await;
     for (method, path) in [
         (Method::GET, "/tokens"),
         (Method::POST, "/tokens"),
@@ -319,6 +319,92 @@ async fn only_the_root_token_manages_tokens() {
     node.shutdown().await;
 }
 
+/// An `admin` token manages the other tokens, but an `admin` token itself is the root's to create, change and revoke;
+/// it takes no topic prefixes.
+#[tokio::test]
+async fn an_admin_token_manages_tokens_but_not_other_admin_tokens() {
+    let node = start().await;
+    let (admin_id, admin) = token(&node, &["admin"], &[]).await;
+    let (_, other_admin) = token(&node, &["admin"], &[]).await;
+
+    // Lists, creates and revokes a work token.
+    node.clock.advance(Duration::from_secs(1));
+    assert_eq!(get(&node, "/tokens", Some(&admin)).await.status(), 200);
+    node.clock.advance(Duration::from_secs(1));
+    let created = call(
+        &node,
+        Method::POST,
+        "/tokens",
+        Some(&admin),
+        Some(json!({ "name": "work", "permissions": ["publish", "manage"] })),
+    )
+    .await;
+    assert_eq!(created.status(), 201);
+    let id = created.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    node.clock.advance(Duration::from_secs(1));
+    let revoked = call(
+        &node,
+        Method::DELETE,
+        &format!("/tokens/{id}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(revoked.status(), 204);
+
+    // Does not create, change or revoke an admin token: the root does.
+    node.clock.advance(Duration::from_secs(1));
+    let raised = call(
+        &node,
+        Method::POST,
+        "/tokens",
+        Some(&admin),
+        Some(json!({ "name": "boss", "permissions": ["admin"] })),
+    )
+    .await;
+    let body: Value = {
+        assert_eq!(raised.status(), 403);
+        raised.json().await.unwrap()
+    };
+    assert_eq!(body["code"], "auth.forbidden");
+    assert_eq!(body["required"], "root");
+    for (method, body) in [
+        (Method::PATCH, Some(json!({ "name": "renamed" }))),
+        (Method::DELETE, None),
+    ] {
+        node.clock.advance(Duration::from_secs(1));
+        let response = call(
+            &node,
+            method.clone(),
+            &format!("/tokens/{admin_id}"),
+            Some(&other_admin),
+            body,
+        )
+        .await;
+        let denied: Value = {
+            assert_eq!(response.status(), 403, "{method}");
+            response.json().await.unwrap()
+        };
+        assert_eq!(denied["required"], "root", "{method}");
+    }
+
+    // An admin reaches every topic: a prefix would promise a limit it does not have.
+    node.clock.advance(Duration::from_secs(1));
+    let prefixed = call(
+        &node,
+        Method::POST,
+        "/tokens",
+        Some(ROOT),
+        Some(json!({ "name": "x", "permissions": ["admin"], "topicPrefixes": ["orders"] })),
+    )
+    .await;
+    assert_eq!(prefixed.status(), 400);
+    node.shutdown().await;
+}
+
 /// UC: UC-AUT-009, UC-AUT-010, UC-AUT-011
 #[tokio::test]
 async fn permissions_gate_each_route() {
@@ -327,7 +413,7 @@ async fn permissions_gate_each_route() {
     let (_, publisher) = token(&node, &["publish"], &[]).await;
     let (_, consumer) = token(&node, &["consume"], &[]).await;
     let (_, creator) = token(&node, &["create"], &[]).await;
-    let (_, admin) = token(&node, &["admin"], &[]).await;
+    let (_, admin) = token(&node, &["manage"], &[]).await;
     let forbidden = |response: Response| error_code(response, 403);
 
     // publish: only publish.
@@ -495,7 +581,7 @@ async fn prefixes_confine_a_token_to_its_topics_including_the_dead_letter() {
 async fn a_token_only_creates_inside_its_prefixes_including_the_distribution_prefixes() {
     let node = start().await;
     queue(&node, "estoque").await;
-    let (_, creator) = token(&node, &["create", "admin"], &["orders"]).await;
+    let (_, creator) = token(&node, &["create", "manage"], &["orders"]).await;
 
     let make = |body: Value| create_topic(&node, &creator, body);
     assert_eq!(
