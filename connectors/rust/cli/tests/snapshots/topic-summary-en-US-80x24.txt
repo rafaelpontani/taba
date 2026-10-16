@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:22 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+3 topics  sorted by name (s)  dead-letter hidden: 1 (v)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name                  Type         Depth    Pub/s  Cons/s Age     State       │
+│  fanout              distributor         —      —      —       — ✔ ok        │
+│▶ orders              queue fifo      1,500   12.5    3.0  2m 05s ▲ backlog   │
+┌ Summary of the topic orders ─────────────────────────────────────────────────┐
+│Name     orders  (queue fifo)                                                 │
+│Id       01a1-1                                                               │
+│Created  2026-10-01 10:00:00                                                  │
+│Tags     team=shop                                                            │
+│Limits   message 5.0 MiB (default) · ttl 1h 00m · deliveries 10 (default)     │
+│                                                                              │
+│The type, FIFO and volatile never change after the topic is created.          │
+│                                                                              │
+│Esc close                                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+│      │                  ││      │               ⢀⡔││      │                  │
+│0     │                ⢀⣀││4.7/s │               ⠘ ││9s    │                ⠐⠉│
+│      └──────────────────││      └─────────────────││      └──────────────────│
+│-5m 00s               now││-5m 00s              now││-5m 00s               now│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter actions  g charts  l language  h help  q quit             ⟳ 5s · L en-US

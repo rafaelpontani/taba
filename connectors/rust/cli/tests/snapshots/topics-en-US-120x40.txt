@@ -1,0 +1,40 @@
+ prod https://taba.example:8080  ✔ healthy                                                                 12:00:01 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+3 topics  sorted by name (s)  dead-letter hidden: 1 (v)
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Name                                        Type           Depth     Pub/s     Cons/s    Age        State             │
+│▶ fanout                                    distributor            —         —         —          — ✔ ok              │
+│  orders                                    queue fifo         1,500      12.5       3.0     2m 05s ▲ backlog         │
+│  replies                                   queue vol              7       0.2       0.2         3s ✔ ok              │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Topic ───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Name     fanout  (distributor)                                                                                        │
+│Id       01a1-3                                                                                                       │
+│Created  2026-10-12 10:00:00                                                                                          │
+│Tags     —                                                                                                            │
+│Prefixes orders, billing                                                                                              │
+│                                                                                                                      │
+│The type, FIFO and volatile never change after the topic is created.                                                  │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ Enter actions  g charts  x messages  n new  e edit  Del delete  l language  h help  q quit              ⟳ 5s · L en-US

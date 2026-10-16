@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:01 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+3 topics  sorted by name (s)  dead-letter hidden: 1 (v)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name                  Type         Depth    Pub/s  Cons/s Age     State       │
+│  fanou┌ Delete the topic? ───────────────────────────────────────────┐       │
+│▶ order│The topic orders and every message in it are lost for good,   │klog   │
+│  repli│and so is its dead-letter queue. This cannot be undone.       │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+└───────│                                                              │───────┘
+┌ Topic │                                                              │───────┐
+│Name   │Type orders to confirm:                                       │       │
+│Id     │> ord▏                                                        │       │
+│Created│                                                              │       │
+│Tags   │                    [ Cancel ]  [ Confirm ]                   │       │
+│Limits └──────────────────────────────────────────────────────────────┘t)     │
+│                                                                              │
+│The type, FIFO and volatile never change after the topic is created.          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter actions  g charts  l language  h help  q quit             ⟳ 5s · L en-US

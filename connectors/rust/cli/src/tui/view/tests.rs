@@ -170,7 +170,7 @@ fn a_terminal_below_80_by_24_shows_a_warning_instead_of_the_screen() {
 fn the_node_detail_in_both_languages() {
     for lang in [Lang::EnUs, Lang::PtBr] {
         let mut sim = with_history(lang);
-        sim.code(KeyCode::Enter);
+        sim.press('i');
         let effects = sim.tick(126_000);
         for effect in &effects {
             let Effect::Call { call, .. } = effect else {
@@ -205,7 +205,7 @@ fn the_node_detail_in_both_languages() {
 #[test]
 fn a_node_without_backup_says_so() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     let effects = sim.tick(300);
     let backup = effects
         .iter()
@@ -228,7 +228,7 @@ fn a_node_without_backup_says_so() {
 #[test]
 fn a_drain_in_progress_shows_its_pending_messages() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     sim.press('d');
     sim.code(KeyCode::Right);
     let effects = sim.code(KeyCode::Enter);
@@ -274,26 +274,51 @@ fn the_charts_of_a_node() {
     let mut sim = with_history(Lang::EnUs);
     sim.press('m');
     let screen = render(&sim.m, 100, 30);
-    // Four charts at a time, each with the cluster figure.
-    assert!(screen.contains("Charts 1-4 of 6"), "{screen}");
+    // The list of indicators beside the chart under the cursor, with the cluster figure.
+    assert!(screen.contains("Charts"), "{screen}");
     assert!(screen.contains("total "), "{screen}");
     assert!(screen.contains("Messages in memory"), "{screen}");
     // A short history says so instead of pretending a full window (TUI-MON-05).
     assert!(screen.contains("collected"), "{screen}");
 }
 
-/// The charts view scrolls through every indicator, four at a time.
+/// The charts view lists every indicator on the left; the one under the cursor is drawn, and Enter fills the screen.
 #[test]
-fn the_charts_scroll_through_every_indicator() {
+fn the_charts_are_a_list_with_the_selected_one_beside_it_or_on_the_whole_screen() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = with_history(lang);
+        sim.press('m');
+        let screen = render(&sim.m, 100, 30);
+        assert!(
+            screen.contains("Channel round trip") || screen.contains("Ida e volta"),
+            "{screen}"
+        );
+        snapshot(&format!("cluster-charts-{code}-100x30"), &screen);
+        snapshot(
+            &format!("cluster-charts-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.code(KeyCode::Down);
+        sim.code(KeyCode::Down);
+        sim.code(KeyCode::Enter);
+        assert!(sim.m.cluster.monitor.full);
+        snapshot(
+            &format!("cluster-chart-full-{code}-100x30"),
+            &render(&sim.m, 100, 30),
+        );
+    }
     let mut sim = with_history(Lang::EnUs);
     sim.press('m');
-    sim.code(KeyCode::Down);
-    let screen = render(&sim.m, 100, 30);
-    assert!(screen.contains("Charts 3-6 of 6"), "{screen}");
-    assert!(screen.contains("Channel round trip"), "{screen}");
-    sim.code(KeyCode::Down);
-    assert_eq!(sim.m.cluster.monitor.chart, 2);
-    sim.code(KeyCode::Up);
+    for _ in 0..10 {
+        sim.code(KeyCode::Down);
+    }
+    assert_eq!(
+        sim.m.cluster.monitor.chart,
+        crate::tui::screens::cluster::MON_CHARTS.len() - 1,
+        "the cursor stops at the last chart"
+    );
+    sim.code(KeyCode::Home);
     assert_eq!(sim.m.cluster.monitor.chart, 0);
 }
 
@@ -410,22 +435,6 @@ fn the_export_popup_asks_for_the_path() {
     let screen = render(&sim.m, 80, 24);
     assert!(screen.contains("taba-00000001-memory.csv"), "{screen}");
     assert!(screen.contains("never overwritten"), "{screen}");
-}
-
-/// TUI: TUI-FRM-02
-#[test]
-fn the_tabs_that_are_not_built_yet_say_so_and_navigate() {
-    for lang in [Lang::EnUs, Lang::PtBr] {
-        let mut sim = Sim::root_with_status(lang);
-        for (key, name) in [('2', "topics"), ('3', "messages")] {
-            sim.press(key);
-            let screen = render(&sim.m, 80, 24);
-            if key == '2' {
-                snapshot(&format!("{name}-{}-80x24", lang.code()), &screen);
-            }
-            assert!(screen.contains("taba-cli"), "{screen}");
-        }
-    }
 }
 
 /// TUI: TUI-FRM-03
@@ -557,7 +566,7 @@ fn a_node_without_a_memory_limit_shows_its_use_and_says_so() {
         table.contains("768.0 MiB") && !table.contains(" 75%"),
         "{table}"
     );
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     let detail = render(&sim.m, 80, 40);
     assert!(detail.contains("(no limit)"), "{detail}");
 }
@@ -614,7 +623,7 @@ fn the_tokens_tab_in_both_languages_and_without_the_root_token() {
     }
     // A plain token is told what it lacks, not shown an empty list.
     let mut sim = Sim::plain_with_nodes(Lang::EnUs);
-    sim.press('4');
+    sim.press('3');
     let screen = render(&sim.m, 80, 24);
     assert!(screen.contains("must be the root token"), "{screen}");
     assert!(screen.contains("app"), "{screen}");
@@ -705,7 +714,7 @@ fn the_profiles_tab_and_its_form() {
         let mut options = options(lang);
         options.profiles = file;
         let mut sim = Sim::with_options(options);
-        sim.press('5');
+        sim.press('4');
         sim.press('j');
         let screen = render(&sim.m, 80, 24);
         // A token kept in the file is never drawn.
@@ -717,7 +726,7 @@ fn the_profiles_tab_and_its_form() {
         snapshot(&format!("profile-edit-{code}-80x24"), &form);
     }
     let mut sim = Sim::new(Lang::EnUs);
-    sim.press('5');
+    sim.press('4');
     snapshot("profiles-empty-en-US-80x24", &render(&sim.m, 80, 24));
 }
 
@@ -753,14 +762,14 @@ fn the_choice_of_a_profile_at_the_start() {
 #[test]
 fn the_footer_of_the_tokens_tab_dims_what_the_token_cannot_do() {
     let mut sim = Sim::plain_with_nodes(Lang::EnUs);
-    sim.press('4');
-    let footer = render(&sim.m, 80, 24).lines().last().unwrap().to_owned();
+    sim.press('3');
+    let footer = render(&sim.m, 120, 40).lines().last().unwrap().to_owned();
     assert!(
         footer.contains("new") && footer.contains("revoke"),
         "{footer}"
     );
     let ready = Sim::on_tokens(Lang::EnUs);
-    let footer = render(&ready.m, 80, 24).lines().last().unwrap().to_owned();
+    let footer = render(&ready.m, 120, 40).lines().last().unwrap().to_owned();
     assert!(
         footer.contains("clone") && footer.contains("language"),
         "{footer}"
@@ -779,4 +788,260 @@ fn the_first_profile_form_opens_when_there_is_none() {
             &render(&sim.m, 80, 24),
         );
     }
+}
+
+/// TUI: TUI-TOP-01, TUI-TOP-04, TUI-TOP-05
+#[test]
+fn the_topics_tab_in_both_sizes_and_languages() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = Sim::on_topics(lang);
+        let screen = render(&sim.m, 80, 24);
+        assert!(
+            screen.contains("orders") && screen.contains("fanout") && screen.contains("backlog"),
+            "{screen}"
+        );
+        snapshot(&format!("topics-{code}-80x24"), &screen);
+        snapshot(&format!("topics-{code}-120x40"), &render(&sim.m, 120, 40));
+        // A distributor and a dead-letter queue have their own detail.
+        sim.press('g');
+        snapshot(
+            &format!("topics-distributor-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.press('v');
+        sim.press('j');
+        sim.press('j');
+        snapshot(
+            &format!("topics-dead-letter-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+    }
+}
+
+/// TUI: TUI-TPF-01, TUI-TPF-03, TUI-TPF-04
+#[test]
+fn the_topic_forms_and_the_delete_confirmation() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = Sim::on_topics(lang);
+        sim.press('n');
+        for c in "invoices".chars() {
+            sim.press(c);
+        }
+        snapshot(
+            &format!("topic-create-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.code(KeyCode::Esc);
+        sim.press('j');
+        sim.press('e');
+        snapshot(&format!("topic-edit-{code}-80x24"), &render(&sim.m, 80, 24));
+        sim.code(KeyCode::Esc);
+        sim.press('d');
+        for c in "ord".chars() {
+            sim.press(c);
+        }
+        snapshot(
+            &format!("topic-delete-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+    }
+}
+
+/// TUI: TUI-MSG-11, TUI-MON-02, TUI-MON-05
+#[test]
+fn the_three_charts_of_a_queue() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = Sim::on_topic_charts(lang);
+        sim.press('-');
+        let screen = render(&sim.m, 80, 24);
+        assert!(
+            screen.contains("customer-17") || screen.contains("orders"),
+            "{screen}"
+        );
+        snapshot(&format!("topic-charts-{code}-80x24"), &screen);
+        snapshot(
+            &format!("topic-charts-{code}-120x40"),
+            &render(&sim.m, 120, 40),
+        );
+    }
+}
+
+/// TUI: TUI-FRM-07
+#[test]
+fn the_menu_of_an_item_names_what_it_acts_on() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = Sim::on_topics(lang);
+        sim.press('j');
+        sim.code(KeyCode::Enter);
+        let screen = render(&sim.m, 80, 24);
+        let flat = screen.split_whitespace().collect::<Vec<_>>().join(" ");
+        let (topic, message) = match lang {
+            Lang::EnUs => ("Edit the topic", "Publish a message"),
+            Lang::PtBr => ("Editar o tópico", "Publicar uma mensagem"),
+        };
+        assert!(flat.contains(topic) && flat.contains(message), "{screen}");
+        snapshot(&format!("menu-topic-{code}-80x24"), &screen);
+    }
+    // A token that cannot do something sees it dim, with the reason.
+    let mut sim = Sim::on_topics(Lang::EnUs);
+    sim.code(KeyCode::Enter);
+    let screen = render(&sim.m, 120, 40);
+    assert!(screen.contains("Topic fanout"), "{screen}");
+    snapshot("menu-distributor-en-US-120x40", &screen);
+}
+
+/// TUI: TUI-TOP-02
+#[test]
+fn under_the_list_the_three_charts_of_the_selected_queue_sit_side_by_side() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let mut sim = Sim::on_topics(lang);
+        sim.press('j');
+        for (step, now) in [2_000u64, 7_000, 12_000, 17_000, 22_000]
+            .into_iter()
+            .enumerate()
+        {
+            let effects = sim.tick(now);
+            let asked = effects
+                .iter()
+                .find(|e| {
+                    matches!(
+                        e,
+                        Effect::Call {
+                            call: ApiCall::TopicDetail(_),
+                            ..
+                        }
+                    )
+                })
+                .expect("the strip asks for a reading")
+                .clone();
+            sim.answer(&asked, ok(&topic_sample_json(step as u64)));
+        }
+        let code = lang.code();
+        for (w, h) in SIZES {
+            let screen = render(&sim.m, w, h);
+            assert!(screen.contains("orders"), "{screen}");
+            snapshot(&format!("topics-strip-{code}-{w}x{h}"), &screen);
+        }
+        sim.press('i');
+        snapshot(
+            &format!("topic-summary-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+    }
+}
+
+/// The charts of a queue are a screen like the charts of the cluster: the list of indicators, the chart under the
+/// cursor beside it, and Enter for the whole screen.
+#[test]
+fn the_charts_of_a_topic_are_a_list_with_the_selected_one_beside_it_or_on_the_whole_screen() {
+    let mut sim = Sim::on_topic_charts(Lang::EnUs);
+    let screen = render(&sim.m, 120, 40);
+    assert!(screen.contains("Topics › orders · Charts"), "{screen}");
+    assert!(screen.contains("Flow per second"), "{screen}");
+    snapshot("topic-charts-list-en-US-120x40", &screen);
+    sim.code(KeyCode::Down);
+    sim.code(KeyCode::Enter);
+    assert!(sim.m.topics.monitor.as_ref().unwrap().monitor.full);
+    snapshot("topic-chart-full-en-US-120x40", &render(&sim.m, 120, 40));
+    // Esc leaves the full screen first, then the charts.
+    sim.code(KeyCode::Esc);
+    assert!(sim.m.topics.monitor.is_some());
+    assert!(!sim.m.topics.monitor.as_ref().unwrap().monitor.full);
+    sim.code(KeyCode::Esc);
+    assert!(sim.m.topics.monitor.is_none());
+}
+
+/// TUI: TUI-MSG-01, TUI-MSG-02, TUI-MSG-03, TUI-MSG-04, TUI-MSG-07, TUI-MSG-09
+#[test]
+fn the_messages_of_a_topic() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = Sim::on_topic_messages(lang);
+        // One reading of the queue gives the counters of the header.
+        let effects = sim.tick(2_000);
+        let asked = effects
+            .iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    Effect::Call {
+                        call: ApiCall::TopicDetail(_),
+                        ..
+                    }
+                )
+            })
+            .expect("the open topic is sampled")
+            .clone();
+        sim.answer(&asked, ok(&topic_sample_json(0)));
+        let screen = render(&sim.m, 80, 24);
+        assert!(
+            screen.contains("Topics › orders · Messages")
+                || screen.contains("Tópicos › orders · Mensagens"),
+            "{screen}"
+        );
+        snapshot(&format!("messages-empty-{code}-80x24"), &screen);
+
+        sim.press('r');
+        snapshot(
+            &format!("messages-receive-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        let effects = sim.code(KeyCode::Enter);
+        let read = effects
+            .iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    Effect::Call {
+                        call: ApiCall::Receive(..),
+                        ..
+                    }
+                )
+            })
+            .expect("a reading")
+            .clone();
+        sim.answer(&read, ok(&messages_json(4)));
+        // The second one is acknowledged: it shows as deleted.
+        sim.press('j');
+        let effects = sim.press('a');
+        let ack = effects.first().expect("an acknowledgement").clone();
+        sim.answer(&ack, ok("{}"));
+        snapshot(
+            &format!("messages-rows-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        snapshot(
+            &format!("messages-rows-{code}-120x40"),
+            &render(&sim.m, 120, 40),
+        );
+
+        sim.press('p');
+        for c in "{".chars() {
+            sim.press(c);
+        }
+        sim.code(KeyCode::Enter);
+        for c in "  \"order\": 7".chars() {
+            sim.press(c);
+        }
+        sim.code(KeyCode::Enter);
+        sim.press('}');
+        snapshot(
+            &format!("messages-publish-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.code(KeyCode::Esc);
+        sim.press('P');
+        snapshot(
+            &format!("messages-prune-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+    }
+    // A distributor is only published to.
+    let mut sim = Sim::on_topics(Lang::EnUs);
+    sim.press('x');
+    snapshot("messages-distributor-en-US-80x24", &render(&sim.m, 80, 24));
 }

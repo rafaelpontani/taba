@@ -5,32 +5,18 @@ use ratatui::style::{Modifier, Style};
 use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Axis, Block, Cell, Chart, Dataset, GraphType, Paragraph, Row as TableRow, Sparkline, Table,
-    Wrap,
+    Axis, Block, Cell, Chart, Dataset, GraphType, Paragraph, Row as TableRow, Table, Wrap,
 };
 use ratatui::Frame;
 
 use crate::tui::api::{NodeStatus, Severity};
-use crate::tui::history::{self, Series};
+use crate::tui::history;
 use crate::tui::i18n::{self, Lang};
 use crate::tui::model::{ClusterView, Fail, Model, Pane};
 use crate::tui::screens::cluster::{
     self, line_points, selected_index, selected_row, status_of, window_ms, Row, Unit, MON_CHARTS,
 };
 use crate::tui::view::widgets::{self, partial_seal, scrolling, short};
-
-/// The bars of a sparkline when the terminal cannot be trusted with block characters.
-const ASCII_BARS: ratatui::symbols::bar::Set = ratatui::symbols::bar::Set {
-    full: "#",
-    seven_eighths: "#",
-    three_quarters: "=",
-    five_eighths: "=",
-    half: "-",
-    three_eighths: "-",
-    one_quarter: ".",
-    one_eighth: ".",
-    empty: " ",
-};
 
 pub fn draw(f: &mut Frame, area: Rect, m: &Model) {
     match m.cluster.view {
@@ -90,34 +76,22 @@ fn draw_list(f: &mut Frame, area: Rect, m: &Model) {
         draw_limited(f, area, m, &rows);
         return;
     }
-    let wide = area.width >= 120;
-    let (main, side) = if wide {
-        let [main, side] =
-            Layout::horizontal([Constraint::Fill(1), Constraint::Length(40)]).areas(area);
-        (main, Some(side))
-    } else {
-        (area, None)
-    };
     let conditions = m.status.data.as_ref().map_or(0, |s| s.conditions.len());
     let partial = m.status.data.as_ref().is_some_and(|s| s.partial);
     let cond_height = u16::try_from(conditions.clamp(1, 3)).unwrap_or(3) + 2;
     let stopped = m.status.data.as_ref().is_some_and(|s| s.stopped);
     let summary_height = 1 + u16::from(partial) + u16::from(stopped);
-    let chart_height = if side.is_none() { 4 } else { 0 };
     let [cond_area, summary_area, table_area, chart_area] = Layout::vertical([
         Constraint::Length(cond_height),
         Constraint::Length(summary_height),
         Constraint::Min(4),
-        Constraint::Length(chart_height),
+        Constraint::Length(STRIP_HEIGHT),
     ])
-    .areas(main);
+    .areas(area);
     draw_conditions(f, cond_area, m);
     draw_summary(f, summary_area, m);
     draw_nodes(f, table_area, m, &rows);
-    match side {
-        Some(side) => draw_sparks(f, side, m, true),
-        None => draw_sparks(f, chart_area, m, false),
-    }
+    draw_strip(f, chart_area, m);
 }
 
 /// A token that is not the root token: only the list of nodes, and why the rest is missing (TUI-CLU-07).
@@ -423,79 +397,25 @@ fn draw_nodes(f: &mut Frame, area: Rect, m: &Model, rows: &[Row]) {
     f.render_widget(table, area);
 }
 
-/// The two small charts of the selected node (TUI-CLU-04): memory against its limit, and messages in memory.
-fn draw_sparks(f: &mut Frame, area: Rect, m: &Model, stacked: bool) {
+/// How tall the strip of charts under the table is.
+const STRIP_HEIGHT: u16 = 10;
+
+/// The charts of the selected node under the table (TUI-CLU-04): memory, messages in memory and open requests,
+/// side by side, over the same window as the charts view.
+fn draw_strip(f: &mut Frame, area: Rect, m: &Model) {
     if area.height == 0 {
         return;
     }
-    let tx = m.tx();
-    let th = m.theme;
     let Some(row) = selected_row(m) else { return };
-    let halves = if stacked {
-        Layout::vertical([
-            Constraint::Length(5),
-            Constraint::Length(5),
-            Constraint::Min(0),
-        ])
-        .split(area)
-    } else {
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area)
-    };
-    let window = 300_000;
-    let make = |series: Series, title: String, area: Rect, ceiling: Option<u64>, f: &mut Frame| {
-        let points = m
-            .history
-            .series(&row.id, series)
-            .map(|r| r.window(m.now, window))
-            .unwrap_or_default();
-        let width = usize::from(area.width.saturating_sub(2));
-        let skip = points.len().saturating_sub(width);
-        let data: Vec<u64> = points
-            .iter()
-            .skip(skip)
-            .map(|p| p.value.max(0.0) as u64)
-            .collect();
-        let max = ceiling
-            .unwrap_or_else(|| data.iter().copied().max().unwrap_or(1))
-            .max(1);
-        let last = points.last().map(|p| p.value);
-        let shown = match (series, last) {
-            (Series::MemoryUsed, Some(v)) => format!("{title} {}", i18n::bytes(m.lang, v as u64)),
-            (_, Some(v)) => format!("{title} {}", i18n::group(m.lang, v as u64)),
-            (_, None) => title,
-        };
-        f.render_widget(
-            Sparkline::default()
-                .data(data)
-                .bar_set(if th.ascii {
-                    ASCII_BARS
-                } else {
-                    ratatui::symbols::bar::NINE_LEVELS
-                })
-                .max(max)
-                .style(th.accent())
-                .block(Block::bordered().title(format!(" {shown} "))),
-            area,
-        );
-    };
-    let limit = status_of(m, &row.id)
-        .map(|s| s.memory_limit)
-        .filter(|limit| *limit > 0);
-    make(
-        Series::MemoryUsed,
-        tx.t("chart.memory"),
-        halves[0],
-        limit,
-        f,
-    );
-    make(
-        Series::MemoryMessages,
-        tx.t("chart.ready"),
-        halves[1],
-        None,
-        f,
-    );
+    let nodes = [row.id];
+    let cells = Layout::horizontal([Constraint::Ratio(1, 3); 3]).split(area);
+    for (index, cell) in STRIP_CHARTS.iter().zip(cells.iter()) {
+        draw_chart(f, *cell, m, &MON_CHARTS[*index], &nodes, true);
+    }
 }
+
+/// The indicators the strip shows, as positions in `MON_CHARTS`.
+const STRIP_CHARTS: [usize; 3] = [0, 1, 3];
 
 // ---------- the detail of a node ----------
 
@@ -760,9 +680,6 @@ pub fn fmt_unit(lang: Lang, unit: Unit, value: f64) -> String {
     }
 }
 
-/// How many charts the grid of the charts view shows at once: the screen split in four.
-pub const GRID: usize = 4;
-
 /// The nodes that have something to chart, in the order of the table.
 fn charted_nodes(m: &Model) -> Vec<String> {
     cluster::rows(m)
@@ -778,76 +695,28 @@ fn charted_nodes(m: &Model) -> Vec<String> {
         .collect()
 }
 
-/// The charts of the whole cluster: every indicator, one line per node, four charts per screen and a scroll
-/// through all of them (the first visible one is `monitor.chart`).
+/// The charts of the whole cluster: a list of the indicators on the left, with the one under the cursor drawn
+/// next to it (a line per node), and `Enter` to give it the whole screen.
 fn draw_monitor(f: &mut Frame, area: Rect, m: &Model) {
     let tx = m.tx();
     let th = m.theme;
     let nodes = charted_nodes(m);
-    let total = MON_CHARTS.len();
-    let first = m.cluster.monitor.chart.min(total.saturating_sub(GRID));
-    let last = (first + GRID).min(total);
-    let [head_area, grid_area, legend_area, note_area] = Layout::vertical([
-        Constraint::Length(1),
+    let chart = m.cluster.monitor.chart.min(MON_CHARTS.len() - 1);
+    let def = &MON_CHARTS[chart];
+    let [main, legend_area, note_area] = Layout::vertical([
         Constraint::Min(5),
         Constraint::Length(1),
         Constraint::Length(2),
     ])
     .areas(area);
-
-    let up = if first > 0 {
-        if th.ascii {
-            "^"
-        } else {
-            "↑"
-        }
+    if m.cluster.monitor.full {
+        draw_chart(f, main, m, def, &nodes, false);
     } else {
-        " "
-    };
-    let down = if last < total {
-        if th.ascii {
-            "v"
-        } else {
-            "↓"
-        }
-    } else {
-        " "
-    };
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                format!(
-                    "{} ",
-                    tx.tw(
-                        "chart.range",
-                        &[("from", &(first + 1)), ("to", &last), ("total", &total)],
-                    )
-                ),
-                th.title(),
-            ),
-            Span::styled(format!("{up}{down}"), th.accent()),
-        ])),
-        head_area,
-    );
-
-    let visible = &MON_CHARTS[first..last];
-    let cells: Vec<Rect> = if grid_area.width >= 70 {
-        let rows = Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(grid_area);
-        rows.iter()
-            .flat_map(|row| {
-                Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(*row)
-                    .to_vec()
-            })
-            .collect()
-    } else {
-        Layout::vertical([Constraint::Ratio(1, GRID as u32); GRID])
-            .split(grid_area)
-            .to_vec()
-    };
-    for (def, cell) in visible.iter().zip(cells) {
-        draw_chart(f, cell, m, def, &nodes);
+        let width = if main.width >= 100 { 40 } else { 28 };
+        let [list_area, chart_area] =
+            Layout::horizontal([Constraint::Length(width), Constraint::Min(20)]).areas(main);
+        draw_chart_list(f, list_area, m, &nodes, chart);
+        draw_chart(f, chart_area, m, def, &nodes, false);
     }
 
     // The legend: one marker and one color per node (TUI-MON-02).
@@ -858,12 +727,13 @@ fn draw_monitor(f: &mut Frame, area: Rect, m: &Model) {
         .collect();
     f.render_widget(Paragraph::new(Line::from(legend)), legend_area);
 
-    // What the charts honestly show (TUI-MON-05) and their state.
+    // What the chart honestly shows (TUI-MON-05) and its state.
     let at = m.cluster.monitor.frozen.unwrap_or(m.now);
     let window = window_ms(m);
-    let collected = visible
-        .iter()
-        .filter_map(|def| def.lines.first())
+    let collected = def
+        .lines
+        .first()
+        .into_iter()
         .flat_map(|(series, _)| {
             nodes
                 .iter()
@@ -890,12 +760,10 @@ fn draw_monitor(f: &mut Frame, area: Rect, m: &Model) {
             "chart.scale-auto"
         })
     ));
-    let partial = visible.iter().any(|def| {
-        def.lines.iter().take(1).any(|(series, _)| {
-            nodes
-                .iter()
-                .any(|id| line_points(m, id, *series).iter().any(|p| p.partial))
-        })
+    let partial = def.lines.iter().take(1).any(|(series, _)| {
+        nodes
+            .iter()
+            .any(|id| line_points(m, id, *series).iter().any(|p| p.partial))
     });
     if partial {
         note.push_str(&format!(" · {}", tx.t("chart.partial-samples")));
@@ -908,8 +776,75 @@ fn draw_monitor(f: &mut Frame, area: Rect, m: &Model) {
     );
 }
 
+/// The figure of an indicator for the whole cluster: the sum of the nodes' last values, or the worst for a round
+/// trip; `None` when nothing was read.
+fn cluster_figure(m: &Model, def: &cluster::ChartDef, nodes: &[String]) -> Option<f64> {
+    let (series, _) = def.lines.first().copied()?;
+    let lasts: Vec<f64> = nodes
+        .iter()
+        .filter_map(|id| line_points(m, id, series).last().map(|p| p.value))
+        .collect();
+    if lasts.is_empty() {
+        return None;
+    }
+    Some(if def.unit == Unit::Seconds {
+        lasts.iter().copied().fold(0.0, f64::max)
+    } else {
+        lasts.iter().sum()
+    })
+}
+
+/// The list of indicators: the name and the current figure of each, the one under the cursor marked.
+fn draw_chart_list(f: &mut Frame, area: Rect, m: &Model, nodes: &[String], selected: usize) {
+    let tx = m.tx();
+    let th = m.theme;
+    let inner_width = usize::from(area.width.saturating_sub(2));
+    let lines: Vec<Line> = MON_CHARTS
+        .iter()
+        .enumerate()
+        .map(|(i, def)| {
+            let marker = if i == selected { th.selector() } else { "  " };
+            let value = cluster_figure(m, def, nodes)
+                .map_or_else(|| "—".to_owned(), |v| fmt_unit(m.lang, def.unit, v));
+            // A long name gives way to the figure.
+            let room = inner_width.saturating_sub(value.chars().count() + 1);
+            let name: String = format!("{marker}{}", tx.t(def.title))
+                .chars()
+                .take(room)
+                .collect();
+            let pad = inner_width
+                .saturating_sub(name.chars().count() + value.chars().count())
+                .max(1);
+            let style = if i == selected {
+                th.selected()
+            } else {
+                ratatui::style::Style::default()
+            };
+            Line::from(vec![
+                Span::styled(format!("{name}{}", " ".repeat(pad)), style),
+                Span::styled(value, if i == selected { style } else { th.dim() }),
+            ])
+        })
+        .collect();
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::bordered()
+                .title(format!(" {} ", tx.t("chart.list")))
+                .border_style(th.accent()),
+        ),
+        area,
+    );
+}
+
 /// One chart of the grid: the indicator's main series, a line per node.
-fn draw_chart(f: &mut Frame, area: Rect, m: &Model, def: &cluster::ChartDef, nodes: &[String]) {
+fn draw_chart(
+    f: &mut Frame,
+    area: Rect,
+    m: &Model,
+    def: &cluster::ChartDef,
+    nodes: &[String],
+    compact: bool,
+) {
     let tx = m.tx();
     let th = m.theme;
     let lang = m.lang;
@@ -947,13 +882,21 @@ fn draw_chart(f: &mut Frame, area: Rect, m: &Model, def: &cluster::ChartDef, nod
         .collect();
     let figure = if def.unit == Unit::Seconds {
         let worst = lasts.iter().copied().fold(0.0, f64::max);
-        tx.tw(
-            "chart.worst",
-            &[("value", &fmt_unit(lang, def.unit, worst))],
-        )
+        if compact {
+            fmt_unit(lang, def.unit, worst)
+        } else {
+            tx.tw(
+                "chart.worst",
+                &[("value", &fmt_unit(lang, def.unit, worst))],
+            )
+        }
     } else {
         let sum: f64 = lasts.iter().sum();
-        tx.tw("chart.total", &[("value", &fmt_unit(lang, def.unit, sum))])
+        if compact {
+            fmt_unit(lang, def.unit, sum)
+        } else {
+            tx.tw("chart.total", &[("value", &fmt_unit(lang, def.unit, sum))])
+        }
     };
 
     let (low, high) = scale(m, nodes, def, &values);

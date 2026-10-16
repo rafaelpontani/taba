@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ saudável                                                                12:00:01 UTC
- 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 3 tokens  ordenado por mais novo primeiro (s)
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │Nome                   Id             Permissões             Prefixos de tópico                   Expira              │
@@ -37,4 +37,4 @@
 │Expira             18/10/2026 00:00:00 (expira em breve)                                                              │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- n novo  e editar  c clonar  Del revogar  / filtrar  s ordenar  l idioma  h ajuda  q sair                ⟳ 5s · L pt-BR
+ Enter ações  n novo  e editar  c clonar  Del revogar  / filtrar  s ordenar  l idioma  h ajuda  q sair   ⟳ 5s · L pt-BR

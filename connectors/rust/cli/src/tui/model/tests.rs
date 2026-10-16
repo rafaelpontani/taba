@@ -124,12 +124,12 @@ fn the_health_is_the_worst_condition_then_degraded_then_unknown() {
 
 /// TUI: TUI-FRM-02
 #[test]
-fn the_five_tabs_have_names_and_indexes() {
+fn the_four_tabs_have_names_and_indexes() {
     for (i, tab) in TABS.iter().enumerate() {
         assert_eq!(tab.index(), i);
         assert!(tab.name_key().starts_with("tab."));
     }
-    assert_eq!(TABS.len(), 5);
+    assert_eq!(TABS.len(), 4);
 }
 
 /// TUI: TUI-CLU-05

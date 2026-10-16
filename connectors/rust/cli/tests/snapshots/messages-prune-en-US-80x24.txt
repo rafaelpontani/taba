@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:02 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+Topics › orders · Messages
+Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
+┌ Received by this session (4) ────────────────────────────────────────────────┐
+│Time   ┌ Prune the topic? ────────────────────────────────────────────┐       │
+│  12:00│Every message of orders is deleted, on every node. Messages   │,"total│
+│▶ 12:00│published while it runs are not covered. This cannot be       │,"total│
+│  12:00│undone.                                                       │,"total│
+│  12:00│                                                              │,"total│
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+└───────│                                                              │───────┘
+┌ Messag│Type orders to confirm:                                       │───────┐
+│Id 01a1│> ▏                                                           │       │
+│applica│                                                              │       │
+│{"order│                    [ Cancel ]  [ Confirm ]                   │       │
+│       └──────────────────────────────────────────────────────────────┘       │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ✔ Acknowledged 01a1-m2
+ Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US

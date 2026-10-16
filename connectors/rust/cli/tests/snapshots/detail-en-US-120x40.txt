@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ healthy                                                                 12:02:06 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 Node 01a13640-0000-7000-8000-000000000001
 State: active · Drain: active
 Version: 1.4.0 · production

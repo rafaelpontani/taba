@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:01 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+3 topics  sorted by name (s)  dead-letter hidden: 1 (v)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name                  Type         Depth    Pub/s  Cons/s Age     State       │
+│  fanout              distributor         —      —      —       — ✔ ok        │
+│▶ orders              queue fifo      1,500   12.5    3.0  2m 05s ▲ backlog   │
+│ ┌ Topic orders ────────────────────────────────────────────────────────────┐ │
+│ │▶ Summary of the topic           i                                        │ │
+│ │  Charts of the topic            g                                        │ │
+│ │  Publish a message                                                       │ │
+│ │  Read messages                                                           │ │
+└─│  Empty the queue (delete all messages)                                   │─┘
+┌ │  Edit the topic                 e                                        │─┐
+│N│  Delete the topic               Del d                                    │ │
+│I│                                                                          │ │
+│C│↑↓ choose · Enter run · Esc close                                         │ │
+│T└──────────────────────────────────────────────────────────────────────────┘ │
+│Limits   message 5.0 MiB (default) · ttl 1h 00m · deliveries 10 (default)     │
+│                                                                              │
+│The type, FIFO and volatile never change after the topic is created.          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter actions  g charts  l language  h help  q quit             ⟳ 5s · L en-US

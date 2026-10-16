@@ -77,6 +77,42 @@ pub fn tokens_json() -> &'static str {
     r#"{"items":[{"id":"0191f3a2-7c1e-7000-8000-00000000000a","name":"orders-app","permissions":["publish","consume"],"topicPrefixes":["orders."],"createdAt":"2026-10-01T10:00:00Z","expiresAt":null},{"id":"0191f3a2-7c1e-7000-8000-00000000000b","name":"billing","permissions":["admin"],"topicPrefixes":[],"createdAt":"2026-10-10T10:00:00Z","expiresAt":"2026-10-18T00:00:00Z"},{"id":"0191f3a2-7c1e-7000-8000-00000000000c","name":"old-batch","permissions":["consume"],"topicPrefixes":["batch.","etl."],"createdAt":"2026-09-01T10:00:00Z","expiresAt":"2026-10-01T00:00:00Z"}]}"#
 }
 
+pub fn topics_json() -> &'static str {
+    r#"{"items":[{"id":"01a1-1","name":"orders","type":"queue","fifo":true,"volatile":false,"tags":{"team":"shop"},"createdAt":"2026-10-01T10:00:00Z","maxDeliveries":null,"maxMessageBytes":null,"ttl":3600,"effective":{"maxDeliveries":10,"maxMessageBytes":5242880,"ttl":3600}},{"id":"01a1-2","name":"orders-dead-letter","type":"queue","deadLetter":true,"source":"orders","fifo":false,"volatile":false,"tags":{},"createdAt":"2026-10-01T10:00:00Z"},{"id":"01a1-3","name":"fanout","type":"distributor","prefixes":["orders","billing"],"tags":{},"createdAt":"2026-10-12T10:00:00Z"},{"id":"01a1-4","name":"replies","type":"queue","volatile":true,"fifo":false,"idleTimeout":600,"tags":{},"createdAt":"2026-10-14T10:00:00Z","effective":{"maxDeliveries":10,"maxMessageBytes":5242880,"ttl":1209600}}]}"#
+}
+
+pub fn topic_stats_json() -> &'static str {
+    r#"{"items":[{"name":"fanout"},{"name":"orders","depth":1500,"publishRate":12.5,"consumeRate":3.0,"oldestAge":125.0,"worstCondition":"backlog","conditions":[{"condition":"backlog","severity":"warning"}]},{"name":"orders-dead-letter","depth":0,"publishRate":0.0,"consumeRate":0.0,"worstCondition":"ok","conditions":[]},{"name":"replies","depth":7,"publishRate":0.2,"consumeRate":0.2,"oldestAge":3.0,"worstCondition":"ok","conditions":[]}],"partial":false}"#
+}
+
+/// One reading of `orders` for its charts; `step` makes the numbers grow so the lines are not flat.
+pub fn topic_sample_json(step: u64) -> String {
+    format!(
+        r#"{{"name":"orders","visibleMessages":{},"invisibleMessages":{},"depth":{},"publishRate":{:.1},"consumeRate":{:.1},"ackRate":{:.1},"oldestAge":{},"topGroups":[{{"groupId":"customer-17","messages":900,"oldestAge":{}}},{{"groupId":"customer-4","messages":300,"oldestAge":{}}}],"partial":false}}"#,
+        1000 + step * 200,
+        20 + step * 5,
+        1020 + step * 205,
+        10.0 + step as f64,
+        6.0 + step as f64 * 0.5,
+        5.5 + step as f64 * 0.5,
+        120 + step * 30,
+        100 + step * 25,
+        30 + step * 4
+    )
+}
+
+/// `GET /topics/orders/messages` answering `count` messages, `m1`, `m2`, ...
+pub fn messages_json(count: u32) -> String {
+    let items: Vec<String> = (1..=count)
+        .map(|n| {
+            format!(
+                r#"{{"id":"01a1-m{n}","body":{{"order":{n},"total":19.9}},"contentType":"application/json","receiptToken":"rt-{n}","deliveryCount":1,"publishedAt":"2026-10-16T10:00:00.000Z","invisibleUntil":"2026-10-16T10:00:30.000Z","groupId":"customer-{n}"}}"#
+            )
+        })
+        .collect();
+    format!(r#"{{"messages":[{}]}}"#, items.join(","))
+}
+
 pub fn ok(body: &str) -> Result<Reply, Error> {
     Ok(Reply {
         status: 200,
@@ -201,7 +237,7 @@ impl Sim {
     /// A root session on the Tokens tab with three tokens read (the clock is in October 2026).
     pub fn on_tokens(lang: Lang) -> Sim {
         let mut sim = Sim::root_with_status(lang);
-        sim.press('4');
+        sim.press('3');
         let effects = sim.tick(1_000);
         let call = effects
             .iter()
@@ -217,6 +253,61 @@ impl Sim {
             .expect("the tab asks for the tokens")
             .clone();
         sim.answer(&call, ok(tokens_json()));
+        sim
+    }
+
+    /// A root session on the Topics tab with its topics and their numbers read.
+    pub fn on_topics(lang: Lang) -> Sim {
+        let mut sim = Sim::root_with_status(lang);
+        sim.press('2');
+        let effects = sim.tick(1_000);
+        for effect in &effects {
+            let Effect::Call { call, .. } = effect else {
+                continue;
+            };
+            match call {
+                ApiCall::Topics(None) => {
+                    sim.answer(effect, ok(topics_json()));
+                }
+                ApiCall::TopicStats(None) => {
+                    sim.answer(effect, ok(topic_stats_json()));
+                }
+                _ => {}
+            }
+        }
+        sim
+    }
+
+    /// The charts of the queue `orders` after five readings, 5 s apart, the last at 22 s.
+    pub fn on_topic_charts(lang: Lang) -> Sim {
+        let mut sim = Sim::on_topics(lang);
+        sim.press('j');
+        sim.press('g');
+        for (step, now) in [2_000u64, 7_000, 12_000, 17_000, 22_000]
+            .into_iter()
+            .enumerate()
+        {
+            let effects = sim.tick(now);
+            let asked = effects.iter().find(|e| {
+                matches!(
+                    e,
+                    Effect::Call {
+                        call: ApiCall::TopicDetail(_),
+                        ..
+                    }
+                )
+            });
+            let effect = asked.expect("the charts ask for a reading").clone();
+            sim.answer(&effect, ok(&topic_sample_json(step as u64)));
+        }
+        sim
+    }
+
+    /// The Messages view of the queue `orders`, opened with `x` from the list; nothing was read yet.
+    pub fn on_topic_messages(lang: Lang) -> Sim {
+        let mut sim = Sim::on_topics(lang);
+        sim.press('j');
+        sim.press('x');
         sim
     }
 

@@ -1,24 +1,24 @@
  prod https://taba.example:8080  ✔ healthy                         12:02:05 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
-Charts 1-4 of 6  ↓
-┌ Memory · total 1.2 GiB ──────────────┐┌ Messages in memory · total 3,600 ────┐
-│1.0 GiB  │                     ⣀⣀⣀⡠⠤⠤⠄││1,320 │                               │
-│         │                ⠒⠒⠉⠉⠉       ││      │                               │
-│523.2 MiB│                            ││1,200 │                  ⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠄│
-│         │                ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡀││      │                               │
-│9.8 MiB  │                ⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠂││1,080 │                               │
-│         └────────────────────────────││      └───────────────────────────────│
-│   -5m 00s                         now││-5m 00s                            now│
-└──────────────────────────────────────┘└──────────────────────────────────────┘
-┌ Messages on disk · total 1,020,000 ──┐┌ Requests in flight · total 9 ────────┐
-│374,000│                              ││3     │                               │
-│       │                              ││      │                               │
-│340,000│                 ⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠁││3     │                  ⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠁│
-│306,000│                              ││3     │                               │
-│       └──────────────────────────────││      └───────────────────────────────│
-│ -5m 00s                           now││-5m 00s                            now│
-└──────────────────────────────────────┘└──────────────────────────────────────┘
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+┌ Charts ──────────────────┐┌ Memory · total 1.2 GiB ──────────────────────────┐
+│▶ Memory           1.2 GiB││1.0 GiB  │                                        │
+│  Messages in memory 3,600││         │                                  ⣀⣀⠤⠔⠒⠂│
+│  Messages on di 1,020,000││         │                            ⢀⡠⠤⠒⠒⠉      │
+│  Requests in flight     9││         │                       ⠤⠤⠒⠊⠉⠁           │
+│  Requests refused  0.60/s││         │                                        │
+│  Channel round tr 12.3 ms││         │                                        │
+│                          ││         │                                        │
+│                          ││523.2 MiB│                                        │
+│                          ││         │                                        │
+│                          ││         │                                        │
+│                          ││         │                                        │
+│                          ││         │                       ⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠂│
+│                          ││         │                       ⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠄│
+│                          ││9.8 MiB  │                                        │
+│                          ││         └────────────────────────────────────────│
+│                          ││   -5m 00s                                     now│
+└──────────────────────────┘└──────────────────────────────────────────────────┘
  ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
 2m 04s collected: the history is only what was sampled since the app opened ·
 automatic scale
- Esc back  ← scroll  + window  Space freeze  l language  h help  ⟳ 2s · L en-US
+ Esc back  ↑ scroll  Enter full screen  l language  h help       ⟳ 2s · L en-US

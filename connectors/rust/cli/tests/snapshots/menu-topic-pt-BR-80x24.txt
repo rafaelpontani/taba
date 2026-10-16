@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:01 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+3 tópicos  ordenado por nome (s)  dead-letter escondidas: 1 (v)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Nome                  Tipo         Prof.    Pub/s  Cons/s Idade   Estado      │
+│  fanout              distribuidor        —      —      —       — ✔ ok        │
+│▶ orders              fila fifo       1.500   12,5    3,0  2m 05s ▲ backlog   │
+│ ┌ Tópico orders ───────────────────────────────────────────────────────────┐ │
+│ │▶ Resumo do tópico               i                                        │ │
+│ │  Gráficos do tópico             g                                        │ │
+│ │  Publicar uma mensagem                                                   │ │
+│ │  Ler mensagens                                                           │ │
+└─│  Esvaziar a fila (apagar todas as mensagens)                             │─┘
+┌ │  Editar o tópico                e                                        │─┐
+│N│  Apagar o tópico                Del d                                    │ │
+│I│                                                                          │ │
+│C│↑↓ escolher · Enter executar · Esc fechar                                 │ │
+│T└──────────────────────────────────────────────────────────────────────────┘ │
+│Limites  mensagem 5,0 MiB (padrão) · ttl 1h 00m · entregas 10 (padrão)        │
+│                                                                              │
+│O tipo, o FIFO e o volátil nunca mudam depois que o tópico é criado.          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter ações  g gráficos  l idioma  h ajuda  q sair              ⟳ 5s · L pt-BR

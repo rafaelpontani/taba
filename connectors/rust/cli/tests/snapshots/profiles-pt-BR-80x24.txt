@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ verificando                     00:00:00 UTC
- 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │Nome             Endereço                      Token        Padrão            │
 │  dev            http://localhost:8080         arquivo      ○                 │
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter conectar  n novo  e editar  l idioma  h ajuda  q sair     ⟳ 5s · L pt-BR
+ Enter ações  c conectar  n novo  l idioma  h ajuda  q sair      ⟳ 5s · L pt-BR

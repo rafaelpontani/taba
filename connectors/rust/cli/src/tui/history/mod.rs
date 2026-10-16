@@ -55,14 +55,14 @@ pub struct Ring {
 }
 
 impl Ring {
-    fn new(cap: usize) -> Ring {
+    pub fn new(cap: usize) -> Ring {
         Ring {
             cap: cap.max(1),
             points: VecDeque::new(),
         }
     }
 
-    fn push(&mut self, point: Point) {
+    pub fn push(&mut self, point: Point) {
         if self.points.len() == self.cap {
             self.points.pop_front();
         }

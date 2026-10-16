@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:02:05 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+┌ Gráficos ────────────────┐┌ Memória · total 1,2 GiB ─────────────────────────┐
+│▶ Memória          1,2 GiB││1,0 GiB  │                                        │
+│  Mensagens em memór 3.600││         │                                  ⣀⣀⠤⠔⠒⠂│
+│  Mensagens em d 1.020.000││         │                            ⢀⡠⠤⠒⠒⠉      │
+│  Requisições em andamen 9││         │                       ⠤⠤⠒⠊⠉⠁           │
+│  Requisições recus 0,60/s││         │                                        │
+│  Ida e volta dos  12,3 ms││         │                                        │
+│                          ││         │                                        │
+│                          ││523,2 MiB│                                        │
+│                          ││         │                                        │
+│                          ││         │                                        │
+│                          ││         │                                        │
+│                          ││         │                       ⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠂│
+│                          ││         │                       ⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠄│
+│                          ││9,8 MiB  │                                        │
+│                          ││         └────────────────────────────────────────│
+│                          ││   -5m 00s                                   agora│
+└──────────────────────────┘└──────────────────────────────────────────────────┘
+ ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
+2m 04s coletados: o histórico é só o que foi amostrado desde que o app abriu ·
+escala automática
+ Esc voltar  ↑ rolar  Enter tela cheia  l idioma  h ajuda        ⟳ 2s · L pt-BR

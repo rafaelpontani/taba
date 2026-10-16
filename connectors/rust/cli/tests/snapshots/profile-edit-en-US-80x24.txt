@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ checking                        00:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │Name             Address                       Token        Default           │
 │ ┌ Edit the profile ────────────────────────────────────────────────────────┐ │
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter connect  n new  e edit  l language  h help  q quit        ⟳ 5s · L en-US
+ Enter actions  c connect  n new  l language  h help  q quit     ⟳ 5s · L en-US

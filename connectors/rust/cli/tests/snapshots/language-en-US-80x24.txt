@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 ┌ Conditions ──────────────────────────────────────────────────────────────────┐
 │✔ healthy                                                                     │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -10,15 +10,15 @@ Members: active 3 · ✔ quorum · table v 7 · syncing blocks 0
 │  01a1…000002  active┌ Language ────────────────────────┐340,000   0     3    │
 │  01a1…000003  active│▶ English (en-US)                 │340,000   0     3    │
 │                     │  Português (pt-BR)               │                     │
-│                     │                                  │                     │
-│                     │Enter chooses, Esc cancels. It is │                     │
-│                     │                                  │                     │
-│                     └──────────────────────────────────┘                     │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-┌ Memory 768.0 MiB ────────────────────┐┌ Messages in memory 1,200 ────────────┐
-│▄                                     ││█                                     │
-│█                                     ││█                                     │
-└──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  l language  h help  q quit     ⟳ 2s · L en-US
+└─────────────────────│                                  │─────────────────────┘
+┌ Memory · 768.0 MiB ─│Enter chooses, Esc cancels. It is │uests in flight · 3 ─┐
+│844.8 Mi│            │                                  │  │                  │
+│        │            └──────────────────────────────────┘  │                  │
+│        │                ││      │                 ││      │                  │
+│768.0 Mi│               ⠈││1,200 │                ⠈││3     │                 ⠈│
+│        │                ││      │                 ││      │                  │
+│691.2 Mi│                ││1,080 │                 ││3     │                  │
+│        └────────────────││      └─────────────────││      └──────────────────│
+│  -5m 00s             now││-5m 00s              now││-5m 00s               now│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter actions  d drain  u return  l language  h help  q quit    ⟳ 2s · L en-US

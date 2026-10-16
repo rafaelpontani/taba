@@ -7,7 +7,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::tui::api::Severity;
-use crate::tui::editor::{Editor, Kind};
+use crate::tui::editor::{Editor, Kind, AREA_ROWS};
 use crate::tui::model::{Model, Secret};
 use crate::tui::screens::tokens::MASK_AFTER_MS;
 use crate::tui::view::widgets::{centered, popup};
@@ -76,7 +76,12 @@ pub fn draw_profiles(f: &mut Frame, area: Rect, m: &Model, selected: usize) {
 pub fn draw_editor(f: &mut Frame, area: Rect, m: &Model, editor: &Editor) {
     let tx = m.tx();
     let th = m.theme;
-    let rows = u16::try_from(editor.fields.len()).unwrap_or(u16::MAX);
+    let areas = editor
+        .fields
+        .iter()
+        .filter(|f| f.kind == Kind::Area)
+        .count();
+    let rows = u16::try_from(editor.fields.len() + areas * AREA_ROWS).unwrap_or(u16::MAX);
     let height = rows.saturating_add(9).min(area.height.saturating_sub(2));
     let rect = centered(area, 76, height);
     let inner = popup(f, rect, &tx.t(editor.purpose.title()), th.accent());
@@ -118,7 +123,18 @@ pub fn draw_editor(f: &mut Frame, area: Rect, m: &Model, editor: &Editor) {
         } else {
             Style::default()
         };
+        let mut below: Vec<Line> = Vec::new();
         match field.kind {
+            Kind::Area => {
+                below = area_lines(field, focused, usize::from(body.width), th);
+                spans.push(Span::styled(
+                    tx.tw(
+                        "editor.area-lines",
+                        &[("n", &field.value.split('\n').count())],
+                    ),
+                    th.dim(),
+                ));
+            }
             Kind::Check => {
                 let mark = if field.checked { "[x]" } else { "[ ]" };
                 spans.push(Span::styled(mark, value_style));
@@ -139,6 +155,7 @@ pub fn draw_editor(f: &mut Frame, area: Rect, m: &Model, editor: &Editor) {
             spans.push(Span::styled(format!("  ({})", tx.t(reason)), th.dim()));
         }
         lines.push(Line::from(spans));
+        lines.extend(below);
     }
     f.render_widget(Paragraph::new(lines), body);
     let mut notes: Vec<Line> = Vec::new();
@@ -163,10 +180,56 @@ pub fn draw_editor(f: &mut Frame, area: Rect, m: &Model, editor: &Editor) {
     f.render_widget(Paragraph::new(notes).wrap(Wrap { trim: false }), status);
     let hint_key = if editor.purpose.is_profile() {
         "editor.hint-profile"
+    } else if editor.purpose.is_message() {
+        "editor.hint-publish"
     } else {
         "editor.hint"
     };
     f.render_widget(Paragraph::new(tx.t(hint_key)).style(th.dim()), hint);
+}
+
+/// The lines of an area: a few at a time, numbered, with the cursor. The window follows the cursor.
+fn area_lines(
+    field: &crate::tui::editor::Field,
+    focused: bool,
+    width: usize,
+    th: crate::tui::theme::Theme,
+) -> Vec<Line<'static>> {
+    let (cursor_line, cursor_col) = field.line_col();
+    let top = (cursor_line + 1).saturating_sub(AREA_ROWS);
+    let gutter = 5;
+    let room = width.saturating_sub(gutter + 2).max(1);
+    let all: Vec<&str> = field.value.split('\n').collect();
+    (top..top + AREA_ROWS)
+        .map(|n| {
+            let number = if n < all.len() {
+                format!("{:>3} │", n + 1)
+            } else {
+                "    │".to_owned()
+            };
+            let mut spans = vec![Span::styled(format!("  {number}"), th.dim())];
+            let text: Vec<char> = all.get(n).map_or(Vec::new(), |l| l.chars().collect());
+            let here = focused && n == cursor_line;
+            // A long line scrolls sideways to keep the cursor in view.
+            let start = if here {
+                (cursor_col + 1).saturating_sub(room)
+            } else {
+                0
+            };
+            let shown: Vec<char> = text.iter().skip(start).take(room).copied().collect();
+            if here {
+                let at = cursor_col - start;
+                let before: String = shown.iter().take(at).collect();
+                let after: String = shown.iter().skip(at).collect();
+                spans.push(Span::raw(before));
+                spans.push(Span::styled("▏", th.accent()));
+                spans.push(Span::raw(after));
+            } else {
+                spans.push(Span::raw(shown.into_iter().collect::<String>()));
+            }
+            Line::from(spans)
+        })
+        .collect()
 }
 
 /// Whether the secret on the screen is hidden now: after a while, or when the terminal lost the focus.

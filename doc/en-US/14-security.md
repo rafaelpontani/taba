@@ -73,8 +73,8 @@ Every node knows all the tokens: **validating is a local in-memory lookup**, wit
 | `publish` | `POST /topics/{topic}/messages` |
 | `consume` | `GET`, `PUT .../visibility` and `DELETE` (ack) of messages |
 | `create` | `POST /topics` and the `autoCreate` of the `GET` (which also requires `consume`). **Only creates** |
-| `manage` | `PATCH` and `DELETE` on `/topics/{topic}` and emptying a queue (`DELETE /topics/{topic}/messages`). **Includes `create`** and respects the prefixes |
-| `admin` | The tokens (`/tokens`) and the operation of the cluster and of the nodes (`/cluster/*`, `/nodes/{nodeId}/…`: status, drain, backup, metrics). **Includes `manage` and `create`**, takes **no prefixes** (it reaches every topic) and does not publish or consume. It does **not** stop the cluster and does not create, change or revoke another `admin` token: those are the root token's alone |
+| `manage` | `PATCH` and `DELETE` on `/topics/{topic}` and emptying a queue (`DELETE /topics/{topic}/messages`). **Includes `create`, `publish` and `consume`** and respects the prefixes |
+| `admin` | The tokens (`/tokens`) and the operation of the cluster and of the nodes (`/cluster/*`, `/nodes/{nodeId}/…`: status, drain, backup, metrics). **Includes `manage`, `create`, `publish` and `consume`**, takes **no prefixes** (it reaches every topic). It does **not** stop the cluster and does not create, change or revoke another `admin` token: those are the root token's alone |
 
 Every valid token queries `GET /topics` and `GET /topics/{topic}` within its prefixes.
 

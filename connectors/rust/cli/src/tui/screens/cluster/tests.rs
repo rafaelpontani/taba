@@ -179,7 +179,7 @@ fn enter_on_the_conditions_pane_does_not_open_the_detail() {
 #[test]
 fn the_detail_scroll_never_goes_past_the_end_of_the_text() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.code(ratatui::crossterm::event::KeyCode::Enter);
+    sim.press('i');
     sim.code(ratatui::crossterm::event::KeyCode::End);
     let end = sim.m.cluster.scroll;
     assert!(end < u16::MAX);

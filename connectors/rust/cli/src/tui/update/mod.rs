@@ -11,11 +11,11 @@ use crate::tui::i18n::{self, LANGS};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::model::{
     short_id, ClusterView, Confirm, Fail, Goal, InputPurpose, Modal, Model, Pending, Report, Tab,
-    TABS,
+    TopicStats, TopicTab, TABS,
 };
 use crate::tui::msg::Msg;
 use crate::tui::prom::Metrics;
-use crate::tui::screens::{cluster, profiles, tokens};
+use crate::tui::screens::{cluster, profiles, tokens, topics};
 
 /// How often each thing is read.
 const ME_EVERY_MS: u64 = 300_000;
@@ -26,6 +26,7 @@ const METRICS_EVERY_MS: u64 = 5_000;
 const BACKUP_EVERY_MS: u64 = 10_000;
 const DRAIN_EVERY_MS: u64 = 2_000;
 const TOKENS_EVERY_MS: u64 = 10_000;
+const TOPICS_EVERY_MS: u64 = 5_000;
 
 pub fn update(m: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
@@ -106,8 +107,12 @@ pub fn scope_of(m: &Model) -> Scope {
         (Tab::Cluster, ClusterView::Monitor) => Scope::Monitor,
         (Tab::Cluster, _) => Scope::Cluster,
         (Tab::Tokens, _) => Scope::Tokens,
+        (Tab::Topics, _) => match &m.topics.monitor {
+            Some(mon) if mon.tab == TopicTab::Messages => Scope::Messages,
+            Some(_) => Scope::Monitor,
+            None => Scope::Topics,
+        },
         (Tab::Profiles, _) => Scope::Profiles,
-        _ => Scope::Global,
     }
 }
 
@@ -189,8 +194,8 @@ pub fn dispatch(m: &mut Model, action: Action) -> Vec<Effect> {
         other => match m.tab {
             Tab::Cluster => cluster::on_action(m, other),
             Tab::Tokens => tokens::on_action(m, other),
+            Tab::Topics => topics::on_action(m, other),
             Tab::Profiles => profiles::on_action(m, other),
-            _ => Vec::new(),
         },
     }
 }
@@ -209,6 +214,14 @@ fn refresh(m: &mut Model) {
     m.cluster.backup.refresh_now();
     m.cluster.drain.refresh_now();
     m.tokens.list.refresh_now();
+    m.topics.list.refresh_now();
+    m.topics.stats.refresh_now();
+    if let Some(mon) = &mut m.topics.monitor {
+        mon.feed.refresh_now();
+    }
+    for preview in &mut m.topics.previews {
+        preview.feed.refresh_now();
+    }
 }
 
 /// Opens the choice of a profile, with the default (or the first) one under the cursor.
@@ -358,18 +371,23 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
             }
             _ => Vec::new(),
         },
+        Modal::Menu(menu) => crate::tui::menu::key(m, event, menu),
         Modal::Confirm(confirm) => confirm_key(m, event, confirm),
         Modal::Profiles { selected } => profiles_key(m, event, selected),
         Modal::Editor(mut editor) => {
             let outcome = editor.handle(&event);
             if editor.purpose.is_profile() {
                 profiles::editor_key(m, editor, outcome)
+            } else if editor.purpose.is_message() {
+                topics::messages::editor_key(m, editor, outcome)
+            } else if editor.purpose.is_topic() {
+                topics::editor_key(m, editor, outcome)
             } else {
                 tokens::editor_key(m, editor, outcome)
             }
         }
         Modal::Secret(secret) => tokens::secret_key(m, secret, event.code),
-        Modal::Report(_) | Modal::Condition(_) => {
+        Modal::Report(_) | Modal::Condition(_) | Modal::TopicSummary => {
             if matches!(
                 event.code,
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q')
@@ -400,6 +418,20 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
                     InputPurpose::TokenFilter => {
                         m.tokens.filter = value;
                         Vec::new()
+                    }
+                    InputPurpose::TopicFilter => {
+                        m.topics.filter = value;
+                        Vec::new()
+                    }
+                    InputPurpose::ExportTopicCsv => {
+                        if value.is_empty() {
+                            return Vec::new();
+                        }
+                        let contents = topics::monitor::export_csv(m);
+                        vec![Effect::WriteFile {
+                            path: value,
+                            contents,
+                        }]
                     }
                 }
             }
@@ -492,6 +524,7 @@ fn palette_key(m: &mut Model, event: KeyEvent, query: &mut String, selected: usi
                     match binding.scope {
                         Scope::Cluster | Scope::Monitor => m.tab = Tab::Cluster,
                         Scope::Tokens => m.tab = Tab::Tokens,
+                        Scope::Topics | Scope::Messages => m.tab = Tab::Topics,
                         Scope::Profiles => m.tab = Tab::Profiles,
                         Scope::Global => {}
                     }
@@ -583,6 +616,9 @@ fn on_tick(m: &mut Model, now: u64, wall_ms: i64) -> Vec<Effect> {
         poll_overview(m, &mut effects);
         poll_node(m, &mut effects);
         poll_tokens(m, &mut effects);
+        poll_topics(m, &mut effects);
+        poll_topic_monitor(m, &mut effects);
+        poll_topic_preview(m, &mut effects);
     }
     poll_drain(m, &mut effects);
     effects
@@ -635,6 +671,65 @@ fn poll_tokens(m: &mut Model, effects: &mut Vec<Effect>) {
         m.tokens.list.in_flight = Some(id);
         effects.push(effect);
     }
+}
+
+/// The topics and their numbers, read page by page while their tab is open. The two reads go on side by side:
+/// the table appears with the definitions and the numbers fill in when they arrive.
+fn poll_topics(m: &mut Model, effects: &mut Vec<Effect>) {
+    if m.tab != Tab::Topics {
+        return;
+    }
+    if m.topics.list.due(m.now) {
+        m.topics.reading.clear();
+        m.topics.pages = 1;
+        let (id, effect) = issue(m, ApiCall::Topics(None));
+        m.topics.list.in_flight = Some(id);
+        effects.push(effect);
+    }
+    if m.topics.stats.due(m.now) {
+        m.topics.stats_reading = TopicStats::default();
+        m.topics.stats_pages = 1;
+        let (id, effect) = issue(m, ApiCall::TopicStats(None));
+        m.topics.stats.in_flight = Some(id);
+        effects.push(effect);
+    }
+}
+
+/// One reading of the queue whose charts are open, every sampling interval, whatever tab is shown.
+fn poll_topic_monitor(m: &mut Model, effects: &mut Vec<Effect>) {
+    let now = m.now;
+    let Some(mon) = &m.topics.monitor else {
+        return;
+    };
+    if mon.distributor || !mon.feed.due(now) {
+        return;
+    }
+    let name = mon.name.clone();
+    let (id, effect) = issue(m, ApiCall::TopicDetail(name));
+    if let Some(mon) = &mut m.topics.monitor {
+        mon.feed.in_flight = Some(id);
+    }
+    effects.push(effect);
+}
+
+/// One reading of the selected topic for the strip of charts under the list, while the list is what is shown.
+fn poll_topic_preview(m: &mut Model, effects: &mut Vec<Effect>) {
+    if m.tab != Tab::Topics || m.topics.monitor.is_some() {
+        return;
+    }
+    topics::preview::prepare(m);
+    let now = m.now;
+    let Some(name) = topics::preview::current(m)
+        .filter(|p| p.feed.due(now))
+        .map(|p| p.name.clone())
+    else {
+        return;
+    };
+    let (id, effect) = issue(m, ApiCall::TopicDetail(name.clone()));
+    if let Some(preview) = m.topics.previews.iter_mut().find(|p| p.name == name) {
+        preview.feed.in_flight = Some(id);
+    }
+    effects.push(effect);
 }
 
 fn poll_node(m: &mut Model, effects: &mut Vec<Effect>) {
@@ -787,6 +882,9 @@ fn on_reply(
             }
         }
         ApiCall::Tokens(_) => return on_tokens_reply(m, id, outcome),
+        ApiCall::Topics(_) => return on_topics_reply(m, id, outcome),
+        ApiCall::TopicStats(_) => return on_topic_stats_reply(m, id, outcome),
+        ApiCall::TopicDetail(name) => return on_topic_detail_reply(m, id, &name, outcome),
         ApiCall::DrainStatus(_) => {
             if m.cluster.drain.in_flight != Some(id) {
                 return Vec::new();
@@ -835,6 +933,107 @@ fn on_tokens_reply(m: &mut Model, id: u64, outcome: Result<String, Fail>) -> Vec
     Vec::new()
 }
 
+/// A page of topics: the next one is asked for until the server has no more.
+fn on_topics_reply(m: &mut Model, id: u64, outcome: Result<String, Fail>) -> Vec<Effect> {
+    if m.topics.list.in_flight != Some(id) {
+        return Vec::new();
+    }
+    let now = m.now;
+    match outcome.and_then(|t| api::parse_topics(&t).map_err(|e| invalid("topics", e))) {
+        Ok(page) => {
+            m.topics.reading.extend(page.items);
+            match page.next_cursor {
+                Some(cursor) if m.topics.pages < topics::MAX_PAGES => {
+                    m.topics.pages += 1;
+                    let (id, effect) = issue(m, ApiCall::Topics(Some(cursor)));
+                    m.topics.list.in_flight = Some(id);
+                    return vec![effect];
+                }
+                _ => {
+                    let all = std::mem::take(&mut m.topics.reading);
+                    m.topics.list.ok(now, all, TOPICS_EVERY_MS);
+                }
+            }
+        }
+        Err(fail) => {
+            m.topics.reading.clear();
+            m.topics.list.fail(now, fail, TOPICS_EVERY_MS);
+        }
+    }
+    Vec::new()
+}
+
+/// A page of the numbers of the topics. A failure only leaves the table without numbers (and says so).
+fn on_topic_stats_reply(m: &mut Model, id: u64, outcome: Result<String, Fail>) -> Vec<Effect> {
+    if m.topics.stats.in_flight != Some(id) {
+        return Vec::new();
+    }
+    let now = m.now;
+    match outcome.and_then(|t| api::parse_topic_stats(&t).map_err(|e| invalid("stats/topics", e))) {
+        Ok(page) => {
+            m.topics.stats_reading.by_name.extend(page.items);
+            m.topics.stats_reading.partial |= page.partial;
+            for missing in page.missing {
+                if !m.topics.stats_reading.missing.contains(&missing) {
+                    m.topics.stats_reading.missing.push(missing);
+                }
+            }
+            match page.next_cursor {
+                Some(cursor) if m.topics.stats_pages < topics::MAX_PAGES => {
+                    m.topics.stats_pages += 1;
+                    let (id, effect) = issue(m, ApiCall::TopicStats(Some(cursor)));
+                    m.topics.stats.in_flight = Some(id);
+                    return vec![effect];
+                }
+                _ => {
+                    let all = std::mem::take(&mut m.topics.stats_reading);
+                    m.topics.stats.ok(now, all, TOPICS_EVERY_MS);
+                }
+            }
+        }
+        Err(fail) => {
+            m.topics.stats_reading = TopicStats::default();
+            m.topics.stats.fail(now, fail, TOPICS_EVERY_MS);
+        }
+    }
+    Vec::new()
+}
+
+/// A reading for the charts of a queue: it becomes one point per line.
+fn on_topic_detail_reply(
+    m: &mut Model,
+    id: u64,
+    name: &str,
+    outcome: Result<String, Fail>,
+) -> Vec<Effect> {
+    let (now, every, cap) = (m.now, m.history.interval_ms(), m.history.capacity());
+    let open = m
+        .topics
+        .monitor
+        .as_ref()
+        .is_some_and(|mon| mon.name == name && mon.feed.in_flight == Some(id));
+    let target = if open {
+        m.topics.monitor.as_mut()
+    } else {
+        m.topics
+            .previews
+            .iter_mut()
+            .find(|p| p.name == name && p.feed.in_flight == Some(id))
+    };
+    let Some(mon) = target else {
+        return Vec::new();
+    };
+    match outcome.and_then(|t| api::parse_topic_sample(&t).map_err(|e| invalid("stats/topics", e)))
+    {
+        Ok(sample) => {
+            topics::monitor::record(mon, cap, now, &sample);
+            mon.feed.ok(now, (), every);
+        }
+        Err(fail) => mon.feed.fail(now, fail, every),
+    }
+    Vec::new()
+}
+
 /// The drain reached what was being waited for: say so and refresh the cluster.
 fn finish_watch(m: &mut Model, state: &str) {
     let Some(watch) = m.cluster.watch.clone() else {
@@ -867,9 +1066,21 @@ fn on_action_reply(m: &mut Model, call: ApiCall, outcome: Result<String, Fail>) 
         Ok(text) => text,
         Err(fail) => {
             // A form that was refused keeps the reason in itself, and stays open.
-            if matches!(call, ApiCall::TokenCreate(_) | ApiCall::TokenUpdate(..))
-                && tokens::refused(m, &fail)
+            if matches!(
+                call,
+                ApiCall::TokenCreate(_)
+                    | ApiCall::TokenUpdate(..)
+                    | ApiCall::TopicCreate(_)
+                    | ApiCall::TopicUpdate(..)
+                    | ApiCall::Publish(_)
+                    | ApiCall::Receive(..)
+            ) && tokens::refused(m, &fail)
             {
+                return Vec::new();
+            }
+            // An acknowledgement that is refused is a line, not a popup: several go together.
+            if let ApiCall::Ack(_, id, _) | ApiCall::Release(_, id, _) = &call {
+                topics::messages::refused(m, id, &fail.message);
                 return Vec::new();
             }
             m.modal = Some(Modal::Report(Report::Failure { call, fail }));
@@ -912,6 +1123,15 @@ fn on_action_reply(m: &mut Model, call: ApiCall, outcome: Result<String, Fail>) 
             return tokens::saved(m, &call, &text)
         }
         ApiCall::TokenRevoke(_) => tokens::revoked(m),
+        ApiCall::TopicCreate(_) | ApiCall::TopicUpdate(..) => {
+            return topics::saved(m, &call, &text)
+        }
+        ApiCall::TopicDelete(name) => topics::deleted(m, name),
+        ApiCall::Publish(_) => topics::messages::published(m, &text),
+        ApiCall::Receive(topic, hold) => topics::messages::received(m, topic, *hold, &text),
+        ApiCall::Ack(_, id, _) => topics::messages::acked(m, id),
+        ApiCall::Release(_, id, _) => topics::messages::released(m, id),
+        ApiCall::Prune(_) => topics::messages::pruned(m, &text),
         _ => {}
     }
     Vec::new()

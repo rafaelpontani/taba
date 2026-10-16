@@ -1,0 +1,40 @@
+ prod https://taba.example:8080  ✔ healthy                                                                 12:00:22 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+Topics › orders · Charts
+┌ Flow per second  ● in 14.0/s  ◆ out 8.0/s  ▲ deleted 7.5/s ──────────────────────────────────────────────────────────┐
+│14.8/s│                                                                                                               │
+│      │                                                                                                               │
+│      │                                                                                                              ⢠│
+│      │                                                                                                             ⢀⠇│
+│      │                                                                                                             ⡜ │
+│      │                                                                                                            ⢰⠁ │
+│      │                                                                                                            ⡇  │
+│      │                                                                                                           ⢸   │
+│      │                                                                                                          ⢀⠇   │
+│      │                                                                                                          ⡜    │
+│      │                                                                                                         ⢰⠁    │
+│      │                                                                                                        ⢀⠇     │
+│      │                                                                                                        ⡜      │
+│      │                                                                                                       ⢰⠁      │
+│      │                                                                                                       ⠃       │
+│9.8/s │                                                                                                               │
+│      │                                                                                                               │
+│      │                                                                                                               │
+│      │                                                                                                               │
+│      │                                                                                                               │
+│      │                                                                                                             ⢀⠎│
+│      │                                                                                                            ⢠⠃⡠│
+│      │                                                                                                           ⢠⠃⡔⠁│
+│      │                                                                                                          ⡔⢀⠎  │
+│      │                                                                                                        ⢠⠊⢠⠊   │
+│      │                                                                                                       ⡰⠁⡰⠁    │
+│      │                                                                                                       ⢀⠜      │
+│      │                                                                                                       ⠊       │
+│      │                                                                                                               │
+│4.7/s │                                                                                                               │
+│      └───────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+│-5m 00s                                                                                                            now│
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+20s collected: the history is only what was sampled since the app opened · automatic scale
+
+ Esc back  ↑ scroll  Enter full screen  + window  Space freeze  z scale  l language  h help  q quit      ⟳ 5s · L en-US

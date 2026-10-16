@@ -1,0 +1,30 @@
+ prod https://taba.example:8080  ✔ saudável                                            12:02:05 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+┌ Mensagens em disco · total 1.020.000 ────────────────────────────────────────────────────────────┐
+│374.000│                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│340.000│                                                    ⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠁ │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│306.000│                                                                                          │
+│       └──────────────────────────────────────────────────────────────────────────────────────────│
+│ -5m 00s                                                                                     agora│
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
+2m 04s coletados: o histórico é só o que foi amostrado desde que o app abriu · escala automática
+
+ Esc voltar  ↑ rolar  Enter tela cheia  + janela  Space congelar  l idioma  h ajuda  ⟳ 2s · L pt-BR

@@ -9,6 +9,9 @@ use taba_client::Call;
 /// How long a flush or a stop may take before the call gives up.
 const LONG_ACTION: Duration = Duration::from_secs(180);
 
+/// The columns of the topic list that come from the statistics (the rest comes from `GET /topics`).
+const STATS_FIELDS: &str = "name,depth,publishRate,consumeRate,oldestAge,worstCondition,conditions";
+
 /// What a call is for; it comes back with the reply so `update` knows what to do with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiCall {
@@ -30,6 +33,42 @@ pub enum ApiCall {
     /// `PATCH /tokens/{id}` with the changed fields.
     TokenUpdate(String, String),
     TokenRevoke(String),
+    /// One page of `GET /topics`, from a cursor.
+    Topics(Option<String>),
+    /// One page of `GET /stats/topics` (the numbers of the list), from a cursor.
+    TopicStats(Option<String>),
+    /// `POST /topics` with the JSON body of the form.
+    TopicCreate(String),
+    /// `PATCH /topics/{name}` with the changed fields.
+    TopicUpdate(String, String),
+    TopicDelete(String),
+    /// `GET /stats/topics/{name}`: one reading of a queue for its charts.
+    TopicDetail(String),
+    /// `POST /topics/{name}/messages`.
+    Publish(PublishSpec),
+    /// `GET /topics/{name}/messages`: reads up to [`RECEIVE_MAX`] messages and holds them for the given seconds (the form offers [`RECEIVE_HOLD_SECS`]).
+    Receive(String, u32),
+    /// `DELETE /topics/{name}/messages/{id}` with the receipt: topic, id, receipt.
+    Ack(String, String, String),
+    /// `PUT /topics/{name}/messages/{id}/visibility` with `0`: gives the message back to the queue now.
+    Release(String, String, String),
+    /// `DELETE /topics/{name}/messages`: empties the queue on every node.
+    Prune(String),
+}
+
+/// How many messages one reading takes.
+pub const RECEIVE_MAX: u32 = 10;
+/// How long the messages of a reading stay invisible to the others, in seconds.
+pub const RECEIVE_HOLD_SECS: u32 = 30;
+
+/// What the publish form asks to send.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishSpec {
+    pub topic: String,
+    pub body: String,
+    pub content_type: String,
+    pub group_id: Option<String>,
+    pub deduplication_id: Option<String>,
 }
 
 impl ApiCall {
@@ -79,6 +118,76 @@ impl ApiCall {
             ApiCall::TokenRevoke(id) => {
                 Call::new("DELETE", format!("/tokens/{}", encode_segment(id)))
             }
+            ApiCall::Topics(cursor) => {
+                let mut call = Call::new("GET", "/topics").query("limit", 200);
+                if let Some(cursor) = cursor {
+                    call = call.query("cursor", cursor);
+                }
+                call
+            }
+            ApiCall::TopicStats(cursor) => {
+                let mut call = Call::new("GET", "/stats/topics")
+                    .query("limit", 200)
+                    .query("fields", STATS_FIELDS);
+                if let Some(cursor) = cursor {
+                    call = call.query("cursor", cursor);
+                }
+                call
+            }
+            ApiCall::TopicCreate(body) => Call::new("POST", "/topics").json_body(body.clone()),
+            ApiCall::TopicUpdate(name, body) => {
+                Call::new("PATCH", format!("/topics/{}", encode_segment(name)))
+                    .json_body(body.clone())
+            }
+            ApiCall::TopicDelete(name) => {
+                Call::new("DELETE", format!("/topics/{}", encode_segment(name)))
+            }
+            ApiCall::TopicDetail(name) => {
+                Call::new("GET", format!("/stats/topics/{}", encode_segment(name)))
+            }
+            ApiCall::Publish(spec) => {
+                let mut call = Call::new(
+                    "POST",
+                    format!("/topics/{}/messages", encode_segment(&spec.topic)),
+                );
+                call.body = spec.body.clone().into_bytes();
+                call.content_type = Some(spec.content_type.clone());
+                if let Some(group) = &spec.group_id {
+                    call = call.query("groupId", group);
+                }
+                if let Some(dedup) = &spec.deduplication_id {
+                    call = call.query("deduplicationId", dedup);
+                }
+                call
+            }
+            ApiCall::Receive(name, hold) => {
+                Call::new("GET", format!("/topics/{}/messages", encode_segment(name)))
+                    .query("maxMessages", RECEIVE_MAX)
+                    .query("visibilityTimeout", hold)
+            }
+            ApiCall::Ack(topic, id, receipt) => Call::new(
+                "DELETE",
+                format!(
+                    "/topics/{}/messages/{}",
+                    encode_segment(topic),
+                    encode_segment(id)
+                ),
+            )
+            .query("receiptToken", receipt),
+            ApiCall::Release(topic, id, receipt) => Call::new(
+                "PUT",
+                format!(
+                    "/topics/{}/messages/{}/visibility",
+                    encode_segment(topic),
+                    encode_segment(id)
+                ),
+            )
+            .query("receiptToken", receipt)
+            .json_body("{\"visibilityTimeout\":0}".to_owned()),
+            ApiCall::Prune(name) => Call::new(
+                "DELETE",
+                format!("/topics/{}/messages", encode_segment(name)),
+            ),
         }
     }
 
@@ -94,6 +203,14 @@ impl ApiCall {
                 | ApiCall::TokenCreate(_)
                 | ApiCall::TokenUpdate(..)
                 | ApiCall::TokenRevoke(_)
+                | ApiCall::TopicCreate(_)
+                | ApiCall::TopicUpdate(..)
+                | ApiCall::TopicDelete(_)
+                | ApiCall::Publish(_)
+                | ApiCall::Receive(..)
+                | ApiCall::Ack(..)
+                | ApiCall::Release(..)
+                | ApiCall::Prune(_)
         )
     }
 }
@@ -172,7 +289,8 @@ impl Me {
         let has = |name: &str| self.permissions.iter().any(|p| p == name);
         self.is_root()
             || has(permission)
-            || (permission == "create" && (has("manage") || has("admin")))
+            || (matches!(permission, "create" | "publish" | "consume")
+                && (has("manage") || has("admin")))
             || (permission == "manage" && has("admin"))
     }
 }
@@ -249,8 +367,9 @@ pub fn parse_nodes(text: &str) -> Result<Nodes, String> {
 }
 
 /// `warning` or `critical`; the order is the severity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Severity {
+    #[default]
     Ok,
     Warning,
     Critical,
@@ -580,6 +699,222 @@ pub fn parse_token_created(text: &str) -> Result<(Token, String), String> {
         .string("token")
         .ok_or_else(|| "the reply has no secret".to_owned())?;
     Ok((token, secret))
+}
+
+/// A topic of `GET /topics` (doc 16): its definition, as the server keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Topic {
+    pub id: String,
+    pub name: String,
+    /// `queue` or `distributor`.
+    pub kind: String,
+    pub fifo: bool,
+    pub volatile: bool,
+    pub tags: Vec<(String, String)>,
+    pub prefixes: Vec<String>,
+    pub idle_timeout: Option<u64>,
+    /// What was set on the topic itself; `None` is the node's default.
+    pub max_message_bytes: Option<u64>,
+    pub ttl: Option<u64>,
+    pub max_deliveries: Option<u64>,
+    /// The values that apply (`effective`): the topic's own, or the node's default.
+    pub effective_max_message_bytes: Option<u64>,
+    pub effective_ttl: Option<u64>,
+    pub effective_max_deliveries: Option<u64>,
+    pub dead_letter: bool,
+    /// The queue a dead-letter queue belongs to.
+    pub source: Option<String>,
+    pub created_at: Option<String>,
+}
+
+impl Topic {
+    pub fn is_distributor(&self) -> bool {
+        self.kind == "distributor"
+    }
+}
+
+fn pairs_of(f: &Fields<'_>, name: &str) -> Vec<(String, String)> {
+    f.raw(name)
+        .and_then(|raw| json::object_fields(raw).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, value)| Some((key, json::decode_string(value).ok()?)))
+        .collect()
+}
+
+fn topic_of(f: &Fields<'_>) -> Option<Topic> {
+    let effective = f.raw("effective").and_then(|r| Fields::parse(r).ok());
+    let own = |name: &str| effective.as_ref().and_then(|e| whole(e, name));
+    Some(Topic {
+        id: f.string("id").unwrap_or_default(),
+        name: f.string("name")?,
+        kind: f.string("type").unwrap_or_else(|| "queue".to_owned()),
+        fifo: f.boolean("fifo").unwrap_or(false),
+        volatile: f.boolean("volatile").unwrap_or(false),
+        tags: pairs_of(f, "tags"),
+        prefixes: texts(f, "prefixes"),
+        idle_timeout: whole(f, "idleTimeout"),
+        max_message_bytes: whole(f, "maxMessageBytes"),
+        ttl: whole(f, "ttl"),
+        max_deliveries: whole(f, "maxDeliveries"),
+        effective_max_message_bytes: own("maxMessageBytes"),
+        effective_ttl: own("ttl"),
+        effective_max_deliveries: own("maxDeliveries"),
+        dead_letter: f.boolean("deadLetter").unwrap_or(false),
+        source: f.string("source"),
+        created_at: f.string("createdAt"),
+    })
+}
+
+/// A page of topics and where the next one starts.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TopicPage {
+    pub items: Vec<Topic>,
+    pub next_cursor: Option<String>,
+}
+
+pub fn parse_topics(text: &str) -> Result<TopicPage, String> {
+    let f = fields(text)?;
+    let list = items(&f, "items")
+        .into_iter()
+        .filter_map(|raw| topic_of(&Fields::parse(raw).ok()?))
+        .collect();
+    Ok(TopicPage {
+        items: list,
+        next_cursor: f.string("nextCursor"),
+    })
+}
+
+/// The reply of `POST /topics` and `PATCH /topics/{name}`: the topic as it is now.
+pub fn parse_topic(text: &str) -> Result<Topic, String> {
+    topic_of(&fields(text)?).ok_or_else(|| "the reply has no topic name".to_owned())
+}
+
+/// The numbers of one topic in the list (`GET /stats/topics`). A distributor has no queue, so no numbers.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TopicNumbers {
+    pub depth: Option<u64>,
+    pub publish_rate: Option<f64>,
+    pub consume_rate: Option<f64>,
+    /// Seconds; absent when the topic has no messages.
+    pub oldest_age: Option<f64>,
+    /// A condition name (`ok`, `backlog`, `stalled`...), not translated.
+    pub worst: String,
+    pub severity: Severity,
+}
+
+/// A page of statistics and where the next one starts.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TopicStatsPage {
+    pub items: Vec<(String, TopicNumbers)>,
+    pub next_cursor: Option<String>,
+    pub partial: bool,
+    pub missing: Vec<Missing>,
+}
+
+pub fn parse_topic_stats(text: &str) -> Result<TopicStatsPage, String> {
+    let f = fields(text)?;
+    let list = items(&f, "items")
+        .into_iter()
+        .filter_map(|raw| {
+            let t = Fields::parse(raw).ok()?;
+            let severity = items(&t, "conditions")
+                .first()
+                .and_then(|c| Fields::parse(c).ok())
+                .and_then(|c| c.string("severity"))
+                .map_or(Severity::Ok, |s| Severity::parse(&s));
+            Some((
+                t.string("name")?,
+                TopicNumbers {
+                    depth: whole(&t, "depth"),
+                    publish_rate: num(&t, "publishRate"),
+                    consume_rate: num(&t, "consumeRate"),
+                    oldest_age: num(&t, "oldestAge"),
+                    worst: t
+                        .string("worstCondition")
+                        .unwrap_or_else(|| "ok".to_owned()),
+                    severity,
+                },
+            ))
+        })
+        .collect();
+    Ok(TopicStatsPage {
+        items: list,
+        next_cursor: f.string("nextCursor"),
+        partial: f.boolean("partial").unwrap_or(false),
+        missing: parse_missing(&f),
+    })
+}
+
+/// One reading of a queue for its charts (`GET /stats/topics/{name}`): the counts, the rates, the age of the oldest
+/// message and that of the largest groups.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TopicSample {
+    pub visible: u64,
+    pub invisible: u64,
+    /// Messages published, delivered and acknowledged (deleted) per second.
+    pub publish_rate: f64,
+    pub consume_rate: f64,
+    pub ack_rate: f64,
+    /// Seconds; absent when the queue has no messages.
+    pub oldest_age: Option<f64>,
+    /// The largest groups with messages, largest first: the group and the age of its oldest message.
+    pub groups: Vec<(String, f64)>,
+    pub partial: bool,
+}
+
+pub fn parse_topic_sample(text: &str) -> Result<TopicSample, String> {
+    let f = fields(text)?;
+    let groups = items(&f, "topGroups")
+        .into_iter()
+        .filter_map(|raw| {
+            let g = Fields::parse(raw).ok()?;
+            Some((g.string("groupId")?, num(&g, "oldestAge")?))
+        })
+        .collect();
+    Ok(TopicSample {
+        visible: whole(&f, "visibleMessages").unwrap_or(0),
+        invisible: whole(&f, "invisibleMessages").unwrap_or(0),
+        publish_rate: num(&f, "publishRate").unwrap_or(0.0),
+        consume_rate: num(&f, "consumeRate").unwrap_or(0.0),
+        ack_rate: num(&f, "ackRate").unwrap_or(0.0),
+        oldest_age: num(&f, "oldestAge"),
+        groups,
+        partial: f.boolean("partial").unwrap_or(false),
+    })
+}
+
+/// The messages of a reading (`GET /topics/{name}/messages`).
+pub fn parse_received(text: &str) -> Result<Vec<taba_client::Message>, String> {
+    let f = fields(text)?;
+    items(&f, "messages")
+        .into_iter()
+        .map(|raw| taba_client::Message::parse(raw).map_err(|e| e.to_string()))
+        .collect()
+}
+
+/// What a publication answered: the id (queue), whether it was a duplicate (FIFO) and how many queues matched
+/// (distributor).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Published {
+    pub id: Option<String>,
+    pub duplicate: bool,
+    pub matched: Option<u64>,
+}
+
+pub fn parse_published(text: &str) -> Result<Published, String> {
+    let f = fields(text)?;
+    Ok(Published {
+        id: f.string("id"),
+        duplicate: f.boolean("duplicate").unwrap_or(false),
+        matched: whole(&f, "matched"),
+    })
+}
+
+/// How many messages a prune removed.
+pub fn parse_pruned(text: &str) -> Result<u64, String> {
+    let f = fields(text)?;
+    Ok(whole(&f, "removed").unwrap_or(0))
 }
 
 #[cfg(test)]

@@ -1,0 +1,40 @@
+ prod https://taba.example:8080  ✔ healthy                                                                 12:00:02 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+Topics › orders · Messages
+Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
+┌ Received by this session (4) ────────────────────────────────────────────────────────────────────────────────────────┐
+│Time       Id             Group            Del   State              Bytes    Body                                     │
+│  12:00:02 01a1-m1        customer-1           1 invisible 30s            24 {"order":1,"total":19.9}                 │
+│▶ 12:00:02 01a1-m2        customer-2           1 deleted                  24 {"order":2,"total":19.9}                 │
+│  12:00:02 01a1-m3        customer-3           1 invisible 30s            24 {"order":3,"total":19.9}                 │
+│  12:00:02 01a1-m4        customer-4           1 invisible 30s            24 {"order":4,"total":19.9}                 │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Message ─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Id 01a1-m2  State deleted                                                                                             │
+│application/json · 24 bytes · 1 deliveries                                                                            │
+│{"order":2,"total":19.9}                                                                                              │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ✔ Acknowledged 01a1-m2
+ Esc back  p publish  r read  a ack  A ack all  v give back  P prune  l language  h help                 ⟳ 5s · L en-US

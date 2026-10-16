@@ -23,7 +23,7 @@ fn second_page() -> &'static str {
 /// A root session on the Tokens tab with its two pages read (the clock is at `NOW`).
 fn on_tokens(lang: Lang) -> Sim {
     let mut sim = Sim::root_with_status(lang);
-    sim.press('4');
+    sim.press('3');
     assert_eq!(sim.m.tab, Tab::Tokens);
     let effects = sim.tick(1_000);
     let call = effects
@@ -127,7 +127,7 @@ fn only_root_and_admin_tokens_manage_tokens_and_a_server_without_authentication_
     let mut sim = Sim::new(Lang::EnUs);
     let effects = sim.tick(0);
     sim.answer(&effects[0], ok(me_plain()));
-    sim.press('4');
+    sim.press('3');
     assert_eq!(availability(&sim.m), Availability::NotAdmin);
     assert!(!sim.poll(5_000).contains(&ApiCall::Tokens(None)));
     assert_eq!(gate(&sim.m, Action::TokenNew), Some("gate.not-admin"));
@@ -138,7 +138,7 @@ fn only_root_and_admin_tokens_manage_tokens_and_a_server_without_authentication_
         &effects[0],
         ok(r#"{"authEnabled":false,"root":false,"name":"open","permissions":["publish","consume","create","admin"]}"#),
     );
-    open.press('4');
+    open.press('3');
     assert_eq!(availability(&open.m), Availability::NoAuth);
     assert!(!open.poll(5_000).contains(&ApiCall::Tokens(None)));
     assert_eq!(gate(&open.m, Action::TokenNew), Some("gate.tokens-no-auth"));
@@ -410,7 +410,7 @@ fn revoking_asks_first_and_the_default_answer_is_cancel() {
 #[test]
 fn an_action_that_cannot_run_says_why_instead_of_doing_nothing() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.press('4');
+    sim.press('3');
     // The tokens have not arrived: there is nothing to edit.
     sim.press('e');
     assert!(sim.m.modal.is_none());

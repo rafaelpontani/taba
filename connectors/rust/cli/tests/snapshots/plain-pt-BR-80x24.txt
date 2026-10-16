@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
- 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 ▲ Seu token precisa ser o token raiz para ver isto.
 
 
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  l idioma  h ajuda  q sair  ⟳ 2s · L pt-BR
+ Enter ações  d drenar  u devolver  l idioma  h ajuda  q sair    ⟳ 2s · L pt-BR

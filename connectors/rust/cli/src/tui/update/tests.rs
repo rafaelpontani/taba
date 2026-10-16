@@ -246,10 +246,9 @@ fn a_partial_read_is_kept_and_its_sample_is_marked() {
 fn the_tabs_navigate_by_number_and_brackets() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
     sim.press('3');
-    assert_eq!(sim.m.tab, Tab::Messages);
-    sim.press(']');
     assert_eq!(sim.m.tab, Tab::Tokens);
     sim.press(']');
+    assert_eq!(sim.m.tab, Tab::Profiles);
     sim.press(']');
     assert_eq!(sim.m.tab, Tab::Cluster);
     sim.press('[');
@@ -262,7 +261,7 @@ fn the_tabs_navigate_by_number_and_brackets() {
 #[test]
 fn the_empty_tabs_still_keep_the_status_reading_alive() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.press('2');
+    sim.press('4');
     // The read already planned still happens; after it, away from the Cluster tab, the status is read only as
     // often as the history samples (5 s).
     let effects = sim.tick(2_100);
@@ -413,7 +412,7 @@ fn an_action_that_cannot_run_says_why_and_opens_nothing() {
 fn a_plain_token_sees_the_node_list_and_no_detail() {
     let mut sim = Sim::plain_with_nodes(Lang::EnUs);
     assert_eq!(cluster::rows(&sim.m).len(), 2);
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     assert_eq!(sim.m.cluster.view, ClusterView::List);
     assert_eq!(
         sim.m.notice.as_ref().unwrap().text,
@@ -746,7 +745,7 @@ fn only_one_popup_is_open_at_a_time() {
 #[test]
 fn enter_opens_the_detail_and_reads_its_metrics_and_backup() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     assert_eq!(sim.m.cluster.view, ClusterView::Detail);
     let asked = calls(&sim.tick(300));
     assert!(
@@ -765,7 +764,7 @@ fn enter_opens_the_detail_and_reads_its_metrics_and_backup() {
 #[test]
 fn a_node_without_s3_backup_is_not_an_error() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     let effects = sim.tick(300);
     let backup = effects
         .iter()
@@ -789,7 +788,7 @@ fn a_node_without_s3_backup_is_not_an_error() {
 #[test]
 fn the_node_metrics_are_kept_as_read() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.code(KeyCode::Enter);
+    sim.press('i');
     let effects = sim.tick(300);
     let metrics = effects
         .iter()
@@ -848,11 +847,17 @@ fn the_chart_pauses_changes_scale_and_series() {
     assert_eq!(sim.m.cluster.monitor.frozen, None);
     sim.press('z');
     assert!(sim.m.cluster.monitor.fixed_scale);
-    sim.code(KeyCode::Right);
-    sim.code(KeyCode::Right);
+    sim.code(KeyCode::Down);
+    sim.code(KeyCode::Down);
     assert_eq!(sim.m.cluster.monitor.chart, 2);
-    sim.code(KeyCode::Left);
+    sim.code(KeyCode::Up);
     assert_eq!(sim.m.cluster.monitor.chart, 1);
+    // Enter gives the chart the whole screen; Esc leaves it before it leaves the charts.
+    sim.code(KeyCode::Enter);
+    assert!(sim.m.cluster.monitor.full);
+    sim.code(KeyCode::Esc);
+    assert!(!sim.m.cluster.monitor.full);
+    assert_eq!(sim.m.cluster.view, ClusterView::Monitor);
     sim.code(KeyCode::Esc);
     assert_eq!(sim.m.cluster.view, ClusterView::List);
 }

@@ -62,6 +62,7 @@ pub fn on_action(m: &mut Model, action: Action) -> Vec<Effect> {
         Action::PageDown => step(m, 10),
         Action::First => step(m, i32::MIN / 2),
         Action::Last => step(m, i32::MAX / 2),
+        Action::Enter => crate::tui::menu::open(m),
         Action::ProfileNew => {
             open_form(m, None);
             Vec::new()

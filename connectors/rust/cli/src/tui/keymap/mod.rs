@@ -10,6 +10,9 @@ pub enum Scope {
     Cluster,
     Monitor,
     Tokens,
+    Topics,
+    /// The Messages view of an open topic.
+    Messages,
     Profiles,
 }
 
@@ -50,6 +53,7 @@ pub enum Action {
     WindowWider,
     WindowNarrower,
     PauseChart,
+    ChartFull,
     Scale,
     Export,
     SwitchProfile,
@@ -57,6 +61,19 @@ pub enum Action {
     TokenEdit,
     TokenClone,
     TokenRevoke,
+    TopicNew,
+    TopicEdit,
+    TopicDelete,
+    TopicDead,
+    TopicSummary,
+    TopicCharts,
+    TopicMessages,
+    MsgPublish,
+    MsgReceive,
+    MsgAck,
+    MsgAckAll,
+    MsgRelease,
+    MsgPrune,
     ProfileUse,
     ProfileNew,
     ProfileEdit,
@@ -126,20 +143,19 @@ const fn bind(
 }
 
 use Key::{Alt, Char, Code, Ctrl};
-use Scope::{Cluster, Global, Monitor, Profiles, Tokens};
+use Scope::{Cluster, Global, Messages, Monitor, Profiles, Tokens, Topics};
 
 pub const BINDINGS: &[Binding] = &[
     bind(
         Action::GoTab(0),
         Global,
         &[Char('1')],
-        "1…5",
+        "1…4",
         Some("keys.tab"),
     ),
     bind(Action::GoTab(1), Global, &[Char('2')], "2", None),
     bind(Action::GoTab(2), Global, &[Char('3')], "3", None),
     bind(Action::GoTab(3), Global, &[Char('4')], "4", None),
-    bind(Action::GoTab(4), Global, &[Char('5')], "5", None),
     bind(
         Action::TabNext,
         Global,
@@ -306,8 +322,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         Action::Detail,
         Cluster,
-        &[Code(KeyCode::Enter)],
-        "Enter",
+        &[Char('i')],
+        "i",
         Some("keys.cluster.detail"),
     ),
     bind(
@@ -374,6 +390,13 @@ pub const BINDINGS: &[Binding] = &[
         Some("keys.monitor.pause"),
     ),
     bind(
+        Action::ChartFull,
+        Monitor,
+        &[Code(KeyCode::Enter)],
+        "Enter",
+        Some("keys.monitor.full"),
+    ),
+    bind(
         Action::Scale,
         Monitor,
         &[Char('z')],
@@ -416,10 +439,101 @@ pub const BINDINGS: &[Binding] = &[
         Some("keys.tokens.revoke"),
     ),
     bind(
+        Action::TopicNew,
+        Topics,
+        &[Char('n')],
+        "n",
+        Some("keys.topics.new"),
+    ),
+    bind(
+        Action::TopicEdit,
+        Topics,
+        &[Char('e')],
+        "e",
+        Some("keys.topics.edit"),
+    ),
+    bind(
+        Action::TopicDelete,
+        Topics,
+        &[Code(KeyCode::Delete), Char('d')],
+        "Del d",
+        Some("keys.topics.delete"),
+    ),
+    bind(
+        Action::TopicDead,
+        Topics,
+        &[Char('v')],
+        "v",
+        Some("keys.topics.dead"),
+    ),
+    bind(
+        Action::TopicSummary,
+        Topics,
+        &[Char('i')],
+        "i",
+        Some("keys.topics.summary"),
+    ),
+    bind(
+        Action::TopicCharts,
+        Topics,
+        &[Char('g')],
+        "g",
+        Some("keys.topics.charts"),
+    ),
+    bind(
+        Action::TopicMessages,
+        Topics,
+        &[Char('x')],
+        "x",
+        Some("keys.topics.messages"),
+    ),
+    bind(
+        Action::MsgPublish,
+        Messages,
+        &[Char('p')],
+        "p",
+        Some("keys.messages.publish"),
+    ),
+    bind(
+        Action::MsgReceive,
+        Messages,
+        &[Char('r')],
+        "r",
+        Some("keys.messages.receive"),
+    ),
+    bind(
+        Action::MsgAck,
+        Messages,
+        &[Char('a')],
+        "a",
+        Some("keys.messages.ack"),
+    ),
+    bind(
+        Action::MsgAckAll,
+        Messages,
+        &[Char('A')],
+        "A",
+        Some("keys.messages.ack-all"),
+    ),
+    bind(
+        Action::MsgRelease,
+        Messages,
+        &[Char('v')],
+        "v",
+        Some("keys.messages.release"),
+    ),
+    bind(
+        Action::MsgPrune,
+        Messages,
+        &[Char('P')],
+        "P",
+        Some("keys.messages.prune"),
+    ),
+    bind(
         Action::ProfileUse,
         Profiles,
-        &[Code(KeyCode::Enter)],
-        "Enter",
+        &[Char('c')],
+        "c",
         Some("keys.profiles.use"),
     ),
     bind(

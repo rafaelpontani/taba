@@ -86,3 +86,90 @@ fn the_connection_test_is_only_for_profiles_and_a_paste_drops_line_breaks() {
     token.busy = true;
     assert_eq!(token.handle(&press(KeyCode::Esc)), Outcome::None);
 }
+
+fn key(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::NONE)
+}
+
+fn typed(editor: &mut Editor, text: &str) {
+    for c in text.chars() {
+        if c == '\n' {
+            editor.handle(&key(KeyCode::Enter));
+        } else {
+            editor.handle(&key(KeyCode::Char(c)));
+        }
+    }
+}
+
+fn body_form() -> Editor {
+    Editor::new(
+        Purpose::MessagePublish {
+            topic: "orders".to_owned(),
+        },
+        vec![
+            Field::area("body", "editor.field.body", ""),
+            Field::text("content-type", "editor.field.content-type", "text/plain"),
+        ],
+    )
+}
+
+/// TUI: TUI-MSG-02
+#[test]
+fn enter_in_an_area_breaks_the_line_and_the_arrows_move_the_cursor() {
+    let mut editor = body_form();
+    typed(&mut editor, "{\n  \"a\": 1\n}");
+    assert_eq!(editor.field("body").unwrap().value, "{\n  \"a\": 1\n}");
+    assert_eq!(editor.field("body").unwrap().line_col(), (2, 1));
+    // Up goes to the line above at the same column, clipped to its end.
+    editor.handle(&key(KeyCode::Up));
+    assert_eq!(editor.field("body").unwrap().line_col(), (1, 1));
+    editor.handle(&key(KeyCode::End));
+    assert_eq!(editor.field("body").unwrap().line_col(), (1, 8));
+    editor.handle(&key(KeyCode::Home));
+    typed(&mut editor, ">");
+    assert_eq!(editor.field("body").unwrap().value, "{\n>  \"a\": 1\n}");
+    editor.handle(&key(KeyCode::Backspace));
+    editor.handle(&key(KeyCode::Delete));
+    assert_eq!(editor.field("body").unwrap().value, "{\n \"a\": 1\n}");
+    // Backspace at the start of a line joins it to the one above.
+    editor.handle(&key(KeyCode::Home));
+    editor.handle(&key(KeyCode::Backspace));
+    assert_eq!(editor.field("body").unwrap().value, "{ \"a\": 1\n}");
+    assert_eq!(editor.focus, 0);
+}
+
+/// TUI: TUI-MSG-02
+#[test]
+fn the_arrows_leave_the_area_at_its_first_and_last_lines_and_tab_always_does() {
+    let mut editor = body_form();
+    typed(&mut editor, "one\ntwo");
+    editor.handle(&key(KeyCode::Up));
+    assert_eq!(editor.focus, 0);
+    editor.handle(&key(KeyCode::Up));
+    assert_eq!(editor.focus, 0, "the first field has nothing above it");
+    editor.handle(&key(KeyCode::Down));
+    editor.handle(&key(KeyCode::Down));
+    assert_eq!(editor.focus, 1);
+    editor.handle(&key(KeyCode::BackTab));
+    assert_eq!(editor.focus, 0);
+    editor.handle(&key(KeyCode::Tab));
+    assert_eq!(editor.focus, 1);
+    // Enter on the last field still sends; in the area it never does.
+    let mut editor = body_form();
+    assert_eq!(editor.handle(&key(KeyCode::Enter)), Outcome::None);
+    assert_eq!(
+        editor.handle(&KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL)),
+        Outcome::Submit
+    );
+}
+
+/// TUI: TUI-MSG-02
+#[test]
+fn pasted_text_keeps_its_lines_in_an_area_and_loses_them_in_a_line_field() {
+    let mut editor = body_form();
+    editor.insert("a\r\nb\rc\td");
+    assert_eq!(editor.field("body").unwrap().value, "a\nb\nc d");
+    editor.focus = 1;
+    editor.insert("x\ny");
+    assert_eq!(editor.field("content-type").unwrap().value, "text/plainxy");
+}

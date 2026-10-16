@@ -1,24 +1,24 @@
  prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 ┌ Conditions ──────────────────────────────────────────────────────────────────┐
 │✔ healthy┌ Commands ────────────────────────────────────────────────┐         │
 └─────────│: dr▏                                                     │─────────┘
 Members: a│                                                          │
 ┌ 3 nodes │▶ Drain the node  d                                       │─────────┐
-│Node     │  Detail of the node, or what a condition means  Enter    │nc  Req  │
+│Node     │  Detail of the node, or what a condition means  i        │nc  Req  │
 │▶ 01a1…00│  Wider window  +                                         │    3    │
 │  01a1…00│  Edit the name or the expiry of the token  e             │    3    │
-│  01a1…00│  Edit the profile  e                                     │    3    │
-│         │  Make it the default profile  d                          │         │
-│         │                                                          │         │
-│         │                                                          │         │
-│         │                                                          │         │
-│         │                                                          │         │
-│         │                                                          │         │
-│         │                                                          │         │
-└─────────│                                                          │─────────┘
-┌ Memory 7│                                                          │─────────┐
-│▄        └──────────────────────────────────────────────────────────┘         │
-│█                                     ││█                                     │
-└──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  l language  h help  q quit     ⟳ 2s · L en-US
+│  01a1…00│  Edit the tags, prefixes, idle timeout and limits of the │    3    │
+│         │  Show or hide the dead-letter queues  v                  │         │
+└─────────│  Summary of the topic: id, creation, tags and limits  i  │─────────┘
+┌ Memory ·│  Open the messages of the topic: publish, read, acknowled│ght · 3 ─┐
+│844.8 Mi││  Read up to 10 messages (they turn invisible to the other│         │
+│        ││  Acknowledge every message still held  A                 │         │
+│        ││  Prune the topic: delete every message, on every node  P │         │
+│768.0 Mi││  Edit the profile  e                                     │        ⠈│
+│        ││  Make it the default profile  d                          │         │
+│691.2 Mi││                                                          │         │
+│        └└──────────────────────────────────────────────────────────┘─────────│
+│  -5m 00s             now││-5m 00s              now││-5m 00s               now│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter actions  d drain  u return  l language  h help  q quit    ⟳ 2s · L en-US

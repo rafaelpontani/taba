@@ -1,0 +1,40 @@
+ prod https://taba.example:8080  ✔ saudável                                                                12:00:02 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+Tópicos › orders · Mensagens
+Fila: 1.000 visíveis · 20 invisíveis · profundidade 1.020 · mais velha 2m 00s
+┌ Recebidas por esta sessão (4) ───────────────────────────────────────────────────────────────────────────────────────┐
+│Hora       Id             Grupo            Ent   Estado             Bytes    Corpo                                    │
+│  12:00:02 01a1-m1        customer-1           1 invisível 30s            24 {"order":1,"total":19.9}                 │
+│▶ 12:00:02 01a1-m2        customer-2           1 apagada                  24 {"order":2,"total":19.9}                 │
+│  12:00:02 01a1-m3        customer-3           1 invisível 30s            24 {"order":3,"total":19.9}                 │
+│  12:00:02 01a1-m4        customer-4           1 invisível 30s            24 {"order":4,"total":19.9}                 │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Mensagem ────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Id 01a1-m2  Estado apagada                                                                                            │
+│application/json · 24 bytes · 1 entregas                                                                              │
+│{"order":2,"total":19.9}                                                                                              │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ✔ Confirmada 01a1-m2
+ Esc voltar  p publicar  r ler  a ack  A ack todas  v devolver  P esvaziar  l idioma  h ajuda            ⟳ 5s · L pt-BR

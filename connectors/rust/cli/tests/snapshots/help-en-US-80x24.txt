@@ -1,24 +1,24 @@
  prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 ┌ Co┌ Help ────────────────────────────────────────────────────────────────┐───┐
-│✔ h│Enter           Detail of the node, or what a condition means        ▲│   │
+│✔ h│i               Detail of the node, or what a condition means        ▲│   │
 └───│d               Drain the node                                       █│───┘
 Memb│u               Return the node                                      █│
 ┌ 3 │b               Flush the backup of the node                         █│───┐
 │Nod│B               Flush the backup of every node                       █│q  │
 │▶ 0│S               Stop the cluster                                     █│   │
 │  0│m               Charts of the cluster                                █│   │
-│  0│1…5             Go to a tab                                          █│   │
+│  0│1…4             Go to a tab                                          █│   │
 │   │] · Alt+→       Next tab                                             █│   │
-│   │[ · Alt+←       Previous tab                                         █│   │
-│   │Tab             Next panel                                           ║│   │
-│   │Shift+Tab       Previous panel                                       ║│   │
+└───│[ · Alt+←       Previous tab                                         ║│───┘
+┌ Me│Tab             Next panel                                           ║│3 ─┐
+│844│Shift+Tab       Previous panel                                       ║│   │
 │   │↑ k             Move up                                              ║│   │
 │   │↓ j             Move down                                            ║│   │
-│   │PgUp Ctrl+u     Scroll up a page                                     ║│   │
-└───│PgDn Ctrl+d     Scroll down a page                                   ║│───┘
-┌ Me│Home g          First                                                ▼│───┐
-│▄  │Esc closes                                                            │   │
-│█  └──────────────────────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  l language  h help  q quit     ⟳ 2s · L en-US
+│768│PgUp Ctrl+u     Scroll up a page                                     ║│  ⠈│
+│   │PgDn Ctrl+d     Scroll down a page                                   ║│   │
+│691│Home g          First                                                ▼│   │
+│   │Esc closes                                                            │───│
+│  -└──────────────────────────────────────────────────────────────────────┘now│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter actions  d drain  u return  l language  h help  q quit    ⟳ 2s · L en-US

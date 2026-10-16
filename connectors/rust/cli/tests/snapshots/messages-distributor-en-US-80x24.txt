@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:01 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+Topics › fanout · Messages
+No queue here: published messages are copied to the matching queues.
+┌ Received by this session (0) ────────────────────────────────────────────────┐
+│A distributor keeps nothing. p publishes to the queues that match its         │
+│prefixes.                                                                     │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Message ─────────────────────────────────────────────────────────────────────┐
+│Select a message to see it.                                                   │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+ Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US

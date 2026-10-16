@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:22 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+Topics › orders · Charts
+┌ Charts ──────────────────┐┌ Messages  ● visible 1,800  ◆ invisible 40 ───────┐
+│▶ Messages           1,800││1,978 │                                           │
+│  Flow per second   14.0/s││      │                                         ⢀⠔│
+│  Oldest message    4m 00s││      │                                       ⡠⠊⠁ │
+│                          ││      │                                    ⣀⠔⠉    │
+│                          ││      │                                 ⢀⡠⠊       │
+│                          ││      │                               ⣀⠔⠁         │
+│                          ││      │                            ⢀⠤⠊            │
+│                          ││989   │                                           │
+│                          ││      │                                           │
+│                          ││      │                                           │
+│                          ││      │                                           │
+│                          ││      │                                           │
+│                          ││      │                                           │
+│                          ││0     │                            ⠠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤│
+│                          ││      └───────────────────────────────────────────│
+│                          ││-1m 00s                                        now│
+└──────────────────────────┘└──────────────────────────────────────────────────┘
+20s collected: the history is only what was sampled since the app opened ·
+automatic scale
+ Esc back  ↑ scroll  l language  h help  q quit                  ⟳ 5s · L en-US

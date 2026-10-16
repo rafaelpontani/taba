@@ -29,7 +29,7 @@ fn on_profiles(lang: Lang) -> Sim {
         selected: file().default.clone(),
         file: file(),
     };
-    sim.press('5');
+    sim.press('4');
     assert_eq!(sim.m.tab, Tab::Profiles);
     sim
 }
@@ -259,9 +259,9 @@ fn the_connection_can_be_tested_with_values_that_are_not_saved() {
 
 /// TUI: TUI-HLP-05
 #[test]
-fn enter_connects_with_the_profile_and_the_session_starts_over_with_it() {
+fn c_connects_with_the_profile_and_the_session_starts_over_with_it() {
     let mut sim = on_profiles(Lang::EnUs);
-    let effects = sim.code(KeyCode::Enter);
+    let effects = sim.press('c');
     assert_eq!(effects, vec![Effect::Connect("prod".to_owned())]);
     // What was read from the old server is dropped, and so is a reply still on its way.
     sim.m.me.data = Some(Default::default());

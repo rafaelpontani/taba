@@ -20,7 +20,7 @@ fontes: [connectors/rust/cli/src, connectors/rust/client/src, doc/pt-BR/16-api-c
 | **Cluster** | Ver condições e o estado de cada nó (memória, disco, sincronização); **drenar** e **devolver** um nó; **flush de backup**; **parar o cluster**; gráficos |
 | **Tokens** | Listar, **criar** (o segredo aparece uma vez), **alterar** nome e validade, **revogar**, clonar |
 | **Tópicos** | Listar, filtrar, **criar**, **alterar**, **apagar**; gráficos e grupos |
-| **Mensagens** | **Publicar**, **escutar**, **navegar**, **ack** e visibilidade, **prune** |
+| **Mensagens** (uma visão do tópico, sem aba própria) | **Publicar**, **ler**, **ack** e devolver, **prune** |
 | **Perfis** | A tela de perfis de hoje, refeita (D-TUI-8): listar, criar, editar, remover, escolher o padrão, testar a conexão e **conectar** com outro perfil; ao abrir sem perfil informado, a escolha do perfil |
 
 Valem para todas as telas: tudo rola (setas, `PgUp`/`PgDn`, `Home`/`End`, roda do mouse); **toda ação tem atalho** e o mouse nunca é obrigatório; textos em `en-US` e `pt-BR`; ação que apaga ou interrompe pede confirmação; o segredo do token nunca vai para um log.
@@ -109,11 +109,11 @@ Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em to
 
 | Teclas | Ação |
 |---|---|
-| `1`…`5` · `[` `]` · `Alt+←/→` | Ir a uma aba · anterior / seguinte |
+| `1`…`4` · `[` `]` · `Alt+←/→` | Ir a uma aba · anterior / seguinte |
 | `Tab` · `Shift+Tab` | Painel seguinte / anterior |
 | `↑ ↓` `k j` · `PgUp PgDn` `Ctrl+u Ctrl+d` · `Home End` `g G` | Mover, rolar, primeiro / último |
 | `← →` `h l` | Recolher-expandir, trocar de aba interna, andar entre campos |
-| `Enter` · `Esc` | Abrir / confirmar · fechar / cancelar |
+| `Enter` · `Esc` | Numa lista: abrir o **menu de ações** do item selecionado (num popup: confirmar) · fechar / cancelar |
 | `/` · `s` `S` · `r` · `p` | Filtrar · ordenar / inverter · atualizar agora · pausar |
 | `:` | Paleta de comandos (busca aproximada de qualquer ação) |
 | `l` · `o` · `h` `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · trocar de perfil · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
@@ -121,11 +121,11 @@ Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em to
 
 | Tela | Teclas |
 |---|---|
-| Cluster | `Enter` detalhe · `d` drenar · `u` devolver · `b` flush deste nó · `B` flush de todos · `S` parar o cluster · `m` monitoramento |
-| Tópicos | `n` novo · `e` editar · `Del` apagar · `Enter` abrir · `m` monitoramento · `x` mensagens |
-| Tokens | `n` novo · `e` editar · `c` clonar · `Del` `x` revogar · `/` filtrar · `s` ordenar |
-| Perfis | `Enter` conectar · `n` novo · `e` editar · `d` padrão · `Del` `x` remover · `t` testar |
-| Mensagens | `Ctrl+Enter` publicar · `l` escutar · `a` ack · `v` visibilidade · `A` ack em todas · `P` prune · `b` navegar · `c` gráficos |
+| Cluster | `Enter` ações do nó (a primeira é o detalhe) · `i` detalhe · `d` drenar · `u` devolver · `b` flush deste nó · `B` flush de todos · `S` parar o cluster · `m` gráficos do cluster (lista de indicadores; `↑` `↓` escolhem, `Enter` tela cheia) |
+| Tópicos | `n` novo · `e` editar · `Del` `d` apagar · `v` mostrar ou esconder as dead-letter (escondidas por padrão) · `/` filtrar · `s` ordenar · `Enter` menu de ações do tópico · `i` resumo · `g` abrir os gráficos · `x` abrir as mensagens |
+| Tokens | `Enter` menu de ações · `n` novo · `e` editar · `c` clonar · `Del` `x` revogar · `/` filtrar · `s` ordenar |
+| Perfis | `Enter` menu de ações · `c` conectar · `n` novo · `e` editar · `d` padrão · `Del` `x` remover · `t` testar |
+| Dentro de um tópico (telas Gráficos / Mensagens) | `Esc` volta à lista (na tela cheia de um gráfico, volta antes à lista de gráficos) · em Gráficos: `↑` `↓` escolhem o gráfico · `Enter` tela cheia · em Mensagens: `p` publicar · `r` ler (pergunta o tempo de invisibilidade, 30 s por padrão) · `a` ack · `A` ack em todas · `v` devolver · `P` prune |
 
 ## 6. Requisitos por tela
 
@@ -136,7 +136,7 @@ Requisitos numerados (`TUI-<tela>-<nn>`); testes e fases citam os IDs. O visual 
 | ID | Requisito |
 |---|---|
 | TUI-FRM-01 | Linha de status: perfil, URL, pior condição do cluster (palavra **e** ícone, nunca só cor) e relógio. Fonte: `GET /cluster/status`; com token comum, só `GET /nodes`. |
-| TUI-FRM-02 | Cinco abas (Cluster, Tópicos, Mensagens, Tokens, Perfis) por `1`…`5`, `[` `]`, `Alt+←/→`. |
+| TUI-FRM-02 | Quatro abas (Cluster, Tópicos, Tokens, Perfis) por `1`…`4`, `[` `]`, `Alt+←/→`. As mensagens não são uma aba: são uma visão de um tópico aberto. |
 | TUI-FRM-03 | Rodapé: teclas do painel em foco, estado da atualização (`⟳ 2s`, pausado, velho com a hora do último dado bom) e idioma. |
 | TUI-FRM-04 | Toda lista e todo texto rolam; a barra de rolagem só aparece quando o conteúdo excede. |
 | TUI-FRM-05 | Toda ação tem atalho; o mouse é opcional. Caracteres digitados com AltGr (`/`, `?`, `@` no ABNT2 e outros layouts; o Windows informa Ctrl+Alt) funcionam como teclas e nos campos de texto. |
@@ -205,11 +205,13 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 | TUI-TOK-05 | Clonar (`c`) abre Criar preenchido; depois de criar, oferece revogar o antigo (padrão **Não**). Revogar pede confirmação e diz que vale em todos os nós. | `DELETE` |
 | TUI-TOK-06 | Sem o token raiz nem a permissão `admin` a aba explica o `403` e qual perfil/token está em uso, em vez de lista vazia. | `required` |
 
-### 6.6 Mensagens — a bancada
+### 6.6 Mensagens — uma visão do tópico
+
+Não há aba Mensagens: uma mensagem sempre pertence a um tópico, então o tópico é escolhido antes, na aba Tópicos. `Enter` num tópico abre um menu do que se pode fazer com ele (gráficos, mensagens, publicar uma mensagem, ler mensagens, esvaziar a fila, editar o tópico, apagar o tópico); `g` e `x` abrem os gráficos e as mensagens direto da lista. As duas são telas que substituem a lista, com a linha `Tópicos › orders · Gráficos` ou `Tópicos › orders · Mensagens`; `Esc` volta à lista.
 
 | ID | Requisito | Fonte |
 |---|---|---|
-| TUI-MSG-01 | Abre num tópico escolhido num seletor, ou direto da lista (`x`); mostra tipo e profundidade. | `GET /stats/topics/{t}` |
+| TUI-MSG-01 | Abre a partir da lista de tópicos (`x`, ou `←` `→` dos gráficos dele); o tópico já está escolhido, então não há seletor. Mostra os contadores da fila. | `GET /stats/topics/{t}` |
 | TUI-MSG-02 | **Publicar:** corpo de várias linhas, tipo de conteúdo, `groupId`, `deduplicationId`, repetições; `Ctrl+Enter` envia; o resultado (id, `duplicate` ou erro) fica visível. Em JSON, uma checagem leve avisa sem bloquear. | `POST …/messages` |
 | TUI-MSG-03 | **Escutar** (`l`): long polling; cada mensagem chega já entregue; **auto-ack** ligável; `a` ack, `v` visibilidade, `A` ack em todas; parar com mensagens sem ack pergunta. | `GET …/messages?wait`, `DELETE`, `PUT …/visibility` |
 | TUI-MSG-04 | Tabela do recebido (hora, id, grupo, entregas, estado `visível`/`invisível até hh:mm:ss`, tamanho, trecho do corpo), mais nova primeiro; chegadas novas não mexem na seleção (selo "↑ n novas"); guarda as últimas 1 000. A tela diz que **a API não lista as mensagens de uma fila**: as linhas são as recebidas, e os contadores do cabeçalho são a verdade da fila. | D-TUI-6 |
@@ -303,13 +305,41 @@ Cada fase termina com algo utilizável, testes verdes e docs atualizadas **em to
 |---|---|---|
 | **0 — Fundação** ✅ | Feature `tui`, `taba-cli tui`, terminal seguro contra panic, laço de eventos, núcleo Elm, trabalhadores, `api.rs`, quadro (6.1), mapa de teclas, ajuda, paleta, i18n nos dois idiomas, tema/`NO_COLOR`, confirmação. **Primeiro:** conferir que `musl` e `arm64` compilam com ratatui/crossterm e medir o binário contra `dist/` | As abas vazias navegam; trocar de idioma funciona; testes de desenho e i18n passam |
 | **1 — Cluster** ✅ | 6.2, `prom.rs`, `history.rs`, gráficos do nó (6.3), selo `partial`, ações de nó e de cluster | Bate com `taba-cli health cluster` e `drain *`; um drain e um retorno pela TUI no Compose de 3 nós |
-| **2 — Tópicos** | 6.4 e monitoramento de tópico e grupos | Criar, editar e apagar iguais aos comandos `topic *`; paginação suave com mais de 1 000 tópicos |
+| **2 — Tópicos** 🟨 (a lista e os formulários estão feitos) | 6.4 e monitoramento de tópico e grupos | Criar, editar e apagar iguais aos comandos `topic *`; paginação suave com mais de 1 000 tópicos |
 | **3 — Tokens** ✅ | 6.5 com o popup do segredo e a clonagem | Igual aos comandos `token *`; o segredo nunca fica visível depois de fechar |
-| **4 — Mensagens** | 6.6: publicar, escutar, ack, visibilidade, navegar, **prune** e gráficos da seleção | Uma mensagem publicada na TUI é recebida na mesma TUI e por `taba-cli consume`; o prune num Compose de 3 nós esvazia todos os nós, e com um nó parado falha nomeando-o |
+| **4 — Mensagens** 🟨 (publicar, ler, ack, devolver e prune estão feitos) | 6.6: publicar, escutar, ack, visibilidade, navegar, **prune** e gráficos da seleção | Uma mensagem publicada na TUI é recebida na mesma TUI e por `taba-cli consume`; o prune num Compose de 3 nós esvazia todos os nós, e com um nó parado falha nomeando-o |
 | **5 — Perfis e limpeza** 🟨 (a aba Perfis está feita) | Aba Perfis (D-TUI-8); remover `tui/term.rs` e `tui/keys`; mouse, ASCII, layouts estreitos | O código antigo some; `taba-cli profile` não muda para quem usa |
 | **6 — Docs e release** | [20-cli.md](20-cli.md), [05-dependencias.md](05-dependencias.md), [24-convencoes.md](24-convencoes.md) (regra de zero dependências do CLI), `README.md` do CLI, scripts de build e Dockerfile, [30-decisoes.md](30-decisoes.md); capturas | `verificar.mjs` e `verificar-idiomas.mjs` passam; os binários dos seis alvos compilam |
 
 **Riscos.** (1) `musl` e `arm64` com ratatui/crossterm (fase 0). (2) O binário cresce; medir e registrar. (3) A TUI nunca afirma uma fila esvaziada que não prova: o `removed` e a falha parcial são mostrados como o servidor os dá.
+
+### Registro da fase 2: gráficos do tópico (2026-10-16)
+
+- **Onde está:** `src/tui/screens/topics/monitor` (`mod.rs`, `view.rs`, `tests.rs`), `TopicMonitor` em `src/tui/model`, `TopicSample` e `parse_topic_sample` em `src/tui/api`. `Enter` numa fila abre três gráficos empilhados no mesmo eixo de tempo (TUI-MSG-11): (1) mensagens **visíveis** e **invisíveis**; (2) **fluxo** por segundo: entrada (publicadas), saída (entregues) e apagadas (ack); (3) **idade da mais velha** da fila e dos **três maiores grupos** (os grupos barulhentos). `Esc` volta à lista.
+- **Como lê:** uma chamada `GET /stats/topics/{nome}` a cada `history.interval` (5 s), que já traz as contagens, as três taxas, `oldestAge` e `topGroups` com a idade de cada grupo; a leitura continua com a aba fechada, enquanto os gráficos estão abertos. Cada leitura vira um ponto por linha. Fila vazia tem idade zero; um grupo que sai da leitura deixa um buraco. Os grupos seguidos são os três maiores vistos primeiro (as cores não mudam).
+- **Teclas:** as dos gráficos do nó: `+` `-` janela (1, 5, 15, 30, 60 min, limitada à retenção), `Espaço` congela, `z` escala automática ou a partir do zero, `e` grava um CSV com todas as linhas (nunca sobre um arquivo existente). A legenda fica no título de cada gráfico, com marcador, cor e o valor de agora.
+- **Limites:** o histórico é só o amostrado desde que os gráficos abriram (a tela diz quantos minutos há); o servidor ainda devolve a visão **de um nó** nas estatísticas (PRB-059), então os números do cluster podem estar abaixo do total; distribuidor não tem fila e a tecla é recusada com o motivo.
+- **Testes:** 301 unitários na biblioteca, 75 instantâneos de tela (gráficos em 80×24 e 120×40, nos dois idiomas). Os testes de integração não rodaram desta vez porque o `taba-cli.exe` estava aberto. Não foi exercitado em um terminal real nem contra um servidor.
+
+### Registro da fase 4: mensagens dentro do tópico (2026-10-16)
+
+- **Decisão:** **não há aba Mensagens**. As abas são Cluster, Tópicos, Tokens e Perfis (`1` a `4`), porque uma mensagem precisa de um tópico e a aba Tópicos já o escolhe. Um tópico aberto tem duas visões, **Gráficos** e **Mensagens**: `Enter` abre os gráficos, `x` abre as mensagens, `←` `→` alternam e `Esc` volta à lista. Um distribuidor abre só em Mensagens (não tem fila para desenhar nem para ler).
+- **Revisão (no mesmo dia): o menu de ações.** `Enter` numa linha das listas de Tópicos, Tokens, Perfis e Cluster (nós) abre um menu das ações daquele item, cada uma com o nome do que ela atinge (`Editar o tópico`, `Apagar o tópico`, `Publicar uma mensagem`, `Ler mensagens`, `Esvaziar a fila`), para não confundir um tópico com uma mensagem. Uma entrada que não pode rodar agora aparece apagada, e a linha sob o menu diz o motivo. As teclas de cada tela continuam valendo direto da lista. Os gráficos e as mensagens de um tópico deixaram de ser telas que substituem a lista e viraram **caixas de diálogo** sobre ela, como os formulários; `←` `→` não alternam mais entre as duas (`Esc` e depois `g` ou `x`). Teclas que mudaram: `Enter` não abre mais os gráficos, o detalhe do nó (agora `i`, ou a primeira entrada do menu) nem conecta um perfil (agora `c`); `g` abre os gráficos de um tópico (`Home` continua indo ao início). `src/tui/menu` guarda o menu e `Modal::Menu` o popup.
+- **Segunda revisão (no mesmo dia): corpo de várias linhas, resumo e faixa de gráficos.** (1) O corpo de uma mensagem é uma **área de várias linhas** (`Field::area` em `src/tui/editor`): linhas numeradas, cursor que anda (`←` `→` `↑` `↓` `Home` `End`), `Enter` quebra a linha, `Backspace` e `Del` apagam, uma colagem mantém as linhas (tabulações viram um espaço); `↑` na primeira linha e `↓` na última vão para o campo vizinho, `Tab` sempre vai, e `Ctrl+s` envia. (2) O resumo que ficava sob a lista (nome, id, criação, tags, limites) virou uma visão própria: `i`, ou *Resumo do tópico* no menu, abre numa caixa de diálogo. (3) No lugar dele, sob a lista, ficam os **três gráficos da fila selecionada lado a lado** (mensagens, fluxo, idade), cada um com só os marcadores e os valores atuais no título; usam a mesma leitura da caixa de gráficos (`GET /stats/topics/{name}`), uma por intervalo e só enquanto a lista é mostrada. Os últimos 8 tópicos selecionados guardam as amostras (`TopicsScreen::previews`), e a caixa de gráficos começa delas. Um distribuidor não tem fila, então sob ele o resumo aparece como antes.
+- **Terceira revisão (no mesmo dia): formulário de leitura, gráficos dos nós.** (1) O menu de um tópico não lista mais *Mensagens do tópico* (`x` continua abrindo): quem abre o menu de um tópico quer publicar ou ler. (2) *Ler mensagens* (`r`) abre um formulário com o **tempo de invisibilidade já preenchido com 30 s** (`ApiCall::Receive(tópico, segundos)`); o formulário é a confirmação, e um zero ou um não número é recusado no próprio formulário. As linhas ficam retidas pelo tempo pedido. (3) Sob a lista de nós, as duas sparklines viraram **três gráficos de linha do nó selecionado** lado a lado (memória, mensagens em memória, requisições em andamento), sempre embaixo. (4) A visão de gráficos do cluster (`m`) é uma **lista dos seis indicadores à esquerda** com o valor atual de cada um; `↑` `↓` escolhem, o gráfico do que está sob o cursor é desenhado ao lado, e `Enter` dá a ele a **tela inteira** (`Esc` sai da tela cheia antes de sair dos gráficos). `←` `→` não rolam mais uma grade de quatro.
+- **Quarta revisão (no mesmo dia): as telas do tópico voltam a ser telas.** Os gráficos e as mensagens de um tópico tinham virado caixas de diálogo sobre a lista; as mensagens não funcionaram bem assim, então **as duas voltam a ser telas que substituem a lista**, com uma linha de cabeçalho `Tópicos › nome · Gráficos` / `· Mensagens` (o resumo continua sendo uma caixa). Os gráficos de uma fila agora funcionam como os do cluster: uma **lista dos três indicadores à esquerda** (mensagens, fluxo, idade, cada um com o valor atual), o gráfico sob o cursor ao lado, `↑` `↓` para escolher e `Enter` para a **tela inteira** (`Esc` sai antes da tela cheia, depois dos gráficos).
+- **Onde está:** `src/tui/screens/topics/messages` (`mod.rs` estado e teclas, `view.rs` desenho, `tests.rs`), `TopicTab`, `Received` e `Messages` em `src/tui/model`, `ApiCall::{Publish, Receive, Ack, Release, Prune}` e seus leitores em `src/tui/api`, `Scope::Messages` no mapa de teclas. O `taba-client` não mudou.
+- **Feito (TUI-MSG-01 a 04, 06 a 09):** `p` publica (formulário com corpo, tipo de conteúdo, id do grupo e id de deduplicação; o resultado fica numa linha sob a tabela e uma recusa fica no formulário); `r` lê até 10 mensagens **depois de uma confirmação** que diz que elas ficam invisíveis para os outros consumidores por 30 s (D-TUI-6: abrir a visão, o tópico ou atualizar nunca lê); a tabela lista o que foi lido, a mais nova primeiro, com hora, id, grupo, entregas, estado (`invisível 27s`, `visível de novo`, `apagada`), tamanho e um trecho, guarda as últimas 1 000 e não move a seleção quando chegam novas; `a` confirma a mensagem selecionada, `A` todas as que ainda estão retidas, `v` devolve a selecionada à fila (visibilidade `0`); `P` esvazia depois de digitar o nome do tópico. Os contadores da fila (visíveis, invisíveis, profundidade, mais velha) vêm do mesmo amostrador dos gráficos. As teclas são recusadas com o motivo quando o token não tem `publish`, `consume` ou `manage`, num distribuidor e numa fila dead-letter (não se publica nela).
+- **Diferenças do plano, e por quê:** (1) **O prune exige `manage`**, não `admin`: é o que o servidor confere (`http/auth`). (2) **Ainda sem escutar** (long polling com auto-ack), e o *Navegar* do plano é a **leitura** única (`r`, 10 mensagens, 30 s, fixos): a quantidade e o tempo não são perguntados. (3) O corpo é um **editor de várias linhas** (veja a segunda revisão), mas não há repetições e a checagem de JSON ficou de fora. (4) Cada linha guarda os primeiros 4 096 caracteres do corpo (o tamanho mostrado é o real); não há JSON indentado nem rolagem do corpo. (5) **Sem pesquisa nem ordenação** das linhas e sem os gráficos `c` da seleção: a visão Gráficos do mesmo tópico é isso. (6) O recibo só vale enquanto a mensagem está retida: passados os 30 s a linha deixa de ser oferecida a `a` e `v`. (7) `p` e `r` escondem *pausar* e *atualizar* dentro da visão Mensagens.
+- **Testes:** `cargo test -p taba-cli` passa (312 unitários, 77 de comandos, 1 ao vivo e 9 de empacotamento); `clippy` sem avisos; os 11 testes unitários novos cobrem a abertura, as travas, publicar, ler, confirmar, devolver, o recibo perdido e o prune, e há instantâneos da visão em 80×24 e 120×40 nos dois idiomas. Não foi exercitado em terminal real nem contra um servidor.
+
+### Registro da fase 2: lista e formulários de tópicos (2026-10-16)
+
+
+- **Onde está:** `src/tui/screens/topics` (estado, teclas, formulários e desenho, com `tests.rs`), `Purpose::Topic*` em `src/tui/editor`, `Topic`, `TopicNumbers` e os leitores de página em `src/tui/api`, e a leitura periódica em `src/tui/update` (como os tokens). O `taba-client` não mudou: o corpo do `POST` e do `PATCH` sai dos mesmos `TopicRequest` e `TopicUpdate` dos comandos `topic *`.
+- **Feito (TUI-TOP-01, 03 a 05; TUI-TPF-01 a 04):** tabela com nome, tipo (`fila`, `fila fifo`, `fila vol`, `distribuidor`, `dead-letter`), profundidade, taxas de publicação e consumo, idade da mais antiga e estado (ícone e a condição pior, sem tradução); a dead-letter aparece apagada, sem os limites no detalhe e com a nota de que segue a fila de origem; o distribuidor mostra "—" onde não há fila. Filtro por parte do nome (`/`) e ordem (`s`: nome, mais novo, mais antigo, profundidade). Criar (`n`) com todos os campos; editar (`e`) com tipo, FIFO e volátil travados e o motivo ao lado, e os campos que não valem para o tipo também travados; só o que mudou vai no `PATCH`, e os três limites aceitam número ou `default` (volta ao padrão do nó). Apagar (`Del` ou `d`) pede o nome digitado, avisa que as mensagens e a dead-letter se perdem e tira o tópico da tabela na hora. O erro do servidor (`code: message`) aparece no formulário, que continua aberto. Sem `create` ou `manage` a tecla é recusada com o motivo (TUI-FRM-10); na dead-letter, também.
+- **Diferenças do plano, e por quê:** (1) **sem rolagem por cursor**: a lista lê as páginas de 200 em 200, até 25 (5 000 tópicos), como os tokens, e filtra e ordena na própria TUI, sem chamar o servidor; passar disso fica para quando houver um servidor com tantos tópicos para medir. (2) Os números vêm de `GET /stats/topics` (`fields=…,conditions`), lidos **ao lado** da lista: se eles falham, a tabela mostra os tópicos sem números e diz "números indisponíveis". (3) Um só filtro, o do nome; **não há** filtro por tag nem por condição (`name` já é o filtro do servidor, aqui feito na TUI). (4) A validação é a **do envio** (nome, números, `chave=valor`, prefixos do distribuidor, campos que não valem para o tipo), não a de cada tecla; o resto é do servidor. (5) `d` também apaga (o `x` fica para as mensagens, como no plano). (6) `Enter` abre **direto os gráficos** (sem as abas Resumo, Configuração e Grupos de TUI-TPF-05, que ainda não existem); não há tecla `m`. A aba Grupos (TUI-MON-08) e a aba Mensagens a partir do tópico também não existem.
+- **Testes:** `cargo test -p taba-cli` passa (293 unitários, 77 de comandos, 71 instantâneos de tela, entre eles a tabela em 80×24 e 120×40 nos dois idiomas, os formulários e a confirmação de apagar); `clippy` sem avisos. Não foi exercitado em um terminal real nem contra um servidor.
 
 ### Registro da fase 3 e da aba Perfis (2026-10-15)
 

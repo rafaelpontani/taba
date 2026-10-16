@@ -74,20 +74,22 @@ fn manage_includes_create_and_admin_includes_manage_and_nothing_else_does() {
     assert!(manager.allows(Permission::Manage));
     assert!(manager.allows(Permission::Create));
     assert!(!manager.allows(Permission::Admin));
-    assert!(!manager.allows(Permission::Publish));
-    assert!(!manager.allows(Permission::Consume));
+    assert!(manager.allows(Permission::Publish));
+    assert!(manager.allows(Permission::Consume));
 
     let admin = sample(vec![Permission::Admin], &[]).record;
     assert!(admin.allows(Permission::Admin));
     assert!(admin.allows(Permission::Manage));
     assert!(admin.allows(Permission::Create));
-    assert!(!admin.allows(Permission::Publish));
-    assert!(!admin.allows(Permission::Consume));
+    assert!(admin.allows(Permission::Publish));
+    assert!(admin.allows(Permission::Consume));
 
     let creator = sample(vec![Permission::Create], &[]).record;
     assert!(creator.allows(Permission::Create));
     assert!(!creator.allows(Permission::Manage));
     assert!(!creator.allows(Permission::Admin));
+    assert!(!creator.allows(Permission::Publish));
+    assert!(!creator.allows(Permission::Consume));
 }
 
 /// UC: UC-AUT-009

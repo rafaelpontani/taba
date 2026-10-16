@@ -16,6 +16,7 @@ fn no_key_is_bound_twice_in_the_same_scope() {
         Scope::Cluster,
         Scope::Monitor,
         Scope::Tokens,
+        Scope::Topics,
         Scope::Profiles,
     ] {
         let mut seen: Vec<(Key, Action)> = Vec::new();
@@ -38,8 +39,12 @@ fn no_key_is_bound_twice_in_the_same_scope() {
 fn a_screen_may_shadow_only_the_global_keys_listed_here() {
     let allowed = [
         (Key::Char('S'), Scope::Cluster),
-        (Key::Code(KeyCode::Enter), Scope::Cluster),
-        (Key::Code(KeyCode::Enter), Scope::Profiles),
+        // On the list of topics `g` opens the charts (Home still goes to the top).
+        (Key::Char('g'), Scope::Topics),
+        // Inside a topic, reading and publishing matter more than pausing or refreshing.
+        (Key::Code(KeyCode::Enter), Scope::Monitor),
+        (Key::Char('p'), Scope::Messages),
+        (Key::Char('r'), Scope::Messages),
     ];
     for b in BINDINGS.iter().filter(|b| b.scope != Scope::Global) {
         for key in b.keys {

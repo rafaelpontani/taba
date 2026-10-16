@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
- 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 ┌ Condições ───────────────────────────────────────────────────────────────────┐
 │✔ saudáve┌ Comandos ────────────────────────────────────────────────┐         │
 └─────────│: dr▏                                                     │─────────┘
@@ -10,15 +10,15 @@ Membros: a│                                                          │
 │  01a1…00│  Abrir, ou mover para a direita  →                       │    3    │
 │  01a1…00│  Ordenar  s                                              │    3    │
 │         │  Trocar de perfil  o                                     │         │
-│         │  Detalhe do nó, ou o que uma condição significa  Enter   │         │
-│         │  Devolver o nó  u                                        │         │
-│         │  Gráficos do cluster  m                                  │         │
-│         │  Janela maior  +                                         │         │
-│         │  Escala automática ou a partir do zero  z                │         │
-│         │  Editar o nome ou a validade do token  e                 │         │
-└─────────│  Editar o perfil  e                                      │─────────┘
-┌ Memória │  Testar a conexão do perfil  t                           │─────────┐
-│▄        └──────────────────────────────────────────────────────────┘         │
-│█                                     ││█                                     │
-└──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  l idioma  h ajuda  q sair  ⟳ 2s · L pt-BR
+└─────────│  Detalhe do nó, ou o que uma condição significa  i       │─────────┘
+┌ Memória │  Devolver o nó  u                                        │andamento┐
+│844,8 Mi││  Gráficos do cluster  m                                  │         │
+│        ││  Janela maior  +                                         │         │
+│        ││  Mostrar o gráfico na tela toda, ou voltar à lista  Enter│         │
+│768,0 Mi││  Escala automática ou a partir do zero  z                │        ⠈│
+│        ││  Editar o nome ou a validade do token  e                 │         │
+│691,2 Mi││  Editar as tags, os prefixos, o tempo ocioso e os limites│         │
+│        └└──────────────────────────────────────────────────────────┘─────────│
+│  -5m 00s           agora││-5m 00s            agora││-5m 00s             agora│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter ações  d drenar  u devolver  l idioma  h ajuda  q sair    ⟳ 2s · L pt-BR

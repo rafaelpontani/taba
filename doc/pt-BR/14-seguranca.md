@@ -73,8 +73,8 @@ Todo nó conhece todos os tokens: **validar é uma consulta local em memória**,
 | `publish` | `POST /topics/{topic}/messages` |
 | `consume` | `GET`, `PUT .../visibility` e `DELETE` (ack) de mensagens |
 | `create` | `POST /topics` e o `autoCreate` do `GET` (que exige também `consume`). **Só cria** |
-| `manage` | `PATCH` e `DELETE` em `/topics/{topic}` e esvaziar uma fila (`DELETE /topics/{topic}/messages`). **Inclui `create`** e respeita os prefixos |
-| `admin` | Os tokens (`/tokens`) e a operação do cluster e dos nós (`/cluster/*`, `/nodes/{nodeId}/…`: estado, drain, backup, métricas). **Inclui `manage` e `create`**, **não tem prefixos** (alcança todos os tópicos) e não publica nem consome. **Não** para o cluster e não cria, altera nem revoga outro token `admin`: isso é só do token raiz |
+| `manage` | `PATCH` e `DELETE` em `/topics/{topic}` e esvaziar uma fila (`DELETE /topics/{topic}/messages`). **Inclui `create`, `publish` e `consume`** e respeita os prefixos |
+| `admin` | Os tokens (`/tokens`) e a operação do cluster e dos nós (`/cluster/*`, `/nodes/{nodeId}/…`: estado, drain, backup, métricas). **Inclui `manage`, `create`, `publish` e `consume`** e **não tem prefixos** (alcança todos os tópicos). **Não** para o cluster e não cria, altera nem revoga outro token `admin`: isso é só do token raiz |
 
 Todo token válido consulta `GET /topics` e `GET /topics/{topic}` dentro dos seus prefixos.
 

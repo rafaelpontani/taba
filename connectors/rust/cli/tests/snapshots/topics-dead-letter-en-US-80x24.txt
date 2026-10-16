@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:01 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+4 topics  sorted by name (s)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name                  Type         Depth    Pub/s  Cons/s Age     State       │
+│  fanout              distributor         —      —      —       — ✔ ok        │
+│  orders              queue fifo      1,500   12.5    3.0  2m 05s ▲ backlog   │
+│▶ orders-dead-letter  dead-letter         0    0.0    0.0       — ✔ ok        │
+│  replies             queue vol           7    0.2    0.2      3s ✔ ok        │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Topic ───────────────────────────────────────────────────────────────────────┐
+│Name     orders-dead-letter  (dead-letter)                                    │
+│Id       01a1-2                                                               │
+│Created  2026-10-01 10:00:00                                                  │
+│Tags     —                                                                    │
+│                                                                              │
+│Dead-letter queue of orders: it follows that queue and cannot be changed or   │
+│deleted on its own.                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ▲ A distributor has no queue, so there is nothing to chart.     ⟳ 5s · L en-US

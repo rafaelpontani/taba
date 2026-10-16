@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ saudável                        12:00:01 UTC
- 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 3 tokens  ordenado por mais novo primeiro (s)
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │N┌ Editar o token ──────────────────────────────────────────────────────────┐ │
@@ -21,4 +21,4 @@
 │E└──────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- n novo  e editar  c clonar  l idioma  h ajuda  q sair           ⟳ 5s · L pt-BR
+ Enter ações  n novo  e editar  l idioma  h ajuda  q sair        ⟳ 5s · L pt-BR

@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:02 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+To┌ Publish a message ───────────────────────────────────────────────────────┐
+Qu│▶ Body             (3 lines)                                              │
+┌ │    1 │{                                                                  │─┐
+│T│    2 │  "order": 7                                                       │ │
+│ │    3 │}▏                                                                 │l│
+│▶│      │                                                                   │l│
+│ │      │                                                                   │l│
+│ │      │                                                                   │l│
+│ │      │                                                                   │ │
+│ │  Content type     application/json                                       │ │
+│ │  Group id                                                                │ │
+└─│  Deduplication id                                                        │─┘
+┌ │                                                                          │─┐
+│I│                                                                          │ │
+│a│The body goes as typed and can have several lines. Group and deduplication│ │
+│{│id are optional (FIFO queues use both).                                   │ │
+│ │                                                                          │ │
+│ │                                                                          │ │
+│ │Tab next field · Enter new line in the body · Ctrl+s send · Esc cancel    │ │
+└─└──────────────────────────────────────────────────────────────────────────┘─┘
+ ✔ Acknowledged 01a1-m2
+ Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US

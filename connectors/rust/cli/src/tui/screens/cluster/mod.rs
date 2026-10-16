@@ -243,7 +243,13 @@ fn list_action(m: &mut Model, action: Action) -> Vec<Effect> {
             };
             Vec::new()
         }
-        Action::Enter | Action::Detail => {
+        Action::Enter => {
+            if m.cluster.pane == Pane::Conditions {
+                return open_condition(m);
+            }
+            crate::tui::menu::open(m)
+        }
+        Action::Detail => {
             if m.cluster.pane == Pane::Conditions {
                 return open_condition(m);
             }
@@ -383,15 +389,17 @@ fn detail_keys(m: &mut Model, action: Action) -> Vec<Effect> {
 }
 
 fn monitor_action(m: &mut Model, action: Action) -> Vec<Effect> {
-    // Positions of the first visible chart: the grid shows four, so the last one leaves the last four in view.
-    let last = (MON_CHARTS.len() + 1).saturating_sub(view::GRID).max(1);
+    let total = MON_CHARTS.len();
     let monitor = &mut m.cluster.monitor;
     match action {
+        // Esc leaves the full screen first, then the charts.
+        Action::Esc if monitor.full => monitor.full = false,
         Action::Esc => m.cluster.view = ClusterView::List,
-        Action::Left => monitor.chart = moved(monitor.chart, -1, last),
-        Action::Right => monitor.chart = moved(monitor.chart, 1, last),
-        Action::Up => monitor.chart = moved(monitor.chart, -2, last),
-        Action::Down => monitor.chart = moved(monitor.chart, 2, last),
+        Action::Up => monitor.chart = moved(monitor.chart, -1, total),
+        Action::Down => monitor.chart = moved(monitor.chart, 1, total),
+        Action::First => monitor.chart = 0,
+        Action::Last => monitor.chart = total - 1,
+        Action::ChartFull => monitor.full = !monitor.full,
         Action::WindowWider => {
             let allowed = allowed_windows(m.history.retention_ms());
             m.cluster.monitor.window = (m.cluster.monitor.window + 1).min(allowed - 1);

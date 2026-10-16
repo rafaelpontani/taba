@@ -30,6 +30,8 @@ pub mod i18n;
 #[cfg(feature = "tui")]
 pub mod keymap;
 #[cfg(feature = "tui")]
+pub mod menu;
+#[cfg(feature = "tui")]
 pub mod model;
 #[cfg(feature = "tui")]
 pub mod msg;

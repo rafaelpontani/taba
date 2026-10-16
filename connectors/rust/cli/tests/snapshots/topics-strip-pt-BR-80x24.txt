@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:22 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+3 tópicos  ordenado por nome (s)  dead-letter escondidas: 1 (v)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Nome                  Tipo         Prof.    Pub/s  Cons/s Idade   Estado      │
+│  fanout              distribuidor        —      —      —       — ✔ ok        │
+│▶ orders              fila fifo       1.500   12,5    3,0  2m 05s ▲ backlog   │
+│  replies             fila vol            7    0,2    0,2      3s ✔ ok        │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Mensagens  ● 1.800 ◆ 40─┐┌ Fluxo por segundo  ● 14┐┌ Mensagem mais velha  ● 4┐
+│1.978 │                 ⢠││14,8/s│                ⢠││4m 21s│                 ⢠│
+│      │                 ⡇││      │                ⡇││      │                 ⢠│
+│      │                ⢰⠁││      │               ⢸ ││      │                ⢰⡇│
+│989   │                  ││9,8/s │                ⢀││2m 15s│                ⢸ │
+│      │                  ││      │               ⢀⡔││      │                  │
+│0     │                ⢀⣀││4,7/s │               ⠘ ││9s    │                ⠐⠉│
+│      └──────────────────││      └─────────────────││      └──────────────────│
+│-5m 00s             agora││-5m 00s            agora││-5m 00s             agora│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter ações  g gráficos  l idioma  h ajuda  q sair              ⟳ 5s · L pt-BR

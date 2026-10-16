@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:02 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+Topics › orders · Messages
+Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
+┌ Received by this session (0) ────────────────────────────────────────────────┐
+│The API does not list a queue: the rows are the messages you read here. r     │
+│reads up to 10, p publishes.                                                  │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Message ─────────────────────────────────────────────────────────────────────┐
+│Select a message to see it.                                                   │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+ Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US

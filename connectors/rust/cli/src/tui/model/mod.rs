@@ -6,7 +6,8 @@ use taba_client::Error;
 
 use crate::profile::ConfigFile;
 use crate::tui::api::{
-    ApiCall, Backup, ClusterStatus, Drain, FlushReport, Me, Nodes, Severity, StopReport, Token,
+    ApiCall, Backup, ClusterStatus, Drain, FlushReport, Me, Missing, Nodes, Severity, StopReport,
+    Token, Topic, TopicNumbers,
 };
 use crate::tui::editor::Editor;
 use crate::tui::history::History;
@@ -19,17 +20,11 @@ pub enum Tab {
     Cluster,
     Topics,
     Tokens,
-    Messages,
     Profiles,
 }
 
-pub const TABS: [Tab; 5] = [
-    Tab::Cluster,
-    Tab::Topics,
-    Tab::Messages,
-    Tab::Tokens,
-    Tab::Profiles,
-];
+/// The messages are not a tab: they are one of the views of a topic (`Topics › name › Messages`).
+pub const TABS: [Tab; 4] = [Tab::Cluster, Tab::Topics, Tab::Tokens, Tab::Profiles];
 
 impl Tab {
     pub fn index(self) -> usize {
@@ -41,7 +36,6 @@ impl Tab {
             Tab::Cluster => "tab.cluster",
             Tab::Topics => "tab.topics",
             Tab::Tokens => "tab.tokens",
-            Tab::Messages => "tab.messages",
             Tab::Profiles => "tab.profiles",
         }
     }
@@ -207,6 +201,10 @@ pub enum Pending {
     /// The id and the name of the token.
     RevokeToken(String, String),
     RemoveProfile(String),
+    /// The name of the topic.
+    DeleteTopic(String),
+    /// Throws away every message of the topic, on every node.
+    Prune(String),
 }
 
 impl Pending {
@@ -219,6 +217,8 @@ impl Pending {
             Pending::FlushAll => ApiCall::FlushCluster,
             Pending::Stop => ApiCall::StopCluster,
             Pending::RevokeToken(id, _) => ApiCall::TokenRevoke(id.clone()),
+            Pending::DeleteTopic(name) => ApiCall::TopicDelete(name.clone()),
+            Pending::Prune(name) => ApiCall::Prune(name.clone()),
             Pending::RemoveProfile(_) => return None,
         })
     }
@@ -255,6 +255,10 @@ pub enum InputPurpose {
     },
     /// The part of a token name the Tokens tab filters by.
     TokenFilter,
+    /// The part of a topic name the Topics tab filters by.
+    TopicFilter,
+    /// The file the charts of a queue are written to (every line of the three charts).
+    ExportTopicCsv,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,9 +267,21 @@ pub struct Input {
     pub value: String,
 }
 
+/// What `Enter` opens on an item of a list: the title names the item, and each entry is an action of the screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Menu {
+    pub title: String,
+    pub items: Vec<crate::tui::keymap::Action>,
+    pub selected: usize,
+}
+
 /// One popup at a time (TUI-FRM-07); `Esc` closes it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modal {
+    /// The actions of the selected item (`Enter` on a list).
+    Menu(Menu),
+    /// The summary of the selected topic: its numbers, limits and tags.
+    TopicSummary,
     Help {
         scroll: u16,
     },
@@ -354,6 +370,8 @@ pub struct Monitor {
     pub frozen: Option<u64>,
     /// `true`: the scale starts at zero and ends at the largest value ever seen; `false`: it follows the window.
     pub fixed_scale: bool,
+    /// The chart fills the whole screen (`Enter`) instead of sitting next to the list of charts.
+    pub full: bool,
 }
 
 impl Default for Monitor {
@@ -363,6 +381,7 @@ impl Default for Monitor {
             window: 1,
             frozen: None,
             fixed_scale: false,
+            full: false,
         }
     }
 }
@@ -457,6 +476,161 @@ impl Default for TokensScreen {
     }
 }
 
+/// How the topics are ordered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopicSort {
+    Name,
+    Newest,
+    Oldest,
+    Depth,
+}
+
+impl TopicSort {
+    pub fn next(self) -> TopicSort {
+        match self {
+            TopicSort::Name => TopicSort::Newest,
+            TopicSort::Newest => TopicSort::Oldest,
+            TopicSort::Oldest => TopicSort::Depth,
+            TopicSort::Depth => TopicSort::Name,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            TopicSort::Name => "sort.name",
+            TopicSort::Newest => "sort.newest",
+            TopicSort::Oldest => "sort.oldest",
+            TopicSort::Depth => "sort.depth",
+        }
+    }
+}
+
+/// The numbers of the topics, by name, and whether the read was incomplete.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TopicStats {
+    pub by_name: std::collections::HashMap<String, TopicNumbers>,
+    pub partial: bool,
+    pub missing: Vec<Missing>,
+}
+
+/// The views of an open topic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopicTab {
+    Charts,
+    Messages,
+}
+
+/// A message this session received (TUI-MSG-04): the API does not list a queue, so these rows are what was read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Received {
+    pub id: String,
+    pub group: Option<String>,
+    pub deliveries: u64,
+    pub size: usize,
+    pub content_type: String,
+    /// The body as text (lossy for bytes that are not UTF-8).
+    pub body: String,
+    pub receipt: String,
+    /// When it was received (ms since the app opened).
+    pub at: u64,
+    /// When it turns visible again (ms since the app opened), while it is held.
+    pub held_until: Option<u64>,
+    /// Acknowledged: it is gone from the queue.
+    pub acked: bool,
+}
+
+/// The most received messages kept.
+pub const MAX_RECEIVED: usize = 1000;
+
+/// What the Messages view of a topic holds.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Messages {
+    /// Newest first.
+    pub rows: Vec<Received>,
+    pub selected: usize,
+    /// What the last publish, receive or prune said (severity, text).
+    pub last: Option<(Severity, String)>,
+}
+
+/// The charts of one queue (TUI-MSG-11, TUI-MON-*): what was sampled since they were opened.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopicMonitor {
+    pub name: String,
+    pub tab: TopicTab,
+    /// A distributor has no queue: no numbers, no charts, nothing to receive.
+    pub distributor: bool,
+    pub dead_letter: bool,
+    pub messages: Messages,
+    /// The window, the freeze and the scale, as in the charts of a node.
+    pub monitor: Monitor,
+    /// The reading on a schedule; its data is unused, the samples go to `series`.
+    pub feed: Feed<()>,
+    /// One ring per line: `visible`, `invisible`, `published`, `consumed`, `acked`, `oldest` and `g:<group>`.
+    pub series: std::collections::HashMap<String, crate::tui::history::Ring>,
+    /// The groups charted, in the order they first showed up (at most three), so their colors stay.
+    pub groups: Vec<String>,
+}
+
+impl TopicMonitor {
+    /// A monitor with nothing sampled yet.
+    pub fn new(name: String, tab: TopicTab, distributor: bool, dead_letter: bool) -> TopicMonitor {
+        TopicMonitor {
+            name,
+            tab,
+            distributor,
+            dead_letter,
+            messages: Messages::default(),
+            monitor: Monitor::default(),
+            feed: Feed::default(),
+            series: std::collections::HashMap::new(),
+            groups: Vec::new(),
+        }
+    }
+}
+
+/// The Topics tab (doc 34, section 6.4).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopicsScreen {
+    /// The strip of charts under the list: what was sampled of the topics that were selected lately (the most
+    /// recent last), so going back to one does not start its charts over.
+    pub previews: Vec<TopicMonitor>,
+    /// Show the dead-letter queues too; off by default (they follow their source queue).
+    pub show_dead: bool,
+    /// The charts of the queue being looked at (`Enter`), or none while the list is shown.
+    pub monitor: Option<TopicMonitor>,
+    /// Every topic the server lists, read page by page.
+    pub list: Feed<Vec<Topic>>,
+    pub reading: Vec<Topic>,
+    pub pages: u32,
+    /// Their numbers (depth, rates, age, condition), read the same way; a failure leaves the table without them.
+    pub stats: Feed<TopicStats>,
+    pub stats_reading: TopicStats,
+    pub stats_pages: u32,
+    /// The selected topic, by name.
+    pub selected: Option<String>,
+    pub filter: String,
+    pub sort: TopicSort,
+}
+
+impl Default for TopicsScreen {
+    fn default() -> TopicsScreen {
+        TopicsScreen {
+            show_dead: false,
+            previews: Vec::new(),
+            monitor: None,
+            list: Feed::default(),
+            reading: Vec::new(),
+            pages: 0,
+            stats: Feed::default(),
+            stats_reading: TopicStats::default(),
+            stats_pages: 0,
+            selected: None,
+            filter: String::new(),
+            sort: TopicSort::Name,
+        }
+    }
+}
+
 /// The Profiles tab (doc 34, section 6.7): the profiles file and the selected profile.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProfilesScreen {
@@ -489,6 +663,7 @@ pub struct Model {
     pub status_denied: Option<Fail>,
     pub cluster: ClusterScreen,
     pub tokens: TokensScreen,
+    pub topics: TopicsScreen,
     pub profiles: ProfilesScreen,
     /// Waiting for the person to choose a profile: nothing is read until then.
     pub awaiting_profile: bool,
@@ -533,6 +708,7 @@ impl Model {
             status_denied: None,
             cluster: ClusterScreen::default(),
             tokens: TokensScreen::default(),
+            topics: TopicsScreen::default(),
             profiles: ProfilesScreen {
                 selected: options.profiles.default.clone(),
                 file: options.profiles,
@@ -561,6 +737,7 @@ impl Model {
         self.status_denied = None;
         self.cluster = ClusterScreen::default();
         self.tokens = TokensScreen::default();
+        self.topics = TopicsScreen::default();
         let retention = self.history.retention_ms() / 1000;
         let interval = self.history.interval_ms() / 1000;
         self.history = History::new(retention, interval);

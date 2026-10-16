@@ -85,13 +85,19 @@ fn me_says_what_the_token_can_do() {
     assert!(
         manager.can("manage")
             && manager.can("create")
+            && manager.can("publish")
+            && manager.can("consume")
             && !manager.can("admin")
             && !manager.is_admin()
     );
     let admin = parse_me(r#"{"authEnabled":true,"root":false,"permissions":["admin"]}"#).unwrap();
     assert!(admin.is_admin() && !admin.is_root());
     assert!(
-        admin.can("admin") && admin.can("manage") && admin.can("create") && !admin.can("publish")
+        admin.can("admin")
+            && admin.can("manage")
+            && admin.can("create")
+            && admin.can("publish")
+            && admin.can("consume")
     );
     let open = parse_me(r#"{"authEnabled":false,"root":false,"permissions":[]}"#).unwrap();
     assert!(open.is_root() && open.can("admin"));
@@ -232,4 +238,85 @@ fn the_token_calls_map_to_their_routes() {
     let c = ApiCall::TokenRevoke("t1".into()).to_call();
     assert_eq!((c.method, c.path.as_str()), ("DELETE", "/tokens/t1"));
     assert!(ApiCall::TokenRevoke("t1".into()).is_action() && !ApiCall::Tokens(None).is_action());
+}
+
+/// TUI: TUI-TOP-01
+#[test]
+fn a_page_of_topics_is_read_with_its_definition_and_the_values_that_apply() {
+    let page = parse_topics(
+        r#"{"items":[{"id":"1","name":"orders","type":"queue","fifo":true,"volatile":false,"tags":{"team":"shop","env":"prod"},"ttl":60,"maxDeliveries":null,"maxMessageBytes":null,"effective":{"maxDeliveries":10,"maxMessageBytes":5242880,"ttl":60}},{"id":"2","name":"orders-dead-letter","deadLetter":true,"source":"orders"},{"id":"3","name":"fan","type":"distributor","prefixes":["a","b"]},{"nope":1}],"nextCursor":"abc"}"#,
+    )
+    .expect("a page");
+    assert_eq!(page.next_cursor.as_deref(), Some("abc"));
+    // The item without a name is skipped.
+    assert_eq!(page.items.len(), 3);
+    let orders = &page.items[0];
+    assert!(orders.fifo && !orders.volatile && !orders.is_distributor());
+    assert_eq!(
+        orders.tags,
+        [
+            ("team".into(), "shop".into()),
+            ("env".into(), "prod".into())
+        ]
+    );
+    assert_eq!((orders.ttl, orders.max_deliveries), (Some(60), None));
+    assert_eq!(orders.effective_max_deliveries, Some(10));
+    assert_eq!(orders.effective_max_message_bytes, Some(5_242_880));
+    let dead = &page.items[1];
+    assert!(dead.dead_letter);
+    assert_eq!(dead.source.as_deref(), Some("orders"));
+    assert_eq!(dead.kind, "queue");
+    assert!(page.items[2].is_distributor());
+    assert_eq!(page.items[2].prefixes, ["a", "b"]);
+}
+
+/// TUI: TUI-TOP-01
+#[test]
+fn the_numbers_of_a_topic_come_with_the_severity_of_its_worst_condition() {
+    let page = parse_topic_stats(
+        r#"{"items":[{"name":"orders","depth":9,"publishRate":1.5,"consumeRate":0,"oldestAge":61.2,"worstCondition":"stalled","conditions":[{"condition":"stalled","severity":"warning"},{"condition":"idle","severity":"info"}]},{"name":"fan"}],"partial":true,"missingNodes":[{"nodeId":"n2","reason":"timeout"}]}"#,
+    )
+    .expect("a page");
+    assert!(page.partial);
+    assert_eq!(page.missing.len(), 1);
+    let (name, orders) = &page.items[0];
+    assert_eq!(name, "orders");
+    assert_eq!(orders.depth, Some(9));
+    assert_eq!(orders.oldest_age, Some(61.2));
+    assert_eq!(
+        (orders.worst.as_str(), orders.severity),
+        ("stalled", Severity::Warning)
+    );
+    // A distributor has no numbers, and no condition other than `ok`.
+    let (_, fan) = &page.items[1];
+    assert_eq!((fan.depth, fan.worst.as_str()), (None, "ok"));
+}
+
+/// TUI: TUI-TPF-01
+#[test]
+fn the_topic_calls_use_the_routes_of_the_api() {
+    let route = |call: ApiCall| {
+        let c = call.to_call();
+        (c.method, c.path)
+    };
+    assert_eq!(
+        route(ApiCall::TopicUpdate("a b".into(), "{}".into())),
+        ("PATCH", "/topics/a%20b".to_owned())
+    );
+    assert_eq!(
+        route(ApiCall::TopicDelete("orders".into())),
+        ("DELETE", "/topics/orders".to_owned())
+    );
+    assert_eq!(
+        route(ApiCall::TopicCreate("{}".into())),
+        ("POST", "/topics".to_owned())
+    );
+    assert!(ApiCall::TopicDelete("x".into()).is_action());
+    assert!(!ApiCall::Topics(None).is_action());
+    let stats = ApiCall::TopicStats(Some("c".into())).to_call();
+    assert!(stats.query.contains(&("cursor".to_owned(), "c".to_owned())));
+    assert!(stats
+        .query
+        .iter()
+        .any(|(k, v)| k == "fields" && v.contains("worstCondition")));
 }

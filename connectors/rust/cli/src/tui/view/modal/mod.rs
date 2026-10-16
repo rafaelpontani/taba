@@ -19,6 +19,8 @@ mod forms;
 pub fn draw(f: &mut Frame, area: Rect, m: &Model) {
     let Some(modal) = &m.modal else { return };
     match modal {
+        Modal::Menu(menu) => draw_menu(f, area, m, menu),
+        Modal::TopicSummary => draw_topic_summary(f, area, m),
         Modal::Help { scroll } => draw_help(f, area, m, *scroll),
         Modal::Palette { query, selected } => draw_palette(f, area, m, query, *selected),
         Modal::Language { selected } => draw_language(f, area, m, *selected),
@@ -108,6 +110,81 @@ fn draw_palette(f: &mut Frame, area: Rect, m: &Model, query: &str, selected: usi
     f.render_widget(Paragraph::new(lines), list);
 }
 
+/// The summary of the selected topic, as a dialog.
+fn draw_topic_summary(f: &mut Frame, area: Rect, m: &Model) {
+    let tx = m.tx();
+    let th = m.theme;
+    let Some(topic) = crate::tui::screens::topics::selected(m) else {
+        return;
+    };
+    let lines = crate::tui::screens::topics::view::summary_lines(m, &topic);
+    let height = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(4);
+    let rect = centered(area, 90, height);
+    let inner = popup(
+        f,
+        rect,
+        &tx.tw("topic.dialog-summary", &[("name", &topic.name)]),
+        th.accent(),
+    );
+    let [body, hint] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), body);
+    f.render_widget(Paragraph::new(tx.t("summary.hint")).style(th.dim()), hint);
+}
+
+/// The actions of the selected item, each with its key; one that cannot run now is dim and says why.
+fn draw_menu(f: &mut Frame, area: Rect, m: &Model, menu: &crate::tui::model::Menu) {
+    let tx = m.tx();
+    let th = m.theme;
+    let height = u16::try_from(menu.items.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(4);
+    let rect = centered(area, 76, height.saturating_add(0));
+    let inner = popup(f, rect, &menu.title, th.accent());
+    let [list, hint] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    let lines: Vec<Line> = menu
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, action)| {
+            let reason = crate::tui::menu::gate(m, *action);
+            let key = crate::tui::menu::shortcut(m.tab, *action).unwrap_or("");
+            let style = match (i == menu.selected, reason.is_some()) {
+                (true, _) => th.selected(),
+                (false, true) => th.dim(),
+                (false, false) => Style::default(),
+            };
+            let mut spans = vec![Span::styled(
+                format!(
+                    "{}{:<30}",
+                    if i == menu.selected {
+                        th.selector()
+                    } else {
+                        "  "
+                    },
+                    tx.t(crate::tui::menu::label_key(*action))
+                ),
+                style,
+            )];
+            spans.push(Span::styled(format!(" {key:<6}"), th.key()));
+            Line::from(spans)
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), list);
+    // The line below says why the entry under the cursor cannot run, or how to use the menu.
+    let why = menu
+        .items
+        .get(menu.selected)
+        .and_then(|action| crate::tui::menu::gate(m, *action));
+    let note = match why {
+        Some(reason) => Paragraph::new(format!("{} {}", th.icon(Severity::Warning), tx.t(reason)))
+            .style(th.warning()),
+        None => Paragraph::new(tx.t("menu.hint")).style(th.dim()),
+    };
+    f.render_widget(note, hint);
+}
+
 fn draw_language(f: &mut Frame, area: Rect, m: &Model, selected: usize) {
     let tx = m.tx();
     let th = m.theme;
@@ -150,6 +227,8 @@ fn pending_keys(pending: &Pending) -> (&'static str, &'static str) {
             "confirm.remove-profile.title",
             "confirm.remove-profile.body",
         ),
+        Pending::DeleteTopic(_) => ("confirm.delete-topic.title", "confirm.delete-topic.body"),
+        Pending::Prune(_) => ("confirm.prune.title", "confirm.prune.body"),
     }
 }
 
@@ -159,7 +238,10 @@ fn draw_confirm(f: &mut Frame, area: Rect, m: &Model, confirm: &Confirm) {
     let (title, body) = pending_keys(&confirm.pending);
     let node = match &confirm.pending {
         Pending::Drain(id) | Pending::Return(id) | Pending::FlushNode(id) => short(id),
-        Pending::RevokeToken(_, name) | Pending::RemoveProfile(name) => name.clone(),
+        Pending::RevokeToken(_, name)
+        | Pending::RemoveProfile(name)
+        | Pending::DeleteTopic(name)
+        | Pending::Prune(name) => name.clone(),
         _ => String::new(),
     };
     let rect = centered(area, 64, 14);
@@ -397,8 +479,10 @@ fn draw_input(f: &mut Frame, area: Rect, m: &Model, input: &Input) {
     let tx = m.tx();
     let th = m.theme;
     let (title, prompt, hint) = match input.purpose {
+        InputPurpose::ExportTopicCsv => ("export.title", "export.prompt", "export.hint"),
         InputPurpose::ExportCsv { .. } => ("export.title", "export.prompt", "export.hint"),
         InputPurpose::TokenFilter => ("filter.title", "filter.prompt", "filter.hint"),
+        InputPurpose::TopicFilter => ("topic-filter.title", "topic-filter.prompt", "filter.hint"),
     };
     let rect = centered(area, 64, 7);
     let inner = popup(f, rect, &tx.t(title), th.accent());

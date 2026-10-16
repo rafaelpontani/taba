@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ▲ member unreachable  ▲ incomplete 12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 ┌ Conditions ──────────────────────────────────────────────────────────────────┐
 │▶ ▲ member unreachable                                                        │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -10,15 +10,15 @@ Membe┌ member unreachable ─────────────────�
 │▶ 01│What to do                                                          │    │
 │  01│Check that its process is running and that its cluster port is      │    │
 │  01│reachable.                                                          │    │
+└────│                                                                    │────┘
+┌ Mem│                                                                    │ 3 ─┐
+│844.│                                                                    │    │
 │    │                                                                    │    │
 │    │                                                                    │    │
-│    │                                                                    │    │
-│    │                                                                    │    │
-│    │                                                                    │    │
-│    │Enter or Esc closes                                                 │    │
-└────└────────────────────────────────────────────────────────────────────┘────┘
-┌ Memory 768.0 MiB ────────────────────┐┌ Messages in memory 1,200 ────────────┐
-│▄                                     ││█                                     │
-│█                                     ││█                                     │
-└──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  l language  h help  q quit     ⟳ 2s · L en-US
+│768.│Enter or Esc closes                                                 │   ⠈│
+│    └────────────────────────────────────────────────────────────────────┘    │
+│691.2 Mi│                ││1,080 │                 ││3     │                  │
+│        └────────────────││      └─────────────────││      └──────────────────│
+│  -5m 00s             now││-5m 00s              now││-5m 00s               now│
+└─────────────────────────┘└────────────────────────┘└─────────────────────────┘
+ Enter actions  d drain  u return  l language  h help  q quit    ⟳ 2s · L en-US

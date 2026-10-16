@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:02 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+Tópicos › orders · Mensagens
+Fila: 1.000 visíveis · 20 invisíveis · profundidade 1.020 · mais velha 2m 00s
+┌ Recebidas por esta sessão (4) ───────────────────────────────────────────────┐
+│Hora   ┌ Esvaziar o tópico? ──────────────────────────────────────────┐       │
+│  12:00│Todas as mensagens de orders são apagadas, em todos os nós.   │,"total│
+│▶ 12:00│Mensagens publicadas enquanto isso roda não entram. Isto não  │,"total│
+│  12:00│pode ser desfeito.                                            │,"total│
+│  12:00│                                                              │,"total│
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+└───────│                                                              │───────┘
+┌ Mensag│Digite orders para confirmar:                                 │───────┐
+│Id 01a1│> ▏                                                           │       │
+│applica│                                                              │       │
+│{"order│                  [ Cancelar ]  [ Confirmar ]                 │       │
+│       └──────────────────────────────────────────────────────────────┘       │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ✔ Confirmada 01a1-m2
+ Esc voltar  p publicar  r ler  a ack  l idioma  h ajuda         ⟳ 5s · L pt-BR

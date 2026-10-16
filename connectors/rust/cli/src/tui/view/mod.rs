@@ -10,7 +10,7 @@ use ratatui::Frame;
 use crate::tui::api::Severity;
 use crate::tui::i18n;
 use crate::tui::keymap::{self, Action};
-use crate::tui::model::{ClusterView, Model, Tab, TABS};
+use crate::tui::model::{ClusterView, Model, Tab, TopicTab, TABS};
 use crate::tui::screens;
 use crate::tui::screens::cluster as cluster_screen;
 
@@ -38,8 +38,11 @@ pub fn view(f: &mut Frame, m: &Model) {
     match m.tab {
         Tab::Cluster => cluster_screen::view::draw(f, body, m),
         Tab::Tokens => screens::tokens::view::draw(f, body, m),
+        Tab::Topics if m.topics.monitor.is_some() => {
+            screens::topics::monitor::view::draw(f, body, m)
+        }
+        Tab::Topics => screens::topics::view::draw(f, body, m),
         Tab::Profiles => screens::profiles::view::draw(f, body, m),
-        other => screens::placeholder::draw(f, body, m, other),
     }
     draw_footer(f, footer, m);
     modal::draw(f, area, m);
@@ -123,7 +126,9 @@ fn draw_tabs(f: &mut Frame, area: Rect, m: &Model) {
 /// The short label of an action in the footer.
 fn hint_key(action: Action) -> &'static str {
     match action {
-        Action::Detail | Action::Enter => "hint.detail",
+        Action::Detail => "hint.detail",
+        Action::Enter => "hint.actions",
+        Action::TopicCharts => "hint.charts",
         Action::Drain => "hint.drain",
         Action::Return => "hint.return",
         Action::FlushNode => "hint.flush",
@@ -134,7 +139,8 @@ fn hint_key(action: Action) -> &'static str {
         Action::Palette => "hint.palette",
         Action::Quit => "hint.quit",
         Action::Esc => "hint.back",
-        Action::Left | Action::Right => "hint.chart",
+        Action::Left | Action::Right | Action::Up | Action::Down => "hint.chart",
+        Action::ChartFull => "hint.full",
         Action::WindowWider | Action::WindowNarrower => "hint.window",
         Action::PauseChart => "hint.freeze",
         Action::Scale => "hint.scale",
@@ -145,10 +151,19 @@ fn hint_key(action: Action) -> &'static str {
         Action::Filter => "hint.filter",
         Action::Sort => "hint.sort",
         Action::SwitchProfile => "hint.profile",
-        Action::TokenNew | Action::ProfileNew => "hint.new",
-        Action::TokenEdit | Action::ProfileEdit => "hint.edit",
+        Action::TokenNew | Action::TopicNew | Action::ProfileNew => "hint.new",
+        Action::TokenEdit | Action::TopicEdit | Action::ProfileEdit => "hint.edit",
         Action::TokenClone => "hint.clone",
         Action::TokenRevoke => "hint.revoke",
+        Action::TopicDelete => "hint.delete",
+        Action::TopicDead => "hint.dead",
+        Action::TopicMessages => "hint.messages",
+        Action::MsgPublish => "hint.publish",
+        Action::MsgReceive => "hint.receive",
+        Action::MsgAck => "hint.ack",
+        Action::MsgAckAll => "hint.ack-all",
+        Action::MsgRelease => "hint.release",
+        Action::MsgPrune => "hint.prune",
         Action::ProfileUse => "hint.use",
         Action::ProfileDefault => "hint.default",
         Action::ProfileRemove => "hint.remove",
@@ -167,7 +182,7 @@ fn hint_key_label(action: Action) -> String {
 fn hint_actions(m: &Model) -> &'static [Action] {
     match (m.tab, m.cluster.view) {
         (Tab::Cluster, ClusterView::List) => &[
-            Action::Detail,
+            Action::Enter,
             Action::Drain,
             Action::Return,
             Action::FlushNode,
@@ -188,7 +203,8 @@ fn hint_actions(m: &Model) -> &'static [Action] {
         ],
         (Tab::Cluster, ClusterView::Monitor) => &[
             Action::Esc,
-            Action::Left,
+            Action::Up,
+            Action::ChartFull,
             Action::WindowWider,
             Action::PauseChart,
             Action::Scale,
@@ -196,6 +212,7 @@ fn hint_actions(m: &Model) -> &'static [Action] {
             Action::Help,
         ],
         (Tab::Tokens, _) => &[
+            Action::Enter,
             Action::TokenNew,
             Action::TokenEdit,
             Action::TokenClone,
@@ -205,19 +222,55 @@ fn hint_actions(m: &Model) -> &'static [Action] {
             Action::Help,
             Action::Quit,
         ],
+        (Tab::Topics, _)
+            if m.topics
+                .monitor
+                .as_ref()
+                .is_some_and(|mon| mon.tab == TopicTab::Messages) =>
+        {
+            &[
+                Action::Esc,
+                Action::MsgPublish,
+                Action::MsgReceive,
+                Action::MsgAck,
+                Action::MsgAckAll,
+                Action::MsgRelease,
+                Action::MsgPrune,
+                Action::Help,
+            ]
+        }
+        (Tab::Topics, _) if m.topics.monitor.is_some() => &[
+            Action::Esc,
+            Action::Up,
+            Action::ChartFull,
+            Action::WindowWider,
+            Action::PauseChart,
+            Action::Scale,
+            Action::Export,
+            Action::Help,
+            Action::Quit,
+        ],
+        (Tab::Topics, _) => &[
+            Action::Enter,
+            Action::TopicCharts,
+            Action::TopicMessages,
+            Action::TopicNew,
+            Action::TopicEdit,
+            Action::TopicDelete,
+            Action::TopicDead,
+            Action::Filter,
+            Action::Sort,
+            Action::Help,
+            Action::Quit,
+        ],
         (Tab::Profiles, _) => &[
+            Action::Enter,
             Action::ProfileUse,
             Action::ProfileNew,
             Action::ProfileEdit,
             Action::ProfileDefault,
             Action::ProfileRemove,
             Action::ProfileTest,
-            Action::Help,
-            Action::Quit,
-        ],
-        _ => &[
-            Action::Palette,
-            Action::Language,
             Action::Help,
             Action::Quit,
         ],
@@ -231,6 +284,23 @@ fn disabled(m: &Model, action: Action) -> bool {
             action,
             Action::TokenNew | Action::TokenEdit | Action::TokenClone | Action::TokenRevoke
         ) && screens::tokens::gate(m, action).is_some();
+    }
+    if m.tab == Tab::Topics {
+        if m.topics.monitor.is_some() {
+            return matches!(
+                action,
+                Action::MsgPublish
+                    | Action::MsgReceive
+                    | Action::MsgAck
+                    | Action::MsgAckAll
+                    | Action::MsgRelease
+                    | Action::MsgPrune
+            ) && screens::topics::messages::gate(m, action).is_some();
+        }
+        return matches!(
+            action,
+            Action::TopicNew | Action::TopicEdit | Action::TopicDelete
+        ) && screens::topics::gate(m, action).is_some();
     }
     m.tab == Tab::Cluster
         && matches!(

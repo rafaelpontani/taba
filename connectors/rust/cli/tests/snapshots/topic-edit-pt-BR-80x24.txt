@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:01 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+3 tópicos  ordenado por nome (s)  dead-letter escondidas: 1 (v)
+┌─┌ Editar o tópico ─────────────────────────────────────────────────────────┐─┐
+│N│  Nome                   orders  (não muda depois de criado)              │ │
+│ │  Tipo: distribuidor     [ ]  (não muda depois de criado)                 │ │
+│▶│  FIFO                   [x]  (não muda depois de criado)                 │ │
+│ │  Volátil                [ ]  (não muda depois de criado)                 │ │
+│ │  Tempo ocioso (s)         (só filas voláteis)                            │ │
+│ │▶ Bytes máx. da mensagem ▏                                                │ │
+│ │  TTL (s)                3600                                             │ │
+│ │  Máx. de entregas                                                        │ │
+└─│  Tags (chave=valor)     team=shop                                        │─┘
+┌ │  Prefixos                 (só distribuidores)                            │─┐
+│N│                                                                          │ │
+│I│                                                                          │ │
+│C│Tipo desmarcado é fila. Tags e prefixos: separados por espaço. Limites    │ │
+│T│vazios (ou default) usam os valores do nó. O servidor confere o resto.    │ │
+│L│                                                                          │ │
+│ │                                                                          │ │
+│O│Tab próximo campo · Espaço marca · Enter no último campo ou Ctrl+S salva ·│ │
+│ └──────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter ações  g gráficos  l idioma  h ajuda  q sair              ⟳ 5s · L pt-BR

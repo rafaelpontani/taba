@@ -1,0 +1,30 @@
+ prod https://taba.example:8080  ✔ healthy                                             12:02:05 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
+┌ Messages on disk · total 1,020,000 ──────────────────────────────────────────────────────────────┐
+│374,000│                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│340,000│                                                    ⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠁ │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│       │                                                                                          │
+│306,000│                                                                                          │
+│       └──────────────────────────────────────────────────────────────────────────────────────────│
+│ -5m 00s                                                                                       now│
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
+2m 04s collected: the history is only what was sampled since the app opened · automatic scale
+
+ Esc back  ↑ scroll  Enter full screen  + window  Space freeze  l language  h help   ⟳ 2s · L en-US

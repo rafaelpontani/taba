@@ -20,7 +20,7 @@ sources: [connectors/rust/cli/src, connectors/rust/client/src, doc/en-US/16-clie
 | **Cluster** | See the conditions and the state of each node (memory, disk, sync); **drain** and **return** a node; **backup flush**; **stop the cluster**; charts |
 | **Tokens** | List, **create** (the secret shows once), **change** name and expiry, **revoke**, clone |
 | **Topics** | List, filter, **create**, **change**, **delete**; charts and groups |
-| **Messages** | **Publish**, **listen**, **browse**, **ack** and visibility, **prune** |
+| **Messages** (a view of a topic, no tab of its own) | **Publish**, **read**, **ack** and give back, **prune** |
 | **Profiles** | Today's profile screen, rebuilt (D-TUI-8): list, create, edit, remove, choose the default, test the connection and **connect** with another profile; on opening with no profile given, the choice of the profile |
 
 For every screen: everything scrolls (arrows, `PgUp`/`PgDn`, `Home`/`End`, mouse wheel); **every action has a shortcut** and the mouse is never required; texts in `en-US` and `pt-BR`; an action that deletes or interrupts asks for confirmation; a token secret never goes to a log.
@@ -109,11 +109,11 @@ Arrows and Vim keys do the same; the letters are mnemonic **and equal in every l
 
 | Keys | Action |
 |---|---|
-| `1`…`5` · `[` `]` · `Alt+←/→` | Go to a tab · previous / next |
+| `1`…`4` · `[` `]` · `Alt+←/→` | Go to a tab · previous / next |
 | `Tab` · `Shift+Tab` | Next / previous panel |
 | `↑ ↓` `k j` · `PgUp PgDn` `Ctrl+u Ctrl+d` · `Home End` `g G` | Move, scroll, first / last |
 | `← →` `h l` | Collapse-expand, switch inner tab, move between fields |
-| `Enter` · `Esc` | Open / confirm · close / cancel |
+| `Enter` · `Esc` | On a list: open the **actions menu** of the selected item (in a popup: confirm) · close / cancel |
 | `/` · `s` `S` · `r` · `p` | Filter · sort / reverse · refresh now · pause |
 | `:` | Command palette (fuzzy search of any action) |
 | `l` · `o` · `h` `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Language · switch profile · help · quit (asks if a listener or a changed form exists) · submit a form |
@@ -121,11 +121,11 @@ Arrows and Vim keys do the same; the letters are mnemonic **and equal in every l
 
 | Screen | Keys |
 |---|---|
-| Cluster | `Enter` detail · `d` drain · `u` return · `b` flush this node · `B` flush all · `S` stop the cluster · `m` monitoring |
-| Topics | `n` new · `e` edit · `Del` delete · `Enter` open · `m` monitoring · `x` messages |
-| Tokens | `n` new · `e` edit · `c` clone · `Del` `x` revoke · `/` filter · `s` sort |
-| Profiles | `Enter` connect · `n` new · `e` edit · `d` default · `Del` `x` remove · `t` test |
-| Messages | `Ctrl+Enter` publish · `l` listen · `a` ack · `v` visibility · `A` ack all · `P` prune · `b` browse · `c` charts |
+| Cluster | `Enter` actions of the node (the first is its detail) · `i` detail · `d` drain · `u` return · `b` flush this node · `B` flush all · `S` stop the cluster · `m` charts of the cluster (list of indicators; `↑` `↓` choose, `Enter` full screen) |
+| Topics | `n` new · `e` edit · `Del` `d` delete · `v` show or hide the dead-letter queues (hidden by default) · `/` filter · `s` sort · `Enter` actions menu of the topic · `i` summary · `g` open the charts · `x` open the messages |
+| Tokens | `Enter` actions menu · `n` new · `e` edit · `c` clone · `Del` `x` revoke · `/` filter · `s` sort |
+| Profiles | `Enter` actions menu · `c` connect · `n` new · `e` edit · `d` default · `Del` `x` remove · `t` test |
+| Inside a topic (Charts / Messages screens) | `Esc` returns to the list (on the full screen of a chart, to the list of charts first) · in Charts: `↑` `↓` choose the chart · `Enter` full screen · in Messages: `p` publish · `r` read (asks for the invisibility time, 30 s by default) · `a` ack · `A` ack all · `v` give back · `P` prune |
 
 ## 6. Requirements per screen
 
@@ -136,7 +136,7 @@ Numbered requirements (`TUI-<screen>-<nn>`); tests and phases cite the IDs. The 
 | ID | Requirement |
 |---|---|
 | TUI-FRM-01 | Status line: profile, URL, the cluster's worst condition (word **and** icon, never color alone) and the clock. Source: `GET /cluster/status`; with a plain token, only `GET /nodes`. |
-| TUI-FRM-02 | Five tabs (Cluster, Topics, Messages, Tokens, Profiles) by `1`…`5`, `[` `]`, `Alt+←/→`. |
+| TUI-FRM-02 | Four tabs (Cluster, Topics, Tokens, Profiles) by `1`…`4`, `[` `]`, `Alt+←/→`. The messages are not a tab: they are a view of an open topic. |
 | TUI-FRM-03 | Footer: keys of the focused panel, refresh state (`⟳ 2s`, paused, stale with the time of the last good data) and language. |
 | TUI-FRM-04 | Every list and text scrolls; the scrollbar shows only when the content exceeds. |
 | TUI-FRM-05 | Every action has a shortcut; the mouse is optional. Characters typed with AltGr (`/`, `?`, `@` on ABNT2 and other layouts; Windows reports Ctrl+Alt) work as keys and in text fields. |
@@ -205,11 +205,13 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 | TUI-TOK-05 | Clone (`c`) opens Create pre-filled; after creating, offers to revoke the old one (default **No**). Revoke asks for confirmation and says it applies on every node. | `DELETE` |
 | TUI-TOK-06 | Without the root token or the `admin` permission the tab explains the `403` and which profile/token is in use, instead of an empty list. | `required` |
 
-### 6.6 Messages — the workbench
+### 6.6 Messages — a view of the topic
+
+There is no Messages tab: a message always belongs to a topic, so the topic is chosen first, in the Topics tab. `Enter` on a topic opens a menu of what can be done to it (charts, messages, publish a message, read messages, empty the queue, edit the topic, delete the topic); `g` and `x` open the charts and the messages straight from the list. Both are screens that replace the list, headed `Topics › orders · Charts` or `Topics › orders · Messages`; `Esc` goes back to the list.
 
 | ID | Requirement | Source |
 |---|---|---|
-| TUI-MSG-01 | Opens on a topic chosen in a selector, or straight from the list (`x`); shows type and depth. | `GET /stats/topics/{t}` |
+| TUI-MSG-01 | Opens from the topic list (`x`, or `←` `→` from its charts); the topic is already chosen, so there is no selector. Shows the counters of the queue. | `GET /stats/topics/{t}` |
 | TUI-MSG-02 | **Publish:** multi-line body, content type, `groupId`, `deduplicationId`, repeat count; `Ctrl+Enter` sends; the result (id, `duplicate` or error) stays visible. For JSON, a light check warns without blocking. | `POST …/messages` |
 | TUI-MSG-03 | **Listen** (`l`): long polling; each message arrives already delivered; **auto-ack** switchable; `a` ack, `v` visibility, `A` ack all; stopping with un-acked messages asks. | `GET …/messages?wait`, `DELETE`, `PUT …/visibility` |
 | TUI-MSG-04 | Table of what was received (time, id, group, deliveries, state `visible`/`invisible until hh:mm:ss`, size, a body snippet), newest first; new arrivals do not move the selection ("↑ n new" badge); keeps the last 1 000. The screen says that **the API does not list a queue's messages**: the rows are the received ones, and the header counters are the truth about the queue. | D-TUI-6 |
@@ -303,13 +305,41 @@ Each phase ends with something usable, green tests and docs updated **in every l
 |---|---|---|
 | **0 — Foundation** ✅ | Feature `tui`, `taba-cli tui`, a panic-safe terminal, event loop, Elm core, workers, `api.rs`, the frame (6.1), key map, help, palette, i18n in both languages, theme/`NO_COLOR`, confirmation. **First:** check that `musl` and `arm64` build with ratatui/crossterm and measure the binary against `dist/` | The empty tabs navigate; switching language works; drawing and i18n tests pass |
 | **1 — Cluster** ✅ | 6.2, `prom.rs`, `history.rs`, node charts (6.3), the `partial` badge, node and cluster actions | Matches `taba-cli health cluster` and `drain *`; a drain and a return through the TUI on the 3-node Compose |
-| **2 — Topics** | 6.4 and topic monitoring and groups | Create, edit and delete equal to the `topic *` commands; smooth paging with more than 1 000 topics |
+| **2 — Topics** 🟨 (the list and the forms are done) | 6.4 and topic monitoring and groups | Create, edit and delete equal to the `topic *` commands; smooth paging with more than 1 000 topics |
 | **3 — Tokens** ✅ | 6.5 with the secret popup and cloning | Equal to the `token *` commands; the secret is never visible after closing |
-| **4 — Messages** | 6.6: publish, listen, ack, visibility, browse, **prune** and the selection charts | A message published in the TUI is received in the same TUI and by `taba-cli consume`; prune on a 3-node Compose empties every node, and with a node stopped fails naming it |
+| **4 — Messages** 🟨 (publish, read, ack, give back and prune are done) | 6.6: publish, listen, ack, visibility, browse, **prune** and the selection charts | A message published in the TUI is received in the same TUI and by `taba-cli consume`; prune on a 3-node Compose empties every node, and with a node stopped fails naming it |
 | **5 — Profiles and cleanup** 🟨 (the Profiles tab is done) | The Profiles tab (D-TUI-8); remove `tui/term.rs` and `tui/keys`; mouse, ASCII, narrow layouts | The old code is gone; `taba-cli profile` does not change for those who use it |
 | **6 — Docs and release** | [20-cli.md](20-cli.md), [05-dependencies.md](05-dependencies.md), [24-conventions.md](24-conventions.md) (the CLI's zero-dependency rule), the CLI `README.md`, build scripts and Dockerfile, [30-decisions.md](30-decisions.md); captures | `verificar.mjs` and `verificar-idiomas.mjs` pass; the binaries of the six targets build |
 
 **Risks.** (1) `musl` and `arm64` with ratatui/crossterm (phase 0). (2) The binary grows; measure and record. (3) The TUI never claims an emptied queue it cannot prove: the `removed` and the partial failure are shown as the server gives them.
+
+### Record of phase 2: the charts of a topic (2026-10-16)
+
+- **Where it is:** `src/tui/screens/topics/monitor` (`mod.rs`, `view.rs`, `tests.rs`), `TopicMonitor` in `src/tui/model`, `TopicSample` and `parse_topic_sample` in `src/tui/api`. `Enter` on a queue opens three charts stacked on one time axis (TUI-MSG-11): (1) **visible** and **invisible** messages; (2) the **flow** per second: in (published), out (delivered) and deleted (acked); (3) the **age of the oldest** message of the queue and of its **three largest groups** (the noisy groups). `Esc` goes back to the list.
+- **How it reads:** one `GET /stats/topics/{name}` every `history.interval` (5 s), which already carries the counts, the three rates, `oldestAge` and `topGroups` with the age of each group; the reading goes on with another tab shown, while the charts are open. Each reading becomes one point per line. An empty queue has an age of zero; a group that leaves the reading leaves a gap. The groups followed are the three largest seen first (their colors do not change).
+- **Keys:** those of the node charts: `+` `-` window (1, 5, 15, 30, 60 min, limited to the retention), `Space` freezes, `z` automatic or zero-based scale, `e` writes a CSV with every line (never over an existing file). The legend sits in the title of each chart, with marker, color and the value now.
+- **Limits:** the history is only what was sampled since the charts opened (the screen says how many minutes there are); the server still returns the view of **one node** in the statistics (PRB-059), so the cluster numbers may be below the total; a distributor has no queue and the key is refused with the reason.
+- **Tests:** 301 unit tests in the library, 75 screen snapshots (the charts at 80×24 and 120×40, in both languages). The integration tests did not run this time because `taba-cli.exe` was open. It was not exercised in a real terminal or against a server.
+
+### Record of phase 4: messages inside the topic (2026-10-16)
+
+- **Decision:** there is **no Messages tab**. The tabs are Cluster, Topics, Tokens and Profiles (`1` to `4`), because a message needs a topic and the Topics tab already chooses it. An open topic has two views, **Charts** and **Messages**: `Enter` opens the charts, `x` opens the messages, `←` `→` switch and `Esc` goes back to the list. A distributor opens only on Messages (it has no queue to chart or to read).
+- **Revision (same day): the actions menu.** `Enter` on a row of the Topics, Tokens, Profiles and Cluster (nodes) lists opens a menu of the actions of that item, each named after what it acts on (`Edit the topic`, `Delete the topic`, `Publish a message`, `Read messages`, `Empty the queue`), so a topic is not mistaken for a message. An entry that cannot run now is dim and the line under the menu says why. The keys of each screen still work straight from the list. The charts and the messages of a topic stopped being screens that replace the list and became **dialogs** over it, like the forms; `←` `→` no longer switch between them (`Esc` and then `g` or `x`). Keys that changed: `Enter` no longer opens the charts, the node detail (now `i`, or the first entry of the menu) or connects a profile (now `c`); `g` opens the charts of a topic (`Home` still goes to the top). `src/tui/menu` holds the menu, `Modal::Menu` the popup.
+- **Second revision (same day): multi-line body, summary and strip of charts.** (1) The body of a message is an **area of several lines** (`Field::area` in `src/tui/editor`): numbered lines, a cursor that moves (`←` `→` `↑` `↓` `Home` `End`), `Enter` breaks the line, `Backspace` and `Del` delete, a paste keeps its lines (tabs become a space); `↑` on the first line and `↓` on the last go to the neighbouring field, `Tab` always does, and `Ctrl+s` sends. (2) The summary that was under the list (name, id, creation, tags, limits) became a view of its own: `i`, or *Summary of the topic* in the menu, opens it as a dialog. (3) In its place, under the list, are the **three charts of the selected queue side by side** (messages, flow, age), each with only its markers and current values in the title; they are fed by the same reading as the charts dialog (`GET /stats/topics/{name}`), once per interval and only while the list is shown. The last 8 topics selected keep their samples (`TopicsScreen::previews`), and the charts dialog starts from them. A distributor has no queue, so under it the summary is shown as before.
+- **Third revision (same day): read form, charts of the nodes.** (1) The menu of a topic no longer lists *Messages of the topic* (`x` still opens it): whoever opens a topic's menu wants to publish or read. (2) *Read messages* (`r`) opens a form with the **time of invisibility already filled in with 30 s** (`ApiCall::Receive(topic, secs)`); the form is the confirmation, and a zero or a non-number is refused in the form. The rows are held for the time that was asked. (3) Under the list of nodes the two sparklines became **three line charts of the selected node** side by side (memory, messages in memory, requests in flight), always at the bottom. (4) The charts view of the cluster (`m`) is a **list of the six indicators on the left** with the current figure of each; `↑` `↓` choose, the chart of the one under the cursor is drawn beside it, and `Enter` gives it the **whole screen** (`Esc` leaves the full screen first, then the charts). `←` `→` no longer scroll a grid of four.
+- **Fourth revision (same day): the topic screens are screens again.** The charts and the messages of a topic had become dialogs over the list; the messages did not work well that way, so **both are screens that replace the list again**, with a head line `Topics › name · Charts` / `· Messages` (the summary stays a dialog). The charts of a queue now work like the charts of the cluster: a **list of the three indicators on the left** (messages, flow, age, each with its current figure), the chart under the cursor beside it, `↑` `↓` to choose and `Enter` for the **whole screen** (`Esc` leaves the full screen first, then the charts).
+- **Where it is:** `src/tui/screens/topics/messages` (`mod.rs` state and keys, `view.rs` drawing, `tests.rs`), `TopicTab`, `Received` and `Messages` in `src/tui/model`, `ApiCall::{Publish, Receive, Ack, Release, Prune}` and their readers in `src/tui/api`, `Scope::Messages` in the key map. `taba-client` did not change.
+- **Done (TUI-MSG-01 to 04, 06 to 09):** `p` publishes (a form with body, content type, group id and deduplication id; the result stays on a line under the table and a refusal stays in the form); `r` reads up to 10 messages **after a confirmation** that says they become invisible to the other consumers for 30 s (D-TUI-6: opening the view, the topic or refreshing never reads); the table lists what was read, newest first, with time, id, group, deliveries, state (`invisible 27s`, `visible again`, `deleted`), size and a snippet, keeps the last 1 000 and does not move the selection when new ones arrive; `a` acknowledges the selected message, `A` all of those still held, `v` gives the selected one back to the queue (visibility `0`); `P` prunes after the topic name is typed. The counters of the queue (visible, invisible, depth, oldest) come from the same sampler as the charts. The keys are refused with the reason when the token lacks `publish`, `consume` or `manage`, on a distributor and on a dead-letter queue (it cannot be published to).
+- **Differences from the plan, and why:** (1) **Prune needs `manage`**, not `admin`: that is what the server checks (`http/auth`). (2) **No listening** (long polling with auto-ack) yet, and the *Browse* of the plan is the single **read** (`r`, 10 messages, 30 s, fixed): the quantity and the time are not asked. (3) The body is a **multi-line editor** (see the second revision), but there is no repeat count and the JSON check is left out. (4) A row keeps the first 4 096 characters of the body (the size shown is the real one); there is no indented JSON and no scrolling of the body. (5) **No search or sorting** of the rows and no `c` charts of the selection: the Charts view of the same topic is that. (6) A receipt only works while the message is held: after the 30 s the row stops being offered to `a` and `v`. (7) `p` and `r` shadow *pause* and *refresh* inside the Messages view.
+- **Tests:** `cargo test -p taba-cli` passes (312 unit, 77 command, 1 live and 9 packaging); `clippy` has no warnings; the 11 new unit tests cover opening, the gates, publishing, reading, acknowledging, giving back, the lost receipt and pruning, and there are snapshots of the view at 80×24 and 120×40 in both languages. It was not exercised in a real terminal or against a server.
+
+### Record of phase 2: the list and forms of topics (2026-10-16)
+
+
+- **Where it is:** `src/tui/screens/topics` (state, keys, forms and drawing, with `tests.rs`), `Purpose::Topic*` in `src/tui/editor`, `Topic`, `TopicNumbers` and the page readers in `src/tui/api`, and the periodic read in `src/tui/update` (like the tokens). `taba-client` did not change: the body of the `POST` and the `PATCH` comes from the same `TopicRequest` and `TopicUpdate` as the `topic *` commands.
+- **Done (TUI-TOP-01, 03 to 05; TUI-TPF-01 to 04):** a table with name, kind (`queue`, `queue fifo`, `queue vol`, `distributor`, `dead-letter`), depth, publish and consume rates, age of the oldest and state (an icon and the worst condition, untranslated); a dead-letter queue shows dimmed, without limits in the detail and with a note that it follows its source queue; a distributor shows "—" where there is no queue. A filter by part of the name (`/`) and an order (`s`: name, newest, oldest, depth). Create (`n`) with every field; edit (`e`) with type, FIFO and volatile locked and the reason beside them, and the fields that do not apply to the type locked too; only what changed goes in the `PATCH`, and the three limits take a number or `default` (back to the node default). Delete (`Del` or `d`) asks for the name typed, warns that the messages and the dead-letter queue are lost and drops the topic from the table at once. The server error (`code: message`) shows in the form, which stays open. Without `create` or `manage` the key is refused with the reason (TUI-FRM-10); so it is on a dead-letter queue.
+- **Differences from the plan, and why:** (1) **no cursor scrolling**: the list reads the pages 200 at a time, up to 25 (5 000 topics), like the tokens, and filters and sorts in the TUI itself, without calling the server; going past that waits for a server with that many topics to measure. (2) The numbers come from `GET /stats/topics` (`fields=…,conditions`), read **beside** the list: if they fail, the table shows the topics without numbers and says "numbers unavailable". (3) One filter only, by name; there is **no** filter by tag or by condition (`name` is the server filter, done here in the TUI). (4) Validation is **on send** (name, numbers, `key=value`, a distributor's prefixes, fields that do not apply to the type), not on each key; the rest is the server's. (5) `d` deletes too (`x` is kept for messages, as in the plan). (6) `Enter` opens **the charts directly** (without the Summary, Configuration and Groups tabs of TUI-TPF-05, which do not exist yet); there is no `m` key. The Groups tab (TUI-MON-08) and the Messages tab from a topic do not exist either.
+- **Tests:** `cargo test -p taba-cli` passes (293 unit, 77 command, 71 screen snapshots, among them the table at 80×24 and 120×40 in both languages, the forms and the delete confirmation); `clippy` has no warnings. It was not exercised in a real terminal or against a server.
 
 ### Record of phase 3 and the Profiles tab (2026-10-15)
 

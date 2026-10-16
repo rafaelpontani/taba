@@ -81,8 +81,10 @@ impl TokenRecord {
     pub fn allows(&self, permission: Permission) -> bool {
         let has = |p: Permission| self.permissions.contains(&p);
         has(permission)
-            || (permission == Permission::Create
-                && (has(Permission::Manage) || has(Permission::Admin)))
+            || (matches!(
+                permission,
+                Permission::Create | Permission::Publish | Permission::Consume
+            ) && (has(Permission::Manage) || has(Permission::Admin)))
             || (permission == Permission::Manage && has(Permission::Admin))
     }
 

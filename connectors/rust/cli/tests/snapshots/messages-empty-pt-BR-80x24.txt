@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:02 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
+Tópicos › orders · Mensagens
+Fila: 1.000 visíveis · 20 invisíveis · profundidade 1.020 · mais velha 2m 00s
+┌ Recebidas por esta sessão (0) ───────────────────────────────────────────────┐
+│A API não lista a fila: as linhas são as mensagens que você leu aqui. r lê até│
+│10, p publica.                                                                │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Mensagem ────────────────────────────────────────────────────────────────────┐
+│Selecione uma mensagem para vê-la.                                            │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+ Esc voltar  p publicar  r ler  a ack  l idioma  h ajuda         ⟳ 5s · L pt-BR
