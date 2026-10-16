@@ -246,9 +246,9 @@ fn a_partial_read_is_kept_and_its_sample_is_marked() {
 fn the_tabs_navigate_by_number_and_brackets() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
     sim.press('3');
-    assert_eq!(sim.m.tab, Tab::Tokens);
-    sim.press(']');
     assert_eq!(sim.m.tab, Tab::Messages);
+    sim.press(']');
+    assert_eq!(sim.m.tab, Tab::Tokens);
     sim.press(']');
     sim.press(']');
     assert_eq!(sim.m.tab, Tab::Cluster);

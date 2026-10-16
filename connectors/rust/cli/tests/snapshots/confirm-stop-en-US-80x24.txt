@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
 ┌ Conditions ──────────────────────────────────────────────────────────────────┐
 │✔ healthy                                                                     │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -21,4 +21,4 @@ Members:┌ Stop the cluster? ────────────────�
 │▄                                     ││█                                     │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US
+ Enter detail  d drain  u return  L language  ? help  q quit     ⟳ 2s · L en-US

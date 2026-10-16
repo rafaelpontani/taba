@@ -1,0 +1,40 @@
+ prod https://taba.example:8080  ✔ saudável                                                                12:00:01 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+3 tokens  ordenado por mais novo primeiro (s)
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Nome                   Id             Permissões             Prefixos de tópico                   Expira              │
+│▶ billing              0191…00000b    admin                  —                                    18/10/2026 00:00:00 │
+│  orders-app           0191…00000a    publish,consume        orders.                              nunca               │
+│  old-batch            0191…00000c    consume                batch. etl.                          01/10/2026 00:00:00 │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Token ───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Nome               billing                                                                                            │
+│Id                 0191f3a2-7c1e-7000-8000-00000000000b                                                               │
+│Permissões         admin                                                                                              │
+│Prefixos de tópico todos os tópicos                                                                                   │
+│Criado             10/10/2026 10:00:00                                                                                │
+│Expira             18/10/2026 00:00:00 (expira em breve)                                                              │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ n novo  e editar  c clonar  Del revogar  / filtrar  s ordenar  L idioma  ? ajuda  q sair                ⟳ 5s · L pt-BR

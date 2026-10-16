@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ verificando                     00:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+Carregando...
+
+
+
+
+
+
+     ┌ Qual perfil? ──────────────────────────────────────────────────────┐
+     │  ○ dev                  http://localhost:8080                      │
+     │▶ ● prod                 https://taba.example:8080                  │
+     │                                                                    │
+     │Enter conecta · Esc usa o padrão (●) · ↑↓ escolhem. A bolinha cheia │
+     │marca o padrão.                                                     │
+     └────────────────────────────────────────────────────────────────────┘
+
+
+
+
+
+
+
+ Enter detalhe  d drenar  u devolver  L idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR

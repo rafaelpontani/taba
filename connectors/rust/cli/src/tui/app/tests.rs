@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use taba_client::{Call, Error, Reply};
 
 use super::*;
+use crate::profile::{ConfigFile, Profile};
 use crate::tui::api::ApiCall;
 use crate::tui::i18n::Lang;
 use crate::tui::testing::*;
@@ -13,6 +14,10 @@ struct FakeHost {
     languages: Vec<Lang>,
     files: Vec<(String, String)>,
     fail_writes: bool,
+    secrets: Vec<(String, String)>,
+    saved: Vec<crate::profile::ConfigFile>,
+    connected: Vec<String>,
+    fail_connect: bool,
 }
 
 impl Host for FakeHost {
@@ -28,6 +33,41 @@ impl Host for FakeHost {
         self.files.push((path.to_owned(), contents.to_owned()));
         Ok(())
     }
+
+    fn write_secret(&mut self, path: &str, contents: &str) -> Result<(), String> {
+        self.secrets.push((path.to_owned(), contents.to_owned()));
+        Ok(())
+    }
+
+    fn save_profiles(&mut self, file: &ConfigFile) -> Result<(), String> {
+        if self.fail_writes {
+            return Err("disk full".to_owned());
+        }
+        self.saved.push(file.clone());
+        Ok(())
+    }
+
+    fn check_profile(&mut self, _: &Profile) -> crate::tui::msg::CheckResult {
+        crate::tui::msg::CheckResult::Reachable {
+            url: "http://x".to_owned(),
+            millis: 7,
+        }
+    }
+
+    fn connect(&mut self, name: &str) -> Result<Connection, String> {
+        if self.fail_connect {
+            return Err("no token file".to_owned());
+        }
+        self.connected.push(name.to_owned());
+        Ok(Connection {
+            backend: Arc::new(Seen(Mutex::new(Vec::new()))),
+            url: format!("http://{name}.example"),
+        })
+    }
+}
+
+fn switch() -> SwitchBackend {
+    SwitchBackend::new(Arc::new(Seen(Mutex::new(Vec::new()))))
 }
 
 struct Seen(Mutex<Vec<String>>);
@@ -59,6 +99,7 @@ fn a_call_effect_goes_to_a_worker_and_its_reply_comes_back() {
         }],
         &mut sim.m,
         &workers,
+        &switch(),
         &mut host,
     );
     assert!(keep);
@@ -77,7 +118,13 @@ fn a_file_effect_writes_through_the_host_and_reports_the_result() {
         path: "a.csv".into(),
         contents: "time\n".into(),
     }];
-    assert!(carry_out(effects, &mut sim.m, &workers, &mut host));
+    assert!(carry_out(
+        effects,
+        &mut sim.m,
+        &workers,
+        &switch(),
+        &mut host
+    ));
     assert_eq!(host.files, vec![("a.csv".to_owned(), "time\n".to_owned())]);
     assert_eq!(sim.m.notice.as_ref().unwrap().text, "Wrote a.csv");
 
@@ -86,7 +133,7 @@ fn a_file_effect_writes_through_the_host_and_reports_the_result() {
         path: "b.csv".into(),
         contents: String::new(),
     }];
-    carry_out(effects, &mut sim.m, &workers, &mut host);
+    carry_out(effects, &mut sim.m, &workers, &switch(), &mut host);
     assert!(sim.m.notice.as_ref().unwrap().text.contains("exists"));
 }
 
@@ -100,6 +147,7 @@ fn the_language_effect_saves_it_through_the_host() {
         vec![Effect::SaveLanguage(Lang::PtBr)],
         &mut sim.m,
         &workers,
+        &switch(),
         &mut host,
     );
     assert_eq!(host.languages, vec![Lang::PtBr]);
@@ -115,6 +163,98 @@ fn the_quit_effect_stops_the_loop_after_the_other_effects_ran() {
         Effect::Quit,
         Effect::SaveLanguage(Lang::PtBr),
     ];
-    assert!(!carry_out(effects, &mut sim.m, &workers, &mut host));
+    assert!(!carry_out(
+        effects,
+        &mut sim.m,
+        &workers,
+        &switch(),
+        &mut host
+    ));
     assert_eq!(host.languages.len(), 2);
+}
+
+/// TUI: TUI-HLP-04
+#[test]
+fn the_profile_effects_go_through_the_host_and_come_back_as_results() {
+    let (workers, _rx, _) = workers();
+    let mut sim = Sim::new(Lang::EnUs);
+    let mut host = FakeHost::default();
+    let mut file = ConfigFile::default();
+    file.add("prod", Profile::default()).unwrap();
+    let effects = vec![
+        Effect::SaveProfiles {
+            file: file.clone(),
+            select: Some("prod".into()),
+        },
+        Effect::CheckProfile(Profile::default()),
+    ];
+    assert!(carry_out(
+        effects,
+        &mut sim.m,
+        &workers,
+        &switch(),
+        &mut host
+    ));
+    assert_eq!(host.saved, vec![file.clone()]);
+    assert_eq!(sim.m.profiles.file, file);
+    assert_eq!(
+        sim.m.notice.as_ref().unwrap().text,
+        "http://x answered in 7 ms"
+    );
+    host.fail_writes = true;
+    let effects = vec![Effect::SaveProfiles {
+        file: ConfigFile::default(),
+        select: None,
+    }];
+    carry_out(effects, &mut sim.m, &workers, &switch(), &mut host);
+    assert!(sim.m.notice.as_ref().unwrap().text.contains("disk full"));
+    assert_eq!(sim.m.profiles.file, file, "a failed save changes nothing");
+}
+
+/// TUI: TUI-HLP-05
+#[test]
+fn connecting_points_the_calls_at_the_new_server_and_starts_over() {
+    let first = Arc::new(Seen(Mutex::new(Vec::new())));
+    let switch = SwitchBackend::new(first.clone());
+    let mut sim = Sim::new(Lang::EnUs);
+    sim.m.generation = 4;
+    let mut host = FakeHost::default();
+    let (workers, _rx, _) = self::workers();
+    carry_out(
+        vec![Effect::Connect("staging".into())],
+        &mut sim.m,
+        &workers,
+        &switch,
+        &mut host,
+    );
+    assert_eq!(host.connected, vec!["staging".to_owned()]);
+    assert_eq!(sim.m.profile, "staging");
+    assert_eq!(sim.m.url, "http://staging.example");
+    assert_eq!(
+        sim.m.generation, 5,
+        "the replies of the old profile are dropped"
+    );
+    // The switch now sends to the new backend, not to the first.
+    let _ = switch.call(&Call::new("GET", "/topics"));
+    assert!(first.0.lock().unwrap().is_empty());
+
+    host.fail_connect = true;
+    carry_out(
+        vec![Effect::Connect("other".into())],
+        &mut sim.m,
+        &workers,
+        &switch,
+        &mut host,
+    );
+    assert_eq!(
+        sim.m.profile, "staging",
+        "a failed connection keeps the profile"
+    );
+    assert!(sim
+        .m
+        .notice
+        .as_ref()
+        .unwrap()
+        .text
+        .contains("no token file"));
 }

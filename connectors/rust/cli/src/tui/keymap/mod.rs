@@ -9,6 +9,8 @@ pub enum Scope {
     Global,
     Cluster,
     Monitor,
+    Tokens,
+    Profiles,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +52,17 @@ pub enum Action {
     PauseChart,
     Scale,
     Export,
+    SwitchProfile,
+    TokenNew,
+    TokenEdit,
+    TokenClone,
+    TokenRevoke,
+    ProfileUse,
+    ProfileNew,
+    ProfileEdit,
+    ProfileDefault,
+    ProfileRemove,
+    ProfileTest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +115,7 @@ const fn bind(
 }
 
 use Key::{Alt, Char, Code, Ctrl};
-use Scope::{Cluster, Global, Monitor};
+use Scope::{Cluster, Global, Monitor, Profiles, Tokens};
 
 pub const BINDINGS: &[Binding] = &[
     bind(
@@ -259,6 +272,13 @@ pub const BINDINGS: &[Binding] = &[
         Some("keys.help"),
     ),
     bind(
+        Action::SwitchProfile,
+        Global,
+        &[Char('P')],
+        "P",
+        Some("keys.profile-switch"),
+    ),
+    bind(
         Action::Quit,
         Global,
         &[Char('q'), Ctrl('c')],
@@ -355,6 +375,76 @@ pub const BINDINGS: &[Binding] = &[
         &[Char('e')],
         "e",
         Some("keys.monitor.export"),
+    ),
+    bind(
+        Action::TokenNew,
+        Tokens,
+        &[Char('n')],
+        "n",
+        Some("keys.tokens.new"),
+    ),
+    bind(
+        Action::TokenEdit,
+        Tokens,
+        &[Char('e')],
+        "e",
+        Some("keys.tokens.edit"),
+    ),
+    bind(
+        Action::TokenClone,
+        Tokens,
+        &[Char('c')],
+        "c",
+        Some("keys.tokens.clone"),
+    ),
+    bind(
+        Action::TokenRevoke,
+        Tokens,
+        &[Code(KeyCode::Delete), Char('x')],
+        "Del x",
+        Some("keys.tokens.revoke"),
+    ),
+    bind(
+        Action::ProfileUse,
+        Profiles,
+        &[Code(KeyCode::Enter)],
+        "Enter",
+        Some("keys.profiles.use"),
+    ),
+    bind(
+        Action::ProfileNew,
+        Profiles,
+        &[Char('n')],
+        "n",
+        Some("keys.profiles.new"),
+    ),
+    bind(
+        Action::ProfileEdit,
+        Profiles,
+        &[Char('e')],
+        "e",
+        Some("keys.profiles.edit"),
+    ),
+    bind(
+        Action::ProfileDefault,
+        Profiles,
+        &[Char('d')],
+        "d",
+        Some("keys.profiles.default"),
+    ),
+    bind(
+        Action::ProfileRemove,
+        Profiles,
+        &[Code(KeyCode::Delete), Char('x')],
+        "Del x",
+        Some("keys.profiles.remove"),
+    ),
+    bind(
+        Action::ProfileTest,
+        Profiles,
+        &[Char('t')],
+        "t",
+        Some("keys.profiles.test"),
     ),
 ];
 

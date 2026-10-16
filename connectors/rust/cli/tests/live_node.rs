@@ -44,6 +44,8 @@ impl Live {
             url: url.to_owned(),
             retention_secs: 60,
             interval_secs: 1,
+            profiles: taba_cli::profile::ConfigFile::default(),
+            choose_profile: false,
         });
         Live {
             model,

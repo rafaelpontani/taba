@@ -33,7 +33,7 @@ fn tui(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     use std::sync::Arc;
 
     use crate::settings::parse_span;
-    use crate::tui::app::{self, Host};
+    use crate::tui::app;
     use crate::tui::history::{self, DEFAULT_INTERVAL_SECS, DEFAULT_RETENTION_SECS};
     use crate::tui::i18n::{self, Lang};
     use crate::tui::model::Options;
@@ -89,6 +89,11 @@ fn tui(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         (name, settings.url().to_owned())
     };
     let client = ctx.api_client()?;
+    // With no profile given (no `--profile`, no `TABA_CLI_PROFILE`, no `TABA_CLI_URL`) and more than one profile in
+    // the file, the interface asks which one to use.
+    let given = ctx.globals.profile.is_some()
+        || ctx.env("TABA_CLI_PROFILE").is_some_and(|v| !v.is_empty())
+        || ctx.env("TABA_CLI_URL").is_some_and(|v| !v.is_empty());
     let options = Options {
         lang,
         theme,
@@ -96,32 +101,119 @@ fn tui(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         url,
         retention_secs: retention,
         interval_secs: interval,
+        choose_profile: !given && file.profiles.len() > 1,
+        profiles: file,
     };
 
-    struct RealHost {
-        config_path: std::path::PathBuf,
-    }
-
-    impl Host for RealHost {
-        fn save_language(&mut self, lang: Lang) -> Result<(), String> {
-            let mut file = crate::profile::load(&self.config_path)?;
-            file.language = Some(lang.code().to_owned());
-            crate::profile::save(&self.config_path, &file)
-        }
-
-        fn write_file(&mut self, path: &str, contents: &str) -> Result<(), String> {
-            use std::io::Write;
-            let mut out = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(path)
-                .map_err(|e| e.to_string())?;
-            out.write_all(contents.as_bytes())
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    let mut host = RealHost { config_path };
-    app::run(Arc::new(client), options, !p.flag("no-mouse"), &mut host)
+    let mouse = !p.flag("no-mouse");
+    let mut host = RealHost { ctx, config_path };
+    app::run(Arc::new(client), options, mouse, &mut host)
         .map_err(|e| CliError::File(format!("the interface failed: {e}")))
+}
+
+/// What the interface asks of the world: the configuration file, the files it writes and the connections.
+#[cfg(feature = "tui")]
+struct RealHost<'a, 'b> {
+    ctx: &'a mut Ctx<'b>,
+    config_path: std::path::PathBuf,
+}
+
+#[cfg(feature = "tui")]
+fn message_of(e: CliError) -> String {
+    match e {
+        CliError::File(m) | CliError::Usage(m) => m,
+        other => format!("{other:?}"),
+    }
+}
+
+#[cfg(feature = "tui")]
+impl crate::tui::app::Host for RealHost<'_, '_> {
+    fn save_language(&mut self, lang: crate::tui::i18n::Lang) -> Result<(), String> {
+        let mut file = crate::profile::load(&self.config_path)?;
+        file.language = Some(lang.code().to_owned());
+        crate::profile::save(&self.config_path, &file)
+    }
+
+    fn write_file(&mut self, path: &str, contents: &str) -> Result<(), String> {
+        use std::io::Write;
+        let mut out = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| e.to_string())?;
+        out.write_all(contents.as_bytes())
+            .map_err(|e| e.to_string())
+    }
+
+    fn write_secret(&mut self, path: &str, contents: &str) -> Result<(), String> {
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut out = options.open(path).map_err(|e| e.to_string())?;
+        out.write_all(contents.as_bytes())
+            .map_err(|e| e.to_string())
+    }
+
+    fn save_profiles(&mut self, file: &crate::profile::ConfigFile) -> Result<(), String> {
+        // Only the profiles and the default are replaced: the language and the history are kept as they are on disk.
+        let mut on_disk = crate::profile::load(&self.config_path)?;
+        on_disk.default = file.default.clone();
+        on_disk.profiles = file.profiles.clone();
+        crate::profile::save(&self.config_path, &on_disk)
+    }
+
+    fn check_profile(&mut self, profile: &crate::profile::Profile) -> crate::tui::msg::CheckResult {
+        use crate::tui::msg::CheckResult;
+        use taba_client::Call;
+
+        let config = match crate::tui::connection_config(profile) {
+            Ok(config) => config,
+            Err(e) => return CheckResult::Failed(e),
+        };
+        let url = config.base_url.clone();
+        let client = match self.ctx.platform.client(config) {
+            Ok(client) => client,
+            Err(e) => return CheckResult::Failed(e.message),
+        };
+        let started = std::time::Instant::now();
+        // `GET /topics?limit=1` on the client API: checks the address, TLS and the token all at once.
+        match client.call(&Call::new("GET", "/topics").query("limit", 1)) {
+            Ok(_) => CheckResult::Reachable {
+                url,
+                millis: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            },
+            Err(e) if e.status == 401 || e.status == 403 => CheckResult::Refused {
+                url,
+                status: e.status,
+            },
+            Err(e) if e.status > 0 => CheckResult::Answered {
+                url,
+                status: e.status,
+                code: e.code,
+            },
+            Err(e) => CheckResult::Failed(e.message),
+        }
+    }
+
+    fn connect(&mut self, name: &str) -> Result<crate::tui::app::Connection, String> {
+        let before = self.ctx.globals.profile.clone();
+        self.ctx.select_profile(Some(name.to_owned()));
+        let made = (|| -> Result<crate::tui::app::Connection, CliError> {
+            let url = self.ctx.settings()?.url().to_owned();
+            let client = self.ctx.api_client()?;
+            Ok(crate::tui::app::Connection {
+                backend: std::sync::Arc::new(client),
+                url,
+            })
+        })();
+        if made.is_err() {
+            self.ctx.select_profile(before);
+        }
+        made.map_err(message_of)
+    }
 }

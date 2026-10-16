@@ -24,6 +24,8 @@ pub fn options(lang: Lang) -> Options {
         url: "https://taba.example:8080".to_owned(),
         retention_secs: 3600,
         interval_secs: 5,
+        profiles: crate::profile::ConfigFile::default(),
+        choose_profile: false,
     }
 }
 
@@ -70,6 +72,11 @@ pub fn nodes_json() -> String {
     )
 }
 
+/// `GET /tokens`: one that never expires, one that expires in three days and one that already expired.
+pub fn tokens_json() -> &'static str {
+    r#"{"items":[{"id":"0191f3a2-7c1e-7000-8000-00000000000a","name":"orders-app","permissions":["publish","consume"],"topicPrefixes":["orders."],"createdAt":"2026-10-01T10:00:00Z","expiresAt":null},{"id":"0191f3a2-7c1e-7000-8000-00000000000b","name":"billing","permissions":["admin"],"topicPrefixes":[],"createdAt":"2026-10-10T10:00:00Z","expiresAt":"2026-10-18T00:00:00Z"},{"id":"0191f3a2-7c1e-7000-8000-00000000000c","name":"old-batch","permissions":["consume"],"topicPrefixes":["batch.","etl."],"createdAt":"2026-09-01T10:00:00Z","expiresAt":"2026-10-01T00:00:00Z"}]}"#
+}
+
 pub fn ok(body: &str) -> Result<Reply, Error> {
     Ok(Reply {
         status: 200,
@@ -113,8 +120,12 @@ pub struct Sim {
 
 impl Sim {
     pub fn new(lang: Lang) -> Sim {
+        Sim::with_options(options(lang))
+    }
+
+    pub fn with_options(options: Options) -> Sim {
         Sim {
-            m: Model::new(options(lang)),
+            m: Model::new(options),
             log: Vec::new(),
             wall: 1_792_065_600_000,
         }
@@ -184,6 +195,28 @@ impl Sim {
         sim.answer(&effects[0], ok(me_root()));
         let effects = sim.tick(100);
         sim.answer(&effects[0], ok(status));
+        sim
+    }
+
+    /// A root session on the Tokens tab with three tokens read (the clock is in October 2026).
+    pub fn on_tokens(lang: Lang) -> Sim {
+        let mut sim = Sim::root_with_status(lang);
+        sim.press('4');
+        let effects = sim.tick(1_000);
+        let call = effects
+            .iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    Effect::Call {
+                        call: ApiCall::Tokens(None),
+                        ..
+                    }
+                )
+            })
+            .expect("the tab asks for the tokens")
+            .clone();
+        sim.answer(&call, ok(tokens_json()));
         sim
     }
 

@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ▲ member unreachable  ▲ incomplete                                        12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
 ┌ Conditions ──────────────────────────────────────────────────────────────────┐┌ Memory 768.0 MiB ────────────────────┐
 │  ▲ member unreachable                                                        ││▂                                     │
 └──────────────────────────────────────────────────────────────────────────────┘│█                                     │
@@ -37,4 +37,4 @@ Members: active 3 · ✔ quorum · table v 7 · syncing blocks 0                
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter detail  d drain  u return  b flush  B flush all  S stop cluster  m charts  ? help  q quit           ⟳ 2s · en-US
+ Enter detail  d drain  u return  b flush  B flush all  S stop cluster  L language  ? help  q quit       ⟳ 2s · L en-US

@@ -23,6 +23,13 @@ pub enum ApiCall {
     FlushNode(String),
     FlushCluster,
     StopCluster,
+    /// One page of `GET /tokens`, from a cursor.
+    Tokens(Option<String>),
+    /// `POST /tokens` with the JSON body of the form.
+    TokenCreate(String),
+    /// `PATCH /tokens/{id}` with the changed fields.
+    TokenUpdate(String, String),
+    TokenRevoke(String),
 }
 
 impl ApiCall {
@@ -57,6 +64,21 @@ impl ApiCall {
             ApiCall::FlushNode(id) => Call::new("POST", node(id, "/backup/flush")),
             ApiCall::FlushCluster => Call::new("POST", "/cluster/backup/flush"),
             ApiCall::StopCluster => Call::new("POST", "/cluster/stop"),
+            ApiCall::Tokens(cursor) => {
+                let mut call = Call::new("GET", "/tokens").query("limit", 200);
+                if let Some(cursor) = cursor {
+                    call = call.query("cursor", cursor);
+                }
+                call
+            }
+            ApiCall::TokenCreate(body) => Call::new("POST", "/tokens").json_body(body.clone()),
+            ApiCall::TokenUpdate(id, body) => {
+                Call::new("PATCH", format!("/tokens/{}", encode_segment(id)))
+                    .json_body(body.clone())
+            }
+            ApiCall::TokenRevoke(id) => {
+                Call::new("DELETE", format!("/tokens/{}", encode_segment(id)))
+            }
         }
     }
 
@@ -69,6 +91,9 @@ impl ApiCall {
                 | ApiCall::FlushNode(_)
                 | ApiCall::FlushCluster
                 | ApiCall::StopCluster
+                | ApiCall::TokenCreate(_)
+                | ApiCall::TokenUpdate(..)
+                | ApiCall::TokenRevoke(_)
         )
     }
 }
@@ -494,6 +519,57 @@ pub fn parse_stop(text: &str) -> Result<StopReport, String> {
         warnings: texts(&f, "warnings"),
         nodes,
     })
+}
+
+/// A token of `GET /tokens` (never with the secret).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Token {
+    pub id: String,
+    pub name: String,
+    pub permissions: Vec<String>,
+    pub prefixes: Vec<String>,
+    pub created_at: Option<String>,
+    pub expires_at: Option<String>,
+}
+
+fn token_of(f: &Fields<'_>) -> Option<Token> {
+    Some(Token {
+        id: f.string("id")?,
+        name: f.string("name").unwrap_or_default(),
+        permissions: texts(f, "permissions"),
+        prefixes: texts(f, "topicPrefixes"),
+        created_at: f.string("createdAt"),
+        expires_at: f.string("expiresAt"),
+    })
+}
+
+/// A page of tokens and where the next one starts.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TokenPage {
+    pub items: Vec<Token>,
+    pub next_cursor: Option<String>,
+}
+
+pub fn parse_tokens(text: &str) -> Result<TokenPage, String> {
+    let f = fields(text)?;
+    let list = items(&f, "items")
+        .into_iter()
+        .filter_map(|raw| token_of(&Fields::parse(raw).ok()?))
+        .collect();
+    Ok(TokenPage {
+        items: list,
+        next_cursor: f.string("nextCursor"),
+    })
+}
+
+/// The reply of `POST /tokens`: the token and its secret, which exists only here.
+pub fn parse_token_created(text: &str) -> Result<(Token, String), String> {
+    let f = fields(text)?;
+    let token = token_of(&f).ok_or_else(|| "the reply has no token id".to_owned())?;
+    let secret = f
+        .string("token")
+        .ok_or_else(|| "the reply has no secret".to_owned())?;
+    Ok((token, secret))
 }
 
 #[cfg(test)]

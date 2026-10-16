@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
- 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
 ┌ Conditions ──────────────────────────────────────────────────────────────────┐
 │✔ healthy┌ Commands ────────────────────────────────────────────────┐         │
 └─────────│: dr▏                                                     │─────────┘
@@ -7,9 +7,9 @@ Members: a│                                                          │
 ┌ 3 nodes │▶ Drain the node  d                                       │─────────┐
 │Node     │  Detail of the node, or what a condition means  Enter    │nc  Req  │
 │▶ 01a1…00│  Wider window  +                                         │    3    │
-│  01a1…00│                                                          │    3    │
-│  01a1…00│                                                          │    3    │
-│         │                                                          │         │
+│  01a1…00│  Edit the name or the expiry of the token  e             │    3    │
+│  01a1…00│  Edit the profile  e                                     │    3    │
+│         │  Make it the default profile  d                          │         │
 │         │                                                          │         │
 │         │                                                          │         │
 │         │                                                          │         │
@@ -21,4 +21,4 @@ Members: a│                                                          │
 │▄        └──────────────────────────────────────────────────────────┘         │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US
+ Enter detail  d drain  u return  L language  ? help  q quit     ⟳ 2s · L en-US

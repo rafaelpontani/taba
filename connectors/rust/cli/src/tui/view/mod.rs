@@ -37,6 +37,8 @@ pub fn view(f: &mut Frame, m: &Model) {
     draw_tabs(f, tabs, m);
     match m.tab {
         Tab::Cluster => cluster_screen::view::draw(f, body, m),
+        Tab::Tokens => screens::tokens::view::draw(f, body, m),
+        Tab::Profiles => screens::profiles::view::draw(f, body, m),
         other => screens::placeholder::draw(f, body, m, other),
     }
     draw_footer(f, footer, m);
@@ -140,6 +142,17 @@ fn hint_key(action: Action) -> &'static str {
         Action::Language => "hint.language",
         Action::Refresh => "hint.refresh",
         Action::Pause => "hint.pause",
+        Action::Filter => "hint.filter",
+        Action::Sort => "hint.sort",
+        Action::SwitchProfile => "hint.profile",
+        Action::TokenNew | Action::ProfileNew => "hint.new",
+        Action::TokenEdit | Action::ProfileEdit => "hint.edit",
+        Action::TokenClone => "hint.clone",
+        Action::TokenRevoke => "hint.revoke",
+        Action::ProfileUse => "hint.use",
+        Action::ProfileDefault => "hint.default",
+        Action::ProfileRemove => "hint.remove",
+        Action::ProfileTest => "hint.test",
         _ => "hint.more",
     }
 }
@@ -182,6 +195,26 @@ fn hint_actions(m: &Model) -> &'static [Action] {
             Action::Export,
             Action::Help,
         ],
+        (Tab::Tokens, _) => &[
+            Action::TokenNew,
+            Action::TokenEdit,
+            Action::TokenClone,
+            Action::TokenRevoke,
+            Action::Filter,
+            Action::Sort,
+            Action::Help,
+            Action::Quit,
+        ],
+        (Tab::Profiles, _) => &[
+            Action::ProfileUse,
+            Action::ProfileNew,
+            Action::ProfileEdit,
+            Action::ProfileDefault,
+            Action::ProfileRemove,
+            Action::ProfileTest,
+            Action::Help,
+            Action::Quit,
+        ],
         _ => &[
             Action::Palette,
             Action::Language,
@@ -193,6 +226,12 @@ fn hint_actions(m: &Model) -> &'static [Action] {
 
 /// `true` when the footer should show this action as disabled right now.
 fn disabled(m: &Model, action: Action) -> bool {
+    if m.tab == Tab::Tokens {
+        return matches!(
+            action,
+            Action::TokenNew | Action::TokenEdit | Action::TokenClone | Action::TokenRevoke
+        ) && screens::tokens::gate(m, action).is_some();
+    }
     m.tab == Tab::Cluster
         && matches!(
             action,
@@ -255,7 +294,7 @@ fn draw_footer(f: &mut Frame, area: Rect, m: &Model) {
     let tx = m.tx();
     let th = m.theme;
     let (right_text, right_style) = refresh_state(m);
-    let right = format!("{right_text} · {} ", m.lang.code());
+    let right = format!("{right_text} · L {} ", m.lang.code());
     let right_width = right.chars().count();
     let left_width = usize::from(area.width).saturating_sub(right_width + 1);
     let mut spans: Vec<Span> = Vec::new();
@@ -266,8 +305,16 @@ fn draw_footer(f: &mut Frame, area: Rect, m: &Model) {
         ));
     } else {
         // Help and quit always have room: the other hints fill what is left.
-        let all = hint_actions(m);
-        let is_tail = |a: &&Action| matches!(a, Action::Help | Action::Quit);
+        let mut all = hint_actions(m).to_vec();
+        // The language key is on every screen, right before the help.
+        if !all.contains(&Action::Language) {
+            let at = all
+                .iter()
+                .position(|a| *a == Action::Help)
+                .unwrap_or(all.len());
+            all.insert(at, Action::Language);
+        }
+        let is_tail = |a: &&Action| matches!(a, Action::Language | Action::Help | Action::Quit);
         let tail: Vec<Action> = all.iter().filter(is_tail).copied().collect();
         let width_of = |action: Action| {
             let key = hint_key_label(action);

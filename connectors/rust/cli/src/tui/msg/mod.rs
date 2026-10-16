@@ -4,6 +4,7 @@
 use ratatui::crossterm::event::KeyEvent;
 use taba_client::{Error, Reply};
 
+use crate::profile::ConfigFile;
 use crate::tui::api::ApiCall;
 use crate::tui::keymap::Action;
 
@@ -36,4 +37,37 @@ pub enum Msg {
     },
     /// The result of saving the language.
     LanguageSaved(Result<(), String>),
+    /// Text pasted into the terminal.
+    Paste(String),
+    /// The result of writing the profiles file; `select` is the profile to leave selected.
+    ProfilesSaved {
+        file: ConfigFile,
+        select: Option<String>,
+        result: Result<(), String>,
+    },
+    /// The result of testing a connection with the values of a form.
+    ProfileChecked(CheckResult),
+    /// The result of connecting with a profile.
+    Connected {
+        profile: String,
+        url: String,
+        result: Result<(), String>,
+    },
+}
+
+/// How testing the connection of a profile went (the screens say it in the person's language).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckResult {
+    /// The server answered: its address and how long it took.
+    Reachable { url: String, millis: u64 },
+    /// The server refused the token (`401` or `403`).
+    Refused { url: String, status: u16 },
+    /// The server answered something else.
+    Answered {
+        url: String,
+        status: u16,
+        code: String,
+    },
+    /// Nothing could be tried or nobody answered (a token file that cannot be read, no connection).
+    Failed(String),
 }

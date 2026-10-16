@@ -4,9 +4,11 @@
 use taba_client::json::Fields;
 use taba_client::Error;
 
+use crate::profile::ConfigFile;
 use crate::tui::api::{
-    ApiCall, Backup, ClusterStatus, Drain, FlushReport, Me, Nodes, Severity, StopReport,
+    ApiCall, Backup, ClusterStatus, Drain, FlushReport, Me, Nodes, Severity, StopReport, Token,
 };
+use crate::tui::editor::Editor;
 use crate::tui::history::History;
 use crate::tui::i18n::{self, Lang};
 use crate::tui::prom::Metrics;
@@ -24,8 +26,8 @@ pub enum Tab {
 pub const TABS: [Tab; 5] = [
     Tab::Cluster,
     Tab::Topics,
-    Tab::Tokens,
     Tab::Messages,
+    Tab::Tokens,
     Tab::Profiles,
 ];
 
@@ -54,6 +56,10 @@ pub struct Options {
     pub url: String,
     pub retention_secs: u64,
     pub interval_secs: u64,
+    /// The profiles file as it was read: the Profiles tab and the choice of a profile start from it.
+    pub profiles: ConfigFile,
+    /// Ask which profile to use before connecting (none was given and there is more than one).
+    pub choose_profile: bool,
 }
 
 /// A node id for tables and messages: its start and its end, since the ids of nodes made together share the
@@ -198,17 +204,23 @@ pub enum Pending {
     FlushNode(String),
     FlushAll,
     Stop,
+    /// The id and the name of the token.
+    RevokeToken(String, String),
+    RemoveProfile(String),
 }
 
 impl Pending {
-    pub fn call(&self) -> ApiCall {
-        match self {
+    /// The API call the action makes; removing a profile only touches the file, so it has none.
+    pub fn call(&self) -> Option<ApiCall> {
+        Some(match self {
             Pending::Drain(id) => ApiCall::DrainStart(id.clone()),
             Pending::Return(id) => ApiCall::DrainCancel(id.clone()),
             Pending::FlushNode(id) => ApiCall::FlushNode(id.clone()),
             Pending::FlushAll => ApiCall::FlushCluster,
             Pending::Stop => ApiCall::StopCluster,
-        }
+            Pending::RevokeToken(id, _) => ApiCall::TokenRevoke(id.clone()),
+            Pending::RemoveProfile(_) => return None,
+        })
     }
 }
 
@@ -237,7 +249,12 @@ pub enum Report {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputPurpose {
-    ExportCsv { node: String, series: usize },
+    ExportCsv {
+        node: String,
+        series: usize,
+    },
+    /// The part of a token name the Tokens tab filters by.
+    TokenFilter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,6 +281,31 @@ pub enum Modal {
     Input(Input),
     /// What a condition means and what to do (`Enter` on a condition).
     Condition(String),
+    /// Which profile to connect with.
+    Profiles {
+        selected: usize,
+    },
+    /// A form: a token or a profile.
+    Editor(Editor),
+    /// The secret of a token that was just created.
+    Secret(Secret),
+}
+
+/// The secret of a new token, shown once (TUI-TOK-03). It lives only in this popup: never in a notice, a log or an error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Secret {
+    pub id: String,
+    pub name: String,
+    pub token: String,
+    /// When it was shown (ms since the app opened); after 30 s it is masked.
+    pub shown_at: u64,
+    pub copied: bool,
+    pub saved: bool,
+    /// The person tried to close it without copying or saving it.
+    pub warned: bool,
+    /// The token this one replaces (a clone), and whether it is to be revoked on closing (default: no).
+    pub replaces: Option<(String, String)>,
+    pub revoke_old: bool,
 }
 
 /// A short message in the footer.
@@ -359,6 +401,69 @@ impl Default for ClusterScreen {
     }
 }
 
+/// How the tokens are ordered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenSort {
+    NewestFirst,
+    OldestFirst,
+    Name,
+    Id,
+}
+
+impl TokenSort {
+    pub fn next(self) -> TokenSort {
+        match self {
+            TokenSort::NewestFirst => TokenSort::OldestFirst,
+            TokenSort::OldestFirst => TokenSort::Name,
+            TokenSort::Name => TokenSort::Id,
+            TokenSort::Id => TokenSort::NewestFirst,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            TokenSort::NewestFirst => "sort.newest",
+            TokenSort::OldestFirst => "sort.oldest",
+            TokenSort::Name => "sort.name",
+            TokenSort::Id => "sort.id",
+        }
+    }
+}
+
+/// The Tokens tab (doc 34, section 6.5).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokensScreen {
+    /// Every token the server has, read page by page.
+    pub list: Feed<Vec<Token>>,
+    /// The tokens of the pages read so far while a read still goes on.
+    pub reading: Vec<Token>,
+    pub pages: u32,
+    /// The selected token, by id.
+    pub selected: Option<String>,
+    pub filter: String,
+    pub sort: TokenSort,
+}
+
+impl Default for TokensScreen {
+    fn default() -> TokensScreen {
+        TokensScreen {
+            list: Feed::default(),
+            reading: Vec::new(),
+            pages: 0,
+            selected: None,
+            filter: String::new(),
+            sort: TokenSort::NewestFirst,
+        }
+    }
+}
+
+/// The Profiles tab (doc 34, section 6.7): the profiles file and the selected profile.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProfilesScreen {
+    pub file: ConfigFile,
+    pub selected: Option<String>,
+}
+
 pub struct Model {
     pub lang: Lang,
     pub theme: Theme,
@@ -383,6 +488,10 @@ pub struct Model {
     /// `GET /cluster/status` answered `401`/`403` for this token: the screen falls back to `GET /nodes`.
     pub status_denied: Option<Fail>,
     pub cluster: ClusterScreen,
+    pub tokens: TokensScreen,
+    pub profiles: ProfilesScreen,
+    /// Waiting for the person to choose a profile: nothing is read until then.
+    pub awaiting_profile: bool,
     pub history: History,
     pub next_id: u64,
     /// Bumped when the screens are reset; a reply of an older generation is dropped.
@@ -391,6 +500,17 @@ pub struct Model {
 
 impl Model {
     pub fn new(options: Options) -> Model {
+        // With one profile (or none) there is nothing to choose.
+        let choose = options.choose_profile && options.profiles.profiles.len() > 1;
+        let first = choose.then(|| {
+            let file = &options.profiles;
+            let selected = file
+                .default
+                .as_ref()
+                .and_then(|name| file.profiles.iter().position(|(n, _)| n == name))
+                .unwrap_or(0);
+            Modal::Profiles { selected }
+        });
         Model {
             lang: options.lang,
             theme: options.theme,
@@ -403,17 +523,41 @@ impl Model {
             paused: false,
             focused: true,
             quit: false,
-            modal: None,
+            modal: first,
             notice: None,
             busy: None,
             me: Feed::default(),
             status: Feed::default(),
             status_denied: None,
             cluster: ClusterScreen::default(),
+            tokens: TokensScreen::default(),
+            profiles: ProfilesScreen {
+                selected: options.profiles.default.clone(),
+                file: options.profiles,
+            },
+            awaiting_profile: choose,
             history: History::new(options.retention_secs, options.interval_secs),
             next_id: 1,
             generation: 0,
         }
+    }
+
+    /// Starts over with another profile: what was read from the old server is dropped, and so is any reply still
+    /// on its way (its generation is old).
+    pub fn reconnect(&mut self, profile: String, url: String) {
+        self.profile = profile;
+        self.url = url;
+        self.generation += 1;
+        self.awaiting_profile = false;
+        self.busy = None;
+        self.me = Feed::default();
+        self.status = Feed::default();
+        self.status_denied = None;
+        self.cluster = ClusterScreen::default();
+        self.tokens = TokensScreen::default();
+        let retention = self.history.retention_ms() / 1000;
+        let interval = self.history.interval_ms() / 1000;
+        self.history = History::new(retention, interval);
     }
 
     pub fn id(&mut self) -> u64 {

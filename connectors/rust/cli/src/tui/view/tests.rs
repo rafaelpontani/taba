@@ -417,12 +417,7 @@ fn the_export_popup_asks_for_the_path() {
 fn the_tabs_that_are_not_built_yet_say_so_and_navigate() {
     for lang in [Lang::EnUs, Lang::PtBr] {
         let mut sim = Sim::root_with_status(lang);
-        for (key, name) in [
-            ('2', "topics"),
-            ('3', "tokens"),
-            ('4', "messages"),
-            ('5', "profiles"),
-        ] {
+        for (key, name) in [('2', "topics"), ('3', "messages")] {
             sim.press(key);
             let screen = render(&sim.m, 80, 24);
             if key == '2' {
@@ -601,4 +596,173 @@ fn a_stopped_cluster_says_so_and_why() {
     // A running cluster shows no such line.
     let sim = Sim::root_with_status(Lang::EnUs);
     assert!(!render(&sim.m, 120, 30).contains("Cluster stopped"));
+}
+
+/// TUI: TUI-TOK-01, TUI-TOK-06
+#[test]
+fn the_tokens_tab_in_both_languages_and_without_the_root_token() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let sim = Sim::on_tokens(lang);
+        let screen = render(&sim.m, 80, 24);
+        snapshot(&format!("tokens-{code}-80x24"), &screen);
+        assert!(
+            screen.contains("orders-app") && screen.contains("billing"),
+            "{screen}"
+        );
+        snapshot(&format!("tokens-{code}-120x40"), &render(&sim.m, 120, 40));
+    }
+    // A plain token is told what it lacks, not shown an empty list.
+    let mut sim = Sim::plain_with_nodes(Lang::EnUs);
+    sim.press('4');
+    let screen = render(&sim.m, 80, 24);
+    assert!(screen.contains("must be the root token"), "{screen}");
+    assert!(screen.contains("app"), "{screen}");
+    snapshot("tokens-plain-en-US-80x24", &screen);
+}
+
+/// TUI: TUI-TOK-02, TUI-TOK-04
+#[test]
+fn the_token_forms() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut sim = Sim::on_tokens(lang);
+        sim.press('n');
+        for c in "reports".chars() {
+            sim.press(c);
+        }
+        snapshot(
+            &format!("token-create-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.code(KeyCode::Esc);
+        sim.press('e');
+        snapshot(&format!("token-edit-{code}-80x24"), &render(&sim.m, 80, 24));
+    }
+}
+
+/// TUI: TUI-TOK-03
+#[test]
+fn the_secret_is_shown_once_and_hidden_after_a_while() {
+    let mut sim = Sim::on_tokens(Lang::EnUs);
+    sim.m.now = 2_000;
+    sim.m.modal = Some(crate::tui::model::Modal::Secret(
+        crate::tui::model::Secret {
+            id: "0191-z".into(),
+            name: "reports".into(),
+            token: "tb_0191-z.s3cretvalue".into(),
+            shown_at: 2_000,
+            copied: false,
+            saved: false,
+            warned: false,
+            replaces: Some(("0191-a".into(), "orders-app".into())),
+            revoke_old: false,
+        },
+    ));
+    let shown = render(&sim.m, 80, 24);
+    assert!(shown.contains("tb_0191-z.s3cretvalue"), "{shown}");
+    snapshot("secret-en-US-80x24", &shown);
+    // After 30 seconds the secret is dots; the id before the dot is not a secret.
+    sim.m.now = 40_000;
+    let hidden = render(&sim.m, 80, 24);
+    assert!(!hidden.contains("s3cretvalue"), "{hidden}");
+    assert!(hidden.contains("tb_0191-z."), "{hidden}");
+    // And it is hidden at once when the terminal loses the focus.
+    sim.m.now = 3_000;
+    sim.m.focused = false;
+    assert!(!render(&sim.m, 80, 24).contains("s3cretvalue"));
+    snapshot("secret-hidden-en-US-80x24", &hidden);
+}
+
+/// TUI: TUI-HLP-04
+#[test]
+fn the_profiles_tab_and_its_form() {
+    use crate::profile::{ConfigFile, Profile};
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let code = lang.code();
+        let mut file = ConfigFile::default();
+        for (name, url, token) in [
+            (
+                "dev",
+                "http://localhost:8080",
+                Some(("token-file", "dev.token")),
+            ),
+            (
+                "prod",
+                "https://taba.example:8080",
+                Some(("token", "tb_secret.value")),
+            ),
+            ("lab", "https://lab.example", None),
+        ] {
+            let mut profile = Profile::default();
+            profile.set("url", url).unwrap();
+            if let Some((field, value)) = token {
+                profile.set(field, value).unwrap();
+            }
+            file.add(name, profile).unwrap();
+        }
+        file.default = Some("prod".to_owned());
+        let mut options = options(lang);
+        options.profiles = file;
+        let mut sim = Sim::with_options(options);
+        sim.press('5');
+        sim.press('j');
+        let screen = render(&sim.m, 80, 24);
+        // A token kept in the file is never drawn.
+        assert!(!screen.contains("tb_secret"), "{screen}");
+        snapshot(&format!("profiles-{code}-80x24"), &screen);
+        sim.press('e');
+        let form = render(&sim.m, 80, 24);
+        assert!(!form.contains("tb_secret"), "{form}");
+        snapshot(&format!("profile-edit-{code}-80x24"), &form);
+    }
+    let mut sim = Sim::new(Lang::EnUs);
+    sim.press('5');
+    snapshot("profiles-empty-en-US-80x24", &render(&sim.m, 80, 24));
+}
+
+/// TUI: TUI-HLP-05
+#[test]
+fn the_choice_of_a_profile_at_the_start() {
+    use crate::profile::{ConfigFile, Profile};
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let mut file = ConfigFile::default();
+        for (name, url) in [
+            ("dev", "http://localhost:8080"),
+            ("prod", "https://taba.example:8080"),
+        ] {
+            let mut profile = Profile::default();
+            profile.set("url", url).unwrap();
+            file.add(name, profile).unwrap();
+        }
+        file.default = Some("prod".to_owned());
+        let mut options = options(lang);
+        options.profiles = file;
+        options.choose_profile = true;
+        let sim = Sim::with_options(options);
+        let screen = render(&sim.m, 80, 24);
+        assert!(
+            screen.contains("prod") && screen.contains("dev"),
+            "{screen}"
+        );
+        snapshot(&format!("profile-pick-{}-80x24", lang.code()), &screen);
+    }
+}
+
+/// TUI: TUI-FRM-03
+#[test]
+fn the_footer_of_the_tokens_tab_dims_what_the_token_cannot_do() {
+    let mut sim = Sim::plain_with_nodes(Lang::EnUs);
+    sim.press('4');
+    let footer = render(&sim.m, 80, 24).lines().last().unwrap().to_owned();
+    assert!(
+        footer.contains("new") && footer.contains("revoke"),
+        "{footer}"
+    );
+    let ready = Sim::on_tokens(Lang::EnUs);
+    let footer = render(&ready.m, 80, 24).lines().last().unwrap().to_owned();
+    assert!(
+        footer.contains("clone") && footer.contains("filter"),
+        "{footer}"
+    );
 }

@@ -11,7 +11,13 @@ fn ctrl(c: char) -> KeyEvent {
 /// TUI: TUI-FRM-05
 #[test]
 fn no_key_is_bound_twice_in_the_same_scope() {
-    for scope in [Scope::Global, Scope::Cluster, Scope::Monitor] {
+    for scope in [
+        Scope::Global,
+        Scope::Cluster,
+        Scope::Monitor,
+        Scope::Tokens,
+        Scope::Profiles,
+    ] {
         let mut seen: Vec<(Key, Action)> = Vec::new();
         for b in BINDINGS.iter().filter(|b| b.scope == scope) {
             for key in b.keys {
@@ -33,6 +39,7 @@ fn a_screen_may_shadow_only_the_global_keys_listed_here() {
     let allowed = [
         (Key::Char('S'), Scope::Cluster),
         (Key::Code(KeyCode::Enter), Scope::Cluster),
+        (Key::Code(KeyCode::Enter), Scope::Profiles),
     ];
     for b in BINDINGS.iter().filter(|b| b.scope != Scope::Global) {
         for key in b.keys {

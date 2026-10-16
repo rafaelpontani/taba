@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ verificando                     00:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Nome             Endereço                      Token        Padrão            │
+│  dev            http://localhost:8080         arquivo      ○                 │
+│  prod           https://taba.example:8080     no arquivo   ●        em uso   │
+│▶ lab            https://lab.example           nenhum       ○                 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Perfil ──────────────────────────────────────────────────────────────────────┐
+│lab                                                                           │
+│url             https://lab.example                                           │
+│                                                                              │
+│Enter conecta com este perfil agora; o padrão (d) é o usado quando nenhum é   │
+│informado.                                                                    │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter conectar  n novo  e editar  L idioma  ? ajuda  q sair     ⟳ 5s · L pt-BR

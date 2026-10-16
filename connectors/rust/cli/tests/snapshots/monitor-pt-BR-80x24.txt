@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ saudável                        12:02:05 UTC
- 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
 Gráficos 1-4 de 6  ↓
 ┌ Memória · total 1,2 GiB ─────────────┐┌ Mensagens em memória · total 3.600 ──┐
 │1,0 GiB  │                     ⣀⣀⣀⡠⠤⠤⠄││1.320 │                               │
@@ -21,4 +21,4 @@ Gráficos 1-4 de 6  ↓
  ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
 2m 04s coletados: o histórico é só o que foi amostrado desde que o app abriu ·
 escala automática
- Esc voltar  ← rolar  + janela  Space congelar  z escala  ? ajuda  ⟳ 2s · pt-BR
+ Esc voltar  ← rolar  + janela  L idioma  ? ajuda                ⟳ 2s · L pt-BR

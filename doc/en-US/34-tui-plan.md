@@ -9,7 +9,7 @@ sources: [connectors/rust/cli/src, connectors/rust/client/src, doc/en-US/16-clie
 
 # Plan — interactive interface (TUI) of `taba-cli`
 
-> **Status: 🟨 phases 0 and 1 done (2026-10-15); phases 2 to 6 remain.** Every route the TUI calls already exists in the client API (built in `taba-node` on 2026-10-15: D152 to D156 of [30-decisions.md](30-decisions.md)). The foundation and the Cluster tab are in `connectors/rust/cli` (record in section 11); the Topics, Tokens, Messages and Profiles tabs remain. Context: [20-cli.md](20-cli.md) (today's commands and profiles), [16-client-api.md](16-client-api.md) (the routes), [13-observability.md](13-observability.md) (metrics and conditions).
+> **Status: 🟨 phases 0, 1 and 3 done, and the Profiles tab of phase 5 (2026-10-15); phases 2 and 4, the end of phase 5 and phase 6 remain.** Every route the TUI calls already exists in the client API (built in `taba-node` on 2026-10-15: D152 to D156 of [30-decisions.md](30-decisions.md)). The foundation and the Cluster tab are in `connectors/rust/cli` (record in section 11); the Tokens and Profiles tabs are done (record in section 11); the Topics and Messages tabs remain. Context: [20-cli.md](20-cli.md) (today's commands and profiles), [16-client-api.md](16-client-api.md) (the routes), [13-observability.md](13-observability.md) (metrics and conditions).
 
 ## 1. Goal and scope
 
@@ -21,7 +21,7 @@ sources: [connectors/rust/cli/src, connectors/rust/client/src, doc/en-US/16-clie
 | **Tokens** | List, **create** (the secret shows once), **change** name and expiry, **revoke**, clone |
 | **Topics** | List, filter, **create**, **change**, **delete**; charts and groups |
 | **Messages** | **Publish**, **listen**, **browse**, **ack** and visibility, **prune** |
-| **Profiles** | Today's profile screen, rebuilt (D-TUI-8) |
+| **Profiles** | Today's profile screen, rebuilt (D-TUI-8): list, create, edit, remove, choose the default, test the connection and **connect** with another profile; on opening with no profile given, the choice of the profile |
 
 For every screen: everything scrolls (arrows, `PgUp`/`PgDn`, `Home`/`End`, mouse wheel); **every action has a shortcut** and the mouse is never required; texts in `en-US` and `pt-BR`; an action that deletes or interrupts asks for confirmation; a token secret never goes to a log.
 
@@ -40,7 +40,7 @@ Made by the project owner; the plan follows them. When built, the ones that chan
 | **D-TUI-5** | **History lives only in the session.** From the moment the app opens, a background sampler keeps **1 h at one sample per 5 s** (720 samples per series) in circular buffers; configurable (`history.retention`, `history.interval`; `--history-retention`, `--history-interval`). Nothing goes to disk. For long history, Prometheus ([13-observability.md](13-observability.md)). |
 | **D-TUI-6** | **The TUI never reads a queue on its own.** Reading is *delivering*; it happens only when the person asks (*Browse* or *Listen*). *Browse* asks **how many messages** and the **visibility time**, and warns that each read **counts a delivery** (`deliveryCount`) and may send the message to the dead-letter (it shows `maxDeliveries`). There is "return now" (`PUT …/visibility` with `0`). It never acks on its own. |
 | **D-TUI-7** | **Translations:** `rust-i18n` 4.2.x + `sys-locale` 0.3.x; embedded YAML catalogs (`locales/en-US.yml`, `locales/pt-BR.yml`), `t!("key", name = value)`, plural by `key.one`/`key.other`; `en-US` is the source and the fallback. A test of ours compares the catalogs' keys and variables. |
-| **D-TUI-8** | **The old profile screen** (`tui/term.rs`, `tui/keys`): kept until phase 5; then rebuilt as the **Profiles** tab and deleted. `taba-cli profile` keeps opening it. |
+| **D-TUI-8** | **The old profile screen** (`tui/term.rs`, `tui/keys`): kept until phase 5; the **Profiles** tab already exists (2026-10-15), and the old screen is only deleted when `taba-cli profile` starts opening the TUI. `taba-cli profile` keeps opening it. |
 | **D-TUI-9** | **The TUI's reads use the token, never the operations API** (which stays without a token, for Prometheus and the load balancer). Who sees what: any valid token sees `GET /nodes` (no addresses), `GET /auth/me` and `/stats/topics…` (filtered by its prefixes); only the **root token** sees `GET /cluster/status`, `GET /cluster/backup` and everything of a node. A `403 auth.forbidden` carries `required` (`root` or the permission name), and the TUI uses it to say what is missing (TUI-FRM-10). |
 | **D-TUI-10** | **Consolidated reads, with a notice when incomplete (D156).** `GET /stats/topics…`, `/nodes`, `/cluster/status` and `/cluster/backup` are already **the cluster's**, and carry `partial` and `missingNodes: [{nodeId, reason}]` when a node did not answer within 5 s. The TUI **always shows an "incomplete: node X did not answer" badge** when `partial` is `true`, never adds nodes up on its own, and `?scope=node` is kept only for the node detail screen. |
 
@@ -116,14 +116,15 @@ Arrows and Vim keys do the same; the letters are mnemonic **and equal in every l
 | `Enter` · `Esc` | Open / confirm · close / cancel |
 | `/` · `s` `S` · `r` · `p` | Filter · sort / reverse · refresh now · pause |
 | `:` | Command palette (fuzzy search of any action) |
-| `L` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Language · help · quit (asks if a listener or a changed form exists) · submit a form |
+| `L` · `P` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Language · switch profile · help · quit (asks if a listener or a changed form exists) · submit a form |
 | Mouse | The wheel scrolls the panel under the pointer; a click focuses; optional (`--no-mouse`) |
 
 | Screen | Keys |
 |---|---|
 | Cluster | `Enter` detail · `d` drain · `u` return · `b` flush this node · `B` flush all · `S` stop the cluster · `m` monitoring |
 | Topics | `n` new · `e` edit · `Del` delete · `Enter` open · `m` monitoring · `x` messages |
-| Tokens | `n` new · `e` edit · `c` clone · `Del` revoke · `y` show the id |
+| Tokens | `n` new · `e` edit · `c` clone · `Del` `x` revoke · `/` filter · `s` sort |
+| Profiles | `Enter` connect · `n` new · `e` edit · `d` default · `Del` `x` remove · `t` test |
 | Messages | `Ctrl+Enter` publish · `l` listen · `a` ack · `v` visibility · `A` ack all · `P` prune · `b` browse · `c` charts |
 
 ## 6. Requirements per screen
@@ -135,7 +136,7 @@ Numbered requirements (`TUI-<screen>-<nn>`); tests and phases cite the IDs. The 
 | ID | Requirement |
 |---|---|
 | TUI-FRM-01 | Status line: profile, URL, the cluster's worst condition (word **and** icon, never color alone) and the clock. Source: `GET /cluster/status`; with a plain token, only `GET /nodes`. |
-| TUI-FRM-02 | Five tabs (Cluster, Topics, Tokens, Messages, Profiles) by `1`…`5`, `[` `]`, `Alt+←/→`. |
+| TUI-FRM-02 | Five tabs (Cluster, Topics, Messages, Tokens, Profiles) by `1`…`5`, `[` `]`, `Alt+←/→`. |
 | TUI-FRM-03 | Footer: keys of the focused panel, refresh state (`⟳ 2s`, paused, stale with the time of the last good data) and language. |
 | TUI-FRM-04 | Every list and text scrolls; the scrollbar shows only when the content exceeds. |
 | TUI-FRM-05 | Every action has a shortcut; the mouse is optional. |
@@ -228,6 +229,7 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 | TUI-HLP-03 | `L` picks the language (English, Português); it applies at once and is saved in `ui.language`. |
 | TUI-HLP-04 | The Profiles tab lists, creates, edits, removes, sets the default and tests a connection with unsaved values; it replaces today's screen ([20-cli.md](20-cli.md)). |
 | TUI-HLP-05 | Switching profile reconnects everything, resets the histories and shows the new profile in the status line. |
+| TUI-HLP-06 | **On opening with no profile given** (no `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL`) **and with more than one profile**, the TUI opens a box to choose: the **default** profile (●) comes selected, `Enter` connects and `Esc` uses the default. With a single profile (or none) it takes it, without asking. Nothing is read from a server before the choice. The same box opens later with `P`, and `Esc` only closes it. |
 
 ## 7. Data and history
 
@@ -300,12 +302,22 @@ Each phase ends with something usable, green tests and docs updated **in every l
 | **0 — Foundation** ✅ | Feature `tui`, `taba-cli tui`, a panic-safe terminal, event loop, Elm core, workers, `api.rs`, the frame (6.1), key map, help, palette, i18n in both languages, theme/`NO_COLOR`, confirmation. **First:** check that `musl` and `arm64` build with ratatui/crossterm and measure the binary against `dist/` | The empty tabs navigate; switching language works; drawing and i18n tests pass |
 | **1 — Cluster** ✅ | 6.2, `prom.rs`, `history.rs`, node charts (6.3), the `partial` badge, node and cluster actions | Matches `taba-cli health cluster` and `drain *`; a drain and a return through the TUI on the 3-node Compose |
 | **2 — Topics** | 6.4 and topic monitoring and groups | Create, edit and delete equal to the `topic *` commands; smooth paging with more than 1 000 topics |
-| **3 — Tokens** | 6.5 with the secret popup and cloning | Equal to the `token *` commands; the secret is never visible after closing |
+| **3 — Tokens** ✅ | 6.5 with the secret popup and cloning | Equal to the `token *` commands; the secret is never visible after closing |
 | **4 — Messages** | 6.6: publish, listen, ack, visibility, browse, **prune** and the selection charts | A message published in the TUI is received in the same TUI and by `taba-cli consume`; prune on a 3-node Compose empties every node, and with a node stopped fails naming it |
-| **5 — Profiles and cleanup** | The Profiles tab (D-TUI-8); remove `tui/term.rs` and `tui/keys`; mouse, ASCII, narrow layouts | The old code is gone; `taba-cli profile` does not change for those who use it |
+| **5 — Profiles and cleanup** 🟨 (the Profiles tab is done) | The Profiles tab (D-TUI-8); remove `tui/term.rs` and `tui/keys`; mouse, ASCII, narrow layouts | The old code is gone; `taba-cli profile` does not change for those who use it |
 | **6 — Docs and release** | [20-cli.md](20-cli.md), [05-dependencies.md](05-dependencies.md), [24-conventions.md](24-conventions.md) (the CLI's zero-dependency rule), the CLI `README.md`, build scripts and Dockerfile, [30-decisions.md](30-decisions.md); captures | `verificar.mjs` and `verificar-idiomas.mjs` pass; the binaries of the six targets build |
 
 **Risks.** (1) `musl` and `arm64` with ratatui/crossterm (phase 0). (2) The binary grows; measure and record. (3) The TUI never claims an emptied queue it cannot prove: the `removed` and the partial failure are shown as the server gives them.
+
+### Record of phase 3 and the Profiles tab (2026-10-15)
+
+- **Order of the tabs:** Cluster, Topics, **Messages, Tokens**, Profiles (`3` is Messages and `4` is Tokens).
+- **Where it is:** `src/tui/screens/{tokens,profiles}` (state, keys and drawing), `src/tui/editor` (the form of fields and checkboxes, with its tests), `src/tui/view/modal/forms.rs` (the popups of the form, the secret and the choice of profile); `taba-client` did not change.
+- **Tokens (TUI-TOK-01 to 06):** a paged list (200 at a time, up to 25 pages) with a filter by part of the name (`/`) and an order (`s`: newest, oldest, name, id); an expired token is red and one that expires within 7 days is yellow. Create (`n`), edit name and expiry (`e`; permissions and prefixes show locked with the reason), clone (`c`) and revoke (`Del` or `x`, with a confirmation that starts on **Cancel**). The expiry takes empty or `none` (no deadline), `30d` `12h` `90m` (from now), a date (`2027-01-31`, the start of that day in UTC) or an RFC 3339 instant. The server's `400` shows in the form itself, which stays open. Without the root token the tab says which token is in use; with no authentication on the server it says there are no tokens.
+- **The secret (TUI-TOK-03):** it exists only inside the popup: never in the footer notice, in an error or in a log. `c` sends it to the clipboard (OSC 52, if the terminal allows it); `s` writes it to `taba-token-<id>.txt` in the current folder (`0600` on Unix, never over an existing file: the plan spoke of choosing the path). It is hidden (dots) after 30 s or when the window loses the focus, and `c` still copies it. Closing without copying or saving asks for a second `Esc`. On a clone, the box **Revoke the old one on closing** (`r`) starts **unticked** and lives inside the secret popup rather than after it (the popup is the only place the secret lives).
+- **Profiles (TUI-HLP-04 to 06):** a list with the default (●) and the profile in use; `n` new, `e` edit (name, `url`, `ops-url`, `token-file`, `token`, `ca-file` and the default box; the profile's other fields, such as `output` and the timeouts, are kept), `d` makes it the default, `Del` or `x` removes (confirmation on **Cancel**), `t` tests the profile's connection and `Ctrl+T`, in the form, tests **values not yet saved** (`GET /topics?limit=1`). `Enter` **connects**: the next calls go to the profile's server, the history and the screens start over and a reply still coming from the old server is dropped. Saving only replaces `default` and `profiles` in the file (the language and `[history]` stay as they are on disk). A token typed in the form stays in the file as typed, and the screen never draws it (it shows as dots); the form recommends a token file.
+- **Differences from the plan:** `P` is **switch profile** on every screen; when the Messages tab is built, the prune (`P` in the plan) uses another key or shadows this one on purpose. `Ctrl+T` and `t` are new keys. The old screen (`taba-cli profile`) stays as it was, until the cleanup of phase 5.
+- **Tests:** `cargo test -p taba-cli` passes (272 unit, 76 command, 54 screen snapshots); `clippy` has no warnings. The manual table of section 10 and a real terminal (OSC 52, focus, paste) were **not** exercised here.
 
 ### Record of phases 0 and 1 (2026-10-15)
 

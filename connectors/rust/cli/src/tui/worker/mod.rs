@@ -21,6 +21,31 @@ impl Backend for Client {
     }
 }
 
+/// A backend that can be replaced while the workers run: choosing another profile points every later call at
+/// the new server.
+pub struct SwitchBackend {
+    current: std::sync::RwLock<Arc<dyn Backend>>,
+}
+
+impl SwitchBackend {
+    pub fn new(first: Arc<dyn Backend>) -> SwitchBackend {
+        SwitchBackend {
+            current: std::sync::RwLock::new(first),
+        }
+    }
+
+    pub fn switch(&self, next: Arc<dyn Backend>) {
+        *self.current.write().unwrap_or_else(|e| e.into_inner()) = next;
+    }
+}
+
+impl Backend for SwitchBackend {
+    fn call(&self, call: &Call) -> Result<Reply, Error> {
+        let backend = Arc::clone(&self.current.read().unwrap_or_else(|e| e.into_inner()));
+        backend.call(call)
+    }
+}
+
 /// How many calls can be in flight at once.
 pub const THREADS: usize = 4;
 

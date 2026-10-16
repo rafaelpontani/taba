@@ -497,7 +497,7 @@ pub fn watch(m: &mut Model, node: &str, goal: Goal) {
 }
 
 /// The call an action's confirmation runs.
-pub fn call_of(pending: &Pending) -> ApiCall {
+pub fn call_of(pending: &Pending) -> Option<ApiCall> {
     pending.call()
 }
 

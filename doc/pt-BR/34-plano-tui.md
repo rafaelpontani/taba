@@ -9,7 +9,7 @@ fontes: [connectors/rust/cli/src, connectors/rust/client/src, doc/pt-BR/16-api-c
 
 # Plano — interface interativa (TUI) do `taba-cli`
 
-> **Status: 🟨 fases 0 e 1 feitas (2026-10-15); as fases 2 a 6 faltam.** Todas as rotas que a TUI chama já existem na API de cliente (feitas no `taba-node` em 2026-10-15: D152 a D156 de [30-decisoes.md](30-decisoes.md)). A fundação e a aba Cluster estão em `connectors/rust/cli` (registro na seção 11); faltam as abas Tópicos, Tokens, Mensagens e Perfis. Contexto: [20-cli.md](20-cli.md) (comandos e perfis de hoje), [16-api-cliente.md](16-api-cliente.md) (as rotas), [13-observabilidade.md](13-observabilidade.md) (métricas e condições).
+> **Status: 🟨 fases 0, 1 e 3 feitas e a aba Perfis da fase 5 (2026-10-15); faltam as fases 2 e 4, o fim da fase 5 e a 6.** Todas as rotas que a TUI chama já existem na API de cliente (feitas no `taba-node` em 2026-10-15: D152 a D156 de [30-decisoes.md](30-decisoes.md)). A fundação e a aba Cluster estão em `connectors/rust/cli` (registro na seção 11); a aba Tokens e a aba Perfis estão feitas (registro na seção 11); faltam as abas Tópicos e Mensagens. Contexto: [20-cli.md](20-cli.md) (comandos e perfis de hoje), [16-api-cliente.md](16-api-cliente.md) (as rotas), [13-observabilidade.md](13-observabilidade.md) (métricas e condições).
 
 ## 1. Objetivo e escopo
 
@@ -21,7 +21,7 @@ fontes: [connectors/rust/cli/src, connectors/rust/client/src, doc/pt-BR/16-api-c
 | **Tokens** | Listar, **criar** (o segredo aparece uma vez), **alterar** nome e validade, **revogar**, clonar |
 | **Tópicos** | Listar, filtrar, **criar**, **alterar**, **apagar**; gráficos e grupos |
 | **Mensagens** | **Publicar**, **escutar**, **navegar**, **ack** e visibilidade, **prune** |
-| **Perfis** | A tela de perfis de hoje, refeita (D-TUI-8) |
+| **Perfis** | A tela de perfis de hoje, refeita (D-TUI-8): listar, criar, editar, remover, escolher o padrão, testar a conexão e **conectar** com outro perfil; ao abrir sem perfil informado, a escolha do perfil |
 
 Valem para todas as telas: tudo rola (setas, `PgUp`/`PgDn`, `Home`/`End`, roda do mouse); **toda ação tem atalho** e o mouse nunca é obrigatório; textos em `en-US` e `pt-BR`; ação que apaga ou interrompe pede confirmação; o segredo do token nunca vai para um log.
 
@@ -40,7 +40,7 @@ Tomadas pelo dono do projeto; o plano as segue. Ao construir, as que mudam regra
 | **D-TUI-5** | **Histórico só na sessão.** Desde que o app abre, um amostrador em segundo plano guarda **1 h a cada 5 s** (720 amostras por série) em buffers circulares; configurável (`history.retention`, `history.interval`; `--history-retention`, `--history-interval`). Nada vai ao disco. Para histórico longo, o Prometheus ([13-observabilidade.md](13-observabilidade.md)). |
 | **D-TUI-6** | **A TUI nunca lê uma fila por conta própria.** Ler é *entregar*; só acontece quando a pessoa pede (*Navegar* ou *Escutar*). O *Navegar* pergunta **quantas mensagens** e o **tempo de visibilidade**, e avisa que cada leitura **conta uma entrega** (`deliveryCount`) e pode mandar a mensagem à dead-letter (mostra `maxDeliveries`). Há "devolver agora" (`PUT …/visibility` com `0`). Nunca faz ack sozinha. |
 | **D-TUI-7** | **Traduções:** `rust-i18n` 4.2.x + `sys-locale` 0.3.x; catálogos YAML embutidos (`locales/en-US.yml`, `locales/pt-BR.yml`), `t!("chave", nome = valor)`, plural por `chave.one`/`chave.other`; `en-US` é a fonte e a reserva. Um teste nosso compara chaves e variáveis dos catálogos. |
-| **D-TUI-8** | **Tela de perfis antiga** (`tui/term.rs`, `tui/keys`): mantida até a fase 5; depois refeita como a aba **Perfis** e apagada. `taba-cli profile` continua abrindo-a. |
+| **D-TUI-8** | **Tela de perfis antiga** (`tui/term.rs`, `tui/keys`): mantida até a fase 5; a aba **Perfis** já existe (2026-10-15), e a tela antiga só será apagada quando o `taba-cli profile` passar a abrir a TUI. `taba-cli profile` continua abrindo-a. |
 | **D-TUI-9** | **Leituras da TUI usam o token, nunca a API de operação** (essa segue sem token, para Prometheus e balanceador). Quem vê o quê: qualquer token válido vê `GET /nodes` (sem endereços), `GET /auth/me` e `/stats/topics…` (filtrado pelos seus prefixos); só o **token raiz** vê `GET /cluster/status`, `GET /cluster/backup` e tudo de um nó. Um `403 auth.forbidden` traz `required` (`root` ou o nome da permissão), e a TUI o usa para dizer o que falta (TUI-FRM-10). |
 | **D-TUI-10** | **Leituras consolidadas, com aviso de incompleto (D156).** `GET /stats/topics…`, `/nodes`, `/cluster/status` e `/cluster/backup` já são **do cluster**, e trazem `partial` e `missingNodes: [{nodeId, reason}]` quando um nó não respondeu em 5 s. A TUI **mostra sempre um selo "incompleto: nó X não respondeu"** quando `partial` é `true`, nunca soma nós por conta própria, e `?scope=node` fica só para a tela de detalhe do nó. |
 
@@ -116,14 +116,15 @@ Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em to
 | `Enter` · `Esc` | Abrir / confirmar · fechar / cancelar |
 | `/` · `s` `S` · `r` · `p` | Filtrar · ordenar / inverter · atualizar agora · pausar |
 | `:` | Paleta de comandos (busca aproximada de qualquer ação) |
-| `L` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
+| `L` · `P` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · trocar de perfil · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
 | Mouse | A roda rola o painel sob o ponteiro; o clique foca; opcional (`--no-mouse`) |
 
 | Tela | Teclas |
 |---|---|
 | Cluster | `Enter` detalhe · `d` drenar · `u` devolver · `b` flush deste nó · `B` flush de todos · `S` parar o cluster · `m` monitoramento |
 | Tópicos | `n` novo · `e` editar · `Del` apagar · `Enter` abrir · `m` monitoramento · `x` mensagens |
-| Tokens | `n` novo · `e` editar · `c` clonar · `Del` revogar · `y` mostrar o id |
+| Tokens | `n` novo · `e` editar · `c` clonar · `Del` `x` revogar · `/` filtrar · `s` ordenar |
+| Perfis | `Enter` conectar · `n` novo · `e` editar · `d` padrão · `Del` `x` remover · `t` testar |
 | Mensagens | `Ctrl+Enter` publicar · `l` escutar · `a` ack · `v` visibilidade · `A` ack em todas · `P` prune · `b` navegar · `c` gráficos |
 
 ## 6. Requisitos por tela
@@ -135,7 +136,7 @@ Requisitos numerados (`TUI-<tela>-<nn>`); testes e fases citam os IDs. O visual 
 | ID | Requisito |
 |---|---|
 | TUI-FRM-01 | Linha de status: perfil, URL, pior condição do cluster (palavra **e** ícone, nunca só cor) e relógio. Fonte: `GET /cluster/status`; com token comum, só `GET /nodes`. |
-| TUI-FRM-02 | Cinco abas (Cluster, Tópicos, Tokens, Mensagens, Perfis) por `1`…`5`, `[` `]`, `Alt+←/→`. |
+| TUI-FRM-02 | Cinco abas (Cluster, Tópicos, Mensagens, Tokens, Perfis) por `1`…`5`, `[` `]`, `Alt+←/→`. |
 | TUI-FRM-03 | Rodapé: teclas do painel em foco, estado da atualização (`⟳ 2s`, pausado, velho com a hora do último dado bom) e idioma. |
 | TUI-FRM-04 | Toda lista e todo texto rolam; a barra de rolagem só aparece quando o conteúdo excede. |
 | TUI-FRM-05 | Toda ação tem atalho; o mouse é opcional. |
@@ -228,6 +229,7 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 | TUI-HLP-03 | `L` escolhe o idioma (English, Português); vale na hora e fica gravado em `ui.language`. |
 | TUI-HLP-04 | A aba Perfis lista, cria, edita, remove, define o padrão e testa uma conexão com valores não salvos; substitui a tela de hoje ([20-cli.md](20-cli.md)). |
 | TUI-HLP-05 | Trocar de perfil reconecta tudo, zera os históricos e mostra o novo perfil na linha de status. |
+| TUI-HLP-06 | **Ao abrir sem perfil informado** (sem `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL`) **e com mais de um perfil**, a TUI abre uma caixa para escolher: o perfil **padrão** (●) já vem selecionado, `Enter` conecta e `Esc` usa o padrão. Com um perfil só (ou nenhum) assume-o, sem perguntar. Nada é lido de um servidor antes da escolha. A mesma caixa abre depois com `P`, e `Esc` só a fecha. |
 
 ## 7. Dados e histórico
 
@@ -300,12 +302,22 @@ Cada fase termina com algo utilizável, testes verdes e docs atualizadas **em to
 | **0 — Fundação** ✅ | Feature `tui`, `taba-cli tui`, terminal seguro contra panic, laço de eventos, núcleo Elm, trabalhadores, `api.rs`, quadro (6.1), mapa de teclas, ajuda, paleta, i18n nos dois idiomas, tema/`NO_COLOR`, confirmação. **Primeiro:** conferir que `musl` e `arm64` compilam com ratatui/crossterm e medir o binário contra `dist/` | As abas vazias navegam; trocar de idioma funciona; testes de desenho e i18n passam |
 | **1 — Cluster** ✅ | 6.2, `prom.rs`, `history.rs`, gráficos do nó (6.3), selo `partial`, ações de nó e de cluster | Bate com `taba-cli health cluster` e `drain *`; um drain e um retorno pela TUI no Compose de 3 nós |
 | **2 — Tópicos** | 6.4 e monitoramento de tópico e grupos | Criar, editar e apagar iguais aos comandos `topic *`; paginação suave com mais de 1 000 tópicos |
-| **3 — Tokens** | 6.5 com o popup do segredo e a clonagem | Igual aos comandos `token *`; o segredo nunca fica visível depois de fechar |
+| **3 — Tokens** ✅ | 6.5 com o popup do segredo e a clonagem | Igual aos comandos `token *`; o segredo nunca fica visível depois de fechar |
 | **4 — Mensagens** | 6.6: publicar, escutar, ack, visibilidade, navegar, **prune** e gráficos da seleção | Uma mensagem publicada na TUI é recebida na mesma TUI e por `taba-cli consume`; o prune num Compose de 3 nós esvazia todos os nós, e com um nó parado falha nomeando-o |
-| **5 — Perfis e limpeza** | Aba Perfis (D-TUI-8); remover `tui/term.rs` e `tui/keys`; mouse, ASCII, layouts estreitos | O código antigo some; `taba-cli profile` não muda para quem usa |
+| **5 — Perfis e limpeza** 🟨 (a aba Perfis está feita) | Aba Perfis (D-TUI-8); remover `tui/term.rs` e `tui/keys`; mouse, ASCII, layouts estreitos | O código antigo some; `taba-cli profile` não muda para quem usa |
 | **6 — Docs e release** | [20-cli.md](20-cli.md), [05-dependencias.md](05-dependencias.md), [24-convencoes.md](24-convencoes.md) (regra de zero dependências do CLI), `README.md` do CLI, scripts de build e Dockerfile, [30-decisoes.md](30-decisoes.md); capturas | `verificar.mjs` e `verificar-idiomas.mjs` passam; os binários dos seis alvos compilam |
 
 **Riscos.** (1) `musl` e `arm64` com ratatui/crossterm (fase 0). (2) O binário cresce; medir e registrar. (3) A TUI nunca afirma uma fila esvaziada que não prova: o `removed` e a falha parcial são mostrados como o servidor os dá.
+
+### Registro da fase 3 e da aba Perfis (2026-10-15)
+
+- **Ordem das abas:** Cluster, Tópicos, **Mensagens, Tokens**, Perfis (`3` é Mensagens e `4` é Tokens).
+- **Onde está:** `src/tui/screens/{tokens,profiles}` (estado, teclas e desenho), `src/tui/editor` (o formulário de campos e caixas de marcar, com os testes), `src/tui/view/modal/forms.rs` (os popups do formulário, do segredo e da escolha do perfil) e, no `taba-client`, nada mudou.
+- **Tokens (TUI-TOK-01 a 06):** lista paginada (de 200 em 200, até 25 páginas) com filtro por parte do nome (`/`) e ordem (`s`: mais novo, mais antigo, nome, id); o expirado fica em vermelho e o que expira em até 7 dias, em amarelo. Criar (`n`), editar nome e validade (`e`; permissões e prefixos aparecem travados com o motivo), clonar (`c`) e revogar (`Del` ou `x`, com confirmação que começa em **Cancelar**). A validade aceita vazio ou `none` (sem prazo), `30d` `12h` `90m` (a partir de agora), uma data (`2027-01-31`, início do dia em UTC) ou um instante RFC 3339. O `400` do servidor aparece no próprio formulário, que continua aberto. Sem o token raiz a aba diz qual token está em uso; sem autenticação no servidor diz que não há tokens.
+- **O segredo (TUI-TOK-03):** só existe dentro do popup: nunca no aviso do rodapé, no erro ou num log. `c` o envia à área de transferência (OSC 52, se o terminal permitir); `s` o grava em `taba-token-<id>.txt` na pasta atual (`0600` no Unix, nunca sobre um arquivo existente: o plano falava em escolher o caminho). Fica escondido (pontos) após 30 s ou quando a janela perde o foco, e `c` ainda o copia. Fechar sem copiar nem salvar pede um segundo `Esc`. Num clone, a caixa **Revogar o antigo ao fechar** (`r`) começa **desmarcada** e fica dentro do popup do segredo, e não depois dele (o popup é o único lugar onde o segredo vive).
+- **Perfis (TUI-HLP-04 a 06):** lista com o padrão (●) e o perfil em uso; `n` novo, `e` editar (nome, `url`, `ops-url`, `token-file`, `token`, `ca-file` e a caixa do padrão; os outros campos do perfil, como `output` e os tempos, são mantidos), `d` torna padrão, `Del` ou `x` remove (confirmação em **Cancelar**), `t` testa a conexão do perfil e `Ctrl+T`, no formulário, testa **valores ainda não salvos** (`GET /topics?limit=1`). `Enter` **conecta**: os próximos chamados vão ao servidor do perfil, o histórico e as telas recomeçam e a resposta que ainda vinha do servidor antigo é descartada. Gravar só troca `default` e `profiles` no arquivo (o idioma e o `[history]` ficam como estão no disco). Um token escrito no formulário fica no arquivo como foi digitado, e a tela nunca o desenha (aparece como pontos); o formulário recomenda o arquivo de token.
+- **Diferenças do plano:** `P` é **trocar de perfil** em todas as telas; quando a aba Mensagens for feita, o prune (`P` no plano) usa outra tecla ou sombreia essa de propósito. `Ctrl+T` e `t` são teclas novas. A tela antiga (`taba-cli profile`) continua como estava, até a limpeza da fase 5.
+- **Testes:** `cargo test -p taba-cli` passa (272 unitários, 76 de comandos, 54 instantâneos de tela); `clippy` sem avisos. A tabela manual da seção 10 e o terminal real (OSC 52, foco, colar) **não** foram exercitados aqui.
 
 ### Registro das fases 0 e 1 (2026-10-15)
 

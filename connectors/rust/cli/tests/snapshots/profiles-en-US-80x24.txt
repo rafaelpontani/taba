@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ checking                        00:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name             Address                       Token        Default           │
+│  dev            http://localhost:8080         file         ○                 │
+│  prod           https://taba.example:8080     in the file  ●        in use   │
+│▶ lab            https://lab.example           none         ○                 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Profile ─────────────────────────────────────────────────────────────────────┐
+│lab                                                                           │
+│url             https://lab.example                                           │
+│                                                                              │
+│Enter connects with this profile now; the default (d) is the one used when    │
+│none is given.                                                                │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter connect  n new  e edit  L language  ? help  q quit        ⟳ 5s · L en-US

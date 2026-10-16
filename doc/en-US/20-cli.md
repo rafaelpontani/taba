@@ -161,6 +161,8 @@ profiles:
 
 **Full-screen interface:** the same file keeps two sections that are not profiles: `ui.language` (written by the `L` key) and `history.retention` / `history.interval` (the history of the charts; durations such as `90`, `90s`, `5m` or `1h`). Language: `--lang` → `TABA_CLI_LANG` → `ui.language` → the system's language (`LC_ALL`, `LC_MESSAGES`, `LANG`; on Windows, the interface language) → `en-US`.
 
+**Which profile the interface uses:** `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL` fix the choice. With none of them and **more than one** profile in the file, the interface opens a box to choose, with the `default` profile already selected (`Esc` takes the default); with a single profile or none it takes it without asking. The Profiles tab creates, edits, removes, marks the default, tests the connection and connects with another profile, and the `P` key switches profile on any tab.
+
 ```yaml
 ui:
   language: en-US

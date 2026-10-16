@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:01 UTC
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+3 tokens  sorted by newest first (s)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name               Permissions            Topic prefixes           Expires    │
+│▶ billing          admin                  —                        2026-10-18 │
+│  orders-app       publish,consume        orders.                  never      │
+│  old-batch        consume                batch. etl.              2026-10-01 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Token ───────────────────────────────────────────────────────────────────────┐
+│Name           billing                                                        │
+│Id             0191f3a2-7c1e-7000-8000-00000000000b                           │
+│Permissions    admin                                                          │
+│Topic prefixes every topic                                                    │
+│Created        2026-10-10 10:00:00                                            │
+│Expires        2026-10-18 00:00:00 (expires soon)                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ n new  e edit  c clone  Del revoke  L language  ? help  q quit  ⟳ 5s · L en-US

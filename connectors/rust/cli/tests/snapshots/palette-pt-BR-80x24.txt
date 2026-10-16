@@ -1,24 +1,24 @@
  prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
- 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
 ┌ Condições ───────────────────────────────────────────────────────────────────┐
 │✔ saudáve┌ Comandos ────────────────────────────────────────────────┐         │
 └─────────│: dr▏                                                     │─────────┘
 Membros: a│                                                          │
 ┌ 3 nós ──│▶ Drenar o nó  d                                          │─────────┐
-│Nó       │  Descer  ↓ j                                             │nc  Req  │
-│▶ 01a1…00│  Abrir, ou mover para a direita  → l                     │    3    │
+│Nó       │  Tornar o perfil o padrão  d                             │nc  Req  │
+│▶ 01a1…00│  Descer  ↓ j                                             │    3    │
+│  01a1…00│  Abrir, ou mover para a direita  → l                     │    3    │
 │  01a1…00│  Ordenar  s                                              │    3    │
-│  01a1…00│  Detalhe do nó, ou o que uma condição significa  Enter   │    3    │
+│         │  Trocar de perfil  P                                     │         │
+│         │  Detalhe do nó, ou o que uma condição significa  Enter   │         │
 │         │  Devolver o nó  u                                        │         │
 │         │  Gráficos do cluster  m                                  │         │
 │         │  Janela maior  +                                         │         │
 │         │  Escala automática ou a partir do zero  z                │         │
-│         │                                                          │         │
-│         │                                                          │         │
-│         │                                                          │         │
-└─────────│                                                          │─────────┘
-┌ Memória │                                                          │─────────┐
+│         │  Editar o nome ou a validade do token  e                 │         │
+└─────────│  Editar o perfil  e                                      │─────────┘
+┌ Memória │  Testar a conexão do perfil  t                           │─────────┐
 │▄        └──────────────────────────────────────────────────────────┘         │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  b flush  ? ajuda  q sair     ⟳ 2s · pt-BR
+ Enter detalhe  d drenar  u devolver  L idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR

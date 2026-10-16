@@ -128,6 +128,12 @@ impl<'a> Ctx<'a> {
         profile::config_path(self.platform.os(), &|k| self.platform.env(k)).map_err(CliError::File)
     }
 
+    /// Makes `name` the profile the next calls use, as `--profile` would.
+    pub fn select_profile(&mut self, name: Option<String>) {
+        self.globals.profile = name;
+        self.effective = None;
+    }
+
     /// The profiles file (empty if it does not exist yet).
     pub fn load_config(&self) -> Result<ConfigFile, CliError> {
         profile::load(&self.config_path()?).map_err(CliError::File)

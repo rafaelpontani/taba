@@ -10,9 +10,11 @@ use ratatui::Frame;
 use crate::tui::api::{FlushReport, Severity, StopReport};
 use crate::tui::i18n::{self, LANGS};
 use crate::tui::keymap;
-use crate::tui::model::{Confirm, Fail, Modal, Model, Pending, Report};
+use crate::tui::model::{Confirm, Fail, Input, InputPurpose, Modal, Model, Pending, Report};
 use crate::tui::update::{palette_matches, scope_of};
 use crate::tui::view::widgets::{centered, denied_text, popup, scrolling, short};
+
+mod forms;
 
 pub fn draw(f: &mut Frame, area: Rect, m: &Model) {
     let Some(modal) = &m.modal else { return };
@@ -23,7 +25,10 @@ pub fn draw(f: &mut Frame, area: Rect, m: &Model) {
         Modal::Confirm(confirm) => draw_confirm(f, area, m, confirm),
         Modal::Report(report) => draw_report(f, area, m, report),
         Modal::Condition(name) => draw_condition(f, area, m, name),
-        Modal::Input(input) => draw_input(f, area, m, &input.value),
+        Modal::Input(input) => draw_input(f, area, m, input),
+        Modal::Profiles { selected } => forms::draw_profiles(f, area, m, *selected),
+        Modal::Editor(editor) => forms::draw_editor(f, area, m, editor),
+        Modal::Secret(secret) => forms::draw_secret(f, area, m, secret),
     }
 }
 
@@ -140,6 +145,11 @@ fn pending_keys(pending: &Pending) -> (&'static str, &'static str) {
         Pending::FlushNode(_) => ("confirm.flush-node.title", "confirm.flush-node.body"),
         Pending::FlushAll => ("confirm.flush-all.title", "confirm.flush-all.body"),
         Pending::Stop => ("confirm.stop.title", "confirm.stop.body"),
+        Pending::RevokeToken(..) => ("confirm.revoke.title", "confirm.revoke.body"),
+        Pending::RemoveProfile(_) => (
+            "confirm.remove-profile.title",
+            "confirm.remove-profile.body",
+        ),
     }
 }
 
@@ -149,6 +159,7 @@ fn draw_confirm(f: &mut Frame, area: Rect, m: &Model, confirm: &Confirm) {
     let (title, body) = pending_keys(&confirm.pending);
     let node = match &confirm.pending {
         Pending::Drain(id) | Pending::Return(id) | Pending::FlushNode(id) => short(id),
+        Pending::RevokeToken(_, name) | Pending::RemoveProfile(name) => name.clone(),
         _ => String::new(),
     };
     let rect = centered(area, 64, 14);
@@ -160,7 +171,7 @@ fn draw_confirm(f: &mut Frame, area: Rect, m: &Model, confirm: &Confirm) {
     ])
     .areas(inner);
     f.render_widget(
-        Paragraph::new(tx.tw(body, &[("node", &node)])).wrap(Wrap { trim: false }),
+        Paragraph::new(tx.tw(body, &[("node", &node), ("name", &node)])).wrap(Wrap { trim: false }),
         text,
     );
     if let Some(typed) = &confirm.typed {
@@ -382,21 +393,25 @@ fn draw_condition(f: &mut Frame, area: Rect, m: &Model, name: &str) {
     f.render_widget(Paragraph::new(tx.t("popup.close")).style(th.dim()), hint);
 }
 
-fn draw_input(f: &mut Frame, area: Rect, m: &Model, value: &str) {
+fn draw_input(f: &mut Frame, area: Rect, m: &Model, input: &Input) {
     let tx = m.tx();
     let th = m.theme;
+    let (title, prompt, hint) = match input.purpose {
+        InputPurpose::ExportCsv { .. } => ("export.title", "export.prompt", "export.hint"),
+        InputPurpose::TokenFilter => ("filter.title", "filter.prompt", "filter.hint"),
+    };
     let rect = centered(area, 64, 7);
-    let inner = popup(f, rect, &tx.t("export.title"), th.accent());
+    let inner = popup(f, rect, &tx.t(title), th.accent());
     f.render_widget(
         Paragraph::new(vec![
-            Line::from(Span::styled(tx.t("export.prompt"), th.dim())),
+            Line::from(Span::styled(tx.t(prompt), th.dim())),
             Line::from(vec![
                 Span::styled("> ", th.key()),
-                Span::raw(value.to_owned()),
+                Span::raw(input.value.clone()),
                 Span::styled("▏", th.accent()),
             ]),
             Line::default(),
-            Line::from(Span::styled(tx.t("export.hint"), th.dim())),
+            Line::from(Span::styled(tx.t(hint), th.dim())),
         ]),
         inner,
     );

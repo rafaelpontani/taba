@@ -918,10 +918,8 @@ fn draw_chart(f: &mut Frame, area: Rect, m: &Model, def: &cluster::ChartDef, nod
     };
     let at = m.cluster.monitor.frozen.unwrap_or(m.now);
     let window_s = window_ms(m) as f64 / 1000.0;
-    let lines: Vec<Vec<history::Point>> = nodes
-        .iter()
-        .map(|id| line_points(m, id, series))
-        .collect();
+    let lines: Vec<Vec<history::Point>> =
+        nodes.iter().map(|id| line_points(m, id, series)).collect();
     let xy: Vec<Vec<(f64, f64)>> = lines
         .iter()
         .map(|points| {
@@ -949,7 +947,10 @@ fn draw_chart(f: &mut Frame, area: Rect, m: &Model, def: &cluster::ChartDef, nod
         .collect();
     let figure = if def.unit == Unit::Seconds {
         let worst = lasts.iter().copied().fold(0.0, f64::max);
-        tx.tw("chart.worst", &[("value", &fmt_unit(lang, def.unit, worst))])
+        tx.tw(
+            "chart.worst",
+            &[("value", &fmt_unit(lang, def.unit, worst))],
+        )
     } else {
         let sum: f64 = lasts.iter().sum();
         tx.tw("chart.total", &[("value", &fmt_unit(lang, def.unit, sum))])

@@ -137,16 +137,22 @@ fn the_five_tabs_have_names_and_indexes() {
 fn a_confirmation_maps_to_the_call_it_will_make() {
     assert_eq!(
         Pending::Drain("n".into()).call(),
-        ApiCall::DrainStart("n".into())
+        Some(ApiCall::DrainStart("n".into()))
     );
     assert_eq!(
         Pending::Return("n".into()).call(),
-        ApiCall::DrainCancel("n".into())
+        Some(ApiCall::DrainCancel("n".into()))
     );
     assert_eq!(
         Pending::FlushNode("n".into()).call(),
-        ApiCall::FlushNode("n".into())
+        Some(ApiCall::FlushNode("n".into()))
     );
-    assert_eq!(Pending::FlushAll.call(), ApiCall::FlushCluster);
-    assert_eq!(Pending::Stop.call(), ApiCall::StopCluster);
+    assert_eq!(Pending::FlushAll.call(), Some(ApiCall::FlushCluster));
+    assert_eq!(Pending::Stop.call(), Some(ApiCall::StopCluster));
+    assert_eq!(
+        Pending::RevokeToken("t".into(), "app".into()).call(),
+        Some(ApiCall::TokenRevoke("t".into()))
+    );
+    // Removing a profile only touches the file: it has no API call.
+    assert_eq!(Pending::RemoveProfile("p".into()).call(), None);
 }

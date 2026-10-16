@@ -20,6 +20,8 @@ pub mod api;
 #[cfg(feature = "tui")]
 pub mod app;
 #[cfg(feature = "tui")]
+pub mod editor;
+#[cfg(feature = "tui")]
 pub mod effect;
 #[cfg(feature = "tui")]
 pub mod history;
@@ -144,7 +146,7 @@ impl Services for CtxServices<'_, '_> {
 }
 
 /// A profile's client configuration, with the built-in values where it defines nothing.
-fn connection_config(profile: &Profile) -> Result<Config, String> {
+pub(crate) fn connection_config(profile: &Profile) -> Result<Config, String> {
     let number = |field: &str, default: u64| {
         profile
             .get(field)

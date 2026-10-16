@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:01 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+3 tokens  ordenado por mais novo primeiro (s)
+┌──────────────────────────────────────────────────────────────────────────────┐
+│N┌ Editar o token ──────────────────────────────────────────────────────────┐ │
+│▶│▶ Nome               billing▏                                             │ │
+│ │  publish            [ ]  (não muda: clone o token)                       │ │
+│ │  consume            [ ]  (não muda: clone o token)                       │ │
+│ │  create             [ ]  (não muda: clone o token)                       │ │
+│ │  admin              [x]  (não muda: clone o token)                       │ │
+│ │  Prefixos de tópico   (não muda: clone o token)                          │ │
+│ │  Expira             2026-10-18T00:00:00Z                                 │ │
+│ │                                                                          │ │
+└─│                                                                          │─┘
+┌ │Prefixos: separados por espaço, vazio para todos os tópicos. Expira: 30d, │─┐
+│N│12h, 90m, uma data como 2027-01-31, ou vazio para nunca.                  │ │
+│I│                                                                          │ │
+│P│                                                                          │ │
+│P│Tab próximo campo · Espaço marca · Enter no último campo ou Ctrl+S salva ·│ │
+│C└──────────────────────────────────────────────────────────────────────────┘ │
+│Expira             18/10/2026 00:00:00 (expira em breve)                      │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ n novo  e editar  c clonar  L idioma  ? ajuda  q sair           ⟳ 5s · L pt-BR

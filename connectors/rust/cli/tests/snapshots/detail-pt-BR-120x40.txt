@@ -1,5 +1,5 @@
  prod https://taba.example:8080  ✔ saudável                                                                12:02:06 UTC
- 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
 Nó 01a13640-0000-7000-8000-000000000001
 Estado: active · Drain: active
 Versão: 1.4.0 · production
@@ -37,4 +37,4 @@ taba_ratelimit_rejected_total{category="publish"}  5
 
 
 
- Esc voltar  d drenar  u devolver  b flush  m gráficos  ? ajuda  q sair                                    ⟳ 2s · pt-BR
+ Esc voltar  d drenar  u devolver  b flush  m gráficos  L idioma  ? ajuda  q sair                        ⟳ 2s · L pt-BR

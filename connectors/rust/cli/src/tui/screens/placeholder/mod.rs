@@ -12,11 +12,8 @@ pub fn draw(f: &mut Frame, area: Rect, m: &Model, tab: Tab) {
     let tx = m.tx();
     let th = m.theme;
     let key = match tab {
-        Tab::Profiles => "placeholder.profiles",
-        Tab::Topics => "placeholder.topics",
-        Tab::Tokens => "placeholder.tokens",
         Tab::Messages => "placeholder.messages",
-        Tab::Cluster => "placeholder.topics",
+        _ => "placeholder.topics",
     };
     let lines = vec![
         Line::from(Span::styled(tx.t(tab.name_key()), th.title())),

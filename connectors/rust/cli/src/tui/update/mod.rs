@@ -10,11 +10,12 @@ use crate::tui::effect::Effect;
 use crate::tui::i18n::{self, LANGS};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::model::{
-    short_id, ClusterView, Confirm, Fail, Goal, InputPurpose, Modal, Model, Report, Tab, TABS,
+    short_id, ClusterView, Confirm, Fail, Goal, InputPurpose, Modal, Model, Pending, Report, Tab,
+    TABS,
 };
 use crate::tui::msg::Msg;
 use crate::tui::prom::Metrics;
-use crate::tui::screens::cluster;
+use crate::tui::screens::{cluster, profiles, tokens};
 
 /// How often each thing is read.
 const ME_EVERY_MS: u64 = 300_000;
@@ -24,6 +25,7 @@ const NODES_BACKGROUND_MS: u64 = 10_000;
 const METRICS_EVERY_MS: u64 = 5_000;
 const BACKUP_EVERY_MS: u64 = 10_000;
 const DRAIN_EVERY_MS: u64 = 2_000;
+const TOKENS_EVERY_MS: u64 = 10_000;
 
 pub fn update(m: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
@@ -53,6 +55,7 @@ pub fn update(m: &mut Model, msg: Msg) -> Vec<Effect> {
             let tx = m.tx();
             match result {
                 Ok(()) => {
+                    tokens::secret_written(m, &path);
                     let text = tx.tw("notice.file-written", &[("path", &path)]);
                     m.notify(Severity::Ok, text);
                 }
@@ -63,6 +66,33 @@ pub fn update(m: &mut Model, msg: Msg) -> Vec<Effect> {
             }
             Vec::new()
         }
+        Msg::Paste(text) => {
+            match &mut m.modal {
+                Some(Modal::Editor(editor)) => editor.insert(&text),
+                Some(Modal::Input(input)) => {
+                    input.value.extend(text.chars().filter(|c| !c.is_control()));
+                }
+                _ => {}
+            }
+            Vec::new()
+        }
+        Msg::ProfilesSaved {
+            file,
+            select,
+            result,
+        } => {
+            profiles::saved(m, file, select, result);
+            Vec::new()
+        }
+        Msg::ProfileChecked(result) => {
+            profiles::checked(m, &result);
+            Vec::new()
+        }
+        Msg::Connected {
+            profile,
+            url,
+            result,
+        } => on_connected(m, profile, url, result),
         Msg::LanguageSaved(result) => {
             if let Err(e) = result {
                 let text = m.tx().tw("notice.language-not-saved", &[("error", &e)]);
@@ -78,6 +108,8 @@ pub fn scope_of(m: &Model) -> Scope {
     match (m.tab, m.cluster.view) {
         (Tab::Cluster, ClusterView::Monitor) => Scope::Monitor,
         (Tab::Cluster, _) => Scope::Cluster,
+        (Tab::Tokens, _) => Scope::Tokens,
+        (Tab::Profiles, _) => Scope::Profiles,
         _ => Scope::Global,
     }
 }
@@ -153,13 +185,16 @@ pub fn dispatch(m: &mut Model, action: Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Submit => Vec::new(),
-        other => {
-            if m.tab == Tab::Cluster {
-                cluster::on_action(m, other)
-            } else {
-                Vec::new()
-            }
+        Action::SwitchProfile => {
+            open_profiles(m);
+            Vec::new()
         }
+        other => match m.tab {
+            Tab::Cluster => cluster::on_action(m, other),
+            Tab::Tokens => tokens::on_action(m, other),
+            Tab::Profiles => profiles::on_action(m, other),
+            _ => Vec::new(),
+        },
     }
 }
 
@@ -176,6 +211,47 @@ fn refresh(m: &mut Model) {
     m.cluster.metrics.refresh_now();
     m.cluster.backup.refresh_now();
     m.cluster.drain.refresh_now();
+    m.tokens.list.refresh_now();
+}
+
+/// Opens the choice of a profile, with the default (or the first) one under the cursor.
+fn open_profiles(m: &mut Model) {
+    if m.profiles.file.profiles.is_empty() {
+        let text = m.tx().t("gate.no-profile");
+        m.notify(Severity::Warning, text);
+        return;
+    }
+    m.modal = Some(Modal::Profiles {
+        selected: profiles::preferred_index(&m.profiles.file),
+    });
+}
+
+/// The connection with a profile was made (or could not be).
+fn on_connected(
+    m: &mut Model,
+    profile: String,
+    url: String,
+    result: Result<(), String>,
+) -> Vec<Effect> {
+    let tx = m.tx();
+    match result {
+        Ok(()) => {
+            m.reconnect(profile.clone(), url.clone());
+            if matches!(m.modal, Some(Modal::Profiles { .. })) {
+                m.modal = None;
+            }
+            let text = tx.tw("notice.connected", &[("profile", &profile), ("url", &url)]);
+            m.notify(Severity::Ok, text);
+        }
+        Err(e) => {
+            let text = tx.tw(
+                "notice.connect-failed",
+                &[("profile", &profile), ("error", &e)],
+            );
+            m.notify(Severity::Critical, text);
+        }
+    }
+    Vec::new()
 }
 
 // ---------- popups ----------
@@ -286,6 +362,16 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
             _ => Vec::new(),
         },
         Modal::Confirm(confirm) => confirm_key(m, event, confirm),
+        Modal::Profiles { selected } => profiles_key(m, event, selected),
+        Modal::Editor(mut editor) => {
+            let outcome = editor.handle(&event);
+            if editor.purpose.is_profile() {
+                profiles::editor_key(m, editor, outcome)
+            } else {
+                tokens::editor_key(m, editor, outcome)
+            }
+        }
+        Modal::Secret(secret) => tokens::secret_key(m, secret, event.code),
         Modal::Report(_) | Modal::Condition(_) => {
             if matches!(
                 event.code,
@@ -302,13 +388,23 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
             }
             KeyCode::Enter => {
                 m.modal = None;
-                let InputPurpose::ExportCsv { node, series } = &input.purpose;
-                let path = input.value.trim().to_owned();
-                if path.is_empty() {
-                    return Vec::new();
+                let value = input.value.trim().to_owned();
+                match &input.purpose {
+                    InputPurpose::ExportCsv { node, series } => {
+                        if value.is_empty() {
+                            return Vec::new();
+                        }
+                        let contents = cluster::export_csv(m, node, *series);
+                        vec![Effect::WriteFile {
+                            path: value,
+                            contents,
+                        }]
+                    }
+                    InputPurpose::TokenFilter => {
+                        m.tokens.filter = value;
+                        Vec::new()
+                    }
                 }
-                let contents = cluster::export_csv(m, node, *series);
-                vec![Effect::WriteFile { path, contents }]
             }
             KeyCode::Backspace => {
                 input.value.pop();
@@ -323,6 +419,38 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
             _ => Vec::new(),
         },
     }
+}
+
+/// The choice of a profile: the arrows move, `Enter` connects. At the start `Esc` takes the default one; later it only
+/// closes the popup.
+fn profiles_key(m: &mut Model, event: KeyEvent, selected: usize) -> Vec<Effect> {
+    let count = m.profiles.file.profiles.len();
+    let set = |m: &mut Model, selected: usize| m.modal = Some(Modal::Profiles { selected });
+    match event.code {
+        KeyCode::Up | KeyCode::Char('k') => set(m, cluster::moved(selected, -1, count)),
+        KeyCode::Down | KeyCode::Char('j') => set(m, cluster::moved(selected, 1, count)),
+        KeyCode::Home => set(m, 0),
+        KeyCode::End => set(m, count.saturating_sub(1)),
+        KeyCode::Enter => {
+            if let Some((name, _)) = m.profiles.file.profiles.get(selected) {
+                return vec![Effect::Connect(name.clone())];
+            }
+        }
+        KeyCode::Esc => {
+            if !m.awaiting_profile {
+                m.modal = None;
+            } else if let Some((name, _)) = m
+                .profiles
+                .file
+                .profiles
+                .get(profiles::preferred_index(&m.profiles.file))
+            {
+                return vec![Effect::Connect(name.clone())];
+            }
+        }
+        _ => {}
+    }
+    Vec::new()
 }
 
 fn palette_key(m: &mut Model, event: KeyEvent, query: &mut String, selected: usize) -> Vec<Effect> {
@@ -363,11 +491,13 @@ fn palette_key(m: &mut Model, event: KeyEvent, query: &mut String, selected: usi
                 .map(|(_, a)| *a);
             m.modal = None;
             if let Some(action) = chosen {
-                if keymap::BINDINGS
-                    .iter()
-                    .any(|b| b.action == action && b.scope == Scope::Cluster)
-                {
-                    m.tab = Tab::Cluster;
+                if let Some(binding) = keymap::BINDINGS.iter().find(|b| b.action == action) {
+                    match binding.scope {
+                        Scope::Cluster | Scope::Monitor => m.tab = Tab::Cluster,
+                        Scope::Tokens => m.tab = Tab::Tokens,
+                        Scope::Profiles => m.tab = Tab::Profiles,
+                        Scope::Global => {}
+                    }
                 }
                 return dispatch(m, action);
             }
@@ -390,7 +520,11 @@ fn confirm_key(m: &mut Model, event: KeyEvent, mut confirm: Confirm) -> Vec<Effe
             };
             if allowed {
                 m.modal = None;
-                return run(m, confirm.pending.call());
+                return match (confirm.pending.call(), &confirm.pending) {
+                    (Some(call), _) => run(m, call),
+                    (None, Pending::RemoveProfile(name)) => profiles::remove(m, name),
+                    (None, _) => Vec::new(),
+                };
             }
             if confirm.typed.is_none() {
                 m.modal = None;
@@ -421,7 +555,7 @@ fn confirm_key(m: &mut Model, event: KeyEvent, mut confirm: Confirm) -> Vec<Effe
 }
 
 /// Sends an action's call; the screen is `busy` until the reply comes.
-fn run(m: &mut Model, call: ApiCall) -> Vec<Effect> {
+pub fn run(m: &mut Model, call: ApiCall) -> Vec<Effect> {
     let id = m.id();
     m.busy = Some(call.clone());
     vec![Effect::Call {
@@ -440,6 +574,10 @@ fn on_tick(m: &mut Model, now: u64, wall_ms: i64) -> Vec<Effect> {
         m.notice = None;
     }
     let mut effects = Vec::new();
+    // Nothing is read until the person has chosen a profile.
+    if m.awaiting_profile {
+        return effects;
+    }
     let background = !m.paused && m.focused && m.modal.is_none();
     if background || m.me.data.is_none() {
         poll_me(m, &mut effects);
@@ -447,6 +585,7 @@ fn on_tick(m: &mut Model, now: u64, wall_ms: i64) -> Vec<Effect> {
     if background && m.me.data.is_some() {
         poll_overview(m, &mut effects);
         poll_node(m, &mut effects);
+        poll_tokens(m, &mut effects);
     }
     poll_drain(m, &mut effects);
     effects
@@ -483,6 +622,20 @@ fn poll_overview(m: &mut Model, effects: &mut Vec<Effect>) {
     if (!m.uses_status() || on_cluster) && m.cluster.nodes.due(m.now) {
         let (id, effect) = issue(m, ApiCall::Nodes);
         m.cluster.nodes.in_flight = Some(id);
+        effects.push(effect);
+    }
+}
+
+/// The tokens, read page by page while their tab is open.
+fn poll_tokens(m: &mut Model, effects: &mut Vec<Effect>) {
+    if m.tab != Tab::Tokens || tokens::availability(m) != tokens::Availability::Ready {
+        return;
+    }
+    if m.tokens.list.due(m.now) {
+        m.tokens.reading.clear();
+        m.tokens.pages = 1;
+        let (id, effect) = issue(m, ApiCall::Tokens(None));
+        m.tokens.list.in_flight = Some(id);
         effects.push(effect);
     }
 }
@@ -636,6 +789,7 @@ fn on_reply(
                 Err(fail) => m.cluster.backup.fail(now, fail, BACKUP_EVERY_MS),
             }
         }
+        ApiCall::Tokens(_) => return on_tokens_reply(m, id, outcome),
         ApiCall::DrainStatus(_) => {
             if m.cluster.drain.in_flight != Some(id) {
                 return Vec::new();
@@ -650,6 +804,36 @@ fn on_reply(
             }
         }
         _ => {}
+    }
+    Vec::new()
+}
+
+/// A page of tokens: the next one is asked for until the server has no more.
+fn on_tokens_reply(m: &mut Model, id: u64, outcome: Result<String, Fail>) -> Vec<Effect> {
+    if m.tokens.list.in_flight != Some(id) {
+        return Vec::new();
+    }
+    let now = m.now;
+    match outcome.and_then(|t| api::parse_tokens(&t).map_err(|e| invalid("tokens", e))) {
+        Ok(page) => {
+            m.tokens.reading.extend(page.items);
+            match page.next_cursor {
+                Some(cursor) if m.tokens.pages < tokens::MAX_PAGES => {
+                    m.tokens.pages += 1;
+                    let (id, effect) = issue(m, ApiCall::Tokens(Some(cursor)));
+                    m.tokens.list.in_flight = Some(id);
+                    return vec![effect];
+                }
+                _ => {
+                    let all = std::mem::take(&mut m.tokens.reading);
+                    m.tokens.list.ok(now, all, TOKENS_EVERY_MS);
+                }
+            }
+        }
+        Err(fail) => {
+            m.tokens.reading.clear();
+            m.tokens.list.fail(now, fail, TOKENS_EVERY_MS);
+        }
     }
     Vec::new()
 }
@@ -685,6 +869,12 @@ fn on_action_reply(m: &mut Model, call: ApiCall, outcome: Result<String, Fail>) 
     let text = match outcome {
         Ok(text) => text,
         Err(fail) => {
+            // A form that was refused keeps the reason in itself, and stays open.
+            if matches!(call, ApiCall::TokenCreate(_) | ApiCall::TokenUpdate(..))
+                && tokens::refused(m, &fail)
+            {
+                return Vec::new();
+            }
             m.modal = Some(Modal::Report(Report::Failure { call, fail }));
             return Vec::new();
         }
@@ -721,6 +911,10 @@ fn on_action_reply(m: &mut Model, call: ApiCall, outcome: Result<String, Fail>) 
                 );
             }
         },
+        ApiCall::TokenCreate(_) | ApiCall::TokenUpdate(..) => {
+            return tokens::saved(m, &call, &text)
+        }
+        ApiCall::TokenRevoke(_) => tokens::revoked(m),
         _ => {}
     }
     Vec::new()

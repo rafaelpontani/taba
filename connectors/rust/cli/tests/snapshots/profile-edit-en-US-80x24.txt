@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ checking                        00:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Name             Address                       Token        Default           │
+│ ┌ Edit the profile ────────────────────────────────────────────────────────┐ │
+│ │▶ Name                   lab▏                                             │ │
+│▶│  Address (url)          https://lab.example                              │ │
+│ │  Operations address                                                      │ │
+│ │  Token file                                                              │ │
+│ │  Token (kept in the file)                                                │ │
+│ │  CA certificate file                                                     │ │
+│ │  Default profile        [ ]                                              │ │
+└─│                                                                          │─┘
+┌ │                                                                          │─┐
+│l│Empty fields use the built-in value. Prefer a token file: a token typed   │ │
+│u│here is kept in the file as written.                                      │ │
+│ │                                                                          │ │
+│E│                                                                          │ │
+│n│Tab next field · Space ticks · Ctrl+S saves · Ctrl+T tests the connection │ │
+│ └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter connect  n new  e edit  L language  ? help  q quit        ⟳ 5s · L en-US

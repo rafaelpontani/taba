@@ -172,3 +172,50 @@ fn what_a_real_development_node_answers_is_read() {
     assert_eq!(stop.stopped, vec!["a"]);
     assert_eq!(stop.warnings.len(), 1);
 }
+
+/// TUI: TUI-TOK-01
+#[test]
+fn a_page_of_tokens_is_read_with_its_cursor_and_without_a_secret() {
+    let page = parse_tokens(
+        r#"{"items":[{"id":"t1","name":"app","permissions":["publish","consume"],"topicPrefixes":["orders."],"createdAt":"2026-10-01T10:00:00Z","expiresAt":null},{"id":"t2","name":"ops","permissions":["admin"],"topicPrefixes":[],"createdAt":"2026-10-02T10:00:00Z","expiresAt":"2027-01-01T00:00:00Z"}],"nextCursor":"abc"}"#,
+    )
+    .unwrap();
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.items[0].permissions, vec!["publish", "consume"]);
+    assert_eq!(page.items[0].prefixes, vec!["orders."]);
+    assert_eq!(page.items[0].expires_at, None);
+    assert_eq!(
+        page.items[1].expires_at.as_deref(),
+        Some("2027-01-01T00:00:00Z")
+    );
+    assert_eq!(page.next_cursor.as_deref(), Some("abc"));
+}
+
+/// TUI: TUI-TOK-03
+#[test]
+fn a_created_token_brings_the_secret_once() {
+    let (token, secret) = parse_token_created(
+        r#"{"id":"t1","name":"app","permissions":["publish"],"topicPrefixes":[],"createdAt":"2026-10-01T10:00:00Z","expiresAt":null,"token":"tb_t1.s3cret"}"#,
+    )
+    .unwrap();
+    assert_eq!((token.id.as_str(), secret.as_str()), ("t1", "tb_t1.s3cret"));
+    assert!(parse_token_created(r#"{"id":"t1","name":"app"}"#).is_err());
+}
+
+/// TUI: TUI-TOK-02
+#[test]
+fn the_token_calls_map_to_their_routes() {
+    let c = ApiCall::Tokens(Some("c1".into())).to_call();
+    assert_eq!((c.method, c.path.as_str()), ("GET", "/tokens"));
+    assert!(c.query.contains(&("cursor".to_owned(), "c1".to_owned())));
+    let c = ApiCall::TokenCreate("{}".into()).to_call();
+    assert_eq!(
+        (c.method, c.path.as_str(), c.body.as_slice()),
+        ("POST", "/tokens", b"{}".as_slice())
+    );
+    let c = ApiCall::TokenUpdate("a/b".into(), "{}".into()).to_call();
+    assert_eq!((c.method, c.path.as_str()), ("PATCH", "/tokens/a%2Fb"));
+    let c = ApiCall::TokenRevoke("t1".into()).to_call();
+    assert_eq!((c.method, c.path.as_str()), ("DELETE", "/tokens/t1"));
+    assert!(ApiCall::TokenRevoke("t1".into()).is_action() && !ApiCall::Tokens(None).is_action());
+}
