@@ -270,3 +270,6 @@ placeholder.tokens: "The tokens screen (list, create, edit, revoke and clone) co
 placeholder.messages: "The messages bench (publish, listen, browse, ack and prune) comes in a later phase of the interface. Until then use taba-cli publish and taba-cli consume."
 placeholder.profiles: "To manage the connection profiles use taba-cli profile, which opens the profiles screen. The tab will bring it here in a later phase."
 placeholder.hint: "Use 1 to 5 or [ ] to change tabs, ? for help."
+summary.stopped: "Cluster stopped: every node is in drain and refuses data calls. Return a node (u) or restart the nodes."
+summary.stopped-planned: "Cluster stopped by a planned stop (%{at}): restart the nodes and the next start restores it from S3, or return a node (u)."
+error.draining: "The node is in drain and no other node can serve: the cluster may be stopped. Restart the nodes or return one."

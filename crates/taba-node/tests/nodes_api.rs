@@ -723,3 +723,48 @@ async fn a_drained_node_shows_in_the_list_of_every_node_even_one_that_came_back_
     }
     cluster.shutdown().await;
 }
+
+async fn drain_node(node: &TestNode) {
+    let started = node
+        .client
+        .post(node.operations_url("/node/drain"))
+        .send()
+        .await
+        .unwrap();
+    assert!(started.status().is_success());
+    eventually_async("the node is drained", || async {
+        let response = node.client_get_ops("/node/drain").await;
+        response.json::<Value>().await.unwrap()["drainState"] == "drained"
+    })
+    .await;
+}
+
+/// With every node in drain the data API refuses, but the reads that say what the cluster is doing keep answering,
+/// and they say the cluster is stopped; while another node serves, a drained node's answer is the cluster's.
+#[tokio::test]
+async fn a_cluster_with_every_node_in_drain_still_says_it_is_stopped() {
+    let cluster = TestCluster::start_with(2, &[("TABA_AUTH_ROOT_TOKEN", ROOT)]).await;
+    let (first, second) = (cluster.node(1), cluster.node(2));
+    // One node still serves: the drained one answers with the cluster's picture.
+    drain_node(second).await;
+    let status = json_of(get(second, "/cluster/status", Some(ROOT)).await, 200).await;
+    assert_eq!(status["summary"]["stopped"], false, "{status}");
+    assert_eq!(status["summary"]["servingNodes"], 1, "{status}");
+
+    // Nobody serves: the data API refuses, the state reads answer and say why.
+    drain_node(first).await;
+    let refused = get(first, "/topics", Some(ROOT)).await;
+    assert_eq!(refused.status(), 503);
+    for node in [first, second] {
+        let resp = get(node, "/cluster/status", Some(ROOT)).await;
+        let code = resp.status();
+        let body = resp.text().await.unwrap();
+        assert_eq!(code, 200, "{body}");
+        let status: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(status["summary"]["stopped"], true, "{status}");
+        assert_eq!(status["summary"]["servingNodes"], 0, "{status}");
+        json_of(get(node, "/nodes", Some(ROOT)).await, 200).await;
+        json_of(get(node, "/auth/me", Some(ROOT)).await, 200).await;
+    }
+    cluster.shutdown().await;
+}

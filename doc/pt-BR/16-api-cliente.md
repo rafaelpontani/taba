@@ -355,7 +355,7 @@ A API de operação ([17-api-operacao.md](17-api-operacao.md)) não tem token e 
 
 | Rota | Faz |
 |---|---|
-| `GET /cluster/status` | O que o `GET /health/cluster` responde: as condições e o `NodeStatus` de cada nó (que agora traz `runtime`: `activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`), com `partial` e `missingNodes`. Aceita `scope=node` |
+| `GET /cluster/status` | O que o `GET /health/cluster` responde: as condições e o `NodeStatus` de cada nó (que agora traz `runtime`: `activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`), com `partial` e `missingNodes`. Aceita `scope=node`. O `summary` diz também se o cluster está parado: `servingNodes` (nós ativos e fora de drain), `stopped` (todo nó que respondeu está em drain) e, com `stopped`, `plannedStop` e `stoppedAt` (a lista de parada em S3 do `POST /cluster/stop`). Um nó em drain responde esta rota (e `/nodes`) ele mesmo quando nenhum outro nó pode atender a chamada. |
 | `GET /cluster/backup` | O estado do backup em S3 de **cada** nó, cada um como o `GET /nodes/{nodeId}/backup` o dá, com `partial` e `missingNodes` (`422 backup.not-configured` sem ele) |
 | `GET /nodes/{nodeId}/metrics` | O texto Prometheus do nó (o que o `GET /metrics` dá) |
 | `GET`, `POST`, `DELETE /nodes/{nodeId}/drain` | Estado, início e retorno do drain daquele nó: o que o `/node/drain` faz |

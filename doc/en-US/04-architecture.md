@@ -65,7 +65,7 @@ Each one is its own *listener*, so the network can restrict access to each one s
 - Without `operations.port`, the operations routes are served **also on the client port**.
 - In **development mode** the cluster port is **not opened**.
 - `/tokens` routes only exist with authentication on; otherwise they answer `404`.
-- A node in drain, synchronization or failure **does not serve** client calls: in a cluster it **forwards** them to another node (through the destination's cluster port) and, with no destination, answers `503` with `Retry-After`.
+- A node in drain, synchronization or failure **does not serve** client calls: in a cluster it **forwards** them to another node (through the destination's cluster port) and, with no destination, answers `503` with `Retry-After`. The reads that say what the cluster is doing (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` and the `/nodes/{nodeId}/…` calls, which include returning a node) are the exception: they are forwarded while another node can take them, and otherwise answered by the node itself, so a stopped cluster can still be inspected. In drain the node only validates the root token (the other tokens are data).
 
 Route details in [15-api-overview.md](15-api-overview.md).
 

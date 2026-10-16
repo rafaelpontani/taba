@@ -286,6 +286,11 @@ pub struct ClusterStatus {
     pub members_version: u64,
     pub quorum: bool,
     pub syncing_blocks: u64,
+    /// Every node that answered is in drain: the cluster is stopped (a planned stop, or all drained by hand).
+    pub stopped: bool,
+    /// The S3 stop list exists: the stop was `POST /cluster/stop`.
+    pub planned_stop: bool,
+    pub stopped_at: Option<String>,
     pub nodes: Vec<NodeStatus>,
 }
 
@@ -353,6 +358,9 @@ pub fn parse_cluster_status(text: &str) -> Result<ClusterStatus, String> {
         status.members_version = whole(&s, "membersVersion").unwrap_or(0);
         status.quorum = s.boolean("quorumAvailable").unwrap_or(false);
         status.syncing_blocks = whole(&s, "syncingBlocks").unwrap_or(0);
+        status.stopped = s.boolean("stopped").unwrap_or(false);
+        status.planned_stop = s.boolean("plannedStop").unwrap_or(false);
+        status.stopped_at = s.string("stoppedAt");
         if let Some(m) = s.raw("members").and_then(|r| json::object_fields(r).ok()) {
             status.members = m
                 .into_iter()

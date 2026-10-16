@@ -276,7 +276,13 @@ pub(super) async fn cluster_health(
     let local = node_status(&parts, state.cluster.as_deref());
     let table = state.cluster.as_ref().and_then(|c| c.membership().table());
     let (reported, missing): (Vec<Reported>, Vec<Missing>) = match (&state.cluster, &table) {
-        (Some(cluster), Some(table)) if scope == "cluster" => {
+        (Some(cluster), Some(table))
+            if scope == "cluster"
+                && table
+                    .members
+                    .iter()
+                    .any(|m| m.node_id == state.node.node_id()) =>
+        {
             ask_members(cluster, &table.members).await
         }
         _ => (
@@ -336,6 +342,26 @@ pub(super) async fn cluster_health(
             json!({ "nodeId": node_id, "reachable": status.is_some(), "status": status })
         })
         .collect();
+    // Nobody serving: every node that answered is draining, drained, syncing or failed. With S3 the stop list
+    // says whether it was a planned stop (`POST /cluster/stop`), so the operator knows why the API refuses.
+    let serving = reported
+        .iter()
+        .filter(|(_, status)| {
+            status
+                .as_ref()
+                .is_some_and(|s| s["state"] == "active" && s["drainState"] == "active")
+        })
+        .count();
+    // Stopped is every node that answered being in drain; a cluster that is only starting up (syncing) is not.
+    let answered: Vec<&Value> = reported.iter().filter_map(|(_, s)| s.as_ref()).collect();
+    let stopped = !answered.is_empty()
+        && answered
+            .iter()
+            .all(|s| s["drainState"] == "draining" || s["drainState"] == "drained");
+    let stop_list = match (&state.backup, stopped) {
+        (Some(backup), true) => backup.read_stop_list().await,
+        _ => None,
+    };
     Ok(Json(json!({
         "scope": scope,
         "collectedAt": format_ms(state.clock.now_millis()),
@@ -348,6 +374,10 @@ pub(super) async fn cluster_health(
             "membersVersion": members_version,
             "quorumAvailable": quorum_available,
             "syncingBlocks": syncing_blocks,
+            "servingNodes": serving,
+            "stopped": stopped,
+            "plannedStop": stop_list.is_some(),
+            "stoppedAt": stop_list.as_ref().map(|l| format_ms(l.at_ms)),
         },
         "nodes": nodes,
     })))

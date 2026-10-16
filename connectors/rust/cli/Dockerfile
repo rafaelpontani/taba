@@ -14,7 +14,6 @@
 FROM rust:1-alpine AS build
 RUN apk add --no-cache build-base
 WORKDIR /src/rust
-COPY connectors/rust /src/rust
 # Binário pequeno e estático. Com --target o RUSTFLAGS não vale para as macros de procedimento.
 ENV RUSTFLAGS="-C target-feature=+crt-static" \
     CARGO_PROFILE_RELEASE_OPT_LEVEL=z \
@@ -22,7 +21,24 @@ ENV RUSTFLAGS="-C target-feature=+crt-static" \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_PANIC=abort \
     CARGO_PROFILE_RELEASE_STRIP=symbols
+
+# Camada 1, as dependências: entram só os manifestos e um esqueleto dos crates, então esta camada (a lenta) só é
+# refeita quando um Cargo.toml ou o Cargo.lock mudam, não a cada edição do código.
+COPY connectors/rust/Cargo.toml connectors/rust/Cargo.lock ./
+COPY connectors/rust/client/Cargo.toml client/Cargo.toml
+COPY connectors/rust/cli/Cargo.toml cli/Cargo.toml
+RUN mkdir -p client/src cli/src \
+ && echo "" > client/src/lib.rs \
+ && echo "" > cli/src/lib.rs \
+ && echo "fn main() {}" > cli/src/main.rs \
+ && triple="$(uname -m)-unknown-linux-musl" \
+ && cargo build --release --locked -p taba-cli --target "$triple"
+
+# Camada 2, o código: os arquivos copiados são mais antigos que o esqueleto, então o touch faz o cargo recompilar
+# os crates (só eles; as dependências ficam como estão).
+COPY connectors/rust /src/rust
 RUN triple="$(uname -m)-unknown-linux-musl" \
+ && touch client/src/lib.rs cli/src/lib.rs cli/src/main.rs \
  && cargo build --release --locked -p taba-cli --target "$triple" \
  && cp "target/$triple/release/taba-cli" /taba-cli
 

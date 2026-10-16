@@ -73,7 +73,10 @@ async fn list(State(state): State<AppState>) -> Json<Value> {
     let me = state.node.node_id();
     let table = state.cluster.as_ref().and_then(|c| c.membership().table());
     let (reported, missing) = match (&state.cluster, &table) {
-        (Some(cluster), Some(table)) => operations::ask_members(cluster, &table.members).await,
+        // A node that left the cluster is not in its own table: it answers for itself.
+        (Some(cluster), Some(table)) if table.members.iter().any(|m| m.node_id == me) => {
+            operations::ask_members(cluster, &table.members).await
+        }
         _ => {
             let parts = StatusParts::of(&state);
             (

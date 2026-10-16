@@ -176,6 +176,12 @@ impl Auth {
 
     /// The token from the `Authorization: Bearer <token>` header.
     fn principal(&self, headers: &HeaderMap) -> Option<Principal> {
+        self.principal_of(headers, true)
+    }
+
+    /// Who the token is; without `with_tokens` only the root token counts (it comes from the configuration, so a
+    /// node that left the cluster can still tell it).
+    fn principal_of(&self, headers: &HeaderMap, with_tokens: bool) -> Option<Principal> {
         let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
         let (scheme, presented) = value.split_once(' ')?;
         let presented = presented.trim();
@@ -185,14 +191,17 @@ impl Auth {
         if self.root.matches(presented) {
             return Some(Principal::Root);
         }
+        if !with_tokens {
+            return None;
+        }
         self.tokens
             .authenticate(presented)
             .map(|record| Principal::Token(Arc::new(record)))
     }
 }
 
-/// The outer layer: finds out who is calling. In drain the node does not validate the token (doc 12: it counts by
-/// IP and forwards); with authentication off, everyone is `Open`.
+/// The outer layer: finds out who is calling. In drain the node validates only the root token (doc 12: it counts by
+/// IP and forwards the rest); with authentication off, everyone is `Open`.
 pub async fn authenticate(
     State(state): State<AppState>,
     mut request: Request,
@@ -201,7 +210,9 @@ pub async fn authenticate(
     let principal = if !state.auth.enabled {
         Some(Principal::Open)
     } else if state.node.drain_state() != DrainState::Active {
-        None
+        // A node in drain does not validate the other tokens (doc 12): it counts by IP and forwards. The root token
+        // is configuration, not data: it still opens the reads that say why the node refuses.
+        state.auth.principal_of(request.headers(), false)
     } else {
         state.auth.principal(request.headers())
     };

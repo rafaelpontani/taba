@@ -50,6 +50,8 @@ pub fn error_text(m: &Model, fail: &Fail) -> String {
         )
     } else if fail.is_denied() {
         widgets::denied_text(m, fail)
+    } else if fail.code == "cluster.node-draining" {
+        tx.t("error.draining")
     } else {
         tx.tw(
             "error.api",
@@ -99,7 +101,8 @@ fn draw_list(f: &mut Frame, area: Rect, m: &Model) {
     let conditions = m.status.data.as_ref().map_or(0, |s| s.conditions.len());
     let partial = m.status.data.as_ref().is_some_and(|s| s.partial);
     let cond_height = u16::try_from(conditions.clamp(1, 3)).unwrap_or(3) + 2;
-    let summary_height = 1 + u16::from(partial);
+    let stopped = m.status.data.as_ref().is_some_and(|s| s.stopped);
+    let summary_height = 1 + u16::from(partial) + u16::from(stopped);
     let chart_height = if side.is_none() { 4 } else { 0 };
     let [cond_area, summary_area, table_area, chart_area] = Layout::vertical([
         Constraint::Length(cond_height),
@@ -287,6 +290,21 @@ fn draw_summary(f: &mut Frame, area: Rect, m: &Model) {
         ));
     }
     let mut lines = vec![Line::from(spans)];
+    if status.stopped {
+        let key = if status.planned_stop {
+            "summary.stopped-planned"
+        } else {
+            "summary.stopped"
+        };
+        let text = tx.tw(
+            key,
+            &[("at", &status.stopped_at.clone().unwrap_or_default())],
+        );
+        lines.push(Line::from(Span::styled(
+            format!("{} {text}", th.icon(Severity::Critical)),
+            th.critical(),
+        )));
+    }
     if status.partial {
         lines.push(partial_seal(m, th, &status.missing));
     }

@@ -65,7 +65,7 @@ Cada uma é um *listener* próprio, para que a rede possa restringir o acesso a 
 - Sem `operations.port`, as rotas de operação são servidas **também na porta de cliente**.
 - Em **modo desenvolvimento** a porta do cluster **não é aberta**.
 - Rotas `/tokens` só existem com a autenticação ligada; senão respondem `404`.
-- Um nó em drain, em sincronização ou em falha **não atende** chamadas de cliente: num cluster ele as **repassa** a outro nó (pela porta do cluster do destino) e, sem destino, responde `503` com `Retry-After`.
+- Um nó em drain, em sincronização ou em falha **não atende** chamadas de cliente: num cluster ele as **repassa** a outro nó (pela porta do cluster do destino) e, sem destino, responde `503` com `Retry-After`. As leituras que dizem o que o cluster está fazendo (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` e as chamadas `/nodes/{nodeId}/…`, que incluem devolver um nó) são a exceção: são repassadas enquanto outro nó puder atendê-las e, senão, respondidas pelo próprio nó, de modo que um cluster parado ainda pode ser inspecionado. Em drain o nó só valida o token root (os outros tokens são dados).
 
 Detalhes das rotas em [15-api-visao-geral.md](15-api-visao-geral.md).
 

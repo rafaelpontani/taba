@@ -580,3 +580,25 @@ fn a_flush_on_a_cluster_without_s3_says_there_is_nothing_to_send() {
     assert!(screen.contains("nothing to send"), "{screen}");
     assert!(screen.contains("request id: req-1"), "{screen}");
 }
+
+/// A cluster that every node left by drain says so, with the reason when the S3 stop list has one.
+#[test]
+fn a_stopped_cluster_says_so_and_why() {
+    for (planned, expected) in [(true, "planned stop"), (false, "every node is in drain")] {
+        let status = status_json(false).replace(
+            r#""syncingBlocks":0}"#,
+            &format!(
+                r#""syncingBlocks":0,"servingNodes":0,"stopped":true,"plannedStop":{planned},"stoppedAt":"2026-10-15T12:00:00.000Z"}}"#
+            ),
+        );
+        let sim = Sim::with_status_json(Lang::EnUs, &status);
+        let screen = render(&sim.m, 120, 30);
+        assert!(screen.contains(expected), "{screen}");
+        let pt = Sim::with_status_json(Lang::PtBr, &status);
+        let screen = render(&pt.m, 120, 30);
+        assert!(screen.contains("Cluster parado"), "{screen}");
+    }
+    // A running cluster shows no such line.
+    let sim = Sim::root_with_status(Lang::EnUs);
+    assert!(!render(&sim.m, 120, 30).contains("Cluster stopped"));
+}

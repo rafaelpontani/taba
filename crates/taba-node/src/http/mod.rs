@@ -82,8 +82,39 @@ async fn drain_guard(State(state): State<AppState>, request: Request, next: Next
     if state.node.drain_state() == DrainState::Active && !syncing && !failed {
         return next.run(request).await;
     }
-    if state.cluster.is_some() && request.extensions().get::<forward::Forwarded>().is_none() {
-        return forward::forward_call(&state, request).await;
+    // The calls that say what the cluster is doing (`answers_in_any_state`) are forwarded like any other while a
+    // node can take them; when none can (every node draining, syncing or in failure, or a stale member table), this
+    // node answers them: they are how the operator finds out why the rest of the API refuses, and how a node returns.
+    let arrived_by_forward = request.extensions().get::<forward::Forwarded>().is_some();
+    let state_read = answers_in_any_state(request.method(), request.uri().path());
+    if state_read && arrived_by_forward {
+        return next.run(request).await;
+    }
+    if state.cluster.is_some() && !arrived_by_forward {
+        if !state_read {
+            return forward::forward_call(&state, request).await;
+        }
+        // The same call, kept to answer it here if the forward finds no node.
+        let mut local = Request::builder()
+            .method(request.method().clone())
+            .uri(request.uri().clone())
+            .body(axum::body::Body::empty())
+            .expect("the method and the uri of a received call are valid");
+        *local.headers_mut() = request.headers().clone();
+        if let Some(authn) = request.extensions().get::<auth::Authn>() {
+            local.extensions_mut().insert(authn.clone());
+        }
+        if let Some(info) = request
+            .extensions()
+            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        {
+            local.extensions_mut().insert(*info);
+        }
+        let forwarded = forward::forward_call(&state, request).await;
+        if forwarded.status() != axum::http::StatusCode::SERVICE_UNAVAILABLE {
+            return forwarded;
+        }
+        return next.run(local).await;
     }
     if failed {
         return common::ApiError(
@@ -110,6 +141,17 @@ async fn drain_guard(State(state): State<AppState>, request: Request, next: Next
         .with_retry_after(DRAIN_RETRY_AFTER_SECS),
     )
     .into_response()
+}
+
+/// The routes a node answers whatever its state: who the token is, the nodes and the cluster (reads), and the
+/// calls on a node (its drain, backup and metrics), which is how a drained node is returned.
+fn answers_in_any_state(method: &axum::http::Method, path: &str) -> bool {
+    match path {
+        "/auth/me" | "/nodes" | "/cluster/status" | "/cluster/backup" => {
+            method == axum::http::Method::GET
+        }
+        _ => path.starts_with("/nodes/"),
+    }
 }
 
 /// Client API. Without `operations.port`, it also serves the operations routes. The `/tokens` routes

@@ -355,7 +355,7 @@ The operations API ([17-operations-api.md](17-operations-api.md)) has no token a
 
 | Route | Does |
 |---|---|
-| `GET /cluster/status` | What `GET /health/cluster` answers: the conditions and the `NodeStatus` of every node (which now carries `runtime`: `activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`), with `partial` and `missingNodes`. Accepts `scope=node` |
+| `GET /cluster/status` | What `GET /health/cluster` answers: the conditions and the `NodeStatus` of every node (which now carries `runtime`: `activeRequests`, `rateLimitRejected`, `channelRttP95Seconds`), with `partial` and `missingNodes`. Accepts `scope=node`. `summary` also says whether the cluster is stopped: `servingNodes` (nodes active and out of drain), `stopped` (every node that answered is in drain), and, when `stopped`, `plannedStop` and `stoppedAt` (the S3 stop list of `POST /cluster/stop`). A node in drain answers this route (and `/nodes`) itself when no other node can take the call. |
 | `GET /cluster/backup` | The S3 backup state of **every** node, each as `GET /nodes/{nodeId}/backup` gives it, with `partial` and `missingNodes` (`422 backup.not-configured` without it) |
 | `GET /nodes/{nodeId}/metrics` | The node's Prometheus text (what `GET /metrics` gives) |
 | `GET`, `POST`, `DELETE /nodes/{nodeId}/drain` | Status, start and return from the drain of that node: what `/node/drain` does |
