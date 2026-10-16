@@ -37,4 +37,4 @@
 │Expires        2026-10-18 00:00:00 (expires soon)                                                                     │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- n new  e edit  c clone  Del revoke  / filter  s sort  L language  ? help  q quit                        ⟳ 5s · L en-US
+ n new  e edit  c clone  Del revoke  / filter  s sort  l language  ? help  q quit                        ⟳ 5s · L en-US

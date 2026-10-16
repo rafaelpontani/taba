@@ -333,7 +333,7 @@ fn the_popups() {
         }
         snapshot(&format!("palette-{code}-80x24"), &render(&sim.m, 80, 24));
         sim.code(KeyCode::Esc);
-        sim.press('L');
+        sim.press('l');
         snapshot(&format!("language-{code}-80x24"), &render(&sim.m, 80, 24));
         sim.code(KeyCode::Esc);
         sim.press('d');
@@ -762,7 +762,7 @@ fn the_footer_of_the_tokens_tab_dims_what_the_token_cannot_do() {
     let ready = Sim::on_tokens(Lang::EnUs);
     let footer = render(&ready.m, 80, 24).lines().last().unwrap().to_owned();
     assert!(
-        footer.contains("clone") && footer.contains("filter"),
+        footer.contains("clone") && footer.contains("language"),
         "{footer}"
     );
 }

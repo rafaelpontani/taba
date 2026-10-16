@@ -693,14 +693,14 @@ fn fuzzy_matching_is_a_case_insensitive_subsequence() {
 #[test]
 fn the_language_changes_at_once_and_is_saved() {
     let mut sim = Sim::root_with_status(Lang::EnUs);
-    sim.press('L');
+    sim.press('l');
     assert_eq!(sim.m.modal, Some(Modal::Language { selected: 0 }));
     sim.code(KeyCode::Down);
     let effects = sim.code(KeyCode::Enter);
     assert_eq!(sim.m.lang, Lang::PtBr);
     assert_eq!(effects, vec![Effect::SaveLanguage(Lang::PtBr)]);
     assert!(sim.m.modal.is_none());
-    sim.press('L');
+    sim.press('l');
     sim.code(KeyCode::Esc);
     assert_eq!(sim.m.lang, Lang::PtBr);
 }

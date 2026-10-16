@@ -37,4 +37,4 @@ Membros: active 3 · ✔ quórum · tabela v 7 · blocos sincronizando 0        
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  b flush  B flush de todos  L idioma  ? ajuda  q sair               ⟳ 2s · L pt-BR
+ Enter detalhe  d drenar  u devolver  b flush  B flush de todos  l idioma  ? ajuda  q sair               ⟳ 2s · L pt-BR

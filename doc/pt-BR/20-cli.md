@@ -157,9 +157,9 @@ profiles:
 
 **Precedência de cada campo:** opção do comando → **variável `TABA_CLI_<CAMPO>`** → perfil escolhido → valor embutido. **Qual perfil:** `--profile`, depois `TABA_CLI_PROFILE`, depois o `default` do arquivo.
 
-**Interface em tela cheia:** o mesmo arquivo guarda duas seções que não são perfis: `ui.language` (gravado pela tecla `L`) e `history.retention` / `history.interval` (o histórico dos gráficos; durações como `90`, `90s`, `5m` ou `1h`). Idioma: `--lang` → `TABA_CLI_LANG` → `ui.language` → o idioma do sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`; no Windows, o da interface) → `en-US`.
+**Interface em tela cheia:** o mesmo arquivo guarda duas seções que não são perfis: `ui.language` (gravado pela tecla `l`) e `history.retention` / `history.interval` (o histórico dos gráficos; durações como `90`, `90s`, `5m` ou `1h`). Idioma: `--lang` → `TABA_CLI_LANG` → `ui.language` → o idioma do sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`; no Windows, o da interface) → `en-US`.
 
-**Qual perfil a interface usa:** `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL` fixam a escolha. Sem nenhum deles e com **mais de um** perfil no arquivo, a interface abre uma caixa para escolher, com o perfil `default` já selecionado (`Esc` usa o padrão); com um perfil só ou nenhum, assume-o sem perguntar. Na aba Perfis dá para criar, editar, remover, marcar o padrão, testar a conexão e conectar com outro perfil, e a tecla `P` troca de perfil em qualquer aba.
+**Qual perfil a interface usa:** `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL` fixam a escolha. Sem nenhum deles e com **mais de um** perfil no arquivo, a interface abre uma caixa para escolher, com o perfil `default` já selecionado (`Esc` usa o padrão); com um perfil só ou nenhum, assume-o sem perguntar. Na aba Perfis dá para criar, editar, remover, marcar o padrão, testar a conexão e conectar com outro perfil, e a tecla `o` troca de perfil em qualquer aba.
 
 ```yaml
 ui:

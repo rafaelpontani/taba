@@ -344,7 +344,7 @@ fn escape_at_the_start_takes_the_default_profile_and_later_only_closes_the_choic
         result: Ok(()),
     });
     // Later, `P` opens the same choice and Esc leaves it.
-    sim.press('P');
+    sim.press('o');
     assert_eq!(sim.m.modal, Some(Modal::Profiles { selected: 1 }));
     assert!(sim.code(KeyCode::Esc).is_empty());
     assert!(sim.m.modal.is_none());
@@ -364,7 +364,7 @@ fn with_one_profile_or_none_nothing_is_asked() {
     let sim = opening(file(), false);
     assert!(sim.m.modal.is_none());
     let mut sim = opening(ConfigFile::default(), false);
-    sim.press('P');
+    sim.press('o');
     assert!(sim.m.modal.is_none(), "there is nothing to switch to");
     assert!(sim.m.notice.is_some());
 }

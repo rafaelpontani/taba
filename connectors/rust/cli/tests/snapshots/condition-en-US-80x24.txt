@@ -21,4 +21,4 @@ Membe┌ member unreachable ─────────────────�
 │▄                                     ││█                                     │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detail  d drain  u return  L language  ? help  q quit     ⟳ 2s · L en-US
+ Enter detail  d drain  u return  l language  ? help  q quit     ⟳ 2s · L en-US

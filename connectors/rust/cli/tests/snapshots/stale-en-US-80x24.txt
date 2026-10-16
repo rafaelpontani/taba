@@ -21,4 +21,4 @@ Members: active 3 · ✔ quorum · table v 7 · syncing blocks 0 · old data
 │▄                                     ││█                                     │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- L language  ? help  q quit   old data from 12:00:00 UTC, retry in 4s · L en-US
+ l language  ? help  q quit   old data from 12:00:00 UTC, retry in 4s · L en-US

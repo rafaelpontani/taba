@@ -116,7 +116,7 @@ Arrows and Vim keys do the same; the letters are mnemonic **and equal in every l
 | `Enter` · `Esc` | Open / confirm · close / cancel |
 | `/` · `s` `S` · `r` · `p` | Filter · sort / reverse · refresh now · pause |
 | `:` | Command palette (fuzzy search of any action) |
-| `L` · `P` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Language · switch profile · help · quit (asks if a listener or a changed form exists) · submit a form |
+| `l` · `o` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Language · switch profile · help · quit (asks if a listener or a changed form exists) · submit a form |
 | Mouse | The wheel scrolls the panel under the pointer; a click focuses; optional (`--no-mouse`) |
 
 | Screen | Keys |
@@ -226,10 +226,10 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 |---|---|
 | TUI-HLP-01 | `?` shows the screen's keys and the global ones, **generated from the same table** (`keymap.rs`) the program uses. |
 | TUI-HLP-02 | `:` opens the palette: finds any action of any screen (in the current language and in English) and runs it. |
-| TUI-HLP-03 | `L` picks the language (English, Português); it applies at once and is saved in `ui.language`. |
+| TUI-HLP-03 | `l` picks the language (English, Português); it applies at once and is saved in `ui.language`. |
 | TUI-HLP-04 | The Profiles tab lists, creates, edits, removes, sets the default and tests a connection with unsaved values; it replaces today's screen ([20-cli.md](20-cli.md)). |
 | TUI-HLP-05 | Switching profile reconnects everything, resets the histories and shows the new profile in the status line. |
-| TUI-HLP-06 | **On opening with no profile given** (no `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL`) **and with more than one profile**, the TUI opens a box to choose: the **default** profile (●) comes selected, `Enter` connects and `Esc` uses the default. With a single profile (or none) it takes it, without asking. Nothing is read from a server before the choice. The same box opens later with `P`, and `Esc` only closes it. |
+| TUI-HLP-06 | **On opening with no profile given** (no `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL`) **and with more than one profile**, the TUI opens a box to choose: the **default** profile (●) comes selected, `Enter` connects and `Esc` uses the default. With a single profile (or none) it takes it, without asking. Nothing is read from a server before the choice. The same box opens later with `o`, and `Esc` only closes it. |
 
 ## 7. Data and history
 
@@ -249,7 +249,7 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 
 - **Catalog** (D-TUI-7): `connectors/rust/cli/locales/{en-US,pt-BR}.yml`, `rust_i18n::i18n!("locales", fallback = "en-US")`. Every other file has exactly the keys and variables of `en-US`.
 - **A missing key** falls back to `en-US` and then to the key itself; it never crashes the screen, and the parity test catches it before release.
-- **Language choice**, the first that exists: `--lang` · `TABA_CLI_LANG` · `ui.language` (saved by `L`) · the system locale (`LC_ALL`, `LC_MESSAGES`, `LANG`; on Windows, the interface language) · `en-US`. `pt`, `pt_BR`, `pt-BR.UTF-8` match `pt-BR`.
+- **Language choice**, the first that exists: `--lang` · `TABA_CLI_LANG` · `ui.language` (saved by `l`) · the system locale (`LC_ALL`, `LC_MESSAGES`, `LANG`; on Windows, the interface language) · `en-US`. `pt`, `pt_BR`, `pt-BR.UTF-8` match `pt-BR`.
 - **Translated:** label, title, hint, validation, popup, empty state and help. **Not translated:** key, route, JSON field, error **code**, metric or condition name. The server's own `message` shows as it came, after a translated frame.
 - **Layout:** widths by `unicode-width`; columns sized by the **translated** header; pt-BR is 20–30 % longer, so 80 columns is tested in **both** languages.
 - **Formats:** dates and durations per language; thousands separator per language; binary sizes (`MiB`, `GiB`) in both.
@@ -316,7 +316,7 @@ Each phase ends with something usable, green tests and docs updated **in every l
 - **Tokens (TUI-TOK-01 to 06):** a paged list (200 at a time, up to 25 pages) with a filter by part of the name (`/`) and an order (`s`: newest, oldest, name, id); an expired token is red and one that expires within 7 days is yellow. Create (`n`), edit name and expiry (`e`; permissions and prefixes show locked with the reason), clone (`c`) and revoke (`Del` or `x`, with a confirmation that starts on **Cancel**). The expiry takes empty or `none` (no deadline), `30d` `12h` `90m` (from now), a date (`2027-01-31`, the start of that day in UTC) or an RFC 3339 instant. The server's `400` shows in the form itself, which stays open. Without the root token the tab says which token is in use; with no authentication on the server it says there are no tokens.
 - **The secret (TUI-TOK-03):** it exists only inside the popup: never in the footer notice, in an error or in a log. `c` sends it to the clipboard (OSC 52, if the terminal allows it); `s` writes it to `taba-token-<id>.txt` in the current folder (`0600` on Unix, never over an existing file: the plan spoke of choosing the path). It is hidden (dots) after 30 s or when the window loses the focus, and `c` still copies it. Closing without copying or saving asks for a second `Esc`. On a clone, the box **Revoke the old one on closing** (`r`) starts **unticked** and lives inside the secret popup rather than after it (the popup is the only place the secret lives).
 - **Profiles (TUI-HLP-04 to 06):** a list with the default (●) and the profile in use; `n` new, `e` edit (name, `url`, `ops-url`, `token-file`, `token`, `ca-file` and the default box; the profile's other fields, such as `output` and the timeouts, are kept), `d` makes it the default, `Del` or `x` removes (confirmation on **Cancel**), `t` tests the profile's connection and `Ctrl+T`, in the form, tests **values not yet saved** (`GET /topics?limit=1`). `Enter` **connects**: the next calls go to the profile's server, the history and the screens start over and a reply still coming from the old server is dropped. Saving only replaces `default` and `profiles` in the file (the language and `[history]` stay as they are on disk). A token typed in the form stays in the file as typed, and the screen never draws it (it shows as dots); the form recommends a token file.
-- **Differences from the plan:** `P` is **switch profile** on every screen; when the Messages tab is built, the prune (`P` in the plan) uses another key or shadows this one on purpose. `Ctrl+T` and `t` are new keys. The old screen (`taba-cli profile`) stays as it was, until the cleanup of phase 5.
+- **Differences from the plan:** `o` is **switch profile** on every screen; the keys became lowercase (`l` language, `o` profile) because they are common actions; capitals are kept for the critical or irreversible. `h` and `l` are no longer arrows (only `← →`). On the Messages tab, `l` listen would shadow `l` language: pick another key when building it. `Ctrl+T` and `t` are new keys. The old screen (`taba-cli profile`) stays as it was, until the cleanup of phase 5.
 - **Tests:** `cargo test -p taba-cli` passes (272 unit, 76 command, 54 screen snapshots); `clippy` has no warnings. The manual table of section 10 and a real terminal (OSC 52, focus, paste) were **not** exercised here.
 
 ### Record of phases 0 and 1 (2026-10-15)

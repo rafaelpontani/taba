@@ -21,4 +21,4 @@
 │Expires        2026-10-18 00:00:00 (expires soon)                             │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- n new  e edit  c clone  Del revoke  L language  ? help  q quit  ⟳ 5s · L en-US
+ n new  e edit  c clone  Del revoke  l language  ? help  q quit  ⟳ 5s · L en-US

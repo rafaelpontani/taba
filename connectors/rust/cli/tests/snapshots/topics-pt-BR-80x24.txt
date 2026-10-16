@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- : comandos  L idioma  ? ajuda  q sair                           ⟳ 5s · L pt-BR
+ : comandos  l idioma  ? ajuda  q sair                           ⟳ 5s · L pt-BR

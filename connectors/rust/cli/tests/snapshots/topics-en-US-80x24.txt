@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- : commands  L language  ? help  q quit                          ⟳ 5s · L en-US
+ : commands  l language  ? help  q quit                          ⟳ 5s · L en-US

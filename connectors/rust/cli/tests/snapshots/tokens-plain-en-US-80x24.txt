@@ -2,7 +2,7 @@
  1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
 Your token must be the root token to see this.
 
-You are using the token app of the profile prod. Choose another profile (P) or
+You are using the token app of the profile prod. Choose another profile (o) or
 ask for the root token.
 
 
@@ -21,4 +21,4 @@ ask for the root token.
 
 
 
- n new  e edit  c clone  Del revoke  L language  ? help  q quit  ⟳ 5s · L en-US
+ n new  e edit  c clone  Del revoke  l language  ? help  q quit  ⟳ 5s · L en-US

@@ -292,7 +292,7 @@ sort.name: "nome"
 sort.id: "id"
 
 tokens.no-auth: "O servidor roda sem autenticação, então não tem tokens. Ligue a autenticação para criá-los."
-tokens.using: "Você usa o token %{name} do perfil %{profile}. Escolha outro perfil (P) ou peça o token raiz."
+tokens.using: "Você usa o token %{name} do perfil %{profile}. Escolha outro perfil (o) ou peça o token raiz."
 tokens.count.one: "%{n} token"
 tokens.count.other: "%{n} tokens"
 tokens.sorted: "ordenado por %{by} (s)"

@@ -21,4 +21,4 @@ Charts 1-4 of 6  ↓
  ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
 2m 04s collected: the history is only what was sampled since the app opened ·
 automatic scale
- Esc back  ← scroll  + window  Space freeze  L language  ? help  ⟳ 2s · L en-US
+ Esc back  ← scroll  + window  Space freeze  l language  ? help  ⟳ 2s · L en-US

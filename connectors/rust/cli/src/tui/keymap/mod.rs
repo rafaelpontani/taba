@@ -202,15 +202,15 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         Action::Left,
         Global,
-        &[Code(KeyCode::Left), Char('h')],
-        "← h",
+        &[Code(KeyCode::Left)],
+        "←",
         Some("keys.left"),
     ),
     bind(
         Action::Right,
         Global,
-        &[Code(KeyCode::Right), Char('l')],
-        "→ l",
+        &[Code(KeyCode::Right)],
+        "→",
         Some("keys.right"),
     ),
     bind(
@@ -260,8 +260,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         Action::Language,
         Global,
-        &[Char('L')],
-        "L",
+        &[Char('l')],
+        "l",
         Some("keys.language"),
     ),
     bind(
@@ -274,8 +274,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         Action::SwitchProfile,
         Global,
-        &[Char('P')],
-        "P",
+        &[Char('o')],
+        "o",
         Some("keys.profile-switch"),
     ),
     bind(

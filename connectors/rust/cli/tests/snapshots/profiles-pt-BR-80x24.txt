@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter conectar  n novo  e editar  L idioma  ? ajuda  q sair     ⟳ 5s · L pt-BR
+ Enter conectar  n novo  e editar  l idioma  ? ajuda  q sair     ⟳ 5s · L pt-BR

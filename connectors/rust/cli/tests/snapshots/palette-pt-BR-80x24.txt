@@ -7,9 +7,9 @@ Membros: a│                                                          │
 ┌ 3 nós ──│▶ Drenar o nó  d                                          │─────────┐
 │Nó       │  Tornar o perfil o padrão  d                             │nc  Req  │
 │▶ 01a1…00│  Descer  ↓ j                                             │    3    │
-│  01a1…00│  Abrir, ou mover para a direita  → l                     │    3    │
+│  01a1…00│  Abrir, ou mover para a direita  →                       │    3    │
 │  01a1…00│  Ordenar  s                                              │    3    │
-│         │  Trocar de perfil  P                                     │         │
+│         │  Trocar de perfil  o                                     │         │
 │         │  Detalhe do nó, ou o que uma condição significa  Enter   │         │
 │         │  Devolver o nó  u                                        │         │
 │         │  Gráficos do cluster  m                                  │         │
@@ -21,4 +21,4 @@ Membros: a│                                                          │
 │▄        └──────────────────────────────────────────────────────────┘         │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  L idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR
+ Enter detalhe  d drenar  u devolver  l idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR

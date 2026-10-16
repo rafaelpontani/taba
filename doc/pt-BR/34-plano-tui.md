@@ -116,7 +116,7 @@ Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em to
 | `Enter` · `Esc` | Abrir / confirmar · fechar / cancelar |
 | `/` · `s` `S` · `r` · `p` | Filtrar · ordenar / inverter · atualizar agora · pausar |
 | `:` | Paleta de comandos (busca aproximada de qualquer ação) |
-| `L` · `P` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · trocar de perfil · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
+| `l` · `o` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · trocar de perfil · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
 | Mouse | A roda rola o painel sob o ponteiro; o clique foca; opcional (`--no-mouse`) |
 
 | Tela | Teclas |
@@ -226,10 +226,10 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 |---|---|
 | TUI-HLP-01 | `?` mostra as teclas da tela e as globais, **geradas da mesma tabela** (`keymap.rs`) que o programa usa. |
 | TUI-HLP-02 | `:` abre a paleta: acha qualquer ação de qualquer tela (no idioma atual e em inglês) e a executa. |
-| TUI-HLP-03 | `L` escolhe o idioma (English, Português); vale na hora e fica gravado em `ui.language`. |
+| TUI-HLP-03 | `l` escolhe o idioma (English, Português); vale na hora e fica gravado em `ui.language`. |
 | TUI-HLP-04 | A aba Perfis lista, cria, edita, remove, define o padrão e testa uma conexão com valores não salvos; substitui a tela de hoje ([20-cli.md](20-cli.md)). |
 | TUI-HLP-05 | Trocar de perfil reconecta tudo, zera os históricos e mostra o novo perfil na linha de status. |
-| TUI-HLP-06 | **Ao abrir sem perfil informado** (sem `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL`) **e com mais de um perfil**, a TUI abre uma caixa para escolher: o perfil **padrão** (●) já vem selecionado, `Enter` conecta e `Esc` usa o padrão. Com um perfil só (ou nenhum) assume-o, sem perguntar. Nada é lido de um servidor antes da escolha. A mesma caixa abre depois com `P`, e `Esc` só a fecha. |
+| TUI-HLP-06 | **Ao abrir sem perfil informado** (sem `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL`) **e com mais de um perfil**, a TUI abre uma caixa para escolher: o perfil **padrão** (●) já vem selecionado, `Enter` conecta e `Esc` usa o padrão. Com um perfil só (ou nenhum) assume-o, sem perguntar. Nada é lido de um servidor antes da escolha. A mesma caixa abre depois com `o`, e `Esc` só a fecha. |
 
 ## 7. Dados e histórico
 
@@ -249,7 +249,7 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 
 - **Catálogo** (D-TUI-7): `connectors/rust/cli/locales/{en-US,pt-BR}.yml`, `rust_i18n::i18n!("locales", fallback = "en-US")`. Todo outro arquivo tem exatamente as chaves e variáveis do `en-US`.
 - **Chave que falta** cai para `en-US` e depois para a própria chave; nunca derruba a tela, e o teste de paridade a pega antes do release.
-- **Escolha do idioma**, o primeiro que existir: `--lang` · `TABA_CLI_LANG` · `ui.language` (gravado por `L`) · locale do sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`; no Windows, o idioma da interface) · `en-US`. `pt`, `pt_BR`, `pt-BR.UTF-8` casam com `pt-BR`.
+- **Escolha do idioma**, o primeiro que existir: `--lang` · `TABA_CLI_LANG` · `ui.language` (gravado por `l`) · locale do sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`; no Windows, o idioma da interface) · `en-US`. `pt`, `pt_BR`, `pt-BR.UTF-8` casam com `pt-BR`.
 - **Traduz-se** rótulo, título, dica, validação, popup, estado vazio e ajuda. **Não se traduz** tecla, rota, campo JSON, **código** de erro, nome de métrica ou de condição. O `message` do servidor aparece como veio, depois de uma moldura traduzida.
 - **Layout:** larguras por `unicode-width`; colunas dimensionadas pelo cabeçalho **traduzido**; o pt-BR é 20–30 % mais longo, então 80 colunas é testado nos **dois** idiomas.
 - **Formatos:** datas e durações por idioma; separador de milhar por idioma; tamanhos binários (`MiB`, `GiB`) nos dois.
@@ -316,7 +316,7 @@ Cada fase termina com algo utilizável, testes verdes e docs atualizadas **em to
 - **Tokens (TUI-TOK-01 a 06):** lista paginada (de 200 em 200, até 25 páginas) com filtro por parte do nome (`/`) e ordem (`s`: mais novo, mais antigo, nome, id); o expirado fica em vermelho e o que expira em até 7 dias, em amarelo. Criar (`n`), editar nome e validade (`e`; permissões e prefixos aparecem travados com o motivo), clonar (`c`) e revogar (`Del` ou `x`, com confirmação que começa em **Cancelar**). A validade aceita vazio ou `none` (sem prazo), `30d` `12h` `90m` (a partir de agora), uma data (`2027-01-31`, início do dia em UTC) ou um instante RFC 3339. O `400` do servidor aparece no próprio formulário, que continua aberto. Sem o token raiz a aba diz qual token está em uso; sem autenticação no servidor diz que não há tokens.
 - **O segredo (TUI-TOK-03):** só existe dentro do popup: nunca no aviso do rodapé, no erro ou num log. `c` o envia à área de transferência (OSC 52, se o terminal permitir); `s` o grava em `taba-token-<id>.txt` na pasta atual (`0600` no Unix, nunca sobre um arquivo existente: o plano falava em escolher o caminho). Fica escondido (pontos) após 30 s ou quando a janela perde o foco, e `c` ainda o copia. Fechar sem copiar nem salvar pede um segundo `Esc`. Num clone, a caixa **Revogar o antigo ao fechar** (`r`) começa **desmarcada** e fica dentro do popup do segredo, e não depois dele (o popup é o único lugar onde o segredo vive).
 - **Perfis (TUI-HLP-04 a 06):** lista com o padrão (●) e o perfil em uso; `n` novo, `e` editar (nome, `url`, `ops-url`, `token-file`, `token`, `ca-file` e a caixa do padrão; os outros campos do perfil, como `output` e os tempos, são mantidos), `d` torna padrão, `Del` ou `x` remove (confirmação em **Cancelar**), `t` testa a conexão do perfil e `Ctrl+T`, no formulário, testa **valores ainda não salvos** (`GET /topics?limit=1`). `Enter` **conecta**: os próximos chamados vão ao servidor do perfil, o histórico e as telas recomeçam e a resposta que ainda vinha do servidor antigo é descartada. Gravar só troca `default` e `profiles` no arquivo (o idioma e o `[history]` ficam como estão no disco). Um token escrito no formulário fica no arquivo como foi digitado, e a tela nunca o desenha (aparece como pontos); o formulário recomenda o arquivo de token.
-- **Diferenças do plano:** `P` é **trocar de perfil** em todas as telas; quando a aba Mensagens for feita, o prune (`P` no plano) usa outra tecla ou sombreia essa de propósito. `Ctrl+T` e `t` são teclas novas. A tela antiga (`taba-cli profile`) continua como estava, até a limpeza da fase 5.
+- **Diferenças do plano:** `o` é **trocar de perfil** em todas as telas; as teclas passaram a minúsculas (`l` idioma, `o` perfil) por serem ações comuns; maiúscula fica para o crítico ou irreversível. `h` e `l` deixaram de ser setas (só `← →`). Na aba Mensagens, `l` escutar vai sombrear `l` idioma: escolher outra tecla ao fazê-la. `Ctrl+T` e `t` são teclas novas. A tela antiga (`taba-cli profile`) continua como estava, até a limpeza da fase 5.
 - **Testes:** `cargo test -p taba-cli` passa (272 unitários, 76 de comandos, 54 instantâneos de tela); `clippy` sem avisos. A tabela manual da seção 10 e o terminal real (OSC 52, foco, colar) **não** foram exercitados aqui.
 
 ### Registro das fases 0 e 1 (2026-10-15)

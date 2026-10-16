@@ -21,4 +21,4 @@ Gráficos 1-4 de 6  ↓
  ● 01a1…000001  ◆ 01a1…000002  ▲ 01a1…000003
 2m 04s coletados: o histórico é só o que foi amostrado desde que o app abriu ·
 escala automática
- Esc voltar  ← rolar  + janela  L idioma  ? ajuda                ⟳ 2s · L pt-BR
+ Esc voltar  ← rolar  + janela  l idioma  ? ajuda                ⟳ 2s · L pt-BR
