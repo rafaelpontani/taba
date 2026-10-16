@@ -372,6 +372,7 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
             _ => Vec::new(),
         },
         Modal::Menu(menu) => crate::tui::menu::key(m, event, menu),
+        Modal::Message => topics::messages::detail_key(m, event),
         Modal::Confirm(confirm) => confirm_key(m, event, confirm),
         Modal::Profiles { selected } => profiles_key(m, event, selected),
         Modal::Editor(mut editor) => {
@@ -1074,12 +1075,13 @@ fn on_action_reply(m: &mut Model, call: ApiCall, outcome: Result<String, Fail>) 
                     | ApiCall::TopicUpdate(..)
                     | ApiCall::Publish(_)
                     | ApiCall::Receive(..)
+                    | ApiCall::Visibility(..)
             ) && tokens::refused(m, &fail)
             {
                 return Vec::new();
             }
             // An acknowledgement that is refused is a line, not a popup: several go together.
-            if let ApiCall::Ack(_, id, _) | ApiCall::Release(_, id, _) = &call {
+            if let ApiCall::Ack(_, id, _) | ApiCall::Visibility(_, id, _, _) = &call {
                 topics::messages::refused(m, id, &fail.message);
                 return Vec::new();
             }
@@ -1128,9 +1130,9 @@ fn on_action_reply(m: &mut Model, call: ApiCall, outcome: Result<String, Fail>) 
         }
         ApiCall::TopicDelete(name) => topics::deleted(m, name),
         ApiCall::Publish(_) => topics::messages::published(m, &text),
-        ApiCall::Receive(topic, hold) => topics::messages::received(m, topic, *hold, &text),
+        ApiCall::Receive(topic, hold, _) => topics::messages::received(m, topic, *hold, &text),
         ApiCall::Ack(_, id, _) => topics::messages::acked(m, id),
-        ApiCall::Release(_, id, _) => topics::messages::released(m, id),
+        ApiCall::Visibility(_, id, _, secs) => topics::messages::visibility_changed(m, id, *secs),
         ApiCall::Prune(_) => topics::messages::pruned(m, &text),
         _ => {}
     }

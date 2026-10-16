@@ -21,6 +21,7 @@ pub fn draw(f: &mut Frame, area: Rect, m: &Model) {
     match modal {
         Modal::Menu(menu) => draw_menu(f, area, m, menu),
         Modal::TopicSummary => draw_topic_summary(f, area, m),
+        Modal::Message => crate::tui::screens::topics::messages::view::draw_dialog(f, area, m),
         Modal::Help { scroll } => draw_help(f, area, m, *scroll),
         Modal::Palette { query, selected } => draw_palette(f, area, m, query, *selected),
         Modal::Language { selected } => draw_language(f, area, m, *selected),

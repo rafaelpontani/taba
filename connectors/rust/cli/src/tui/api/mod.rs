@@ -47,11 +47,12 @@ pub enum ApiCall {
     /// `POST /topics/{name}/messages`.
     Publish(PublishSpec),
     /// `GET /topics/{name}/messages`: reads up to [`RECEIVE_MAX`] messages and holds them for the given seconds (the form offers [`RECEIVE_HOLD_SECS`]).
-    Receive(String, u32),
+    Receive(String, u32, u32),
     /// `DELETE /topics/{name}/messages/{id}` with the receipt: topic, id, receipt.
     Ack(String, String, String),
     /// `PUT /topics/{name}/messages/{id}/visibility` with `0`: gives the message back to the queue now.
-    Release(String, String, String),
+    /// Changes the time a held message stays invisible; `0` gives it back to the queue now.
+    Visibility(String, String, String, u32),
     /// `DELETE /topics/{name}/messages`: empties the queue on every node.
     Prune(String),
 }
@@ -65,7 +66,7 @@ pub const RECEIVE_HOLD_SECS: u32 = 30;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishSpec {
     pub topic: String,
-    pub body: String,
+    pub body: Vec<u8>,
     pub content_type: String,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
@@ -150,7 +151,7 @@ impl ApiCall {
                     "POST",
                     format!("/topics/{}/messages", encode_segment(&spec.topic)),
                 );
-                call.body = spec.body.clone().into_bytes();
+                call.body = spec.body.clone();
                 call.content_type = Some(spec.content_type.clone());
                 if let Some(group) = &spec.group_id {
                     call = call.query("groupId", group);
@@ -160,9 +161,9 @@ impl ApiCall {
                 }
                 call
             }
-            ApiCall::Receive(name, hold) => {
+            ApiCall::Receive(name, hold, max) => {
                 Call::new("GET", format!("/topics/{}/messages", encode_segment(name)))
-                    .query("maxMessages", RECEIVE_MAX)
+                    .query("maxMessages", max)
                     .query("visibilityTimeout", hold)
             }
             ApiCall::Ack(topic, id, receipt) => Call::new(
@@ -174,7 +175,7 @@ impl ApiCall {
                 ),
             )
             .query("receiptToken", receipt),
-            ApiCall::Release(topic, id, receipt) => Call::new(
+            ApiCall::Visibility(topic, id, receipt, secs) => Call::new(
                 "PUT",
                 format!(
                     "/topics/{}/messages/{}/visibility",
@@ -183,7 +184,7 @@ impl ApiCall {
                 ),
             )
             .query("receiptToken", receipt)
-            .json_body("{\"visibilityTimeout\":0}".to_owned()),
+            .json_body(format!("{{\"visibilityTimeout\":{secs}}}")),
             ApiCall::Prune(name) => Call::new(
                 "DELETE",
                 format!("/topics/{}/messages", encode_segment(name)),
@@ -209,7 +210,7 @@ impl ApiCall {
                 | ApiCall::Publish(_)
                 | ApiCall::Receive(..)
                 | ApiCall::Ack(..)
-                | ApiCall::Release(..)
+                | ApiCall::Visibility(..)
                 | ApiCall::Prune(_)
         )
     }

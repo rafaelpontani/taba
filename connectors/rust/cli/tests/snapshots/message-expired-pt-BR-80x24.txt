@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:02 UTC
+┌ Mensagem 01a1-m1 ────────────────────────────────────────────────────────────┐
+│O tempo acabou: o recibo não vale mais, então esta mensagem não pode ser      │
+│alterada nem apagada daqui. A fila volta a entregá-la a um consumidor.        │
+│Grupo customer-1 · application/json · 24 bytes · 1 entregas · recebida às     │
+│11:59:22                                                                      │
+│┌ como enviado ──────────────────────────────────────────────────────────────┐│
+││{"order":1,"total":19.9}                                                    ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+│└────────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│ v alterar tempo  d apagar  f formatar  b base64  Esc fechar                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Esc voltar  Enter ações  p publicar  r ler  l idioma  h ajuda   ⟳ 5s · L pt-BR

@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:02 UTC
+┌ Message 01a1-m1 ─────────────────────────────────────────────────────────────┐
+│The time ran out: the receipt no longer works, so this message cannot be      │
+│changed or deleted from here. The queue gives it to a consumer again.         │
+│Group customer-1 · application/json · 24 bytes · 1 deliveries · received at   │
+│11:59:22                                                                      │
+│┌ as sent ───────────────────────────────────────────────────────────────────┐│
+││{"order":1,"total":19.9}                                                    ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+│└────────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│ v change time  d delete  f format  b base64  Esc close                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Esc back  Enter actions  p publish  r read  l language  h help  ⟳ 5s · L en-US

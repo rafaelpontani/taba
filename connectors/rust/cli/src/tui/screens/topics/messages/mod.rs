@@ -2,22 +2,26 @@
 //! charts, so the topic is never asked for again. Publishing, reading (on request), acknowledging, giving back and
 //! pruning. The API does not list a queue: the rows are the messages this session received (D-TUI-6).
 
-use crate::tui::api::{self, ApiCall, PublishSpec, Severity, RECEIVE_HOLD_SECS};
+use crate::tui::api::{self, ApiCall, PublishSpec, Severity, RECEIVE_HOLD_SECS, RECEIVE_MAX};
 use crate::tui::editor::{Editor, Field, Outcome, Purpose};
 use crate::tui::effect::Effect;
 use crate::tui::keymap::Action;
 use crate::tui::model::{
-    Confirm, Modal, Model, Pending, Received, TopicMonitor, Typed, MAX_RECEIVED,
+    BodyView, Confirm, Modal, Model, Pending, Received, TopicMonitor, Typed, MAX_RECEIVED,
 };
 use crate::tui::screens::cluster::moved;
 use crate::tui::update::run;
 
 use super::refuse;
 
+pub mod format;
 pub mod view;
 
 /// How much of a body a row keeps (the size shown is always the real one).
 const KEPT_BODY: usize = 4096;
+
+/// How many bytes of the body a row keeps as they came, for the formatted and the base64 views.
+const KEPT_RAW: usize = 16 * 1024;
 
 fn monitor(m: &Model) -> Option<&TopicMonitor> {
     m.topics.monitor.as_ref()
@@ -40,17 +44,27 @@ pub fn gate(m: &Model, action: Action) -> Option<&'static str> {
     match action {
         Action::MsgPublish if mon.dead_letter => Some("gate.topic-read-only"),
         Action::MsgPublish if !me.can("publish") => Some("gate.need-publish"),
-        Action::MsgReceive | Action::MsgAck | Action::MsgAckAll | Action::MsgRelease
+        Action::MsgReceive
+        | Action::MsgAck
+        | Action::MsgAckAll
+        | Action::MsgRelease
+        | Action::MsgVisibility
             if mon.distributor =>
         {
             Some("gate.topic-no-receive")
         }
-        Action::MsgReceive | Action::MsgAck | Action::MsgAckAll | Action::MsgRelease
+        Action::MsgReceive
+        | Action::MsgAck
+        | Action::MsgAckAll
+        | Action::MsgRelease
+        | Action::MsgVisibility
             if !me.can("consume") =>
         {
             Some("gate.need-consume")
         }
-        Action::MsgAck | Action::MsgRelease if selected_held(m).is_none() => {
+        Action::MsgAck | Action::MsgRelease | Action::MsgVisibility
+            if selected_held(m).is_none() =>
+        {
             Some("gate.no-held-message")
         }
         Action::MsgAckAll if !mon.messages.rows.iter().any(|r| is_held(r, m.now)) => {
@@ -79,6 +93,17 @@ pub fn on_action(m: &mut Model, action: Action) -> Vec<Effect> {
         Action::PageDown => step(m, 10),
         Action::First => step(m, i32::MIN / 2),
         Action::Last => step(m, i32::MAX / 2),
+        // Enter opens the selected message: its body, and what can still be done to it.
+        Action::Enter => {
+            if let Some(mon) = &mut m.topics.monitor {
+                if !mon.messages.rows.is_empty() {
+                    // The line of the last result belongs to the list, not to this message.
+                    mon.messages.last = None;
+                    m.modal = Some(Modal::Message);
+                }
+            }
+            Vec::new()
+        }
         Action::MsgPublish
         | Action::MsgReceive
         | Action::MsgAck
@@ -121,7 +146,7 @@ fn carry_out(m: &mut Model, action: Action) -> Vec<Effect> {
             None => Vec::new(),
         },
         Action::MsgRelease => match selected_held(m).map(|r| (r.id.clone(), r.receipt.clone())) {
-            Some((id, receipt)) => run(m, ApiCall::Release(topic, id, receipt)),
+            Some((id, receipt)) => run(m, ApiCall::Visibility(topic, id, receipt, 0)),
             None => Vec::new(),
         },
         Action::MsgAckAll => ack_all(m, &topic),
@@ -180,6 +205,7 @@ fn open_publish(m: &mut Model, topic: String) {
             "editor.field.content-type",
             "application/json",
         ),
+        Field::check("base64", "editor.field.base64", false),
         Field::text("group", "editor.field.group", ""),
         Field::text("dedup", "editor.field.dedup", ""),
     ];
@@ -191,11 +217,10 @@ fn open_publish(m: &mut Model, topic: String) {
 
 /// Reading asks first how long the messages stay invisible: the form is the confirmation (D-TUI-6).
 fn open_receive(m: &mut Model, topic: String) {
-    let fields = vec![Field::text(
-        "hold",
-        "editor.field.hold",
-        &RECEIVE_HOLD_SECS.to_string(),
-    )];
+    let fields = vec![
+        Field::text("max", "editor.field.max", &RECEIVE_MAX.to_string()),
+        Field::text("hold", "editor.field.hold", &RECEIVE_HOLD_SECS.to_string()),
+    ];
     m.modal = Some(Modal::Editor(Editor::new(
         Purpose::MessageReceive { topic },
         fields,
@@ -204,10 +229,84 @@ fn open_receive(m: &mut Model, topic: String) {
 
 /// The seconds of the form, or the field and the catalog key of what is wrong.
 fn build_receive(editor: &Editor, topic: &str) -> Result<ApiCall, (&'static str, &'static str)> {
+    let max = match editor.text("max").parse::<u32>() {
+        Ok(n) if n > 0 => n,
+        _ => return Err(("max", "editor.error.max")),
+    };
     match editor.text("hold").parse::<u32>() {
-        Ok(secs) if secs > 0 => Ok(ApiCall::Receive(topic.to_owned(), secs)),
+        Ok(secs) if secs > 0 => Ok(ApiCall::Receive(topic.to_owned(), secs, max)),
         _ => Err(("hold", "editor.error.hold")),
     }
+}
+
+/// A message of the view is held while the hold lasts; the dialog asks for how long it should stay invisible now.
+fn open_visibility(m: &mut Model) {
+    let Some(mon) = monitor(m) else { return };
+    let Some(row) = selected_held(m) else { return };
+    let purpose = Purpose::MessageVisibility {
+        topic: mon.name.clone(),
+        id: row.id.clone(),
+        receipt: row.receipt.clone(),
+    };
+    let fields = vec![Field::text(
+        "seconds",
+        "editor.field.seconds",
+        &RECEIVE_HOLD_SECS.to_string(),
+    )];
+    m.modal = Some(Modal::Editor(Editor::new(purpose, fields)));
+}
+
+fn build_visibility(
+    editor: &Editor,
+    topic: &str,
+    id: &str,
+    receipt: &str,
+) -> Result<ApiCall, (&'static str, &'static str)> {
+    match editor.text("seconds").parse::<u32>() {
+        Ok(secs) => Ok(ApiCall::Visibility(
+            topic.to_owned(),
+            id.to_owned(),
+            receipt.to_owned(),
+            secs,
+        )),
+        Err(_) => Err(("seconds", "editor.error.seconds")),
+    }
+}
+
+/// `f` and `b` switch the way the body is shown; pressing the one in use goes back to the body as sent.
+fn set_view(m: &mut Model, wanted: BodyView) -> Vec<Effect> {
+    if let Some(mon) = &mut m.topics.monitor {
+        mon.messages.view = if mon.messages.view == wanted {
+            BodyView::Sent
+        } else {
+            wanted
+        };
+    }
+    Vec::new()
+}
+
+/// The keys of the open message: `v` changes its time, `d` deletes it, `Esc` closes.
+pub fn detail_key(m: &mut Model, event: ratatui::crossterm::event::KeyEvent) -> Vec<Effect> {
+    use ratatui::crossterm::event::KeyCode;
+    let action = match event.code {
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+            m.modal = None;
+            return Vec::new();
+        }
+        KeyCode::Char('f') => return set_view(m, BodyView::Formatted),
+        KeyCode::Char('b') => return set_view(m, BodyView::Base64),
+        KeyCode::Char('v') => Action::MsgVisibility,
+        KeyCode::Delete | KeyCode::Char('d' | 'a') => Action::MsgAck,
+        _ => return Vec::new(),
+    };
+    if let Some(key) = gate(m, action) {
+        return refuse(m, key);
+    }
+    if action == Action::MsgVisibility {
+        open_visibility(m);
+        return Vec::new();
+    }
+    carry_out(m, Action::MsgAck)
 }
 
 fn build_publish(editor: &Editor, topic: &str) -> Result<ApiCall, (&'static str, &'static str)> {
@@ -215,6 +314,16 @@ fn build_publish(editor: &Editor, topic: &str) -> Result<ApiCall, (&'static str,
     if body.trim().is_empty() {
         return Err(("body", "editor.error.body"));
     }
+    // With the box ticked the text is base64 and what goes is the bytes it stands for (a binary payload).
+    let bytes = if editor.checked("base64") {
+        let compact: String = body.split_whitespace().collect();
+        match taba_client::base64::decode(&compact) {
+            Some(bytes) if !bytes.is_empty() => bytes,
+            _ => return Err(("body", "editor.error.base64")),
+        }
+    } else {
+        body.as_bytes().to_vec()
+    };
     let content_type = editor.text("content-type");
     if content_type.is_empty() {
         return Err(("content-type", "editor.error.content-type"));
@@ -226,7 +335,7 @@ fn build_publish(editor: &Editor, topic: &str) -> Result<ApiCall, (&'static str,
     };
     Ok(ApiCall::Publish(PublishSpec {
         topic: topic.to_owned(),
-        body: body.to_owned(),
+        body: bytes,
         content_type: content_type.to_owned(),
         group_id: optional("group"),
         deduplication_id: optional("dedup"),
@@ -244,6 +353,9 @@ pub fn editor_key(m: &mut Model, mut editor: Editor, outcome: Outcome) -> Vec<Ef
             let built = match editor.purpose.clone() {
                 Purpose::MessagePublish { topic } => build_publish(&editor, &topic),
                 Purpose::MessageReceive { topic } => build_receive(&editor, &topic),
+                Purpose::MessageVisibility { topic, id, receipt } => {
+                    build_visibility(&editor, &topic, &id, &receipt)
+                }
                 _ => return Vec::new(),
             };
             match built {
@@ -336,6 +448,7 @@ pub fn received(m: &mut Model, topic: &str, hold: u32, text: &str) {
                 .chars()
                 .take(KEPT_BODY)
                 .collect(),
+            raw: message.body.iter().take(KEPT_RAW).copied().collect(),
             id: message.id,
             group: message.group_id,
             deliveries: message.delivery_count,
@@ -346,14 +459,10 @@ pub fn received(m: &mut Model, topic: &str, hold: u32, text: &str) {
             acked: false,
         })
         .collect();
-    // New arrivals do not move the selection (TUI-MSG-04): the selected message keeps its place.
-    if !mon.messages.rows.is_empty() {
-        mon.messages.selected += count;
-    }
+    // Each reading replaces the list: it shows what that reading brought, not the history of the session.
     let mut rows = fresh;
-    rows.append(&mut mon.messages.rows);
     rows.truncate(MAX_RECEIVED);
-    mon.messages.selected = mon.messages.selected.min(rows.len().saturating_sub(1));
+    mon.messages.selected = 0;
     mon.messages.rows = rows;
     mon.feed.refresh_now();
     let line = if count == 0 {
@@ -366,6 +475,9 @@ pub fn received(m: &mut Model, topic: &str, hold: u32, text: &str) {
 
 /// A message was acknowledged: it is gone from the queue.
 pub fn acked(m: &mut Model, id: &str) {
+    if matches!(m.modal, Some(Modal::Message)) {
+        m.modal = None;
+    }
     if let Some(mon) = &mut m.topics.monitor {
         if let Some(row) = mon.messages.rows.iter_mut().find(|r| r.id == id) {
             row.acked = true;
@@ -378,6 +490,28 @@ pub fn acked(m: &mut Model, id: &str) {
 }
 
 /// A message was given back to the queue: it is visible again.
+/// The time of a held message was changed: from now on it is invisible for `secs` (zero gives it back).
+pub fn visibility_changed(m: &mut Model, id: &str, secs: u32) {
+    if matches!(m.modal, Some(Modal::Message | Modal::Editor(_))) {
+        m.modal = None;
+    }
+    if secs == 0 {
+        return released(m, id);
+    }
+    let now = m.now;
+    if let Some(mon) = &mut m.topics.monitor {
+        if let Some(row) = mon.messages.rows.iter_mut().find(|r| r.id == id) {
+            row.held_until = Some(now + u64::from(secs) * 1000);
+        }
+        mon.feed.refresh_now();
+    }
+    let line = m.tx().tw(
+        "messages.visibility",
+        &[("id", &short(id)), ("secs", &secs)],
+    );
+    say(m, Severity::Ok, line);
+}
+
 pub fn released(m: &mut Model, id: &str) {
     if let Some(mon) = &mut m.topics.monitor {
         if let Some(row) = mon.messages.rows.iter_mut().find(|r| r.id == id) {

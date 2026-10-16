@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:02 UTC
+┌ Mensagem 01a1-m1 ────────────────────────────────────────────────────────────┐
+│Invisível por mais 30 s: ainda dá para alterar o tempo ou apagar.             │
+│                                                                              │
+│Grupo customer-1 · application/json · 24 bytes · 1 entregas · recebida às     │
+│12:00:02                                                                      │
+│┌ como enviado ──────────────────────────────────────────────────────────────┐│
+││{"order":1,"total":19.9}                                                    ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+│└────────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│ v alterar tempo  d apagar  f formatar  b base64  Esc fechar                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Esc voltar  Enter ações  p publicar  r ler  l idioma  h ajuda   ⟳ 5s · L pt-BR

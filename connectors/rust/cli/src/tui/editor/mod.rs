@@ -135,9 +135,15 @@ pub enum Purpose {
     MessagePublish {
         topic: String,
     },
-    /// Reading messages of a topic: how long they stay invisible to the other consumers.
+    /// Reading messages of a topic: how many, and how long they stay invisible to the other consumers.
     MessageReceive {
         topic: String,
+    },
+    /// A held message: for how long it stays invisible from now on.
+    MessageVisibility {
+        topic: String,
+        id: String,
+        receipt: String,
     },
 }
 
@@ -154,6 +160,7 @@ impl Purpose {
             Purpose::ProfileEdit { .. } => "editor.profile-edit",
             Purpose::MessagePublish { .. } => "editor.message-publish",
             Purpose::MessageReceive { .. } => "editor.message-receive",
+            Purpose::MessageVisibility { .. } => "editor.message-visibility",
         }
     }
 
@@ -163,6 +170,8 @@ impl Purpose {
             "editor.help-profile"
         } else if matches!(self, Purpose::MessageReceive { .. }) {
             "editor.help-receive"
+        } else if matches!(self, Purpose::MessageVisibility { .. }) {
+            "editor.help-visibility"
         } else if self.is_message() {
             "editor.help-publish"
         } else if self.is_topic() {
@@ -179,7 +188,9 @@ impl Purpose {
     pub fn is_message(&self) -> bool {
         matches!(
             self,
-            Purpose::MessagePublish { .. } | Purpose::MessageReceive { .. }
+            Purpose::MessagePublish { .. }
+                | Purpose::MessageReceive { .. }
+                | Purpose::MessageVisibility { .. }
         )
     }
 

@@ -4,8 +4,8 @@ Topics › orders · Messages
 Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
 ┌ Received by this session (4) ────────────────────────────────────────────────┐
 │Time   ┌ Prune the topic? ────────────────────────────────────────────┐       │
-│  12:00│Every message of orders is deleted, on every node. Messages   │,"total│
-│▶ 12:00│published while it runs are not covered. This cannot be       │,"total│
+│▶ 12:00│Every message of orders is deleted, on every node. Messages   │,"total│
+│  12:00│published while it runs are not covered. This cannot be       │,"total│
 │  12:00│undone.                                                       │,"total│
 │  12:00│                                                              │,"total│
 │       │                                                              │       │
@@ -20,5 +20,5 @@ Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- ✔ Acknowledged 01a1-m2
- Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US
+
+ Esc back  Enter actions  p publish  r read  l language  h help  ⟳ 5s · L en-US

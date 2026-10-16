@@ -6,19 +6,19 @@ Fila: 1.000 visíveis · 20 invisíveis · profundidade 1.020 · mais velha 2m 0
 │A API não lista a fila: as linhas são as mensagens que você leu aqui. r lê até│
 │10, p publica.                                                                │
 │ ┌ Ler mensagens ───────────────────────────────────────────────────────────┐ │
-│ │▶ Invisível por (s) 30▏                                                   │ │
+│ │▶ Quantas mensagens 10▏                                                   │ │
+│ │  Invisível por (s) 30                                                    │ │
 │ │                                                                          │ │
 │ │                                                                          │ │
-│ │Lê até 10 mensagens e as esconde de todos os outros consumidores pelo     │ │
-│ │tempo abaixo, ou até você confirmar ou devolver. Ler altera a fila.       │ │
-└─│                                                                          │─┘
+│ │Lê até essa quantidade de mensagens e as esconde de todos os outros       │ │
+└─│consumidores pelo tempo abaixo, ou até você confirmar ou devolver. Ler    │─┘
 ┌ │                                                                          │─┐
-│S│Tab próximo campo · Enter nova linha no corpo · Ctrl+s enviar · Esc cancel│ │
+│S│                                                                          │ │
+│ │Tab próximo campo · Enter nova linha no corpo · Ctrl+s enviar · Esc cancel│ │
 │ └──────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
- Esc voltar  p publicar  r ler  a ack  l idioma  h ajuda         ⟳ 5s · L pt-BR
+ Esc voltar  Enter ações  p publicar  r ler  l idioma  h ajuda   ⟳ 5s · L pt-BR

@@ -21,4 +21,4 @@ No queue here: published messages are copied to the matching queues.
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
- Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US
+ Esc back  Enter actions  p publish  r read  l language  h help  ⟳ 5s · L en-US

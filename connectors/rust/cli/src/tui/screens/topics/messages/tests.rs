@@ -53,9 +53,11 @@ fn read(sim: &mut Sim, n: u32) {
         panic!("{:?}", sim.m.modal)
     };
     assert_eq!(editor.text("hold"), "30", "the time comes filled in");
+    assert_eq!(editor.text("max"), "10", "the number comes filled in");
+    sim.code(KeyCode::Enter);
     let effects = sim.code(KeyCode::Enter);
     let (effect, call) = first_call(&effects);
-    assert_eq!(call, ApiCall::Receive("orders".to_owned(), 30));
+    assert_eq!(call, ApiCall::Receive("orders".to_owned(), 30, 10));
     sim.answer(&effect, ok(&messages_json(n)));
 }
 
@@ -135,6 +137,8 @@ fn publishing_checks_the_form_sends_the_message_and_says_the_result() {
     assert!(editor.error.is_some());
     assert_eq!(editor.fields[editor.focus].id, "body");
     type_text(&mut sim, r#"{"order":7}"#);
+    // Content type, the base64 box, then the group.
+    sim.code(KeyCode::Tab);
     sim.code(KeyCode::Tab);
     sim.code(KeyCode::Tab);
     type_text(&mut sim, "customer-7");
@@ -199,7 +203,7 @@ fn a_refused_publication_keeps_the_form_open_with_the_reason() {
 
 /// TUI: TUI-MSG-03, TUI-MSG-04
 #[test]
-fn reading_asks_first_and_the_new_rows_go_on_top_without_moving_the_selection() {
+fn reading_asks_first_and_each_reading_replaces_the_list() {
     let mut sim = Sim::on_topic_messages(Lang::EnUs);
     // Esc on the confirmation reads nothing.
     sim.press('r');
@@ -219,10 +223,10 @@ fn reading_asks_first_and_the_new_rows_go_on_top_without_moving_the_selection() 
     sim.press('j');
     assert_eq!(mon(&sim).messages.selected, 1);
     read(&mut sim, 2);
-    // Two came on top, and the same message is still selected.
-    assert_eq!(mon(&sim).messages.rows.len(), 5);
-    assert_eq!(mon(&sim).messages.selected, 3);
-    assert_eq!(mon(&sim).messages.rows[3].id, "01a1-m2");
+    // The list is cleared: only what the last reading brought, with the first one selected.
+    assert_eq!(mon(&sim).messages.rows.len(), 2);
+    assert_eq!(mon(&sim).messages.selected, 0);
+    assert_eq!(mon(&sim).messages.rows[0].id, "01a1-m1");
 }
 
 /// TUI: TUI-MSG-03
@@ -249,7 +253,7 @@ fn acknowledging_gives_back_and_the_expiry_of_the_hold_are_told_by_the_row() {
     let (effect, call) = first_call(&effects);
     assert_eq!(
         call,
-        ApiCall::Release("orders".into(), "01a1-m2".into(), "rt-2".into())
+        ApiCall::Visibility("orders".into(), "01a1-m2".into(), "rt-2".into(), 0)
     );
     assert_eq!(call.to_call().method, "PUT");
     sim.answer(
@@ -354,32 +358,27 @@ fn what_the_token_may_not_do_is_refused_with_the_reason() {
 
 /// TUI: TUI-MSG-04
 #[test]
-fn only_the_last_thousand_received_are_kept() {
+fn reading_again_clears_the_list_even_when_nothing_came() {
     let mut sim = Sim::on_topic_messages(Lang::EnUs);
-    for _ in 0..101 {
-        sim.m
-            .topics
-            .monitor
-            .as_mut()
-            .unwrap()
-            .messages
-            .rows
-            .extend((0..10).map(|n| Received {
-                id: format!("x{n}"),
-                group: None,
-                deliveries: 1,
-                size: 1,
-                content_type: "text/plain".into(),
-                body: "x".into(),
-                receipt: "r".into(),
-                at: 0,
-                held_until: None,
-                acked: true,
-            }));
-    }
-    received(&mut sim.m, "orders", 30, &messages_json(3));
-    assert_eq!(mon(&sim).messages.rows.len(), MAX_RECEIVED);
-    assert_eq!(mon(&sim).messages.rows[0].id, "01a1-m1");
+    read(&mut sim, 3);
+    assert_eq!(mon(&sim).messages.rows.len(), 3);
+    sim.press('j');
+    read(&mut sim, 0);
+    assert!(mon(&sim).messages.rows.is_empty());
+    assert_eq!(mon(&sim).messages.selected, 0);
+    assert!(
+        !notice_or_line(&sim).is_empty(),
+        "the line says that nothing came"
+    );
+}
+
+fn notice_or_line(sim: &Sim) -> String {
+    mon(sim)
+        .messages
+        .last
+        .as_ref()
+        .map(|(_, text)| text.clone())
+        .unwrap_or_default()
 }
 
 /// TUI: TUI-MSG-02
@@ -407,7 +406,7 @@ fn the_body_may_have_several_lines_and_goes_as_typed() {
         panic!("{call:?}")
     };
     assert_eq!(
-        spec.body,
+        String::from_utf8(spec.body).unwrap(),
         "{
   \"order\": 7
 }"
@@ -419,6 +418,7 @@ fn the_body_may_have_several_lines_and_goes_as_typed() {
 fn the_time_of_invisibility_can_be_changed_and_must_be_a_number_above_zero() {
     let mut sim = Sim::on_topic_messages(Lang::EnUs);
     sim.press('r');
+    sim.code(KeyCode::Tab);
     // The field comes with 30; Ctrl+u clears it.
     sim.send(crate::tui::msg::Msg::Key(
         ratatui::crossterm::event::KeyEvent::new(
@@ -436,7 +436,7 @@ fn the_time_of_invisibility_can_be_changed_and_must_be_a_number_above_zero() {
     type_text(&mut sim, "90");
     let effects = sim.code(KeyCode::Enter);
     let (effect, call) = first_call(&effects);
-    assert_eq!(call, ApiCall::Receive("orders".to_owned(), 90));
+    assert_eq!(call, ApiCall::Receive("orders".to_owned(), 90, 10));
     assert!(call
         .to_call()
         .query
@@ -446,4 +446,153 @@ fn the_time_of_invisibility_can_be_changed_and_must_be_a_number_above_zero() {
     // The rows are held for the time that was asked.
     let row = &mon(&sim).messages.rows[0];
     assert_eq!(row.held_until, Some(sim.m.now + 90_000));
+}
+
+/// TUI: TUI-MSG-06
+#[test]
+fn the_form_of_reading_asks_how_many_messages_with_ten_by_default() {
+    let mut sim = Sim::on_topic_messages(Lang::EnUs);
+    sim.press('r');
+    let Some(Modal::Editor(editor)) = &sim.m.modal else {
+        panic!("{:?}", sim.m.modal)
+    };
+    assert_eq!(editor.text("max"), "10");
+    assert_eq!(editor.text("hold"), "30");
+    // A zero is refused in the form; 3 goes to the call.
+    sim.send(crate::tui::msg::Msg::Key(
+        ratatui::crossterm::event::KeyEvent::new(
+            KeyCode::Char('u'),
+            ratatui::crossterm::event::KeyModifiers::CONTROL,
+        ),
+    ));
+    type_text(&mut sim, "0");
+    sim.code(KeyCode::Tab);
+    assert!(sim.code(KeyCode::Enter).is_empty());
+    let Some(Modal::Editor(editor)) = &sim.m.modal else {
+        panic!("{:?}", sim.m.modal)
+    };
+    assert!(editor.error.is_some());
+    sim.code(KeyCode::BackTab);
+    sim.code(KeyCode::Backspace);
+    type_text(&mut sim, "3");
+    sim.code(KeyCode::Tab);
+    let effects = sim.code(KeyCode::Enter);
+    let (effect, call) = first_call(&effects);
+    assert_eq!(call, ApiCall::Receive("orders".to_owned(), 30, 3));
+    assert!(call
+        .to_call()
+        .query
+        .contains(&("maxMessages".to_owned(), "3".to_owned())));
+    sim.answer(&effect, ok(&messages_json(3)));
+}
+
+/// TUI: TUI-MSG-07
+#[test]
+fn enter_opens_the_message_and_it_can_change_its_time_or_be_deleted_while_it_is_held() {
+    let mut sim = Sim::on_topic_messages(Lang::EnUs);
+    read(&mut sim, 2);
+    sim.code(KeyCode::Enter);
+    assert_eq!(sim.m.modal, Some(Modal::Message));
+    // v asks for the new time (30 by default) and sends it for the message that is open.
+    sim.press('v');
+    let Some(Modal::Editor(editor)) = &sim.m.modal else {
+        panic!("{:?}", sim.m.modal)
+    };
+    assert_eq!(editor.text("seconds"), "30");
+    let effects = sim.code(KeyCode::Enter);
+    let (effect, call) = first_call(&effects);
+    let ApiCall::Visibility(topic, id, _, secs) = call.clone() else {
+        panic!("{call:?}")
+    };
+    assert_eq!(
+        (topic.as_str(), id.as_str(), secs),
+        ("orders", "01a1-m1", 30)
+    );
+    sim.answer(&effect, ok("{}"));
+    assert!(sim.m.modal.is_none());
+    let row = &mon(&sim).messages.rows[0];
+    assert_eq!(row.held_until, Some(sim.m.now + 30_000));
+    // d deletes it and closes the dialog.
+    sim.code(KeyCode::Enter);
+    let effects = sim.press('d');
+    let (effect, call) = first_call(&effects);
+    assert!(matches!(call, ApiCall::Ack(..)), "{call:?}");
+    sim.answer(&effect, ok("{}"));
+    assert!(sim.m.modal.is_none());
+    assert!(mon(&sim).messages.rows[0].acked);
+}
+
+/// TUI: TUI-MSG-08
+#[test]
+fn when_the_time_runs_out_the_open_message_says_it_cannot_be_handled_any_more() {
+    let mut sim = Sim::on_topic_messages(Lang::EnUs);
+    read(&mut sim, 1);
+    sim.code(KeyCode::Enter);
+    // The hold ends while the message is open.
+    sim.m.now += 31_000;
+    assert!(sim.press('v').is_empty());
+    assert_eq!(
+        sim.m.modal,
+        Some(Modal::Message),
+        "the dialog stays; the key says why it cannot run"
+    );
+    assert!(notice(&sim).contains("not held"), "{}", notice(&sim));
+    assert!(sim.press('d').is_empty());
+    sim.code(KeyCode::Esc);
+    assert!(sim.m.modal.is_none());
+}
+
+/// TUI: TUI-MSG-02
+#[test]
+fn a_body_in_base64_is_sent_as_the_bytes_it_stands_for_and_a_bad_one_is_refused() {
+    let mut sim = Sim::on_topic_messages(Lang::EnUs);
+    sim.press('p');
+    type_text(&mut sim, "aGVsbG8gd29ybGQ=");
+    // Tab to the box (content type, then the box) and tick it.
+    sim.code(KeyCode::Tab);
+    sim.code(KeyCode::Tab);
+    sim.press(' ');
+    let send = |sim: &mut Sim| {
+        sim.send(crate::tui::msg::Msg::Key(
+            ratatui::crossterm::event::KeyEvent::new(
+                KeyCode::Char('s'),
+                ratatui::crossterm::event::KeyModifiers::CONTROL,
+            ),
+        ))
+    };
+    let effects = send(&mut sim);
+    let (_, call) = first_call(&effects);
+    let ApiCall::Publish(spec) = call else {
+        panic!("{call:?}")
+    };
+    assert_eq!(spec.body, b"hello world".to_vec());
+    // Text that is not base64 stays in the form with the reason.
+    let mut sim = Sim::on_topic_messages(Lang::EnUs);
+    sim.press('p');
+    type_text(&mut sim, "this is *not* base64");
+    sim.code(KeyCode::Tab);
+    sim.code(KeyCode::Tab);
+    sim.press(' ');
+    assert!(send(&mut sim).is_empty());
+    let Some(Modal::Editor(editor)) = &sim.m.modal else {
+        panic!("{:?}", sim.m.modal)
+    };
+    assert!(editor.error.is_some());
+    assert_eq!(editor.fields[editor.focus].id, "body");
+}
+
+/// TUI: TUI-MSG-07
+#[test]
+fn f_and_b_switch_the_way_the_open_message_is_shown_and_pressing_again_goes_back() {
+    let mut sim = Sim::on_topic_messages(Lang::EnUs);
+    read(&mut sim, 1);
+    sim.code(KeyCode::Enter);
+    assert_eq!(mon(&sim).messages.view, BodyView::Sent);
+    sim.press('f');
+    assert_eq!(mon(&sim).messages.view, BodyView::Formatted);
+    sim.press('b');
+    assert_eq!(mon(&sim).messages.view, BodyView::Base64);
+    sim.press('b');
+    assert_eq!(mon(&sim).messages.view, BodyView::Sent);
+    assert_eq!(sim.m.modal, Some(Modal::Message));
 }

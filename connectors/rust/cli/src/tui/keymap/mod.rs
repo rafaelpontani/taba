@@ -73,6 +73,7 @@ pub enum Action {
     MsgAck,
     MsgAckAll,
     MsgRelease,
+    MsgVisibility,
     MsgPrune,
     ProfileUse,
     ProfileNew,

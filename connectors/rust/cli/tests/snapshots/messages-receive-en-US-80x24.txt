@@ -6,19 +6,19 @@ Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
 │The API does not list a queue: the rows are the messages you read here. r     │
 │reads up to 10, p publishes.                                                  │
 │ ┌ Read messages ───────────────────────────────────────────────────────────┐ │
-│ │▶ Invisible for (s) 30▏                                                   │ │
+│ │▶ How many messages 10▏                                                   │ │
+│ │  Invisible for (s) 30                                                    │ │
 │ │                                                                          │ │
 │ │                                                                          │ │
-│ │Reads up to 10 messages and hides them from every other consumer for the  │ │
-│ │time below, or until you acknowledge or give them back. Reading changes   │ │
-└─│                                                                          │─┘
+│ │Reads up to that many messages and hides them from every other consumer   │ │
+└─│for the time below, or until you acknowledge or give them back. Reading   │─┘
 ┌ │                                                                          │─┐
-│S│Tab next field · Enter new line in the body · Ctrl+s send · Esc cancel    │ │
+│S│                                                                          │ │
+│ │Tab next field · Enter new line in the body · Ctrl+s send · Esc cancel    │ │
 │ └──────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
- Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US
+ Esc back  Enter actions  p publish  r read  l language  h help  ⟳ 5s · L en-US

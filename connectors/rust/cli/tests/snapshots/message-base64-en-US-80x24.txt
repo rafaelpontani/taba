@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:02 UTC
+┌ Message 01a1-m1 ─────────────────────────────────────────────────────────────┐
+│Invisible for 30 s more: you can still change its time or delete it.          │
+│                                                                              │
+│Group customer-1 · application/json · 24 bytes · 1 deliveries · received at   │
+│12:00:02                                                                      │
+│┌ base64 ────────────────────────────────────────────────────────────────────┐│
+││eyJvcmRlciI6MSwidG90YWwiOjE5Ljl9                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+││                                                                            ││
+│└────────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│ v change time  d delete  f format  b base64  Esc close                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Esc back  Enter actions  p publish  r read  l language  h help  ⟳ 5s · L en-US

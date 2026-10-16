@@ -990,6 +990,7 @@ fn the_messages_of_a_topic() {
             &format!("messages-receive-{code}-80x24"),
             &render(&sim.m, 80, 24),
         );
+        sim.code(KeyCode::Enter);
         let effects = sim.code(KeyCode::Enter);
         let read = effects
             .iter()
@@ -1018,6 +1019,35 @@ fn the_messages_of_a_topic() {
             &format!("messages-rows-{code}-120x40"),
             &render(&sim.m, 120, 40),
         );
+
+        // The open message: held, deleted and expired.
+        sim.code(KeyCode::Home);
+        sim.code(KeyCode::Enter);
+        snapshot(
+            &format!("message-held-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        // The body can be seen formatted or as base64; pressing again goes back to what was sent.
+        sim.press('f');
+        snapshot(
+            &format!("message-formatted-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.press('b');
+        snapshot(
+            &format!("message-base64-{code}-80x24"),
+            &render(&sim.m, 80, 24),
+        );
+        sim.press('b');
+        sim.m.now += 40_000;
+        let screen = render(&sim.m, 80, 24);
+        assert!(
+            screen.contains("time ran out") || screen.contains("tempo acabou"),
+            "{screen}"
+        );
+        snapshot(&format!("message-expired-{code}-80x24"), &screen);
+        sim.m.now -= 40_000;
+        sim.code(KeyCode::Esc);
 
         sim.press('p');
         for c in "{".chars() {

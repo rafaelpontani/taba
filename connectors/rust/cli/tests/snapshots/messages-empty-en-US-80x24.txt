@@ -21,4 +21,4 @@ Queue: 1,000 visible · 20 invisible · depth 1,020 · oldest 2m 00s
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
- Esc back  p publish  r read  a ack  l language  h help          ⟳ 5s · L en-US
+ Esc back  Enter actions  p publish  r read  l language  h help  ⟳ 5s · L en-US

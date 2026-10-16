@@ -4,21 +4,21 @@ Tó┌ Publicar uma mensagem ─────────────────
 Fi│▶ Corpo              (3 linhas)                                           │
 ┌ │    1 │{                                                                  │─┐
 │H│    2 │  "order": 7                                                       │ │
-│ │    3 │}▏                                                                 │l│
-│▶│      │                                                                   │l│
+│▶│    3 │}▏                                                                 │l│
+│ │      │                                                                   │l│
 │ │      │                                                                   │l│
 │ │      │                                                                   │l│
 │ │      │                                                                   │ │
 │ │  Tipo de conteúdo   application/json                                     │ │
-│ │  Id do grupo                                                             │ │
-└─│  Id de deduplicação                                                      │─┘
-┌ │                                                                          │─┐
+│ │  Corpo em base64    [ ]                                                  │ │
+└─│  Id do grupo                                                             │─┘
+┌ │  Id de deduplicação                                                      │─┐
 │I│                                                                          │ │
-│a│O corpo vai como digitado e pode ter várias linhas. Grupo e id de         │ │
-│{│deduplicação são opcionais (filas FIFO usam os dois).                     │ │
+│a│                                                                          │ │
+│{│O corpo vai como digitado e pode ter várias linhas. Marque base64 para    │ │
+│ │digitar os bytes em base64 (enviados decodificados). Grupo e id de        │ │
 │ │                                                                          │ │
 │ │                                                                          │ │
-│ │Tab próximo campo · Enter nova linha no corpo · Ctrl+s enviar · Esc cancel│ │
-└─└──────────────────────────────────────────────────────────────────────────┘─┘
- ✔ Confirmada 01a1-m2
- Esc voltar  p publicar  r ler  a ack  l idioma  h ajuda         ⟳ 5s · L pt-BR
+└─│Tab próximo campo · Enter nova linha no corpo · Ctrl+s enviar · Esc cancel│─┘
+  └──────────────────────────────────────────────────────────────────────────┘
+ Esc voltar  Enter ações  p publicar  r ler  l idioma  h ajuda   ⟳ 5s · L pt-BR

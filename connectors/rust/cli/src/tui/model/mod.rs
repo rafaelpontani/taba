@@ -282,6 +282,8 @@ pub enum Modal {
     Menu(Menu),
     /// The summary of the selected topic: its numbers, limits and tags.
     TopicSummary,
+    /// The selected message of the Messages view, open: its body and what can still be done to it.
+    Message,
     Help {
         scroll: u16,
     },
@@ -530,6 +532,8 @@ pub struct Received {
     pub content_type: String,
     /// The body as text (lossy for bytes that are not UTF-8).
     pub body: String,
+    /// The first bytes of the body as they came, for the formatted and the base64 views.
+    pub raw: Vec<u8>,
     pub receipt: String,
     /// When it was received (ms since the app opened).
     pub at: u64,
@@ -542,12 +546,23 @@ pub struct Received {
 /// The most received messages kept.
 pub const MAX_RECEIVED: usize = 1000;
 
+/// How the body of an open message is shown: as sent (the default), formatted, or as base64.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BodyView {
+    #[default]
+    Sent,
+    Formatted,
+    Base64,
+}
+
 /// What the Messages view of a topic holds.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Messages {
     /// Newest first.
     pub rows: Vec<Received>,
     pub selected: usize,
+    /// How the body of an open message is shown.
+    pub view: BodyView,
     /// What the last publish, receive or prune said (severity, text).
     pub last: Option<(Severity, String)>,
 }

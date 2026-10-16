@@ -21,4 +21,4 @@ Fila: 1.000 visíveis · 20 invisíveis · profundidade 1.020 · mais velha 2m 0
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
  ✔ Confirmada 01a1-m2
- Esc voltar  p publicar  r ler  a ack  l idioma  h ajuda         ⟳ 5s · L pt-BR
+ Esc voltar  Enter ações  p publicar  r ler  l idioma  h ajuda   ⟳ 5s · L pt-BR

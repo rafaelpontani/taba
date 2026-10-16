@@ -230,6 +230,7 @@ fn hint_actions(m: &Model) -> &'static [Action] {
         {
             &[
                 Action::Esc,
+                Action::Enter,
                 Action::MsgPublish,
                 Action::MsgReceive,
                 Action::MsgAck,
