@@ -1,4 +1,5 @@
 use super::*;
+use ratatui::crossterm::event::KeyModifiers;
 
 fn press(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)

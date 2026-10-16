@@ -139,7 +139,7 @@ Numbered requirements (`TUI-<screen>-<nn>`); tests and phases cite the IDs. The 
 | TUI-FRM-02 | Five tabs (Cluster, Topics, Messages, Tokens, Profiles) by `1`…`5`, `[` `]`, `Alt+←/→`. |
 | TUI-FRM-03 | Footer: keys of the focused panel, refresh state (`⟳ 2s`, paused, stale with the time of the last good data) and language. |
 | TUI-FRM-04 | Every list and text scrolls; the scrollbar shows only when the content exceeds. |
-| TUI-FRM-05 | Every action has a shortcut; the mouse is optional. |
+| TUI-FRM-05 | Every action has a shortcut; the mouse is optional. Characters typed with AltGr (`/`, `?`, `@` on ABNT2 and other layouts; Windows reports Ctrl+Alt) work as keys and in text fields. |
 | TUI-FRM-06 | Below 80×24 a notice replaces the screen; resizing redraws at once. |
 | TUI-FRM-07 | One popup at a time; `Esc` closes the top one; a destructive popup's default button is **Cancel**. |
 | TUI-FRM-08 | Offline, `401`/`403`, `429`/`503` and **`partial: true`** (D-TUI-10) show in the frame without losing the last good data. |

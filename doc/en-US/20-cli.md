@@ -64,7 +64,7 @@ A small program that, from any terminal, does everything the API offers. It has 
 
 | Option | Variable | Default | Description |
 |---|---|---|---|
-| `--profile <name>` | `TABA_CLI_PROFILE` | the default profile | Which profile to use. A nonexistent name exits with `2` |
+| `--profile <name>` | `TABA_CLI_PROFILE` | the default profile (or the only one, when the file has a single profile) | Which profile to use. A nonexistent name exits with `2` |
 | `-o, --output <format>` | `TABA_CLI_OUTPUT` | `json` | `json` (the response as the server gave it, indented), `table` (columns) or `raw` (only what the command delivers, e.g. the message body) |
 | `-q, --quiet` | — | — | Prints nothing on success |
 | `--request-id <id>` | — | generated | Goes in `X-Request-Id` |
@@ -157,7 +157,7 @@ profiles:
 | `output` | `json` | Default format |
 | `connect-timeout` / `timeout` / `max-attempts` | `5` s / `30` s / `3` | Open the connection / ordinary call (`consume` adds the `waitTime`) / attempts, counting the first |
 
-**Precedence of each field:** command option → **`TABA_CLI_<FIELD>` variable** → chosen profile → built-in value. **Which profile:** `--profile`, then `TABA_CLI_PROFILE`, then the file's `default`.
+**Precedence of each field:** command option → **`TABA_CLI_<FIELD>` variable** → chosen profile → built-in value. **Which profile:** `--profile`, then `TABA_CLI_PROFILE`, then the file's `default`; with a single profile and no default, that profile.
 
 **Full-screen interface:** the same file keeps two sections that are not profiles: `ui.language` (written by the `l` key) and `history.retention` / `history.interval` (the history of the charts; durations such as `90`, `90s`, `5m` or `1h`). Language: `--lang` → `TABA_CLI_LANG` → `ui.language` → the system's language (`LC_ALL`, `LC_MESSAGES`, `LANG`; on Windows, the interface language) → `en-US`.
 

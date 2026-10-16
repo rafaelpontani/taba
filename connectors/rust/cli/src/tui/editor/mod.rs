@@ -2,7 +2,7 @@
 //! profile. It is plain state: the keys change it and say what the person asked for (`Outcome`); the screens decide
 //! what that means, and the popup draws it.
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -193,7 +193,7 @@ impl Editor {
         if self.busy {
             return Outcome::None;
         }
-        let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+        let ctrl = crate::tui::keymap::ctrl_of(event);
         match event.code {
             KeyCode::Esc => return Outcome::Cancel,
             KeyCode::Char('s' | 'S') if ctrl => return Outcome::Submit,

@@ -2,7 +2,7 @@
 //! input at a time. It never blocks and never touches the terminal or the network; the calls it wants made
 //! come out as `Effect`s.
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use taba_client::{Error, Reply};
 
 use crate::tui::api::{self, ApiCall, Severity};
@@ -307,7 +307,7 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
     let Some(modal) = m.modal.clone() else {
         return Vec::new();
     };
-    let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = crate::tui::keymap::ctrl_of(&event);
     if ctrl && matches!(event.code, KeyCode::Char('c')) {
         return vec![Effect::Quit];
     }
@@ -475,7 +475,7 @@ fn palette_key(m: &mut Model, event: KeyEvent, query: &mut String, selected: usi
                 selected: 0,
             });
         }
-        KeyCode::Char(c) if !event.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Char(c) if !crate::tui::keymap::ctrl_of(&event) => {
             query.push(c);
             m.modal = Some(Modal::Palette {
                 query: query.clone(),
@@ -538,7 +538,7 @@ fn confirm_key(m: &mut Model, event: KeyEvent, mut confirm: Confirm) -> Vec<Effe
                 typed.input.pop();
             }
         }
-        KeyCode::Char(c) if !event.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Char(c) if !crate::tui::keymap::ctrl_of(&event) => {
             if let Some(typed) = &mut confirm.typed {
                 typed.input.push(c);
             } else if matches!(c, 'h' | 'l') {

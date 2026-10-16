@@ -52,7 +52,11 @@ fn choose_profile(
         (Some(name), _, _) => (name.to_owned(), Source::Variable("--profile".to_owned())),
         (None, Some(name), _) => (name, Source::Variable("TABA_CLI_PROFILE".to_owned())),
         (None, None, Some(name)) => (name.clone(), Source::Default),
-        (None, None, None) => return Ok(None),
+        // A file with a single profile and no default: that profile is the only possible choice.
+        (None, None, None) => match file.names().as_slice() {
+            [only] => ((*only).to_owned(), Source::Default),
+            _ => return Ok(None),
+        },
     };
     if file.get(&name).is_none() {
         let known = file.names();

@@ -73,10 +73,21 @@ pub enum Key {
     Alt(KeyCode),
 }
 
+/// Ctrl on its own. Windows reports AltGr (how `/`, `?` and `@` are typed on many layouts, ABNT2 among them) as Ctrl+Alt
+/// together: that is a typed character, never a Ctrl shortcut.
+pub fn ctrl_of(event: &KeyEvent) -> bool {
+    event.modifiers.contains(KeyModifiers::CONTROL) && !event.modifiers.contains(KeyModifiers::ALT)
+}
+
+/// Alt on its own (see [`ctrl_of`]).
+pub fn alt_of(event: &KeyEvent) -> bool {
+    event.modifiers.contains(KeyModifiers::ALT) && !event.modifiers.contains(KeyModifiers::CONTROL)
+}
+
 impl Key {
     fn matches(self, event: &KeyEvent) -> bool {
-        let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
-        let alt = event.modifiers.contains(KeyModifiers::ALT);
+        let ctrl = ctrl_of(event);
+        let alt = alt_of(event);
         match self {
             Key::Char(c) => matches!(event.code, KeyCode::Char(e) if e == c) && !ctrl && !alt,
             Key::Code(code) => event.code == code && !ctrl && !alt,

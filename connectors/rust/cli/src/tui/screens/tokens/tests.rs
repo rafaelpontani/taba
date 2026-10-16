@@ -445,3 +445,35 @@ fn a_token_with_admin_manages_tokens_but_only_the_root_changes_or_creates_admin_
     assert!(editor.field("admin").unwrap().locked.is_some());
     assert!(editor.field("manage").unwrap().locked.is_none());
 }
+
+/// TUI: TUI-FRM-05
+#[test]
+fn altgr_characters_work_as_keys_and_in_text_fields() {
+    // Windows reports AltGr (`/` and `?` on an ABNT2 keyboard) as Ctrl+Alt together.
+    let altgr = |c: char| {
+        Msg::Key(KeyEvent::new(
+            KeyCode::Char(c),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ))
+    };
+    let mut sim = on_tokens(Lang::EnUs);
+    sim.send(altgr('/'));
+    assert!(matches!(sim.m.modal, Some(Modal::Input(_))));
+    sim.send(altgr('@'));
+    let Some(Modal::Input(input)) = &sim.m.modal else {
+        panic!("the filter box should be open");
+    };
+    assert_eq!(input.value, "@");
+    sim.code(KeyCode::Esc);
+
+    sim.send(altgr('?'));
+    assert!(matches!(sim.m.modal, Some(Modal::Help { .. })));
+
+    // A real Ctrl shortcut is still a shortcut, not text.
+    let mut sim = on_tokens(Lang::EnUs);
+    sim.send(Msg::Key(KeyEvent::new(
+        KeyCode::Char('/'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(sim.m.modal.is_none());
+}

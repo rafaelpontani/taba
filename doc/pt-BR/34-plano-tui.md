@@ -139,7 +139,7 @@ Requisitos numerados (`TUI-<tela>-<nn>`); testes e fases citam os IDs. O visual 
 | TUI-FRM-02 | Cinco abas (Cluster, Tópicos, Mensagens, Tokens, Perfis) por `1`…`5`, `[` `]`, `Alt+←/→`. |
 | TUI-FRM-03 | Rodapé: teclas do painel em foco, estado da atualização (`⟳ 2s`, pausado, velho com a hora do último dado bom) e idioma. |
 | TUI-FRM-04 | Toda lista e todo texto rolam; a barra de rolagem só aparece quando o conteúdo excede. |
-| TUI-FRM-05 | Toda ação tem atalho; o mouse é opcional. |
+| TUI-FRM-05 | Toda ação tem atalho; o mouse é opcional. Caracteres digitados com AltGr (`/`, `?`, `@` no ABNT2 e outros layouts; o Windows informa Ctrl+Alt) funcionam como teclas e nos campos de texto. |
 | TUI-FRM-06 | Abaixo de 80×24 um aviso substitui a tela; redimensionar redesenha na hora. |
 | TUI-FRM-07 | Um popup por vez; `Esc` fecha o do topo; o botão padrão de um popup destrutivo é **Cancelar**. |
 | TUI-FRM-08 | Offline, `401`/`403`, `429`/`503` e **`partial: true`** (D-TUI-10) aparecem no quadro sem perder o último dado bom. |

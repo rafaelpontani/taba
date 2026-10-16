@@ -185,3 +185,21 @@ fn a_time_is_seconds_minutes_or_hours() {
         assert!(parse_span(bad).is_err(), "{bad}");
     }
 }
+
+/// UC: UC-CLI-026
+#[test]
+fn a_single_profile_is_used_even_when_it_is_not_the_default() {
+    let mut f = ConfigFile::default();
+    let mut only = Profile::default();
+    only.set("url", "https://only:8443").unwrap();
+    f.add("only", only).unwrap();
+    f.default = None;
+    let e = resolve(&f, None, &env_of(&[])).unwrap();
+    assert_eq!(e.profile, Some(("only".to_owned(), Source::Default)));
+    assert_eq!(e.url(), "https://only:8443");
+
+    // With two and no default, nothing is chosen for the person.
+    f.add("other", Profile::default()).unwrap();
+    f.default = None;
+    assert_eq!(resolve(&f, None, &env_of(&[])).unwrap().profile, None);
+}
