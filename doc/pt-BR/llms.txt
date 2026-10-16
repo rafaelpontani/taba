@@ -34,6 +34,7 @@
 - [18 API do cluster](18-api-cluster.md): rotas entre nós, canal WebSocket, streams NDJSON (interna, sem garantia de estabilidade)
 - [19 Erros e limites](19-erros-e-limites.md): os 50 códigos de erro com status fixo, limites fixos, rate limits
 - [20 Linhas de comando](20-cli.md): `taba` (servidor) e `taba-cli` (cliente, perfis, TUI, códigos de saída)
+- [20b Interface em tela cheia do taba-cli](20b-cli-ui.md): como usar o `taba-cli tui` hoje: abrir, configurar, telas (cluster, tópicos, mensagens, tokens, perfis), teclas e permissões
 - [21 Conectores](21-conectores.md): contrato comum, Rust e C# prontos, oito planejados, como escrever um novo
 
 ## Operar
@@ -58,7 +59,6 @@
 - [30 Decisões](30-decisoes.md): o porquê, com os códigos D… e PRB-… (gerado)
 - [31 Pendências](31-pendencias.md): o que está em aberto e as descobertas desta documentação (gerado + manual)
 - [32 Roadmap](32-roadmap.md): o que vem a seguir, em marcos
-- [34 Plano da TUI](34-plano-tui.md): plano e requisitos por tela do `taba-cli tui` (ratatui) — cluster, tokens, tópicos, mensagens, idiomas, fases (planejado)
 
 ## Mais
 

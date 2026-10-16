@@ -195,7 +195,7 @@ Decided while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)).
 
 ## TUI plan: server work (D152 to D155)
 
-Decided with the plan of the interactive interface ([34-tui-plan.md](34-tui-plan.md), decisions D-TUI-2, 3, 4 and 9) and implemented in `taba-node`. **Written by hand here** (see K in [31-pending-items.md](31-pending-items.md)).
+Decided with the plan of the interactive interface (decisions D-TUI-2, 3, 4 and 9) and implemented in `taba-node`. **Written by hand here** (see K in [31-pending-items.md](31-pending-items.md)).
 
 | Code | Decision | Where |
 |---|---|---|

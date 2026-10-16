@@ -65,6 +65,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | [18-api-cluster.md](18-api-cluster.md) | Rotas entre nós e o canal permanente |
 | [19-erros-e-limites.md](19-erros-e-limites.md) | Catálogo de erros e limites |
 | [20-cli.md](20-cli.md) | `taba` (servidor) e `taba-cli` (cliente) |
+| [20b-cli-ui.md](20b-cli-ui.md) | A interface em tela cheia (`taba-cli tui`): abrir, configurar, telas e teclas |
 | [21-conectores.md](21-conectores.md) | Bibliotecas de cliente e o contrato comum |
 
 ### Parte E — Operar
@@ -95,7 +96,6 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | [30-decisoes.md](30-decisoes.md) | Por que cada coisa é como é |
 | [31-pendencias.md](31-pendencias.md) | O que ainda está em aberto |
 | [32-roadmap.md](32-roadmap.md) | O que vem a seguir |
-| [34-plano-tui.md](34-plano-tui.md) | Plano e requisitos por tela da interface interativa (TUI) do `taba-cli` |
 
 ## Convenções desta documentação
 

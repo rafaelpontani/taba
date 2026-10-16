@@ -195,7 +195,7 @@ Decididas ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)).
 
 ## Plano da TUI: trabalho no servidor (D152 a D155)
 
-Decididas com o plano da interface interativa ([34-plano-tui.md](34-plano-tui.md), decisões D-TUI-2, 3, 4 e 9) e implementadas no `taba-node`. **Escritas à mão aqui** (veja K em [31-pendencias.md](31-pendencias.md)).
+Decididas com o plano da interface interativa (decisões D-TUI-2, 3, 4 e 9) e implementadas no `taba-node`. **Escritas à mão aqui** (veja K em [31-pendencias.md](31-pendencias.md)).
 
 | Código | Decisão | Onde |
 |---|---|---|

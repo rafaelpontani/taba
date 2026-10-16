@@ -67,6 +67,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [18-cluster-api.md](18-cluster-api.md) | Node-to-node routes and the permanent channel |
 | [19-errors-and-limits.md](19-errors-and-limits.md) | Catalogue of errors and limits |
 | [20-cli.md](20-cli.md) | `taba` (server) and `taba-cli` (client) |
+| [20b-cli-ui.md](20b-cli-ui.md) | The full-screen interface (`taba-cli tui`): open, configure, screens and keys |
 | [21-connectors.md](21-connectors.md) | Client libraries and the common contract |
 
 ### Part E — Operate
@@ -97,7 +98,6 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [30-decisions.md](30-decisions.md) | Why each thing is the way it is |
 | [31-pending-items.md](31-pending-items.md) | What is still open |
 | [32-roadmap.md](32-roadmap.md) | What comes next |
-| [34-tui-plan.md](34-tui-plan.md) | Plan and per-screen requirements of the interactive interface (TUI) of `taba-cli` |
 
 ## Conventions of this documentation
 

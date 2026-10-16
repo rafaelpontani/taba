@@ -1,9 +1,9 @@
 ---
 title: Command lines (`taba` and `taba-cli`)
-summary: The project's two CLIs — `taba` (starts the node and creates secrets) and `taba-cli` (client: topics, messages, tokens, health, drain; profiles, output, exit codes, TUI, image and build).
+summary: The project's two CLIs — `taba` (starts the node and creates secrets) and `taba-cli` (client — topics, messages, tokens, health, drain; profiles, output, exit codes, TUI, image and build).
 type: reference
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-16 @ ddb087a
 sources: [crates/taba-node/src/cli/mod.rs, crates/taba-node/src/main.rs, crates/taba-node/src/secrets, connectors/rust/cli/src, connectors/rust/cli/Dockerfile, connectors/rust/cli/scripts]
 ---
 
@@ -113,13 +113,13 @@ The `receiptToken` changes at each delivery and comes in the `Message`: that is 
 
 **Local** (do not call the server): `version`, `config show` (the effective configuration and **where each value came from**, without the token), `profile …`, `help [command]`.
 
-**Full-screen interface** (plan and requirements in [34](34-tui-plan.md)):
+**Full-screen interface** (the user guide is [20b](20b-cli-ui.md)):
 
 | Command | What it does | Options |
 |---|---|---|
-| `tui` | Opens the interface on the same profile and token as the commands. Today the **Cluster** tab is ready (conditions, nodes, node detail, charts, drain and return, backup flush, stopping the cluster); the other tabs say what is coming. It needs a terminal: outside one it exits with `2` and prints the help | `--no-mouse`, `--history-retention <time>` (default `1h`, at most `6h`), `--history-interval <time>` (default `5s`, at least `1s`) |
+| `tui` | Opens the interface (Cluster, Topics with charts and messages, Tokens and Profiles) on the same profile and token as the commands. It needs a terminal: outside one it exits with `2` and prints the help | `--no-mouse`, `--history-retention <time>` (default `1h`, at most `6h`), `--history-interval <time>` (default `5s`, at least `1s`) |
 
-The node and cluster actions (drain, return, flush, stop) and the cluster view need the **root token**; with another token the tab shows only the list of nodes and says what is missing. The chart history lives only in the memory of the session. `h` shows the keys, `:` opens the command palette and `l` switches the language (it applies at once and is kept in `ui.language`). `taba-cli` with no command opens this interface when there is a terminal (the same as `taba-cli tui`); without one it prints the help.
+`taba-cli` with no command opens this interface when there is a terminal (the same as `taba-cli tui`); without one it prints the help. The keys, the screens, what each action needs from the token and the configuration are in [20b-cli-ui.md](20b-cli-ui.md).
 
 ### Profiles
 
@@ -159,21 +159,11 @@ profiles:
 
 **Precedence of each field:** command option → **`TABA_CLI_<FIELD>` variable** → chosen profile → built-in value. **Which profile:** `--profile`, then `TABA_CLI_PROFILE`, then the file's `default`; with a single profile and no default, that profile.
 
-**Full-screen interface:** the same file keeps two sections that are not profiles: `ui.language` (written by the `l` key) and `history.retention` / `history.interval` (the history of the charts; durations such as `90`, `90s`, `5m` or `1h`). Language: `--lang` → `TABA_CLI_LANG` → `ui.language` → the system's language (`LC_ALL`, `LC_MESSAGES`, `LANG`; on Windows, the interface language) → `en-US`.
-
-**Which profile the interface uses:** `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL` fix the choice. With none of them and **more than one** profile in the file, the interface opens a box to choose, with the `default` profile already selected (`Esc` takes the default); with a single profile it takes it without asking; with none it opens the form of the first profile. The Profiles tab creates, edits, removes, marks the default, tests the connection and connects with another profile, and the `o` key switches profile on any tab.
-
-```yaml
-ui:
-  language: en-US
-history:
-  retention: 1h
-  interval: 5s
-```
+**Full-screen interface:** the same file keeps two sections that are not profiles, `ui` (the language) and `history` (the chart history), and the interface picks the profile to open by the same rules as `--profile` and `TABA_CLI_PROFILE`. All of it is in [20b-cli-ui.md](20b-cli-ui.md#configure).
 
 **Profile commands:** `profile list`, `show [name]`, `add <name> [fields] [--default]`, `set <name> [fields] [--unset field]`, `remove <name> [--yes]`, `default [name|--none]`, `path`, `session …`.
 
-**Interactive mode (TUI).** `taba-cli profile` with no subcommand, **on a terminal**, opens a profile screen navigated **with the arrow keys, like a form** (list, add, change, remove, choose the default). It is a screen over the same commands and writes the same file.
+**Interactive profile screen.** `taba-cli profile` with no subcommand, **on a terminal**, opens a profile screen navigated **with the arrow keys, like a form** (list, add, change, remove, choose the default). It is a screen over the same commands and writes the same file. The Profiles tab of the full-screen interface ([20b](20b-cli-ui.md#profiles)) does the same and more (connecting with the profile), and will replace it.
 
 ```text
  Perfis do taba-cli   /home/ana/.config/taba/config.yml

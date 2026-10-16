@@ -1,9 +1,9 @@
 ---
 título: Linhas de comando (`taba` e `taba-cli`)
-resumo: As duas CLIs do projeto — o `taba` (sobe o nó e cria segredos) e o `taba-cli` (cliente: tópicos, mensagens, tokens, saúde, drain; perfis, saída, códigos de saída, TUI, imagem e build).
+resumo: As duas CLIs do projeto — o `taba` (sobe o nó e cria segredos) e o `taba-cli` (cliente — tópicos, mensagens, tokens, saúde, drain; perfis, saída, códigos de saída, TUI, imagem e build).
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-16 @ ddb087a
 fontes: [crates/taba-node/src/cli/mod.rs, crates/taba-node/src/main.rs, crates/taba-node/src/secrets, connectors/rust/cli/src, connectors/rust/cli/Dockerfile, connectors/rust/cli/scripts]
 ---
 
@@ -111,13 +111,13 @@ O `receiptToken` muda a cada entrega e vem no `Message`: por isso `consume` **se
 
 **Locais** (não chamam o servidor): `version`, `config show` (a configuração efetiva e **de onde veio cada valor**, sem o token), `profile …`, `help [comando]`.
 
-**Interface em tela cheia** (plano e requisitos em [34](34-plano-tui.md)):
+**Interface em tela cheia** (o guia de uso está em [20b](20b-cli-ui.md)):
 
 | Comando | O que faz | Opções |
 |---|---|---|
-| `tui` | Abre a interface sobre o mesmo perfil e o mesmo token dos comandos. Hoje a aba **Cluster** está pronta (condições, nós, detalhe do nó, gráficos, drenar e devolver, flush de backup, parar o cluster); as outras abas avisam o que vem. Precisa de um terminal: fora dele sai com `2` e imprime a ajuda | `--no-mouse`, `--history-retention <tempo>` (padrão `1h`, no máximo `6h`), `--history-interval <tempo>` (padrão `5s`, no mínimo `1s`) |
+| `tui` | Abre a interface (Cluster, Tópicos com gráficos e mensagens, Tokens e Perfis) sobre o mesmo perfil e o mesmo token dos comandos. Precisa de um terminal: fora dele sai com `2` e imprime a ajuda | `--no-mouse`, `--history-retention <tempo>` (padrão `1h`, no máximo `6h`), `--history-interval <tempo>` (padrão `5s`, no mínimo `1s`) |
 
-As ações de nó e de cluster (drain, devolver, flush, parar) e a visão do cluster pedem o **token raiz**; com outro token a aba mostra só a lista de nós e diz o que falta. O histórico dos gráficos fica só na memória da sessão. `h` mostra as teclas, `:` abre a paleta de comandos e `l` troca o idioma (vale na hora e fica em `ui.language`). `taba-cli` sem comando abre esta interface quando há terminal (igual a `taba-cli tui`); sem terminal imprime a ajuda.
+`taba-cli` sem comando abre esta interface quando há terminal (igual a `taba-cli tui`); sem terminal imprime a ajuda. As teclas, as telas, o que cada ação pede do token e a configuração estão em [20b-cli-ui.md](20b-cli-ui.md).
 
 ### Perfis
 
@@ -157,21 +157,11 @@ profiles:
 
 **Precedência de cada campo:** opção do comando → **variável `TABA_CLI_<CAMPO>`** → perfil escolhido → valor embutido. **Qual perfil:** `--profile`, depois `TABA_CLI_PROFILE`, depois o `default` do arquivo; com um só perfil e sem padrão, esse perfil.
 
-**Interface em tela cheia:** o mesmo arquivo guarda duas seções que não são perfis: `ui.language` (gravado pela tecla `l`) e `history.retention` / `history.interval` (o histórico dos gráficos; durações como `90`, `90s`, `5m` ou `1h`). Idioma: `--lang` → `TABA_CLI_LANG` → `ui.language` → o idioma do sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`; no Windows, o da interface) → `en-US`.
-
-**Qual perfil a interface usa:** `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL` fixam a escolha. Sem nenhum deles e com **mais de um** perfil no arquivo, a interface abre uma caixa para escolher, com o perfil `default` já selecionado (`Esc` usa o padrão); com um perfil só assume-o sem perguntar; sem nenhum, abre o formulário do primeiro perfil. Na aba Perfis dá para criar, editar, remover, marcar o padrão, testar a conexão e conectar com outro perfil, e a tecla `o` troca de perfil em qualquer aba.
-
-```yaml
-ui:
-  language: pt-BR
-history:
-  retention: 1h
-  interval: 5s
-```
+**Interface em tela cheia:** o mesmo arquivo guarda duas seções que não são perfis, `ui` (o idioma) e `history` (o histórico dos gráficos), e a interface escolhe o perfil a abrir pelas mesmas regras de `--profile` e `TABA_CLI_PROFILE`. Tudo isso está em [20b-cli-ui.md](20b-cli-ui.md#configurar).
 
 **Comandos de perfil:** `profile list`, `show [nome]`, `add <nome> [campos] [--default]`, `set <nome> [campos] [--unset campo]`, `remove <nome> [--yes]`, `default [nome|--none]`, `path`, `session …`.
 
-**Modo interativo (TUI).** `taba-cli profile` sem subcomando, **num terminal**, abre uma tela de perfis navegada **com as setas, como um formulário** (lista, cadastra, altera, remove, escolhe o padrão). É uma tela sobre os mesmos comandos e grava o mesmo arquivo.
+**Tela interativa de perfis.** `taba-cli profile` sem subcomando, **num terminal**, abre uma tela de perfis navegada **com as setas, como um formulário** (lista, cadastra, altera, remove, escolhe o padrão). É uma tela sobre os mesmos comandos e grava o mesmo arquivo. A aba Perfis da interface em tela cheia ([20b](20b-cli-ui.md#perfis)) faz o mesmo e mais (conectar com o perfil), e a substituirá.
 
 ```text
  Perfis do taba-cli   /home/ana/.config/taba/config.yml
