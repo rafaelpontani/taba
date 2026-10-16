@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ verificando                     00:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Mensagens │ 4 Tokens │ 5 Perfis
+Carregando...
+
+  ┌ Novo perfil ─────────────────────────────────────────────────────────────┐
+  │▶ Nome                   ▏                                                │
+  │  Endereço (url)                                                          │
+  │  Endereço de operação                                                    │
+  │  Arquivo do token                                                        │
+  │  Token (guardado no arquivo)                                             │
+  │  Arquivo do certificado CA                                               │
+  │  Perfil padrão          [x]                                              │
+  │                                                                          │
+  │                                                                          │
+  │Ainda não há perfil. Crie o primeiro para conectar com ele; Esc pula e usa│
+  │o endereço embutido.                                                      │
+  │                                                                          │
+  │                                                                          │
+  │Tab próximo campo · Espaço marca · Ctrl+S salva · Ctrl+T testa a conexão ·│
+  └──────────────────────────────────────────────────────────────────────────┘
+
+
+
+ Enter detalhe  d drenar  u devolver  l idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR

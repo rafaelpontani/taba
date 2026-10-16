@@ -88,9 +88,13 @@ pub fn draw_editor(f: &mut Frame, area: Rect, m: &Model, editor: &Editor) {
     ])
     .areas(inner);
     f.render_widget(
-        Paragraph::new(tx.t(editor.purpose.help()))
-            .style(th.dim())
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(tx.t(if m.awaiting_profile {
+            "editor.help-first-profile"
+        } else {
+            editor.purpose.help()
+        }))
+        .style(th.dim())
+        .wrap(Wrap { trim: false }),
         help,
     );
     let label_width = editor

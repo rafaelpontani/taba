@@ -229,7 +229,7 @@ Sources: node from `GET /nodes/{id}/metrics` (root token; `taba.storage.memory.u
 | TUI-HLP-03 | `l` picks the language (English, Português); it applies at once and is saved in `ui.language`. |
 | TUI-HLP-04 | The Profiles tab lists, creates, edits, removes, sets the default and tests a connection with unsaved values; it replaces today's screen ([20-cli.md](20-cli.md)). |
 | TUI-HLP-05 | Switching profile reconnects everything, resets the histories and shows the new profile in the status line. |
-| TUI-HLP-06 | **On opening with no profile given** (no `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL`) **and with more than one profile**, the TUI opens a box to choose: the **default** profile (●) comes selected, `Enter` connects and `Esc` uses the default. With a single profile (or none) it takes it, without asking. Nothing is read from a server before the choice. The same box opens later with `o`, and `Esc` only closes it. |
+| TUI-HLP-06 | **On opening with no profile given** (no `--profile`, `TABA_CLI_PROFILE` or `TABA_CLI_URL`) **and with more than one profile**, the TUI opens a box to choose: the **default** profile (●) comes selected, `Enter` connects and `Esc` uses the default. With a single profile it takes it, without asking. **With no profile at all** it opens the form of the first one at once (already ticked as the default): saving connects with it; `Esc` skips and uses the built-in address. Nothing is read from a server before the choice. The same box opens later with `o`, and `Esc` only closes it. |
 
 ## 7. Data and history
 

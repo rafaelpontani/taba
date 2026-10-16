@@ -127,7 +127,7 @@ fn step(m: &mut Model, delta: i32) -> Vec<Effect> {
     Vec::new()
 }
 
-fn open_form(m: &mut Model, existing: Option<(String, Profile)>) {
+pub fn open_form(m: &mut Model, existing: Option<(String, Profile)>) {
     let (name, profile, is_default, purpose) = match existing {
         Some((name, profile)) => {
             let is_default = m.profiles.file.default.as_deref() == Some(name.as_str());
@@ -178,6 +178,8 @@ pub fn editor_key(m: &mut Model, mut editor: Editor, outcome: Outcome) -> Vec<Ef
     match outcome {
         Outcome::Cancel => {
             m.modal = None;
+            // Giving up the first profile goes on with the built-in address.
+            m.awaiting_profile = false;
             Vec::new()
         }
         Outcome::Submit => submit(m, editor),
@@ -281,11 +283,21 @@ pub fn remove(m: &mut Model, name: &str) -> Vec<Effect> {
 }
 
 /// The profiles file was written (or not).
-pub fn saved(m: &mut Model, file: ConfigFile, select: Option<String>, result: Result<(), String>) {
+pub fn saved(
+    m: &mut Model,
+    file: ConfigFile,
+    select: Option<String>,
+    result: Result<(), String>,
+) -> Vec<Effect> {
     let tx = m.tx();
     match result {
         Ok(()) => {
             m.profiles.file = file;
+            // The first profile of a session that was waiting for one: connect with it.
+            let connect = match (&select, m.awaiting_profile) {
+                (Some(name), true) => vec![Effect::Connect(name.clone())],
+                _ => Vec::new(),
+            };
             if select.is_some() {
                 m.profiles.selected = select;
             }
@@ -294,6 +306,7 @@ pub fn saved(m: &mut Model, file: ConfigFile, select: Option<String>, result: Re
             }
             let text = tx.t("notice.profiles-saved");
             m.notify(Severity::Ok, text);
+            return connect;
         }
         Err(e) => {
             if let Some(Modal::Editor(editor)) = &mut m.modal {
@@ -305,6 +318,7 @@ pub fn saved(m: &mut Model, file: ConfigFile, select: Option<String>, result: Re
             }
         }
     }
+    Vec::new()
 }
 
 /// The text for the result of testing a connection, and whether it is a failure.

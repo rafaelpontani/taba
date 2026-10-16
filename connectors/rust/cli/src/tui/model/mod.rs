@@ -502,6 +502,8 @@ impl Model {
     pub fn new(options: Options) -> Model {
         // With one profile (or none) there is nothing to choose.
         let choose = options.choose_profile && options.profiles.profiles.len() > 1;
+        // With none, the form for the first one opens at once.
+        let create = options.choose_profile && options.profiles.profiles.is_empty();
         let first = choose.then(|| {
             let file = &options.profiles;
             let selected = file
@@ -511,7 +513,7 @@ impl Model {
                 .unwrap_or(0);
             Modal::Profiles { selected }
         });
-        Model {
+        let mut model = Model {
             lang: options.lang,
             theme: options.theme,
             profile: options.profile,
@@ -535,11 +537,15 @@ impl Model {
                 selected: options.profiles.default.clone(),
                 file: options.profiles,
             },
-            awaiting_profile: choose,
+            awaiting_profile: choose || create,
             history: History::new(options.retention_secs, options.interval_secs),
             next_id: 1,
             generation: 0,
+        };
+        if create {
+            crate::tui::screens::profiles::open_form(&mut model, None);
         }
+        model
     }
 
     /// Starts over with another profile: what was read from the old server is dropped, and so is any reply still

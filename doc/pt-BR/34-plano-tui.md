@@ -229,7 +229,7 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 | TUI-HLP-03 | `l` escolhe o idioma (English, Português); vale na hora e fica gravado em `ui.language`. |
 | TUI-HLP-04 | A aba Perfis lista, cria, edita, remove, define o padrão e testa uma conexão com valores não salvos; substitui a tela de hoje ([20-cli.md](20-cli.md)). |
 | TUI-HLP-05 | Trocar de perfil reconecta tudo, zera os históricos e mostra o novo perfil na linha de status. |
-| TUI-HLP-06 | **Ao abrir sem perfil informado** (sem `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL`) **e com mais de um perfil**, a TUI abre uma caixa para escolher: o perfil **padrão** (●) já vem selecionado, `Enter` conecta e `Esc` usa o padrão. Com um perfil só (ou nenhum) assume-o, sem perguntar. Nada é lido de um servidor antes da escolha. A mesma caixa abre depois com `o`, e `Esc` só a fecha. |
+| TUI-HLP-06 | **Ao abrir sem perfil informado** (sem `--profile`, `TABA_CLI_PROFILE` ou `TABA_CLI_URL`) **e com mais de um perfil**, a TUI abre uma caixa para escolher: o perfil **padrão** (●) já vem selecionado, `Enter` conecta e `Esc` usa o padrão. Com um perfil só assume-o, sem perguntar. **Sem nenhum perfil**, abre direto o formulário do primeiro (já marcado como padrão): ao salvar, conecta com ele; `Esc` pula e usa o endereço embutido. Nada é lido de um servidor antes da escolha. A mesma caixa abre depois com `o`, e `Esc` só a fecha. |
 
 ## 7. Dados e histórico
 

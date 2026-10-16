@@ -101,7 +101,7 @@ fn tui(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         url,
         retention_secs: retention,
         interval_secs: interval,
-        choose_profile: !given && file.profiles.len() > 1,
+        choose_profile: !given && file.profiles.len() != 1,
         profiles: file,
     };
 

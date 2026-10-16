@@ -80,10 +80,7 @@ pub fn update(m: &mut Model, msg: Msg) -> Vec<Effect> {
             file,
             select,
             result,
-        } => {
-            profiles::saved(m, file, select, result);
-            Vec::new()
-        }
+        } => profiles::saved(m, file, select, result),
         Msg::ProfileChecked(result) => {
             profiles::checked(m, &result);
             Vec::new()

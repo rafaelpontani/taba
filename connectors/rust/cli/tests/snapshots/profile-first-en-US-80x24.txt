@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ checking                        00:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Messages │ 4 Tokens │ 5 Profiles
+Loading...
+
+  ┌ New profile ─────────────────────────────────────────────────────────────┐
+  │▶ Name                   ▏                                                │
+  │  Address (url)                                                           │
+  │  Operations address                                                      │
+  │  Token file                                                              │
+  │  Token (kept in the file)                                                │
+  │  CA certificate file                                                     │
+  │  Default profile        [x]                                              │
+  │                                                                          │
+  │                                                                          │
+  │There is no profile yet. Create the first one to connect with it; Esc     │
+  │skips this and uses the built-in address.                                 │
+  │                                                                          │
+  │                                                                          │
+  │Tab next field · Space ticks · Ctrl+S saves · Ctrl+T tests the connection │
+  └──────────────────────────────────────────────────────────────────────────┘
+
+
+
+ Enter detail  d drain  u return  l language  ? help  q quit     ⟳ 2s · L en-US

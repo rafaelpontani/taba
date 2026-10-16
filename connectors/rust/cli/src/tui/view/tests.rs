@@ -766,3 +766,17 @@ fn the_footer_of_the_tokens_tab_dims_what_the_token_cannot_do() {
         "{footer}"
     );
 }
+
+/// TUI: TUI-HLP-06
+#[test]
+fn the_first_profile_form_opens_when_there_is_none() {
+    for lang in [Lang::EnUs, Lang::PtBr] {
+        let mut options = options(lang);
+        options.choose_profile = true;
+        let sim = Sim::with_options(options);
+        snapshot(
+            &format!("profile-first-{}-80x24", lang.code()),
+            &render(&sim.m, 80, 24),
+        );
+    }
+}

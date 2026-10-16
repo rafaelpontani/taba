@@ -355,11 +355,9 @@ fn escape_at_the_start_takes_the_default_profile_and_later_only_closes_the_choic
 fn with_one_profile_or_none_nothing_is_asked() {
     let mut one = ConfigFile::default();
     one.add("only", Profile::default()).unwrap();
-    for profiles in [one, ConfigFile::default()] {
-        let sim = opening(profiles, true);
-        assert!(!sim.m.awaiting_profile);
-        assert!(sim.m.modal.is_none());
-    }
+    let sim = opening(one, true);
+    assert!(!sim.m.awaiting_profile);
+    assert!(sim.m.modal.is_none());
     // A profile that was given is not asked about either.
     let sim = opening(file(), false);
     assert!(sim.m.modal.is_none());
@@ -367,4 +365,44 @@ fn with_one_profile_or_none_nothing_is_asked() {
     sim.press('o');
     assert!(sim.m.modal.is_none(), "there is nothing to switch to");
     assert!(sim.m.notice.is_some());
+}
+
+/// TUI: TUI-HLP-06
+#[test]
+fn with_no_profile_at_all_the_form_of_the_first_one_opens_and_connects_when_saved() {
+    let mut sim = opening(ConfigFile::default(), true);
+    let Some(Modal::Editor(editor)) = &sim.m.modal else {
+        panic!("{:?}", sim.m.modal);
+    };
+    assert_eq!(editor.purpose, Purpose::ProfileNew);
+    assert!(editor.checked("default"), "the first one is the default");
+    assert!(sim.m.awaiting_profile);
+    assert!(sim.tick(0).is_empty(), "nothing is read yet");
+    type_text(&mut sim, "local");
+    sim.code(KeyCode::Tab);
+    type_text(&mut sim, "http://localhost:8080");
+    let effects = sim.send(ctrl('s'));
+    let next = saved_file(&effects);
+    let effects = sim.send(Msg::ProfilesSaved {
+        file: next,
+        select: Some("local".into()),
+        result: Ok(()),
+    });
+    assert_eq!(effects, vec![Effect::Connect("local".to_owned())]);
+    sim.send(Msg::Connected {
+        profile: "local".into(),
+        url: "http://localhost:8080".into(),
+        result: Ok(()),
+    });
+    assert!(!sim.m.awaiting_profile && sim.m.modal.is_none());
+    assert!(!sim.tick(1_000).is_empty(), "now the reading starts");
+}
+
+/// TUI: TUI-HLP-06
+#[test]
+fn escape_on_the_first_profile_form_goes_on_with_the_built_in_address() {
+    let mut sim = opening(ConfigFile::default(), true);
+    sim.code(KeyCode::Esc);
+    assert!(sim.m.modal.is_none() && !sim.m.awaiting_profile);
+    assert!(!sim.tick(0).is_empty());
 }
