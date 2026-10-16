@@ -164,3 +164,24 @@ fn variable_names_follow_the_field_names() {
     assert_eq!(variable_name("max-attempts"), "TABA_CLI_MAX_ATTEMPTS");
     assert_eq!(variable_name("url"), "TABA_CLI_URL");
 }
+
+/// TUI: TUI-MON-05
+#[test]
+fn a_time_is_seconds_minutes_or_hours() {
+    assert_eq!(parse_span("90"), Ok(90));
+    assert_eq!(parse_span("90s"), Ok(90));
+    assert_eq!(parse_span("5m"), Ok(300));
+    assert_eq!(parse_span(" 1h "), Ok(3600));
+    assert_eq!(parse_span("0s"), Ok(0));
+    for bad in [
+        "",
+        "h",
+        "-5s",
+        "1d",
+        "1.5h",
+        "soon",
+        "99999999999999999999h",
+    ] {
+        assert!(parse_span(bad).is_err(), "{bad}");
+    }
+}

@@ -247,6 +247,16 @@ pub struct ClusterService {
     backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
 }
 
+/// The nodes that left by drain, as `Request::Departed` answers (and as `GET /nodes` reads them).
+pub fn departed_json(members: &[Member]) -> serde_json::Value {
+    serde_json::Value::Array(
+        members
+            .iter()
+            .map(|m| serde_json::json!({ "nodeId": m.node_id, "addresses": m.addresses, "port": m.port }))
+            .collect(),
+    )
+}
+
 /// Answers a read of what this node sees (`Request::TopicStats`, `Request::TopicGroups`), as JSON.
 pub type ReadSource = Arc<dyn Fn(&Request) -> Result<serde_json::Value, TabaError> + Send + Sync>;
 
@@ -747,6 +757,12 @@ impl ClusterService {
                 self.require_member(caller)?;
                 let source = self.reads.get().ok_or_else(TabaError::route_not_found)?;
                 source(&read).map(Response::Json)
+            }
+            Request::Departed => {
+                self.require_member(caller)?;
+                Ok(Response::Json(departed_json(
+                    &self.membership.departed_members(),
+                )))
             }
             Request::BackupStatus => {
                 self.require_member(caller)?;
@@ -1806,7 +1822,7 @@ impl ClusterService {
                     message: "unexpected response to the node listing".into(),
                 });
             }
-            Err(e) if e.is_network() && self.backup().is_some() => {
+            Err(e) if e.found_no_cluster() && self.backup().is_some() => {
                 // With the S3 backup the bucket decides (doc 23, section 1.7): the node only starts
                 // alone (and restores) if no node beats there and the restore lock is its own.
                 let port = self.backup().expect("checked above");

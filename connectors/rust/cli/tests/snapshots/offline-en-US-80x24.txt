@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✖ offline                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+Cannot reach https://taba.example:8080. connection refused Trying again.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

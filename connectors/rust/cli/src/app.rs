@@ -84,6 +84,8 @@ pub trait Platform {
 #[derive(Debug, Clone, Default)]
 pub struct Globals {
     pub profile: Option<String>,
+    /// `--lang`: the language of the interactive interface.
+    pub lang: Option<String>,
     pub request_id: Option<String>,
     pub output: Option<String>,
     pub quiet: bool,
@@ -336,6 +338,7 @@ pub fn run(
     }
     let globals = Globals {
         profile: parsed.value("profile").map(str::to_owned),
+        lang: parsed.value("lang").map(str::to_owned),
         request_id: parsed.value("request-id").map(str::to_owned),
         output: parsed.value("output").map(str::to_owned),
         quiet: parsed.flag("quiet"),

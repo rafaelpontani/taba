@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+┌ Conditions ──────────────────────────────────────────────────────────────────┐
+│✔ healthy                                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+Members: active 3 · ✔ quorum · table v 7 · syncing blocks 0
+┌ 3 nodes ─────────────────────────────────────────────────────────────────────┐
+│Node           State      Drain     Memory         Msgs mem/disk   Sync  Req  │
+│▶ 0┌ The action failed ───────────────────────────────────────────────────┐   │
+│  0│✖ forward.bad-gateway: forward.bad-gateway happened                   │   │
+│  0│                                                                      │   │
+│   │A node did not answer in time. The other nodes keep their data; check │   │
+│   │that node and try again.                                              │   │
+│   │                                                                      │   │
+│   │request id: req-1                                                     │   │
+│   │Enter or Esc closes                                                   │   │
+│   └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Memory 768.0 MiB ────────────────────┐┌ Messages in memory 1,200 ────────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

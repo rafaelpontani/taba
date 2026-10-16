@@ -9,3 +9,4 @@ doc/diagrams/html/
 /examples/**/bin
 /examples/**/obj
 /dist
+root-token.txt

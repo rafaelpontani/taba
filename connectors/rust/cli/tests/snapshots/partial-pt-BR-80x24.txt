@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ▲ membro inacessível  ▲ incompleto 12:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+┌ Condições ───────────────────────────────────────────────────────────────────┐
+│  ▲ membro inacessível                                                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+Membros: active 3 · ✔ quórum · tabela v 7 · blocos sincronizando 0
+▲ incompleto: não responderam: 01a1…000003 (timeout)
+┌ 3 nós ───────────────────────────────────────────────────────────────────────┐
+│Nó             Estado     Drain     Memória        Msgs mem/disco  Sinc  Req  │
+│▶ 01a1…000001  active     active    ██████░░  75%  1.200/340.000   0     3    │
+│  01a1…000002  active     active    ██░░░░░░  20%  1.200/340.000   0     3    │
+│  01a1…000003  ✖ inacessí —         —              —               —     —    │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+┌ Memória 768,0 MiB ───────────────────┐┌ Mensagens em memória 1.200 ──────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detalhe  d drenar  u devolver  b flush  ? ajuda  q sair     ⟳ 2s · pt-BR

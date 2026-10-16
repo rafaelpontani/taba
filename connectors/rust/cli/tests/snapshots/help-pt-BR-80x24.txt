@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+┌ Co┌ Ajuda ───────────────────────────────────────────────────────────────┐───┐
+│✔ s│Enter           Detalhe do nó, ou o que uma condição significa       ▲│   │
+└───│d               Drenar o nó                                          █│───┘
+Memb│u               Devolver o nó                                        █│
+┌ 3 │b               Flush do backup do nó                                █│───┐
+│Nó │B               Flush do backup de todos os nós                      █│q  │
+│▶ 0│S               Parar o cluster                                      █│   │
+│  0│m               Gráficos do cluster                                  █│   │
+│  0│1…5             Ir a uma aba                                         █│   │
+│   │] · Alt+→       Aba seguinte                                         █│   │
+│   │[ · Alt+←       Aba anterior                                         █│   │
+│   │Tab             Painel seguinte                                      ║│   │
+│   │Shift+Tab       Painel anterior                                      ║│   │
+│   │↑ k             Subir                                                ║│   │
+│   │↓ j             Descer                                               ║│   │
+│   │PgUp Ctrl+u     Rolar uma página para cima                           ║│   │
+└───│PgDn Ctrl+d     Rolar uma página para baixo                          ║│───┘
+┌ Me│Home g          Primeiro                                             ▼│───┐
+│▄  │Esc fecha                                                             │   │
+│█  └──────────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detalhe  d drenar  u devolver  b flush  ? ajuda  q sair     ⟳ 2s · pt-BR

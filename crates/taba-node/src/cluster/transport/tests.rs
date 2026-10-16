@@ -26,3 +26,15 @@ fn only_network_failures_are_worth_retrying() {
     assert!(CallError::Timeout.is_network());
     assert!(!CallError::Remote(TabaError::new(ErrorCode::ClusterConflict, "x")).is_network());
 }
+
+/// A node that listed the cluster through a load balancer that only reaches itself gets its own `node-syncing`:
+/// that is "no cluster found", like a network failure, and any other error from a peer is not.
+#[test]
+fn a_node_without_a_member_table_counts_as_no_cluster_found() {
+    use crate::core::error::{ErrorCode, TabaError};
+    let syncing = CallError::Remote(TabaError::new(ErrorCode::ClusterNodeSyncing, "no table"));
+    assert!(syncing.found_no_cluster());
+    assert!(CallError::Timeout.found_no_cluster());
+    let other = CallError::Remote(TabaError::new(ErrorCode::NodeNotFound, "other"));
+    assert!(!other.found_no_cluster());
+}

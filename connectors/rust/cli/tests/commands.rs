@@ -2072,3 +2072,101 @@ fn a_closed_output_pipe_ends_quietly_like_piping_into_head() {
     assert_eq!(code, 0);
     assert!(err.is_empty(), "{}", String::from_utf8_lossy(&err));
 }
+
+// ---------------------------------------------------------------------------------------------
+// The full-screen interface (doc 34): what can be checked without a real terminal
+// ---------------------------------------------------------------------------------------------
+
+/// TUI: TUI-FRM-06
+#[cfg(feature = "tui")]
+#[test]
+fn outside_a_terminal_the_tui_command_prints_help_and_exits_2_without_touching_the_network() {
+    let rig = Rig::new();
+    let out = rig.run(&["tui"]);
+    assert_eq!(out.code, 2);
+    assert!(
+        out.err.contains("needs a terminal") && out.err.contains("taba-cli tui"),
+        "{}",
+        out.err
+    );
+    assert_eq!(out.out, "");
+    assert!(rig.seen().is_empty());
+    assert!(!rig.config_path().exists());
+}
+
+/// TUI: TUI-HLP-03
+#[cfg(feature = "tui")]
+#[test]
+fn the_tui_refuses_a_language_it_does_not_have_before_opening_anything() {
+    let mut rig = Rig::new();
+    rig.platform.tty = true;
+    let out = rig.run(&["tui", "--lang", "fr"]);
+    assert_eq!(out.code, 2);
+    assert!(
+        out.err.contains("--lang") && out.err.contains("en-US or pt-BR"),
+        "{}",
+        out.err
+    );
+    assert!(rig.seen().is_empty());
+}
+
+/// TUI: TUI-MON-05
+#[cfg(feature = "tui")]
+#[test]
+fn the_tui_refuses_a_history_that_is_too_long_or_too_dense() {
+    let mut rig = Rig::new();
+    rig.platform.tty = true;
+    let out = rig.run(&["tui", "--history-retention", "7h"]);
+    assert_eq!(out.code, 2);
+    assert!(out.err.contains("6h or less"), "{}", out.err);
+    let out = rig.run(&["tui", "--history-interval", "0s"]);
+    assert_eq!(out.code, 2);
+    assert!(out.err.contains("1s or more"), "{}", out.err);
+    let out = rig.run(&["tui", "--history-retention", "soon"]);
+    assert_eq!(out.code, 2);
+    assert!(out.err.contains("is not a time"), "{}", out.err);
+}
+
+/// TUI: TUI-HLP-03
+#[test]
+fn help_lists_the_tui_command_and_the_lang_option() {
+    let rig = Rig::new();
+    let all = rig.run(&["help"]);
+    assert!(
+        all.out.contains("tui") && all.out.contains("--lang"),
+        "{}",
+        all.out
+    );
+    let one = rig.run(&["help", "tui"]);
+    assert!(one.out.contains("usage: taba-cli tui"), "{}", one.out);
+    assert!(
+        one.out.contains("--no-mouse") && one.out.contains("--history-retention"),
+        "{}",
+        one.out
+    );
+}
+
+/// TUI: TUI-HLP-03
+#[test]
+fn the_language_and_history_settings_live_in_the_config_file_beside_the_profiles() {
+    let rig = Rig::new();
+    std::fs::write(
+        rig.config_path(),
+        "default: prod\nui:\n  language: pt-BR\nhistory:\n  retention: 30m\n  interval: 10s\nprofiles:\n  prod:\n    url: http://t:1\n",
+    )
+    .unwrap();
+    rig.mock().reply(200, &[], TOPIC);
+    // The profile commands keep working with the new keys in the file, and do not lose them on a rewrite.
+    assert_eq!(rig.run(&["topic", "get", "orders"]).code, 0);
+    assert_eq!(
+        rig.run(&["profile", "set", "prod", "--timeout", "9"]).code,
+        0
+    );
+    let text = std::fs::read_to_string(rig.config_path()).unwrap();
+    assert!(text.contains("language: pt-BR"), "{text}");
+    assert!(
+        text.contains("retention: 30m") && text.contains("interval: 10s"),
+        "{text}"
+    );
+    assert!(text.contains("timeout: 9"), "{text}");
+}

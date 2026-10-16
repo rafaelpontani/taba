@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ▲ member unreachable  ▲ incomplete 12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+┌ Conditions ──────────────────────────────────────────────────────────────────┐
+│▶ ▲ member unreachable                                                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+Membe┌ member unreachable ────────────────────────────────────────────────┐
+▲ inc│What it means                                                       │
+┌ 3 n│A member of the cluster does not answer.                            │────┐
+│Node│                                                                    │eq  │
+│▶ 01│What to do                                                          │    │
+│  01│Check that its process is running and that its cluster port is      │    │
+│  01│reachable.                                                          │    │
+│    │                                                                    │    │
+│    │                                                                    │    │
+│    │                                                                    │    │
+│    │                                                                    │    │
+│    │                                                                    │    │
+│    │Enter or Esc closes                                                 │    │
+└────└────────────────────────────────────────────────────────────────────┘────┘
+┌ Memory 768.0 MiB ────────────────────┐┌ Messages in memory 1,200 ────────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

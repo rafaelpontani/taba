@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+┌──────────────────────────────────────────────────────────────────────────────┐
+│Topics                                                                        │
+│                                                                              │
+│The topics screen (list, create, edit, delete and charts) comes in a later    │
+│phase of the interface. Until then use taba-cli topic.                        │
+│                                                                              │
+│Use 1 to 5 or [ ] to change tabs, ? for help.                                 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ : commands  L language  ? help  q quit                            ⟳ 5s · en-US

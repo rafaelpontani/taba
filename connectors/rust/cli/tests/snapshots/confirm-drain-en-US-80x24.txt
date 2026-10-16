@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+┌ Conditions ──────────────────────────────────────────────────────────────────┐
+│✔ healthy                                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+Members:┌ Drain the node? ─────────────────────────────────────────────┐
+┌ 3 node│Node 01a1…000001 will write everything in memory to disk, stop│───────┐
+│Node   │taking requests and leave the cluster. The process keeps      │  Req  │
+│▶ 01a1…│running as drained; you can return the node later.            │  3    │
+│  01a1…│                                                              │  3    │
+│  01a1…│                                                              │  3    │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                    [ Cancel ]  [ Confirm ]                   │       │
+└───────└──────────────────────────────────────────────────────────────┘───────┘
+┌ Memory 768.0 MiB ────────────────────┐┌ Messages in memory 1,200 ────────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

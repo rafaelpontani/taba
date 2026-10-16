@@ -1,0 +1,24 @@
+     The terminal is 79x24. Taba needs at least 80x24: enlarge the window.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

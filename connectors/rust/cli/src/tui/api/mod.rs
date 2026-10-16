@@ -1,0 +1,492 @@
+//! The routes the screens call (doc 34, section 3), typed, over `Client::call`: each `ApiCall` becomes a
+//! `taba_client::Call` and each reply is read into a small struct. Nothing is added to `taba-client`.
+
+use std::time::Duration;
+use taba_client::json::{self, Fields};
+
+use taba_client::Call;
+
+/// How long a flush or a stop may take before the call gives up.
+const LONG_ACTION: Duration = Duration::from_secs(180);
+
+/// What a call is for; it comes back with the reply so `update` knows what to do with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApiCall {
+    Me,
+    Nodes,
+    ClusterStatus,
+    NodeMetrics(String),
+    NodeBackup(String),
+    DrainStatus(String),
+    DrainStart(String),
+    DrainCancel(String),
+    FlushNode(String),
+    FlushCluster,
+    StopCluster,
+}
+
+impl ApiCall {
+    pub fn to_call(&self) -> Call {
+        let mut call = self.route();
+        if matches!(
+            self,
+            ApiCall::FlushNode(_) | ApiCall::FlushCluster | ApiCall::StopCluster
+        ) {
+            // A flush or a stop waits for the nodes to finish, which can take longer than a normal call.
+            call.timeout = Some(LONG_ACTION);
+        }
+        call
+    }
+
+    fn route(&self) -> Call {
+        let node = |id: &str, tail: &str| format!("/nodes/{}{tail}", encode_segment(id));
+        match self {
+            ApiCall::Me => Call::new("GET", "/auth/me"),
+            ApiCall::Nodes => Call::new("GET", "/nodes"),
+            ApiCall::ClusterStatus => Call::new("GET", "/cluster/status"),
+            ApiCall::NodeMetrics(id) => {
+                let mut call = Call::new("GET", node(id, "/metrics"));
+                call.headers
+                    .push(("Accept".to_owned(), "text/plain".to_owned()));
+                call
+            }
+            ApiCall::NodeBackup(id) => Call::new("GET", node(id, "/backup")),
+            ApiCall::DrainStatus(id) => Call::new("GET", node(id, "/drain")),
+            ApiCall::DrainStart(id) => Call::new("POST", node(id, "/drain")),
+            ApiCall::DrainCancel(id) => Call::new("DELETE", node(id, "/drain")),
+            ApiCall::FlushNode(id) => Call::new("POST", node(id, "/backup/flush")),
+            ApiCall::FlushCluster => Call::new("POST", "/cluster/backup/flush"),
+            ApiCall::StopCluster => Call::new("POST", "/cluster/stop"),
+        }
+    }
+
+    /// Calls that change something: the screen never repeats them by itself.
+    pub fn is_action(&self) -> bool {
+        matches!(
+            self,
+            ApiCall::DrainStart(_)
+                | ApiCall::DrainCancel(_)
+                | ApiCall::FlushNode(_)
+                | ApiCall::FlushCluster
+                | ApiCall::StopCluster
+        )
+    }
+}
+
+/// A node id is a GUID; anything else is percent-encoded so it cannot change the path.
+fn encode_segment(id: &str) -> String {
+    id.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
+fn fields(text: &str) -> Result<Fields<'_>, String> {
+    Fields::parse(text).map_err(|e| e.to_string())
+}
+
+fn num(f: &Fields<'_>, name: &str) -> Option<f64> {
+    f.raw(name)?.parse().ok()
+}
+
+fn whole(f: &Fields<'_>, name: &str) -> Option<u64> {
+    num(f, name).filter(|n| *n >= 0.0).map(|n| n as u64)
+}
+
+/// A count the server gives either as a number or as a map of entries (the channels of the node): the entries are counted.
+fn count_of(f: &Fields<'_>, name: &str) -> u64 {
+    match f.raw(name) {
+        Some(raw) if raw.trim_start().starts_with('{') => {
+            json::object_fields(raw).map_or(0, |entries| entries.len() as u64)
+        }
+        Some(_) => whole(f, name).unwrap_or(0),
+        None => 0,
+    }
+}
+
+fn items<'a>(f: &Fields<'a>, name: &str) -> Vec<&'a str> {
+    f.raw(name)
+        .and_then(|raw| json::array_items(raw).ok())
+        .unwrap_or_default()
+}
+
+fn texts(f: &Fields<'_>, name: &str) -> Vec<String> {
+    items(f, name)
+        .into_iter()
+        .filter_map(|s| json::decode_string(s).ok())
+        .collect()
+}
+
+/// Who the token is (`GET /auth/me`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Me {
+    pub auth_enabled: bool,
+    pub root: bool,
+    pub name: Option<String>,
+    pub permissions: Vec<String>,
+}
+
+impl Me {
+    /// Root, or no authentication at all: the cluster-wide reads are allowed.
+    pub fn is_root(&self) -> bool {
+        self.root || !self.auth_enabled
+    }
+
+    pub fn can(&self, permission: &str) -> bool {
+        self.is_root() || self.permissions.iter().any(|p| p == permission)
+    }
+}
+
+pub fn parse_me(text: &str) -> Result<Me, String> {
+    let f = fields(text)?;
+    Ok(Me {
+        auth_enabled: f.boolean("authEnabled").unwrap_or(true),
+        root: f.boolean("root").unwrap_or(false),
+        name: f.string("name"),
+        permissions: texts(&f, "permissions"),
+    })
+}
+
+/// A node that did not answer in a consolidated read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Missing {
+    pub node_id: String,
+    pub reason: String,
+}
+
+fn parse_missing(f: &Fields<'_>) -> Vec<Missing> {
+    items(f, "missingNodes")
+        .into_iter()
+        .filter_map(|raw| {
+            let m = Fields::parse(raw).ok()?;
+            Some(Missing {
+                node_id: m.string("nodeId")?,
+                reason: m.string("reason").unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+/// An item of `GET /nodes`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeInfo {
+    pub node_id: String,
+    pub is_self: bool,
+    pub reachable: bool,
+    pub state: String,
+    pub drain_state: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Nodes {
+    pub items: Vec<NodeInfo>,
+    pub partial: bool,
+    pub missing: Vec<Missing>,
+}
+
+pub fn parse_nodes(text: &str) -> Result<Nodes, String> {
+    let f = fields(text)?;
+    let list = items(&f, "items")
+        .into_iter()
+        .filter_map(|raw| {
+            let n = Fields::parse(raw).ok()?;
+            Some(NodeInfo {
+                node_id: n.string("nodeId")?,
+                is_self: n.boolean("self").unwrap_or(false),
+                reachable: n.boolean("reachable").unwrap_or(true),
+                state: n.string("state").unwrap_or_default(),
+                drain_state: n.string("drainState").unwrap_or_default(),
+                version: n.string("version").unwrap_or_default(),
+            })
+        })
+        .collect();
+    Ok(Nodes {
+        items: list,
+        partial: f.boolean("partial").unwrap_or(false),
+        missing: parse_missing(&f),
+    })
+}
+
+/// `warning` or `critical`; the order is the severity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Severity {
+    Ok,
+    Warning,
+    Critical,
+}
+
+impl Severity {
+    pub fn parse(text: &str) -> Severity {
+        match text {
+            "critical" => Severity::Critical,
+            "warning" => Severity::Warning,
+            _ => Severity::Ok,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Condition {
+    pub name: String,
+    pub severity: Severity,
+}
+
+/// One member of `GET /cluster/status`: the node, and its `NodeStatus` when it answered.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeStatus {
+    pub node_id: String,
+    pub reachable: bool,
+    pub cluster_name: Option<String>,
+    pub version: String,
+    pub mode: String,
+    pub state: String,
+    pub drain_state: String,
+    pub started_at: Option<String>,
+    pub memory_used: u64,
+    pub memory_limit: u64,
+    pub memory_messages: u64,
+    pub disk_messages: u64,
+    pub disk_free: u64,
+    pub quorum: bool,
+    pub channels: u64,
+    pub syncing_blocks: u64,
+    pub below_replication: u64,
+    pub below_quorum: u64,
+    pub frozen_nodes: u64,
+    pub active_requests: f64,
+    pub rate_limited: f64,
+    pub rtt_p95: Option<f64>,
+}
+
+impl NodeStatus {
+    /// Memory in use, from 0 to 1 (0 without a limit).
+    pub fn memory_ratio(&self) -> f64 {
+        if self.memory_limit == 0 {
+            0.0
+        } else {
+            (self.memory_used as f64 / self.memory_limit as f64).clamp(0.0, 1.0)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ClusterStatus {
+    pub collected_at: String,
+    pub partial: bool,
+    pub missing: Vec<Missing>,
+    pub worst: String,
+    pub conditions: Vec<Condition>,
+    pub members: Vec<(String, u64)>,
+    pub members_version: u64,
+    pub quorum: bool,
+    pub syncing_blocks: u64,
+    pub nodes: Vec<NodeStatus>,
+}
+
+fn parse_node_status(node_id: &str, reachable: bool, raw: Option<&str>) -> NodeStatus {
+    let mut node = NodeStatus {
+        node_id: node_id.to_owned(),
+        reachable,
+        ..NodeStatus::default()
+    };
+    let Some(f) = raw.and_then(|r| Fields::parse(r).ok()) else {
+        return node;
+    };
+    node.cluster_name = f.string("clusterName");
+    node.version = f.string("version").unwrap_or_default();
+    node.mode = f.string("mode").unwrap_or_default();
+    node.state = f.string("state").unwrap_or_default();
+    node.drain_state = f.string("drainState").unwrap_or_default();
+    node.started_at = f.string("startedAt");
+    if let Some(s) = f.raw("storage").and_then(|r| Fields::parse(r).ok()) {
+        node.memory_used = whole(&s, "memoryUsedBytes").unwrap_or(0);
+        node.memory_limit = whole(&s, "memoryLimitBytes").unwrap_or(0);
+        node.memory_messages = whole(&s, "memoryMessages").unwrap_or(0);
+        node.disk_messages = whole(&s, "diskMessages").unwrap_or(0);
+        node.disk_free = whole(&s, "diskFreeBytes").unwrap_or(0);
+    }
+    if let Some(s) = f.raw("signals").and_then(|r| Fields::parse(r).ok()) {
+        node.quorum = s.boolean("quorumAvailable").unwrap_or(false);
+        node.channels = count_of(&s, "channels");
+        node.syncing_blocks = whole(&s, "syncingBlocks").unwrap_or(0);
+        node.below_replication = whole(&s, "blocksBelowReplication").unwrap_or(0);
+        node.below_quorum = whole(&s, "blocksBelowQuorum").unwrap_or(0);
+        node.frozen_nodes = whole(&s, "frozenNodes").unwrap_or(0);
+    }
+    if let Some(r) = f.raw("runtime").and_then(|r| Fields::parse(r).ok()) {
+        node.active_requests = num(&r, "activeRequests").unwrap_or(0.0);
+        node.rate_limited = num(&r, "rateLimitRejected").unwrap_or(0.0);
+        node.rtt_p95 = num(&r, "channelRttP95Seconds");
+    }
+    node
+}
+
+pub fn parse_cluster_status(text: &str) -> Result<ClusterStatus, String> {
+    let f = fields(text)?;
+    let conditions = items(&f, "conditions")
+        .into_iter()
+        .filter_map(|raw| {
+            let c = Fields::parse(raw).ok()?;
+            Some(Condition {
+                name: c.string("condition")?,
+                severity: Severity::parse(&c.string("severity").unwrap_or_default()),
+            })
+        })
+        .collect();
+    let mut status = ClusterStatus {
+        collected_at: f.string("collectedAt").unwrap_or_default(),
+        partial: f.boolean("partial").unwrap_or(false),
+        missing: parse_missing(&f),
+        worst: f
+            .string("worstCondition")
+            .unwrap_or_else(|| "ok".to_owned()),
+        conditions,
+        ..ClusterStatus::default()
+    };
+    if let Some(s) = f.raw("summary").and_then(|r| Fields::parse(r).ok()) {
+        status.members_version = whole(&s, "membersVersion").unwrap_or(0);
+        status.quorum = s.boolean("quorumAvailable").unwrap_or(false);
+        status.syncing_blocks = whole(&s, "syncingBlocks").unwrap_or(0);
+        if let Some(m) = s.raw("members").and_then(|r| json::object_fields(r).ok()) {
+            status.members = m
+                .into_iter()
+                .map(|(state, n)| (state, n.parse().unwrap_or(0)))
+                .collect();
+        }
+    }
+    status.nodes = items(&f, "nodes")
+        .into_iter()
+        .filter_map(|raw| {
+            let n = Fields::parse(raw).ok()?;
+            let id = n.string("nodeId")?;
+            let reachable = n.boolean("reachable").unwrap_or(false);
+            Some(parse_node_status(&id, reachable, n.raw("status")))
+        })
+        .collect();
+    Ok(status)
+}
+
+/// `GET`, `POST` and `DELETE /nodes/{id}/drain`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Drain {
+    pub state: String,
+    pub pending: u64,
+}
+
+impl Drain {
+    pub fn is_active(&self) -> bool {
+        self.state == "active"
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.state == "drained"
+    }
+}
+
+pub fn parse_drain(text: &str) -> Result<Drain, String> {
+    let f = fields(text)?;
+    Ok(Drain {
+        state: f.string("drainState").unwrap_or_default(),
+        pending: whole(&f, "pendingMessages").unwrap_or(0),
+    })
+}
+
+/// The S3 backup of a node (`GET /nodes/{id}/backup`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Backup {
+    pub reachable: Option<bool>,
+    pub pending: Option<u64>,
+    pub last_success: Option<String>,
+    pub segments: Option<u64>,
+}
+
+pub fn parse_backup(text: &str) -> Result<Backup, String> {
+    let f = fields(text)?;
+    Ok(Backup {
+        reachable: f.boolean("s3Reachable").or_else(|| f.boolean("reachable")),
+        pending: whole(&f, "outboxPending").or_else(|| whole(&f, "pending")),
+        last_success: f
+            .string("lastSuccessAt")
+            .or_else(|| f.string("lastSuccess")),
+        segments: whole(&f, "segments").or_else(|| whole(&f, "segmentsUploaded")),
+    })
+}
+
+/// What one node reported on a backup flush.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FlushNode {
+    pub node_id: Option<String>,
+    pub complete: bool,
+    pub pending: bool,
+    pub timed_out: bool,
+    pub outbox_pending: u64,
+    pub memory_remaining: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FlushReport {
+    pub complete: bool,
+    pub nodes: Vec<FlushNode>,
+}
+
+fn flush_node(f: &Fields<'_>) -> FlushNode {
+    FlushNode {
+        node_id: f.string("nodeId"),
+        complete: f.boolean("complete").unwrap_or(false),
+        pending: f.boolean("pending").unwrap_or(false),
+        timed_out: f.boolean("timedOut").unwrap_or(false),
+        outbox_pending: whole(f, "outboxPending").unwrap_or(0),
+        memory_remaining: whole(f, "memoryRemaining").unwrap_or(0),
+        error: f.string("error"),
+    }
+}
+
+/// The reply of a flush of one node (the report itself) or of the cluster (a `nodes` list).
+pub fn parse_flush(text: &str) -> Result<FlushReport, String> {
+    let f = fields(text)?;
+    let complete = f.boolean("complete").unwrap_or(false);
+    let nodes = if f.raw("nodes").is_some() {
+        items(&f, "nodes")
+            .into_iter()
+            .filter_map(|raw| Fields::parse(raw).ok().map(|n| flush_node(&n)))
+            .collect()
+    } else {
+        vec![flush_node(&f)]
+    };
+    Ok(FlushReport { complete, nodes })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StopReport {
+    pub stopped: Vec<String>,
+    pub stop_list: bool,
+    pub warnings: Vec<String>,
+    pub nodes: Vec<(String, bool)>,
+}
+
+pub fn parse_stop(text: &str) -> Result<StopReport, String> {
+    let f = fields(text)?;
+    let nodes = items(&f, "nodes")
+        .into_iter()
+        .filter_map(|raw| {
+            let n = Fields::parse(raw).ok()?;
+            Some((n.string("nodeId")?, n.boolean("drained").unwrap_or(false)))
+        })
+        .collect();
+    Ok(StopReport {
+        stopped: texts(&f, "stopped"),
+        stop_list: f.boolean("stopList").unwrap_or(false),
+        warnings: texts(&f, "warnings"),
+        nodes,
+    })
+}
+
+#[cfg(test)]
+mod tests;

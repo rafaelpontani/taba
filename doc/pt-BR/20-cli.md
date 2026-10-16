@@ -55,7 +55,7 @@ A segurança dos artefatos criados está em [14-seguranca.md](14-seguranca.md).
 Um programa pequeno que, de qualquer terminal, faz tudo o que a API oferece. Tem **dois papéis**: **testar e operar** um cluster sem escrever código, e ser a **referência executável do contrato**: cada comando é uma chamada de [16](16-api-cliente.md) ou [17](17-api-operacao.md), e o que ele faz é o que os outros conectores devem repetir.
 
 - **Sem estado:** cada execução faz uma ou mais chamadas e termina. A conexão mora no **perfil**.
-- **Sem biblioteca de linha de comando** (leitura de argumentos própria) e sem dependências no sistema: um **binário estático** por plataforma.
+- **Sem biblioteca de linha de comando** (leitura de argumentos própria) e sem dependências no sistema: um **binário estático** por plataforma. Só a interface em tela cheia (feature `tui` do Cargo, ligada por padrão) usa bibliotecas de terceiros (`ratatui`, `rust-i18n`, `sys-locale`); `--no-default-features` dá o CLI enxuto, sem elas, e os comandos diretos nunca ligam o terminal em modo cru.
 - `taba-cli --version` mostra a versão do programa **e** a do contrato da API (`taba-cli 0.1.0 (contrato da API 1)`).
 
 ### Opções de todos os comandos
@@ -66,6 +66,7 @@ Um programa pequeno que, de qualquer terminal, faz tudo o que a API oferece. Tem
 | `-o, --output <formato>` | `TABA_CLI_OUTPUT` | `json` | `json` (a resposta como o servidor a deu, indentada), `table` (colunas) ou `raw` (só o que o comando entrega, ex.: o corpo da mensagem) |
 | `-q, --quiet` | — | — | Não imprime nada em caso de sucesso |
 | `--request-id <id>` | — | gerado | Vai em `X-Request-Id` |
+| `--lang <código>` | `TABA_CLI_LANG` | o do sistema | Idioma da interface em tela cheia (`taba-cli tui`): `en-US` ou `pt-BR`. Os comandos continuam em inglês |
 | `--help`, `--version` | — | — | — |
 
 Não existem `--url` nem `--token` nos comandos: a conexão se escolhe pelo **perfil** (`--profile`) ou pelas variáveis `TABA_CLI_*`.
@@ -110,6 +111,14 @@ O `receiptToken` muda a cada entrega e vem no `Message`: por isso `consume` **se
 
 **Locais** (não chamam o servidor): `version`, `config show` (a configuração efetiva e **de onde veio cada valor**, sem o token), `profile …`, `help [comando]`.
 
+**Interface em tela cheia** (plano e requisitos em [34](34-plano-tui.md)):
+
+| Comando | O que faz | Opções |
+|---|---|---|
+| `tui` | Abre a interface sobre o mesmo perfil e o mesmo token dos comandos. Hoje a aba **Cluster** está pronta (condições, nós, detalhe do nó, gráficos, drenar e devolver, flush de backup, parar o cluster); as outras abas avisam o que vem. Precisa de um terminal: fora dele sai com `2` e imprime a ajuda | `--no-mouse`, `--history-retention <tempo>` (padrão `1h`, no máximo `6h`), `--history-interval <tempo>` (padrão `5s`, no mínimo `1s`) |
+
+As ações de nó e de cluster (drain, devolver, flush, parar) e a visão do cluster pedem o **token raiz**; com outro token a aba mostra só a lista de nós e diz o que falta. O histórico dos gráficos fica só na memória da sessão. `?` mostra as teclas, `:` abre a paleta de comandos e `L` troca o idioma (vale na hora e fica em `ui.language`).
+
 ### Perfis
 
 Um **perfil** é um conjunto nomeado de opções de conexão, para alternar entre clusters (local, homologação, produção) com uma palavra.
@@ -147,6 +156,16 @@ profiles:
 | `connect-timeout` / `timeout` / `max-attempts` | `5` s / `30` s / `3` | Abrir a conexão / chamada comum (o `consume` soma o `waitTime`) / tentativas, contando a primeira |
 
 **Precedência de cada campo:** opção do comando → **variável `TABA_CLI_<CAMPO>`** → perfil escolhido → valor embutido. **Qual perfil:** `--profile`, depois `TABA_CLI_PROFILE`, depois o `default` do arquivo.
+
+**Interface em tela cheia:** o mesmo arquivo guarda duas seções que não são perfis: `ui.language` (gravado pela tecla `L`) e `history.retention` / `history.interval` (o histórico dos gráficos; durações como `90`, `90s`, `5m` ou `1h`). Idioma: `--lang` → `TABA_CLI_LANG` → `ui.language` → o idioma do sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`; no Windows, o da interface) → `en-US`.
+
+```yaml
+ui:
+  language: pt-BR
+history:
+  retention: 1h
+  interval: 5s
+```
 
 **Comandos de perfil:** `profile list`, `show [nome]`, `add <nome> [campos] [--default]`, `set <nome> [campos] [--unset campo]`, `remove <nome> [--yes]`, `default [nome|--none]`, `path`, `session …`.
 
@@ -239,6 +258,6 @@ taba-cli drain status
 ## Fontes e provas
 
 - **`taba`:** `crates/taba-node/src/cli/mod.rs` (`USAGE` e `parse`), `main.rs`, `secrets/`.
-- **`taba-cli`:** `connectors/rust/cli/src/{args,commands,profile,settings,output,tui,yaml}`; a lista de comandos e as opções foram conferidas contra `taba-cli --help` e `taba-cli <comando> --help` do binário compilado.
+- **`taba-cli`:** `connectors/rust/cli/src/{args,commands,profile,settings,output,tui,yaml}` (a interface em tela cheia está em `tui/`, com os catálogos de idioma em `connectors/rust/cli/locales/`); a lista de comandos e as opções foram conferidas contra `taba-cli --help` e `taba-cli <comando> --help` do binário compilado.
 - Casos de uso: UC-CLI (36 casos, nível `K`), UC-SEG; veja [26a](26a-casos-de-uso-implementados.md). Testes: `connectors/rust/cli/src/**/tests.rs`, `connectors/rust/cli/tests/commands.rs` e `packaging.rs`.
 - Histórico: `19b-cli.md`.

@@ -9,6 +9,7 @@ mod ops;
 mod profile;
 mod token;
 mod topic;
+mod tui;
 
 /// The program's version and that of the API contract it implements.
 pub fn version_text() -> String {
@@ -26,6 +27,7 @@ pub fn table() -> Vec<Command> {
     all.extend(token::commands());
     all.extend(ops::commands());
     all.extend(profile::commands());
+    all.extend(tui::commands());
     all
 }
 
@@ -167,7 +169,7 @@ pub fn help_text(table: &[Command], topic: &str) -> String {
             ));
         }
         out.push_str("  help [command]               Shows the help of a command.\n  version                      Shows the program version and the contract's.\n");
-        out.push_str("\nOptions of every command:\n  --profile <name>    Connection profile (default: the file's default profile)\n  -o, --output <fmt>  json, table or raw\n  -q, --quiet         Prints nothing on success\n  --request-id <id>   Goes in X-Request-Id\n  --help, --version\n");
+        out.push_str("\nOptions of every command:\n  --profile <name>    Connection profile (default: the file's default profile)\n  --lang <code>       Interface language: en-US or pt-BR (taba-cli tui)\n  -o, --output <fmt>  json, table or raw\n  -q, --quiet         Prints nothing on success\n  --request-id <id>   Goes in X-Request-Id\n  --help, --version\n");
         return out;
     }
     if matching.is_empty() {

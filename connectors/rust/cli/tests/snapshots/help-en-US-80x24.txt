@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+┌ Co┌ Help ────────────────────────────────────────────────────────────────┐───┐
+│✔ h│Enter           Detail of the node, or what a condition means        ▲│   │
+└───│d               Drain the node                                       █│───┘
+Memb│u               Return the node                                      █│
+┌ 3 │b               Flush the backup of the node                         █│───┐
+│Nod│B               Flush the backup of every node                       █│q  │
+│▶ 0│S               Stop the cluster                                     █│   │
+│  0│m               Charts of the cluster                                █│   │
+│  0│1…5             Go to a tab                                          █│   │
+│   │] · Alt+→       Next tab                                             █│   │
+│   │[ · Alt+←       Previous tab                                         █│   │
+│   │Tab             Next panel                                           ║│   │
+│   │Shift+Tab       Previous panel                                       ║│   │
+│   │↑ k             Move up                                              ║│   │
+│   │↓ j             Move down                                            ║│   │
+│   │PgUp Ctrl+u     Scroll up a page                                     ║│   │
+└───│PgDn Ctrl+d     Scroll down a page                                   ║│───┘
+┌ Me│Home g          First                                                ▼│───┐
+│▄  │Esc closes                                                            │   │
+│█  └──────────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

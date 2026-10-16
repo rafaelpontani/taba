@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+┌ Condições ───────────────────────────────────────────────────────────────────┐
+│✔ saudável                                                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+Membros:┌ Drenar o nó? ────────────────────────────────────────────────┐
+┌ 3 nós │O nó 01a1…000001 vai gravar tudo o que está em memória no     │───────┐
+│Nó     │disco, parar de receber requisições e sair do cluster. O      │  Req  │
+│▶ 01a1…│processo continua rodando como drenado; depois você pode      │  3    │
+│  01a1…│devolver o nó.                                                │  3    │
+│  01a1…│                                                              │  3    │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                  [ Cancelar ]  [ Confirmar ]                 │       │
+└───────└──────────────────────────────────────────────────────────────┘───────┘
+┌ Memória 768,0 MiB ───────────────────┐┌ Mensagens em memória 1.200 ──────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detalhe  d drenar  u devolver  b flush  ? ajuda  q sair     ⟳ 2s · pt-BR

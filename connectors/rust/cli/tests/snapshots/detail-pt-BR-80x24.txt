@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:02:06 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+Nó 01a13640-0000-7000-8000-000000000001                                        ▲
+Estado: active · Drain: active                                                 █
+Versão: 1.4.0 · production                                                     █
+Início: 15/10/2026 08:00:00 (4h 02m)                                           █
+                                                                               █
+Armazenamento                                                                  █
+Memória: ███████████████████░  93%  951,1 MiB / 1,0 GiB                        █
+Mensagens: 1.200 em memória, 340.000 em disco                                  █
+Disco livre: 50,0 GiB                                                          █
+                                                                               █
+Sinais                                                                         █
+Quórum: ✔ quórum                                                               █
+Canais: 2                                                                      █
+Blocos sincronizando: 0                                                        █
+Blocos abaixo da replicação: 0                                                 █
+Blocos abaixo do quórum: 0                                                     ║
+Nós congelados: 0                                                              ║
+Requisições em andamento: 3                                                    ║
+Requisições recusadas (429), total: 72                                         ║
+Ida e volta dos canais (p95): 12,3 ms                                          ║
+                                                                               ▼
+ Esc voltar  d drenar  u devolver  b flush  ? ajuda  q sair        ⟳ 2s · pt-BR

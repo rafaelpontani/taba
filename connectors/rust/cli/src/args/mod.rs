@@ -26,8 +26,9 @@ pub const fn flag(name: &'static str) -> Opt {
 }
 
 /// The options every command accepts.
-pub const GLOBAL: [Opt; 6] = [
+pub const GLOBAL: [Opt; 7] = [
     val("profile"),
+    val("lang"),
     val("request-id"),
     Opt {
         name: "output",

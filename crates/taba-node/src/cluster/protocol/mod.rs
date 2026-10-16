@@ -207,6 +207,9 @@ pub enum Request {
     TopicGroups { topic: String },
     /// `GET /cluster/backup/status`: the S3 backup state on this node.
     BackupStatus,
+    /// `GET /cluster/departed`: the nodes that left by drain, as **this node** remembers them (id, addresses, port),
+    /// for `GET /nodes` to unite what every member knows.
+    Departed,
     /// `POST /cluster/topics/{topic}/prune`: empties the queue on this node. Idempotent by `prune_id`.
     Prune { topic: String, prune_id: String },
 }
@@ -282,6 +285,7 @@ impl Request {
             Request::TopicStats => "topic-stats",
             Request::TopicGroups { .. } => "topic-groups",
             Request::BackupStatus => "backup-status",
+            Request::Departed => "departed",
             Request::Prune { .. } => "prune",
         }
     }

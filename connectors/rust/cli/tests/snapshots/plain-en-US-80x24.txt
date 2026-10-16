@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+▲ Your token must be the root token to see this.
+
+
+┌ 2 nodes ─────────────────────────────────────────────────────────────────────┐
+│Node           State          Drain      Version                              │
+│▶ 01a1…000001  active         active     1.4.0                                │
+│  01a1…000002  active         active     1.4.0                                │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

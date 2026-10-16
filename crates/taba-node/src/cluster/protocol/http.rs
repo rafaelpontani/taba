@@ -324,6 +324,7 @@ impl Request {
                 get_call(format!("/cluster/stats/topics/{topic}/groups"))
             }
             Request::BackupStatus => get_call("/cluster/backup/status".to_owned()),
+            Request::Departed => get_call("/cluster/departed".to_owned()),
             Request::NodeCall(call) => {
                 let mut headers = call.headers.clone();
                 if let Some(ip) = &call.client_ip {
@@ -413,6 +414,7 @@ impl Request {
                 })
             }
             ["cluster", "backup", "status"] if is("GET") => Ok(Request::BackupStatus),
+            ["cluster", "departed"] if is("GET") => Ok(Request::Departed),
             ["cluster", "topics", topic, "prune"] if post() => {
                 let body: PruneBody = parse_body(headers, body)?;
                 Ok(Request::Prune {
@@ -637,9 +639,10 @@ impl Request {
                 Ok(Response::Recovered(result))
             }
             Request::Forward(_) | Request::NodeCall(_) => unreachable!("handled above"),
-            Request::Prune { .. } | Request::TopicStats | Request::TopicGroups { .. } => {
-                Ok(Response::Json(json(&reply)?))
-            }
+            Request::Prune { .. }
+            | Request::TopicStats
+            | Request::TopicGroups { .. }
+            | Request::Departed => Ok(Response::Json(json(&reply)?)),
             _ => {
                 let ack =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;

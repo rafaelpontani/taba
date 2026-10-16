@@ -15,3 +15,7 @@ pub mod tui;
 pub mod yaml;
 
 pub use app::run;
+
+// The catalogs of the interface (doc 34, section 8): `locales/en-US.yml` is the source and the fallback.
+#[cfg(feature = "tui")]
+rust_i18n::i18n!("locales", fallback = "en-US");

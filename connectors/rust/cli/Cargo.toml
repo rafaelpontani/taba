@@ -16,3 +16,11 @@ path = "src/main.rs"
 
 [dependencies]
 taba-client = { path = "../client" }
+ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "underline-color"] }
+rust-i18n = { version = "4.2", optional = true }
+sys-locale = { version = "0.3", optional = true }
+
+[features]
+# The full-screen interface (`taba-cli tui`). `--no-default-features` gives the lean CLI (doc 34, D-TUI-1).
+default = ["tui"]
+tui = ["dep:ratatui", "dep:rust-i18n", "dep:sys-locale"]

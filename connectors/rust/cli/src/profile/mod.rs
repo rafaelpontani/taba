@@ -132,6 +132,11 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 pub struct ConfigFile {
     pub default: Option<String>,
     pub profiles: Vec<(String, Profile)>,
+    /// `ui.language`: the interface language the person chose (doc 34, section 8).
+    pub language: Option<String>,
+    /// `history.retention` and `history.interval` of the interface, as written (`1h`, `5s`).
+    pub history_retention: Option<String>,
+    pub history_interval: Option<String>,
 }
 
 impl ConfigFile {
@@ -217,10 +222,40 @@ impl ConfigFile {
                         file.profiles.push((name, profile));
                     }
                 }
-                ("default" | "profiles", _) => return Err(format!("`{key}` has the wrong type")),
+                ("ui", Node::Map(fields)) => {
+                    for (field, value) in fields {
+                        match (field.as_str(), value) {
+                            ("language", Node::Text(text)) if !text.trim().is_empty() => {
+                                file.language = Some(text);
+                            }
+                            _ => return Err(format!("`ui.{field}` is not valid (use `language`)")),
+                        }
+                    }
+                }
+                ("history", Node::Map(fields)) => {
+                    for (field, value) in fields {
+                        let Node::Text(text) = value else {
+                            return Err(format!("`history.{field}` must be a text"));
+                        };
+                        crate::settings::parse_span(&text)
+                            .map_err(|e| format!("`history.{field}`: {e}"))?;
+                        match field.as_str() {
+                            "retention" => file.history_retention = Some(text),
+                            "interval" => file.history_interval = Some(text),
+                            _ => {
+                                return Err(format!(
+                                "`history.{field}` is not valid (use `retention` and `interval`)"
+                            ))
+                            }
+                        }
+                    }
+                }
+                ("default" | "profiles" | "ui" | "history", _) => {
+                    return Err(format!("`{key}` has the wrong type"))
+                }
                 _ => {
                     return Err(format!(
-                        "unknown key `{key}` (use `default` and `profiles`)"
+                        "unknown key `{key}` (use `default`, `ui`, `history` and `profiles`)"
                     ))
                 }
             }
@@ -239,6 +274,22 @@ impl ConfigFile {
         let mut map = Vec::new();
         if let Some(default) = &self.default {
             map.push(("default".to_owned(), Node::Text(default.clone())));
+        }
+        if let Some(language) = &self.language {
+            map.push((
+                "ui".to_owned(),
+                Node::Map(vec![("language".to_owned(), Node::Text(language.clone()))]),
+            ));
+        }
+        let history: Vec<(String, Node)> = [
+            ("retention", &self.history_retention),
+            ("interval", &self.history_interval),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| v.as_ref().map(|v| (k.to_owned(), Node::Text(v.clone()))))
+        .collect();
+        if !history.is_empty() {
+            map.push(("history".to_owned(), Node::Map(history)));
         }
         let profiles = self
             .profiles

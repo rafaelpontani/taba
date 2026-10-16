@@ -170,6 +170,25 @@ impl Effective {
     }
 }
 
+/// A length of time as `90`, `90s`, `5m` or `1h`, in seconds (the `[history]` settings of the interface).
+pub fn parse_span(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let (digits, unit) = match text.chars().last() {
+        Some(c @ ('s' | 'm' | 'h')) => (&text[..text.len() - 1], c),
+        _ => (text, 's'),
+    };
+    let n: u64 = digits
+        .parse()
+        .map_err(|_| format!("`{text}` is not a time (use 90, 90s, 5m or 1h)"))?;
+    let factor = match unit {
+        'h' => 3600,
+        'm' => 60,
+        _ => 1,
+    };
+    n.checked_mul(factor)
+        .ok_or_else(|| format!("`{text}` is too long"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenSource<'a> {
     None,

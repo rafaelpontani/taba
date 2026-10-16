@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+┌ Condições ───────────────────────────────────────────────────────────────────┐
+│✔ saudável                                                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+Membros:┌ Parar o cluster? ────────────────────────────────────────────┐
+┌ 3 nós │Todos os nós serão drenados, com o backup enviado. Os         │───────┐
+│Nó     │processos continuam rodando como drenados: pará-los é com o   │  Req  │
+│▶ 01a1…│seu orquestrador. Os clientes são recusados até os nós        │  3    │
+│  01a1…│voltarem.                                                     │  3    │
+│  01a1…│                                                              │  3    │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │Digite prod-eu para confirmar:                                │       │
+│       │> prod▏                                                       │       │
+│       │                                                              │       │
+│       │                  [ Cancelar ]  [ Confirmar ]                 │       │
+└───────└──────────────────────────────────────────────────────────────┘───────┘
+┌ Memória 768,0 MiB ───────────────────┐┌ Mensagens em memória 1.200 ──────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detalhe  d drenar  u devolver  b flush  ? ajuda  q sair     ⟳ 2s · pt-BR

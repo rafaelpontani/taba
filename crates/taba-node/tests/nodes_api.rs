@@ -663,3 +663,63 @@ async fn without_a_backup_the_cluster_backup_route_says_so() {
     assert_eq!(error_code(response, 422).await, "backup.not-configured");
     cluster.shutdown().await;
 }
+
+/// A node that left by drain shows in `GET /nodes` of **every** node, whichever one receives the call: a node that
+/// returns from a drain comes back as a new node with an empty memory, and the answer still has to be the same.
+#[tokio::test]
+async fn a_drained_node_shows_in_the_list_of_every_node_even_one_that_came_back_from_a_drain() {
+    let cluster = TestCluster::start_with(4, &[("TABA_AUTH_ROOT_TOKEN", ROOT)]).await;
+    let (second, third) = (cluster.node(2), cluster.node(3));
+    let (second_id, third_id) = (cluster.node_id(2), cluster.node_id(3));
+
+    for (node, id) in [(third, &third_id), (second, &second_id)] {
+        let started = call(
+            cluster.node(1),
+            Method::POST,
+            &format!("/nodes/{id}/drain"),
+            Some(ROOT),
+            None,
+        )
+        .await;
+        assert_eq!(started.status(), 202);
+        eventually_async("the node is drained", || async {
+            let response = node.client_get_ops("/node/drain").await;
+            response.json::<Value>().await.unwrap()["drainState"] == "drained"
+        })
+        .await;
+    }
+    // The second node comes back (new id, nothing remembered): it must still list the third as drained.
+    let back = second
+        .client
+        .delete(second.operations_url("/node/drain"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(back.status(), 202);
+    eventually_async("the second node is back", || async {
+        second.node.node_id() != second_id
+            && cluster
+                .table(1)
+                .is_some_and(|t| t.member(&second.node.node_id()).is_some())
+    })
+    .await;
+
+    for number in [1, 2, 4] {
+        let nodes = json_of(get(cluster.node(number), "/nodes", Some(ROOT)).await, 200).await;
+        let items = nodes["items"].as_array().unwrap();
+        let state_of = |id: &str| {
+            items
+                .iter()
+                .find(|n| n["nodeId"] == id)
+                .map(|n| n["state"].clone())
+        };
+        assert_eq!(
+            state_of(&third_id),
+            Some(json!("drained")),
+            "node {number} lost the drained node: {items:?}"
+        );
+        // The one that came back has another id: the old id is not listed as drained next to the new one.
+        assert_eq!(state_of(&second_id), None, "node {number}: {items:?}");
+    }
+    cluster.shutdown().await;
+}

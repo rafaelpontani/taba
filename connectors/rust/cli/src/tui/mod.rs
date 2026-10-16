@@ -15,6 +15,37 @@ pub mod keys;
 pub mod screen;
 pub mod term;
 
+#[cfg(feature = "tui")]
+pub mod api;
+#[cfg(feature = "tui")]
+pub mod app;
+#[cfg(feature = "tui")]
+pub mod effect;
+#[cfg(feature = "tui")]
+pub mod history;
+#[cfg(feature = "tui")]
+pub mod i18n;
+#[cfg(feature = "tui")]
+pub mod keymap;
+#[cfg(feature = "tui")]
+pub mod model;
+#[cfg(feature = "tui")]
+pub mod msg;
+#[cfg(feature = "tui")]
+pub mod prom;
+#[cfg(feature = "tui")]
+pub mod screens;
+#[cfg(all(feature = "tui", test))]
+pub mod testing;
+#[cfg(feature = "tui")]
+pub mod theme;
+#[cfg(feature = "tui")]
+pub mod update;
+#[cfg(feature = "tui")]
+pub mod view;
+#[cfg(feature = "tui")]
+pub mod worker;
+
 pub use keys::Key;
 use screen::{App, Flow, Services};
 

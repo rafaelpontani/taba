@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:00:00 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+┌ Conditions ──────────────────────────────────────────────────────────────────┐
+│✔ healthy                                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+Members:┌ Stop the cluster? ───────────────────────────────────────────┐
+┌ 3 node│Every node will be drained with its backup sent. The processes│───────┐
+│Node   │keep running as drained: stopping them is up to your          │  Req  │
+│▶ 01a1…│orchestrator. Clients are refused until the nodes return.     │  3    │
+│  01a1…│                                                              │  3    │
+│  01a1…│                                                              │  3    │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │Type prod-eu to confirm:                                      │       │
+│       │> prod▏                                                       │       │
+│       │                                                              │       │
+│       │                    [ Cancel ]  [ Confirm ]                   │       │
+└───────└──────────────────────────────────────────────────────────────┘───────┘
+┌ Memory 768.0 MiB ────────────────────┐┌ Messages in memory 1,200 ────────────┐
+│▄                                     ││█                                     │
+│█                                     ││█                                     │
+└──────────────────────────────────────┘└──────────────────────────────────────┘
+ Enter detail  d drain  u return  b flush  ? help  q quit          ⟳ 2s · en-US

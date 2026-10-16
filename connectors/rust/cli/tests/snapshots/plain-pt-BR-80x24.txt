@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ saudável                        12:00:00 UTC
+ 1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Mensagens │ 5 Perfis
+▲ Seu token precisa ser o token raiz para ver isto.
+
+
+┌ 2 nós ───────────────────────────────────────────────────────────────────────┐
+│Nó             Estado         Drain      Versão                               │
+│▶ 01a1…000001  active         active     1.4.0                                │
+│  01a1…000002  active         active     1.4.0                                │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Enter detalhe  d drenar  u devolver  b flush  ? ajuda  q sair     ⟳ 2s · pt-BR

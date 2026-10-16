@@ -22,6 +22,8 @@ use axum::extract::{Path, Request, State};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use std::sync::Arc;
+
 use serde_json::{Value, json};
 
 use super::common::ApiError;
@@ -30,6 +32,7 @@ use super::operations::{self, StatusParts};
 use super::{AppState, backup, forward};
 use crate::cluster::members::Member;
 use crate::cluster::protocol::{ForwardRequest, Request as PeerRequest, Response as PeerResponse};
+use crate::cluster::service::ClusterService;
 use crate::cluster::transport::CallError;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time::format_ms;
@@ -108,23 +111,17 @@ async fn list(State(state): State<AppState>) -> Json<Value> {
         })
         .collect();
     if let Some(cluster) = &state.cluster {
-        let in_table = |id: &str| {
-            table
-                .as_ref()
-                .is_some_and(|t| t.members.iter().any(|m| m.node_id == id))
-        };
-        for left in cluster.membership().departed_members() {
-            if !in_table(&left.node_id) {
-                items.push(json!({
-                    "nodeId": left.node_id,
-                    "self": false,
-                    "reachable": false,
-                    "state": "drained",
-                    "drainState": "drained",
-                    "version": Value::Null,
-                    "memberState": Value::Null,
-                }));
-            }
+        let members = table.as_ref().map(|t| t.members.as_slice()).unwrap_or(&[]);
+        for left in departed_everywhere(cluster, members).await {
+            items.push(json!({
+                "nodeId": left.node_id,
+                "self": false,
+                "reachable": false,
+                "state": "drained",
+                "drainState": "drained",
+                "version": Value::Null,
+                "memberState": Value::Null,
+            }));
         }
     }
     let mut out = serde_json::Map::new();
@@ -139,6 +136,53 @@ async fn list(State(state): State<AppState>) -> Json<Value> {
     consolidate::put_envelope(&mut out, &missing);
     out.insert("items".into(), Value::Array(items));
     Json(Value::Object(out))
+}
+
+/// The nodes that left by drain, **as the whole cluster knows them**: each node only remembers the departures it
+/// applied, and a node that returns from a drain comes back as a new node with an empty memory, so the answer would
+/// depend on which node received the call. This asks every member (and uses this node's own list), unites them by id
+/// and drops the ones that are members now or whose address a member took over (the same machine came back with a
+/// new id).
+async fn departed_everywhere(cluster: &Arc<ClusterService>, members: &[Member]) -> Vec<Departed> {
+    let mut all: Vec<Departed> = cluster
+        .membership()
+        .departed_members()
+        .into_iter()
+        .map(|m| Departed {
+            node_id: m.node_id,
+            addresses: m.addresses,
+            port: m.port,
+        })
+        .collect();
+    let others: Vec<Member> = members
+        .iter()
+        .filter(|m| m.node_id != cluster.node_id())
+        .cloned()
+        .collect();
+    for (_, answer) in consolidate::ask_members(cluster, &others, &PeerRequest::Departed).await {
+        if let Ok(PeerResponse::Json(Value::Array(list))) = answer {
+            all.extend(
+                list.into_iter()
+                    .filter_map(|v| serde_json::from_value::<Departed>(v).ok()),
+            );
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    all.retain(|left| {
+        let replaced = members.iter().any(|m| {
+            m.node_id == left.node_id || (m.addresses == left.addresses && m.port == left.port)
+        });
+        !replaced && seen.insert(left.node_id.clone())
+    });
+    all
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Departed {
+    node_id: String,
+    addresses: Vec<String>,
+    port: u16,
 }
 
 /// The member the call is for: in the table, or among those that left by drain (to return them).

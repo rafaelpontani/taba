@@ -1,0 +1,24 @@
+ prod https://taba.example:8080  ✔ healthy                         12:02:06 UTC
+ 1 Cluster │ 2 Topics │ 3 Tokens │ 4 Messages │ 5 Profiles
+Node 01a13640-0000-7000-8000-000000000001                                      ▲
+State: active · Drain: active                                                  █
+Version: 1.4.0 · production                                                    █
+Started: 2026-10-15 08:00:00 (4h 02m)                                          █
+                                                                               █
+Storage                                                                        █
+Memory: ███████████████████░  93%  951.1 MiB / 1.0 GiB                         █
+Messages: 1,200 in memory, 340,000 on disk                                     █
+Disk free: 50.0 GiB                                                            █
+                                                                               █
+Signals                                                                        █
+Quorum: ✔ quorum                                                               █
+Channels: 2                                                                    █
+Syncing blocks: 0                                                              █
+Blocks below replication: 0                                                    █
+Blocks below quorum: 0                                                         ║
+Frozen nodes: 0                                                                ║
+Requests in flight: 3                                                          ║
+Requests refused (429), total: 72                                              ║
+Channel round trip (p95): 12.3 ms                                              ║
+                                                                               ▼
+ Esc back  d drain  u return  b flush  m charts  ? help  q quit    ⟳ 2s · en-US

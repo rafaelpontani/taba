@@ -229,3 +229,33 @@ fn the_saved_file_is_private_on_unix() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// TUI: TUI-HLP-03
+#[test]
+fn the_interface_settings_are_read_and_written_back_with_the_profiles() {
+    let text = "default: a\nui:\n  language: pt-BR\nhistory:\n  retention: 2h\n  interval: 5s\nprofiles:\n  a:\n    url: http://x:1\n";
+    let file = ConfigFile::parse(text).unwrap();
+    assert_eq!(file.language.as_deref(), Some("pt-BR"));
+    assert_eq!(file.history_retention.as_deref(), Some("2h"));
+    assert_eq!(file.history_interval.as_deref(), Some("5s"));
+    let again = ConfigFile::parse(&file.render()).unwrap();
+    assert_eq!(again, file);
+    // A file without them renders without them.
+    let plain = ConfigFile::parse("profiles:\n  a:\n    url: http://x:1\n").unwrap();
+    assert!(!plain.render().contains("ui:") && !plain.render().contains("history:"));
+}
+
+/// TUI: TUI-HLP-03
+#[test]
+fn a_bad_interface_setting_is_refused_with_its_name() {
+    for (text, needle) in [
+        ("ui:\n  theme: dark\n", "ui.theme"),
+        ("ui:\n  language: \"\"\n", "ui.language"),
+        ("ui: yes\n", "`ui`"),
+        ("history:\n  retention: soon\n", "history.retention"),
+        ("history:\n  speed: 1s\n", "history.speed"),
+    ] {
+        let error = ConfigFile::parse(text).unwrap_err();
+        assert!(error.contains(needle), "{text} -> {error}");
+    }
+}

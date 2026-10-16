@@ -75,6 +75,13 @@ pub enum CallError {
 }
 
 impl CallError {
+    /// The listing found no cluster to join: nobody answered, or the node that answered has no member table yet
+    /// (through a load balancer that only reaches this very node, the answer is its own `cluster.node-syncing`).
+    pub fn found_no_cluster(&self) -> bool {
+        self.is_network()
+            || matches!(self, CallError::Remote(e) if e.code == crate::core::error::ErrorCode::ClusterNodeSyncing)
+    }
+
     /// Network failures: worth trying again (or another node). The error the peer returned is not.
     pub fn is_network(&self) -> bool {
         matches!(self, CallError::Unreachable(_) | CallError::Timeout)
