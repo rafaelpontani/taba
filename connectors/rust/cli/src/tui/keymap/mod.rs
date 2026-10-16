@@ -267,8 +267,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         Action::Help,
         Global,
-        &[Char('?'), Code(KeyCode::F(1))],
-        "? F1",
+        &[Char('h'), Char('?'), Code(KeyCode::F(1))],
+        "h F1",
         Some("keys.help"),
     ),
     bind(

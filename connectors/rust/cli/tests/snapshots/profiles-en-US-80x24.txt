@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter connect  n new  e edit  l language  ? help  q quit        ⟳ 5s · L en-US
+ Enter connect  n new  e edit  l language  h help  q quit        ⟳ 5s · L en-US

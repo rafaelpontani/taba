@@ -268,7 +268,7 @@ notice.bad-reply: "O servidor respondeu algo inesperado: %{error}"
 
 placeholder.topics: "A tela de tópicos (listar, criar, editar, apagar e gráficos) chega numa próxima fase da interface. Até lá use taba-cli topic."
 placeholder.messages: "A bancada de mensagens (publicar, escutar, navegar, ack e prune) chega numa próxima fase da interface. Até lá use taba-cli publish e taba-cli consume."
-placeholder.hint: "Use 1 a 5 ou [ ] para trocar de aba, ? para a ajuda."
+placeholder.hint: "Use 1 a 5 ou [ ] para trocar de aba, h para a ajuda."
 summary.stopped: "Cluster parado: todos os nós estão em drain e recusam chamadas de dados. Devolva um nó (u) ou reinicie os nós."
 summary.stopped-planned: "Cluster parado por parada planejada (%{at}): reinicie os nós e a próxima partida restaura do S3, ou devolva um nó (u)."
 error.draining: "O nó está em drain e nenhum outro pode atender: o cluster pode estar parado. Reinicie os nós ou devolva um."

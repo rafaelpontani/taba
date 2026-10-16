@@ -21,4 +21,4 @@ Membros:┌ Parar o cluster? ─────────────────
 │▄                                     ││█                                     │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  l idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR
+ Enter detalhe  d drenar  u devolver  l idioma  h ajuda  q sair  ⟳ 2s · L pt-BR

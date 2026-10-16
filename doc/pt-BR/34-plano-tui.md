@@ -13,7 +13,7 @@ fontes: [connectors/rust/cli/src, connectors/rust/client/src, doc/pt-BR/16-api-c
 
 ## 1. Objetivo e escopo
 
-`taba-cli tui` abre uma interface em tela cheia ([ratatui](https://ratatui.rs)) sobre o mesmo conector (`taba-client`) e os mesmos perfis dos comandos. É uma tela sobre a API existente: **não cria nada no servidor**.
+`taba-cli tui` abre uma interface em tela cheia ([ratatui](https://ratatui.rs)) sobre o mesmo conector (`taba-client`) e os mesmos perfis dos comandos. É uma tela sobre a API existente: **não cria nada no servidor**. Sem comando (`taba-cli`) ela abre a mesma interface quando há terminal.
 
 | Área | O que a pessoa faz |
 |---|---|
@@ -105,7 +105,7 @@ Valem as regras de [24-convencoes.md](24-convencoes.md): `mod.rs` começa com `/
 
 ## 5. Teclado
 
-Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em todos os idiomas**; o rodapé mostra as teclas do painel e `?` a lista completa.
+Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em todos os idiomas**; o rodapé mostra as teclas do painel e `h` a lista completa.
 
 | Teclas | Ação |
 |---|---|
@@ -116,7 +116,7 @@ Setas e teclas do Vim fazem o mesmo; as letras são mnemônicas **e iguais em to
 | `Enter` · `Esc` | Abrir / confirmar · fechar / cancelar |
 | `/` · `s` `S` · `r` · `p` | Filtrar · ordenar / inverter · atualizar agora · pausar |
 | `:` | Paleta de comandos (busca aproximada de qualquer ação) |
-| `l` · `o` · `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · trocar de perfil · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
+| `l` · `o` · `h` `?` `F1` · `q` `Ctrl+c` · `Ctrl+s` | Idioma · trocar de perfil · ajuda · sair (pergunta se há ouvinte ou formulário alterado) · enviar formulário |
 | Mouse | A roda rola o painel sob o ponteiro; o clique foca; opcional (`--no-mouse`) |
 
 | Tela | Teclas |
@@ -144,6 +144,7 @@ Requisitos numerados (`TUI-<tela>-<nn>`); testes e fases citam os IDs. O visual 
 | TUI-FRM-07 | Um popup por vez; `Esc` fecha o do topo; o botão padrão de um popup destrutivo é **Cancelar**. |
 | TUI-FRM-08 | Offline, `401`/`403`, `429`/`503` e **`partial: true`** (D-TUI-10) aparecem no quadro sem perder o último dado bom. |
 | TUI-FRM-09 | Layout: a linha selecionada é faixa em negrito sobre cinza-escuro (não `reversed`); todo `Sparkline` recebe `.max(limite)`; `Gauge` nunca dentro de célula de `Table`; `NO_COLOR` e ASCII funcionam. |
+| TUI-FRM-11 | `taba-cli` sem comando abre a interface quando a entrada e a saída são um terminal; senão imprime a ajuda. |
 | TUI-FRM-10 | **Permissão que falta é explicada, nunca escondida:** o que o token não pode fica visível e desabilitado, ou trocado por um aviso ("seu token precisa ser o token raiz para ver isto"). O texto vem de `required` e, antes de qualquer chamada, de `GET /auth/me` com a matriz da seção 9. |
 
 ### 6.2 Cluster e detalhe do nó
@@ -224,7 +225,7 @@ Fontes: nó em `GET /nodes/{id}/metrics` (token raiz; `taba.storage.memory.usage
 
 | ID | Requisito |
 |---|---|
-| TUI-HLP-01 | `?` mostra as teclas da tela e as globais, **geradas da mesma tabela** (`keymap.rs`) que o programa usa. |
+| TUI-HLP-01 | `h` mostra as teclas da tela e as globais, **geradas da mesma tabela** (`keymap.rs`) que o programa usa. |
 | TUI-HLP-02 | `:` abre a paleta: acha qualquer ação de qualquer tela (no idioma atual e em inglês) e a executa. |
 | TUI-HLP-03 | `l` escolhe o idioma (English, Português); vale na hora e fica gravado em `ui.language`. |
 | TUI-HLP-04 | A aba Perfis lista, cria, edita, remove, define o padrão e testa uma conexão com valores não salvos; substitui a tela de hoje ([20-cli.md](20-cli.md)). |

@@ -21,4 +21,4 @@ Membros: active 3 · ✔ quórum · tabela v 7 · blocos sincronizando 0
 │▄                                     ││█                                     │
 │█                                     ││█                                     │
 └──────────────────────────────────────┘└──────────────────────────────────────┘
- Enter detalhe  d drenar  u devolver  l idioma  ? ajuda  q sair  ⟳ 2s · L pt-BR
+ Enter detalhe  d drenar  u devolver  l idioma  h ajuda  q sair  ⟳ 2s · L pt-BR

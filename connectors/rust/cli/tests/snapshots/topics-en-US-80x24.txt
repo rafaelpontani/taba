@@ -6,7 +6,7 @@
 │The topics screen (list, create, edit, delete and charts) comes in a later    │
 │phase of the interface. Until then use taba-cli topic.                        │
 │                                                                              │
-│Use 1 to 5 or [ ] to change tabs, ? for help.                                 │
+│Use 1 to 5 or [ ] to change tabs, h for help.                                 │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- : commands  l language  ? help  q quit                          ⟳ 5s · L en-US
+ : commands  l language  h help  q quit                          ⟳ 5s · L en-US

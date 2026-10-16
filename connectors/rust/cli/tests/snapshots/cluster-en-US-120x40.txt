@@ -37,4 +37,4 @@ Members: active 3 · ✔ quorum · table v 7 · syncing blocks 0                
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- Enter detail  d drain  u return  b flush  B flush all  S stop cluster  l language  ? help  q quit       ⟳ 2s · L en-US
+ Enter detail  d drain  u return  b flush  B flush all  S stop cluster  l language  h help  q quit       ⟳ 2s · L en-US

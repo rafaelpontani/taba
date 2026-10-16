@@ -21,4 +21,4 @@
 │E└──────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- n new  e edit  c clone  Del revoke  l language  ? help  q quit  ⟳ 5s · L en-US
+ n new  e edit  c clone  Del revoke  l language  h help  q quit  ⟳ 5s · L en-US

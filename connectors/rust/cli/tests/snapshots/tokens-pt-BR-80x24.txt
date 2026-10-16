@@ -21,4 +21,4 @@
 │Expira             18/10/2026 00:00:00 (expira em breve)                      │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- n novo  e editar  c clonar  l idioma  ? ajuda  q sair           ⟳ 5s · L pt-BR
+ n novo  e editar  c clonar  l idioma  h ajuda  q sair           ⟳ 5s · L pt-BR

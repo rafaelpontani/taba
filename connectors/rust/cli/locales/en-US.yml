@@ -269,7 +269,7 @@ notice.bad-reply: "The server answered something unexpected: %{error}"
 
 placeholder.topics: "The topics screen (list, create, edit, delete and charts) comes in a later phase of the interface. Until then use taba-cli topic."
 placeholder.messages: "The messages bench (publish, listen, browse, ack and prune) comes in a later phase of the interface. Until then use taba-cli publish and taba-cli consume."
-placeholder.hint: "Use 1 to 5 or [ ] to change tabs, ? for help."
+placeholder.hint: "Use 1 to 5 or [ ] to change tabs, h for help."
 summary.stopped: "Cluster stopped: every node is in drain and refuses data calls. Return a node (u) or restart the nodes."
 summary.stopped-planned: "Cluster stopped by a planned stop (%{at}): restart the nodes and the next start restores it from S3, or return a node (u)."
 error.draining: "The node is in drain and no other node can serve: the cluster may be stopped. Restart the nodes or return one."

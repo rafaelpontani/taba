@@ -119,7 +119,7 @@ The `receiptToken` changes at each delivery and comes in the `Message`: that is 
 |---|---|---|
 | `tui` | Opens the interface on the same profile and token as the commands. Today the **Cluster** tab is ready (conditions, nodes, node detail, charts, drain and return, backup flush, stopping the cluster); the other tabs say what is coming. It needs a terminal: outside one it exits with `2` and prints the help | `--no-mouse`, `--history-retention <time>` (default `1h`, at most `6h`), `--history-interval <time>` (default `5s`, at least `1s`) |
 
-The node and cluster actions (drain, return, flush, stop) and the cluster view need the **root token**; with another token the tab shows only the list of nodes and says what is missing. The chart history lives only in the memory of the session. `?` shows the keys, `:` opens the command palette and `L` switches the language (it applies at once and is kept in `ui.language`).
+The node and cluster actions (drain, return, flush, stop) and the cluster view need the **root token**; with another token the tab shows only the list of nodes and says what is missing. The chart history lives only in the memory of the session. `h` shows the keys, `:` opens the command palette and `l` switches the language (it applies at once and is kept in `ui.language`). `taba-cli` with no command opens this interface when there is a terminal (the same as `taba-cli tui`); without one it prints the help.
 
 ### Profiles
 

@@ -117,7 +117,7 @@ O `receiptToken` muda a cada entrega e vem no `Message`: por isso `consume` **se
 |---|---|---|
 | `tui` | Abre a interface sobre o mesmo perfil e o mesmo token dos comandos. Hoje a aba **Cluster** está pronta (condições, nós, detalhe do nó, gráficos, drenar e devolver, flush de backup, parar o cluster); as outras abas avisam o que vem. Precisa de um terminal: fora dele sai com `2` e imprime a ajuda | `--no-mouse`, `--history-retention <tempo>` (padrão `1h`, no máximo `6h`), `--history-interval <tempo>` (padrão `5s`, no mínimo `1s`) |
 
-As ações de nó e de cluster (drain, devolver, flush, parar) e a visão do cluster pedem o **token raiz**; com outro token a aba mostra só a lista de nós e diz o que falta. O histórico dos gráficos fica só na memória da sessão. `?` mostra as teclas, `:` abre a paleta de comandos e `L` troca o idioma (vale na hora e fica em `ui.language`).
+As ações de nó e de cluster (drain, devolver, flush, parar) e a visão do cluster pedem o **token raiz**; com outro token a aba mostra só a lista de nós e diz o que falta. O histórico dos gráficos fica só na memória da sessão. `h` mostra as teclas, `:` abre a paleta de comandos e `l` troca o idioma (vale na hora e fica em `ui.language`). `taba-cli` sem comando abre esta interface quando há terminal (igual a `taba-cli tui`); sem terminal imprime a ajuda.
 
 ### Perfis
 

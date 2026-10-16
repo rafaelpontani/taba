@@ -21,4 +21,4 @@ Requests in flight: 3                                                          �
 Requests refused (429), total: 72                                              ║
 Channel round trip (p95): 12.3 ms                                              ║
                                                                                ▼
- Esc back  d drain  u return  l language  ? help  q quit         ⟳ 2s · L en-US
+ Esc back  d drain  u return  l language  h help  q quit         ⟳ 2s · L en-US

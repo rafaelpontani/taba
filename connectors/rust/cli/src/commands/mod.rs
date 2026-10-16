@@ -35,6 +35,8 @@ pub enum Invocation<'a> {
     /// `help [command]` or `--help` with no command: the help text for the subject (empty = general).
     Help(String),
     Version,
+    /// No command word at all (nothing, or only options): the interface when there is a terminal.
+    Bare,
     /// The command and the arguments left over (without the command words).
     Run(&'a Command, Vec<String>),
 }
@@ -69,10 +71,10 @@ pub fn resolve<'a>(table: &'a [Command], args: &[String]) -> Result<Invocation<'
         if args.iter().any(|a| a == "--version") {
             return Ok(Invocation::Version);
         }
-        return if args.is_empty() || wants_help {
+        return if wants_help {
             Ok(Invocation::Help(String::new()))
         } else {
-            Err("faltou o comando".to_owned())
+            Ok(Invocation::Bare)
         };
     }
     if words[0].1 == "help" {

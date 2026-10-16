@@ -37,4 +37,4 @@ taba_ratelimit_rejected_total{category="publish"}  5
 
 
 
- Esc back  d drain  u return  b flush  m charts  l language  ? help  q quit                              ⟳ 2s · L en-US
+ Esc back  d drain  u return  b flush  m charts  l language  h help  q quit                              ⟳ 2s · L en-US

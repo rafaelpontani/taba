@@ -37,4 +37,4 @@ taba_ratelimit_rejected_total{category="publish"}  5
 
 
 
- Esc voltar  d drenar  u devolver  b flush  m gráficos  l idioma  ? ajuda  q sair                        ⟳ 2s · L pt-BR
+ Esc voltar  d drenar  u devolver  b flush  m gráficos  l idioma  h ajuda  q sair                        ⟳ 2s · L pt-BR

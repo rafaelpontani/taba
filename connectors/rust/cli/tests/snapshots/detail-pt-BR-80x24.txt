@@ -21,4 +21,4 @@ Requisições em andamento: 3                                                   
 Requisições recusadas (429), total: 72                                         ║
 Ida e volta dos canais (p95): 12,3 ms                                          ║
                                                                                ▼
- Esc voltar  d drenar  u devolver  l idioma  ? ajuda  q sair     ⟳ 2s · L pt-BR
+ Esc voltar  d drenar  u devolver  l idioma  h ajuda  q sair     ⟳ 2s · L pt-BR

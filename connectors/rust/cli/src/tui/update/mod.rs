@@ -314,7 +314,7 @@ fn on_modal_key(m: &mut Model, event: KeyEvent) -> Vec<Effect> {
     match modal {
         Modal::Help { scroll } => {
             let scroll = match event.code {
-                KeyCode::Esc | KeyCode::Char('q' | '?') | KeyCode::F(1) => {
+                KeyCode::Esc | KeyCode::Char('q' | 'h' | '?') | KeyCode::F(1) => {
                     m.modal = None;
                     return Vec::new();
                 }

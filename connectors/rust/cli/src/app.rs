@@ -310,6 +310,17 @@ pub fn run(
             let _ = writeln!(out, "{}", commands::version_text());
             return 0;
         }
+        commands::Invocation::Bare => {
+            let on_terminal = platform.stdin_is_tty() && platform.stdout_is_tty();
+            match table.iter().find(|c| c.path == ["tui"]) {
+                Some(tui) if on_terminal => (tui, args.to_vec()),
+                _ if args.is_empty() => {
+                    let _ = write!(out, "{}", commands::help_text(&table, ""));
+                    return 0;
+                }
+                _ => return report_usage(err, "faltou o comando"),
+            }
+        }
         commands::Invocation::Run(command, rest) => (command, rest),
     };
     let (command, rest) = command;

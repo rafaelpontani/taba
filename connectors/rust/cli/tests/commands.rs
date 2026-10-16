@@ -2170,3 +2170,22 @@ fn the_language_and_history_settings_live_in_the_config_file_beside_the_profiles
     );
     assert!(text.contains("timeout: 9"), "{text}");
 }
+
+/// TUI: TUI-FRM-11
+#[cfg(feature = "tui")]
+#[test]
+fn with_no_command_the_interface_opens_on_a_terminal_and_the_help_prints_outside_one() {
+    let mut rig = Rig::new();
+    let out = rig.run(&[]);
+    assert_eq!(out.code, 0);
+    assert!(out.out.contains("usage: taba-cli <command>"), "{}", out.out);
+    let out = rig.run(&["--lang", "pt-BR"]);
+    assert_eq!(out.code, 2);
+
+    // On a terminal the same call goes to the interface: its own option check answers.
+    rig.platform.tty = true;
+    let out = rig.run(&["--lang", "fr"]);
+    assert_eq!(out.code, 2);
+    assert!(out.err.contains("is not a language"), "{}", out.err);
+    assert!(!out.out.contains("usage: taba-cli <command>"));
+}
