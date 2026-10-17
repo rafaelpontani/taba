@@ -106,7 +106,7 @@ Configured in `.releaserc.json`: `branches: ["main", {"name": "release", "prerel
 
 **One version for the whole repository:** server, Rust and C# connectors and the chart move on the **same tag**. `set-version.sh X.Y.Z[-rc.N]` adjusts the server's `Cargo.toml` and `Cargo.lock`, those of the Rust connectors (and `taba-cli`'s `taba-client = "=X"` dependency), the `<Version>` of the `.csproj` files and the `version`/`appVersion` of `Chart.yaml`. In the repository the files stay at `0.1.0`.
 
-**Bootstrap:** semantic-release starts at `1.0.0` without a previous tag. To start at `0.1.0`, the repository needs a **stable seed tag** `v0.0.0` on a commit that is on both branches (`git merge-base main release`). **Leaving `0.x`**: remove the `breaking → minor` rule.
+**Bootstrap:** semantic-release starts at `1.0.0` without a previous tag. To start at `0.1.0`, the repository needs a **stable seed tag** `v0.0.0` on the **first commit of the repository** (`git rev-list --max-parents=0 HEAD`), which is on both branches; without it, the `plan` job stops the release. **Leaving `0.x`**: remove the `breaking → minor` rule.
 
 ### Docker tags and floating tags
 

@@ -76,6 +76,7 @@ jobs:
         env:
           PUBLISHED: ${{ steps.dry.outputs.new_release_published }}
           VERSION: ${{ steps.dry.outputs.new_release_version }}
+          LAST: ${{ steps.dry.outputs.last_release_version }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           # GitHub attestations need a public repository (or GitHub Enterprise Cloud), and a signature from a private
           # repository would point to a workflow nobody can see: attestation and cosign only run when it is public.
@@ -95,6 +96,12 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
             echo "## No version: the commits since the last tag have no feat, fix or perf (only the builds run)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+          # Without a previous release semantic-release would start at 1.0.0: the series starts from the v0.0.0 seed
+          # (doc/pt-BR/27-ci-cd.md, "Bootstrap"), so a missing seed stops the release here.
+          if [[ -z $LAST ]]; then
+            echo "::error::semantic-release found no previous release on $GITHUB_REF_NAME and would publish $VERSION. Check the v0.0.0 seed."
+            exit 1
           fi
           re='^([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$'
           if [[ ! $VERSION =~ $re ]]; then
@@ -340,13 +347,16 @@ jobs:
           PUBLISHED: ${{ steps.release.outputs.new_release_published }}
           GOT: ${{ steps.release.outputs.new_release_version }}
           WANT: ${{ needs.plan.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [[ $PUBLISHED != 'true' || $GOT != "$WANT" ]]; then
             echo "semantic-release published '${GOT:-nothing}', the plan was '$WANT' (did the branch move?)" >&2
             exit 1
           fi
-          remote="$(git ls-remote origin "refs/tags/v$WANT^{}" "refs/tags/v$WANT" | head -n 1 | cut -f1)"
+          # Through the API (the checkout keeps no credentials, and a private repository refuses an anonymous
+          # ls-remote): the commit the tag resolves to on GitHub.
+          remote="$(gh api "repos/$GITHUB_REPOSITORY/commits/v$WANT" --jq .sha || true)"
           if [[ $remote != "$GITHUB_SHA" ]]; then
             echo "tag v$WANT points to '$remote', expected $GITHUB_SHA" >&2
             exit 1
@@ -664,9 +674,9 @@ jobs:
             echo "|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Git tags: the peeled commit (annotated tag) or the tag itself (lightweight).
+          # Git tags: the commit each one resolves to on GitHub (annotated or lightweight; works on a private repository).
           for t in "v$VERSION" $GIT_TAGS; do
-            sha="$(git ls-remote "https://github.com/$GH_REPO" "refs/tags/$t^{}" "refs/tags/$t" | head -n 1 | cut -f1)"
+            sha="$(gh api "repos/$GH_REPO/commits/$t" --jq .sha 2>/dev/null || true)"
             check "git \`$t\` → \`${sha:-missing}\`" test "$sha" = "$GITHUB_SHA"
           done
 
