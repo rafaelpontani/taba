@@ -3,7 +3,7 @@ título: Chart Helm — configuração
 resumo: Como instalar o Taba no Kubernetes com o chart Helm — o que ele cria, todos os values (nó, segredos, Ingress, backup em S3 embutido (SeaweedFS) ou externo, coletor Prometheus ou Telegraf, OTLP, autoscaling com KEDA), como cada um vira configuração do nó e o que o chart recusa.
 tipo: referência
 status: estável
-verificado-em: 2026-10-16 @ 4faa639
+verificado-em: 2026-10-17 @ 4dc8c9f
 fontes: [deploy/helm/taba/Chart.yaml, deploy/helm/taba/values.yaml, deploy/helm/taba/values.schema.json, deploy/helm/taba/templates, deploy/helm/tests, crates/taba-node/src/config/params/mod.rs, docker-compose.yml]
 ---
 
@@ -18,6 +18,8 @@ helm install taba deploy/helm/taba -n taba --create-namespace
 kubectl -n taba get pods -w                      # os nós ficam "ready" depois de entrar no cluster
 kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d
 ```
+
+Cada versão do Taba publica o chart como artefato OCI no GHCR, assinado e atestado, com `version` e `appVersion` iguais à versão do release ([27-ci-cd.md](27-ci-cd.md)): `helm install taba oci://ghcr.io/rafaelpontani/charts/taba --version 0.1.0 -n taba --create-namespace`. As candidatas (`0.1.0-rc.N`) também saem, e o Helm só as pega com `--version` explícito ou `--devel`.
 
 Pré-requisitos: Kubernetes 1.27+, uma `StorageClass` padrão (um volume por nó) e acesso à imagem `rafaelpontani/taba`. O KEDA, o Prometheus Operator e um controlador de Ingress são **opcionais** e só entram quando o recurso correspondente é ligado.
 
@@ -53,7 +55,7 @@ Decisões que o chart toma por você (vêm de [23-operacao.md](23-operacao.md)):
 
 | Value | Padrão | Efeito |
 |---|---|---|
-| `image.repository` / `image.tag` | `rafaelpontani/taba` / `appVersion` do chart (`0.1`) | Todos os nós devem rodar a mesma versão. `0.1` é o ponteiro seguro ([27-ci-cd.md](27-ci-cd.md)) |
+| `image.repository` / `image.tag` | `rafaelpontani/taba` / `appVersion` do chart (`0.1` no repositório; a versão exata no chart publicado) | Todos os nós devem rodar a mesma versão. O chart publicado aponta para a imagem da **mesma** versão; quem instala do repositório usa o ponteiro seguro `0.1` ([27-ci-cd.md](27-ci-cd.md)) |
 | `replicaCount` | `3` | Produção: nunca menos de `max(3, replication.factor)`. O chart recusa menos, salvo `allowFewReplicas=true` (só testes). Ignorado com `autoscaling.enabled` |
 | `terminationGracePeriodSeconds` | `120` | Veja acima; mínimo `drain.timeout + backup.drain.timeout + 5` |
 | `ports.api` / `ports.cluster` / `ports.operations` | `8080` / `8081` / `9090` | Devem ser diferentes (o nó não sobe com portas repetidas). Viram `api.port`, `cluster.port`, `operations.port` |

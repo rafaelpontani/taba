@@ -56,8 +56,8 @@ Decisions that must be closed: **D68** (base versions), **D70.1** and **D70.2** 
 
 | Item | Detail |
 |---|---|
-| Packages ⬜ | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`), and the registries of the other languages. **They cannot be deleted**: they stay behind a manual approval ([27-ci-cd.md](27-ci-cd.md)) |
-| Images ⬜ | GHCR (today only Docker Hub) |
+| Packages 🟡 | nuget.org (`Taba.*`) and crates.io (`taba-client`, `taba-cli`) automated in `release.yml` by Trusted Publishing, turned on by the `PUBLISH_CRATES` and `NUGET_USER` variables ([27-ci-cd.md](27-ci-cd.md#publishing-and-metadata)); the registries of the other languages are missing. **They cannot be deleted** |
+| Images ✅ | Docker Hub and GHCR, with the same digest on every tag ([27-ci-cd.md](27-ci-cd.md#docker-tags-and-floating-tags)) |
 | Public repository ⬜ | Today private; the definitive publication is the owner's decision |
 
 ### Milestone 4 — Operation in production

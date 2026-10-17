@@ -42,6 +42,13 @@ set_lock_version Cargo.lock taba-node
 set_toml_version connectors/rust/client/Cargo.toml
 set_toml_version connectors/rust/cli/Cargo.toml
 set_lock_version connectors/rust/Cargo.lock taba-client taba-cli
+# crates.io requires the version of the path dependency: taba-cli depends on the taba-client of the same tag.
+sed -i "s|^taba-client = { path = \"../client\", version = \"[^\"]*\" }|taba-client = { path = \"../client\", version = \"=$version\" }|" \
+  connectors/rust/cli/Cargo.toml
+
+# The chart goes out with the exact version: `version` (the package) and `appVersion` (the default image tag).
+sed -i -e "s|^version: .*|version: $version|" -e "s|^appVersion: .*|appVersion: \"$version\"|" \
+  deploy/helm/taba/Chart.yaml
 
 for csproj in connectors/csharp/Taba.Client*/*.csproj; do
   if grep -q '<Version>' "$csproj"; then

@@ -42,7 +42,7 @@ taba/
   connectors/                   conectores (uma pasta por linguagem; workspace próprio para o Rust)
     rust/{client,cli}/  csharp/  README.md
   docker/                       cluster.sh, validate.sh, haproxy.cfg, test-cpu.sh
-  Dockerfile  Dockerfile.ci  Dockerfile.cli.ci  docker-compose.yml
+  Dockerfile  Dockerfile.ci  docker-compose.yml
   examples/csharp-console/      exemplo de uso do conector C#
   doc/                          README.md, diagrams/, uma pasta por idioma
   doc/pt-BR/                    esta documentação

@@ -1,0 +1,29 @@
+<Project>
+
+  <!-- Metadata shared by the three NuGet packages (Taba.Client, .Abstractions and .Extensions.DependencyInjection).
+       The pipeline (.github/workflows/build-connector-csharp.yml) passes RepositoryCommit (the release commit) and
+       PackageReleaseNotes (the link to the GitHub Release); the version comes from set-version.sh. -->
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/rafaelpontani/taba</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageProjectUrl>https://github.com/rafaelpontani/taba/tree/main/connectors/csharp</PackageProjectUrl>
+    <PackageTags>taba;queue;messaging;client</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Reproducible build: same source, same bytes; sources embedded for the debugger (SourceLink, bundled in the SDK). -->
+    <Deterministic>true</Deterministic>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Only in CI: normalizes the paths recorded in the PDBs (/_/ instead of the runner folder). -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

@@ -4,6 +4,8 @@
 
 🇺🇸 [English](README.md) | 🇧🇷 **Português (Brasil)**
 
+[![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verificando-um-release)
+
 O **Taba** é um sistema de mensageria **leve, rápido e open source** que roda a partir de **uma única imagem Docker**: 1 nó para experimentar, 3 para produção. Ele reúne **filas** (cada mensagem vai para um consumidor, como o SQS) e **pub/sub** (cada publicação é copiada para várias filas, como o SNS) na mesma API HTTP, e cresce com a adição de nós, sem coordenador e sem configuração complexa.
 
 Se você quer fugir da cobrança por mensagem, de um cluster de brokers para operar ou da dependência de uma nuvem, o Taba é para você.
@@ -61,7 +63,8 @@ O chart Helm está em [deploy/helm/taba/](deploy/helm/taba/). Precisa de Kuberne
 
 ```bash
 # um cluster de 3 nós (o certificado do cluster e o token raiz são gerados uma vez, num Secret)
-helm install taba deploy/helm/taba -n taba --create-namespace
+helm install taba oci://ghcr.io/rafaelpontani/charts/taba --version 0.1.0 -n taba --create-namespace
+# ou, de um clone deste repositório: helm install taba deploy/helm/taba -n taba --create-namespace
 helm test taba -n taba
 kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d     # o token raiz
 kubectl -n taba port-forward svc/taba 8080:8080                                          # a API em http://localhost:8080
@@ -171,6 +174,35 @@ As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho e
 ![Tópico espalhado e redundante](doc/diagrams/img/pt-BR/spread-topic.svg)
 
 *Um tópico espalhado pelo cluster e replicado: se um nó cai, a aldeia continua de pé.*
+
+## Verificando um release
+
+Toda versão é compilada e publicada só pelo [workflow de release](.github/workflows/release.yml), a partir do commit da sua tag, depois de todos os testes passarem. Cada artefato pode ser conferido de forma independente, sem confiar na palavra deste repositório:
+
+| Artefato | Onde | Prova |
+|---|---|---|
+| Imagens `taba` e `taba-cli` | Docker Hub (`rafaelpontani/…`) e GHCR (`ghcr.io/rafaelpontani/…`) | Proveniência SLSA, SBOM, assinatura cosign; label `org.opencontainers.image.revision` = commit |
+| Binários, pacotes NuGet, chart | [GitHub Releases](https://github.com/rafaelpontani/taba/releases) (imutáveis) | `SHA256SUMS` e uma atestação por arquivo |
+| Crates `taba-client`, `taba-cli` | crates.io | Trusted Publishing a partir do workflow; `.cargo_vcs_info.json` com o commit |
+| Pacotes `Taba.Client*` | nuget.org | Trusted Publishing; `<repository commit>` e o link da Release no `.nuspec`; SourceLink |
+| Chart Helm | `oci://ghcr.io/rafaelpontani/charts/taba` | Assinatura cosign e atestação; `appVersion` = a versão |
+
+```bash
+# imagens (qualquer tag: 0.1.0, 0.1, 0, latest... todas apontam para o mesmo digest)
+gh attestation verify oci://ghcr.io/rafaelpontani/taba:0.1.0 -R rafaelpontani/taba
+cosign verify ghcr.io/rafaelpontani/taba:0.1.0 \
+  --certificate-identity-regexp '^https://github.com/rafaelpontani/taba/.github/workflows/release.yml@refs/heads/(main|release)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# arquivos de uma Release
+gh release download v0.1.0 -R rafaelpontani/taba && sha256sum -c SHA256SUMS
+gh attestation verify taba-0.1.0-x86_64-unknown-linux-musl -R rafaelpontani/taba
+
+# o commit dentro do binário
+docker run --rm rafaelpontani/taba:0.1.0 --version     # taba 0.1.0 (commit <sha>)
+```
+
+Versões: a `main` publica as finais (`v0.1.0`) e a `release` publica as candidatas (`v0.1.0-rc.N`). As tags flutuantes (`v0.1`, `v0`, `latest`, `0.1-rc`, `rc`...) só andam para a maior versão da sua linha. O fluxo completo está em [CI/CD e releases](doc/pt-BR/27-ci-cd.md); para relatar uma vulnerabilidade, veja o [SECURITY.md](SECURITY.md).
 
 ## Documentação
 

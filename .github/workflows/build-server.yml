@@ -1,13 +1,15 @@
-# Build and tests of the server (taba-node), for x86_64 and arm64 on native runners. Called by ci.yml (pull
-# request) and by release.yml, which passes the tag version. Uploads the static binary as the artifact
-# `taba-node-<arch>`, used by the Docker image and the GitHub Release.
+# Build and tests of the server (taba-node), for x86_64 and arm64 on native runners. Called by ci.yml (branches and
+# pull requests) and by release.yml, which passes the version computed by semantic-release. Uploads the static
+# binary as the artifact `taba-node-<arch>`, used by the Docker image and the GitHub Release.
+#
+# The actions are pinned by commit SHA (the comment says the version); Dependabot proposes the updates.
 name: Server build
 
 on:
   workflow_call:
     inputs:
       version:
-        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty on pull requests.
+        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty when there is no release.
         type: string
         default: ""
 
@@ -16,6 +18,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # `taba --version` shows the commit the binary was built from.
+  TABA_GIT_SHA: ${{ github.sha }}
 
 jobs:
   server:
@@ -32,15 +36,20 @@ jobs:
             triple: aarch64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Release version
         if: inputs.version != ''
-        run: .github/scripts/set-version.sh "${{ inputs.version }}"
-      - uses: dtolnay/rust-toolchain@stable
+        env:
+          VERSION: ${{ inputs.version }}
+        run: .github/scripts/set-version.sh "$VERSION"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
           targets: ${{ matrix.triple }}-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # Formatting and lint only on x86_64: the code is the same, no need to repeat.
       - run: cargo fmt --all --check
         if: matrix.arch == 'amd64'
@@ -52,7 +61,7 @@ jobs:
         with:
           target: ${{ matrix.triple }}-unknown-linux-musl
           arch: ${{ matrix.arch }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: taba-node-${{ matrix.arch }}
           path: dist/taba-${{ matrix.arch }}

@@ -10,6 +10,9 @@
       }
     ],
     ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
-    ["@semantic-release/github", { "successComment": false, "failComment": false, "releasedLabels": false }]
+    [
+      "@semantic-release/github",
+      { "draftRelease": true, "successComment": false, "failComment": false, "releasedLabels": false }
+    ]
   ]
 }

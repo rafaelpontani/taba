@@ -1,0 +1,54 @@
+# Keeps the pinned versions current, so nobody edits a SHA or a digest by hand. The PRs go to `release`, the branch
+# where changes enter (doc/pt-BR/27-ci-cd.md).
+#
+# - Actions: GitHub does not accept a variable in `uses:`, so each SHA is written where it is used; the repeated ones
+#   live in the local actions (.github/actions/*). One grouped PR updates every occurrence at once.
+# - Base image: the alpine digest lives only in Dockerfile.ci. Its update comes as `fix`, which produces a new
+#   version (rc on `release`): the published image gets the base's security fixes without waiting for a feature.
+# - Dependencies: `chore`, which produces no version by itself.
+# - cooldown: a version is only proposed 7 days after it is published (a compromised release is usually pulled
+#   before that).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    target-branch: release
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: ci }
+    groups:
+      actions: { patterns: ["*"] }
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: release
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: fix, include: scope }
+    groups:
+      base-image: { patterns: ["*"] }
+
+  - package-ecosystem: cargo
+    directory: /
+    target-branch: release
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: chore }
+    groups:
+      server: { patterns: ["*"], update-types: [minor, patch] }
+
+  - package-ecosystem: cargo
+    directory: /connectors/rust
+    target-branch: release
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: chore }
+    groups:
+      connector-rust: { patterns: ["*"], update-types: [minor, patch] }
+
+  - package-ecosystem: nuget
+    directory: /connectors/csharp
+    target-branch: release
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    commit-message: { prefix: chore }

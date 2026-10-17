@@ -12,12 +12,17 @@ mod topic;
 mod tui;
 
 /// The program's version and that of the API contract it implements.
+/// The commit comes from `TABA_GIT_SHA`, injected by the pipeline build; a local build has none.
 pub fn version_text() -> String {
-    format!(
+    let text = format!(
         "taba-cli {} (API contract {})",
         env!("CARGO_PKG_VERSION"),
         taba_client::CONTRACT_VERSION
-    )
+    );
+    match option_env!("TABA_GIT_SHA") {
+        Some(sha) => format!("{text} commit {sha}"),
+        None => text,
+    }
 }
 
 pub fn table() -> Vec<Command> {

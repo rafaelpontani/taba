@@ -26,7 +26,11 @@ async fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if args.version {
-        println!("taba {}", env!("CARGO_PKG_VERSION"));
+        // TABA_GIT_SHA is injected by the pipeline build; a local build has no commit.
+        match option_env!("TABA_GIT_SHA") {
+            Some(sha) => println!("taba {} (commit {sha})", env!("CARGO_PKG_VERSION")),
+            None => println!("taba {}", env!("CARGO_PKG_VERSION")),
+        }
         return ExitCode::SUCCESS;
     }
 

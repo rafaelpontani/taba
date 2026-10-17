@@ -8,6 +8,8 @@ members = ["client", "cli"]
 edition = "2021"
 license = "AGPL-3.0-only"
 repository = "https://github.com/rafaelpontani/taba"
+homepage = "https://github.com/rafaelpontani/taba"
+keywords = ["taba", "queue", "messaging", "client"]
 
 [profile.dev]
 # Line tables only: with full symbols each test binary took hundreds of MB.

@@ -5,6 +5,12 @@ version = "0.1.0"
 edition = "2021"
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+readme = "README.md"
+categories = ["command-line-utilities", "network-programming"]
+# Local build outputs and image scripts do not go into the published crate.
+exclude = ["dist/", "scripts/", "Dockerfile", "Dockerfile.dockerignore"]
 
 [lib]
 name = "taba_cli"
@@ -15,7 +21,7 @@ name = "taba-cli"
 path = "src/main.rs"
 
 [dependencies]
-taba-client = { path = "../client" }
+taba-client = { path = "../client", version = "=0.1.0" }
 ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "underline-color"] }
 rust-i18n = { version = "4.2", optional = true }
 sys-locale = { version = "0.3", optional = true }

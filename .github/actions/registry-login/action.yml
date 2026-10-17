@@ -1,0 +1,29 @@
+# Logs in to the image registries of the release: Docker Hub (when a user is given) and GHCR (always). One place for
+# the login action's pinned version, used by the images, chart and floating-tags jobs of release.yml.
+name: Registry login
+description: Logs in to Docker Hub (optional) and GHCR.
+
+inputs:
+  dockerhub-username:
+    description: Docker Hub user; empty skips Docker Hub.
+    default: ""
+  dockerhub-token:
+    description: Docker Hub access token.
+    default: ""
+  github-token:
+    description: Token with packages write for GHCR (the job's GITHUB_TOKEN).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.dockerhub-username != ''
+      uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      with:
+        username: ${{ inputs.dockerhub-username }}
+        password: ${{ inputs.dockerhub-token }}
+    - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github-token }}

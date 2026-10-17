@@ -3,7 +3,7 @@ title: Helm chart — configuration
 summary: How to install Taba on Kubernetes with the Helm chart — what it creates, every value (node, secrets, Ingress, backup to built-in (SeaweedFS) or external S3, Prometheus or Telegraf collector, OTLP, KEDA autoscaling), how each one becomes node configuration and what the chart refuses.
 type: reference
 status: stable
-verified-on: 2026-10-16 @ 4faa639
+verified-on: 2026-10-17 @ 4dc8c9f
 sources: [deploy/helm/taba/Chart.yaml, deploy/helm/taba/values.yaml, deploy/helm/taba/values.schema.json, deploy/helm/taba/templates, deploy/helm/tests, crates/taba-node/src/config/params/mod.rs, docker-compose.yml]
 ---
 
@@ -18,6 +18,8 @@ helm install taba deploy/helm/taba -n taba --create-namespace
 kubectl -n taba get pods -w                      # nodes become "ready" after joining the cluster
 kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d
 ```
+
+Every Taba version publishes the chart as an OCI artifact on GHCR, signed and attested, with `version` and `appVersion` equal to the release version ([27-ci-cd.md](27-ci-cd.md)): `helm install taba oci://ghcr.io/rafaelpontani/charts/taba --version 0.1.0 -n taba --create-namespace`. The candidates (`0.1.0-rc.N`) are published too, and Helm only picks them with an explicit `--version` or `--devel`.
 
 Prerequisites: Kubernetes 1.27+, a default `StorageClass` (one volume per node) and access to the `rafaelpontani/taba` image. KEDA, the Prometheus Operator and an Ingress controller are **optional** and only matter when the matching feature is turned on.
 
@@ -53,7 +55,7 @@ Decisions the chart makes for you (from [23-operations.md](23-operations.md)):
 
 | Value | Default | Effect |
 |---|---|---|
-| `image.repository` / `image.tag` | `rafaelpontani/taba` / chart `appVersion` (`0.1`) | All nodes must run the same version. `0.1` is the safe pointer ([27-ci-cd.md](27-ci-cd.md)) |
+| `image.repository` / `image.tag` | `rafaelpontani/taba` / chart `appVersion` (`0.1` in the repository; the exact version in the published chart) | All nodes must run the same version. The published chart points to the image of the **same** version; installing from the repository uses the safe pointer `0.1` ([27-ci-cd.md](27-ci-cd.md)) |
 | `replicaCount` | `3` | Production: never fewer than `max(3, replication.factor)`. The chart refuses fewer, unless `allowFewReplicas=true` (tests only). Ignored with `autoscaling.enabled` |
 | `terminationGracePeriodSeconds` | `120` | See above; minimum `drain.timeout + backup.drain.timeout + 5` |
 | `ports.api` / `ports.cluster` / `ports.operations` | `8080` / `8081` / `9090` | Must differ (the node does not start with repeated ports). They become `api.port`, `cluster.port`, `operations.port` |

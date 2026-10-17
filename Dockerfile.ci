@@ -1,18 +1,25 @@
 # syntax=docker/dockerfile:1
 #
-# The node image used by the pipeline (.github/workflows). It compiles nothing: the `taba` binary already comes
-# ready in dist/taba-<arch>, built by the .github/actions/node-binary action with the runner's cache. buildx
-# (amd64 and arm64 platforms) picks the file by TARGETARCH. This way the image build takes seconds,
-# instead of recompiling Rust inside the container on every commit.
+# The images published by the pipeline (.github/workflows/release.yml), one target each:
+#   --target taba      the node   (dist/taba-<arch>,     built by the .github/actions/node-binary action)
+#   --target taba-cli  the client (dist/taba-cli-<arch>, built by build-connector-rust.yml)
+# It compiles nothing: the static binaries already come ready in dist/ and buildx (amd64 and arm64 platforms)
+# picks the file by TARGETARCH. This way the image build takes seconds, instead of recompiling Rust on every commit.
 #
-# For users who download the repository, use the root Dockerfile (`docker build -t taba .`): it
-# compiles everything by itself and produces the same image.
+# The base is pinned by digest HERE, in one place for both images. Dependabot (.github/dependabot.yml) proposes the
+# new digest when alpine:3 moves, as a `fix` commit: it produces a new version, so the published image gets the
+# base's security fixes. The packages (ca-certificates) are always the latest at build time.
+#
+# For users who download the repository, use the root Dockerfile (`docker build -t taba .`): it compiles
+# everything by itself and produces the same node image.
 
-FROM alpine:3
-ARG TARGETARCH
+FROM alpine:3@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS base
 RUN apk add --no-cache ca-certificates \
- && adduser -D -u 10001 taba \
- && mkdir -p /var/lib/taba /etc/taba/secrets \
+ && adduser -D -u 10001 taba
+
+FROM base AS taba
+ARG TARGETARCH
+RUN mkdir -p /var/lib/taba /etc/taba/secrets \
  && chown taba:taba /var/lib/taba
 COPY dist/taba-${TARGETARCH} /usr/local/bin/taba
 # Unprivileged. The node data (storage.dir) and the secrets folder (secrets.dir) are volumes.
@@ -20,3 +27,10 @@ USER taba
 VOLUME ["/var/lib/taba"]
 EXPOSE 8080 8081 9090
 ENTRYPOINT ["taba"]
+
+# Usage: `docker run --rm rafaelpontani/taba-cli --help`. No need to install taba-cli on the machine.
+FROM base AS taba-cli
+ARG TARGETARCH
+COPY dist/taba-cli-${TARGETARCH} /usr/local/bin/taba-cli
+USER taba
+ENTRYPOINT ["taba-cli"]

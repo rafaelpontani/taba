@@ -1,12 +1,16 @@
-# Build and tests of the C# connector and NuGet packages. Called by ci.yml (pull request) and by release.yml, which
-# passes the tag version. Uploads the .nupkg files as the `nuget-packages` artifact, used by the GitHub Release.
+# Build and tests of the C# connector and NuGet packages. Called by ci.yml (branches and pull requests) and by
+# release.yml, which passes the version computed by semantic-release. Uploads the .nupkg and .snupkg files as the
+# `nuget-packages` artifact, used by the GitHub Release and by the `nuget` job of release.yml.
+#
+# Each package records the commit (`<repository commit>`) and the link to the version's GitHub Release
+# (`<releaseNotes>`); the rest of the metadata is in connectors/csharp/Directory.Build.props.
 name: C# connector build
 
 on:
   workflow_call:
     inputs:
       version:
-        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty on pull requests.
+        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty when there is no release.
         type: string
         default: ""
 
@@ -18,26 +22,37 @@ jobs:
     name: C# connector (build and tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Release version
         if: inputs.version != ''
-        run: .github/scripts/set-version.sh "${{ inputs.version }}"
-      - uses: actions/setup-dotnet@v4
+        env:
+          VERSION: ${{ inputs.version }}
+        run: .github/scripts/set-version.sh "$VERSION"
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: |
             6.0.x
             8.0.x
-      # Without TABA_URL the integration tests are skipped; the real cluster lives in the `integration` job.
+      # Without TABA_URL the integration tests are skipped (connectors/csharp/scripts/integration.sh runs them).
       - run: dotnet test connectors/csharp/Taba.Client.Tests/Taba.Client.Tests.csproj --configuration Release
       - name: NuGet packages
+        env:
+          SHA: ${{ github.sha }}
+          # Without a version (no release) the link points to the list of releases.
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases${{ inputs.version != '' && format('/tag/v{0}', inputs.version) || '' }}
         run: |
           for p in connectors/csharp/Taba.Client/Taba.Client.csproj \
                    connectors/csharp/Taba.Client.Abstractions/Taba.Client.Abstractions.csproj \
                    connectors/csharp/Taba.Client.Extensions.DependencyInjection/Taba.Client.Extensions.DependencyInjection.csproj; do
-            dotnet pack "$p" --configuration Release --output nupkg
+            dotnet pack "$p" --configuration Release --output nupkg \
+              "-p:RepositoryCommit=$SHA" "-p:PackageReleaseNotes=$RELEASE_URL"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nuget-packages
-          path: nupkg/*.nupkg
+          path: |
+            nupkg/*.nupkg
+            nupkg/*.snupkg
           retention-days: 1

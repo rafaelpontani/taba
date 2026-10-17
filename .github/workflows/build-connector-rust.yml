@@ -1,13 +1,14 @@
-# Build and tests of the Rust connector (taba-cli), for x86_64 and arm64 on native runners. Called by ci.yml
-# (pull request) and by release.yml, which passes the tag version. Uploads the static binary as the artifact
-# `taba-cli-<arch>`, used by the CLI Docker image and the GitHub Release.
+# Build and tests of the Rust connector (taba-client and taba-cli), for x86_64 and arm64 on native runners. Called by
+# ci.yml (branches and pull requests) and by release.yml, which passes the version computed by semantic-release.
+# Uploads the static binary as the artifact `taba-cli-<arch>`, used by the CLI Docker image and the GitHub Release.
+# Publishing the crates on crates.io is the `crates` job of release.yml.
 name: Rust connector build
 
 on:
   workflow_call:
     inputs:
       version:
-        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty on pull requests.
+        description: Release version (X.Y.Z or X.Y.Z-rc.N). Empty when there is no release.
         type: string
         default: ""
 
@@ -16,7 +17,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-
+  # `taba-cli --version` shows the commit the binary was built from.
+  TABA_GIT_SHA: ${{ github.sha }}
 
 jobs:
   connector-rust:
@@ -32,37 +34,49 @@ jobs:
             runner: ubuntu-24.04-arm
             triple: aarch64
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: connectors/rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Release version
         if: inputs.version != ''
-        run: .github/scripts/set-version.sh "${{ inputs.version }}"
-      - uses: dtolnay/rust-toolchain@stable
+        env:
+          VERSION: ${{ inputs.version }}
+        working-directory: .
+        run: .github/scripts/set-version.sh "$VERSION"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
           targets: ${{ matrix.triple }}-unknown-linux-musl
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: connectors/rust
       - run: cargo fmt --all --check
         if: matrix.arch == 'amd64'
-        working-directory: connectors/rust
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
         if: matrix.arch == 'amd64'
-        working-directory: connectors/rust
       - run: cargo test --workspace --locked
-        working-directory: connectors/rust
+      # What crates.io would receive: a package that compiles alone (without the path dependencies).
+      - run: cargo package --workspace --locked --allow-dirty
+        if: matrix.arch == 'amd64'
       # Static (musl) binary, for the Docker image and the release.
       - run: cargo build --release --locked -p taba-cli --target ${{ matrix.triple }}-unknown-linux-musl
         env:
           RUSTFLAGS: "-C target-feature=+crt-static"
-        working-directory: connectors/rust
       - name: Binary in dist
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          ARCH: ${{ matrix.arch }}
+        working-directory: .
         run: |
           mkdir -p dist
-          cp "connectors/rust/target/${{ matrix.triple }}-unknown-linux-musl/release/taba-cli" "dist/taba-cli-${{ matrix.arch }}"
-      - uses: actions/upload-artifact@v4
+          cp "connectors/rust/target/$TRIPLE-unknown-linux-musl/release/taba-cli" "dist/taba-cli-$ARCH"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: taba-cli-${{ matrix.arch }}
           path: dist/taba-cli-${{ matrix.arch }}

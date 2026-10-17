@@ -1,106 +1,101 @@
-# Runs when semantic-release (semantic.yml) creates the tag of a version: vX.Y.Z (final, from main) or
-# vX.Y.Z-rc.N (candidate, from release). semantic.yml triggers it with the ref on the tag; a tag push also works.
-# The builds (server, Rust connector and C# connector) compile and test with the tag version and upload the
-# binaries as artifacts. If the tests pass, in parallel: the Docker job downloads the node binary and
-# publishes the image to Docker Hub, and the release job attaches the binaries and packages to the GitHub
-# Release. Afterwards the floating tags move.
+# Release: on every push to main (final versions, vX.Y.Z) and release (candidates, vX.Y.Z-rc.N).
 #
-# The floating tags (v0.1, v0, v0.1-rc, v0-rc) MUST NOT trigger this workflow: the filters below only
-# accept full tags, the `version` job checks again, and floating-tags pushes them with the GITHUB_TOKEN,
-# which does not trigger workflows.
+# Principle: NOTHING public before everything is green, and everything public points to the same commit.
+#   1. plan            semantic-release (dry-run) computes the version from the commits; no version = only the builds run
+#   2. builds          server, Rust and C# connectors: build and tests with that version (the same reusable workflows as ci.yml)
+#   3. chart / images  the Helm chart is packaged; the images are pushed BY DIGEST only (no tag), with SLSA provenance,
+#                      SBOM and cosign signature
+#   4. tag             only now semantic-release creates the git tag (on github.sha) and the GitHub Release as a DRAFT
+#   5. assets          binaries, packages, chart and SHA256SUMS (all attested) go to the draft
+#   6. publish         crates.io and nuget.org (Trusted Publishing, OIDC) and the chart on GHCR (OCI, signed)
+#   7. finalize        the Release leaves draft (immutable from then on)
+#   8. floating        the Docker tags (exact and floating) point to the digest, without rebuilding; the floating git tags move
+#   9. verify          checks that every git tag, Docker tag, label, signature and attestation points to github.sha
 #
-# Docker Hub image and floating git tags (each one only advances if the version is the highest in its scope):
+# Docker tags and floating git tags (each floating one only advances if the version is the highest in its scope):
 #   0.1.0-rc.2 -> 0.1.0-rc.2, 0.1-rc, 0-rc, rc          (git: v0.1-rc, v0-rc)
 #   0.1.0      -> 0.1.0, 0.1, 0, latest                 (git: v0.1, v0)
 #
-# semantic-release configuration: .releaserc.json. Candidate and promotion flow: doc/pt-BR/27-ci-cd.md.
+# workflow_dispatch (on main or release) with dry_run = true runs up to the image build (without pushing) and stops
+# before creating the tag. semantic-release configuration: .releaserc.json. Flow and operation: doc/pt-BR/27-ci-cd.md.
 name: Release
 
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
-  # semantic.yml triggers it with `--ref vX.Y.Z`: a tag created with the GITHUB_TOKEN does not raise the push event.
-  # Triggered on a branch or a floating tag, the `version` job does not pass and nothing runs.
+    branches: [main, release]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and test everything, but push nothing and create no tag.
+        type: boolean
+        default: true
 
+# One release at a time per branch, in order. A new push waits; it is never cancelled midway.
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  # The version comes from the tag that triggered the workflow. Build and tests use that version.
-  version:
-    name: Version (tag)
-    runs-on: ubuntu-latest
-    outputs:
-      published: ${{ steps.tag.outputs.published }}
-      version: ${{ steps.tag.outputs.version }}
-    steps:
-      # Second barrier against floating or non-standard tags: only proceeds with vX.Y.Z[-rc.N].
-      - id: tag
-        shell: bash
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          if [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-            echo "version=" >> "$GITHUB_OUTPUT"
-            echo "tag ignored: $TAG"
-          fi
-
-  # The three builds run in parallel, each with the tag version. What the images and the release use
-  # (server and Rust connector) does not wait for the C# connector, and vice versa.
-  server:
-    name: Server
-    needs: version
-    if: needs.version.outputs.published == 'true'
-    uses: ./.github/workflows/build-server.yml
-    with:
-      version: ${{ needs.version.outputs.version }}
-
-  connector-rust:
-    name: Rust connector
-    needs: version
-    if: needs.version.outputs.published == 'true'
-    uses: ./.github/workflows/build-connector-rust.yml
-    with:
-      version: ${{ needs.version.outputs.version }}
-
-  connector-csharp:
-    name: C# connector
-    needs: version
-    if: needs.version.outputs.published == 'true'
-    uses: ./.github/workflows/build-connector-csharp.yml
-    with:
-      version: ${{ needs.version.outputs.version }}
-
   plan:
-    name: Tag plan
-    needs: version
-    if: needs.version.outputs.published == 'true'
+    name: Plan (version and tags)
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
+    # The semantic-release dry-run does a `git push --dry-run` to check permission: it needs write, creates nothing.
+    permissions:
+      contents: write
     outputs:
+      published: ${{ steps.plan.outputs.published }}
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      latest: ${{ steps.plan.outputs.latest }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      signed: ${{ steps.plan.outputs.signed }}
       docker_tags: ${{ steps.plan.outputs.docker_tags }}
       git_tags: ${{ steps.plan.outputs.git_tags }}
+      dockerhub: ${{ steps.plan.outputs.dockerhub }}
+      dockerhub_index: ${{ steps.plan.outputs.dockerhub_index }}
+      ghcr: ${{ steps.plan.outputs.ghcr }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - id: dry
+        uses: cycjimmy/semantic-release-action@16ca923e6ccbb50770c415a0ccd43709a8c5f7a4 # v4.2.2
+        with:
+          dry_run: true
+          semantic_version: 24
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - id: plan
         shell: bash
         env:
-          VERSION: ${{ needs.version.outputs.version }}
+          PUBLISHED: ${{ steps.dry.outputs.new_release_published }}
+          VERSION: ${{ steps.dry.outputs.new_release_version }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          # GitHub attestations need a public repository (or GitHub Enterprise Cloud), and a signature from a private
+          # repository would point to a workflow nobody can see: attestation and cosign only run when it is public.
+          SIGNED: ${{ github.event.repository.private == false }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || 'rafaelpontani' }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
+          {
+            echo "dry_run=$DRY_RUN"
+            echo "signed=$SIGNED"
+            echo "dockerhub=docker.io/${DOCKERHUB_NAMESPACE,,}"
+            echo "dockerhub_index=index.docker.io/${DOCKERHUB_NAMESPACE,,}"
+            echo "ghcr=ghcr.io/${OWNER,,}"
+          } >> "$GITHUB_OUTPUT"
+          if [[ $PUBLISHED != 'true' ]]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "## No version: the commits since the last tag have no feat, fix or perf (only the builds run)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           re='^([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$'
           if [[ ! $VERSION =~ $re ]]; then
             echo "unexpected version: $VERSION" >&2
@@ -110,13 +105,15 @@ jobs:
           minor="${BASH_REMATCH[2]}"
           rc="${BASH_REMATCH[4]}"
 
-          # The highest version, among the tags of the same family (rc or final), that matches the filter.
+          # The highest version, among the existing tags of the same family (rc or final) PLUS the one being released
+          # (its tag does not exist yet), that matches the filter.
           highest() {
-            git tag -l 'v*.*.*' | sed 's/^v//' | grep -E "$1" | sort -V | tail -n 1
+            { git tag -l 'v*.*.*' | sed 's/^v//'; echo "$VERSION"; } | grep -E "$1" | sort -V | tail -n 1
           }
 
           docker_tags=("$VERSION")
           git_tags=()
+          latest=false
           if [[ -n $rc ]]; then
             family='-rc\.[0-9]+$'
             [[ $(highest "^${major}\.${minor}\.[0-9]+${family}") == "$VERSION" ]] \
@@ -132,96 +129,259 @@ jobs:
             [[ $(highest "^${major}\.[0-9]+\.[0-9]+${family}") == "$VERSION" ]] \
               && docker_tags+=("${major}") && git_tags+=("v${major}")
             [[ $(highest "^[0-9]+\.[0-9]+\.[0-9]+${family}") == "$VERSION" ]] \
-              && docker_tags+=("latest")
+              && docker_tags+=("latest") && latest=true
           fi
 
           {
+            echo "published=true"
+            echo "version=$VERSION"
+            echo "prerelease=$([[ -n $rc ]] && echo true || echo false)"
+            echo "latest=$latest"
             echo "docker_tags=${docker_tags[*]}"
             echo "git_tags=${git_tags[*]:-}"
           } >> "$GITHUB_OUTPUT"
-          echo "docker: ${docker_tags[*]}"
-          echo "floating git: ${git_tags[*]:-none}"
+          {
+            echo "## Version: \`v$VERSION\` on commit \`$GITHUB_SHA\`$([[ $DRY_RUN == 'true' ]] && echo ' (dry run)')"
+            echo
+            echo "- Docker: \`${docker_tags[*]}\`"
+            echo "- Floating git tags: \`${git_tags[*]:-none}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  docker:
-    name: Images on Docker Hub
-    needs: [version, server, connector-rust, plan]
+  # The builds always run (even without a version): main and release are validated on every push.
+  server:
+    name: Server
+    needs: plan
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-server.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
+  connector-rust:
+    name: Rust connector
+    needs: plan
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-connector-rust.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
+  connector-csharp:
+    name: C# connector
+    needs: plan
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-connector-csharp.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
+  chart:
+    name: Helm chart (package)
+    needs: plan
+    if: needs.plan.outputs.published == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: v${{ needs.version.outputs.version }}
-      # Downloads taba-node-* and taba-cli-*: dist/taba-amd64, dist/taba-arm64, dist/taba-cli-amd64 and
-      # dist/taba-cli-arm64.
-      - uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+      # version and appVersion of Chart.yaml become the exact release version.
+      - env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: .github/scripts/set-version.sh "$VERSION"
+      - run: deploy/helm/tests/run.sh static
+      - run: helm package deploy/helm/taba --destination dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+          retention-days: 1
+
+  # Pushes the images only by digest: no tag exists until the release is finalized. Provenance (SLSA, mode=max) and
+  # SBOM go inside the image index; the GitHub attestation and the cosign signature are bound to the digest.
+  images:
+    name: Images (by digest)
+    needs: [plan, server, connector-rust]
+    if: needs.plan.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      server_digest: ${{ steps.server.outputs.digest }}
+      cli_digest: ${{ steps.cli.outputs.digest }}
+    env:
+      PUSH: ${{ needs.plan.outputs.dry_run != 'true' }}
+      SIGN: ${{ needs.plan.outputs.dry_run != 'true' && needs.plan.outputs.signed == 'true' }}
+      DOCKERHUB: ${{ needs.plan.outputs.dockerhub }}
+      GHCR: ${{ needs.plan.outputs.ghcr }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # dist/taba-amd64, dist/taba-arm64, dist/taba-cli-amd64 and dist/taba-cli-arm64.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: taba-*
           merge-multiple: true
           path: dist
       # The artifact loses its execute permission when downloaded.
       - run: chmod +x dist/taba-*
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: ./.github/actions/registry-login
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - id: tags
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
         shell: bash
         env:
-          USER_NAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKER_TAGS: ${{ needs.plan.outputs.docker_tags }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          created="$(git log -1 --format=%cI)"
           {
-            echo "server<<EOF"
-            for t in $DOCKER_TAGS; do echo "$USER_NAME/taba:$t"; done
-            echo "EOF"
-            echo "cli<<EOF"
-            for t in $DOCKER_TAGS; do echo "$USER_NAME/taba-cli:$t"; done
+            echo "labels<<EOF"
+            echo "org.opencontainers.image.source=$SOURCE"
+            echo "org.opencontainers.image.url=$SOURCE/releases/tag/v$VERSION"
+            echo "org.opencontainers.image.revision=$GITHUB_SHA"
+            echo "org.opencontainers.image.version=$VERSION"
+            echo "org.opencontainers.image.created=$created"
+            echo "org.opencontainers.image.licenses=AGPL-3.0-only"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      # One Dockerfile, one target per image: both share the same pinned base.
+      - id: server
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: Dockerfile.ci
+          target: taba
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.server }}
-      - uses: docker/build-push-action@v6
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.title=taba
+            ${{ steps.meta.outputs.labels }}
+          outputs: type=image,"name=${{ env.DOCKERHUB }}/taba,${{ env.GHCR }}/taba",push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+      - id: cli
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
-          file: Dockerfile.cli.ci
+          file: Dockerfile.ci
+          target: taba-cli
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.tags.outputs.cli }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.title=taba-cli
+            ${{ steps.meta.outputs.labels }}
+          outputs: type=image,"name=${{ env.DOCKERHUB }}/taba-cli,${{ env.GHCR }}/taba-cli",push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+      # Attestation and cosign signature of each image on each registry (Docker Hub is index.docker.io here).
+      - if: env.SIGN == 'true'
+        uses: ./.github/actions/provenance
+        with:
+          subject-name: ${{ env.GHCR }}/taba
+          subject-digest: ${{ steps.server.outputs.digest }}
+      - if: env.SIGN == 'true'
+        uses: ./.github/actions/provenance
+        with:
+          subject-name: ${{ needs.plan.outputs.dockerhub_index }}/taba
+          subject-digest: ${{ steps.server.outputs.digest }}
+      - if: env.SIGN == 'true'
+        uses: ./.github/actions/provenance
+        with:
+          subject-name: ${{ env.GHCR }}/taba-cli
+          subject-digest: ${{ steps.cli.outputs.digest }}
+      - if: env.SIGN == 'true'
+        uses: ./.github/actions/provenance
+        with:
+          subject-name: ${{ needs.plan.outputs.dockerhub_index }}/taba-cli
+          subject-digest: ${{ steps.cli.outputs.digest }}
 
-  # The binaries and packages from ci go to the version's GitHub Release, in parallel with the Docker image.
-  release-assets:
-    name: Binaries on the GitHub Release
-    needs: [version, server, connector-rust, connector-csharp, docker]
-    if: needs.version.outputs.published == 'true'
+  # Only here, with every build, test and image green, the version tag starts to exist. semantic-release tags the
+  # checked-out commit (github.sha) and creates the GitHub Release as a draft (draftRelease in .releaserc.json).
+  # If the branch moved meanwhile, semantic-release refuses (local behind remote): this run fails and the next one,
+  # already queued by the concurrency group, releases the newer commit. Nothing public was left behind: the images
+  # have no tag yet.
+  tag:
+    name: Tag and draft Release
+    needs: [plan, server, connector-rust, connector-csharp, chart, images]
+    if: needs.plan.outputs.published == 'true' && needs.plan.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: release
+        uses: cycjimmy/semantic-release-action@16ca923e6ccbb50770c415a0ccd43709a8c5f7a4 # v4.2.2
+        with:
+          semantic_version: 24
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: The tag is the planned version, on this commit
+        shell: bash
+        env:
+          PUBLISHED: ${{ steps.release.outputs.new_release_published }}
+          GOT: ${{ steps.release.outputs.new_release_version }}
+          WANT: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ $PUBLISHED != 'true' || $GOT != "$WANT" ]]; then
+            echo "semantic-release published '${GOT:-nothing}', the plan was '$WANT' (did the branch move?)" >&2
+            exit 1
+          fi
+          remote="$(git ls-remote origin "refs/tags/v$WANT^{}" "refs/tags/v$WANT" | head -n 1 | cut -f1)"
+          if [[ $remote != "$GITHUB_SHA" ]]; then
+            echo "tag v$WANT points to '$remote', expected $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+  release-assets:
+    name: Assets on the draft Release
+    needs: [plan, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Without a checkout there is no .git here: gh needs to know the repository from this variable.
       GH_REPO: ${{ github.repository }}
-      VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      # Downloads one folder per artifact: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64 and
-      # nuget-packages.
-      # Only the release artifacts: without a filter, the download also picks up the `*.dockerbuild` files that
-      # build-push-action generates, and the download fails after 5 attempts.
-      - uses: actions/download-artifact@v4
+      # One folder per artifact: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64. Only the release
+      # artifacts: without a filter, the download also picks up the `*.dockerbuild` files of build-push-action.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: taba-*
           path: assets
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: nuget-packages
           path: assets/nuget-packages
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: helm-chart
+          path: assets/helm-chart
       # Name with the version and the architecture, so it is not confused with binaries of other releases.
-      - name: Rename with the version
+      - name: Rename with the version and compute the checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -230,33 +390,320 @@ jobs:
           mv assets/taba-node-arm64/taba-arm64 "release/taba-$VERSION-aarch64-unknown-linux-musl"
           mv assets/taba-cli-amd64/taba-cli-amd64 "release/taba-cli-$VERSION-x86_64-unknown-linux-musl"
           mv assets/taba-cli-arm64/taba-cli-arm64 "release/taba-cli-$VERSION-aarch64-unknown-linux-musl"
-          cp assets/nuget-packages/*.nupkg release/
-          ls -l release
-      - name: Upload to the release
+          cp assets/nuget-packages/*.nupkg assets/nuget-packages/*.snupkg release/
+          cp assets/helm-chart/*.tgz release/
+          (cd release && sha256sum -- * > SHA256SUMS)
+          cat release/SHA256SUMS
+      # SLSA provenance of every file: `gh attestation verify <file> -R rafaelpontani/taba`.
+      - if: needs.plan.outputs.signed == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: release/SHA256SUMS
+      - name: Upload to the draft Release
+        run: gh release upload "v$VERSION" release/* --clobber
+
+  # crates.io with Trusted Publishing (OIDC: no stored token). Only when the PUBLISH_CRATES variable is 'true'.
+  # The very first publish of a crate needs a token (CARGO_REGISTRY_TOKEN, used when OIDC is not configured yet);
+  # then configure the trusted publisher on crates.io and delete the secret. Idempotent: a version already on
+  # crates.io is skipped (a re-run after a later failure).
+  crates:
+    name: crates.io
+    needs: [plan, tag]
+    if: vars.PUBLISH_CRATES == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      CARGO_TERM_COLOR: always
+      TABA_GIT_SHA: ${{ github.sha }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: .github/scripts/set-version.sh "$VERSION"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        continue-on-error: true
+      # --allow-dirty: set-version.sh changed the versions; .cargo_vcs_info.json still records the commit (sha1).
+      - name: Publish taba-client and taba-cli
         shell: bash
+        working-directory: connectors/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
-          gh release upload "v$VERSION" release/* --clobber
+          for crate in taba-client taba-cli; do
+            if curl -sSf -A "taba-release (https://github.com/$GITHUB_REPOSITORY)" \
+                 "https://crates.io/api/v1/crates/$crate/$VERSION" > /dev/null 2>&1; then
+              echo "$crate $VERSION is already on crates.io"
+              continue
+            fi
+            cargo publish -p "$crate" --locked --allow-dirty
+          done
+      - if: needs.plan.outputs.signed == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: connectors/rust/target/package/*.crate
 
-  floating-tags:
-    name: Floating tags
-    needs: [version, plan, release-assets]
-    if: needs.plan.outputs.git_tags != ''
+  # nuget.org with Trusted Publishing (NuGet/login exchanges the OIDC token for a short-lived key). Only when the
+  # NUGET_USER variable (the nuget.org account that owns the trusted publishing policy) is set. --skip-duplicate
+  # makes it idempotent; the .snupkg next to each .nupkg goes to the symbol server.
+  nuget:
+    name: nuget.org
+    needs: [plan, tag]
+    if: vars.NUGET_USER != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nuget-packages
+          path: nupkg
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 8.0.x
+      - id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "nupkg/*.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  # The chart as an OCI artifact on GHCR: helm install oci://ghcr.io/<owner>/charts/taba --version X.Y.Z.
+  chart-publish:
+    name: Helm chart on GHCR
+    needs: [plan, tag]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      GHCR: ${{ needs.plan.outputs.ghcr }}
+    steps:
+      # Only for the local actions (registry-login, provenance).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: helm-chart
+          path: dist
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+      - uses: ./.github/actions/registry-login
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - id: push
+        shell: bash
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
+          helm push "dist/taba-$VERSION.tgz" "oci://$GHCR/charts" 2>&1 | tee push.log
+          digest="$(grep -oE 'sha256:[0-9a-f]{64}' push.log | head -n 1)"
+          [[ -n $digest ]] || { echo "helm push printed no digest" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - if: needs.plan.outputs.signed == 'true'
+        uses: ./.github/actions/provenance
+        with:
+          subject-name: ${{ env.GHCR }}/charts/taba
+          subject-digest: ${{ steps.push.outputs.digest }}
+
+  # The Release leaves draft only when everything was published. With Immutable Releases enabled in the repository,
+  # from here on neither the tag nor the assets can change.
+  finalize:
+    name: Publish the Release
+    needs: [plan, tag, release-assets, crates, nuget, chart-publish]
+    if: >-
+      always() && needs.tag.result == 'success' && needs.release-assets.result == 'success'
+      && needs.chart-publish.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.crates.result)
+      && contains(fromJSON('["success","skipped"]'), needs.nuget.result)
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      LATEST: ${{ needs.plan.outputs.latest }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: v${{ needs.version.outputs.version }}
       - shell: bash
+        run: |
+          set -euo pipefail
+          # A candidate is a pre-release; a final is "Latest" only if it is the highest final (a 0.1.x hotfix after 0.2.0 is not).
+          gh release edit "v$VERSION" --draft=false --prerelease="$PRERELEASE" --latest="$LATEST"
+
+  # The Docker tags (exact and floating) are created now, pointing to the digest pushed by `images`: no rebuild, so
+  # every tag is the same image, with the same provenance and signature. The floating git tags move to github.sha
+  # with the GITHUB_TOKEN, which does not trigger workflows.
+  floating:
+    name: Docker tags and floating git tags
+    needs: [plan, images, finalize]
+    if: always() && needs.finalize.result == 'success'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+    env:
+      DOCKERHUB: ${{ needs.plan.outputs.dockerhub }}
+      GHCR: ${{ needs.plan.outputs.ghcr }}
+      DOCKER_TAGS: ${{ needs.plan.outputs.docker_tags }}
+      GIT_TAGS: ${{ needs.plan.outputs.git_tags }}
+      SERVER_DIGEST: ${{ needs.images.outputs.server_digest }}
+      CLI_DIGEST: ${{ needs.images.outputs.cli_digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: ./.github/actions/registry-login
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Docker tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          for repo in "$DOCKERHUB" "$GHCR"; do
+            for image in taba taba-cli; do
+              digest="$SERVER_DIGEST"
+              [[ $image == taba-cli ]] && digest="$CLI_DIGEST"
+              args=()
+              for t in $DOCKER_TAGS; do args+=(--tag "$repo/$image:$t"); done
+              docker buildx imagetools create "${args[@]}" "$repo/$image@$digest"
+            done
+          done
+      - name: Floating git tags
+        if: env.GIT_TAGS != ''
+        shell: bash
         env:
-          GIT_TAGS: ${{ needs.plan.outputs.git_tags }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           for t in $GIT_TAGS; do
-            git tag -f "$t" HEAD
+            git tag -f "$t" "$GITHUB_SHA"
             git push -f origin "refs/tags/$t"
           done
+
+  # The proof, from the outside, as anyone would check it: every git tag points to github.sha; every Docker tag on
+  # both registries is the same digest, with the revision label = github.sha; the signatures and attestations
+  # verify; the Release checksums match. Fails if anything is out of line.
+  verify:
+    name: Verify alignment
+    needs: [plan, images, chart-publish, floating]
+    if: always() && needs.floating.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      DOCKERHUB: ${{ needs.plan.outputs.dockerhub }}
+      GHCR: ${{ needs.plan.outputs.ghcr }}
+      DOCKER_TAGS: ${{ needs.plan.outputs.docker_tags }}
+      GIT_TAGS: ${{ needs.plan.outputs.git_tags }}
+      SERVER_DIGEST: ${{ needs.images.outputs.server_digest }}
+      CLI_DIGEST: ${{ needs.images.outputs.cli_digest }}
+      CHART_DIGEST: ${{ needs.chart-publish.outputs.digest }}
+      SIGNED: ${{ needs.plan.outputs.signed }}
+    steps:
+      - if: env.SIGNED == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          # check "<description>" <command...>: one line in the summary; a failure marks the job but does not stop it.
+          check() {
+            local what="$1"; shift
+            if "$@" > /dev/null 2>&1; then
+              echo "| ✅ | $what |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| ❌ | $what |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$what"
+              fail=1
+            fi
+          }
+          identity="^https://github.com/${GH_REPO}/.github/workflows/release.yml@refs/heads/(main|release)$"
+          issuer="https://token.actions.githubusercontent.com"
+          {
+            echo "## Release v$VERSION — commit \`$GITHUB_SHA\`"
+            echo
+            echo "| | Check |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Git tags: the peeled commit (annotated tag) or the tag itself (lightweight).
+          for t in "v$VERSION" $GIT_TAGS; do
+            sha="$(git ls-remote "https://github.com/$GH_REPO" "refs/tags/$t^{}" "refs/tags/$t" | head -n 1 | cut -f1)"
+            check "git \`$t\` → \`${sha:-missing}\`" test "$sha" = "$GITHUB_SHA"
+          done
+
+          # Docker: every tag on both registries = the digest; label, signature and attestation of the digest.
+          for repo in "$DOCKERHUB" "$GHCR"; do
+            for image in taba taba-cli; do
+              digest="$SERVER_DIGEST"
+              if [[ $image == taba-cli ]]; then digest="$CLI_DIGEST"; fi
+              for t in $DOCKER_TAGS; do
+                got="$(docker buildx imagetools inspect "$repo/$image:$t" --format '{{json .Manifest}}' | jq -r .digest || true)"
+                check "\`$repo/$image:$t\` = \`${got:-missing}\`" test "$got" = "$digest"
+              done
+              revision="$(docker buildx imagetools inspect "$repo/$image@$digest" --format '{{json .Image}}' \
+                | jq -r '[.[]] | map(.config.Labels["org.opencontainers.image.revision"]) | unique | join(",")' || true)"
+              check "\`$repo/$image\` revision label = \`${revision:-missing}\`" test "$revision" = "$GITHUB_SHA"
+              if [[ $SIGNED == true ]]; then
+                check "cosign \`$repo/$image@$digest\`" cosign verify "$repo/$image@$digest" \
+                  --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer"
+                check "attestation \`$repo/$image@$digest\`" gh attestation verify "oci://$repo/$image@$digest" --repo "$GH_REPO"
+              fi
+            done
+          done
+
+          # Chart.
+          if [[ $SIGNED == true ]]; then
+            check "cosign chart \`$GHCR/charts/taba@$CHART_DIGEST\`" cosign verify "$GHCR/charts/taba@$CHART_DIGEST" \
+              --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer"
+          else
+            echo "| ⚪ | private repository: no attestation or cosign signature to check |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Release: published (not a draft), checksums and the attestation of each file.
+          check "Release \`v$VERSION\` published" test "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" = false
+          check "download of the Release assets" gh release download "v$VERSION" --dir rel
+          check "SHA256SUMS" bash -c 'cd rel && sha256sum -c SHA256SUMS'
+          for f in rel/*; do
+            if [[ $SIGNED != true || $(basename "$f") == SHA256SUMS ]]; then continue; fi
+            check "attestation \`$(basename "$f")\`" gh attestation verify "$f" --repo "$GH_REPO"
+          done
+          exit "$fail"

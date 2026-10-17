@@ -1,10 +1,10 @@
 ---
 título: CI/CD e releases
-resumo: Como o repositório é validado e publicado — os workflows do GitHub Actions, as imagens Docker, o versionamento automático (semantic-release, candidatas e finais), as tags flutuantes e o que ainda não está automatizado.
+resumo: Como o repositório é validado e publicado — os workflows do GitHub Actions, a ordem do release (nada público antes de tudo verde), o versionamento automático (semantic-release, candidatas e finais), as tags flutuantes por digest, a publicação em Docker Hub, GHCR, crates.io e nuget.org, e como qualquer pessoa verifica que um artefato saiu deste pipeline.
 tipo: referência
-status: parcial
-verificado-em: 2026-10-13 @ 71183b9
-fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .releaserc.json, Dockerfile, Dockerfile.ci, Dockerfile.cli.ci, docker/validate.sh]
+status: estável
+verificado-em: 2026-10-17 @ 4dc8c9f
+fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
 ---
 
 # CI/CD e releases
@@ -15,50 +15,81 @@ fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ver
 
 | Fluxo | Quando | O que faz |
 |---|---|---|
-| **CI** (`ci.yml`) | A cada **pull request** | Chama os três builds (servidor, conector Rust, conector C#), **sem versão** |
-| **Semantic** (`semantic.yml`) | A cada **push** em `release` ou `main` | Roda o semantic-release: calcula a versão pelos commits e cria a tag e a GitHub Release (nada, se o commit não gera versão) |
-| **Release** (`release.yml`) | Quando uma **tag completa** (`vX.Y.Z` ou `vX.Y.Z-rc.N`) é criada | Compila e testa com a versão da tag, publica as imagens Docker e anexa binários e pacotes à Release. **Tags flutuantes não disparam** |
+| **CI** (`ci.yml`) | **Push** em qualquer branch exceto `main`/`release`, e **pull request** para elas | Os três builds (servidor, conector Rust, conector C#) **sem versão**, o teste estático do chart Helm e o lint dos workflows. **Não publica nada** |
+| **Release** (`release.yml`) | **Push** em `main` (finais) ou `release` (candidatas) | Os mesmos builds; se o semantic-release encontra versão, publica tudo **na ordem abaixo**, com a tag criada só depois de tudo verde |
+| **Scorecard** (`scorecard.yml`) | Push na `main`, semanal e a cada mudança de proteção | A nota pública do OpenSSF Scorecard (práticas de segurança do repositório) |
 
 Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo CI **e** pelo release, com a mesma lógica.
 
 ![Do pull request ao release](../diagrams/img/pt-BR/ci-cd.svg)
 
+## Fluxo de branches e tags
+
+```
+feature/*  ── push/PR ──▶ ci.yml: build + testes (nada é publicado, nenhuma tag)
+    │
+    └──PR──▶ release ── release.yml ──▶ tag fixa  v0.1.0-rc.28        (imutável, nunca move)
+                │                         git flutuante: v0.1-rc, v0-rc  (movem p/ o novo commit)
+                │                         docker:  0.1.0-rc.28 + 0.1-rc, 0-rc, rc  (mesmo digest)
+                │
+                └──PR──▶ main ── release.yml ──▶ tag fixa  v0.1.0
+                           │                       git flutuante: v0.1, v0
+                           │                       docker:  0.1.0 + 0.1, 0, latest  (mesmo digest)
+                           └──back-merge──▶ release
+```
+
+1. O desenvolvimento entra na `release` por PR: cada commit `feat`/`fix`/`perf` gera a próxima candidata, com imagem.
+2. Aprovada, a `release` é promovida à `main` por PR `release → main`, que gera a final.
+3. A `main` é mesclada de volta na `release` para não divergir; o ciclo seguinte recomeça lá.
+
 ## Os workflows (`.github/workflows/`)
 
 | Arquivo | Faz |
 |---|---|
-| `ci.yml` | `pull_request`: chama `build-server`, `build-connector-rust` e `build-connector-csharp`. `concurrency` cancela execuções antigas do mesmo PR |
-| `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64** (o código é o mesmo), `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
-| `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo build --release --locked -p taba-cli` (musl, `musl-tools`); artefato `taba-cli-<arch>` |
-| `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** (`Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection`) como o artefato `nuget-packages` |
-| `semantic.yml` | `push` em `main`/`release`: prévia da versão (dry-run), cria a tag (semantic-release) e dispara o `release.yml` nela. Só usa o `GITHUB_TOKEN` |
-| `release.yml` | O fluxo de release (abaixo), disparado pela tag |
+| `ci.yml` | Chama `build-server`, `build-connector-rust` e `build-connector-csharp`; job `helm` (`deploy/helm/tests/run.sh static`); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`). `concurrency` cancela execuções antigas da mesma ref |
+| `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64**, `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
+| `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (o que o crates.io receberia), `cargo build --release -p taba-cli` (musl); artefato `taba-cli-<arch>` |
+| `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** com o commit e o link da Release; artefato `nuget-packages` (`.nupkg` e `.snupkg`) |
+| `release.yml` | O release (abaixo) |
+| `scorecard.yml` | `ossf/scorecard-action`; o resultado vai para a aba Security e para o badge do README |
 
-O parâmetro de entrada `version` dos builds é **vazio em pull request**; no release recebe a versão da tag e o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**.
+A entrada `version` dos builds é **vazia** quando não há release; com versão, o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**. Todo build exporta `TABA_GIT_SHA`: `taba --version` e `taba-cli --version` mostram o commit.
 
-## O release (`semantic.yml` e `release.yml`)
+## O release (`release.yml`)
 
-0. **`semantic.yml`**: a cada push, o job `preview` roda o semantic-release em **dry-run** e mostra no resumo da execução a versão que sairia (sem criar nada); o job `semantic` roda em seguida, **automaticamente**, se houver versão (a aprovação é a do MR que leva o commit à branch). O **semantic-release** lê os commits desde a última tag e cria a **tag** (`vX.Y.Z`) e a **GitHub Release**. Sem commit relevante, nada é criado e o `release.yml` não roda. Tudo usa o `GITHUB_TOKEN` (sem PAT): como a tag criada com ele não gera evento de push, o próprio `semantic.yml` dispara o `release.yml` por `workflow_dispatch` com a ref na tag (`gh workflow run release.yml --ref vX.Y.Z`; o push de tag também o dispara). Os filtros de tag (`v[0-9]+.[0-9]+.[0-9]+` e `…-rc.[0-9]+`) deixam de fora as tags flutuantes, e o job `version` confere o formato de novo.
-1. **`version`**: extrai a versão do nome da tag.
-2. **`server`, `connector-rust`, `connector-csharp`** (em paralelo): compilam e **testam com a versão da tag**.
-3. **`plan`**: calcula as tags Docker e as tags flutuantes do git (abaixo).
-4. **`docker`** (Docker Hub): baixa os binários `taba-node-*` e `taba-cli-*` e monta **duas imagens multi-arquitetura** (`linux/amd64`, `linux/arm64`), **sem compilar nada**: `rafaelpontani/taba` (`Dockerfile.ci`) e `rafaelpontani/taba-cli` (`Dockerfile.cli.ci`, `ENTRYPOINT taba-cli`).
-5. **`release-assets`**: anexa à GitHub Release os binários (com a arquitetura no nome: `x86_64` e `aarch64`) e os pacotes NuGet.
-6. **Tags flutuantes**: move as tags `v0.1`, `v0` etc.
+Princípio: **nada público antes de tudo estar verde, e tudo o que é público aponta para o mesmo commit** (`github.sha`). `concurrency: release-<ref>` sem cancelamento: um push novo espera o anterior terminar.
 
-### Duas imagens, dois Dockerfiles
+| # | Job | O que faz |
+|---|---|---|
+| 1 | `plan` | semantic-release em **dry-run** calcula a versão. Sem versão, só os builds rodam. Calcula as tags Docker e as flutuantes do git (a versão nova entra na comparação, porque sua tag ainda não existe) |
+| 2 | `server`, `connector-rust`, `connector-csharp` | Compilam e **testam com a versão**. Rodam a cada push, mesmo sem versão |
+| 3 | `chart` | `set-version.sh` grava `version` e `appVersion` exatos no `Chart.yaml`; `run.sh static`; `helm package` |
+| 4 | `images` | Monta `taba` e `taba-cli` (os dois *targets* do `Dockerfile.ci`) para `linux/amd64` e `linux/arm64`, **sem compilar nada**, com proveniência SLSA (`mode=max`), SBOM e labels OCI (`revision` = commit). Envia **só por digest, sem tag**, para Docker Hub e GHCR; atesta (`attest-build-provenance`) e assina (cosign keyless) cada digest |
+| 5 | `tag` | Só agora o semantic-release cria a **tag** em `github.sha` e a **GitHub Release como rascunho**. Falha se a versão não é a do plano ou se a tag não aponta para o commit |
+| 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart e o `SHA256SUMS`, todos atestados, no rascunho |
+| 7 | `crates`, `nuget`, `chart-publish` | crates.io e nuget.org por **Trusted Publishing** (OIDC); o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
+| 8 | `finalize` | A Release sai do rascunho: `--prerelease` nas candidatas, `--latest` só na maior final |
+| 9 | `floating` | Cria as tags Docker (exata e flutuantes) com `docker buildx imagetools create` **apontando para o digest** (sem reconstruir) e move as tags flutuantes do git |
+| 10 | `verify` | Confere de fora: cada tag git aponta para o commit; cada tag Docker, nos dois registros, é o mesmo digest, com o label `revision` certo; `cosign verify` e `gh attestation verify` passam; o `SHA256SUMS` da Release confere |
+
+Se a branch andar entre o `plan` e o `tag`, o semantic-release recusa ("local branch behind remote"), o job `tag` falha e a execução seguinte, já na fila, publica o commit novo. Nada público fica para trás: as imagens ainda não têm tag.
+
+`workflow_dispatch` (na `main` ou na `release`) com `dry_run` (padrão `true`) roda até o build das imagens **sem enviar** e para antes do `tag`: é o ensaio de um release.
+
+### Duas imagens, um Dockerfile de CI
 
 | Arquivo | Para quê |
 |---|---|
 | `Dockerfile` (raiz) | **Compila tudo dentro do contêiner** (`rust:1-alpine`, build estático musl) e gera a imagem final em Alpine. É o que **qualquer pessoa usa** para `docker build -t taba .` ou `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
-| `Dockerfile.ci` | **Não compila**: copia o binário `dist/taba-${TARGETARCH}` já compilado (com o cache do runner). Build de segundos. Mesma imagem final |
-| `Dockerfile.cli.ci` | O mesmo, para o `taba-cli` |
+| `Dockerfile.ci` | **Não compila**: um *target* por imagem (`taba` copia `dist/taba-${TARGETARCH}`, `taba-cli` copia `dist/taba-cli-${TARGETARCH}`), binários já compilados com o cache do runner. Os dois partem do mesmo estágio `base`, com `alpine:3` **fixado por digest** num lugar só |
+
+**Mantendo as versões em dia sem editar SHA à mão:** o GitHub não aceita variável no `uses:`, então cada action fica fixada por SHA onde é usada. As repetidas (login nos registros, atestação e assinatura) vivem nas actions locais `.github/actions/registry-login` e `.github/actions/provenance`, e o Dependabot atualiza todas as ocorrências num PR agrupado. O digest da base só existe no `Dockerfile.ci`; a atualização dele chega como `fix` e gera uma versão nova (`rc` na `release`), então a imagem publicada recebe as correções de segurança da base sem esperar uma feature. Os pacotes do `apk` são sempre os mais recentes no momento do build. O Dependabot espera 7 dias (`cooldown`) antes de propor uma versão recém-publicada.
 
 A imagem final: **Alpine**, só com o binário e os certificados de CA, **usuário sem privilégios** (`taba`, uid 10001), `VOLUME /var/lib/taba`, `EXPOSE 8080 8081 9090`, `ENTRYPOINT ["taba"]`.
 
 ## Versionamento (semantic-release)
 
-Configurado em `.releaserc.json`: `branches: ["main", {"name": "release", "prerelease": "rc"}]`, `tagFormat: "v${version}"`, preset `conventionalcommits`, regra **`breaking → minor`** (enquanto o projeto está em `0.x`, um breaking change **não** salta para `1.0.0`).
+Configurado em `.releaserc.json`: `branches: ["main", {"name": "release", "prerelease": "rc"}]`, `tagFormat: "v${version}"`, preset `conventionalcommits`, regra **`breaking → minor`** (enquanto o projeto está em `0.x`, um breaking change **não** salta para `1.0.0`) e `draftRelease: true` (a Release nasce rascunho e só o `finalize` a publica).
 
 | Branch | Gera | Exemplo |
 |---|---|---|
@@ -71,42 +102,84 @@ Configurado em `.releaserc.json`: `branches: ["main", {"name": "release", "prere
 |---|---|
 | `feat:`, `fix:`, `perf:` | Nova versão (`rc.N` na `release`, final na `main`) |
 | `feat!:`, `BREAKING CHANGE:` | Conta como **minor** (regra `breaking → minor`) |
-| `docs:`, `chore:`, `ci:`, `refactor:`, `test:` | **Nenhuma** versão |
+| `docs:`, `chore:`, `ci:`, `refactor:`, `test:` | **Nenhuma** versão (só os builds rodam) |
 
-**Fluxo:** 1) o desenvolvimento entra na `release` (cada commit relevante gera a próxima candidata, com imagem); 2) aprovada, a `release` é promovida à `main` (de preferência por PR `release → main`), que gera a final; 3) o ciclo seguinte volta à `release`: o primeiro `fix` dá `0.1.1-rc.1`, um `feat` dá `0.2.0-rc.1`; **a `main` deve ser mesclada de volta na `release`** para não divergir; 4) um *hotfix* pode ir direto na `main`, e depois se mescla na `release`.
+**Uma versão para o repositório todo:** servidor, conectores Rust e C# e o chart andam na **mesma tag**. `set-version.sh X.Y.Z[-rc.N]` ajusta o `Cargo.toml` e o `Cargo.lock` do servidor, os dos conectores Rust (e a dependência `taba-client = "=X"` do `taba-cli`), o `<Version>` dos `.csproj` e o `version`/`appVersion` do `Chart.yaml`. No repositório os arquivos ficam em `0.1.0`.
 
-**Uma versão para o repositório todo:** servidor, conector Rust e conector C# andam na **mesma tag**. `set-version.sh X.Y.Z[-rc.N]` ajusta o `Cargo.toml` e o `Cargo.lock` do servidor, os dos conectores Rust e o `<Version>` dos `.csproj`. No repositório os arquivos ficam em `0.1.0`; rode o script à mão para sincronizar. O `taba --version` da imagem reporta a versão da tag.
-
-**Bootstrap:** o semantic-release começa em `1.0.0` sem tag anterior. Para começar em `0.1.0`, o repositório precisa de uma **tag semente estável** `v0.0.0` num commit que esteja nas duas branches. **Sair do `0.x`**: remover a regra `breaking → minor`.
+**Bootstrap:** o semantic-release começa em `1.0.0` sem tag anterior. Para começar em `0.1.0`, o repositório precisa de uma **tag semente estável** `v0.0.0` num commit que esteja nas duas branches (`git merge-base main release`). **Sair do `0.x`**: remover a regra `breaking → minor`.
 
 ### Tags Docker e tags flutuantes
 
-Cada tag flutuante **só avança** se a versão publicada é a maior do seu escopo e da sua família (candidata ou final):
+Só a tag **fixa** (`vX.Y.Z`, `vX.Y.Z-rc.N`) é imutável. As flutuantes são ponteiros e cada uma **só avança** se a versão publicada é a maior do seu escopo e da sua família (candidata ou final):
 
 | Versão publicada | Tags Docker | Tags git flutuantes |
 |---|---|---|
 | `0.1.0-rc.2` | `0.1.0-rc.2`, `0.1-rc`, `0-rc`, `rc` | `v0.1-rc`, `v0-rc` |
 | `0.1.0` | `0.1.0`, `0.1`, `0`, `latest` | `v0.1`, `v0` |
 
-Em `0.x` o semver permite quebra a cada minor: **`0.1` e `v0.1` são os ponteiros seguros**; `0` e `v0` podem pular para um `0.2` incompatível.
+- Um hotfix `0.1.5` publicado depois de `0.2.0` move `0.1`/`v0.1`, mas **não** `0`, `v0` nem `latest`.
+- Candidatas e finais não se misturam: uma `rc` nunca move `0.1`/`latest`; uma final nunca move `0.1-rc`.
+- Em `0.x` o semver permite quebra a cada minor: **`0.1` e `v0.1` são os ponteiros seguros**; `0` e `v0` podem pular para um `0.2` incompatível.
+- Toda tag Docker de uma versão é o **mesmo digest** (criada por `imagetools create`, não por um novo build): a proveniência e a assinatura do digest valem para todas.
 
-## Credenciais (secrets do GitHub)
+## Publicação e metadados
 
-| Destino | Secret | Estado |
-|---|---|---|
-| Docker Hub | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | ✅ usado pelo `release.yml` |
-| nuget.org | `NUGET_API_KEY` | ⬜ planejado (hoje só `dotnet pack`) |
-| crates.io | `CARGO_REGISTRY_TOKEN` | ⬜ planejado |
+| Destino | O que | Como | Liga quando |
+|---|---|---|---|
+| Docker Hub | `rafaelpontani/taba`, `rafaelpontani/taba-cli` | Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` | Sempre |
+| GHCR | `ghcr.io/rafaelpontani/taba`, `taba-cli` e `charts/taba` | `GITHUB_TOKEN` (`packages: write`) | Sempre |
+| GitHub Release | Binários, pacotes, chart, `SHA256SUMS` | `GITHUB_TOKEN` | Sempre |
+| crates.io | `taba-client`, depois `taba-cli` | Trusted Publishing (`rust-lang/crates-io-auth-action`); o primeiro publish de cada crate usa o secret `CARGO_REGISTRY_TOKEN` | Variável `PUBLISH_CRATES=true` |
+| nuget.org | `Taba.Client`, `.Abstractions`, `.Extensions.DependencyInjection` (+ `.snupkg`) | Trusted Publishing (`NuGet/login`) | Variável `NUGET_USER` (a conta dona da política) |
 
-nuget.org e crates.io **não permitem apagar versão publicada**: a publicação neles fica para o fim, atrás de uma aprovação manual.
+nuget.org e crates.io **não permitem apagar versão publicada**; os dois jobs são idempotentes (pulam a versão que já existe) e as candidatas saem como pré-release semver, que `cargo add`/`dotnet add` não escolhem sem pedir. Os jobs que publicam rodam no environment **`release`** (restrinja-o às branches `main` e `release`; a aprovação manual das finais é opcional).
+
+**Metadados dos pacotes:**
+
+- **NuGet** (`connectors/csharp/Directory.Build.props`): `RepositoryUrl`, `PackageProjectUrl`, `PackageReadmeFile`, build determinístico, SourceLink, `.snupkg`; o build passa `RepositoryCommit` (vira `<repository commit>` no `.nuspec`) e `PackageReleaseNotes` (o link da Release).
+- **Cargo** (`connectors/rust/*/Cargo.toml`): `repository`, `homepage`, `readme`, `keywords`, `categories`; o `cargo publish` grava o commit em `.cargo_vcs_info.json`. Como o `set-version.sh` altera arquivos, o publish usa `--allow-dirty` e o arquivo marca `"dirty": true`; o vínculo verificável é o Trusted Publishing, que o crates.io mostra com o link da execução.
+- **Imagens**: labels `org.opencontainers.image.{source,url,revision,version,created,licenses}`.
+
+## Confiança: como verificar um artefato
+
+Qualquer pessoa confere, sem confiar na palavra do repositório, que um artefato saiu deste workflow e de qual commit:
+
+```bash
+gh attestation verify oci://ghcr.io/rafaelpontani/taba:0.1.0 -R rafaelpontani/taba
+cosign verify ghcr.io/rafaelpontani/taba:0.1.0 \
+  --certificate-identity-regexp '^https://github.com/rafaelpontani/taba/.github/workflows/release.yml@refs/heads/(main|release)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh release download v0.1.0 -R rafaelpontani/taba && sha256sum -c SHA256SUMS
+gh attestation verify taba-0.1.0-x86_64-unknown-linux-musl -R rafaelpontani/taba
+```
+
+> **Repositório privado:** as atestações do GitHub exigem repositório público (ou GitHub Enterprise Cloud), e uma assinatura de repositório privado apontaria para um workflow que ninguém vê. Enquanto o repositório é privado, o `plan` marca `signed=false`: atestações, assinaturas cosign e o Scorecard são pulados (o `verify` diz isso no resumo) e o resto do pipeline (a ordem, o digest único, as tags e os metadados dos pacotes) segue igual. Ao tornar o repositório público, eles ligam sozinhos.
+
+O que sustenta essa confiança:
+
+- **Actions fixadas por SHA** (com o comentário da versão) e atualizadas pelo Dependabot (`.github/dependabot.yml`: actions, cargo nos dois workspaces, nuget e as bases Docker; os PRs vão para a `release` com prefixo `ci`/`chore`, que não gera versão).
+- **Permissões mínimas:** `permissions: {}` no topo e cada job pede só o que usa; `checkout` com `persist-credentials: false`.
+- **Sem segredos de longa duração** para crates.io e nuget.org (OIDC); assinaturas keyless no log público do Sigstore (Rekor).
+- **Lint dos workflows** (`actionlint`, `zizmor`) em todo PR e o **OpenSSF Scorecard** público.
+- [SECURITY.md](../../SECURITY.md): como relatar uma vulnerabilidade e quais versões recebem correção.
+
+### Configuração do repositório (fora do código)
+
+| Onde | O quê |
+|---|---|
+| Rulesets de branch (`main`, `release`) | PR obrigatório, os checks do `ci.yml`, sem force-push, sem apagar |
+| Ruleset de tag (`v*.*.*`) | Só o GitHub Actions cria; ninguém atualiza nem apaga. As flutuantes (`v0`, `v0.1`, `v0.1-rc`) não casam com o padrão e podem mover |
+| Releases | **Immutable Releases** ligado: depois de publicada, nem a tag nem os assets mudam |
+| Environment `release` | Restrito às branches `main` e `release`; guarda os secrets do Docker Hub |
+| Variáveis | `PUBLISH_CRATES`, `NUGET_USER`, `DOCKERHUB_NAMESPACE` (padrão `rafaelpontani`) |
+| crates.io / nuget.org | O trusted publisher: repositório `rafaelpontani/taba`, workflow `release.yml`, environment `release` |
 
 ## O que ainda não está automatizado
 
-- ⬜ **Job de integração** (`connectors/csharp/scripts/integration.sh` e `docker/validate.sh`): **não roda no CI**. Existem e funcionam à mão; o plano era um job filtrado por caminho (é o mais caro: constrói a imagem no runner).
-- ⬜ **Publicação** de NuGet e crates (e dos outros conectores).
-- ⬜ **Registro de imagem no GHCR** (o plano previa; hoje só Docker Hub).
-- ⬜ Verificação automática da **documentação** (links, `UC-`, parâmetros, rotas): ver `doc/pt-BR/scripts/verificar.mjs` abaixo.
-- ⬜ O workflow `manual.yml` (`workflow_dispatch`) planejado.
+- ⬜ **Job de integração** (`connectors/csharp/scripts/integration.sh` e `docker/validate.sh`): **não roda no CI**. Existem e funcionam à mão; rode o `validate.sh` com a imagem `rc` antes do PR `release → main`.
+- ⬜ Os casos e2e do chart (`deploy/helm/tests/run.sh 01 05 …`, com kind) rodam à mão.
+- ⬜ Publicação dos outros conectores (só existem Rust e C#).
+- ⬜ Verificação automática da **documentação** no CI: ver `doc/pt-BR/scripts/verificar.mjs` abaixo.
 
 ## Verificação automática desta documentação
 
@@ -127,6 +200,6 @@ Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que a
 
 ## Fontes e provas
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.releaserc.json`, `Dockerfile`, `Dockerfile.ci`, `Dockerfile.cli.ci`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release,scorecard}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- Decisões: D159 a D163 ([30-decisoes.md](30-decisoes.md)).
 - Casos de uso: não há casos `UC-` de pipeline; a validação é `docker/validate.sh` ([25-testes.md](25-testes.md)).
-- Histórico: `21-pipeline-ci-cd.md` (**está parcialmente velho**: diz "Não há `.github/`" e planeja o job `integration` e o GHCR, que não existem).

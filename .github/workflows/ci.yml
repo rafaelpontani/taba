@@ -1,0 +1,70 @@
+# Validation of every branch and pull request: the three builds (server, Rust connector and C# connector, with no
+# version), the static checks of the Helm chart and the lint of the workflows themselves. Publishes nothing.
+#
+# main and release are not here: a push to them runs release.yml, which calls the same builds and only publishes
+# when semantic-release finds a version. These jobs are the required status checks of the main and release
+# rulesets (doc/pt-BR/27-ci-cd.md).
+name: CI
+
+on:
+  push:
+    branches-ignore: [main, release]
+  pull_request:
+    branches: [main, release]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server
+    uses: ./.github/workflows/build-server.yml
+
+  connector-rust:
+    name: Rust connector
+    uses: ./.github/workflows/build-connector-rust.yml
+
+  connector-csharp:
+    name: C# connector
+    uses: ./.github/workflows/build-connector-csharp.yml
+
+  # Chart lint, rendering of every ci/*.yaml, assertions on the manifests and the chart's refusals. No cluster.
+  # The e2e cases (kind) run by hand: deploy/helm/tests/run.sh 01 05 ... (doc/pt-BR/35-chart-helm-casos-de-uso.md).
+  helm:
+    name: Helm chart (static)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+      - run: deploy/helm/tests/run.sh static
+
+  # The workflows are code that publishes: actionlint (syntax and expressions) and zizmor (security: injection,
+  # excessive permissions, unpinned actions, leaked credentials).
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+          ./actionlint -color
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          advanced-security: false
+          # The low findings left are only `self-repository` (the `$/` syntax for local workflows); `./` stays.
+          min-severity: medium

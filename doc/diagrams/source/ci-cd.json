@@ -9,7 +9,7 @@
   "lanes": [
     {
       "id": "pr",
-      "label": "Pull request (ci.yml)"
+      "label": "Branch or pull request (ci.yml)"
     },
     {
       "id": "rel",
@@ -17,11 +17,11 @@
     }
   ],
   "mainPath": [
-    "version",
-    "builds",
     "plan",
-    "docker",
-    "assets",
+    "builds",
+    "images",
+    "tag",
+    "publish",
     "float"
   ],
   "nodes": [
@@ -32,7 +32,7 @@
       "type": "external",
       "label": "ci.yml",
       "sublabel": "no version",
-      "width": 104
+      "width": 100
     },
     {
       "id": "cibuilds",
@@ -40,17 +40,17 @@
       "col": 1,
       "type": "backend",
       "label": "3 builds",
-      "sublabel": "server, Rust, C#",
-      "width": 104
+      "sublabel": "chart, workflow lint",
+      "width": 100
     },
     {
-      "id": "version",
+      "id": "plan",
       "lane": "rel",
       "col": 0,
-      "type": "security",
-      "label": "version",
-      "sublabel": "semantic-release, tag",
-      "width": 104
+      "type": "backend",
+      "label": "plan",
+      "sublabel": "version (dry-run)",
+      "width": 100
     },
     {
       "id": "builds",
@@ -58,44 +58,44 @@
       "col": 1,
       "type": "backend",
       "label": "3 builds",
-      "sublabel": "parallel, with version",
-      "width": 104
+      "sublabel": "tests, chart",
+      "width": 100
     },
     {
-      "id": "plan",
+      "id": "images",
       "lane": "rel",
       "col": 2,
-      "type": "backend",
-      "label": "plan",
-      "sublabel": "computes the tags",
-      "width": 90
+      "type": "messagebus",
+      "label": "images",
+      "sublabel": "by digest, signed",
+      "width": 100
     },
     {
-      "id": "docker",
+      "id": "tag",
       "lane": "rel",
       "col": 3,
-      "type": "messagebus",
-      "label": "docker",
-      "sublabel": "publishes images",
-      "width": 104
+      "type": "security",
+      "label": "tag",
+      "sublabel": "draft Release",
+      "width": 100
     },
     {
-      "id": "assets",
+      "id": "publish",
       "lane": "rel",
       "col": 4,
       "type": "messagebus",
-      "label": "release-assets",
-      "sublabel": "binaries and packages",
-      "width": 104
+      "label": "publish",
+      "sublabel": "assets, crates, NuGet",
+      "width": 100
     },
     {
       "id": "float",
       "lane": "rel",
       "col": 5,
       "type": "database",
-      "label": "floating-tags",
-      "sublabel": "major and minor",
-      "width": 104
+      "label": "tags",
+      "sublabel": "on digest, verified",
+      "width": 100
     }
   ],
   "edges": [
@@ -108,7 +108,7 @@
     },
     {
       "id": "r1",
-      "from": "version",
+      "from": "plan",
       "to": "builds",
       "role": "main",
       "variant": "emphasis",
@@ -117,27 +117,27 @@
     {
       "id": "r2",
       "from": "builds",
-      "to": "plan",
+      "to": "images",
       "role": "main",
       "variant": "emphasis"
     },
     {
       "id": "r3",
-      "from": "plan",
-      "to": "docker",
+      "from": "images",
+      "to": "tag",
       "role": "main",
       "variant": "emphasis"
     },
     {
       "id": "r4",
-      "from": "docker",
-      "to": "assets",
+      "from": "tag",
+      "to": "publish",
       "role": "main",
       "variant": "emphasis"
     },
     {
       "id": "r5",
-      "from": "assets",
+      "from": "publish",
       "to": "float",
       "role": "main",
       "variant": "emphasis"
@@ -150,6 +150,14 @@
       "items": [
         "build-server, build-connector-rust and build-connector-csharp are workflow_call",
         "CI and release use the same logic"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Nothing public before green",
+      "items": [
+        "The tag is created only after builds, tests and images",
+        "Every Docker tag is the same digest as the commit"
       ]
     }
   ]

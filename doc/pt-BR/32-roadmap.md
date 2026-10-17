@@ -56,8 +56,8 @@ Decisões que precisam estar fechadas: **D68** (versões-base), **D70.1** e **D7
 
 | Item | Detalhe |
 |---|---|
-| Pacotes ⬜ | nuget.org (`Taba.*`), crates.io (`taba-client`, `taba-cli`), e os registros das outras linguagens. **Não podem ser apagados**: ficam atrás de aprovação manual ([27-ci-cd.md](27-ci-cd.md)) |
-| Imagens ⬜ | GHCR (hoje só Docker Hub) |
+| Pacotes 🟡 | nuget.org (`Taba.*`) e crates.io (`taba-client`, `taba-cli`) automatizados no `release.yml` por Trusted Publishing, ligados pelas variáveis `PUBLISH_CRATES` e `NUGET_USER` ([27-ci-cd.md](27-ci-cd.md#publicação-e-metadados)); faltam os registros das outras linguagens. **Não podem ser apagados** |
+| Imagens ✅ | Docker Hub e GHCR, com o mesmo digest em todas as tags ([27-ci-cd.md](27-ci-cd.md#tags-docker-e-tags-flutuantes)) |
 | Repositório público ⬜ | Hoje privado; a publicação definitiva é uma decisão do dono |
 
 ### Marco 4 — Operação em produção
