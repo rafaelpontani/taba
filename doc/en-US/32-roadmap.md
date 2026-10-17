@@ -64,7 +64,7 @@ Decisions that must be closed: **D68** (base versions), **D70.1** and **D70.2** 
 
 | Item | Detail | Closes |
 |---|---|---|
-| **Kubernetes** ⬜ | Manifests or Helm and validation on a real cluster (probes, stop with drain, internal `Service` of the cluster port) | RNF-10 |
+| **Kubernetes** 🟡 | Helm chart done and tested on kind ([34-helm-chart.md](34-helm-chart.md)); missing: validation on a real cluster (probes, stop with drain, internal `Service` of the cluster port) and publishing the chart | RNF-10 |
 | **Forced exclusion** ⬜ | A manual exclusion route to unlock a cluster in `quorum-lost` (today the way out is restarting everything, losing messages and topics); see "Future evolution" of the cluster protocol | Finding C |
 | **Resuming from disk in production** ⬜ | Today every restart is a new node: stopping the whole cluster loses everything. Define what the first node does with the previous disk | Finding D |
 | **Backup and restore** 🟡 | ✅ Done: optional S3 backup (segments, journal, definitions, heartbeat, restore, eviction, flush, cluster stop; [33-s3-backup.md](33-s3-backup.md)). ⬜ Missing: compact the journal (PRB-053), recover earlier the segments of a primary that stopped being one (PRB-054), restore without reading whole segments (PRB-055), delete from the bucket definitions removed with the manager down (PRB-056), validate against a real MinIO/AWS (today's test uses a fake S3 over HTTP) and measure publishing latency with and without S3 | Finding J |

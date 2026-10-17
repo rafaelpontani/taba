@@ -448,8 +448,8 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
 fn the_example_configuration_files_are_valid() {
     for (name, text) in [
         (
-            "taba-minio.yml",
-            include_str!("../../../../../examples/backup-s3/taba-minio.yml"),
+            "taba-seaweedfs.yml",
+            include_str!("../../../../../examples/backup-s3/taba-seaweedfs.yml"),
         ),
         (
             "taba-aws.yml",
@@ -470,14 +470,14 @@ fn the_example_configuration_files_are_valid() {
     }
     let minio = Config::parse(
         Some((
-            "taba-minio.yml",
-            include_str!("../../../../../examples/backup-s3/taba-minio.yml"),
+            "taba-seaweedfs.yml",
+            include_str!("../../../../../examples/backup-s3/taba-seaweedfs.yml"),
         )),
         &MapEnv::new([("TABA_MODE", "development")]),
     )
     .unwrap();
     let s3 = minio.backup.s3.unwrap();
-    assert_eq!(s3.endpoint.as_deref(), Some("http://minio:9000"));
+    assert_eq!(s3.endpoint.as_deref(), Some("http://seaweedfs:8333"));
     assert!(s3.path_style);
     assert_eq!(minio.backup.dead_after, Duration::from_secs(60));
     assert_eq!(minio.backup.drain_timeout, Duration::from_secs(30));

@@ -42,6 +42,8 @@
 - [22 Configuration](22-configuration.md): all parameters, effective default, startup validations
 - [23 Operations (runbook)](23-operations.md): start, scale, upgrade, drain, what to do on each condition, stuck cluster, backup, stop and start the cluster
 - [33 Optional S3 backup](33-s3-backup.md): what goes to the bucket (segments, journal, definitions, heartbeat), restore of the single survivor, disk eviction, flush and cluster stop
+- [34 Helm chart](34-helm-chart.md): what the chart creates, values (node, secrets, Ingress, MinIO/S3 backup, Prometheus/Telegraf collector, OTLP, KEDA autoscaling) and what it refuses
+- [35 Helm chart: use cases](35-helm-use-cases.md): operating modes (minimal, development, Ingress, backup, restore, collectors, KEDA, upgrade, failures) and the bash tests for each
 
 ## Contribute
 

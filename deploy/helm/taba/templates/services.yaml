@@ -1,0 +1,71 @@
+# API do cliente (8080): é o que o ingress/LB expõe.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  ports:
+    - { name: api, port: {{ .Values.service.port }}, targetPort: api }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}
+---
+# Entrada do cluster (cluster.entry-address): só pods PRONTOS, porta de cluster, TCP puro (mTLS não termina aqui).
+# Sem nó pronto não há resposta: é assim que o "primeiro nó" sabe que deve formar o cluster. Nós novos entram
+# por aqui. Fica separado do headless porque este inclui pods ainda em bootstrap (inclusive o próprio nó).
+{{- if not (include "taba.isDev" .) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}-entry
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+spec:
+  ports:
+    - { name: cluster, port: {{ .Values.ports.cluster }}, targetPort: cluster }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}
+---
+{{- end }}
+# Headless: identidade do StatefulSet e descoberta do cluster (cluster.entry-address). Inclui pods ainda não
+# prontos (publishNotReadyAddresses): o nó só fica ready depois de entrar no cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}-headless
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    {{- if not (include "taba.isDev" .) }}
+    - { name: cluster, port: {{ .Values.ports.cluster }}, targetPort: cluster }
+    {{- end }}
+    - { name: api, port: {{ .Values.ports.api }}, targetPort: api }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}
+---
+# Porta de operações (health, /metrics, drain): sem autenticação, só dentro do cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taba.fullname" . }}-ops
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+    app.kubernetes.io/service: ops
+spec:
+  clusterIP: None
+  ports:
+    - { name: ops, port: {{ .Values.ports.operations }}, targetPort: ops }
+  selector:
+    {{- include "taba.selectorLabels" . | nindent 4 }}

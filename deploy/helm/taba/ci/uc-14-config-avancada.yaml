@@ -1,0 +1,33 @@
+# UC-14: configuração avançada — várias chaves do nó, extraEnv, limites e IPs.
+config:
+  replication:
+    factor: 3
+  write:
+    quorum: 2
+  message:
+    max-bytes: 1MB
+  retention:
+    ttl:
+      default: 7d
+  delivery:
+    visibility-timeout:
+      default: 60s
+  ratelimit:
+    publish:
+      rps: 500
+    burst: 1000
+  client-ip:
+    trusted-proxies: [10.0.0.0/8]
+  operations:
+    allowed-ips: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1/32]
+  telemetry:
+    logs:
+      level: debug
+      format: json
+    topics:
+      mode: by-tags
+extraEnv:
+  - name: TABA_API_PAGINATION_MAX_LIMIT
+    value: "500"
+persistence:
+  size: 1Gi

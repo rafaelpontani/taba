@@ -55,6 +55,57 @@ The client API is also at `http://localhost:8080` for any HTTP client (with `Aut
 
 > **Careful in production:** stop and update nodes **one at a time** (`docker compose stop` sends `SIGTERM`, which triggers a graceful *drain*). Stopping **all** nodes at once loses the messages and topics, and losing **two nodes in a row** locks a 3-node cluster. See the [operations guide](doc/en-US/23-operations.md).
 
+## Run it on Kubernetes (Helm)
+
+The Helm chart is in [deploy/helm/taba/](deploy/helm/taba/). It needs Kubernetes 1.27+ and a default `StorageClass`.
+
+```bash
+# a 3-node cluster (the cluster certificate and the root token are generated once, as a Secret)
+helm install taba deploy/helm/taba -n taba --create-namespace
+helm test taba -n taba
+kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d     # the root token
+kubectl -n taba port-forward svc/taba 8080:8080                                          # the API at http://localhost:8080
+```
+
+Common setups (all optional, combine as needed):
+
+```bash
+# one single node for development (no auth, no cluster TLS)
+helm install taba deploy/helm/taba -n taba --create-namespace --set config.mode=development
+
+# expose the API through an Ingress (use any maintained Ingress controller)
+helm upgrade --install taba deploy/helm/taba -n taba \
+  --set ingress.enabled=true --set ingress.className=nginx --set 'ingress.hosts[0].host=taba.example.com' \
+  --set 'ingress.hosts[0].paths[0].path=/' --set 'ingress.hosts[0].paths[0].pathType=Prefix'
+
+# S3 backup: a built-in SeaweedFS (testing) or your own bucket (AWS, Ceph, ...)
+helm upgrade --install taba deploy/helm/taba -n taba --set seaweedfs.enabled=true
+helm upgrade --install taba deploy/helm/taba -n taba --set backup.s3.bucket=my-bucket --set backup.s3.region=us-east-1
+
+# metrics: a ServiceMonitor, a Prometheus or a Telegraf of its own, or OTLP push
+helm upgrade --install taba deploy/helm/taba -n taba --set collector.type=prometheus
+helm upgrade --install taba deploy/helm/taba -n taba --set otel.endpoint=http://otel-collector:4317
+
+# autoscaling with KEDA (needs KEDA and a Prometheus; never below 3 nodes, scales down one node at a time)
+helm upgrade --install taba deploy/helm/taba -n taba \
+  --set autoscaling.enabled=true --set autoscaling.prometheus.serverAddress=http://prometheus:9090
+```
+
+Get the root token and create an `admin` token with the `taba-cli` (no local install: it runs as a throwaway pod):
+
+```bash
+ROOT=$(kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d | tr -d '\n')
+
+kubectl -n taba run taba-cli --rm -i --restart=Never --image=rafaelpontani/taba-cli:rc \
+  --env TABA_CLI_URL=http://taba:8080 --env TABA_CLI_TOKEN="$ROOT" \
+  -- token create --name ci-admin --permission admin --token-only
+# prints tb_<id>.<secret>: the secret is shown only once, so store it (the cluster keeps just its hash)
+```
+
+Only the root token creates, changes or revokes `admin` tokens and stops the cluster; keep it in a vault and use the `admin` (or a narrower one, like `--permission publish,consume --prefix orders-`) day to day. More in [doc/en-US/20-cli.md](doc/en-US/20-cli.md) and [doc/en-US/14-security.md](doc/en-US/14-security.md).
+
+Any node setting goes under `config` in a values file (for example `config.message.max-bytes`). Every value, what the chart creates, the validations it enforces and the safety rules of the autoscaling are in [doc/en-US/34-helm-chart.md](doc/en-US/34-helm-chart.md); the operating modes, each with its bash tests, are in [doc/en-US/35-helm-use-cases.md](doc/en-US/35-helm-use-cases.md).
+
 ## The API in four calls
 
 Everything is HTTP. The formal contract (OpenAPI) is not defined yet; the calls below are described in the [client API reference](doc/en-US/16-client-api.md).

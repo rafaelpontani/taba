@@ -1,0 +1,32 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taba.fullname" . }}
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taba.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # API do cliente
+    - ports:
+        - { port: {{ .Values.ports.api }}, protocol: TCP }
+      {{- with .Values.networkPolicy.apiFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    # Cluster (mTLS) e operações: só os próprios nós, o coletor do chart e o que for liberado
+    - ports:
+        - { port: {{ .Values.ports.cluster }}, protocol: TCP }
+        - { port: {{ .Values.ports.operations }}, protocol: TCP }
+      from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- with .Values.networkPolicy.opsFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

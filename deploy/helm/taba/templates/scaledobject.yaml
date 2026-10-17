@@ -1,0 +1,104 @@
+{{- if .Values.autoscaling.enabled }}
+{{- $a := .Values.autoscaling }}
+{{- $fn := include "taba.fullname" . }}
+{{- $sel := $a.podSelector | default (printf "namespace=%q,pod=~%q" .Release.Namespace (printf "%s-[0-9]+" $fn)) }}
+{{- /* `or vector(0)`: sem requisições a série ainda não existe, e ocioso é 0 (não erro).
+       Se o cluster não tem quórum (ou a métrica some), a consulta fica sem resultado: com ignoreNullValues=false
+       o KEDA considera erro e o HPA NÃO escala nem reduz — nada de reduzir um cluster doente. */}}
+{{- $guard := "" }}
+{{- if $a.healthGuard }}{{ $guard = printf " and on() (min(taba_cluster_quorum_available{%s}) == 1)" $sel }}{{ end }}
+{{- $addr := $a.prometheus.serverAddress | default (printf "http://%s-prometheus.%s.svc.%s:9090" $fn .Release.Namespace .Values.clusterDomain) }}
+{{- $diskQuery := "" }}
+{{- if $a.disk.query }}
+{{- $diskQuery = $a.disk.query }}
+{{- else if eq $a.disk.source "app" }}
+{{- if not (gt (int64 $a.disk.capacityBytes) 0) }}{{ fail "autoscaling.disk.capacityBytes é obrigatório com disk.source=app" }}{{ end }}
+{{- $diskQuery = printf "max(clamp_min(100 * (1 - taba_storage_disk_free_bytes{%s} / %d), 0))%s" $sel (int64 $a.disk.capacityBytes) $guard }}
+{{- else }}
+{{- $pvc := printf "persistentvolumeclaim=~%q,namespace=%q" (printf "data-%s-[0-9]+" $fn) .Release.Namespace }}
+{{- $diskQuery = printf "max(clamp_min(100 * (1 - kubelet_volume_stats_available_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}), 0))%s" $pvc $pvc $guard }}
+{{- end }}
+{{- $reqQuery := $a.requests.query | default (printf "(sum(rate(http_server_request_duration_seconds_count{%s,server_port=%q}[%s])) or vector(0))%s" $sel (toString .Values.ports.api) $a.requests.window $guard) }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $fn }}
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+  {{- if $a.paused }}
+  annotations:
+    autoscaling.keda.sh/paused-replicas: {{ $a.pausedReplicas | default $a.minReplicas | quote }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ $fn }}
+  minReplicaCount: {{ $a.minReplicas }}
+  maxReplicaCount: {{ $a.maxReplicas }}
+  pollingInterval: {{ $a.pollingInterval }}
+  {{- with $a.fallback }}
+  fallback:
+    failureThreshold: {{ .failureThreshold | default 3 }}
+    replicas: {{ .replicas | default $a.minReplicas }}
+  {{- end }}
+  advanced:
+    restoreToOriginalReplicaCount: false
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: {{ $a.behavior.scaleUp.stabilizationWindowSeconds }}
+          selectPolicy: Min
+          policies:
+            - { type: Pods, value: {{ $a.behavior.scaleUp.pods }}, periodSeconds: {{ $a.behavior.scaleUp.periodSeconds }} }
+        scaleDown:
+          stabilizationWindowSeconds: {{ $a.behavior.scaleDown.stabilizationWindowSeconds }}
+          selectPolicy: Min
+          policies:
+            - { type: Pods, value: {{ $a.behavior.scaleDown.pods }}, periodSeconds: {{ $a.behavior.scaleDown.periodSeconds }} }
+  triggers:
+    {{- if $a.disk.enabled }}
+    # Disco: uso máximo entre os nós. metricType Value = proporção sobre o alvo (replicas * uso / alvo).
+    - type: prometheus
+      name: disk
+      metricType: Value
+      metadata:
+        serverAddress: {{ $addr | quote }}
+        query: {{ $diskQuery | quote }}
+        threshold: {{ $a.disk.threshold | quote }}
+        ignoreNullValues: "false"
+        unsafeSsl: {{ $a.prometheus.unsafeSsl | quote }}
+        {{- with $a.prometheus.namespace }}
+        namespace: {{ . | quote }}
+        {{- end }}
+        {{- with $a.prometheus.authModes }}
+        authModes: {{ . | quote }}
+        {{- end }}
+      {{- with $a.prometheus.authenticationRef }}
+      authenticationRef:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if $a.requests.enabled }}
+    # Requisições/s: total do cluster dividido pelo alvo por nó (AverageValue).
+    - type: prometheus
+      name: requests
+      metricType: AverageValue
+      metadata:
+        serverAddress: {{ $addr | quote }}
+        query: {{ $reqQuery | quote }}
+        threshold: {{ $a.requests.perNodeRps | quote }}
+        ignoreNullValues: "false"
+        unsafeSsl: {{ $a.prometheus.unsafeSsl | quote }}
+        {{- with $a.prometheus.namespace }}
+        namespace: {{ . | quote }}
+        {{- end }}
+        {{- with $a.prometheus.authModes }}
+        authModes: {{ . | quote }}
+        {{- end }}
+      {{- with $a.prometheus.authenticationRef }}
+      authenticationRef:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}

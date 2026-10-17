@@ -86,7 +86,7 @@ Os requisitos têm código estável (`RF` funcional, `RNF` não funcional) para 
 | RNF-07 | **Sem perda de mensagem confirmada** quando um nó cai | ✅ (com `replication.factor` ≥ 2) | [11-durabilidade.md](11-durabilidade.md) |
 | RNF-08 | **Durabilidade configurável**: o usuário escolhe fator de replicação e quórum | ✅ | [11-durabilidade.md](11-durabilidade.md) |
 | RNF-09 | **Conectores em versões antigas** (até 15 anos), desde que falem TLS 1.2 | 🟡 | Só os dois conectores existentes ([21-conectores.md](21-conectores.md)) |
-| RNF-10 | **Kubernetes como cidadão de primeira classe** | 🟡 | Sondas e parada com drain existem; não há manifesto nem Helm, e nada foi validado em Kubernetes ([32-roadmap.md](32-roadmap.md)) |
+| RNF-10 | **Kubernetes como cidadão de primeira classe** | 🟡 | Sondas e parada com drain existem e há um chart Helm ([34-chart-helm.md](34-chart-helm.md)) testado num cluster kind; ainda não validado num cluster de produção ([32-roadmap.md](32-roadmap.md)) |
 | RNF-11 | **Observável** por padrão: OpenTelemetry | ✅ | [13-observabilidade.md](13-observabilidade.md) |
 
 > **Velocidade e custo são metas.** Não há benchmark publicado; o selo ✅ de RNF-02 diz que o desenho coloca a memória no caminho crítico, não que haja uma medição.

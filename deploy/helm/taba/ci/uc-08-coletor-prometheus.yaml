@@ -1,0 +1,7 @@
+# UC-08: Prometheus do chart.
+collector:
+  type: prometheus
+  prometheus:
+    scrapeInterval: 5s
+persistence:
+  size: 1Gi

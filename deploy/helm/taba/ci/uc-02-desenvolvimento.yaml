@@ -1,0 +1,5 @@
+# UC-02: desenvolvimento — 1 nó, sem auth e sem TLS de cluster.
+config:
+  mode: development
+persistence:
+  size: 1Gi

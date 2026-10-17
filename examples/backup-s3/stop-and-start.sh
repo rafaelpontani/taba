@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stops the root Compose cluster WITH backup and starts it again, showing that everything comes back from
 # S3 (doc/pt-BR/33-backup-s3.md, "Parar e iniciar o cluster"). Runs from scratch and wipes the nodes' data
-# midway (the nodes' volumes), so the restore comes from MinIO and not from the disks.
+# midway (the nodes' volumes), so the restore comes from SeaweedFS and not from the disks.
 #
 #   examples/backup-s3/stop-and-start.sh
 #
@@ -14,7 +14,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 cli() { docker compose run --rm -T taba-cli "$@" 2>/dev/null | tr -d '\r'; }
 ops() { docker compose exec -T taba-0 wget -q -O - "$@"; }
 
-echo "== starting the cluster from scratch (with MinIO)"
+echo "== starting the cluster from scratch (with SeaweedFS)"
 docker compose --profile tools down -v --remove-orphans >/dev/null 2>&1 || true
 docker compose up -d --wait
 

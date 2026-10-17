@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "taba.fullname" . }}-test
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: ready
+      image: {{ include "taba.image" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          wget -q -O- http://{{ include "taba.fullname" . }}-0.{{ include "taba.fullname" . }}-headless:{{ .Values.ports.operations }}/health/ready
+          wget -q -O- http://{{ include "taba.fullname" . }}-ops:{{ .Values.ports.operations }}/metrics | grep -q '^taba_'

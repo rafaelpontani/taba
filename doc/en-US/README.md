@@ -22,7 +22,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | You are… | Read in this order |
 |---|---|
 | **Someone who will use** Taba in an application | [01](01-overview.md) → [02](02-quick-start.md) → [03](03-concepts.md) → [09](09-topics.md) → [12](12-delivery.md) → [16](16-client-api.md) → [21](21-connectors.md) |
-| **Someone who will operate** a cluster | [01](01-overview.md) → [02](02-quick-start.md) → [03](03-concepts.md) → [07](07-cluster.md) → [22](22-configuration.md) → [23](23-operations.md) → [33](33-s3-backup.md) → [13](13-observability.md) → [14](14-security.md) |
+| **Someone who will operate** a cluster | [01](01-overview.md) → [02](02-quick-start.md) → [03](03-concepts.md) → [07](07-cluster.md) → [22](22-configuration.md) → [23](23-operations.md) → [33](33-s3-backup.md) → [34](34-helm-chart.md) → [13](13-observability.md) → [14](14-security.md) |
 | **Someone who will contribute** code | [03](03-concepts.md) → [04](04-architecture.md) → [06](06-ring-and-replication.md) → [10](10-publishing.md) → [24](24-conventions.md) → [25](25-testing.md) → [26](26-use-cases.md) |
 | **An AI** (agent) that will read or change the project | [llms.txt](llms.txt) → [03](03-concepts.md) → [04](04-architecture.md) → the document of the subject → [24](24-conventions.md) |
 
@@ -77,6 +77,8 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [22-configuration.md](22-configuration.md) | All parameters and defaults |
 | [23-operations.md](23-operations.md) | Runbook: start, scale, retire, diagnose, backup, stop and start |
 | [33-s3-backup.md](33-s3-backup.md) | Optional S3 backup: what goes to the bucket, restore, eviction, flush, stop |
+| [34-helm-chart.md](34-helm-chart.md) | Helm chart: what it creates, every value (Ingress, MinIO/S3, Prometheus/Telegraf collector, OTLP, KEDA) |
+| [35-helm-use-cases.md](35-helm-use-cases.md) | Helm chart: operating modes and the bash tests for each |
 
 ### Part F — Contribute
 

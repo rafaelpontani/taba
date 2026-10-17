@@ -147,7 +147,7 @@ backup:
     region: sa-east-1          # credentials: the default AWS chain (IAM, profile, task role)
 ```
 
-With MinIO or another compatible S3: `backup.s3.endpoint`, `access-key` and `secret-key`. In production the bucket **must** have versioning/retention on the S3 side and write-only permission for the nodes (read is needed to restore). A ready configuration is in [`examples/backup-s3`](../../examples/backup-s3/README.md). Check with `GET /node/backup`: `s3Reachable: true` and `pending` going to zero.
+With SeaweedFS, MinIO or another compatible S3 (one that honors conditional writes; Garage does not): `backup.s3.endpoint`, `access-key` and `secret-key`. In production the bucket **must** have versioning/retention on the S3 side and write-only permission for the nodes (read is needed to restore). A ready configuration is in [`examples/backup-s3`](../../examples/backup-s3/README.md). Check with `GET /node/backup`: `s3Reachable: true` and `pending` going to zero.
 
 ### Force the backup now (flush)
 
@@ -185,9 +185,9 @@ It is not a point-in-time recovery (there are no message versions or "go back to
 - **Topics:** `taba-cli stats topics --condition backlog` (the `stats.topics.*` thresholds must be configured). ⚠️ The aggregation of topic metrics **across nodes** is not implemented: query each node or add in the backend.
 - **Logs:** `telemetry.logs.format=json` for ingestion; `color` for the terminal. Look for `error`: message loss (`taba.message.lost`), bootstrap failure, drain that exceeded the deadline.
 
-## Kubernetes (guidance, **not validated**)
+## Kubernetes
 
-The repository **has no** manifests or Helm. What the node offers to fit in: `/health/live` and `/health/ready` probes on the operations port; stop by `SIGTERM` with drain (`terminationGracePeriodSeconds` > `drain.timeout`); `cluster.entry-address` pointing to an **internal** (or *headless*) `Service` that passes the cluster port **over TCP**, without terminating TLS; the secrets folder as a mounted `Secret`; `storage.dir` on a volume per pod (the last folder named `taba`). `StatefulSet` or `Deployment` both work (the node **does not depend** on a stable identity: every start is a new node). Rolling update: `maxUnavailable: 1`.
+The repository has a **Helm chart** (`deploy/helm/taba/`, [34-helm-chart.md](34-helm-chart.md)); its operating modes and bash tests, run on a kind cluster, are in [35-helm-use-cases.md](35-helm-use-cases.md). It has not been validated on a production cluster. What the node offers to fit in (and the chart uses): `/health/live` and `/health/ready` probes on the operations port; stop by `SIGTERM` with drain (`terminationGracePeriodSeconds` > `drain.timeout`); `cluster.entry-address` pointing to an **internal** (or *headless*) `Service` that passes the cluster port **over TCP**, without terminating TLS; the secrets folder as a mounted `Secret`; `storage.dir` on a volume per pod (the last folder named `taba`). `StatefulSet` or `Deployment` both work (the node **does not depend** on a stable identity: every start is a new node). Rolling update: `maxUnavailable: 1`.
 
 ## The repository's Docker Compose: useful commands
 

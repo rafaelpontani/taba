@@ -1,0 +1,3 @@
+# UC-01: produção mínima (3 nós, segredo gerado pelo Job init).
+persistence:
+  size: 1Gi

@@ -9,7 +9,7 @@
 #   4. the orderly exit of another node (`docker compose stop`, which triggers the drain) and its return;
 #   5. at no point is a published message (acknowledged by the quorum) lost: at the end, the set of
 #      confirmed messages is exactly the published one;
-#   6. the S3 backup (the Compose MinIO): `POST /cluster/stop`, the nodes' disks wiped, the
+#   6. the S3 backup (the Compose SeaweedFS): `POST /cluster/stop`, the nodes' disks wiped, the
 #      cluster starts again and the published messages come back from the bucket.
 #
 # It only uses taba-cli: it is the general integrated cluster test, not a connector's. Each connector has
@@ -135,9 +135,9 @@ if ! diff -q /tmp/taba-published.txt /tmp/taba-acked.txt >/dev/null; then
 fi
 ok "$(wc -l < /tmp/taba-published.txt) messages published, all received and acknowledged"
 
-# --- 6. S3 backup (MinIO) ------------------------------------------------------------------------
+# --- 6. S3 backup (SeaweedFS) ------------------------------------------------------------------------
 
-step "S3 backup: stop the cluster, wipe the nodes' disks and restore from MinIO"
+step "S3 backup: stop the cluster, wipe the nodes' disks and restore from SeaweedFS"
 cli topic create validation-backup --type queue >/dev/null
 BACKUP_PUBLISHED="$(mktemp)"
 for n in $(seq 1 20); do

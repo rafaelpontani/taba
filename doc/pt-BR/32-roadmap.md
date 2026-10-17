@@ -64,7 +64,7 @@ Decisões que precisam estar fechadas: **D68** (versões-base), **D70.1** e **D7
 
 | Item | Detalhe | Fecha |
 |---|---|---|
-| **Kubernetes** ⬜ | Manifestos ou Helm e validação em um cluster de verdade (sondas, parada com drain, `Service` interno da porta do cluster) | RNF-10 |
+| **Kubernetes** 🟡 | Chart Helm pronto e testado em kind ([34-chart-helm.md](34-chart-helm.md)); falta a validação em um cluster de verdade (sondas, parada com drain, `Service` interno da porta do cluster) e publicar o chart | RNF-10 |
 | **Exclusão forçada** ⬜ | Rota manual de exclusão para destravar um cluster em `quorum-lost` (hoje a saída é reiniciar tudo, perdendo mensagens e tópicos); ver "Evolução futura" do protocolo de cluster | Descoberta C |
 | **Retomada do disco em produção** ⬜ | Hoje todo reinício é de nó novo: parar o cluster inteiro perde tudo. Definir o que o primeiro nó faz com o disco anterior | Descoberta D |
 | **Backup e restauração** 🟡 | ✅ Feito: backup opcional em S3 (segmentos, diário, definições, batimento, restauração, evicção, flush, parada do cluster; [33-backup-s3.md](33-backup-s3.md)). ⬜ Falta: compactar o diário (PRB-053), recuperar mais cedo os segmentos de um primário que deixou de sê-lo (PRB-054), restaurar sem ler os segmentos inteiros (PRB-055), apagar do bucket definições removidas com o gestor fora do ar (PRB-056), validar contra um MinIO/AWS reais (o teste de hoje usa um S3 de mentira em HTTP) e medir a latência de publicação com e sem S3 | Descoberta J |

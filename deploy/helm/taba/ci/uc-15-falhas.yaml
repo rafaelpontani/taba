@@ -1,0 +1,5 @@
+# UC-15: rede restrita (NetworkPolicy) e PDB.
+networkPolicy:
+  enabled: true
+persistence:
+  size: 1Gi

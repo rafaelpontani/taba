@@ -1,4 +1,5 @@
-# Optional S3 backup with MinIO (or any compatible S3: Ceph, Garage, SeaweedFS…).
+# Optional S3 backup with SeaweedFS, MinIO or any S3 that honors conditional writes (If-None-Match / If-Match):
+# Ceph RGW and AWS do too. Garage does NOT (it ignores the headers) and cannot be used.
 # This is the node's configuration file (`--config` or TABA_CONFIG_FILE); every key also works as an
 # environment variable (`backup.s3.bucket` -> TABA_BACKUP_S3_BUCKET). Doc: doc/pt-BR/33-backup-s3.md.
 #
@@ -8,7 +9,7 @@
 backup:
   s3:
     bucket: taba                    # turning the feature on is just this; without a bucket there is no backup
-    endpoint: http://minio:9000     # outside AWS: the service address (turns path-style on by itself)
+    endpoint: http://seaweedfs:8333 # outside AWS: the service address (turns path-style on by itself)
     access-key: taba                # the two keys go together...
     secret-key: change-this-key     # ...and never show up in logs; prefer the TABA_BACKUP_S3_SECRET_KEY variable
     prefix: taba                    # the "folder" in the bucket; several clusters can share a bucket

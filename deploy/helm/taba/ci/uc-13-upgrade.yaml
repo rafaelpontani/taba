@@ -1,0 +1,3 @@
+# UC-13: upgrade rolling (instala com a config A e atualiza para a B).
+persistence:
+  size: 1Gi

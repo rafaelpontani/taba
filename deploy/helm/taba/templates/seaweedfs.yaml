@@ -1,0 +1,144 @@
+{{- if .Values.seaweedfs.enabled }}
+{{- /*
+  S3 embutido para o backup: SeaweedFS (master + volume + filer + gateway S3 em um processo). Escolhido porque
+  o backup precisa de escrita condicional (If-None-Match / If-Match) para o lock de restauração, e o SeaweedFS
+  a honra de forma atômica (o Garage, por exemplo, ignora os cabeçalhos).
+*/}}
+{{- $fn := include "taba.fullname" . }}
+{{- $secret := include "taba.seaweedfsSecretName" . }}
+{{- $sw := .Values.seaweedfs }}
+{{- if not $sw.auth.existingSecret }}
+{{- /* Senha gerada uma vez e mantida nos upgrades (lookup); `helm template` gera outra a cada execução. */}}
+{{- $pass := $sw.auth.secretKey }}
+{{- if not $pass }}
+{{- $old := lookup "v1" "Secret" .Release.Namespace $secret }}
+{{- if $old }}{{ $pass = index $old.data "secretKey" | b64dec }}{{ else }}{{ $pass = randAlphaNum 24 }}{{ end }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret }}
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "seaweedfs") | nindent 4 }}
+type: Opaque
+stringData:
+  accessKey: {{ $sw.auth.accessKey | quote }}
+  secretKey: {{ $pass | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-seaweedfs
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "seaweedfs") | nindent 4 }}
+spec:
+  ports:
+    - { name: s3, port: 8333, targetPort: s3 }
+    - { name: master, port: 9333, targetPort: master }
+    # `weed shell` (Job do bucket) fala gRPC com o master em porta HTTP + 10000.
+    - { name: master-grpc, port: 19333, targetPort: master-grpc }
+  selector:
+    {{- include "taba.componentSelector" (dict "ctx" . "component" "seaweedfs") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fn }}-seaweedfs
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "seaweedfs") | nindent 4 }}
+spec:
+  serviceName: {{ $fn }}-seaweedfs
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "taba.componentSelector" (dict "ctx" . "component" "seaweedfs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taba.componentSelector" (dict "ctx" . "component" "seaweedfs") | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seaweedfs
+          image: {{ $sw.image.repository }}:{{ $sw.image.tag }}
+          imagePullPolicy: {{ $sw.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              printf '{"identities":[{"name":"taba","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$S3_ACCESS_KEY" "$S3_SECRET_KEY" > /tmp/s3.json
+              exec weed server -dir=/data -s3 -s3.config=/tmp/s3.json -s3.port=8333 -master.volumeSizeLimitMB={{ $sw.volumeSizeLimitMB }} -volume.max={{ $sw.maxVolumes }}
+          env:
+            - name: S3_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: accessKey } }
+            - name: S3_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: secretKey } }
+          ports:
+            - { name: s3, containerPort: 8333 }
+            - { name: master, containerPort: 9333 }
+            - { name: master-grpc, containerPort: 19333 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: s3 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: s3 }
+            periodSeconds: 10
+            failureThreshold: 6
+          {{- with $sw.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - { name: data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if $sw.persistence.storageClass }}
+        storageClassName: {{ if eq $sw.persistence.storageClass "-" }}""{{ else }}{{ $sw.persistence.storageClass }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $sw.persistence.size }}
+---
+# Cria o bucket (como o seaweedfs-init do Compose). Depois de instalar E de atualizar; idempotente
+# (o `weed shell` falha se o bucket já existe, então só cria se não estiver na lista).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fn }}-seaweedfs-bucket
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "seaweedfs-init") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels:
+        {{- include "taba.componentSelector" (dict "ctx" . "component" "seaweedfs-init") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: weed
+          image: {{ $sw.image.repository }}:{{ $sw.image.tag }}
+          imagePullPolicy: {{ $sw.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              M={{ $fn }}-seaweedfs:9333
+              until echo "s3.bucket.list" | weed shell -master=$M >/dev/null 2>&1; do sleep 2; done
+              echo "s3.bucket.list" | weed shell -master=$M | grep -qw {{ $sw.bucket }} \
+                || echo "s3.bucket.create -name {{ $sw.bucket }}" | weed shell -master=$M
+{{- end }}

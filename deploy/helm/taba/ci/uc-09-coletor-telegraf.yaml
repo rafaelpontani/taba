@@ -1,0 +1,7 @@
+# UC-09: Telegraf do chart.
+collector:
+  type: telegraf
+  telegraf:
+    interval: 5s
+persistence:
+  size: 1Gi

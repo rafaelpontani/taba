@@ -9,10 +9,10 @@
 #   docker compose ps                   the nodes turn "healthy" when they finish syncing
 #   docker compose run --rm taba-cli health cluster -o table
 #
-# The optional S3 backup (doc/pt-BR/33-backup-s3.md) is already on, in a MinIO that starts alongside. In
+# The optional S3 backup (doc/pt-BR/33-backup-s3.md) is already on, in a SeaweedFS that starts alongside. In
 # production the bucket would be the cloud's S3 (or a Kubernetes Service): change the TABA_BACKUP_S3_*
 # variables below (AWS needs no endpoint or keys, only a bucket and a region). To run without backup, delete
-# these variables and the `minio` and `minio-init` services.
+# these variables and the `seaweedfs` and `seaweedfs-init` services.
 #
 # The client API is at http://localhost:8080 (HAProxy). The root token is in the `secrets` volume:
 #   docker compose run --rm --entrypoint cat taba-cli /secrets/root-token
@@ -35,11 +35,11 @@ x-taba: &taba
     TABA_REPLICATION_FACTOR: "3"
     # Colored text logs in `docker compose logs` (node default: `text`; `json` is also available).
     TABA_TELEMETRY_LOGS_FORMAT: color
-    # S3 backup (the example's MinIO). Demo credentials: change them in any real use.
+    # S3 backup (the example's SeaweedFS). Demo credentials: change them in any real use.
     TABA_BACKUP_S3_BUCKET: taba
-    TABA_BACKUP_S3_ENDPOINT: http://minio:9000
+    TABA_BACKUP_S3_ENDPOINT: http://seaweedfs:8333
     TABA_BACKUP_S3_ACCESS_KEY: taba
-    TABA_BACKUP_S3_SECRET_KEY: taba-minio-secret
+    TABA_BACKUP_S3_SECRET_KEY: taba-s3-secret
   healthcheck:
     test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/health/ready"]
     interval: 3s
@@ -68,7 +68,7 @@ services:
     depends_on:
       init:
         condition: service_completed_successfully
-      minio-init:
+      seaweedfs-init:
         condition: service_completed_successfully
       haproxy:
         condition: service_started
@@ -99,35 +99,40 @@ services:
       - secrets:/etc/taba/secrets:ro
       - /var/lib/taba
 
-  # The example's S3 (MinIO). In production: the cloud's S3. Web console at http://localhost:9001 (taba / taba-minio-secret).
-  minio:
-    image: minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
+  # The example's S3 (SeaweedFS: master, volume server, filer and S3 gateway in one process). In production: the
+  # cloud's S3. The backup needs an S3 that honors conditional writes (If-None-Match / If-Match), which
+  # SeaweedFS does (Garage does not). Cluster UI at http://localhost:9333. S3 key: taba / taba-s3-secret.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        printf '{"identities":[{"name":"taba","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -s3 -s3.config=/tmp/s3.json -s3.port=8333 -master.volumeSizeLimitMB=1024 -volume.max=20
     environment:
-      MINIO_ROOT_USER: taba
-      MINIO_ROOT_PASSWORD: taba-minio-secret
+      S3_ACCESS_KEY: taba
+      S3_SECRET_KEY: taba-s3-secret
     ports:
-      - "9001:9001"
+      - "9333:9333"
     volumes:
-      - minio-data:/data
+      - seaweedfs-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
       interval: 3s
       timeout: 3s
-      retries: 20
+      retries: 30
       start_period: 3s
 
-  # Creates the backup bucket once; on later runs it does nothing.
-  minio-init:
-    image: minio/mc:latest
+  # Creates the backup bucket once; on later runs it does nothing (same image: `weed shell`).
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:4.48
     depends_on:
-      minio:
+      seaweedfs:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        mc alias set local http://minio:9000 taba taba-minio-secret
-        mc mb --ignore-existing local/taba
+        echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 | grep -qw taba || echo "s3.bucket.create -name taba" | weed shell -master=seaweedfs:9333
     restart: "no"
 
   haproxy:
@@ -154,5 +159,5 @@ services:
 
 volumes:
   secrets:
-  minio-data:
+  seaweedfs-data:
   data-0:

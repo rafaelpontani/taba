@@ -269,7 +269,7 @@ O recurso liga com `backup.s3.bucket`; sem ele nada disto existe. Como funciona:
 |---|---|---|---|
 | `backup.s3.bucket` | `TABA_BACKUP_S3_BUCKET` | sem valor (**recurso desligado**) | O bucket. Definido, liga o backup. |
 | `backup.s3.region` | `TABA_BACKUP_S3_REGION` | sem valor | A região. Sem ela o SDK usa a cadeia padrão da AWS (`AWS_REGION`, perfil); com `backup.s3.endpoint` e sem região vale `us-east-1`. |
-| `backup.s3.endpoint` | `TABA_BACKUP_S3_ENDPOINT` | sem valor (AWS) | O endereço de um S3 compatível (MinIO, Ceph), como `http://minio:9000`. |
+| `backup.s3.endpoint` | `TABA_BACKUP_S3_ENDPOINT` | sem valor (AWS) | O endereço de um S3 compatível (SeaweedFS, MinIO, Ceph), como `http://seaweedfs:8333`. |
 | `backup.s3.prefix` | `TABA_BACKUP_S3_PREFIX` | **taba** | O prefixo base de todos os objetos no bucket. Vários clusters podem dividir um bucket com prefixos diferentes. |
 | `backup.s3.access-key` | `TABA_BACKUP_S3_ACCESS_KEY` | sem valor | A chave de acesso. **Opcional:** sem ela (e sem a secreta), vale a cadeia padrão da AWS (IAM, perfil, papel da tarefa). Vai sempre com a secreta. |
 | `backup.s3.secret-key` | `TABA_BACKUP_S3_SECRET_KEY` | sem valor | A chave secreta; nunca aparece em log nem em `Debug`. |

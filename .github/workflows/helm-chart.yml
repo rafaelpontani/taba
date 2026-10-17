@@ -1,0 +1,57 @@
+# Chart Helm (deploy/helm/taba). Doc: doc/pt-BR/34-chart-helm.md e 35-chart-helm-casos-de-uso.md.
+#
+# - static: em todo PR que toca o chart. Lint, renderização de cada ci/*.yaml, asserções sobre os manifestos
+#   e recusas do chart. Não precisa de cluster.
+# - e2e: manual (workflow_dispatch). Cria um cluster kind e roda os casos de uso (uc-NN) que você pedir
+#   (vazio = todos; o UC-12, com KEDA, leva ~15 min). Usa as imagens do Docker Hub na tag informada.
+name: Helm chart
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/helm/**'
+      - '.github/workflows/helm-chart.yml'
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: 'Casos de uso (ex.: "01 05 12"); vazio = todos'
+        required: false
+        default: ''
+      tag:
+        description: 'Tag das imagens rafaelpontani/taba e taba-cli'
+        required: false
+        default: 'rc'
+
+concurrency:
+  group: helm-chart-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - run: deploy/helm/tests/run.sh static
+
+  e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: taba-helm
+      - env:
+          TABA_TEST_CONTEXT: kind-taba-helm
+          TABA_TEST_TAG: ${{ inputs.tag }}
+        run: deploy/helm/tests/run.sh ${{ inputs.cases }}

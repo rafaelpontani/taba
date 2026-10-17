@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 },
+    "podManagementPolicy": { "enum": ["Parallel", "OrderedReady"] },
+    "image": {
+      "type": "object",
+      "required": ["repository"],
+      "properties": { "repository": { "type": "string", "minLength": 1 } }
+    },
+    "ports": {
+      "type": "object",
+      "properties": {
+        "api": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "cluster": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "operations": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["production", "development"] },
+        "telemetry": {
+          "type": "object",
+          "properties": {
+            "logs": {
+              "type": "object",
+              "properties": { "format": { "enum": ["text", "color", "json"] } }
+            },
+            "topics": {
+              "type": "object",
+              "properties": { "mode": { "enum": ["off", "by-tags", "per-topic"] } }
+            }
+          }
+        },
+        "replication": {
+          "type": "object",
+          "properties": { "factor": { "type": "integer", "minimum": 1 } }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["host"],
+            "properties": {
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": { "pathType": { "enum": ["Prefix", "Exact", "ImplementationSpecific"] } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "collector": {
+      "type": "object",
+      "properties": { "type": { "enum": ["none", "prometheus-operator", "prometheus", "telegraf"] } }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "retentionPolicy": {
+          "type": "object",
+          "properties": {
+            "whenScaled": { "enum": ["Retain", "Delete"] },
+            "whenDeleted": { "enum": ["Retain", "Delete"] }
+          }
+        }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer", "minimum": 3 },
+        "maxReplicas": { "type": "integer", "minimum": 3 },
+        "disk": { "type": "object", "properties": { "source": { "enum": ["kubelet", "app"] } } }
+      }
+    }
+  }
+}

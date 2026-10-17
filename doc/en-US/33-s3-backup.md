@@ -1,6 +1,6 @@
 ---
 title: Optional S3 backup
-summary: How Taba keeps a serious-failure backup in an S3 (or MinIO) bucket without ever waiting for it — what goes to the bucket, who writes, how the node restores, how to force the backup and stop and start the cluster, the configuration, the limits and the simulated scenarios.
+summary: How Taba keeps a serious-failure backup in an S3 (or SeaweedFS, MinIO) bucket without ever waiting for it — what goes to the bucket, who writes, how the node restores, how to force the backup and stop and start the cluster, the configuration, the limits and the simulated scenarios.
 type: explanation
 status: stable
 verified-on: 2026-10-14 @ efeb47a
@@ -174,7 +174,9 @@ backup:
     region: sa-east-1
 ```
 
-With MinIO (or another compatible S3), `backup.s3.endpoint`, `access-key` and `secret-key` (`path-style` turns on by itself with `endpoint`).
+With SeaweedFS, MinIO (or another compatible S3), `backup.s3.endpoint`, `access-key` and `secret-key` (`path-style` turns on by itself with `endpoint`).
+
+> **The S3 must honor conditional writes** (`If-None-Match: *` and `If-Match`, `412` when the condition fails, atomically): this is what guarantees a single restorer. Verified: AWS S3, SeaweedFS (tested: 20 simultaneous creations, 1 winner) and MinIO. **Garage does not work**: it ignores the headers and two nodes could restore at the same time.
 
 ## Simulated scenarios and consequences
 

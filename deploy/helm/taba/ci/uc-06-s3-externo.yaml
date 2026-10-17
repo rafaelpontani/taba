@@ -1,0 +1,17 @@
+# UC-06: S3 externo (o teste instala um SeaweedFS em outro release e aponta para ele).
+backup:
+  s3:
+    bucket: taba
+    endpoint: http://storage-taba-seaweedfs:8333
+    prefix: cluster-a
+    accessKey: taba
+    secretKey: taba-s3-secret
+config:
+  backup:
+    delay: 2s
+    meta:
+      interval: 5s
+    segment:
+      max-age: 5s
+persistence:
+  size: 1Gi

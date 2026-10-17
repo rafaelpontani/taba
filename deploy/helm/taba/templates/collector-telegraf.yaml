@@ -1,0 +1,114 @@
+{{- if eq .Values.collector.type "telegraf" }}
+{{- $fn := include "taba.fullname" . }}
+{{- $t := .Values.collector.telegraf }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fn }}-telegraf
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fn }}-telegraf
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fn }}-telegraf
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $fn }}-telegraf }
+subjects:
+  - { kind: ServiceAccount, name: {{ $fn }}-telegraf, namespace: {{ .Release.Namespace }} }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fn }}-telegraf
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+data:
+  telegraf.conf: |
+    [agent]
+      interval = {{ $t.interval | quote }}
+      flush_interval = {{ $t.interval | quote }}
+      omit_hostname = true
+
+    # Os pods do Taba trazem as annotations prometheus.io/scrape, /port e /path.
+    [[inputs.prometheus]]
+      monitor_kubernetes_pods = true
+      pod_scrape_scope = "cluster"
+      monitor_kubernetes_pods_namespace = {{ .Release.Namespace | quote }}
+      kubernetes_label_selector = "app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=node"
+      metric_version = 2
+
+    {{- with $t.extraInputs }}
+    {{ . | nindent 4 }}
+    {{- end }}
+
+    {{ $t.outputs | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-telegraf
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "taba.componentSelector" (dict "ctx" . "component" "telegraf") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taba.componentSelector" (dict "ctx" . "component" "telegraf") | nindent 8 }}
+      annotations:
+        checksum/config: {{ printf "%s%s%s" $t.interval $t.outputs $t.extraInputs | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: {{ $fn }}-telegraf
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      containers:
+        - name: telegraf
+          image: {{ $t.image.repository }}:{{ $t.image.tag }}
+          imagePullPolicy: {{ $t.image.pullPolicy }}
+          ports:
+            - { name: metrics, containerPort: 9273 }
+          {{- if $t.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ $t.envFromSecret }}
+          {{- end }}
+          {{- with $t.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/telegraf/telegraf.conf, subPath: telegraf.conf, readOnly: true }
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fn }}-telegraf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-telegraf
+  labels:
+    {{- include "taba.componentLabels" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+spec:
+  ports:
+    - { name: metrics, port: 9273, targetPort: metrics }
+  selector:
+    {{- include "taba.componentSelector" (dict "ctx" . "component" "telegraf") | nindent 4 }}
+{{- end }}

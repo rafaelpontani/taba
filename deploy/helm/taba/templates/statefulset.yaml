@@ -1,0 +1,229 @@
+{{- include "taba.validate" . -}}
+{{- $dev := include "taba.isDev" . -}}
+{{- $backup := include "taba.backupEnabled" . -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "taba.fullname" . }}
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "taba.fullname" . }}-headless
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ if $dev }}1{{ else }}{{ .Values.replicaCount }}{{ end }}
+  {{- end }}
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type }}
+    {{- if eq .Values.updateStrategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.updateStrategy.maxUnavailable }}
+    {{- end }}
+  persistentVolumeClaimRetentionPolicy:
+    whenScaled: {{ .Values.persistence.retentionPolicy.whenScaled }}
+    whenDeleted: {{ .Values.persistence.retentionPolicy.whenDeleted }}
+  selector:
+    matchLabels:
+      {{- include "taba.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include "taba.config" . | sha256sum }}
+        {{- if has .Values.collector.type (list "none" "prometheus" "telegraf") }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.ports.operations | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "taba.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "taba.serviceAccountName" . }}
+      # Os Services injetam TABA_PORT, TABA_SERVICE_HOST, TABA_ENTRY_*... e o nó lê o prefixo TABA_* como configuração.
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: taba
+          image: {{ include "taba.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          # O nó de ordinal 0 é o "primeiro nó": só ele forma o cluster novo (se ninguém responder no
+          # entry-address). É seguro deixar ligado para sempre (doc 23): se os outros estão de pé, ele entra.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              if [ "${HOSTNAME##*-}" = "0" ]; then export TABA_CLUSTER_FIRST_NODE=true; fi
+              exec taba --config /etc/taba/taba.yml
+          ports:
+            - { name: api, containerPort: {{ .Values.ports.api }} }
+            {{- if not $dev }}
+            - { name: cluster, containerPort: {{ .Values.ports.cluster }} }
+            {{- end }}
+            - { name: ops, containerPort: {{ .Values.ports.operations }} }
+          env:
+            {{- if not $dev }}
+            # O nó descobre o próprio IP pelo entry-address; aqui ele é informado direto (o entry-address só
+            # responde quando já existe um nó pronto).
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - { name: TABA_CLUSTER_ADVERTISE_ADDRESSES, value: "$(POD_IP)" }
+            {{- end }}
+            {{- if $backup }}
+            {{- if or .Values.seaweedfs.enabled .Values.backup.s3.existingSecret .Values.backup.s3.accessKey }}
+            - name: TABA_BACKUP_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "taba.s3SecretName" . }}
+                  key: accessKey
+            - name: TABA_BACKUP_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "taba.s3SecretName" . }}
+                  key: secretKey
+            {{- end }}
+            {{- end }}
+            {{- with .Values.otel.endpoint }}
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.otel.protocol }}
+            - { name: OTEL_EXPORTER_OTLP_PROTOCOL, value: {{ . | quote }} }
+            {{- end }}
+            {{- if .Values.otel.headersSecret.name }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.otel.headersSecret.name }}
+                  key: {{ .Values.otel.headersSecret.key }}
+            {{- else if .Values.otel.headers }}
+            - { name: OTEL_EXPORTER_OTLP_HEADERS, value: {{ .Values.otel.headers | quote }} }
+            {{- end }}
+            {{- if .Values.otel.certificateConfigMap.name }}
+            - { name: OTEL_EXPORTER_OTLP_CERTIFICATE, value: /etc/taba/otel/{{ .Values.otel.certificateConfigMap.key }} }
+            {{- end }}
+            {{- with .Values.otel.metricExportInterval }}
+            - { name: OTEL_METRIC_EXPORT_INTERVAL, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.otel.tracesSampler }}
+            - { name: OTEL_TRACES_SAMPLER, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.otel.tracesSamplerArg }}
+            - { name: OTEL_TRACES_SAMPLER_ARG, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.otel.serviceName }}
+            - { name: OTEL_SERVICE_NAME, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.otel.resourceAttributes }}
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet: { path: /health/live, port: ops }
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+          livenessProbe:
+            httpGet: { path: /health/live, port: ops }
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet: { path: /health/ready, port: ops }
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/taba }
+            - { name: config, mountPath: /etc/taba/taba.yml, subPath: taba.yml, readOnly: true }
+            {{- if not $dev }}
+            - { name: secrets, mountPath: /etc/taba/secrets, readOnly: true }
+            {{- end }}
+            {{- if .Values.otel.certificateConfigMap.name }}
+            - { name: otel-ca, mountPath: /etc/taba/otel, readOnly: true }
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "taba.fullname" . }}
+        {{- if not $dev }}
+        - name: secrets
+          secret:
+            secretName: {{ include "taba.secretsName" . }}
+            defaultMode: 0440
+            items:
+              - { key: root-token, path: root-token }
+              - { key: tls.crt, path: tls/cluster.crt }
+              - { key: tls.key, path: tls/cluster.key }
+        {{- end }}
+        {{- if .Values.otel.certificateConfigMap.name }}
+        - name: otel-ca
+          configMap:
+            name: {{ .Values.otel.certificateConfigMap.name }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "taba.selectorLabels" . | nindent 20 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ if eq .Values.persistence.storageClass "-" }}""{{ else }}{{ .Values.persistence.storageClass }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

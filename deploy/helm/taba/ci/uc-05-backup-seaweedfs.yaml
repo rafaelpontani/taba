@@ -1,0 +1,17 @@
+# UC-05/UC-07: backup em SeaweedFS embutido. Atrasos curtos para o teste não esperar minutos.
+seaweedfs:
+  enabled: true
+  persistence:
+    size: 2Gi
+config:
+  backup:
+    delay: 2s
+    meta:
+      interval: 5s
+    segment:
+      max-age: 5s
+    heartbeat:
+      interval: 3s
+    dead-after: 15s
+persistence:
+  size: 1Gi

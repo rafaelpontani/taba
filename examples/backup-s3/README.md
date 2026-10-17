@@ -1,15 +1,15 @@
 # S3 backup: configuration and operation
 
-Examples for the optional S3 backup ([`doc/pt-BR/33-backup-s3.md`](../../doc/pt-BR/33-backup-s3.md)): the configuration with MinIO and with AWS, and a walkthrough of **forcing a backup (flush)**, **stopping** and **starting** the cluster.
+Examples for the optional S3 backup ([`doc/pt-BR/33-backup-s3.md`](../../doc/pt-BR/33-backup-s3.md)): the configuration with a self-hosted S3 (SeaweedFS, MinIO…) and with AWS, and a walkthrough of **forcing a backup (flush)**, **stopping** and **starting** the cluster.
 
 | File | What it is |
 |---|---|
-| [`taba-minio.yml`](taba-minio.yml) | Node configuration with MinIO (or another S3-compatible store), every setting commented |
+| [`taba-seaweedfs.yml`](taba-seaweedfs.yml) | Node configuration with a self-hosted S3 (SeaweedFS in the Compose; MinIO, Ceph…), every setting commented |
 | [`taba-aws.yml`](taba-aws.yml) | Configuration on AWS (credentials from the default chain: role, IAM, profile) and the minimum permissions |
 | [`flush.sh`](flush.sh) | Forces the backup and checks that nothing is left pending |
 | [`stop-and-start.sh`](stop-and-start.sh) | Stops the cluster with backup, wipes the nodes' disks and starts it again: everything comes back from S3 |
 
-The `docker-compose.yml` at the repository root **already starts a MinIO** and turns the backup on in all nodes (`TABA_BACKUP_S3_*`). MinIO console: <http://localhost:9001> (`taba` / `taba-minio-secret`, demo only).
+The `docker-compose.yml` at the repository root **already starts a SeaweedFS** and turns the backup on in all nodes (`TABA_BACKUP_S3_*`). Cluster UI: <http://localhost:9333>; S3 key `taba` / `taba-s3-secret` (demo only).
 
 ## 1. Turn it on
 
@@ -17,7 +17,7 @@ With the root Compose file: `docker compose up -d`. With your own cluster, set t
 
 ```
 TABA_BACKUP_S3_BUCKET=taba
-TABA_BACKUP_S3_ENDPOINT=http://minio:9000      # only outside AWS
+TABA_BACKUP_S3_ENDPOINT=http://seaweedfs:8333   # only outside AWS
 TABA_BACKUP_S3_ACCESS_KEY=...                  # optional: without them the default AWS chain applies
 TABA_BACKUP_S3_SECRET_KEY=...
 ```

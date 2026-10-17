@@ -1,0 +1,10 @@
+apiVersion: v2
+name: taba
+description: Taba — fila de mensagens distribuída (cluster com quórum, replicação e backup opcional em S3)
+type: application
+version: 0.1.0
+# Tag da imagem rafaelpontani/taba usada quando `image.tag` está vazio. `0.1` é o ponteiro seguro (doc 27).
+appVersion: "0.1"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/rafaelpontani/taba
+keywords: [taba, queue, messaging, cluster]

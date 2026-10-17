@@ -147,7 +147,7 @@ backup:
     region: sa-east-1          # credenciais: a cadeia padrão da AWS (IAM, perfil, papel da tarefa)
 ```
 
-Com MinIO ou outro S3 compatível: `backup.s3.endpoint`, `access-key` e `secret-key`. Em produção o bucket **deve** ter versionamento/retenção do lado do S3 e permissão só de escrita para os nós (leitura é necessária para restaurar). Configuração pronta em [`examples/backup-s3`](../../examples/backup-s3/README.md). Confira com `GET /node/backup`: `s3Reachable: true` e `pending` indo a zero.
+Com SeaweedFS, MinIO ou outro S3 compatível (que honre escrita condicional; o Garage não serve): `backup.s3.endpoint`, `access-key` e `secret-key`. Em produção o bucket **deve** ter versionamento/retenção do lado do S3 e permissão só de escrita para os nós (leitura é necessária para restaurar). Configuração pronta em [`examples/backup-s3`](../../examples/backup-s3/README.md). Confira com `GET /node/backup`: `s3Reachable: true` e `pending` indo a zero.
 
 ### Forçar o backup agora (flush)
 
@@ -185,9 +185,9 @@ Não é ponto de recuperação por tempo (não há versões de mensagens nem "vo
 - **Tópicos:** `taba-cli stats topics --condition backlog` (limiares `stats.topics.*` precisam estar configurados). ⚠️ A agregação **entre nós** das métricas de tópico não está implementada: consulte cada nó ou some no backend.
 - **Logs:** `telemetry.logs.format=json` para ingestão; `color` para terminal. Procure `error`: perda de mensagem (`taba.message.lost`), falha de bootstrap, drain que estourou o prazo.
 
-## Kubernetes (orientação, **não validada**)
+## Kubernetes
 
-O repositório **não tem** manifestos nem Helm. O que o nó oferece para encaixar: sondas `/health/live` e `/health/ready` na porta de operação; parada por `SIGTERM` com drain (`terminationGracePeriodSeconds` > `drain.timeout`); `cluster.entry-address` apontando para um `Service` **interno** (ou *headless*) que repasse a porta do cluster **em TCP**, sem terminar o TLS; a pasta de segredos como `Secret` montado; `storage.dir` num volume por pod (a última pasta chamada `taba`). `StatefulSet` ou `Deployment` servem (o nó **não depende** de identidade estável: toda partida é de nó novo). Rolling update: `maxUnavailable: 1`.
+O repositório tem um **chart Helm** (`deploy/helm/taba/`, [34-chart-helm.md](34-chart-helm.md)); seus modos de operação e os testes em bash, rodados num cluster kind, estão em [35-chart-helm-casos-de-uso.md](35-chart-helm-casos-de-uso.md). Ele não foi validado num cluster de produção. O que o nó oferece para encaixar (e o chart usa): sondas `/health/live` e `/health/ready` na porta de operação; parada por `SIGTERM` com drain (`terminationGracePeriodSeconds` > `drain.timeout`); `cluster.entry-address` apontando para um `Service` **interno** (ou *headless*) que repasse a porta do cluster **em TCP**, sem terminar o TLS; a pasta de segredos como `Secret` montado; `storage.dir` num volume por pod (a última pasta chamada `taba`). `StatefulSet` ou `Deployment` servem (o nó **não depende** de identidade estável: toda partida é de nó novo). Rolling update: `maxUnavailable: 1`.
 
 ## Docker Compose do repositório: comandos úteis
 

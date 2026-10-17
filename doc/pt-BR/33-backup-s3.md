@@ -1,6 +1,6 @@
 ---
 título: Backup opcional em S3
-resumo: Como o Taba guarda um backup de falha grave num bucket S3 (ou MinIO) sem nunca esperar por ele — o que vai ao bucket, quem grava, como o nó restaura, como forçar o backup e parar e iniciar o cluster, a configuração, os limites e os cenários simulados.
+resumo: Como o Taba guarda um backup de falha grave num bucket S3 (ou SeaweedFS, MinIO) sem nunca esperar por ele — o que vai ao bucket, quem grava, como o nó restaura, como forçar o backup e parar e iniciar o cluster, a configuração, os limites e os cenários simulados.
 tipo: explicação
 status: estável
 verificado-em: 2026-10-14 @ efeb47a
@@ -174,7 +174,9 @@ backup:
     region: sa-east-1
 ```
 
-Com MinIO (ou outro S3 compatível), `backup.s3.endpoint`, `access-key` e `secret-key` (o `path-style` liga sozinho com `endpoint`).
+Com SeaweedFS, MinIO (ou outro S3 compatível), `backup.s3.endpoint`, `access-key` e `secret-key` (o `path-style` liga sozinho com `endpoint`).
+
+> **O S3 precisa honrar escrita condicional** (`If-None-Match: *` e `If-Match`, `412` quando a condição falha, de forma atômica): é o que garante um único restaurador. Verificados: AWS S3, SeaweedFS (testado: 20 criações simultâneas, 1 vencedora) e MinIO. **O Garage não serve**: ele ignora os cabeçalhos e dois nós poderiam restaurar ao mesmo tempo.
 
 ## Cenários simulados e consequências
 

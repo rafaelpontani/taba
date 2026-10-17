@@ -1,0 +1,9 @@
+# UC-10: Prometheus Operator (ServiceMonitor).
+collector:
+  type: prometheus-operator
+  serviceMonitor:
+    interval: 15s
+    labels:
+      release: kube-prometheus-stack
+persistence:
+  size: 1Gi

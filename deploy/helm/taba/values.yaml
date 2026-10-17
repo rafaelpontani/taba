@@ -1,0 +1,327 @@
+# Valores do chart Taba. Doc completa: doc/pt-BR/34-chart-helm.md (en-US: doc/en-US/34-helm-chart.md).
+# Casos de uso (modos de operação) e testes: doc/pt-BR/35-chart-helm-casos-de-uso.md.
+
+nameOverride: ""
+fullnameOverride: ""
+clusterDomain: cluster.local
+
+image:
+  repository: rafaelpontani/taba
+  tag: ""            # vazio = appVersion do chart (0.1). Todos os nós devem rodar a mesma versão.
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# ---------------------------------------------------------------------------------------------------
+# Nós
+# ---------------------------------------------------------------------------------------------------
+replicaCount: 3          # produção: nunca menos de max(3, replication.factor). Ignorado com autoscaling.enabled.
+allowFewReplicas: false  # só para testes: libera replicaCount < 3 em produção
+podManagementPolicy: Parallel   # os nós ainda não prontos tentam entrar sozinhos (bootstrap.retry); OrderedReady também funciona
+updateStrategy:
+  type: RollingUpdate
+  maxUnavailable: 1      # atualização de um nó por vez (doc 23)
+# Deve ser maior que drain.timeout + backup.drain.timeout (+ margem). O chart recusa valores menores.
+terminationGracePeriodSeconds: 120
+
+ports:                   # as três portas devem ser diferentes
+  api: 8080              # API do cliente (HTTP; HTTPS termina no ingress/LB)
+  cluster: 8081          # mTLS entre nós. NUNCA expor fora do cluster
+  operations: 9090       # health, métricas, drain. Sem autenticação: NUNCA expor fora do cluster
+
+persistence:             # storage.dir = /var/lib/taba (último diretório se chama "taba": exigido pelo nó)
+  size: 10Gi
+  storageClass: ""       # vazio = padrão do cluster; "-" = sem classe
+  accessModes: [ReadWriteOnce]
+  retentionPolicy:
+    # Ao reduzir réplicas o nó sai drenado e volta como NÓ NOVO, então o volume antigo não serve mais.
+    whenScaled: Delete
+    whenDeleted: Retain
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+probes:
+  startup:   { failureThreshold: 120, periodSeconds: 5 }    # até 10 min para sincronizar ao entrar
+  liveness:  { periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6 }
+  readiness: { periodSeconds: 5,  timeoutSeconds: 3, failureThreshold: 3 }
+extraEnv: []             # lista de EnvVar (ex.: TABA_* por nó ou AWS_* para IRSA)
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}        # ex.: eks.amazonaws.com/role-arn para backup em S3 sem chaves (IRSA)
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+networkPolicy:
+  enabled: false
+  apiFrom: []            # lista de peers (from) autorizados na API; vazio = qualquer origem
+  opsFrom: []            # peers extras na porta de operações (o coletor do chart já é liberado)
+
+# ---------------------------------------------------------------------------------------------------
+# Configuração do nó (taba.yml). Espelha as chaves de doc/pt-BR/22-configuracao.md: cada ponto da chave
+# vira um nível. Sem valor aqui = default do nó. Gerenciados pelo chart (não defina): api.port,
+# operations.port, cluster.port, cluster.entry-address, storage.dir, secrets.dir e backup.s3.bucket/
+# endpoint (quando seaweedfs.enabled ou backup.s3.bucket).
+# Segredos nunca aqui: root token em `secrets`, chaves S3 em `backup.s3`, OTEL_*headers em `otel`.
+# ---------------------------------------------------------------------------------------------------
+config:
+  mode: production        # production | development (development = 1 nó, sem auth, sem TLS)
+  telemetry:
+    logs:
+      format: json        # text | color | json
+      level: info
+    prometheus:
+      enabled: true       # liga GET /metrics (necessário para os coletores)
+  # --- as demais chaves, comentadas, com o default do nó -------------------------------------------
+  # replication: { factor: 3 }
+  # write:
+  #   quorum: 2           # padrão floor(factor/2)+1
+  #   retry: { attempts: 3, backoff: 200ms }
+  #   pending: { ttl: 30s }
+  #   commit: { timeout: 10s }
+  # auth: { enabled: auto, reload-interval: 60s }
+  # drain: { on-stop: true, timeout: 25s }
+  # memory:
+  #   limit: 1GB          # sem limite por padrão; o excesso vai para disco
+  #   rate: { window: 5m }
+  #   topic: { reserve: 1000 }
+  # storage: { db: { synchronous: NORMAL } }
+  # message: { max-bytes: 5MB }   # hard-limit: sem teto
+  # api: { pagination: { default-limit: 100, max-limit: 1000 } }
+  # ring: { virtual-nodes: 128 }
+  # cluster:
+  #   tls: { reload-interval: 60s, expiry-warning: 30d }
+  #   channel:
+  #     keepalive: { interval: 2s, max-topics: 1000 }
+  #     reconnect: { retries: 3, backoff: 1s }
+  #     queue: { max-size: 10000, max-age: 60s }
+  #   notify: { window: 100ms, wait: 50ms }
+  #   vote: { quorum-percent: 51, min-voters: 2 }
+  #   freezing: { duration: 5m }
+  #   bootstrap: { retry: { interval: 5s, max-attempts: 0 } }
+  #   message-loss: { ttl: 14d }
+  #   reunion: { interval: 20s }
+  #   recovery: { timeout: 5m }
+  #   sync:
+  #     stream: { max-items: 500, max-bytes: 4MiB }
+  #     range: { size: 200 }
+  #     log: { max-bytes: 1GiB }
+  #     timeout: 60s
+  # delivery:
+  #   visibility-timeout: { default: 120s }      # max: sem teto
+  #   max-messages: { default: 10 }
+  #   get: { max-attempts: 3 }
+  #   take: { max-attempts: 3 }
+  #   fair: { ready-weight: 0.1, normal-every: 10 }
+  # retention:
+  #   ttl: { default: 14d }
+  #   max-deliveries: { default: 10 }
+  #   sweep: { interval: 60s }
+  # fifo: { dedup: { window: 300s }, forward: { max-attempts: 3 } }
+  # topics:
+  #   dead-letter: { suffix: -dead-letter }
+  #   volatile: { idle-timeout: { default: 600s }, idle-check: { retry-interval: 30s }, takeover: { jitter: 2s } }
+  #   distributor: { max-targets: 50 }
+  # telemetry:
+  #   topics: { mode: off, group-by-tags: [], max-topics: 1000 }   # off | by-tags | per-topic
+  # stats:
+  #   topics: { top-groups: 10, noisy-group-share: 50 }
+  #   disk: { free-min: 5GB }     # liga a condição storage-pressure
+  # ratelimit:
+  #   publish: { rps: 1000 }
+  #   consume: { rps: 1000 }
+  #   admin: { rps: 50 }
+  #   ops: { rps: 50 }
+  #   burst: 2000
+  # client-ip:
+  #   headers: { enabled: true }
+  #   trusted-proxies: [10.0.0.0/8]   # no Kubernetes: o CIDR do ingress controller
+  # operations: { allowed-ips: [10.0.0.0/8] }
+  # backup:                  # ajustes finos do backup (o liga/desliga é seaweedfs.enabled ou backup.s3.bucket)
+  #   delay: 60s
+  #   meta: { interval: 60s }
+  #   segment: { max-bytes: 8MB, max-messages: 5000, max-age: 60s }
+  #   heartbeat: { interval: 15s }
+  #   dead-after: 60s
+  #   drain: { timeout: 30s }
+  #   disk: { evict-above: 85, evict-to: 70, pause-at: 90 }
+  #   reconcile: { interval: 60s }
+  #   restore: { lock-ttl: 60s }
+
+# ---------------------------------------------------------------------------------------------------
+# Segredos do cluster: root token + certificado mTLS (taba init)
+# ---------------------------------------------------------------------------------------------------
+secrets:
+  # Secret existente com as chaves: root-token, tls.crt e tls.key. Vazio = o chart gera UMA vez
+  # (Job de pré-instalação roda `taba init`; o Secret não é apagado no uninstall nem recriado no upgrade).
+  existingSecret: ""
+  init:
+    certDays: 1825
+    kubectlImage: alpine/k8s:1.34.0   # só o Job de geração usa (kubectl + sh)
+    backoffLimit: 3
+
+# ---------------------------------------------------------------------------------------------------
+# Serviços e Ingress
+# ---------------------------------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8080             # porta do Service da API (aponta para ports.api)
+  annotations: {}
+  loadBalancerClass: ""
+
+ingress:                 # somente a API (8080). Cluster e operações nunca passam por aqui.
+  enabled: false
+  className: ""          # vazio = classe padrão do cluster; alguns controllers querem a annotation legada
+  annotations: {}
+  hosts:
+    - host: taba.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []                # - secretName: taba-tls
+                         #   hosts: [taba.example.com]
+
+# ---------------------------------------------------------------------------------------------------
+# Backup em S3 (doc 33). Escolha UM: seaweedfs.enabled (embutido) ou backup.s3.bucket (S3 externo).
+# ---------------------------------------------------------------------------------------------------
+seaweedfs:
+  # S3 embutido (um nó) para o backup: master + volume + filer + gateway S3 em um processo. Bom para testar e para
+  # ambientes sem nuvem; NÃO é um armazenamento redundante de produção. O backup exige escrita condicional
+  # (If-None-Match / If-Match) no S3: o SeaweedFS honra de forma atômica (o Garage ignora, não serve).
+  enabled: false
+  image: { repository: chrislusf/seaweedfs, tag: "4.48", pullPolicy: IfNotPresent }
+  bucket: taba
+  auth:
+    existingSecret: ""   # com as chaves accessKey e secretKey
+    accessKey: taba
+    secretKey: ""        # vazio = gerado e mantido entre upgrades
+  volumeSizeLimitMB: 1024   # tamanho de cada volume do SeaweedFS (menor = pré-aloca menos)
+  maxVolumes: 20
+  persistence: { size: 20Gi, storageClass: "" }
+  resources: {}
+
+backup:
+  s3:
+    bucket: ""           # preencher liga o backup em S3 externo (AWS, Ceph, Garage...)
+    endpoint: ""         # vazio = AWS. Fora da AWS: URL do serviço (liga path-style sozinho)
+    region: ""
+    prefix: ""           # default do nó: taba. Vários clusters podem dividir um bucket com prefixos diferentes
+    pathStyle:           # vazio = automático
+    # Credenciais: existingSecret (chaves accessKey/secretKey) OU accessKey/secretKey inline (vira Secret).
+    # Sem nenhuma das duas, vale a cadeia da AWS (IRSA, instance profile): ver serviceAccount.annotations.
+    existingSecret: ""
+    accessKey: ""
+    secretKey: ""
+
+# ---------------------------------------------------------------------------------------------------
+# Telemetria: pull (/metrics) e push (OTLP)
+# ---------------------------------------------------------------------------------------------------
+otel:                    # variáveis OTEL_* (push OTLP). Sem endpoint, o OTLP fica desligado.
+  endpoint: ""           # http(s)://collector:4317
+  protocol: ""           # grpc (default) | http/protobuf
+  headers: ""            # k=v,k=v — pode ser segredo: prefira headersSecret
+  headersSecret: { name: "", key: headers }
+  certificateConfigMap: { name: "", key: ca.pem }   # CA em PEM
+  metricExportInterval: ""   # ms (default 60000)
+  tracesSampler: ""
+  tracesSamplerArg: ""
+  serviceName: ""
+  resourceAttributes: ""
+
+collector:
+  # none              — só expõe /metrics (annotations prometheus.io/* nos pods)
+  # prometheus-operator — cria ServiceMonitor (o Prometheus é seu)
+  # prometheus        — sobe um Prometheus (coleta + armazena + remote_write)
+  # telegraf          — sobe um Telegraf (coleta + outputs livres)
+  type: none
+  serviceMonitor:
+    interval: 30s
+    scrapeTimeout: 10s
+    namespace: ""        # vazio = namespace do release
+    labels: {}           # devem casar com o serviceMonitorSelector do seu Prometheus
+    relabelings: []
+    metricRelabelings: []
+    requireCrd: true     # true = só renderiza se o CRD monitoring.coreos.com/v1 existir
+  prometheus:
+    image: { repository: prom/prometheus, tag: v3.5.0, pullPolicy: IfNotPresent }
+    scrapeInterval: 15s
+    retention: 7d
+    persistence: { enabled: false, size: 10Gi, storageClass: "" }
+    remoteWrite: []      # - url: https://mimir/api/v1/push
+    extraScrapeConfigs: []
+    resources: {}
+  telegraf:
+    image: { repository: telegraf, tag: "1.35", pullPolicy: IfNotPresent }
+    interval: 15s
+    # Outputs em TOML. Padrão: expõe o que coletou em :9273 (formato Prometheus). Exemplos de substituição:
+    #   [[outputs.influxdb_v2]] urls=["http://influx:8086"] token="${INFLUX_TOKEN}" organization="org" bucket="taba"
+    outputs: |
+      [[outputs.prometheus_client]]
+        listen = ":9273"
+    extraInputs: ""      # TOML adicional
+    envFromSecret: ""    # Secret com variáveis usadas nos outputs (ex.: INFLUX_TOKEN)
+    resources: {}
+
+# ---------------------------------------------------------------------------------------------------
+# Autoscaling com KEDA (precisa do KEDA e de um Prometheus). Desligado por padrão.
+# Seguro por construção: piso max(3, replication.factor); scale-down de 1 nó por vez, com janela longa,
+# SIGTERM drena as mensagens para outro nó antes do pod terminar (terminationGracePeriodSeconds).
+# ---------------------------------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 6
+  paused: false          # true congela o número de réplicas (annotation paused-replicas)
+  pausedReplicas: 0      # réplicas em que congelar (0 = minReplicas); use o número atual de nós
+  pollingInterval: 30
+  prometheus:
+    serverAddress: ""    # vazio + collector.type=prometheus = o Prometheus do chart
+    namespace: ""
+    authModes: ""        # ver doc do KEDA (TriggerAuthentication via authenticationRef)
+    authenticationRef: {}   # ex.: { name: prom-auth, kind: TriggerAuthentication }
+    unsafeSsl: false
+  podSelector: ''        # seletor de rótulos das métricas; vazio = pod=~"<release>-[0-9]+",namespace="<ns>"
+  disk:
+    enabled: true
+    threshold: 70        # % de uso do volume por nó (alinhado a backup.disk.evict-to)
+    # kubelet = kubelet_volume_stats_* (precisa do Prometheus com as métricas do kubelet)
+    # app     = métricas do próprio nó (taba_storage_disk_free_bytes); exige capacityBytes
+    source: kubelet
+    capacityBytes: 0
+    query: ""            # sobrescreve a consulta inteira
+  requests:
+    enabled: true
+    perNodeRps: 500      # requisições/s por nó que justificam mais um nó
+    window: 2m
+    query: ""
+  healthGuard: true      # sem quórum (ou sem métrica) a consulta falha e o HPA NÃO escala (nem reduz)
+  fallback: {}           # ex.: { failureThreshold: 3, replicas: 3 }
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      pods: 1
+      periodSeconds: 300      # entradas no cluster são serializadas: 1 nó a cada 5 min
+    scaleDown:
+      stabilizationWindowSeconds: 900
+      pods: 1
+      periodSeconds: 600      # 1 nó a cada 10 min: tempo para drenar e re-sincronizar

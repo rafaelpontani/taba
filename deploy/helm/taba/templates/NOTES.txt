@@ -1,0 +1,20 @@
+Taba {{ .Chart.AppVersion }} instalado como "{{ include "taba.fullname" . }}" ({{ if include "taba.isDev" . }}desenvolvimento, 1 nó{{ else if .Values.autoscaling.enabled }}autoscaling {{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} nós{{ else }}{{ .Values.replicaCount }} nós{{ end }}).
+
+Os nós ficam "ready" depois de entrar no cluster e sincronizar:
+  kubectl -n {{ .Release.Namespace }} rollout status statefulset/{{ include "taba.fullname" . }}
+
+Root token:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "taba.secretsName" . }} -o jsonpath='{.data.root-token}' | base64 -d
+
+API (8080), de dentro do cluster:  http://{{ include "taba.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+{{- if .Values.ingress.enabled }}
+Ingress: {{ range .Values.ingress.hosts }}{{ .host }} {{ end }}
+{{- end }}
+Fora do cluster:  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "taba.fullname" . }} 8080:{{ .Values.service.port }}
+
+As portas de cluster ({{ .Values.ports.cluster }}) e de operações ({{ .Values.ports.operations }}, sem autenticação) nunca devem sair do cluster.
+Saúde do cluster:  kubectl -n {{ .Release.Namespace }} exec {{ include "taba.fullname" . }}-0 -- wget -qO- http://127.0.0.1:{{ .Values.ports.operations }}/health/cluster
+{{- if and (not (include "taba.isDev" .)) (not .Values.secrets.existingSecret) }}
+
+O Secret {{ include "taba.secretsName" . }} foi gerado uma vez e NÃO é apagado no uninstall (guarda o certificado do cluster e o root token).
+{{- end }}

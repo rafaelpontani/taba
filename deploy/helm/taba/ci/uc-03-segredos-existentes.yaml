@@ -1,0 +1,5 @@
+# UC-03: Secret existente (criado pelo script de teste com `taba init`).
+secrets:
+  existingSecret: taba-meus-segredos
+persistence:
+  size: 1Gi

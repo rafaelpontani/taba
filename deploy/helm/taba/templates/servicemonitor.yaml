@@ -1,0 +1,33 @@
+{{- $sm := .Values.collector.serviceMonitor }}
+{{- if and (eq .Values.collector.type "prometheus-operator") (or (not $sm.requireCrd) (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1")) }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "taba.fullname" . }}
+  namespace: {{ default .Release.Namespace $sm.namespace }}
+  labels:
+    {{- include "taba.labels" . | nindent 4 }}
+    {{- with $sm.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames: [{{ .Release.Namespace }}]
+  selector:
+    matchLabels:
+      {{- include "taba.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/service: ops
+  endpoints:
+    - port: ops
+      path: /metrics
+      interval: {{ $sm.interval }}
+      scrapeTimeout: {{ $sm.scrapeTimeout }}
+      {{- with $sm.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $sm.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

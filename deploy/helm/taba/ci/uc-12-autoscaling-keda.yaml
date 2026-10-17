@@ -1,0 +1,25 @@
+# UC-12: autoscaling KEDA com o Prometheus do chart. Limites baixos só para o teste.
+collector:
+  type: prometheus
+  prometheus:
+    scrapeInterval: 5s
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 4
+  pollingInterval: 10
+  disk:
+    source: app
+    capacityBytes: 1073741824
+    threshold: 70
+  requests:
+    perNodeRps: 1000
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      periodSeconds: 60
+persistence:
+  size: 1Gi
