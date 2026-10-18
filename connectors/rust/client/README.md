@@ -95,3 +95,7 @@ while !stop.load(std::sync::atomic::Ordering::Relaxed) {
 `Client::call` and `Call` are the lower layer (route, query, body): it is what `taba-cli` uses to print the responses as the server returned them. `taba_client::testing` is a fake transport for the tests of whoever uses the connector.
 
 **Still missing:** the `async` form (`async` *feature*, `tokio`), a `Transport` the application can swap, and publishing to crates.io.
+
+## License
+
+[Apache-2.0](https://github.com/rafaelpontani/taba/blob/main/connectors/LICENSE). The Taba server is AGPL-3.0-only; the connectors are Apache-2.0 so any application, open or closed, can embed them.

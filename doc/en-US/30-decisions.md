@@ -3,7 +3,7 @@ title: Decisions
 summary: The record of decisions already made, by theme, with the stable code of each question (D…) and where it is described, and the problems already resolved (PRB-…) — the "why" behind what the other documents describe.
 type: reference
 status: stable
-verified-on: 2026-10-15 @ 56121c9
+verified-on: 2026-10-18 @ 6c5de51
 sources: [doc/08a-decisoes-tomadas.md]
 ---
 
@@ -218,6 +218,14 @@ Decided with the review of the pipeline before the first public release. **Writt
 | D161 | **crates.io and nuget.org by Trusted Publishing (OIDC).** No stored token (only the first publish of each crate), turned on by the `PUBLISH_CRATES` and `NUGET_USER` variables, idempotent; candidates go out as semver pre-releases. The packages carry the commit and the Release link (`<repository commit>`, `releaseNotes`, `.cargo_vcs_info.json`) | [27-ci-cd.md](27-ci-cd.md#publishing-and-metadata) |
 | D162 | **The published chart carries the exact version.** `oci://ghcr.io/rafaelpontani/charts/taba` with `version` and `appVersion` equal to the release version (the chart points to the image of the same version); in the repository `appVersion` stays `0.1`, the safe pointer | [34-helm-chart.md](34-helm-chart.md) |
 | D163 | **The series starts at `0.1.0`.** The `v0.0.0` seed sits on the first commit of the repository, present on `main` and `release`; actions pinned by SHA, Dependabot, workflow lint and Scorecard are the base of trust | [27-ci-cd.md](27-ci-cd.md#versioning-semantic-release) |
+
+## License and contributions (D164)
+
+Decided before the first publish to crates.io and nuget.org. **Written by hand here** (see K in [31-pending-items.md](31-pending-items.md)).
+
+| Code | Decision | Where |
+|---|---|---|
+| D164 | **AGPL-3.0-only server, Apache-2.0 connectors, contributions under a CLA.** The server (`crates/`, the `taba` image, the chart and the rest of the repository) stays AGPL: whoever offers Taba as a service with modifications must publish them. The connectors (`connectors/`: `taba-client`, `taba-cli`, the `Taba.Client*` packages and the `taba-cli` image) become Apache-2.0, so any application, open or closed, can embed them without taking the AGPL along. The text lives once in `connectors/LICENSE`, and cargo copies it into each crate. Every contribution signs, once, the individual CLA (`CLA.md`, checked by the CLA Assistant): the author keeps the copyright and grants the maintainer the right to also distribute under a commercial license, which keeps the server's dual licensing (AGPL + commercial) open. Versions already published keep the license they shipped with | [README.md](../../README.md#license), [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
 ## Resolved problems (PRB)
 

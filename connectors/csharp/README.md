@@ -204,3 +204,7 @@ scripts/integration.sh                  # everything, with a real cluster
 The tests cite the use cases (`/// UC: UC-CNT-001`) like the server's, and `crates/taba-node/tests/uc_coverage.rs` reads them from here too.
 
 **Still missing:** publishing to nuget.org, the shared fixtures and scenarios from `contrato/` and the check on .NET Framework 4.8 (the tests run on modern .NET; `net461` is only compiled).
+
+## License
+
+[Apache-2.0](https://github.com/rafaelpontani/taba/blob/main/connectors/LICENSE). The Taba server is AGPL-3.0-only; the connectors are Apache-2.0 so any application, open or closed, can embed them.

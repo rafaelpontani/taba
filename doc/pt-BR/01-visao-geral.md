@@ -3,7 +3,7 @@ título: Visão geral
 resumo: O que é o Taba, para quem serve, o que ele não é, e a lista de objetivos e requisitos com o estado de cada um.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-18 @ 6c5de51
 fontes: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml, connectors/]
 ---
 
@@ -118,7 +118,7 @@ Estes oito princípios explicam muitas escolhas do código. Cada um aponta para 
 
 - **Servidor:** nó e cluster implementados no crate `taba-node`; testes de unidade, de um nó e de cluster (rede em memória), mais testes por TCP e TLS reais.
 - **Validação de ponta a ponta:** `docker/validate.sh` sobe o Compose do zero e confere a formação do cluster, o `taba-cli`, a queda e a volta de nós e a ausência de perda de mensagens confirmadas.
-- **Versão:** `0.1.0` (`Cargo.toml`). Licença **AGPL-3.0-only**.
+- **Versão:** `0.1.0` (`Cargo.toml`). Licenças: o servidor é **AGPL-3.0-only** e os conectores (`connectors/`) são **Apache-2.0**, com CLA para contribuições ([30-decisoes.md](30-decisoes.md#licença-e-contribuições-d164)).
 - **Faltam:** contrato OpenAPI, os outros oito conectores, publicação de pacotes e validação em Kubernetes ([32-roadmap.md](32-roadmap.md)).
 
 ## Fontes e provas

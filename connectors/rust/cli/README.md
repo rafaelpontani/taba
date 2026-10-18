@@ -23,3 +23,7 @@ cli/scripts/docker.sh                 # the Docker image (Alpine)
 ```
 
 `build.sh --all` and `build.ps1 -All` build every target the machine reaches (section 18.11.8 of the doc). The image uses the repository root as context: `docker buildx build -f connectors/rust/cli/Dockerfile -t taba-cli .`.
+
+## License
+
+[Apache-2.0](https://github.com/rafaelpontani/taba/blob/main/connectors/LICENSE). The Taba server is AGPL-3.0-only; the connectors are Apache-2.0 so any application, open or closed, can embed them.

@@ -20,7 +20,7 @@ Se você quer fugir da cobrança por mensagem, de um cluster de brokers para ope
 - **Filas FIFO:** ordem de entrega por grupo e deduplicação na publicação, para quando a sequência importa.
 - **API simples:** poucas rotas HTTP, sem SDK obrigatório e sem protocolo novo para aprender.
 - **Conectores simples nas principais linguagens:** C#, Java, Rust, C, C++, Python, PHP, Ruby, Go e Node.js, inclusive versões antigas (veja [Conectores](#conectores)).
-- **Open source (AGPLv3):** o código é aberto e, se alguém oferecer o Taba como serviço com modificações, deve compartilhá-las sob a mesma licença.
+- **Open source (servidor AGPLv3, clientes Apache-2.0):** o código é aberto e, se alguém oferecer o Taba como serviço com modificações, deve compartilhá-las sob a mesma licença. Os conectores são Apache-2.0, para qualquer aplicação, aberta ou fechada, poder embuti-los.
 
 > Velocidade e custo são **objetivos do projeto**. Ainda não há benchmarks publicados (veja [Estado e limites](#estado-e-limites)).
 
@@ -210,4 +210,7 @@ A documentação está em [doc/](doc/README.md), uma pasta por idioma. **Hoje el
 
 ## Licença
 
-[GNU AGPLv3](LICENSE).
+- **Servidor** (`crates/`, a imagem `taba`, o chart Helm e o resto do repositório): [GNU AGPLv3](LICENSE).
+- **Conectores** (`connectors/`: `taba-client`, `taba-cli` e os pacotes `Taba.Client*`): [Apache-2.0](connectors/LICENSE).
+
+Contribuições são bem-vindas: veja o [CONTRIBUTING.md](CONTRIBUTING.md) (em inglês). Um pull request entra depois que o autor assina o [CLA](CLA.md), uma única vez.

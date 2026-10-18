@@ -6,7 +6,8 @@ members = ["client", "cli"]
 
 [workspace.package]
 edition = "2021"
-license = "AGPL-3.0-only"
+# The connectors are Apache-2.0 so any application can embed them; the server stays AGPL-3.0-only (D164).
+license = "Apache-2.0"
 repository = "https://github.com/rafaelpontani/taba"
 homepage = "https://github.com/rafaelpontani/taba"
 keywords = ["taba", "queue", "messaging", "client"]

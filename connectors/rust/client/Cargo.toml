@@ -4,6 +4,8 @@ description = "The Taba Rust connector: its own HTTP/1.1, TLS through rustls and
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
+# The Apache-2.0 text lives once, in connectors/LICENSE; cargo copies it into the published crate.
+license-file = "../../LICENSE"
 repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true

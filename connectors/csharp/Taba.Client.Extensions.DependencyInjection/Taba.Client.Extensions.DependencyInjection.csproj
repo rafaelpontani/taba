@@ -12,7 +12,7 @@
     <Version>0.1.0</Version>
     <Description>AddTabaClient (DI and IOptions) for the Taba C# connector.</Description>
     <Authors>Taba</Authors>
-    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
   </PropertyGroup>

@@ -21,3 +21,7 @@ cargo fmt --all
 ```
 
 The tests cite the use cases (`/// UC: UC-CLI-001`) like the server's, and `crates/taba-node/tests/uc_coverage.rs` reads them from here too.
+
+## License
+
+[Apache-2.0](LICENSE). The Taba server is AGPL-3.0-only; the connectors are Apache-2.0 so any application, open or closed, can embed them.

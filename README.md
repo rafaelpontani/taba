@@ -20,7 +20,7 @@ If you want to get away from per-message billing, from a cluster of brokers to o
 - **FIFO queues:** per-group delivery order and publish deduplication, for when sequence matters.
 - **Simple API:** a few HTTP routes, no mandatory SDK and no new protocol to learn.
 - **Simple connectors in the main languages:** C#, Java, Rust, C, C++, Python, PHP, Ruby, Go and Node.js, including old versions (see [Connectors](#connectors)).
-- **Open source (AGPLv3):** the code is open and, if someone offers Taba as a service with modifications, they must share them under the same license.
+- **Open source (AGPLv3 server, Apache-2.0 clients):** the code is open and, if someone offers Taba as a service with modifications, they must share them under the same license. The connectors are Apache-2.0, so any application, open or closed, can embed them.
 
 > Speed and cost are **project goals**. There are no published benchmarks yet (see [Status and limits](#status-and-limits)).
 
@@ -210,4 +210,7 @@ The documentation lives in [doc/](doc/README.md), one folder per language: start
 
 ## License
 
-[GNU AGPLv3](LICENSE).
+- **Server** (`crates/`, the `taba` image, the Helm chart and the rest of the repository): [GNU AGPLv3](LICENSE).
+- **Connectors** (`connectors/`: `taba-client`, `taba-cli` and the `Taba.Client*` packages): [Apache-2.0](connectors/LICENSE).
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). A pull request is merged after its author signs the [CLA](CLA.md), once.

@@ -262,7 +262,6 @@ jobs:
             echo "org.opencontainers.image.revision=$GITHUB_SHA"
             echo "org.opencontainers.image.version=$VERSION"
             echo "org.opencontainers.image.created=$created"
-            echo "org.opencontainers.image.licenses=AGPL-3.0-only"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       # One Dockerfile, one target per image: both share the same pinned base.
@@ -277,6 +276,7 @@ jobs:
           sbom: true
           labels: |
             org.opencontainers.image.title=taba
+            org.opencontainers.image.licenses=AGPL-3.0-only
             ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ env.DOCKERHUB }}/taba,${{ env.GHCR }}/taba",push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
       - id: cli
@@ -290,6 +290,7 @@ jobs:
           sbom: true
           labels: |
             org.opencontainers.image.title=taba-cli
+            org.opencontainers.image.licenses=Apache-2.0
             ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ env.DOCKERHUB }}/taba-cli,${{ env.GHCR }}/taba-cli",push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
       # Attestation and cosign signature of each image on each registry (Docker Hub is index.docker.io here).
