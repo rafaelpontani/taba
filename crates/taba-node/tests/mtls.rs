@@ -188,7 +188,9 @@ async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_w
     let client_certs = tempfile::tempdir().unwrap();
     trust_certs_of(certs.path(), client_certs.path());
     let b_pem = add_named_pair(client_certs.path(), "b", Some(Duration::from_secs(3)), 30);
-    let (client_config, _) = client_of_with_both(&client_certs);
+    let (mut client_config, _) = client_of_with_both(&client_certs);
+    // Every connection does a full handshake: a resumed session would bring back the certificate of the first one.
+    client_config.resumption = rustls::client::Resumption::disabled();
 
     // Before B starts the client has nothing to present: refused. The server, for
     // now, presents A and keeps a connection open with it.
@@ -218,17 +220,23 @@ async fn rotation_needs_no_restart_the_new_pair_is_trusted_first_and_presented_w
 
     // When B's date arrives, all start presenting B on their own: the client is accepted and the
     // server presents B.
-    let mut switched = None;
+    let mut accepted = false;
     for _ in 0..80 {
         tokio::time::sleep(Duration::from_millis(100)).await;
         if let Ok(reply) = get(addr, client_config.clone(), "/cluster/nodes").await
             && reply.status == 200
         {
-            switched = Some(reply);
+            accepted = true;
             break;
         }
     }
-    let switched = switched.expect("after B's start the client starts to be accepted");
+    assert!(accepted, "after B's start the client starts to be accepted");
+    // Each side picks the pair to present on its own clock, in seconds: the handshake that was accepted may have
+    // crossed B's start (the server picked A an instant before the client picked B). The next one starts after it.
+    let switched = get(addr, client_config.clone(), "/cluster/nodes")
+        .await
+        .unwrap();
+    assert_eq!(switched.status, 200);
     assert_ne!(
         switched.server_cert, a_der,
         "the server started presenting B"

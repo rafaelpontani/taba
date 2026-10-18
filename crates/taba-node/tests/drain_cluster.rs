@@ -305,17 +305,23 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
             .iter()
             .all(|c| !(c.request == "take" && c.to.host == "10.0.0.3"))
     );
+    // Cancels the drain: the node goes back to active and the test's shutdown does not wait for `drain.timeout`.
+    // While the node still retries the lost unregister, the cancel answers `409` (try again when it ends).
+    eventually_async("the drain cancelled", || async {
+        let status = node3
+            .client
+            .delete(node3.operations_url("/node/drain"))
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert!(status == 200 || status == 409, "{status}");
+        status == 200
+    })
+    .await;
     for host in ["10.0.0.1", "10.0.0.2"] {
         cluster.network.lose_kind(host, "unregister", 0);
     }
-    // Cancels the drain: the node goes back to active and the test's shutdown does not wait for `drain.timeout`.
-    let cancel = node3
-        .client
-        .delete(node3.operations_url("/node/drain"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(cancel.status(), 200);
     cluster.shutdown().await;
 }
 
