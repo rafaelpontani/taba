@@ -4,7 +4,7 @@ summary: The format of the `UC-AREA-NNN` code, the test levels, how a test cites
 type: guide
 status: stable
 verified-on: 2026-10-14 @ efeb47a
-sources: [crates/taba-node/tests/uc_coverage.rs, doc/20-casos-de-uso.md, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, doc/pt-BR/scripts/gerar-casos-de-uso.mjs]
+sources: [crates/taba-node/tests/uc_coverage.rs, doc/en-US/26a-implemented-use-cases.md, doc/en-US/26b-planned-use-cases.md]
 ---
 
 # Use cases and traceability
@@ -53,24 +53,21 @@ fn publishing_binary_stores_the_raw_bytes() { /* … */ }
 
 ## What `uc_coverage` checks
 
-`crates/taba-node/tests/uc_coverage.rs` reads the codes from the tables of `doc/20*.md` (lines that start with `| UC-`) and those cited in `crates/taba-node/{src,tests}` and in `connectors/*` (`.rs` and `.cs` files). It fails when:
+`crates/taba-node/tests/uc_coverage.rs` reads the codes from the **cards** (`### UC-XXX-NNN`) of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md) and those cited in `crates/taba-node/{src,tests}` and in `connectors/*` (`.rs` and `.cs` files). It fails when:
 
 1. a test cites a code that **does not exist** or is `(retirado…)`;
-2. a code appears **twice** in the documentation;
-3. the **"Tests" column** of `doc/20*.md` (generated) is out of date. Regenerate with `TABA_UC_WRITE=1 cargo test --test uc_coverage`.
+2. a code appears **twice** in the documentation.
 
-The rule "every documented case has a test" **only fails with `TABA_UC_STRICT=1`**; without the variable the test prints the scoreboard (`cargo test --test uc_coverage -- --nocapture`): today **702 of 885** cases have a test (**11** retired). The check **does not verify the level**: citing the code in a unit test does not prove a level `I` case; whoever reviews looks at the column.
+The rule "every documented case has a test" **only fails with `TABA_UC_STRICT=1`**; without the variable the test prints the scoreboard (`cargo test --test uc_coverage -- --nocapture`). The check **does not verify the level**: citing the code in a unit test does not prove a level `I` case; whoever reviews looks at the level on the card.
 
-> **Where `uc_coverage` reads the cases.** The historical `doc/20a`, `20b` and `20c` **are no longer in the repository** (commit `efeb47a` removed them; see pending item K in [31-pending-items.md](31-pending-items.md)). While they do not exist, the test reads the **cards** (`### UC-XXX-NNN`) of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Since the generator does not run either, **a new case is written by hand as a card** (in 26a if it has a test, in 26b if not), in the format of the others; that is how the `BKP` area was done. The codes are the same as ever.
+## How to maintain the catalogues
 
-## How to read and regenerate the catalogues
+| Catalogue | What it is |
+|---|---|
+| [26a](26a-implemented-use-cases.md) | Cases with at least one test, by area, with the level and the tests that prove them |
+| [26b](26b-planned-use-cases.md) | Cases **without a test**: what is left to prove |
 
-| Catalogue | What it is | How it is generated |
-|---|---|---|
-| [26a](26a-implemented-use-cases.md) | Cases with at least one test, by area, with the level and the tests that prove them | `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` |
-| [26b](26b-planned-use-cases.md) | Cases **without a test**: what is left to prove | The same script |
-
-The script reads the **`/// UC:` lines of the code** (the same rule as `uc_coverage`), **not** the "Tests" column (which may be old), so the scoreboard is that of the moment. A case in 26b **does not mean the behavior does not exist**, only that **no test cites it**. Some have "(pendente: D##)" in the text: they depend on an open question ([31-pending-items.md](31-pending-items.md)).
+Both are **maintained by hand**, in both languages: a new case goes in as a card in the format of the others (in 26a if it has a test, in 26b if not), and a case that gets its first test moves from 26b to 26a. Codes are never reused. A case in 26b **does not mean the behavior does not exist**, only that **no test cites it**. Some have "(pendente: D##)" in the text: they depend on an open question ([31-pending-items.md](31-pending-items.md)).
 
 ## The areas (38)
 
@@ -138,6 +135,6 @@ The script reads the **`/// UC:` lines of the code** (the same rule as `uc_cover
 
 ## Sources and evidence
 
-- `crates/taba-node/tests/uc_coverage.rs` (the rules and the scoreboard; **run** on 2026-10-13), `doc/20-casos-de-uso.md` (the rule and the area index), `doc/pt-BR/scripts/gerar-casos-de-uso.mjs`.
+- `crates/taba-node/tests/uc_coverage.rs` (the rules and the scoreboard; **run** on 2026-10-13).
 - Use cases: this document is the method; the cases are in [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).
 - History: `doc/20-casos-de-uso.md`, `doc/20a-casos-de-uso-cliente.md`, `20b`, `20c`.

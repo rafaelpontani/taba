@@ -76,7 +76,7 @@ async fn creating_a_queue_returns_201_with_location_and_the_defaults() {
 3. **Unit:** in `tests.rs` next to the module. **Integration:** in `tests/`, using `TestNode` or `TestCluster`. Do not create a new integration test if an existing file of the area serves.
 4. **Cluster:** use the manual `Clock` (**advance time**, do not sleep) and the `MemoryNetwork` (program the failure). Use `eventually(…)` to wait for the state, not `sleep`.
 5. **Language:** identifiers and test names in English; comments in Portuguese.
-6. **Run and regenerate:** `TABA_UC_WRITE=1 cargo test --test uc_coverage` updates the "Tests" column of the historical catalogue, and `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` regenerates [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).
+6. **Run and update the catalogue:** `cargo test --test uc_coverage` checks the cited codes; add the test to the case card in [26a](26a-implemented-use-cases.md) (a case that gets its first test moves from [26b](26b-planned-use-cases.md) to 26a), in both languages.
 
 ## How to run
 
@@ -93,9 +93,7 @@ connectors/csharp/scripts/integration.sh                       # starts Compose,
 docker/validate.sh                                             # end to end (≈ 5 min)
 ```
 
-**`uc_coverage` in detail.** It fails when: (1) a test cites a code that **does not exist** or is `(retirado)`; (2) a code appears **twice** in the documentation; (3) the **"Tests" column of the historical catalogue is out of date** (regenerate with `TABA_UC_WRITE=1`). A fourth rule, "every documented case has a test", **only fails with `TABA_UC_STRICT=1`**: with 183 cases without a test, it prints the scoreboard instead of failing. `uc_coverage` reads `doc/20*.md` (it does **not** read `doc/pt-BR/`).
-
-> **State observed on 2026-10-13:** `the_tests_column_of_the_use_cases_is_up_to_date` **fails** in the repository (the "Tests" column of `doc/20*.md` is old compared to the cited tests). Regenerating with `TABA_UC_WRITE=1 cargo test --test uc_coverage` fixes it. Noted in [31-pending-items.md](31-pending-items.md).
+**`uc_coverage` in detail.** It fails when: (1) a test cites a code that **does not exist** or is `(retirado)`; (2) a code appears **twice** in the documentation. A third rule, "every documented case has a test", **only fails with `TABA_UC_STRICT=1`**: with 183 cases without a test, it prints the scoreboard instead of failing. `uc_coverage` reads the `### UC-…` cards of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).
 
 ## `docker/validate.sh` and `docker/cluster.sh`
 

@@ -4,12 +4,12 @@ summary: The documented use cases that do not yet have a test citing them — wh
 type: reference
 status: partial
 verified-on: 2026-10-15 @ 56121c9
-sources: [doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, crates/taba-node/tests/uc_coverage.rs]
+sources: [crates/taba-node/tests/uc_coverage.rs]
 ---
 
 # Planned use cases (without a test)
 
-> **Generated** by `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`. A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
+> **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
 **Scoreboard (2026-10-13, commit 71183b9):** **183** cases without a test, out of **885**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
@@ -1693,4 +1693,4 @@ Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-0
 ## Sources and evidence
 
 - Catalogue: `doc/20a`, `20b`, `20c`. Tests: the `/// UC:` lines of the code (rule of `uc_coverage.rs`).
-- Regenerate: `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`.
+- Maintained by hand: a case that gets its first test moves to [26a](26a-implemented-use-cases.md).

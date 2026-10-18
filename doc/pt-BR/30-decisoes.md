@@ -3,15 +3,15 @@ título: Decisões
 resumo: O registro das decisões já tomadas, por tema, com o código estável de cada dúvida (D…) e onde está descrita, e os problemas já resolvidos (PRB-…) — o "porquê" por trás do que os outros documentos descrevem.
 tipo: referência
 status: estável
-verificado-em: 2026-10-18 @ 6c5de51
-fontes: [doc/08a-decisoes-tomadas.md]
+verificado-em: 2026-10-18 @ b090822
+fontes: [crates/taba-node/src, connectors, .github/workflows, doc/pt-BR/31-pendencias.md]
 ---
 
 # Decisões
 
 > **Como ler.** A documentação principal descreve **o resultado**; aqui está **o porquê** (no formato de um registro de decisões, ADR). Cada linha tem o **código da dúvida** (para citar: "D13"), a **decisão** e **onde ela está descrita** nos documentos desta pasta. Os códigos **nunca são reaproveitados**. Uma decisão **provisória** é uma que a implementação tomou e que ainda aguarda confirmação: ela fica aqui **e** a pergunta continua em [31-pendencias.md](31-pendencias.md).
 >
-> **Gerado.** Este arquivo é produzido por `node doc/pt-BR/scripts/gerar-historico.mjs` a partir de `doc/08a-decisoes-tomadas.md` (a fonte do registro); só os links e o formato mudam. **Regra do projeto:** ao fechar uma pendência, registre a decisão no documento técnico, o valor padrão em [22-configuracao.md](22-configuracao.md), a linha aqui, e **apague** a entrada de [31-pendencias.md](31-pendencias.md) e a referência em [32-roadmap.md](32-roadmap.md).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança. **Regra do projeto:** ao fechar uma pendência, registre a decisão no documento técnico, o valor padrão em [22-configuracao.md](22-configuracao.md), a linha aqui, e **apague** a entrada de [31-pendencias.md](31-pendencias.md) e a referência em [32-roadmap.md](32-roadmap.md).
 
 
 
@@ -86,6 +86,7 @@ fontes: [doc/08a-decisoes-tomadas.md]
 | D34, D35 | Um banco SQLite por nó e por tópico, com escritor único por tópico: guarda os metadados e a tabela de expiração; o corpo continua em `${topic}/${id}.body`. A mensagem mais antiga sai de `MIN(id)` somada à mais antiga em memória. Banco corrompido põe o nó em falha. | [04-arquitetura.md](04-arquitetura.md) 3.2, [12-entrega.md](12-entrega.md) 13.2 e 13.5 |
 | D40 | Tamanho máximo da mensagem configurável: padrão geral de 5 MB, por tópico podendo ser maior, e um limite rígido para todos. | [22-configuracao.md](22-configuracao.md), [19-erros-e-limites.md](19-erros-e-limites.md) |
 
+| D79 | **`diskFreeBytes` vem da dependência `fs4`.** A biblioteca padrão do Rust não mede espaço livre; o `NodeStatus` devolve `storage.diskFreeBytes` com `fs4::available_space` (resolve PRB-013). | [17-api-operacao.md](17-api-operacao.md) |
 
 ## Sincronização e recuperação
 
@@ -177,7 +178,7 @@ fontes: [doc/08a-decisoes-tomadas.md]
 
 ## Backup opcional em S3
 
-Decididas ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)). **Escritas à mão aqui:** a fonte `doc/08a-decisoes-tomadas.md` já não está no repositório (veja a pendência K em [31-pendencias.md](31-pendencias.md)); o gerador não as sobrescreve porque também não roda.
+Decididas ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)).
 
 | Código | Decisão | Onde |
 |---|---|---|
@@ -195,7 +196,7 @@ Decididas ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)).
 
 ## Plano da TUI: trabalho no servidor (D152 a D155)
 
-Decididas com o plano da interface interativa (decisões D-TUI-2, 3, 4 e 9) e implementadas no `taba-node`. **Escritas à mão aqui** (veja K em [31-pendencias.md](31-pendencias.md)).
+Decididas com o plano da interface interativa (decisões D-TUI-2, 3, 4 e 9) e implementadas no `taba-node`.
 
 | Código | Decisão | Onde |
 |---|---|---|
@@ -209,7 +210,7 @@ Decididas com o plano da interface interativa (decisões D-TUI-2, 3, 4 e 9) e im
 
 ## Pipeline de release (D159 a D163)
 
-Decididas com a revisão do pipeline antes do primeiro release público. **Escritas à mão aqui** (veja K em [31-pendencias.md](31-pendencias.md)).
+Decididas com a revisão do pipeline antes do primeiro release público.
 
 | Código | Decisão | Onde |
 |---|---|---|
@@ -221,7 +222,7 @@ Decididas com a revisão do pipeline antes do primeiro release público. **Escri
 
 ## Licença e contribuições (D164)
 
-Decidida antes da primeira publicação no crates.io e no nuget.org. **Escrita à mão aqui** (veja K em [31-pendencias.md](31-pendencias.md)).
+Decidida antes da primeira publicação no crates.io e no nuget.org.
 
 | Código | Decisão | Onde |
 |---|---|---|
@@ -262,9 +263,10 @@ Decidida antes da primeira publicação no crates.io e no nuget.org. **Escrita �
 | PRB-029 | etapa 16 | O nó informa `cluster.advertise-addresses` ou o endereço da interface que sai para o `cluster.entry-address` (D95, provisório). Limite em PRB-051. |
 | PRB-049 | etapa 17 | Os avisos de mensagem nova têm janela (`cluster.notify.window`), espera pelo `take` (`cluster.notify.wait`, 50 ms, D121) e a passagem ao próximo nó com ouvinte; `taba.cluster.channel.notifications` distingue `fetched` e `empty`. O canal é um WebSocket, com desempate de conexão dupla e fila de entrada por origem (D122). |
 | PRB-052 | etapa 18 | A propagação das definições de tópico e de token (D123) deixava a lista de nós que o dono ainda tentava alcançar só em memória, sem reconciliação ao reencontro. Resolvido (D124 a D127): o desempate de duas cópias de mesma versão, as lápides lidas pelo nó que sincroniza, a mudança de membros pelo quadro `membership` e as definições pelo quadro `definition` do canal, que o dono e o herdeiro enfileiram. |
+| PRB-013 | D79 | `NodeStatus.storage.diskFreeBytes` é devolvido, medido com `fs4::available_space` em `storage/messages`. |
 
 
 ## Fontes e provas
 
-- `doc/08a-decisoes-tomadas.md` (o registro histórico; 127 entradas; D141 a D151 são do backup em S3 e foram escritas aqui), reformatado por `doc/pt-BR/scripts/gerar-historico.mjs`.
-- Cada decisão aponta para o documento técnico onde está descrita; as que dizem respeito ao código foram conferidas durante a escrita dos documentos de [04](04-arquitetura.md) a [27](27-ci-cd.md) (as divergências achadas estão em [31-pendencias.md](31-pendencias.md)).
+- O registro começou em `doc/08a-decisoes-tomadas.md` (removido no commit `efeb47a`; está no histórico do git) e desde então é mantido aqui.
+- Cada decisão aponta para o documento técnico onde está descrita; as que dizem respeito ao código foram conferidas durante a escrita dos documentos de [04](04-arquitetura.md) a [27](27-ci-cd.md) (os limites conhecidos estão em [31-pendencias.md](31-pendencias.md)).

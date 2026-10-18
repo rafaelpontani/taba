@@ -66,11 +66,11 @@ for (const [f, t] of Object.entries(texts)) {
 // ---- 2. metadados e seção "Fontes e provas" ----
 {
   const problems = [];
-  const exempt = new Set(['README.md', 'llms.txt', '_divergencias.md', '00-plano-de-documentacao.md']);
+  const exempt = new Set(['README.md', 'llms.txt']);
   for (const [f, t] of Object.entries(texts)) {
-    if (f === 'llms.txt' || f === '_divergencias.md') continue;
+    if (f === 'llms.txt') continue;
     const fm = t.match(/^---\n([\s\S]*?)\n---/);
-    if (!fm) { if (f !== '00-plano-de-documentacao.md') problems.push(`${f}: sem metadados`); continue; }
+    if (!fm) { problems.push(`${f}: sem metadados`); continue; }
     for (const key of ['título', 'resumo', 'tipo', 'status', 'verificado-em', 'fontes']) {
       if (!new RegExp(`^${key}:`, 'm').test(fm[1])) problems.push(`${f}: falta "${key}" nos metadados`);
     }

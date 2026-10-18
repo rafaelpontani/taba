@@ -27,7 +27,7 @@ const KEYS = {
 const langs = fs.readdirSync(docDir, { withFileTypes: true }).filter((e) => e.isDirectory() && KEYS[e.name]).map((e) => e.name).sort();
 if (langs.length < 2) { console.log('menos de duas pastas de idioma conhecidas: nada a conferir'); process.exit(0); }
 
-const idOf = (f) => (f.match(/^(\d+[a-z]?)-/) || [])[1] || (f.startsWith('_div') ? '_divergencias' : f.replace(/\.[a-z]+$/, ''));
+const idOf = (f) => (f.match(/^(\d+[a-z]?)-/) || [])[1] || f.replace(/\.[a-z]+$/, '');
 const files = {};
 for (const l of langs) {
   files[l] = {};

@@ -192,7 +192,7 @@ What backs this trust:
 | Configuration parameters | A key of `config/params/mod.rs` does not appear in [22-configuration.md](22-configuration.md), or the document cites a nonexistent key |
 | Error codes | An `ErrorCode` of the code does not appear in [19-errors-and-limits.md](19-errors-and-limits.md) (or vice versa) |
 | Routes | A route registered in the code (`.route(…)` and the cluster map) is not cited in the API documents |
-| Use cases | A `UC-…` cited in the documents does not exist in `doc/20a-c` |
+| Use cases | A `UC-…` cited in the documents does not exist in the cards of 26a/26b |
 | Metrics | A metric of `telemetry/metrics/defs.rs` does not appear in [13-observability.md](13-observability.md) |
 | Diagrams | Every `../diagrams/img/…` image exists, and every remaining `🖼️ DIAGRAMA PLANEJADO` block carries `tipo:` and `objetivo:` |
 

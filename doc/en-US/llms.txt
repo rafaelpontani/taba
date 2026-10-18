@@ -64,8 +64,6 @@
 
 ## More
 
-- [Plan of this documentation](00-documentation-plan.md)
-- [Divergences: original design × code](_divergences.md)
 
 ## Optional
 

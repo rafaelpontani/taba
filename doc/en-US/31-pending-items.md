@@ -1,23 +1,23 @@
 ---
 title: Pending items
-summary: Everything that remains open in the project — design questions (D…) and problems of logic, risk or limit (PRB-…) — plus the divergences and findings of this documentation, still without code.
+summary: Everything that remains open in the project — design questions (D…), problems of logic, risk or limit (PRB-…) and the known limits, each with its evidence.
 type: reference
 status: partial
-verified-on: 2026-10-15 @ 56121c9
-sources: [doc/08b-pendencias.md, doc/pt-BR/_divergencias.md]
+verified-on: 2026-10-18 @ b090822
+sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 ---
 
 # Pending items
 
-> **Two kinds of item, two codes.** **`D…`** is a **design question** (the document does not define it, or there are two ways out), always with a proposal; **`PRB-…`** is a **problem** that the implementation found (the code behaves in a flawed, unfair or incomplete way), with the **effect** and the **proposal**. The codes are **never reused**; what has already been decided or resolved is in [30-decisions.md](30-decisions.md).
+> **Two kinds of item, two codes.** **`D…`** is a **design question** (the document does not define it, or there are two ways out), always with a proposal; **`PRB-…`** is a **problem** that the implementation found (a behavior that is incomplete, risky or has a known limit), with the **effect** and the **proposal**. The codes are **never reused**; what has already been decided or resolved is in [30-decisions.md](30-decisions.md).
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Generated** (the first part) by `node doc/pt-BR/scripts/gerar-historico.mjs` from `doc/08b-pendencias.md`, which is the source: reformatted into cards, with the links replaced. The section **"Findings of this documentation"** is written by hand and **is not yet in `08b`**. The entries below are the English rendering of the Portuguese ones in `doc/pt-BR/31-pendencias.md`; the codes are the same.
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D164** and **PRB-061**).
 
-## Findings of this documentation (still without code)
+## Known limits
 
-Found while writing the documents of this folder, **checking the code**. Each one has its evidence. To become an official item, they enter `doc/08b-pendencias.md` with the next free `PRB` or `D` (the highest today are **PRB-057** and **D151**).
+Found by checking the code and running the cluster; each one has its evidence. Those that concern operation are also in [23-operations.md](23-operations.md).
 
 | # | Type | What was seen | Effect | Proposal | Evidence |
 |---|---|---|---|---|---|
@@ -25,18 +25,12 @@ Found while writing the documents of this folder, **checking the code**. Each on
 | B | definition | **Seven parameters are accepted but have no effect:** `delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.reload-threshold`, `cluster.sync.stream.max-line-bytes`, `cluster.sync.stream.idle-timeout`, `fifo.dedup.index.max-entries`, `stats.topics.cache-ttl` | Whoever adjusts them believes something changed; three of them link to D82/D88/PRB-018/PRB-022 | Implement, or refuse the key, or take them out of the table and of [22-configuration.md](22-configuration.md) | [22-configuration.md](22-configuration.md); script that checks the use of the `Config` fields |
 | C | risk | **Losing two nodes in a row locks the cluster** (`quorum-lost`): one node is left, the exclusion of the second does not take effect, and the restarted ones do not rejoin (the register requires all in the table). There is no forced exclusion | Only recoverable by stopping everything, **losing messages and topics** | The "forced exclusion" already foreseen in doc 04 (future evolution): a manual exclusion route, or a table per epoch | [07-cluster.md](07-cluster.md), [23-operations.md](23-operations.md); run with `docker compose kill` |
 | D | limit | **Stopping the whole cluster in production loses messages and topic definitions** (every restart is a new node; the disk only returns "losses" listed by live nodes) | A maintenance that stops everything, or a general outage, zeroes the cluster | Resume from disk when the **first node** (`first-node`) starts with a previous disk, as development mode does; or document the limit as definitive | [11-durability.md](11-durability.md); run: `docker compose down` + `up` |
-| E | process | **The test `the_tests_column_of_the_use_cases_is_up_to_date` fails in the repository** (the "Tests" column of `doc/20*.md` is old) | `cargo test` does not pass clean | `TABA_UC_WRITE=1 cargo test --test uc_coverage` and commit | [25-testing.md](25-testing.md); run on 2026-10-13 |
-| F | documentation | **Old `//!` comments** (`cluster/mod.rs`, `cluster/drain/mod.rs`, `engine/mod.rs`, `node.rs`): "for now", "the real `Transport` does not exist yet" | Whoever reads the code gets confused | Update the comments | `_divergences.md` #10 |
-| G | documentation | **`21-pipeline-ci-cd.md` is partly out of date** ("there is no `.github/`"; plans the `integration` job and GHCR, which do not exist) | Plan and state mixed up | Update the historical doc | [27-ci-cd.md](27-ci-cd.md) |
-| H | documentation | **`D79`/`PRB-013` still count as open, but `diskFreeBytes` is already returned** (`fs4`); **`D82`** is confirmed by the code (there is no `expiry`) | `08b` lies | Move D79 and PRB-013 to "resolved"; decide D82 | `_divergences.md` #8, #9 |
-| I | language | **The root `README.md` and `AGENTS.md` were in Portuguese**; the project rule is en-US | Whoever arrives sees the wrong language | ✅ **Resolved:** translated (phase 8 of the documentation plan). `doc/en-US/` now mirrors `doc/pt-BR/` | [00-documentation-plan.md](00-documentation-plan.md) |
-| J | operation | ~~No backup or restore~~ **Resolved in part:** the optional S3 backup exists ([33-s3-backup.md](33-s3-backup.md)); **there are still no Kubernetes manifests**, and what is missing of the backup is in PRB-053 to PRB-057 below | Operating on Kubernetes requires improvisation | Roadmap | [23-operations.md](23-operations.md), [32-roadmap.md](32-roadmap.md) |
-| K | process | **The documentation tools and the use-case test read files that commit `efeb47a` removed** (`doc/08a`, `08b`, `08c`, `doc/20*.md`): `verificar.mjs` (check 6), `gerar-historico.mjs`, `gerar-casos-de-uso.mjs` and the `uc_coverage` test failed with "file not found". `AGENTS.md` still orders updating those files | `26a`/`26b`/`30`/`31` cannot be regenerated; `cargo test` did not pass clean | **Partial, in this change:** `uc_coverage` now reads the cases from the cards of `26a`/`26b` and from the `UC-BKP` cards (written by hand in 26a), and `verificar.mjs` tolerates the absence of the history. Still to decide the definitive source of the cases, decisions and pending items (restore `doc/08*`/`doc/20*`, or rewrite the generators over `doc/pt-BR`) and update `AGENTS.md` | `git show efeb47a --stat`; `cargo test --test uc_coverage` before and after |
-| L | documentation | **The documentation now lives in two language folders** (`doc/pt-BR/` and `doc/en-US/`) and the generators and `verificar.mjs` only know `doc/pt-BR/` (Portuguese metadata keys, Portuguese file names) | The two folders can drift; the checks do not cover `doc/en-US/` | The new `verificar-idiomas.mjs` checks the parity of files, metadata and links between the folders; still to teach `verificar.mjs`, `gerar-historico.mjs` and `gerar-casos-de-uso.mjs` to run per language and to put everything in a PR job; until then, change both by hand ([24-conventions.md](24-conventions.md#documentation-in-several-languages)) | `doc/pt-BR/scripts/`; [27-ci-cd.md](27-ci-cd.md) |
+| E | process | **The use-case catalogues ([26a](26a-implemented-use-cases.md)/[26b](26b-planned-use-cases.md)), the decisions ([30-decisions.md](30-decisions.md)) and these pending items are maintained by hand.** The register they were generated from left the repository; `uc_coverage` reads the `### UC-…` cards of 26a and 26b | The 26a/26b scoreboard only changes when someone updates it | A generator that reads the cards and the `/// UC:` lines and regenerates both catalogues in both languages | `crates/taba-node/tests/uc_coverage.rs`; [26-use-cases.md](26-use-cases.md) |
+| F | documentation | **`verificar.mjs` only knows `doc/pt-BR/`** (Portuguese metadata keys and file names); `verificar-idiomas.mjs` checks the parity of files, metadata and links between the folders | Routes, keys and codes cited only in the en-US text are not checked against the code | Run `verificar.mjs` per language and put both checkers in a PR job | `doc/pt-BR/scripts/`; [27-ci-cd.md](27-ci-cd.md) |
 
 ## S3 backup (new problems and limits)
 
-Found while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)); they enter here by hand (see K). Each has the **effect** and the **proposal**.
+Found while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)). Each has the **effect** and the **proposal**.
 
 | Code | Effect | Proposal |
 |---|---|---|
@@ -50,7 +44,7 @@ Also recorded as **accepted limits** (scenarios 2, 7, 8 and 10 of [33-s3-backup.
 
 ## TUI server work (new problems and limits)
 
-Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)); they enter here by hand (see K). Each has the **effect** and the **proposal**.
+Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)). Each has the **effect** and the **proposal**.
 
 | Code | Effect | Proposal |
 |---|---|---|
@@ -94,12 +88,6 @@ Can be answered **now**, in any order: they do not depend on another question or
 - **State:** `[ ]` open · **Type:** design question
 
 **`Retry-After` of the drain `503`.** Today fixed at 5 s. Proposal: keep it fixed (the client only needs to wait for the load balancer to remove the node); the alternative is a parameter.
-
-### D79
-
-- **State:** `[ ]` open · **Type:** design question
-
-**`diskFreeBytes` of `NodeStatus`.** Rust's standard library does not measure free space; a dependency would be needed (`fs4` or `sysinfo`). Accept the dependency, or remove the field from [06b](17-operations-api.md)? Linked problem, **PRB-013** (definition, `http/operations`): `NodeStatus.storage.diskFreeBytes` is not returned. Effect: The documented field is missing in `/health/cluster`.
 
 ### D80
 
@@ -335,5 +323,5 @@ They are answered **after** what is in **Depends on** (or together).
 
 ## Sources and evidence
 
-- `doc/08b-pendencias.md` (44 open items on this date), reformatted by `doc/pt-BR/scripts/gerar-historico.mjs`; the "Findings" section comes from `doc/pt-BR/_divergencias.md` and from the runs described in [23-operations.md](23-operations.md) and [13-observability.md](13-observability.md).
+- Each item cites its evidence: the code module, the test or the run described in [23-operations.md](23-operations.md) and [13-observability.md](13-observability.md).
 - The roadmap that closes these pending items is in [32-roadmap.md](32-roadmap.md).
