@@ -1,23 +1,23 @@
 ---
 título: Pendências
-resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…) e problemas de lógica, risco ou limite (PRB-…) — mais as divergências e descobertas desta documentação, ainda sem código.
+resumo: Tudo o que continua em aberto no projeto — dúvidas de design (D…), problemas de lógica, risco ou limite (PRB-…) e os limites conhecidos, cada um com a evidência.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-15 @ 56121c9
-fontes: [doc/08b-pendencias.md, doc/pt-BR/_divergencias.md]
+verificado-em: 2026-10-18 @ b090822
+fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 ---
 
 # Pendências
 
-> **Dois tipos de item, dois códigos.** **`D…`** é uma **dúvida de design** (o documento não define, ou há duas saídas), sempre com uma proposta; **`PRB-…`** é um **problema** que a implementação descobriu (o código se comporta de um jeito furado, injusto ou incompleto), com o **efeito** e a **proposta**. Os códigos **nunca são reaproveitados**; o que já foi decidido ou resolvido está em [30-decisoes.md](30-decisoes.md).
+> **Dois tipos de item, dois códigos.** **`D…`** é uma **dúvida de design** (o documento não define, ou há duas saídas), sempre com uma proposta; **`PRB-…`** é um **problema** que a implementação descobriu (um comportamento incompleto, com risco ou com limite conhecido), com o **efeito** e a **proposta**. Os códigos **nunca são reaproveitados**; o que já foi decidido ou resolvido está em [30-decisoes.md](30-decisoes.md).
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Gerado** (a primeira parte) por `node doc/pt-BR/scripts/gerar-historico.mjs` a partir de `doc/08b-pendencias.md`, que é a fonte: reformatado em cartões, com os links trocados. A seção **"Descobertas desta documentação"** é escrita à mão e **ainda não está no `08b`**.
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D164** e **PRB-061**).
 
-## Descobertas desta documentação (ainda sem código)
+## Limites conhecidos
 
-Achadas ao escrever os documentos desta pasta, **conferindo o código**. Cada uma tem a evidência. Para virar item oficial, entram em `doc/08b-pendencias.md` com o próximo `PRB` ou `D` livre (os mais altos hoje são **PRB-057** e **D151**).
+Achados conferindo o código e executando o cluster; cada um tem a evidência. Os que dizem respeito à operação também estão em [23-operacao.md](23-operacao.md).
 
 | # | Tipo | O que se viu | Efeito | Proposta | Evidência |
 |---|---|---|---|---|---|
@@ -25,18 +25,12 @@ Achadas ao escrever os documentos desta pasta, **conferindo o código**. Cada um
 | B | definição | **Sete parâmetros são aceitos mas não têm efeito:** `delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.reload-threshold`, `cluster.sync.stream.max-line-bytes`, `cluster.sync.stream.idle-timeout`, `fifo.dedup.index.max-entries`, `stats.topics.cache-ttl` | Quem os ajusta acredita que mudou algo; três deles se ligam a D82/D88/PRB-018/PRB-022 | Implementar, ou recusar a chave, ou tirá-los da tabela e de [22-configuracao.md](22-configuracao.md) | [22-configuracao.md](22-configuracao.md); script de uso dos campos de `Config` |
 | C | risco | **Perder dois nós seguidos trava o cluster** (`quorum-lost`): sobra um nó, a exclusão do segundo não se efetiva, e os reiniciados não reentram (o registro exige todos da tabela). Não há exclusão forçada | Só se recupera parando tudo, **perdendo mensagens e tópicos** | A "exclusão forçada" já prevista no doc 04 (evolução futura): rota manual de exclusão, ou tabela por época | [07-cluster.md](07-cluster.md), [23-operacao.md](23-operacao.md); execução com `docker compose kill` |
 | D | limite | **Parar o cluster inteiro em produção perde mensagens e definições de tópico** (todo reinício é de nó novo; o disco só devolve "perdas" listadas por nós vivos) | Uma manutenção que pare tudo, ou uma queda geral, zera o cluster | Retomar do disco quando o **primeiro nó** (`first-node`) sobe com disco anterior, como o modo desenvolvimento faz; ou documentar o limite como definitivo | [11-durabilidade.md](11-durabilidade.md); execução: `docker compose down` + `up` |
-| E | processo | **O teste `the_tests_column_of_the_use_cases_is_up_to_date` falha no repositório** (a coluna "Testes" de `doc/20*.md` está velha) | O `cargo test` não passa limpo | `TABA_UC_WRITE=1 cargo test --test uc_coverage` e commitar | [25-testes.md](25-testes.md); execução em 2026-10-13 |
-| F | documentação | **Comentários `//!` velhos** (`cluster/mod.rs`, `cluster/drain/mod.rs`, `engine/mod.rs`, `node.rs`): "por enquanto", "o `Transport` real ainda não existe" | Quem lê o código se confunde | Atualizar os comentários | `_divergencias.md` #10 |
-| G | documentação | **`21-pipeline-ci-cd.md` está parcialmente velho** ("não há `.github/`"; planeja o job `integration` e o GHCR, que não existem) | Plano e estado confundidos | Atualizar o doc histórico | [27-ci-cd.md](27-ci-cd.md) |
-| H | documentação | **`D79`/`PRB-013` ainda constam em aberto, mas `diskFreeBytes` já é devolvido** (`fs4`); **`D82`** é confirmada pelo código (não há `expiry`) | O `08b` mente | Mover D79 e PRB-013 para "resolvidos"; decidir D82 | `_divergencias.md` #8, #9 |
-| I | idioma | **`README.md` e `AGENTS.md` da raiz estão em português**; a regra do projeto é en-US | Quem chega vê o idioma errado | Traduzir (fase 8 do plano de documentação) | [00-plano-de-documentacao.md](00-plano-de-documentacao.md) |
-| J | operação | ~~Sem backup nem restauração~~ **Resolvido em parte:** o backup opcional em S3 existe ([33-backup-s3.md](33-backup-s3.md)); **continuam sem manifestos Kubernetes**, e o que falta do backup está em PRB-053 a PRB-057 abaixo | Operar em Kubernetes exige improviso | Roadmap | [23-operacao.md](23-operacao.md), [32-roadmap.md](32-roadmap.md) |
-| K | processo | **As ferramentas da documentação e do teste de casos de uso leem arquivos que o commit `efeb47a` removeu** (`doc/08a`, `08b`, `08c`, `doc/20*.md`): `verificar.mjs` (a verificação 6), `gerar-historico.mjs`, `gerar-casos-de-uso.mjs` e o teste `uc_coverage` falhavam com "arquivo não encontrado". O `AGENTS.md` ainda manda atualizar esses arquivos | Não dá regerar `26a`/`26b`/`30`/`31`; `cargo test` não passava limpo | **Parcial, nesta mudança:** o `uc_coverage` passou a ler os casos dos cartões de `26a`/`26b` e dos cartões `UC-BKP` (escritos à mão em 26a), e o `verificar.mjs` aceita a falta do histórico. Falta decidir a fonte definitiva dos casos, das decisões e das pendências (restaurar `doc/08*`/`doc/20*`, ou reescrever os geradores sobre `doc/pt-BR`) e atualizar o `AGENTS.md` | `git show efeb47a --stat`; `cargo test --test uc_coverage` antes e depois |
-| L | documentação | **A documentação agora vive em duas pastas de idioma** (`doc/pt-BR/` e `doc/en-US/`) e os geradores e o `verificar.mjs` só conhecem `doc/pt-BR/` (chaves de metadados e nomes de arquivo em português) | As duas pastas podem se afastar; a verificação não cobre `doc/en-US/` por completo | O `verificar-idiomas.mjs` (novo) confere a paridade de arquivos, metadados e links entre as pastas; falta ensinar `verificar.mjs`, `gerar-historico.mjs` e `gerar-casos-de-uso.mjs` a rodar por idioma e pôr tudo num job de PR. Enquanto isso, alterar as duas à mão ([24-convencoes.md](24-convencoes.md#documentação-em-vários-idiomas)) | `doc/pt-BR/scripts/`; [27-ci-cd.md](27-ci-cd.md) |
+| E | processo | **Os catálogos de casos de uso ([26a](26a-casos-de-uso-implementados.md)/[26b](26b-casos-de-uso-planejados.md)), as decisões ([30-decisoes.md](30-decisoes.md)) e estas pendências são mantidos à mão.** O registro de onde eram gerados saiu do repositório; o `uc_coverage` lê os cartões `### UC-…` de 26a e 26b | O placar de 26a/26b só muda quando alguém o atualiza | Um gerador que leia os cartões e as linhas `/// UC:` e regenere os dois catálogos nas duas línguas | `crates/taba-node/tests/uc_coverage.rs`; [26-casos-de-uso.md](26-casos-de-uso.md) |
+| F | documentação | **O `verificar.mjs` só conhece `doc/pt-BR/`** (chaves de metadados e nomes de arquivo em português); o `verificar-idiomas.mjs` confere a paridade de arquivos, metadados e links entre as pastas | Rotas, chaves e códigos citados só no texto en-US não são conferidos contra o código | Rodar o `verificar.mjs` por idioma e pôr os dois verificadores num job de PR | `doc/pt-BR/scripts/`; [27-ci-cd.md](27-ci-cd.md) |
 
 ## Backup em S3 (problemas e limites novos)
 
-Achados ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)); entram aqui à mão (veja K). Cada um tem o **efeito** e a **proposta**.
+Achados ao implementar o plano do backup ([33-backup-s3.md](33-backup-s3.md)). Cada um tem o **efeito** e a **proposta**.
 
 | Código | Efeito | Proposta |
 |---|---|---|
@@ -50,7 +44,7 @@ Também ficam registrados como **limites aceitos** (cenários 2, 7, 8 e 10 de [3
 
 ## Trabalho de servidor da TUI (problemas e limites novos)
 
-Achados ao implementar D152 a D155 ([30-decisoes.md](30-decisoes.md)); entram aqui à mão (veja K). Cada um tem o **efeito** e a **proposta**.
+Achados ao implementar D152 a D155 ([30-decisoes.md](30-decisoes.md)). Cada um tem o **efeito** e a **proposta**.
 
 | Código | Efeito | Proposta |
 |---|---|---|
@@ -94,12 +88,6 @@ Podem ser respondidas **agora**, em qualquer ordem: não dependem de outra pergu
 - **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
 
 **`Retry-After` do `503` do drain.** Hoje fixo em 5 s. Proposta: manter fixo (o cliente só precisa esperar o balanceador tirar o nó); a alternativa é um parâmetro.
-
-### D79
-
-- **Estado:** `[ ]` aberta · **Tipo:** dúvida de design
-
-**`diskFreeBytes` do `NodeStatus`.** A biblioteca padrão do Rust não mede espaço livre; seria preciso uma dependência (`fs4` ou `sysinfo`). Aceitar a dependência, ou tirar o campo de [06b](17-api-operacao.md)? Problema ligado, **PRB-013** (definição, `http/operations`): `NodeStatus.storage.diskFreeBytes` não é devolvido. Efeito: O campo documentado falta no `/health/cluster`.
 
 ### D80
 
@@ -335,5 +323,5 @@ Respondem-se **depois** do que está em **Depende de** (ou junto).
 
 ## Fontes e provas
 
-- `doc/08b-pendencias.md` (44 itens abertos nesta data), reformatado por `doc/pt-BR/scripts/gerar-historico.mjs`; a seção "Descobertas" vem de `doc/pt-BR/_divergencias.md` e das execuções descritas em [23-operacao.md](23-operacao.md) e [13-observabilidade.md](13-observabilidade.md).
+- Cada item cita a evidência: o módulo do código, o teste ou a execução descrita em [23-operacao.md](23-operacao.md) e [13-observabilidade.md](13-observabilidade.md).
 - O roadmap que fecha estas pendências está em [32-roadmap.md](32-roadmap.md).

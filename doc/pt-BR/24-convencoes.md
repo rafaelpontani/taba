@@ -3,7 +3,7 @@ título: Convenções
 resumo: As regras de quem altera o código — idioma, estrutura de pastas, regras de código Rust, convenções da API e da configuração, testes, documentação, diagramas, commits — e o checklist ao terminar uma mudança.
 tipo: guia
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-18 @ b090822
 fontes: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagrams]
 ---
 
@@ -93,7 +93,6 @@ cargo test                                            # unitários e de integra�
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo test --test uc_coverage -- --nocapture          # placar dos casos de uso
-TABA_UC_WRITE=1 cargo test --test uc_coverage         # regera a coluna "Testes" de doc/20*.md
 cargo run -- init --out ./secrets                     # certificado e token raiz
 
 cd connectors/rust && cargo test --workspace --all-features && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all
@@ -118,7 +117,7 @@ Na **mesma mudança** do código:
 
 1. **Corrija o `.md` técnico** quando o código decidiu algo que o documento não dizia ou contraria. O desenho vive nos documentos, e o código é conferido contra eles.
 2. **Decisão firme** → [30-decisoes.md](30-decisoes.md) (na doc histórica: `08a`); **dúvida** ou **problema** → [31-pendencias.md](31-pendencias.md) (`08b`).
-3. **Casos de uso** novos ou mudados entram no catálogo (`doc/20a`, `20b` ou `20c`), cada teste os cita, e rode `TABA_UC_WRITE=1 cargo test --test uc_coverage` para regerar a coluna "Testes". Um caso sem teste fica com `—`, e a razão vai no próprio caso. Depois regenere os catálogos pt-BR (`node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`).
+3. **Casos de uso** novos ou mudados entram como cartão (`### UC-XXX-NNN`) em [26a](26a-casos-de-uso-implementados.md) (com teste) ou [26b](26b-casos-de-uso-planejados.md) (sem teste), nas duas línguas, e cada teste os cita com `/// UC:`. Um caso sem teste fica em 26b, com a razão no próprio cartão. `cargo test --test uc_coverage` confere os códigos citados.
 4. **Módulo novo** entra no mapa de [04-arquitetura.md](04-arquitetura.md), e o `mod.rs` dele começa com `//!`.
 5. **Parâmetro novo**: tabela, `Config`, [22-configuracao.md](22-configuracao.md). **Erro novo**: catálogo, [19-erros-e-limites.md](19-erros-e-limites.md), teste.
 
@@ -127,7 +126,7 @@ Na **mesma mudança** do código:
 Toda implementação que descobre algo em aberto o registra **na mesma mudança**:
 
 - **Pergunta de design** (o documento não define, ou há duas saídas): próxima dúvida `D` livre, com uma proposta. Decidida, vai para as decisões.
-- **Problema de lógica, risco ou limite** (o código se comporta de um jeito furado, injusto ou incompleto): próximo `PRB-NNN`, dizendo o **efeito** e a **proposta**; se uma dúvida `D` o resolve, vai dentro dela ("Problema ligado"). Resolvido, vai para os "problemas resolvidos" com a data.
+- **Problema de lógica, risco ou limite** (um comportamento incompleto, com risco ou com limite conhecido): próximo `PRB-NNN`, dizendo o **efeito** e a **proposta**; se uma dúvida `D` o resolve, vai dentro dela ("Problema ligado"). Resolvido, vai para os "problemas resolvidos" com a data.
 - Em [31-pendencias.md](31-pendencias.md): o que **não depende de nada** na seção 1; o que depende de outra dúvida, problema ou etapa, na seção 2 com "Depende de".
 - **Os códigos (`D…`, `PRB-…`, `UC-…`) nunca são reaproveitados.**
 
@@ -217,6 +216,8 @@ Gerado pelo levantamento dos `![…](../diagrams/img/…)` desta pasta. Um diagr
 - **Conventional Commits** em inglês curto ou português, com escopo: `feat(connectors/csharp): …`, `fix(cluster): …`. O tipo decide a versão ([27-ci-cd.md](27-ci-cd.md)): `feat`, `fix` e `perf` geram versão; `docs`, `chore`, `ci`, `refactor` e `test` **não**. `feat!:` ou `BREAKING CHANGE:` conta como `minor` enquanto o projeto está em `0.x`.
 - A mensagem diz **o que mudou e por quê** (o histórico é o git; não há registro cronológico da implementação).
 - Uma tag única `vX.Y.Z` para o repositório todo (servidor e conectores andam juntos). Ninguém cria tag à mão.
+- **O Taba está em produção** e toda versão publicada é permanente (crates.io e nuget.org não apagam versões; as Releases são imutáveis). As APIs, as chaves de configuração, os formatos em disco, o leiaute do backup em S3 e a API pública dos conectores são contratos: uma mudança incompatível é marcada como breaking e descreve a atualização na documentação.
+- **Fluxo:** branch a partir da `release` → PR para a `release` (checks do CI obrigatórios, merge commit) → candidata `rc` publicada → validação (`docker/validate.sh`; os testes do chart e do conector C# quando mudaram) → PR `release → main` ("Release vX.Y.Z") → final → PR `main → release`. Ninguém dá push direto em `main` ou `release`: as duas são protegidas por rulesets ([27-ci-cd.md](27-ci-cd.md#fluxo-de-branches-e-tags)). Correção de uma final segue o mesmo caminho.
 
 ## Fontes e provas
 

@@ -64,11 +64,8 @@
 
 ## Mais
 
-- [Plano desta documentação](00-plano-de-documentacao.md)
-- [Divergências doc histórica × código](_divergencias.md)
 
 ## Optional
 
-- [Registros de decisões e pendências (histórico)](../08a-decisoes-tomadas.md)
 - [Código do servidor](../../crates/taba-node/src/lib.rs)
 - [AGENTS.md](../../AGENTS.md): instruções para agentes de IA

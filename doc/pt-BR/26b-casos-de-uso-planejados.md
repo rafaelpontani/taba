@@ -4,12 +4,12 @@ resumo: Os casos de uso documentados que ainda não têm teste que os cite — o
 tipo: referência
 status: parcial
 verificado-em: 2026-10-15 @ 56121c9
-fontes: [doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, crates/taba-node/tests/uc_coverage.rs]
+fontes: [crates/taba-node/tests/uc_coverage.rs]
 ---
 
 # Casos de uso planejados (sem teste)
 
-> **Gerado** por `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`. Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
+> **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
 **Placar (2026-10-13, commit 71183b9):** **183** casos sem teste, de **885**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
@@ -1693,4 +1693,4 @@ Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DE
 ## Fontes e provas
 
 - Catálogo: `doc/20a`, `20b`, `20c`. Testes: as linhas `/// UC:` do código (regra de `uc_coverage.rs`).
-- Regenerar: `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`.
+- Mantido à mão: um caso que ganha o primeiro teste passa para [26a](26a-casos-de-uso-implementados.md).

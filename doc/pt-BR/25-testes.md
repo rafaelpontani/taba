@@ -76,7 +76,7 @@ async fn creating_a_queue_returns_201_with_location_and_the_defaults() {
 3. **Unitário:** em `tests.rs` ao lado do módulo. **Integração:** em `tests/`, usando `TestNode` ou `TestCluster`. Não crie teste de integração novo se um arquivo existente da área serve.
 4. **Cluster:** use o `Clock` manual (**avance o tempo**, não durma) e a `MemoryNetwork` (programe a falha). Use `eventually(…)` para esperar o estado, não `sleep`.
 5. **Idioma:** identificadores e nomes de teste em inglês; comentários em português.
-6. **Rode e regere:** `TABA_UC_WRITE=1 cargo test --test uc_coverage` atualiza a coluna "Testes" do catálogo histórico, e `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` regera [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md).
+6. **Rode e atualize o catálogo:** `cargo test --test uc_coverage` confere os códigos citados; acrescente o teste ao cartão do caso em [26a](26a-casos-de-uso-implementados.md) (um caso que ganha o primeiro teste passa de [26b](26b-casos-de-uso-planejados.md) para 26a), nas duas línguas.
 
 ## Como rodar
 
@@ -93,9 +93,7 @@ connectors/csharp/scripts/integration.sh                       # sobe o Compose,
 docker/validate.sh                                             # ponta a ponta (≈ 5 min)
 ```
 
-**O `uc_coverage` em detalhe.** Falha quando: (1) um teste cita um código que **não existe** ou está `(retirado)`; (2) um código aparece **duas vezes** na documentação; (3) a **coluna "Testes" do catálogo histórico está desatualizada** (regere com `TABA_UC_WRITE=1`). Uma quarta regra, "todo caso documentado tem teste", **só falha com `TABA_UC_STRICT=1`**: com 183 casos sem teste, ela imprime o placar em vez de falhar. O `uc_coverage` lê `doc/20*.md` (**não** lê `doc/pt-BR/`).
-
-> **Estado observado em 2026-10-13:** `the_tests_column_of_the_use_cases_is_up_to_date` **falha** no repositório (a coluna "Testes" de `doc/20*.md` está velha em relação aos testes citados). Regerar com `TABA_UC_WRITE=1 cargo test --test uc_coverage` resolve. Anotado em [31-pendencias.md](31-pendencias.md).
+**O `uc_coverage` em detalhe.** Falha quando: (1) um teste cita um código que **não existe** ou está `(retirado)`; (2) um código aparece **duas vezes** na documentação. Uma terceira regra, "todo caso documentado tem teste", **só falha com `TABA_UC_STRICT=1`**: com 183 casos sem teste, ela imprime o placar em vez de falhar. O `uc_coverage` lê os cartões `### UC-…` de [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md).
 
 ## `docker/validate.sh` e `docker/cluster.sh`
 

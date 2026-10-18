@@ -4,7 +4,7 @@ summary: What is already ready (version 0.1) and what comes next, in milestones 
 type: reference
 status: partial
 verified-on: 2026-10-14 @ efeb47a
-sources: [doc/08c-proximos-passos.md, doc/08b-pendencias.md, connectors/README.md, doc/pt-BR/31-pendencias.md]
+sources: [connectors/README.md, doc/en-US/30-decisions.md, doc/en-US/31-pending-items.md]
 ---
 
 # Roadmap
@@ -90,7 +90,7 @@ The "unblocked" pending items of [31-pending-items.md](31-pending-items.md) are,
 | Item | Detail |
 |---|---|
 | **Root language** ✅ | `README.md` and `AGENTS.md` in **en-US**, pointing to `doc/README.md` (which lists the documentation of each language) |
-| **`uc_coverage` reading the new catalogues** ⬜ | Today it reads `doc/20a-c`; migrate to `doc/pt-BR/26a`/`26b` (a code change, outside the documentation) |
+| **`uc_coverage` reading the new catalogues** ✅ | It reads the cards of `26a`/`26b`; a generator that maintains them is still missing ([31-pending-items.md](31-pending-items.md), item E) |
 | **Diagrams of this documentation** ✅ | The 31 spots are drawn (index in [24-conventions.md](24-conventions.md#diagram-index)); the source is the Archify JSON |
 | **Automatic verification** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` and `verificar-idiomas.mjs` in a PR job ([27-ci-cd.md](27-ci-cd.md)) |
 | **Integration job in CI** ⬜ | `integration.sh` and `validate.sh` (today only by hand) |

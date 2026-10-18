@@ -192,7 +192,7 @@ O que sustenta essa confiança:
 | Parâmetros de configuração | Uma chave de `config/params/mod.rs` não aparece em [22-configuracao.md](22-configuracao.md), ou o documento cita uma chave inexistente |
 | Códigos de erro | Um `ErrorCode` do código não aparece em [19-erros-e-limites.md](19-erros-e-limites.md) (ou vice-versa) |
 | Rotas | Uma rota registrada no código (`.route(…)` e o mapa do cluster) não é citada nos documentos de API |
-| Casos de uso | Um `UC-…` citado nos documentos não existe em `doc/20a-c` |
+| Casos de uso | Um `UC-…` citado nos documentos não existe nos cartões de 26a/26b |
 | Métricas | Uma métrica de `telemetry/metrics/defs.rs` não aparece em [13-observabilidade.md](13-observabilidade.md) |
 | Diagramas | Toda imagem `../diagrams/img/…` existe, e todo bloco `🖼️ DIAGRAMA PLANEJADO` que sobrar traz `tipo:` e `objetivo:` |
 

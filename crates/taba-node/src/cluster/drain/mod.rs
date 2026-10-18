@@ -1,6 +1,5 @@
-//! Drain mode (doc 04, section 6.10; doc 06b, "Drain"). Today the **local** part applies: leaving
-//! rotation, writing everything to disk (the development save) and coming back. Notifying the peers and the
-//! node's deregistration come in with the cluster protocol.
+//! Drain mode (doc 04, section 6.10; doc 06b, "Drain"): leaving rotation and writing everything to disk;
+//! in a cluster, also notifying the peers, deregistering and coming back as a new node (`attach`).
 //!
 //! States: `active` → `draining` → `drained`. It is entered by signal (`drain.on-stop`) or by the API.
 //! `drain.timeout` covers the whole drain; once exceeded, the node records what is left in memory
