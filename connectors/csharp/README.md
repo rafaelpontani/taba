@@ -1,6 +1,8 @@
 # Taba.Client (C#)
 
-The Taba C# connector ([doc/pt-BR/21-conectores.md](../../doc/pt-BR/21-conectores.md), section "C#").
+The Taba C# connector. Documentation: [Connectors, C#](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/21-connectors.md#c-tabaclient).
+
+> Other languages: [Português (Brasil)](https://github.com/rafaelpontani/taba/blob/main/doc/pt-BR/21-conectores.md#c-tabaclient) · [all languages](https://github.com/rafaelpontani/taba/blob/main/doc/README.md)
 
 - **Targets:** `net461` (classic .NET, Framework 4.6.1 to 4.8), `net5.0`, `net6.0` and `net8.0`, plus `net10.0` when the SDK is 10 or newer. The code is the same, in **C# 7.3** on every target.
 - **No dependencies:** only the standard library (`HttpClient`, `Task`). JSON is a minimal reader of its own (`Json.cs`); base64 is `Convert`.
@@ -199,11 +201,11 @@ scripts/integration.sh                  # everything, with a real cluster
 ```
 
 - **Unit** (`ClientTests`, `JsonTests`, `PackagingTests`): no network, with a fake `HttpMessageHandler` (`ScriptedHandler`). They run on .NET 6, 8 and 10.
-- **Integration** (`IntegrationTests`, category `Integration`): against a real Taba. [`scripts/integration.sh`](scripts/integration.sh) starts the root `docker-compose.yml` (the nodes and HAProxy), waits for the nodes to be healthy, creates through `taba-cli` the test tokens (one for the application and one read-only) and the queues (a plain one, a FIFO one and a distributor with two queues, one of them FIFO for the partial failure), runs `dotnet test` with `TABA_URL`, `TABA_TOKEN` and `TABA_TOKEN_READONLY` and tears everything down at the end. `--keep` leaves the cluster up, `--no-build` reuses the images, and what comes after `--` goes to `dotnet test`. You can also point the tests at a cluster of your own, by setting the three variables and the queues `csharp-shared`, `csharp-fan`, `csharp-fan-a` and `csharp-fan-b`.
+- **Integration** (`IntegrationTests`, category `Integration`): against a real Taba. [`scripts/integration.sh`](https://github.com/rafaelpontani/taba/blob/main/connectors/csharp/scripts/integration.sh) starts the root `docker-compose.yml` (the nodes and HAProxy), waits for the nodes to be healthy, creates through `taba-cli` the test tokens (one for the application and one read-only) and the queues (a plain one, a FIFO one and a distributor with two queues, one of them FIFO for the partial failure), runs `dotnet test` with `TABA_URL`, `TABA_TOKEN` and `TABA_TOKEN_READONLY` and tears everything down at the end. `--keep` leaves the cluster up, `--no-build` reuses the images, and what comes after `--` goes to `dotnet test`. You can also point the tests at a cluster of your own, by setting the three variables and the queues `csharp-shared`, `csharp-fan`, `csharp-fan-a` and `csharp-fan-b`.
 
 The tests cite the use cases (`/// UC: UC-CNT-001`) like the server's, and `crates/taba-node/tests/uc_coverage.rs` reads them from here too.
 
-**Still missing:** publishing to nuget.org, the shared fixtures and scenarios from `contrato/` and the check on .NET Framework 4.8 (the tests run on modern .NET; `net461` is only compiled).
+**Still missing:** the shared fixtures and scenarios from `contrato/` and the check on .NET Framework 4.8 (the tests run on modern .NET; `net461` is only compiled).
 
 ## License
 
