@@ -95,7 +95,8 @@ taba_up() {
   if [ "$TABA_BUILD" -eq 1 ]; then
     taba_compose --profile tools build
   fi
-  taba_compose up -d
+  # The root Compose defaults to four nodes (taba-0 plus three replicas); the tests assume the three of TABA_NODES.
+  taba_compose up -d --scale taba=2
   taba_wait_healthy "${1:-240}"
 }
 
