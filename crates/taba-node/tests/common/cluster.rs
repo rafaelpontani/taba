@@ -301,8 +301,13 @@ pub async fn wait_joined(node: &TestNode) {
 }
 
 /// For the tests that bring a node down and want it to **stay in the table**: the channel only gives a node
-/// up for lost (and opens the exclusion vote) after a long time.
-pub const NO_VOTE: &[(&str, &str)] = &[("TABA_CLUSTER_CHANNEL_RECONNECT_BACKOFF", "600s")];
+/// up for lost (and opens the exclusion vote) after a very large number of attempts, or after the queue
+/// holds a frame for a long time. The reconnect backoff is left alone: a healthy channel that drops on a
+/// slow runner must come back quickly.
+pub const NO_VOTE: &[(&str, &str)] = &[
+    ("TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES", "100000"),
+    ("TABA_CLUSTER_CHANNEL_QUEUE_MAX_AGE", "600s"),
+];
 
 // ---- Shortcuts for the C-level tests ----
 

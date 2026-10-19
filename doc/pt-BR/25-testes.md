@@ -115,7 +115,7 @@ docker/validate.sh                                             # ponta a ponta (
 
 ## Problemas conhecidos
 
-Os testes desligados com `#[ignore]` por falharem de forma intermitente no CI, com a causa e a correção prevista de cada um, estão em [36-problemas-conhecidos.md](36-problemas-conhecidos.md).
+O teste desligado com `#[ignore]` por falhar de forma intermitente no CI, com o que se sabe da causa e o próximo passo, está em [36-problemas-conhecidos.md](36-problemas-conhecidos.md).
 
 ## Fontes e provas
 
