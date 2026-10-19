@@ -1,0 +1,41 @@
+# CodeQL: static analysis (SAST) of the server and Rust connectors, of the C# connector and of the workflows
+# themselves. Findings go to the Security tab. Every language is analyzed without a build (build-mode none), so it
+# does not depend on the toolchains of build-server.yml and build-connector-*.yml.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, release]
+  pull_request:
+    branches: [main, release]
+  schedule:
+    - cron: "41 5 * * 1"
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust, csharp, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:${{ matrix.language }}

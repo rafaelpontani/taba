@@ -11,7 +11,7 @@
 # O uso é o do programa: o que vem depois do nome da imagem são os comandos.
 #   docker run --rm -e TABA_CLI_URL=http://taba:8080 taba-cli topic list
 
-FROM rust:1-alpine AS build
+FROM rust:1-alpine@sha256:557a94c82b485a14b569120e00867267108c734efe33f10cc31ca0cd5dd1eca9 AS build
 RUN apk add --no-cache build-base
 WORKDIR /src/rust
 # Binário pequeno e estático. Com --target o RUSTFLAGS não vale para as macros de procedimento.
@@ -42,7 +42,7 @@ RUN triple="$(uname -m)-unknown-linux-musl" \
  && cargo build --release --locked -p taba-cli --target "$triple" \
  && cp "target/$triple/release/taba-cli" /taba-cli
 
-FROM alpine:3
+FROM alpine:3@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk add --no-cache ca-certificates \
  && adduser -D -u 10001 taba
 COPY --from=build /taba-cli /usr/local/bin/taba-cli

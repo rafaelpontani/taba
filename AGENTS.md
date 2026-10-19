@@ -96,6 +96,15 @@ Every implementation that finds something open records it **in the same change**
 - In the pending items, what **does not depend on anything** stays in section 1 and what depends on another question, problem or step stays in section 2, with "Depends on".
 - A deviation from the document is fixed in the technical `.md` itself; if it depends on a decision, it becomes a `D` question.
 
+## Intermittent tests and known issues
+
+A test that fails only sometimes (usually on the slow CI runners) is recorded in [doc/en-US/36-known-issues.md](doc/en-US/36-known-issues.md) / [doc/pt-BR/36-problemas-conhecidos.md](doc/pt-BR/36-problemas-conhecidos.md), in both languages, in the same change.
+
+- **One section per test or issue, with a title.** Right after the title: the **status** (`Open`, `Fixed` or `Reopened`), the date **found** and the date **fixed**; then the test, symptom, cause and fix, and a **History** table (date, event) with every occurrence and attempt. The summary table at the top is kept in sync.
+- **Sections are never deleted.** When fixed, set the status to `Fixed`, fill the fixed date and add the history row (what changed and how it was verified). If the problem **comes back**, do not open a new section: set the status to `Reopened`, clear the fixed date, add the history row for the new occurrence and, when it is solved again, add another row and set `Fixed` again with the new date.
+- **Ignoring a test (`#[ignore = "..."]`)** is a last resort: it needs a section in the known issues first, and the reason points to it. Removing the `#[ignore]` goes in the same change as the fix and its verification (repeated runs under parallel load, noting how many).
+- Do not hide an intermittent failure by raising a timeout or retrying without understanding the cause; if the cause is not identified, say so in the section ("Cause: not identified") and record the next step.
+
 ## Use cases
 
 The use cases that guide the tests are the cards of [26a](doc/en-US/26a-implemented-use-cases.md) and [26b](doc/en-US/26b-planned-use-cases.md), each with a `UC-<AREA>-<NNN>` code that the tests cite on a `/// UC: UC-MSG-003` line. The method is explained in [doc/en-US/26-use-cases.md](doc/en-US/26-use-cases.md).

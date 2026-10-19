@@ -15,9 +15,10 @@ sources: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ve
 
 | Flow | When | What it does |
 |---|---|---|
-| **CI** (`ci.yml`) | **Push** to any branch except `main`/`release`, and **pull request** to them | The three builds (server, Rust connector, C# connector) **without a version**, the static test of the Helm chart and the lint of the workflows. **Publishes nothing** |
+| **CI** (`ci.yml`) | **Pull request** to `main`/`release` (and manual, for a branch without a PR). Not on `push`: with a PR open it would run everything twice | The three builds (server, Rust connector, C# connector) **without a version**, the static test of the Helm chart and the lint of the workflows. **Publishes nothing** |
 | **Release** (`release.yml`) | **Push** to `main` (finals) or `release` (candidates) | The same builds; if semantic-release finds a version, publishes everything **in the order below**, with the tag created only after everything is green |
 | **Scorecard** (`scorecard.yml`) | Push to `main`, weekly and on every protection change | The public OpenSSF Scorecard score (the repository's security practices) |
+| **CodeQL** (`codeql.yml`) | Push to `main`/`release`, pull request to them and weekly | Static analysis (SAST) of the Rust, C# and workflow code; findings in the Security tab |
 
 The three builds are **reusable workflows** (`workflow_call`), used by CI **and** by the release, with the same logic.
 
@@ -26,7 +27,7 @@ The three builds are **reusable workflows** (`workflow_call`), used by CI **and*
 ## Branch and tag flow
 
 ```
-feature/*  ── push/PR ──▶ ci.yml: build + tests (nothing is published, no tag)
+feature/*  ── PR ──▶ ci.yml: build + tests (nothing is published, no tag)
     │
     └──PR──▶ release ── release.yml ──▶ fixed tag  v0.1.0-rc.28        (immutable, never moves)
                 │                         floating git: v0.1-rc, v0-rc   (move to the new commit)
@@ -46,12 +47,13 @@ feature/*  ── push/PR ──▶ ci.yml: build + tests (nothing is published,
 
 | File | Does |
 |---|---|
-| `ci.yml` | Calls `build-server`, `build-connector-rust` and `build-connector-csharp`; `helm` job (`deploy/helm/tests/run.sh static`); `workflows` job (`actionlint` and `zizmor`, fails from `medium` up). `concurrency` cancels old runs of the same ref |
+| `ci.yml` | Calls `build-server`, `build-connector-rust` and `build-connector-csharp`; `helm` job (`deploy/helm/tests/run.sh static`); `rust-audit` job (`cargo audit` on both `Cargo.lock` files: fails on a RustSec advisory); `workflows` job (`actionlint` and `zizmor`, fails from `medium` up). `concurrency` cancels old runs of the same ref |
 | `build-server.yml` | **Server**, on **two native runners** (`amd64` on `ubuntu-latest`, `arm64` on `ubuntu-24.04-arm`): `cargo fmt --all --check` and `clippy -D warnings` **only on x86_64**, `cargo test --workspace --locked`, the **static musl binary** (`node-binary` action) uploaded as the `taba-node-<arch>` artifact |
 | `build-connector-rust.yml` | **Rust connector** (`connectors/rust` workspace), on both runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (what crates.io would receive), `cargo build --release -p taba-cli` (musl); `taba-cli-<arch>` artifact |
 | `build-connector-csharp.yml` | **C# connector**: SDKs 6.0 and 8.0, `dotnet test` (without `TABA_URL`, the integration tests are **skipped**), `dotnet pack` of the **three packages** with the commit and the Release link; `nuget-packages` artifact (`.nupkg` and `.snupkg`) |
 | `release.yml` | The release (below) |
 | `scorecard.yml` | `ossf/scorecard-action`; the result goes to the Security tab and to the README badge |
+| `codeql.yml` | CodeQL for `rust`, `csharp` and `actions`, all with `build-mode: none` (independent of the build toolchains) |
 
 The builds' `version` input is **empty** when there is no release; with a version, `set-version.sh` writes it to the files **only inside the build, without committing**. Every build exports `TABA_GIT_SHA`: `taba --version` and `taba-cli --version` show the commit.
 
@@ -66,7 +68,7 @@ Principle: **nothing public before everything is green, and everything public po
 | 3 | `chart` | `set-version.sh` writes the exact `version` and `appVersion` to `Chart.yaml`; `run.sh static`; `helm package` |
 | 4 | `images` | Builds `taba` and `taba-cli` (the two targets of `Dockerfile.ci`) for `linux/amd64` and `linux/arm64`, **compiling nothing**, with SLSA provenance (`mode=max`), SBOM and OCI labels (`revision` = commit). Pushes **only by digest, without a tag**, to Docker Hub and GHCR; attests (`attest-build-provenance`) and signs (cosign keyless) each digest |
 | 5 | `tag` | Only now semantic-release creates the **tag** on `github.sha` and the **GitHub Release as a draft**. Fails if the version is not the planned one or if the tag does not point to the commit |
-| 6 | `release-assets` | Binaries (with the architecture in the name), `.nupkg`, `.snupkg`, the chart `.tgz` and `SHA256SUMS`, all attested, on the draft |
+| 6 | `release-assets` | Binaries (with the architecture in the name), `.nupkg`, `.snupkg`, the chart `.tgz` and `SHA256SUMS`, all attested, on the draft, plus `taba-<version>.intoto.jsonl` (the provenance bundle as a Release file, which the OpenSSF Scorecard recognizes) |
 | 7 | `crates`, `nuget`, `chart-publish` | crates.io and nuget.org by **Trusted Publishing** (OIDC); the chart at `oci://ghcr.io/rafaelpontani/charts`, attested and signed |
 | 8 | `finalize` | The Release leaves draft: `--prerelease` on candidates, `--latest` only on the highest final |
 | 9 | `floating` | Creates the Docker tags (exact and floating) with `docker buildx imagetools create` **pointing to the digest** (no rebuild) and moves the floating git tags |
@@ -80,7 +82,7 @@ If the branch moves between `plan` and `tag`, semantic-release refuses ("local b
 
 | File | What for |
 |---|---|
-| `Dockerfile` (root) | **Builds everything inside the container** (`rust:1-alpine`, static musl build) and produces the final image on Alpine. It is what **anyone uses** for `docker build -t taba .` or `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
+| `Dockerfile` (root) | **Builds everything inside the container** (`rust:1-alpine`, static musl build; both bases **pinned by digest**, as in `connectors/rust/cli/Dockerfile`) and produces the final image on Alpine. It is what **anyone uses** for `docker build -t taba .` or `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
 | `Dockerfile.ci` | **Does not compile**: one target per image (`taba` copies `dist/taba-${TARGETARCH}`, `taba-cli` copies `dist/taba-cli-${TARGETARCH}`), binaries already built with the runner's cache. Both start from the same `base` stage, with `alpine:3` **pinned by digest** in a single place |
 
 **Keeping versions current without editing a SHA by hand:** GitHub does not accept a variable in `uses:`, so each action is pinned by SHA where it is used. The repeated ones (registry login, attestation and signature) live in the local actions `.github/actions/registry-login` and `.github/actions/provenance`, and Dependabot updates every occurrence in one grouped PR. The base digest only exists in `Dockerfile.ci`; its update comes as `fix` and produces a new version (`rc` on `release`), so the published image gets the base's security fixes without waiting for a feature. The `apk` packages are always the latest at build time. Dependabot waits 7 days (`cooldown`) before proposing a freshly published version.
@@ -160,7 +162,7 @@ What backs this trust:
 - **Actions pinned by SHA** (with the version comment) and updated by Dependabot (`.github/dependabot.yml`: actions, cargo in both workspaces, nuget and the Docker bases; the PRs go to `release` with a `ci`/`chore` prefix, which produces no version).
 - **Minimal permissions:** `permissions: {}` at the top and each job asks only for what it uses; `checkout` with `persist-credentials: false`.
 - **No long-lived secrets** for crates.io and nuget.org (OIDC); keyless signatures in Sigstore's public log (Rekor).
-- **Workflow lint** (`actionlint`, `zizmor`) on every PR and the public **OpenSSF Scorecard**.
+- **Workflow lint** (`actionlint`, `zizmor`), **dependency audit** (`cargo audit`) and **CodeQL** on every PR, and the public **OpenSSF Scorecard**.
 - [SECURITY.md](../../SECURITY.md): how to report a vulnerability and which versions get fixes.
 
 ### Repository configuration (outside the code)
@@ -200,6 +202,6 @@ The script currently checks the `doc/pt-BR` folder (the Portuguese keys `resumo`
 
 ## Sources and evidence
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release,scorecard}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
 - Decisions: D159 to D163 ([30-decisions.md](30-decisions.md)).
 - Use cases: there are no pipeline `UC-` cases; validation is `docker/validate.sh` ([25-testing.md](25-testing.md)).

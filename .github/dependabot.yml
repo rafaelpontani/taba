@@ -20,7 +20,7 @@ updates:
       actions: { patterns: ["*"] }
 
   - package-ecosystem: docker
-    directory: /
+    directories: ["/", "/connectors/rust/cli"]
     target-branch: release
     schedule: { interval: weekly }
     cooldown: { default-days: 7 }
