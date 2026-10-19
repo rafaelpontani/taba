@@ -24,13 +24,14 @@ const TARGETS: [&str; 6] = [
 #[test]
 fn the_dockerfile_builds_a_static_binary_and_runs_it_as_an_unprivileged_user_on_alpine() {
     let docker = cli_file("Dockerfile");
+    // The bases are pinned by digest (`image:tag@sha256:...`), which Dependabot keeps current.
     assert!(
-        docker.contains("FROM rust:1-alpine AS build"),
-        "first stage: Rust on Alpine"
+        docker.contains("FROM rust:1-alpine@sha256:") && docker.contains(" AS build\n"),
+        "first stage: Rust on Alpine, pinned by digest"
     );
     assert!(
-        docker.contains("\nFROM alpine:3\n"),
-        "second stage: Alpine only"
+        docker.contains("\nFROM alpine:3@sha256:"),
+        "second stage: Alpine only, pinned by digest"
     );
     assert!(
         docker.contains("+crt-static"),
