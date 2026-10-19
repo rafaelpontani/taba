@@ -113,6 +113,19 @@ docker/validate.sh                                             # end to end (≈
 
 ⬜ **Missing:** **performance and load** tests (the speed and cost goals have no benchmark), **Kubernetes** tests and the **shared conformance suite** between connectors ([32-roadmap.md](32-roadmap.md)). `docker/test-cpu.sh` is a CPU measurement script.
 
+## Known issues
+
+To be fixed in the next version. In 0.1.0, two cluster tests are marked `#[ignore]` because they fail intermittently on the CI amd64 runner when the machine is overloaded:
+
+| Test | Symptom in CI |
+|---|---|
+| `failures.rs` › `the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_primary` | consuming through node 1 stops halfway (e.g. 16 of 28 messages), or "waited 30 s for: the node to join the cluster" |
+| `replication.rs` › `with_a_node_down_only_the_publications_it_owns_fail_and_the_replica_catches_up` | publications owned by healthy nodes fail while one node is down |
+
+- **Cause (confirmed).** `NO_VOTE` in `tests/common/cluster.rs` prevents the exclusion vote by raising the reconnection backoff of **every** channel to 600 s, not only the downed node's. On a slow runner a **healthy** channel drops after 500 ms without a keepalive and would only come back 10 minutes later; `take` and the signals between two healthy nodes stop. A simulated 100 ms drop reproduces the failure locally.
+- **Planned fix.** Turn the vote off without touching the backoff (a very high `TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES` and a high `TABA_CLUSTER_CHANNEL_QUEUE_MAX_AGE`). It fixes both failures, but exposes a rare hang (≈ 1 in 25 runs) in `cluster.shutdown()` of two `replication.rs` tests after the isolated node comes back: the process stops entirely, which suggests a synchronous deadlock. It must be understood before the fix goes in.
+- **Product risk found in the analysis.** A lock-order inversion: `build_batch` (`src/cluster/channel/mod.rs`) holds the peer lock and calls the signals; `ready_peers` (`src/cluster/replication/signals.rs`) holds the tables lock and calls `is_live`, which takes the peer lock. On the production multi-thread runtime this can deadlock. Fix: collect the candidates under the tables lock, release it, and only then filter with `is_live`.
+
 ## Sources and evidence
 
 - `crates/taba-node/tests/*.rs` and `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
