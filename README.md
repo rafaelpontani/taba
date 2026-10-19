@@ -6,33 +6,50 @@
 
 [![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verifying-a-release)
 
-**Taba** is a **lightweight, fast, open-source** messaging system that runs from **a single Docker image**: 1 node to try it out, 3 for production. It puts **queues** (each message goes to one consumer, like SQS) and **pub/sub** (each publication is copied to many queues, like SNS) behind the same HTTP API, and scales by adding nodes, with no coordinator and no complex configuration.
+**Taba** is a **self-hosted, horizontally scalable messaging cluster**: queues (like SQS) and pub/sub (like SNS) behind one HTTP API, from **a single Docker image**. Add a node and the cluster rebalances itself; remove one and it hands its work over before leaving, with no downtime. Every message is replicated across nodes and kept in memory, with a **continuous backup to S3**. A **Helm chart**, a **terminal UI** and published packages come with it.
 
 If you want to get away from per-message billing, from a cluster of brokers to operate, or from depending on a cloud, Taba is for you.
 
-## What you get
+## At a glance
 
-- **One image, no dependencies:** every node runs the same simple, small Docker image. Start 1 node to test and 3 for production, with no separate broker, coordinator or database. It runs on one machine, on a VM or on Kubernetes.
-- **Fast:** messages live in memory, replicated across the nodes. The disk only comes in when memory fills up.
-- **Always available:** every topic is spread out and replicated. If a node goes down the cluster keeps running, and the node rejoins by itself when it recovers.
-- **Scales effortlessly:** a new node joins the cluster, discovers it on its own and takes over its share. There is no coordinator to configure.
-- **Almost no cost:** no per-message billing and no cloud lock-in. You only pay for the machine it runs on.
-- **FIFO queues:** per-group delivery order and publish deduplication, for when sequence matters.
-- **Simple API:** a few HTTP routes, no mandatory SDK and no new protocol to learn.
-- **Simple connectors in the main languages:** C#, Java, Rust, C, C++, Python, PHP, Ruby, Go and Node.js, including old versions (see [Connectors](#connectors)).
-- **Open source (AGPLv3 server, Apache-2.0 clients):** the code is open and, if someone offers Taba as a service with modifications, they must share them under the same license. The connectors are Apache-2.0, so any application, open or closed, can embed them.
+| | |
+|---|---|
+| **Topics** | Queues (one consumer per message, redelivery when not confirmed, dead-letter), **FIFO** queues (order per group and deduplication) and distributors (pub/sub by name prefix) |
+| **Cluster** | 3 or more identical nodes, **no coordinator and no single point of failure**. A node that fails is voted out; when it recovers it rejoins by itself |
+| **Scaling** | **Horizontal**, in both directions: a new node takes its share of the topics; a leaving node drains first. Autoscaling with KEDA on Kubernetes |
+| **Durability** | Each message is confirmed by a **quorum** of nodes (3 copies by default) and backed up **continuously to S3** (AWS, SeaweedFS, MinIO, Ceph...) |
+| **Deployment** | One Docker image (58 MB), Docker Compose, or the **Helm chart** at `oci://ghcr.io/rafaelpontani/charts/taba` |
+| **Operation** | `taba-cli`, a command line with a **full-screen terminal UI** (cluster health, topics, queue charts), plus Prometheus and OpenTelemetry metrics |
+| **Clients** | Plain HTTP from any language; ready connectors for Rust (crates.io) and C#/.NET (nuget.org) |
+| **License** | Server AGPLv3, connectors Apache-2.0 |
 
-> Speed and cost are **project goals**. There are no published benchmarks yet (see [Status and limits](#status-and-limits)).
+## Why Taba
 
-## Taba vs. the alternatives
+**Fast by default.** Messages are written to and served from **memory**, replicated across the nodes; the disk only comes in when memory fills up. Consumers read what is already in RAM, with no tuning and no extra configuration. Memory is not split equally: topics with the most reads keep the most messages hot.
 
-| | **Taba** | SQS + SNS | Kafka | RabbitMQ |
-|---|---|---|---|---|
-| **Where it runs** | Anywhere: machine, VM, Docker, Kubernetes | AWS only | Wherever you host it, or as a managed service | Wherever you host it, or as a managed service |
-| **What to run** | The same image on 3 nodes (1 for dev) | Nothing (managed) | Brokers and metadata coordination | A broker (more nodes for high availability) |
-| **Queue and pub/sub** | In the same HTTP API | Two separate services | Topics and consumer groups | Queues and exchanges |
-| **Billing** | No per-message billing: infrastructure only | Per request | Infrastructure, or a managed plan | Infrastructure, or a managed plan |
-| **Scaling** | Add a node | Automatic (managed) | Brokers and partitions | Nodes in the cluster |
+**Low operating cost.**
+- **Nothing billed per message:** you pay for the machines, nothing else.
+- **Little to run:** no broker cluster, no coordinator (ZooKeeper, etcd), no external database. Each node uses about **35 MiB of RAM** while serving the demo load shown below.
+- **No one rebalances by hand:** scale out or in and the cluster moves the blocks of topics between nodes by itself, without stopping. Scaling down drains the leaving node first, one node at a time.
+- **Backup with almost no S3 cost:** a message consumed before the backup window closes (60 s by default) **never goes to S3**, so fast traffic generates almost no requests to the bucket. What stays is sent in segments.
+
+**Reliable.**
+- A write is only confirmed after a **quorum** of nodes holds it in memory.
+- Nodes **monitor each other** and vote out the one that fails; it **rejoins by itself** when it comes back.
+- The **S3 backup never delays a write** and lets a whole cluster that went down **restore itself** at start (only the last backup window is at risk).
+- Every candidate is validated end to end before it becomes a final release: a three-node cluster with nodes crashing, draining and returning, **with no loss of confirmed messages**, plus S3 backup and restore ([docker/validate.sh](docker/validate.sh)).
+
+## See it running
+
+The `taba-cli` terminal UI (`taba-cli tui`) on the Compose cluster, under a demo load ([doc/diagrams/scripts/capture-tui.sh](doc/diagrams/scripts/capture-tui.sh)):
+
+| Cluster health | Topics, with the charts of the selected queue |
+|---|---|
+| ![Cluster tab: conditions, the nodes and the charts of the selected node](doc/diagrams/img/en-US/tui-cluster.png) | ![Topics tab: queues, a distributor and a FIFO queue, with depth and publish and consume rates](doc/diagrams/img/en-US/tui-topics.png) |
+| **Publish and consume flow of a queue** | **A node in detail, with its S3 backup** |
+| ![Flow chart of the orders queue: messages in, out and acknowledged per second](doc/diagrams/img/en-US/tui-queue-chart.png) | ![Node detail: storage, quorum and channel signals and the S3 backup state](doc/diagrams/img/en-US/tui-node.png) |
+
+Everything the interface does can also be done with one-line commands ([doc/en-US/20b-cli-ui.md](doc/en-US/20b-cli-ui.md)).
 
 ## Try it in a minute
 
@@ -53,9 +70,55 @@ echo '{"order": 9001}' | docker compose run --rm -T taba-cli publish orders --st
 docker compose run --rm taba-cli consume orders --wait 5 --ack      # receive and confirm
 ```
 
-The client API is also at `http://localhost:8080` for any HTTP client (with `Authorization: Bearer <root token>`; the token is in the `secrets` volume: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; on Windows Git Bash prefix the command with `MSYS_NO_PATHCONV=1`). `docker compose down -v` deletes everything. HAProxy is just an example: any load balancer works. For a single node, with no cluster, see [Develop on one node](#develop-on-one-node).
 
-> **Careful in production:** stop and update nodes **one at a time** (`docker compose stop` sends `SIGTERM`, which triggers a graceful *drain*). Stopping **all** nodes at once loses the messages and topics, and losing **two nodes in a row** locks a 3-node cluster. See the [operations guide](doc/en-US/23-operations.md).
+The client API is also at `http://localhost:8080` for any HTTP client (with `Authorization: Bearer <root token>`; the token is in the `secrets` volume: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; on Windows Git Bash prefix the command with `MSYS_NO_PATHCONV=1`). The Compose file already starts the S3 backup, in a SeaweedFS next to the cluster. `docker compose down -v` deletes everything. HAProxy is just an example: any load balancer works. For a single node, with no cluster, see [Develop on one node](#develop-on-one-node).
+
+> **Careful in production:** stop and update nodes **one at a time** (`docker compose stop` sends `SIGTERM`, which triggers a graceful *drain*). Losing **two nodes in a row** locks a 3-node cluster. Stopping **all** nodes at once loses the messages and topics, unless the S3 backup is on: then the cluster restores itself at start, except for the last backup window. See the [operations guide](doc/en-US/23-operations.md).
+
+## Taba vs. the alternatives
+
+| | **Taba** | SQS + SNS | Kafka | RabbitMQ |
+|---|---|---|---|---|
+| **Where it runs** | Anywhere: machine, VM, Docker, Kubernetes | AWS only | Wherever you host it, or as a managed service | Wherever you host it, or as a managed service |
+| **What to run** | The same image on 3 nodes (1 for dev) | Nothing (managed) | Brokers and metadata coordination | A broker (more nodes for high availability) |
+| **Queue and pub/sub** | In the same HTTP API | Two separate services | Topics and consumer groups | Queues and exchanges |
+| **High availability** | Built in: replication by quorum, vote and automatic rejoin | Managed by AWS | Replicated partitions | Quorum queues on a cluster |
+| **Scaling** | Add or remove a node: it rebalances by itself | Automatic (managed) | Brokers and partitions, reassigned by hand or by tools | Nodes in the cluster; queue leaders rebalanced by command |
+| **Backup** | Continuous to S3, restored at start | Managed by AWS | Replication; backup with external tools | Definitions export; messages with external tools |
+| **Local development** | The same image as production | An emulator (LocalStack) or an AWS account | The same software, heavier | The same software |
+| **Billing** | No per-message billing: infrastructure only | Per request | Infrastructure, or a managed plan | Infrastructure, or a managed plan |
+
+## Common questions
+
+**Is Taba a single server?** No. It is a cluster of identical nodes with no coordinator. Three nodes are the recommended minimum for production; one node is a development mode.
+
+**Does it scale horizontally?** Yes. The topics are split into blocks on a consistent-hash ring; a new node takes over its share and a node that leaves hands its share over first. On Kubernetes the chart can scale with KEDA.
+
+**What happens if a node goes down?** The others detect it, vote it out and keep serving from the replicas. When it comes back it is re-admitted and synchronized. With 3 nodes the cluster survives one node at a time.
+
+**Does it support S3?** Yes, as a continuous backup of messages, topics and tokens to any S3 that honors conditional writes (AWS S3, SeaweedFS, MinIO, Ceph). The Compose file already starts with it on, in a SeaweedFS. Details in [doc/en-US/33-s3-backup.md](doc/en-US/33-s3-backup.md).
+
+**Is there a Helm chart?** Yes: `oci://ghcr.io/rafaelpontani/charts/taba`, with the S3 backup, Ingress, Prometheus, OpenTelemetry and KEDA autoscaling as options ([Run it on Kubernetes](#run-it-on-kubernetes-helm)).
+
+**Is there a user interface?** Yes, in the terminal: `taba-cli tui` ([See it running](#see-it-running)). There is no web dashboard; for long-term charts, use the Prometheus metrics.
+
+**Is it in production?** Yes. Every version is published to Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases, signed and with provenance ([Verifying a release](#verifying-a-release)).
+
+## Limits
+
+What limits a Taba cluster is the hardware you give it, not a fixed number:
+
+- **How many nodes:** the code has no maximum. Each node takes a share of the hash ring (128 virtual positions per node). The automated tests run clusters of up to 5 nodes, and every candidate release is validated end to end on Compose.
+- **How much data:** each message is kept on 3 nodes (`replication.factor`), so the cluster holds about the sum of the nodes' memory and disk divided by 3. Memory can be capped per node (`memory.limit`); above it, messages overflow to the local disk.
+- **Message size:** 5 MB by default, configurable per topic.
+- **Minimum for production:** 3 nodes. Losing **two nodes in a row** in a 3-node cluster locks the cluster (there is no quorum), and nodes must be stopped and updated **one at a time**.
+
+What Taba does not do:
+
+- **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP, MQTT or Kafka protocol compatibility, so switching brokers means switching the client.
+- **Not a streaming platform:** stream processing and replaying message history are out of scope. For queues and pub/sub, yes; for re-reading the past, no.
+- **Out of scope for now:** a web interface, advanced authentication (OAuth/OIDC) and multi-region.
+- **Still to come:** the connectors for the other languages, the OpenAPI contract and published benchmarks. See the [roadmap](doc/en-US/32-roadmap.md) and the [known issues](doc/en-US/36-known-issues.md).
 
 ## Develop on one node
 
@@ -147,7 +210,7 @@ The API is HTTP, so any language can already talk to Taba with the HTTP client i
 | Language | Folder | Base version | State | Usage example |
 |---|---|---|---|---|
 | Java | `connectors/java/` | Java 11 | planned | TODO |
-| C# | `connectors/csharp/` | .NET Framework 4.6.1 and .NET 5, 6, 8 and 10 | [ready](connectors/csharp/README.md) (nine async and sync operations, `subscribe`) | [console example](exemplos/csharp-console/) |
+| C# | `connectors/csharp/` | .NET Framework 4.6.1 and .NET 5, 6, 8 and 10 | [ready](connectors/csharp/README.md) (nine async and sync operations, `subscribe`) | [console example](examples/csharp-console/) |
 | Python | `connectors/python/` | 2.7.9 and 3.4.3 | planned | TODO |
 | PHP | `connectors/php/` | 5.6 | planned | TODO |
 | Ruby | `connectors/ruby/` | 2.0 | planned | TODO |
@@ -164,13 +227,6 @@ Other languages use their own HTTP client or the C library. The design is in [th
 <!-- TODO: add usage examples (create topic, publish, consume with long polling and ack) for each language, once the connectors exist. -->
 
 > The base versions are proposals and may change until confirmed (pending item D68, see [pending items](doc/en-US/31-pending-items.md)).
-
-## Status and limits
-
-- **Version 0.1 validated end to end:** the three-node cluster comes up with `docker compose up`, forms itself, serves through the `taba-cli`, detects a node going down, excludes it by vote and takes it back without losing confirmed messages (script in [docker/validate.sh](docker/validate.sh)). The complete documentation is in [doc/](doc/README.md). Still missing: the remaining connectors, the OpenAPI contract and publishing to package registries. See the [roadmap](doc/en-US/32-roadmap.md).
-- **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP, MQTT or Kafka protocol compatibility, so switching brokers means switching the client.
-- **Not a streaming platform:** stream processing and replaying message history are out of scope. For queues and pub/sub, yes; for re-reading the past, no.
-- **Out of scope for now:** graphical interface, advanced authentication and multi-region.
 
 ## How it works inside
 
@@ -225,7 +281,7 @@ Versions: `main` publishes finals (`v0.1.0`) and `release` publishes candidates 
 
 ## Documentation
 
-The documentation lives in [doc/](doc/README.md), one folder per language: start at [doc/en-US/README.md](doc/en-US/README.md) for English (an AI-friendly index is in [doc/en-US/llms.txt](doc/en-US/llms.txt)) or at [doc/pt-BR/README.md](doc/pt-BR/README.md) for Brazilian Portuguese. Both folders have the same content and every change goes to all of them. Other languages will be added as sibling folders. The code, identifiers, routes, configuration keys and error codes are in English.
+The documentation lives in [doc/](doc/README.md), one folder per language: start at [doc/en-US/README.md](doc/en-US/README.md) for English (AI-friendly summaries are in [llms.txt](llms.txt) and [doc/en-US/llms.txt](doc/en-US/llms.txt)) or at [doc/pt-BR/README.md](doc/pt-BR/README.md) for Brazilian Portuguese. Both folders have the same content and every change goes to all of them. Other languages will be added as sibling folders. The code, identifiers, routes, configuration keys and error codes are in English.
 
 ## License
 

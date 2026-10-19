@@ -1,16 +1,16 @@
-# Validation of every branch and pull request: the three builds (server, Rust connector and C# connector, with no
-# version), the static checks of the Helm chart and the lint of the workflows themselves. Publishes nothing.
+# Validation of every pull request to main and release: the three builds (server, Rust connector and C# connector,
+# with no version), the static checks of the Helm chart and the lint of the workflows themselves. Publishes nothing.
 #
-# main and release are not here: a push to them runs release.yml, which calls the same builds and only publishes
-# when semantic-release finds a version. These jobs are the required status checks of the main and release
-# rulesets (doc/pt-BR/27-ci-cd.md).
+# Only `pull_request`, not `push`: with a PR open, a push fires both events and everything would run twice. A
+# branch without a PR is validated by hand (workflow_dispatch). main and release are not here: a push to them runs
+# release.yml, which calls the same builds and only publishes when semantic-release finds a version. These jobs are
+# the required status checks of the main and release rulesets (doc/pt-BR/27-ci-cd.md).
 name: CI
 
 on:
-  push:
-    branches-ignore: [main, release]
   pull_request:
     branches: [main, release]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -45,6 +45,21 @@ jobs:
         with:
           version: v3.19.0
       - run: deploy/helm/tests/run.sh static
+
+  # Known vulnerabilities (RustSec) in the locked dependencies of the server and of the Rust connectors: the same
+  # advisories the OpenSSF Scorecard counts. Dependabot opens the update; this job keeps one from being merged.
+  rust-audit:
+    name: Rust dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-audit
+      - run: cargo audit --file Cargo.lock
+      - run: cargo audit --file connectors/rust/Cargo.lock
 
   # The workflows are code that publishes: actionlint (syntax and expressions) and zizmor (security: injection,
   # excessive permissions, unpinned actions, leaked credentials).

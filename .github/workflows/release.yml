@@ -407,9 +407,17 @@ jobs:
           cat release/SHA256SUMS
       # SLSA provenance of every file: `gh attestation verify <file> -R rafaelpontani/taba`.
       - if: needs.plan.outputs.signed == 'true'
+        id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: release/SHA256SUMS
+      # The same provenance as a Release file (a Sigstore bundle on one line of JSON): what tools that only look at the
+      # Release files, such as the OpenSSF Scorecard, recognize. Not in SHA256SUMS, which it covers.
+      - name: Attach the provenance bundle
+        if: needs.plan.outputs.signed == 'true'
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: jq -c . "$BUNDLE" > "release/taba-$VERSION.intoto.jsonl"
       - name: Upload to the draft Release
         run: gh release upload "v$VERSION" release/* --clobber
 
@@ -735,8 +743,9 @@ jobs:
           check "Release \`v$VERSION\` published" test "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" = false
           check "download of the Release assets" gh release download "v$VERSION" --dir rel
           check "SHA256SUMS" bash -c 'cd rel && sha256sum -c SHA256SUMS'
+          check "provenance bundle" test -s "rel/taba-$VERSION.intoto.jsonl" -o "$SIGNED" != true
           for f in rel/*; do
-            if [[ $SIGNED != true || $(basename "$f") == SHA256SUMS ]]; then continue; fi
+            if [[ $SIGNED != true || $(basename "$f") == SHA256SUMS || $f == *.intoto.jsonl ]]; then continue; fi
             check "attestation \`$(basename "$f")\`" gh attestation verify "$f" --repo "$GH_REPO"
           done
           exit "$fail"

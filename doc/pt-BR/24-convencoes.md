@@ -152,6 +152,7 @@ doc/diagrams/
 - **Diagramas de sequência:** insira/remova/reordene no array `messages` (qualquer `y` na nova), rode `node doc/diagrams/scripts/respace.mjs doc/diagrams/source/<nome>.json`, depois `generate.sh`. Limites do perfil `showcase`: ≥ 28 px entre mensagens que dividem espaço; proporção do `viewBox` ≤ ~1,55 (se estourar, **divida o diagrama**); largura ≤ ~1085 px.
 - **Diagramas de arquitetura (incl. C4):** sem reespaçamento automático; ajuste `pos` e `size` mantendo vizinhos conectados adjacentes (folga de `6,5 px × caracteres + 21 px` por rótulo de conexão), `boundaries` só `region`/`security-group` e `meta.viewBox` omitido nos novos.
 - **Desenhados por script** (sem JSON): `ring-hash.svg`, `spread-topic.svg`, `fifo-groups.svg` (`generate-hash.mjs`) e o hero do README (`generate-hero.mjs`, com Chrome headless e `ffmpeg`).
+- **Capturas de tela** (PNG, sem JSON): `tui-cluster`, `tui-topics`, `tui-queue-chart` e `tui-node` são capturas reais da interface do `taba-cli`, uma por idioma. `doc/diagrams/scripts/capture-tui.sh` sobe o Compose, gera carga com `tui-load.mjs` e grava com o VHS num contêiner (Docker e Node ≥ 22; cerca de 7 minutos, porque os gráficos precisam de histórico). Gere de novo quando a interface mudar.
 - **Pré-requisitos:** Node ≥ 22, Archify (`~/.claude/skills/archify` ou `ARCHIFY_BIN`), Chrome/Edge (`ARCHIFY_CHROME`).
 - Ao mudar o comportamento descrito num `.md`, **atualize o diagrama** correspondente e regere. Um ponto novo de diagrama, ainda por desenhar, é marcado com um bloco `🖼️ DIAGRAMA PLANEJADO` com `tipo:` e `objetivo:` (o `verificar.mjs` confere).
 
@@ -208,8 +209,12 @@ Gerado pelo levantamento dos `![…](../diagrams/img/…)` desta pasta. Um diagr
 | `sync-phases` | workflow | `source/sync-phases.json` | [07](07-cluster.md) |
 | `spread-topic` | script | `doc/diagrams/scripts/generate-hash.mjs` | [06](06-anel-e-replicacao.md) |
 | `security-zones` | architecture | `source/security-zones.json` | [14](14-seguranca.md) |
+| `tui-cluster` | captura | `doc/diagrams/scripts/capture-tui.sh` | [20b](20b-cli-ui.md) |
+| `tui-topics` | captura | `doc/diagrams/scripts/capture-tui.sh` | [20b](20b-cli-ui.md) |
+| `tui-queue-chart` | captura | `doc/diagrams/scripts/capture-tui.sh` | [20b](20b-cli-ui.md) |
+| `tui-node` | captura | `doc/diagrams/scripts/capture-tui.sh` | [20b](20b-cli-ui.md) |
 
-> `hero` é usado pelo `README.md` da raiz. `c4-nivel1-conteineres` e `invisibilidade` ficaram da documentação histórica e **estão desatualizados** (descrevem a API "interna" e a lista de invisíveis em disco, que o código não tem): foram substituídos por `no-visao-geral`, `estados-mensagem` e `consumo`.
+> `hero` é usado pelo `README.md` da raiz, e as capturas `tui-*` também. `c4-nivel1-conteineres` e `invisibilidade` ficaram da documentação histórica e **estão desatualizados** (descrevem a API "interna" e a lista de invisíveis em disco, que o código não tem): foram substituídos por `no-visao-geral`, `estados-mensagem` e `consumo`.
 
 ## Commits e versões
 

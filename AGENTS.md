@@ -147,6 +147,10 @@ The documentation in `doc/pt-BR/` embeds the `pt-BR` SVGs (`![…](../diagrams/i
 
 The same applies to the root README hero (`hero.svg` and `hero.gif`): the source is `doc/diagrams/scripts/generate-hero.mjs`. Edit the texts, colours and timeline (`PRODUCERS`, `CONSUMERS`, `MSGS`, `CAPTIONS`) and run `node doc/diagrams/scripts/generate-hero.mjs` (all languages; `--lang=<code>` for one; the texts come from the `i18n/<lang>.json` tables). `hero.svg` is the static frame (instant `STATIC_AT`) and `hero.gif` is what the README embeds; the GIF uses headless Chrome and `ffmpeg` (variable `FFMPEG` if it is not on the PATH). `--svg-only` generates only the SVG. Commit the script **and** both files together.
 
+### TUI screenshots (exception)
+
+`doc/diagrams/img/<lang>/tui-*.png` are real captures of the `taba-cli` interface, used by the READMEs and doc 20b. The source is `doc/diagrams/scripts/capture-tui.sh` (it starts Compose if needed, generates load with `tui-load.mjs` and records each screen with VHS in a container on the Compose network; Docker, Node 22 and `gh`; about 7 minutes, because the charts and the rates need history). Run it from the root (`--lang <code>` for one language) when the interface changes, open the PNGs to check them, and commit them together with the script.
+
 ### Prerequisites
 
 - Node.js 22 or later.

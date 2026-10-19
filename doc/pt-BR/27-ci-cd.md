@@ -15,9 +15,10 @@ fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ver
 
 | Fluxo | Quando | O que faz |
 |---|---|---|
-| **CI** (`ci.yml`) | **Push** em qualquer branch exceto `main`/`release`, e **pull request** para elas | Os três builds (servidor, conector Rust, conector C#) **sem versão**, o teste estático do chart Helm e o lint dos workflows. **Não publica nada** |
+| **CI** (`ci.yml`) | **Pull request** para `main`/`release` (e manual, para uma branch sem PR). Não roda em `push`: com um PR aberto rodaria tudo duas vezes | Os três builds (servidor, conector Rust, conector C#) **sem versão**, o teste estático do chart Helm e o lint dos workflows. **Não publica nada** |
 | **Release** (`release.yml`) | **Push** em `main` (finais) ou `release` (candidatas) | Os mesmos builds; se o semantic-release encontra versão, publica tudo **na ordem abaixo**, com a tag criada só depois de tudo verde |
 | **Scorecard** (`scorecard.yml`) | Push na `main`, semanal e a cada mudança de proteção | A nota pública do OpenSSF Scorecard (práticas de segurança do repositório) |
+| **CodeQL** (`codeql.yml`) | Push em `main`/`release`, pull request para elas e semanal | Análise estática (SAST) do código Rust, C# e dos workflows; achados na aba Security |
 
 Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo CI **e** pelo release, com a mesma lógica.
 
@@ -26,7 +27,7 @@ Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo
 ## Fluxo de branches e tags
 
 ```
-feature/*  ── push/PR ──▶ ci.yml: build + testes (nada é publicado, nenhuma tag)
+feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhuma tag)
     │
     └──PR──▶ release ── release.yml ──▶ tag fixa  v0.1.0-rc.28        (imutável, nunca move)
                 │                         git flutuante: v0.1-rc, v0-rc  (movem p/ o novo commit)
@@ -46,12 +47,13 @@ feature/*  ── push/PR ──▶ ci.yml: build + testes (nada é publicado, n
 
 | Arquivo | Faz |
 |---|---|
-| `ci.yml` | Chama `build-server`, `build-connector-rust` e `build-connector-csharp`; job `helm` (`deploy/helm/tests/run.sh static`); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`). `concurrency` cancela execuções antigas da mesma ref |
+| `ci.yml` | Chama `build-server`, `build-connector-rust` e `build-connector-csharp`; job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`). `concurrency` cancela execuções antigas da mesma ref |
 | `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64**, `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
 | `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (o que o crates.io receberia), `cargo build --release -p taba-cli` (musl); artefato `taba-cli-<arch>` |
 | `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** com o commit e o link da Release; artefato `nuget-packages` (`.nupkg` e `.snupkg`) |
 | `release.yml` | O release (abaixo) |
 | `scorecard.yml` | `ossf/scorecard-action`; o resultado vai para a aba Security e para o badge do README |
+| `codeql.yml` | CodeQL para `rust`, `csharp` e `actions`, todos com `build-mode: none` (independente das toolchains dos builds) |
 
 A entrada `version` dos builds é **vazia** quando não há release; com versão, o `set-version.sh` a grava nos arquivos **só dentro do build, sem commitar**. Todo build exporta `TABA_GIT_SHA`: `taba --version` e `taba-cli --version` mostram o commit.
 
@@ -66,7 +68,7 @@ Princípio: **nada público antes de tudo estar verde, e tudo o que é público 
 | 3 | `chart` | `set-version.sh` grava `version` e `appVersion` exatos no `Chart.yaml`; `run.sh static`; `helm package` |
 | 4 | `images` | Monta `taba` e `taba-cli` (os dois *targets* do `Dockerfile.ci`) para `linux/amd64` e `linux/arm64`, **sem compilar nada**, com proveniência SLSA (`mode=max`), SBOM e labels OCI (`revision` = commit). Envia **só por digest, sem tag**, para Docker Hub e GHCR; atesta (`attest-build-provenance`) e assina (cosign keyless) cada digest |
 | 5 | `tag` | Só agora o semantic-release cria a **tag** em `github.sha` e a **GitHub Release como rascunho**. Falha se a versão não é a do plano ou se a tag não aponta para o commit |
-| 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart e o `SHA256SUMS`, todos atestados, no rascunho |
+| 6 | `release-assets` | Binários (com a arquitetura no nome), `.nupkg`, `.snupkg`, o `.tgz` do chart e o `SHA256SUMS`, todos atestados, no rascunho, mais o `taba-<versão>.intoto.jsonl` (o bundle da proveniência como arquivo da Release, que o OpenSSF Scorecard reconhece) |
 | 7 | `crates`, `nuget`, `chart-publish` | crates.io e nuget.org por **Trusted Publishing** (OIDC); o chart em `oci://ghcr.io/rafaelpontani/charts`, atestado e assinado |
 | 8 | `finalize` | A Release sai do rascunho: `--prerelease` nas candidatas, `--latest` só na maior final |
 | 9 | `floating` | Cria as tags Docker (exata e flutuantes) com `docker buildx imagetools create` **apontando para o digest** (sem reconstruir) e move as tags flutuantes do git |
@@ -80,7 +82,7 @@ Se a branch andar entre o `plan` e o `tag`, o semantic-release recusa ("local br
 
 | Arquivo | Para quê |
 |---|---|
-| `Dockerfile` (raiz) | **Compila tudo dentro do contêiner** (`rust:1-alpine`, build estático musl) e gera a imagem final em Alpine. É o que **qualquer pessoa usa** para `docker build -t taba .` ou `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
+| `Dockerfile` (raiz) | **Compila tudo dentro do contêiner** (`rust:1-alpine`, build estático musl; as duas bases **fixadas por digest**, como no `connectors/rust/cli/Dockerfile`) e gera a imagem final em Alpine. É o que **qualquer pessoa usa** para `docker build -t taba .` ou `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` |
 | `Dockerfile.ci` | **Não compila**: um *target* por imagem (`taba` copia `dist/taba-${TARGETARCH}`, `taba-cli` copia `dist/taba-cli-${TARGETARCH}`), binários já compilados com o cache do runner. Os dois partem do mesmo estágio `base`, com `alpine:3` **fixado por digest** num lugar só |
 
 **Mantendo as versões em dia sem editar SHA à mão:** o GitHub não aceita variável no `uses:`, então cada action fica fixada por SHA onde é usada. As repetidas (login nos registros, atestação e assinatura) vivem nas actions locais `.github/actions/registry-login` e `.github/actions/provenance`, e o Dependabot atualiza todas as ocorrências num PR agrupado. O digest da base só existe no `Dockerfile.ci`; a atualização dele chega como `fix` e gera uma versão nova (`rc` na `release`), então a imagem publicada recebe as correções de segurança da base sem esperar uma feature. Os pacotes do `apk` são sempre os mais recentes no momento do build. O Dependabot espera 7 dias (`cooldown`) antes de propor uma versão recém-publicada.
@@ -160,7 +162,7 @@ O que sustenta essa confiança:
 - **Actions fixadas por SHA** (com o comentário da versão) e atualizadas pelo Dependabot (`.github/dependabot.yml`: actions, cargo nos dois workspaces, nuget e as bases Docker; os PRs vão para a `release` com prefixo `ci`/`chore`, que não gera versão).
 - **Permissões mínimas:** `permissions: {}` no topo e cada job pede só o que usa; `checkout` com `persist-credentials: false`.
 - **Sem segredos de longa duração** para crates.io e nuget.org (OIDC); assinaturas keyless no log público do Sigstore (Rekor).
-- **Lint dos workflows** (`actionlint`, `zizmor`) em todo PR e o **OpenSSF Scorecard** público.
+- **Lint dos workflows** (`actionlint`, `zizmor`), **auditoria das dependências** (`cargo audit`) e **CodeQL** em todo PR, e o **OpenSSF Scorecard** público.
 - [SECURITY.md](../../SECURITY.md): como relatar uma vulnerabilidade e quais versões recebem correção.
 
 ### Configuração do repositório (fora do código)
@@ -200,6 +202,6 @@ Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que a
 
 ## Fontes e provas
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release,scorecard}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
 - Decisões: D159 a D163 ([30-decisoes.md](30-decisoes.md)).
 - Casos de uso: não há casos `UC-` de pipeline; a validação é `docker/validate.sh` ([25-testes.md](25-testes.md)).
