@@ -106,7 +106,7 @@ Configured in `.releaserc.json`: `branches: ["main", {"name": "release", "prerel
 
 **One version for the whole repository:** server, Rust and C# connectors and the chart move on the **same tag**. `set-version.sh X.Y.Z[-rc.N]` adjusts the server's `Cargo.toml` and `Cargo.lock`, those of the Rust connectors (and `taba-cli`'s `taba-client = "=X"` dependency), the `<Version>` of the `.csproj` files and the `version`/`appVersion` of `Chart.yaml`. In the repository the files stay at `0.1.0`.
 
-**Bootstrap:** semantic-release starts at `1.0.0` without a previous tag. To start at `0.1.0`, the repository needs a **stable seed tag** `v0.0.0` on a commit that is on both branches (`git merge-base main release`). **Leaving `0.x`**: remove the `breaking → minor` rule.
+**Bootstrap:** semantic-release starts at `1.0.0` without a previous tag. To start at `0.1.0`, the repository needs a **stable seed tag** `v0.0.0` on the **first commit of the repository** (`git rev-list --max-parents=0 HEAD`), which is on both branches; without it, the `plan` job stops the release. **Leaving `0.x`**: remove the `breaking → minor` rule.
 
 ### Docker tags and floating tags
 
@@ -192,7 +192,7 @@ What backs this trust:
 | Configuration parameters | A key of `config/params/mod.rs` does not appear in [22-configuration.md](22-configuration.md), or the document cites a nonexistent key |
 | Error codes | An `ErrorCode` of the code does not appear in [19-errors-and-limits.md](19-errors-and-limits.md) (or vice versa) |
 | Routes | A route registered in the code (`.route(…)` and the cluster map) is not cited in the API documents |
-| Use cases | A `UC-…` cited in the documents does not exist in `doc/20a-c` |
+| Use cases | A `UC-…` cited in the documents does not exist in the cards of 26a/26b |
 | Metrics | A metric of `telemetry/metrics/defs.rs` does not appear in [13-observability.md](13-observability.md) |
 | Diagrams | Every `../diagrams/img/…` image exists, and every remaining `🖼️ DIAGRAMA PLANEJADO` block carries `tipo:` and `objetivo:` |
 

@@ -1,6 +1,8 @@
 # taba-client (Rust)
 
-The Taba Rust connector ([doc/pt-BR/21-conectores.md](../../../doc/pt-BR/21-conectores.md), section 18.10.3).
+The Taba Rust connector. Documentation: [Connectors, Rust](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/21-connectors.md#rust-taba-client).
+
+> Other languages: [Português (Brasil)](https://github.com/rafaelpontani/taba/blob/main/doc/pt-BR/21-conectores.md#rust-taba-client) · [all languages](https://github.com/rafaelpontani/taba/blob/main/doc/README.md)
 
 - **Its own HTTP/1.1** over `std::net::TcpStream` (building the request and reading the response are pure functions in `http`), **TLS 1.2 or later** through `rustls` with the system roots (plus an optional CA of your own) and its own **JSON** and **base64**. The only dependencies are `rustls` and `rustls-native-certs` (plus `serde`, only in the optional `serde` *feature*).
 - **Thread-safe:** `Client` is `Send + Sync`; a single one serves many.
@@ -94,4 +96,8 @@ while !stop.load(std::sync::atomic::Ordering::Relaxed) {
 
 `Client::call` and `Call` are the lower layer (route, query, body): it is what `taba-cli` uses to print the responses as the server returned them. `taba_client::testing` is a fake transport for the tests of whoever uses the connector.
 
-**Still missing:** the `async` form (`async` *feature*, `tokio`), a `Transport` the application can swap, and publishing to crates.io.
+**Still missing:** the `async` form (`async` *feature*, `tokio`) and a `Transport` the application can swap.
+
+## License
+
+[Apache-2.0](https://github.com/rafaelpontani/taba/blob/main/connectors/LICENSE). The Taba server is AGPL-3.0-only; the connectors are Apache-2.0 so any application, open or closed, can embed them.

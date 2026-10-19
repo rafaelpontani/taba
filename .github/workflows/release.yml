@@ -58,12 +58,12 @@ jobs:
       dockerhub_index: ${{ steps.plan.outputs.dockerhub_index }}
       ghcr: ${{ steps.plan.outputs.ghcr }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - id: dry
-        uses: cycjimmy/semantic-release-action@16ca923e6ccbb50770c415a0ccd43709a8c5f7a4 # v4.2.2
+        uses: cycjimmy/semantic-release-action@1989a0fefc4aea321e07f717680ed8e345925dc1 # v7.1.2
         with:
           dry_run: true
           semantic_version: 24
@@ -76,6 +76,7 @@ jobs:
         env:
           PUBLISHED: ${{ steps.dry.outputs.new_release_published }}
           VERSION: ${{ steps.dry.outputs.new_release_version }}
+          LAST: ${{ steps.dry.outputs.last_release_version }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           # GitHub attestations need a public repository (or GitHub Enterprise Cloud), and a signature from a private
           # repository would point to a workflow nobody can see: attestation and cosign only run when it is public.
@@ -95,6 +96,12 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
             echo "## No version: the commits since the last tag have no feat, fix or perf (only the builds run)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+          # Without a previous release semantic-release would start at 1.0.0: the series starts from the v0.0.0 seed
+          # (doc/pt-BR/27-ci-cd.md, "Bootstrap"), so a missing seed stops the release here.
+          if [[ -z $LAST ]]; then
+            echo "::error::semantic-release found no previous release on $GITHUB_REF_NAME and would publish $VERSION. Check the v0.0.0 seed."
+            exit 1
           fi
           re='^([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$'
           if [[ ! $VERSION =~ $re ]]; then
@@ -183,10 +190,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.0
       # version and appVersion of Chart.yaml become the exact release version.
@@ -195,7 +202,7 @@ jobs:
         run: .github/scripts/set-version.sh "$VERSION"
       - run: deploy/helm/tests/run.sh static
       - run: helm package deploy/helm/taba --destination dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: helm-chart
           path: dist/*.tgz
@@ -223,19 +230,19 @@ jobs:
       DOCKERHUB: ${{ needs.plan.outputs.dockerhub }}
       GHCR: ${{ needs.plan.outputs.ghcr }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # dist/taba-amd64, dist/taba-arm64, dist/taba-cli-amd64 and dist/taba-cli-arm64.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: taba-*
           merge-multiple: true
           path: dist
       # The artifact loses its execute permission when downloaded.
       - run: chmod +x dist/taba-*
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: ./.github/actions/registry-login
         with:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -255,12 +262,11 @@ jobs:
             echo "org.opencontainers.image.revision=$GITHUB_SHA"
             echo "org.opencontainers.image.version=$VERSION"
             echo "org.opencontainers.image.created=$created"
-            echo "org.opencontainers.image.licenses=AGPL-3.0-only"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       # One Dockerfile, one target per image: both share the same pinned base.
       - id: server
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.ci
@@ -270,10 +276,11 @@ jobs:
           sbom: true
           labels: |
             org.opencontainers.image.title=taba
+            org.opencontainers.image.licenses=AGPL-3.0-only
             ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ env.DOCKERHUB }}/taba,${{ env.GHCR }}/taba",push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
       - id: cli
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.ci
@@ -283,6 +290,7 @@ jobs:
           sbom: true
           labels: |
             org.opencontainers.image.title=taba-cli
+            org.opencontainers.image.licenses=Apache-2.0
             ${{ steps.meta.outputs.labels }}
           outputs: type=image,"name=${{ env.DOCKERHUB }}/taba-cli,${{ env.GHCR }}/taba-cli",push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
       # Attestation and cosign signature of each image on each registry (Docker Hub is index.docker.io here).
@@ -322,12 +330,12 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - id: release
-        uses: cycjimmy/semantic-release-action@16ca923e6ccbb50770c415a0ccd43709a8c5f7a4 # v4.2.2
+        uses: cycjimmy/semantic-release-action@1989a0fefc4aea321e07f717680ed8e345925dc1 # v7.1.2
         with:
           semantic_version: 24
           extra_plugins: |
@@ -340,13 +348,16 @@ jobs:
           PUBLISHED: ${{ steps.release.outputs.new_release_published }}
           GOT: ${{ steps.release.outputs.new_release_version }}
           WANT: ${{ needs.plan.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [[ $PUBLISHED != 'true' || $GOT != "$WANT" ]]; then
             echo "semantic-release published '${GOT:-nothing}', the plan was '$WANT' (did the branch move?)" >&2
             exit 1
           fi
-          remote="$(git ls-remote origin "refs/tags/v$WANT^{}" "refs/tags/v$WANT" | head -n 1 | cut -f1)"
+          # Through the API (the checkout keeps no credentials, and a private repository refuses an anonymous
+          # ls-remote): the commit the tag resolves to on GitHub.
+          remote="$(gh api "repos/$GITHUB_REPOSITORY/commits/v$WANT" --jq .sha || true)"
           if [[ $remote != "$GITHUB_SHA" ]]; then
             echo "tag v$WANT points to '$remote', expected $GITHUB_SHA" >&2
             exit 1
@@ -368,15 +379,15 @@ jobs:
     steps:
       # One folder per artifact: taba-node-amd64, taba-node-arm64, taba-cli-amd64, taba-cli-arm64. Only the release
       # artifacts: without a filter, the download also picks up the `*.dockerbuild` files of build-push-action.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: taba-*
           path: assets
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-packages
           path: assets/nuget-packages
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: helm-chart
           path: assets/helm-chart
@@ -421,7 +432,7 @@ jobs:
       TABA_GIT_SHA: ${{ github.sha }}
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: .github/scripts/set-version.sh "$VERSION"
@@ -464,11 +475,11 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nuget-packages
           path: nupkg
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 8.0.x
       - id: login
@@ -488,6 +499,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
+      contents: read
       packages: write
       id-token: write
       attestations: write
@@ -498,14 +510,14 @@ jobs:
       GHCR: ${{ needs.plan.outputs.ghcr }}
     steps:
       # Only for the local actions (registry-login, provenance).
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: helm-chart
           path: dist
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.0
       - uses: ./.github/actions/registry-login
@@ -575,10 +587,10 @@ jobs:
       SERVER_DIGEST: ${{ needs.images.outputs.server_digest }}
       CLI_DIGEST: ${{ needs.images.outputs.cli_digest }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: ./.github/actions/registry-login
         with:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -639,7 +651,14 @@ jobs:
     steps:
       - if: env.SIGNED == 'true'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The GHCR packages of a private repository are private too: reading them needs a login.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/registry-login
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - shell: bash
         run: |
           set -euo pipefail
@@ -664,9 +683,9 @@ jobs:
             echo "|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Git tags: the peeled commit (annotated tag) or the tag itself (lightweight).
+          # Git tags: the commit each one resolves to on GitHub (annotated or lightweight; works on a private repository).
           for t in "v$VERSION" $GIT_TAGS; do
-            sha="$(git ls-remote "https://github.com/$GH_REPO" "refs/tags/$t^{}" "refs/tags/$t" | head -n 1 | cut -f1)"
+            sha="$(gh api "repos/$GH_REPO/commits/$t" --jq .sha 2>/dev/null || true)"
             check "git \`$t\` → \`${sha:-missing}\`" test "$sha" = "$GITHUB_SHA"
           done
 

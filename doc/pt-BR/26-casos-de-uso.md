@@ -4,7 +4,7 @@ resumo: O formato do código `UC-ÁREA-NNN`, os níveis de teste, como um teste 
 tipo: guia
 status: estável
 verificado-em: 2026-10-14 @ efeb47a
-fontes: [crates/taba-node/tests/uc_coverage.rs, doc/20-casos-de-uso.md, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md, doc/pt-BR/scripts/gerar-casos-de-uso.mjs]
+fontes: [crates/taba-node/tests/uc_coverage.rs, doc/pt-BR/26a-casos-de-uso-implementados.md, doc/pt-BR/26b-casos-de-uso-planejados.md]
 ---
 
 # Casos de uso e rastreabilidade
@@ -53,24 +53,21 @@ fn publishing_binary_stores_the_raw_bytes() { /* … */ }
 
 ## O que o `uc_coverage` confere
 
-`crates/taba-node/tests/uc_coverage.rs` lê os códigos das tabelas de `doc/20*.md` (linhas que começam por `| UC-`) e os citados em `crates/taba-node/{src,tests}` e em `connectors/*` (arquivos `.rs` e `.cs`). Falha quando:
+`crates/taba-node/tests/uc_coverage.rs` lê os códigos dos **cartões** (`### UC-XXX-NNN`) de [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md) e os citados em `crates/taba-node/{src,tests}` e em `connectors/*` (arquivos `.rs` e `.cs`). Falha quando:
 
 1. um teste cita um código que **não existe** ou está `(retirado…)`;
-2. um código aparece **duas vezes** na documentação;
-3. a **coluna "Testes"** de `doc/20*.md` (gerada) está desatualizada. Regere com `TABA_UC_WRITE=1 cargo test --test uc_coverage`.
+2. um código aparece **duas vezes** na documentação.
 
-A regra "todo caso documentado tem teste" **só falha com `TABA_UC_STRICT=1`**; sem a variável o teste imprime o placar (`cargo test --test uc_coverage -- --nocapture`): hoje **702 de 885** casos têm teste (**11** retirados). A verificação **não confere o nível**: citar o código num teste unitário não prova o caso de nível `I`; quem revisa olha a coluna.
+A regra "todo caso documentado tem teste" **só falha com `TABA_UC_STRICT=1`**; sem a variável o teste imprime o placar (`cargo test --test uc_coverage -- --nocapture`). A verificação **não confere o nível**: citar o código num teste unitário não prova o caso de nível `I`; quem revisa olha o nível do cartão.
 
-> **Onde o `uc_coverage` lê os casos.** O histórico `doc/20a`, `20b` e `20c` **já não está no repositório** (o commit `efeb47a` o removeu; veja a pendência K em [31-pendencias.md](31-pendencias.md)). Enquanto ele não existir, o teste lê os **cartões** (`### UC-XXX-NNN`) de [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md) . Como o gerador também não roda, **um caso novo é escrito à mão como cartão** (em 26a se tem teste, em 26b se não tem), no formato dos demais; foi assim com a área `BKP`. Os códigos são os mesmos de sempre.
+## Como manter os catálogos
 
-## Como ler e regenerar os catálogos
+| Catálogo | O que é |
+|---|---|
+| [26a](26a-casos-de-uso-implementados.md) | Casos com ao menos um teste, por área, com o nível e os testes que os provam |
+| [26b](26b-casos-de-uso-planejados.md) | Casos **sem teste**: o que falta provar |
 
-| Catálogo | O que é | Como se gera |
-|---|---|---|
-| [26a](26a-casos-de-uso-implementados.md) | Casos com ao menos um teste, por área, com o nível e os testes que os provam | `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` |
-| [26b](26b-casos-de-uso-planejados.md) | Casos **sem teste**: o que falta provar | O mesmo script |
-
-O script lê as **linhas `/// UC:` do código** (a mesma regra do `uc_coverage`), **não** a coluna "Testes" (que pode estar velha), então o placar é o do momento. Um caso em 26b **não quer dizer que o comportamento não existe**, só que **nenhum teste o cita**. Alguns têm "(pendente: D##)" no texto: dependem de uma dúvida em aberto ([31-pendencias.md](31-pendencias.md)).
+Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como cartão no formato dos demais (em 26a se tem teste, em 26b se não tem), e um caso que ganha o primeiro teste passa de 26b para 26a. Os códigos nunca são reaproveitados. Um caso em 26b **não quer dizer que o comportamento não existe**, só que **nenhum teste o cita**. Alguns têm "(pendente: D##)" no texto: dependem de uma dúvida em aberto ([31-pendencias.md](31-pendencias.md)).
 
 ## As áreas (38)
 
@@ -138,6 +135,6 @@ O script lê as **linhas `/// UC:` do código** (a mesma regra do `uc_coverage`)
 
 ## Fontes e provas
 
-- `crates/taba-node/tests/uc_coverage.rs` (as regras e o placar; **executado** em 2026-10-13), `doc/20-casos-de-uso.md` (a regra e o índice de áreas), `doc/pt-BR/scripts/gerar-casos-de-uso.mjs`.
+- `crates/taba-node/tests/uc_coverage.rs` (as regras e o placar; **executado** em 2026-10-13).
 - Casos de uso: este documento é o método; os casos estão em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md).
 - Histórico: `doc/20-casos-de-uso.md`, `doc/20a-casos-de-uso-cliente.md`, `20b`, `20c`.

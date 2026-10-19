@@ -13,7 +13,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 
 > **Como ler os selos de status.** Cada recurso descrito aqui leva uma marca: ✅ implementado (existe código **e** teste), 🟡 parcial (o texto diz o que falta), ⬜ planejado (ainda não existe), ⚠️ limite conhecido (aponta para uma pendência `PRB-…` em [31-pendencias.md](31-pendencias.md)).
 
-> **De onde vem esta documentação.** A pasta [`doc/`](../) (sem idioma) é o histórico de desenho: foi escrita antes do código, para guiá-lo. Esta pasta foi escrita **depois**, lendo o código. Quando as duas divergem, vale o código. Para o plano e o método, veja [00-plano-de-documentacao.md](00-plano-de-documentacao.md).
+> **De onde vem esta documentação.** Os documentos do desenho original foram escritos antes do código, para guiá-lo, e saíram da árvore (estão no histórico do git). Esta pasta foi escrita **depois**, lendo o código. Quando os dois divergem, vale o código.
 
 ## Por onde começar
 
@@ -103,7 +103,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 
 - Esta pasta tem uma **versão espelho em inglês**, [`../en-US/`](../en-US/README.md), com os mesmos arquivos (o prefixo `NN-` é a identidade; o resto do nome está em inglês). **Toda mudança aqui deve ser aplicada também lá** ([24-convencoes.md](24-convencoes.md#documentação-em-vários-idiomas)).
 - Texto em português do Brasil. Identificadores (rotas, chaves de configuração, campos, códigos de erro) ficam em inglês, em `código`.
-- Um nome como `05-particionamento-replicacao.md`, sem pasta, é um documento do desenho original (escrito antes do código), **removido** da árvore: está no histórico do git, no commit `71183b9` e anteriores. Onde ele e o código divergem, vale o código ([_divergencias.md](_divergencias.md)).
+- Um nome como `05-particionamento-replicacao.md`, sem pasta, é um documento do desenho original (escrito antes do código), **removido** da árvore: está no histórico do git, no commit `71183b9` e anteriores. Onde ele e o código divergem, vale o código.
 - Todo arquivo começa com metadados (`resumo`, `status`, `verificado-em`, `fontes`) e termina com **Fontes e provas**: os caminhos no código e os casos de uso `UC-…` que comprovam o que foi dito.
 - Os diagramas são imagens SVG geradas de JSON em `doc/diagrams/source/` (o índice está em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); o SVG é a saída, o JSON é a fonte.
 - Links entre arquivos usam o nome do arquivo; não há numeração de seções contínua entre arquivos como na documentação histórica.

@@ -4,14 +4,14 @@ summary: The catalogue of Taba use cases that have at least one test citing them
 type: reference
 status: stable
 verified-on: 2026-10-15 @ 56121c9
-sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md]
+sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
 # Implemented use cases
 
-> **Generated.** This file is produced by `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`, which reads the `/// UC: UC-XXX-NNN` lines of the code: it is not edited by hand. Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
+> **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI written by hand, see K in [31-pending-items.md](31-pending-items.md)):** **757** of **940** cases have at least one test (80.5%); **183** do not; **11** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **757** of **940** cases have at least one test (80.5%); **183** do not; **11** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -8214,6 +8214,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## Sources and evidence
 
-- The cases come from `doc/20a`, `20b` and `20c` (the historical catalogue, checked by the test `crates/taba-node/tests/uc_coverage.rs`); the tests, from the `/// UC:` lines of the code.
+- The cases came from `doc/20a`, `20b` and `20c` (the historical catalogue, removed in commit `efeb47a`); the tests, from the `/// UC:` lines of the code. The test `crates/taba-node/tests/uc_coverage.rs` checks the codes.
 - The `UC-BKP` cases (S3 backup) do not come from the historical catalogue: they were written by hand in this file, in the same format, and the test list of each one is checked by `uc_coverage`.
-- Regenerate: `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` (broken today: the historical catalogue was removed; see pending item K in [31-pending-items.md](31-pending-items.md)).
+- Maintained by hand: a new test that cites a case goes into its card ([26-use-cases.md](26-use-cases.md)).

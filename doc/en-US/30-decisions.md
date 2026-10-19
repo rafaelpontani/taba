@@ -3,15 +3,15 @@ title: Decisions
 summary: The record of decisions already made, by theme, with the stable code of each question (D…) and where it is described, and the problems already resolved (PRB-…) — the "why" behind what the other documents describe.
 type: reference
 status: stable
-verified-on: 2026-10-15 @ 56121c9
-sources: [doc/08a-decisoes-tomadas.md]
+verified-on: 2026-10-18 @ b090822
+sources: [crates/taba-node/src, connectors, .github/workflows, doc/en-US/31-pending-items.md]
 ---
 
 # Decisions
 
 > **How to read.** The main documentation describes **the result**; here is **the why** (in the format of a decision record, ADR). Each row has the **question code** (to cite: "D13"), the **decision** and **where it is described** in the documents of this folder. The codes are **never reused**. A **provisional** decision is one that the implementation took and that still awaits confirmation: it stays here **and** the question stays in [31-pending-items.md](31-pending-items.md).
 >
-> **Generated.** This file is produced by `node doc/pt-BR/scripts/gerar-historico.mjs` from `doc/08a-decisoes-tomadas.md` (the source of the record); only the links and the format change. This folder holds the English rendering of `doc/pt-BR/30-decisoes.md`; the section numbers cited in the "Where" column (e.g. "6.2", "12.8") are those of the original design documents and were kept as they are. **Project rule:** when closing a pending item, record the decision in the technical document, the default value in [22-configuration.md](22-configuration.md), the row here, and **delete** the entry from [31-pending-items.md](31-pending-items.md) and the reference in [32-roadmap.md](32-roadmap.md).
+> **Maintained by hand**, in every language folder, in the commit of the change. The section numbers cited in the "Where" column (e.g. "6.2", "12.8") are those of the original design documents and were kept as they are. **Project rule:** when closing a pending item, record the decision in the technical document, the default value in [22-configuration.md](22-configuration.md), the row here, and **delete** the entry from [31-pending-items.md](31-pending-items.md) and the reference in [32-roadmap.md](32-roadmap.md).
 
 
 
@@ -86,6 +86,7 @@ sources: [doc/08a-decisoes-tomadas.md]
 | D34, D35 | One SQLite database per node and per topic, with a single writer per topic: it stores the metadata and the expiry table; the body stays in `${topic}/${id}.body`. The oldest message comes from `MIN(id)` added to the oldest in memory. A corrupted database puts the node into failure. | [04-architecture.md](04-architecture.md) 3.2, [12-delivery.md](12-delivery.md) 13.2 and 13.5 |
 | D40 | Configurable maximum message size: general default of 5 MB, per topic possibly larger, and a hard limit for all. | [22-configuration.md](22-configuration.md), [19-errors-and-limits.md](19-errors-and-limits.md) |
 
+| D79 | **`diskFreeBytes` comes from the `fs4` dependency.** Rust's standard library does not measure free space; `NodeStatus` returns `storage.diskFreeBytes` with `fs4::available_space` (resolves PRB-013). | [17-operations-api.md](17-operations-api.md) |
 
 ## Synchronization and recovery
 
@@ -177,7 +178,7 @@ sources: [doc/08a-decisoes-tomadas.md]
 
 ## Optional S3 backup
 
-Decided while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)). **Written by hand here:** the source `doc/08a-decisoes-tomadas.md` is no longer in the repository (see pending item K in [31-pending-items.md](31-pending-items.md)); the generator does not overwrite them because it does not run either.
+Decided while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)).
 
 | Code | Decision | Where |
 |---|---|---|
@@ -195,7 +196,7 @@ Decided while implementing the backup plan ([33-s3-backup.md](33-s3-backup.md)).
 
 ## TUI plan: server work (D152 to D155)
 
-Decided with the plan of the interactive interface (decisions D-TUI-2, 3, 4 and 9) and implemented in `taba-node`. **Written by hand here** (see K in [31-pending-items.md](31-pending-items.md)).
+Decided with the plan of the interactive interface (decisions D-TUI-2, 3, 4 and 9) and implemented in `taba-node`.
 
 | Code | Decision | Where |
 |---|---|---|
@@ -209,7 +210,7 @@ Decided with the plan of the interactive interface (decisions D-TUI-2, 3, 4 and 
 
 ## Release pipeline (D159 to D163)
 
-Decided with the review of the pipeline before the first public release. **Written by hand here** (see K in [31-pending-items.md](31-pending-items.md)).
+Decided with the review of the pipeline before the first public release.
 
 | Code | Decision | Where |
 |---|---|---|
@@ -218,6 +219,14 @@ Decided with the review of the pipeline before the first public release. **Writt
 | D161 | **crates.io and nuget.org by Trusted Publishing (OIDC).** No stored token (only the first publish of each crate), turned on by the `PUBLISH_CRATES` and `NUGET_USER` variables, idempotent; candidates go out as semver pre-releases. The packages carry the commit and the Release link (`<repository commit>`, `releaseNotes`, `.cargo_vcs_info.json`) | [27-ci-cd.md](27-ci-cd.md#publishing-and-metadata) |
 | D162 | **The published chart carries the exact version.** `oci://ghcr.io/rafaelpontani/charts/taba` with `version` and `appVersion` equal to the release version (the chart points to the image of the same version); in the repository `appVersion` stays `0.1`, the safe pointer | [34-helm-chart.md](34-helm-chart.md) |
 | D163 | **The series starts at `0.1.0`.** The `v0.0.0` seed sits on the first commit of the repository, present on `main` and `release`; actions pinned by SHA, Dependabot, workflow lint and Scorecard are the base of trust | [27-ci-cd.md](27-ci-cd.md#versioning-semantic-release) |
+
+## License and contributions (D164)
+
+Decided before the first publish to crates.io and nuget.org.
+
+| Code | Decision | Where |
+|---|---|---|
+| D164 | **AGPL-3.0-only server, Apache-2.0 connectors, contributions under a CLA.** The server (`crates/`, the `taba` image, the chart and the rest of the repository) stays AGPL: whoever offers Taba as a service with modifications must publish them. The connectors (`connectors/`: `taba-client`, `taba-cli`, the `Taba.Client*` packages and the `taba-cli` image) become Apache-2.0, so any application, open or closed, can embed them without taking the AGPL along. The text lives once in `connectors/LICENSE`, and cargo copies it into each crate. Every contribution signs, once, the individual CLA (`CLA.md`, checked by the CLA Assistant): the author keeps the copyright and grants the maintainer the right to also distribute under a commercial license, which keeps the server's dual licensing (AGPL + commercial) open. Versions already published keep the license they shipped with | [README.md](../../README.md#license), [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
 ## Resolved problems (PRB)
 
@@ -254,9 +263,10 @@ Decided with the review of the pipeline before the first public release. **Writt
 | PRB-029 | step 16 | The node reports `cluster.advertise-addresses` or the address of the interface that goes out to `cluster.entry-address` (D95, provisional). Limit in PRB-051. |
 | PRB-049 | step 17 | New-message notices have a window (`cluster.notify.window`), a wait for the `take` (`cluster.notify.wait`, 50 ms, D121) and the move to the next node with a listener; `taba.cluster.channel.notifications` distinguishes `fetched` and `empty`. The channel is a WebSocket, with a double-connection tiebreak and an input queue per source (D122). |
 | PRB-052 | step 18 | The propagation of topic and token definitions (D123) left the list of nodes the owner was still trying to reach only in memory, with no reconciliation on reunion. Resolved (D124 to D127): the tiebreak of two copies of the same version, the tombstones read by the synchronizing node, membership change through the `membership` frame and definitions through the channel's `definition` frame, which the owner and the heir queue. |
+| PRB-013 | D79 | `NodeStatus.storage.diskFreeBytes` is returned, measured with `fs4::available_space` in `storage/messages`. |
 
 
 ## Sources and evidence
 
-- `doc/08a-decisoes-tomadas.md` (the historical record; 127 entries; D141 to D151 are from the S3 backup and were written here), reformatted by `doc/pt-BR/scripts/gerar-historico.mjs`.
-- Each decision points to the technical document where it is described; those that concern the code were checked while writing the documents from [04](04-architecture.md) to [27](27-ci-cd.md) (the divergences found are in [31-pending-items.md](31-pending-items.md)).
+- The record started in `doc/08a-decisoes-tomadas.md` (removed in commit `efeb47a`; it is in the git history) and has been maintained here since.
+- Each decision points to the technical document where it is described; those that concern the code were checked while writing the documents from [04](04-architecture.md) to [27](27-ci-cd.md) (the known limits are in [31-pending-items.md](31-pending-items.md)).

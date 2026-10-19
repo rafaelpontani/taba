@@ -75,9 +75,9 @@ pub enum NodeError {
 /// Registers the node on a network (the in-memory one of the tests): receives its address and the `Handler`.
 pub type AttachFn = Arc<dyn Fn(PeerAddr, Arc<dyn Handler>) + Send + Sync>;
 
-/// How the node talks to the others (doc 18, section 17.5). Without it, a node in `mode=production`
-/// stays in `bootstrapping`: the real `Transport` (HTTP with mTLS) does not exist yet, and the
-/// cluster tests hand in the in-memory network's.
+/// How the node talks to the others (doc 18, section 17.5). `Deps::production` hands in the HTTP
+/// `Transport` with mutual TLS; the cluster tests hand in the in-memory network's. Without it, a node in
+/// `mode=production` stays in `bootstrapping`.
 pub struct ClusterDeps {
     pub transport: Arc<dyn Transport>,
     /// The IPs the node tells the others so they can reach it (`addresses` of the `join`).
@@ -461,7 +461,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let cancel = CancellationToken::new();
 
     // In production, with a `Transport`, the node joins a cluster; without it, it stays in
-    // `bootstrapping` (the real `Transport` does not exist yet).
+    // `bootstrapping`.
     let cluster_node = match (cluster_addr, deps.cluster) {
         (Some(addr), Some(cluster_deps)) => {
             let local = Member {

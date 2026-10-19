@@ -3,7 +3,7 @@ title: Connectors
 summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust and C# ready; eight planned), how to use and how to write a new one.
 type: reference
 status: partial
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-18 @ 7a2fbee
 sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, examples/csharp-console]
 ---
 
@@ -15,9 +15,9 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 
 | Language | Folder | State | Publication |
 |---|---|---|---|
-| **Rust** (`taba-client`) | `connectors/rust/client/` | ✅ **Synchronous ready.** The `async` form is missing | ⬜ crates.io |
-| **`taba-cli`** (on top of Rust) | `connectors/rust/cli/` | ✅ Ready ([20-cli.md](20-cli.md)) | Binaries and Docker image |
-| **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Ready**: unit and integration against Compose | ⬜ nuget.org |
+| **Rust** (`taba-client`) | `connectors/rust/client/` | ✅ **Synchronous ready.** The `async` form is missing | ✅ [crates.io](https://crates.io/crates/taba-client) |
+| **`taba-cli`** (on top of Rust) | `connectors/rust/cli/` | ✅ Ready ([20-cli.md](20-cli.md)) | ✅ [crates.io](https://crates.io/crates/taba-cli), binaries and Docker image |
+| **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Ready**: unit and integration against Compose | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
 | Java, C, C++, Python, PHP, Ruby, Go, Node.js | — | ⬜ **Planned** (the folders do not exist) | — |
 
 > The goal of **ten languages** is a plan, not reality: today **2 of 10** exist. The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.

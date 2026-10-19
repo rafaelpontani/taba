@@ -13,7 +13,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 
 > **How to read the status badges.** Every feature described here carries a mark: ✅ implemented (code **and** test exist), 🟡 partial (the text says what is missing), ⬜ planned (does not exist yet), ⚠️ known limit (points to a `PRB-…` pending item in [31-pending-items.md](31-pending-items.md)).
 
-> **Where this documentation comes from.** The original design documents were written before the code, to guide it, and were removed from the tree (they live in the git history). This folder was written **after** the code, by reading it. When the two disagree, the code wins. For the plan and the method, see [00-documentation-plan.md](00-documentation-plan.md).
+> **Where this documentation comes from.** The original design documents were written before the code, to guide it, and were removed from the tree (they live in the git history). This folder was written **after** the code, by reading it. When the two disagree, the code wins.
 
 > **Translation of [`../pt-BR/`](../pt-BR/README.md).** This folder mirrors `doc/pt-BR/` file by file: the files keep the same number prefix (`NN-`), only the name is in English. **Every change to one language folder must be applied to all the others** (see [24-conventions.md](24-conventions.md#documentation-in-several-languages)).
 
@@ -104,7 +104,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 ## Conventions of this documentation
 
 - Text in US English. Identifiers (routes, configuration keys, fields, error codes) stay in English, in `code`.
-- A name such as `05-particionamento-replicacao.md`, with no folder, is a document of the original design (written before the code) that was **removed** from the tree: it is in the git history, in commit `71183b9` and earlier. Where it and the code disagree, the code wins ([_divergences.md](_divergences.md)).
+- A name such as `05-particionamento-replicacao.md`, with no folder, is a document of the original design (written before the code) that was **removed** from the tree: it is in the git history, in commit `71183b9` and earlier. Where it and the code disagree, the code wins.
 - Every file starts with metadata (`summary`, `status`, `verified-on`, `sources`) and ends with **Sources and evidence**: the paths in the code and the `UC-…` use cases that back up what was said.
 - The diagrams are SVG images generated from JSON in `doc/diagrams/source/` (the index is in [24-conventions.md](24-conventions.md#diagram-index)); the SVG is the output, the JSON is the source.
 - Links between files use the file name; there is no continuous section numbering across files as in the historical documentation.

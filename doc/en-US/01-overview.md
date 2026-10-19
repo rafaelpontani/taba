@@ -3,7 +3,7 @@ title: Overview
 summary: What Taba is, who it is for, what it is not, and the list of goals and requirements with the state of each one.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-18 @ 6c5de51
 sources: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml, connectors/]
 ---
 
@@ -118,7 +118,7 @@ These eight principles explain many choices in the code. Each one points to wher
 
 - **Server:** node and cluster implemented in the `taba-node` crate; unit tests, single-node tests and cluster tests (in-memory network), plus tests over real TCP and TLS.
 - **End-to-end validation:** `docker/validate.sh` starts Compose from scratch and checks cluster formation, the `taba-cli`, nodes going down and coming back, and the absence of loss of confirmed messages.
-- **Version:** `0.1.0` (`Cargo.toml`). License **AGPL-3.0-only**.
+- **Version:** `0.1.0` (`Cargo.toml`). Licenses: the server is **AGPL-3.0-only** and the connectors (`connectors/`) are **Apache-2.0**, with a CLA for contributions ([30-decisions.md](30-decisions.md#license-and-contributions-d164)).
 - **Missing:** OpenAPI contract, the other eight connectors, package publishing and validation on Kubernetes ([32-roadmap.md](32-roadmap.md)).
 
 ## Sources and evidence

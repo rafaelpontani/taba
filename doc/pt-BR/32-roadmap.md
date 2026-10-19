@@ -4,7 +4,7 @@ resumo: O que já está pronto (a versão 0.1) e o que vem a seguir, em marcos �
 tipo: referência
 status: parcial
 verificado-em: 2026-10-14 @ efeb47a
-fontes: [doc/08c-proximos-passos.md, doc/08b-pendencias.md, connectors/README.md, doc/pt-BR/31-pendencias.md]
+fontes: [connectors/README.md, doc/pt-BR/30-decisoes.md, doc/pt-BR/31-pendencias.md]
 ---
 
 # Roadmap
@@ -90,7 +90,7 @@ As pendências "sem bloqueio" de [31-pendencias.md](31-pendencias.md) são, em s
 | Item | Detalhe |
 |---|---|
 | **Idioma da raiz** ✅ | `README.md` e `AGENTS.md` em **en-US**, apontando para `doc/README.md` (que lista a documentação de cada idioma) |
-| **`uc_coverage` lendo os catálogos novos** ⬜ | Hoje lê `doc/20a-c`; migrar para `doc/pt-BR/26a`/`26b` (mudança de código, fora da documentação) |
+| **`uc_coverage` lendo os catálogos novos** ✅ | Lê os cartões de `26a`/`26b`; falta um gerador que os mantenha ([31-pendencias.md](31-pendencias.md), item E) |
 | **Diagramas desta documentação** ✅ | Os 31 pontos estão desenhados (índice em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); a fonte é o JSON do Archify |
 | **Verificação automática** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` e `verificar-idiomas.mjs` num job de PR ([27-ci-cd.md](27-ci-cd.md)) |
 | **Job de integração no CI** ⬜ | `integration.sh` e `validate.sh` (hoje só à mão) |

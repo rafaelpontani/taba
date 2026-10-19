@@ -4,14 +4,14 @@ resumo: O catálogo dos casos de uso do Taba que têm ao menos um teste que os c
 tipo: referência
 status: estável
 verificado-em: 2026-10-15 @ 56121c9
-fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp, doc/20a-casos-de-uso-cliente.md, doc/20b-casos-de-uso-no-dados.md, doc/20c-casos-de-uso-no-cluster.md]
+fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
 # Casos de uso implementados
 
-> **Gerado.** Este arquivo é produzido por `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs`, que lê as linhas `/// UC: UC-XXX-NNN` do código: não se edita à mão. Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
+> **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI escritos à mão, veja K em [31-pendencias.md](31-pendencias.md)):** **757** de **940** casos têm ao menos um teste (80.5%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **757** de **940** casos têm ao menos um teste (80.5%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -8214,6 +8214,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## Fontes e provas
 
-- Os casos vêm de `doc/20a`, `20b` e `20c` (o catálogo histórico, conferido pelo teste `crates/taba-node/tests/uc_coverage.rs`); os testes, das linhas `/// UC:` do código.
+- Os casos vieram de `doc/20a`, `20b` e `20c` (o catálogo histórico, removido no commit `efeb47a`); os testes, das linhas `/// UC:` do código. O teste `crates/taba-node/tests/uc_coverage.rs` confere os códigos.
 - Os casos `UC-BKP` (backup em S3) não vêm do catálogo histórico: foram escritos à mão neste arquivo, no mesmo formato, e a lista de testes de cada um é conferida por `uc_coverage`.
-- Regenerar: `node doc/pt-BR/scripts/gerar-casos-de-uso.mjs` (hoje quebrado: o catálogo histórico foi removido; veja a pendência K em [31-pendencias.md](31-pendencias.md)).
+- Mantido à mão: um teste novo que cita um caso entra no cartão dele ([26-casos-de-uso.md](26-casos-de-uso.md)).
