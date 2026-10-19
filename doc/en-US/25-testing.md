@@ -115,7 +115,7 @@ docker/validate.sh                                             # end to end (≈
 
 ## Known issues
 
-The tests turned off with `#[ignore]` because they fail intermittently in CI, with the cause and the planned fix of each, are in [36-known-issues.md](36-known-issues.md).
+The test turned off with `#[ignore]` because it fails intermittently in CI, with what is known of the cause and the next step, is in [36-known-issues.md](36-known-issues.md).
 
 ## Sources and evidence
 
