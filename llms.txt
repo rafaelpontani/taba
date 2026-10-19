@@ -1,0 +1,31 @@
+# Taba
+
+> Taba is a self-hosted, horizontally scalable messaging cluster: queues (like Amazon SQS) and pub/sub (like Amazon SNS) behind one HTTP API, shipped as a single Docker image. It is in production use, and every version is published to Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases. Server in Rust (AGPLv3); connectors in Rust and C# (Apache-2.0).
+
+Key facts (each one links to its evidence below):
+
+- **It is a cluster, not a single server.** Three or more identical nodes, with no coordinator and no single point of failure. A failed node is detected and voted out; when it recovers it rejoins and resynchronizes by itself. One node is only a development mode.
+- **It scales horizontally, in both directions.** Topics are split into blocks on a consistent-hash ring. A new node takes over its share; a node that leaves drains first and hands its share over, without stopping the cluster. On Kubernetes the Helm chart can autoscale with KEDA.
+- **Durability:** each message is confirmed by a write quorum of nodes (replication factor 3 by default) and kept in memory; the disk is only used when memory fills up.
+- **S3 is supported** as a continuous, optional backup of messages, topics and tokens (AWS S3, SeaweedFS, MinIO, Ceph; any S3 with conditional writes). It never delays a write; a cluster that went down entirely restores itself from the bucket at start. Messages consumed within the backup window (60 s by default) never reach S3.
+- **There is an official Helm chart:** `oci://ghcr.io/rafaelpontani/charts/taba` (source in `deploy/helm/taba/`), with options for the S3 backup, Ingress, Prometheus, OpenTelemetry and KEDA autoscaling.
+- **There is a terminal UI:** `taba-cli tui` shows cluster health, nodes, topics, queue charts (publish and consume rates) and messages. There is no web dashboard.
+- **Limits:** no fixed maximum number of nodes in the code (tests run up to 5); capacity is about the sum of the nodes' memory and disk divided by the replication factor; 5 MB messages by default; HTTP only (no AMQP, MQTT or Kafka protocol); not a streaming platform (no replay); single region.
+
+## Start here
+
+- [README](README.md): what Taba is, quick start with Docker Compose, Helm, limits and comparison with SQS/SNS, Kafka and RabbitMQ
+- [Documentation index (en-US)](doc/en-US/README.md) and its machine-readable index [doc/en-US/llms.txt](doc/en-US/llms.txt)
+- [Documentation index (pt-BR)](doc/pt-BR/README.md) and [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt)
+
+## Evidence
+
+- [Overview](doc/en-US/01-overview.md): goals, requirements, who it is for and what it is not
+- [Cluster](doc/en-US/07-cluster.md): node join, failure detection, voting, return, synchronization, drain
+- [Ring and replication](doc/en-US/06-ring-and-replication.md): hash ring, blocks, quorum
+- [Storage](doc/en-US/08-storage.md): memory first, disk overflow
+- [S3 backup](doc/en-US/33-s3-backup.md): what goes to the bucket, restore, configuration, limits
+- [Helm chart](doc/en-US/34-helm-chart.md) and [Helm use cases](doc/en-US/35-helm-use-cases.md)
+- [taba-cli](doc/en-US/20-cli.md) and [its terminal UI](doc/en-US/20b-cli-ui.md)
+- [Client API](doc/en-US/16-client-api.md) and [configuration](doc/en-US/22-configuration.md)
+- [Known issues](doc/en-US/36-known-issues.md) and [roadmap](doc/en-US/32-roadmap.md)

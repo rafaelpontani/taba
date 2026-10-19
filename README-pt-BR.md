@@ -6,33 +6,50 @@
 
 [![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verificando-um-release)
 
-O **Taba** é um sistema de mensageria **leve, rápido e open source** que roda a partir de **uma única imagem Docker**: 1 nó para experimentar, 3 para produção. Ele reúne **filas** (cada mensagem vai para um consumidor, como o SQS) e **pub/sub** (cada publicação é copiada para várias filas, como o SNS) na mesma API HTTP, e cresce com a adição de nós, sem coordenador e sem configuração complexa.
+O **Taba** é um **cluster de mensageria self-hosted, com escala horizontal**: filas (como o SQS) e pub/sub (como o SNS) na mesma API HTTP, a partir de **uma única imagem Docker**. Adicione um nó e o cluster se rebalanceia sozinho; retire um e ele entrega o seu trabalho antes de sair, sem downtime. Toda mensagem é replicada entre os nós e mantida em memória, com **backup contínuo no S3**. Vêm junto um **Helm chart**, uma **interface de terminal** e pacotes publicados.
 
 Se você quer fugir da cobrança por mensagem, de um cluster de brokers para operar ou da dependência de uma nuvem, o Taba é para você.
 
-## O que você ganha
+## Em resumo
 
-- **Uma imagem, sem dependências:** todo nó roda a mesma imagem Docker, simples e pequena. Suba 1 nó para testar e 3 para produção, sem broker, coordenador ou banco de dados à parte. Roda numa máquina, numa VM ou no Kubernetes.
-- **Rápido:** as mensagens vivem em memória, replicadas entre os nós. O disco só entra quando a memória enche.
-- **Sempre disponível:** todo tópico é espalhado e replicado. Se um nó cai, o cluster continua, e o nó volta sozinho quando se recupera.
-- **Cresce sem esforço:** um nó novo entra no cluster, o descobre sozinho e assume a sua parte. Não há coordenador para configurar.
-- **Custo quase zero:** sem cobrança por mensagem e sem amarra a uma nuvem. Você só paga a máquina em que ele roda.
-- **Filas FIFO:** ordem de entrega por grupo e deduplicação na publicação, para quando a sequência importa.
-- **API simples:** poucas rotas HTTP, sem SDK obrigatório e sem protocolo novo para aprender.
-- **Conectores simples nas principais linguagens:** C#, Java, Rust, C, C++, Python, PHP, Ruby, Go e Node.js, inclusive versões antigas (veja [Conectores](#conectores)).
-- **Open source (servidor AGPLv3, clientes Apache-2.0):** o código é aberto e, se alguém oferecer o Taba como serviço com modificações, deve compartilhá-las sob a mesma licença. Os conectores são Apache-2.0, para qualquer aplicação, aberta ou fechada, poder embuti-los.
+| | |
+|---|---|
+| **Tópicos** | Filas (uma mensagem para um consumidor, reentrega quando não confirmada, dead-letter), filas **FIFO** (ordem por grupo e deduplicação) e distribuidores (pub/sub por prefixo de nome) |
+| **Cluster** | 3 ou mais nós idênticos, **sem coordenador e sem ponto único de falha**. Um nó que falha é excluído por votação; quando se recupera, volta sozinho |
+| **Escala** | **Horizontal**, nos dois sentidos: um nó novo assume a sua parte dos tópicos; um nó que sai faz o drain antes. Autoscaling com KEDA no Kubernetes |
+| **Durabilidade** | Cada mensagem é confirmada por um **quorum** de nós (3 cópias por padrão) e copiada **continuamente para o S3** (AWS, SeaweedFS, MinIO, Ceph...) |
+| **Implantação** | Uma imagem Docker (58 MB), Docker Compose ou o **Helm chart** em `oci://ghcr.io/rafaelpontani/charts/taba` |
+| **Operação** | `taba-cli`, uma linha de comando com **interface de terminal em tela cheia** (saúde do cluster, tópicos, gráficos das filas), além de métricas Prometheus e OpenTelemetry |
+| **Clientes** | HTTP simples, de qualquer linguagem; conectores prontos para Rust (crates.io) e C#/.NET (nuget.org) |
+| **Licença** | Servidor AGPLv3, conectores Apache-2.0 |
 
-> Velocidade e custo são **objetivos do projeto**. Ainda não há benchmarks publicados (veja [Estado e limites](#estado-e-limites)).
+## Por que o Taba
 
-## Taba × as alternativas
+**Rápido por padrão.** As mensagens são gravadas e servidas da **memória**, replicadas entre os nós; o disco só entra quando a memória enche. O consumidor lê o que já está na RAM, sem tuning e sem configuração extra. A memória não é dividida igualmente: os tópicos mais lidos mantêm mais mensagens quentes.
 
-| | **Taba** | SQS + SNS | Kafka | RabbitMQ |
-|---|---|---|---|---|
-| **Onde roda** | Em qualquer lugar: máquina, VM, Docker, Kubernetes | Só na AWS | Onde você hospedar, ou como serviço gerenciado | Onde você hospedar, ou como serviço gerenciado |
-| **O que operar** | A mesma imagem em 3 nós (1 para desenvolvimento) | Nada (gerenciado) | Brokers e coordenação de metadados | Um broker (mais nós para alta disponibilidade) |
-| **Fila e pub/sub** | Na mesma API HTTP | Dois serviços separados | Tópicos e grupos de consumidores | Filas e exchanges |
-| **Cobrança** | Sem cobrança por mensagem: só infraestrutura | Por requisição | Infraestrutura, ou um plano gerenciado | Infraestrutura, ou um plano gerenciado |
-| **Escala** | Adicione um nó | Automática (gerenciada) | Brokers e partições | Nós do cluster |
+**Custo de operação baixo.**
+- **Nada cobrado por mensagem:** você paga as máquinas, e só.
+- **Pouco para rodar:** sem cluster de brokers, sem coordenador (ZooKeeper, etcd), sem banco de dados externo. Cada nó usa cerca de **35 MiB de RAM** atendendo a carga de demonstração mostrada abaixo.
+- **Ninguém rebalanceia à mão:** aumente ou diminua o cluster e ele move os blocos dos tópicos entre os nós sozinho, sem parar. Na redução, o nó que sai faz o drain antes, um nó de cada vez.
+- **Backup quase sem custo de S3:** uma mensagem consumida antes de a janela do backup fechar (60 s por padrão) **nunca vai para o S3**, então o tráfego rápido quase não gera requisições ao bucket. O que fica é enviado em segmentos.
+
+**Confiável.**
+- Uma escrita só é confirmada depois que um **quorum** de nós a guarda em memória.
+- Os nós **se monitoram** e excluem por votação o que falha; ele **volta sozinho** quando se recupera.
+- O **backup no S3 nunca atrasa uma escrita** e permite que um cluster inteiro que caiu **se restaure sozinho** ao subir (só a última janela do backup fica em risco).
+- Todo candidato é validado de ponta a ponta antes de virar release final: um cluster de três nós com nós caindo, fazendo drain e voltando, **sem perda de mensagens confirmadas**, mais backup e restauração no S3 ([docker/validate.sh](docker/validate.sh)).
+
+## Veja funcionando
+
+A interface de terminal do `taba-cli` (`taba-cli tui`) no cluster do Compose, sob uma carga de demonstração ([doc/diagrams/scripts/capture-tui.sh](doc/diagrams/scripts/capture-tui.sh)):
+
+| Saúde do cluster | Tópicos, com os gráficos da fila selecionada |
+|---|---|
+| ![Aba Cluster: condições, os nós e os gráficos do nó selecionado](doc/diagrams/img/pt-BR/tui-cluster.png) | ![Aba Tópicos: filas, um distribuidor e uma fila FIFO, com profundidade e taxas de publicação e consumo](doc/diagrams/img/pt-BR/tui-topics.png) |
+| **Fluxo de publicação e consumo de uma fila** | **Um nó em detalhe, com o seu backup no S3** |
+| ![Gráfico de fluxo da fila orders: mensagens que entram, saem e são confirmadas por segundo](doc/diagrams/img/pt-BR/tui-queue-chart.png) | ![Detalhe do nó: armazenamento, sinais de quorum e canais e o estado do backup no S3](doc/diagrams/img/pt-BR/tui-node.png) |
+
+Tudo o que a interface faz também pode ser feito com comandos de uma linha ([doc/pt-BR/20b-cli-ui.md](doc/pt-BR/20b-cli-ui.md)).
 
 ## Experimente em um minuto
 
@@ -53,9 +70,55 @@ echo '{"order": 9001}' | docker compose run --rm -T taba-cli publish orders --st
 docker compose run --rm taba-cli consume orders --wait 5 --ack      # recebe e confirma
 ```
 
-A API de cliente também está em `http://localhost:8080` para qualquer cliente HTTP (com `Authorization: Bearer <token raiz>`; o token está no volume `secrets`: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; no Git Bash do Windows, prefixe o comando com `MSYS_NO_PATHCONV=1`). `docker compose down -v` apaga tudo. O HAProxy é só um exemplo: qualquer balanceador serve. Para um único nó, sem cluster, veja [Desenvolva em um nó](#desenvolva-em-um-nó).
 
-> **Cuidado em produção:** pare e atualize os nós **um de cada vez** (`docker compose stop` envia `SIGTERM`, que dispara um *drain* ordenado). Parar **todos** os nós de uma vez perde as mensagens e os tópicos, e perder **dois nós seguidos** trava um cluster de 3 nós. Veja o [guia de operação](doc/pt-BR/23-operacao.md).
+A API de cliente também está em `http://localhost:8080` para qualquer cliente HTTP (com `Authorization: Bearer <token raiz>`; o token está no volume `secrets`: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; no Git Bash do Windows, prefixe o comando com `MSYS_NO_PATHCONV=1`). O Compose já sobe o backup no S3, num SeaweedFS ao lado do cluster. `docker compose down -v` apaga tudo. O HAProxy é só um exemplo: qualquer balanceador serve. Para um único nó, sem cluster, veja [Desenvolva em um nó](#desenvolva-em-um-nó).
+
+> **Cuidado em produção:** pare e atualize os nós **um de cada vez** (`docker compose stop` envia `SIGTERM`, que dispara um *drain* ordenado). Perder **dois nós seguidos** trava um cluster de 3 nós. Parar **todos** os nós de uma vez perde as mensagens e os tópicos, a não ser que o backup no S3 esteja ligado: aí o cluster se restaura sozinho ao subir, menos a última janela do backup. Veja o [guia de operação](doc/pt-BR/23-operacao.md).
+
+## Taba × as alternativas
+
+| | **Taba** | SQS + SNS | Kafka | RabbitMQ |
+|---|---|---|---|---|
+| **Onde roda** | Em qualquer lugar: máquina, VM, Docker, Kubernetes | Só na AWS | Onde você hospedar, ou como serviço gerenciado | Onde você hospedar, ou como serviço gerenciado |
+| **O que operar** | A mesma imagem em 3 nós (1 para desenvolvimento) | Nada (gerenciado) | Brokers e coordenação de metadados | Um broker (mais nós para alta disponibilidade) |
+| **Fila e pub/sub** | Na mesma API HTTP | Dois serviços separados | Tópicos e grupos de consumidores | Filas e exchanges |
+| **Alta disponibilidade** | Embutida: replicação por quorum, votação e volta automática | Gerenciada pela AWS | Partições replicadas | Quorum queues num cluster |
+| **Escala** | Adicione ou retire um nó: ele se rebalanceia sozinho | Automática (gerenciada) | Brokers e partições, redistribuídas à mão ou por ferramentas | Nós do cluster; líderes das filas rebalanceados por comando |
+| **Backup** | Contínuo no S3, restaurado ao subir | Gerenciado pela AWS | Replicação; backup com ferramentas externas | Exportação de definições; mensagens com ferramentas externas |
+| **Desenvolvimento local** | A mesma imagem da produção | Um emulador (LocalStack) ou uma conta AWS | O mesmo software, mais pesado | O mesmo software |
+| **Cobrança** | Sem cobrança por mensagem: só infraestrutura | Por requisição | Infraestrutura, ou um plano gerenciado | Infraestrutura, ou um plano gerenciado |
+
+## Perguntas frequentes
+
+**O Taba é um servidor único?** Não. É um cluster de nós idênticos, sem coordenador. Três nós são o mínimo recomendado para produção; um nó é um modo de desenvolvimento.
+
+**Ele escala horizontalmente?** Sim. Os tópicos são divididos em blocos num anel de hash consistente; um nó novo assume a sua parte e um nó que sai entrega a sua parte antes. No Kubernetes, o chart pode escalar com KEDA.
+
+**O que acontece se um nó cair?** Os outros detectam, o excluem por votação e continuam atendendo pelas réplicas. Quando ele volta, é readmitido e sincronizado. Com 3 nós, o cluster sobrevive a um nó de cada vez.
+
+**Ele suporta S3?** Sim, como backup contínuo de mensagens, tópicos e tokens em qualquer S3 que respeite escritas condicionais (AWS S3, SeaweedFS, MinIO, Ceph). O Compose já sobe com ele ligado, num SeaweedFS. Detalhes em [doc/pt-BR/33-backup-s3.md](doc/pt-BR/33-backup-s3.md).
+
+**Tem Helm chart?** Sim: `oci://ghcr.io/rafaelpontani/charts/taba`, com backup no S3, Ingress, Prometheus, OpenTelemetry e autoscaling com KEDA como opções ([Rode no Kubernetes](#rode-no-kubernetes-helm)).
+
+**Tem interface de usuário?** Sim, no terminal: `taba-cli tui` ([Veja funcionando](#veja-funcionando)). Não há painel web; para gráficos de longo prazo, use as métricas do Prometheus.
+
+**Está em produção?** Sim. Toda versão é publicada no Docker Hub, GHCR, crates.io, nuget.org e GitHub Releases, assinada e com proveniência ([Verificando um release](#verificando-um-release)).
+
+## Limites
+
+O que limita um cluster Taba é o hardware que você dá a ele, não um número fixo:
+
+- **Quantos nós:** o código não tem máximo. Cada nó assume uma parte do anel de hash (128 posições virtuais por nó). Os testes automatizados rodam clusters de até 5 nós, e todo candidato a release é validado de ponta a ponta no Compose.
+- **Quanto dado:** cada mensagem fica em 3 nós (`replication.factor`), então o cluster guarda cerca da soma da memória e do disco dos nós dividida por 3. A memória pode ter um teto por nó (`memory.limit`); acima dele, as mensagens transbordam para o disco local.
+- **Tamanho da mensagem:** 5 MB por padrão, configurável por tópico.
+- **Mínimo para produção:** 3 nós. Perder **dois nós seguidos** num cluster de 3 nós trava o cluster (não há quorum), e os nós devem ser parados e atualizados **um de cada vez**.
+
+O que o Taba não faz:
+
+- **Não substitui um protocolo:** o Taba fala HTTP. Não há compatibilidade com os protocolos AMQP, MQTT ou Kafka, então trocar de broker significa trocar o cliente.
+- **Não é uma plataforma de streaming:** processamento de streams e reprodução do histórico de mensagens estão fora do escopo. Para filas e pub/sub, sim; para reler o passado, não.
+- **Fora do escopo por enquanto:** interface web, autenticação avançada (OAuth/OIDC) e multirregião.
+- **Ainda por vir:** os conectores das demais linguagens, o contrato OpenAPI e benchmarks publicados. Veja o [roadmap](doc/pt-BR/32-roadmap.md) e os [problemas conhecidos](doc/pt-BR/36-problemas-conhecidos.md).
 
 ## Desenvolva em um nó
 
@@ -165,13 +228,6 @@ As outras linguagens usam o próprio cliente HTTP ou a biblioteca C. O desenho e
 
 > As versões base são propostas e podem mudar até serem confirmadas (pendência D68, veja as [pendências](doc/pt-BR/31-pendencias.md)).
 
-## Estado e limites
-
-- **Versão 0.1 validada de ponta a ponta:** o cluster de três nós sobe com `docker compose up`, se forma sozinho, atende pelo `taba-cli`, detecta a queda de um nó, o exclui por votação e o readmite sem perder mensagens confirmadas (script em [docker/validate.sh](docker/validate.sh)). A documentação completa está em [doc/](doc/README.md). Ainda faltam: os demais conectores, o contrato OpenAPI e a publicação nos repositórios de pacotes. Veja o [roadmap](doc/pt-BR/32-roadmap.md).
-- **Não substitui um protocolo:** o Taba fala HTTP. Não há compatibilidade com os protocolos AMQP, MQTT ou Kafka, então trocar de broker significa trocar o cliente.
-- **Não é uma plataforma de streaming:** processamento de streams e reprodução do histórico de mensagens estão fora do escopo. Para filas e pub/sub, sim; para reler o passado, não.
-- **Fora do escopo por enquanto:** interface gráfica, autenticação avançada e multirregião.
-
 ## Como funciona por dentro
 
 **Taba** vem de **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos. Em tupi, *taba* é a **aldeia**: cada nó é uma oca, o cluster é a aldeia, e as mensagens circulam entre elas sem que você precise cuidar disso.
@@ -225,7 +281,7 @@ Versões: a `main` publica as finais (`v0.1.0`) e a `release` publica as candida
 
 ## Documentação
 
-A documentação está em [doc/](doc/README.md), uma pasta por idioma. **Hoje ela está escrita em português do Brasil**: comece em [doc/pt-BR/README.md](doc/pt-BR/README.md) (um índice para IA está em [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt)). Outros idiomas entrarão como pastas irmãs. O código, os identificadores, as rotas, as chaves de configuração e os códigos de erro estão em inglês.
+A documentação está em [doc/](doc/README.md), uma pasta por idioma: comece em [doc/pt-BR/README.md](doc/pt-BR/README.md) para português do Brasil (resumos para IA estão em [llms.txt](llms.txt), em inglês, e em [doc/pt-BR/llms.txt](doc/pt-BR/llms.txt)) ou em [doc/en-US/README.md](doc/en-US/README.md) para inglês. As duas pastas têm o mesmo conteúdo e toda mudança vai para todas. Outros idiomas entrarão como pastas irmãs. O código, os identificadores, as rotas, as chaves de configuração e os códigos de erro estão em inglês.
 
 ## Licença
 

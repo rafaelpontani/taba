@@ -3,7 +3,7 @@ title: Overview
 summary: What Taba is, who it is for, what it is not, and the list of goals and requirements with the state of each one.
 type: explanation
 status: stable
-verified-on: 2026-10-18 @ 6c5de51
+verified-on: 2026-10-19 @ 55b9495
 sources: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml, connectors/]
 ---
 
@@ -30,6 +30,8 @@ Each node is **the same program** (the `taba` binary, written in Rust), packaged
 |---|---|
 | You want queues and pub/sub without paying per message or depending on a cloud | It runs wherever there is Docker; the cost is the cost of the machine |
 | You want a messaging cluster that organizes itself | A new node joins and takes its share; a node that goes down is excluded by vote and, when it returns, is reintegrated |
+| You want to scale in both directions without stopping | Adding or removing a node rebalances the blocks by itself; a node that leaves drains first. On Kubernetes, KEDA scales the chart ([34-helm-chart.md](34-helm-chart.md)) |
+| You want a backup without paying for it in latency | The S3 backup is continuous, never delays a write, and a cluster that went down entirely restores itself at start ([33-s3-backup.md](33-s3-backup.md)) |
 | You want to integrate over HTTP, with no new protocol | The API is HTTP and JSON; the connectors are optional |
 
 ## What Taba is not
@@ -39,7 +41,7 @@ Each node is **the same program** (the `taba` binary, written in Rust), packaged
 | A protocol replacement | It does not speak AMQP, MQTT or the Kafka protocol; changing broker means changing the client |
 | A streaming platform | It does not re-read history: after the ack the message is gone (in FIFO, only the body; see [09-topics.md](09-topics.md)) |
 | Multi-region | A cluster lives in a single network |
-| A graphical interface | There is an API, a command line and telemetry; there is no dashboard |
+| A web interface | There is an API, a command line with a full-screen terminal interface ([20b-cli-ui.md](20b-cli-ui.md)) and telemetry; there is no web dashboard |
 | Advanced authentication | There are simple tokens with permissions and prefixes; there is no OAuth/OIDC |
 
 ## Goals and requirements
@@ -111,6 +113,9 @@ These eight principles explain many choices in the code. Each one points to wher
 | Where it runs | Anywhere with Docker | Only on AWS | Where you host it, or managed | Where you host it, or managed |
 | What to start | The same image, 3 nodes (1 for dev) | Nothing | Brokers and coordination | Broker (more nodes for high availability) |
 | Queue and pub/sub | In the same HTTP API | Two services | Topics and consumer groups | Queues and *exchanges* |
+| High availability | Built in: quorum replication, vote, automatic return | Managed | Replicated partitions | Quorum queues |
+| Scaling | Add or remove a node; it rebalances by itself | Managed | Partitions reassigned by hand or by tools | Nodes; queue leaders rebalanced by command |
+| Backup | Continuous to S3, restored at start | Managed | External tools | Definitions export; external tools |
 | Billing | Only the infrastructure | Per request | Infrastructure or plan | Infrastructure or plan |
 | Protocol | HTTP/JSON | HTTP/JSON | Its own binary | AMQP and others |
 
@@ -118,8 +123,9 @@ These eight principles explain many choices in the code. Each one points to wher
 
 - **Server:** node and cluster implemented in the `taba-node` crate; unit tests, single-node tests and cluster tests (in-memory network), plus tests over real TCP and TLS.
 - **End-to-end validation:** `docker/validate.sh` starts Compose from scratch and checks cluster formation, the `taba-cli`, nodes going down and coming back, and the absence of loss of confirmed messages.
-- **Version:** `0.1.0` (`Cargo.toml`). Licenses: the server is **AGPL-3.0-only** and the connectors (`connectors/`) are **Apache-2.0**, with a CLA for contributions ([30-decisions.md](30-decisions.md#license-and-contributions-d164)).
-- **Missing:** OpenAPI contract, the other eight connectors, package publishing and validation on Kubernetes ([32-roadmap.md](32-roadmap.md)).
+- **Version:** published as `0.1.x` on Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases; the pipeline computes the number from the commits ([27-ci-cd.md](27-ci-cd.md)), and `Cargo.toml` keeps `0.1.0`. Licenses: the server is **AGPL-3.0-only** and the connectors (`connectors/`) are **Apache-2.0**, with a CLA for contributions ([30-decisions.md](30-decisions.md#license-and-contributions-d164)).
+- **Ready besides the server:** the Helm chart, tested on kind ([34-helm-chart.md](34-helm-chart.md)), the optional S3 backup ([33-s3-backup.md](33-s3-backup.md)) and the `taba-cli` terminal interface ([20b-cli-ui.md](20b-cli-ui.md)).
+- **Missing:** OpenAPI contract, the other eight connectors, validation on a real Kubernetes cluster and published benchmarks ([32-roadmap.md](32-roadmap.md)).
 
 ## Sources and evidence
 

@@ -3,8 +3,8 @@ título: Interface em tela cheia do taba-cli (TUI)
 resumo: Como usar a interface em tela cheia do `taba-cli` como ela é hoje — como abrir, as opções e a configuração, as telas (Cluster, Tópicos com gráficos e mensagens, Tokens, Perfis), todas as teclas, o que cada ação pede do token e o que ainda não existe.
 tipo: guia
 status: parcial
-verificado-em: 2026-10-16 @ ddb087a
-fontes: [connectors/rust/cli/src/tui, connectors/rust/cli/src/commands/tui.rs, connectors/rust/cli/src/settings, connectors/rust/cli/locales, connectors/rust/cli/tests, doc/pt-BR/20-cli.md, doc/pt-BR/14-seguranca.md]
+verificado-em: 2026-10-19 @ 55b9495
+fontes: [connectors/rust/cli/src/tui, doc/diagrams/scripts/capture-tui.sh, connectors/rust/cli/src/commands/tui.rs, connectors/rust/cli/src/settings, connectors/rust/cli/locales, connectors/rust/cli/tests, doc/pt-BR/20-cli.md, doc/pt-BR/14-seguranca.md]
 ---
 
 # Interface em tela cheia do `taba-cli` (TUI)
@@ -137,6 +137,8 @@ Setas e teclas do Vim fazem o mesmo (`↑↓` e `k j`). As letras são mnemônic
 
 ## Cluster
 
+![A aba Cluster num cluster de quatro nós sob carga: sem condições, a tabela de nós e os três gráficos do nó selecionado](../diagrams/img/pt-BR/tui-cluster.png)
+
 A aba Cluster mostra, de cima para baixo, as **condições** ativas do cluster (a pior primeiro, com ícone e palavra; sem nenhuma, uma linha "saudável"; `Enter` numa condição explica o que significa e o que fazer), a **tabela de nós** e, embaixo, **três gráficos do nó selecionado** (memória, mensagens em memória e requisições em andamento). `Tab` alterna entre as condições e os nós.
 
 - **Tabela de nós:** id (início…fim, porque os ids de nós criados juntos começam iguais), estado, drain, memória como barra com %, mensagens em disco, blocos em sincronização e requisições em andamento; a partir de 100 colunas, também disco livre e rejeições `429`. Um nó inacessível fica vermelho e diz isso; um nó sem limite de memória (modo desenvolvimento) mostra "sem limite".
@@ -147,7 +149,11 @@ A aba Cluster mostra, de cima para baixo, as **condições** ativas do cluster (
 - **Gráficos do cluster** (`m`): uma **lista de seis indicadores à esquerda** (memória contra o limite, mensagens prontas, mensagens em disco, requisições em andamento, rejeições `429`, RTT do canal), cada um com o valor atual; o gráfico do indicador sob o cursor aparece ao lado. `↑ ↓` escolhem, `Enter` dá a ele a **tela cheia** e `Esc` volta (primeiro da tela cheia, depois dos gráficos).
 - **Com um token comum** a aba mostra só a lista de nós e troca o resto pelo aviso de que o token precisa ser `admin` ou o raiz.
 
+![O detalhe de um nó (i): armazenamento, sinais e o backup no S3](../diagrams/img/pt-BR/tui-node.png)
+
 ## Tópicos
+
+![A aba Tópicos: filas, um distribuidor e uma fila FIFO com profundidade, taxas de publicação e consumo, e os três gráficos da fila selecionada](../diagrams/img/pt-BR/tui-topics.png)
 
 A lista mostra o nome, o tipo (`fila`, `fila fifo`, `fila vol`, `distribuidor`, `dead-letter`), a profundidade, as taxas de publicação e consumo, a idade da mais antiga e o estado (ícone e a pior condição, sem tradução). A dead-letter fica escondida até `v` e, quando aparece, vem apagada e sem limites no detalhe, pois segue a fila de origem; um distribuidor mostra "—" onde não há fila. `/` filtra por parte do nome e `s` ordena (nome, mais novo, mais antigo, profundidade). A lista lê as páginas de 200 em 200, até 5 000 tópicos. Se as estatísticas falham, a tabela mostra os tópicos sem números e diz "números indisponíveis".
 
@@ -162,6 +168,8 @@ Sob a tabela ficam **três gráficos da fila selecionada**, lado a lado (mensage
   - **Fluxo** por segundo: entrada (publicadas), saída (entregues) e apagadas (ack).
   - **Idade** da mais velha da fila e dos **três maiores grupos** (os grupos barulhentos).
 - Um distribuidor não tem fila: não tem gráficos de fila e as teclas que dependem dela são recusadas com o motivo.
+
+![O gráfico de fluxo de uma fila em tela cheia: mensagens que entram, saem e são confirmadas por segundo](../diagrams/img/pt-BR/tui-queue-chart.png)
 
 ## Mensagens de um tópico
 
