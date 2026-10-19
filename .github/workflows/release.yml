@@ -458,10 +458,24 @@ jobs:
             fi
             cargo publish -p "$crate" --locked --allow-dirty
           done
+      # The provenance covers the .crate files crates.io serves (cargo publish does not leave them in target/package,
+      # and a re-run that skips the publish builds none): the bytes anyone downloads with cargo.
+      - name: Download the published crates
+        if: needs.plan.outputs.signed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p crates
+          for crate in taba-client taba-cli; do
+            curl -sSfL --retry 10 --retry-delay 10 --retry-all-errors \
+              -A "taba-release (https://github.com/$GITHUB_REPOSITORY)" \
+              -o "crates/$crate-$VERSION.crate" "https://static.crates.io/crates/$crate/$crate-$VERSION.crate"
+          done
+          sha256sum crates/*.crate
       - if: needs.plan.outputs.signed == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: connectors/rust/target/package/*.crate
+          subject-path: crates/*.crate
 
   # nuget.org with Trusted Publishing (NuGet/login exchanges the OIDC token for a short-lived key). Only when the
   # NUGET_USER variable (the nuget.org account that owns the trusted publishing policy) is set. --skip-duplicate

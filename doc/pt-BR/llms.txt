@@ -49,6 +49,7 @@
 
 - [24 Convenções](24-convencoes.md): idioma, pastas, regras de código, comandos, ao terminar uma implementação, diagramas, commits
 - [25 Testes](25-testes.md): níveis U/I/C/K, TestNode, TestCluster, rede em memória, relógio manual, como escrever e rodar
+- [36 Problemas conhecidos](36-problemas-conhecidos.md): testes de cluster desligados com #[ignore] por falharem de forma intermitente no CI, causa e correção prevista
 - [26 Casos de uso](26-casos-de-uso.md): o código UC-ÁREA-NNN e a regra de cobertura
 - [26a Casos implementados](26a-casos-de-uso-implementados.md): o catálogo com teste (gerado)
 - [26b Casos planejados](26b-casos-de-uso-planejados.md): o catálogo sem teste (gerado)

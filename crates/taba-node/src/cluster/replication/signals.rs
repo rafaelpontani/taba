@@ -616,31 +616,38 @@ impl Signals {
     /// (5 s) on each attempt, and the reopened channel brings the snapshot back.
     /// The node that notified last comes first.
     pub fn ready_peers(&self, topic: &str) -> Vec<String> {
-        let tables = self.lock();
+        // The tables lock is released before asking the membership and the channels: `build_batch` holds a
+        // channel's peer lock while it calls the signals, so the opposite order would deadlock.
         let me = self.me();
-        let mut peers: Vec<String> = tables
-            .ready
-            .get(topic)
-            .map(|set| {
-                set.iter()
-                    .filter(|n| {
-                        **n != me
-                            && !tables.draining.contains(*n)
-                            && self.service.membership().is_active(n)
-                            && self.channels().is_none_or(|c| c.is_live(n))
-                    })
-                    .cloned()
-                    .collect()
+        let (candidates, hint): (Vec<String>, Option<String>) = {
+            let tables = self.lock();
+            let candidates = tables
+                .ready
+                .get(topic)
+                .map(|set| {
+                    set.iter()
+                        .filter(|n| **n != me && !tables.draining.contains(*n))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            (candidates, tables.hints.get(topic).cloned())
+        };
+        let mut peers: Vec<String> = candidates
+            .into_iter()
+            .filter(|n| {
+                self.service.membership().is_active(n)
+                    && self.channels().is_none_or(|c| c.is_live(n))
             })
-            .unwrap_or_default();
+            .collect();
         // The draw among the nodes is uniform: the heartbeat only says that there are ready ones.
         for i in (1..peers.len()).rev() {
             let mut bytes = [0u8; 8];
             getrandom::fill(&mut bytes).expect("the system has no source of random numbers");
             peers.swap(i, (u64::from_le_bytes(bytes) % (i as u64 + 1)) as usize);
         }
-        if let Some(hint) = tables.hints.get(topic)
-            && let Some(position) = peers.iter().position(|n| n == hint)
+        if let Some(hint) = hint
+            && let Some(position) = peers.iter().position(|n| *n == hint)
         {
             let hinted = peers.remove(position);
             peers.insert(0, hinted);

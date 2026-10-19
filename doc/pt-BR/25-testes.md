@@ -113,6 +113,10 @@ docker/validate.sh                                             # ponta a ponta (
 
 ⬜ **Faltam:** testes de **desempenho e carga** (as metas de velocidade e custo não têm benchmark), de **Kubernetes** e a **suíte de conformidade compartilhada** entre conectores ([32-roadmap.md](32-roadmap.md)). `docker/test-cpu.sh` é um roteiro de medição de CPU.
 
+## Problemas conhecidos
+
+Os testes desligados com `#[ignore]` por falharem de forma intermitente no CI, com a causa e a correção prevista de cada um, estão em [36-problemas-conhecidos.md](36-problemas-conhecidos.md).
+
 ## Fontes e provas
 
 - `crates/taba-node/tests/*.rs` e `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
