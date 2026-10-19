@@ -86,6 +86,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 |---|---|
 | [24-conventions.md](24-conventions.md) | Code, API, folders, language |
 | [25-testing.md](25-testing.md) | Test levels and how to write one |
+| [36-known-issues.md](36-known-issues.md) | Tests turned off because they fail intermittently in CI |
 | [26-use-cases.md](26-use-cases.md) | The `UC-…` format and the coverage rule |
 | [26a-implemented-use-cases.md](26a-implemented-use-cases.md) | Cases with a test |
 | [26b-planned-use-cases.md](26b-planned-use-cases.md) | Cases without a test yet |
