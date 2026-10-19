@@ -115,16 +115,7 @@ docker/validate.sh                                             # ponta a ponta (
 
 ## Problemas conhecidos
 
-Corrigidos na próxima versão. Na 0.1.0, dois testes de cluster estão marcados com `#[ignore]` porque falham de forma intermitente no runner amd64 do CI, quando a máquina está sobrecarregada:
-
-| Teste | Sintoma no CI |
-|---|---|
-| `failures.rs` › `the_messages_of_the_excluded_node_wait_and_are_delivered_by_the_new_primary` | o consumo pelo nó 1 para no meio (ex.: 16 de 28 mensagens), ou "waited 30 s for: the node to join the cluster" |
-| `replication.rs` › `with_a_node_down_only_the_publications_it_owns_fail_and_the_replica_catches_up` | publicações de nós saudáveis falham enquanto um nó está fora |
-
-- **Causa (confirmada).** O `NO_VOTE` de `tests/common/cluster.rs` impede a votação de exclusão subindo o backoff de reconexão de **todos** os canais para 600 s, não só o do nó derrubado. Num runner lento, um canal **saudável** cai ao ficar 500 ms sem keepalive e só voltaria 10 minutos depois; o `take` e as signals entre dois nós saudáveis param. Uma queda simulada de 100 ms reproduz a falha localmente.
-- **Correção prevista.** Desligar a votação sem tocar no backoff (`TABA_CLUSTER_CHANNEL_RECONNECT_RETRIES` muito alto e `TABA_CLUSTER_CHANNEL_QUEUE_MAX_AGE` alto). Ela resolve as duas falhas, mas expõe um travamento raro (≈ 1 em 25 execuções) no `cluster.shutdown()` de dois testes de `replication.rs` depois que o nó isolado volta: o processo para por completo, sugerindo um deadlock síncrono. Precisa ser entendido antes de a correção entrar.
-- **Risco no produto, achado na análise.** Inversão de ordem de travas: `build_batch` (`src/cluster/channel/mod.rs`) segura a trava do peer e chama as signals; `ready_peers` (`src/cluster/replication/signals.rs`) segura a trava das tabelas e chama `is_live`, que pega a do peer. No runtime de várias threads de produção isso pode travar. Correção: coletar os candidatos sob a trava das tabelas, soltá-la e só então filtrar com `is_live`.
+Os testes desligados com `#[ignore]` por falharem de forma intermitente no CI, com a causa e a correção prevista de cada um, estão em [36-problemas-conhecidos.md](36-problemas-conhecidos.md).
 
 ## Fontes e provas
 

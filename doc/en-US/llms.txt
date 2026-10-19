@@ -49,6 +49,7 @@
 
 - [24 Conventions](24-conventions.md): language, folders, code rules, commands, when you finish an implementation, diagrams, commits
 - [25 Testing](25-testing.md): levels U/I/C/K, TestNode, TestCluster, in-memory network, manual clock, how to write and run
+- [36 Known issues](36-known-issues.md): cluster tests turned off with #[ignore] because they fail intermittently in CI, cause and planned fix
 - [26 Use cases](26-use-cases.md): the UC-AREA-NNN code and the coverage rule
 - [26a Implemented cases](26a-implemented-use-cases.md): the catalogue with a test (generated)
 - [26b Planned cases](26b-planned-use-cases.md): the catalogue without a test (generated)

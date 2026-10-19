@@ -84,6 +84,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 |---|---|
 | [24-convencoes.md](24-convencoes.md) | Código, API, pastas, idioma |
 | [25-testes.md](25-testes.md) | Níveis de teste e como escrever um |
+| [36-problemas-conhecidos.md](36-problemas-conhecidos.md) | Testes desligados por falharem de forma intermitente no CI |
 | [26-casos-de-uso.md](26-casos-de-uso.md) | O formato `UC-…` e a regra de cobertura |
 | [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md) | Casos com teste |
 | [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md) | Casos sem teste ainda |
