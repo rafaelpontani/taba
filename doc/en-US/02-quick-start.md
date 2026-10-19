@@ -98,7 +98,7 @@ To build the image from the repository (for developers), add the `docker-compose
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
-The tag of the public images comes from `TABA_VERSION` (default `rc`): `TABA_VERSION=1.2 docker compose up -d`.
+The tag of the public images comes from `TABA_VERSION` (default `latest`): `TABA_VERSION=1.2 docker compose up -d`.
 
 What Compose does, in order (`docker-compose.yml`):
 

@@ -30,6 +30,10 @@ A correction to a published final follows the same path (`fix:` → candidate �
 
 `main` and `release` are protected by rulesets: pull request required, the `ci.yml` checks required, no force push, no deletion. Version tags (`v*.*.*`) cannot be moved or deleted. Pipeline details: [doc/en-US/27-ci-cd.md](doc/en-US/27-ci-cd.md).
 
+**Commit type and version:** a change that does not break the signature of the APIs (client and operations APIs, connectors' public API, configuration keys, on-disk formats) is a `fix:` or a `perf:`, which raises the **patch** number (`0.1.1` → `0.1.2`). Only a change that breaks a signature is marked `feat!:` (or has a `BREAKING CHANGE:` footer), which raises the **minor** number while the project is in `0.x` (rule `breaking → minor` in [doc/en-US/27-ci-cd.md](doc/en-US/27-ci-cd.md)). Do not use a plain `feat:` to describe additive, compatible work; use `fix:` or `perf:`. Changes that must not publish a version are `docs:`, `test:`, `chore:`, `ci:` or `refactor:`.
+
+**An agent never creates commits.** It leaves every change in the working tree (staged or not) for the developer to review; the developer commits. Not even when a task seems finished, and not even a "small" or documentation-only change. When it needs to propose a message, it writes it in the reply (with the commit type that decides whether a merge publishes a version) and does not run `git commit`.
+
 **What an agent does not do on its own** (only when the maintainer asks, in that conversation): push to `main` or `release`, merge a pull request, create, move or push tags (a pushed tag that points to an old commit runs that commit's old `release.yml`), create Releases, run `release.yml` by hand with `dry_run=false`, or change repository settings, rulesets, environments, secrets, variables or registry settings. Pick the commit type with care: it decides whether a merge publishes a permanent version.
 
 External contributions need the CLA ([CONTRIBUTING.md](CONTRIBUTING.md)); vulnerabilities are reported privately ([SECURITY.md](SECURITY.md)).
