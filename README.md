@@ -53,9 +53,27 @@ echo '{"order": 9001}' | docker compose run --rm -T taba-cli publish orders --st
 docker compose run --rm taba-cli consume orders --wait 5 --ack      # receive and confirm
 ```
 
-The client API is also at `http://localhost:8080` for any HTTP client (with `Authorization: Bearer <root token>`; the token is in the `secrets` volume: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; on Windows Git Bash prefix the command with `MSYS_NO_PATHCONV=1`). `docker compose down -v` deletes everything. HAProxy is just an example: any load balancer works. For a single node, with no cluster, use `docker run -p 8080:8080 -e TABA_MODE=development taba`.
+The client API is also at `http://localhost:8080` for any HTTP client (with `Authorization: Bearer <root token>`; the token is in the `secrets` volume: `docker compose run --rm --entrypoint cat taba-cli /secrets/root-token`; on Windows Git Bash prefix the command with `MSYS_NO_PATHCONV=1`). `docker compose down -v` deletes everything. HAProxy is just an example: any load balancer works. For a single node, with no cluster, see [Develop on one node](#develop-on-one-node).
 
 > **Careful in production:** stop and update nodes **one at a time** (`docker compose stop` sends `SIGTERM`, which triggers a graceful *drain*). Stopping **all** nodes at once loses the messages and topics, and losing **two nodes in a row** locks a 3-node cluster. See the [operations guide](doc/en-US/23-operations.md).
+
+## Develop on one node
+
+For development, one container is enough (a cluster of one, data inside the container, **no authentication and no root token**, so it must never face a network):
+
+```bash
+docker run -d --name taba-dev -p 8080:8080 -e TABA_MODE=development rafaelpontani/taba
+
+# the taba-cli (Linux, macOS, Git Bash; on PowerShell: scripts/install-cli.ps1). It uses http://127.0.0.1:8080 with no token by default
+curl -fsSL https://raw.githubusercontent.com/rafaelpontani/taba/main/scripts/install-cli.sh | sh
+
+taba-cli topic create orders --type queue
+echo '{"order": 9001}' | taba-cli publish orders --stdin
+taba-cli consume orders --wait 5 --ack
+docker rm -f taba-dev                  # deletes the node and its data
+```
+
+[`scripts/install-cli.sh`](scripts/install-cli.sh) downloads the binary of the latest final Release, checks its SHA256 against `SHA256SUMS` and puts it in `~/.local/bin` (on macOS, Git Bash/MINGW64 and Windows the Releases have no binary, so it runs `cargo install taba-cli` or, without cargo, installs a `taba-cli` that runs the Docker image; [`scripts/install-cli.ps1`](scripts/install-cli.ps1) does the same for PowerShell; `TABA_CLI_VERSION=0.1.1` picks a version, `TABA_CLI_DIR=/usr/local/bin` the folder). Without installing anything, the image works too: `docker run --rm -e TABA_CLI_URL=http://host.docker.internal:8080 rafaelpontani/taba-cli topic list`. Tokens (root and `admin`) exist only with authentication, that is, in the cluster: Compose above or [Helm](#run-it-on-kubernetes-helm) below.
 
 ## Run it on Kubernetes (Helm)
 
@@ -63,7 +81,7 @@ The Helm chart is in [deploy/helm/taba/](deploy/helm/taba/). It needs Kubernetes
 
 ```bash
 # a 3-node cluster (the cluster certificate and the root token are generated once, as a Secret)
-helm install taba oci://ghcr.io/rafaelpontani/charts/taba --version 0.1.0 -n taba --create-namespace
+helm install taba oci://ghcr.io/rafaelpontani/charts/taba -n taba --create-namespace
 # or, from a clone of this repository: helm install taba deploy/helm/taba -n taba --create-namespace
 helm test taba -n taba
 kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d     # the root token
@@ -99,7 +117,7 @@ Get the root token and create an `admin` token with the `taba-cli` (no local ins
 ```bash
 ROOT=$(kubectl -n taba get secret taba-secrets -o jsonpath='{.data.root-token}' | base64 -d | tr -d '\n')
 
-kubectl -n taba run taba-cli --rm -i --restart=Never --image=rafaelpontani/taba-cli:rc \
+kubectl -n taba run taba-cli --rm -i --restart=Never --image=rafaelpontani/taba-cli:latest \
   --env TABA_CLI_URL=http://taba:8080 --env TABA_CLI_TOKEN="$ROOT" \
   -- token create --name ci-admin --permission admin --token-only
 # prints tb_<id>.<secret>: the secret is shown only once, so store it (the cluster keeps just its hash)
@@ -189,17 +207,18 @@ Every version is built and published only by the [release workflow](.github/work
 
 ```bash
 # images (any tag: 0.1.0, 0.1, 0, latest... all point to the same digest)
-gh attestation verify oci://ghcr.io/rafaelpontani/taba:0.1.0 -R rafaelpontani/taba
-cosign verify ghcr.io/rafaelpontani/taba:0.1.0 \
+gh attestation verify oci://ghcr.io/rafaelpontani/taba:latest -R rafaelpontani/taba
+cosign verify ghcr.io/rafaelpontani/taba:latest \
   --certificate-identity-regexp '^https://github.com/rafaelpontani/taba/.github/workflows/release.yml@refs/heads/(main|release)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 # files of a Release
-gh release download v0.1.0 -R rafaelpontani/taba && sha256sum -c SHA256SUMS
-gh attestation verify taba-0.1.0-x86_64-unknown-linux-musl -R rafaelpontani/taba
+VERSION=0.1.1
+gh release download "v$VERSION" -R rafaelpontani/taba && sha256sum -c SHA256SUMS
+gh attestation verify "taba-$VERSION-x86_64-unknown-linux-musl" -R rafaelpontani/taba
 
 # the commit inside the binary
-docker run --rm rafaelpontani/taba:0.1.0 --version     # taba 0.1.0 (commit <sha>)
+docker run --rm rafaelpontani/taba:latest --version     # taba 0.1.1 (commit <sha>)
 ```
 
 Versions: `main` publishes finals (`v0.1.0`) and `release` publishes candidates (`v0.1.0-rc.N`). The floating tags (`v0.1`, `v0`, `latest`, `0.1-rc`, `rc`...) only move to the highest version of their line. The full flow is in [CI/CD and releases](doc/en-US/27-ci-cd.md); to report a vulnerability, see [SECURITY.md](SECURITY.md).

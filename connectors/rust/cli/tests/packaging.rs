@@ -181,8 +181,8 @@ fn the_compose_file_uses_public_images_and_the_dev_override_builds_them() {
         !compose.contains("build:"),
         "the root compose uses public images only; the build lives in the override"
     );
-    assert!(compose.contains("image: rafaelpontani/taba:${TABA_VERSION:-rc}"));
-    assert!(compose.contains("image: rafaelpontani/taba-cli:${TABA_VERSION:-rc}"));
+    assert!(compose.contains("image: rafaelpontani/taba:${TABA_VERSION:-latest}"));
+    assert!(compose.contains("image: rafaelpontani/taba-cli:${TABA_VERSION:-latest}"));
 
     let dev = repo_file("docker-compose.dev.yml");
     for service in ["init", "taba-0", "taba", "taba-cli"] {

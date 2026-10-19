@@ -96,7 +96,7 @@ Para construir a imagem a partir do repositório (quem desenvolve), some o overr
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
-A tag das imagens públicas vem de `TABA_VERSION` (padrão `rc`): `TABA_VERSION=1.2 docker compose up -d`.
+A tag das imagens públicas vem de `TABA_VERSION` (padrão `latest`): `TABA_VERSION=1.2 docker compose up -d`.
 
 O que o Compose faz, em ordem (`docker-compose.yml`):
 

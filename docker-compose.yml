@@ -2,7 +2,7 @@
 #
 #   docker compose up -d                starts everything with the public Docker Hub images (rafaelpontani/taba);
 #                                       the first node forms the cluster and the others join. The tag comes from
-#                                       TABA_VERSION (default: rc), for example: TABA_VERSION=1.2 docker compose up -d
+#                                       TABA_VERSION (default: latest), for example: TABA_VERSION=1.2 docker compose up -d
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 #                                       the same cluster, but building the images from this repository
 #                                       (for developers; see docker-compose.dev.yml)
@@ -21,7 +21,7 @@
 
 x-taba: &taba
   # Public image. The local build lives in docker-compose.dev.yml.
-  image: rafaelpontani/taba:${TABA_VERSION:-rc}
+  image: rafaelpontani/taba:${TABA_VERSION:-latest}
   # Greater than drain.timeout (25 s) + backup.drain.timeout (30 s), so the node finishes the drain, and
   # the upload to S3, before the SIGKILL.
   stop_grace_period: 70s
@@ -51,7 +51,7 @@ services:
   # Creates the secrets folder (cluster certificate and root token) once; on later runs it does
   # nothing. Runs as root only to write to the new volume and hand the files to the node's user.
   init:
-    image: rafaelpontani/taba:${TABA_VERSION:-rc}
+    image: rafaelpontani/taba:${TABA_VERSION:-latest}
     user: "0"
     entrypoint: ["sh", "-c"]
     command:
@@ -145,7 +145,7 @@ services:
   # The client command line, already pointed at the cluster. It only runs on demand:
   #   docker compose run --rm taba-cli topic list
   taba-cli:
-    image: rafaelpontani/taba-cli:${TABA_VERSION:-rc}
+    image: rafaelpontani/taba-cli:${TABA_VERSION:-latest}
     profiles: ["tools"]
     environment:
       TABA_CLI_URL: http://haproxy:8080
