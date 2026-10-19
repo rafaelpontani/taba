@@ -3,7 +3,7 @@ título: Visão geral
 resumo: O que é o Taba, para quem serve, o que ele não é, e a lista de objetivos e requisitos com o estado de cada um.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-18 @ 6c5de51
+verificado-em: 2026-10-19 @ 55b9495
 fontes: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml, connectors/]
 ---
 
@@ -30,6 +30,8 @@ Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotad
 |---|---|
 | Quer fila e pub/sub sem pagar por mensagem nem depender de uma nuvem | Roda onde houver Docker; o custo é o da máquina |
 | Quer um cluster de mensageria que se organiza sozinho | Nó novo entra e assume sua parte; nó que cai é excluído por votação e, ao voltar, é reintegrado |
+| Quer escalar nos dois sentidos sem parar | Adicionar ou retirar um nó rebalanceia os blocos sozinho; o nó que sai faz o drain antes. No Kubernetes, o KEDA escala o chart ([34-chart-helm.md](34-chart-helm.md)) |
+| Quer backup sem pagar por ele em latência | O backup no S3 é contínuo, nunca atrasa uma escrita, e um cluster que caiu inteiro se restaura sozinho ao subir ([33-backup-s3.md](33-backup-s3.md)) |
 | Quer integrar por HTTP, sem protocolo novo | A API é HTTP e JSON; os conectores são opcionais |
 
 ## O que o Taba não é
@@ -39,7 +41,7 @@ Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotad
 | Um substituto de protocolo | Não fala AMQP, MQTT nem o protocolo do Kafka; trocar de broker é trocar o cliente |
 | Uma plataforma de streaming | Não relê o histórico: depois do ack a mensagem some (na FIFO, só o corpo; ver [09-topicos.md](09-topicos.md)) |
 | Multi-região | Um cluster vive numa só rede |
-| Uma interface gráfica | Há API, linha de comando e telemetria; não há painel |
+| Uma interface web | Há API, linha de comando com uma interface de terminal em tela cheia ([20b-cli-ui.md](20b-cli-ui.md)) e telemetria; não há painel web |
 | Autenticação avançada | Há tokens simples com permissões e prefixos; não há OAuth/OIDC |
 
 ## Objetivos e requisitos
@@ -111,6 +113,9 @@ Estes oito princípios explicam muitas escolhas do código. Cada um aponta para 
 | Onde roda | Qualquer lugar com Docker | Só na AWS | Onde hospedar, ou gerenciado | Onde hospedar, ou gerenciado |
 | O que subir | A mesma imagem, 3 nós (1 para dev) | Nada | Brokers e coordenação | Broker (mais nós para alta disponibilidade) |
 | Fila e pub/sub | Na mesma API HTTP | Dois serviços | Tópicos e grupos de consumo | Filas e *exchanges* |
+| Alta disponibilidade | Embutida: replicação por quorum, votação, volta automática | Gerenciada | Partições replicadas | Quorum queues |
+| Escala | Adicione ou retire um nó; ele se rebalanceia sozinho | Gerenciada | Partições redistribuídas à mão ou por ferramentas | Nós; líderes das filas rebalanceados por comando |
+| Backup | Contínuo no S3, restaurado ao subir | Gerenciado | Ferramentas externas | Exportação de definições; ferramentas externas |
 | Cobrança | Só a infraestrutura | Por requisição | Infraestrutura ou plano | Infraestrutura ou plano |
 | Protocolo | HTTP/JSON | HTTP/JSON | Binário próprio | AMQP e outros |
 
@@ -118,8 +123,9 @@ Estes oito princípios explicam muitas escolhas do código. Cada um aponta para 
 
 - **Servidor:** nó e cluster implementados no crate `taba-node`; testes de unidade, de um nó e de cluster (rede em memória), mais testes por TCP e TLS reais.
 - **Validação de ponta a ponta:** `docker/validate.sh` sobe o Compose do zero e confere a formação do cluster, o `taba-cli`, a queda e a volta de nós e a ausência de perda de mensagens confirmadas.
-- **Versão:** `0.1.0` (`Cargo.toml`). Licenças: o servidor é **AGPL-3.0-only** e os conectores (`connectors/`) são **Apache-2.0**, com CLA para contribuições ([30-decisoes.md](30-decisoes.md#licença-e-contribuições-d164)).
-- **Faltam:** contrato OpenAPI, os outros oito conectores, publicação de pacotes e validação em Kubernetes ([32-roadmap.md](32-roadmap.md)).
+- **Versão:** publicada como `0.1.x` no Docker Hub, GHCR, crates.io, nuget.org e GitHub Releases; o pipeline calcula o número a partir dos commits ([27-ci-cd.md](27-ci-cd.md)), e o `Cargo.toml` mantém `0.1.0`. Licenças: o servidor é **AGPL-3.0-only** e os conectores (`connectors/`) são **Apache-2.0**, com CLA para contribuições ([30-decisoes.md](30-decisoes.md#licença-e-contribuições-d164)).
+- **Prontos além do servidor:** o Helm chart, testado no kind ([34-chart-helm.md](34-chart-helm.md)), o backup opcional no S3 ([33-backup-s3.md](33-backup-s3.md)) e a interface de terminal do `taba-cli` ([20b-cli-ui.md](20b-cli-ui.md)).
+- **Faltam:** contrato OpenAPI, os outros oito conectores, validação num cluster Kubernetes real e benchmarks publicados ([32-roadmap.md](32-roadmap.md)).
 
 ## Fontes e provas
 

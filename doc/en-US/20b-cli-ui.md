@@ -3,8 +3,8 @@ title: Full-screen interface of taba-cli (TUI)
 summary: How to use the full-screen interface of `taba-cli` as it is today — how to open it, the options and configuration, the screens (Cluster, Topics with charts and messages, Tokens, Profiles), every key, what each action asks of the token and what does not exist yet.
 type: guide
 status: partial
-verified-on: 2026-10-16 @ ddb087a
-sources: [connectors/rust/cli/src/tui, connectors/rust/cli/src/commands/tui.rs, connectors/rust/cli/src/settings, connectors/rust/cli/locales, connectors/rust/cli/tests, doc/en-US/20-cli.md, doc/en-US/14-security.md]
+verified-on: 2026-10-19 @ 55b9495
+sources: [connectors/rust/cli/src/tui, doc/diagrams/scripts/capture-tui.sh, connectors/rust/cli/src/commands/tui.rs, connectors/rust/cli/src/settings, connectors/rust/cli/locales, connectors/rust/cli/tests, doc/en-US/20-cli.md, doc/en-US/14-security.md]
 ---
 
 # Full-screen interface of `taba-cli` (TUI)
@@ -137,6 +137,8 @@ Arrows and Vim keys do the same (`↑↓` and `k j`). The letters are mnemonic a
 
 ## Cluster
 
+![The Cluster tab on a four-node cluster under load: no conditions, the table of nodes and the three charts of the selected node](../diagrams/img/en-US/tui-cluster.png)
+
 The Cluster tab shows, from top to bottom, the active **conditions** of the cluster (the worst first, with icon and word; with none, a "healthy" line; `Enter` on a condition explains what it means and what to do), the **table of nodes** and, below, **three charts of the selected node** (memory, messages in memory and requests in flight). `Tab` switches between the conditions and the nodes.
 
 - **Table of nodes:** id (start…end, because the ids of nodes created together begin alike), state, drain, memory as a bar with %, messages on disk, blocks being synchronized and requests in flight; from 100 columns, also free disk and `429` rejections. An unreachable node turns red and says so; a node with no memory limit (development mode) shows "no limit".
@@ -147,7 +149,11 @@ The Cluster tab shows, from top to bottom, the active **conditions** of the clus
 - **Charts of the cluster** (`m`): a **list of six indicators on the left** (memory against the limit, ready messages, messages on disk, requests in flight, `429` rejections, channel RTT), each with its current value; the chart of the indicator under the cursor is drawn beside it. `↑ ↓` choose, `Enter` gives it the **full screen** and `Esc` goes back (first from the full screen, then from the charts).
 - **With an ordinary token** the tab shows only the list of nodes and replaces the rest with a notice that the token must be `admin` or the root.
 
+![The detail of a node (i): storage, signals and the S3 backup](../diagrams/img/en-US/tui-node.png)
+
 ## Topics
+
+![The Topics tab: queues, a distributor and a FIFO queue with depth, publish and consume rates, and the three charts of the selected queue](../diagrams/img/en-US/tui-topics.png)
 
 The list shows the name, the type (`queue`, `fifo queue`, `volatile queue`, `distributor`, `dead-letter`), the depth, the publish and consume rates, the age of the oldest and the state (icon and the worst condition, untranslated). Dead-letter queues stay hidden until `v` and, when shown, appear dimmed and with no limits in the detail, since they follow the source queue; a distributor shows "—" where there is no queue. `/` filters by part of the name and `s` sorts (name, newest, oldest, depth). The list reads pages of 200, up to 5 000 topics. If the statistics fail, the table shows the topics without numbers and says "numbers unavailable".
 
@@ -162,6 +168,8 @@ Under the table sit **three charts of the selected queue**, side by side (messag
   - **Flow** per second: in (published), out (delivered) and deleted (ack).
   - **Age** of the oldest in the queue and of the **three largest groups** (the noisy groups).
 - A distributor has no queue: it has no queue charts and the keys that depend on one are refused with the reason.
+
+![The flow chart of a queue in full screen: messages in, out and acknowledged per second](../diagrams/img/en-US/tui-queue-chart.png)
 
 ## Messages of a topic
 
