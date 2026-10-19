@@ -210,7 +210,7 @@ A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP q
 | Linguagem | Pasta | Versão base | Estado | Exemplo de uso |
 |---|---|---|---|---|
 | Java | `connectors/java/` | Java 11 | planejado | TODO |
-| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5, 6, 8 e 10 | [pronto](connectors/csharp/README.md) (nove operações assíncronas e síncronas, `subscribe`) | [exemplo de console](exemplos/csharp-console/) |
+| C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5, 6, 8 e 10 | [pronto](connectors/csharp/README.md) (nove operações assíncronas e síncronas, `subscribe`) | [exemplo de console](examples/csharp-console/) |
 | Python | `connectors/python/` | 2.7.9 e 3.4.3 | planejado | TODO |
 | PHP | `connectors/php/` | 5.6 | planejado | TODO |
 | Ruby | `connectors/ruby/` | 2.0 | planejado | TODO |

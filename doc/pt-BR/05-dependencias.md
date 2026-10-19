@@ -22,7 +22,7 @@ Linguagem **Rust**, edição 2024, runtime assíncrono **tokio**. O workspace te
 | TLS mútuo | `rustls` (provedor `ring`), `tokio-rustls`, `x509-parser`, `rcgen` | Porta do cluster, recarga dos certificados, `taba init` e `taba cert generate`. O nome do host **não** é verificado: a confiança é a do próprio certificado |
 | Cliente HTTP entre nós | `reqwest` (só `rustls`) | O `Transport` real chama a porta do cluster dos outros nós |
 | WebSocket do canal | `axum` (ws), `tokio-tungstenite`, `futures-util` | Canal permanente entre cada par de nós |
-| Backup em S3 | `aws-sdk-s3` e `aws-config` (o SDK oficial) | `storage/backup/store`: o `S3Store` fala com AWS e com MinIO (`backup.s3.endpoint`). Compila no Windows (MSVC) sem ferramentas extras; traz o `aws-lc-rs` (o provedor TLS do próprio SDK, separado do `ring` do resto do nó) |
+| Backup em S3 | `aws-sdk-s3` e `aws-config` (o SDK oficial) | `storage/backup/store`: o `S3Store` fala com AWS e com MinIO (`backup.s3.endpoint`). Compila no Windows (MSVC) sem ferramentas extras; traz o `aws-lc-rs` (o provedor TLS do próprio SDK, separado do `ring` do resto do nó). O `aws-sdk-s3` entra **sem a feature `rustls`** (`default-features = false`): essa feature é o cliente legado (hyper 0.14, rustls 0.21, h2 0.3), que trazia vulnerabilidades conhecidas; o cliente atual do SDK (`default-https-client`) é o usado |
 | Banco local | `rusqlite` com SQLite **embutida** (`bundled`) | `_node.db`, um banco por tópico, banco de eventos de sincronização |
 | JSON | `serde`, `serde_json` (`raw_value`) | DTOs das APIs e do canal |
 | YAML | `serde_norway` | Arquivo de configuração `.yml` |
