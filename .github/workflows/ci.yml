@@ -1,16 +1,16 @@
-# Validation of every branch and pull request: the three builds (server, Rust connector and C# connector, with no
-# version), the static checks of the Helm chart and the lint of the workflows themselves. Publishes nothing.
+# Validation of every pull request to main and release: the three builds (server, Rust connector and C# connector,
+# with no version), the static checks of the Helm chart and the lint of the workflows themselves. Publishes nothing.
 #
-# main and release are not here: a push to them runs release.yml, which calls the same builds and only publishes
-# when semantic-release finds a version. These jobs are the required status checks of the main and release
-# rulesets (doc/pt-BR/27-ci-cd.md).
+# Only `pull_request`, not `push`: with a PR open, a push fires both events and everything would run twice. A
+# branch without a PR is validated by hand (workflow_dispatch). main and release are not here: a push to them runs
+# release.yml, which calls the same builds and only publishes when semantic-release finds a version. These jobs are
+# the required status checks of the main and release rulesets (doc/pt-BR/27-ci-cd.md).
 name: CI
 
 on:
-  push:
-    branches-ignore: [main, release]
   pull_request:
     branches: [main, release]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

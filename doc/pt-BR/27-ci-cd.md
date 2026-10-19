@@ -15,7 +15,7 @@ fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-ver
 
 | Fluxo | Quando | O que faz |
 |---|---|---|
-| **CI** (`ci.yml`) | **Push** em qualquer branch exceto `main`/`release`, e **pull request** para elas | Os três builds (servidor, conector Rust, conector C#) **sem versão**, o teste estático do chart Helm e o lint dos workflows. **Não publica nada** |
+| **CI** (`ci.yml`) | **Pull request** para `main`/`release` (e manual, para uma branch sem PR). Não roda em `push`: com um PR aberto rodaria tudo duas vezes | Os três builds (servidor, conector Rust, conector C#) **sem versão**, o teste estático do chart Helm e o lint dos workflows. **Não publica nada** |
 | **Release** (`release.yml`) | **Push** em `main` (finais) ou `release` (candidatas) | Os mesmos builds; se o semantic-release encontra versão, publica tudo **na ordem abaixo**, com a tag criada só depois de tudo verde |
 | **Scorecard** (`scorecard.yml`) | Push na `main`, semanal e a cada mudança de proteção | A nota pública do OpenSSF Scorecard (práticas de segurança do repositório) |
 | **CodeQL** (`codeql.yml`) | Push em `main`/`release`, pull request para elas e semanal | Análise estática (SAST) do código Rust, C# e dos workflows; achados na aba Security |
@@ -27,7 +27,7 @@ Os três builds são **workflows reutilizáveis** (`workflow_call`), usados pelo
 ## Fluxo de branches e tags
 
 ```
-feature/*  ── push/PR ──▶ ci.yml: build + testes (nada é publicado, nenhuma tag)
+feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhuma tag)
     │
     └──PR──▶ release ── release.yml ──▶ tag fixa  v0.1.0-rc.28        (imutável, nunca move)
                 │                         git flutuante: v0.1-rc, v0-rc  (movem p/ o novo commit)
