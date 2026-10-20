@@ -135,7 +135,7 @@ O nó novo já consta na tabela e **recebe** o protocolo normal, mas **não pode
 
 **Uma mensagem que não vem.** Antes de declarar perda, o nó tenta: outra origem, a rota de ID único e uma relistagem. Se o ID **sumiu** das listas, foi um ack e o caso é descartado em silêncio. Só o que continua **listado e sem conteúdo** em todas as origens é uma **perda**: gera um log `error` com tópico, ID e bloco, e um registro na tabela `losses`; **não** compromete a saúde do nó.
 
-**Falhas da sincronização.** Disco cheio, `cluster.sync.log.max-bytes` (padrão 1 GiB) estourado ou banco corrompido levam o nó a `failed`. Sem origem para uma carga, o nó espera e tenta de novo até `cluster.sync.timeout` (padrão 60 s); esgotado, cai em `failed`.
+**Falhas da sincronização.** Disco cheio, `cluster.sync.log.max-bytes` (padrão 1 GiB) estourado ou banco corrompido levam o nó a `failed`. Sem origem para uma carga, o nó espera e tenta de novo até `cluster.sync.timeout` (padrão 60 s); esgotado, cai em `failed`. Se, durante a espera, um membro da tabela que recebeu responder com uma tabela mais nova que já não tem o nó (o ingresso dele foi desfeito, por exemplo pelo reencontro depois de uma partição simétrica), o nó não espera: esquece a tabela e refaz o ingresso do zero.
 
 Enquanto sincroniza, o nó **repassa** as chamadas de cliente a outro nó (seção 6), e a **limpeza** dos blocos que ele deixou de ter só ocorre com o cluster íntegro ([06-anel-e-replicacao.md](06-anel-e-replicacao.md)).
 

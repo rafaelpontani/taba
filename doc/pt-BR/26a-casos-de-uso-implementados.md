@@ -5766,10 +5766,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-FAL-026
 
 **Caso:** O reencontro depois de uma partição em que **os dois lados** se excluíram (as tabelas têm a mesma versão e nenhum canal liga um lado ao outro)  
-**Então:** de tempos em tempos (`cluster.channel.keepalive.interval` × 10) cada nó consulta a tabela de quem ele viu ser excluído; se ela é de outro cluster (sem este nó e sem nenhum membro em comum) e este lado perde (tem menos membros; num empate, o do menor `nodeId`), o nó refaz o ingresso do zero, como o excluído que volta (UC-FAL-013). A marca de votação de um nó que saiu da tabela é esquecida ao sair (D101).  
+**Então:** de tempos em tempos (`cluster.channel.keepalive.interval` × 10) cada nó consulta a tabela de quem ele viu ser excluído; se ela é de outro cluster (sem este nó e sem nenhum membro em comum) e este lado perde (tem menos membros; num empate, o do menor `nodeId`), o nó refaz o ingresso do zero, como o excluído que volta (UC-FAL-013). A marca de votação de um nó que saiu da tabela é esquecida ao sair (D101). O nó que ainda está **sincronizando** quando as fontes passam a uma tabela mais nova sem ele (o ingresso que ele concluía foi desfeito por este reencontro) não espera o `cluster.sync.timeout` para entrar em falha: esquece a tabela e refaz o ingresso.  
 **Nível:** C  
 **Testes:**
   - `tests/failures.rs::after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again`
+  - `tests/failures.rs::a_syncing_node_that_the_sources_excluded_redoes_the_join_instead_of_failing`
 
 ---
 

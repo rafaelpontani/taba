@@ -91,11 +91,14 @@ pub enum SyncError {
     LogOverflow,
     #[error("the node stopped during the synchronization")]
     Cancelled,
+    #[error("the sources excluded this node while it synchronized")]
+    Excluded,
 }
 
 impl SyncError {
     fn reason(&self) -> &'static str {
         match self {
+            SyncError::Excluded => "excluded",
             SyncError::NoSource(_) => "no-source",
             SyncError::Disk(_) => "disk",
             SyncError::LogOverflow => "log-overflow",
@@ -510,6 +513,7 @@ impl Syncer {
                     Err(SyncError::NoSource(why)) if Instant::now() < deadline => {
                         tracing::warn!(%why, "no source answered the block: trying again");
                         self.check()?;
+                        self.check_not_excluded().await?;
                         self.nap().await;
                     }
                     other => return other,
@@ -539,8 +543,18 @@ impl Syncer {
             if Instant::now() >= deadline {
                 return Err(SyncError::NoSource(last));
             }
+            self.check_not_excluded().await?;
             self.nap().await;
         }
+    }
+
+    /// The sources that do not answer may be the ones that already excluded this node (a join that
+    /// crossed a partition's reunion): retrying would wait for `cluster.sync.timeout` and end in `failed`.
+    async fn check_not_excluded(&self) -> Result<(), SyncError> {
+        if self.service.excluded_while_syncing().await {
+            return Err(SyncError::Excluded);
+        }
+        Ok(())
     }
 
     async fn nap(&self) {

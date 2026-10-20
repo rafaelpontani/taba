@@ -135,7 +135,7 @@ The new node is already in the table and **receives** the normal protocol, but *
 
 **A message that does not come.** Before declaring a loss, the node tries: another source, the single-ID route and a re-listing. If the ID **disappeared** from the lists, it was an ack and the case is silently discarded. Only what remains **listed and without content** in all the sources is a **loss**: it generates an `error` log with topic, ID and block, and a record in the `losses` table; it does **not** compromise the node's health.
 
-**Synchronization failures.** A full disk, exceeding `cluster.sync.log.max-bytes` (default 1 GiB) or a corrupted database take the node to `failed`. With no source for a load, the node waits and tries again until `cluster.sync.timeout` (default 60 s); when it runs out, it falls into `failed`.
+**Synchronization failures.** A full disk, exceeding `cluster.sync.log.max-bytes` (default 1 GiB) or a corrupted database take the node to `failed`. With no source for a load, the node waits and tries again until `cluster.sync.timeout` (default 60 s); when it runs out, it falls into `failed`. If, while waiting, a member of the table it received answers with a newer table that no longer has the node (its join was undone, for example by the reunion after a symmetric partition), the node does not wait: it forgets the table and redoes the join from scratch.
 
 While it synchronizes, the node **forwards** client calls to another node (section 6), and the **cleanup** of blocks it no longer has only happens with the cluster healthy ([06-ring-and-replication.md](06-ring-and-replication.md)).
 
