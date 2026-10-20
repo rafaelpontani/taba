@@ -5766,10 +5766,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-FAL-026
 
 **Case:** The reunion after a partition in which **both sides** excluded each other (the tables have the same version and no channel links one side to the other)  
-**Then:** from time to time (`cluster.channel.keepalive.interval` × 10) each node queries the table of whoever it saw being excluded; if it is from another cluster (without this node and with no member in common) and this side loses (has fewer members; on a tie, the one with the lowest `nodeId`), the node redoes the join from scratch, like the excluded one that returns (UC-FAL-013). The vote mark of a node that left the table is forgotten on leaving (D101).  
+**Then:** from time to time (`cluster.channel.keepalive.interval` × 10) each node queries the table of whoever it saw being excluded; if it is from another cluster (without this node and with no member in common) and this side loses (has fewer members; on a tie, the one with the lowest `nodeId`), the node redoes the join from scratch, like the excluded one that returns (UC-FAL-013). The vote mark of a node that left the table is forgotten on leaving (D101). A node that is still **synchronizing** when the sources move to a newer table without it (the join it was finishing was undone by this reunion) does not wait for `cluster.sync.timeout` to enter failure: it forgets the table and redoes the join.  
 **Level:** C  
 **Tests:**
   - `tests/failures.rs::after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again`
+  - `tests/failures.rs::a_syncing_node_that_the_sources_excluded_redoes_the_join_instead_of_failing`
 
 ---
 

@@ -4,7 +4,7 @@ resumo: Registro, com histórico, dos testes de cluster intermitentes e dos prob
 tipo: referência
 status: parcial
 verificado-em: 2026-10-19 @ 294fd03
-fontes: [crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/common/cluster.rs]
+fontes: [crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos
@@ -17,18 +17,35 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
-| [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Aberto | 2026-10-19 | — |
+| [Teste de aviso que espera 30 s uma vez na suíte completa](#teste-de-aviso-que-espera-30-s-uma-vez-na-suíte-completa) | Aberto | 2026-10-20 | — |
+| [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
 
+## Teste de aviso que espera 30 s uma vez na suíte completa
+
+**Status:** Aberto · **Achado em:** 2026-10-20 · **Solução em:** —
+
+- **Teste:** `notify.rs` › `a_notice_is_a_hint_that_ends_fetched_or_empty`.
+- **Sintoma:** pânico `waited 30 s` do `eventually_async` (`tests/common/cluster.rs`) em uma execução de `cargo test -p taba-node`, logo depois da compilação. Sozinho passou 3 vezes seguidas, com e sem a mudança em teste, e uma segunda execução completa ficou verde.
+- **Causa:** não identificada (a saída da execução que falhou não foi guardada).
+- **Próximo passo:** na próxima ocorrência, guardar a saída inteira para ver qual condição estourou; tentar o teste sob carga paralela (muitos binários de teste rodando ao mesmo tempo) antes de mexer em qualquer tempo limite.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-20 | Falhou uma vez numa execução completa local; passou sozinho (3 execuções) e na execução completa seguinte. |
+
 ## Reingresso depois de uma partição simétrica
 
-**Status:** Aberto · **Achado em:** 2026-10-19 · **Solução em:** —
+**Status:** Corrigido · **Achado em:** 2026-10-19 · **Solução em:** 2026-10-20
 
-- **Teste:** `failures.rs` › `after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again` (com `#[ignore]`).
+- **Teste:** `failures.rs` › `after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again`.
 - **Sintoma no CI:** "waited 30 s for: the four nodes in a single table".
-- **Causa:** não identificada. O teste parte o cluster em 2 + 2, deixa cada lado excluir o outro, cura a rede e avança o relógio 301 s; o lado perdedor (o do menor `nodeId`) deveria refazer o ingresso e as quatro tabelas voltarem a ser uma em até 30 s.
-- **Próximo passo:** capturar o log dos nós no runner amd64 quando falhar (tabelas e canais de cada nó no momento do timeout) para separar fragilidade do teste (corrida entre o `clear_calls` e o avanço do relógio) de um problema real no reingresso.
+- **Causa (confirmada):** quando as duas metades se reencontraram, os dois nós do lado perdedor refizeram o ingresso ao mesmo tempo. Um deles (o nó 3 na captura) foi aceito por intermédio do outro enquanto este ainda era reiniciado, recebeu uma tabela só com os dois e começou a sincronizar tendo-o como fonte; essa fonte então entrou no lado vencedor e deixou de ter o nó na tabela. As fontes respondiam `cluster.not-member` e o nó, em `syncing`, continuava pedindo por 60 s (`cluster.sync.timeout`) antes de entrar em `failed`: o `handle_exclusion` só age sobre um nó `active`, então um nó sincronizando nunca descobria que fora excluído. Em produção a mesma sequência terminaria com um nó em `failed` depois de um minuto.
+- **Correção:** enquanto a sincronização espera uma fonte (`NoSource`), ela consulta os membros da tabela recebida; se algum tiver uma tabela mais nova sem o nó, a sincronização termina com `SyncError::Excluded` e o `finish_join` esquece a tabela, zera o estado local e o bootstrap refaz o ingresso (`ClusterService::excluded_while_syncing`).
+- **Teste da correção:** `failures.rs` › `a_syncing_node_that_the_sources_excluded_redoes_the_join_instead_of_failing` (falha sem a correção, `waited 30 s for: the node to redo the join`).
 
 **Histórico**
 
@@ -36,6 +53,8 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-19 | Falhou nas duas execuções do CI do PR #3 no runner amd64; passou no arm64 e no push da `release` com o mesmo código (o PR só mudava o `release.yml`). Teste marcado com `#[ignore]`. |
 | 2026-10-19 | Investigação: não é o `NO_VOTE` (o teste não o usa) nem a inversão de travas. Não reproduziu localmente: passou em 12 e em 30 execuções simultâneas do mesmo binário. |
+| 2026-10-20 | Reproduzido localmente com 40 a 60 execuções simultâneas do binário (1 falha em cada um de dois lotes). Um despejo temporário do estado e das tabelas de cada nó no estouro mostrou o nó preso em `syncing` com uma tabela antiga; a causa acima. |
+| 2026-10-20 | Correção aplicada e `#[ignore]` removido. Verificação: 180 execuções simultâneas (3 lotes de 60) do teste, todas passaram; o teste novo falha sem a correção; a suíte inteira do `taba-node` passou (uma falha isolada e não relacionada, registrada acima). |
 
 ## Canal saudável que não volta
 

@@ -1536,6 +1536,26 @@ impl ClusterService {
         }
     }
 
+    /// For the node that is synchronizing: some member of the table it received has a newer table
+    /// without it, which means the join it is finishing was undone.
+    pub async fn excluded_while_syncing(self: &Arc<Self>) -> bool {
+        let me = self.node_id();
+        let Some(mine) = self.membership.table() else {
+            return false;
+        };
+        for member in mine.members.iter().filter(|m| m.node_id != me) {
+            if let Ok(Response::Members(theirs)) = self
+                .call_peer(member, Request::ListNodes, self.rules.call_timeout)
+                .await
+                && theirs.member(&me).is_none()
+                && theirs.version > mine.version
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// The node found out it was excluded (the peers no longer have it in the table): deletes the local state
     /// and redoes the join from scratch (doc 04, section 6.6, step 6), with the same ID. The freezing delays the
     /// new register: the request is rejected until the period ends and the bootstrap loop repeats.
@@ -1745,6 +1765,24 @@ impl ClusterService {
                 Err(Failure {
                     reason: "sync",
                     message: "the node stopped during the synchronization".into(),
+                })
+            }
+            Err(SyncError::Excluded) => {
+                // The table the join returned is already stale: forget it and start the join over,
+                // as the active node that finds out it was excluded does.
+                tracing::warn!(node_id = %self.node_id(), "the sources excluded this node while it synchronized: redoing the join");
+                syncer.abandon();
+                self.membership.clear();
+                self.open_votes
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
+                replication.reset_local().await;
+                self.node.set_state(NodeState::Joining);
+                replication.channels.sync_members();
+                Err(Failure {
+                    reason: "excluded",
+                    message: "the sources excluded the node while it synchronized".into(),
                 })
             }
             Err(e) => {
