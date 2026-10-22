@@ -46,14 +46,14 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
-| `SIN` | Sincronização distribuída de blocos | 29 | 1 |
+| `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 3 | 12 |
 | `RTN` | Retorno de nó excluído e recuperação de perdas | 17 | 0 |
 | `FWD` | Repasse de chamadas de cliente | 4 | 8 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
 | `DEV` | Modo desenvolvimento | 3 | 10 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 21 | 0 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 39 | 9 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 40 | 9 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 3 | 7 |
 | `CFG` | Configuração e validações de partida | 10 | 2 |
 | `BKP` | Backup opcional em S3 | 40 | 0 |
@@ -6580,6 +6580,27 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-SIN-031
+
+**Caso:** Um nó que entra copia, bloco a bloco, o log de excluídos de cada origem (`GET /cluster/blocks/{id}/excluded`) e passa a gravar **a partir de quando as origens gravam** (a mais recente das datas de início delas, lida no `NodeStatus`), não a partir do instante em que entrou  
+**Então:** o `id` morto nas origens também está morto no log do nó novo, e a data de início dele é a das origens; se uma origem não manda o log ou a data (versão anterior, falha), o nó mantém a própria data, que é a conservadora. Só a primeira sincronização de um disco herda; depois a data só avança.  
+**Nível:** C e U  
+**Testes:**
+  - `tests/excluded_log.rs::a_new_node_copies_the_log_of_its_sources_and_inherits_their_start`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-SIN-032
+
+**Caso:** O cluster tem uma **data de corte do log de excluídos**: a mais recente das datas de início entre os membros ativos  
+**Então:** a data aparece em `summary.excludedCutoff` do `GET /health/cluster`; antes dela, o log de algum membro pode não ter a exclusão, e a retomada não deve tratá-la como garantida.  
+**Nível:** C  
+**Testes:**
+  - `tests/excluded_log.rs::the_cluster_cut_off_is_the_latest_start_among_the_active_members`
+
+---
+
 
 ## STR: Streams NDJSON entre nós
 
@@ -7824,6 +7845,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `tests/nodes_api.rs::the_cluster_status_carries_the_load_of_each_node_and_the_backup_is_consolidated`
   - `tests/nodes_api.rs::without_a_backup_the_cluster_backup_route_says_so`
+
+---
+
+### UC-OPS-052
+
+**Caso:** `GET /health/cluster` com o token raiz  
+**Então:** o `NodeStatus` de cada nó traz `excludedSince` (desde quando ele grava o log de excluídos) e o `summary` traz `excludedCutoff` (a data de corte do cluster, a mais recente entre os ativos), para o operador saber até onde a retomada confia no log.  
+**Nível:** C  
+**Testes:**
+  - `tests/excluded_log.rs::the_cluster_cut_off_is_the_latest_start_among_the_active_members`
 
 ---
 

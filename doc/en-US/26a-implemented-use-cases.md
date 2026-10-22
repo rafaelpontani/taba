@@ -46,14 +46,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
 | `CNC` | Concurrency between membership changes | 12 | 3 |
-| `SIN` | Distributed synchronization of blocks | 29 | 1 |
+| `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 3 | 12 |
 | `RTN` | Return of an excluded node and recovery of losses | 17 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
 | `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
 | `DEV` | Development mode | 3 | 10 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 21 | 0 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 39 | 9 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 40 | 9 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 3 | 7 |
 | `CFG` | Configuration and startup validations | 10 | 2 |
 | `BKP` | Optional S3 backup | 40 | 0 |
@@ -6580,6 +6580,27 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-SIN-031
+
+**Case:** A node that joins copies, block by block, each source's log of excluded messages (`GET /cluster/blocks/{id}/excluded`) and records **from when the sources record** (the most recent of their start dates, read in the `NodeStatus`), not from the instant it joined  
+**Then:** the `id` that is dead on the sources is dead in the new node's log too, and its start date is the sources'; if a source does not send the log or the date (earlier version, failure), the node keeps its own date, which is the conservative one. Only the first synchronization of a disk inherits; after that the date only moves forward.  
+**Level:** C and U  
+**Tests:**
+  - `tests/excluded_log.rs::a_new_node_copies_the_log_of_its_sources_and_inherits_their_start`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-SIN-032
+
+**Case:** The cluster has a **cut-off date for the log of excluded messages**: the most recent of the start dates among the active members  
+**Then:** the date appears in `summary.excludedCutoff` of `GET /health/cluster`; before it, some member's log may lack the exclusion, and the restart must not treat it as guaranteed.  
+**Level:** C  
+**Tests:**
+  - `tests/excluded_log.rs::the_cluster_cut_off_is_the_latest_start_among_the_active_members`
+
+---
+
 
 ## STR: NDJSON streams between nodes
 
@@ -7824,6 +7845,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `tests/nodes_api.rs::the_cluster_status_carries_the_load_of_each_node_and_the_backup_is_consolidated`
   - `tests/nodes_api.rs::without_a_backup_the_cluster_backup_route_says_so`
+
+---
+
+### UC-OPS-052
+
+**Case:** `GET /health/cluster` with the root token  
+**Then:** each node's `NodeStatus` carries `excludedSince` (since when it records the log of excluded messages) and `summary` carries `excludedCutoff` (the cluster's cut-off date, the most recent among the active ones), so the operator knows how far the restart trusts the log.  
+**Level:** C  
+**Tests:**
+  - `tests/excluded_log.rs::the_cluster_cut_off_is_the_latest_start_among_the_active_members`
 
 ---
 

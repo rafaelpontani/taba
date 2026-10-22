@@ -103,7 +103,10 @@ impl NodeStateStore {
                 params![EXCLUDED_INHERITED],
             )
         } else {
-            conn.execute("DELETE FROM state WHERE key = ?1", params![EXCLUDED_INHERITED])
+            conn.execute(
+                "DELETE FROM state WHERE key = ?1",
+                params![EXCLUDED_INHERITED],
+            )
         };
         result.map(|_| ()).map_err(|e| self.db.fail(e))
     }

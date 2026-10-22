@@ -49,7 +49,7 @@ Extraído de `cluster/protocol/http.rs`, o tradutor entre `Request` e HTTP.
 | **Membros e canal** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
 | **Definições** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
 | **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
-| **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
+| **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/excluded`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
 | **Observabilidade** | `GET /cluster/status`; `GET /cluster/stats/topics`; `GET /cluster/stats/topics/{topic}/groups` |
 | **Backup em S3** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved`; `GET /cluster/backup/status`, `GET /cluster/departed` |
 | **Repasse** | `* /cluster/forward/{caminho}`; `* /cluster/node-call/{caminho}` |
@@ -142,6 +142,7 @@ Todos os streams seguem o contrato [NDJSON](#streams-ndjson).
 | Rota | Faz |
 |---|---|
 | `GET /cluster/blocks/{id}/ids` | IDs de mensagens que o nó tem para o bloco, com o tópico, ordenados por ID (`BlockIdLine`: `id`, `topic`, e na FIFO `deleteAt`). **Primeiro passo** da sincronização |
+| `GET /cluster/blocks/{id}/excluded?from=&to=` | O **log de excluídos** do nó para o bloco ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)): uma linha por `id` que saiu do tópico morto (`id`, `topic`, `position`, `atMs`), ordenada por ID, com os IDs **inclusivos**. Quem sincroniza o bloco copia o log junto com as mensagens |
 | `GET /cluster/blocks/{id}/messages?from=&to=` | As mensagens do bloco na faixa (IDs **inclusivos**): `MessageRecord`. É a chamada **balanceada** entre origens. Na FIFO, a mensagem com exclusão lógica vem **sem corpo** e com `deleteAt` |
 | `GET /cluster/blocks/{id}/messages/{messageId}` | **Uma** mensagem; último recurso para uma que faltou numa faixa |
 | `GET /cluster/message-loss` | A tabela `losses` do nó (`LossLine`: `id`, `topic`); aceita quem não é membro |
@@ -175,7 +176,7 @@ Só existem com o backup configurado ([33-backup-s3.md](33-backup-s3.md)); sem e
 
 ## Streams NDJSON
 
-As rotas que movem volume (`/cluster/topics`, `/cluster/tokens`, `/cluster/definitions/tombstones`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/messages`, `/cluster/message-loss` e o corpo de `/cluster/messages/recover`) **não usam a paginação do cliente**: quem sincroniza precisa saber que recebeu **tudo**.
+As rotas que movem volume (`/cluster/topics`, `/cluster/tokens`, `/cluster/definitions/tombstones`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/excluded`, `/cluster/blocks/{id}/messages`, `/cluster/message-loss` e o corpo de `/cluster/messages/recover`) **não usam a paginação do cliente**: quem sincroniza precisa saber que recebeu **tudo**.
 
 | Regra | Efeito |
 |---|---|

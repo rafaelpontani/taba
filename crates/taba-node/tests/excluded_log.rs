@@ -136,3 +136,86 @@ async fn the_dead_letter_records_the_exclusion_in_the_source_queue_on_every_node
     }
     cluster.shutdown().await;
 }
+
+/// A node that joins copies, block by block, the log its sources recorded, and records from when they
+/// record (the latest start among them), not from its own birth.
+/// UC: UC-SIN-031
+#[tokio::test]
+async fn a_new_node_copies_the_log_of_its_sources_and_inherits_their_start() {
+    let mut cluster = TestCluster::start(2).await;
+    create_queue(cluster.node(1), json!({"name": "orders", "type": "queue"})).await;
+    publish(cluster.node(1), "orders").await;
+    let message = consume_one(cluster.node(2), "orders").await;
+    let id = message["id"].as_str().unwrap().to_owned();
+    let token = message["receiptToken"].as_str().unwrap().to_owned();
+    let ack = cluster
+        .node(1)
+        .client
+        .delete(cluster.node(1).client_url(&format!(
+            "/topics/orders/messages/{id}?receiptToken={token}"
+        )))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ack.status(), 204);
+    for number in 1..=2 {
+        let messages = messages_of(cluster.node(number));
+        let wanted = id.clone();
+        eventually("the exclusion on the sources", move || {
+            messages.is_excluded("orders", &wanted)
+        })
+        .await;
+    }
+    let sources_since = messages_of(cluster.node(1)).excluded_since();
+
+    cluster.clock.advance(Duration::from_secs(3600));
+    cluster.add_node(false).await;
+
+    let newcomer = messages_of(cluster.node(3));
+    let wanted = id.clone();
+    eventually("the exclusion copied to the new node", {
+        let newcomer = newcomer.clone();
+        move || newcomer.is_excluded("orders", &wanted)
+    })
+    .await;
+    assert_eq!(
+        newcomer.excluded_since(),
+        sources_since,
+        "the new node records from when its sources do, not from the hour it joined"
+    );
+    cluster.shutdown().await;
+}
+
+/// The cluster's cut-off is the most recent start among the active members; the operator reads it in
+/// `GET /health/cluster` (`summary.excludedCutoff`) and each node's own in its `NodeStatus`.
+/// UC: UC-SIN-032
+/// UC: UC-OPS-052
+#[tokio::test]
+async fn the_cluster_cut_off_is_the_latest_start_among_the_active_members() {
+    let cluster = TestCluster::start(3).await;
+    let first = messages_of(cluster.node(1)).excluded_since();
+    let later = first + 5_000;
+    // The seed never synchronized, so it has not inherited yet: it takes the later date.
+    assert!(
+        messages_of(cluster.node(1))
+            .inherit_excluded_since(later)
+            .unwrap()
+    );
+
+    let view = cluster.node(2).stats("/health/cluster").await;
+    let wanted = taba_node::core::time::format_ms(later);
+    assert_eq!(view["summary"]["excludedCutoff"], wanted);
+    let nodes = view["nodes"].as_array().unwrap();
+    let seed = nodes
+        .iter()
+        .find(|n| n["status"]["excludedSince"] == wanted)
+        .expect("the seed shows its own start");
+    assert_eq!(seed["reachable"], true);
+    assert!(
+        nodes
+            .iter()
+            .all(|n| n["status"]["excludedSince"].as_str().is_some()),
+        "every node shows its start"
+    );
+    cluster.shutdown().await;
+}

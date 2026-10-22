@@ -437,6 +437,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         )
     };
     check_save_mark(&saves, dev && config.resume_on_start, topics.count());
+    // The start of the continuous recording of the excluded log is fixed when the node starts, not at the first exclusion.
+    messages.excluded_since();
     {
         let shared = shared.clone();
         messages.on_failure(Arc::new(move || {

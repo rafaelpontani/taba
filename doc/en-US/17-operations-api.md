@@ -81,10 +81,10 @@ During a real failure (a node brought down with `kill`), the same route showed: 
 | `partial` | `true` if some node did not answer |
 | `worstCondition` | The one of highest severity (`ok` if none) |
 | `conditions` | List of `{condition, severity}` ([13-observability.md](13-observability.md)) |
-| `summary` | `members` (count per state), `membersVersion`, `quorumAvailable`, `syncingBlocks` |
+| `summary` | `members` (count per state), `membersVersion`, `quorumAvailable`, `syncingBlocks`, `excludedCutoff` (the cut-off date of the log of excluded messages: the most recent `excludedSince` among the active members; `null` with none) |
 | `nodes` | One per member: `nodeId`, `reachable`, `status` (`NodeStatus`, or `null`) |
 
-**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (if configured), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) and `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
+**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (if configured), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `excludedSince` (since when the node records the log of excluded messages), `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) and `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
 
 ---
 

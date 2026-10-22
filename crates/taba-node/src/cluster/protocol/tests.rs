@@ -367,6 +367,14 @@ fn requests() -> Vec<Request> {
                 limit: Some(200),
             },
         },
+        Request::BlockExcluded {
+            block: "00000000000000ab".into(),
+            query: StreamQuery {
+                from: Some(guid(1)),
+                to: None,
+                limit: Some(200),
+            },
+        },
         Request::BlockMessages {
             block: "00000000000000ab".into(),
             query: StreamQuery::default(),
@@ -408,7 +416,7 @@ fn requests() -> Vec<Request> {
     ]
 }
 
-/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026
+/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026, UC-SIN-031
 #[test]
 fn every_request_survives_the_trip_to_http_and_back() {
     for request in requests() {

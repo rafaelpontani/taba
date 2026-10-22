@@ -81,10 +81,10 @@ Durante uma falha real (um nó derrubado com `kill`), a mesma rota mostrou: `con
 | `partial` | `true` se algum nó não respondeu |
 | `worstCondition` | A de maior severidade (`ok` se nenhuma) |
 | `conditions` | Lista de `{condition, severity}` ([13-observabilidade.md](13-observabilidade.md)) |
-| `summary` | `members` (contagem por estado), `membersVersion`, `quorumAvailable`, `syncingBlocks` |
+| `summary` | `members` (contagem por estado), `membersVersion`, `quorumAvailable`, `syncingBlocks`, `excludedCutoff` (a data de corte do log de excluídos: a mais recente das `excludedSince` entre os membros ativos; `null` sem nenhum) |
 | `nodes` | Um por membro: `nodeId`, `reachable`, `status` (`NodeStatus`, ou `null`) |
 
-**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (se configurados), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) e `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
+**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (se configurados), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `excludedSince` (desde quando o nó grava o log de excluídos), `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) e `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
 
 ---
 

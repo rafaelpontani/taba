@@ -29,7 +29,7 @@ use crate::cluster::service::ClusterService;
 use crate::cluster::state::{DrainState, NodeShared, NodeState};
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
-use crate::core::time::format_ms;
+use crate::core::time::{format_ms, parse_ms};
 use crate::engine::messages::Messages;
 use crate::engine::messages::stats::StatsRules;
 
@@ -211,6 +211,7 @@ pub fn node_status(parts: &StatusParts, cluster: Option<&ClusterService>) -> Val
         "drainState": node.drain_state().as_str(),
         "startedAt": format_ms(unix_ms(node.started_at)),
         "collectedAt": now,
+        "excludedSince": format_ms(parts.messages.excluded_since()),
         "storage": storage_json,
         "runtime": runtime_json(&parts.telemetry),
         "signals": signals,
@@ -358,6 +359,13 @@ pub(super) async fn cluster_health(
         && answered
             .iter()
             .all(|s| s["drainState"] == "draining" || s["drainState"] == "drained");
+    // The cut-off of the excluded log: the most recent start among the active members, because an exclusion
+    // older than that may be missing from some of them (doc 37, section 4.4).
+    let excluded_cutoff = answered
+        .iter()
+        .filter(|s| s["state"] == "active")
+        .filter_map(|s| s["excludedSince"].as_str().and_then(parse_ms))
+        .max();
     let stop_list = match (&state.backup, stopped) {
         (Some(backup), true) => backup.read_stop_list().await,
         _ => None,
@@ -378,6 +386,7 @@ pub(super) async fn cluster_health(
             "stopped": stopped,
             "plannedStop": stop_list.is_some(),
             "stoppedAt": stop_list.as_ref().map(|l| format_ms(l.at_ms)),
+            "excludedCutoff": excluded_cutoff.map(format_ms),
         },
         "nodes": nodes,
     })))
