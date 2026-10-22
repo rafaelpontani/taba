@@ -335,6 +335,22 @@ pub struct Cluster {
     pub recovery_timeout: Option<Duration>,
     pub reunion_interval: Option<Duration>,
     pub sync: ClusterSync,
+    pub restore: ClusterRestore,
+}
+
+/// The restoration of the previous lives' messages (doc 37, sections 4.4, 4.8 and 4.14).
+#[derive(Debug, Clone)]
+pub struct ClusterRestore {
+    /// `cluster.restore.grace` (`G`): how long the restoration waits for the expected nodes.
+    pub grace: Duration,
+    /// `cluster.restore.strict`: after `G` the restoration stays held until the operator forces it.
+    pub strict: bool,
+    /// `cluster.restore.clock-slack`: tolerance when comparing the clocks of two nodes.
+    pub clock_slack: Duration,
+    /// `cluster.restore.probe.timeout`: total time spent probing the old addresses.
+    pub probe_timeout: Duration,
+    /// `cluster.restore.probe.interval`: time between two probes.
+    pub probe_interval: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -653,6 +669,18 @@ impl Config {
         }
         if cluster.vote_min_voters == 0 {
             problems.push("cluster.vote.min-voters must be 1 or more".into());
+        }
+        if cluster.restore.grace.is_zero() {
+            problems.push("cluster.restore.grace must be greater than zero".into());
+        }
+        if cluster.restore.probe_interval.is_zero() {
+            problems.push("cluster.restore.probe.interval must be greater than zero".into());
+        }
+        if cluster.restore.probe_timeout < cluster.restore.probe_interval {
+            problems.push(
+                "cluster.restore.probe.timeout cannot be shorter than cluster.restore.probe.interval"
+                    .into(),
+            );
         }
         if cluster.virtual_nodes == 0 {
             problems.push("ring.virtual-nodes must be 1 or more".into());
@@ -1034,6 +1062,13 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
             range_size: s.opt("cluster.sync.range.size")?,
             log_max_bytes: s.opt::<Bytes>("cluster.sync.log.max-bytes")?.map(|b| b.0),
             timeout: s.opt("cluster.sync.timeout")?,
+        },
+        restore: ClusterRestore {
+            grace: s.get("cluster.restore.grace")?,
+            strict: s.get("cluster.restore.strict")?,
+            clock_slack: s.get("cluster.restore.clock-slack")?,
+            probe_timeout: s.get("cluster.restore.probe.timeout")?,
+            probe_interval: s.get("cluster.restore.probe.interval")?,
         },
     })
 }

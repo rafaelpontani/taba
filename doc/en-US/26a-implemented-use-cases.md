@@ -48,14 +48,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 3 | 12 |
-| `RTN` | Return of an excluded node and recovery of losses | 17 | 0 |
+| `RTN` | Return of an excluded node and recovery of losses | 22 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
 | `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
 | `DEV` | Development mode | 3 | 10 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 21 | 0 |
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 40 | 9 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 3 | 7 |
-| `CFG` | Configuration and startup validations | 10 | 2 |
+| `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 40 | 0 |
 
 ## TOP: Topics: create, list, read, change and remove
@@ -6818,6 +6818,61 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-RTN-018
+
+**Case:** A **life** (the disk of an earlier run) is restored only if its `last_seen` is **later than the cluster cut-off date plus the clock slack** (`cluster.restore.clock-slack`); with no known cut-off date, no life is restorable  
+**Then:** a life outside the window follows the path of the listed losses (new identity, disk discarded); the slack leans to the safe side (a life too close to the date is not restored).  
+**Level:** U  
+**Tests:**
+  - `src/cluster/restore/tests.rs::a_life_is_restorable_only_if_seen_after_the_cutoff_plus_the_clock_slack`
+
+---
+
+### UC-RTN-019
+
+**Case:** The life's **manifest** (`manifest.json` in its folder) keeps the node ID, the active members of the table with their IPs and port, the table version, the `last_seen` and the watermark of the largest `id`; it is written by atomic replacement  
+**Then:** it reads back the same, a new write (the periodic `last_seen`) replaces the previous one leaving no temporary file, and a folder without a readable manifest (a life of an earlier version) is not a restorable life.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/restore/tests.rs::the_manifest_is_written_atomically_and_read_back`
+  - `src/cluster/restore/tests.rs::a_folder_without_a_readable_manifest_is_not_a_life`
+
+---
+
+### UC-RTN-020
+
+**Case:** The restoration of the old messages waits for the **expected nodes** (the active members of the **biggest** old table, by the manifests announced): with all of them present it starts at once; with one missing it waits for the grace period `G` (`cluster.restore.grace`, 5 min)  
+**Then:** after `G` it goes on with a warning and the nodes that are present; with `cluster.restore.strict=true` it stays held until the force operation, and forcing releases it even before `G`.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/restore/tests.rs::the_expected_nodes_are_the_members_of_the_biggest_old_table`
+  - `src/cluster/restore/tests.rs::the_restoration_waits_for_the_expected_nodes_until_the_grace_period`
+  - `src/cluster/restore/tests.rs::in_strict_mode_the_restoration_stays_held_after_the_grace_period_until_forced`
+
+---
+
+### UC-RTN-021
+
+**Case:** **Property** (model of a cluster that stops as a whole): with **every expected node present** and the rule of the window, no message already acknowledged (ack) is delivered again, whatever the nodes' stops and the log trims  
+**Then:** the test sweeps 2000 random histories and fails on the first redelivery; the same model **without** the window rule does produce redeliveries (the test proves the property has teeth).  
+**Level:** U (model; the simulated-cluster test comes with the restoration)  
+**Tests:**
+  - `src/cluster/restore/tests.rs::with_every_expected_node_present_no_consumed_message_comes_back`
+  - `src/cluster/restore/tests.rs::the_property_has_teeth_without_the_rule_of_the_window_a_consumed_message_comes_back`
+
+---
+
+### UC-RTN-022
+
+**Case:** **Property** (the same model, with absent nodes): a message already acknowledged only comes back if **no present node** logged its ack; and, while an expected node is missing and `G` has not passed, the restoration does not start (not even in strict mode)  
+**Then:** the residual redelivery of section 4.11 only happens when whoever logged the exclusion is absent, and only after `G` (or after forcing).  
+**Level:** U (model; the simulated-cluster test comes with the restoration)  
+**Tests:**
+  - `src/cluster/restore/tests.rs::with_a_node_missing_only_what_every_logger_of_it_missed_can_come_back`
+  - `src/cluster/restore/tests.rs::nothing_starts_before_the_grace_period_while_an_expected_node_is_missing`
+
+---
+
 
 ## FWD: Forwarding of client calls
 
@@ -7989,6 +8044,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/config/source/tests.rs::durations_need_a_unit`
   - `src/config/source/tests.rs::sizes_are_binary_and_accept_plain_bytes`
+
+---
+
+### UC-CFG-013
+
+**Case:** The `cluster.restore.*` parameters (`grace` 5m, `strict` false, `clock-slack` 5s, `probe.timeout` 2h, `probe.interval` 10s) have defaults; a zero `grace` or `probe.interval`, or a `probe.timeout` shorter than `probe.interval`, are validation problems; a value of the wrong type is refused when read  
+**Then:** the node does not start with invalid values and shows the key.  
+**Level:** U  
+**Tests:**
+  - `src/config/tests.rs::the_restore_parameters_have_defaults_and_invalid_values_stop_the_start`
 
 ---
 

@@ -10,6 +10,7 @@ pub mod members;
 pub mod protocol;
 pub mod recovery;
 pub mod replication;
+pub mod restore;
 pub mod service;
 pub mod state;
 pub mod sync;

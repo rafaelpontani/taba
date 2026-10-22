@@ -165,6 +165,58 @@ fn the_cluster_parameters_that_were_to_be_defined_have_working_defaults() {
     );
 }
 
+/// UC: UC-CFG-013
+#[test]
+fn the_restore_parameters_have_defaults_and_invalid_values_stop_the_start() {
+    let c = prod_with(&[]).unwrap();
+    let restore = &c.cluster.restore;
+    assert_eq!(restore.grace, std::time::Duration::from_secs(300));
+    assert!(!restore.strict);
+    assert_eq!(restore.clock_slack, std::time::Duration::from_secs(5));
+    assert_eq!(restore.probe_timeout, std::time::Duration::from_secs(7200));
+    assert_eq!(restore.probe_interval, std::time::Duration::from_secs(10));
+    // Values that make no sense are validation problems...
+    for (variable, value, key) in [
+        ("TABA_CLUSTER_RESTORE_GRACE", "0s", "cluster.restore.grace"),
+        (
+            "TABA_CLUSTER_RESTORE_PROBE_INTERVAL",
+            "0s",
+            "cluster.restore.probe.interval",
+        ),
+        (
+            "TABA_CLUSTER_RESTORE_PROBE_TIMEOUT",
+            "5s",
+            "cluster.restore.probe.timeout",
+        ),
+    ] {
+        let found = problems(prod_with(&[(variable, value)]));
+        assert!(found.contains(key), "{variable}={value}: {found}");
+    }
+    // ...and values that are not even of the right type are refused when read.
+    for (variable, value, key) in [
+        (
+            "TABA_CLUSTER_RESTORE_GRACE",
+            "soon",
+            "cluster.restore.grace",
+        ),
+        (
+            "TABA_CLUSTER_RESTORE_STRICT",
+            "maybe",
+            "cluster.restore.strict",
+        ),
+        (
+            "TABA_CLUSTER_RESTORE_CLOCK_SLACK",
+            "-1",
+            "cluster.restore.clock-slack",
+        ),
+    ] {
+        let error = prod_with(&[(variable, value)]).unwrap_err().to_string();
+        assert!(error.contains(key), "{variable}={value}: {error}");
+    }
+    let strict = prod_with(&[("TABA_CLUSTER_RESTORE_STRICT", "true")]).unwrap();
+    assert!(strict.cluster.restore.strict);
+}
+
 #[test]
 fn development_forces_a_single_node_and_warns_about_ignored_parameters() {
     let c = parse_env(&[

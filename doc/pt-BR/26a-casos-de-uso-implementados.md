@@ -48,14 +48,14 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 3 | 12 |
-| `RTN` | Retorno de nó excluído e recuperação de perdas | 17 | 0 |
+| `RTN` | Retorno de nó excluído e recuperação de perdas | 22 | 0 |
 | `FWD` | Repasse de chamadas de cliente | 4 | 8 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
 | `DEV` | Modo desenvolvimento | 3 | 10 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 21 | 0 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 40 | 9 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 3 | 7 |
-| `CFG` | Configuração e validações de partida | 10 | 2 |
+| `CFG` | Configuração e validações de partida | 11 | 2 |
 | `BKP` | Backup opcional em S3 | 40 | 0 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
@@ -6818,6 +6818,61 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-RTN-018
+
+**Caso:** Uma **vida** (disco de uma execução anterior) só é restaurada se o `last_seen` dela é **posterior à data de corte do cluster mais a folga de relógio** (`cluster.restore.clock-slack`); sem data de corte conhecida, nenhuma vida é restaurável  
+**Então:** a vida fora da janela segue o caminho das perdas listadas (identidade nova, disco descartado); a folga pende para o lado seguro (uma vida perto demais da data não é restaurada).  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/restore/tests.rs::a_life_is_restorable_only_if_seen_after_the_cutoff_plus_the_clock_slack`
+
+---
+
+### UC-RTN-019
+
+**Caso:** O **manifesto** da vida (`manifest.json` na pasta dela) guarda o ID do nó, os membros ativos da tabela com os IPs e a porta, a versão da tabela, o `last_seen` e a marca d'água do maior `id`; é gravado por substituição atômica  
+**Então:** ele é lido de volta igual, uma gravação nova (o `last_seen` periódico) substitui a anterior sem deixar arquivo temporário, e uma pasta sem manifesto legível (vida de versão anterior) não é uma vida restaurável.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/restore/tests.rs::the_manifest_is_written_atomically_and_read_back`
+  - `src/cluster/restore/tests.rs::a_folder_without_a_readable_manifest_is_not_a_life`
+
+---
+
+### UC-RTN-020
+
+**Caso:** A restauração das mensagens antigas espera os **nós esperados** (os membros ativos da **maior** tabela antiga, pelos manifestos anunciados): com todos presentes ela começa na hora; faltando algum, espera o prazo `G` (`cluster.restore.grace`, 5 min)  
+**Então:** passado `G` ela segue com um aviso e os nós presentes; com `cluster.restore.strict=true` ela fica retida até a operação de forçar, e forçar a libera mesmo antes de `G`.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/restore/tests.rs::the_expected_nodes_are_the_members_of_the_biggest_old_table`
+  - `src/cluster/restore/tests.rs::the_restoration_waits_for_the_expected_nodes_until_the_grace_period`
+  - `src/cluster/restore/tests.rs::in_strict_mode_the_restoration_stays_held_after_the_grace_period_until_forced`
+
+---
+
+### UC-RTN-021
+
+**Caso:** **Propriedade** (modelo de um cluster que para inteiro): com **todos os nós esperados presentes** e a regra da janela, nenhuma mensagem já confirmada (ack) é entregue de novo, sejam quais forem as paradas dos nós e os cortes dos logs  
+**Então:** o teste varre 2000 histórias aleatórias e falha na primeira reentrega; o mesmo modelo **sem** a regra da janela produz reentregas (o teste prova que a propriedade tem dentes).  
+**Nível:** U (modelo; o teste de cluster simulado vem com a restauração)  
+**Testes:**
+  - `src/cluster/restore/tests.rs::with_every_expected_node_present_no_consumed_message_comes_back`
+  - `src/cluster/restore/tests.rs::the_property_has_teeth_without_the_rule_of_the_window_a_consumed_message_comes_back`
+
+---
+
+### UC-RTN-022
+
+**Caso:** **Propriedade** (o mesmo modelo, com nós ausentes): uma mensagem já confirmada só volta se **nenhum nó presente** registrou o ack dela; e, enquanto falta um nó esperado e `G` não passou, a restauração não começa (nem no modo estrito)  
+**Então:** a reentrega residual da seção 4.11 só acontece quando quem registrou a exclusão está ausente, e só depois de `G` (ou de forçar).  
+**Nível:** U (modelo; o teste de cluster simulado vem com a restauração)  
+**Testes:**
+  - `src/cluster/restore/tests.rs::with_a_node_missing_only_what_every_logger_of_it_missed_can_come_back`
+  - `src/cluster/restore/tests.rs::nothing_starts_before_the_grace_period_while_an_expected_node_is_missing`
+
+---
+
 
 ## FWD: Repasse de chamadas de cliente
 
@@ -7989,6 +8044,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/config/source/tests.rs::durations_need_a_unit`
   - `src/config/source/tests.rs::sizes_are_binary_and_accept_plain_bytes`
+
+---
+
+### UC-CFG-013
+
+**Caso:** Os parâmetros `cluster.restore.*` (`grace` 5m, `strict` false, `clock-slack` 5s, `probe.timeout` 2h, `probe.interval` 10s) têm padrão; `grace` ou `probe.interval` zerados, ou `probe.timeout` menor que `probe.interval`, são problemas de validação; um valor de tipo errado é recusado na leitura  
+**Então:** o nó não sobe com valores inválidos e mostra a chave.  
+**Nível:** U  
+**Testes:**
+  - `src/config/tests.rs::the_restore_parameters_have_defaults_and_invalid_values_stop_the_start`
 
 ---
 
