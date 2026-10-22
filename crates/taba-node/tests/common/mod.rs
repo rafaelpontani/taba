@@ -38,9 +38,17 @@ pub struct TestNodeBuilder {
     real_ip: Option<IpAddr>,
     /// The backup's S3 object store (the in-memory one, shared among the test's nodes).
     backup_store: Option<Arc<dyn ObjectStore>>,
+    /// The program version the node announces (simulates another release).
+    program_version: Option<String>,
 }
 
 impl TestNodeBuilder {
+    /// The program version the node announces to the cluster, instead of the build's.
+    pub fn program_version(mut self, version: &str) -> Self {
+        self.program_version = Some(version.to_owned());
+        self
+    }
+
     /// Sets a parameter as a `TABA_*` variable (`("TABA_API_PORT", "0")`).
     pub fn env(mut self, name: &str, value: &str) -> Self {
         self.env.retain(|(n, _)| n != name);
@@ -103,6 +111,7 @@ impl TestNodeBuilder {
             .unwrap_or_else(|| Arc::new(ManualClock::at_doc_epoch()));
         let real_ip = self.real_ip;
         let backup_store = self.backup_store.clone();
+        let program_version = self.program_version.clone();
         let cluster = self.network.map(|(network, host)| {
             let attach_to = network.clone();
             ClusterDeps {
@@ -119,6 +128,7 @@ impl TestNodeBuilder {
                 deps.clock = clock.clone();
                 deps.bind_ip = ip;
                 deps.backup_store = backup_store.clone();
+                deps.program_version = program_version.clone();
                 // The cluster recognizes the caller by IP: each node calls from its own.
                 if let Some(cluster) = deps.cluster.as_mut() {
                     cluster.transport = Arc::new(
@@ -133,6 +143,7 @@ impl TestNodeBuilder {
                 cluster,
                 tls: None,
                 backup_store: backup_store.clone(),
+                program_version: program_version.clone(),
             },
         };
         let node = node::start(config, deps).await?;
@@ -171,6 +182,7 @@ impl TestNode {
             clock: None,
             real_ip: None,
             backup_store: None,
+            program_version: None,
         }
     }
 

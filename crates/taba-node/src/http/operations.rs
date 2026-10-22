@@ -205,7 +205,7 @@ pub fn node_status(parts: &StatusParts, cluster: Option<&ClusterService>) -> Val
     let now = format_ms(parts.clock.now_millis());
     json!({
         "nodeId": node.node_id(),
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": cluster.map_or(env!("CARGO_PKG_VERSION"), |c| c.program_version()),
         "mode": node.mode.as_str(),
         "state": node.state().as_str(),
         "drainState": node.drain_state().as_str(),

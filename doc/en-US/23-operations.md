@@ -50,13 +50,19 @@ Expected on a healthy cluster: `summary.members.active = N`, `quorumAvailable: t
 
 ## Upgrade the version (rolling)
 
-**One node at a time**, waiting for `healthy` (`/health/ready`) before the next. Verified: restarting `taba-2`, `taba-3` and `taba-1` in sequence (`docker/cluster.sh restart <node>`) with 14 messages in the topic and consuming everything returned **14 of 14**.
+**Start the new version beside the old one: the new nodes retire the old ones.** Each node announces its program version (the `version` field of its `NodeStatus`), and a node that sees members of an **earlier** version drains them, **one at a time**, with the same drain as "Retire a node on purpose": the old node writes its memory to disk and leaves the table, and the orchestrator can then stop it.
 
-1. Stop the node with `SIGTERM` (it does drain, writes memory to disk, deregisters and exits with code 0).
-2. Start the new version (it joins as a **new node**, synchronizes, becomes ready).
-3. Check `health cluster` (no conditions) and **only then** go to the next.
+1. Add a node of the new version (Compose: scale up with the new image; Kubernetes: the rollout adds the new pod). It joins as a **new node** and synchronizes.
+2. When it is `active`, the cluster drains the oldest member. The next drain only starts after the previous one left the table, and **only if at least 3 nodes stay active afterwards**: in a cluster of 3, add the new node first (4 active) so that an old one can leave.
+3. Repeat until no node of an earlier version is left, and check `health cluster` (no conditions).
 
-> **All nodes of a cluster must run the same version:** the cluster API is internal and has no compatibility guarantee between versions ([18-cluster-api.md](18-cluster-api.md)). `membersVersion` goes up at each membership change, which is normal in a rolling upgrade.
+Only **one** node acts: the lowest `nodeId` among those of the newest version, so two nodes never ask for different drains at once. A node of an **earlier** version that joins does not drain the newer ones; the new ones retire it. A member that publishes no version (an earlier release) counts as the oldest.
+
+If a node does not finish draining within `drain.timeout` plus 30 s, the process **stops on it** and the `upgrade-stalled` condition appears (warning): cancel the node's drain (`DELETE /node/drain`) or stop it, and the upgrade goes on.
+
+**Restarting in place, one node at a time,** also works, waiting for `healthy` (`/health/ready`) before the next. Verified: restarting `taba-2`, `taba-3` and `taba-1` in sequence (`docker/cluster.sh restart <node>`) with 14 messages in the topic and consuming everything returned **14 of 14**.
+
+> The versions are **not** made compatible with each other: the cluster API is internal and has no compatibility guarantee between versions ([18-cluster-api.md](18-cluster-api.md)); what a newer version adds between nodes is only sent to nodes that announced that version. `membersVersion` goes up at each membership change, which is normal in a rolling upgrade.
 
 The `stop_grace_period` (Compose) or `terminationGracePeriodSeconds` (Kubernetes, 30 s by default) must be **greater than `drain.timeout`** (25 s). The repository's Compose uses **40 s**. Otherwise the process is killed before recording the result.
 
@@ -86,6 +92,7 @@ Leaving by drain does **not** cause freezing. If the drain requested through the
 | `quorum-lost` | **critical** | Fewer healthy nodes than `cluster.vote.min-voters` (2): **no exclusion takes effect** | There is **only one** node alive. See "Stuck cluster" below |
 | `membership-divergent` | **critical** | Member tables with different versions | Incomplete propagation of a change; it usually goes away by itself in seconds. Persistent: look at the `membership` logs and restart the diverging node (**one at a time**) |
 | `storage-pressure` | warning | Free space in `storage.dir` below `stats.disk.free-min` (only fires if configured) | Free disk or enlarge the volume **before** it fills: **a full disk takes the node to `failed`** |
+| `upgrade-stalled` | warning | The upgrade that retires earlier versions stopped on a node that did not finish draining in time | Cancel that node's drain (`DELETE /node/drain` on its operations port) or stop it; the upgrade goes on with the next. The node is the one in the `draining` state in `GET /nodes` |
 
 ## Failures and how to react
 

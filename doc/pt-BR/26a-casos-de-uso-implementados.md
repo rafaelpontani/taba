@@ -42,7 +42,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 13 | 19 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 17 | 8 |
-| `ING` | Entrada de nó (bootstrap) | 23 | 5 |
+| `ING` | Entrada de nó (bootstrap) | 30 | 5 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
@@ -5509,6 +5509,85 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `src/cluster/transport/http/tests.rs::every_node_listing_opens_a_new_connection_so_the_balancer_can_pick_another_node`
+
+---
+
+### UC-ING-029
+
+**Caso:** Um nó de versão **mais nova** entra num cluster com nós de versão anterior  
+**Então:** ele os **retira, um a um**, pelo drain que já existe (a versão de cada membro vem do `version` do `NodeStatus`). O drain seguinte só começa depois que o anterior saiu da tabela; no máximo um membro está em `draining` por vez. O primeiro a sair é o de versão mais antiga (quem não publica versão conta como o mais antigo), e a convivência não é tratada com compatibilidade: a versão nova retira as anteriores.  
+**Nível:** C  
+**Testes:**
+  - `tests/upgrade.rs::nodes_of_the_new_version_retire_the_old_ones_one_at_a_time`
+  - `src/cluster/upgrade/tests.rs::the_newest_version_drains_the_oldest_member_first`
+  - `src/cluster/upgrade/tests.rs::a_cluster_of_one_version_has_nothing_to_retire`
+  - `src/cluster/upgrade/tests.rs::the_next_drain_waits_for_the_previous_one_to_leave`
+
+---
+
+### UC-ING-030
+
+**Caso:** O drain do upgrade ainda não pode começar  
+**Então:** ele **espera** se o cluster ficaria com menos de **3 nós ativos** depois do drain, se o nó que age ainda não está `active` (ou está em drain), se algum membro está em `syncing`, ou se algum membro não respondeu a consulta de versão (a rodada não decide nada).  
+**Nível:** C  
+**Testes:**
+  - `tests/upgrade.rs::the_upgrade_does_not_drain_if_fewer_than_three_would_stay_active`
+  - `src/cluster/upgrade/tests.rs::the_drain_does_not_start_if_it_would_leave_fewer_than_three_active`
+  - `src/cluster/upgrade/tests.rs::the_drain_does_not_start_while_the_node_is_not_ready_or_a_member_is_syncing`
+  - `src/cluster/upgrade/tests.rs::a_member_that_did_not_answer_makes_the_round_decide_nothing`
+
+---
+
+### UC-ING-031
+
+**Caso:** Um nó não termina o drain pedido pelo upgrade dentro do prazo (`drain.timeout` mais 30 s)  
+**Então:** o upgrade **para nesse nó** (não pede o drain de outro) e a condição `upgrade-stalled` (aviso) aparece em `/health/cluster`; o operador decide cancelar o drain do nó ou pará-lo. Quando o nó sai da tabela, a condição some.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/upgrade/tests.rs::a_drain_that_does_not_finish_in_time_stops_the_upgrade_on_that_member`
+  - `src/cluster/health/tests.rs::a_stalled_upgrade_raises_its_condition_as_a_warning`
+
+---
+
+### UC-ING-032
+
+**Caso:** O nó decide se envia a um par algo que só uma versão nova entende  
+**Então:** só envia a quem **anunciou** uma versão igual ou maior; quem não anunciou versão, não respondeu ou ainda não foi visto conta como versão anterior. O próprio nó sempre entende o que a sua versão trouxe.  
+**Nível:** C  
+**Testes:**
+  - `tests/upgrade.rs::a_node_is_only_sent_what_its_version_announced_support_for`
+  - `src/cluster/upgrade/tests.rs::a_member_supports_what_a_version_brought_only_if_it_announced_that_version`
+
+---
+
+### UC-ING-033
+
+**Caso:** Um nó de versão **anterior** entra num cluster de versão mais nova  
+**Então:** ele **não drena** os mais novos: os nós novos o retiram, e os três continuam ativos.  
+**Nível:** C  
+**Testes:**
+  - `tests/upgrade.rs::an_older_node_that_joins_is_retired_and_does_not_drain_the_newer_ones`
+  - `src/cluster/upgrade/tests.rs::an_earlier_version_does_not_drain_the_newer_ones`
+
+---
+
+### UC-ING-034
+
+**Caso:** Vários nós da versão mais nova veem membros anteriores ao mesmo tempo  
+**Então:** só **um age**: o de menor `nodeId` entre os da versão mais nova; os outros esperam. Assim dois nós não pedem drains diferentes ao mesmo tempo.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/upgrade/tests.rs::only_the_lowest_id_among_the_newest_acts`
+
+---
+
+### UC-ING-035
+
+**Caso:** O nó compara duas versões do programa  
+**Então:** vale a precedência do semver: `0.1.9` vem antes de `0.1.10`, um candidato (`-rc.N`) vem antes da sua versão final, o prefixo `v` e o sufixo `+build` não contam, e um texto que não é versão não é nem anterior nem posterior (nunca é drenado por engano).  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/upgrade/tests.rs::versions_compare_by_precedence_and_a_candidate_comes_before_its_final`
 
 ---
 

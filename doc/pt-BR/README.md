@@ -99,6 +99,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | [30-decisoes.md](30-decisoes.md) | Por que cada coisa é como é |
 | [31-pendencias.md](31-pendencias.md) | O que ainda está em aberto |
 | [32-roadmap.md](32-roadmap.md) | O que vem a seguir |
+| [37-retomada-do-cluster.md](37-retomada-do-cluster.md) | Proposta em discussão: retomar o cluster após uma queda total (achado D) |
 
 ## Convenções desta documentação
 

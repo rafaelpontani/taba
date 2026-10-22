@@ -40,7 +40,7 @@ Cada módulo conhece apenas os da esquerda. Isso é verificável: `core` não im
 | `core` | Tipos de domínio e regras puras: IDs (GUID v7), tempo, erros (`ErrorCode`), validações, o **anel de hash**, tópico, token, paginação | Nenhum I/O |
 | `storage` | O banco do nó (`_node.db`), as mensagens em disco, o banco de eventos de sincronização, tokens e perdas | Regras de entrega |
 | `engine` | Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO, dead-letter, tokens, estatísticas | Rede |
-| `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, recuperação, tópicos voláteis, saúde | HTTP de cliente |
+| `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, atualização de versão, recuperação, tópicos voláteis, saúde | HTTP de cliente |
 | `http` | As três APIs, autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
 | `telemetry` | Métricas, traces e logs; exportação OTLP e Prometheus | — |
 | `config` | Arquivo `.yml`, variáveis `TABA_*`, a tabela de parâmetros e as validações de partida | — |
@@ -107,7 +107,7 @@ crates/taba-node/src/
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
                      channel drain health members protocol recovery replication
-                     service state sync tls transport (http, memory) vote volatile
+                     service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace

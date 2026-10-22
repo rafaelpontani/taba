@@ -62,6 +62,7 @@
 - [30 Decisões](30-decisoes.md): o porquê, com os códigos D… e PRB-… (gerado)
 - [31 Pendências](31-pendencias.md): o que está em aberto e as descobertas desta documentação (gerado + manual)
 - [32 Roadmap](32-roadmap.md): o que vem a seguir, em marcos
+- [37 Retomada do cluster após queda total](37-retomada-do-cluster.md): proposta em discussão para o achado D — definições persistentes, quarentena das mensagens antigas por vida, lápides e liberação por bloco por quórum
 
 ## Mais
 

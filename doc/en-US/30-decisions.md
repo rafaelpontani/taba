@@ -228,6 +228,14 @@ Decided before the first publish to crates.io and nuget.org.
 |---|---|---|
 | D164 | **AGPL-3.0-only server, Apache-2.0 connectors, contributions under a CLA.** The server (`crates/`, the `taba` image, the chart and the rest of the repository) stays AGPL: whoever offers Taba as a service with modifications must publish them. The connectors (`connectors/`: `taba-client`, `taba-cli`, the `Taba.Client*` packages and the `taba-cli` image) become Apache-2.0, so any application, open or closed, can embed them without taking the AGPL along. The text lives once in `connectors/LICENSE`, and cargo copies it into each crate. Every contribution signs, once, the individual CLA (`CLA.md`, checked by the CLA Assistant): the author keeps the copyright and grants the maintainer the right to also distribute under a commercial license, which keeps the server's dual licensing (AGPL + commercial) open. Versions already published keep the license they shipped with | [README.md](../../README.md#license), [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 
+## Version upgrade (D165)
+
+Decided when the cold-start plan ([37-cluster-cold-start.md](37-cluster-cold-start.md)) started to be executed.
+
+| Code | Decision | Where |
+|---|---|---|
+| D165 | **The new version retires the earlier ones, with no compatibility between them.** A node reads the version of each member in the `version` of its `NodeStatus` (`GET /cluster/status`, which every release already publishes); the member table and the join do not change, so already published versions understand the new node. A member that does not publish a version counts as the oldest; one that does not answer makes the round decide nothing. Only the lowest `nodeId` among the nodes of the newest version acts, and drains the oldest member through `POST /node/drain` (the `NodeCall` path); the next only starts after the previous left the table and **if at least 3 nodes stay active**. If a drain does not finish in `drain.timeout` plus 30 s, the upgrade stops on it and the `upgrade-stalled` condition (warning) shows up. What a newer version adds between nodes is only sent to who announced it (`ClusterService::peer_supports`). The cases that depend on the excluded log and on the quarantine (a node of an earlier version prevents any life from being restored; the disk of an earlier version is not migrated) come with those stages | [23-operations.md](23-operations.md#upgrade-the-version-rolling) |
+
 ## Resolved problems (PRB)
 
 

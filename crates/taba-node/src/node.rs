@@ -100,6 +100,9 @@ pub struct Deps {
     /// The backup object store (the tests hand in the in-memory one). Without it, with
     /// `backup.s3.bucket`, the node opens the S3 client.
     pub backup_store: Option<Arc<dyn ObjectStore>>,
+    /// The program version the node announces to the cluster; without it, the build's. The tests use it to
+    /// simulate a cluster with two releases.
+    pub program_version: Option<String>,
 }
 
 impl Deps {
@@ -154,6 +157,7 @@ impl Default for Deps {
             cluster: None,
             tls: None,
             backup_store: None,
+            program_version: None,
         }
     }
 }
@@ -470,13 +474,17 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
                 port: addr.port(),
                 state: MemberState::Active,
             };
+            let mut rules = ClusterRules::from_config(&config);
+            if let Some(version) = &deps.program_version {
+                rules.program_version = version.clone();
+            }
             let service = ClusterService::new(
                 local,
                 shared.clone(),
                 cluster_deps.transport.clone(),
                 deps.clock.clone(),
                 telemetry.clone(),
-                ClusterRules::from_config(&config),
+                rules,
                 cancel.clone(),
             );
             Some((service, cluster_deps))
@@ -732,6 +740,13 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         let service = service.clone();
         tasks.spawn(async move {
             service.run_reunion().await;
+            Ok(())
+        });
+    }
+    if let Some((service, _)) = &cluster_node {
+        let service = service.clone();
+        tasks.spawn(async move {
+            service.run_upgrade().await;
             Ok(())
         });
     }

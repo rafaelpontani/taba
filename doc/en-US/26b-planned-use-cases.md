@@ -36,7 +36,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 21 | 10 |
 | `INV` | Invisibility on the owner and on the replicas | 19 | 13 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 8 | 17 |
-| `ING` | Node join (bootstrap) | 5 | 23 |
+| `ING` | Node join (bootstrap) | 5 | 30 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 1 | 32 |
 | `FRZ` | Freezing period | 1 | 13 |
 | `CNC` | Concurrency between membership changes | 3 | 12 |

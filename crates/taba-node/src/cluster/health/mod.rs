@@ -38,10 +38,11 @@ pub enum Condition {
     Syncing,
     UnderReplicated,
     StoragePressure,
+    UpgradeStalled,
 }
 
 impl Condition {
-    pub const ALL: [Condition; 8] = [
+    pub const ALL: [Condition; 9] = [
         Condition::WriteQuorumAtRisk,
         Condition::QuorumLost,
         Condition::MembershipDivergent,
@@ -50,6 +51,7 @@ impl Condition {
         Condition::Syncing,
         Condition::UnderReplicated,
         Condition::StoragePressure,
+        Condition::UpgradeStalled,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -62,6 +64,7 @@ impl Condition {
             Condition::Syncing => "syncing",
             Condition::UnderReplicated => "under-replicated",
             Condition::StoragePressure => "storage-pressure",
+            Condition::UpgradeStalled => "upgrade-stalled",
         }
     }
 
@@ -98,6 +101,9 @@ pub struct HealthSignals {
     pub blocks_below_quorum: u64,
     /// Nodes in a freezing period.
     pub frozen_nodes: u64,
+    /// The upgrade retiring earlier versions stopped on a node that did not finish draining.
+    #[serde(default)]
+    pub upgrade_stalled: bool,
 }
 
 impl HealthSignals {
@@ -125,6 +131,9 @@ impl HealthSignals {
         }
         if storage_pressure {
             out.push(Condition::StoragePressure);
+        }
+        if self.upgrade_stalled {
+            out.push(Condition::UpgradeStalled);
         }
         out.sort();
         out
@@ -218,6 +227,7 @@ pub fn collect(service: &ClusterService) -> Option<HealthSignals> {
         blocks_below_replication: below_replication,
         blocks_below_quorum: below_quorum,
         frozen_nodes: membership.frozen_count(service.now(), rules.freezing_duration) as u64,
+        upgrade_stalled: service.upgrade_stalled().is_some(),
     })
 }
 

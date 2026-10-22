@@ -113,6 +113,15 @@ pub struct ClusterRules {
     pub reunion_interval: Duration,
     /// `fifo.forward.max-attempts` (to be defined: 3).
     pub fifo_forward_max_attempts: u32,
+    /// The version of this node's program, which the others read in its `NodeStatus` (D165): the build's
+    /// (`CARGO_PKG_VERSION`), unless whoever assembles the node hands in another (the tests).
+    pub program_version: String,
+    /// How often the node checks whether there are members of an earlier version to retire (D165): the same
+    /// interval as the reunion of partitions.
+    pub upgrade_interval: Duration,
+    /// How long a drain asked for by the upgrade may take before the upgrade stops on it: `drain.timeout` plus
+    /// the time the node takes to leave the table.
+    pub upgrade_drain_deadline: Duration,
 }
 
 impl ClusterRules {
@@ -191,6 +200,12 @@ impl ClusterRules {
                 .reunion_interval
                 .unwrap_or_else(|| (keepalive_interval * 10).max(Duration::from_secs(1))),
             fifo_forward_max_attempts: config.fifo.forward_max_attempts.map_or(3, |n| n.max(1)),
+            program_version: env!("CARGO_PKG_VERSION").to_owned(),
+            upgrade_interval: config
+                .cluster
+                .reunion_interval
+                .unwrap_or_else(|| (keepalive_interval * 10).max(Duration::from_secs(1))),
+            upgrade_drain_deadline: config.drain.timeout + Duration::from_secs(30),
         }
     }
 }
@@ -245,6 +260,8 @@ pub struct ClusterService {
     /// The optional S3 backup (doc 23): its service, by weak reference (the service keeps the
     /// cluster, and the cluster cannot hold it back).
     backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
+    /// The versions of the other members and the upgrade in progress (doc 37, section 4.12).
+    upgrade: super::upgrade::Upgrade,
 }
 
 /// The nodes that left by drain, as `Request::Departed` answers (and as `GET /nodes` reads them).
@@ -365,7 +382,16 @@ impl ClusterService {
             node_calls: OnceLock::new(),
             reads: OnceLock::new(),
             backup: OnceLock::new(),
+            upgrade: super::upgrade::Upgrade::default(),
         })
+    }
+
+    pub(crate) fn upgrade(&self) -> &super::upgrade::Upgrade {
+        &self.upgrade
+    }
+
+    pub(crate) fn node_shared(&self) -> &Arc<NodeShared> {
+        &self.node
     }
 
     /// Attaches the S3 backup. Only the first call counts.
@@ -1912,7 +1938,7 @@ impl ClusterService {
             node_id: self.local().node_id,
             addresses: self.local().addresses,
             port: self.local().port,
-            version: env!("CARGO_PKG_VERSION").to_owned(),
+            version: self.rules.program_version.clone(),
         });
         let mut last = Failure {
             reason: "join",

@@ -50,13 +50,19 @@ Esperado num cluster saudável: `summary.members.active = N`, `quorumAvailable: 
 
 ## Atualizar a versão (rolling)
 
-**Um nó por vez**, esperando `healthy` (`/health/ready`) antes do próximo. Verificado: reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (`docker/cluster.sh restart <nó>`) com 14 mensagens no tópico e consumir tudo devolveu **14 de 14**.
+**Suba a versão nova ao lado da antiga: os nós novos retiram os antigos.** Cada nó anuncia a versão do programa (o campo `version` do seu `NodeStatus`), e um nó que vê membros de versão **anterior** os drena, **um de cada vez**, com o mesmo drain de "Retirar um nó de propósito": o nó antigo grava a memória em disco e sai da tabela, e o orquestrador pode então pará-lo.
 
-1. Pare o nó com `SIGTERM` (ele faz drain, grava a memória em disco, se desregistra e encerra com código 0).
-2. Suba a versão nova (ela entra como **nó novo**, sincroniza, fica pronta).
-3. Confira `health cluster` (sem condições) e **só então** vá ao próximo.
+1. Adicione um nó da versão nova (Compose: aumente as réplicas com a imagem nova; Kubernetes: o rollout acrescenta o pod novo). Ele entra como **nó novo** e sincroniza.
+2. Quando ele está `active`, o cluster drena o membro mais antigo. O drain seguinte só começa depois que o anterior saiu da tabela, e **só se pelo menos 3 nós continuarem ativos** depois dele: num cluster de 3, suba primeiro o nó novo (4 ativos) para que um antigo possa sair.
+3. Repita até não restar nó de versão anterior e confira `health cluster` (sem condições).
 
-> **Todos os nós de um cluster devem rodar a mesma versão:** a API do cluster é interna e não tem garantia de compatibilidade entre versões ([18-api-cluster.md](18-api-cluster.md)). O `membersVersion` sobe a cada mudança de membros, o que é normal num rolling.
+Só **um** nó age: o de menor `nodeId` entre os da versão mais nova, para que dois nós nunca peçam drains diferentes ao mesmo tempo. Um nó de versão **anterior** que entra não drena os mais novos; os novos o retiram. Um membro que não publica versão (uma versão anterior do programa) conta como o mais antigo.
+
+Se um nó não termina o drain em `drain.timeout` mais 30 s, o processo **para nele** e aparece a condição `upgrade-stalled` (aviso): cancele o drain do nó (`DELETE /node/drain`) ou pare-o, e a atualização segue.
+
+**Reiniciar no lugar, um nó por vez,** também funciona, esperando `healthy` (`/health/ready`) antes do próximo. Verificado: reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (`docker/cluster.sh restart <nó>`) com 14 mensagens no tópico e consumir tudo devolveu **14 de 14**.
+
+> As versões **não** são compatíveis entre si: a API do cluster é interna e não tem garantia de compatibilidade entre versões ([18-api-cluster.md](18-api-cluster.md)); o que uma versão nova acrescenta entre nós só é enviado aos nós que anunciaram essa versão. O `membersVersion` sobe a cada mudança de membros, o que é normal numa atualização.
 
 O `stop_grace_period` (Compose) ou `terminationGracePeriodSeconds` (Kubernetes, 30 s por padrão) precisa ser **maior que `drain.timeout`** (25 s). O Compose do repositório usa **40 s**. Senão o processo é morto antes de registrar o resultado.
 
@@ -86,6 +92,7 @@ Sair por drain **não** gera freezing. Se o drain estourar `drain.timeout` pedid
 | `quorum-lost` | **crítica** | Menos nós saudáveis que `cluster.vote.min-voters` (2): **nenhuma exclusão se efetiva** | Há **um só** nó vivo. Veja "Cluster travado" abaixo |
 | `membership-divergent` | **crítica** | Tabelas de membros com versões diferentes | Propagação incompleta de uma mudança; normalmente some sozinha em segundos. Persistente: veja os logs `membership` e reinicie o nó divergente (**um de cada vez**) |
 | `storage-pressure` | aviso | Espaço livre em `storage.dir` abaixo de `stats.disk.free-min` (só dispara se configurado) | Libere disco ou aumente o volume **antes** de encher: **disco cheio leva o nó a `failed`** |
+| `upgrade-stalled` | aviso | A atualização que retira versões anteriores parou num nó que não terminou o drain a tempo | Cancele o drain desse nó (`DELETE /node/drain` na porta de operações dele) ou pare-o; a atualização segue com o próximo. O nó é o que está em `draining` em `GET /nodes` |
 
 ## Falhas e como reagir
 

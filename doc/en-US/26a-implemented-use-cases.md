@@ -42,7 +42,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 13 | 19 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 17 | 8 |
-| `ING` | Node join (bootstrap) | 23 | 5 |
+| `ING` | Node join (bootstrap) | 30 | 5 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
 | `CNC` | Concurrency between membership changes | 12 | 3 |
@@ -5509,6 +5509,85 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/cluster/transport/http/tests.rs::every_node_listing_opens_a_new_connection_so_the_balancer_can_pick_another_node`
+
+---
+
+### UC-ING-029
+
+**Case:** A node of a **newer** version joins a cluster that has nodes of an earlier version  
+**Then:** it **retires them, one at a time**, through the drain that already exists (each member's version comes from the `version` of its `NodeStatus`). The next drain only starts after the previous one left the table; at most one member is in `draining` at a time. The oldest goes first (a member that publishes no version counts as the oldest), and versions are not made compatible with each other: the new one retires the earlier ones.  
+**Level:** C  
+**Tests:**
+  - `tests/upgrade.rs::nodes_of_the_new_version_retire_the_old_ones_one_at_a_time`
+  - `src/cluster/upgrade/tests.rs::the_newest_version_drains_the_oldest_member_first`
+  - `src/cluster/upgrade/tests.rs::a_cluster_of_one_version_has_nothing_to_retire`
+  - `src/cluster/upgrade/tests.rs::the_next_drain_waits_for_the_previous_one_to_leave`
+
+---
+
+### UC-ING-030
+
+**Case:** The upgrade's drain cannot start yet  
+**Then:** it **waits** if the cluster would be left with fewer than **3 active nodes** after the drain, if the acting node is not yet `active` (or is draining), if some member is `syncing`, or if some member did not answer the version query (the round decides nothing).  
+**Level:** C  
+**Tests:**
+  - `tests/upgrade.rs::the_upgrade_does_not_drain_if_fewer_than_three_would_stay_active`
+  - `src/cluster/upgrade/tests.rs::the_drain_does_not_start_if_it_would_leave_fewer_than_three_active`
+  - `src/cluster/upgrade/tests.rs::the_drain_does_not_start_while_the_node_is_not_ready_or_a_member_is_syncing`
+  - `src/cluster/upgrade/tests.rs::a_member_that_did_not_answer_makes_the_round_decide_nothing`
+
+---
+
+### UC-ING-031
+
+**Case:** A node does not finish the drain the upgrade asked for within the deadline (`drain.timeout` plus 30 s)  
+**Then:** the upgrade **stops on that node** (it does not ask another to drain) and the `upgrade-stalled` condition (warning) shows up in `/health/cluster`; the operator decides whether to cancel the node's drain or stop it. When the node leaves the table the condition goes away.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/upgrade/tests.rs::a_drain_that_does_not_finish_in_time_stops_the_upgrade_on_that_member`
+  - `src/cluster/health/tests.rs::a_stalled_upgrade_raises_its_condition_as_a_warning`
+
+---
+
+### UC-ING-032
+
+**Case:** The node decides whether to send a peer something only a newer version understands  
+**Then:** it only sends to whoever **announced** an equal or greater version; whoever announced no version, did not answer or has not been seen yet counts as an earlier version. The node itself always understands what its own version brought.  
+**Level:** C  
+**Tests:**
+  - `tests/upgrade.rs::a_node_is_only_sent_what_its_version_announced_support_for`
+  - `src/cluster/upgrade/tests.rs::a_member_supports_what_a_version_brought_only_if_it_announced_that_version`
+
+---
+
+### UC-ING-033
+
+**Case:** A node of an **earlier** version joins a cluster of a newer version  
+**Then:** it **does not drain** the newer ones: the new nodes retire it, and the three remain active.  
+**Level:** C  
+**Tests:**
+  - `tests/upgrade.rs::an_older_node_that_joins_is_retired_and_does_not_drain_the_newer_ones`
+  - `src/cluster/upgrade/tests.rs::an_earlier_version_does_not_drain_the_newer_ones`
+
+---
+
+### UC-ING-034
+
+**Case:** Several nodes of the newest version see earlier members at the same time  
+**Then:** only **one acts**: the lowest `nodeId` among those of the newest version; the others wait. So two nodes do not ask for different drains at once.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/upgrade/tests.rs::only_the_lowest_id_among_the_newest_acts`
+
+---
+
+### UC-ING-035
+
+**Case:** The node compares two program versions  
+**Then:** semver precedence applies: `0.1.9` comes before `0.1.10`, a candidate (`-rc.N`) comes before its final, the `v` prefix and the `+build` suffix do not count, and text that is not a version is neither earlier nor later (it is never drained by mistake).  
+**Level:** U  
+**Tests:**
+  - `src/cluster/upgrade/tests.rs::versions_compare_by_precedence_and_a_candidate_comes_before_its_final`
 
 ---
 

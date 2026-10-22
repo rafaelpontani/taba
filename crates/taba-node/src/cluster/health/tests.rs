@@ -92,3 +92,16 @@ fn merging_nodes_unions_the_conditions_and_flags_divergent_tables() {
 
     assert!(merge([(7, vec![]), (7, vec![])], false).is_empty());
 }
+
+/// UC: UC-ING-031
+#[test]
+fn a_stalled_upgrade_raises_its_condition_as_a_warning() {
+    let mut s = signals();
+    s.upgrade_stalled = true;
+    assert_eq!(s.conditions(false), [Condition::UpgradeStalled]);
+    assert_eq!(Condition::UpgradeStalled.severity(), Severity::Warning);
+    assert_eq!(
+        Condition::UpgradeStalled.entry(),
+        json!({ "condition": "upgrade-stalled", "severity": "warning" })
+    );
+}

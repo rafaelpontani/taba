@@ -36,7 +36,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 21 | 10 |
 | `INV` | Invisibilidade no dono e nas réplicas | 19 | 13 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 17 |
-| `ING` | Entrada de nó (bootstrap) | 5 | 23 |
+| `ING` | Entrada de nó (bootstrap) | 5 | 30 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 1 | 32 |
 | `FRZ` | Período de freezing | 1 | 13 |
 | `CNC` | Concorrência entre mudanças de membros | 3 | 12 |

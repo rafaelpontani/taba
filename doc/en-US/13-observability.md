@@ -291,6 +291,7 @@ One target per node: Prometheus keeps one series per node. The total comes from 
 | `quorum-lost` | **critical** | Fewer healthy nodes than `cluster.vote.min-voters`: no exclusion takes effect. It is **not** about message durability |
 | `membership-divergent` | **critical** | Member tables with **different versions** between nodes |
 | `storage-pressure` | warning | Free space of `storage.dir` below `stats.disk.free-min` (without a value, it never fires) |
+| `upgrade-stalled` | warning | The upgrade that retires earlier versions stopped on a node that did not finish draining within `drain.timeout` plus 30 s |
 
 > **How the node computes it (provisional, D102–D104).** *Healthy* is this node plus the peers with a connected channel. `quorum-lost` holds when the healthy ones do not reach `min(cluster.vote.min-voters, members)` (with a single node there is no one to exclude). A replica is *healthy* when the block's owner is `active` in the table and the channel with it is up. `under-replicated` appears when there are more blocks below replication than below the quorum; `syncing` when some block owner is `syncing`. `membership-divergent` compares the table version of each node.
 

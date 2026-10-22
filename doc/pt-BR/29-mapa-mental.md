@@ -78,7 +78,7 @@ fontes: [doc/pt-BR]
 
 - **OTLP** (push: métricas, traces, logs) · **`/metrics`** Prometheus (um alvo por nó) · **JSON** (`/health/cluster`, `/metrics/topics*`)
 - **84 métricas** de nó (`taba.*`, `http.server.*`, `process.*`) · de tópico **opt-in** (`telemetry.topics.mode`)
-- **Condições do cluster (8):** `member-unreachable` · `node-frozen` · `syncing` · `under-replicated` · `write-quorum-at-risk` · `quorum-lost` · `membership-divergent` · `storage-pressure`
+- **Condições do cluster (9):** `member-unreachable` · `node-frozen` · `syncing` · `under-replicated` · `write-quorum-at-risk` · `quorum-lost` · `membership-divergent` · `storage-pressure` · `upgrade-stalled`
 - **Saúde:** `/health/live` · `/health/ready` (503 em drain/sincronização)
 
 ## 7. Segurança ([14](14-seguranca.md))
