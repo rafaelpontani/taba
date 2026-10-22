@@ -3,15 +3,15 @@ title: Durability
 summary: What Taba guarantees about confirmed messages, in which failures they survive, in which they are lost, and how to adjust the balance between latency and guarantee.
 type: explanation
 status: stable
-verified-on: 2026-10-14 @ efeb47a
-sources: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
+verified-on: 2026-10-22 @ 2f1919d
+sources: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/restore, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
 ---
 
 # Durability
 
 > Read first: [10-publishing.md](10-publishing.md) and [08-storage.md](08-storage.md).
 
-This document answers: **"if I received the `201` (or the `204` of the ack), in which situations is the message not lost?"** The short answer: it survives the failure of **any node** (and of more than one, depending on the replication factor), but **not** a simultaneous stop of all nodes **in production**, because durability comes from **in-memory replication**, not from disk. **With the optional S3 backup** ([33-s3-backup.md](33-s3-backup.md)) the cluster restores what was in the bucket, with a lag (RPO) of `backup.delay` for messages and `backup.meta.interval` for state.
+This document answers: **"if I received the `201` (or the `204` of the ack), in which situations is the message not lost?"** The short answer: it survives the failure of **any node** (and of more than one, depending on the replication factor). Durability comes from **in-memory replication**: a simultaneous stop of all nodes loses what was **only in memory**, and what was already on disk comes back through the cluster resume ([07-cluster.md](07-cluster.md), section 10). **With the optional S3 backup** ([33-s3-backup.md](33-s3-backup.md)) the cluster restores what was in the bucket, with a lag (RPO) of `backup.delay` for messages and `backup.meta.interval` for state.
 
 ## The model
 
@@ -38,7 +38,7 @@ Consider the default: 3 nodes, `replication.factor=3`, `write.quorum=2`.
 | A node leaves by **drain** | **Yes** | The node writes everything to disk and deregisters; its copies already existed on the other nodes |
 | The three nodes are restarted **one at a time** (`docker compose restart`) | **Yes** | Verified: with 14 messages in the topic, restarting `taba-2`, `taba-3` and `taba-1` in sequence (each until `healthy`) and consuming everything returned **14 of 14** |
 | **All nodes** stop at the same time (production), **with the S3 backup** | **Yes, with a lag:** definitions and tokens come back; messages come back **minus** the confirmed and expired ones (journal) and **plus** those that were in the bucket. It loses what was still waiting in the `outbox` (up to `backup.delay`) and the state of the last window. *At-least-once*: the consumer must be idempotent | **Planned** stop (`POST /cluster/stop`): no lag, the drain sends everything to S3. Crash: the last upload. Details and scenarios: [33-s3-backup.md](33-s3-backup.md) |
-| **All nodes** stop at the same time (production), **without backup** | **No: loses the messages and also the topic definitions** | In production every restart is a new node and the old disk only serves to return "losses" listed by the other nodes. With the whole cluster stopped there is no one to list. Verified: `docker compose down` + `up` (volumes kept) started a cluster **with no topic at all**. ⚠️ Design limit |
+| **All nodes** stop at the same time (production), **without backup**, volumes kept | **Yes what was on disk; no what was only in memory** | Every process is born with a new ID, but the disk of the previous life is set aside in a folder and restored: the node with the lowest old ID starts alone and takes over the disk (topics and tokens), the others join it, and the messages come back checked against the log of excluded messages, so the ones already consumed do not come back (except the residual redelivery, [07-cluster.md](07-cluster.md), section 10.10). Proved in the cluster tests (`tests/cold_start.rs`, `restore_vote.rs`). Without the volumes, everything is lost |
 | Network partition | **Depends on the side** | Each side may exclude the other and continue ([07-cluster.md](07-cluster.md), "Accepted risk"). Messages with a copy on both sides survive; writes on the minority side fail for lack of quorum |
 | One-node profile (factor 1) | **Only with drain** | No replicas: drain writes everything and the next start restores the old disk as a new node. A crash without drain loses what was only in memory |
 | **Primary** of a block down | The message is **not lost**, but writes to the block **fail** | The secondary does not coordinate; when the primary is excluded, the heir takes over |
@@ -52,7 +52,7 @@ Consider the default: 3 nodes, `replication.factor=3`, `write.quorum=2`.
 | 0 | ✅ survives | There are three copies, or at least two confirmed |
 | 1 | ✅ survives | At least one of the quorum copies is left |
 | 2 | ⚠️ may be lost | If the two were the quorum ones, only the third copy remains, and only if it had already completed |
-| 3 (total stop) | ❌ loses everything | In production every restart is a new node; nobody lists the losses |
+| 3 (total stop) | ⚠️ loses what was only in memory | What was already on disk comes back through the resume ([07-cluster.md](07-cluster.md), section 10) |
 
 ## What is *never* lost without notice: losses in synchronization
 
@@ -92,12 +92,12 @@ The age comes **from the `id` itself** (GUID v7 carries the instant of publicati
 | Tolerate more simultaneous failures | Increase `replication.factor` and `write.quorum` (publishing latency goes up) |
 | Less publishing latency | Reduce `write.quorum` (the guarantee drops); it must be ≥ 1 and ≤ `replication.factor` |
 | Lose nothing on a **planned** stop of a node | Keep `drain.on-stop` on (default) and `stop_grace_period` greater than `drain.timeout` |
-| Survive a failure of the whole cluster | **There is no way today:** use more than one cluster, or a producer that repeats publications. ⚠️ see [32-roadmap.md](32-roadmap.md) |
+| Survive a failure of the whole cluster | Keep `storage.dir` (the volumes) between lives: the resume restores from disk. What was only in memory is lost; to also cover a lost disk, turn on the S3 backup ([33-s3-backup.md](33-s3-backup.md)) |
 | Less memory | Set `memory.limit`: the excess goes to disk |
 
 ## Known limits
 
-- **Total stop** in production loses what was only in memory (above), **unless** the S3 backup is on ([33-s3-backup.md](33-s3-backup.md)): then it loses only the window not yet sent.
+- **Total stop** in production loses what was only in memory (above); what was on disk comes back through the resume ([07-cluster.md](07-cluster.md), section 10), with the residual redelivery of section 10.10. With the S3 backup on ([33-s3-backup.md](33-s3-backup.md)) it loses only the window not yet sent, and a lost disk comes back too.
 - **PRB-005:** during drain the node refuses the ack; with no other node to forward to, the consumer cannot confirm.
 - **D116 (decided):** the redundancy of the messages of a node that leaves stays at `replication.factor − 1` until a new node joins.
 - **D114:** what `delivery.get.max-attempts` counts is not yet decided.
@@ -105,5 +105,5 @@ The age comes **from the `id` itself** (GUID v7 carries the instant of publicati
 ## Sources and evidence
 
 - `cluster/replication/coordinator.rs` (quorum, rollback, insistence), `cluster/recovery` (losses and return), `cluster/sync` (declared loss), `cluster/drain`, `storage/*`, `engine/messages` (`ttl`, dead-letter).
-- Use cases: UC-ESC, UC-FAL, UC-RTN (return and recovery), UC-SIN, UC-DRN, UC-RET (`ttl`, deliveries, dead-letter); see [26a](26a-implemented-use-cases.md). Tests: `tests/failures.rs`, `recovery.rs`, `drain_cluster.rs`, `sync.rs`, `replication.rs`; `docker/validate.sh` checks the absence of loss when a node goes down and comes back.
+- Use cases: UC-ESC, UC-FAL, UC-RTN (return and recovery), UC-SIN, UC-DRN, UC-RET (`ttl`, deliveries, dead-letter); see [26a](26a-implemented-use-cases.md). Tests: `tests/failures.rs`, `recovery.rs`, `drain_cluster.rs`, `sync.rs`, `replication.rs`, `cold_start.rs`, `restore_lives.rs`, `restore_vote.rs`; `docker/validate.sh` checks the absence of loss when a node goes down and comes back.
 - History: `05-particionamento-replicacao.md` (7.2, 7.3), `13-entrega-de-mensagens.md` (12.10).

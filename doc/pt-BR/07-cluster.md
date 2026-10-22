@@ -1,10 +1,10 @@
 ---
 título: Cluster
-resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, perfil de um nó.
+resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, perfil de um nó e a retomada do disco depois de uma queda total.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
-fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, http/forward]
+verificado-em: 2026-10-22 @ 2f1919d
+fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, http/forward]
 ---
 
 # Cluster
@@ -118,7 +118,7 @@ A base de votantes é só quem o votante enxerga. Numa **partição de rede** em
 3. Envia as encontradas ao nó responsável pelo bloco (`POST /cluster/messages/recover`). Quem aceita grava direto nos responsáveis, **idempotente pelo ID**, e dá a baixa da perda.
 4. Tenta de novo a cada `cluster.bootstrap.retry.interval` até `cluster.recovery.timeout` (padrão 5 min); só então **limpa o estado local** e refaz o ingresso do zero, **como nó novo**.
 
-**Reinício do processo.** Um processo que reinicia nasce como **nó novo (ID novo)**, mas o disco da vida anterior **não é apagado na partida**: é posto de lado numa **pasta com o ID antigo** (`${storage.dir}/_lives/<ID antigo>`, com o manifesto da vida; um disco sem manifesto, de versão anterior, vai para `_previous-life`), o nó entra com disco vazio e, **depois de ativo e em segundo plano**, devolve ao cluster o que esse disco tem das perdas. A recuperação não atrasa o ingresso e **não apaga** a pasta da vida (doc 37, seção 4.5).
+**Reinício do processo.** Um processo que reinicia nasce como **nó novo (ID novo)**, mas o disco da vida anterior **não é apagado na partida**: é posto de lado numa **pasta com o ID antigo** (`${storage.dir}/_lives/<ID antigo>`, com o manifesto da vida; um disco sem manifesto, de versão anterior, vai para `_previous-life`), o nó entra com disco vazio e, **depois de ativo e em segundo plano**, devolve ao cluster o que esse disco tem das perdas. A recuperação não atrasa o ingresso e **não apaga** a pasta da vida ([07-cluster.md](07-cluster.md), seção 10.4).
 
 ## 5. Sincronização de um nó que entra
 
@@ -192,7 +192,7 @@ Sair por drain **não** gera freezing. Pendência **D75**: se o drain pedido pel
 
 No **perfil de um nó** (`replication.factor=1`, sem `cluster.entry-address`) o nó é um cluster de um só: parte sozinho, é o primário de todos os blocos e o quórum vale 1, mas o caminho é o de produção (cluster vazio, porta do cluster, registro e commit). O que o perfil relaxa (`cluster.tls.enabled=false`, `auth.dev-token`) só vale com fator 1 ([22-configuracao.md](22-configuracao.md)); o log lista o que está relaxado na partida e o `/health` mostra a condição `reduced-profile`. **Não é para produção:** perder o nó ou o disco é perder as mensagens.
 
-**Reinício.** Todo reinício é de nó novo: o disco antigo é posto de lado em `_lives/<ID antigo>` e o nó o restaura para si, como mensagens novas, prontas, com o mesmo `deliveryCount` e um `receiptToken` novo ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)). Não existe mais o modo `development` nem `development.resume-on-start`: para começar limpo, apague o volume ou o diretório.
+**Reinício.** Todo reinício é de nó novo: o disco antigo é posto de lado em `_lives/<ID antigo>` e o nó o restaura para si, como mensagens novas, prontas, com o mesmo `deliveryCount` e um `receiptToken` novo (seção 10). Não existe mais o modo `development` nem `development.resume-on-start`: para começar limpo, apague o volume ou o diretório.
 
 ## 9. As condições do cluster
 
@@ -209,11 +209,119 @@ No **perfil de um nó** (`replication.factor=1`, sem `cluster.entry-address`) o 
 | `under-replicated` | aviso | Algum bloco está abaixo do fator de replicação pleno |
 | `storage-pressure` | aviso | Espaço livre em disco abaixo de `stats.disk.free-min` (sem valor, nunca dispara) |
 | `upgrade-stalled` | aviso | A retirada de versões anteriores parou num nó que não terminou o drain (D165) |
-| `members-missing` | aviso | A sondagem dos IPs antigos terminou e faltam nós da tabela da vida anterior (doc 37, seção 4.14) |
-| `reduced-profile` | aviso | O nó roda o perfil de um nó com algo relaxado: fator 1, TLS desligado ou `auth.dev-token`. Informativa (doc 37, seção 4.16) |
-| `previous-life-pending` | aviso | A restauração das vidas anteriores não terminou: as filas FIFO recebem e não entregam (doc 37) |
+| `members-missing` | aviso | A sondagem dos IPs antigos terminou e faltam nós da tabela da vida anterior (seção 10.11) |
+| `reduced-profile` | aviso | O nó roda o perfil de um nó com algo relaxado: fator 1, TLS desligado ou `auth.dev-token`. Informativa |
+| `previous-life-pending` | aviso | A restauração das vidas anteriores não terminou: as filas FIFO recebem e não entregam (seção 10.8) |
 
 O que fazer em cada uma está em [23-operacao.md](23-operacao.md).
+
+## 10. Retomada após uma queda total
+
+Quando **todos** os nós caem e voltam, o cluster retoma do disco: as definições, as mensagens que estavam em disco e a ordem das filas FIFO. O que estava **só em memória** em todos os nós se perde ([11-durabilidade.md](11-durabilidade.md)). Quando só **alguns** nós caem nada disso é usado: as réplicas têm a mensagem e o nó novo sincroniza (seções 4 e 5).
+
+**Ideia central: disponibilidade primeiro, verdade depois.** O cluster sobe e atende as mensagens **novas** de imediato. As **antigas** ficam em quarentena no disco e só voltam a ser entregues depois que o novo primário do bloco confere que não estão mortas.
+
+Uma **vida** é a execução de um processo, com o ID que ele teve. O disco de uma vida anterior vira uma pasta (`_lives/<ID antigo>`) e é restaurado pelas regras abaixo.
+
+### 10.1 Por que o ID continua novo, e o que persiste
+
+Todo processo nasce com ID novo. É uma defesa: um nó que ficou fora do ar e dessincronizou não pode trazer de volta um dado já excluído ou desatualizado. Em vez de reaproveitar o ID, o nó restaura a vida anterior pelo caminho comum, conferindo cada mensagem. O preço é que todo reinício ressincroniza os blocos do nó (o ID novo muda a posição no anel).
+
+| Dado | Persiste entre vidas? | Onde |
+|---|---|---|
+| Tópicos e tokens, com versão e lápide | **Sim**; lidos na partida só quando o nó parte sozinho (10.2) | `definition_versions` no `_node.db` ([08-armazenamento.md](08-armazenamento.md)) |
+| Mensagens | **Sim**, na pasta da vida em que foram gravadas, em quarentena | `_lives/<ID antigo>` |
+| Log de mensagens excluídas | **Sim** | tabela `excluded` do banco de cada tópico (10.3) |
+| Tabela de membros da vida, `last_seen`, marca d'água | **Sim** | `manifest.json` na pasta da vida (10.4) |
+
+### 10.2 Definições
+
+- Cada definição tem **versão** e uma dona no anel, com desempate por impressão digital. Na junção de dois estados vence a **maior versão** por definição, e a lápide de versão maior vence a definição. O `topicId` vai na lápide, então a remoção de um tópico não apaga o que foi recriado com o mesmo nome.
+- O nó **lê** as definições do disco só quando **parte sozinho** (10.5). Se entra num cluster que já está de pé, guarda o que o disco tinha, apaga-o, recebe as definições do cluster e então as **oferece**: a maior versão de cada uma vence, lápide incluída, e um disco mais velho que o cluster não impõe nada.
+- A lápide expira em 1 hora. Uma definição que o cluster apagou há mais tempo e que ainda está viva num disco que entra volta ao cluster (PRB-064).
+
+### 10.3 O log de mensagens excluídas
+
+- Todo nó que guarda uma cópia de um bloco, primário ou não, registra o `id` de cada mensagem excluída dali (ack, `prune`, envio à dead-letter) na tabela `excluded` do banco do tópico, **na mesma transação** que apaga a mensagem. A expiração por `ttl` não entra: uma cópia que volta expira de novo pela mesma regra. O ack não ganha `fsync` extra (`storage.db.synchronous` segue `NORMAL`).
+- O log tem limite de tamanho e de idade: `storage.excluded.max-size` (100 MB, somando os tópicos) e `storage.excluded.max-age` (24 h), os dois maiores que zero, aplicados a cada 30 s com o registro mais antigo saindo primeiro.
+- Cada nó guarda a **data de início da gravação contínua** (`state.excluded_since`, no `_node.db`): o instante a partir do qual o log garante ter as exclusões. Começa com o log e só avança quando um registro é descartado pelo limite. Um nó novo copia o log de cada origem junto com cada bloco (`GET /cluster/blocks/{id}/excluded`) e **herda** a data mais recente das origens.
+- A **data de corte do cluster** é a mais **recente** dessas datas entre os membros ativos (o elo mais fraco): toda exclusão posterior a ela está registrada em todos os donos que a registraram. Fica visível em `summary.excludedCutoff` do `GET /health/cluster` (cada nó informa a sua em `excludedSince` no `NodeStatus`). Um nó que apaga cedo por causa do tamanho encurta a janela do cluster inteiro: dimensione o limite para isso.
+- Os logs de vidas passadas são incorporados ao atual, e a data de início só recua se o intervalo da vida e o das fontes se encontram, sem buraco.
+- Uma vida só é restaurável se o `last_seen` dela é posterior à data de corte mais a folga `cluster.restore.clock-slack` (5 s). Sem data de corte, ou fora da janela, a vida segue o caminho comum: identidade nova, só as perdas que os pares listam. Se o desvio real dos relógios for maior que a folga o risco é aceito: a consequência é a reentrega residual (10.10).
+- O S3 é só **prova de morte**, nunca de vida: o diário tem defasagem de até `backup.meta.interval`, então ele não alarga a janela ([33-backup-s3.md](33-backup-s3.md)).
+
+### 10.4 Uma pasta por vida
+
+- O disco da vida anterior vira **sempre** uma pasta `_lives/<ID antigo>`, tenha o nó achado o cluster ou não, e várias vidas convivem (um segundo reinício não apaga a primeira). Um disco **sem manifesto** (versão anterior do programa) não é migrado: segue o caminho de antes (`_previous-life`, só as perdas listadas, pasta apagada).
+- O **manifesto** (`manifest.json`) leva o ID, os membros ativos com IPs e porta, a versão da tabela, o `last_seen`, a marca d'água do maior `id` e o início do log de excluídos. É gravado por substituição atômica quando o nó fica ativo, a cada mudança da tabela, a cada 10 s e na parada limpa. Uma pasta sem manifesto legível não é vida restaurável.
+- A recuperação das perdas **não** apaga a pasta da vida: só o fim da restauração (10.8) a apaga, e só se tudo o que ela guarda foi confirmado.
+- Não há teto de espaço próprio para as pastas: se o disco encher vale o comportamento de sempre (o nó entra em `failed`).
+
+### 10.5 A partida
+
+| # | Passo | Como é |
+|---|---|---|
+| 1 | Identidade | ID novo a cada processo; o antigo vira o nome da pasta da vida |
+| 2 | `_node.db` | Abre e lê as definições para a memória, mas só as usa se o nó parte sozinho |
+| 3 | Mensagens em disco | O disco vira a pasta da vida (10.4); nada é apagado antes do fim da restauração |
+| 4 | `_backup.db` | Zerado em toda partida |
+| 5 | Descoberta | Listagem no `cluster.entry-address`. Um nó **com vida anterior** tenta também os IPs da tabela do manifesto: quem responde com uma tabela é o cluster em que ele entra; quem responde `cluster.node-syncing` está vivo e também procura |
+| 6 | Partir sozinho | Passado `cluster.restore.cold-start.wait` (15 s), parte sozinho o nó cujo **ID antigo** é o menor entre os vivos e ele mesmo. Assume o disco: carrega tópicos, tokens, versões e lápides, continua o log de excluídos (a data de início volta à do manifesto) e começa a restauração. Sem vida anterior só `cluster.first-node` parte sozinho (com S3, a decisão do bucket continua valendo) |
+| 7 | Join e sincronização | Os outros nós seguem tentando e entram no que partiu, pelo join normal, como nós novos e limpos (10.2 para as definições deles) |
+| 8 | Restauração | Em segundo plano, cada nó envia as vidas que guarda ao novo primário de cada bloco (10.6) |
+| 9 | Filas | As filas **comuns** recebem e entregam já com as definições distribuídas; a **FIFO** só recebe até o fim da restauração (10.9) |
+| 10 | Fim | Votação dos nós presentes, status **restaurado do disco** e pastas apagadas (10.8) |
+| 11 | Em segundo plano | A sondagem dos IPs antigos (10.11) e a gravação do `last_seen` |
+
+**Janela de risco aceita.** Um nó atrasado que sobe sozinho serve com as definições que tem, e um token revogado enquanto ele estava fora seria aceito. A janela termina assim que algum nó responde (a versão maior vence) e é limitada pela expiração dos tokens.
+
+### 10.6 Restauração das mensagens
+
+- Cada nó lê as pastas `_lives/<ID>` cujo `last_seen` está dentro da janela (10.3), tópico a tópico, e **envia** as mensagens ao primário do bloco no anel atual, **com o ID original** (`POST /cluster/topics/{topic}/messages/restore`, NDJSON). O nó que envia não decide nada.
+- O primário confere cada mensagem e a **descarta** se: o tópico foi excluído ou recriado com outro `topicId` (gravado em `topic_meta`); o `id` consta no seu log local; consta no log de **qualquer** nó presente (`POST …/messages/dead`, em lote por bloco, a **todos**, não só aos donos, porque os logs ficam nos nós e não no anel); ou o diário do S3 registra a remoção. S3 inacessível é evidência ausente: decide com as outras fontes e avisa.
+- O resto é **ativado**: replicado aos donos atuais com o quórum, **em disco**, e fica disponível. Uma mensagem que está só na vida, dentro da janela e sem registro de exclusão, é ativada: era uma mensagem confirmada ou uma publicação que não alcançou o quórum, e entregá-la é aceitável em *at-least-once*. Se o primário já a tem (`Existing`), pula; o maior `deliveryCount` entre as cópias fica nos donos.
+- Invisibilidade e recibo são zerados (a mensagem volta pronta, com um `receiptToken` novo). Exclusão é um estado absorvente: se qualquer cópia diz morta, vale a morta.
+- O primário só confirma depois de gravar em disco e replicar com o quórum. Só então o nó de origem marca a mensagem como **enviada**, apagando a linha da pasta da vida; o que não foi confirmado é reenviado até `cluster.recovery.timeout`. Assim uma segunda queda não perde uma mensagem que estava salva.
+- Com o backup em S3 a passada tem um **último passo**, a varredura do bucket ([33-backup-s3.md](33-backup-s3.md)); o "terminei" do nó (10.8) a inclui.
+
+### 10.7 Nós que não voltam
+
+- A restauração das mensagens só **começa** quando todos os **nós esperados** (os membros ativos da maior tabela entre os manifestos anunciados) anunciaram as vidas deles, ou passado `G` (`cluster.restore.grace`, 5 min). Isso não atrasa as definições nem as filas comuns. Espera-se por **todos**, e não por uma maioria, porque o voto de exclusão usa os nós saudáveis como base e um par saudável pode excluir a maioria da tabela.
+- Passado `G`, no modo padrão ela **segue com um aviso** e usa os nós presentes. No **modo estrito** (`cluster.restore.strict`) fica retida até alguém forçar.
+- **Forçar** é `POST /cluster/restore/force` (token root na API de clientes, sem token na porta de operações): muda o status, libera o que está retido, e é espalhado a todos os nós. O risco é declarado: podem reaparecer mensagens já consumidas (10.10). É o que libera a restauração quando um nó de um cluster que ficou travado por perda de dois nós não volta ([23-operacao.md](23-operacao.md)).
+- A condição `previous-life-pending` do `/health/cluster` fica visível enquanto a restauração não terminou, e `GET /cluster/restore` diz quais nós antigos ainda são esperados.
+
+### 10.8 Fim da restauração
+
+- Cada nó tem um status: `unknown`, `restoring` ou `restored` (`GET /cluster/restore`). O nó que entra pergunta aos outros: se algum está `restoring`, entra na restauração; senão restaura as próprias vidas sem votação.
+- Em `restoring` os nós se consultam a cada 500 ms (manifestos, `finished`, `forced`). Cada nó anuncia `finished` quando tudo o que enviou foi confirmado. O **coordenador** (o nó de menor ID entre os ativos) chama `POST /cluster/restore/decided` em todos quando **todos** os membros ativos terminaram. A decisão exige todos os presentes, porque cada um tem disco a enviar.
+- Quem decide libera a FIFO (10.9), marca o cluster **restaurado do disco** (um nome que não se confunde com a restauração do S3) e apaga as pastas das vidas, se tudo foi confirmado.
+- Se a votação não fecha (no modo estrito, enquanto falta um nó esperado), a FIFO segue sem entrega e `previous-life-pending` fica visível até a operação de forçar.
+- Um nó que volta **depois** da liberação entra como nó novo e limpo, e as vidas dele seguem o caminho de 10.6. As mensagens FIFO dele são ativadas em ordem de `id`, e a ordem delas em relação às mais novas do grupo, já entregues, não é garantida. É a exceção.
+
+### 10.9 Filas FIFO durante a restauração
+
+- A FIFO **recebe e não entrega** até o status mudar para restaurado do disco, porque só então tudo o que estava em disco está no seu primário. O `take` não entrega nada.
+- As publicações novas ficam numa **lista provisória** no primário do grupo, sem posição efetiva na fila, e nenhuma deduplicação acontece: todas são aceitas. O gerador de IDs fica acima da **marca d'água** (o maior `id` das vidas anteriores, anunciada entre os nós), então os IDs novos são sempre maiores que os antigos e nenhum `id` já devolvido ao produtor muda depois.
+- As mensagens restauradas chegam ao primário do grupo por 10.6 e também ficam sem entrega.
+- Na liberação, o primário deduplica a lista provisória contra as chaves restauradas e dentro dela, em ordem de `id`, descarta as duplicatas por um ack sem recibo (`discard`) e só então libera a entrega. O produtor de uma mensagem depois descartada como duplicata recebeu `duplicate=false`: é a exceção.
+- Limites (PRB-063): a deduplicação vale na janela `fifo.dedup.window`, e a lista provisória está na memória do primário do grupo.
+
+### 10.10 Garantias e limites
+
+- A restauração mantém o *at-least-once*: as mensagens que estavam em disco voltam, e as já consumidas **não** voltam, salvo em dois casos: (a) um nó que tem registros de exclusão não está presente (passado `G`, ou só voltaram nós que se confirmam entre si); (b) uma queda do sistema fez o log perder as últimas entradas. É a **reentrega residual**, e o consumidor precisa ser idempotente, como já se exige na restauração do S3.
+- Com **todos os nós esperados presentes** a reentrega por (a) não acontece. É a propriedade que os testes provam ([25-testes.md](25-testes.md)).
+- O que estava só em memória em todos os nós se perde.
+- Enquanto há um nó de versão anterior no cluster ele não grava o log de excluídos; pela regra da data de corte (10.3), nenhuma vida é restaurável até ele sair ([23-operacao.md](23-operacao.md)).
+
+### 10.11 Sondagem dos IPs antigos e reencontro dos grupos
+
+Dois grupos de nós que subiram sem se alcançar assumem, cada um, o disco que tem. Para se encontrarem:
+
+- Todo nó lê a tabela da vida anterior (o manifesto) ao começar e, **enquanto o cluster tem menos membros ativos que ela**, tenta a cada `cluster.restore.probe.interval` (10 s), até `cluster.restore.probe.timeout` (2 h), os IPs dela que faltam.
+- A sondagem termina quando a tabela completa. Se o tempo acaba com nós faltando, o log avisa e a condição `members-missing` fica visível enquanto a tabela estiver incompleta; o nó que falta entra depois pelo join normal.
+- Quando um grupo alcança outro, vale o desempate do reencontro de partições: **perde o lado com menos membros** e, no empate, o de menor `nodeId`. O perdedor **não apaga nada**: grava o manifesto, move o disco para `_lives/<ID>`, guarda as definições para oferecê-las ao vencedor, troca o ID e refaz o join. O que ele aceitou enquanto esteve separado vive na pasta da vida e é restaurado e conferido contra os mortos (10.6).
+- Limites (PRB-066): passado o tempo, dois grupos que se encontrem depois não se juntam sozinhos; a completude é por contagem, então um cluster reduzido de propósito mostra `members-missing` até o tempo acabar; o perdedor fica fora de serviço durante o reencontro.
 
 ## Limites conhecidos
 

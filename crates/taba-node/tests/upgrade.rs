@@ -1,4 +1,4 @@
-//! The upgrade of versions (doc 37, section 4.12): the node of the newest version drains, one at a time, the
+//! The upgrade of versions (doc 23, rolling update): the node of the newest version drains, one at a time, the
 //! members of an earlier version. The versions are simulated: the nodes announce the one the test gives them.
 
 mod common;

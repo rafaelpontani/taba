@@ -101,7 +101,6 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [30-decisions.md](30-decisions.md) | Why each thing is the way it is |
 | [31-pending-items.md](31-pending-items.md) | What is still open |
 | [32-roadmap.md](32-roadmap.md) | What comes next |
-| [37-cluster-cold-start.md](37-cluster-cold-start.md) | Proposal under discussion: resuming the cluster after a full outage (finding D) |
 
 ## Conventions of this documentation
 

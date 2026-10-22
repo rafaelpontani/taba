@@ -1,4 +1,4 @@
-//! The log of **excluded** messages (doc 37, section 4.4): the `excluded` table of each topic's database,
+//! The log of **excluded** messages (doc 07, section 10.3): the `excluded` table of each topic's database,
 //! one row per message that left the topic dead (ack, `ttl`, prune, or sent to the dead-letter), with the
 //! ring position (the block is found by it) and the instant. The row is written **in the same transaction**
 //! that deletes the message, so a crash leaves both or neither, and with `storage.db.synchronous=NORMAL` it
@@ -18,7 +18,7 @@ use rusqlite::{OptionalExtension, params};
 use super::{MessageMeta, MessageStore, position_from_db, position_to_db, to_io, write_tombstone};
 use crate::storage::state::NodeStateStore;
 
-/// Default limits of the log (doc 37, section 4.4): 100 MB and 24 hours.
+/// Default limits of the log (doc 07, section 10.3): 100 MB and 24 hours.
 pub const DEFAULT_MAX_BYTES: u64 = 100 * 1024 * 1024;
 pub const DEFAULT_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 
@@ -75,7 +75,7 @@ impl ExcludedLog {
     }
 }
 
-/// The start of the recording after incorporating the log of a **past life** (doc 37, section 4.4): the
+/// The start of the recording after incorporating the log of a **past life** (doc 07, section 10.3): the
 /// old interval `[past_since, past_end]` and the current one `[own_since, ...)` must meet, with no hole;
 /// then the start goes back to the old one. If the node was down for longer than the sources remember, it
 /// stays where it is.
@@ -418,7 +418,7 @@ impl MessageStore {
     }
 
     /// Sets the start of the recording, going back or forward: for a log that was just created or that
-    /// inherited the date of its sources (doc 37, section 4.4).
+    /// inherited the date of its sources (doc 07, section 10.3).
     pub fn set_excluded_since(&self, ms: u64) -> io::Result<()> {
         if let Some(state) = &self.excluded.state {
             state.set_excluded_since(ms)?;

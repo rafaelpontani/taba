@@ -127,7 +127,7 @@ A dead node that returns joins as a **new node**, with a new id; it does not res
 
 ### Scan at start
 
-With the backup on, the last step of a node's restoration is the **S3 scan** ([37-cluster-cold-start.md](37-cluster-cold-start.md), section 4.13): for each queue (and its dead-letter) the node reads the journal once, reads the footer of each segment and brings back the messages that the journal does not remove, that it does not have and whose block it is primary of. They go through the same check as the messages of a life (topic, log of excluded messages, journal, quorum). With S3 down the step is skipped with a warning.
+With the backup on, the last step of a node's restoration is the **S3 scan** ([33-s3-backup.md](33-s3-backup.md), section "Scan at start"): for each queue (and its dead-letter) the node reads the journal once, reads the footer of each segment and brings back the messages that the journal does not remove, that it does not have and whose block it is primary of. They go through the same check as the messages of a life (topic, log of excluded messages, journal, quorum). With S3 down the step is skipped with a warning.
 
 ## Full disk: eviction
 

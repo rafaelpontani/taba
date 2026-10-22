@@ -1,4 +1,4 @@
-//! The cold start (doc 37, sections 4.5 and 4.9; level **C**): every node of a cluster that fell comes back at once,
+//! The cold start (doc 07, sections 10.4 and 10.5; level **C**): every node of a cluster that fell comes back at once,
 //! with its disk, and nobody answers the entry address. The nodes look for each other through the table of their
 //! previous life, the one with the lowest old ID takes over the disk and starts alone, the others join it, and the
 //! messages of the lives are restored. The `Clock` is manual; the wait of the cold start is short.

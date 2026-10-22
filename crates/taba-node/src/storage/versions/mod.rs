@@ -1,4 +1,4 @@
-//! The `definition_versions` table of `_node.db` (doc 37, section 4.2): the version of each topic and
+//! The `definition_versions` table of `_node.db` (doc 07, section 10.2): the version of each topic and
 //! token definition this node applied, and the **tombstones** (the removals), with the `topicId` of the
 //! topic. It is what lets a node that starts from its own disk know which version of each definition it
 //! holds and not resurrect what was removed. The cluster's `Definitions` writes a row at each

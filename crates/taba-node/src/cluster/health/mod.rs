@@ -113,13 +113,13 @@ pub struct HealthSignals {
     /// The upgrade retiring earlier versions stopped on a node that did not finish draining.
     #[serde(default)]
     pub upgrade_stalled: bool,
-    /// The probe of the old addresses ended with nodes of the previous table missing (doc 37, section 4.14).
+    /// The probe of the old addresses ended with nodes of the previous table missing (doc 07, section 10.11).
     #[serde(default)]
     pub members_missing: bool,
-    /// The cluster is still being restored from the previous lives: the FIFO queues are held (doc 37, section 4.7).
+    /// The cluster is still being restored from the previous lives: the FIFO queues are held (doc 07, section 10.8).
     #[serde(default)]
     pub restore_pending: bool,
-    /// The node runs the one-node profile with something relaxed (doc 37, section 4.16). Informative.
+    /// The node runs the one-node profile with something relaxed (doc 07, section 8). Informative.
     #[serde(default)]
     pub reduced_profile: bool,
 }

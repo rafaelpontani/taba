@@ -1,4 +1,4 @@
-//! The end of the restoration of the previous lives (doc 37, sections 4.7, 4.8 and 4.10; level **C**): the nodes wait
+//! The end of the restoration of the previous lives (doc 07, sections 10.8, 10.7 and 10.9; level **C**): the nodes wait
 //! for the expected ones (or for `G`), the coordinator closes the vote when every present node finished, the FIFO
 //! queues receive and do not deliver until the cluster is restored from disk, and the operator can force it. The
 //! `Clock` is manual: `G` passes when the test says so.

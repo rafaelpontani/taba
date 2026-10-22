@@ -14,7 +14,7 @@ const fn p(key: &'static str, default: Option<&'static str>) -> Param {
     Param { key, default }
 }
 
-/// Keys that no longer exist (the development mode went away, doc 37, section 4.16): a file or an environment that
+/// Keys that no longer exist (the development mode went away, doc 07, section 8): a file or an environment that
 /// still sets them keeps starting, with a warning, so an upgrade does not break a working configuration.
 pub const REMOVED: &[&str] = &["mode", "development.resume-on-start"];
 

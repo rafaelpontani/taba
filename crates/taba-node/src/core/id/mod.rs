@@ -17,7 +17,7 @@ pub fn new_at(unix_millis: u64) -> String {
 pub struct IdGenerator {
     context: std::sync::Mutex<uuid::ContextV7>,
     /// No ID is generated below this instant (ms): the generator of a new life starts above the watermark of the
-    /// old ones (doc 37, section 4.10).
+    /// old ones (doc 07, section 10.9).
     floor_ms: std::sync::atomic::AtomicU64,
     /// The latest instant (ms) an ID was generated for.
     last_ms: std::sync::atomic::AtomicU64,

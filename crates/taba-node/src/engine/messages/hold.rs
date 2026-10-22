@@ -1,4 +1,4 @@
-//! The FIFO queues while the previous lives are restored (doc 37, section 4.10): they receive messages and do not
+//! The FIFO queues while the previous lives are restored (doc 07, section 10.9): they receive messages and do not
 //! deliver them, nothing is deduplicated, and the generator of IDs starts above the watermark of the old lives. At
 //! the release the group's primary deduplicates what it accepted meanwhile, in `id` order, against what the
 //! restoration brought, and only then delivery starts.
@@ -19,7 +19,7 @@ impl Messages {
 
     /// The publications this node, as primary of the group, accepted during the hold and that repeat a key: a
     /// restored message with the same `(group, deduplicationId)`, or an earlier publication. `(topic, id)`, in `id`
-    /// order per topic. They are the ones the release discards (doc 37, section 4.10).
+    /// order per topic. They are the ones the release discards (doc 07, section 10.9).
     pub fn fifo_duplicates(&self) -> Vec<(String, String)> {
         let mut out = Vec::new();
         for (name, state) in self.existing_states() {
@@ -63,7 +63,7 @@ impl Messages {
     }
 
     /// The new generator stays above the watermark of an old life: its IDs are all greater than the old ones
-    /// (doc 37, section 4.10). An ID that is not a GUID v7 is ignored.
+    /// (doc 07, section 10.9). An ID that is not a GUID v7 is ignored.
     pub fn raise_id_floor(&self, watermark: &str) {
         if let Some(ms) = crate::core::id::unix_millis_of(watermark) {
             self.ids.raise_floor(ms.saturating_add(1));

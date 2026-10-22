@@ -57,7 +57,7 @@ SQLite local, **uma conexão atrás de um `Mutex`** (escritor único). Tabelas:
 | `tokens` | `id` | Os tokens de acesso: nome, permissões, prefixos, datas, **sal** (128 bits) e **hash salgado** do segredo. **Nunca o segredo** |
 | `state` | `key` | Estado do nó; hoje a marca `save_completed` (o fim do drain) |
 | `losses` | `(topic, id)` | As mensagens declaradas perdidas numa sincronização, consultadas por quem volta de uma exclusão. Expiram em `cluster.message-loss.ttl` (padrão 14 d) |
-| `definition_versions` | `(kind, key)` | A **versão** de cada tópico e de cada token que o nó aplicou e a **lápide** de cada remoção, com o `topicId` do tópico e o instante em que foi aplicada. Uma linha por definição, escrita junto com a definição; a lápide sai depois de 1 hora ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)) |
+| `definition_versions` | `(kind, key)` | A **versão** de cada tópico e de cada token que o nó aplicou e a **lápide** de cada remoção, com o `topicId` do tópico e o instante em que foi aplicada. Uma linha por definição, escrita junto com a definição; a lápide sai depois de 1 hora ([07-cluster.md](07-cluster.md), seção 10) |
 
 A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão **mais nova** que a do nó não é tocado.
 
@@ -67,9 +67,9 @@ Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `g
 
 Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um bloco (faixa pela posição, para os streams de sincronização e a limpeza) e as contagens.
 
-**`topic_meta`.** Cada banco de tópico guarda o `topicId` para o qual a pasta foi criada (chave `topic_id`); a restauração de uma vida anterior descarta as mensagens de um tópico recriado com outro `topicId` ([37-retomada-do-cluster.md](37-retomada-do-cluster.md), seção 4.6). Uma pasta de antes do registro não o tem, e o tópico conta como o mesmo.
+**`topic_meta`.** Cada banco de tópico guarda o `topicId` para o qual a pasta foi criada (chave `topic_id`); a restauração de uma vida anterior descarta as mensagens de um tópico recriado com outro `topicId` ([07-cluster.md](07-cluster.md), seção 10.6). Uma pasta de antes do registro não o tem, e o tópico conta como o mesmo.
 
-**Log de excluídos.** A tabela `excluded` (`id`, `position`, `at_ms`) guarda o `id` de toda mensagem que **saiu do tópico morta** (ack, `prune`, envio à dead-letter; o `ttl` não entra), com a posição no anel (o bloco é achado por ela). O registro é gravado **na mesma transação** que apaga a mensagem, sem fsync extra (`storage.db.synchronous` segue como configurado). O log tem limite de idade (`storage.excluded.max-age`, 24 h) e de tamanho (`storage.excluded.max-size`, 100 MB, somando todos os tópicos); os registros mais antigos saem primeiro, e a **data de início da gravação contínua** (chave `excluded_since` da tabela `state` do `_node.db`) avança até o instante do registro mais novo descartado ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)).
+**Log de excluídos.** A tabela `excluded` (`id`, `position`, `at_ms`) guarda o `id` de toda mensagem que **saiu do tópico morta** (ack, `prune`, envio à dead-letter; o `ttl` não entra), com a posição no anel (o bloco é achado por ela). O registro é gravado **na mesma transação** que apaga a mensagem, sem fsync extra (`storage.db.synchronous` segue como configurado). O log tem limite de idade (`storage.excluded.max-age`, 24 h) e de tamanho (`storage.excluded.max-size`, 100 MB, somando todos os tópicos); os registros mais antigos saem primeiro, e a **data de início da gravação contínua** (chave `excluded_since` da tabela `state` do `_node.db`) avança até o instante do registro mais novo descartado ([07-cluster.md](07-cluster.md), seção 10).
 
 **Escritor único.** Toda escrita no banco de um tópico passa por **uma fila de comandos**, executada uma de cada vez. Leituras longas (os streams de sincronização) usam conexões de leitura próprias (modo WAL) e não bloqueiam o escritor.
 

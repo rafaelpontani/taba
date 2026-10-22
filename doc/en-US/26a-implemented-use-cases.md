@@ -6883,7 +6883,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-015
 
 **Case:** After becoming active, the node that restarted recovers in the background  
-**Then:** queries the loss list, returns to the responsible node what the disk of the previous life has of them and **keeps** the folder of the life (it is only deleted when the restoration ends, doc 37, section 4.7; the `_previous-life` folder, of a disk with no manifest, is deleted). The member that was mute is called again every `cluster.bootstrap.retry.interval`, until `cluster.recovery.timeout` (5 min, D110); when exhausted, the node proceeds with the lists it has.  
+**Then:** queries the loss list, returns to the responsible node what the disk of the previous life has of them and **keeps** the folder of the life (it is only deleted when the restoration ends, [07-cluster.md](07-cluster.md), section 10.8; the `_previous-life` folder, of a disk with no manifest, is deleted). The member that was mute is called again every `cluster.bootstrap.retry.interval`, until `cluster.recovery.timeout` (5 min, D110); when exhausted, the node proceeds with the lists it has.  
 **Level:** C  
 **Tests:**
   - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
@@ -7123,7 +7123,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-047
 
 **Case:** A fall makes the log of excluded messages lose its last entries (and the deletion of the message they went with)
-**Then:** the message the consumer had already acknowledged comes back ready and is delivered again; it is accepted, because the consumer is idempotent (*at-least-once*, doc 37, section 4.11).
+**Then:** the message the consumer had already acknowledged comes back ready and is delivered again; it is accepted, because the consumer is idempotent (*at-least-once*, [07-cluster.md](07-cluster.md), section 10.10).
 **Level:** C
 **Tests:**
   - `tests/cold_start.rs::a_fall_that_loses_the_last_entries_of_the_log_delivers_the_acknowledged_message_again`
@@ -7192,7 +7192,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-054
 
 **Case:** A message already consumed whose exclusion record was only on a node that did not come back, and the same message with every expected node present
-**Then:** with the node absent, nothing is delivered again before `G`; once `G` passes, the restoration goes on with the nodes that are present and the message comes back (the residual redelivery of section 4.11, which the idempotent consumer accepts). With every expected node present, the restoration does not wait for `G` and the message that the log of one of them marks as consumed does not come back.
+**Then:** with the node absent, nothing is delivered again before `G`; once `G` passes, the restoration goes on with the nodes that are present and the message comes back (the residual redelivery of section 10.10 of 07-cluster.md, which the idempotent consumer accepts). With every expected node present, the restoration does not wait for `G` and the message that the log of one of them marks as consumed does not come back.
 **Level:** C
 **Tests:**
   - `tests/restore_vote.rs::a_message_already_consumed_whose_log_is_on_a_node_that_never_came_back_returns_only_after_g`
@@ -7241,7 +7241,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-017
 
 **Case:** The **first node** of a new cluster (`cluster.first-node=true`, listing with no one) has no one to recover from  
-**Then:** a disk with **no manifest** (earlier version) is deleted at start, by the usual path, and the `_previous-life` folder does not stay (D111); a disk **with a manifest** becomes the folder of the life (UC-RTN-023) and is restored by the cold start (UC-RTN-036; doc 37, section 4.9).  
+**Then:** a disk with **no manifest** (earlier version) is deleted at start, by the usual path, and the `_previous-life` folder does not stay (D111); a disk **with a manifest** becomes the folder of the life (UC-RTN-023) and is restored by the cold start (UC-RTN-036; [07-cluster.md](07-cluster.md), section 10.5).  
 **Level:** C  
 **Tests:**
   - `tests/recovery.rs::the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life`
@@ -7295,7 +7295,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-022
 
 **Case:** **Property** (the same model, with absent nodes): a message already acknowledged only comes back if **no present node** logged its ack; and, while an expected node is missing and `G` has not passed, the restoration does not start (not even in strict mode)  
-**Then:** the residual redelivery of section 4.11 only happens when whoever logged the exclusion is absent, and only after `G` (or after forcing).  
+**Then:** the residual redelivery of section 10.10 of 07-cluster.md only happens when whoever logged the exclusion is absent, and only after `G` (or after forcing).  
 **Level:** U (model; the simulated-cluster test comes with the restoration)  
 **Tests:**
   - `src/cluster/restore/tests.rs::with_a_node_missing_only_what_every_logger_of_it_missed_can_come_back`
@@ -7318,7 +7318,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-024
 
 **Case:** The running life keeps the **manifest** in the root of the disk: the ID, the **active members** of the table with the IPs, the table version, `last_seen` and the watermark
-**Then:** it is written when the node becomes active and at every change of the table, `last_seen` moves every 10 s and on a clean stop, and the write is atomic (temporary file and swap). The watermark is the largest instant the ID generator used or was told to stay above (doc 37, section 4.10); it is empty until the node generates an ID.
+**Then:** it is written when the node becomes active and at every change of the table, `last_seen` moves every 10 s and on a clean stop, and the write is atomic (temporary file and swap). The watermark is the largest instant the ID generator used or was told to stay above ([07-cluster.md](07-cluster.md), section 10.9); it is empty until the node generates an ID.
 **Level:** C
 **Tests:**
   - `tests/recovery.rs::the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop`
@@ -7329,7 +7329,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-RTN-025
 
-**Case:** The **quarantine is not deleted** by today's recovery: the folder of each life stays until the restoration ends (vote, doc 37, section 4.7)
+**Case:** The **quarantine is not deleted** by today's recovery: the folder of each life stays until the restoration ends (vote, [07-cluster.md](07-cluster.md), section 10.8)
 **Then:** the loss recovery returns what the list asks for, and the folder of the life keeps its topics and manifest, even when the `cluster.recovery.timeout` deadline runs out. Only the rows a primary confirmed in the restoration (UC-RTN-026) leave it.
 **Level:** C
 **Tests:**

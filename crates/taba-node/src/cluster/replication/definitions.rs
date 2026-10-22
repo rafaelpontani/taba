@@ -625,7 +625,7 @@ impl Definitions {
 
     // ---- Cold start: taking over the disk ----
 
-    /// The node starts alone and takes over the definitions on its disk (doc 37, section 4.9): topics and tokens with the
+    /// The node starts alone and takes over the definitions on its disk (doc 07, section 10.5): topics and tokens with the
     /// version they had, and the tombstones that did not expire. They are applied like the ones a source sends.
     pub async fn resume_from_disk(&self) {
         for stored in self.stored_changes().await {
@@ -728,8 +728,8 @@ impl Definitions {
         out
     }
 
-    /// A node that joined a cluster that was already up offers what its disk held before it was cleared (doc 37,
-    /// section 4.9): the highest version of each definition wins, a tombstone included, so a disk that is older than
+    /// A node that joined a cluster that was already up offers what its disk held before it was cleared (doc 07,
+    /// section 10.5): the highest version of each definition wins, a tombstone included, so a disk that is older than
     /// the cluster imposes nothing. What wins is spread to the others like any change that a node learns.
     pub async fn offer(&self, offered: Vec<Stored>) {
         for Stored { change, topic_id } in offered {

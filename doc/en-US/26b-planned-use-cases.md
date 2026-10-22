@@ -1631,7 +1631,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## Retired cases
 
-Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (the development mode and the drain as save went away, doc 37 section 4.16).
+Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (the development mode and the drain as save went away, [07-cluster.md](07-cluster.md), section 8).
 
 ## Sources and evidence
 

@@ -236,7 +236,7 @@ curl -s -X POST http://nó:9090/cluster/stop
 
 ### `POST /cluster/restore/force`: forçar a restauração das vidas anteriores
 
-Depois de uma queda total o cluster restaura as mensagens antigas e só então libera as filas FIFO ([37-retomada-do-cluster.md](37-retomada-do-cluster.md), seções 4.7 e 4.8). Enquanto a votação não fecha, `GET /health/cluster` mostra `previous-life-pending`. A chamada declara o cluster **restaurado do disco** com os nós que estão presentes: o nó que a recebe espalha para os outros (`POST /cluster/restore/force` na porta do cluster), as filas FIFO são liberadas e uma restauração retida por `cluster.restore.strict` segue. Mensagens já consumidas podem voltar (doc 37, seção 4.11). Na API de clientes exige o **token root**; na porta de operações, como `/cluster/stop`, não usa token.
+Depois de uma queda total o cluster restaura as mensagens antigas e só então libera as filas FIFO ([07-cluster.md](07-cluster.md), seções 10.8 e 10.7). Enquanto a votação não fecha, `GET /health/cluster` mostra `previous-life-pending`. A chamada declara o cluster **restaurado do disco** com os nós que estão presentes: o nó que a recebe espalha para os outros (`POST /cluster/restore/force` na porta do cluster), as filas FIFO são liberadas e uma restauração retida por `cluster.restore.strict` segue. Mensagens já consumidas podem voltar ([07-cluster.md](07-cluster.md), seção 10.10). Na API de clientes exige o **token root**; na porta de operações, como `/cluster/stop`, não usa token.
 
 ```bash
 curl -s -X POST http://nó:9090/cluster/restore/force

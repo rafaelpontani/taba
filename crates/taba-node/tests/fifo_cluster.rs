@@ -622,7 +622,7 @@ async fn auto_create_accepts_fifo_with_any_replication_factor() {
 
     let single = TestCluster::start_with(2, &[("TABA_REPLICATION_FACTOR", "1")]).await;
     settled(&single).await;
-    // With factor 1 the FIFO has no secondary: the quorum is `min(2, factor)` (doc 37, section 4.16).
+    // With factor 1 the FIFO has no secondary: the quorum is `min(2, factor)` (doc 07, section 8).
     let auto = single
         .node(1)
         .client_get("/topics/auto/messages?autoCreate=true&fifo=true")

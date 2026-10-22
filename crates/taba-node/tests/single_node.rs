@@ -1,4 +1,4 @@
-//! The one-node profile (doc 37, section 4.16; level **C**): `replication.factor=1`, no cluster TLS and no entry
+//! The one-node profile (doc 07, section 8; level **C**): `replication.factor=1`, no cluster TLS and no entry
 //! address. The node is a cluster of one, starts alone and serves like any other.
 
 mod common;

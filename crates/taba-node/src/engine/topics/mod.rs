@@ -190,7 +190,7 @@ impl Topics {
     }
 
     /// The definitions the node database holds, whether or not they are in memory (a cluster node does not load them
-    /// on start: it takes them over only if it starts alone, doc 37, section 4.9).
+    /// on start: it takes them over only if it starts alone, doc 07, section 10.5).
     pub async fn stored(&self) -> io::Result<Vec<TopicDefinition>> {
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || store.load_all())

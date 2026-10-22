@@ -1,4 +1,4 @@
-//! The operator's force of the restoration of the previous lives (doc 37, section 4.8), on the operations API
+//! The operator's force of the restoration of the previous lives (doc 07, section 10.7), on the operations API
 //! (no token, only the IPs of `operations.allowed-ips`, `admin` category of the rate limit) and, for the root token,
 //! on the client API (`http::nodes`).
 //!

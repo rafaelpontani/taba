@@ -1,4 +1,4 @@
-//! What the engine gives to the restoration of the past lives (doc 37, sections 4.4 and 4.6).
+//! What the engine gives to the restoration of the past lives (doc 07, sections 10.3 and 10.6).
 
 use super::*;
 

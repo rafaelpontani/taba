@@ -1,4 +1,4 @@
-//! The scan of S3 at the start (doc 37, section 4.13; level **C**): the last step of the restoration of a node brings
+//! The scan of S3 at the start (doc 33, the scan at the start; level **C**): the last step of the restoration of a node brings
 //! back the messages the bucket holds alive of the blocks the node is primary of. The object store is the in-memory
 //! one (`MemoryStore`), the `Clock` is the manual one, and the test loses the messages of the nodes (not the bucket)
 //! to see what the scan alone brings.

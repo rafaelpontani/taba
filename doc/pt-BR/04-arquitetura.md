@@ -118,7 +118,7 @@ Cada pasta tem um `mod.rs` que começa com um comentário `//!` dizendo o que fa
 ## Como o nó sobe (`node.rs`)
 
 1. Lê a configuração e valida (por exemplo, `storage.dir` precisa terminar em uma pasta chamada `taba`).
-2. Prepara o disco: o `_node.db`, as pastas de tópicos; o disco da vida anterior é posto de lado e volta pela restauração ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)).
+2. Prepara o disco: o `_node.db`, as pastas de tópicos; o disco da vida anterior é posto de lado e volta pela restauração ([07-cluster.md](07-cluster.md), seção 10).
 3. Cria o estado compartilhado do nó, a telemetria, os registros de tópicos e tokens, e as mensagens.
 4. Em produção: cria o `ClusterService`, a replicação e o transporte, e **entra no cluster** (bootstrap) ou, se for o primeiro nó (`cluster.first-node`), começa o cluster sozinho.
 5. Abre os listeners das três portas e, a partir daí, atende. O nó só fica **pronto** (`/health/ready`) quando termina de sincronizar.

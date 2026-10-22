@@ -542,7 +542,7 @@ impl Backup {
     }
 
     /// The messages the bucket holds alive of the blocks this node is **primary** of and the node does not have
-    /// (doc 37, section 4.13): the ones in a segment that the journal (`removed`, read once by the caller) does not
+    /// (doc 33, the scan at the start): the ones in a segment that the journal (`removed`, read once by the caller) does not
     /// remove. The bucket is not proof of life: whoever receives them still checks the topic and the dead. Empty
     /// when the bucket does not answer.
     pub async fn scan_topic(
@@ -607,7 +607,7 @@ impl Backup {
     }
 
     /// The IDs the topic's journal in the bucket registers as removed (ack, `ttl`, dead-letter): the proof of death
-    /// the restoration of a past life asks S3 for (doc 37, section 4.6). `None` when S3 does not answer: the
+    /// the restoration of a past life asks S3 for (doc 07, section 10.6). `None` when S3 does not answer: the
     /// evidence is absent, and whoever asked decides with the other sources.
     pub async fn removed_in_journal(
         &self,

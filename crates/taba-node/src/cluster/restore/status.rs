@@ -1,4 +1,4 @@
-//! What this node knows of the restoration of the previous lives while it runs (doc 37, sections 4.7 and 4.8):
+//! What this node knows of the restoration of the previous lives while it runs (doc 07, sections 10.8 and 10.7):
 //! whether the cluster is still being restored (the FIFO is held), whether this node finished sending its lives,
 //! whether the operator forced, and who the restoration is still waiting for.
 
@@ -39,7 +39,7 @@ struct Inner {
     status: Status,
     /// This node sent everything its lives keep (or had nothing to send).
     finished: bool,
-    /// The operator forced (doc 37, section 4.8).
+    /// The operator forced (doc 07, section 10.7).
     forced: bool,
     /// When the restoration began on this node (ms), the start of the grace period `G`.
     since_ms: u64,

@@ -1,4 +1,4 @@
-//! The end of the restoration of the previous lives (doc 37, sections 4.7 and 4.8): the nodes tell each other which
+//! The end of the restoration of the previous lives (doc 07, sections 10.8 and 10.7): the nodes tell each other which
 //! lives they keep and whether they finished sending them; the restoration starts when the expected nodes announced
 //! theirs, or after the grace period `G`; the coordinator (the lowest ID) closes the vote when every present node
 //! finished, the status becomes **restored from disk**, the FIFO is released and the folders of the lives are
@@ -81,7 +81,7 @@ impl Recovery {
         Ok(Response::Json(json!({ "forced": true })))
     }
 
-    /// The operator's force (doc 37, section 4.8): every present node changes the status and releases what was
+    /// The operator's force (doc 07, section 10.7): every present node changes the status and releases what was
     /// held. Returns the nodes that did not answer.
     pub async fn force_cluster(self: &Arc<Self>) -> Vec<String> {
         self.force_here().await;
@@ -267,7 +267,7 @@ impl Recovery {
         self.decide().await;
     }
 
-    /// The cluster is restored from disk (doc 37, section 4.7): the group's primary deduplicates what the FIFO
+    /// The cluster is restored from disk (doc 07, section 10.8): the group's primary deduplicates what the FIFO
     /// accepted meanwhile, in `id` order, discards the duplicates, and only then the FIFO is released. Idempotent.
     pub async fn decide(self: &Arc<Self>) {
         let _turn = self.decision.lock().await;
@@ -368,7 +368,7 @@ impl Recovery {
         out
     }
 
-    /// The generator of IDs stays above the watermark of every old life announced (doc 37, section 4.10).
+    /// The generator of IDs stays above the watermark of every old life announced (doc 07, section 10.9).
     fn raise_floor_from(&self, manifests: &[Manifest]) {
         for manifest in manifests {
             if let Some(watermark) = &manifest.watermark {

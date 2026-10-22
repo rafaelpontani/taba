@@ -236,7 +236,7 @@ curl -s -X POST http://node:9090/cluster/stop
 
 ### `POST /cluster/restore/force`: force the restoration of the previous lives
 
-After a total fall the cluster restores the old messages and only then releases the FIFO queues ([37-cluster-cold-start.md](37-cluster-cold-start.md), sections 4.7 and 4.8). While the vote does not close, `GET /health/cluster` shows `previous-life-pending`. The call declares the cluster **restored from disk** with the nodes that are present: the node that receives it spreads it to the others (`POST /cluster/restore/force` on the cluster port), the FIFO queues are released and a restoration held by `cluster.restore.strict` goes on. Messages already consumed may come back (doc 37, section 4.11). On the client API it needs the **root token**; on the operations port, like `/cluster/stop`, it uses no token.
+After a total fall the cluster restores the old messages and only then releases the FIFO queues ([07-cluster.md](07-cluster.md), sections 10.8 and 10.7). While the vote does not close, `GET /health/cluster` shows `previous-life-pending`. The call declares the cluster **restored from disk** with the nodes that are present: the node that receives it spreads it to the others (`POST /cluster/restore/force` on the cluster port), the FIFO queues are released and a restoration held by `cluster.restore.strict` goes on. Messages already consumed may come back ([07-cluster.md](07-cluster.md), section 10.10). On the client API it needs the **root token**; on the operations port, like `/cluster/stop`, it uses no token.
 
 ```bash
 curl -s -X POST http://node:9090/cluster/restore/force

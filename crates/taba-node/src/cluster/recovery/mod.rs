@@ -10,7 +10,7 @@
 //!   list of all the nodes it reaches, looks for each message in what it still keeps and sends it to the
 //!   block's responsible party; only then does it clean the local state and redo the join.
 //!
-//! The restoration of the past lives (doc 37, sections 4.5 and 4.6) is in [`restoration`]: every node sends the
+//! The restoration of the past lives (doc 07, sections 10.4 and 10.6) is in [`restoration`]: every node sends the
 //! whole folder of each life inside the window of the log of excluded messages to the new primary of each block,
 //! and the primary checks the topic and the dead before it activates. Its end is in [`finish`]: the nodes poll each
 //! other, the coordinator closes the vote, the FIFO queues are released and the folders of the lives are deleted

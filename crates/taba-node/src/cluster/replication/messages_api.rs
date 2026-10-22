@@ -526,7 +526,7 @@ impl ClusterMessages {
     }
 
     /// The release of the restoration discards a FIFO duplicate this node, the group's primary, accepted while the
-    /// queue was held (doc 37, section 4.10): an ack on the owners with no receipt.
+    /// queue was held (doc 07, section 10.9): an ack on the owners with no receipt.
     pub async fn discard(self: &Arc<Self>, topic: &str, id: &str) -> Result<(), TabaError> {
         let view = self.messages.queue_view(topic)?;
         let Some(info) = self.messages.message_info(topic, id)? else {

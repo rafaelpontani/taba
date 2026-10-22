@@ -1,4 +1,4 @@
-//! The probe of the old IPs and the regroup of the groups that took over the disk (doc 37, section 4.14).
+//! The probe of the old IPs and the regroup of the groups that took over the disk (doc 07, section 10.11).
 //!
 //! Two groups that came up without talking to each other never excluded one another, so the reunion by exclusion
 //! (`check_reunion`) does not find them. While the cluster has fewer members than the table of the previous life, each

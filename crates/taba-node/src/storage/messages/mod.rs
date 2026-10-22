@@ -123,7 +123,7 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
 ";
 
-/// Key of the `topic_meta` table that holds the `topicId` the folder was created for (doc 37, section 4.6).
+/// Key of the `topic_meta` table that holds the `topicId` the folder was created for (doc 07, section 10.6).
 const TOPIC_ID_KEY: &str = "topic_id";
 
 /// Tells the `topicId` of a topic name, when the folder of the topic is created.
@@ -240,7 +240,7 @@ pub struct MessageStore {
     root: PathBuf,
     synchronous: DbSynchronous,
     topics: Mutex<HashMap<String, Arc<TopicDisk>>>,
-    /// The log of excluded messages (doc 37, section 4.4).
+    /// The log of excluded messages (doc 07, section 10.3).
     excluded: ExcludedLog,
     /// Records the `topicId` in each folder created, so a restoration can tell a recreated topic.
     topic_ids: OnceLock<Resolver>,
@@ -715,11 +715,11 @@ impl MessageStore {
     }
 
     /// The folder of a disk with no manifest (a version before the quarantine per life): it waits for the restart
-    /// recovery of the losses and is deleted at the end of it (PRB-048; doc 37, section 4.12).
+    /// recovery of the losses and is deleted at the end of it (PRB-048; doc 23, rolling update).
     pub const PREVIOUS_LIFE: &str = "_previous-life";
 
-    /// The folder that holds one subfolder per previous life, named with the node ID of that life (doc 37,
-    /// section 4.5). Nothing here is deleted by the recovery.
+    /// The folder that holds one subfolder per previous life, named with the node ID of that life (doc 07,
+    /// section 10.4). Nothing here is deleted by the recovery.
     pub const LIVES: &str = "_lives";
 
     /// The manifest of a life, in the root of the disk of the running life and, afterwards, in its folder.

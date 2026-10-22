@@ -1,5 +1,5 @@
 //! The node state in the `state` table of `_node.db` (doc 04, section 6.10): the start of the recording of the
-//! excluded log and whether this life already inherited it (doc 37, section 4.4).
+//! excluded log and whether this life already inherited it (doc 07, section 10.3).
 
 use std::io;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ impl NodeStateStore {
         Self { db }
     }
 
-    /// The start of the continuous recording of the excluded log (doc 37, section 4.4), in ms.
+    /// The start of the continuous recording of the excluded log (doc 07, section 10.3), in ms.
     pub fn excluded_since(&self) -> io::Result<Option<u64>> {
         let value: Option<String> = self
             .db

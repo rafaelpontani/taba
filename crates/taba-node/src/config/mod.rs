@@ -163,7 +163,7 @@ pub struct Ports {
 
 #[derive(Debug, Clone)]
 pub struct Tls {
-    /// `cluster.tls.enabled`: `false` only in the one-node profile (doc 37, section 4.16).
+    /// `cluster.tls.enabled`: `false` only in the one-node profile (doc 07, section 8).
     pub enabled: bool,
     /// `None`: the cluster port serves plain HTTP, with a warning in the log.
     pub dir: Option<PathBuf>,
@@ -322,7 +322,7 @@ pub struct Cluster {
     pub restore: ClusterRestore,
 }
 
-/// The restoration of the previous lives' messages (doc 37, sections 4.4, 4.8 and 4.14).
+/// The restoration of the previous lives' messages (doc 07, sections 10.3, 10.7 and 10.11).
 #[derive(Debug, Clone)]
 pub struct ClusterRestore {
     /// `cluster.restore.grace` (`G`): how long the restoration waits for the expected nodes.
@@ -484,7 +484,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// The one-node profile: a cluster of one, with no one to join (doc 37, section 4.16).
+    /// The one-node profile: a cluster of one, with no one to join (doc 07, section 8).
     pub fn is_single_node(&self) -> bool {
         self.write.replication_factor == 1
     }
@@ -545,7 +545,7 @@ impl Config {
     fn build(s: &Source, warnings: &mut Vec<String>) -> Result<Self, ConfigError> {
         let mut problems: Vec<String> = Vec::new();
         let configured_factor: u32 = s.get("replication.factor")?;
-        // The one-node profile (doc 37, section 4.16): what it relaxes only exists with factor 1.
+        // The one-node profile (doc 07, section 8): what it relaxes only exists with factor 1.
         let single = configured_factor == 1;
 
         // `mode` and `development.resume-on-start` no longer exist: the development uses the one-node profile.

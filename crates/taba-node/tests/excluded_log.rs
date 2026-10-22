@@ -1,4 +1,4 @@
-//! The log of excluded messages in the simulated cluster (doc 37, section 4.4; level **C** of doc 20): every
+//! The log of excluded messages in the simulated cluster (doc 07, section 10.3; level **C** of doc 20): every
 //! node that keeps a copy records the exclusion when the message is acknowledged or sent to the dead-letter.
 
 mod common;

@@ -1,4 +1,4 @@
-//! Rules of the restoration of the previous lives (doc 37, sections 4.4, 4.5 and 4.8). Pure functions, with no
+//! Rules of the restoration of the previous lives (doc 07, sections 10.3, 10.4 and 10.7). Pure functions, with no
 //! clock, network or disk (but for the manifest file): the same rules the cold start and the restoration apply,
 //! so the property of section 4.8 can be tested over them.
 //!
@@ -162,12 +162,12 @@ pub fn start(
     }
 }
 
-/// The coordinator of the restoration: the present node with the lowest ID (doc 37, section 4.9).
+/// The coordinator of the restoration: the present node with the lowest ID (doc 07, section 10.5).
 pub fn coordinator(present: &[String]) -> Option<&String> {
     present.iter().min()
 }
 
-/// The vote closes when **every** present node announced it finished (doc 37, section 4.7): each one has disk
+/// The vote closes when **every** present node announced it finished (doc 07, section 10.8): each one has disk
 /// to send. The expected nodes that did not come back are dealt with by the grace period, not by the vote.
 pub fn vote_closes(present: &[String], finished: &[String]) -> bool {
     !present.is_empty() && present.iter().all(|id| finished.contains(id))

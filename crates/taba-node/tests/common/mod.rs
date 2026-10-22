@@ -89,7 +89,7 @@ impl TestNodeBuilder {
             .env("TABA_CLUSTER_ADVERTISE_ADDRESSES", ip)
     }
 
-    /// The one-node profile (doc 37, section 4.16; the default of `TestNode::builder()`): factor 1, no TLS, no
+    /// The one-node profile (doc 07, section 8; the default of `TestNode::builder()`): factor 1, no TLS, no
     /// entry address, with the real `Transport`. The node starts alone and takes over its disk.
     pub fn single_node(mut self) -> Self {
         self.profile = true;

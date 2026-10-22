@@ -360,7 +360,7 @@ pub(super) async fn cluster_health(
             .iter()
             .all(|s| s["drainState"] == "draining" || s["drainState"] == "drained");
     // The cut-off of the excluded log: the most recent start among the active members, because an exclusion
-    // older than that may be missing from some of them (doc 37, section 4.4).
+    // older than that may be missing from some of them (doc 07, section 10.3).
     let excluded_cutoff = answered
         .iter()
         .filter(|s| s["state"] == "active")

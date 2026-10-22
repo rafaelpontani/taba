@@ -1,4 +1,4 @@
-//! The versions and tombstones of the definitions kept in `_node.db` (doc 37, stage 1; level **C** of
+//! The versions and tombstones of the definitions kept in `_node.db` (doc 07, section 10.2; level **C** of
 //! doc 20): several real nodes in the same process, linked by the in-memory network.
 
 mod common;

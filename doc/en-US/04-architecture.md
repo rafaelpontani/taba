@@ -118,7 +118,7 @@ Each folder has a `mod.rs` that starts with a `//!` comment saying what it does.
 ## How the node starts (`node.rs`)
 
 1. Reads and validates the configuration (for example, `storage.dir` must end in a folder named `taba`).
-2. Prepares the disk: `_node.db`, the topic folders; the previous life's disk is set aside and comes back through the restoration ([37-cluster-cold-start.md](37-cluster-cold-start.md)).
+2. Prepares the disk: `_node.db`, the topic folders; the previous life's disk is set aside and comes back through the restoration ([07-cluster.md](07-cluster.md), section 10).
 3. Creates the shared node state, the telemetry, the topic and token registries, and the messages.
 4. In production: creates the `ClusterService`, the replication and the transport, and **joins the cluster** (bootstrap) or, if it is the first node (`cluster.first-node`), starts the cluster by itself.
 5. Opens the listeners of the three ports and from then on serves. The node only becomes **ready** (`/health/ready`) when it finishes synchronizing.

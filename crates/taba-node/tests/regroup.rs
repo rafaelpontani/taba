@@ -1,5 +1,5 @@
 //! The probe of the old IPs and the regroup of the groups that took over the disk without talking to each other
-//! (doc 37, section 4.14; level **C**). The network is the in-memory one (`MemoryNetwork`), which can cut the link
+//! (doc 07, section 10.11; level **C**). The network is the in-memory one (`MemoryNetwork`), which can cut the link
 //! between two hosts, and the `Clock` is the manual one.
 
 mod common;

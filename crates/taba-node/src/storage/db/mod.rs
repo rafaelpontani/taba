@@ -3,7 +3,7 @@
 //! It keeps the `topics` table (the definitions) and `state` (key and value of the node's state,
 //! like the save mark) and `tokens` (the access tokens, only with the salted hash of the secret);
 //! `losses` (the messages declared lost in synchronization, doc 05, section 7.3); `definition_versions`
-//! (the version of each definition and the tombstones, doc 37, section 4.2). A single connection behind a `Mutex` is the database's
+//! (the version of each definition and the tombstones, doc 07, section 10.2). A single connection behind a `Mutex` is the database's
 //! single writer: whoever writes waits their turn, and SQLite never sees two writes at the same time.
 //! The methods are synchronous: the `engine` calls them outside the async executor.
 

@@ -1,4 +1,4 @@
-//! Version upgrade (doc 37, section 4.12): a node that joins and sees nodes of an **earlier** version
+//! Version upgrade (doc 23, rolling update): a node that joins and sees nodes of an **earlier** version
 //! in the cluster drains them, one at a time, through the drain that already exists. The versions are not made
 //! compatible with each other: the new one retires the old ones.
 //!

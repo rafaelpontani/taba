@@ -245,7 +245,7 @@ impl Tokens {
         Ok(())
     }
 
-    /// The `auth.dev-token` (doc 37, section 4.16): creates the `admin` work token `dev` with that secret if it does not
+    /// The `auth.dev-token` (doc 07, section 8): creates the `admin` work token `dev` with that secret if it does not
     /// exist, and replaces it if the secret changed. Local only: the profile has a single node.
     pub async fn ensure_dev(&self, secret: &str) -> Result<(), TabaError> {
         let current = self.record(DEV_TOKEN_ID);

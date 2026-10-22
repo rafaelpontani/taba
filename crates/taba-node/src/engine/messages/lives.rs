@@ -1,4 +1,4 @@
-//! What the engine offers to the restoration of the past lives (doc 37, sections 4.4 to 4.6): the check of
+//! What the engine offers to the restoration of the past lives (doc 07, sections 10.3 to 10.6): the check of
 //! the topic a message belonged to, the answer to "which of these IDs does your log of excluded messages have?",
 //! and the reading of the folder of a life (a store over `${storage.dir}/_lives/<ID>`).
 
@@ -41,7 +41,7 @@ impl Messages {
         self.topics.get(topic).ok().map(|view| view.definition.id)
     }
 
-    /// Which of the `ids` the node's log of excluded messages has (doc 37, section 4.6).
+    /// Which of the `ids` the node's log of excluded messages has (doc 07, section 10.6).
     pub fn excluded_among(&self, topic: &str, ids: &[String]) -> Vec<String> {
         ids.iter()
             .filter(|id| self.is_excluded(topic, id))
@@ -83,8 +83,8 @@ impl Messages {
         }
     }
 
-    /// Adds to the node's log the exclusions the folder of a life recorded, for the topics that still exist (doc 37,
-    /// section 4.4), and moves the start of the recording back if the life and the node's log meet with no hole
+    /// Adds to the node's log the exclusions the folder of a life recorded, for the topics that still exist (doc 07,
+    /// section 10.3), and moves the start of the recording back if the life and the node's log meet with no hole
     /// (`life_since` and `life_seen` come from the manifest). They only add evidence of death.
     pub fn import_life_log(
         &self,

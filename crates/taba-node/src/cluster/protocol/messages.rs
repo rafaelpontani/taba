@@ -281,8 +281,8 @@ pub struct AckRegisterRequest {
     pub receipt_token: String,
     /// FIFO queue only.
     pub delete_at_ms: Option<u64>,
-    /// The ack is the group's primary discarding a duplicate at the release of the restoration (doc 37, section
-    /// 4.10): there is no receipt to check.
+    /// The ack is the group's primary discarding a duplicate at the release of the restoration (doc 07, section
+    /// 10.9): there is no receipt to check.
     pub discard: bool,
 }
 

@@ -168,7 +168,7 @@ pub fn generate(
     NewToken { record, token }
 }
 
-/// A record for a secret that is not random: the `auth.dev-token` (doc 37, section 4.16). The presented token is
+/// A record for a secret that is not random: the `auth.dev-token` (doc 07, section 8). The presented token is
 /// `tb_<id>.<secret>`; the record keeps only the salted hash, like any other.
 pub fn with_secret(
     id: String,

@@ -310,7 +310,7 @@ pub struct Syncer {
     /// When the definitions were pulled again because of an unknown topic.
     refreshed_at: Mutex<Option<Instant>>,
     /// The start of the continuous recording of each source that sent its log of excluded messages in this
-    /// synchronization (doc 37, section 4.4).
+    /// synchronization (doc 07, section 10.3).
     excluded_sources: Mutex<HashMap<String, u64>>,
     /// A source did not send its log or its date: the node does not inherit the date.
     excluded_incomplete: AtomicBool,

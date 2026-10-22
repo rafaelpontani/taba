@@ -620,7 +620,7 @@ async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_aft
         has(cluster.node(1), &from_two.id) && has(cluster.node(2), &from_two.id)
     })
     .await;
-    // The recovery does not delete the folder of the life: only the end of the restoration does (doc 37, 4.7), which
+    // The recovery does not delete the folder of the life: only the end of the restoration does (doc 07, section 10.8), which
     // here is the end of the pass of the restoration, once the primaries confirmed everything.
     eventually(
         "the end of the restoration to delete the folder of the life",

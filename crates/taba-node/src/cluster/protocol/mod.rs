@@ -163,7 +163,7 @@ pub enum Request {
     Forward(ForwardRequest),
     /// `GET /cluster/blocks/{id}/ids`
     BlockIds { block: String, query: StreamQuery },
-    /// `GET /cluster/blocks/{id}/excluded`: the block's log of excluded messages (doc 37, section 4.4).
+    /// `GET /cluster/blocks/{id}/excluded`: the block's log of excluded messages (doc 07, section 10.3).
     BlockExcluded { block: String, query: StreamQuery },
     /// `GET /cluster/blocks/{id}/messages`
     BlockMessages { block: String, query: StreamQuery },
@@ -185,14 +185,14 @@ pub enum Request {
     /// `POST /cluster/messages/recover`: the messages the returning node found (accepts whoever is
     /// not yet a member). With `replicate`, whoever receives it also writes to the other responsible nodes;
     /// without it (`?replicate=false`), it only writes to its own disk. With `durable` (`?durable=true`), whoever
-    /// writes puts the messages **on disk**, not only in memory (the restoration of a past life, doc 37, 4.7).
+    /// writes puts the messages **on disk**, not only in memory (the restoration of a past life, doc 07, section 10.8).
     Recover {
         records: Vec<MessageRecord>,
         replicate: bool,
         durable: bool,
     },
     /// `POST /cluster/topics/{topic}/messages/restore`: the messages of a past life, sent to the new primary of
-    /// their block with the original ID (doc 37, section 4.6). Whoever receives checks the topic (and the
+    /// their block with the original ID (doc 07, section 10.6). Whoever receives checks the topic (and the
     /// `topicId` the life had), then the dead, and only then activates what is alive. Not for a node of an
     /// earlier version.
     Restore {
@@ -202,15 +202,15 @@ pub enum Request {
         records: Vec<MessageRecord>,
     },
     /// `POST /cluster/topics/{topic}/messages/dead`: which of the `ids` this node's log of excluded messages
-    /// has (doc 37, section 4.6). The answer is a `Json` `{ "dead": [ids] }`.
+    /// has (doc 07, section 10.6). The answer is a `Json` `{ "dead": [ids] }`.
     Dead { topic: String, ids: Vec<String> },
-    /// `GET /cluster/restore`: the state of this node's restoration of the previous lives (doc 37, section 4.7):
+    /// `GET /cluster/restore`: the state of this node's restoration of the previous lives (doc 07, section 10.8):
     /// the lives it keeps, whether it finished sending and the status of the cluster. A `Json` answer.
     RestoreState,
     /// `POST /cluster/restore/decided`: the coordinator tells every node the vote closed and the cluster is
     /// **restored from disk**: the FIFO is released and the folders of the lives are deleted.
     RestoreDecided,
-    /// `POST /cluster/restore/force`: the operator's force (doc 37, section 4.8), spread to every node.
+    /// `POST /cluster/restore/force`: the operator's force (doc 07, section 10.7), spread to every node.
     RestoreForce,
     /// `POST /cluster/backup/flush`: the S3 backup flush on this node (doc 23, section 1.11).
     BackupFlush,

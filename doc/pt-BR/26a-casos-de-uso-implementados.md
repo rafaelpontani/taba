@@ -6883,7 +6883,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-015
 
 **Caso:** Depois de ativo, o nó que reiniciou recupera em segundo plano  
-**Então:** consulta a lista de perdas, devolve ao responsável o que o disco da vida anterior tem delas e **mantém** a pasta da vida (ela só é apagada no fim da restauração, doc 37, seção 4.7; a pasta `_previous-life`, de disco sem manifesto, é apagada). O membro que estava mudo é chamado de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout` (5 min, D110); esgotado, o nó segue com as listas que tem.  
+**Então:** consulta a lista de perdas, devolve ao responsável o que o disco da vida anterior tem delas e **mantém** a pasta da vida (ela só é apagada no fim da restauração, [07-cluster.md](07-cluster.md), seção 10.8; a pasta `_previous-life`, de disco sem manifesto, é apagada). O membro que estava mudo é chamado de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout` (5 min, D110); esgotado, o nó segue com as listas que tem.  
 **Nível:** C  
 **Testes:**
   - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
@@ -7123,7 +7123,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-047
 
 **Caso:** Uma queda faz o log de excluídos perder as últimas entradas (e o apagamento da mensagem que elas acompanhavam)
-**Então:** a mensagem que o consumidor já tinha confirmado volta como pronta e é entregue de novo; é aceito, porque o consumidor é idempotente (*at-least-once*, doc 37, seção 4.11).
+**Então:** a mensagem que o consumidor já tinha confirmado volta como pronta e é entregue de novo; é aceito, porque o consumidor é idempotente (*at-least-once*, [07-cluster.md](07-cluster.md), seção 10.10).
 **Nível:** C
 **Testes:**
   - `tests/cold_start.rs::a_fall_that_loses_the_last_entries_of_the_log_delivers_the_acknowledged_message_again`
@@ -7192,7 +7192,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-054
 
 **Caso:** Uma mensagem já consumida cujo registro de exclusão estava só num nó que não voltou, e a mesma mensagem com todos os nós esperados presentes
-**Então:** com o nó ausente, nada é entregue de novo antes de `G`; passado `G`, a restauração segue com os nós presentes e a mensagem volta (a reentrega residual da seção 4.11, que o consumidor idempotente aceita). Com todos os nós esperados presentes, a restauração não espera `G` e a mensagem que o log de um deles marca como consumida não volta.
+**Então:** com o nó ausente, nada é entregue de novo antes de `G`; passado `G`, a restauração segue com os nós presentes e a mensagem volta (a reentrega residual da seção 10.10 do 07-cluster.md, que o consumidor idempotente aceita). Com todos os nós esperados presentes, a restauração não espera `G` e a mensagem que o log de um deles marca como consumida não volta.
 **Nível:** C
 **Testes:**
   - `tests/restore_vote.rs::a_message_already_consumed_whose_log_is_on_a_node_that_never_came_back_returns_only_after_g`
@@ -7241,7 +7241,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-017
 
 **Caso:** O **primeiro nó** de um cluster novo (`cluster.first-node=true`, listagem sem ninguém) não tem de quem recuperar  
-**Então:** um disco **sem manifesto** (versão anterior) é apagado na partida, pelo caminho de sempre, e a pasta `_previous-life` não fica (D111); um disco **com manifesto** vira a pasta da vida (UC-RTN-023) e é restaurado pela partida a frio (UC-RTN-036; doc 37, seção 4.9).  
+**Então:** um disco **sem manifesto** (versão anterior) é apagado na partida, pelo caminho de sempre, e a pasta `_previous-life` não fica (D111); um disco **com manifesto** vira a pasta da vida (UC-RTN-023) e é restaurado pela partida a frio (UC-RTN-036; [07-cluster.md](07-cluster.md), seção 10.5).  
 **Nível:** C  
 **Testes:**
   - `tests/recovery.rs::the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life`
@@ -7295,7 +7295,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-022
 
 **Caso:** **Propriedade** (o mesmo modelo, com nós ausentes): uma mensagem já confirmada só volta se **nenhum nó presente** registrou o ack dela; e, enquanto falta um nó esperado e `G` não passou, a restauração não começa (nem no modo estrito)  
-**Então:** a reentrega residual da seção 4.11 só acontece quando quem registrou a exclusão está ausente, e só depois de `G` (ou de forçar).  
+**Então:** a reentrega residual da seção 10.10 do 07-cluster.md só acontece quando quem registrou a exclusão está ausente, e só depois de `G` (ou de forçar).  
 **Nível:** U (modelo; o teste de cluster simulado vem com a restauração)  
 **Testes:**
   - `src/cluster/restore/tests.rs::with_a_node_missing_only_what_every_logger_of_it_missed_can_come_back`
@@ -7318,7 +7318,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-024
 
 **Caso:** A vida em execução mantém o **manifesto** na raiz do disco: o ID, os **membros ativos** da tabela com os IPs, a versão da tabela, o `last_seen` e a marca d'água
-**Então:** é gravado quando o nó fica ativo e a cada mudança da tabela, o `last_seen` anda a cada 10 s e na parada limpa, e a escrita é atômica (arquivo temporário e troca). A marca d'água é o maior instante que o gerador de IDs usou ou foi mandado respeitar (doc 37, seção 4.10); vai vazia até o nó gerar um ID.
+**Então:** é gravado quando o nó fica ativo e a cada mudança da tabela, o `last_seen` anda a cada 10 s e na parada limpa, e a escrita é atômica (arquivo temporário e troca). A marca d'água é o maior instante que o gerador de IDs usou ou foi mandado respeitar ([07-cluster.md](07-cluster.md), seção 10.9); vai vazia até o nó gerar um ID.
 **Nível:** C
 **Testes:**
   - `tests/recovery.rs::the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop`
@@ -7329,7 +7329,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-RTN-025
 
-**Caso:** A **quarentena não é apagada** pela recuperação de hoje: a pasta de cada vida fica até o fim da restauração (voto, doc 37, seção 4.7)
+**Caso:** A **quarentena não é apagada** pela recuperação de hoje: a pasta de cada vida fica até o fim da restauração (voto, [07-cluster.md](07-cluster.md), seção 10.8)
 **Então:** a recuperação das perdas devolve o que a lista pede, e a pasta da vida continua com os tópicos e o manifesto, inclusive quando o prazo de `cluster.recovery.timeout` esgota. Só as linhas que um primário confirmou na restauração (UC-RTN-026) saem dela.
 **Nível:** C
 **Testes:**

@@ -69,7 +69,7 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 - `backup.s3.access-key` sem `backup.s3.secret-key` (ou o contrário); `backup.segment.max-bytes` ou `backup.segment.max-messages` iguais a zero; a regra `backup.disk.evict-to` < `backup.disk.evict-above` < `backup.disk.pause-at` ≤ 100 desrespeitada; `backup.dead-after` que não passa de `backup.heartbeat.interval` (todo nó pareceria morto).
 
 
-`mode` e `development.resume-on-start` **deixaram de existir** (o modo desenvolvimento saiu, [37-retomada-do-cluster.md](37-retomada-do-cluster.md), seção 4.16): um arquivo ou uma variável que ainda os defina continua subindo, com um aviso no log, e eles não fazem nada. Para rodar um nó só, use o perfil de um nó (`replication.factor=1`, e se quiser `cluster.tls.enabled=false` e `auth.dev-token`).
+`mode` e `development.resume-on-start` **deixaram de existir** (o modo desenvolvimento saiu, [07-cluster.md](07-cluster.md), seção 8): um arquivo ou uma variável que ainda os defina continua subindo, com um aviso no log, e eles não fazem nada. Para rodar um nó só, use o perfil de um nó (`replication.factor=1`, e se quiser `cluster.tls.enabled=false` e `auth.dev-token`).
 
 ## Como ler as tabelas
 
@@ -97,7 +97,7 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 |---|---|---|---|
 | `secrets.dir` | `TABA_SECRETS_DIR` | **/etc/taba/secrets** | Pasta que o operador cria uma vez com `taba init --out <pasta>` e monta em todos os nós, como segredo da plataforma. Tem `tls/` (certificados do cluster) e `root-token` (token raiz). Os dois parâmetros abaixo derivam dela, e quem quiser outros caminhos os define à parte. |
 | `cluster.tls.dir` | `TABA_CLUSTER_TLS_DIR` | **<secrets.dir>/tls** (do código) | Pasta com os certificados do cluster, em pares `<nome>.crt` (PEM) e `<nome>.key`, gerados por `taba init` ou `taba cert generate`. O nó confia em todo certificado não expirado da pasta e apresenta o par de início mais recente que já começou a valer. O TLS mútuo liga **sozinho** quando a pasta existe, e o nó não sobe sem ao menos um par válido; se ela não existe, a porta atende em HTTP puro com aviso no log. Um valor definido que não existe impede a subida. |
-| `cluster.tls.enabled` | `TABA_CLUSTER_TLS_ENABLED` | **true** | `false` desliga o TLS do cluster (sem pasta de segredos). **Só é aceito com `replication.factor=1`**: com mais de um nó o processo recusa partir. Parte do perfil de um nó, só para desenvolvimento (doc 37, seção 4.16). |
+| `cluster.tls.enabled` | `TABA_CLUSTER_TLS_ENABLED` | **true** | `false` desliga o TLS do cluster (sem pasta de segredos). **Só é aceito com `replication.factor=1`**: com mais de um nó o processo recusa partir. Parte do perfil de um nó, só para desenvolvimento ([07-cluster.md](07-cluster.md), seção 8). |
 | `cluster.tls.reload-interval` | `TABA_CLUSTER_TLS_RELOAD_INTERVAL` | **60s** | De quanto em quanto tempo a pasta é conferida. Mudanças valem sem reiniciar o nó; pasta inválida mantém o conjunto anterior e registra `error`. |
 | `cluster.tls.expiry-warning` | `TABA_CLUSTER_TLS_EXPIRY_WARNING` | **30d** | Antecedência com que o nó registra `warn` no log para o certificado em uso que está para expirar. |
 

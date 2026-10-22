@@ -1,4 +1,4 @@
-//! The restoration of the past lives (doc 37, sections 4.4 to 4.6; level **C**): the disk of a process that
+//! The restoration of the past lives (doc 07, sections 10.3 to 10.6; level **C**): the disk of a process that
 //! restarted becomes the folder of its life, and every message in it is sent, with its original ID, to the new
 //! primary of its block, which checks the topic and the dead before it activates. The `Clock` is manual.
 
@@ -475,7 +475,7 @@ async fn no_life_is_restorable_while_a_member_does_not_tell_when_its_log_started
     })
     .await;
 
-    // The end of the restoration deletes the folder of the life (doc 37, section 4.7).
+    // The end of the restoration deletes the folder of the life (doc 07, section 10.8).
     eventually("the folder of the settled life to be deleted", || {
         !life.exists()
     })

@@ -283,8 +283,8 @@ struct TopicState {
     dead_letter_inflight: HashSet<String>,
     /// The last "has ready messages" notified to the other nodes.
     ready_signaled: bool,
-    /// FIFO queue only, on the group's primary during the restoration of the previous lives (doc 37, section
-    /// 4.10): the `id` of each publication accepted without deduplication, and its key, in `id` order. The
+    /// FIFO queue only, on the group's primary during the restoration of the previous lives (doc 07, section
+    /// 10.9): the `id` of each publication accepted without deduplication, and its key, in `id` order. The
     /// release deduplicates them against what the restoration brought.
     provisional: BTreeMap<String, (String, String)>,
 }
@@ -510,7 +510,7 @@ pub struct Messages {
     /// The previous life's disk awaits the restart recovery: the sweep does not delete it.
     keep_old_disk: AtomicBool,
     /// The FIFO queues receive and do not deliver, and publications are not deduplicated, until the cluster is
-    /// restored from disk (doc 37, section 4.10).
+    /// restored from disk (doc 07, section 10.9).
     fifo_held: AtomicBool,
     /// The previous life's disk, set aside until the restart recovery ends (PRB-048).
     previous_life: Mutex<Option<Arc<MessageStore>>>,
@@ -592,7 +592,7 @@ impl Messages {
     }
 
     /// What is left on disk from an earlier run is deleted: the node starts empty (a restart brings the messages
-    /// back through the restoration of the previous life, doc 37), so a topic recreated with the same name does not
+    /// back through the restoration of the previous life, doc 07, section 10.8), so a topic recreated with the same name does not
     /// resurrect messages.
     pub fn new(
         topics: Arc<Topics>,
@@ -620,7 +620,7 @@ impl Messages {
     /// the recovery (PRB-048). Returns whether there is anything to recover.
     pub fn set_aside_old_disk(&self) -> io::Result<bool> {
         // A disk with a manifest becomes the folder of that life; one without it (an earlier version) keeps
-        // the path of the loss list only (doc 37, section 4.12).
+        // the path of the loss list only (doc 23, rolling update).
         let life = crate::cluster::restore::Manifest::read(self.store.root()).map(|m| m.node_id);
         let previous = self
             .store
@@ -662,7 +662,7 @@ impl Messages {
     }
 
     /// The restart recovery is over: the disk with no manifest is deleted. The folder of a life stays until the
-    /// end of the restoration (doc 37, section 4.7).
+    /// end of the restoration (doc 07, section 10.8).
     pub fn finish_previous_life(&self) {
         *lock(&self.previous_life) = None;
         if let Err(e) = self.store.drop_old_disk() {
@@ -695,7 +695,7 @@ impl Messages {
             Err(e) => tracing::warn!(error = %e, "could not list the messages on disk"),
         }
         // Each topic folder records the `topicId` it was created for: a restoration discards the messages of a
-        // topic that was recreated with another one (doc 37, section 4.6).
+        // topic that was recreated with another one (doc 07, section 10.6).
         let for_ids = topics.clone();
         store.set_topic_id_resolver(Box::new(move |name| {
             for_ids.get(name).ok().map(|view| view.definition.id)
@@ -1432,7 +1432,7 @@ impl Messages {
     }
 
     /// Takes the message from wherever it is and from the index, recording its **exclusion** in the log
-    /// (doc 37, section 4.4): ack, prune.
+    /// (doc 07, section 10.3): ack, prune.
     fn remove_message(
         &self,
         state: &mut TopicState,
@@ -2088,7 +2088,7 @@ impl Messages {
         }
     }
 
-    /// Applies the limits of the log of excluded messages (doc 37, section 4.4). The log is trimmed on its own
+    /// Applies the limits of the log of excluded messages (doc 07, section 10.3). The log is trimmed on its own
     /// schedule, not at each pass of the sweep.
     pub fn trim_excluded(&self) {
         let now = self.clock.now_millis();
@@ -2114,8 +2114,8 @@ impl Messages {
     }
 
     /// The node that starts alone takes over the recording of its previous life: nobody that was running recorded in
-    /// the hole between that life and this start, so the start of the recording goes back to the life's (doc 37,
-    /// section 4.9). Never moves it forward.
+    /// the hole between that life and this start, so the start of the recording goes back to the life's (doc 07,
+    /// section 10.5). Never moves it forward.
     pub fn take_over_excluded_since(&self, past_ms: u64) -> io::Result<()> {
         if past_ms < self.excluded_since() {
             self.store.set_excluded_since(past_ms)?;
@@ -2862,7 +2862,7 @@ impl Messages {
         let state = self.state_of(&name);
         let mut state = lock(&state);
         // While the previous lives are being restored nothing is deduplicated: everything is accepted and
-        // remembered, and the release decides (doc 37, section 4.10).
+        // remembered, and the release decides (doc 07, section 10.9).
         let held = self.fifo_held();
         if !held && let Some(original) = self.duplicate_of(&mut state, &name, &key, now) {
             return Ok(Draft::Duplicate { id: original });
@@ -2909,7 +2909,7 @@ impl Messages {
     }
 
     /// Like [`apply_publish`](Self::apply_publish); with `durable` the body goes **straight to disk**, whatever the
-    /// memory limit says (the restoration of a past life must survive a second crash, doc 37, section 4.7).
+    /// memory limit says (the restoration of a past life must survive a second crash, doc 07, section 10.8).
     pub fn apply_publish_with(
         &self,
         topic: &str,
@@ -2937,7 +2937,7 @@ impl Messages {
                     let state = &mut *state;
                     let key = (group.clone(), key.clone());
                     // A restored message is older than the provisional one that took the key first: the key
-                    // is its (doc 37, section 4.10).
+                    // is its (doc 07, section 10.9).
                     let provisional_owner = state
                         .dedup
                         .get(&key)
@@ -3078,7 +3078,7 @@ impl Messages {
     }
 
     /// Raises the `deliveryCount` of a message the node already keeps to `count`, when the other copy has the
-    /// greater one (doc 37, section 4.3: of two copies, the restoration keeps the greatest counter). It never
+    /// greater one (doc 07, section 10.6: of two copies, the restoration keeps the greatest counter). It never
     /// lowers it and touches neither the invisibility nor the receipt. Returns whether it changed.
     pub fn raise_delivery_count(
         &self,

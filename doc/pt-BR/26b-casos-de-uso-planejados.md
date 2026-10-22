@@ -1631,7 +1631,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## Casos retirados
 
-Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (o modo desenvolvimento e o drain como save saíram, doc 37 seção 4.16).
+Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (o modo desenvolvimento e o drain como save saíram, [07-cluster.md](07-cluster.md), seção 8).
 
 ## Fontes e provas
 

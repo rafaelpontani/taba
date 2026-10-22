@@ -1,4 +1,4 @@
-//! The FIFO queues while the previous lives are restored (doc 37, section 4.10).
+//! The FIFO queues while the previous lives are restored (doc 07, section 10.9).
 
 use super::*;
 

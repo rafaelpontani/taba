@@ -3,15 +3,15 @@ título: Durabilidade
 resumo: O que o Taba garante sobre mensagens confirmadas, em quais falhas elas sobrevivem, em quais se perdem, e como ajustar o equilíbrio entre latência e garantia.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
-fontes: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
+verificado-em: 2026-10-22 @ 2f1919d
+fontes: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/restore, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
 ---
 
 # Durabilidade
 
 > Leia antes: [10-publicacao.md](10-publicacao.md) e [08-armazenamento.md](08-armazenamento.md).
 
-Este documento responde: **"se eu recebi o `201` (ou o `204` do ack), em que situações a mensagem não se perde?"** A resposta curta: ela sobrevive à falha de **qualquer nó** (e a mais de um, conforme o fator de replicação), mas **não** a uma parada simultânea de todos os nós **em produção**, porque a durabilidade vem da **replicação em memória**, não do disco. **Com o backup opcional em S3** ([33-backup-s3.md](33-backup-s3.md)) o cluster restaura o que estava no bucket, com a defasagem (RPO) de `backup.delay` para as mensagens e de `backup.meta.interval` para o estado.
+Este documento responde: **"se eu recebi o `201` (ou o `204` do ack), em que situações a mensagem não se perde?"** A resposta curta: ela sobrevive à falha de **qualquer nó** (e a mais de um, conforme o fator de replicação). A durabilidade vem da **replicação em memória**: uma parada simultânea de todos os nós perde o que estava **só em memória**, e o que já estava em disco volta pela retomada do cluster ([07-cluster.md](07-cluster.md), seção 10). **Com o backup opcional em S3** ([33-backup-s3.md](33-backup-s3.md)) o cluster restaura o que estava no bucket, com a defasagem (RPO) de `backup.delay` para as mensagens e de `backup.meta.interval` para o estado.
 
 ## O modelo
 
@@ -38,7 +38,7 @@ Considere o padrão: 3 nós, `replication.factor=3`, `write.quorum=2`.
 | Um nó sai por **drain** | **Sim** | O nó grava tudo em disco e se desregistra; as cópias dele já existiam nos outros nós |
 | Os três nós são reiniciados **um por vez** (`docker compose restart`) | **Sim** | Verificado: com 14 mensagens no tópico, reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (cada um até ficar `healthy`) e consumir tudo devolveu **14 de 14** |
 | **Todos os nós** param ao mesmo tempo (produção), **com o backup em S3** | **Sim, com defasagem:** definições e tokens voltam; as mensagens voltam **menos** as confirmadas e expiradas (diário) e **mais** as que estavam no bucket. Perde o que ainda esperava no `outbox` (até `backup.delay`) e o estado da última janela. *At-least-once*: o consumidor precisa ser idempotente | Parada **programada** (`POST /cluster/stop`): sem defasagem, o drain manda tudo ao S3. Queda: o último envio. Detalhes e cenários: [33-backup-s3.md](33-backup-s3.md) |
-| **Todos os nós** param ao mesmo tempo (produção), **sem backup** | **Não: perde as mensagens e também as definições de tópico** | Em produção todo reinício é de nó novo e o disco antigo só serve para devolver "perdas" listadas pelos outros nós. Com o cluster inteiro parado não há quem liste. Verificado: `docker compose down` + `up` (volumes mantidos) subiu um cluster **sem nenhum tópico**. ⚠️ Limite de projeto |
+| **Todos os nós** param ao mesmo tempo (produção), **sem backup**, com os volumes mantidos | **Sim, o que estava em disco; não, o que estava só em memória** | Todo processo nasce com ID novo, mas o disco da vida anterior é posto numa pasta e restaurado: o nó de menor ID antigo parte sozinho e assume o disco (tópicos e tokens), os outros entram nele, e as mensagens voltam conferidas contra o log de mensagens excluídas, então as já consumidas não voltam (salvo a reentrega residual, [07-cluster.md](07-cluster.md), seção 10.10). Provado nos testes de cluster (`tests/cold_start.rs`, `restore_vote.rs`). Sem os volumes, ou só com a parte que estava em memória, perde-se tudo |
 | Partição de rede | **Depende do lado** | Cada lado pode excluir o outro e seguir ([07-cluster.md](07-cluster.md), "Risco aceito"). Mensagens com cópia em ambos os lados sobrevivem; as escritas no lado minoritário falham por falta de quórum |
 | Perfil de um nó (fator 1) | **Só com drain** | Sem réplicas: o drain grava tudo e a próxima partida restaura o disco antigo como nó novo. Queda sem drain perde o que só estava em memória |
 | **Primário** de um bloco fora do ar | A mensagem **não é perdida**, mas as escritas do bloco **falham** | O secundário não coordena; quando o primário é excluído, o herdeiro assume |
@@ -52,7 +52,7 @@ Considere o padrão: 3 nós, `replication.factor=3`, `write.quorum=2`.
 | 0 | ✅ sobrevive | Há três cópias, ou ao menos duas confirmadas |
 | 1 | ✅ sobrevive | Sobra ao menos uma das cópias do quórum |
 | 2 | ⚠️ pode se perder | Se os dois eram os do quórum, só resta a terceira cópia, e só se ela já completou |
-| 3 (parada total) | ❌ perde tudo | Em produção todo reinício é de nó novo; ninguém lista as perdas |
+| 3 (parada total) | ⚠️ perde o que estava só em memória | O que já estava em disco volta pela retomada ([07-cluster.md](07-cluster.md), seção 10) |
 
 ## O que *nunca* se perde sem aviso: perdas na sincronização
 
@@ -92,12 +92,12 @@ A idade vem **do próprio `id`** (GUID v7 carrega o instante da publicação; na
 | Tolerar mais falhas simultâneas | Aumente `replication.factor` e `write.quorum` (a latência de publicação sobe) |
 | Menos latência de publicação | Reduza `write.quorum` (a garantia cai); ele precisa ser ≥ 1 e ≤ `replication.factor` |
 | Não perder nada numa parada **programada** de um nó | Deixe `drain.on-stop` ligado (padrão) e `stop_grace_period` maior que `drain.timeout` |
-| Sobreviver a uma queda do cluster inteiro | **Não há como hoje:** use mais de um cluster, ou um produtor que repita publicações. ⚠️ ver [32-roadmap.md](32-roadmap.md) |
+| Sobreviver a uma queda do cluster inteiro | Mantenha o `storage.dir` (os volumes) entre as vidas: a retomada restaura do disco. O que estava só em memória se perde; para cobrir também o disco perdido, ligue o backup em S3 ([33-backup-s3.md](33-backup-s3.md)) |
 | Menos memória | Defina `memory.limit`: o excedente vai para o disco |
 
 ## Limites conhecidos
 
-- **Parada total** em produção perde o que estava só em memória (acima), **a menos que** o backup em S3 esteja ligado ([33-backup-s3.md](33-backup-s3.md)): então perde só a janela ainda não enviada.
+- **Parada total** em produção perde o que estava só em memória (acima); o que estava em disco volta pela retomada ([07-cluster.md](07-cluster.md), seção 10), com a reentrega residual da seção 10.10. Com o backup em S3 ligado ([33-backup-s3.md](33-backup-s3.md)) perde só a janela ainda não enviada, e o disco perdido também volta.
 - **PRB-005:** durante o drain o nó recusa o ack; sem outro nó para repassar, o consumidor não confirma.
 - **D116 (decidido):** a redundância das mensagens de um nó que sai fica em `replication.factor − 1` até entrar um nó novo.
 - **D114:** o que `delivery.get.max-attempts` conta ainda não está decidido.
@@ -105,5 +105,5 @@ A idade vem **do próprio `id`** (GUID v7 carrega o instante da publicação; na
 ## Fontes e provas
 
 - `cluster/replication/coordinator.rs` (quórum, rollback, insistência), `cluster/recovery` (perdas e devolução), `cluster/sync` (perda declarada), `cluster/drain`, `storage/*`, `engine/messages` (`ttl`, dead-letter).
-- Casos de uso: UC-ESC, UC-FAL, UC-RTN (retorno e recuperação), UC-SIN, UC-DRN, UC-RET (`ttl`, entregas, dead-letter); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/failures.rs`, `recovery.rs`, `drain_cluster.rs`, `sync.rs`, `replication.rs`; `docker/validate.sh` confere a ausência de perda na queda e na volta de um nó.
+- Casos de uso: UC-ESC, UC-FAL, UC-RTN (retorno e recuperação), UC-SIN, UC-DRN, UC-RET (`ttl`, entregas, dead-letter); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/failures.rs`, `recovery.rs`, `drain_cluster.rs`, `sync.rs`, `replication.rs`, `cold_start.rs`, `restore_lives.rs`, `restore_vote.rs`; `docker/validate.sh` confere a ausência de perda na queda e na volta de um nó.
 - Histórico: `05-particionamento-replicacao.md` (7.2, 7.3), `13-entrega-de-mensagens.md` (12.10).

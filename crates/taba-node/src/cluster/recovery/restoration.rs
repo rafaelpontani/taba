@@ -1,4 +1,4 @@
-//! The restoration of the past lives (doc 37, sections 4.5 and 4.6), the two sides of it:
+//! The restoration of the past lives (doc 07, sections 10.4 and 10.6), the two sides of it:
 //!
 //! - **Who sends:** every node reads the folder of each life it keeps (`${storage.dir}/_lives/<old ID>`) whose
 //!   last activity is inside the window of the cluster's log of excluded messages ([`restore::life_restorable`])
@@ -206,8 +206,8 @@ impl Recovery {
 
     // ---- Who sends ----
 
-    /// The cut-off date of the cluster's log: the latest start of the recording among the active members (doc 37,
-    /// section 4.4). `None` if a member does not tell (it runs an earlier version, or does not answer): the log
+    /// The cut-off date of the cluster's log: the latest start of the recording among the active members (doc 07,
+    /// section 10.3). `None` if a member does not tell (it runs an earlier version, or does not answer): the log
     /// cannot be trusted and no life is restorable.
     pub async fn cluster_cutoff(self: &Arc<Self>) -> Option<u64> {
         let table = self.service.membership().table()?;
@@ -246,7 +246,7 @@ impl Recovery {
 
     /// The manifest of the latest previous life: the one the disk still holds in its root (the restart has not set
     /// it aside yet) or, failing that, the most recently seen among the folders of the lives. It tells which nodes
-    /// the cluster had and where they were (doc 37, sections 4.5 and 4.9).
+    /// the cluster had and where they were (doc 07, sections 10.4 and 10.5).
     pub fn latest_manifest(&self) -> Option<Manifest> {
         Manifest::read(self.messages.storage_root()).or_else(|| {
             self.lives()
@@ -276,7 +276,7 @@ impl Recovery {
         lives
     }
 
-    /// Sends the messages of every restorable life this node keeps to the new primaries (doc 37, section 4.6).
+    /// Sends the messages of every restorable life this node keeps to the new primaries (doc 07, section 10.6).
     /// A life outside the window stays where it is and follows the path of the loss list.
     pub async fn restore_lives(self: &Arc<Self>) -> RestoreSummary {
         let mut summary = RestoreSummary::default();
@@ -297,7 +297,7 @@ impl Recovery {
             }
             self.send_life(&life, &mut summary).await;
         }
-        // The last step of the start with S3 (doc 37, section 4.13): the notice of "I finished" includes it.
+        // The last step of the start with S3 (doc 33, the scan at the start): the notice of "I finished" includes it.
         self.scan_backup().await;
         summary.done = !self.service.cancel_token().is_cancelled();
         tracing::info!(
@@ -310,7 +310,7 @@ impl Recovery {
         summary
     }
 
-    /// The scan of S3 at the start (doc 37, section 4.13): the messages the bucket holds alive of the blocks this
+    /// The scan of S3 at the start (doc 33, the scan at the start): the messages the bucket holds alive of the blocks this
     /// node is primary of go to the same path as the ones of a life (`accept_restore`: topic, dead, quorum), and what
     /// the node already has is skipped. A bucket that does not answer only costs a warning: the node goes on with
     /// its disk.
