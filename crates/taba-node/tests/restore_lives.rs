@@ -13,6 +13,7 @@ use common::TestNode;
 use common::cluster::{TestCluster, eventually, eventually_async, host_of, wait_joined};
 use taba_node::cluster::protocol::{MessageRecord, Response};
 use taba_node::cluster::recovery::Recovery;
+use taba_node::cluster::restore::Manifest;
 use taba_node::cluster::transport::PeerAddr;
 use taba_node::config::DbSynchronous;
 use taba_node::core::clock::Clock;
@@ -474,11 +475,27 @@ async fn no_life_is_restorable_while_a_member_does_not_tell_when_its_log_started
     })
     .await;
 
-    // A message shows up in the folder of the life; a member does not tell when its log started (an earlier version
-    // does not publish `excludedSince`; to the others it is as if it did not answer).
+    // The end of the restoration deletes the folder of the life (doc 37, section 4.7).
+    eventually("the folder of the settled life to be deleted", || {
+        !life.exists()
+    })
+    .await;
+
+    // A life shows up again with a message; a member does not tell when its log started (an earlier version does not
+    // publish `excludedSince`; to the others it is as if it did not answer).
     let folder = MessageStore::new(&life, DbSynchronous::Off);
     folder.put(TOPIC, &late.to_meta(), &late.body).unwrap();
     drop(folder);
+    Manifest {
+        node_id: life.file_name().unwrap().to_string_lossy().into_owned(),
+        members: Vec::new(),
+        table_version: 1,
+        last_seen_ms: cluster.clock.now_millis(),
+        watermark: None,
+        excluded_since_ms: None,
+    }
+    .write(&life)
+    .unwrap();
     cluster.network.lose_kind("10.0.0.2", "status", 1_000_000);
     let recovery = recovery_of(cluster.node(number));
     assert_eq!(recovery.cluster_cutoff().await, None);

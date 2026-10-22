@@ -36,6 +36,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | Data | Evento |
 |---|---|
 | 2026-10-20 | Falhou uma vez numa execução completa local; passou sozinho (3 execuções) e na execução completa seguinte. |
+| 2026-10-22 | Falhou de novo numa execução completa local da etapa 3d do plano de retomada (`waited 30 s for: the old notice counted as empty`); passou 6 de 6 sozinho logo depois. A mudança em teste não toca os avisos. Causa ainda não identificada. |
 
 ## Reingresso depois de uma partição simétrica
 

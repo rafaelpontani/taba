@@ -35,6 +35,7 @@
 
 mod backup;
 mod blocks;
+mod hold;
 mod index;
 mod lives;
 mod rates;
@@ -282,6 +283,10 @@ struct TopicState {
     dead_letter_inflight: HashSet<String>,
     /// The last "has ready messages" notified to the other nodes.
     ready_signaled: bool,
+    /// FIFO queue only, on the group's primary during the restoration of the previous lives (doc 37, section
+    /// 4.10): the `id` of each publication accepted without deduplication, and its key, in `id` order. The
+    /// release deduplicates them against what the restoration brought.
+    provisional: BTreeMap<String, (String, String)>,
 }
 
 fn message_not_found() -> TabaError {
@@ -504,6 +509,9 @@ pub struct Messages {
     draining: AtomicBool,
     /// The previous life's disk awaits the restart recovery: the sweep does not delete it.
     keep_old_disk: AtomicBool,
+    /// The FIFO queues receive and do not deliver, and publications are not deduplicated, until the cluster is
+    /// restored from disk (doc 37, section 4.10).
+    fifo_held: AtomicBool,
     /// The previous life's disk, set aside until the restart recovery ends (PRB-048).
     previous_life: Mutex<Option<Arc<MessageStore>>>,
     /// Wakes the waiting `GET`s (long polling) when a message arrives or the topic goes away.
@@ -686,6 +694,7 @@ impl Messages {
             memory_bytes: AtomicU64::new(0),
             draining: AtomicBool::new(false),
             keep_old_disk: AtomicBool::new(keep_old_disk),
+            fifo_held: AtomicBool::new(false),
             previous_life: Mutex::new(None),
             notifiers: Mutex::new(HashMap::new()),
             on_failure: OnceLock::new(),
@@ -861,6 +870,7 @@ impl Messages {
             replicas: ReplicaSet::default(),
             dead_letter_inflight: HashSet::new(),
             ready_signaled: false,
+            provisional: BTreeMap::new(),
         }));
         states.insert(name.to_owned(), state.clone());
         state
@@ -1577,7 +1587,8 @@ impl Messages {
     pub fn wait_hints(&self, topic: &str) -> (Option<u64>, bool) {
         let state = self.state_of(topic);
         let state = lock(&state);
-        (state.index.next_visible(), state.index.has_ready())
+        let held = state.index.is_fifo() && self.fifo_held();
+        (state.index.next_visible(), state.index.has_ready() && !held)
     }
 
     /// The present instant on the node's clock.
@@ -2446,6 +2457,12 @@ impl Messages {
         let state = self.state_of(name);
         let mut state = lock(&state);
         let until = now + visibility_secs * 1000;
+        // The FIFO queue receives but does not deliver until the cluster is restored from disk.
+        let max = if state.index.is_fifo() && self.fifo_held() {
+            0
+        } else {
+            max
+        };
 
         let mut delivered = Vec::new();
         while delivered.len() < max {
@@ -2812,12 +2829,20 @@ impl Messages {
         let name = view.definition.name.clone();
         let state = self.state_of(&name);
         let mut state = lock(&state);
-        if let Some(original) = self.duplicate_of(&mut state, &name, &key, now) {
+        // While the previous lives are being restored nothing is deduplicated: everything is accepted and
+        // remembered, and the release decides (doc 37, section 4.10).
+        let held = self.fifo_held();
+        if !held && let Some(original) = self.duplicate_of(&mut state, &name, &key, now) {
             return Ok(Draft::Duplicate { id: original });
         }
         let at = now.max(state.group_ms.get(&group).map_or(0, |last| last + 1));
         let id = self.ids.new_at(at);
         let published_ms = crate::core::id::unix_millis_of(&id).unwrap_or(at);
+        if held {
+            state
+                .provisional
+                .insert(id.clone(), (group.clone(), key.1.clone()));
+        }
         // Reserves the instant right away: the group's next publication starts from after it, even if this one
         // has not committed yet.
         state.group_ms.insert(group.clone(), published_ms);
@@ -2877,10 +2902,24 @@ impl Messages {
                 let last = state.group_ms.entry(group.clone()).or_default();
                 *last = (*last).max(meta.published_ms);
                 if let Some(key) = &meta.deduplication_id {
-                    state
+                    let state = &mut *state;
+                    let key = (group.clone(), key.clone());
+                    // A restored message is older than the provisional one that took the key first: the key
+                    // is its (doc 37, section 4.10).
+                    let provisional_owner = state
                         .dedup
-                        .entry((group.clone(), key.clone()))
-                        .or_insert((meta.id.clone(), meta.published_ms));
+                        .get(&key)
+                        .is_some_and(|(first, _)| state.provisional.contains_key(first));
+                    if provisional_owner && !state.provisional.contains_key(&meta.id) {
+                        state
+                            .dedup
+                            .insert(key, (meta.id.clone(), meta.published_ms));
+                    } else {
+                        state
+                            .dedup
+                            .entry(key)
+                            .or_insert((meta.id.clone(), meta.published_ms));
+                    }
                 }
             }
             let size = body.len() as u64;
@@ -3138,6 +3177,10 @@ impl Messages {
         self.settle(view, now);
         let state = self.state_of(name);
         let mut state = lock(&state);
+        // The FIFO queue receives but does not deliver until the cluster is restored from disk.
+        if state.index.is_fifo() && self.fifo_held() {
+            return Ok(Vec::new());
+        }
         let until = now + visibility_secs * 1000;
         let mut out = Vec::new();
         while out.len() < max {

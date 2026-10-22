@@ -26,7 +26,7 @@ ${storage.dir}/
   _node.db                 node database (SQLite, WAL)
   _backup.db               S3 backup database (only with `backup.s3.bucket`): send queue, references, segments
   _sync/sync.db            event database; only exists during synchronization
-  manifest.json            manifest of the running life: ID, active members with IPs, table version, `last_seen` (every 10 s), start of the log of excluded messages
+  manifest.json            manifest of the running life: ID, active members with IPs, table version, `last_seen` (every 10 s), watermark of the IDs (the largest instant the generator used, which the next life starts above), start of the log of excluded messages
   _lives/<old ID>/         one folder per previous life: its topics and its `manifest.json`; they stay until the restoration ends
   _previous-life/          disk with no manifest (earlier version), set aside on a restart; deleted when the recovery ends
   <topic>/                 one folder per topic (uppercase becomes "~" + lowercase: Pedidos → ~pedidos/)

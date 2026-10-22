@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D170** and **PRB-062**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D171** and **PRB-063**).
 
 ## Known limits
 
@@ -53,6 +53,7 @@ Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)). Each
 | **PRB-060** | **Without `operations.port` the cluster-wide operations stay without a token on the client port** (`POST /cluster/stop`, `/cluster/backup/flush`, `/node/drain`...): the client API only mounts its authenticated copies when the operations API has a port of its own, because the names are the same. Inherited from D63 and D150, but now a token-protected twin exists that cannot be mounted | With authentication on, do not merge the operations routes into the client port (or protect them with the root token) |
 | **PRB-061** | **A node that left by drain is listed and addressable only while the receiving node remembers it** (up to 64, in memory): after the receiver restarts, `GET /nodes` no longer shows it and `/nodes/{nodeId}/drain` answers `404`, so it cannot be returned through the API | Keep the nodes that left in the node database, or derive them from the S3 stop list and heartbeats |
 | **PRB-062** | **The restoration does not take the greater `deliveryCount` between two copies of a message** (doc 37, section 4.3): if the primary already has the message (`Existing`), its copy prevails and the counter of the life's copy, if greater, is lost. The effect is a message that may be delivered beyond `maxDeliveries` after a resumption. Invisibility and receipt are zeroed, and a dead copy wins (the query of the dead), as in the design | On `Existing`, the primary takes the greater `deliveryCount` and replicates it |
+| **PRB-063** | **The deduplication of the FIFO at the release has the limits of the window and of the primary** (doc 37, section 4.10): (a) it uses the deduplication keys the primary still remembers, which live for `fifo.dedup.window` (300 s) from the `id`; with `cluster.restore.grace` equal to the window, a message restored after `G` may no longer find the key of the publication it repeats; (b) the provisional list is in the memory of the group's primary: if the primary changes during the restoration, the publications accepted by the old one are no longer listed and are not deduplicated; (c) the generator stays above the watermarks the node has seen, and a publication accepted before the manifests are announced may get an `id` below the watermark of a life that was not yet announced | (a) widen `fifo.dedup.window` while the cluster restores, or restore the lives before the window ends; (b) rebuild the list from the messages whose `id` is above the watermark when a new primary takes the group; (c) hold FIFO publications until the first poll answers |
 
 ## 1. Unblocked
 

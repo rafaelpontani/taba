@@ -238,6 +238,7 @@ fn requests() -> Vec<Request> {
         coordinator_id: guid(3),
         receipt_token: guid(5),
         delete_at_ms: Some(1_791_288_300_000),
+        discard: false,
     };
     let topic = DefinitionProposal {
         kind: DefinitionKind::Topic,
@@ -324,6 +325,14 @@ fn requests() -> Vec<Request> {
             topic: t(),
             id: id(),
             step: Step::Commit(op()),
+        },
+        Request::Ack {
+            topic: t(),
+            id: id(),
+            step: Step::Register(AckRegisterRequest {
+                discard: true,
+                ..ack.clone()
+            }),
         },
         Request::Ack {
             topic: t(),
@@ -434,10 +443,13 @@ fn requests() -> Vec<Request> {
             topic: "pedidos".into(),
             ids: vec![guid(4), guid(5)],
         },
+        Request::RestoreState,
+        Request::RestoreDecided,
+        Request::RestoreForce,
     ]
 }
 
-/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026, UC-SIN-031, UC-RTN-026, UC-RTN-028
+/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026, UC-SIN-031, UC-RTN-026, UC-RTN-028, UC-RTN-031, UC-RTN-035, UC-FIF-051
 #[test]
 fn every_request_survives_the_trip_to_http_and_back() {
     for request in requests() {

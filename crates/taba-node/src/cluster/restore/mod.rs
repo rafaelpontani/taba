@@ -9,12 +9,17 @@
 //!   biggest old table expected has announced its manifest, or after the grace period `G`; in strict mode it
 //!   stays held until the operator forces it (section 4.8).
 //! - [`Manifest`]: what each life leaves in its folder (section 4.5).
+//! - [`coordinator`] and [`vote_closes`]: who closes the vote of the end of the restoration and when it closes
+//!   (section 4.7); [`Restoration`] is the status each node keeps while it runs.
 
 use std::io;
 use std::path::Path;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+
+mod status;
+pub use status::{Restoration, Snapshot, Status};
 
 /// Name of the manifest file inside the folder of a life.
 pub const MANIFEST_FILE: &str = crate::storage::messages::MessageStore::LIFE_MANIFEST;
@@ -155,6 +160,17 @@ pub fn start(
     } else {
         Start::GoWithMissing(missing)
     }
+}
+
+/// The coordinator of the restoration: the present node with the lowest ID (doc 37, section 4.9).
+pub fn coordinator(present: &[String]) -> Option<&String> {
+    present.iter().min()
+}
+
+/// The vote closes when **every** present node announced it finished (doc 37, section 4.7): each one has disk
+/// to send. The expected nodes that did not come back are dealt with by the grace period, not by the vote.
+pub fn vote_closes(present: &[String], finished: &[String]) -> bool {
+    !present.is_empty() && present.iter().all(|id| finished.contains(id))
 }
 
 #[cfg(test)]

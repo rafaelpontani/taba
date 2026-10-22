@@ -16,6 +16,11 @@ pub fn new_at(unix_millis: u64) -> String {
 #[derive(Debug)]
 pub struct IdGenerator {
     context: std::sync::Mutex<uuid::ContextV7>,
+    /// No ID is generated below this instant (ms): the generator of a new life starts above the watermark of the
+    /// old ones (doc 37, section 4.10).
+    floor_ms: std::sync::atomic::AtomicU64,
+    /// The latest instant (ms) an ID was generated for.
+    last_ms: std::sync::atomic::AtomicU64,
 }
 
 impl Default for IdGenerator {
@@ -28,10 +33,34 @@ impl IdGenerator {
     pub fn new() -> Self {
         Self {
             context: std::sync::Mutex::new(uuid::ContextV7::new()),
+            floor_ms: std::sync::atomic::AtomicU64::new(0),
+            last_ms: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// From now on no ID is generated for an instant before `unix_millis`. It only goes up.
+    pub fn raise_floor(&self, unix_millis: u64) {
+        self.floor_ms
+            .fetch_max(unix_millis, std::sync::atomic::Ordering::SeqCst);
+        self.last_ms.fetch_max(
+            unix_millis.saturating_sub(1),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+    }
+
+    /// The largest ID this generator produced or was told to stay above (the instant of it; the rest of the
+    /// ID is not meaningful): the watermark the manifest of the life records. `None` if there is none.
+    pub fn watermark(&self) -> Option<String> {
+        match self.last_ms.load(std::sync::atomic::Ordering::SeqCst) {
+            0 => None,
+            ms => Some(new_at(ms)),
         }
     }
 
     pub fn new_at(&self, unix_millis: u64) -> String {
+        let unix_millis = unix_millis.max(self.floor_ms.load(std::sync::atomic::Ordering::SeqCst));
+        self.last_ms
+            .fetch_max(unix_millis, std::sync::atomic::Ordering::SeqCst);
         let secs = unix_millis / 1000;
         let nanos = ((unix_millis % 1000) * 1_000_000) as u32;
         let context = self.context.lock().unwrap_or_else(|e| e.into_inner());

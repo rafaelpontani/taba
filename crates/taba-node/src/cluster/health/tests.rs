@@ -93,6 +93,20 @@ fn merging_nodes_unions_the_conditions_and_flags_divergent_tables() {
     assert!(merge([(7, vec![]), (7, vec![])], false).is_empty());
 }
 
+/// UC: UC-OPS-053
+#[test]
+fn a_restoration_in_progress_raises_previous_life_pending_as_a_warning() {
+    let mut s = signals();
+    s.restore_pending = true;
+    assert_eq!(s.conditions(false), [Condition::PreviousLifePending]);
+    assert_eq!(Condition::PreviousLifePending.severity(), Severity::Warning);
+    assert_eq!(
+        Condition::PreviousLifePending.entry(),
+        json!({ "condition": "previous-life-pending", "severity": "warning" })
+    );
+    assert!(Condition::ALL.contains(&Condition::PreviousLifePending));
+}
+
 /// UC: UC-ING-031
 #[test]
 fn a_stalled_upgrade_raises_its_condition_as_a_warning() {

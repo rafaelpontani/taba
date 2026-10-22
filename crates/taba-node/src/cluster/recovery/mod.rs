@@ -12,7 +12,9 @@
 //!
 //! The restoration of the past lives (doc 37, sections 4.5 and 4.6) is in [`restoration`]: every node sends the
 //! whole folder of each life inside the window of the log of excluded messages to the new primary of each block,
-//! and the primary checks the topic and the dead before it activates.
+//! and the primary checks the topic and the dead before it activates. Its end is in [`finish`]: the nodes poll each
+//! other, the coordinator closes the vote, the FIFO queues are released and the folders of the lives are deleted
+//! (sections 4.7 and 4.8).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -36,6 +38,7 @@ use crate::engine::messages::{Loaded, Messages};
 use crate::storage::losses::{Loss, LossStore};
 use crate::telemetry::metrics::{CLUSTER_RECOVER, RECOVER_MESSAGES};
 
+mod finish;
 mod restoration;
 pub use restoration::RestoreSummary;
 
@@ -63,6 +66,8 @@ pub struct Recovery {
     max_items: usize,
     /// The journal of each topic in S3, read for a restoration (the IDs it registers as removed), and when.
     journals: Mutex<HashMap<String, CachedJournal>>,
+    /// One decision of the vote at a time (the coordinator's call and the node's own poll may meet).
+    decision: tokio::sync::Mutex<()>,
 }
 
 fn disk(error: &std::io::Error) -> TabaError {
@@ -91,6 +96,7 @@ impl Recovery {
             losses,
             max_items: max_items.max(2),
             journals: Mutex::new(HashMap::new()),
+            decision: tokio::sync::Mutex::new(()),
         })
     }
 

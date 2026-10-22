@@ -377,6 +377,19 @@ impl Request {
                 format!("/cluster/topics/{topic}/messages/dead"),
                 &DeadBody { ids: ids.clone() },
             ),
+            Request::RestoreState => get_call("/cluster/restore".to_owned()),
+            Request::RestoreDecided => HttpCall {
+                method: "POST".to_owned(),
+                path: "/cluster/restore/decided".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+            Request::RestoreForce => HttpCall {
+                method: "POST".to_owned(),
+                path: "/cluster/restore/force".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
             Request::BackupFlush => HttpCall {
                 method: "POST".to_owned(),
                 path: "/cluster/backup/flush".to_owned(),
@@ -632,6 +645,9 @@ impl Request {
                 topic: (*topic).to_owned(),
                 id: (*id).to_owned(),
             }),
+            ["cluster", "restore"] if is("GET") => Ok(Request::RestoreState),
+            ["cluster", "restore", "decided"] if post() => Ok(Request::RestoreDecided),
+            ["cluster", "restore", "force"] if post() => Ok(Request::RestoreForce),
             ["cluster", "backup", "flush"] if post() => Ok(Request::BackupFlush),
             ["cluster", "backup", "stop"] if post() => Ok(Request::BackupStop),
             ["cluster", "backup", "saved"] if post() => {
@@ -753,6 +769,9 @@ impl Request {
             | Request::TopicStats
             | Request::TopicGroups { .. }
             | Request::Dead { .. }
+            | Request::RestoreState
+            | Request::RestoreDecided
+            | Request::RestoreForce
             | Request::Departed => Ok(Response::Json(json(&reply)?)),
             _ => {
                 let ack =

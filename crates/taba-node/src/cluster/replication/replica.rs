@@ -499,7 +499,8 @@ impl Replica {
                     id.to_owned(),
                     request.receipt_token.clone(),
                 );
-                if checked {
+                // A discard has no receipt: it is the group's primary dropping a duplicate (doc 37, section 4.10).
+                if checked && !request.discard {
                     self.blocking(move |messages, _| {
                         messages.check_visibility(&t, &i, VisibilityCheck::Receipt, &token)
                     })

@@ -93,6 +93,7 @@ Sair por drain **não** gera freezing. Se o drain estourar `drain.timeout` pedid
 | `membership-divergent` | **crítica** | Tabelas de membros com versões diferentes | Propagação incompleta de uma mudança; normalmente some sozinha em segundos. Persistente: veja os logs `membership` e reinicie o nó divergente (**um de cada vez**) |
 | `storage-pressure` | aviso | Espaço livre em `storage.dir` abaixo de `stats.disk.free-min` (só dispara se configurado) | Libere disco ou aumente o volume **antes** de encher: **disco cheio leva o nó a `failed`** |
 | `upgrade-stalled` | aviso | A atualização que retira versões anteriores parou num nó que não terminou o drain a tempo | Cancele o drain desse nó (`DELETE /node/drain` na porta de operações dele) ou pare-o; a atualização segue com o próximo. O nó é o que está em `draining` em `GET /nodes` |
+| `previous-life-pending` | aviso | A restauração das vidas anteriores não terminou (a votação não fechou, ou a restauração espera nós que não voltaram) | As filas FIFO recebem e **não entregam** enquanto isso. `GET /health/cluster` e o estado do nó (`GET /cluster/restore`) dizem quais nós antigos são esperados. Espere `cluster.restore.grace`; se um nó não vai voltar, force com `POST /cluster/restore/force` (token root, ou a porta de operações): mensagens já consumidas podem voltar (doc 37, seção 4.11) |
 
 ## Falhas e como reagir
 

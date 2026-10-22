@@ -330,6 +330,9 @@ impl Replication {
                 records,
             } => self.recovery.accept_restore(topic, topic_id, records).await,
             Request::Dead { topic, ids } => self.recovery.serve_dead(topic, ids).await,
+            Request::RestoreState => self.recovery.serve_state(),
+            Request::RestoreDecided => self.recovery.serve_decided().await,
+            Request::RestoreForce => self.recovery.serve_force().await,
             _ => Err(TabaError::route_not_found()),
         }
     }

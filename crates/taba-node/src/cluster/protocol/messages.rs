@@ -281,6 +281,9 @@ pub struct AckRegisterRequest {
     pub receipt_token: String,
     /// FIFO queue only.
     pub delete_at_ms: Option<u64>,
+    /// The ack is the group's primary discarding a duplicate at the release of the restoration (doc 37, section
+    /// 4.10): there is no receipt to check.
+    pub discard: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -291,6 +294,8 @@ struct AckWire {
     receipt_token: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     delete_at: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    discard: bool,
 }
 
 impl Serialize for AckRegisterRequest {
@@ -300,6 +305,7 @@ impl Serialize for AckRegisterRequest {
             coordinator_id: self.coordinator_id.clone(),
             receipt_token: self.receipt_token.clone(),
             delete_at: self.delete_at_ms.map(time::format_ms),
+            discard: self.discard,
         }
         .serialize(serializer)
     }
@@ -316,6 +322,7 @@ impl<'de> Deserialize<'de> for AckRegisterRequest {
                 .delete_at
                 .map(|t| time::parse_ms(&t).ok_or_else(|| D::Error::custom("`deleteAt` invalid")))
                 .transpose()?,
+            discard: wire.discard,
         })
     }
 }

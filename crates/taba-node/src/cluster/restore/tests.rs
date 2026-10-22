@@ -367,3 +367,39 @@ fn nothing_starts_before_the_grace_period_while_an_expected_node_is_missing() {
         }
     }
 }
+
+/// UC: UC-RTN-031
+#[test]
+fn the_coordinator_is_the_lowest_id_and_the_vote_needs_every_present_node() {
+    let present = ids(&["c", "a", "b"]);
+    assert_eq!(coordinator(&present).map(String::as_str), Some("a"));
+    assert_eq!(coordinator(&[]), None);
+    assert!(vote_closes(&present, &ids(&["b", "a", "c"])));
+    // One that did not finish, or that did not answer, keeps the vote open.
+    assert!(!vote_closes(&present, &ids(&["a", "b"])));
+    assert!(!vote_closes(&[], &[]));
+}
+
+/// UC: UC-RTN-031, UC-RTN-035
+#[test]
+fn the_status_goes_from_unknown_to_restoring_to_restored_and_remembers_force_and_missing() {
+    let state = Restoration::default();
+    assert_eq!(state.status(), Status::Unknown);
+    assert!(!state.is_restoring());
+    state.begin(1_000);
+    state.set_missing(ids(&["x"]));
+    state.force();
+    state.finish();
+    // Beginning again does not reset what is under way.
+    state.begin(9_000);
+    let snapshot = state.snapshot();
+    assert_eq!(snapshot.status, Status::Restoring);
+    assert!(snapshot.finished && snapshot.forced);
+    assert_eq!(snapshot.missing, ids(&["x"]));
+    assert_eq!(state.elapsed_ms(4_000), 3_000);
+    state.complete();
+    assert_eq!(state.status(), Status::Restored);
+    assert!(state.snapshot().missing.is_empty());
+    assert_eq!(Status::parse("restoring"), Status::Restoring);
+    assert_eq!(Status::parse("?"), Status::Unknown);
+}

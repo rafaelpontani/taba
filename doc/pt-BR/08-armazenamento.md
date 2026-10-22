@@ -26,7 +26,7 @@ ${storage.dir}/
   _node.db                 banco do nó (SQLite, WAL)
   _backup.db               banco do backup em S3 (só com `backup.s3.bucket`): fila de envio, referências, segmentos
   _sync/sync.db            banco de eventos; só existe durante a sincronização
-  manifest.json            manifesto da vida em execução: ID, membros ativos com IPs, versão da tabela, `last_seen` (a cada 10 s), início do log de excluídos
+  manifest.json            manifesto da vida em execução: ID, membros ativos com IPs, versão da tabela, `last_seen` (a cada 10 s), marca d'água dos IDs (o maior instante que o gerador usou, acima do qual a próxima vida começa), início do log de excluídos
   _lives/<ID antigo>/      uma pasta por vida anterior: os tópicos dela e o `manifest.json`; ficam até o fim da restauração
   _previous-life/          disco sem manifesto (versão anterior), posto de lado num reinício; apagado ao fim da recuperação
   <topico>/                uma pasta por tópico (maiúsculas viram "~" + minúscula: Pedidos → ~pedidos/)

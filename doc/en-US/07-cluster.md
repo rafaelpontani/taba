@@ -209,6 +209,7 @@ In **development mode** the node is a cluster of one and everything that exists 
 | `under-replicated` | warning | Some block is below the full replication factor |
 | `storage-pressure` | warning | Free disk space below `stats.disk.free-min` (without a value, it never fires) |
 | `upgrade-stalled` | warning | The retirement of earlier versions stopped on a node that did not finish draining (D165) |
+| `previous-life-pending` | warning | The restoration of the previous lives has not ended: the FIFO queues receive and do not deliver (doc 37) |
 
 What to do for each one is in [23-operations.md](23-operations.md).
 

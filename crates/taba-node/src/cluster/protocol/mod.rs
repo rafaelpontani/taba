@@ -204,6 +204,14 @@ pub enum Request {
     /// `POST /cluster/topics/{topic}/messages/dead`: which of the `ids` this node's log of excluded messages
     /// has (doc 37, section 4.6). The answer is a `Json` `{ "dead": [ids] }`.
     Dead { topic: String, ids: Vec<String> },
+    /// `GET /cluster/restore`: the state of this node's restoration of the previous lives (doc 37, section 4.7):
+    /// the lives it keeps, whether it finished sending and the status of the cluster. A `Json` answer.
+    RestoreState,
+    /// `POST /cluster/restore/decided`: the coordinator tells every node the vote closed and the cluster is
+    /// **restored from disk**: the FIFO is released and the folders of the lives are deleted.
+    RestoreDecided,
+    /// `POST /cluster/restore/force`: the operator's force (doc 37, section 4.8), spread to every node.
+    RestoreForce,
     /// `POST /cluster/backup/flush`: the S3 backup flush on this node (doc 23, section 1.11).
     BackupFlush,
     /// `POST /cluster/backup/stop`: this node's drain for the cluster's planned stop, with the
@@ -297,6 +305,9 @@ impl Request {
             Request::Recover { .. } => "recover",
             Request::Restore { .. } => "restore",
             Request::Dead { .. } => "dead",
+            Request::RestoreState => "restore-state",
+            Request::RestoreDecided => "restore-decided",
+            Request::RestoreForce => "restore-force",
             Request::BackupFlush => "backup-flush",
             Request::BackupStop => "backup-stop",
             Request::BackupSaved(_) => "backup-saved",

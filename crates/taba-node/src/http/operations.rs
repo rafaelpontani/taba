@@ -80,7 +80,8 @@ fn bare_routes(state: &AppState) -> Router<AppState> {
             get(drain_status).post(drain_start).delete(drain_cancel),
         )
         .merge(super::topic_stats::routes())
-        .merge(super::backup::routes());
+        .merge(super::backup::routes())
+        .merge(super::restore::routes());
     // With `telemetry.prometheus.enabled` off the route does not exist (`404`).
     if state.telemetry.prometheus_enabled {
         routes = routes.route("/metrics", get(super::metrics::prometheus));

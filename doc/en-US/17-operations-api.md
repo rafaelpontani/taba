@@ -33,6 +33,7 @@ sources: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operati
 | `POST` | `/node/backup/flush` | admin | `200` `FlushReport` (or `422 backup.not-configured`) |
 | `POST` | `/cluster/backup/flush` | admin | `200` `ClusterFlushReport` (or `422 backup.not-configured`) |
 | `POST` | `/cluster/stop` | admin | `200` `StopReport` |
+| `POST` | `/cluster/restore/force` | admin (root token on the client API) | `200` `RestoreForce` |
 
 "Exempt" = never answers `429`: they are light and called by machines; a `429` on `/health/ready` would make the load balancer remove the node from rotation by mistake.
 
@@ -232,6 +233,17 @@ curl -s -X POST http://node:9090/cluster/stop
 ```
 
 `stopList: false` with `warnings` when S3 was unavailable: the disk drain was done, but the backup was **not sent**. A node that did not answer stays out of the list and is treated as dead on start.
+
+### `POST /cluster/restore/force`: force the restoration of the previous lives
+
+After a total fall the cluster restores the old messages and only then releases the FIFO queues ([37-cluster-cold-start.md](37-cluster-cold-start.md), sections 4.7 and 4.8). While the vote does not close, `GET /health/cluster` shows `previous-life-pending`. The call declares the cluster **restored from disk** with the nodes that are present: the node that receives it spreads it to the others (`POST /cluster/restore/force` on the cluster port), the FIFO queues are released and a restoration held by `cluster.restore.strict` goes on. Messages already consumed may come back (doc 37, section 4.11). On the client API it needs the **root token**; on the operations port, like `/cluster/stop`, it uses no token.
+
+```bash
+curl -s -X POST http://node:9090/cluster/restore/force
+# {"wasRestoring":true,"status":"restored","silentNodes":[]}
+```
+
+`wasRestoring: false` when the cluster was not restoring (nothing changes); `silentNodes` lists the nodes that did not answer the spread (they learn it on their next poll).
 
 ## Sources and evidence
 

@@ -209,6 +209,7 @@ No **modo desenvolvimento** o nó é um cluster de um só e tudo o que existe pa
 | `under-replicated` | aviso | Algum bloco está abaixo do fator de replicação pleno |
 | `storage-pressure` | aviso | Espaço livre em disco abaixo de `stats.disk.free-min` (sem valor, nunca dispara) |
 | `upgrade-stalled` | aviso | A retirada de versões anteriores parou num nó que não terminou o drain (D165) |
+| `previous-life-pending` | aviso | A restauração das vidas anteriores não terminou: as filas FIFO recebem e não entregam (doc 37) |
 
 O que fazer em cada uma está em [23-operacao.md](23-operacao.md).
 

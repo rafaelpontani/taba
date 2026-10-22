@@ -93,6 +93,7 @@ Leaving by drain does **not** cause freezing. If the drain requested through the
 | `membership-divergent` | **critical** | Member tables with different versions | Incomplete propagation of a change; it usually goes away by itself in seconds. Persistent: look at the `membership` logs and restart the diverging node (**one at a time**) |
 | `storage-pressure` | warning | Free space in `storage.dir` below `stats.disk.free-min` (only fires if configured) | Free disk or enlarge the volume **before** it fills: **a full disk takes the node to `failed`** |
 | `upgrade-stalled` | warning | The upgrade that retires earlier versions stopped on a node that did not finish draining in time | Cancel that node's drain (`DELETE /node/drain` on its operations port) or stop it; the upgrade goes on with the next. The node is the one in the `draining` state in `GET /nodes` |
+| `previous-life-pending` | warning | The restoration of the previous lives has not ended (the vote did not close, or the restoration waits for nodes that did not come back) | The FIFO queues receive and **do not deliver** meanwhile. `GET /health/cluster` and the node state (`GET /cluster/restore`) say which old nodes are awaited. Wait for `cluster.restore.grace`; if a node will not come back, force with `POST /cluster/restore/force` (root token, or the operations port): messages already consumed may come back (doc 37, section 4.11) |
 
 ## Failures and how to react
 

@@ -292,6 +292,7 @@ Um alvo por nó: o Prometheus guarda uma série por nó. O total sai por agrega�
 | `membership-divergent` | **crítica** | Tabelas de membros com **versões diferentes** entre nós |
 | `storage-pressure` | aviso | Espaço livre de `storage.dir` abaixo de `stats.disk.free-min` (sem valor, nunca dispara) |
 | `upgrade-stalled` | aviso | A atualização que retira versões anteriores parou num nó que não terminou o drain em `drain.timeout` mais 30 s |
+| `previous-life-pending` | aviso | O cluster ainda está sendo restaurado das vidas anteriores (a votação não fechou): as filas FIFO recebem e não entregam. Some quando a votação fecha ou o operador força |
 
 > **Como o nó calcula (provisório, D102–D104).** *Saudável* é este nó mais os pares com canal conectado. `quorum-lost` vale quando os saudáveis não alcançam `min(cluster.vote.min-voters, membros)` (com um nó só não há quem excluir). Uma réplica é *íntegra* quando o dono do bloco está `active` na tabela e o canal com ele está de pé. `under-replicated` aparece quando há mais blocos abaixo da replicação que abaixo do quórum; `syncing` quando algum dono de bloco está `syncing`. `membership-divergent` compara a versão da tabela de cada nó.
 

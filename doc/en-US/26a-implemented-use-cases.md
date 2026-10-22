@@ -27,7 +27,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `RET` | Expiration (`ttl`), delivery limit and dead-letter | 14 | 6 |
 | `DST` | Distributor Topic | 6 | 12 |
 | `VOL` | Volatile queue and managing node | 23 | 0 |
-| `FIF` | FIFO queue | 47 | 0 |
+| `FIF` | FIFO queue | 53 | 0 |
 | `GRP` | Message groups and fair delivery | 16 | 1 |
 | `AUT` | Authentication and access tokens | 33 | 6 |
 | `LIM` | Rate limit and client IP | 13 | 2 |
@@ -48,12 +48,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 3 | 12 |
-| `RTN` | Return of an excluded node and recovery of losses | 30 | 0 |
+| `RTN` | Return of an excluded node and recovery of losses | 35 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
 | `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
 | `DEV` | Development mode | 3 | 10 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 21 | 0 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 40 | 9 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 41 | 9 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 3 | 7 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 40 | 0 |
@@ -2312,6 +2312,73 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `tests/topic_stats.rs::noisy_group_points_at_the_hot_group_of_a_fifo_queue`
+
+---
+
+### UC-FIF-048
+
+**Case:** The FIFO queue **during the restoration**
+**Then:** it receives messages and does not deliver them until the status is **restored from disk**; the plain queues are not held.
+**Level:** C
+**Tests:**
+  - `src/engine/messages/tests/hold.rs::a_held_fifo_queue_receives_and_does_not_deliver_until_it_is_released`
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+
+---
+
+### UC-FIF-049
+
+**Case:** The **generator of IDs** of the new life
+**Then:** it starts above the **watermark** (the largest `id` of the old lives, in the manifest of each one and announced between the nodes): the new `id`s are greater than the old ones and no `id` already returned to a producer changes.
+**Level:** C
+**Tests:**
+  - `src/core/id/tests.rs::a_generator_with_a_floor_never_goes_below_it_and_reports_its_watermark`
+  - `src/engine/messages/tests/hold.rs::the_ids_of_the_new_life_start_above_the_watermark_of_the_old_ones`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+
+---
+
+### UC-FIF-050
+
+**Case:** New messages during the restoration
+**Then:** they go into the **provisional list** of the group's primary, with a normal `id`, and **nothing is deduplicated**: every publication is accepted, including one that repeats a key.
+**Level:** C
+**Tests:**
+  - `src/engine/messages/tests/hold.rs::while_held_nothing_is_deduplicated_and_the_duplicate_answer_never_comes`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+
+---
+
+### UC-FIF-051
+
+**Case:** The **release**
+**Then:** the primary deduplicates the provisional list against the restored keys and inside the list, in `id` order; it discards the duplicates (an ack on the owners with no receipt) and only then releases the delivery.
+**Level:** C
+**Tests:**
+  - `src/engine/messages/tests/hold.rs::the_release_lists_as_duplicates_what_repeats_a_restored_key_or_an_earlier_publication`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-FIF-052
+
+**Case:** The producer of a message that is discarded as a duplicate at the release
+**Then:** it had received `duplicate=false` (an accepted exception; PRB-063 for the limit of the window).
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+
+---
+
+### UC-FIF-053
+
+**Case:** The restored FIFO messages
+**Then:** they reach the group's primary by the path of the restoration and stay without delivery until the release; they keep the key before any provisional one.
+**Level:** C
+**Tests:**
+  - `src/engine/messages/tests/hold.rs::the_release_lists_as_duplicates_what_repeats_a_restored_key_or_an_earlier_publication`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
 
 ---
 
@@ -6875,6 +6942,61 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-RTN-031
+
+**Case:** **Vote** to end the restoration: when **every present node** announced that it finished sending its lives, the coordinator (the node with the lowest ID) closes the vote
+**Then:** the cluster status becomes **restored from disk**; only then are the FIFO queues released and the folders of the lives deleted (a folder whose messages the primaries did not all confirm stays for the next start).
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+  - `src/cluster/restore/tests.rs::the_coordinator_is_the_lowest_id_and_the_vote_needs_every_present_node`
+  - `src/cluster/restore/tests.rs::the_status_goes_from_unknown_to_restoring_to_restored_and_remembers_force_and_missing`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-RTN-032
+
+**Case:** The restoration of the old messages **waits for the expected nodes** (the members of the biggest old table) and, after `G`, goes on with a warning and the nodes that are present; in **strict mode** it stays held until the operator forces it
+**Then:** while the vote does not close the FIFO stays without delivery and the cluster shows `previous-life-pending`; the nodes the restoration still waits for are in the state of the node.
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+  - `tests/restore_vote.rs::in_strict_mode_the_restoration_stays_held_after_g_until_the_operator_forces_it`
+
+---
+
+### UC-RTN-033
+
+**Case:** A node that comes back **after the release**
+**Then:** it enters clean: the status is already **restored from disk**, so its lives are restored on their own, with no vote and no hold, and its FIFO messages are activated in `id` order (their order in relation to newer messages of the group is not guaranteed); the folders are deleted when the primaries confirmed everything.
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::a_node_that_comes_back_after_the_release_restores_its_lives_on_its_own_and_holds_nothing`
+
+---
+
+### UC-RTN-034
+
+**Case:** The **plain queues** during the restoration
+**Then:** they receive and deliver as soon as the definitions are distributed; the old messages come in later, when the restoration starts.
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+
+---
+
+### UC-RTN-035
+
+**Case:** The operator **forces** the restoration (`POST /cluster/restore/force`, spread to every node)
+**Then:** the status changes to restored from disk on every present node, the held FIFO is released and a restoration held by the strict mode goes on with the nodes that are present; it also serves a cluster stuck by the loss of two nodes.
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::in_strict_mode_the_restoration_stays_held_after_g_until_the_operator_forces_it`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
 ### UC-RTN-016
 
 **Case:** What the disk of the previous life has and the loss list does not ask for does not go back to anyone, and the new disk never resurrects an old message  
@@ -6967,7 +7089,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-024
 
 **Case:** The running life keeps the **manifest** in the root of the disk: the ID, the **active members** of the table with the IPs, the table version, `last_seen` and the watermark
-**Then:** it is written when the node becomes active and at every change of the table, `last_seen` moves every 10 s and on a clean stop, and the write is atomic (temporary file and swap). The watermark still goes empty (it arrives with the FIFO, doc 37, section 4.10).
+**Then:** it is written when the node becomes active and at every change of the table, `last_seen` moves every 10 s and on a clean stop, and the write is atomic (temporary file and swap). The watermark is the largest instant the ID generator used or was told to stay above (doc 37, section 4.10); it is empty until the node generates an ID.
 **Level:** C
 **Tests:**
   - `tests/recovery.rs::the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop`
@@ -8024,6 +8146,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/excluded_log.rs::the_cluster_cut_off_is_the_latest_start_among_the_active_members`
+
+---
+
+### UC-OPS-053
+
+**Case:** The restoration of the previous lives has not ended
+**Then:** `GET /health/cluster` shows the `previous-life-pending` condition (warning) until the vote closes or the operator forces; the log has the warning of a restoration with absent nodes.
+**Level:** C
+**Tests:**
+  - `src/cluster/health/tests.rs::a_restoration_in_progress_raises_previous_life_pending_as_a_warning`
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+  - `tests/restore_vote.rs::in_strict_mode_the_restoration_stays_held_after_g_until_the_operator_forces_it`
 
 ---
 

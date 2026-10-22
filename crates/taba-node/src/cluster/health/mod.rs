@@ -39,10 +39,11 @@ pub enum Condition {
     UnderReplicated,
     StoragePressure,
     UpgradeStalled,
+    PreviousLifePending,
 }
 
 impl Condition {
-    pub const ALL: [Condition; 9] = [
+    pub const ALL: [Condition; 10] = [
         Condition::WriteQuorumAtRisk,
         Condition::QuorumLost,
         Condition::MembershipDivergent,
@@ -52,6 +53,7 @@ impl Condition {
         Condition::UnderReplicated,
         Condition::StoragePressure,
         Condition::UpgradeStalled,
+        Condition::PreviousLifePending,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -65,6 +67,7 @@ impl Condition {
             Condition::UnderReplicated => "under-replicated",
             Condition::StoragePressure => "storage-pressure",
             Condition::UpgradeStalled => "upgrade-stalled",
+            Condition::PreviousLifePending => "previous-life-pending",
         }
     }
 
@@ -104,6 +107,9 @@ pub struct HealthSignals {
     /// The upgrade retiring earlier versions stopped on a node that did not finish draining.
     #[serde(default)]
     pub upgrade_stalled: bool,
+    /// The cluster is still being restored from the previous lives: the FIFO queues are held (doc 37, section 4.7).
+    #[serde(default)]
+    pub restore_pending: bool,
 }
 
 impl HealthSignals {
@@ -134,6 +140,9 @@ impl HealthSignals {
         }
         if self.upgrade_stalled {
             out.push(Condition::UpgradeStalled);
+        }
+        if self.restore_pending {
+            out.push(Condition::PreviousLifePending);
         }
         out.sort();
         out
@@ -228,6 +237,7 @@ pub fn collect(service: &ClusterService) -> Option<HealthSignals> {
         blocks_below_quorum: below_quorum,
         frozen_nodes: membership.frozen_count(service.now(), rules.freezing_duration) as u64,
         upgrade_stalled: service.upgrade_stalled().is_some(),
+        restore_pending: service.restoration().is_restoring(),
     })
 }
 

@@ -27,7 +27,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 14 | 6 |
 | `DST` | Tópico Distribuidor | 6 | 12 |
 | `VOL` | Fila volátil e nó gestor | 23 | 0 |
-| `FIF` | Fila FIFO | 47 | 0 |
+| `FIF` | Fila FIFO | 53 | 0 |
 | `GRP` | Grupos de mensagens e entrega justa | 16 | 1 |
 | `AUT` | Autenticação e tokens de acesso | 33 | 6 |
 | `LIM` | Rate limit e IP do cliente | 13 | 2 |
@@ -48,12 +48,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 3 | 12 |
-| `RTN` | Retorno de nó excluído e recuperação de perdas | 30 | 0 |
+| `RTN` | Retorno de nó excluído e recuperação de perdas | 35 | 0 |
 | `FWD` | Repasse de chamadas de cliente | 4 | 8 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
 | `DEV` | Modo desenvolvimento | 3 | 10 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 21 | 0 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 40 | 9 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 41 | 9 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 3 | 7 |
 | `CFG` | Configuração e validações de partida | 11 | 2 |
 | `BKP` | Backup opcional em S3 | 40 | 0 |
@@ -2312,6 +2312,73 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `tests/topic_stats.rs::noisy_group_points_at_the_hot_group_of_a_fifo_queue`
+
+---
+
+### UC-FIF-048
+
+**Caso:** A fila FIFO **durante a restauração**
+**Então:** recebe mensagens e não as entrega até o status ser **restaurado do disco**; as filas comuns não ficam retidas.
+**Nível:** C
+**Testes:**
+  - `src/engine/messages/tests/hold.rs::a_held_fifo_queue_receives_and_does_not_deliver_until_it_is_released`
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+
+---
+
+### UC-FIF-049
+
+**Caso:** O **gerador de IDs** da vida nova
+**Então:** começa acima da **marca d'água** (o maior `id` das vidas antigas, no manifesto de cada uma e anunciada entre os nós): os `id` novos são maiores que os antigos e nenhum `id` já devolvido a um produtor muda.
+**Nível:** C
+**Testes:**
+  - `src/core/id/tests.rs::a_generator_with_a_floor_never_goes_below_it_and_reports_its_watermark`
+  - `src/engine/messages/tests/hold.rs::the_ids_of_the_new_life_start_above_the_watermark_of_the_old_ones`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+
+---
+
+### UC-FIF-050
+
+**Caso:** Mensagens novas durante a restauração
+**Então:** vão para a **lista provisória** do primário do grupo, com um `id` normal, e **nada é deduplicado**: toda publicação é aceita, inclusive a que repete uma chave.
+**Nível:** C
+**Testes:**
+  - `src/engine/messages/tests/hold.rs::while_held_nothing_is_deduplicated_and_the_duplicate_answer_never_comes`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+
+---
+
+### UC-FIF-051
+
+**Caso:** A **liberação**
+**Então:** o primário deduplica a lista provisória contra as chaves restauradas e dentro da própria lista, em ordem de `id`; descarta as duplicatas (um ack nos donos, sem recibo) e só então libera a entrega.
+**Nível:** C
+**Testes:**
+  - `src/engine/messages/tests/hold.rs::the_release_lists_as_duplicates_what_repeats_a_restored_key_or_an_earlier_publication`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-FIF-052
+
+**Caso:** O produtor de uma mensagem que é descartada como duplicata na liberação
+**Então:** havia recebido `duplicate=false` (exceção aceita; PRB-063 para o limite da janela).
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
+
+---
+
+### UC-FIF-053
+
+**Caso:** As mensagens FIFO restauradas
+**Então:** chegam ao primário do grupo pelo caminho da restauração e ficam sem entrega até a liberação; mantêm a chave antes de qualquer provisória.
+**Nível:** C
+**Testes:**
+  - `src/engine/messages/tests/hold.rs::the_release_lists_as_duplicates_what_repeats_a_restored_key_or_an_earlier_publication`
+  - `tests/restore_vote.rs::the_release_discards_what_the_fifo_accepted_that_repeats_a_restored_key_and_ids_start_above_the_watermark`
 
 ---
 
@@ -6875,6 +6942,61 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-RTN-031
+
+**Caso:** **Votação** do fim da restauração: quando **todos os nós presentes** avisaram que terminaram de enviar suas vidas, o coordenador (o nó de menor ID) fecha a votação
+**Então:** o status do cluster vira **restaurado do disco**; só então as filas FIFO são liberadas e as pastas das vidas apagadas (a pasta cujas mensagens os primários não confirmaram por inteiro fica para a próxima partida).
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+  - `src/cluster/restore/tests.rs::the_coordinator_is_the_lowest_id_and_the_vote_needs_every_present_node`
+  - `src/cluster/restore/tests.rs::the_status_goes_from_unknown_to_restoring_to_restored_and_remembers_force_and_missing`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-RTN-032
+
+**Caso:** A restauração das mensagens antigas **espera os nós esperados** (os membros da maior tabela antiga) e, passado `G`, segue com um aviso e os nós presentes; no **modo estrito** fica retida até o operador forçar
+**Então:** enquanto a votação não fecha a FIFO fica sem entrega e o cluster mostra `previous-life-pending`; os nós que a restauração ainda espera constam no estado do nó.
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+  - `tests/restore_vote.rs::in_strict_mode_the_restoration_stays_held_after_g_until_the_operator_forces_it`
+
+---
+
+### UC-RTN-033
+
+**Caso:** Nó que volta **depois da liberação**
+**Então:** ele entra limpo: o status já é **restaurado do disco**, então suas vidas são restauradas por conta própria, sem votação e sem retenção, e as mensagens FIFO são ativadas em ordem de `id` (a ordem delas em relação às mensagens mais novas do grupo não é garantida); as pastas são apagadas quando os primários confirmaram tudo.
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::a_node_that_comes_back_after_the_release_restores_its_lives_on_its_own_and_holds_nothing`
+
+---
+
+### UC-RTN-034
+
+**Caso:** As **filas comuns** durante a restauração
+**Então:** recebem e entregam assim que as definições estão distribuídas; as mensagens antigas entram depois, quando a restauração começa.
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+
+---
+
+### UC-RTN-035
+
+**Caso:** O operador **força** a restauração (`POST /cluster/restore/force`, espalhada para todos os nós)
+**Então:** o status muda para restaurado do disco em todo nó presente, a FIFO retida é liberada e uma restauração retida pelo modo estrito segue com os nós presentes; serve também ao cluster travado pela perda de dois nós.
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::in_strict_mode_the_restoration_stays_held_after_g_until_the_operator_forces_it`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
 ### UC-RTN-016
 
 **Caso:** O que o disco da vida anterior tem e a lista de perdas não pede não volta a ninguém, e o disco novo nunca ressuscita uma mensagem antiga  
@@ -6967,7 +7089,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-024
 
 **Caso:** A vida em execução mantém o **manifesto** na raiz do disco: o ID, os **membros ativos** da tabela com os IPs, a versão da tabela, o `last_seen` e a marca d'água
-**Então:** é gravado quando o nó fica ativo e a cada mudança da tabela, o `last_seen` anda a cada 10 s e na parada limpa, e a escrita é atômica (arquivo temporário e troca). A marca d'água ainda vai vazia (ela chega com a FIFO, doc 37, seção 4.10).
+**Então:** é gravado quando o nó fica ativo e a cada mudança da tabela, o `last_seen` anda a cada 10 s e na parada limpa, e a escrita é atômica (arquivo temporário e troca). A marca d'água é o maior instante que o gerador de IDs usou ou foi mandado respeitar (doc 37, seção 4.10); vai vazia até o nó gerar um ID.
 **Nível:** C
 **Testes:**
   - `tests/recovery.rs::the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop`
@@ -8024,6 +8146,18 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/excluded_log.rs::the_cluster_cut_off_is_the_latest_start_among_the_active_members`
+
+---
+
+### UC-OPS-053
+
+**Caso:** A restauração das vidas anteriores não terminou
+**Então:** `GET /health/cluster` mostra a condição `previous-life-pending` (aviso) até a votação fechar ou o operador forçar; o log traz o aviso de restauração com nós ausentes.
+**Nível:** C
+**Testes:**
+  - `src/cluster/health/tests.rs::a_restoration_in_progress_raises_previous_life_pending_as_a_warning`
+  - `tests/restore_vote.rs::the_cluster_waits_for_the_expected_nodes_then_the_vote_restores_it_and_releases_the_fifo`
+  - `tests/restore_vote.rs::in_strict_mode_the_restoration_stays_held_after_g_until_the_operator_forces_it`
 
 ---
 

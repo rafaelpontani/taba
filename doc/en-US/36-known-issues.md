@@ -36,6 +36,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | Date | Event |
 |---|---|
 | 2026-10-20 | Failed once in a full local run; passed alone (3 runs) and in the next full run. |
+| 2026-10-22 | Failed again in a full local run of stage 3d of the cold-start plan (`waited 30 s for: the old notice counted as empty`); passed 6 of 6 alone right after. The change under test does not touch the notices. Cause still not identified. |
 
 ## Rejoining after a symmetric partition
 

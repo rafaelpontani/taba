@@ -292,6 +292,7 @@ One target per node: Prometheus keeps one series per node. The total comes from 
 | `membership-divergent` | **critical** | Member tables with **different versions** between nodes |
 | `storage-pressure` | warning | Free space of `storage.dir` below `stats.disk.free-min` (without a value, it never fires) |
 | `upgrade-stalled` | warning | The upgrade that retires earlier versions stopped on a node that did not finish draining within `drain.timeout` plus 30 s |
+| `previous-life-pending` | warning | The cluster is still being restored from the previous lives (the vote has not closed): the FIFO queues receive and do not deliver. Goes away when the vote closes or the operator forces it |
 
 > **How the node computes it (provisional, D102–D104).** *Healthy* is this node plus the peers with a connected channel. `quorum-lost` holds when the healthy ones do not reach `min(cluster.vote.min-voters, members)` (with a single node there is no one to exclude). A replica is *healthy* when the block's owner is `active` in the table and the channel with it is up. `under-replicated` appears when there are more blocks below replication than below the quorum; `syncing` when some block owner is `syncing`. `membership-divergent` compares the table version of each node.
 

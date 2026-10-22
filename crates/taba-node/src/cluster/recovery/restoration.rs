@@ -42,13 +42,22 @@ pub struct RestoreSummary {
     pub sent: usize,
     /// Messages the primaries resolved (activated, already there, or discarded as dead).
     pub resolved: usize,
+    /// The pass reached its end (it was not cancelled).
+    pub done: bool,
+}
+
+impl RestoreSummary {
+    /// Everything this node sent was resolved by the primaries: the folders of the lives can go.
+    pub fn complete(&self) -> bool {
+        self.done && self.sent == self.resolved
+    }
 }
 
 /// A life found on disk.
-struct Life {
-    id: String,
-    dir: std::path::PathBuf,
-    manifest: Manifest,
+pub(super) struct Life {
+    pub(super) id: String,
+    pub(super) dir: std::path::PathBuf,
+    pub(super) manifest: Manifest,
 }
 
 impl Recovery {
@@ -228,7 +237,7 @@ impl Recovery {
     }
 
     /// The lives this node keeps, from the oldest to the newest.
-    fn lives(&self) -> Vec<Life> {
+    pub(super) fn lives(&self) -> Vec<Life> {
         let root = self.messages.storage_root().join(MessageStore::LIVES);
         let Ok(entries) = std::fs::read_dir(&root) else {
             return Vec::new();
@@ -255,6 +264,7 @@ impl Recovery {
         let lives = self.lives();
         summary.lives = lives.len();
         if lives.is_empty() {
+            summary.done = true;
             return summary;
         }
         let cutoff = self.cluster_cutoff().await;
@@ -267,6 +277,7 @@ impl Recovery {
             }
             self.send_life(&life, &mut summary).await;
         }
+        summary.done = !self.service.cancel_token().is_cancelled();
         tracing::info!(
             lives = summary.lives,
             outside_window = summary.outside_window,
@@ -353,6 +364,8 @@ impl Recovery {
                     .ok()
                     .and_then(|owners| owners.into_iter().next())
                 else {
+                    // No primary to send to: it counts as sent and not resolved, and the folder stays.
+                    summary.sent += 1;
                     continue;
                 };
                 by_owner

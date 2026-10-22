@@ -257,6 +257,8 @@ pub struct ClusterService {
     boot_recovered: AtomicBool,
     /// The task that keeps the manifest of the running life up to date is already running.
     manifest_writer: AtomicBool,
+    /// The restoration of the previous lives, as this node sees it (doc 37, sections 4.7 and 4.8).
+    restoration: restore::Restoration,
     /// The members the restart's listing brought, to whom the node returns what the previous life's
     /// disk has of the losses, once active (PRB-048).
     old_disk_peers: StdMutex<Vec<Member>>,
@@ -387,6 +389,7 @@ impl ClusterService {
             excluded: AtomicBool::new(false),
             boot_recovered: AtomicBool::new(false),
             manifest_writer: AtomicBool::new(false),
+            restoration: restore::Restoration::default(),
             old_disk_peers: StdMutex::new(Vec::new()),
             status_source: OnceLock::new(),
             node_calls: OnceLock::new(),
@@ -432,6 +435,37 @@ impl ClusterService {
     /// Attaches the replication (definitions, messages, signals and forward) to the service.
     pub fn set_replication(&self, replication: Arc<Replication>) {
         let _ = self.replication.set(replication);
+    }
+
+    /// The restoration of the previous lives on this node.
+    pub fn restoration(&self) -> &restore::Restoration {
+        &self.restoration
+    }
+
+    /// The cluster is in restoration from now on (doc 37, section 4.7): the status changes and the FIFO queues are
+    /// held. It does not start the pass; [`begin_restoration`](Self::begin_restoration) does.
+    pub fn hold_for_restoration(&self) {
+        let Some(replication) = self.replication.get() else {
+            return;
+        };
+        if !self.restoration.is_restoring() {
+            self.restoration.begin(self.clock.now_millis());
+            replication.messages.messages().hold_fifo();
+        }
+    }
+
+    /// The cluster enters the restoration of the previous lives and this node starts its pass, which includes the
+    /// vote. A cold start with lives to restore calls it; a joining node does the same when it finds the cluster
+    /// restoring.
+    pub fn begin_restoration(self: &Arc<Self>) {
+        let Some(replication) = self.replication.get().cloned() else {
+            return;
+        };
+        self.hold_for_restoration();
+        tokio::spawn(async move {
+            let summary = replication.recovery.restoration().await;
+            replication.recovery.drop_lives(&summary);
+        });
     }
 
     pub fn replication(&self) -> Option<&Arc<Replication>> {
@@ -489,7 +523,7 @@ impl ClusterService {
                 .collect(),
             table_version: table.version,
             last_seen_ms: self.clock.now_millis(),
-            watermark: None,
+            watermark: replication.messages.messages().watermark(),
             excluded_since_ms: Some(replication.messages.messages().excluded_since()),
         };
         if let Err(e) = manifest.write(replication.messages.messages().storage_root()) {
@@ -1760,8 +1794,9 @@ impl ClusterService {
                     recovery.run_streaming(peers).await;
                 }
             };
-            tokio::join!(losses, replication.recovery.restore_lives());
+            let (_, summary) = tokio::join!(losses, replication.recovery.restoration());
             let _ = tokio::task::spawn_blocking(move || messages.finish_previous_life()).await;
+            replication.recovery.drop_lives(&summary);
         });
     }
 
@@ -1821,6 +1856,11 @@ impl ClusterService {
             ..MemberTable::default()
         });
         self.node.set_state(NodeState::Active);
+        // A cluster of one node has no one to restore it with: unless a cold start already put it in restoration,
+        // it is restored (doc 37, section 4.9).
+        if self.restoration.status() == restore::Status::Unknown {
+            self.restoration.complete();
+        }
         self.membership_changed();
         self.spawn_manifest_writer();
         tracing::info!(node_id = %self.node_id(), "first node: the cluster starts with just it");
