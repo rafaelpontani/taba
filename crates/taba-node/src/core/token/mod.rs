@@ -168,6 +168,28 @@ pub fn generate(
     NewToken { record, token }
 }
 
+/// A record for a secret that is not random: the `auth.dev-token` (doc 37, section 4.16). The presented token is
+/// `tb_<id>.<secret>`; the record keeps only the salted hash, like any other.
+pub fn with_secret(
+    id: String,
+    name: String,
+    permissions: Vec<Permission>,
+    created_ms: u64,
+    secret: &str,
+) -> TokenRecord {
+    let salt = random::<SALT_BYTES>();
+    TokenRecord {
+        id,
+        name,
+        permissions,
+        topic_prefixes: Vec::new(),
+        created_ms,
+        expires_ms: None,
+        salt: URL_SAFE_NO_PAD.encode(salt),
+        secret_hash: URL_SAFE_NO_PAD.encode(hash(&salt, secret)),
+    }
+}
+
 /// Splits `tb_<id>.<secret>` into `(id, secret)`. The `id` is a GUID (no dot), so the
 /// first dot separates. Malformed: `None`.
 pub fn parse(token: &str) -> Option<(&str, &str)> {

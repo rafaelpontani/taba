@@ -399,7 +399,6 @@ pub struct NodeStatus {
     pub reachable: bool,
     pub cluster_name: Option<String>,
     pub version: String,
-    pub mode: String,
     pub state: String,
     pub drain_state: String,
     pub started_at: Option<String>,
@@ -460,7 +459,6 @@ fn parse_node_status(node_id: &str, reachable: bool, raw: Option<&str>) -> NodeS
     };
     node.cluster_name = f.string("clusterName");
     node.version = f.string("version").unwrap_or_default();
-    node.mode = f.string("mode").unwrap_or_default();
     node.state = f.string("state").unwrap_or_default();
     node.drain_state = f.string("drainState").unwrap_or_default();
     node.started_at = f.string("startedAt");

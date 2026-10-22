@@ -1,6 +1,6 @@
 ---
 título: Cluster
-resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, modo desenvolvimento.
+resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, perfil de um nó.
 tipo: explicação
 status: estável
 verificado-em: 2026-10-14 @ efeb47a
@@ -55,7 +55,7 @@ O nó tem um **estado** (`taba.node.state`) e, separado, um **estado de drain**:
 
 ![Falha no registro de um novo nó](../diagrams/img/pt-BR/node-register-failure.svg)
 
-1. **Descoberta.** O nó chama a listagem de nós (`GET /cluster/nodes`) pelo endereço do balanceador (`cluster.entry-address`, host e **porta do cluster**). Se a chave falta, o nó não sobe (exceto o primeiro nó e o modo desenvolvimento).
+1. **Descoberta.** O nó chama a listagem de nós (`GET /cluster/nodes`) pelo endereço do balanceador (`cluster.entry-address`, host e **porta do cluster**). Se a chave falta, o nó não sobe (exceto o primeiro nó e o perfil de um nó).
 2. **Primeiro nó.** Só com `cluster.first-node=true`, e só se **ninguém responde pela rede** (conexão recusada ou tempo esgotado), o nó inicia o cluster sozinho como único membro. Quem responde, mesmo com erro (`503`), foi encontrado: o nó tenta de novo a cada `cluster.bootstrap.retry.interval` (padrão 5 s), até `cluster.bootstrap.retry.max-attempts` (padrão 0 = sem limite).
 3. **Pedido de ingresso.** O nó escolhe um membro ao acaso e envia, numa única chamada síncrona, `POST /cluster/nodes/join` com os próprios IPs e a porta do cluster; esse membro passa a **coordenar** o ingresso.
 4. **Teste de conexão.** O coordenador tenta chamar o nó novo de volta em cada IP informado. Se falhar, o ingresso é abortado.
@@ -183,16 +183,16 @@ Um nó que ainda não está íntegro (sincronizando, em drain ou em falha) pode 
 
 Sair por drain **não** gera freezing. Pendência **D75**: se o drain pedido pela API estoura `drain.timeout`, o nó fica `draining` até alguém chamar `DELETE` ([31-pendencias.md](31-pendencias.md)).
 
-## 8. Tamanho do cluster e modo desenvolvimento
+## 8. Tamanho do cluster e o perfil de um nó
 
 | Ambiente | Nós mínimos | Por quê |
 |---|---|---|
-| Teste e desenvolvimento | **1** (`mode=development`) | Rodar localmente sem o peso do cluster |
+| Teste e desenvolvimento | **1** (o perfil de um nó: `replication.factor=1`) | Rodar localmente sem o peso do cluster |
 | Produção | **3** | Permite votação com um nó fora do ar (2 votantes saudáveis) e evita decisão por um único nó |
 
-No **modo desenvolvimento** o nó é um cluster de um só e tudo o que existe para coordenar vários nós fica **desabilitado**: bootstrap, canal, votação, freezing, sincronização, replicação e a **porta do cluster** (não é aberta; `cluster.port` é ignorado). `replication.factor` e `write.quorum` valem **1** (valores configurados são ignorados, com aviso). **Não é para produção:** perder o nó ou o disco é perder as mensagens. O log avisa na subida e `GET /health/cluster` mostra `"mode":"development"`. O modo não muda em execução.
+No **perfil de um nó** (`replication.factor=1`, sem `cluster.entry-address`) o nó é um cluster de um só: parte sozinho, é o primário de todos os blocos e o quórum vale 1, mas o caminho é o de produção (cluster vazio, porta do cluster, registro e commit). O que o perfil relaxa (`cluster.tls.enabled=false`, `auth.dev-token`) só vale com fator 1 ([22-configuracao.md](22-configuracao.md)); o log lista o que está relaxado na partida e o `/health` mostra a condição `reduced-profile`. **Não é para produção:** perder o nó ou o disco é perder as mensagens.
 
-**O drain como *save*.** Em desenvolvimento, o drain grava tudo no disco e marca `save_completed` no `_node.db`. Na partida seguinte, com `development.resume-on-start` ligado (padrão), o nó **retoma o que achar em `storage.dir`**: definições, mensagens com metadados, listas reconstruídas. O `ttl` conta do ID, então o tempo parado conta. **Sem save concluído** (queda, `kill -9`), retoma mesmo assim o que está em disco e avisa que o que estava só em memória se perdeu. Com `development.resume-on-start=false`, apaga `storage.dir` e começa limpo.
+**Reinício.** Todo reinício é de nó novo: o disco antigo é posto de lado em `_lives/<ID antigo>` e o nó o restaura para si, como mensagens novas, prontas, com o mesmo `deliveryCount` e um `receiptToken` novo ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)). Não existe mais o modo `development` nem `development.resume-on-start`: para começar limpo, apague o volume ou o diretório.
 
 ## 9. As condições do cluster
 
@@ -209,6 +209,8 @@ No **modo desenvolvimento** o nó é um cluster de um só e tudo o que existe pa
 | `under-replicated` | aviso | Algum bloco está abaixo do fator de replicação pleno |
 | `storage-pressure` | aviso | Espaço livre em disco abaixo de `stats.disk.free-min` (sem valor, nunca dispara) |
 | `upgrade-stalled` | aviso | A retirada de versões anteriores parou num nó que não terminou o drain (D165) |
+| `members-missing` | aviso | A sondagem dos IPs antigos terminou e faltam nós da tabela da vida anterior (doc 37, seção 4.14) |
+| `reduced-profile` | aviso | O nó roda o perfil de um nó com algo relaxado: fator 1, TLS desligado ou `auth.dev-token`. Informativa (doc 37, seção 4.16) |
 | `previous-life-pending` | aviso | A restauração das vidas anteriores não terminou: as filas FIFO recebem e não entregam (doc 37) |
 
 O que fazer em cada uma está em [23-operacao.md](23-operacao.md).

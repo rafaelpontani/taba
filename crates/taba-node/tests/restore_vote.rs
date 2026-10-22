@@ -21,7 +21,7 @@ use taba_node::config::DbSynchronous;
 use taba_node::core::clock::Clock;
 use taba_node::core::id;
 use taba_node::engine::messages::Messages;
-use taba_node::storage::messages::MessageStore;
+use taba_node::storage::messages::{ExcludedRow, MessageStore};
 
 const PLAIN: &str = "plain";
 const FIFO: &str = "orders";
@@ -451,5 +451,189 @@ async fn a_node_that_comes_back_after_the_release_restores_its_lives_on_its_own_
     .await;
     recovery.drop_lives(&summary);
     assert!(!life_dir(&cluster, 3, &o1).exists());
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-051
+#[tokio::test]
+async fn the_fifo_messages_of_a_node_that_comes_back_are_activated_in_id_order() {
+    let cluster = setup(&[]).await;
+    let o1 = id::new_at(1);
+    let (first, second, third) = (
+        fifo_record(&cluster, 1, "g", "k1"),
+        fifo_record(&cluster, 2, "g", "k2"),
+        fifo_record(&cluster, 3, "g", "k3"),
+    );
+    // The folder holds them out of order.
+    plant_life(
+        &cluster,
+        3,
+        &o1,
+        &[o1.as_str()],
+        None,
+        &[&third, &first, &second],
+    );
+    let recovery = cluster
+        .node(3)
+        .node
+        .cluster()
+        .and_then(|c| c.replication())
+        .map(|r| r.recovery.clone())
+        .unwrap();
+    let summary = recovery.restoration().await;
+    assert!(summary.complete(), "{summary:?}");
+
+    // One message per group at a time: consuming and confirming goes through them in `id` order.
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        let got = get_some(cluster.node(1), FIFO).await;
+        assert_eq!(got.len(), 1, "{got:?}");
+        let message = &got[0];
+        let ack = cluster
+            .node(1)
+            .client
+            .delete(cluster.node(1).client_url(&format!(
+                "/topics/{FIFO}/messages/{}?receiptToken={}",
+                message["id"].as_str().unwrap(),
+                message["receiptToken"].as_str().unwrap()
+            )))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(ack.status(), 204);
+        seen.push(message["id"].as_str().unwrap().to_owned());
+    }
+    assert_eq!(seen, vec![first.id, second.id, third.id]);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-052
+#[tokio::test]
+async fn a_cluster_stuck_by_the_loss_of_two_nodes_is_released_by_force_and_forcing_again_changes_nothing()
+ {
+    let cluster = setup(&[("TABA_CLUSTER_RESTORE_STRICT", "true")]).await;
+    let ids: Vec<String> = (1..=5).map(id::new_at).collect();
+    let members: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let a = plain_record(&cluster, 1);
+    // The old table had five nodes; two of them were lost for good and the three that came back wait for them.
+    plant_life(&cluster, 1, &ids[0], &members, None, &[&a]);
+    plant_life(&cluster, 2, &ids[1], &members, None, &[]);
+    plant_life(&cluster, 3, &ids[2], &members, None, &[]);
+
+    begin_all(&cluster);
+    publish_fifo(cluster.node(1), "g", "k", r#"{"fifo":1}"#).await;
+    cluster.clock.advance(Duration::from_secs(6 * 60));
+    let_them_poll().await;
+    assert!(all_have(&cluster, Status::Restoring), "stuck after G");
+    assert!(!has(&cluster, PLAIN, &a.id));
+    assert!(get(cluster.node(1), FIFO).await.is_empty());
+
+    let force = |number: usize| {
+        cluster
+            .node(number)
+            .client
+            .post(
+                cluster
+                    .node(number)
+                    .operations_url("/cluster/restore/force"),
+            )
+            .send()
+    };
+    let body: Value = force(2).await.unwrap().json().await.unwrap();
+    assert_eq!(body["wasRestoring"], true);
+    eventually("the cluster to be restored from disk", || {
+        all_have(&cluster, Status::Restored)
+    })
+    .await;
+    eventually("the held restoration to go on", || {
+        has(&cluster, PLAIN, &a.id)
+    })
+    .await;
+    assert_eq!(get_some(cluster.node(1), FIFO).await.len(), 1);
+
+    // Forcing a cluster that is already restored changes nothing.
+    let again: Value = force(1).await.unwrap().json().await.unwrap();
+    assert_eq!(again["wasRestoring"], false);
+    assert!(all_have(&cluster, Status::Restored));
+    cluster.shutdown().await;
+}
+
+/// Writes in the excluded log of a node (the one that is running) that the message was consumed.
+fn log_as_consumed(cluster: &TestCluster, number: usize, record: &MessageRecord) {
+    let messages = messages_of(cluster.node(number));
+    let position = messages.position_for(PLAIN, &record.id, None);
+    messages
+        .import_excluded(
+            PLAIN,
+            &[ExcludedRow {
+                id: record.id.clone(),
+                position,
+                at_ms: cluster.clock.now_millis(),
+            }],
+        )
+        .unwrap();
+}
+
+/// UC: UC-RTN-054
+#[tokio::test]
+async fn a_message_already_consumed_whose_log_is_on_a_node_that_never_came_back_returns_only_after_g()
+ {
+    let cluster = setup(&[]).await;
+    let (o1, o2, o3) = (id::new_at(1), id::new_at(2), id::new_at(3));
+    let members = [o1.as_str(), o2.as_str(), o3.as_str()];
+    let consumed = plain_record(&cluster, 1);
+    // The life of node 1 still has the message; the only log that says it was consumed was on the third node of the
+    // old cluster, which does not come back (nobody present has it in the log).
+    plant_life(&cluster, 1, &o1, &members, None, &[&consumed]);
+    plant_life(&cluster, 2, &o2, &members, None, &[]);
+
+    begin_all(&cluster);
+    let_them_poll().await;
+    // Before `G` nothing is delivered again, whatever the message is.
+    assert!(all_have(&cluster, Status::Restoring));
+    assert!(!has(&cluster, PLAIN, &consumed.id));
+
+    // After `G` the restoration goes on with the nodes that are present: this is the residual redelivery that the
+    // consumer has to accept (idempotent).
+    cluster.clock.advance(Duration::from_secs(6 * 60));
+    eventually("the cluster to be restored from disk", || {
+        all_have(&cluster, Status::Restored)
+    })
+    .await;
+    eventually("the message to come back", || {
+        has(&cluster, PLAIN, &consumed.id)
+    })
+    .await;
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-054
+#[tokio::test]
+async fn with_every_expected_node_present_a_message_already_consumed_does_not_wait_for_g_and_does_not_return()
+ {
+    let cluster = setup(&[]).await;
+    let (o1, o2, o3) = (id::new_at(1), id::new_at(2), id::new_at(3));
+    let members = [o1.as_str(), o2.as_str(), o3.as_str()];
+    let (consumed, alive) = (plain_record(&cluster, 1), plain_record(&cluster, 2));
+    plant_life(&cluster, 1, &o1, &members, None, &[&consumed]);
+    plant_life(&cluster, 2, &o2, &members, None, &[&alive]);
+    plant_life(&cluster, 3, &o3, &members, None, &[]);
+    // The third node is present, and its log knows the message was consumed.
+    log_as_consumed(&cluster, 3, &consumed);
+
+    // No jump over `G`: with every expected node the pass starts at once.
+    begin_all(&cluster);
+    eventually("the cluster to be restored from disk", || {
+        all_have(&cluster, Status::Restored)
+    })
+    .await;
+    eventually("the live message to come back", || {
+        has(&cluster, PLAIN, &alive.id)
+    })
+    .await;
+    assert!(
+        !has(&cluster, PLAIN, &consumed.id),
+        "what the log says was consumed stays out"
+    );
     cluster.shutdown().await;
 }

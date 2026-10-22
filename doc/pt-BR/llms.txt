@@ -14,7 +14,7 @@
 - [04 Arquitetura](04-arquitetura.md): camadas (core ← storage ← engine ← cluster ← http ← node), as três portas, traits de teste, mapa de módulos
 - [05 Dependências](05-dependencias.md): bibliotecas do servidor e por quê, ambiente, conectores sem dependências, ferramentas
 - [06 Anel e replicação](06-anel-e-replicacao.md): hash circular, blocos, primário/secundário/terciário, o mesmo anel para quatro perguntas
-- [07 Cluster](07-cluster.md): entrada de nó, detecção de falha, votação, freezing, retorno, sincronização, repasse, drain, modo desenvolvimento, condições
+- [07 Cluster](07-cluster.md): entrada de nó, detecção de falha, votação, freezing, retorno, sincronização, repasse, drain, perfil de um nó, condições
 - [08 Armazenamento](08-armazenamento.md): memória primeiro, overflow em disco, SQLite por tópico, banco do nó, dono da definição
 
 ## Especificação funcional
@@ -43,7 +43,7 @@
 - [23 Operação (runbook)](23-operacao.md): subir, escalar, atualizar, drain, o que fazer em cada condição, cluster travado, backup, parar e iniciar o cluster
 - [33 Backup opcional em S3](33-backup-s3.md): o que vai ao bucket (segmentos, diário, definições, batimento), restauração do sobrevivente único, evicção de disco, flush e parada do cluster
 - [34 Chart Helm](34-chart-helm.md): o que o chart cria, values (nó, segredos, Ingress, backup MinIO/S3, coletor Prometheus/Telegraf, OTLP, autoscaling KEDA) e o que ele recusa
-- [35 Chart Helm: casos de uso](35-chart-helm-casos-de-uso.md): modos de operação (mínimo, desenvolvimento, Ingress, backup, restauração, coletores, KEDA, upgrade, falhas) e os testes em bash de cada um
+- [35 Chart Helm: casos de uso](35-chart-helm-casos-de-uso.md): modos de operação (mínimo, um nó, Ingress, backup, restauração, coletores, KEDA, upgrade, falhas) e os testes em bash de cada um
 
 ## Contribuir
 

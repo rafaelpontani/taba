@@ -20,7 +20,7 @@ Applications **publish messages** to **topics**; Taba stores them on several **n
 | Term | What it is |
 |---|---|
 | **Node** | One instance of the `taba` program. They are all equal; there is no master. Each node has an **ID** (GUID v7) generated at every start. |
-| **Cluster** | The set of nodes that know each other. Minimum in production: **3**. With **1** node, only in **development mode**. |
+| **Cluster** | The set of nodes that know each other. Minimum in production: **3**. With **1** node, only in the **one-node profile**. |
 | **Member table** | The list of nodes in the cluster (IDs and addresses), with a **version** that goes up at every change. Every node has a copy. |
 | **Client** | Any application that talks to the client API (producer or consumer). |
 | **Operator** | Whoever runs the cluster. Talks to the operations API and to the command line. |
@@ -67,7 +67,7 @@ Applications **publish messages** to **topics**; Taba stores them on several **n
 | **Freezing** | A period in which a node excluded for failure cannot return, to avoid instability. |
 | **Synchronization** | What a new node does when it joins: it pulls topics and blocks from the nodes that already have them, storing in an **event database** whatever arrives in the meantime. Only then does it become **ready**. |
 | **Drain** | Leaving the cluster without losing what is only in memory: everything goes to disk and the node deregisters itself. |
-| **Development mode** | `mode=development`: one node, with no vote, quorum, channel or replicas. |
+| **One-node profile** | `replication.factor=1`: a one-node cluster that starts alone and is the primary of everything; the path is the production one, with quorum 1. |
 
 ## The three ports
 

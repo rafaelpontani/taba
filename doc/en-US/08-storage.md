@@ -88,7 +88,7 @@ A topic or token definition is **small data, rarely changed and of interest to t
 - **Failure:** a partial change is never visible; a node only serves the new definition **at the commit**.
 - **Removal:** `DELETE /topics/{topic}` **always works**, even with pending messages: each node deletes all the topic's messages it has (memory, disk and metadata).
 - **Dead-letter:** has no definition of its own; it is derived from the source queue, created and deleted with it, and does not generate a row in `topics`.
-- **Tokens:** the secret **never travels between nodes**: only the salt and the hash. Validation is a **local in-memory** lookup. Outside development mode the node **does not trust** the tokens it finds on disk (they may be out of date); they come from the cluster.
+- **Tokens:** the secret **never travels between nodes**: only the salt and the hash. Validation is a **local in-memory** lookup. The node **does not trust** the tokens it finds on disk (they may be out of date); they come from the cluster.
 - **Consumption data** (depth, rates, histograms) **never goes to disk**: it stays in memory, per node.
 
 ## What is rebuilt at start
@@ -104,8 +104,7 @@ It exists only during the synchronization of a node that joins: table `events` (
 | Situation | What happens |
 |---|---|
 | **Production** | Every restart is a **new node** (new ID). The old disk is set aside in `_lives/<old ID>` (with no manifest, in `_previous-life`) and used, in the background, to return to the cluster messages that only it had |
-| **Development**, `resume-on-start` on | Resumes what is in `storage.dir`: definitions (keeping `id` and date), messages and metadata, rebuilt lists |
-| **Development**, off | Deletes `storage.dir` and starts clean, with a warning |
+| **A single node** (factor 1) | The same: the node restores the previous life for itself, and the topics and tokens come back with it. To start clean, delete the volume or the directory |
 
 ## The backup database (`_backup.db`)
 

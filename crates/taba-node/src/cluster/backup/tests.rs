@@ -5,8 +5,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::heartbeat::Verdict;
 use super::*;
-use crate::cluster::state::NodeShared;
-use crate::config::{Config, DbSynchronous, MapEnv, Mode};
+use crate::cluster::state::{NodeShared, NodeState};
+use crate::config::{Config, DbSynchronous, MapEnv};
 use crate::core::clock::SystemClock;
 use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::tokens::{TokenRules, Tokens};
@@ -14,6 +14,47 @@ use crate::engine::topics::{TopicRules, Topics};
 use crate::storage::backup::{BackupDb, MemoryStore, ObjectStore, keys};
 use crate::storage::tokens::MemoryTokenStore;
 use crate::storage::topics::MemoryTopicStore;
+
+/// A node that owns everything, with no cluster behind it.
+struct AloneTopology(Arc<NodeShared>);
+
+impl Topology for AloneTopology {
+    fn node_id(&self) -> String {
+        self.0.node_id()
+    }
+
+    fn addresses(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn port(&self) -> u16 {
+        0
+    }
+
+    fn is_active(&self) -> bool {
+        true
+    }
+
+    fn owns_position(&self, _position: u64) -> bool {
+        true
+    }
+
+    fn owners(&self, _position: u64) -> Vec<String> {
+        vec![self.0.node_id()]
+    }
+
+    fn manages_definition(&self, _kind: &str, _key: &str) -> bool {
+        true
+    }
+
+    fn members(&self) -> Vec<String> {
+        vec![self.0.node_id()]
+    }
+
+    fn reaches(&self, _node_id: &str) -> bool {
+        false
+    }
+}
 
 /// A single node (no cluster) with the backup attached to an in-memory store. The real-time deadlines
 /// (heartbeat and death) are short.
@@ -27,7 +68,7 @@ fn fixture_on(s3: Arc<MemoryStore>, node_id: &str) -> Fixture {
     let config = Config::parse(
         None,
         &MapEnv::new([
-            ("TABA_MODE", "development"),
+            ("TABA_REPLICATION_FACTOR", "1"),
             ("TABA_BACKUP_S3_BUCKET", "test"),
             ("TABA_BACKUP_HEARTBEAT_INTERVAL", "50ms"),
             ("TABA_BACKUP_DEAD_AFTER", "400ms"),
@@ -50,7 +91,6 @@ fn fixture_on(s3: Arc<MemoryStore>, node_id: &str) -> Fixture {
         clock.clone(),
         MessageRules::from_config(&config),
         disk.clone(),
-        false,
     );
     let tokens = Arc::new(Tokens::new(
         TokenRules::from_config(&config),
@@ -60,9 +100,9 @@ fn fixture_on(s3: Arc<MemoryStore>, node_id: &str) -> Fixture {
     ));
     let shared = Arc::new(NodeShared::new(
         node_id.into(),
-        Mode::Development,
         std::time::SystemTime::now(),
     ));
+    shared.set_state(NodeState::Active);
     let backup = Backup::new(BackupArgs {
         rules: BackupRules::from_config(&config),
         store: s3.clone(),
@@ -73,7 +113,7 @@ fn fixture_on(s3: Arc<MemoryStore>, node_id: &str) -> Fixture {
         tokens,
         clock,
         shared: shared.clone(),
-        topology: Arc::new(Solo::new(shared)),
+        topology: Arc::new(AloneTopology(shared)),
         cancel: CancellationToken::new(),
     });
     Fixture {
@@ -357,7 +397,7 @@ async fn cleaning_nodes_removes_only_dead_files_of_nodes_that_are_not_in_the_clu
 /// UC: UC-BKP-002
 #[test]
 fn the_backup_rules_come_from_the_configuration_with_the_documented_defaults() {
-    let config = Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap();
+    let config = Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap();
     assert!(
         !config.backup.enabled(),
         "without a bucket the feature is off"
@@ -383,7 +423,7 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
     let aws = Config::parse(
         None,
         &MapEnv::new([
-            ("TABA_MODE", "development"),
+            ("TABA_REPLICATION_FACTOR", "1"),
             ("TABA_BACKUP_S3_BUCKET", "meu-bucket"),
             ("TABA_BACKUP_S3_REGION", "sa-east-1"),
         ]),
@@ -402,7 +442,7 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
     let minio = Config::parse(
         None,
         &MapEnv::new([
-            ("TABA_MODE", "development"),
+            ("TABA_REPLICATION_FACTOR", "1"),
             ("TABA_BACKUP_S3_BUCKET", "taba"),
             ("TABA_BACKUP_S3_ENDPOINT", "http://minio:9000"),
             ("TABA_BACKUP_S3_ACCESS_KEY", "key"),
@@ -432,7 +472,7 @@ fn the_s3_settings_follow_the_endpoint_and_the_credentials_are_optional() {
         ],
         vec![("TABA_BACKUP_SEGMENT_MAX_MESSAGES", "0")],
     ] {
-        let mut map = MapEnv::new([("TABA_MODE", "development")]);
+        let mut map = MapEnv::new([("TABA_REPLICATION_FACTOR", "1")]);
         for (key, value) in &bad {
             map.0.insert((*key).to_owned(), (*value).to_owned());
         }
@@ -458,7 +498,7 @@ fn the_example_configuration_files_are_valid() {
     ] {
         let config = Config::parse(
             Some((name, text)),
-            &MapEnv::new([("TABA_MODE", "development")]),
+            &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")]),
         )
         .unwrap_or_else(|e| panic!("{name}: {e}"));
         let s3 = config
@@ -473,7 +513,7 @@ fn the_example_configuration_files_are_valid() {
             "taba-seaweedfs.yml",
             include_str!("../../../../../examples/backup-s3/taba-seaweedfs.yml"),
         )),
-        &MapEnv::new([("TABA_MODE", "development")]),
+        &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")]),
     )
     .unwrap();
     let s3 = minio.backup.s3.unwrap();

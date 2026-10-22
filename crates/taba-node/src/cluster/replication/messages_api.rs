@@ -161,9 +161,11 @@ impl ClusterMessages {
                 .publish_distributor(&view.definition.name, prefixes, request)
                 .await;
         }
-        self.publish_queue(&view, &request)
-            .await
-            .map(|(id, duplicate)| Published::Queue { id, duplicate })
+        let started = std::time::Instant::now();
+        let (id, duplicate) = self.publish_queue(&view, &request).await?;
+        self.messages
+            .record_publish_latency(&view.definition.name, started.elapsed().as_secs_f64());
+        Ok(Published::Queue { id, duplicate })
     }
 
     /// A message on a queue: register on all the responsible nodes and commit by quorum.

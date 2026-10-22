@@ -12,11 +12,9 @@ use std::time::{Duration, Instant, SystemTime};
 use super::backup::Backup;
 use super::service::{ClusterService, conflict_wait};
 use super::state::{DrainState, NodeShared};
-use crate::config::Mode;
 use crate::core::clock::Clock;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::engine::messages::Messages;
-use crate::storage::state::NodeStateStore;
 
 /// Who requested the drain (`DrainStatus.trigger`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,13 +74,12 @@ struct Run {
 pub struct DrainController {
     shared: Arc<NodeShared>,
     messages: Arc<Messages>,
-    saves: NodeStateStore,
     clock: Arc<dyn Clock>,
     timeout: Duration,
     run: Mutex<Option<Run>>,
     /// The process is stopping by signal: `DELETE /node/drain` answers `409`.
     stopping: AtomicBool,
-    /// In `mode=production`: the node in the cluster, which notifies the peers, deregisters and comes back.
+    /// The node in the cluster, which notifies the peers, deregisters and comes back.
     cluster: OnceLock<Arc<ClusterService>>,
     /// The deregistration (step 5) is in progress: `DELETE /node/drain` answers `409`.
     leaving: AtomicBool,
@@ -94,14 +91,12 @@ impl DrainController {
     pub fn new(
         shared: Arc<NodeShared>,
         messages: Arc<Messages>,
-        saves: NodeStateStore,
         clock: Arc<dyn Clock>,
         timeout: Duration,
     ) -> Arc<Self> {
         Arc::new(Self {
             shared,
             messages,
-            saves,
             clock,
             timeout,
             run: Mutex::new(None),
@@ -299,10 +294,6 @@ impl DrainController {
             );
             return;
         }
-        if let Err(e) = self.saves.mark_save_completed(self.clock.now_millis()) {
-            tracing::error!(error = %e, "could not write the save mark");
-            return;
-        }
         self.shared
             .transition_drain(DrainState::Draining, DrainState::Drained);
         tracing::info!(moved, "drain completed: all memory is on disk");
@@ -332,9 +323,6 @@ impl DrainController {
             r.stop.store(true, Ordering::Relaxed);
         }
         self.messages.cancel_drain();
-        if let Err(e) = self.saves.clear_save_mark() {
-            tracing::warn!(error = %e, "could not delete the save mark");
-        }
         self.shared.set_drain_state(DrainState::Active);
         tracing::info!(
             from = before.as_str(),
@@ -344,8 +332,8 @@ impl DrainController {
             backup.resume_beating();
         }
         let status = self.status_of(None);
-        Ok(match (before, self.shared.mode) {
-            (DrainState::Drained, Mode::Production) => {
+        Ok(match before {
+            DrainState::Drained => {
                 // Already out of the cluster: comes back as a new node, with a new ID and a full bootstrap.
                 if let Some(cluster) = self.cluster.get().cloned() {
                     tokio::spawn(async move { cluster.rejoin_as_new().await });

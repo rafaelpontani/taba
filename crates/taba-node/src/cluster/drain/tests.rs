@@ -5,7 +5,6 @@ use crate::config::{Config, DbSynchronous, MapEnv};
 use crate::core::clock::ManualClock;
 use crate::engine::messages::{MessageRules, PublishRequest};
 use crate::engine::topics::{CreateTopic, Kind, TopicRules, Topics};
-use crate::storage::db::NodeDb;
 use crate::storage::messages::MessageStore;
 use crate::storage::topics::MemoryTopicStore;
 
@@ -13,20 +12,11 @@ struct Harness {
     controller: Arc<DrainController>,
     messages: Arc<Messages>,
     shared: Arc<NodeShared>,
-    saves: NodeStateStore,
     _dir: tempfile::TempDir,
 }
 
-async fn harness(mode: Mode, timeout: Duration) -> Harness {
-    let config = Config::parse(
-        None,
-        &MapEnv(
-            [("TABA_MODE".to_owned(), "development".to_owned())]
-                .into_iter()
-                .collect(),
-        ),
-    )
-    .unwrap();
+async fn harness(timeout: Duration) -> Harness {
+    let config = Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap();
     let clock = Arc::new(ManualClock::at_doc_epoch());
     let topics = Arc::new(Topics::new(
         TopicRules::from_config(&config),
@@ -43,7 +33,6 @@ async fn harness(mode: Mode, timeout: Duration) -> Harness {
             &dir.path().join("msgs"),
             DbSynchronous::Normal,
         )),
-        false,
     );
     topics
         .create(CreateTopic {
@@ -71,21 +60,12 @@ async fn harness(mode: Mode, timeout: Duration) -> Harness {
             )
             .unwrap();
     }
-    let db = Arc::new(NodeDb::open(&dir.path().join("db"), DbSynchronous::Normal).unwrap());
-    let saves = NodeStateStore::new(db);
-    let shared = Arc::new(NodeShared::new("no".into(), mode, SystemTime::UNIX_EPOCH));
-    let controller = DrainController::new(
-        shared.clone(),
-        messages.clone(),
-        saves.clone(),
-        clock,
-        timeout,
-    );
+    let shared = Arc::new(NodeShared::new("no".into(), SystemTime::UNIX_EPOCH));
+    let controller = DrainController::new(shared.clone(), messages.clone(), clock, timeout);
     Harness {
         controller,
         messages,
         shared,
-        saves,
         _dir: dir,
     }
 }
@@ -103,7 +83,7 @@ async fn wait_for(h: &Harness, state: DrainState) {
 /// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-010
 #[tokio::test]
 async fn the_api_drain_moves_memory_to_disk_and_ends_drained() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     assert_eq!(h.controller.status().state, DrainState::Active);
     assert_eq!(h.controller.status().trigger, None);
     assert_eq!(h.controller.status().pending_messages, 2);
@@ -119,13 +99,12 @@ async fn the_api_drain_moves_memory_to_disk_and_ends_drained() {
     assert_eq!(status.pending_messages, 0, "reaches 0 when drained");
     assert_eq!(status.trigger, Some(Trigger::Api));
     assert_eq!(h.messages.usage("pedidos"), (0, 2));
-    assert!(h.saves.take_save_mark().unwrap().is_some());
 }
 
 /// UC: UC-DRN-004
 #[tokio::test]
 async fn starting_a_drain_twice_changes_nothing() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     assert!(matches!(h.controller.start_api(), Started::Started(_)));
     assert!(matches!(
         h.controller.start_api(),
@@ -141,47 +120,17 @@ async fn starting_a_drain_twice_changes_nothing() {
 /// UC: UC-DRN-019
 #[tokio::test]
 async fn canceling_without_a_drain_has_nothing_to_cancel() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     let Cancelled::Nothing(status) = h.controller.cancel().unwrap() else {
         panic!("esperava Nothing");
     };
     assert_eq!(status.state, DrainState::Active);
 }
 
-/// UC: UC-DRN-016, UC-DRN-021
-#[tokio::test]
-async fn canceling_a_finished_drain_in_development_goes_straight_back_to_active() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
-    h.controller.start_api();
-    wait_for(&h, DrainState::Drained).await;
-
-    let Cancelled::Cancelled(status) = h.controller.cancel().unwrap() else {
-        panic!("esperava Cancelled");
-    };
-    assert_eq!(status.state, DrainState::Active);
-    assert_eq!(status.trigger, None);
-    assert_eq!(
-        h.saves.take_save_mark().unwrap(),
-        None,
-        "the mark was deleted"
-    );
-    assert!(!h.messages.is_draining(), "goes back to writing in memory");
-    h.messages
-        .publish(
-            "pedidos",
-            PublishRequest {
-                body: b"\"c\"".to_vec(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    assert_eq!(h.messages.pending(), 1);
-}
-
 /// UC: UC-DRN-016
 #[tokio::test]
 async fn canceling_while_draining_stops_the_move() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     // Holds the drain at the start: the node enters `draining` without the task that empties.
     let stop = h.controller.begin(Trigger::Api).unwrap();
     assert_eq!(h.shared.drain_state(), DrainState::Draining);
@@ -198,13 +147,13 @@ async fn canceling_while_draining_stops_the_move() {
     // The task that wakes up after the cancellation concludes nothing.
     h.controller.clone().run_drain(stop).await;
     assert_eq!(h.shared.drain_state(), DrainState::Active);
-    assert_eq!(h.saves.take_save_mark().unwrap(), None);
+    assert!(!h.messages.is_draining(), "goes back to writing in memory");
 }
 
 /// UC: UC-DRN-018
 #[tokio::test]
-async fn in_production_leaving_the_drained_state_returns_as_a_new_node() {
-    let h = harness(Mode::Production, Duration::from_secs(25)).await;
+async fn leaving_the_drained_state_returns_as_a_new_node() {
+    let h = harness(Duration::from_secs(25)).await;
     h.controller.start_api();
     wait_for(&h, DrainState::Drained).await;
     assert!(matches!(
@@ -216,19 +165,18 @@ async fn in_production_leaving_the_drained_state_returns_as_a_new_node() {
 /// UC: UC-DRN-002, UC-DRN-012
 #[tokio::test]
 async fn the_signal_drain_waits_for_the_save_and_marks_the_trigger() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     assert!(h.controller.stop_by_signal().await);
     let status = h.controller.status();
     assert_eq!(status.state, DrainState::Drained);
     assert_eq!(status.trigger, Some(Trigger::Signal));
     assert_eq!(h.messages.usage("pedidos"), (0, 2));
-    assert!(h.saves.take_save_mark().unwrap().is_some());
 }
 
 /// UC: UC-DRN-002
 #[tokio::test]
 async fn the_signal_waits_for_a_drain_the_api_already_started() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     h.controller.start_api();
     assert!(h.controller.stop_by_signal().await);
     assert_eq!(h.controller.status().trigger, Some(Trigger::Api));
@@ -237,30 +185,25 @@ async fn the_signal_waits_for_a_drain_the_api_already_started() {
 /// UC: UC-DRN-017
 #[tokio::test]
 async fn with_the_process_stopping_by_signal_cancel_is_a_conflict() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     h.controller.stop_by_signal().await;
     let error = h.controller.cancel().unwrap_err();
     assert_eq!(error.code, ErrorCode::DrainConflict);
 }
 
-/// UC: UC-DRN-014, UC-DRN-026
+/// UC: UC-DRN-014
 #[tokio::test]
-async fn an_expired_timeout_leaves_the_node_draining_without_a_save_mark() {
-    let h = harness(Mode::Development, Duration::ZERO).await;
+async fn an_expired_timeout_leaves_the_node_draining() {
+    let h = harness(Duration::ZERO).await;
     assert!(!h.controller.stop_by_signal().await);
     assert_eq!(h.shared.drain_state(), DrainState::Draining);
     assert_eq!(h.messages.pending(), 2, "what was left stays in memory");
-    assert_eq!(
-        h.saves.take_save_mark().unwrap(),
-        None,
-        "without a completed save"
-    );
 }
 
 /// UC: UC-DRN-007
 #[tokio::test]
 async fn a_long_poll_waiting_when_the_drain_starts_answers_empty() {
-    let h = harness(Mode::Development, Duration::from_secs(25)).await;
+    let h = harness(Duration::from_secs(25)).await;
     // Empties the queue so the `GET` stays waiting.
     h.messages
         .consume(

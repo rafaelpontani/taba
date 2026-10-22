@@ -64,6 +64,12 @@ struct Entry {
     topic_id: Option<String>,
 }
 
+/// A definition the disk holds, read to take it over or to offer it (the tombstone's `topicId` goes along).
+pub struct Stored {
+    pub change: DefinitionApply,
+    pub topic_id: Option<String>,
+}
+
 /// What the definitions load brought (topic names and token IDs).
 #[derive(Debug, Clone, Default)]
 pub struct Pulled {
@@ -606,12 +612,146 @@ impl Definitions {
         for id in self.tokens.ids() {
             let _ = self.tokens.apply_revoke(&id).await;
         }
+        self.topics.forget_stored().await;
+        self.tokens.forget_stored().await;
         lock(&self.versions).clear();
         let store = self.store.clone();
         match tokio::task::spawn_blocking(move || store.clear()).await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => tracing::warn!(error = %e, "failed to clear the definition versions"),
             Err(e) => tracing::warn!(error = %e, "failed to clear the definition versions"),
+        }
+    }
+
+    // ---- Cold start: taking over the disk ----
+
+    /// The node starts alone and takes over the definitions on its disk (doc 37, section 4.9): topics and tokens with the
+    /// version they had, and the tombstones that did not expire. They are applied like the ones a source sends.
+    pub async fn resume_from_disk(&self) {
+        for stored in self.stored_changes().await {
+            let Stored { change, topic_id } = stored;
+            let (kind, key, version) = (change.kind, change.key.clone(), change.version);
+            let result = if change.deleted {
+                self.load_tombstone(kind, key.clone(), version, topic_id)
+                    .await
+            } else {
+                self.load(change).await
+            };
+            if let Err(e) = result {
+                tracing::warn!(key = %key, error = %e, "could not take over a definition of the disk");
+            }
+        }
+    }
+
+    /// What the disk holds: the live topics and tokens with the version they had and the tombstones that did not
+    /// expire. It does not touch the memory.
+    pub async fn stored_changes(&self) -> Vec<Stored> {
+        let mut out = Vec::new();
+        let store = self.store.clone();
+        let rows = match tokio::task::spawn_blocking(move || store.load_all()).await {
+            Ok(Ok(rows)) => rows,
+            _ => {
+                tracing::warn!("could not read the definition versions of the disk");
+                Vec::new()
+            }
+        };
+        let version_of_row = |kind: &str, key: &str| {
+            rows.iter()
+                .find(|r| !r.deleted && r.kind == kind && r.key == key)
+                .map_or(1, |r| r.version)
+        };
+        match self.topics.stored().await {
+            Ok(topics) => {
+                for definition in topics {
+                    out.push(Stored {
+                        change: DefinitionApply {
+                            kind: DefinitionKind::Topic,
+                            key: definition.name.clone(),
+                            version: version_of_row("topic", &definition.name),
+                            deleted: false,
+                            body: definition.to_json(),
+                            relay: false,
+                        },
+                        topic_id: None,
+                    });
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "could not read the topics of the disk"),
+        }
+        match self.tokens.stored().await {
+            Ok(tokens) => {
+                for record in tokens {
+                    out.push(Stored {
+                        change: DefinitionApply {
+                            kind: DefinitionKind::Token,
+                            key: record.id.clone(),
+                            version: version_of_row("token", &record.id),
+                            deleted: false,
+                            body: token_to_json(&record),
+                            relay: false,
+                        },
+                        topic_id: None,
+                    });
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "could not read the tokens of the disk"),
+        }
+        let now = self.service.now();
+        for row in rows.iter().filter(|r| r.deleted) {
+            let kind = match row.kind.as_str() {
+                "topic" => DefinitionKind::Topic,
+                "token" => DefinitionKind::Token,
+                _ => continue,
+            };
+            let entry = Entry {
+                version: row.version,
+                deleted: true,
+                fingerprint: row.fingerprint,
+                at: UNIX_EPOCH + Duration::from_millis(row.at_ms),
+                topic_id: row.topic_id.clone(),
+            };
+            if expired(&entry, now) {
+                continue;
+            }
+            out.push(Stored {
+                change: DefinitionApply {
+                    kind,
+                    key: row.key.clone(),
+                    version: row.version,
+                    deleted: true,
+                    body: Value::Null,
+                    relay: false,
+                },
+                topic_id: row.topic_id.clone(),
+            });
+        }
+        out
+    }
+
+    /// A node that joined a cluster that was already up offers what its disk held before it was cleared (doc 37,
+    /// section 4.9): the highest version of each definition wins, a tombstone included, so a disk that is older than
+    /// the cluster imposes nothing. What wins is spread to the others like any change that a node learns.
+    pub async fn offer(&self, offered: Vec<Stored>) {
+        for Stored { change, topic_id } in offered {
+            let key = (change.kind, change.key.clone());
+            let _guard = self.lock_key(&key).await;
+            let Ok(fingerprint) = fingerprint(&change) else {
+                continue;
+            };
+            let known = lock(&self.versions).get(&key).is_some_and(|e| {
+                e.version > change.version
+                    || (e.version == change.version && e.fingerprint == fingerprint)
+            });
+            if known {
+                continue;
+            }
+            match self.apply_with(&change, topic_id).await {
+                Ok(true) => self.relay(change.kind, &change.key),
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(key = %change.key, error = %e, "could not apply an offered definition")
+                }
+            }
         }
     }
 

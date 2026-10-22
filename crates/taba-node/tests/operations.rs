@@ -66,7 +66,7 @@ async fn wait_for_drain_state(node: &TestNode, state: &str) -> Value {
 /// UC: UC-DRN-001, UC-DRN-004, UC-DRN-005, UC-DRN-007, UC-DRN-020, UC-OPS-004
 #[tokio::test]
 async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(&node, "orders").await;
     assert_eq!(publish(&node, "orders", "1").await.status(), 201);
     let before = node.metrics().await;
@@ -142,10 +142,10 @@ async fn the_api_drain_takes_the_node_out_of_rotation_and_saves_the_memory() {
     node.shutdown().await;
 }
 
-/// UC: UC-DRN-016, UC-DRN-019, UC-DRN-021
+/// UC: UC-DRN-016, UC-DRN-019
 #[tokio::test]
 async fn deleting_the_drain_brings_the_node_back_with_its_messages() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(&node, "orders").await;
     publish(&node, "orders", r#"{ "n": 1 }"#).await;
 
@@ -156,14 +156,35 @@ async fn deleting_the_drain_brings_the_node_back_with_its_messages() {
         "active"
     );
 
+    // The life is inside the window of the excluded log, and the manifest says when it was last seen.
+    node.clock.advance(Duration::from_secs(60));
+    node.node
+        .cluster()
+        .expect("in the cluster")
+        .write_manifest();
     drain_call(&node, reqwest::Method::POST).await;
     wait_for_drain_state(&node, "drained").await;
+    // Out of the cluster, the node comes back as a new one (a new life): the answer is `202`.
     let back = drain_call(&node, reqwest::Method::DELETE).await;
-    assert_eq!(back.status(), 200);
+    assert_eq!(back.status(), 202);
     assert_eq!(back.json::<Value>().await.unwrap()["drainState"], "active");
 
+    for _ in 0..400 {
+        if node.client_get("/health/ready").await.status() == 200 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
     assert_eq!(node.client_get("/health/ready").await.status(), 200);
-    let messages = consume(&node, "orders").await;
+    // The restoration of the life that ended brings the messages back.
+    let mut messages = Vec::new();
+    for _ in 0..400 {
+        messages = consume(&node, "orders").await;
+        if !messages.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
     assert_eq!(messages.len(), 1, "what went to disk is still deliverable");
     assert_eq!(messages[0]["body"], json!({ "n": 1 }));
     // It went back to writing in memory: the new message does not go to disk.
@@ -252,6 +273,7 @@ async fn with_an_operations_port_the_client_port_does_not_serve_the_operations_r
 #[tokio::test]
 async fn cluster_health_describes_the_single_node() {
     let node = TestNode::builder()
+        .env("TABA_HEALTH_SINGLE_NODE_CONDITION", "false")
         .env("TABA_MEMORY_LIMIT", "1000")
         .start()
         .await;
@@ -271,7 +293,6 @@ async fn cluster_health_describes_the_single_node() {
         assert_eq!(nodes[0]["reachable"], true);
         assert_eq!(nodes[0]["nodeId"], node.node.node_id());
         let status = &nodes[0]["status"];
-        assert_eq!(status["mode"], "development");
         assert_eq!(status["state"], "active");
         assert_eq!(status["drainState"], "active");
         assert_eq!(status["storage"]["memoryMessages"], 1);
@@ -306,15 +327,15 @@ async fn a_corrupt_topic_database_fails_the_node() {
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join("_topic.db"), vec![0xAB; 4096]).unwrap();
 
-    // The body goes over `memory.limit`: it goes to disk and finds the corrupted database. The sweep (every
-    // up to 1 s) also opens the database: if it gets there before the publish, the node is already `failed` and the
-    // publish receives `503` `node.failed`. Both outcomes leave the node in failure.
-    let response = publish(&node, "orders", r#"{ "big": true }"#).await;
-    let (status, code) = match response.status().as_u16() {
-        503 => (503, "node.failed"),
-        _ => (500, "internal.error"),
-    };
-    assert_eq!(error_code(response, status).await, code);
+    // The sweep (every up to 1 s) opens the database and finds it corrupted; the publish, if it gets there first,
+    // finds it too. Whatever the publish answers, the node ends up in failure.
+    let _ = publish(&node, "orders", r#"{ "big": true }"#).await;
+    for _ in 0..400 {
+        if node.client_get("/health/ready").await.status() == 503 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 
     let ready = node.client_get("/health/ready").await;
     assert_eq!(ready.status(), 503);
@@ -331,51 +352,4 @@ async fn a_corrupt_topic_database_fails_the_node() {
         .unwrap();
     assert_eq!(status["nodes"][0]["status"]["state"], "failed");
     node.shutdown().await;
-}
-
-fn save_mark(storage: &std::path::Path) -> Option<u64> {
-    use std::sync::Arc;
-    use taba_node::config::DbSynchronous;
-    use taba_node::storage::db::NodeDb;
-    use taba_node::storage::state::NodeStateStore;
-
-    let db = Arc::new(NodeDb::open(storage, DbSynchronous::Normal).unwrap());
-    NodeStateStore::new(db).take_save_mark().unwrap()
-}
-
-/// UC: UC-DRN-022, UC-DRN-023, UC-DRN-026
-#[tokio::test]
-async fn the_drain_writes_the_save_mark_and_the_next_start_consumes_it() {
-    let tmp = tempfile::tempdir().unwrap();
-    let storage = tmp.path().join("taba");
-    let start = |drain_on_stop: &str| {
-        TestNode::builder()
-            .env("TABA_STORAGE_DIR", &storage.display().to_string())
-            .env("TABA_DRAIN_ON_STOP", drain_on_stop)
-            .try_start()
-    };
-
-    let node = start("true").await.unwrap();
-    create_queue(&node, "orders").await;
-    publish(&node, "orders", "1").await;
-    node.shutdown().await;
-    assert!(
-        save_mark(&storage).is_some(),
-        "the drain left the save mark"
-    );
-
-    // The start consumes the mark: a fall after it does not go through a clean save.
-    taba_node::storage::state::NodeStateStore::new(std::sync::Arc::new(
-        taba_node::storage::db::NodeDb::open(&storage, taba_node::config::DbSynchronous::Normal)
-            .unwrap(),
-    ))
-    .mark_save_completed(1)
-    .unwrap();
-    let node = start("false").await.unwrap();
-    node.shutdown().await;
-    assert_eq!(
-        save_mark(&storage),
-        None,
-        "without a drain at the stop there is no mark"
-    );
 }

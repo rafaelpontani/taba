@@ -13,7 +13,7 @@ struct Harness {
 }
 
 fn rules() -> TopicRules {
-    let env = MapEnv::new([("TABA_MODE", "development")]);
+    let env = MapEnv::new([("TABA_REPLICATION_FACTOR", "1")]);
     TopicRules::from_config(&Config::parse(None, &env).unwrap())
 }
 
@@ -156,7 +156,7 @@ async fn a_failed_write_leaves_nothing_visible() {
 }
 
 #[tokio::test]
-async fn open_resumes_the_definitions_saved_in_the_store() {
+async fn the_store_keeps_the_definitions_that_were_created() {
     let h = harness();
     h.topics.create(queue("orders")).await.unwrap();
     h.topics
@@ -164,18 +164,13 @@ async fn open_resumes_the_definitions_saved_in_the_store() {
         .await
         .unwrap();
 
-    let again = Topics::open(rules(), h.store.clone(), h.clock.clone(), true)
-        .await
-        .unwrap();
-    assert_eq!(
-        again.get("orders").unwrap().definition,
-        h.topics.get("orders").unwrap().definition
-    );
-    assert!(again.get("dist").is_ok());
+    let stored = h.topics.stored().await.unwrap();
+    let orders = stored.iter().find(|d| d.name == "orders").unwrap();
+    assert_eq!(orders, &h.topics.get("orders").unwrap().definition);
+    assert!(stored.iter().any(|d| d.name == "dist"));
 
-    let fresh = Topics::open(rules(), h.store.clone(), h.clock.clone(), false)
-        .await
-        .unwrap();
+    // A registry built from nothing does not see them: the node takes them over only through the restoration.
+    let fresh = Topics::new(rules(), h.store.clone(), h.clock.clone(), Vec::new());
     assert_eq!(
         code(async { fresh.get("orders") }).await,
         ErrorCode::TopicNotFound
@@ -304,23 +299,6 @@ async fn max_message_bytes_may_exceed_the_default_but_not_the_hard_limit() {
     assert_eq!(
         code(h.topics.create(zero)).await,
         ErrorCode::ValidationOutOfRange
-    );
-}
-
-#[tokio::test]
-async fn fifo_needs_replication_only_when_the_rule_is_on() {
-    let fifo = || CreateTopic {
-        fifo: Some(true),
-        ..queue("f")
-    };
-    assert!(harness().topics.create(fifo()).await.is_ok());
-    let strict = harness_with(TopicRules {
-        fifo_needs_replication: true,
-        ..rules()
-    });
-    assert_eq!(
-        code(strict.topics.create(fifo())).await,
-        ErrorCode::TopicFifoNeedsReplication
     );
 }
 

@@ -11,7 +11,7 @@ sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/
 
 > ⚠️ **Internal.** No client application should call these routes, and there is **no stability guarantee** between versions: all nodes of a cluster must run the same version. Common conventions: [15-api-overview.md](15-api-overview.md). How the cluster uses these routes: [07-cluster.md](07-cluster.md), [10-publishing.md](10-publishing.md), [12-delivery.md](12-delivery.md).
 
-**Port:** `cluster.port` (8081), **only** the other nodes. **Authentication:** mutual TLS ([14-security.md](14-security.md)); a connection without an accepted certificate fails **at the handshake**. In **development mode the port is not opened**: a production node cannot join a development node.
+**Port:** `cluster.port` (8081), **only** the other nodes. **Authentication:** mutual TLS ([14-security.md](14-security.md)); a connection without an accepted certificate fails **at the handshake**.
 
 The protocol exists in two forms that are **the same thing**: the `Request` type (`cluster/protocol`) and the HTTP route. The real `Transport` translates them to HTTP; the in-memory network of the tests delivers the type directly.
 

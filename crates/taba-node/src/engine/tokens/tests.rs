@@ -13,7 +13,7 @@ struct Harness {
 }
 
 fn harness() -> Harness {
-    let env = MapEnv::new([("TABA_MODE", "development")]);
+    let env = MapEnv::new([("TABA_REPLICATION_FACTOR", "1")]);
     let rules = TokenRules::from_config(&Config::parse(None, &env).unwrap());
     let store = Arc::new(MemoryTokenStore::default());
     let clock = Arc::new(ManualClock::at_doc_epoch());
@@ -377,19 +377,16 @@ async fn listing_is_paginated_by_id_or_creation_and_filters_by_name() {
 
 /// UC: UC-AUT-032
 #[tokio::test]
-async fn open_loads_the_saved_tokens_only_when_asked() {
+async fn the_store_keeps_the_tokens_that_were_created() {
     let h = harness();
     let created = create(&h, "a").await;
-    let env = MapEnv::new([("TABA_MODE", "development")]);
+    let env = MapEnv::new([("TABA_REPLICATION_FACTOR", "1")]);
     let rules = TokenRules::from_config(&Config::parse(None, &env).unwrap());
 
-    let loaded = Tokens::open(rules.clone(), h.store.clone(), h.clock.clone(), true)
-        .await
-        .unwrap();
-    assert!(loaded.authenticate(&created.token).is_some());
+    let stored = h.tokens.stored().await.unwrap();
+    assert!(stored.iter().any(|r| r.id == created.record.id));
 
-    let fresh = Tokens::open(rules, h.store.clone(), h.clock.clone(), false)
-        .await
-        .unwrap();
+    // A registry built from nothing does not see them: the node takes them over only through the restoration.
+    let fresh = Tokens::new(rules, h.store.clone(), h.clock.clone(), Vec::new());
     assert_eq!(fresh.count(), 0);
 }

@@ -237,7 +237,7 @@ async fn the_ack_removes_the_copy_and_only_the_owner_counts_it() {
 }
 
 fn config() -> Config {
-    Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap()
+    Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap()
 }
 
 /// UC: UC-RET-006

@@ -4,7 +4,7 @@
 
 Key facts (each one links to its evidence below):
 
-- **It is a cluster, not a single server.** Three or more identical nodes, with no coordinator and no single point of failure. A failed node is detected and voted out; when it recovers it rejoins and resynchronizes by itself. One node is only a development mode.
+- **It is a cluster, not a single server.** Three or more identical nodes, with no coordinator and no single point of failure. A failed node is detected and voted out; when it recovers it rejoins and resynchronizes by itself. One node is only a one-node profile, for development.
 - **It scales horizontally, in both directions.** Topics are split into blocks on a consistent-hash ring. A new node takes over its share; a node that leaves drains first and hands its share over, without stopping the cluster. On Kubernetes the Helm chart can autoscale with KEDA.
 - **Durability:** each message is confirmed by a write quorum of nodes (replication factor 3 by default) and kept in memory; the disk is only used when memory fills up.
 - **S3 is supported** as a continuous, optional backup of messages, topics and tokens (AWS S3, SeaweedFS, MinIO, Ceph; any S3 with conditional writes). It never delays a write; a cluster that went down entirely restores itself from the bucket at start. Messages consumed within the backup window (60 s by default) never reach S3.

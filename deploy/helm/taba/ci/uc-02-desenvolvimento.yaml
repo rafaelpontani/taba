@@ -1,5 +1,6 @@
-# UC-02: desenvolvimento — 1 nó, sem auth e sem TLS de cluster.
+# UC-02: perfil de um nó — 1 nó, sem auth e sem TLS de cluster.
 config:
-  mode: development
+  replication:
+    factor: 1
 persistence:
   size: 1Gi

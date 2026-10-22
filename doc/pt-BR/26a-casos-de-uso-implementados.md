@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **757** de **940** casos têm ao menos um teste (80.5%); **183** não têm; **11** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **749** de **925** casos têm ao menos um teste (81.0%); **176** não têm; **26** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -37,7 +37,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CLI` | O `taba-cli`, a linha de comando do cliente | 36 | 0 |
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 24 | 14 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 21 | 11 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 23 | 11 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 10 | 21 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 13 | 19 |
@@ -48,15 +48,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 3 | 12 |
-| `RTN` | Retorno de nó excluído e recuperação de perdas | 35 | 0 |
+| `RTN` | Retorno de nó excluído e recuperação de perdas | 45 | 0 |
 | `FWD` | Repasse de chamadas de cliente | 4 | 8 |
-| `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
-| `DEV` | Modo desenvolvimento | 3 | 10 |
-| `SEG` | Portas, TLS mútuo e certificados do cluster | 21 | 0 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 41 | 9 |
+| `DRN` | Parada e modo drain | 19 | 2 |
+| `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 3 | 4 |
+| `SEG` | Portas, TLS mútuo e certificados do cluster | 20 | 0 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 42 | 9 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 3 | 7 |
 | `CFG` | Configuração e validações de partida | 11 | 2 |
-| `BKP` | Backup opcional em S3 | 40 | 0 |
+| `BKP` | Backup opcional em S3 | 45 | 0 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -1108,11 +1108,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CNS-037
 
-**Caso:** `autoCreate` de fila FIFO com `replication.factor` abaixo de 2  
-**Então:** `422` `topic.fifo-needs-replication`.  
+**Caso:** `autoCreate` de fila FIFO com `replication.factor` 1 (o perfil de um nó)  
+**Então:** a fila é criada e aceita mensagens: o quórum da FIFO é `min(2, fator)` (o `topic.fifo-needs-replication` não é mais devolvido).  
 **Nível:** C  
 **Testes:**
-  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_only_when_the_replication_factor_allows_it`
+  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_with_any_replication_factor`
 
 ---
 
@@ -1445,7 +1445,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** A varredura de cada nó (`retention.sweep.interval`) apaga as cópias vencidas em memória e em disco, sem propagar nada.  
 **Nível:** C  
 **Testes:**
-  - `src/engine/messages/tests.rs::an_exhausted_message_that_waited_out_the_downtime_goes_to_the_dead_letter`
   - `src/engine/messages/tests.rs::lowering_max_deliveries_sends_the_ready_messages_over_the_new_limit_to_the_dead_letter`
   - `src/engine/messages/tests/cluster.rs::each_node_expires_its_own_replicas_by_ttl`
   - `tests/replication.rs::every_node_expires_its_own_copies_by_ttl_without_propagating`
@@ -1862,7 +1861,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** `PATCH` com `fifo` responde `400` `validation.immutable-field`. Um distribuidor não pode ser FIFO (`400` `validation.not-applicable`).  
 **Nível:** I  
 **Testes:**
-  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_and_in_development`
+  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
 
 ---
 
@@ -2276,11 +2275,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-FIF-042
 
-**Caso:** `autoCreate` aceita `fifo=true`; vale a exigência de `replication.factor` 2 (UC-CNS-037).  
+**Caso:** `autoCreate` aceita `fifo=true`, com qualquer `replication.factor` (UC-CNS-037).  
 **Nível:** I, C  
 **Testes:**
-  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_and_in_development`
-  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_only_when_the_replication_factor_allows_it`
+  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
+  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_with_any_replication_factor`
 
 ---
 
@@ -2394,12 +2393,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-FIF-046
 
-**Caso:** Em modo desenvolvimento a FIFO funciona igual  
+**Caso:** Num nó só (perfil de um nó, fator 1) a FIFO funciona igual  
 **Então:** o nó é o primário de todos os grupos (sem repasse), o quórum vale 1 e `replication.factor` 1 é aceito.  
 **Nível:** I  
 **Testes:**
-  - `src/engine/messages/tests.rs::groups_busy_state_and_deduplication_survive_a_restart`
-  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_and_in_development`
+  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
   - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
 
 ---
@@ -2524,6 +2522,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/engine/messages/index/tests.rs::groups_above_the_ceiling_share_one_counter`
   - `tests/topic_stats.rs::the_shared_counter_shows_as_overflow_and_an_empty_group_disappears`
+  - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
 
 ---
 
@@ -2533,7 +2532,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** refeitas dos metadados e da coluna `group_id` quando o nó assume blocos ou reinicia.  
 **Nível:** C  
 **Testes:**
-  - `src/engine/messages/tests.rs::the_index_is_rebuilt_from_the_disk_after_a_restart`
 
 ---
 
@@ -2578,7 +2576,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `src/http/auth/tests.rs::without_a_root_token_nothing_matches`
-  - `tests/auth.rs::without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404`
+  - `tests/auth.rs::without_a_root_token_nothing_is_required_and_tokens_are_404`
 
 ---
 
@@ -2627,10 +2625,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-AUT-007
 
-**Caso:** No modo desenvolvimento a autenticação nunca é exigida.  
+**Caso:** Sem token raiz e sem `auth.dev-token` a autenticação não é exigida.  
 **Nível:** I  
 **Testes:**
-  - `tests/auth.rs::without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404`
+  - `tests/auth.rs::without_a_root_token_nothing_is_required_and_tokens_are_404`
 
 ---
 
@@ -2737,7 +2735,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/http/auth/tests.rs::root_and_open_reach_everything_and_a_token_only_what_it_has`
   - `tests/auth.rs::creating_a_token_returns_the_secret_once_and_reading_never_does`
-  - `tests/auth.rs::only_the_root_token_manages_tokens`
+  - `tests/auth.rs::only_the_root_and_admin_tokens_manage_tokens`
 
 ---
 
@@ -2803,17 +2801,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `src/http/auth/tests.rs::each_route_asks_for_its_own_permission`
-  - `tests/auth.rs::only_the_root_token_manages_tokens`
+  - `tests/auth.rs::only_the_root_and_admin_tokens_manage_tokens`
 
 ---
 
 ### UC-AUT-025
 
-**Caso:** `/tokens` com a autenticação desligada ou no modo desenvolvimento  
+**Caso:** `/tokens` com a autenticação desligada  
 **Então:** `404` `route.not-found`.  
 **Nível:** I  
 **Testes:**
-  - `tests/auth.rs::without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404`
+  - `tests/auth.rs::without_a_root_token_nothing_is_required_and_tokens_are_404`
 
 ---
 
@@ -2867,7 +2865,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I, C  
 **Testes:**
   - `src/engine/tokens/tests.rs::a_failed_write_leaves_no_visible_token`
-  - `src/engine/tokens/tests.rs::open_loads_the_saved_tokens_only_when_asked`
+  - `src/engine/tokens/tests.rs::the_store_keeps_the_tokens_that_were_created`
   - `src/storage/tokens/tests.rs::tokens_are_rows_of_the_node_db_with_the_hash_and_the_salt`
   - `src/storage/tokens/tests.rs::the_secret_is_never_in_the_database_file`
 
@@ -2979,7 +2977,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-LIM-005
 
-**Caso:** Sem token válido (autenticação desligada, modo desenvolvimento, `401`, rotas de operação), a chave é o IP do cliente. Tentar adivinhar tokens não fica sem limite.  
+**Caso:** Sem token válido (autenticação desligada, `401`, rotas de operação), a chave é o IP do cliente. Tentar adivinhar tokens não fica sem limite.  
 **Nível:** I  
 **Testes:**
   - `src/http/ratelimit/tests.rs::idle_counters_are_dropped_when_the_map_grows`
@@ -4646,6 +4644,26 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-DEF-041
+
+**Caso:** Um nó **assume o disco** na partida a frio
+**Então:** ele lê tópicos, tokens, versões e lápides do `_node.db`, atende com eles sem esperar o cluster, e os nós que entram os recebem dele. O log de excluídos do nó continua o da vida anterior (a data de início volta à dela), senão nenhuma vida estaria dentro da janela.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster`
+
+---
+
+### UC-DEF-042
+
+**Caso:** Um nó que **entra num cluster que já está de pé**
+**Então:** entra limpo: as definições do disco dele são apagadas antes da sincronização e não sobrepõem as do cluster (um tópico excluído enquanto ele estava fora não volta).
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_node_that_joins_a_running_cluster_does_not_impose_the_definitions_of_its_disk`
+
+---
+
 ### UC-DEF-009
 
 **Caso:** A definição do tópico é sempre persistida na tabela `topics` do `${storage.dir}/_node.db` (uma linha por tópico, sem arquivo por tópico), gravada no commit em cada nó, e atualizada ou removida com a definição.  
@@ -5390,7 +5408,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** Mensagem recebida como réplica ou publicada em modo drain vai direto para disco (limite de memória efetivo zero).  
 **Nível:** I  
 **Testes:**
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
+  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_to_disk`
 
 ---
 
@@ -5444,11 +5462,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-ING-001
 
-**Caso:** Em `mode=production`, sem `cluster.entry-address` o nó **não sobe**.  
+**Caso:** Com `replication.factor` acima de 1, sem `cluster.entry-address` o nó **não sobe** (com fator 1 o nó parte sozinho).  
 **Nível:** I  
 **Testes:**
   - `src/config/tests.rs::the_entry_address_must_be_host_and_port`
-  - `tests/startup.rs::production_without_the_entry_address_does_not_start`
+  - `tests/startup.rs::a_cluster_without_the_entry_address_does_not_start`
 
 ---
 
@@ -6832,16 +6850,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-RTN-011
-
-**Caso:** Em modo desenvolvimento não se aplica  
-**Então:** um reinício retoma do disco.  
-**Nível:** I  
-**Testes:**
-  - `tests/recovery.rs::in_development_mode_there_is_no_cluster_to_recover_from`
-
----
-
 ### UC-RTN-012
 
 **Caso:** `GET /cluster/message-loss` e `POST /cluster/messages/recover` aceitam quem ainda não é membro; `POST /cluster/message-loss` (registro) e `DELETE /cluster/message-loss/{topic}/{id}` (baixa) só aceitam membros (`403 cluster.not-member`). Registro e baixa são idempotentes (`changed`), e o registro expira depois de `cluster.message-loss.ttl`.  
@@ -6997,6 +7005,227 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-RTN-036
+
+**Caso:** Todos os nós de um cluster que caiu **voltam juntos**, com os discos, e **nenhum responde** ao endereço de entrada (nenhum é o `cluster.first-node`)
+**Então:** cada nó tenta os nós da tabela da vida anterior (pelos IPs do manifesto); passado `cluster.restore.cold-start.wait`, o de **menor ID antigo** entre os que estão vivos parte sozinho e **assume o disco**, e os outros entram nele. As mensagens das vidas são restauradas, o status vira restaurado do disco em todos e as pastas das vidas são apagadas.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster`
+
+---
+
+### UC-RTN-037
+
+**Caso:** O endereço de entrada não responde, mas há nós de pé
+**Então:** o nó que volta acha o cluster pela **tabela de IPs da vida anterior** (do manifesto): o que responde com uma tabela é o cluster em que ele entra.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_restarted_node_finds_the_cluster_through_the_old_table_when_the_entry_address_is_dead`
+  - `tests/cold_start.rs::every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster`
+
+---
+
+### UC-RTN-038
+
+**Caso:** Um nó **sem vida anterior** e sem `cluster.first-node`
+**Então:** nunca parte sozinho: a listagem sem resposta continua sendo erro e ele tenta de novo. Só `cluster.first-node` cria um cluster que nunca existiu.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_node_with_no_previous_life_never_starts_alone_without_first_node`
+
+---
+
+### UC-RTN-039
+
+**Caso:** Um nó que **entra** num cluster de pé tem no disco uma definição (tópico, token ou lápide) de **versão maior** que a do cluster, ou que o cluster não conhece
+**Então:** antes de apagar o disco o nó guarda as definições e, ao ficar ativo, **oferece** cada uma ao cluster: a maior versão vence (lápide incluída) e o que vence é espalhado aos demais. Um disco mais velho que o cluster não impõe nada.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_node_that_joins_offers_the_definitions_of_its_disk_and_the_highest_version_wins`
+
+---
+
+### UC-RTN-040
+
+**Caso:** Dois grupos de nós subiram sem se falar (cada um assumiu o disco) e se encontram de novo
+**Então:** o grupo **menor** (empate: o do menor `nodeId`, D101) perde, **sem apagar nada**: o disco dele vira a pasta de uma vida (`_lives/<ID>`), as definições são oferecidas ao grupo vencedor e o nó refaz o join **com ID novo**. O que o grupo perdedor aceitou enquanto esteve separado é restaurado e conferido contra os mortos, e a fila (definição) continua no cluster.
+**Nível:** C
+**Testes:**
+  - `tests/regroup.rs::the_smaller_group_that_meets_the_other_one_moves_its_disk_to_a_life_and_joins_with_a_new_id`
+
+---
+
+### UC-RTN-041
+
+**Caso:** O cluster tem menos membros ativos que a tabela da vida anterior
+**Então:** cada nó sonda, a cada `cluster.restore.probe.interval`, os IPs antigos que não estão na tabela; a sondagem **termina** quando a tabela completa, e nada fica visível.
+**Nível:** C
+**Testes:**
+  - `tests/regroup.rs::the_probe_ends_when_the_table_completes_and_raises_no_condition`
+
+---
+
+### UC-RTN-042
+
+**Caso:** O tempo da sondagem (`cluster.restore.probe.timeout`) acaba com nós da tabela antiga faltando
+**Então:** o log avisa e `GET /health/cluster` mostra `members-missing` (aviso) enquanto a tabela estiver incompleta; o nó que falta entra depois pelo join normal.
+**Nível:** C
+**Testes:**
+  - `tests/regroup.rs::when_the_probe_time_ends_with_nodes_missing_the_members_missing_condition_shows`
+
+---
+
+
+### UC-RTN-043
+
+**Caso:** Um nó com `replication.factor=1`, sem `cluster.tls.enabled` e sem `cluster.entry-address` (o perfil de um nó)
+**Então:** parte sozinho como um cluster de um nó, fica `active`, atende a fila comum e a FIFO (o quórum da FIFO é `min(2, fator)`), e `GET /health/cluster` mostra a condição `reduced-profile`; com `health.single-node-condition=false` ela não aparece.
+**Nível:** C
+**Testes:**
+  - `tests/single_node.rs::a_node_with_factor_one_starts_alone_and_serves_the_plain_and_the_fifo_queue`
+  - `tests/single_node.rs::the_reduced_profile_condition_can_be_hidden`
+  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_with_any_replication_factor`
+
+---
+
+### UC-RTN-044
+
+**Caso:** `auth.dev-token` com um segredo de pelo menos 32 caracteres, no perfil de um nó
+**Então:** a partida cria o token de trabalho `dev` com `admin`, `publish` e `consume` (só o hash é guardado) e liga a autenticação: sem token `401`, com `tb_dev.<segredo>` as rotas respondem, e o segredo não aparece em `GET /tokens`.
+**Nível:** C
+**Testes:**
+  - `tests/single_node.rs::the_dev_token_is_an_admin_work_token_created_at_the_start_and_turns_authentication_on`
+
+---
+
+### UC-RTN-045
+
+**Caso:** Uma mensagem que o nó já tem (`Existing`) chega também na restauração de uma vida, com um `deliveryCount` maior
+**Então:** o nó fica com o **maior** dos dois contadores (nunca diminui) e não cria a mensagem de novo; a invisibilidade e o recibo não mudam. Cada dono faz isso com a sua cópia (PRB-062).
+**Nível:** U, C
+**Testes:**
+  - `src/engine/messages/tests/blocks.rs::of_two_copies_the_greater_delivery_count_prevails_and_never_decreases`
+  - `tests/restore_lives.rs::a_message_the_primary_already_has_takes_the_greater_delivery_count_of_the_two_copies`
+
+---
+
+### UC-RTN-046
+
+**Caso:** O cluster inteiro cai, e uma mensagem estava **só em memória** em todos os nós
+**Então:** ela se perde: nenhum disco a tinha e nenhum nó a devolve depois da retomada; o que grava a memória é o drain (UC-DRN-010).
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::what_was_only_in_memory_on_every_node_is_lost_when_the_whole_cluster_falls`
+
+---
+
+### UC-RTN-047
+
+**Caso:** Uma queda faz o log de excluídos perder as últimas entradas (e o apagamento da mensagem que elas acompanhavam)
+**Então:** a mensagem que o consumidor já tinha confirmado volta como pronta e é entregue de novo; é aceito, porque o consumidor é idempotente (*at-least-once*, doc 37, seção 4.11).
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_fall_that_loses_the_last_entries_of_the_log_delivers_the_acknowledged_message_again`
+
+---
+
+### UC-RTN-048
+
+**Caso:** As pastas das vidas anteriores crescem (várias vidas, com muitas mensagens grandes)
+**Então:** elas não têm um teto próprio: tudo é restaurado e nada é recusado nem descartado pelo tamanho; o disco cheio segue a regra de sempre (erro fatal, o nó vai a `failed`, UC-FAL-028).
+**Nível:** I
+**Testes:**
+  - `tests/messages.rs::the_folders_of_the_previous_lives_have_no_cap_of_their_own`
+  - `src/storage/db/tests.rs::a_full_disk_in_the_node_database_fails_the_node_from_any_of_its_tables`
+
+---
+### UC-RTN-049
+
+**Caso:** Uma vida cujo `last_seen` é anterior à data de corte do cluster (com a folga) chega a um nó que a guarda
+**Então:** ela **não** é restaurada: nada dela é enviado, nenhum nó recebe a mensagem, e ela segue o caminho de hoje (só voltam as perdas listadas); ao fim da passada, que está completa porque não havia o que enviar, a pasta da vida é apagada.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::a_life_outside_the_window_is_not_restored_and_its_folder_goes_with_the_end_of_the_pass`
+
+---
+
+### UC-RTN-050
+
+**Caso:** O novo primário já tem a mensagem que a vida envia (`Existing`)
+**Então:** ela é **pulada**: não é ativada de novo, então a invisibilidade e o recibo do consumidor que a segura ficam como estavam e o `deliveryCount` não diminui; a linha sai da pasta da vida como enviada.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::a_message_the_primary_already_has_is_skipped_and_keeps_its_invisibility_and_receipt`
+
+---
+
+### UC-RTN-051
+
+**Caso:** Um nó que volta depois da liberação traz mensagens FIFO de um mesmo grupo na pasta da vida dele, fora de ordem
+**Então:** elas são ativadas em ordem de `id`: o consumo (um por grupo de cada vez) as entrega em ordem; a ordem delas em relação às mensagens mais novas do grupo não é garantida.
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::the_fifo_messages_of_a_node_that_comes_back_are_activated_in_id_order`
+
+---
+
+### UC-RTN-052
+
+**Caso:** O cluster está **travado por perda de dois nós** (a tabela antiga tinha cinco, o modo estrito está ligado e `G` passou)
+**Então:** a restauração e a FIFO seguem retidas até o operador **forçar** (`POST /cluster/restore/force`, em qualquer nó): o status muda em todo nó presente, o que estava retido segue, e forçar de novo não muda nada (`wasRestoring=false`).
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::a_cluster_stuck_by_the_loss_of_two_nodes_is_released_by_force_and_forcing_again_changes_nothing`
+
+---
+
+### UC-RTN-053
+
+**Caso:** **Propriedade no cluster simulado:** três rodadas em que o cluster publica, confirma (ack) parte das mensagens e cai inteiro, e todos os nós voltam
+**Então:** nenhuma mensagem confirmada antes da queda é entregue de novo depois do retorno, e o cluster entrega o que sobrou (a propriedade não é vazia). É a contrapartida em cluster do modelo do UC-RTN-021.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls`
+
+---
+### UC-RTN-054
+
+**Caso:** Uma mensagem já consumida cujo registro de exclusão estava só num nó que não voltou, e a mesma mensagem com todos os nós esperados presentes
+**Então:** com o nó ausente, nada é entregue de novo antes de `G`; passado `G`, a restauração segue com os nós presentes e a mensagem volta (a reentrega residual da seção 4.11, que o consumidor idempotente aceita). Com todos os nós esperados presentes, a restauração não espera `G` e a mensagem que o log de um deles marca como consumida não volta.
+**Nível:** C
+**Testes:**
+  - `tests/restore_vote.rs::a_message_already_consumed_whose_log_is_on_a_node_that_never_came_back_returns_only_after_g`
+  - `tests/restore_vote.rs::with_every_expected_node_present_a_message_already_consumed_does_not_wait_for_g_and_does_not_return`
+
+---
+### UC-RTN-055
+
+**Caso:** Vários nós se conectam na partida a frio, e o coordenador (o de menor ID antigo) tem o disco mais velho
+**Então:** a maior versão de cada definição vence em todos os nós, a definição que só um nó tinha chega ao cluster e as que todos tinham continuam lá.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::when_several_nodes_connect_the_highest_version_of_each_definition_wins_even_over_the_disk_of_the_coordinator`
+
+---
+### UC-RTN-056
+
+**Caso:** Um nó atrasado sobe sozinho, porque nenhum outro responde, e depois chega outro nó com uma versão maior de uma definição
+**Então:** o nó que subiu sozinho serve as definições que tem; quando o outro nó responde, a janela termina e a versão maior vence nos dois.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_late_node_that_starts_alone_serves_what_it_has_and_the_higher_version_wins_when_another_answers`
+
+---
+### UC-RTN-057
+
+**Caso:** A sondagem dos IPs antigos termina com um nó faltando, e o nó que faltava chega depois
+**Então:** a condição `members-missing` aparece no `/health/cluster`; o nó que faltava entra pelo join normal, a tabela completa e a condição some.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away`
+
+---
 ### UC-RTN-016
 
 **Caso:** O que o disco da vida anterior tem e a lista de perdas não pede não volta a ninguém, e o disco novo nunca ressuscita uma mensagem antiga  
@@ -7012,7 +7241,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-017
 
 **Caso:** O **primeiro nó** de um cluster novo (`cluster.first-node=true`, listagem sem ninguém) não tem de quem recuperar  
-**Então:** um disco **sem manifesto** (versão anterior) é apagado na partida, pelo caminho de sempre, e a pasta `_previous-life` não fica (D111); um disco **com manifesto** vira a pasta da vida (UC-RTN-023), porque a partida a frio decide o que fazer com ele (doc 37, seção 4.9).  
+**Então:** um disco **sem manifesto** (versão anterior) é apagado na partida, pelo caminho de sempre, e a pasta `_previous-life` não fica (D111); um disco **com manifesto** vira a pasta da vida (UC-RTN-023) e é restaurado pela partida a frio (UC-RTN-036; doc 37, seção 4.9).  
 **Nível:** C  
 **Testes:**
   - `tests/recovery.rs::the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life`
@@ -7056,7 +7285,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 **Caso:** **Propriedade** (modelo de um cluster que para inteiro): com **todos os nós esperados presentes** e a regra da janela, nenhuma mensagem já confirmada (ack) é entregue de novo, sejam quais forem as paradas dos nós e os cortes dos logs  
 **Então:** o teste varre 2000 histórias aleatórias e falha na primeira reentrega; o mesmo modelo **sem** a regra da janela produz reentregas (o teste prova que a propriedade tem dentes).  
-**Nível:** U (modelo; o teste de cluster simulado vem com a restauração)  
+**Nível:** U (modelo; o teste de cluster simulado é o UC-RTN-053)  
 **Testes:**
   - `src/cluster/restore/tests.rs::with_every_expected_node_present_no_consumed_message_comes_back`
   - `src/cluster/restore/tests.rs::the_property_has_teeth_without_the_rule_of_the_window_a_consumed_message_comes_back`
@@ -7257,8 +7486,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `src/cluster/drain/tests.rs::the_api_drain_moves_memory_to_disk_and_ends_drained`
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
-  - `src/engine/messages/tests.rs::drain_keeps_the_group_and_the_delivery_count`
+  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_to_disk`
   - `tests/drain_cluster.rs::while_it_drains_the_node_writes_every_new_replica_straight_to_disk`
   - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
 
@@ -7301,7 +7529,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** o `drain.timeout` cobre o drain inteiro (passos 1 a 6); estourado, o nó registra o que sobrou em memória e a etapa em que parou (`error`) e encerra mesmo assim (se foi por sinal), caindo na detecção e votação de sempre. Erro de I/O ou disco cheio no passo 4 não interrompe: o nó segue, conta o erro e o inclui no resultado.  
 **Nível:** C  
 **Testes:**
-  - `src/cluster/drain/tests.rs::an_expired_timeout_leaves_the_node_draining_without_a_save_mark`
+  - `src/cluster/drain/tests.rs::an_expired_timeout_leaves_the_node_draining`
 
 ---
 
@@ -7311,7 +7539,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** cancela o drain, o nó volta a `active`, a gravar em memória, continua membro; `200` `DrainStatus`.  
 **Nível:** C  
 **Testes:**
-  - `src/cluster/drain/tests.rs::canceling_a_finished_drain_in_development_goes_straight_back_to_active`
   - `src/cluster/drain/tests.rs::canceling_while_draining_stops_the_move`
   - `tests/drain_cluster.rs::canceling_before_the_node_left_keeps_it_in_the_cluster`
   - `tests/operations.rs::deleting_the_drain_brings_the_node_back_with_its_messages`
@@ -7335,7 +7562,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** o nó entra como **nó novo**, com **ID novo**, bootstrap completo e nova posição no anel; responde `202`, `drainState` volta a `active`, e o estado do nó passa por `joining` e `syncing`. Antes de limpar o estado local faz a recuperação de mensagens perdidas (UC-RTN-001 a UC-RTN-006). Sem freezing.  
 **Nível:** C  
 **Testes:**
-  - `src/cluster/drain/tests.rs::in_production_leaving_the_drained_state_returns_as_a_new_node`
+  - `src/cluster/drain/tests.rs::leaving_the_drained_state_returns_as_a_new_node`
   - `tests/drain_cluster.rs::after_leaving_the_node_returns_as_a_new_node_with_a_new_id`
   - `tests/recovery.rs::a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_as_a_new_node`
 
@@ -7362,97 +7589,21 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-DRN-021
 
-**Caso:** Em modo desenvolvimento o drain vale a parte local  
-**Então:** tudo o que está em memória vai para o disco, **sem** desregistro, canal nem rebalanceamento; `DELETE /node/drain` volta a `active` direto.  
-**Nível:** I  
-**Testes:**
-  - `src/cluster/drain/tests.rs::canceling_a_finished_drain_in_development_goes_straight_back_to_active`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-  - `tests/operations.rs::deleting_the_drain_brings_the_node_back_with_its_messages`
-
----
-
-### UC-DRN-022
-
-**Caso:** O save grava em `storage.dir`  
-**Então:** mensagens (corpo e metadados `deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`), as definições de tópico (já na tabela `topics` do `_node.db`: o save confere que estão em dia) e o estado do nó na tabela `state` do `_node.db` (a marca `save_completed` com o instante do fim; o instante do último `GET` das filas voláteis não se grava, pois o relógio recomeça na partida). Não grava o que se refaz (listas de prontos e de invisíveis, contagem por grupo, taxas).  
-**Nível:** I  
-**Testes:**
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
-  - `src/engine/messages/tests.rs::drain_keeps_the_group_and_the_delivery_count`
-  - `src/storage/state/tests.rs::the_save_mark_is_written_and_consumed_once`
-  - `src/storage/state/tests.rs::the_mark_survives_reopening_the_database`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-  - `tests/operations.rs::the_drain_writes_the_save_mark_and_the_next_start_consumes_it`
-
----
-
-### UC-DRN-023
-
-**Caso:** Partida em desenvolvimento com `development.resume-on-start` ligado (padrão)  
-**Então:** carrega as definições (mantendo `id` e data de criação), lê o banco de cada tópico e reconstrói as listas e contagens, refaz o relógio de ociosidade das filas voláteis (o prazo conta da partida: `max(criação, partida, último GET) + idleTimeout`), e fica pronto só ao terminar. A marca `save_completed` é **apagada** nesse momento.  
-**Nível:** I  
-**Testes:**
-  - `src/engine/messages/tests.rs::a_restart_does_not_count_the_time_the_node_was_stopped`
-  - `src/engine/messages/tests.rs::the_index_is_rebuilt_from_the_disk_after_a_restart`
-  - `src/storage/state/tests.rs::clearing_the_save_mark_removes_it`
-  - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-  - `tests/operations.rs::the_drain_writes_the_save_mark_and_the_next_start_consumes_it`
-  - `tests/volatile.rs::a_resumed_node_gives_the_volatile_queue_a_fresh_idle_period`
-
----
-
-### UC-DRN-024
-
-**Caso:** Na retomada, a invisibilidade é um instante absoluto  
-**Então:** a mensagem cujo prazo passou durante a parada volta a ficar pronta; as ainda invisíveis seguem assim, e o `receiptToken` continua valendo para o ack.  
-**Nível:** I  
-**Testes:**
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-
----
-
-### UC-DRN-026
-
-**Caso:** Sem save concluído (queda, `kill -9`, drain interrompido por `drain.timeout`)  
-**Então:** o nó retoma o que está em disco e registra `warn` de que o que estava só em memória se perdeu.  
-**Nível:** I  
-**Testes:**
-  - `src/cluster/drain/tests.rs::an_expired_timeout_leaves_the_node_draining_without_a_save_mark`
-  - `tests/messages.rs::without_drain_on_stop_what_was_only_in_memory_is_lost`
-  - `tests/operations.rs::the_drain_writes_the_save_mark_and_the_next_start_consumes_it`
-
----
-
-### UC-DRN-027
-
-**Caso:** Com `development.resume-on-start=false`, o nó **apaga** o conteúdo de `storage.dir` na partida e começa limpo, com um aviso no log.  
-**Nível:** I  
-**Testes:**
-  - `src/engine/messages/tests.rs::without_resume_the_disk_is_cleaned_and_orphan_folders_never_come_back`
-  - `tests/messages.rs::without_resume_on_start_the_messages_on_disk_are_erased`
-
----
-
-
-## DEV: Modo desenvolvimento
+## DEV: Perfil de um nó (o antigo modo desenvolvimento)
 
 ### UC-DEV-002
 
-**Caso:** Em desenvolvimento o nó sobe sozinho, sem bootstrap; `cluster.entry-address` **não é exigido**; a porta do cluster **não é aberta** (`cluster.port` é ignorado) e nenhuma rota `/cluster/*` responde.  
+**Caso:** Com `replication.factor=1` e sem `cluster.entry-address` o nó sobe sozinho, sem bootstrap; a porta do cluster é aberta e só serve `/cluster/*`, e a de cliente responde `404` a essas rotas.  
 **Nível:** I  
 **Testes:**
-  - `tests/listeners.rs::development_node_starts_alone_and_does_not_open_the_cluster_port`
+  - `tests/listeners.rs::a_node_with_factor_one_starts_alone_and_keeps_the_cluster_routes_off_the_client_port`
 
 ---
 
 ### UC-DEV-011
 
-**Caso:** `GET /health/cluster` devolve o mesmo com `scope=cluster` e `scope=node`, em formato de cluster de um nó só; as métricas `taba.cluster.*` não existem; o Prometheus lê o nó, com uma série só.  
+**Caso:** `GET /health/cluster` devolve o mesmo com `scope=cluster` e `scope=node`, em formato de cluster de um nó só; o Prometheus lê o nó, com uma série só.  
 **Nível:** I  
 **Testes:**
   - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
@@ -7461,7 +7612,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-DEV-012
 
-**Caso:** A definição de tópicos é aplicada só no próprio nó; não há bootstrap nem carga de tópicos de outro nó.  
+**Caso:** A definição de tópicos é gravada no `_node.db` do próprio nó, sem bootstrap nem carga de tópicos de outro nó, e volta depois de um reinício (a restauração do disco).  
 **Nível:** I  
 **Testes:**
   - `tests/topics.rs::definitions_are_saved_in_the_node_database_and_resumed_after_a_restart`
@@ -7509,16 +7660,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/mtls.rs::only_members_use_the_cluster_routes_and_the_caller_is_the_connection_ip_not_a_header`
-
----
-
-### UC-SEG-005
-
-**Caso:** Em desenvolvimento a porta do cluster não é aberta e o TLS é ignorado.  
-**Nível:** I  
-**Testes:**
-  - `tests/listeners.rs::development_node_starts_alone_and_does_not_open_the_cluster_port`
-  - `tests/startup.rs::in_development_the_cluster_port_is_ignored_even_when_occupied`
 
 ---
 
@@ -7703,7 +7844,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** `200` `HealthResponse` com `health: "live"` enquanto o processo responde.  
 **Nível:** I  
 **Testes:**
-  - `tests/listeners.rs::development_node_is_live_and_ready`
+  - `tests/listeners.rs::a_single_node_is_live_and_ready`
 
 ---
 
@@ -7714,7 +7855,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `src/cluster/state/tests.rs::a_failed_node_is_not_ready`
-  - `tests/listeners.rs::development_node_is_live_and_ready`
+  - `tests/listeners.rs::a_single_node_is_live_and_ready`
   - `tests/listeners.rs::production_node_without_cluster_protocol_is_live_but_not_ready`
   - `tests/operations.rs::a_corrupt_topic_database_fails_the_node`
 
@@ -7835,7 +7976,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-OPS-017
 
 **Caso:** `GET /health/cluster?scope=node`  
-**Então:** leitura local, `200` `ClusterStatus` com um só item em `nodes`, cujo `status` é o `NodeStatus` (`nodeId`, `version`, `mode`, `state`, `drainState`, `startedAt`, `collectedAt`, `storage`, `signals`), **sem** as métricas.  
+**Então:** leitura local, `200` `ClusterStatus` com um só item em `nodes`, cujo `status` é o `NodeStatus` (`nodeId`, `version`, `state`, `drainState`, `startedAt`, `collectedAt`, `storage`, `signals`), **sem** as métricas.  
 **Nível:** I  
 **Testes:**
   - `tests/operations.rs::cluster_health_describes_the_single_node`
@@ -8071,7 +8212,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-OPS-045
 
-**Caso:** O `GET /metrics` do nó e o OTLP funcionam no modo desenvolvimento, sem as métricas `taba.cluster.*`.  
+**Caso:** O `GET /metrics` do nó e o OTLP funcionam num nó só (perfil de um nó).  
 **Nível:** I  
 **Testes:**
   - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
@@ -8084,7 +8225,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** `403 auth.forbidden` com `required: "root"`; com o token raiz, o estado do cluster, o texto Prometheus do nó e o estado do drain; um `nodeId` desconhecido é `404 node.not-found`.  
 **Nível:** I  
 **Testes:**
-  - `tests/nodes_api.rs::the_cluster_and_node_routes_need_the_root_token_and_an_unknown_node_is_404`
+  - `tests/nodes_api.rs::the_cluster_and_node_routes_need_the_admin_permission_and_an_unknown_node_is_404`
 
 ---
 
@@ -8164,6 +8305,27 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## CLR: Contrato das rotas do cluster (DTOs e regras comuns)
 
+### UC-OPS-054
+
+**Caso:** A sondagem dos IPs antigos terminou com nós faltando
+**Então:** `GET /health/cluster` mostra a condição `members-missing` (aviso) enquanto a tabela tiver menos membros ativos que a da vida anterior.
+**Nível:** C
+**Testes:**
+  - `src/cluster/health/tests.rs::a_probe_that_ended_with_nodes_missing_raises_members_missing_as_a_warning`
+  - `tests/regroup.rs::when_the_probe_time_ends_with_nodes_missing_the_members_missing_condition_shows`
+
+---
+
+
+### UC-OPS-055
+
+**Caso:** O nó roda o perfil de um nó com algo relaxado (fator 1, TLS desligado ou `auth.dev-token`)
+**Então:** `GET /health/cluster` mostra a condição `reduced-profile` (aviso, informativa); `health.single-node-condition=false` a esconde.
+**Nível:** U
+**Testes:**
+  - `src/cluster/health/tests.rs::the_reduced_profile_is_an_informative_warning`
+
+---
 ### UC-CLR-001
 
 **Caso:** Toda rota `/cluster/*` só aceita quem consta na tabela de membros (`403` `cluster.not-member`), salvo as quatro exceções (UC-SEG-018).  
@@ -8297,14 +8459,25 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CFG-013
 
-**Caso:** Os parâmetros `cluster.restore.*` (`grace` 5m, `strict` false, `clock-slack` 5s, `probe.timeout` 2h, `probe.interval` 10s) têm padrão; `grace` ou `probe.interval` zerados, ou `probe.timeout` menor que `probe.interval`, são problemas de validação; um valor de tipo errado é recusado na leitura  
+**Caso:** Os parâmetros `cluster.restore.*` (`grace` 5m, `strict` false, `clock-slack` 5s, `probe.timeout` 2h, `probe.interval` 10s) e os limites do log de excluídos (`storage.excluded.max-size` 100MB e `storage.excluded.max-age` 24h) têm padrão; `grace` ou `probe.interval` zerados, `probe.timeout` menor que `probe.interval` e os dois limites do log zerados são problemas de validação; um valor de tipo errado é recusado na leitura  
 **Então:** o nó não sobe com valores inválidos e mostra a chave.  
 **Nível:** U  
 **Testes:**
   - `src/config/tests.rs::the_restore_parameters_have_defaults_and_invalid_values_stop_the_start`
+  - `src/config/tests.rs::the_limits_of_the_excluded_log_have_defaults_and_invalid_values_stop_the_start`
 
 ---
 
+
+### UC-CFG-014
+
+**Caso:** `cluster.tls.enabled=false` e `auth.dev-token` só valem com `replication.factor=1`; `auth.dev-token` com menos de 32 caracteres é recusado; com fator 1 o `cluster.entry-address` deixa de ser obrigatório
+**Então:** o nó não parte com o valor recusado e mostra a chave; o padrão continua o de produção (TLS ligado, entrada obrigatória).
+**Nível:** U
+**Testes:**
+  - `src/config/tests.rs::the_one_node_profile_needs_no_entry_address_and_relaxes_only_with_factor_one`
+
+---
 
 ## BKP: Backup opcional em S3
 
@@ -8728,10 +8901,60 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-BKP-040
 
-**Caso:** O modo desenvolvimento (um nó só) é dono de tudo e também faz o backup.  
+**Caso:** Um nó só (perfil de um nó) é dono de tudo e também faz o backup.  
 **Nível:** I  
 **Testes:**
-  - `tests/backup.rs::a_single_node_in_development_mode_owns_everything_and_backs_up_too`
+  - `tests/backup.rs::a_single_node_owns_everything_and_backs_up_too`
+
+---
+
+### UC-BKP-041
+
+**Caso:** Um nó termina de restaurar suas vidas e o S3 guarda mensagens vivas dos blocos de que ele é **primário** e que ninguém tem
+**Então:** a varredura as traz de volta pelo caminho da restauração (tópico, mortos, quórum) e as deixa disponíveis; o que o nó já tem é pulado, e uma segunda passada não acrescenta nada.
+**Nível:** C
+**Testes:**
+  - `tests/scan_s3.rs::the_scan_brings_back_the_messages_of_the_bucket_that_no_node_has`
+
+---
+
+### UC-BKP-042
+
+**Caso:** O S3 guarda uma mensagem que o diário já registra como removida, ou que não tem remoção no diário mas que o log de excluídos do nó diz que morreu
+**Então:** a varredura a descarta nos dois casos: o S3 não é prova de vida e não alarga a janela do log.
+**Nível:** C
+**Testes:**
+  - `tests/scan_s3.rs::the_scan_discards_what_the_journal_removed_and_what_the_log_says_is_dead`
+
+---
+
+### UC-BKP-043
+
+**Caso:** O S3 não responde na partida
+**Então:** a varredura é pulada com um aviso e o nó segue só com o disco, servindo normalmente.
+**Nível:** C
+**Testes:**
+  - `tests/scan_s3.rs::with_s3_down_the_scan_is_skipped_and_the_node_goes_on_with_its_disk`
+
+---
+
+### UC-BKP-044
+
+**Caso:** A varredura consulta o diário de um tópico
+**Então:** lê o diário **uma vez por tópico** e o guarda para a passada seguinte (a consulta distingue "removida" de "não encontrada" porque só o que o diário remove sai do conjunto).
+**Nível:** C
+**Testes:**
+  - `tests/scan_s3.rs::the_scan_reads_the_journal_of_a_topic_once_and_keeps_it_for_the_next_pass`
+
+---
+
+### UC-BKP-045
+
+**Caso:** O balde do S3 responde devagar durante a varredura da partida
+**Então:** só as filas **FIFO** esperam (a passada que as segura inclui a varredura, e o aviso de "terminei" só sai no fim dela); o resto do cluster fica disponível, a fila comum publica e entrega, e quando o balde responde a varredura termina, o cluster fica restaurado e a FIFO é liberada.
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::a_slow_bucket_holds_only_the_fifo_queues_the_rest_of_the_cluster_is_available`
 
 ---
 

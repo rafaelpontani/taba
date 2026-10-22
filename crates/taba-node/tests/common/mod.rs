@@ -2,7 +2,7 @@
 //! real node, with real disk in a temporary folder and real HTTP on free ports.
 //!
 //! ```ignore
-//! let node = TestNode::development().await;
+//! let node = TestNode::single().await;
 //! let response = node.client_get("/health/live").await;
 //! ```
 //!
@@ -31,11 +31,13 @@ pub mod real;
 
 pub struct TestNodeBuilder {
     env: Vec<(String, String)>,
-    /// The in-memory network and the node's IP on it (`mode=production` with `Transport`).
+    /// The in-memory network and the node's IP on it (with `Transport`).
     network: Option<(MemoryNetwork, String)>,
     clock: Option<Arc<ManualClock>>,
     /// The node uses the real HTTP `Transport` and listens on this IP (loopback).
     real_ip: Option<IpAddr>,
+    /// The one-node profile (the default): the node starts alone, takes over its disk and the start waits for it to be active.
+    profile: bool,
     /// The backup's S3 object store (the in-memory one, shared among the test's nodes).
     backup_store: Option<Arc<dyn ObjectStore>>,
     /// The program version the node announces (simulates another release).
@@ -60,7 +62,7 @@ impl TestNodeBuilder {
     /// cluster through the network's `balancer:8081` load balancer (`cluster.entry-address`).
     pub fn in_network(mut self, network: &MemoryNetwork, host: &str) -> Self {
         self.network = Some((network.clone(), host.to_owned()));
-        self.env("TABA_MODE", "production")
+        self.cluster_profile()
             .env("TABA_CLUSTER_ENTRY_ADDRESS", "balancer:8081")
     }
 
@@ -80,16 +82,40 @@ impl TestNodeBuilder {
     /// folder) and listens on `ip` (`127.x.y.z`, one per node, so the cluster recognizes them by IP).
     /// `entry` is the `cluster.entry-address`: the first node uses any address; the others, the
     /// cluster address of a node that is already up.
-    pub fn real(mut self, ip: &str, entry: &str) -> Self {
-        self.real_ip = Some(ip.parse().expect("test IP"));
-        self.env("TABA_MODE", "production")
-            .env("TABA_CLUSTER_ENTRY_ADDRESS", entry)
+    pub fn real(self, ip: &str, entry: &str) -> Self {
+        let mut this = self.cluster_profile();
+        this.real_ip = Some(ip.parse().expect("test IP"));
+        this.env("TABA_CLUSTER_ENTRY_ADDRESS", entry)
             .env("TABA_CLUSTER_ADVERTISE_ADDRESSES", ip)
     }
 
-    /// Production mode, **without** `Transport`: the node stays in `bootstrapping`.
+    /// The one-node profile (doc 37, section 4.16; the default of `TestNode::builder()`): factor 1, no TLS, no
+    /// entry address, with the real `Transport`. The node starts alone and takes over its disk.
+    pub fn single_node(mut self) -> Self {
+        self.profile = true;
+        self.real_ip = Some("127.0.0.1".parse().expect("test IP"));
+        self.env("TABA_REPLICATION_FACTOR", "1")
+            .env("TABA_CLUSTER_RESTORE_COLD_START_WAIT", "300ms")
+            .env("TABA_TOPICS_VOLATILE_TAKEOVER_JITTER", "0s")
+            .env("TABA_CLUSTER_TLS_ENABLED", "false")
+    }
+
+    /// Leaves the one-node profile: the production defaults (factor, TLS) apply again.
+    fn cluster_profile(mut self) -> Self {
+        self.profile = false;
+        self.real_ip = None;
+        self.env.retain(|(name, _)| {
+            name != "TABA_REPLICATION_FACTOR"
+                && name != "TABA_CLUSTER_TLS_ENABLED"
+                && name != "TABA_CLUSTER_RESTORE_COLD_START_WAIT"
+                && name != "TABA_TOPICS_VOLATILE_TAKEOVER_JITTER"
+        });
+        self
+    }
+
+    /// Production profile, **without** `Transport`: the node stays in `bootstrapping`.
     pub fn production(self) -> Self {
-        self.env("TABA_MODE", "production")
+        self.cluster_profile()
             .env("TABA_CLUSTER_ENTRY_ADDRESS", "127.0.0.1:1")
     }
 
@@ -110,6 +136,7 @@ impl TestNodeBuilder {
             .clock
             .unwrap_or_else(|| Arc::new(ManualClock::at_doc_epoch()));
         let real_ip = self.real_ip;
+        let profile = self.profile;
         let backup_store = self.backup_store.clone();
         let program_version = self.program_version.clone();
         let cluster = self.network.map(|(network, host)| {
@@ -146,7 +173,32 @@ impl TestNodeBuilder {
                 program_version: program_version.clone(),
             },
         };
+        let storage_dir = config.storage.dir.clone();
         let node = node::start(config, deps).await?;
+        if profile {
+            let shared = node.shared().clone();
+            cluster::eventually("the node to be active", move || {
+                shared.state() == taba_node::cluster::state::NodeState::Active
+            })
+            .await;
+            // Whatever the disk held was restored: the messages are back before the test goes on.
+            let cluster = node.cluster().expect("the node is in the cluster").clone();
+            cluster::eventually("the restoration of the disk to finish", move || {
+                cluster.restoration().status() == taba_node::cluster::restore::Status::Restored
+            })
+            .await;
+            let lives = storage_dir.join(taba_node::storage::messages::MessageStore::LIVES);
+            cluster::eventually(
+                "the folders of the previous lives to be restored",
+                move || {
+                    !lives
+                        .read_dir()
+                        .map(|mut e| e.next().is_some())
+                        .unwrap_or(false)
+                },
+            )
+            .await;
+        }
         let client = Client::builder().no_proxy().build().expect("HTTP client");
         Ok(TestNode {
             node,
@@ -170,23 +222,25 @@ pub struct TestNode {
 }
 
 impl TestNode {
-    /// Free ports (`0`), `mode=development` and disk in a temporary folder.
+    /// Free ports (`0`), the one-node profile and disk in a temporary folder.
     pub fn builder() -> TestNodeBuilder {
         TestNodeBuilder {
             env: vec![
                 ("TABA_API_PORT".into(), "0".into()),
                 ("TABA_CLUSTER_PORT".into(), "0".into()),
-                ("TABA_MODE".into(), "development".into()),
             ],
             network: None,
             clock: None,
             real_ip: None,
+            profile: false,
             backup_store: None,
             program_version: None,
         }
+        .single_node()
     }
 
-    pub async fn development() -> Self {
+    /// A node in the one-node profile, already active.
+    pub async fn single() -> Self {
         Self::builder().start().await
     }
 
@@ -213,12 +267,7 @@ impl TestNode {
     }
 
     pub fn cluster_url(&self, path: &str) -> String {
-        url(
-            self.node
-                .cluster_addr()
-                .expect("the node did not open the cluster port"),
-            path,
-        )
+        url(self.node.cluster_addr(), path)
     }
 
     pub async fn client_get(&self, path: &str) -> Response {
@@ -263,6 +312,10 @@ impl TestNode {
     }
 
     pub async fn shutdown(self) {
+        // The manifest of the life says when the node was last seen active; the periodic writer is slow in real time.
+        if let Some(cluster) = self.node.cluster() {
+            cluster.write_manifest();
+        }
         self.node.shutdown().await;
     }
 }

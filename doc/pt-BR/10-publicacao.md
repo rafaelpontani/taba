@@ -64,9 +64,9 @@ Só o primário decide o que é entregável. Um quórum formado por secundário 
 - **Distribuidor:** o coordenador casa os prefixos e executa **este mesmo procedimento uma vez por fila destino**, com cópias de `id` próprio. As cópias são independentes.
 - **FIFO:** o nó que recebeu **repassa ao primário do grupo**, que gera o `id` monotônico, deduplica e coordena; o quórum inclui **primário e secundário**.
 
-## O que muda em modo desenvolvimento
+## Num nó só
 
-O nó é o primário de tudo e o quórum vale 1: registro e commit acontecem só nele, sem réplicas, sem repetição entre nós e sem rollback por falta de quórum.
+No perfil de um nó (fator 1) o nó é o primário de tudo e o quórum vale 1: registro e commit acontecem só nele, sem réplicas, sem repetição entre nós e sem rollback por falta de quórum.
 
 ## Exemplo
 

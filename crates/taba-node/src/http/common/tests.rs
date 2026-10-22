@@ -5,9 +5,9 @@ use tower::ServiceExt;
 
 use super::*;
 use crate::cluster::drain::DrainController;
-use crate::cluster::state::NodeShared;
+use crate::cluster::state::{NodeShared, NodeState};
 use crate::config::DbSynchronous;
-use crate::config::{Config, MapEnv, Mode};
+use crate::config::{Config, MapEnv};
 use crate::core::clock::SystemClock;
 use crate::core::error::ErrorCode;
 use crate::engine::messages::{MessageRules, Messages};
@@ -16,9 +16,7 @@ use crate::engine::topics::{TopicRules, Topics};
 use crate::http::auth::Auth;
 use crate::http::client_ip::ClientIpRules;
 use crate::http::ratelimit::RateLimiter;
-use crate::storage::db::NodeDb;
 use crate::storage::messages::MessageStore;
-use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::MemoryTokenStore;
 use crate::storage::topics::MemoryTopicStore;
 
@@ -28,7 +26,7 @@ async fn boom() -> &'static str {
 
 fn app() -> Router {
     let clock = Arc::new(SystemClock);
-    let config = Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap();
+    let config = Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap();
     let topics = Topics::new(
         TopicRules::from_config(&config),
         Arc::new(MemoryTopicStore::default()),
@@ -42,18 +40,12 @@ fn app() -> Router {
         clock.clone(),
         MessageRules::from_config(&config),
         Arc::new(MessageStore::new(dir.path(), DbSynchronous::Normal)),
-        false,
     );
-    let node = Arc::new(NodeShared::new(
-        "n".into(),
-        Mode::Development,
-        std::time::SystemTime::now(),
-    ));
-    let db = Arc::new(NodeDb::open(&dir.path().join("db"), DbSynchronous::Normal).unwrap());
+    let node = Arc::new(NodeShared::new("n".into(), std::time::SystemTime::now()));
+    node.set_state(NodeState::Active);
     let drain = DrainController::new(
         node.clone(),
         messages.clone(),
-        NodeStateStore::new(db),
         clock.clone(),
         std::time::Duration::from_secs(25),
     );

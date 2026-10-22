@@ -24,6 +24,9 @@ use crate::core::token::{self, Permission, TokenRecord};
 use crate::core::validation;
 use crate::storage::tokens::TokenStore;
 
+/// The `id` of the token `auth.dev-token` creates; the presented token is `tb_dev.<secret>`.
+pub const DEV_TOKEN_ID: &str = "dev";
+
 #[derive(Debug, Clone)]
 pub struct TokenRules {
     pub default_limit: u32,
@@ -157,23 +160,27 @@ impl Tokens {
         }
     }
 
-    /// Opens the registry. With `load`, resumes the tokens stored on disk (only in development
-    /// with `development.resume-on-start`, like the topic definitions).
-    pub async fn open(
-        rules: TokenRules,
-        store: Arc<dyn TokenStore>,
-        clock: Arc<dyn Clock>,
-        load: bool,
-    ) -> io::Result<Self> {
-        let tokens = if load {
-            let store = store.clone();
-            tokio::task::spawn_blocking(move || store.load_all())
-                .await
-                .map_err(io::Error::other)??
-        } else {
-            Vec::new()
-        };
-        Ok(Self::new(rules, store, clock, tokens))
+    /// The tokens the node database holds, whether or not they are in memory (see `Topics::stored`).
+    pub async fn stored(&self) -> io::Result<Vec<TokenRecord>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.load_all())
+            .await
+            .map_err(io::Error::other)?
+    }
+
+    /// Deletes every token from the node database (the node joins a cluster and receives its tokens).
+    pub async fn forget_stored(&self) {
+        let store = self.store.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            for record in store.load_all()? {
+                store.delete(&record.id)?;
+            }
+            Ok::<(), io::Error>(())
+        })
+        .await;
+        if !matches!(result, Ok(Ok(()))) {
+            tracing::warn!("could not clear the stored tokens");
+        }
     }
 
     fn read(&self) -> RwLockReadGuard<'_, HashMap<String, TokenRecord>> {
@@ -235,6 +242,29 @@ impl Tokens {
         self.save(record.clone()).await?;
         self.write().insert(record.id.clone(), record.clone());
         self.emit(&TokenEvent::Saved(record));
+        Ok(())
+    }
+
+    /// The `auth.dev-token` (doc 37, section 4.16): creates the `admin` work token `dev` with that secret if it does not
+    /// exist, and replaces it if the secret changed. Local only: the profile has a single node.
+    pub async fn ensure_dev(&self, secret: &str) -> Result<(), TabaError> {
+        let current = self.record(DEV_TOKEN_ID);
+        if current.as_ref().is_some_and(|r| r.matches_secret(secret)) {
+            return Ok(());
+        }
+        let _writer = self.writer.lock().await;
+        let record = token::with_secret(
+            DEV_TOKEN_ID.to_owned(),
+            "dev-token".to_owned(),
+            vec![Permission::Publish, Permission::Consume, Permission::Admin],
+            self.clock.now_millis(),
+            secret,
+        );
+        self.apply_save(record).await?;
+        tracing::info!(
+            token.id = DEV_TOKEN_ID,
+            "dev token created: for development only"
+        );
         Ok(())
     }
 

@@ -283,6 +283,11 @@ impl MessageStore {
         MessageStore::new(dir, self.synchronous)
     }
 
+    /// Closes the topic databases the store holds open.
+    pub fn release_files(&self) {
+        self.topics().clear();
+    }
+
     fn topics(&self) -> MutexGuard<'_, HashMap<String, Arc<TopicDisk>>> {
         self.topics.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -808,8 +813,13 @@ fn write_tombstone(conn: &Connection, meta: &MessageMeta, delete_at_ms: u64) -> 
 /// Moves a folder. Where the system does not allow renaming (on Windows, with a file of the folder still
 /// open), it copies and deletes the original, repeating the delete for up to three seconds.
 fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
+    // A handle that is still closing (the previous owner of the folder, an antivirus) makes the rename fail for a
+    // moment; copying meanwhile would miss what is still in the databases' write-ahead logs.
+    for _ in 0..20 {
+        if std::fs::rename(from, to).is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     copy_dir(from, to)?;
     let mut result = std::fs::remove_dir_all(from);

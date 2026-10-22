@@ -5,6 +5,8 @@
 //!   and sends the messages, with their original ID, to the **new primary** of each block. The node decides
 //!   nothing about a message: it only sends. What the primary confirms is deleted from the folder of the life,
 //!   which is how the node marks it as sent.
+//!   With the S3 backup, the last step of the pass is the **scan of the bucket** (section 4.13): the live messages of the
+//!   blocks the node is primary of go to the same path.
 //! - **Who receives:** the new primary checks the topic (deleted, or recreated with another `topicId`), then the
 //!   dead, from the cheapest source to the dearest (its own log, the log of the other present nodes, the journal
 //!   in S3), and activates what is alive through the path of the recovery (`Recover`, with the write quorum).
@@ -237,6 +239,23 @@ impl Recovery {
     }
 
     /// The lives this node keeps, from the oldest to the newest.
+    /// Whether any previous life is waiting in its folder to be restored.
+    pub fn has_lives(&self) -> bool {
+        !self.lives().is_empty()
+    }
+
+    /// The manifest of the latest previous life: the one the disk still holds in its root (the restart has not set
+    /// it aside yet) or, failing that, the most recently seen among the folders of the lives. It tells which nodes
+    /// the cluster had and where they were (doc 37, sections 4.5 and 4.9).
+    pub fn latest_manifest(&self) -> Option<Manifest> {
+        Manifest::read(self.messages.storage_root()).or_else(|| {
+            self.lives()
+                .into_iter()
+                .map(|life| life.manifest)
+                .max_by_key(|manifest| manifest.last_seen_ms)
+        })
+    }
+
     pub(super) fn lives(&self) -> Vec<Life> {
         let root = self.messages.storage_root().join(MessageStore::LIVES);
         let Ok(entries) = std::fs::read_dir(&root) else {
@@ -264,7 +283,8 @@ impl Recovery {
         let lives = self.lives();
         summary.lives = lives.len();
         if lives.is_empty() {
-            summary.done = true;
+            self.scan_backup().await;
+            summary.done = !self.service.cancel_token().is_cancelled();
             return summary;
         }
         let cutoff = self.cluster_cutoff().await;
@@ -277,6 +297,8 @@ impl Recovery {
             }
             self.send_life(&life, &mut summary).await;
         }
+        // The last step of the start with S3 (doc 37, section 4.13): the notice of "I finished" includes it.
+        self.scan_backup().await;
         summary.done = !self.service.cancel_token().is_cancelled();
         tracing::info!(
             lives = summary.lives,
@@ -286,6 +308,37 @@ impl Recovery {
             "restoration of the past lives completed"
         );
         summary
+    }
+
+    /// The scan of S3 at the start (doc 37, section 4.13): the messages the bucket holds alive of the blocks this
+    /// node is primary of go to the same path as the ones of a life (`accept_restore`: topic, dead, quorum), and what
+    /// the node already has is skipped. A bucket that does not answer only costs a warning: the node goes on with
+    /// its disk.
+    async fn scan_backup(self: &Arc<Self>) {
+        let Some(port) = self.service.backup() else {
+            return;
+        };
+        let backup = port.backup();
+        for (topic, topic_id) in backup.scan_topics() {
+            if self.service.cancel_token().is_cancelled() {
+                return;
+            }
+            // The journal is read once per topic (cached): without it the bucket is not consulted for the topic.
+            let Some(removed) = self.journal_removed(&topic).await else {
+                tracing::warn!(topic = %topic, "the scan of S3 skipped the topic: the journal did not answer");
+                continue;
+            };
+            let found = backup.scan_topic(&topic, &topic_id, &removed).await;
+            for batch in found.chunks(self.max_items) {
+                self.count(&RECOVER_MESSAGES, ("taba.outcome", "scanned"), batch.len());
+                if let Err(e) = self
+                    .accept_restore(topic.clone(), Some(topic_id.clone()), batch.to_vec())
+                    .await
+                {
+                    tracing::warn!(topic = %topic, error = %e, "the primary did not take the messages found in S3");
+                }
+            }
+        }
     }
 
     /// One life: incorporates its log of excluded messages and sends its messages, a window of rows at a time.

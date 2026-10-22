@@ -591,18 +591,16 @@ impl Messages {
         }
     }
 
-    /// `resume`: resumes the messages that are on disk (development with
-    /// `development.resume-on-start`). Without it, what is left on disk from an earlier
-    /// run is deleted: the node starts empty. Folders of topics that no longer exist are also
-    /// deleted, so a topic recreated with the same name does not resurrect messages.
+    /// What is left on disk from an earlier run is deleted: the node starts empty (a restart brings the messages
+    /// back through the restoration of the previous life, doc 37), so a topic recreated with the same name does not
+    /// resurrect messages.
     pub fn new(
         topics: Arc<Topics>,
         clock: Arc<dyn Clock>,
         rules: MessageRules,
         store: Arc<MessageStore>,
-        resume: bool,
     ) -> Arc<Self> {
-        Self::build(topics, clock, rules, store, resume, false)
+        Self::build(topics, clock, rules, store, false)
     }
 
     /// Like `new`, for the production node in a cluster: what is left on the previous life's disk is **not**
@@ -615,7 +613,7 @@ impl Messages {
         rules: MessageRules,
         store: Arc<MessageStore>,
     ) -> Arc<Self> {
-        Self::build(topics, clock, rules, store, false, true)
+        Self::build(topics, clock, rules, store, true)
     }
 
     /// Sets aside the previous life's disk and leaves the node with an empty disk, so it can join without waiting for
@@ -628,12 +626,34 @@ impl Messages {
             .store
             .set_aside_old_disk(life.as_deref())?
             .map(Arc::new);
+        // A sweep that ran before the move may have read the old disk into the state of a topic: that state
+        // belongs to the life that moved away, and the restoration would find the messages "already held".
+        let stale = std::mem::take(&mut *self.states.write().unwrap_or_else(|e| e.into_inner()));
+        for state in stale.values() {
+            let bytes: u64 = lock(state)
+                .memory
+                .values()
+                .map(|s| s.body.len() as u64)
+                .sum();
+            self.memory_bytes.fetch_sub(bytes, Ordering::SeqCst);
+        }
         // The disk is new, and so is its log of excluded messages: the recording starts now.
         self.store.set_excluded_since(self.clock.now_millis())?;
         self.store.forget_excluded_inheritance()?;
         let some = previous.is_some();
         *lock(&self.previous_life) = previous;
         Ok(some)
+    }
+
+    /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
+    pub fn record_publish_latency(&self, topic: &str, secs: f64) {
+        let state = self.state_of(topic);
+        lock(&state).stats.publish_latency.record(secs);
+    }
+
+    /// The node stopped: closes the topic databases (the files can be moved or deleted).
+    pub fn release_files(&self) {
+        self.store.release_files();
     }
 
     /// The `storage.dir` (where the manifest of the running life is written).
@@ -660,17 +680,14 @@ impl Messages {
         clock: Arc<dyn Clock>,
         rules: MessageRules,
         store: Arc<MessageStore>,
-        resume: bool,
         keep_old_disk: bool,
     ) -> Arc<Self> {
         match store.topics_on_disk() {
             Ok(on_disk) if !keep_old_disk => {
                 for name in on_disk {
-                    if !resume || topics.get(&name).is_err() {
-                        tracing::info!(topic = %name, "deleting old messages from disk");
-                        if let Err(e) = store.drop_topic(&name) {
-                            tracing::warn!(topic = %name, error = %e, "could not delete");
-                        }
+                    tracing::info!(topic = %name, "deleting old messages from disk");
+                    if let Err(e) = store.drop_topic(&name) {
+                        tracing::warn!(topic = %name, error = %e, "could not delete");
                     }
                 }
             }
@@ -2028,6 +2045,11 @@ impl Messages {
     /// One pass of the sweep over all the queues: deletes what expired by `ttl` and sends
     /// to the dead-letter what used up its deliveries. Each node does its own, propagating nothing.
     pub fn sweep(&self) {
+        // While the previous life's disk waits for the restart recovery it is not this node's: reading it here would
+        // load its messages into the state of a topic, and holding its files would keep the move away from them.
+        if self.keep_old_disk.load(Ordering::SeqCst) {
+            return;
+        }
         let now = self.clock.now_millis();
         let mut names: Vec<String> = self
             .existing_states()
@@ -2089,6 +2111,16 @@ impl Messages {
     /// `MessageStore::inherit_excluded_since`).
     pub fn inherit_excluded_since(&self, sources_ms: u64) -> io::Result<bool> {
         self.store.inherit_excluded_since(sources_ms)
+    }
+
+    /// The node that starts alone takes over the recording of its previous life: nobody that was running recorded in
+    /// the hole between that life and this start, so the start of the recording goes back to the life's (doc 37,
+    /// section 4.9). Never moves it forward.
+    pub fn take_over_excluded_since(&self, past_ms: u64) -> io::Result<()> {
+        if past_ms < self.excluded_since() {
+            self.store.set_excluded_since(past_ms)?;
+        }
+        Ok(())
     }
 
     /// The start of the continuous recording of the log of excluded messages (ms).
@@ -3043,6 +3075,49 @@ impl Messages {
             self.wake(topic, 1);
         }
         Ok(())
+    }
+
+    /// Raises the `deliveryCount` of a message the node already keeps to `count`, when the other copy has the
+    /// greater one (doc 37, section 4.3: of two copies, the restoration keeps the greatest counter). It never
+    /// lowers it and touches neither the invisibility nor the receipt. Returns whether it changed.
+    pub fn raise_delivery_count(
+        &self,
+        topic: &str,
+        id: &str,
+        count: u32,
+    ) -> Result<bool, TabaError> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let owned = state.index.contains(id);
+        if !owned && !state.replicas.contains(id) {
+            return Ok(false);
+        }
+        let place = if state.memory.contains_key(id) {
+            Place::Memory
+        } else {
+            Place::Disk
+        };
+        let mut meta = match place {
+            Place::Memory => state.memory[id].meta.clone(),
+            Place::Disk => match self
+                .store
+                .get(topic, id)
+                .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
+            {
+                Some(meta) => meta,
+                None => return Ok(false),
+            },
+        };
+        if meta.delivery_count >= count {
+            return Ok(false);
+        }
+        meta.delivery_count = count;
+        self.save_meta(&mut state, topic, &meta, place)?;
+        if owned {
+            state.index.deliver(id, meta.invisible_until_ms, now, count);
+        }
+        Ok(true)
     }
 
     /// Removes the message on the ack commit (leaving no trace, doc 13, section 12.4). Only the owner

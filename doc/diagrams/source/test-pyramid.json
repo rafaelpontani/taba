@@ -53,7 +53,7 @@
       "id": "i",
       "type": "frontend",
       "label": "I · One node",
-      "sublabel": "real node in development mode, real HTTP and disk",
+      "sublabel": "real node (one-node profile), real HTTP and disk",
       "pos": [
         90,
         370

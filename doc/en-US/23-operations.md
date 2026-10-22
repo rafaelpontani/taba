@@ -40,6 +40,8 @@ taba-cli health ready                   # {"health":"ready"} on each node
 Expected on a healthy cluster: `summary.members.active = N`, `quorumAvailable: true`, `syncingBlocks: 0`, `conditions: []`.
 
 > **First node and restart:** `cluster.first-node=true` only starts the cluster by itself if **no network response** comes from the entry address. If the other nodes are up, it **joins** them. That is why it is safe to leave the key on for it forever (Compose does this).
+>
+> **Cold start:** if every node falls and comes back together, with its disk, **none needs `cluster.first-node`**: each one tries the entry address and the IPs of the previous life's table (in the manifest); after `cluster.restore.cold-start.wait`, the one with the **lowest old ID** among those alive starts alone, takes over the disk (topics, tokens, messages in quarantine) and the others join it. The restoration of the messages waits for the expected nodes (`cluster.restore.grace`); the FIFO is only released after it. A node that never had a disk still needs `cluster.first-node` to create the cluster.
 
 ## Scale
 
@@ -93,6 +95,8 @@ Leaving by drain does **not** cause freezing. If the drain requested through the
 | `membership-divergent` | **critical** | Member tables with different versions | Incomplete propagation of a change; it usually goes away by itself in seconds. Persistent: look at the `membership` logs and restart the diverging node (**one at a time**) |
 | `storage-pressure` | warning | Free space in `storage.dir` below `stats.disk.free-min` (only fires if configured) | Free disk or enlarge the volume **before** it fills: **a full disk takes the node to `failed`** |
 | `upgrade-stalled` | warning | The upgrade that retires earlier versions stopped on a node that did not finish draining in time | Cancel that node's drain (`DELETE /node/drain` on its operations port) or stop it; the upgrade goes on with the next. The node is the one in the `draining` state in `GET /nodes` |
+| `members-missing` | warning | The probe of the old IPs ended with nodes of the previous life missing | The cluster works; the node that is missing enters through the normal join when it comes back. If it will not come back (the cluster was reduced on purpose), the condition goes away when the table completes or when the nodes restart (doc 37, section 4.14) |
+| `reduced-profile` | warning | The node runs the one-node profile (development) | Expected in development. In production it shows that something relaxed was left on: check `replication.factor`, `cluster.tls.enabled` and `auth.dev-token` (doc 37, section 4.16) |
 | `previous-life-pending` | warning | The restoration of the previous lives has not ended (the vote did not close, or the restoration waits for nodes that did not come back) | The FIFO queues receive and **do not deliver** meanwhile. `GET /health/cluster` and the node state (`GET /cluster/restore`) say which old nodes are awaited. Wait for `cluster.restore.grace`; if a node will not come back, force with `POST /cluster/restore/force` (root token, or the operations port): messages already consumed may come back (doc 37, section 4.11) |
 
 ## Failures and how to react

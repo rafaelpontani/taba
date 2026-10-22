@@ -14,7 +14,7 @@ use common::TestNode;
 use common::cluster::{TestCluster, eventually, eventually_async, host_of, total, wait_joined};
 use taba_node::cluster::protocol::{LossRecord, MessageRecord, Request, Response, StreamQuery};
 use taba_node::cluster::recovery::Recovery;
-use taba_node::cluster::restore::Manifest;
+use taba_node::cluster::restore::{Manifest, ManifestMember};
 use taba_node::cluster::state::NodeState;
 use taba_node::cluster::transport::{CallError, PeerAddr, Transport};
 use taba_node::config::DbSynchronous;
@@ -501,15 +501,6 @@ async fn resending_a_recover_batch_ignores_what_was_already_applied() {
     cluster.shutdown().await;
 }
 
-/// UC: UC-RTN-011
-#[tokio::test]
-async fn in_development_mode_there_is_no_cluster_to_recover_from() {
-    let node = TestNode::development().await;
-    assert!(node.node.cluster().is_none());
-    assert!(node.node.cluster_addr().is_none());
-    node.shutdown().await;
-}
-
 /// UC: UC-RTN-002, UC-RTN-016
 #[tokio::test]
 async fn a_process_that_restarts_hands_back_the_lost_messages_its_old_disk_has() {
@@ -548,7 +539,7 @@ async fn restart_third(
     env: &[(&str, &str)],
     on_disk: &[&MessageRecord],
 ) -> (usize, std::path::PathBuf) {
-    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let port = cluster.node(3).node.cluster_addr().port();
     let TestNode { node, dir, .. } = cluster.nodes.pop().unwrap();
     node.shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
@@ -725,7 +716,12 @@ async fn the_first_node_does_not_wipe_a_disk_that_has_a_manifest_it_keeps_it_as_
     drop(old_disk);
     Manifest {
         node_id: "old-node".into(),
-        members: Vec::new(),
+        // A node of the old table that never comes back keeps the restoration waiting for it (`G`).
+        members: vec![ManifestMember {
+            node_id: "ghost".into(),
+            addresses: Vec::new(),
+            port: 0,
+        }],
         table_version: 3,
         last_seen_ms: 1,
         watermark: None,

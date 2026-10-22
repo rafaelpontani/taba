@@ -91,7 +91,7 @@ async fn restart_third(
     on_disk: &[OnDisk<'_>],
 ) -> (usize, std::path::PathBuf) {
     cluster.clock.advance(Duration::from_secs(60));
-    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let port = cluster.node(3).node.cluster_addr().port();
     let old_id = cluster.node_id(3);
     let TestNode { node, dir, .. } = cluster.nodes.pop().unwrap();
     node.shutdown().await;
@@ -511,5 +511,126 @@ async fn no_life_is_restorable_while_a_member_does_not_tell_when_its_log_started
     let summary = recovery.restore_lives().await;
     assert_eq!(summary.sent, 1);
     assert!(!left_in_life(&life, TOPIC, &late.id));
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-045
+#[tokio::test]
+async fn a_message_the_primary_already_has_takes_the_greater_delivery_count_of_the_two_copies() {
+    let mut cluster = setup(&[]).await;
+    let id = topic_id(&cluster);
+    // The message already exists on the two nodes that stay up, with a small counter.
+    let mut copy = record(&cluster, TOPIC, 1);
+    copy.delivery_count = 1;
+    copy.invisible_until_ms = None;
+    copy.receipt_token = None;
+    for number in [1, 2] {
+        messages_of(cluster.node(number))
+            .apply_load(TOPIC, copy.to_meta(), copy.body.clone())
+            .unwrap();
+    }
+    // The life of the third node has the same message, delivered more times.
+    let mut old = copy.clone();
+    old.delivery_count = 7;
+    let (number, _) = restart_third(&mut cluster, &[], &[(TOPIC, Some(&id), &old)]).await;
+    wait_joined(cluster.node(number)).await;
+    eventually(
+        "the greater counter on the nodes that already had the message",
+        || {
+            [1, 2].iter().all(|n| {
+                messages_of(cluster.node(*n))
+                    .message_info(TOPIC, &copy.id)
+                    .unwrap()
+                    .is_some_and(|info| info.meta.delivery_count == 7)
+            })
+        },
+    )
+    .await;
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-049
+#[tokio::test]
+async fn a_life_outside_the_window_is_not_restored_and_its_folder_goes_with_the_end_of_the_pass() {
+    let cluster = setup(&[]).await;
+    cluster.clock.advance(Duration::from_secs(60));
+    let old = id::new_at(1);
+    let stale = record(&cluster, TOPIC, 1);
+    let dir = messages_of(cluster.node(1))
+        .storage_root()
+        .join(MessageStore::LIVES)
+        .join(&old);
+    let folder = MessageStore::new(&dir, DbSynchronous::Off);
+    folder.set_topic_id_resolver(Box::new(|_| None));
+    folder
+        .put(TOPIC, &stale.to_meta(), &stale.body)
+        .expect("writes to disk");
+    drop(folder);
+    // Last seen before every log of the cluster started: nobody recorded what happened to it afterwards.
+    Manifest {
+        node_id: old.clone(),
+        members: Vec::new(),
+        table_version: 1,
+        last_seen_ms: 1,
+        watermark: None,
+        excluded_since_ms: None,
+    }
+    .write(&dir)
+    .expect("writes the manifest");
+
+    let recovery = recovery_of(cluster.node(1));
+    let summary = recovery.restore_lives().await;
+    assert_eq!(summary.lives, 1);
+    assert_eq!(summary.outside_window, 1);
+    assert_eq!(summary.sent, 0, "nothing of it is sent");
+    assert!(left_in_life(&dir, TOPIC, &stale.id));
+    assert!(
+        (1..=3).all(|n| !has(cluster.node(n), TOPIC, &stale.id)),
+        "no node took the message"
+    );
+
+    // The pass is complete (there was nothing to send): the folder is deleted, and the message follows the path of
+    // today, where only the listed losses come back.
+    recovery.drop_lives(&summary);
+    assert!(!dir.exists());
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-050
+#[tokio::test]
+async fn a_message_the_primary_already_has_is_skipped_and_keeps_its_invisibility_and_receipt() {
+    let mut cluster = setup(&[]).await;
+    let id = topic_id(&cluster);
+    // The cluster already has the message, delivered to a consumer that still holds it.
+    let held = record(&cluster, TOPIC, 1);
+    for number in [1, 2] {
+        messages_of(cluster.node(number))
+            .apply_load(TOPIC, held.to_meta(), held.body.clone())
+            .unwrap();
+    }
+    // The life has the same message with the same counter, but visible and with no receipt.
+    let mut old = held.clone();
+    old.invisible_until_ms = None;
+    old.receipt_token = None;
+    let (number, life) = restart_third(&mut cluster, &[], &[(TOPIC, Some(&id), &old)]).await;
+    wait_joined(cluster.node(number)).await;
+    eventually_async("the row to leave the folder of the life", || async {
+        !left_in_life(&life, TOPIC, &held.id)
+    })
+    .await;
+
+    // Skipped: it was not activated again, so the consumer's hold is intact on both copies.
+    for n in [1, 2] {
+        let info = messages_of(cluster.node(n))
+            .message_info(TOPIC, &held.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            info.meta.invisible_until_ms,
+            held.invisible_until_ms.unwrap()
+        );
+        assert_eq!(info.meta.receipt_token, held.receipt_token);
+        assert_eq!(info.meta.delivery_count, 3);
+    }
     cluster.shutdown().await;
 }

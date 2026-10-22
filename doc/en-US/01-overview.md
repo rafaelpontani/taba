@@ -20,7 +20,7 @@ sources: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml
 
 The name comes from **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos (balanced, self-managed asynchronous topics). In Tupi, *taba* is the village: each node is a hut, the cluster is the village.
 
-Each node is **the same program** (the `taba` binary, written in Rust), packaged in a single Docker image. A cluster is three or more identical nodes, with no coordinator, no external database and no separate broker. For testing, one node is enough (development mode).
+Each node is **the same program** (the `taba` binary, written in Rust), packaged in a single Docker image. A cluster is three or more identical nodes, with no coordinator, no external database and no separate broker. For testing, one node is enough (the one-node profile).
 
 ![Context: who uses Taba](../diagrams/img/en-US/c4-level0-context.svg)
 
@@ -66,7 +66,7 @@ The requirements have a stable code (`RF` functional, `RNF` non-functional) so t
 | RF-12 | Failure detection, exclusion **vote** and **freezing** | ✅ | [07-cluster.md](07-cluster.md) |
 | RF-13 | Return of an excluded node, with recovery of lost messages | ✅ | [07-cluster.md](07-cluster.md) |
 | RF-14 | **Drain**: leave the cluster without losing what is in memory | ✅ | [07-cluster.md](07-cluster.md) |
-| RF-15 | **Development mode**: a single node, no cluster | ✅ | [07-cluster.md](07-cluster.md) |
+| RF-15 | **One-node profile**: a cluster of a single node (`replication.factor=1`) | ✅ | [07-cluster.md](07-cluster.md) |
 | RF-16 | **Token** authentication with permissions and prefixes | ✅ | [14-security.md](14-security.md) |
 | RF-17 | **Mutual TLS** between nodes, with a cluster certificate and rotation | ✅ | [14-security.md](14-security.md) |
 | RF-18 | Rate limit and operations IP filter | ✅ | [14-security.md](14-security.md) |

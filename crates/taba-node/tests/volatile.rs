@@ -31,7 +31,7 @@ async fn wait_until_gone(node: &TestNode, name: &str) {
 /// UC: UC-CNS-031
 #[tokio::test]
 async fn auto_create_on_get_makes_a_volatile_queue_and_the_get_counts() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let response = consume(&node, "/topics/new/messages?autoCreate=true").await;
     assert_eq!(response.status(), 200);
     assert_eq!(
@@ -48,7 +48,7 @@ async fn auto_create_on_get_makes_a_volatile_queue_and_the_get_counts() {
 /// UC: UC-CNS-032
 #[tokio::test]
 async fn auto_create_takes_idle_timeout_fifo_volatile_and_tags_from_the_query() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let response = consume(
         &node,
         "/topics/a/messages?autoCreate=true&idleTimeout=300&fifo=true&tag.time=financeiro&tag.env=prod",
@@ -72,7 +72,7 @@ async fn auto_create_takes_idle_timeout_fifo_volatile_and_tags_from_the_query() 
 /// UC: UC-CNS-033, UC-CNS-034, UC-CNS-035
 #[tokio::test]
 async fn auto_create_is_idempotent_never_makes_a_distributor_and_refuses_bad_names() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     consume(
         &node,
         "/topics/queue/messages?autoCreate=true&idleTimeout=300",
@@ -172,7 +172,7 @@ async fn the_volatile_ceiling_refuses_auto_create_with_422() {
 /// UC: UC-VOL-001, UC-VOL-002, UC-VOL-003
 #[tokio::test]
 async fn a_queue_without_consumers_is_deleted_by_the_sweeper_and_a_get_postpones_it() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     consume(
         &node,
         "/topics/efemera/messages?autoCreate=true&idleTimeout=60",
@@ -228,7 +228,7 @@ async fn a_queue_without_consumers_is_deleted_by_the_sweeper_and_a_get_postpones
 /// UC: UC-VOL-004, UC-VOL-005
 #[tokio::test]
 async fn publishing_and_reading_the_dead_letter_do_not_keep_a_volatile_queue_alive() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     consume(
         &node,
         "/topics/queue/messages?autoCreate=true&idleTimeout=60",
@@ -256,7 +256,7 @@ async fn publishing_and_reading_the_dead_letter_do_not_keep_a_volatile_queue_ali
 /// UC: UC-VOL-021
 #[tokio::test]
 async fn volatile_and_the_type_are_immutable_but_the_idle_timeout_can_change() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     consume(
         &node,
         "/topics/queue/messages?autoCreate=true&idleTimeout=60",
@@ -292,7 +292,7 @@ async fn volatile_and_the_type_are_immutable_but_the_idle_timeout_can_change() {
 /// UC: UC-VOL-001
 #[tokio::test]
 async fn an_ordinary_queue_never_expires() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     node.client
         .post(node.client_url("/topics"))
         .json(&json!({ "name": "orders", "type": "queue" }))
@@ -305,9 +305,9 @@ async fn an_ordinary_queue_never_expires() {
     node.shutdown().await;
 }
 
-/// UC: UC-DRN-023
+/// UC: UC-VOL-011
 #[tokio::test]
-async fn a_resumed_node_gives_the_volatile_queue_a_fresh_idle_period() {
+async fn a_restarted_node_gives_the_volatile_queue_a_fresh_idle_period() {
     let tmp = tempfile::tempdir().unwrap();
     let storage = tmp.path().join("taba").display().to_string();
     let start = || {

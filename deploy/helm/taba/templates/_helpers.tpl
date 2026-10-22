@@ -61,8 +61,9 @@ app.kubernetes.io/component: {{ .component }}
 {{- default (printf "%s-secrets" (include "taba.fullname" .)) .Values.secrets.existingSecret -}}
 {{- end -}}
 
+{{/* Perfil de um nó: `config.replication.factor: 1` (o antigo `config.mode: development` ainda vale e é o mesmo perfil). */}}
 {{- define "taba.isDev" -}}
-{{- if eq (toString (dig "mode" "production" .Values.config)) "development" -}}true{{- end -}}
+{{- if or (eq (toString (dig "mode" "production" .Values.config)) "development") (eq (toString (int (dig "replication" "factor" 3 .Values.config))) "1") -}}true{{- end -}}
 {{- end -}}
 
 {{/* Backup ligado: S3 embutido (SeaweedFS) ou bucket externo. */}}
@@ -122,11 +123,15 @@ embutido) sobrescreve o que vier em `config`; as credenciais NUNCA entram aqui (
 */}}
 {{- define "taba.config" -}}
 {{- $cfg := deepCopy .Values.config -}}
-{{- $_ := set $cfg "api" (mergeOverwrite (default (dict) (get $cfg "api")) (dict "port" (int .Values.ports.api))) -}}
+{{- $_ := unset $cfg "mode" -}}
+{{- $_ = set $cfg "api" (mergeOverwrite (default (dict) (get $cfg "api")) (dict "port" (int .Values.ports.api))) -}}
 {{- $_ = set $cfg "operations" (mergeOverwrite (default (dict) (get $cfg "operations")) (dict "port" (int .Values.ports.operations))) -}}
 {{- $_ = set $cfg "storage" (mergeOverwrite (default (dict) (get $cfg "storage")) (dict "dir" "/var/lib/taba")) -}}
 {{- $_ = set $cfg "secrets" (mergeOverwrite (default (dict) (get $cfg "secrets")) (dict "dir" "/etc/taba/secrets")) -}}
-{{- if not (include "taba.isDev" .) -}}
+{{- if include "taba.isDev" . -}}
+{{- $_ = set $cfg "replication" (mergeOverwrite (default (dict) (get $cfg "replication")) (dict "factor" 1)) -}}
+{{- $_ = set $cfg "cluster" (mergeOverwrite (default (dict) (get $cfg "cluster")) (dict "port" (int .Values.ports.cluster) "tls" (dict "enabled" false))) -}}
+{{- else -}}
 {{- $_ = set $cfg "cluster" (mergeOverwrite (default (dict) (get $cfg "cluster")) (dict "port" (int .Values.ports.cluster) "entry-address" (include "taba.entryAddress" .))) -}}
 {{- end -}}
 {{- if .Values.seaweedfs.enabled -}}
@@ -180,7 +185,7 @@ embutido) sobrescreve o que vier em `config`; as credenciais NUNCA entram aqui (
 {{- fail "backup.s3.accessKey e backup.s3.secretKey andam sempre em par" -}}
 {{- end -}}
 {{- if and .Values.autoscaling.enabled (include "taba.isDev" .) -}}
-{{- fail "autoscaling não funciona em mode=development (cluster de um nó)" -}}
+{{- fail "autoscaling não funciona no perfil de um nó (replication.factor=1)" -}}
 {{- end -}}
 {{- if and .Values.autoscaling.enabled (not .Values.autoscaling.prometheus.serverAddress) (ne .Values.collector.type "prometheus") -}}
 {{- fail "autoscaling.prometheus.serverAddress é obrigatório (ou use collector.type=prometheus)" -}}

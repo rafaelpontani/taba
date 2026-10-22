@@ -117,7 +117,7 @@ fontes: [crates/taba-node/src, doc/pt-BR]
 |---|---|---|
 | **`maxDeliveries`** | Limite de entregas sem ack por fila (padrão 10); atingido, vai à dead-letter | [12](12-entrega.md) |
 | **Mensagem** | Corpo (bytes) + metadados (`id`, `contentType`, `deliveryCount`, `invisibleUntil`, `receiptToken`…) | [03](03-conceitos.md) |
-| **Modo desenvolvimento** | `mode=development`: um cluster de um nó, sem votação, quórum, canal nem réplicas | [07](07-cluster.md) |
+| **Perfil de um nó** | `replication.factor=1`: um cluster de um nó, que parte sozinho; relaxa o TLS do cluster e a autenticação só com fator 1 (o antigo modo desenvolvimento) | [07](07-cluster.md) |
 | **Modo drain** | Ver *Drain* | [07](07-cluster.md) |
 
 ## N
@@ -165,7 +165,6 @@ fontes: [crates/taba-node/src, doc/pt-BR]
 
 | Termo | Significado | Detalhe |
 |---|---|---|
-| **Save (drain como)** | No modo desenvolvimento, o drain grava tudo em disco e a próxima partida retoma | [07](07-cluster.md) |
 | **Sinal de vida (*keepalive*)** | Mensagem periódica do canal (padrão a cada 2 s) com estado, carga e prontas por tópico | [12](12-entrega.md) |
 | **Sincronização** | O que um nó novo faz ao entrar: carga de tópicos e blocos, replay do banco de eventos, verificação final | [07](07-cluster.md) |
 

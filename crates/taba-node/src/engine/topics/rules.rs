@@ -21,8 +21,6 @@ pub struct TopicRules {
     pub idle_timeout_default: u64,
     /// `topics.volatile.max-count`: the ceiling of volatile queues for `autoCreate`; `None`, no ceiling.
     pub volatile_max_count: Option<u32>,
-    /// A FIFO queue requires a `replication.factor` of at least 2; in development it does not apply.
-    pub fifo_needs_replication: bool,
     /// `api.pagination.default-limit` e `max-limit`.
     pub default_limit: u32,
     pub max_limit: u32,
@@ -38,7 +36,6 @@ impl TopicRules {
             max_deliveries_default: u64::from(config.retention.max_deliveries_default),
             idle_timeout_default: config.topics.volatile_idle_timeout_default.as_secs(),
             volatile_max_count: config.topics.volatile_max_count,
-            fifo_needs_replication: !config.is_development() && config.write.replication_factor < 2,
             default_limit: config.pagination.default_limit,
             max_limit: config.pagination.max_limit,
         }

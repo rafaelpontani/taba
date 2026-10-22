@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **757** of **940** cases have at least one test (80.5%); **183** do not; **11** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **749** of **925** cases have at least one test (81.0%); **176** do not; **26** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -37,7 +37,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CLI` | `taba-cli`, the client command line | 36 | 0 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 24 | 14 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
-| `DEF` | Topic and token definition replicated in the cluster | 21 | 11 |
+| `DEF` | Topic and token definition replicated in the cluster | 23 | 11 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 10 | 21 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 13 | 19 |
@@ -48,15 +48,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 3 | 12 |
-| `RTN` | Return of an excluded node and recovery of losses | 35 | 0 |
+| `RTN` | Return of an excluded node and recovery of losses | 45 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
-| `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
-| `DEV` | Development mode | 3 | 10 |
-| `SEG` | Ports, mutual TLS and cluster certificates | 21 | 0 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 41 | 9 |
+| `DRN` | Stop and drain mode | 19 | 2 |
+| `DEV` | One-node profile (the former development mode) | 3 | 4 |
+| `SEG` | Ports, mutual TLS and cluster certificates | 20 | 0 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 42 | 9 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 3 | 7 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
-| `BKP` | Optional S3 backup | 40 | 0 |
+| `BKP` | Optional S3 backup | 45 | 0 |
 
 ## TOP: Topics: create, list, read, change and remove
 
@@ -1108,11 +1108,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CNS-037
 
-**Case:** `autoCreate` of a FIFO queue with `replication.factor` below 2  
-**Then:** `422` `topic.fifo-needs-replication`.  
+**Case:** `autoCreate` of a FIFO queue with `replication.factor` 1 (the one-node profile)  
+**Then:** the queue is created and takes messages: the FIFO quorum is `min(2, factor)` (`topic.fifo-needs-replication` is no longer returned).  
 **Level:** C  
 **Tests:**
-  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_only_when_the_replication_factor_allows_it`
+  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_with_any_replication_factor`
 
 ---
 
@@ -1445,7 +1445,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** Each node's sweep (`retention.sweep.interval`) deletes the expired copies in memory and on disk, without propagating anything.  
 **Level:** C  
 **Tests:**
-  - `src/engine/messages/tests.rs::an_exhausted_message_that_waited_out_the_downtime_goes_to_the_dead_letter`
   - `src/engine/messages/tests.rs::lowering_max_deliveries_sends_the_ready_messages_over_the_new_limit_to_the_dead_letter`
   - `src/engine/messages/tests/cluster.rs::each_node_expires_its_own_replicas_by_ttl`
   - `tests/replication.rs::every_node_expires_its_own_copies_by_ttl_without_propagating`
@@ -1862,7 +1861,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** `PATCH` with `fifo` answers `400` `validation.immutable-field`. A distributor cannot be FIFO (`400` `validation.not-applicable`).  
 **Level:** I  
 **Tests:**
-  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_and_in_development`
+  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
 
 ---
 
@@ -2276,11 +2275,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-FIF-042
 
-**Case:** `autoCreate` accepts `fifo=true`; the `replication.factor` 2 requirement applies (UC-CNS-037).  
+**Case:** `autoCreate` accepts `fifo=true`, with any `replication.factor` (UC-CNS-037).  
 **Level:** I, C  
 **Tests:**
-  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_and_in_development`
-  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_only_when_the_replication_factor_allows_it`
+  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
+  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_with_any_replication_factor`
 
 ---
 
@@ -2394,12 +2393,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-FIF-046
 
-**Case:** In development mode the FIFO works the same  
+**Case:** On a single node (one-node profile, factor 1) the FIFO works the same  
 **Then:** the node is the primary of all groups (no forwarding), the quorum is 1 and `replication.factor` 1 is accepted.  
 **Level:** I  
 **Tests:**
-  - `src/engine/messages/tests.rs::groups_busy_state_and_deduplication_survive_a_restart`
-  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_and_in_development`
+  - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
   - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
 
 ---
@@ -2524,6 +2522,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/index/tests.rs::groups_above_the_ceiling_share_one_counter`
   - `tests/topic_stats.rs::the_shared_counter_shows_as_overflow_and_an_empty_group_disappears`
+  - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
 
 ---
 
@@ -2533,7 +2532,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** rebuilt from the metadata and the `group_id` column when the node takes over blocks or restarts.  
 **Level:** C  
 **Tests:**
-  - `src/engine/messages/tests.rs::the_index_is_rebuilt_from_the_disk_after_a_restart`
 
 ---
 
@@ -2578,7 +2576,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `src/http/auth/tests.rs::without_a_root_token_nothing_matches`
-  - `tests/auth.rs::without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404`
+  - `tests/auth.rs::without_a_root_token_nothing_is_required_and_tokens_are_404`
 
 ---
 
@@ -2627,10 +2625,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-AUT-007
 
-**Case:** In development mode authentication is never required.  
+**Case:** Without a root token and without `auth.dev-token` authentication is not required.  
 **Level:** I  
 **Tests:**
-  - `tests/auth.rs::without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404`
+  - `tests/auth.rs::without_a_root_token_nothing_is_required_and_tokens_are_404`
 
 ---
 
@@ -2737,7 +2735,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/http/auth/tests.rs::root_and_open_reach_everything_and_a_token_only_what_it_has`
   - `tests/auth.rs::creating_a_token_returns_the_secret_once_and_reading_never_does`
-  - `tests/auth.rs::only_the_root_token_manages_tokens`
+  - `tests/auth.rs::only_the_root_and_admin_tokens_manage_tokens`
 
 ---
 
@@ -2803,17 +2801,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `src/http/auth/tests.rs::each_route_asks_for_its_own_permission`
-  - `tests/auth.rs::only_the_root_token_manages_tokens`
+  - `tests/auth.rs::only_the_root_and_admin_tokens_manage_tokens`
 
 ---
 
 ### UC-AUT-025
 
-**Case:** `/tokens` with authentication off or in development mode  
+**Case:** `/tokens` with authentication off  
 **Then:** `404` `route.not-found`.  
 **Level:** I  
 **Tests:**
-  - `tests/auth.rs::without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404`
+  - `tests/auth.rs::without_a_root_token_nothing_is_required_and_tokens_are_404`
 
 ---
 
@@ -2867,7 +2865,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I, C  
 **Tests:**
   - `src/engine/tokens/tests.rs::a_failed_write_leaves_no_visible_token`
-  - `src/engine/tokens/tests.rs::open_loads_the_saved_tokens_only_when_asked`
+  - `src/engine/tokens/tests.rs::the_store_keeps_the_tokens_that_were_created`
   - `src/storage/tokens/tests.rs::tokens_are_rows_of_the_node_db_with_the_hash_and_the_salt`
   - `src/storage/tokens/tests.rs::the_secret_is_never_in_the_database_file`
 
@@ -2979,7 +2977,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-LIM-005
 
-**Case:** Without a valid token (authentication off, development mode, `401`, operations routes), the key is the client IP. Trying to guess tokens is not left without a limit.  
+**Case:** Without a valid token (authentication off, `401`, operations routes), the key is the client IP. Trying to guess tokens is not left without a limit.  
 **Level:** I  
 **Tests:**
   - `src/http/ratelimit/tests.rs::idle_counters_are_dropped_when_the_map_grows`
@@ -4646,6 +4644,26 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-DEF-041
+
+**Case:** A node **takes over the disk** on a cold start
+**Then:** it reads topics, tokens, versions and tombstones from `_node.db`, serves with them without waiting for the cluster, and the nodes that join receive them from it. The node's log of excluded messages goes on from the previous life's (the start date goes back to its own), or no life would be inside the window.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster`
+
+---
+
+### UC-DEF-042
+
+**Case:** A node that **joins a cluster that is already up**
+**Then:** it joins clean: the definitions of its disk are deleted before the synchronization and do not override the cluster's (a topic deleted while it was away does not come back).
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_node_that_joins_a_running_cluster_does_not_impose_the_definitions_of_its_disk`
+
+---
+
 ### UC-DEF-009
 
 **Case:** The topic definition is always persisted in the `topics` table of `${storage.dir}/_node.db` (one row per topic, no file per topic), written at the commit on each node, and updated or removed with the definition.  
@@ -5390,7 +5408,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** A message received as a replica or published in drain mode goes straight to disk (effective memory limit zero).  
 **Level:** I  
 **Tests:**
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
+  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_to_disk`
 
 ---
 
@@ -5444,11 +5462,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-ING-001
 
-**Case:** In `mode=production`, without `cluster.entry-address` the node **does not start**.  
+**Case:** With `replication.factor` above 1, without `cluster.entry-address` the node **does not start** (with factor 1 the node starts alone).  
 **Level:** I  
 **Tests:**
   - `src/config/tests.rs::the_entry_address_must_be_host_and_port`
-  - `tests/startup.rs::production_without_the_entry_address_does_not_start`
+  - `tests/startup.rs::a_cluster_without_the_entry_address_does_not_start`
 
 ---
 
@@ -6832,16 +6850,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-RTN-011
-
-**Case:** In development mode it does not apply  
-**Then:** a restart resumes from disk.  
-**Level:** I  
-**Tests:**
-  - `tests/recovery.rs::in_development_mode_there_is_no_cluster_to_recover_from`
-
----
-
 ### UC-RTN-012
 
 **Case:** `GET /cluster/message-loss` and `POST /cluster/messages/recover` accept whoever is not yet a member; `POST /cluster/message-loss` (register) and `DELETE /cluster/message-loss/{topic}/{id}` (clear) only accept members (`403 cluster.not-member`). Register and clear are idempotent (`changed`), and the record expires after `cluster.message-loss.ttl`.  
@@ -6997,6 +7005,227 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-RTN-036
+
+**Case:** Every node of a cluster that fell **comes back together**, with its disks, and **no one answers** the entry address (none is the `cluster.first-node`)
+**Then:** each node tries the nodes of the previous life's table (by the IPs in the manifest); after `cluster.restore.cold-start.wait`, the one with the **lowest old ID** among those alive starts alone and **takes over the disk**, and the others join it. The messages of the lives are restored, the status becomes restored from disk on all of them and the folders of the lives are deleted.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster`
+
+---
+
+### UC-RTN-037
+
+**Case:** The entry address does not answer, but there are nodes up
+**Then:** the node that comes back finds the cluster through the **previous life's table of IPs** (from the manifest): the one that answers with a table is the cluster it joins.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_restarted_node_finds_the_cluster_through_the_old_table_when_the_entry_address_is_dead`
+  - `tests/cold_start.rs::every_node_comes_back_at_once_and_the_one_with_the_lowest_old_id_starts_the_cluster`
+
+---
+
+### UC-RTN-038
+
+**Case:** A node **with no previous life** and no `cluster.first-node`
+**Then:** never starts alone: a listing with no answer is still an error and it tries again. Only `cluster.first-node` creates a cluster that never existed.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_node_with_no_previous_life_never_starts_alone_without_first_node`
+
+---
+
+### UC-RTN-039
+
+**Case:** A node that **joins** a running cluster has on its disk a definition (topic, token or tombstone) with a **higher version** than the cluster's, or one the cluster does not know
+**Then:** before deleting the disk the node keeps the definitions and, once active, **offers** each one to the cluster: the highest version wins (tombstone included) and what wins is spread to the others. A disk older than the cluster imposes nothing.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_node_that_joins_offers_the_definitions_of_its_disk_and_the_highest_version_wins`
+
+---
+
+### UC-RTN-040
+
+**Case:** Two groups of nodes came up without talking to each other (each took over the disk) and meet again
+**Then:** the **smaller** group (tie: the one of the lowest `nodeId`, D101) loses, **wiping nothing**: its disk becomes the folder of a life (`_lives/<ID>`), its definitions are offered to the winning group and the node redoes the join **with a new ID**. What the losing group accepted while it was apart is restored and checked against the dead, and the queue (a definition) stays in the cluster.
+**Level:** C
+**Tests:**
+  - `tests/regroup.rs::the_smaller_group_that_meets_the_other_one_moves_its_disk_to_a_life_and_joins_with_a_new_id`
+
+---
+
+### UC-RTN-041
+
+**Case:** The cluster has fewer active members than the table of the previous life
+**Then:** each node probes, every `cluster.restore.probe.interval`, the old IPs that are not in the table; the probe **ends** when the table completes, and nothing is shown.
+**Level:** C
+**Tests:**
+  - `tests/regroup.rs::the_probe_ends_when_the_table_completes_and_raises_no_condition`
+
+---
+
+### UC-RTN-042
+
+**Case:** The probe time (`cluster.restore.probe.timeout`) ends with nodes of the old table missing
+**Then:** the log warns and `GET /health/cluster` shows `members-missing` (warning) while the table is incomplete; the node that is missing enters later through the normal join.
+**Level:** C
+**Tests:**
+  - `tests/regroup.rs::when_the_probe_time_ends_with_nodes_missing_the_members_missing_condition_shows`
+
+---
+
+
+### UC-RTN-043
+
+**Case:** A node with `replication.factor=1`, without `cluster.tls.enabled` and without `cluster.entry-address` (the one-node profile)
+**Then:** starts alone as a cluster of one, becomes `active`, serves the plain and the FIFO queue (the FIFO quorum is `min(2, factor)`), and `GET /health/cluster` shows the `reduced-profile` condition; with `health.single-node-condition=false` it does not show.
+**Level:** C
+**Tests:**
+  - `tests/single_node.rs::a_node_with_factor_one_starts_alone_and_serves_the_plain_and_the_fifo_queue`
+  - `tests/single_node.rs::the_reduced_profile_condition_can_be_hidden`
+  - `tests/fifo_cluster.rs::auto_create_accepts_fifo_with_any_replication_factor`
+
+---
+
+### UC-RTN-044
+
+**Case:** `auth.dev-token` with a secret of at least 32 characters, in the one-node profile
+**Then:** the start creates the work token `dev` with `admin`, `publish` and `consume` (only the hash is stored) and turns authentication on: no token gets `401`, with `tb_dev.<secret>` the routes answer, and the secret does not show in `GET /tokens`.
+**Level:** C
+**Tests:**
+  - `tests/single_node.rs::the_dev_token_is_an_admin_work_token_created_at_the_start_and_turns_authentication_on`
+
+---
+
+### UC-RTN-045
+
+**Case:** A message the node already keeps (`Existing`) also arrives in the restoration of a life, with a greater `deliveryCount`
+**Then:** the node keeps the **greater** of the two counters (it never decreases) and does not create the message again; invisibility and receipt do not change. Each owner does it with its own copy (PRB-062).
+**Level:** U, C
+**Tests:**
+  - `src/engine/messages/tests/blocks.rs::of_two_copies_the_greater_delivery_count_prevails_and_never_decreases`
+  - `tests/restore_lives.rs::a_message_the_primary_already_has_takes_the_greater_delivery_count_of_the_two_copies`
+
+---
+
+### UC-RTN-046
+
+**Case:** The whole cluster falls, and a message was **only in memory** on every node
+**Then:** it is lost: no disk had it and no node hands it back after the resumption; what writes memory is the drain (UC-DRN-010).
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::what_was_only_in_memory_on_every_node_is_lost_when_the_whole_cluster_falls`
+
+---
+
+### UC-RTN-047
+
+**Case:** A fall makes the log of excluded messages lose its last entries (and the deletion of the message they went with)
+**Then:** the message the consumer had already acknowledged comes back ready and is delivered again; it is accepted, because the consumer is idempotent (*at-least-once*, doc 37, section 4.11).
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_fall_that_loses_the_last_entries_of_the_log_delivers_the_acknowledged_message_again`
+
+---
+
+### UC-RTN-048
+
+**Case:** The folders of the previous lives grow (several lives, with many large messages)
+**Then:** they have no cap of their own: everything is restored and nothing is refused or discarded for its size; a full disk follows the usual rule (a fatal error, the node goes to `failed`, UC-FAL-028).
+**Level:** I
+**Tests:**
+  - `tests/messages.rs::the_folders_of_the_previous_lives_have_no_cap_of_their_own`
+  - `src/storage/db/tests.rs::a_full_disk_in_the_node_database_fails_the_node_from_any_of_its_tables`
+
+---
+### UC-RTN-049
+
+**Case:** A life whose `last_seen` is earlier than the cluster cutoff date (with the margin) reaches a node that keeps it
+**Then:** it is **not** restored: nothing of it is sent, no node receives the message, and it follows today's path (only the listed losses come back); at the end of the pass, which is complete because there was nothing to send, the folder of the life is deleted.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::a_life_outside_the_window_is_not_restored_and_its_folder_goes_with_the_end_of_the_pass`
+
+---
+
+### UC-RTN-050
+
+**Case:** The new primary already has the message the life sends (`Existing`)
+**Then:** it is **skipped**: it is not activated again, so the invisibility and the receipt of the consumer holding it stay as they were and the `deliveryCount` does not decrease; the row leaves the folder of the life as sent.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::a_message_the_primary_already_has_is_skipped_and_keeps_its_invisibility_and_receipt`
+
+---
+
+### UC-RTN-051
+
+**Case:** A node that comes back after the release brings FIFO messages of one group in the folder of its life, out of order
+**Then:** they are activated in `id` order: consuming (one per group at a time) delivers them in order; their order relative to the newer messages of the group is not guaranteed.
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::the_fifo_messages_of_a_node_that_comes_back_are_activated_in_id_order`
+
+---
+
+### UC-RTN-052
+
+**Case:** The cluster is **stuck by the loss of two nodes** (the old table had five, strict mode is on and `G` passed)
+**Then:** the restoration and the FIFO stay held until the operator **forces** (`POST /cluster/restore/force`, on any node): the status changes on every present node, what was held goes on, and forcing again changes nothing (`wasRestoring=false`).
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::a_cluster_stuck_by_the_loss_of_two_nodes_is_released_by_force_and_forcing_again_changes_nothing`
+
+---
+
+### UC-RTN-053
+
+**Case:** **Property on the simulated cluster:** three rounds in which the cluster publishes, confirms (ack) part of the messages and falls whole, and every node comes back
+**Then:** no message confirmed before the fall is delivered again after the return, and the cluster delivers what was left (the property is not vacuous). It is the cluster counterpart of the model in UC-RTN-021.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls`
+
+---
+### UC-RTN-054
+
+**Case:** A message already consumed whose exclusion record was only on a node that did not come back, and the same message with every expected node present
+**Then:** with the node absent, nothing is delivered again before `G`; once `G` passes, the restoration goes on with the nodes that are present and the message comes back (the residual redelivery of section 4.11, which the idempotent consumer accepts). With every expected node present, the restoration does not wait for `G` and the message that the log of one of them marks as consumed does not come back.
+**Level:** C
+**Tests:**
+  - `tests/restore_vote.rs::a_message_already_consumed_whose_log_is_on_a_node_that_never_came_back_returns_only_after_g`
+  - `tests/restore_vote.rs::with_every_expected_node_present_a_message_already_consumed_does_not_wait_for_g_and_does_not_return`
+
+---
+### UC-RTN-055
+
+**Case:** Several nodes connect in the cold start, and the coordinator (the one with the lowest old ID) has the oldest disk
+**Then:** the highest version of each definition wins on every node, the definition that only one node had reaches the cluster and the ones everyone had are still there.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::when_several_nodes_connect_the_highest_version_of_each_definition_wins_even_over_the_disk_of_the_coordinator`
+
+---
+### UC-RTN-056
+
+**Case:** A late node starts alone, because no other answers, and then another node arrives with a higher version of a definition
+**Then:** the node that started alone serves the definitions it has; when the other node answers, the window ends and the higher version wins on both.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_late_node_that_starts_alone_serves_what_it_has_and_the_higher_version_wins_when_another_answers`
+
+---
+### UC-RTN-057
+
+**Case:** The probe of the old IPs ends with a node missing, and the node that was missing arrives later
+**Then:** the `members-missing` condition shows in `/health/cluster`; the node that was missing enters through the normal join, the table completes and the condition goes away.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away`
+
+---
 ### UC-RTN-016
 
 **Case:** What the disk of the previous life has and the loss list does not ask for does not go back to anyone, and the new disk never resurrects an old message  
@@ -7012,7 +7241,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-017
 
 **Case:** The **first node** of a new cluster (`cluster.first-node=true`, listing with no one) has no one to recover from  
-**Then:** a disk with **no manifest** (earlier version) is deleted at start, by the usual path, and the `_previous-life` folder does not stay (D111); a disk **with a manifest** becomes the folder of the life (UC-RTN-023), because the cold start decides what to do with it (doc 37, section 4.9).  
+**Then:** a disk with **no manifest** (earlier version) is deleted at start, by the usual path, and the `_previous-life` folder does not stay (D111); a disk **with a manifest** becomes the folder of the life (UC-RTN-023) and is restored by the cold start (UC-RTN-036; doc 37, section 4.9).  
 **Level:** C  
 **Tests:**
   - `tests/recovery.rs::the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life`
@@ -7056,7 +7285,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 **Case:** **Property** (model of a cluster that stops as a whole): with **every expected node present** and the rule of the window, no message already acknowledged (ack) is delivered again, whatever the nodes' stops and the log trims  
 **Then:** the test sweeps 2000 random histories and fails on the first redelivery; the same model **without** the window rule does produce redeliveries (the test proves the property has teeth).  
-**Level:** U (model; the simulated-cluster test comes with the restoration)  
+**Level:** U (model; the simulated-cluster test is UC-RTN-053)  
 **Tests:**
   - `src/cluster/restore/tests.rs::with_every_expected_node_present_no_consumed_message_comes_back`
   - `src/cluster/restore/tests.rs::the_property_has_teeth_without_the_rule_of_the_window_a_consumed_message_comes_back`
@@ -7257,8 +7486,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/cluster/drain/tests.rs::the_api_drain_moves_memory_to_disk_and_ends_drained`
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
-  - `src/engine/messages/tests.rs::drain_keeps_the_group_and_the_delivery_count`
+  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_to_disk`
   - `tests/drain_cluster.rs::while_it_drains_the_node_writes_every_new_replica_straight_to_disk`
   - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
 
@@ -7301,7 +7529,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** the `drain.timeout` covers the whole drain (steps 1 to 6); when exceeded, the node records what is left in memory and the step where it stopped (`error`) and exits anyway (if by signal), falling back to the usual detection and vote. An I/O error or full disk in step 4 does not interrupt: the node continues, counts the error and includes it in the result.  
 **Level:** C  
 **Tests:**
-  - `src/cluster/drain/tests.rs::an_expired_timeout_leaves_the_node_draining_without_a_save_mark`
+  - `src/cluster/drain/tests.rs::an_expired_timeout_leaves_the_node_draining`
 
 ---
 
@@ -7311,7 +7539,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** cancels the drain, the node goes back to `active`, to writing in memory, remains a member; `200` `DrainStatus`.  
 **Level:** C  
 **Tests:**
-  - `src/cluster/drain/tests.rs::canceling_a_finished_drain_in_development_goes_straight_back_to_active`
   - `src/cluster/drain/tests.rs::canceling_while_draining_stops_the_move`
   - `tests/drain_cluster.rs::canceling_before_the_node_left_keeps_it_in_the_cluster`
   - `tests/operations.rs::deleting_the_drain_brings_the_node_back_with_its_messages`
@@ -7335,7 +7562,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** the node joins as a **new node**, with a **new ID**, full bootstrap and a new position on the ring; answers `202`, `drainState` goes back to `active`, and the node state goes through `joining` and `syncing`. Before clearing the local state it does the recovery of lost messages (UC-RTN-001 to UC-RTN-006). No freezing.  
 **Level:** C  
 **Tests:**
-  - `src/cluster/drain/tests.rs::in_production_leaving_the_drained_state_returns_as_a_new_node`
+  - `src/cluster/drain/tests.rs::leaving_the_drained_state_returns_as_a_new_node`
   - `tests/drain_cluster.rs::after_leaving_the_node_returns_as_a_new_node_with_a_new_id`
   - `tests/recovery.rs::a_node_that_left_by_drain_recovers_the_lost_messages_before_it_returns_as_a_new_node`
 
@@ -7362,97 +7589,21 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-DRN-021
 
-**Case:** In development mode the drain applies the local part  
-**Then:** everything in memory goes to disk, **without** deregistration, channel or rebalancing; `DELETE /node/drain` goes straight back to `active`.  
-**Level:** I  
-**Tests:**
-  - `src/cluster/drain/tests.rs::canceling_a_finished_drain_in_development_goes_straight_back_to_active`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-  - `tests/operations.rs::deleting_the_drain_brings_the_node_back_with_its_messages`
-
----
-
-### UC-DRN-022
-
-**Case:** The save writes to `storage.dir`  
-**Then:** messages (body and metadata `deliveryCount`, `invisibleUntil`, `receiptToken`, `groupId`, `contentType`), the topic definitions (already in the `topics` table of `_node.db`: the save checks they are up to date) and the node state in the `state` table of `_node.db` (the `save_completed` mark with the instant of the end; the instant of the last `GET` of the volatile queues is not stored, since the clock restarts at start). It does not write what is rebuilt (ready and invisible lists, per-group count, rates).  
-**Level:** I  
-**Tests:**
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
-  - `src/engine/messages/tests.rs::drain_keeps_the_group_and_the_delivery_count`
-  - `src/storage/state/tests.rs::the_save_mark_is_written_and_consumed_once`
-  - `src/storage/state/tests.rs::the_mark_survives_reopening_the_database`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-  - `tests/operations.rs::the_drain_writes_the_save_mark_and_the_next_start_consumes_it`
-
----
-
-### UC-DRN-023
-
-**Case:** Start in development with `development.resume-on-start` on (default)  
-**Then:** loads the definitions (keeping `id` and creation date), reads each topic's database and rebuilds the lists and counts, rebuilds the idleness clock of the volatile queues (the deadline counts from the start: `max(creation, start, last GET) + idleTimeout`), and becomes ready only when it finishes. The `save_completed` mark is **deleted** at that moment.  
-**Level:** I  
-**Tests:**
-  - `src/engine/messages/tests.rs::a_restart_does_not_count_the_time_the_node_was_stopped`
-  - `src/engine/messages/tests.rs::the_index_is_rebuilt_from_the_disk_after_a_restart`
-  - `src/storage/state/tests.rs::clearing_the_save_mark_removes_it`
-  - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-  - `tests/operations.rs::the_drain_writes_the_save_mark_and_the_next_start_consumes_it`
-  - `tests/volatile.rs::a_resumed_node_gives_the_volatile_queue_a_fresh_idle_period`
-
----
-
-### UC-DRN-024
-
-**Case:** On resume, the invisibility is an absolute instant  
-**Then:** a message whose deadline passed during the stop becomes ready again; those still invisible stay so, and the `receiptToken` still counts for the ack.  
-**Level:** I  
-**Tests:**
-  - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
-  - `tests/messages.rs::stopping_saves_memory_to_disk_and_the_next_start_resumes_it`
-
----
-
-### UC-DRN-026
-
-**Case:** Without a completed save (crash, `kill -9`, drain interrupted by `drain.timeout`)  
-**Then:** the node resumes what is on disk and logs `warn` that what was only in memory was lost.  
-**Level:** I  
-**Tests:**
-  - `src/cluster/drain/tests.rs::an_expired_timeout_leaves_the_node_draining_without_a_save_mark`
-  - `tests/messages.rs::without_drain_on_stop_what_was_only_in_memory_is_lost`
-  - `tests/operations.rs::the_drain_writes_the_save_mark_and_the_next_start_consumes_it`
-
----
-
-### UC-DRN-027
-
-**Case:** With `development.resume-on-start=false`, the node **deletes** the content of `storage.dir` at start and starts clean, with a warning in the log.  
-**Level:** I  
-**Tests:**
-  - `src/engine/messages/tests.rs::without_resume_the_disk_is_cleaned_and_orphan_folders_never_come_back`
-  - `tests/messages.rs::without_resume_on_start_the_messages_on_disk_are_erased`
-
----
-
-
-## DEV: Development mode
+## DEV: One-node profile (the former development mode)
 
 ### UC-DEV-002
 
-**Case:** In development the node starts alone, with no bootstrap; `cluster.entry-address` **is not required**; the cluster port **is not opened** (`cluster.port` is ignored) and no `/cluster/*` route answers.  
+**Case:** With `replication.factor=1` and no `cluster.entry-address` the node starts alone, with no bootstrap; the cluster port is opened and serves only `/cluster/*`, and the client port answers `404` to those routes.  
 **Level:** I  
 **Tests:**
-  - `tests/listeners.rs::development_node_starts_alone_and_does_not_open_the_cluster_port`
+  - `tests/listeners.rs::a_node_with_factor_one_starts_alone_and_keeps_the_cluster_routes_off_the_client_port`
 
 ---
 
 ### UC-DEV-011
 
-**Case:** `GET /health/cluster` returns the same with `scope=cluster` and `scope=node`, in the format of a one-node cluster; the `taba.cluster.*` metrics do not exist; Prometheus reads the node, with a single series.  
+**Case:** `GET /health/cluster` returns the same with `scope=cluster` and `scope=node`, in the format of a one-node cluster; Prometheus reads the node, with a single series.  
 **Level:** I  
 **Tests:**
   - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
@@ -7461,7 +7612,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-DEV-012
 
-**Case:** The topic definition is applied only on the node itself; there is no bootstrap or topic load from another node.  
+**Case:** The topic definition is written to the node's own `_node.db`, with no bootstrap or topic load from another node, and it comes back after a restart (the restoration of the disk).  
 **Level:** I  
 **Tests:**
   - `tests/topics.rs::definitions_are_saved_in_the_node_database_and_resumed_after_a_restart`
@@ -7509,16 +7660,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/mtls.rs::only_members_use_the_cluster_routes_and_the_caller_is_the_connection_ip_not_a_header`
-
----
-
-### UC-SEG-005
-
-**Case:** In development the cluster port is not opened and TLS is ignored.  
-**Level:** I  
-**Tests:**
-  - `tests/listeners.rs::development_node_starts_alone_and_does_not_open_the_cluster_port`
-  - `tests/startup.rs::in_development_the_cluster_port_is_ignored_even_when_occupied`
 
 ---
 
@@ -7703,7 +7844,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** `200` `HealthResponse` with `health: "live"` while the process answers.  
 **Level:** I  
 **Tests:**
-  - `tests/listeners.rs::development_node_is_live_and_ready`
+  - `tests/listeners.rs::a_single_node_is_live_and_ready`
 
 ---
 
@@ -7714,7 +7855,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/cluster/state/tests.rs::a_failed_node_is_not_ready`
-  - `tests/listeners.rs::development_node_is_live_and_ready`
+  - `tests/listeners.rs::a_single_node_is_live_and_ready`
   - `tests/listeners.rs::production_node_without_cluster_protocol_is_live_but_not_ready`
   - `tests/operations.rs::a_corrupt_topic_database_fails_the_node`
 
@@ -7835,7 +7976,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-OPS-017
 
 **Case:** `GET /health/cluster?scope=node`  
-**Then:** local read, `200` `ClusterStatus` with a single item in `nodes`, whose `status` is the `NodeStatus` (`nodeId`, `version`, `mode`, `state`, `drainState`, `startedAt`, `collectedAt`, `storage`, `signals`), **without** the metrics.  
+**Then:** local read, `200` `ClusterStatus` with a single item in `nodes`, whose `status` is the `NodeStatus` (`nodeId`, `version`, `state`, `drainState`, `startedAt`, `collectedAt`, `storage`, `signals`), **without** the metrics.  
 **Level:** I  
 **Tests:**
   - `tests/operations.rs::cluster_health_describes_the_single_node`
@@ -8071,7 +8212,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-OPS-045
 
-**Case:** The node's `GET /metrics` and OTLP work in development mode, without the `taba.cluster.*` metrics.  
+**Case:** The node's `GET /metrics` and the OTLP work on a single node (one-node profile).  
 **Level:** I  
 **Tests:**
   - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
@@ -8084,7 +8225,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** `403 auth.forbidden` with `required: "root"`; with the root token, the cluster status, the node's Prometheus text and the drain status; an unknown `nodeId` is `404 node.not-found`.  
 **Level:** I  
 **Tests:**
-  - `tests/nodes_api.rs::the_cluster_and_node_routes_need_the_root_token_and_an_unknown_node_is_404`
+  - `tests/nodes_api.rs::the_cluster_and_node_routes_need_the_admin_permission_and_an_unknown_node_is_404`
 
 ---
 
@@ -8164,6 +8305,27 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## CLR: Contract of the cluster routes (DTOs and common rules)
 
+### UC-OPS-054
+
+**Case:** The probe of the old IPs ended with nodes missing
+**Then:** `GET /health/cluster` shows the `members-missing` condition (warning) while the table has fewer active members than the previous life's.
+**Level:** C
+**Tests:**
+  - `src/cluster/health/tests.rs::a_probe_that_ended_with_nodes_missing_raises_members_missing_as_a_warning`
+  - `tests/regroup.rs::when_the_probe_time_ends_with_nodes_missing_the_members_missing_condition_shows`
+
+---
+
+
+### UC-OPS-055
+
+**Case:** The node runs the one-node profile with something relaxed (factor 1, TLS off or `auth.dev-token`)
+**Then:** `GET /health/cluster` shows the `reduced-profile` condition (warning, informative); `health.single-node-condition=false` hides it.
+**Level:** U
+**Tests:**
+  - `src/cluster/health/tests.rs::the_reduced_profile_is_an_informative_warning`
+
+---
 ### UC-CLR-001
 
 **Case:** Every `/cluster/*` route only accepts whoever is in the member table (`403` `cluster.not-member`), except the four exceptions (UC-SEG-018).  
@@ -8297,14 +8459,25 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CFG-013
 
-**Case:** The `cluster.restore.*` parameters (`grace` 5m, `strict` false, `clock-slack` 5s, `probe.timeout` 2h, `probe.interval` 10s) have defaults; a zero `grace` or `probe.interval`, or a `probe.timeout` shorter than `probe.interval`, are validation problems; a value of the wrong type is refused when read  
+**Case:** The `cluster.restore.*` parameters (`grace` 5m, `strict` false, `clock-slack` 5s, `probe.timeout` 2h, `probe.interval` 10s) and the limits of the excluded log (`storage.excluded.max-size` 100MB and `storage.excluded.max-age` 24h) have defaults; a zero `grace` or `probe.interval`, a `probe.timeout` shorter than `probe.interval` and a zero limit of the log are validation problems; a value of the wrong type is refused when read  
 **Then:** the node does not start with invalid values and shows the key.  
 **Level:** U  
 **Tests:**
   - `src/config/tests.rs::the_restore_parameters_have_defaults_and_invalid_values_stop_the_start`
+  - `src/config/tests.rs::the_limits_of_the_excluded_log_have_defaults_and_invalid_values_stop_the_start`
 
 ---
 
+
+### UC-CFG-014
+
+**Case:** `cluster.tls.enabled=false` and `auth.dev-token` are only accepted with `replication.factor=1`; `auth.dev-token` shorter than 32 characters is refused; with factor 1 `cluster.entry-address` is no longer required
+**Then:** the node does not start with the refused value and shows the key; the default stays the production one (TLS on, entry address required).
+**Level:** U
+**Tests:**
+  - `src/config/tests.rs::the_one_node_profile_needs_no_entry_address_and_relaxes_only_with_factor_one`
+
+---
 
 ## BKP: Optional S3 backup
 
@@ -8728,10 +8901,60 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-BKP-040
 
-**Case:** Development mode (a single node) is the owner of everything and also does the backup.  
+**Case:** A single node (one-node profile) owns everything and also does the backup.  
 **Level:** I  
 **Tests:**
-  - `tests/backup.rs::a_single_node_in_development_mode_owns_everything_and_backs_up_too`
+  - `tests/backup.rs::a_single_node_owns_everything_and_backs_up_too`
+
+---
+
+### UC-BKP-041
+
+**Case:** A node finishes restoring its lives and S3 holds live messages of the blocks it is **primary** of that nobody has
+**Then:** the scan brings them back through the path of the restoration (topic, dead, quorum) and leaves them available; what the node already has is skipped, and a second pass adds nothing.
+**Level:** C
+**Tests:**
+  - `tests/scan_s3.rs::the_scan_brings_back_the_messages_of_the_bucket_that_no_node_has`
+
+---
+
+### UC-BKP-042
+
+**Case:** S3 holds a message that the journal already records as removed, or one with no removal in the journal that the node's log of excluded messages says is dead
+**Then:** the scan discards it in both cases: S3 is not proof of life and does not widen the window of the log.
+**Level:** C
+**Tests:**
+  - `tests/scan_s3.rs::the_scan_discards_what_the_journal_removed_and_what_the_log_says_is_dead`
+
+---
+
+### UC-BKP-043
+
+**Case:** S3 does not answer at the start
+**Then:** the scan is skipped with a warning and the node goes on with its disk only, serving normally.
+**Level:** C
+**Tests:**
+  - `tests/scan_s3.rs::with_s3_down_the_scan_is_skipped_and_the_node_goes_on_with_its_disk`
+
+---
+
+### UC-BKP-044
+
+**Case:** The scan consults the journal of a topic
+**Then:** it reads the journal **once per topic** and keeps it for the next pass (the query tells "removed" from "not found" because only what the journal removes leaves the set).
+**Level:** C
+**Tests:**
+  - `tests/scan_s3.rs::the_scan_reads_the_journal_of_a_topic_once_and_keeps_it_for_the_next_pass`
+
+---
+
+### UC-BKP-045
+
+**Case:** The S3 bucket answers slowly during the scan at the start
+**Then:** only the **FIFO** queues wait (the pass that holds them includes the scan, and the "I am done" notice only goes out at its end); the rest of the cluster is available, the plain queue publishes and delivers, and when the bucket answers the scan ends, the cluster is restored and the FIFO is released.
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::a_slow_bucket_holds_only_the_fifo_queues_the_rest_of_the_cluster_is_available`
 
 ---
 

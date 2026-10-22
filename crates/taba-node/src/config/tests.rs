@@ -32,7 +32,6 @@ fn problems(result: Result<Config, ConfigError>) -> String {
 #[test]
 fn documented_defaults_apply_when_nothing_is_set() {
     let c = prod_with(&[]).unwrap();
-    assert_eq!(c.mode, Mode::Production);
     assert_eq!(
         (c.ports.api, c.ports.cluster, c.ports.operations),
         (8080, 8081, None)
@@ -118,11 +117,11 @@ fn quorum_below_the_majority_is_accepted_but_out_of_range_is_not() {
 }
 
 #[test]
-fn production_needs_the_entry_address_and_development_does_not() {
+fn a_cluster_needs_the_entry_address_and_a_node_alone_does_not() {
     assert!(problems(parse_env(&[])).contains("cluster.entry-address"));
-    let dev = parse_env(&[("TABA_MODE", "development")]).unwrap();
-    assert!(dev.is_development());
-    assert_eq!(dev.cluster.entry_address, None);
+    let alone = parse_env(&[("TABA_REPLICATION_FACTOR", "1")]).unwrap();
+    assert!(alone.is_single_node());
+    assert_eq!(alone.cluster.entry_address, None);
 }
 
 /// UC: UC-ING-001
@@ -175,6 +174,7 @@ fn the_restore_parameters_have_defaults_and_invalid_values_stop_the_start() {
     assert_eq!(restore.clock_slack, std::time::Duration::from_secs(5));
     assert_eq!(restore.probe_timeout, std::time::Duration::from_secs(7200));
     assert_eq!(restore.probe_interval, std::time::Duration::from_secs(10));
+    assert_eq!(restore.cold_start_wait, std::time::Duration::from_secs(15));
     // Values that make no sense are validation problems...
     for (variable, value, key) in [
         ("TABA_CLUSTER_RESTORE_GRACE", "0s", "cluster.restore.grace"),
@@ -217,34 +217,60 @@ fn the_restore_parameters_have_defaults_and_invalid_values_stop_the_start() {
     assert!(strict.cluster.restore.strict);
 }
 
+/// UC: UC-CFG-013
 #[test]
-fn development_forces_a_single_node_and_warns_about_ignored_parameters() {
-    let c = parse_env(&[
-        ("TABA_MODE", "development"),
-        ("TABA_REPLICATION_FACTOR", "5"),
-        ("TABA_WRITE_QUORUM", "4"),
-        ("TABA_CLUSTER_FIRST_NODE", "true"),
-        ("TABA_RING_VIRTUAL_NODES", "16"),
-        ("TABA_AUTH_ENABLED", "true"),
-    ])
-    .unwrap();
-    assert_eq!((c.write.replication_factor, c.write.quorum), (1, 1));
-    assert!(
-        !c.auth.enabled,
-        "in development authentication is always off"
+fn the_limits_of_the_excluded_log_have_defaults_and_invalid_values_stop_the_start() {
+    let c = prod_with(&[]).unwrap();
+    assert_eq!(c.storage.excluded_max_bytes, 100 * 1024 * 1024);
+    assert_eq!(
+        c.storage.excluded_max_age,
+        std::time::Duration::from_secs(24 * 3600)
     );
-    let warning = c.warnings.join("\n");
-    for key in [
-        "replication.factor",
-        "write.quorum",
-        "cluster.first-node",
-        "ring.virtual-nodes",
+    // A log that keeps nothing is a validation problem...
+    for (variable, value, key) in [
+        (
+            "TABA_STORAGE_EXCLUDED_MAX_SIZE",
+            "0B",
+            "storage.excluded.max-size",
+        ),
+        (
+            "TABA_STORAGE_EXCLUDED_MAX_AGE",
+            "0s",
+            "storage.excluded.max-age",
+        ),
     ] {
-        assert!(
-            warning.contains(key),
-            "{key} deveria constar do aviso: {warning}"
-        );
+        let found = problems(prod_with(&[(variable, value)]));
+        assert!(found.contains(key), "{variable}={value}: {found}");
     }
+    // ...and a value of the wrong type is refused when read.
+    for (variable, value, key) in [
+        (
+            "TABA_STORAGE_EXCLUDED_MAX_SIZE",
+            "big",
+            "storage.excluded.max-size",
+        ),
+        (
+            "TABA_STORAGE_EXCLUDED_MAX_AGE",
+            "soon",
+            "storage.excluded.max-age",
+        ),
+    ] {
+        let error = prod_with(&[(variable, value)]).unwrap_err().to_string();
+        assert!(error.contains(key), "{variable}={value}: {error}");
+    }
+    let small = prod_with(&[("TABA_STORAGE_EXCLUDED_MAX_SIZE", "1MB")]).unwrap();
+    assert_eq!(small.storage.excluded_max_bytes, 1024 * 1024);
+}
+
+#[test]
+fn the_removed_development_parameters_only_warn() {
+    let yaml =
+        "mode: development\ndevelopment:\n  resume-on-start: false\nreplication:\n  factor: 1\n";
+    let c = Config::parse(Some(("taba.yml", yaml)), &MapEnv::new([])).unwrap();
+    let warning = c.warnings.join("\n");
+    assert!(warning.contains("mode"), "{warning}");
+    assert!(warning.contains("development.resume-on-start"), "{warning}");
+    assert!(c.is_single_node());
 }
 
 #[test]
@@ -279,13 +305,6 @@ fn the_three_ports_must_differ() {
         ])
         .is_ok()
     );
-    // The cluster port is not opened in development, so it does not conflict.
-    let dev = parse_env(&[
-        ("TABA_MODE", "development"),
-        ("TABA_API_PORT", "9000"),
-        ("TABA_CLUSTER_PORT", "9000"),
-    ]);
-    assert!(dev.is_ok());
 }
 
 /// UC: UC-CFG-005
@@ -330,7 +349,6 @@ fn wrong_type_stops_startup_naming_the_parameter() {
         ),
         ("TABA_MESSAGE_MAX_BYTES", "message.max-bytes"),
         ("TABA_DRAIN_ON_STOP", "drain.on-stop"),
-        ("TABA_MODE", "mode"),
     ] {
         let message = prod_with(&[(var, "abc")]).unwrap_err().to_string();
         assert!(
@@ -509,24 +527,11 @@ mod secrets {
         )]));
         assert!(err.contains("cluster.tls.dir"), "{err}");
     }
-
-    #[test]
-    fn development_ignores_tls_and_secrets() {
-        let dir = TempDir::new().unwrap();
-        fs::create_dir(dir.path().join("tls")).unwrap();
-        let c = parse_env(&[
-            ("TABA_MODE", "development"),
-            ("TABA_SECRETS_DIR", dir.path().to_str().unwrap()),
-        ])
-        .unwrap();
-        assert_eq!(c.tls.dir, None);
-        assert!(!c.auth.enabled);
-    }
 }
 
 #[test]
 fn file_values_load_and_environment_overrides_them() {
-    let yaml = "mode: production\napi:\n  port: 9100\ncluster:\n  port: 9101\n  entry-address: lb:9101\nreplication:\n  factor: 5\n";
+    let yaml = "api:\n  port: 9100\ncluster:\n  port: 9101\n  entry-address: lb:9101\nreplication:\n  factor: 5\n";
     let env = MapEnv::new([("TABA_API_PORT", "9200")]);
     let c = Config::parse(Some(("taba.yml", yaml)), &env).unwrap();
     assert_eq!((c.ports.api, c.ports.cluster), (9200, 9101));
@@ -537,11 +542,11 @@ fn file_values_load_and_environment_overrides_them() {
 /// UC: UC-OPS-040
 #[test]
 fn the_otel_variables_give_the_resource_attributes_and_the_service_name_wins() {
-    let none = Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap();
+    let none = Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap();
     assert!(none.telemetry.resource.is_empty());
 
     let env = MapEnv::new([
-        ("TABA_MODE", "development"),
+        ("TABA_REPLICATION_FACTOR", "1"),
         (
             "OTEL_RESOURCE_ATTRIBUTES",
             "service.namespace=prod, deployment.environment.name=staging,service.name=old,noequals,=empty",
@@ -592,7 +597,7 @@ fn every_registered_parameter_is_read_by_the_typed_config() {
 }
 
 fn otlp_of(vars: &[(&str, &str)]) -> Result<Option<Otlp>, ConfigError> {
-    let mut all = vec![("TABA_MODE", "development")];
+    let mut all = vec![("TABA_REPLICATION_FACTOR", "1")];
     all.extend_from_slice(vars);
     let env = MapEnv(
         all.into_iter()
@@ -712,10 +717,7 @@ fn the_sampler_follows_otel_traces_sampler_and_defaults_to_parentbased_traceidra
 #[test]
 fn advertise_addresses_is_a_list_of_the_ips_the_node_tells_the_others() {
     let env = |extra: &[(&str, &str)]| {
-        let mut vars = vec![
-            ("TABA_MODE", "production"),
-            ("TABA_CLUSTER_ENTRY_ADDRESS", "lb:8081"),
-        ];
+        let mut vars = vec![("TABA_CLUSTER_ENTRY_ADDRESS", "lb:8081")];
         vars.extend_from_slice(extra);
         MapEnv(
             vars.into_iter()
@@ -757,4 +759,44 @@ fn the_log_format_defaults_to_text_and_comes_from_yaml_or_env() {
     assert!(
         matches!(bad, Err(ConfigError::InvalidValue { key, .. }) if key == "telemetry.logs.format")
     );
+}
+
+/// UC: UC-CFG-014
+#[test]
+fn the_one_node_profile_needs_no_entry_address_and_relaxes_only_with_factor_one() {
+    let one = parse_env(&[
+        ("TABA_REPLICATION_FACTOR", "1"),
+        ("TABA_CLUSTER_TLS_ENABLED", "false"),
+        ("TABA_AUTH_DEV_TOKEN", "a-development-secret-of-32-chars!!"),
+    ])
+    .unwrap();
+    assert!(one.is_single_node());
+    assert!(!one.tls.enabled && one.tls.dir.is_none());
+    assert!(one.auth.enabled && one.auth.dev_token.is_some());
+    assert_eq!(
+        one.relaxations(),
+        [
+            "replication.factor=1",
+            "cluster.tls.enabled=false",
+            "auth.dev-token"
+        ]
+    );
+    assert!(one.health.single_node_condition);
+
+    // The default stays the production one: no relaxation, entry address required.
+    let prod = prod_with(&[]).unwrap();
+    assert!(!prod.is_single_node() && prod.relaxations().is_empty());
+
+    for (key, value) in [
+        ("TABA_CLUSTER_TLS_ENABLED", "false"),
+        ("TABA_AUTH_DEV_TOKEN", "a-development-secret-of-32-chars!!"),
+    ] {
+        let found = problems(prod_with(&[(key, value)]));
+        assert!(found.contains("replication.factor=1"), "{key}: {found}");
+    }
+    let short = problems(parse_env(&[
+        ("TABA_REPLICATION_FACTOR", "1"),
+        ("TABA_AUTH_DEV_TOKEN", "short"),
+    ]));
+    assert!(short.contains("auth.dev-token"), "{short}");
 }

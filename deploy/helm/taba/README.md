@@ -20,7 +20,7 @@ Quick reference:
 | I want… | Set |
 |---|---|
 | A real cluster | defaults (3 nodes) |
-| A single dev node | `config.mode=development` |
+| A single dev node | `config.replication.factor=1` (the old `config.mode=development` still works) |
 | To expose the API | `ingress.enabled=true`, `ingress.hosts`, `ingress.tls`, `config.client-ip.trusted-proxies` |
 | Backup without a cloud | `seaweedfs.enabled=true` |
 | Backup to S3 | `backup.s3.bucket` (+ `existingSecret`, or IRSA through `serviceAccount.annotations`) |

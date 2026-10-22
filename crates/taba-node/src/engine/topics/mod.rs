@@ -189,22 +189,28 @@ impl Topics {
         }
     }
 
-    /// Opens the registry. With `load`, resumes the definitions stored on disk.
-    pub async fn open(
-        rules: TopicRules,
-        store: Arc<dyn TopicStore>,
-        clock: Arc<dyn Clock>,
-        load: bool,
-    ) -> io::Result<Self> {
-        let definitions = if load {
-            let store = store.clone();
-            tokio::task::spawn_blocking(move || store.load_all())
-                .await
-                .map_err(io::Error::other)??
-        } else {
-            Vec::new()
-        };
-        Ok(Self::new(rules, store, clock, definitions))
+    /// The definitions the node database holds, whether or not they are in memory (a cluster node does not load them
+    /// on start: it takes them over only if it starts alone, doc 37, section 4.9).
+    pub async fn stored(&self) -> io::Result<Vec<TopicDefinition>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.load_all())
+            .await
+            .map_err(io::Error::other)?
+    }
+
+    /// Deletes every definition from the node database (the node joins a cluster and receives its definitions).
+    pub async fn forget_stored(&self) {
+        let store = self.store.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            for definition in store.load_all()? {
+                store.delete(&definition.name)?;
+            }
+            Ok::<(), io::Error>(())
+        })
+        .await;
+        if !matches!(result, Ok(Ok(()))) {
+            tracing::warn!("could not clear the stored topic definitions");
+        }
     }
 
     /// Registers who needs to know when a topic disappears (the messages go with it).
@@ -628,12 +634,6 @@ impl Topics {
                     None
                 };
                 let fifo = request.fifo.unwrap_or(false);
-                if fifo && self.rules.fifo_needs_replication {
-                    return Err(TabaError::new(
-                        ErrorCode::TopicFifoNeedsReplication,
-                        "A FIFO queue requires a replication.factor of at least 2.",
-                    ));
-                }
                 Spec::Queue(QueueSpec {
                     volatile,
                     idle_timeout,

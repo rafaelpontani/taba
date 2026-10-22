@@ -64,9 +64,9 @@ It is the same rule as the cluster protocol ([07-cluster.md](07-cluster.md)). Wh
 - **Distributor:** the coordinator matches the prefixes and runs **this same procedure once per destination queue**, with copies of their own `id`. The copies are independent.
 - **FIFO:** the node that received **forwards to the group's primary**, which generates the monotonic `id`, deduplicates and coordinates; the quorum includes **primary and secondary**.
 
-## What changes in development mode
+## On a single node
 
-The node is the primary of everything and the quorum is 1: register and commit happen only on it, with no replicas, no repetition between nodes and no rollback for lack of quorum.
+In the one-node profile (factor 1) the node is the primary of everything and the quorum is 1: register and commit happen only on it, with no replicas, no repetition between nodes and no rollback for lack of quorum.
 
 ## Example
 

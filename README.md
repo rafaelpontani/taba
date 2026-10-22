@@ -90,7 +90,7 @@ The client API is also at `http://localhost:8080` for any HTTP client (with `Aut
 
 ## Common questions
 
-**Is Taba a single server?** No. It is a cluster of identical nodes with no coordinator. Three nodes are the recommended minimum for production; one node is a development mode.
+**Is Taba a single server?** No. It is a cluster of identical nodes with no coordinator. Three nodes are the recommended minimum for production; one node is the one-node profile, for development.
 
 **Does it scale horizontally?** Yes. The topics are split into blocks on a consistent-hash ring; a new node takes over its share and a node that leaves hands its share over first. On Kubernetes the chart can scale with KEDA.
 
@@ -125,7 +125,7 @@ What Taba does not do:
 For development, one container is enough (a cluster of one, data inside the container, **no authentication and no root token**, so it must never face a network):
 
 ```bash
-docker run -d --name taba-dev -p 8080:8080 -e TABA_MODE=development rafaelpontani/taba
+docker run -d --name taba-dev -p 8080:8080 -e TABA_REPLICATION_FACTOR=1 rafaelpontani/taba
 
 # the taba-cli (Linux, macOS, Git Bash; on PowerShell: scripts/install-cli.ps1). It uses http://127.0.0.1:8080 with no token by default
 curl -fsSL https://raw.githubusercontent.com/rafaelpontani/taba/main/scripts/install-cli.sh | sh
@@ -154,8 +154,8 @@ kubectl -n taba port-forward svc/taba 8080:8080                                 
 Common setups (all optional, combine as needed):
 
 ```bash
-# one single node for development (no auth, no cluster TLS)
-helm install taba deploy/helm/taba -n taba --create-namespace --set config.mode=development
+# one single node for development (replication.factor=1: no auth, no cluster TLS)
+helm install taba deploy/helm/taba -n taba --create-namespace --set config.replication.factor=1
 
 # expose the API through an Ingress (use any maintained Ingress controller)
 helm upgrade --install taba deploy/helm/taba -n taba \

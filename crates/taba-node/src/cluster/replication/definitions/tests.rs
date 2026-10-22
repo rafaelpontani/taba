@@ -18,7 +18,7 @@ fn now() -> SystemTime {
 }
 
 fn config() -> Config {
-    Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap()
+    Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap()
 }
 
 fn topic(name: &str, id_ms: u64) -> TopicDefinition {

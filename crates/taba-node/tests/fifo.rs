@@ -58,7 +58,7 @@ async fn ack(node: &TestNode, topic: &str, message: &Value) -> Response {
 /// UC: UC-FIF-002, UC-FIF-003, UC-FIF-004, UC-FIF-006
 #[tokio::test]
 async fn publishing_needs_a_group_and_a_repeat_is_a_200_with_the_original_id() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     fifo_queue(&node, "orders").await;
 
     assert_eq!(
@@ -107,7 +107,7 @@ async fn publishing_needs_a_group_and_a_repeat_is_a_200_with_the_original_id() {
 /// UC: UC-FIF-005, UC-FIF-007, UC-FIF-008
 #[tokio::test]
 async fn the_body_hash_is_the_default_key_the_scope_is_the_group_and_the_window_ends() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     fifo_queue(&node, "orders").await;
     let id = |response: Response| async move { response.json::<Value>().await.unwrap() };
 
@@ -139,7 +139,7 @@ async fn the_body_hash_is_the_default_key_the_scope_is_the_group_and_the_window_
 /// UC: UC-FIF-012, UC-FIF-013, UC-FIF-014, UC-FIF-015, UC-FIF-018
 #[tokio::test]
 async fn one_message_in_flight_per_group_in_order_and_groups_in_parallel() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     fifo_queue(&node, "orders").await;
     for n in 1..=3 {
         for group in ["a", "b"] {
@@ -177,7 +177,7 @@ async fn one_message_in_flight_per_group_in_order_and_groups_in_parallel() {
 /// UC: UC-FIF-011
 #[tokio::test]
 async fn deduplication_still_holds_after_the_ack() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     fifo_queue(&node, "orders").await;
     let first: Value = publish(&node, "orders", "?groupId=g&deduplicationId=k", "1")
         .await
@@ -204,7 +204,7 @@ async fn deduplication_still_holds_after_the_ack() {
 /// UC: UC-FIF-021
 #[tokio::test]
 async fn the_dead_letter_of_a_fifo_is_a_common_queue() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let made = node
         .client
         .post(node.client_url("/topics"))
@@ -247,8 +247,8 @@ async fn the_dead_letter_of_a_fifo_is_a_common_queue() {
 
 /// UC: UC-FIF-001, UC-FIF-042, UC-FIF-046
 #[tokio::test]
-async fn fifo_is_immutable_works_with_auto_create_and_in_development() {
-    let node = TestNode::development().await;
+async fn fifo_is_immutable_works_with_auto_create_on_a_single_node() {
+    let node = TestNode::single().await;
     let patch = node
         .client
         .patch(node.client_url("/topics/x"))
@@ -286,13 +286,15 @@ async fn fifo_is_immutable_works_with_auto_create_and_in_development() {
     node.shutdown().await;
 }
 
-/// UC: UC-FIF-046, UC-DRN-023
+/// UC: UC-FIF-046
 #[tokio::test]
 async fn a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate() {
     let tmp = tempfile::tempdir().unwrap();
     let storage = tmp.path().join("taba").display().to_string();
+    let clock = std::sync::Arc::new(taba_node::core::clock::ManualClock::at_doc_epoch());
     let start = || {
         TestNode::builder()
+            .clock(clock.clone())
             .env("TABA_STORAGE_DIR", &storage)
             .try_start()
     };
@@ -305,21 +307,29 @@ async fn a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate() {
     assert_eq!(flight.len(), 2);
     let done = flight.iter().find(|m| m["groupId"] == "g2").unwrap();
     assert_eq!(ack(&node, "orders", done).await.status(), 204);
+    clock.advance(std::time::Duration::from_secs(60));
     node.shutdown().await;
 
     let node = start().await.unwrap();
-    assert!(
-        get(&node, "orders", 10).await.is_empty(),
-        "g1 stays busy because of the one that was in flight"
-    );
+    // The restoration brings back what was alive, as new messages: the one that was in flight comes back ready, with
+    // a new token (the old one no longer confirms it), and g1 is still ordered behind it.
+    let back = get(&node, "orders", 10).await;
+    assert_eq!(back.len(), 1, "only the head of g1");
+    assert_eq!(back[0]["body"], 1);
     let in_flight = flight.iter().find(|m| m["groupId"] == "g1").unwrap();
     assert_eq!(
         ack(&node, "orders", in_flight).await.status(),
-        204,
-        "o receiptToken sobreviveu"
+        409,
+        "the old receiptToken does not survive the restart"
     );
+    assert_eq!(ack(&node, "orders", &back[0]).await.status(), 204);
     assert_eq!(get(&node, "orders", 10).await[0]["body"], 2);
-    let repeat = publish(&node, "orders", "?groupId=g2&deduplicationId=c", "3").await;
-    assert_eq!(repeat.status(), 200, "the ack's short row survived");
+    // The key of a message that was alive still deduplicates (the short row of an acked one is not carried: PRB-067).
+    let repeat = publish(&node, "orders", "?groupId=g1&deduplicationId=b", "2").await;
+    assert_eq!(
+        repeat.status(),
+        200,
+        "the key of the message that came back deduplicates"
+    );
     node.shutdown().await;
 }

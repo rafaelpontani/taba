@@ -203,12 +203,7 @@ impl TestCluster {
             .iter()
             .take(count)
             .enumerate()
-            .map(|(i, n)| {
-                PeerAddr::new(
-                    host_of(i + 1),
-                    n.node.cluster_addr().expect("porta do cluster").port(),
-                )
-            })
+            .map(|(i, n)| PeerAddr::new(host_of(i + 1), n.node.cluster_addr().port()))
             .collect();
         self.network.add_balancer(balancer(), backends);
     }
@@ -314,7 +309,7 @@ pub const NO_VOTE: &[(&str, &str)] = &[
 pub fn address_of(cluster: &TestCluster, number: usize) -> PeerAddr {
     PeerAddr::new(
         host_of(number),
-        cluster.node(number).node.cluster_addr().unwrap().port(),
+        cluster.node(number).node.cluster_addr().port(),
     )
 }
 

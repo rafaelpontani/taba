@@ -31,7 +31,7 @@ UC-<ÁREA>-<NNN>        exemplo: UC-MSG-003
 | Sigla | Nível | Onde |
 |---|---|---|
 | **U** | Unitário | `src/**/tests.rs` |
-| **I** | Um nó (modo desenvolvimento, HTTP e disco reais) | `tests/*.rs` com `TestNode` |
+| **I** | Um nó (perfil de um nó, HTTP e disco reais) | `tests/*.rs` com `TestNode` |
 | **C** | Cluster simulado (rede em memória e relógio manual) | `tests/*.rs` com `TestCluster` |
 | **K** | Conformidade de conectores | `connectors/<linguagem>/…` |
 
@@ -117,7 +117,7 @@ Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como ca
 | `RTN` | Retorno de nó excluído e recuperação de perdas |
 | `FWD` | Repasse de chamadas de cliente |
 | `DRN` | Parada e drain (inclui o drain como save) |
-| `DEV` | Modo desenvolvimento |
+| `DEV` | Perfil de um nó (o antigo modo desenvolvimento) |
 | `SEG` | Portas, TLS mútuo e certificados do cluster |
 | `OPS` | Observabilidade, estatísticas, métricas e saúde |
 | `CLR` | Contrato das rotas do cluster |

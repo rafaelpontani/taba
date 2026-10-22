@@ -7,8 +7,8 @@ use serde_json::json;
 
 /// UC: UC-OPS-001, UC-OPS-002
 #[tokio::test]
-async fn development_node_is_live_and_ready() {
-    let node = TestNode::development().await;
+async fn a_single_node_is_live_and_ready() {
+    let node = TestNode::single().await;
 
     let live = node.client_get("/health/live").await;
     assert_eq!(live.status(), 200);
@@ -47,14 +47,14 @@ async fn production_node_without_cluster_protocol_is_live_but_not_ready() {
     node.shutdown().await;
 }
 
-/// UC: UC-DEV-002, UC-SEG-005
+/// UC: UC-DEV-002
 #[tokio::test]
-async fn development_node_starts_alone_and_does_not_open_the_cluster_port() {
-    // Without `cluster.entry-address`, which is not required in development.
-    let node = TestNode::development().await;
-    assert_eq!(node.node.cluster_addr(), None);
+async fn a_node_with_factor_one_starts_alone_and_keeps_the_cluster_routes_off_the_client_port() {
+    // Without `cluster.entry-address`, which the one-node profile does not need.
+    let node = TestNode::single().await;
+    assert_ne!(node.node.cluster_addr().port(), 0);
 
-    // No /cluster/* route answers.
+    // The client port answers no /cluster/* route.
     let code = error_code(node.client_get("/cluster/nodes").await, 404).await;
     assert_eq!(code, "route.not-found");
 
@@ -66,10 +66,7 @@ async fn development_node_starts_alone_and_does_not_open_the_cluster_port() {
 async fn client_port_hides_cluster_routes_and_cluster_port_serves_only_cluster_routes() {
     let node = TestNode::production().await;
     let client_addr = node.node.client_addr();
-    let cluster_addr = node
-        .node
-        .cluster_addr()
-        .expect("production opens the cluster port");
+    let cluster_addr = node.node.cluster_addr();
     assert_ne!(client_addr.port(), cluster_addr.port());
 
     assert_eq!(
@@ -128,7 +125,7 @@ async fn operations_routes_move_to_their_own_port_when_one_is_set() {
 /// UC: UC-CNV-004
 #[tokio::test]
 async fn every_response_carries_the_request_id() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
 
     let response = node
         .client
@@ -148,7 +145,7 @@ async fn every_response_carries_the_request_id() {
 
 #[tokio::test]
 async fn shutdown_closes_the_listeners() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let url = node.client_url("/health/live");
     let client = node.client.clone();
     assert_eq!(client.get(&url).send().await.unwrap().status(), 200);

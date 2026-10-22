@@ -36,7 +36,7 @@ A ordem é uma **proposta**; os marcos 1 e 2 não dependem um do outro.
 | Item | Detalhe | Fecha |
 |---|---|---|
 | **Contrato OpenAPI** da API de cliente ⬜ | Hoje o contrato é o texto de [15](15-api-visao-geral.md) e [16](16-api-cliente.md), o `taba-cli` e os testes. Fixar o OpenAPI **antes** dos outros conectores, para não divergirem do que o C# fixou. Inclui a política de versionamento nos caminhos (hoje não há `/v1`) | RF-22 |
-| **Suíte de conformidade** ⬜ | `connectors/contrato/`: fixtures (pares requisição/resposta), os documentos de teste do leitor de JSON, os cenários e um `docker-compose` do Taba em modo desenvolvimento | UC-CNT (nível `K`) |
+| **Suíte de conformidade** ⬜ | `connectors/contrato/`: fixtures (pares requisição/resposta), os documentos de teste do leitor de JSON, os cenários e um `docker-compose` do Taba de um nó só (perfil de um nó) | UC-CNT (nível `K`) |
 
 ### Marco 2 — Os demais conectores
 

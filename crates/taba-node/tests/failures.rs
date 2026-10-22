@@ -609,7 +609,7 @@ async fn a_node_that_restarts_with_the_same_address_waits_for_the_vote_and_joins
     let mut cluster = TestCluster::start_with(3, &[("TABA_DRAIN_ON_STOP", "false")]).await;
     settled(&cluster).await;
     let old_id = cluster.node_id(3);
-    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let port = cluster.node(3).node.cluster_addr().port();
     cluster.network.clear_calls();
 
     // The unregistration takes a while: the vote stays in progress long enough for the new node to arrive.
@@ -800,7 +800,7 @@ async fn a_syncing_node_that_the_sources_excluded_redoes_the_join_instead_of_fai
 #[tokio::test]
 async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_holds() {
     let mut cluster = TestCluster::start(3).await;
-    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let port = cluster.node(3).node.cluster_addr().port();
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
 
@@ -826,10 +826,7 @@ async fn a_node_restarting_on_the_same_address_waits_for_a_port_someone_else_hol
         .await
         .expect("the node restarts when the port is released");
     release.join().unwrap();
-    assert_eq!(
-        cluster.node(number).node.cluster_addr().unwrap().port(),
-        port
-    );
+    assert_eq!(cluster.node(number).node.cluster_addr().port(), port);
     cluster.shutdown().await;
 }
 
@@ -847,7 +844,7 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
     .await;
     settled(&cluster).await;
     let old_id = cluster.node_id(3);
-    let port = cluster.node(3).node.cluster_addr().unwrap().port();
+    let port = cluster.node(3).node.cluster_addr().port();
 
     cluster.nodes.pop().unwrap().shutdown().await;
     cluster.network.unregister(&PeerAddr::new(host_of(3), port));
@@ -998,7 +995,7 @@ async fn a_failed_node_forwards_the_client_calls_to_a_healthy_one_until_it_leave
 /// UC: UC-FAL-027
 #[tokio::test]
 async fn a_failed_single_node_refuses_the_client_calls_with_503() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     node.node.shared().set_failed();
     let response = node.client_get("/topics").await;
     assert_eq!(response.status(), 503);

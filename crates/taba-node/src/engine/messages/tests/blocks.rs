@@ -223,3 +223,35 @@ async fn copies_of_blocks_the_node_no_longer_serves_are_forgotten_and_the_rest_s
     assert!(!h.messages.responsible_for(message_position(&ids[1])));
     assert_eq!(present(&h), 4);
 }
+
+/// UC: UC-RTN-045
+#[tokio::test]
+async fn of_two_copies_the_greater_delivery_count_prevails_and_never_decreases() {
+    let (h, _) = clustered(&[]);
+    h.topics.create(queue("orders")).await.unwrap();
+    let (mut meta, body) = record(&h, "orders", "{\"a\":1}");
+    let id = meta.id.clone();
+    meta.delivery_count = 1;
+    h.messages.apply_load("orders", meta.clone(), body).unwrap();
+
+    assert!(h.messages.raise_delivery_count("orders", &id, 4).unwrap());
+    let info = h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.delivery_count, 4);
+    assert!(
+        !h.messages.raise_delivery_count("orders", &id, 2).unwrap(),
+        "a smaller counter changes nothing"
+    );
+    assert!(!h.messages.raise_delivery_count("orders", &id, 4).unwrap());
+    let info = h.messages.message_info("orders", &id).unwrap().unwrap();
+    assert_eq!(info.meta.delivery_count, 4);
+    assert_eq!(
+        info.meta.invisible_until_ms, 0,
+        "the invisibility is untouched"
+    );
+    assert!(
+        !h.messages
+            .raise_delivery_count("orders", "inexistente", 9)
+            .unwrap(),
+        "a message the node does not keep is not created"
+    );
+}

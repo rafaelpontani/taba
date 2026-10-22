@@ -19,7 +19,7 @@ mod signals;
 
 use std::sync::Arc;
 
-pub use definitions::{Definitions, Pulled};
+pub use definitions::{Definitions, Pulled, Stored};
 pub use forward::{ForwardExecutor, Forwarder};
 pub use messages_api::ClusterMessages;
 pub use replica::Replica;

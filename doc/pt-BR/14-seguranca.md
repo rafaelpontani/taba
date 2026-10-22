@@ -55,7 +55,7 @@ secrets/
 | Não há token raiz | **Desligada**: nenhuma rota exige nada |
 | `auth.enabled=false` | Forçada desligada, mesmo com a pasta montada (para manter o TLS sem exigir token) |
 | `auth.enabled=true` **sem** token raiz | O nó **não sobe** |
-| **Modo desenvolvimento** | **Nunca** exigida; as rotas `/tokens` respondem `404` |
+| **Perfil de um nó** com `auth.dev-token` | **Ligada** só com o token de trabalho `dev` (`tb_dev.<segredo>`); sem ele e sem token raiz, vale a linha "Não há token raiz" |
 
 O token raiz precisa de **pelo menos 32 caracteres**, senão o nó não sobe. As rotas de operação e as `/cluster/*` **não** usam token.
 
@@ -120,7 +120,7 @@ A porta do cluster usa **TLS mútuo com um certificado único do cluster**, lido
 | **Nome do host** | **Não é verificado**: os nós se conectam por **IP** (o da tabela de membros) |
 | **Sem a pasta** | A porta do cluster atende em **HTTP puro** e o nó registra `warn` |
 | **Pasta definida e inexistente, ou sem par válido** | O nó **não sobe** |
-| **Modo desenvolvimento** | A porta não é aberta |
+| **Perfil de um nó** (`cluster.tls.enabled=false`) | A porta abre em HTTP puro e o log lista o que está relaxado |
 
 **Identidade de quem chama:** como todos usam o mesmo certificado, o cluster reconhece o chamador pelo **IP de origem** da conexão e confere na tabela de membros. Por isso o nó informa os seus IPs (`cluster.advertise-addresses`, ou a interface que sai para o `cluster.entry-address`).
 

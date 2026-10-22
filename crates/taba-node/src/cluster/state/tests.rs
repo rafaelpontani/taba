@@ -1,21 +1,24 @@
 use super::*;
 
-fn shared(mode: Mode) -> NodeShared {
-    NodeShared::new("id".into(), mode, SystemTime::UNIX_EPOCH)
+fn shared() -> NodeShared {
+    NodeShared::new("id".into(), SystemTime::UNIX_EPOCH)
+}
+
+/// A node that is active (it finished the bootstrap and the synchronization).
+fn active() -> NodeShared {
+    let node = shared();
+    node.set_state(NodeState::Active);
+    node
 }
 
 #[test]
-fn development_node_is_ready_at_birth_and_production_node_is_not() {
-    assert_eq!(shared(Mode::Development).not_ready_reason(), None);
-    assert_eq!(
-        shared(Mode::Production).not_ready_reason(),
-        Some("bootstrapping")
-    );
+fn a_node_is_not_ready_at_birth() {
+    assert_eq!(shared().not_ready_reason(), Some("bootstrapping"));
 }
 
 #[test]
 fn not_ready_reasons_follow_the_documented_names() {
-    let node = shared(Mode::Production);
+    let node = shared();
     node.set_state(NodeState::Syncing);
     assert_eq!(node.not_ready_reason(), Some("syncing"));
     node.set_state(NodeState::Returning);
@@ -26,7 +29,7 @@ fn not_ready_reasons_follow_the_documented_names() {
 
 #[test]
 fn drain_takes_the_node_out_of_rotation_whatever_its_cluster_state() {
-    let node = shared(Mode::Development);
+    let node = active();
     node.set_drain_state(DrainState::Draining);
     assert_eq!(node.not_ready_reason(), Some("draining"));
     node.set_drain_state(DrainState::Drained);
@@ -44,7 +47,7 @@ fn state_names_are_the_ones_of_the_metrics() {
 /// UC: UC-OPS-002
 #[test]
 fn a_failed_node_is_not_ready() {
-    let node = shared(Mode::Development);
+    let node = active();
     node.set_failed();
     assert_eq!(node.state(), NodeState::Failed);
     assert_eq!(node.not_ready_reason(), Some("failed"));
@@ -53,7 +56,7 @@ fn a_failed_node_is_not_ready() {
 
 #[test]
 fn a_drain_transition_only_happens_from_the_expected_state() {
-    let node = shared(Mode::Development);
+    let node = active();
     assert!(node.transition_drain(DrainState::Active, DrainState::Draining));
     assert!(!node.transition_drain(DrainState::Active, DrainState::Draining));
     assert_eq!(node.drain_state(), DrainState::Draining);

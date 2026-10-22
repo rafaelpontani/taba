@@ -183,9 +183,16 @@ impl Recovery {
         meta.invisible_until_ms = 0;
         meta.receipt_token = None;
         let body = record.body.clone();
-        tokio::task::spawn_blocking(move || messages.apply_load_with(&topic, meta, body, durable))
-            .await
-            .map_err(|_| TabaError::internal())?
+        tokio::task::spawn_blocking(move || {
+            let loaded = messages.apply_load_with(&topic, meta.clone(), body, durable)?;
+            // Two copies of the same message: the one this node already has stays, with the greater counter.
+            if loaded == Loaded::Existing {
+                messages.raise_delivery_count(&topic, &meta.id, meta.delivery_count)?;
+            }
+            Ok(loaded)
+        })
+        .await
+        .map_err(|_| TabaError::internal())?
     }
 
     /// `POST /cluster/messages/recover`. Each record goes to the nodes responsible for the block; with

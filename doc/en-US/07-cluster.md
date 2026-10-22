@@ -1,6 +1,6 @@
 ---
 title: Cluster
-summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, development mode.
+summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, one-node profile.
 type: explanation
 status: stable
 verified-on: 2026-10-14 @ efeb47a
@@ -55,7 +55,7 @@ The node has a **state** (`taba.node.state`) and, separately, a **drain state**:
 
 ![Failure registering a new node](../diagrams/img/en-US/node-register-failure.svg)
 
-1. **Discovery.** The node calls the node listing (`GET /cluster/nodes`) at the load balancer address (`cluster.entry-address`, host and **cluster port**). If the key is missing, the node does not start (except the first node and development mode).
+1. **Discovery.** The node calls the node listing (`GET /cluster/nodes`) at the load balancer address (`cluster.entry-address`, host and **cluster port**). If the key is missing, the node does not start (except the first node and the one-node profile).
 2. **First node.** Only with `cluster.first-node=true`, and only if **no one answers over the network** (connection refused or timeout), the node starts the cluster by itself as the only member. Whoever answers, even with an error (`503`), was found: the node tries again every `cluster.bootstrap.retry.interval` (default 5 s), up to `cluster.bootstrap.retry.max-attempts` (default 0 = no limit).
 3. **Join request.** The node picks a member at random and sends, in a single synchronous call, `POST /cluster/nodes/join` with its own IPs and the cluster port; that member starts to **coordinate** the join.
 4. **Connection test.** The coordinator tries to call the new node back at each reported IP. If it fails, the join is aborted.
@@ -183,16 +183,16 @@ A node that is not yet healthy (synchronizing, in drain or in failure) may recei
 
 Leaving by drain does **not** cause freezing. Pending item **D75**: if the drain requested through the API exceeds `drain.timeout`, the node stays `draining` until someone calls `DELETE` ([31-pending-items.md](31-pending-items.md)).
 
-## 8. Cluster size and development mode
+## 8. Cluster size and the one-node profile
 
 | Environment | Minimum nodes | Why |
 |---|---|---|
-| Test and development | **1** (`mode=development`) | Run locally without the weight of the cluster |
+| Test and development | **1** (the one-node profile: `replication.factor=1`) | Run locally without the weight of the cluster |
 | Production | **3** | Allows a vote with one node down (2 healthy voters) and avoids a decision by a single node |
 
-In **development mode** the node is a cluster of one and everything that exists to coordinate several nodes is **disabled**: bootstrap, channel, vote, freezing, synchronization, replication and the **cluster port** (it is not opened; `cluster.port` is ignored). `replication.factor` and `write.quorum` are **1** (configured values are ignored, with a warning). **Not for production:** losing the node or the disk means losing the messages. The log warns at startup and `GET /health/cluster` shows `"mode":"development"`. The mode does not change at runtime.
+In the **one-node profile** (`replication.factor=1`, no `cluster.entry-address`) the node is a cluster of one: it starts alone, is the primary of every block and the quorum is 1, but the path is the production one (empty cluster, cluster port, register and commit). What the profile relaxes (`cluster.tls.enabled=false`, `auth.dev-token`) only holds with factor 1 ([22-configuration.md](22-configuration.md)); the log lists what is relaxed at start and `/health` shows the `reduced-profile` condition. **Not for production:** losing the node or the disk means losing the messages.
 
-**Drain as a *save*.** In development, drain writes everything to disk and marks `save_completed` in `_node.db`. At the next start, with `development.resume-on-start` on (default), the node **resumes whatever it finds in `storage.dir`**: definitions, messages with metadata, rebuilt lists. The `ttl` counts from the ID, so the stopped time counts. **Without a completed save** (crash, `kill -9`), it resumes what is on disk anyway and warns that what was only in memory was lost. With `development.resume-on-start=false`, it deletes `storage.dir` and starts clean.
+**Restart.** Every restart is a new node: the old disk is set aside in `_lives/<old ID>` and the node restores it for itself, as new messages, ready, with the same `deliveryCount` and a new `receiptToken` ([37-cluster-cold-start.md](37-cluster-cold-start.md)). The `development` mode and `development.resume-on-start` no longer exist: to start clean, delete the volume or the directory.
 
 ## 9. The cluster conditions
 
@@ -209,6 +209,8 @@ In **development mode** the node is a cluster of one and everything that exists 
 | `under-replicated` | warning | Some block is below the full replication factor |
 | `storage-pressure` | warning | Free disk space below `stats.disk.free-min` (without a value, it never fires) |
 | `upgrade-stalled` | warning | The retirement of earlier versions stopped on a node that did not finish draining (D165) |
+| `members-missing` | warning | The probe of the old IPs ended and nodes of the previous life's table are missing (doc 37, section 4.14) |
+| `reduced-profile` | warning | The node runs the one-node profile with something relaxed: factor 1, TLS off or `auth.dev-token`. Informative (doc 37, section 4.16) |
 | `previous-life-pending` | warning | The restoration of the previous lives has not ended: the FIFO queues receive and do not deliver (doc 37) |
 
 What to do for each one is in [23-operations.md](23-operations.md).

@@ -34,7 +34,7 @@ use tokio_util::sync::CancellationToken;
 pub use heartbeat::{Heartbeat, Liveness};
 pub use restore::{RestoreReport, StartupDecision};
 pub use stop::StopList;
-pub use topology::{ClusterTopology, Solo, Topology};
+pub use topology::{ClusterTopology, Topology};
 pub use upload::FlushReport;
 
 use crate::cluster::state::{DrainState, NodeShared};

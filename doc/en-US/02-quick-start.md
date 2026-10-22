@@ -13,21 +13,21 @@ In about ten minutes you start Taba, publish and consume a message, and see what
 
 | Path | When to use | What starts |
 |---|---|---|
-| **A. One node** (development mode) | Get to know the API, develop a client | 1 process, no replicas |
+| **A. One node** (one-node profile) | Get to know the API, develop a client | 1 process, no replicas |
 | **B. Three-node cluster** (Docker Compose) | See replication, failure and recovery | 3 nodes + a sample HAProxy |
 
 > Prerequisites: **A** needs the `taba` binary (see [05-dependencies.md](05-dependencies.md) to build it) or Docker. **B** needs Docker with Compose.
 
-## A. One node, in development mode
+## A. One node, in the one-node profile
 
 ```bash
 # The data folder must end in "taba" (the node refuses any other name).
 mkdir -p /tmp/taba-dev/taba
-TABA_MODE=development TABA_STORAGE_DIR=/tmp/taba-dev/taba \
+TABA_REPLICATION_FACTOR=1 TABA_STORAGE_DIR=/tmp/taba-dev/taba \
 TABA_API_PORT=8080 TABA_OPERATIONS_PORT=9090 taba
 ```
 
-The log warns that the node is "a cluster of one" and must not be used in production. In development mode there is **no authentication** (there is no root token).
+The log warns that this is the one-node profile, for development and not for production. With no root token there is **no authentication**.
 
 ```bash
 # 1. Create a queue topic
@@ -161,6 +161,6 @@ docker compose down -v      # deletes containers and volumes (including the root
 ## Sources and evidence
 
 - `docker-compose.yml`, `docker/haproxy.cfg`, `Dockerfile`, `crates/taba-node/src/cli/mod.rs` (`taba init`).
-- The examples of path A were run against a real node in development mode (responses copied from the run).
+- The examples of path A were run against a real one-node profile (responses copied from the run).
 - `docker/validate.sh` automates the path B script end to end.
-- Use cases: UC-DEV (development mode), UC-ING (node join), UC-CLI (`taba-cli`); see [26a](26a-implemented-use-cases.md).
+- Use cases: UC-DEV (one-node profile), UC-ING (node join), UC-CLI (`taba-cli`); see [26a](26a-implemented-use-cases.md).

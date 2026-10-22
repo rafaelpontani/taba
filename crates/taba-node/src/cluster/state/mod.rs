@@ -4,8 +4,6 @@
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 
-use crate::config::Mode;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeState {
     Joining,
@@ -50,7 +48,6 @@ impl DrainState {
 pub struct NodeShared {
     /// Changes when the node comes back from the drain as a new node (doc 04, section 6.10).
     node_id: RwLock<String>,
-    pub mode: Mode,
     pub started_at: SystemTime,
     state: RwLock<(NodeState, DrainState)>,
     /// Called when the node enters failure (the cluster notifies the peers).
@@ -67,18 +64,13 @@ impl std::fmt::Debug for FailedHook {
 }
 
 impl NodeShared {
-    /// In development the node is a one-node cluster and is born `active`. In production
-    /// it is born `joining` and only becomes ready when the bootstrap and synchronization end.
-    pub fn new(node_id: String, mode: Mode, started_at: SystemTime) -> Self {
-        let initial = match mode {
-            Mode::Development => NodeState::Active,
-            Mode::Production => NodeState::Joining,
-        };
+    /// The node is born `joining` and only becomes ready when the bootstrap and synchronization end (a node alone
+    /// ends them at once).
+    pub fn new(node_id: String, started_at: SystemTime) -> Self {
         Self {
             node_id: RwLock::new(node_id),
-            mode,
             started_at,
-            state: RwLock::new((initial, DrainState::Active)),
+            state: RwLock::new((NodeState::Joining, DrainState::Active)),
             failed_hook: OnceLock::new(),
         }
     }

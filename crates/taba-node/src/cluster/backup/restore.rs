@@ -520,6 +520,76 @@ impl Backup {
         recovered
     }
 
+    /// The queues (and their dead-letters) the scan of the start looks at, each with its `topicId`.
+    pub fn scan_topics(&self) -> Vec<(String, String)> {
+        let suffix = self.topics.rules().dead_letter_suffix.clone();
+        let mut out = Vec::new();
+        for name in self.topics.names() {
+            if self
+                .topics
+                .definition(&name)
+                .is_none_or(|d| d.queue().is_none())
+            {
+                continue;
+            }
+            for name in [name.clone(), format!("{name}{suffix}")] {
+                if let Ok(view) = self.topics.get(&name) {
+                    out.push((name, view.definition.id));
+                }
+            }
+        }
+        out
+    }
+
+    /// The messages the bucket holds alive of the blocks this node is **primary** of and the node does not have
+    /// (doc 37, section 4.13): the ones in a segment that the journal (`removed`, read once by the caller) does not
+    /// remove. The bucket is not proof of life: whoever receives them still checks the topic and the dead. Empty
+    /// when the bucket does not answer.
+    pub async fn scan_topic(
+        &self,
+        name: &str,
+        topic_id: &str,
+        removed: &std::collections::HashSet<String>,
+    ) -> Vec<crate::cluster::protocol::MessageRecord> {
+        let me = self.node_id();
+        let listed = self
+            .store
+            .list(&keys::segments_prefix(name, topic_id))
+            .await;
+        self.note("LIST of segments", &listed);
+        let mut found = Vec::new();
+        for object in listed.unwrap_or_default() {
+            let Some(footer) = self.footer_of(&object.key).await else {
+                continue;
+            };
+            for entry in &footer.entries {
+                if removed.contains(&entry.id) || self.messages.holds(name, &entry.id) {
+                    continue;
+                }
+                let Some(raw) = self
+                    .store
+                    .get_range(&object.key, entry.offset, entry.len)
+                    .await
+                    .ok()
+                    .flatten()
+                else {
+                    continue;
+                };
+                let Ok((meta, body)) = segment::decode_entry(&raw) else {
+                    continue;
+                };
+                let meta: MessageMeta = meta.into();
+                if self.topology.owners(meta.position).first() != Some(&me) {
+                    continue;
+                }
+                found.push(crate::cluster::protocol::MessageRecord::from_stored(
+                    name, meta, body,
+                ));
+            }
+        }
+        found
+    }
+
     /// Deletes from `nodes/` the files of ids that do not belong to the cluster **and** whose heartbeat is
     /// expired. A fresh file is never deleted: it may be a live node in another partition.
     pub async fn cleanup_nodes(&self) {

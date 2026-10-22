@@ -74,7 +74,6 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `media.unsupported` | 415 | `Content-Type` ≠ `application/json` on a route with a JSON body (does not apply to publishing) |
 | `fifo.misdirected` | 421 | **Between nodes:** the node is not the group's primary |
 | `cluster.wrong-node` | 421 | **Between nodes, on the channel:** another process at the same address |
-| `topic.fifo-needs-replication` | 422 | Creating a FIFO queue with `replication.factor` < 2 |
 | `distributor.too-many-targets` | 422 | The publication would match more queues than `topics.distributor.max-targets` (no copy is made) |
 | `topic.volatile-limit` | 422 | `autoCreate` hits `topics.volatile.max-count` |
 | `cluster.join-unreachable` | 422 | Between nodes: the join coordinator could not connect back to the new node |
@@ -93,7 +92,7 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `cluster.prune-incomplete` | 503 | The prune of a queue failed on some nodes (named in the message and in `details`). The queue may be empty on the others; repeating the call is safe |
 | `cluster.commit-timeout` | 503 | The register was confirmed, but the commit did not reach all within `write.commit.timeout`. **The operation continues in the background and will complete** |
 | `cluster.node-syncing` | 503 | The node is synchronizing and found no other to forward to |
-| `cluster.node-draining` | 503 | The node is in drain and found no other to forward to (in development, always) |
+| `cluster.node-draining` | 503 | The node is in drain and found no other to forward to (on a single node, always) |
 | `node.failed` | 503 | The node is in failure (disk full or corrupted database) and found no other to forward to |
 | `fifo.primary-unavailable` | 503 | The FIFO group's primary is down, synchronizing, or exhausted `fifo.forward.max-attempts` |
 | `delivery.unavailable` | 503 | The `GET` captured no message and there was a failure in the invisibility register (never returns empty in that case) |

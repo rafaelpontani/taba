@@ -88,7 +88,7 @@ Uma definição de tópico ou de token é um dado **pequeno, raro de mudar e do 
 - **Falha:** nunca há alteração parcial visível; um nó só serve a nova definição **no commit**.
 - **Remoção:** `DELETE /topics/{topic}` **sempre funciona**, mesmo com mensagens pendentes: cada nó apaga todas as mensagens do tópico que tem (memória, disco e metadados).
 - **Dead-letter:** não tem definição própria; é derivada da fila de origem, criada e excluída com ela, e não gera linha em `topics`.
-- **Tokens:** o segredo **nunca trafega entre nós**: só o sal e o hash. A validação é uma consulta **local em memória**. Fora do modo desenvolvimento o nó **não confia** nos tokens que acha no disco (podem estar desatualizados); eles vêm do cluster.
+- **Tokens:** o segredo **nunca trafega entre nós**: só o sal e o hash. A validação é uma consulta **local em memória**. O nó **não confia** nos tokens que acha no disco (podem estar desatualizados); eles vêm do cluster.
 - **Dados de consumo** (profundidade, taxas, histogramas) **nunca vão ao disco**: ficam em memória, por nó.
 
 ## O que se refaz na partida
@@ -104,8 +104,7 @@ Existe só durante a sincronização de um nó que entra: tabela `events` (núme
 | Situação | O que acontece |
 |---|---|
 | **Produção** | Todo reinício é de **nó novo** (ID novo). O disco antigo é posto de lado em `_lives/<ID antigo>` (sem manifesto, em `_previous-life`) e usado, em segundo plano, para devolver ao cluster mensagens que só ele tinha |
-| **Desenvolvimento**, `resume-on-start` ligado | Retoma o que está em `storage.dir`: definições (mantendo `id` e data), mensagens e metadados, listas reconstruídas |
-| **Desenvolvimento**, desligado | Apaga `storage.dir` e começa limpo, com aviso |
+| **Um nó só** (fator 1) | Igual: o nó restaura a vida anterior para si, e os tópicos e tokens voltam com ela. Para começar limpo, apague o volume ou o diretório |
 
 ## O banco do backup (`_backup.db`)
 

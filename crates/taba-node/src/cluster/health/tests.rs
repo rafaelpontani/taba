@@ -119,3 +119,30 @@ fn a_stalled_upgrade_raises_its_condition_as_a_warning() {
         json!({ "condition": "upgrade-stalled", "severity": "warning" })
     );
 }
+
+/// UC: UC-OPS-054
+#[test]
+fn a_probe_that_ended_with_nodes_missing_raises_members_missing_as_a_warning() {
+    let mut s = signals();
+    s.members_missing = true;
+    assert_eq!(s.conditions(false), [Condition::MembersMissing]);
+    assert_eq!(Condition::MembersMissing.severity(), Severity::Warning);
+    assert_eq!(
+        Condition::MembersMissing.entry(),
+        json!({ "condition": "members-missing", "severity": "warning" })
+    );
+    assert!(Condition::ALL.contains(&Condition::MembersMissing));
+}
+
+/// UC: UC-OPS-055
+#[test]
+fn the_reduced_profile_is_an_informative_warning() {
+    let mut s = signals();
+    s.reduced_profile = true;
+    assert_eq!(s.conditions(false), [Condition::ReducedProfile]);
+    assert_eq!(
+        Condition::ReducedProfile.entry(),
+        json!({ "condition": "reduced-profile", "severity": "warning" })
+    );
+    assert!(Condition::ALL.contains(&Condition::ReducedProfile));
+}

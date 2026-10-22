@@ -292,6 +292,8 @@ One target per node: Prometheus keeps one series per node. The total comes from 
 | `membership-divergent` | **critical** | Member tables with **different versions** between nodes |
 | `storage-pressure` | warning | Free space of `storage.dir` below `stats.disk.free-min` (without a value, it never fires) |
 | `upgrade-stalled` | warning | The upgrade that retires earlier versions stopped on a node that did not finish draining within `drain.timeout` plus 30 s |
+| `members-missing` | warning | The time of the probe of the old IPs (`cluster.restore.probe.timeout`) ended and the cluster has fewer active members than the previous life's table. Goes away when the table completes |
+| `reduced-profile` | warning | The node runs the one-node profile with something relaxed (`replication.factor=1`, `cluster.tls.enabled=false` or `auth.dev-token`). Informative: it does not bring `/health/ready` down; `health.single-node-condition=false` hides it |
 | `previous-life-pending` | warning | The cluster is still being restored from the previous lives (the vote has not closed): the FIFO queues receive and do not deliver. Goes away when the vote closes or the operator forces it |
 
 > **How the node computes it (provisional, D102–D104).** *Healthy* is this node plus the peers with a connected channel. `quorum-lost` holds when the healthy ones do not reach `min(cluster.vote.min-voters, members)` (with a single node there is no one to exclude). A replica is *healthy* when the block's owner is `active` in the table and the channel with it is up. `under-replicated` appears when there are more blocks below replication than below the quorum; `syncing` when some block owner is `syncing`. `membership-divergent` compares the table version of each node.
@@ -303,7 +305,7 @@ Replication degradation is a property of the **cluster**, not of the topic: sinc
 ```bash
 curl -s localhost:9090/health/cluster
 # {"collectedAt":"…","conditions":[],"nodes":[{"nodeId":"…","reachable":true,"status":{
-#    "drainState":"active","mode":"development","state":"active","version":"0.1.0",
+#    "drainState":"active","state":"active","version":"0.1.0",
 #    "signals":{"blocksBelowQuorum":0,"blocksBelowReplication":0,"quorumAvailable":true,…},
 #    "storage":{"diskFreeBytes":9322598400,"diskMessages":0,"memoryMessages":0,…}}}],
 #  "partial":false,"scope":"cluster","summary":{"members":{"active":1},"membersVersion":0,
@@ -324,7 +326,7 @@ They stay **outside** the default export and are read through dedicated routes (
 | `GET /metrics/topics/{topic}` | Detail of **one** topic, with the largest groups |
 | `GET /metrics/topics/{topic}/groups` | One group per line |
 
-Example (development mode):
+Example (a single node):
 
 ```bash
 curl -s localhost:9090/metrics/topics/pedidos
@@ -440,7 +442,7 @@ One trace per client operation, with internal spans per step. HTTP spans follow 
 | `401`/`403` (with the token `id`, if any; sampled at volume) | `warn` / `debug` |
 | Drain started, finished, canceled, node returning as new | `info` |
 | Drain that exceeded `drain.timeout` or had an I/O error | `error` |
-| Start in development mode: resume or cleanup of `storage.dir` | `info` / `warn` |
+| Start with the previous life's disk: set aside and restoration | `info` / `warn` |
 | Bootstrap failure | `error` |
 | Start and end of block synchronization | `info` |
 | **Message loss** (ID, block, nodes queried) | `error` |

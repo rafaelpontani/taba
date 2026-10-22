@@ -36,7 +36,7 @@ The order is a **proposal**; milestones 1 and 2 do not depend on each other.
 | Item | Detail | Closes |
 |---|---|---|
 | **OpenAPI contract** of the client API ⬜ | Today the contract is the text of [15](15-api-overview.md) and [16](16-client-api.md), `taba-cli` and the tests. Fix the OpenAPI **before** the other connectors, so they do not diverge from what C# fixed. Includes the versioning policy in the paths (today there is no `/v1`) | RF-22 |
-| **Conformance suite** ⬜ | `connectors/contrato/`: fixtures (request/response pairs), the JSON reader test documents, the scenarios and a `docker-compose` of Taba in development mode | UC-CNT (level `K`) |
+| **Conformance suite** ⬜ | `connectors/contrato/`: fixtures (request/response pairs), the JSON reader test documents, the scenarios and a one-node `docker-compose` of Taba (one-node profile) | UC-CNT (level `K`) |
 
 ### Milestone 2 — The other connectors
 

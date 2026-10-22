@@ -18,7 +18,7 @@ struct Harness {
 }
 
 fn harness_with(env: &[(&str, &str)]) -> Harness {
-    let mut vars = vec![("TABA_MODE", "development")];
+    let mut vars = vec![("TABA_REPLICATION_FACTOR", "1")];
     vars.extend_from_slice(env);
     let config = Config::parse(
         None,
@@ -43,7 +43,6 @@ fn harness_with(env: &[(&str, &str)]) -> Harness {
         clock.clone(),
         MessageRules::from_config(&config),
         store.clone(),
-        false,
     );
     Harness {
         topics,
@@ -1179,34 +1178,6 @@ async fn the_background_sweeper_moves_messages_without_anyone_consuming() {
     sweeper.await.unwrap();
 }
 
-fn reopen(h: &Harness, resume: bool) -> Arc<Messages> {
-    reopen_with(h, resume, &[])
-}
-
-fn reopen_with(h: &Harness, resume: bool, env: &[(&str, &str)]) -> Arc<Messages> {
-    let config = Config::parse(
-        None,
-        &MapEnv(
-            [("TABA_MODE", "development")]
-                .into_iter()
-                .chain(env.iter().copied())
-                .map(|(k, v)| (k.to_owned(), v.to_owned()))
-                .collect(),
-        ),
-    )
-    .unwrap();
-    Messages::new(
-        h.topics.clone(),
-        h.clock.clone(),
-        MessageRules::from_config(&config),
-        Arc::new(MessageStore::new(
-            h.dir.path(),
-            config.storage.db_synchronous,
-        )),
-        resume,
-    )
-}
-
 /// Memory for a 3-byte body (`"1"` is 3 with the quotes): the next one goes to disk.
 fn tiny_memory() -> Harness {
     harness_with(&[("TABA_MEMORY_LIMIT", "3")])
@@ -1414,9 +1385,9 @@ async fn ttl_and_the_dead_letter_work_on_messages_on_disk() {
     );
 }
 
-/// UC: UC-DRN-010, UC-DRN-022, UC-DRN-024, UC-ARM-024
+/// UC: UC-DRN-010
 #[tokio::test]
-async fn drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it() {
+async fn drain_saves_everything_in_memory_to_disk() {
     let h = harness();
     h.topics.create(queue("orders")).await.unwrap();
     let mut grouped = raw(b"\"x\"", "application/json");
@@ -1450,79 +1421,21 @@ async fn drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resume
         "in the drain everything new goes straight to disk"
     );
 
-    // The next start resumes from disk: the same in-processing message, with the same
-    // token, and the ready ones.
-    let restarted = reopen(&h, true);
-    restarted
+    // What was saved is still the same messages: the one in processing keeps its token, and the ready ones are
+    // delivered.
+    h.messages
         .ack("orders", &in_flight, Some(&m.receipt_token))
         .expect("the receiptToken survived the save");
-    let got = restarted
+    let got = h
+        .messages
         .consume("orders", ConsumeQuery::default())
         .await
         .unwrap();
-    let ids: Vec<&str> = got.iter().map(|m| m.id.as_str()).collect();
-    assert_eq!(ids, [ready.as_str(), late.as_str()]);
-}
-
-/// UC: UC-DRN-010, UC-DRN-022
-#[tokio::test]
-async fn drain_keeps_the_group_and_the_delivery_count() {
-    let h = harness();
-    h.topics.create(queue("orders")).await.unwrap();
-    let mut grouped = raw(b"\"x\"", "text/plain");
-    grouped.group_id = Some("g1".into());
-    h.messages.publish("orders", grouped).unwrap();
-    delivered_one(&h, "orders", "10").await;
-    h.messages.drain();
-    h.clock.advance(Duration::from_secs(10));
-
-    let restarted = reopen(&h, true);
-    let got = restarted
-        .consume("orders", ConsumeQuery::default())
-        .await
-        .unwrap();
-    assert_eq!(got[0].delivery_count, 2);
-    assert_eq!(got[0].group_id.as_deref(), Some("g1"));
-    assert_eq!(got[0].content_type, "text/plain");
-}
-
-/// UC: UC-DRN-027
-#[tokio::test]
-async fn without_resume_the_disk_is_cleaned_and_orphan_folders_never_come_back() {
-    let h = harness();
-    h.topics.create(queue("orders")).await.unwrap();
-    h.topics.create(queue("other")).await.unwrap();
-    // The "previous run": a node with little memory, which leaves messages on disk.
-    let first = reopen_with(&h, true, &[("TABA_MEMORY_LIMIT", "3")]);
-    for topic in ["orders", "other"] {
-        for body in ["\"a\"", "\"b\""] {
-            first.publish(topic, json_body(body)).unwrap();
-        }
-    }
-    assert_eq!(first.usage("orders").1, 1);
-    assert_eq!(
-        first.usage("other").1,
-        2,
-        "the memory limit is the node's: the memory was already full"
-    );
-    drop(first); // the previous process ended
-
-    let restarted = reopen(&h, true);
-    assert_eq!(restarted.usage("orders").1, 1, "retomou");
-    h.topics.delete("other").await.unwrap(); // the folder goes with the topic
-    assert!(!h.dir.path().join("other").exists());
-    drop(restarted);
-
-    let wiped = reopen(&h, false);
-    assert_eq!(wiped.usage("orders").1, 0, "without resume it starts empty");
-    assert!(consume_with(&wiped, "orders").await.is_empty());
-}
-
-async fn consume_with(messages: &Arc<Messages>, topic: &str) -> Vec<Delivered> {
-    messages
-        .consume(topic, ConsumeQuery::default())
-        .await
-        .unwrap()
+    let mut ids: Vec<&str> = got.iter().map(|m| m.id.as_str()).collect();
+    ids.sort_unstable();
+    let mut expected = [ready.as_str(), late.as_str()];
+    expected.sort_unstable();
+    assert_eq!(ids, expected);
 }
 
 /// UC: UC-TOP-039
@@ -1928,23 +1841,6 @@ async fn a_fifo_queue_can_be_volatile() {
     assert_eq!(h.messages.expire_idle().await, ["fifo"]);
 }
 
-/// UC: UC-DRN-023
-#[tokio::test]
-async fn a_restart_does_not_count_the_time_the_node_was_stopped() {
-    let h = harness();
-    h.topics.create(volatile_queue("queue", 60)).await.unwrap();
-    h.clock.advance(Duration::from_secs(3600)); // the node stayed stopped for an hour
-    let restarted = reopen(&h, true);
-    assert!(
-        restarted.expire_idle().await.is_empty(),
-        "the deadline counts from the start, not from the creation"
-    );
-    h.clock.advance(Duration::from_secs(59));
-    assert!(restarted.expire_idle().await.is_empty());
-    h.clock.advance(Duration::from_secs(1));
-    assert_eq!(restarted.expire_idle().await, ["queue"]);
-}
-
 /// UC: UC-VOL-014
 #[tokio::test]
 async fn an_ack_after_the_queue_was_deleted_is_not_found() {
@@ -2063,67 +1959,6 @@ async fn every_nth_delivery_takes_the_oldest_message_so_the_big_group_never_star
     let got = consume(&off, "orders", q(Some("4"), Some("600"), None)).await;
     assert!(groups_of(&got).iter().all(|g| g == "small"));
     assert!(got.iter().all(|m| m.id != old));
-}
-
-/// UC: UC-GRP-013, UC-DRN-023
-#[tokio::test]
-async fn the_index_is_rebuilt_from_the_disk_after_a_restart() {
-    let h = harness();
-    h.topics.create(queue("orders")).await.unwrap();
-    for n in 0..20 {
-        publish_grouped(&h, "orders", Some("big"), &n.to_string());
-    }
-    for n in 0..2 {
-        publish_grouped(&h, "orders", Some("small"), &n.to_string());
-    }
-    let in_flight = consume(&h, "orders", q(Some("1"), Some("600"), None)).await;
-    assert_eq!(groups_of(&in_flight), ["small"]);
-    h.messages.drain();
-
-    let restarted = reopen(&h, true);
-    // What was in processing stays invisible; the small group still has its turn.
-    let got = restarted
-        .consume("orders", q(Some("2"), Some("600"), None))
-        .await
-        .unwrap();
-    assert_eq!(groups_of(&got), ["small", "big"]);
-    assert_ne!(got[0].id, in_flight[0].id);
-    let again = restarted
-        .consume("orders", q(Some("100"), Some("600"), None))
-        .await
-        .unwrap();
-    assert_eq!(again.len(), 19, "20 + 2 minus the 3 already in flight");
-}
-
-/// UC: UC-RET-006
-#[tokio::test]
-async fn an_exhausted_message_that_waited_out_the_downtime_goes_to_the_dead_letter() {
-    let h = harness();
-    h.topics
-        .create(CreateTopic {
-            max_deliveries: Some(1),
-            ..queue("orders")
-        })
-        .await
-        .unwrap();
-    let id = publish_ok(&h, "orders", "1");
-    delivered_one(&h, "orders", "10").await;
-    h.messages.drain();
-    h.clock.advance(Duration::from_secs(60)); // the deadline expired with the node stopped
-
-    let restarted = reopen(&h, true);
-    assert!(
-        restarted
-            .consume("orders", ConsumeQuery::default())
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    let dead = restarted
-        .consume("orders-dead-letter", ConsumeQuery::default())
-        .await
-        .unwrap();
-    assert_eq!(dead[0].id, id);
 }
 
 /// UC: UC-RET-006
@@ -2827,52 +2662,6 @@ async fn a_head_past_its_ttl_is_dropped_and_the_group_is_freed() {
         b,
         "the head expired and the group went on"
     );
-}
-
-/// UC: UC-FIF-046
-#[tokio::test]
-async fn groups_busy_state_and_deduplication_survive_a_restart() {
-    let h = harness();
-    h.topics.create(fifo("f")).await.unwrap();
-    let (a, _) = fifo_publish(&h, "f", "g1", Some("a"), "1");
-    fifo_publish(&h, "f", "g1", Some("b"), "2");
-    let (c, _) = fifo_publish(&h, "f", "g2", Some("c"), "3");
-    let in_flight = fifo_get(&h, "f", "1").await;
-    assert_eq!(in_flight[0].id, a);
-    let done = fifo_get(&h, "f", "1").await;
-    assert_eq!(done[0].id, c);
-    ack(&h, "f", &done[0]);
-    h.messages.drain();
-
-    let restarted = reopen(&h, true);
-    // Group g1 stays busy with the in-flight message (the same `receiptToken` still applies).
-    assert!(
-        restarted
-            .consume("f", q(Some("10"), Some("600"), None))
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    // And the deduplication of what had already been acknowledged survives the resume.
-    let request = PublishRequest {
-        body: b"3".to_vec(),
-        group_id: Some("g2".into()),
-        deduplication_id: Some("c".into()),
-        ..Default::default()
-    };
-    let Published::Queue { id, duplicate } = restarted.publish("f", request).unwrap() else {
-        panic!("expected a queue");
-    };
-    assert_eq!((id.as_str(), duplicate), (c.as_str(), Some(true)));
-    restarted
-        .ack("f", &a, Some(&in_flight[0].receipt_token))
-        .unwrap();
-    let next = restarted
-        .consume("f", q(Some("10"), Some("600"), None))
-        .await
-        .unwrap();
-    assert_eq!(next.len(), 1);
-    assert_eq!(next[0].deduplication_id.as_deref(), Some("b"));
 }
 
 /// UC: UC-FIF-043

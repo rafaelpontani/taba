@@ -41,7 +41,7 @@ O Taba é um sistema de mensageria open source, de uma só imagem Docker, que re
 | [04-arquitetura.md](04-arquitetura.md) | Camadas do nó, as três portas, composição, mapa de módulos |
 | [05-dependencias.md](05-dependencias.md) | Bibliotecas, ferramentas e dependências de sistema, e por quê |
 | [06-anel-e-replicacao.md](06-anel-e-replicacao.md) | Hash circular, blocos, papéis primário/secundário/terciário |
-| [07-cluster.md](07-cluster.md) | Entrada, falha, votação, freezing, retorno, drain, sincronização, modo desenvolvimento |
+| [07-cluster.md](07-cluster.md) | Entrada, falha, votação, freezing, retorno, drain, sincronização, perfil de um nó |
 | [08-armazenamento.md](08-armazenamento.md) | Memória, overflow em disco, SQLite, reinício |
 
 ### Parte C — Especificação funcional

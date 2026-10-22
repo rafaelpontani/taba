@@ -277,7 +277,7 @@ async fn a_draining_node_answers_take_empty_and_the_peers_stop_asking() {
 
     // A `take` that still arrives is answered empty, even with ready messages.
     let asker = cluster.network.transport("10.0.0.1");
-    let port = node3.node.cluster_addr().unwrap().port();
+    let port = node3.node.cluster_addr().port();
     let reply = asker
         .call(
             &PeerAddr::new("10.0.0.3", port),

@@ -11,7 +11,7 @@ fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/c
 
 > ⚠️ **Interna.** Nenhuma aplicação cliente deve chamar estas rotas, e **não há garantia de estabilidade** entre versões: todos os nós de um cluster devem rodar a mesma versão. Convenções comuns: [15-api-visao-geral.md](15-api-visao-geral.md). Como o cluster usa estas rotas: [07-cluster.md](07-cluster.md), [10-publicacao.md](10-publicacao.md), [12-entrega.md](12-entrega.md).
 
-**Porta:** `cluster.port` (8081), **só** os outros nós. **Autenticação:** TLS mútuo ([14-seguranca.md](14-seguranca.md)); uma conexão sem certificado aceito falha **no handshake**. Em **modo desenvolvimento a porta não é aberta**: um nó de produção não consegue ingressar num nó de desenvolvimento.
+**Porta:** `cluster.port` (8081), **só** os outros nós. **Autenticação:** TLS mútuo ([14-seguranca.md](14-seguranca.md)); uma conexão sem certificado aceito falha **no handshake**.
 
 O protocolo existe em duas formas que são **a mesma coisa**: o tipo `Request` (`cluster/protocol`) e a rota HTTP. O `Transport` real as traduz para HTTP; a rede em memória dos testes entrega o tipo direto.
 

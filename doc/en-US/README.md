@@ -43,7 +43,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [04-architecture.md](04-architecture.md) | Node layers, the three ports, composition, module map |
 | [05-dependencies.md](05-dependencies.md) | Libraries, tools and system dependencies, and why |
 | [06-ring-and-replication.md](06-ring-and-replication.md) | Circular hash, blocks, primary/secondary/tertiary roles |
-| [07-cluster.md](07-cluster.md) | Join, failure, voting, freezing, return, drain, synchronization, development mode |
+| [07-cluster.md](07-cluster.md) | Join, failure, voting, freezing, return, drain, synchronization, one-node profile |
 | [08-storage.md](08-storage.md) | Memory, disk overflow, SQLite, restart |
 
 ### Part C — Functional specification

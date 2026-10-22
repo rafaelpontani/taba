@@ -14,6 +14,10 @@ const fn p(key: &'static str, default: Option<&'static str>) -> Param {
     Param { key, default }
 }
 
+/// Keys that no longer exist (the development mode went away, doc 37, section 4.16): a file or an environment that
+/// still sets them keeps starting, with a warning, so an upgrade does not break a working configuration.
+pub const REMOVED: &[&str] = &["mode", "development.resume-on-start"];
+
 /// The environment variable of a key: `TABA_` prefix, uppercase, `.` and `-` become `_`.
 pub fn env_name(key: &str) -> String {
     format!("TABA_{}", key.to_ascii_uppercase().replace(['.', '-'], "_"))
@@ -24,9 +28,6 @@ pub fn find(key: &str) -> Option<&'static Param> {
 }
 
 pub static PARAMS: &[Param] = &[
-    // Execution mode
-    p("mode", Some("production")),
-    p("development.resume-on-start", Some("true")),
     // Ports (the doc's suggestions apply as defaults: 8080 and 8081)
     p("api.port", Some("8080")),
     p("api.pagination.default-limit", Some("100")),
@@ -35,13 +36,16 @@ pub static PARAMS: &[Param] = &[
     p("operations.port", None),
     // Cluster port security
     p("secrets.dir", Some("/etc/taba/secrets")),
-    p("cluster.tls.dir", None), // derivado: <secrets.dir>/tls
+    p("cluster.tls.enabled", Some("true")), // `false` só com replication.factor=1
+    p("cluster.tls.dir", None),             // derivado: <secrets.dir>/tls
     p("cluster.tls.reload-interval", Some("60s")),
     p("cluster.tls.expiry-warning", Some("30d")),
     // Client API authentication
     p("auth.enabled", Some("auto")),
     p("auth.root-token", None),
     p("auth.root-token-file", None), // derivado: <secrets.dir>/root-token
+    p("auth.dev-token", None),       // só com replication.factor=1
+    p("health.single-node-condition", Some("true")),
     p("auth.reload-interval", Some("60s")),
     // Stop and drain
     p("drain.on-stop", Some("true")),
@@ -85,6 +89,7 @@ pub static PARAMS: &[Param] = &[
     p("cluster.restore.clock-slack", Some("5s")),
     p("cluster.restore.probe.timeout", Some("2h")),
     p("cluster.restore.probe.interval", Some("10s")),
+    p("cluster.restore.cold-start.wait", Some("15s")),
     p("cluster.bootstrap.retry.interval", Some("5s")),
     p("cluster.bootstrap.retry.max-attempts", Some("0")),
     p("cluster.message-loss.ttl", None),

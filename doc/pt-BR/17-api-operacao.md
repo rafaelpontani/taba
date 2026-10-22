@@ -64,7 +64,7 @@ Estado do cluster para **pessoas e scripts**: condições, resumo e o estado de 
 |---|---|---|
 | `scope` | `cluster` | `cluster`: consulta **todos os nós** (`GET /cluster/status`), *best-effort*: nó que não responde aparece com `reachable: false`. `node`: leitura **local**, sem consultar outros nós |
 
-Num nó só (modo desenvolvimento) os dois escopos são iguais. Erros: `400 validation.failed` (`scope` desconhecido), `403`, `429` (só com `scope=cluster`).
+Num nó só (fator 1) os dois escopos são iguais. Erros: `400 validation.failed` (`scope` desconhecido), `403`, `429` (só com `scope=cluster`).
 
 ```json
 {"collectedAt":"2026-10-13T17:13:10.812Z","partial":false,"scope":"cluster","worstCondition":"ok","conditions":[],
@@ -85,7 +85,7 @@ Durante uma falha real (um nó derrubado com `kill`), a mesma rota mostrou: `con
 | `summary` | `members` (contagem por estado), `membersVersion`, `quorumAvailable`, `syncingBlocks`, `excludedCutoff` (a data de corte do log de excluídos: a mais recente das `excludedSince` entre os membros ativos; `null` sem nenhum) |
 | `nodes` | Um por membro: `nodeId`, `reachable`, `status` (`NodeStatus`, ou `null`) |
 
-**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (se configurados), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `excludedSince` (desde quando o nó grava o log de excluídos), `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) e `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
+**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (se configurados), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `excludedSince` (desde quando o nó grava o log de excluídos), `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) e `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
 
 ---
 
@@ -248,6 +248,6 @@ curl -s -X POST http://nó:9090/cluster/restore/force
 ## Fontes e provas
 
 - `http/backup.rs` (as rotas do backup), `http/operations.rs` (as rotas e `HealthResponse`), `http/metrics`, `http/topic_stats`, `cluster/drain` (estados e transições), `cluster/health` (condições), `cluster/state`.
-- Respostas copiadas de um nó real (um nó em desenvolvimento e um cluster de 3 nós pelo Compose).
+- Respostas copiadas de um nó real (um nó só e um cluster de 3 nós pelo Compose).
 - Casos de uso: UC-OPS (saúde, métricas e estatísticas), UC-DRN (drain), UC-LIM (limites das rotas de operação); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/operations.rs`, `metrics.rs`, `topic_stats.rs`, `drain_cluster.rs`.
 - Histórico: `06b-api-operacao.md`, `11-observabilidade.md`.

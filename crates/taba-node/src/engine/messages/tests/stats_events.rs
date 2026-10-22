@@ -89,7 +89,7 @@ fn events_named<'a>(events: &'a [Captured], name: &str) -> Vec<&'a Captured> {
 }
 
 fn stats_rules() -> StatsRules {
-    let config = Config::parse(None, &MapEnv::new([("TABA_MODE", "development")])).unwrap();
+    let config = Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap();
     StatsRules::from_config(&config)
 }
 

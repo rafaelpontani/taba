@@ -57,7 +57,7 @@ async fn the_cluster_port_serves_only_cluster_routes_and_the_client_port_none() 
     let member = &table["members"][0];
     assert_eq!(member["nodeId"], cluster.node_id(1));
     assert_eq!(member["addresses"], json!(["10.0.0.1"]));
-    assert_eq!(member["port"], node.node.cluster_addr().unwrap().port());
+    assert_eq!(member["port"], node.node.cluster_addr().port());
     assert_eq!(member["state"], "active");
 
     // The cluster port answers 404 to what is not /cluster/*, and the API's to what is.

@@ -68,7 +68,7 @@ The ring is **derived from the member table**: when a node joins or leaves, ever
 
 ![Blocks that change responsible when a node joins](../diagrams/img/en-US/ring-before-after.svg)
 
-## Development mode
+## One-node profile
 
 With a single node, the ring has one node, which is primary of all the blocks. `ring.virtual-nodes` has no practical effect, there is no rebalancing, and `replication.factor` and `write.quorum` are 1.
 
