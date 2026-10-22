@@ -116,7 +116,7 @@ sources: [crates/taba-node/src, doc/pt-BR]
 |---|---|---|
 | **NDJSON** | One JSON object per line: the format of the synchronization streams between nodes | [18](18-cluster-api.md) |
 | **Node** | An instance of the `taba` program; they are all equal | [04](04-architecture.md) |
-| **Node database** | `_node.db`: local SQLite with the tables `topics`, `tokens`, `state` and `losses` | [08](08-storage.md) |
+| **Node database** | `_node.db`: local SQLite with the tables `topics`, `tokens`, `state`, `losses` and `definition_versions` | [08](08-storage.md) |
 | **Managing node** | The primary of the position of a volatile queue's `id`: decides the deletion for idleness | [09](09-topics.md) |
 
 ## O

@@ -109,7 +109,7 @@ Each definition has an **owner** on the ring (the first active node at the posit
 | `POST /cluster/definitions/propose` | From the node that received the client **to the owner**. Body `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`), `key`, `body`, `expectedId?` (used by the volatile queue manager to only delete the expected `id`) |
 | `POST /cluster/definitions/apply` | From the owner to each node and to the heir. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?` |
 | `GET /cluster/topics`, `GET /cluster/tokens` | **Streams** of the definitions, ordered by `id`, for the bootstrap |
-| `GET /cluster/definitions/tombstones` | **Stream** of the tombstones (removed definitions and the version of the removal), so a late creation does not resurrect what was removed |
+| `GET /cluster/definitions/tombstones` | **Stream** of the tombstones (removed definitions, the version of the removal and, for a topic, its `topicId`), so a late creation does not resurrect what was removed |
 | `GET /cluster/topics/{id}/idle` | How long ago the topic's last `GET` was **on this node** (`IdleResponse`: `topicId`, `idleSeconds`, `sinceStart`). Used by the volatile queue manager |
 
 - The owner checks (name already exists, unknown topic, `expectedId`), assigns the **next version**, writes to the **heir**, applies to itself, sends `apply` to the others and answers after those that answer within `write.commit.timeout`. The others receive it through the `definition` frame of the channel.

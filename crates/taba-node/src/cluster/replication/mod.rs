@@ -38,6 +38,7 @@ use crate::engine::messages::{ClusterHooks, DeadLetterJob, Messages, Placement};
 use crate::engine::tokens::Tokens;
 use crate::engine::topics::Topics;
 use crate::storage::losses::LossStore;
+use crate::storage::versions::{VersionRow, VersionStore};
 use crate::telemetry::Telemetry;
 
 /// The node is a message's delivery owner if it is the primary of its block on the ring (doc 13, 12.7).
@@ -86,6 +87,7 @@ pub fn attach(
     telemetry: Arc<Telemetry>,
     losses: LossStore,
     sync_rules: SyncRules,
+    versions: (VersionStore, Vec<VersionRow>),
 ) -> Attached {
     let replica = Replica::new(
         messages.clone(),
@@ -101,7 +103,13 @@ pub fn attach(
         topics.clone(),
         signals.clone(),
     );
-    let definitions = Definitions::new(service.clone(), topics.clone(), tokens.clone());
+    let definitions = Definitions::new(
+        service.clone(),
+        topics.clone(),
+        tokens.clone(),
+        versions.0,
+        versions.1,
+    );
     let recovery = Recovery::new(
         service.clone(),
         messages.clone(),

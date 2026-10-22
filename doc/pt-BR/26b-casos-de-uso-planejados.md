@@ -32,7 +32,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 7 | 10 |
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 14 | 22 |
 | `ANE` | Anel de hash, blocos e papéis | 4 | 8 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 11 | 19 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 11 | 21 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 21 | 10 |
 | `INV` | Invisibilidade no dono e nas réplicas | 19 | 13 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 17 |

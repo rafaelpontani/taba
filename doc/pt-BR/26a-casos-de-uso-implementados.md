@@ -37,7 +37,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CLI` | O `taba-cli`, a linha de comando do cliente | 36 | 0 |
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 22 | 14 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 19 | 11 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 21 | 11 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 10 | 21 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 13 | 19 |
@@ -4522,6 +4522,35 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/definitions.rs::a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_queue`
+
+---
+
+### UC-DEF-039
+
+**Caso:** Cada nó grava na tabela `definition_versions` do `_node.db` a **versão** de cada tópico e de cada token que aplicou e a **lápide** de cada remoção, no mesmo ponto em que grava a definição  
+**Então:** as linhas sobrevivem ao reinício do processo e são lidas na partida **junto com as definições** que o nó retoma do disco: uma linha fica só se a definição dela está lá (um tópico com o mesmo `topicId`), e a lápide fica até expirar (1 hora). A remoção da definição, o `wipe` do nó novo e a conferência final do join apagam as linhas.  
+**Nível:** U e C  
+**Testes:**
+  - `storage/versions/tests.rs::versions_and_tombstones_with_the_topic_id_survive_reopening_the_database`
+  - `storage/versions/tests.rs::saving_again_replaces_the_row_and_delete_tolerates_a_missing_one`
+  - `storage/versions/tests.rs::old_tombstones_are_dropped_and_clear_empties_the_table`
+  - `cluster/replication/definitions/tests.rs::the_stored_versions_of_the_definitions_that_were_loaded_come_back_with_their_topic_id`
+  - `cluster/replication/definitions/tests.rs::a_tombstone_is_kept_until_it_expires`
+  - `cluster/replication/definitions/tests.rs::a_live_row_without_its_definition_is_dropped`
+  - `tests/definition_versions.rs::every_node_writes_the_version_and_the_tombstone_with_the_topic_id_to_its_database`
+  - `tests/definition_versions.rs::a_new_node_stores_the_tombstones_it_learns_with_the_topic_id`
+
+---
+
+### UC-DEF-040
+
+**Caso:** A lápide e a versão de um tópico guardam o **`topicId`** do tópico (um tópico recriado com o mesmo nome tem outro `topicId`)  
+**Então:** a lápide do tópico antigo não apaga nem descreve o tópico recriado: na partida, uma linha com outro `topicId` é descartada e o tópico fica. A lápide chega ao nó novo com o `topicId` no fluxo `GET /cluster/definitions/tombstones` (campo `topicId`, opcional: quem não o traz continua entendido).  
+**Nível:** U e C  
+**Testes:**
+  - `cluster/replication/definitions/tests.rs::a_row_of_another_life_of_the_topic_does_not_describe_the_recreated_one`
+  - `tests/definition_versions.rs::every_node_writes_the_version_and_the_tombstone_with_the_topic_id_to_its_database`
+  - `tests/definition_versions.rs::a_new_node_stores_the_tombstones_it_learns_with_the_topic_id`
 
 ---
 

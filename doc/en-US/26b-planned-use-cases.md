@@ -32,7 +32,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNV` | Common API conventions (format, headers, errors, status) | 7 | 10 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 14 | 22 |
 | `ANE` | Hash ring, blocks and roles | 4 | 8 |
-| `DEF` | Topic and token definition replicated in the cluster | 11 | 19 |
+| `DEF` | Topic and token definition replicated in the cluster | 11 | 21 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 21 | 10 |
 | `INV` | Invisibility on the owner and on the replicas | 19 | 13 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 8 | 17 |

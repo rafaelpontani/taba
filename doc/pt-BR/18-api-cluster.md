@@ -109,7 +109,7 @@ Cada definição tem um **dono** no anel (o primeiro nó ativo na posição de `
 | `POST /cluster/definitions/propose` | Do nó que recebeu o cliente **ao dono**. Corpo `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`), `key`, `body`, `expectedId?` (usado pelo gestor de fila volátil para só apagar o `id` esperado) |
 | `POST /cluster/definitions/apply` | Do dono a cada nó e ao herdeiro. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?` |
 | `GET /cluster/topics`, `GET /cluster/tokens` | **Streams** das definições, ordenadas por `id`, para o bootstrap |
-| `GET /cluster/definitions/tombstones` | **Stream** das lápides (definições removidas e a versão da remoção), para uma criação atrasada não ressuscitar o que foi removido |
+| `GET /cluster/definitions/tombstones` | **Stream** das lápides (definições removidas, a versão da remoção e, para um tópico, o `topicId` dele), para uma criação atrasada não ressuscitar o que foi removido |
 | `GET /cluster/topics/{id}/idle` | Há quanto tempo foi o último `GET` do tópico **neste nó** (`IdleResponse`: `topicId`, `idleSeconds`, `sinceStart`). Usado pelo gestor da fila volátil |
 
 - O dono confere (nome já existe, tópico desconhecido, `expectedId`), dá a **próxima versão**, grava no **herdeiro**, aplica em si, manda `apply` aos demais e responde depois dos que respondem em `write.commit.timeout`. Os outros recebem pelo quadro `definition` do canal.

@@ -4,12 +4,12 @@ resumo: Proposta em discussão para o achado D — parar o cluster inteiro em pr
 tipo: explicação
 status: planejado
 verificado-em: 2026-10-21 @ 9ae59ba
-fontes: [crates/taba-node/src/cluster/upgrade/mod.rs, crates/taba-node/src/node.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/src/cluster/backup/restore.rs, crates/taba-node/src/cluster/transport/mod.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/core/id/mod.rs, crates/taba-node/src/storage/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/tests/recovery.rs]
+fontes: [crates/taba-node/src/storage/versions/mod.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/src/cluster/upgrade/mod.rs, crates/taba-node/src/node.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/src/cluster/backup/restore.rs, crates/taba-node/src/cluster/transport/mod.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/core/id/mod.rs, crates/taba-node/src/storage/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/tests/recovery.rs]
 ---
 
 # Retomada do cluster após queda total (proposta)
 
-> ⬜ **Proposta em discussão. Só a etapa 0 está implementada (veja "Estado da execução"); o resto continua proposta.** Ele existe para fechar o desenho antes do código. Quando for decidido, vira uma `D` em [30-decisoes.md](30-decisoes.md), sai de [31-pendencias.md](31-pendencias.md) (achado D) e este arquivo passa a descrever o que existe. Leia antes: [11-durabilidade.md](11-durabilidade.md), [07-cluster.md](07-cluster.md).
+> ⬜ **Proposta em discussão. Só as etapas 0 e 1 estão implementadas (veja "Estado da execução"); o resto continua proposta.** Ele existe para fechar o desenho antes do código. Quando for decidido, vira uma `D` em [30-decisoes.md](30-decisoes.md), sai de [31-pendencias.md](31-pendencias.md) (achado D) e este arquivo passa a descrever o que existe. Leia antes: [11-durabilidade.md](11-durabilidade.md), [07-cluster.md](07-cluster.md).
 
 ## Estado da execução
 
@@ -18,7 +18,7 @@ Execução por etapas (seção 7), tudo no working tree, sem commit. Ao terminar
 | Etapa | Estado | O que ficou |
 |---|---|---|
 | 0. Versão no ingresso e drain das anteriores | ✅ **feita** | Código em `cluster/upgrade/` (regra pura `decide`, laço `run_upgrade`, condição `upgrade-stalled`, `peer_supports`); decisão **D165**; casos **UC-ING-029 a UC-ING-035** (catálogo 26a); testes em `tests/upgrade.rs`, `cluster/upgrade/tests.rs` e `cluster/health/tests.rs`; operação em [23-operacao.md](23-operacao.md#atualizar-a-versão-rolling) |
-| 1. Persistir versões e lápides das definições | ⬜ pendente | |
+| 1. Persistir versões e lápides das definições | ✅ **feita** | Tabela `definition_versions` no `_node.db` (esquema 6, `storage/versions`); `Definitions` grava a cada aplicação e lê na partida **só quando retoma as definições do disco**; o `topicId` vai na lápide e no fluxo de lápides; decisão **D166**; casos **UC-DEF-039 e UC-DEF-040**; testes em `storage/versions/tests.rs`, `cluster/replication/definitions/tests.rs` e `tests/definition_versions.rs` |
 | 2. Log de excluídos durável | ⬜ pendente | |
 | 3. Quarentena por vida e restauração | ⬜ pendente | Precedida do teste de propriedade da seção 4.8 |
 | 4. Remover o `mode=development` e criar o perfil de um nó | ⬜ pendente | |
@@ -29,6 +29,8 @@ Execução por etapas (seção 7), tudo no working tree, sem commit. Ao terminar
 - Quem age é **um só nó por vez**: o de menor `nodeId` entre os da versão mais nova (em vez de "o nó que entrou"), para que dois nós não peçam drains diferentes.
 - Os casos **NOVO-ING-05** (nenhuma vida restaurável com um nó anterior presente) e **NOVO-ING-06** (disco de versão anterior não migrado) **não** foram feitos: dependem do log de excluídos e da quarentena (etapas 2 e 3).
 - Mapeamento dos casos: NOVO-ING-01 → UC-ING-029; 02 → 030; 03 → 031; 04 → 032; 07 → 033; novos: UC-ING-034 (um nó age) e UC-ING-035 (comparação de versões).
+- Mapeamento da etapa 1: NOVO-DEF-01 → UC-DEF-039; NOVO-DEF-02 → UC-DEF-040; NOVO-DEF-03 já estava coberto por UC-DEF-026, UC-DEF-027 e UC-DEF-035 (versão maior vence, lápide de versão maior vence a criação), sem caso novo; NOVO-DEF-04 e NOVO-DEF-05 ficam para a etapa 3 (partida a frio).
+- O reinício **de processo** com as linhas lidas só acontece hoje no modo desenvolvimento (`resume-on-start`); em produção o nó sobe limpo e a leitura ao subir vira regra geral na etapa 3. Por isso a prova de "sobrevive ao reinício" é dividida: o banco reabre com as linhas (U) e a regra de leitura mantém só o que descreve a definição carregada (U); a prova de cluster (C) cobre a gravação em todos os nós.
 
 **Valores e nomes fixados** (viram `D` quando a etapa que os usa for feita): `G` = 5 min; modo estrito em `cluster.restore.strict=false`; forçar = `POST /cluster/restore/force`, só com o token root; pasta por ID (o nó não reutiliza o ID); a varredura do S3 soma ao `restore()` do sobrevivente único; log de excluídos de 100 MB e 24 h; folga de relógio de 5 s; sondagem de 2 h a cada 10 s.
 
@@ -73,7 +75,7 @@ Como o nó já sabe os tópicos e tokens, ele **recebe e entrega mensagens novas
 
 ### 4.2 Definições (tópicos e tokens)
 
-- Cada definição já tem **versão** e **dona** no anel, com desempate por impressão digital. Falta **persistir** o mapa de versões e as lápides, e guardar a lápide **junto do `topicId`** (um tópico recriado tem outro `topicId`).
+- Cada definição já tem **versão** e **dona** no anel, com desempate por impressão digital. ✅ **Implementado (etapa 1, D166):** o mapa de versões e as lápides são persistidos (`definition_versions`), com a lápide **junto do `topicId`** (um tópico recriado tem outro `topicId`); a leitura na partida vale hoje só quando o nó retoma as definições do disco.
 - Na junção de dois estados, **vence a versão maior** por definição. Não é preciso uma versão global do cluster: a versão por definição é suficiente, e a versão da tabela de membros já é global e serializada.
 - Na partida a frio, **o nó de menor ID coordena** a reunião das definições de todos os nós conectados (seção 4.9). Se o cluster já está de pé, o nó entra limpo e recebe as definições dele pela sincronização, como hoje.
 
@@ -265,7 +267,7 @@ Resta definir **valores e nomes**: o prazo `G` e a configuração do modo estrit
 ## 7. Etapas sugeridas
 
 0. ✅ **Versão no ingresso e drain das anteriores (feita)** (seção 4.12): anúncio de versão e drain, um a um, dos nós de versão anterior. Precede a etapa 1, porque a etapa 1 já muda o formato do disco.
-1. **Persistir versões e lápides das definições**, com o `topicId`, e carregá-las na partida. Não muda o comportamento visível da API.
+1. ✅ **Persistir versões e lápides das definições (feita, D166)**, com o `topicId`, e carregá-las na partida. Não muda o comportamento visível da API.
 2. **Log de excluídos durável**, com limite de tamanho e de tempo, em cada dono do bloco e propagado com ele.
 3. **Quarentena por vida e restauração:** pasta por ID, manifesto, coordenação pelo nó de menor ID, envio ao novo primário, consulta de mortos (log local, outros nós e S3), votação do fim, varredura do S3 na partida (seção 4.13), liberação da FIFO e a operação de forçar. Precedida do teste de propriedade da seção 4.8.
 4. **Remover o `mode=development`** e criar o perfil de um nó (seção 4.16), depois que a etapa 3 funcionar.

@@ -55,6 +55,7 @@ SQLite local, **uma conexão atrás de um `Mutex`** (escritor único). Tabelas:
 | `tokens` | `id` | Os tokens de acesso: nome, permissões, prefixos, datas, **sal** (128 bits) e **hash salgado** do segredo. **Nunca o segredo** |
 | `state` | `key` | Estado do nó; hoje a marca `save_completed` (o fim do drain) |
 | `losses` | `(topic, id)` | As mensagens declaradas perdidas numa sincronização, consultadas por quem volta de uma exclusão. Expiram em `cluster.message-loss.ttl` (padrão 14 d) |
+| `definition_versions` | `(kind, key)` | A **versão** de cada tópico e de cada token que o nó aplicou e a **lápide** de cada remoção, com o `topicId` do tópico e o instante em que foi aplicada. Uma linha por definição, escrita junto com a definição; a lápide sai depois de 1 hora ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)) |
 
 A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão **mais nova** que a do nó não é tocado.
 
@@ -123,6 +124,6 @@ Numa partida em produção o banco é **zerado**: o nó é novo, e o que o anter
 
 ## Fontes e provas
 
-- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
+- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
 - Casos de uso: UC-ARM (armazenamento), UC-DEF (definições replicadas), UC-DRN (drain como save); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md` (3.2 a 3.4).

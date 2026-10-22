@@ -30,7 +30,7 @@ fontes: [crates/taba-node/src, doc/pt-BR]
 | Termo | Significado | Detalhe |
 |---|---|---|
 | **Banco de eventos** | `_sync/sync.db`: onde um nó em sincronização guarda, na ordem de chegada, os eventos que não pode processar ainda | [07](07-cluster.md), [08](08-armazenamento.md) |
-| **Banco do nó** | `_node.db`: SQLite local com as tabelas `topics`, `tokens`, `state` e `losses` | [08](08-armazenamento.md) |
+| **Banco do nó** | `_node.db`: SQLite local com as tabelas `topics`, `tokens`, `state`, `losses` e `definition_versions` | [08](08-armazenamento.md) |
 | **Banco do tópico** | `<topico>/_topic.db`: SQLite local com a tabela `messages` (o que está em disco) | [08](08-armazenamento.md) |
 | **Bloco** | O arco do anel que termina numa posição de nó virtual; tem um primário e réplicas | [06](06-anel-e-replicacao.md) |
 | **Bootstrap** | O processo de um nó ingressar no cluster | [07](07-cluster.md) |

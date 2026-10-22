@@ -4,12 +4,12 @@ summary: Proposal under discussion for finding D — stopping the whole cluster 
 type: explanation
 status: planned
 verified-on: 2026-10-21 @ 9ae59ba
-sources: [crates/taba-node/src/cluster/upgrade/mod.rs, crates/taba-node/src/node.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/src/cluster/backup/restore.rs, crates/taba-node/src/cluster/transport/mod.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/core/id/mod.rs, crates/taba-node/src/storage/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/tests/recovery.rs]
+sources: [crates/taba-node/src/storage/versions/mod.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/src/cluster/upgrade/mod.rs, crates/taba-node/src/node.rs, crates/taba-node/src/cluster/service/mod.rs, crates/taba-node/src/cluster/recovery/mod.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/drain/mod.rs, crates/taba-node/src/cluster/vote/mod.rs, crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/src/cluster/backup/restore.rs, crates/taba-node/src/cluster/transport/mod.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/core/id/mod.rs, crates/taba-node/src/storage/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/tests/recovery.rs]
 ---
 
 # Resuming the cluster after a full outage (proposal)
 
-> ⬜ **Proposal under discussion. Only step 0 is implemented (see "Execution status"); the rest is still a proposal.** It exists to settle the design before the code. Once decided, it becomes a `D` in [30-decisions.md](30-decisions.md), leaves [31-pending-items.md](31-pending-items.md) (finding D) and this file starts describing what exists. Read first: [11-durability.md](11-durability.md), [07-cluster.md](07-cluster.md).
+> ⬜ **Proposal under discussion. Only steps 0 and 1 are implemented (see "Execution status"); the rest is still a proposal.** It exists to settle the design before the code. Once decided, it becomes a `D` in [30-decisions.md](30-decisions.md), leaves [31-pending-items.md](31-pending-items.md) (finding D) and this file starts describing what exists. Read first: [11-durability.md](11-durability.md), [07-cluster.md](07-cluster.md).
 
 ## Execution status
 
@@ -18,7 +18,7 @@ Executed in steps (section 7), all in the working tree, no commit. When everythi
 | Step | Status | What was left |
 |---|---|---|
 | 0. Version on entry and drain of the previous ones | ✅ **done** | Code in `cluster/upgrade/` (pure rule `decide`, loop `run_upgrade`, condition `upgrade-stalled`, `peer_supports`); decision **D165**; cases **UC-ING-029 to UC-ING-035** (catalogue 26a); tests in `tests/upgrade.rs`, `cluster/upgrade/tests.rs` and `cluster/health/tests.rs`; operation in [23-operations.md](23-operations.md#upgrade-the-version-rolling) |
-| 1. Persist the versions and tombstones of definitions | ⬜ pending | |
+| 1. Persist the versions and tombstones of definitions | ✅ **done** | `definition_versions` table in `_node.db` (schema 6, `storage/versions`); `Definitions` writes at each application and reads at start **only when it resumes the definitions from disk**; the `topicId` goes in the tombstone and in the tombstone stream; decision **D166**; cases **UC-DEF-039 and UC-DEF-040**; tests in `storage/versions/tests.rs`, `cluster/replication/definitions/tests.rs` and `tests/definition_versions.rs` |
 | 2. Durable log of the excluded | ⬜ pending | |
 | 3. Quarantine per life and restoration | ⬜ pending | Preceded by the property test of section 4.8 |
 | 4. Remove `mode=development` and create the one-node profile | ⬜ pending | |
@@ -29,6 +29,8 @@ Executed in steps (section 7), all in the working tree, no commit. When everythi
 - **One node at a time** acts: the lowest `nodeId` among those of the newest version (instead of "the node that joined"), so two nodes do not ask for different drains.
 - Cases **NOVO-ING-05** (no life restorable with an earlier node present) and **NOVO-ING-06** (disk of an earlier version not migrated) were **not** done: they depend on the excluded log and the quarantine (steps 2 and 3).
 - Mapping of the cases: NOVO-ING-01 → UC-ING-029; 02 → 030; 03 → 031; 04 → 032; 07 → 033; new: UC-ING-034 (one node acts) and UC-ING-035 (version comparison).
+- Mapping of step 1: NOVO-DEF-01 → UC-DEF-039; NOVO-DEF-02 → UC-DEF-040; NOVO-DEF-03 was already covered by UC-DEF-026, UC-DEF-027 and UC-DEF-035 (the higher version wins, a tombstone of a higher version beats the creation), with no new case; NOVO-DEF-04 and NOVO-DEF-05 stay for step 3 (cold start).
+- A **process** restart that reads the rows only happens today in development mode (`resume-on-start`); in production the node starts clean and reading at start becomes the general rule in step 3. So the proof of "survives the restart" is split: the database reopens with the rows (U) and the reading rule keeps only what describes the loaded definition (U); the cluster proof (C) covers the writing on every node.
 
 **Values and names fixed** (they become `D` when the step that uses them is done): `G` = 5 min; strict mode in `cluster.restore.strict=false`; force = `POST /cluster/restore/force`, root token only; folder per ID (the node does not reuse the ID); the S3 sweep adds to the `restore()` of the single survivor; excluded log of 100 MB and 24 h; clock slack of 5 s; probing for 2 h every 10 s.
 
@@ -73,7 +75,7 @@ Since the node already knows the topics and tokens, it **receives and delivers n
 
 ### 4.2 Definitions (topics and tokens)
 
-- Each definition already has a **version** and an **owner** on the ring, with a fingerprint tie-break. What is missing is to **persist** the version map and the tombstones, and to keep the tombstone **together with the `topicId`** (a recreated topic has another `topicId`).
+- Each definition already has a **version** and an **owner** on the ring, with a fingerprint tie-break. ✅ **Implemented (step 1, D166):** the version map and the tombstones are persisted (`definition_versions`), with the tombstone **together with the `topicId`** (a recreated topic has another `topicId`); reading at start only applies today when the node resumes the definitions from disk.
 - When two states meet, the **higher version wins**, definition by definition. A global cluster version is not needed: the per-definition version is enough, and the member table version is already global and serialized.
 - In a cold start, **the node with the lowest ID coordinates** the gathering of the definitions of all connected nodes (section 4.9). If the cluster is already up, the node joins clean and receives its definitions through synchronization, as today.
 
@@ -265,7 +267,7 @@ What is left to define is **values and names**: the deadline `G` and the strict-
 ## 7. Suggested steps
 
 0. ✅ **Version on entry and drain of the previous ones (done)** (section 4.12): version announcement and drain, one by one, of the nodes of a previous version. It comes before step 1, because step 1 already changes the disk format.
-1. **Persist definition versions and tombstones**, with the `topicId`, and load them at start. It does not change the API's visible behavior.
+1. ✅ **Persist definition versions and tombstones (done, D166)**, with the `topicId`, and load them at start. It does not change the API's visible behavior.
 2. **A durable deleted-messages log**, with a size and time limit, on every owner of the block and propagated with it.
 3. **Quarantine per life and restoration:** folder per ID, manifest, coordination by the node with the lowest ID, sending to the new primary, dead-message check (local log, other nodes and S3), the end-of-restoration vote, the S3 scan at start (section 4.13), the FIFO release and the force operation. Preceded by the property test in section 4.8.
 4. **Remove `mode=development`** and create the one-node profile (section 4.16), after step 3 works.

@@ -55,6 +55,7 @@ Local SQLite, **one connection behind a `Mutex`** (single writer). Tables:
 | `tokens` | `id` | The access tokens: name, permissions, prefixes, dates, **salt** (128 bits) and **salted hash** of the secret. **Never the secret** |
 | `state` | `key` | Node state; today the `save_completed` mark (the end of drain) |
 | `losses` | `(topic, id)` | The messages declared lost in a synchronization, queried by whoever returns from an exclusion. They expire at `cluster.message-loss.ttl` (default 14 d) |
+| `definition_versions` | `(kind, key)` | The **version** of each topic and token the node applied and the **tombstone** of each removal, with the topic's `topicId` and the instant it was applied. One row per definition, written together with the definition; a tombstone leaves after 1 hour ([37-cluster-cold-start.md](37-cluster-cold-start.md)) |
 
 The schema version is written to the database (`SCHEMA_VERSION`); a database of a **newer** version than the node's is not touched.
 
@@ -123,6 +124,6 @@ On a production start the database is **zeroed**: the node is new, and what the 
 
 ## Sources and evidence
 
-- `storage/backup` (the object store, the segment, the journal, the names and `_backup.db`); `storage/db` (`_node.db`, schema), `storage/messages` (body, topic database, write order, folder name), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
+- `storage/backup` (the object store, the segment, the journal, the names and `_backup.db`); `storage/db` (`_node.db`, schema), `storage/messages` (body, topic database, write order, folder name), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
 - Use cases: UC-ARM (storage), UC-DEF (replicated definitions), UC-DRN (drain as save); see [26a](26a-implemented-use-cases.md).
 - History: `02-arquitetura.md` (3.2 to 3.4).

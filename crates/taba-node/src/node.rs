@@ -44,6 +44,7 @@ use crate::storage::messages::MessageStore;
 use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::SqliteTokenStore;
 use crate::storage::topics::SqliteTopicStore;
+use crate::storage::versions::VersionStore;
 use crate::telemetry::Telemetry;
 use crate::telemetry::otlp::{self, Pipeline};
 
@@ -492,6 +493,13 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         _ => None,
     };
     // The cluster connects to the message engine: who the owner is, the signals and the dead-letters.
+    // The versions and tombstones of the definitions come back with the definitions that are resumed.
+    let version_store = VersionStore::new(node_db.clone());
+    let stored_versions = if dev && config.resume_on_start {
+        version_store.load_all().map_err(storage_error)?
+    } else {
+        Vec::new()
+    };
     let attached = cluster_node.as_ref().map(|(service, _)| {
         replication::attach(
             service,
@@ -502,6 +510,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             telemetry.clone(),
             losses,
             SyncRules::from_config(&config),
+            (version_store, stored_versions),
         )
     });
     // The optional S3 backup: without `backup.s3.bucket` none of this exists and the node is the usual one.

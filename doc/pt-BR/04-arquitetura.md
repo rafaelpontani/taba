@@ -102,7 +102,7 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           pasta de segredos (certificado do cluster, token raiz)
-  storage/           db (o `_node.db`) messages topics tokens state losses synclog
+  storage/           db (o `_node.db`) messages topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: o `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)

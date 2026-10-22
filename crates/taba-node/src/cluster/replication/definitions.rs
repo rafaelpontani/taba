@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -41,6 +41,7 @@ use crate::core::token::TokenRecord;
 use crate::core::topic::TopicDefinition;
 use crate::engine::tokens::{TokenChange, TokenReplicator, Tokens};
 use crate::engine::topics::{TopicChange, TopicReplicator, Topics};
+use crate::storage::versions::{VersionRow, VersionStore};
 use crate::telemetry::metrics::DEFINITION_CONFLICTS;
 
 /// The default ceiling of lines in a stretch of stream (`cluster.sync.stream.max-items`, to be defined).
@@ -59,6 +60,8 @@ struct Entry {
     deleted: bool,
     fingerprint: Fingerprint,
     at: SystemTime,
+    /// The topic's `id` (a recreated topic has another one), also kept in its tombstone.
+    topic_id: Option<String>,
 }
 
 /// What the definitions load brought (topic names and token IDs).
@@ -72,6 +75,8 @@ pub struct Definitions {
     service: Arc<ClusterService>,
     topics: Arc<Topics>,
     tokens: Arc<Tokens>,
+    /// Where the versions and the tombstones are kept on disk (`_node.db`).
+    store: VersionStore,
     versions: Mutex<HashMap<Key, Entry>>,
     /// One change at a time on each definition (the owner's and the application on the nodes).
     locks: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<()>>>>,
@@ -98,18 +103,57 @@ fn boxed<T: Send + 'static>(
 }
 
 impl Definitions {
+    /// `stored` are the rows of `definition_versions` of the disk, when the node resumes its definitions
+    /// (otherwise empty, and the table is rebuilt as the definitions arrive): only those that still
+    /// describe what `topics` and `tokens` hold, and the tombstones that did not expire, are kept.
     pub fn new(
         service: Arc<ClusterService>,
         topics: Arc<Topics>,
         tokens: Arc<Tokens>,
+        store: VersionStore,
+        stored: Vec<VersionRow>,
     ) -> Arc<Self> {
+        let now = service.now();
+        let (kept, dropped) = reconcile(stored, &topics, &tokens, now);
+        for (kind, key) in dropped {
+            if let Err(e) = store.delete(&kind, &key) {
+                tracing::warn!(error = %e, "failed to delete a stale definition version");
+            }
+        }
         Arc::new(Self {
             service,
             topics,
             tokens,
-            versions: Mutex::new(HashMap::new()),
+            store,
+            versions: Mutex::new(kept),
             locks: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Writes the entry's row to disk, off the async executor.
+    async fn persist_row(&self, row: VersionRow, now: SystemTime) -> Result<(), TabaError> {
+        let store = self.store.clone();
+        let expired_before = unix_ms(now.checked_sub(TOMBSTONE_TTL).unwrap_or(UNIX_EPOCH));
+        tokio::task::spawn_blocking(move || {
+            store.save(&row)?;
+            store.delete_tombstones_before(expired_before).map(|_| ())
+        })
+        .await
+        .map_err(|_| TabaError::internal())?
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to write the definition version");
+            TabaError::internal()
+        })
+    }
+
+    /// Deletes the entry's row from disk.
+    async fn unpersist(&self, kind: DefinitionKind, key: &str) {
+        let (store, kind, key) = (self.store.clone(), kind.as_str(), key.to_owned());
+        match tokio::task::spawn_blocking(move || store.delete(kind, &key)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(error = %e, "failed to delete the definition version"),
+            Err(e) => tracing::warn!(error = %e, "failed to delete the definition version"),
+        }
     }
 
     async fn lock_key(&self, key: &Key) -> OwnedMutexGuard<()> {
@@ -344,20 +388,43 @@ impl Definitions {
     /// Applies the change on this node if the version is not lower than the one it already has. Whoever calls holds the
     /// definition lock. Returns `false` when the change arrived too old.
     async fn apply_unlocked(&self, change: &DefinitionApply) -> Result<bool, TabaError> {
+        self.apply_with(change, None).await
+    }
+
+    /// `apply_unlocked`, with the `topicId` a tombstone arrived with (when this node never held the topic).
+    async fn apply_with(
+        &self,
+        change: &DefinitionApply,
+        removed_topic_id: Option<String>,
+    ) -> Result<bool, TabaError> {
         let key = (change.kind, change.key.clone());
         let fingerprint = fingerprint(change)?;
         if !self.wins_over_held(change, &fingerprint) {
             return Ok(false);
         }
+        let mut topic_id = None;
         match (change.kind, change.deleted) {
             (DefinitionKind::Topic, false) => {
                 let definition = TopicDefinition::from_json(&change.body).map_err(bad)?;
                 if definition.name != change.key {
                     return Err(bad("The topic name is not the change's key."));
                 }
+                topic_id = Some(definition.id.clone());
                 self.topics.apply_save(definition).await?;
             }
-            (DefinitionKind::Topic, true) => self.topics.apply_delete(&change.key).await?,
+            (DefinitionKind::Topic, true) => {
+                topic_id = self
+                    .topics
+                    .definition(&change.key)
+                    .map(|d| d.id)
+                    .or_else(|| {
+                        lock(&self.versions)
+                            .get(&key)
+                            .and_then(|e| e.topic_id.clone())
+                    })
+                    .or(removed_topic_id);
+                self.topics.apply_delete(&change.key).await?;
+            }
             (DefinitionKind::Token, false) => {
                 let record = token_from_json(&change.body)?;
                 if record.id != change.key {
@@ -368,22 +435,20 @@ impl Definitions {
             (DefinitionKind::Token, true) => self.tokens.apply_revoke(&change.key).await?,
         }
         let now = self.service.now();
-        let mut versions = lock(&self.versions);
-        versions.insert(
-            key,
-            Entry {
-                version: change.version,
-                deleted: change.deleted,
-                fingerprint,
-                at: now,
-            },
-        );
-        versions.retain(|_, e| {
-            !(e.deleted
-                && now
-                    .duration_since(e.at)
-                    .is_ok_and(|age| age >= TOMBSTONE_TTL))
-        });
+        let entry = Entry {
+            version: change.version,
+            deleted: change.deleted,
+            fingerprint,
+            at: now,
+            topic_id,
+        };
+        let row = row_of(&key, &entry);
+        {
+            let mut versions = lock(&self.versions);
+            versions.insert(key.clone(), entry);
+            versions.retain(|_, e| !expired(e, now));
+        }
+        self.persist_row(row, now).await?;
         Ok(true)
     }
 
@@ -498,29 +563,36 @@ impl Definitions {
 
     /// `GET /cluster/definitions/tombstones`: the tombstones this node keeps (the removal and its
     /// version), so the syncing node knows the versions already used and does not recreate what was removed
-    /// (D125). Each line carries `id` (`kind:key`, the order and the cursor), `kind`, `key` and `version`.
+    /// (D125). Each line carries `id` (`kind:key`, the order and the cursor), `kind`, `key`, `version` and, for a topic, its `topicId`.
     pub fn list_tombstones(&self, query: &StreamQuery) -> Response {
-        let mut rows: Vec<(String, DefinitionKind, String, u64)> = lock(&self.versions)
-            .iter()
-            .filter(|(_, e)| e.deleted)
-            .map(|((kind, key), e)| {
-                (
-                    format!("{}:{key}", kind.as_str()),
-                    *kind,
-                    key.clone(),
-                    e.version,
-                )
-            })
-            .filter(|(id, ..)| query.from.as_deref().is_none_or(|from| id.as_str() >= from))
-            .collect();
+        let mut rows: Vec<(String, DefinitionKind, String, u64, Option<String>)> =
+            lock(&self.versions)
+                .iter()
+                .filter(|(_, e)| e.deleted)
+                .map(|((kind, key), e)| {
+                    (
+                        format!("{}:{key}", kind.as_str()),
+                        *kind,
+                        key.clone(),
+                        e.version,
+                        e.topic_id.clone(),
+                    )
+                })
+                .filter(|(id, ..)| query.from.as_deref().is_none_or(|from| id.as_str() >= from))
+                .collect();
         rows.sort_by(|a, b| a.0.cmp(&b.0));
         let page = Self::page(query);
         let more = rows.len() > page;
         rows.truncate(page);
         let items = rows
             .into_iter()
-            .map(|(id, kind, key, version)| {
-                json!({"id": id, "kind": kind.as_str(), "key": key, "version": version})
+            .map(|(id, kind, key, version, topic_id)| {
+                let mut item =
+                    json!({"id": id, "kind": kind.as_str(), "key": key, "version": version});
+                if let (Some(topic_id), Some(object)) = (topic_id, item.as_object_mut()) {
+                    object.insert("topicId".into(), json!(topic_id));
+                }
+                item
             })
             .collect();
         Response::Stream(StreamPage::new(items, more))
@@ -535,6 +607,12 @@ impl Definitions {
             let _ = self.tokens.apply_revoke(&id).await;
         }
         lock(&self.versions).clear();
+        let store = self.store.clone();
+        match tokio::task::spawn_blocking(move || store.clear()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(error = %e, "failed to clear the definition versions"),
+            Err(e) => tracing::warn!(error = %e, "failed to clear the definition versions"),
+        }
     }
 
     // ---- New node: pulling the tables ----
@@ -582,8 +660,8 @@ impl Definitions {
             })
             .await?;
         }
-        for (kind, key, version) in self.list_tombstones_of(source).await? {
-            self.load_tombstone(kind, key, version).await?;
+        for (kind, key, version, topic_id) in self.list_tombstones_of(source).await? {
+            self.load_tombstone(kind, key, version, topic_id).await?;
         }
         Ok(pulled)
     }
@@ -595,6 +673,7 @@ impl Definitions {
         kind: DefinitionKind,
         key: String,
         version: u64,
+        topic_id: Option<String>,
     ) -> Result<(), TabaError> {
         let tag = (kind, key.clone());
         let _guard = self.lock_key(&tag).await;
@@ -612,7 +691,7 @@ impl Definitions {
             body: Value::Null,
             relay: false,
         };
-        self.apply_unlocked(&change).await.map(|_| ())
+        self.apply_with(&change, topic_id).await.map(|_| ())
     }
 
     /// Final check (doc 05, section 7.3, step 5.5): repeats the topic and token listing and
@@ -635,12 +714,14 @@ impl Definitions {
         for name in pulled.topics.difference(&topics) {
             if self.topics.apply_delete(name).await.is_ok() {
                 lock(&self.versions).remove(&(DefinitionKind::Topic, name.clone()));
+                self.unpersist(DefinitionKind::Topic, name).await;
                 dropped += 1;
             }
         }
         for id in pulled.tokens.difference(&tokens) {
             if self.tokens.apply_revoke(id).await.is_ok() {
                 lock(&self.versions).remove(&(DefinitionKind::Token, id.clone()));
+                self.unpersist(DefinitionKind::Token, id).await;
                 dropped += 1;
             }
         }
@@ -702,7 +783,7 @@ impl Definitions {
     async fn list_tombstones_of(
         &self,
         source: &Member,
-    ) -> Result<Vec<(DefinitionKind, String, u64)>, TabaError> {
+    ) -> Result<Vec<(DefinitionKind, String, u64, Option<String>)>, TabaError> {
         let mut out = Vec::new();
         let mut from: Option<String> = None;
         loop {
@@ -720,7 +801,12 @@ impl Definitions {
                 let key = item["key"]
                     .as_str()
                     .ok_or_else(|| bad("The tombstone does not say the definition's key."))?;
-                out.push((kind, key.to_owned(), version_of_item(item)));
+                out.push((
+                    kind,
+                    key.to_owned(),
+                    version_of_item(item),
+                    item["topicId"].as_str().map(str::to_owned),
+                ));
             }
             if !page.end.has_more || page.end.last == from {
                 break;
@@ -883,3 +969,83 @@ impl TokenReplicator for Definitions {
         })
     }
 }
+
+fn unix_ms(at: SystemTime) -> u64 {
+    at.duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// A tombstone older than its time to live is forgotten (a live definition never expires).
+fn expired(entry: &Entry, now: SystemTime) -> bool {
+    entry.deleted
+        && now
+            .duration_since(entry.at)
+            .is_ok_and(|age| age >= TOMBSTONE_TTL)
+}
+
+fn row_of(key: &Key, entry: &Entry) -> VersionRow {
+    VersionRow {
+        kind: key.0.as_str().to_owned(),
+        key: key.1.clone(),
+        version: entry.version,
+        deleted: entry.deleted,
+        fingerprint: entry.fingerprint,
+        topic_id: entry.topic_id.clone(),
+        at_ms: unix_ms(entry.at),
+    }
+}
+
+/// What the node keeps of the versions stored on disk, given the definitions it has loaded: a live row
+/// stays only if its definition is there (a topic with the same `id`; a recreated topic has another one,
+/// so the old row does not describe it), a tombstone stays until it expires. Returns the entries and the
+/// rows to delete from disk.
+fn reconcile(
+    stored: Vec<VersionRow>,
+    topics: &Topics,
+    tokens: &Tokens,
+    now: SystemTime,
+) -> (HashMap<Key, Entry>, Vec<(String, String)>) {
+    let mut kept = HashMap::new();
+    let mut dropped = Vec::new();
+    for row in stored {
+        let kind = match row.kind.as_str() {
+            "topic" => DefinitionKind::Topic,
+            "token" => DefinitionKind::Token,
+            _ => {
+                dropped.push((row.kind, row.key));
+                continue;
+            }
+        };
+        let entry = Entry {
+            version: row.version,
+            deleted: row.deleted,
+            fingerprint: row.fingerprint,
+            at: UNIX_EPOCH + Duration::from_millis(row.at_ms),
+            topic_id: row.topic_id.clone(),
+        };
+        let describes_a_definition = match (kind, row.deleted) {
+            // a tombstone of another life of the topic (recreated with another `id`) says nothing about it
+            (DefinitionKind::Topic, true) => {
+                !expired(&entry, now)
+                    && !matches!(
+                        (topics.definition(&row.key), &row.topic_id),
+                        (Some(d), Some(id)) if d.id != *id
+                    )
+            }
+            (DefinitionKind::Token, true) => !expired(&entry, now),
+            (DefinitionKind::Topic, false) => topics
+                .definition(&row.key)
+                .is_some_and(|d| row.topic_id.as_ref().is_none_or(|id| *id == d.id)),
+            (DefinitionKind::Token, false) => tokens.record(&row.key).is_some(),
+        };
+        if describes_a_definition {
+            kept.insert((kind, row.key), entry);
+        } else {
+            dropped.push((row.kind, row.key));
+        }
+    }
+    (kept, dropped)
+}
+
+#[cfg(test)]
+mod tests;

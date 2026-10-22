@@ -37,7 +37,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CLI` | `taba-cli`, the client command line | 36 | 0 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 22 | 14 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
-| `DEF` | Topic and token definition replicated in the cluster | 19 | 11 |
+| `DEF` | Topic and token definition replicated in the cluster | 21 | 11 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 10 | 21 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 13 | 19 |
@@ -4522,6 +4522,35 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/definitions.rs::a_node_that_was_down_gets_the_latest_state_of_each_definition_from_the_queue`
+
+---
+
+### UC-DEF-039
+
+**Case:** Each node writes to the `definition_versions` table of `_node.db` the **version** of every topic and token it applied and the **tombstone** of every removal, at the same point where it writes the definition  
+**Then:** the rows survive a process restart and are read at start **together with the definitions** the node resumes from disk: a row stays only if its definition is there (a topic with the same `topicId`), and a tombstone stays until it expires (1 hour). Removing the definition, the new node's `wipe` and the join's final check delete the rows.  
+**Level:** U and C  
+**Tests:**
+  - `storage/versions/tests.rs::versions_and_tombstones_with_the_topic_id_survive_reopening_the_database`
+  - `storage/versions/tests.rs::saving_again_replaces_the_row_and_delete_tolerates_a_missing_one`
+  - `storage/versions/tests.rs::old_tombstones_are_dropped_and_clear_empties_the_table`
+  - `cluster/replication/definitions/tests.rs::the_stored_versions_of_the_definitions_that_were_loaded_come_back_with_their_topic_id`
+  - `cluster/replication/definitions/tests.rs::a_tombstone_is_kept_until_it_expires`
+  - `cluster/replication/definitions/tests.rs::a_live_row_without_its_definition_is_dropped`
+  - `tests/definition_versions.rs::every_node_writes_the_version_and_the_tombstone_with_the_topic_id_to_its_database`
+  - `tests/definition_versions.rs::a_new_node_stores_the_tombstones_it_learns_with_the_topic_id`
+
+---
+
+### UC-DEF-040
+
+**Case:** A topic's tombstone and version keep the topic's **`topicId`** (a topic recreated with the same name has another `topicId`)  
+**Then:** the old topic's tombstone neither erases nor describes the recreated topic: at start, a row with another `topicId` is discarded and the topic stays. The tombstone reaches the new node with the `topicId` in the `GET /cluster/definitions/tombstones` stream (optional `topicId` field: a source that does not send it is still understood).  
+**Level:** U and C  
+**Tests:**
+  - `cluster/replication/definitions/tests.rs::a_row_of_another_life_of_the_topic_does_not_describe_the_recreated_one`
+  - `tests/definition_versions.rs::every_node_writes_the_version_and_the_tombstone_with_the_topic_id_to_its_database`
+  - `tests/definition_versions.rs::a_new_node_stores_the_tombstones_it_learns_with_the_topic_id`
 
 ---
 
