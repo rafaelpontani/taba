@@ -22,6 +22,7 @@ use super::protocol::{
     Request, Response, UnregisterReason,
 };
 use super::replication::Replication;
+use super::restore;
 use super::state::{NodeShared, NodeState};
 use super::sync::SyncError;
 use super::transport::{
@@ -38,6 +39,8 @@ use crate::telemetry::{Telemetry, trace};
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// The `join` deadline: the request waits its turn and coordinates two phases, so it takes longer.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(60);
+/// How often the `last_seen` of the manifest of the running life moves (doc 37, section 4.5).
+const MANIFEST_INTERVAL: Duration = Duration::from_secs(10);
 /// Seconds suggested in `Retry-After` when the node does not have the table yet.
 const SYNCING_RETRY_AFTER_SECS: u64 = 5;
 
@@ -248,6 +251,8 @@ pub struct ClusterService {
     /// The process has already queried the other nodes' loss list (D111): only the first listing of the
     /// bootstrap does this, and a node returning from an exclusion or from a drain has already done it.
     boot_recovered: AtomicBool,
+    /// The task that keeps the manifest of the running life up to date is already running.
+    manifest_writer: AtomicBool,
     /// The members the restart's listing brought, to whom the node returns what the previous life's
     /// disk has of the losses, once active (PRB-048).
     old_disk_peers: StdMutex<Vec<Member>>,
@@ -377,6 +382,7 @@ impl ClusterService {
             open_votes: StdMutex::new(HashMap::new()),
             excluded: AtomicBool::new(false),
             boot_recovered: AtomicBool::new(false),
+            manifest_writer: AtomicBool::new(false),
             old_disk_peers: StdMutex::new(Vec::new()),
             status_source: OnceLock::new(),
             node_calls: OnceLock::new(),
@@ -443,6 +449,65 @@ impl ClusterService {
         if let Some(hook) = self.on_change.get() {
             hook();
         }
+        self.write_manifest();
+    }
+
+    /// Writes the manifest of the running life in the root of the disk (doc 37, section 4.5): the ID, the active
+    /// members of the table with their IPs, the version of the table and the instant it was last seen active. A
+    /// restart moves it, with the topics, to the folder of the life. Only while the node is a member: a table
+    /// that does not have it is not the one this life lived in.
+    pub fn write_manifest(&self) {
+        let Some(replication) = self.replication.get() else {
+            return;
+        };
+        let me = self.node_id();
+        let Some(table) = self.membership.table() else {
+            return;
+        };
+        if !table
+            .members
+            .iter()
+            .any(|m| m.node_id == me && m.state == MemberState::Active)
+        {
+            return;
+        }
+        let manifest = restore::Manifest {
+            node_id: me,
+            members: table
+                .members
+                .iter()
+                .filter(|m| m.state == MemberState::Active)
+                .map(|m| restore::ManifestMember {
+                    node_id: m.node_id.clone(),
+                    addresses: m.addresses.clone(),
+                    port: m.port,
+                })
+                .collect(),
+            table_version: table.version,
+            last_seen_ms: self.clock.now_millis(),
+            watermark: None,
+        };
+        if let Err(e) = manifest.write(replication.messages.messages().storage_root()) {
+            tracing::warn!(error = %e, "could not write the manifest of the life");
+        }
+    }
+
+    /// Keeps `last_seen` of the manifest moving while the node lives, and writes it once more on a clean
+    /// stop (the cancellation). Started once, when the node becomes active.
+    fn spawn_manifest_writer(self: &Arc<Self>) {
+        if self.manifest_writer.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    () = me.cancel.cancelled() => break,
+                    () = tokio::time::sleep(MANIFEST_INTERVAL) => me.write_manifest(),
+                }
+            }
+            me.write_manifest();
+        });
     }
 
     /// After the commit of an exclusion by vote, queues the `frozen` frame for all peers:
@@ -1729,18 +1794,25 @@ impl ClusterService {
     }
 
     /// The first node of a new cluster: the table is just itself.
-    pub fn start_alone(&self) {
+    pub fn start_alone(self: &Arc<Self>) {
+        // The first node has no one to return the old disk to, but it does not wipe it either: a disk with a
+        // manifest becomes the folder of its life (doc 37, section 4.5); one without it follows the usual path.
+        if let Some(replication) = self.replication.get() {
+            let messages = replication.messages.messages();
+            if let Err(e) = messages.set_aside_old_disk() {
+                tracing::warn!(error = %e, "could not set aside the previous life's disk");
+            }
+            messages.finish_previous_life();
+            messages.release_old_disk();
+        }
         self.membership.install(MemberTable {
             version: 1,
             members: vec![self.local()],
             ..MemberTable::default()
         });
-        // The first node has no one to recover from: the old disk follows the usual path.
-        if let Some(replication) = self.replication.get() {
-            replication.messages.messages().release_old_disk();
-        }
         self.node.set_state(NodeState::Active);
         self.membership_changed();
+        self.spawn_manifest_writer();
         tracing::info!(node_id = %self.node_id(), "first node: the cluster starts with just it");
     }
 
@@ -1822,7 +1894,7 @@ impl ClusterService {
 
     /// The node is healthy: its state in the table becomes `active`, the peers get to know (with
     /// attempts) and only then does it start serving and owning the messages of its blocks.
-    async fn activate(&self, table: &MemberTable) {
+    async fn activate(self: &Arc<Self>, table: &MemberTable) {
         let me = self.node_id();
         self.membership.set_state(&me, MemberState::Active);
         self.local.write().unwrap_or_else(|e| e.into_inner()).state = MemberState::Active;
@@ -1833,6 +1905,7 @@ impl ClusterService {
         let members = table.members.len();
         self.node.set_state(NodeState::Active);
         self.membership_changed();
+        self.spawn_manifest_writer();
         tracing::info!(node_id = %me, version, members, "node in the cluster");
     }
 

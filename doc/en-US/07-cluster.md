@@ -118,7 +118,7 @@ The voting base is only whoever the voter sees. In a **network partition** where
 3. Sends those found to the node responsible for the block (`POST /cluster/messages/recover`). Whoever accepts writes directly to the responsible nodes, **idempotent by ID**, and clears the loss.
 4. Tries again every `cluster.bootstrap.retry.interval` up to `cluster.recovery.timeout` (default 5 min); only then **clears the local state** and redoes the join from scratch, **as a new node**.
 
-**Process restart.** A process that restarts is born as a **new node (new ID)**, but the disk of the previous life is **not erased at start**: it is set aside (`${storage.dir}/_previous-life`), the node joins with an empty disk and, **after becoming active and in the background**, returns to the cluster what that disk has of the losses. Recovery does not delay the join.
+**Process restart.** A process that restarts is born as a **new node (new ID)**, but the disk of the previous life is **not erased at start**: it is set aside in a **folder named with the old ID** (`${storage.dir}/_lives/<old ID>`, with the manifest of the life; a disk with no manifest, from an earlier version, goes to `_previous-life`), the node joins with an empty disk and, **after becoming active and in the background**, returns to the cluster what that disk has of the losses. Recovery does not delay the join and does **not delete** the folder of the life (doc 37, section 4.5).
 
 ## 5. Synchronization of a node that joins
 

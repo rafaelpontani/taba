@@ -655,16 +655,39 @@ impl MessageStore {
         Ok(out)
     }
 
-    /// The folder where the previous life's disk waits for the restart recovery (PRB-048).
+    /// The folder of a disk with no manifest (a version before the quarantine per life): it waits for the restart
+    /// recovery of the losses and is deleted at the end of it (PRB-048; doc 37, section 4.12).
     pub const PREVIOUS_LIFE: &str = "_previous-life";
 
-    /// Sets aside what was left on the previous life's disk: each topic folder goes to
-    /// `${root}/_previous-life`, and the node goes on with an empty disk. A folder that was already there (a
-    /// restart that crashed halfway through the recovery) stays as it is and the new one is deleted: the first is
-    /// the one that may have what only it kept; the new one only brings copies the cluster already has. Returns
-    /// the previous life's disk, or `None` if there is nothing on it.
-    pub fn set_aside_old_disk(&self) -> io::Result<Option<MessageStore>> {
-        let aside = self.root.join(Self::PREVIOUS_LIFE);
+    /// The folder that holds one subfolder per previous life, named with the node ID of that life (doc 37,
+    /// section 4.5). Nothing here is deleted by the recovery.
+    pub const LIVES: &str = "_lives";
+
+    /// The manifest of a life, in the root of the disk of the running life and, afterwards, in its folder.
+    pub const LIFE_MANIFEST: &str = "manifest.json";
+
+    /// The `storage.dir`.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Sets aside what was left on the previous life's disk: each topic folder (and the manifest) goes to
+    /// `${root}/_lives/<life>`, and the node goes on with an empty disk. Without `life` (a disk with no manifest),
+    /// the folders go to `${root}/_previous-life`. A topic folder that was already there (a restart that crashed
+    /// halfway through the move) stays as it is and the new one is deleted: the first is the one that may have
+    /// what only it kept; the new one only brings copies the cluster already has. Returns the previous life's
+    /// disk, or `None` if there are no messages on it.
+    pub fn set_aside_old_disk(&self, life: Option<&str>) -> io::Result<Option<MessageStore>> {
+        if life.is_some_and(|id| id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.')) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the ID of the life is not a folder name",
+            ));
+        }
+        let aside = match life {
+            Some(id) => self.root.join(Self::LIVES).join(id),
+            None => self.root.join(Self::PREVIOUS_LIFE),
+        };
         for topic in self.topics_on_disk()? {
             let from = self.root.join(dir_name(&topic));
             let to = aside.join(dir_name(&topic));
@@ -676,11 +699,19 @@ impl MessageStore {
             std::fs::create_dir_all(&aside)?;
             move_dir(&from, &to)?;
         }
+        let manifest = self.root.join(Self::LIFE_MANIFEST);
+        if life.is_some() && manifest.is_file() {
+            std::fs::create_dir_all(&aside)?;
+            let to = aside.join(Self::LIFE_MANIFEST);
+            // The one from the running disk is the latest: it replaces the one of a move that crashed.
+            let _ = std::fs::remove_file(&to);
+            std::fs::rename(&manifest, &to)?;
+        }
         let previous = MessageStore::new(&aside, self.synchronous);
         Ok((!previous.topics_on_disk()?.is_empty()).then_some(previous))
     }
 
-    /// Deletes the previous life's disk (the recovery is over).
+    /// Deletes the folder of a disk with no manifest (its recovery is over). The folders of the lives stay.
     pub fn drop_old_disk(&self) -> io::Result<()> {
         match std::fs::remove_dir_all(self.root.join(Self::PREVIOUS_LIFE)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),

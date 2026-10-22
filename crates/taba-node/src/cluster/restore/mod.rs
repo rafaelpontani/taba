@@ -17,7 +17,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 /// Name of the manifest file inside the folder of a life.
-pub const MANIFEST_FILE: &str = "manifest.json";
+pub const MANIFEST_FILE: &str = crate::storage::messages::MessageStore::LIFE_MANIFEST;
 
 /// What the restoration needs from the configuration (`cluster.restore.*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

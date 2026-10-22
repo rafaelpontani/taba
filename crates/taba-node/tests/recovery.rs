@@ -14,6 +14,7 @@ use common::TestNode;
 use common::cluster::{TestCluster, eventually, eventually_async, host_of, total, wait_joined};
 use taba_node::cluster::protocol::{LossRecord, MessageRecord, Request, Response, StreamQuery};
 use taba_node::cluster::recovery::Recovery;
+use taba_node::cluster::restore::Manifest;
 use taba_node::cluster::state::NodeState;
 use taba_node::cluster::transport::{CallError, PeerAddr, Transport};
 use taba_node::config::DbSynchronous;
@@ -576,7 +577,7 @@ async fn restart_third(
     (number, storage)
 }
 
-/// UC: UC-RTN-014, UC-RTN-015, UC-RTN-016
+/// UC: UC-RTN-014, UC-RTN-015, UC-RTN-016, UC-RTN-023, UC-RTN-025
 #[tokio::test]
 async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards() {
     let mut cluster = setup(&[
@@ -616,18 +617,19 @@ async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_aft
     })
     .await;
     assert!(!has(cluster.node(1), &from_two.id));
-    assert!(storage.join("_previous-life").is_dir());
+    let life = storage.join(MessageStore::LIVES).join(&old_id);
+    assert!(life.is_dir(), "the old disk is the folder of its life");
+    assert!(life.join(MessageStore::LIFE_MANIFEST).is_file());
 
-    // Node 2 answers again: the second loss also comes back, and the folder is deleted.
+    // Node 2 answers again: the second loss also comes back.
     cluster.network.lose_kind("10.0.0.2", "message-loss", 0);
     eventually("node 2's message to reach the owners", || {
         has(cluster.node(1), &from_two.id) && has(cluster.node(2), &from_two.id)
     })
     .await;
-    eventually("the previous life's folder to be deleted", || {
-        !storage.join("_previous-life").exists()
-    })
-    .await;
+    // The recovery does not delete the folder of the life: only the end of the restoration does (doc 37, 4.7).
+    assert!(life.join(TOPIC).is_dir());
+    assert!(!storage.join(MessageStore::PREVIOUS_LIFE).exists());
     for node in [1, 2] {
         assert!(!has(cluster.node(node), &unlisted.id));
     }
@@ -635,7 +637,7 @@ async fn a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_aft
     cluster.shutdown().await;
 }
 
-/// UC: UC-RTN-015
+/// UC: UC-RTN-015, UC-RTN-025
 #[tokio::test]
 async fn the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_stays_mute() {
     let mut cluster = setup(&[("TABA_DRAIN_ON_STOP", "false"), ("TABA_MEMORY_LIMIT", "1B")]).await;
@@ -644,6 +646,7 @@ async fn the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_
     cluster
         .network
         .lose_kind("10.0.0.2", "message-loss", 100_000);
+    let old_id = cluster.node_id(3);
     let (number, storage) = restart_third(
         &mut cluster,
         &[("TABA_CLUSTER_RECOVERY_TIMEOUT", "400ms")],
@@ -655,14 +658,93 @@ async fn the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_
         has(cluster.node(1), &lost.id) && has(cluster.node(2), &lost.id)
     })
     .await;
-    eventually("the previous life's folder to be deleted on time", || {
-        !storage.join("_previous-life").exists()
-    })
-    .await;
+    assert!(
+        storage
+            .join(MessageStore::LIVES)
+            .join(&old_id)
+            .join(TOPIC)
+            .is_dir()
+    );
     assert_eq!(
         cluster.node(number).node.shared().state(),
         NodeState::Active
     );
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-024
+#[tokio::test]
+async fn the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop() {
+    let mut cluster = setup(&[("TABA_DRAIN_ON_STOP", "false")]).await;
+    let storage = cluster.node(3).dir.path().join("taba");
+    let first =
+        Manifest::read(&storage).expect("the node writes its manifest when it becomes active");
+    assert_eq!(first.node_id, cluster.node_id(3));
+    let mut members: Vec<String> = first.members.iter().map(|m| m.node_id.clone()).collect();
+    members.sort();
+    let mut table = cluster.member_ids(3);
+    table.sort();
+    assert_eq!(members, table, "the active members of the table");
+    assert!(
+        first
+            .members
+            .iter()
+            .all(|m| !m.addresses.is_empty() && m.port != 0)
+    );
+    assert!(first.table_version > 0);
+    assert!(first.last_seen_ms > 0);
+
+    // The clean stop writes the last instant the life was seen.
+    cluster.clock.advance(Duration::from_secs(90));
+    let TestNode { node, dir, .. } = cluster.nodes.pop().unwrap();
+    node.shutdown().await;
+    let last = Manifest::read(&dir.path().join("taba")).expect("the manifest stays");
+    assert_eq!(last.node_id, first.node_id);
+    assert!(last.last_seen_ms >= first.last_seen_ms + 90_000);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-023
+#[tokio::test]
+async fn the_first_node_does_not_wipe_a_disk_that_has_a_manifest_it_keeps_it_as_a_life() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = dir.path().join("taba");
+    let old_disk = MessageStore::new(&storage, DbSynchronous::Off);
+    let cluster = TestCluster::empty();
+    let old = record(&cluster, 1, "from a cluster that stopped");
+    old_disk
+        .put(&old.topic, &old.to_meta(), &old.body)
+        .expect("writes to disk");
+    drop(old_disk);
+    Manifest {
+        node_id: "old-node".into(),
+        members: Vec::new(),
+        table_version: 3,
+        last_seen_ms: 1,
+        watermark: None,
+    }
+    .write(&storage)
+    .unwrap();
+
+    let mut cluster = cluster;
+    let builder = cluster
+        .builder(1, true)
+        .env("TABA_STORAGE_DIR", &storage.display().to_string());
+    let number = cluster
+        .spawn_node(builder)
+        .await
+        .expect("the first node starts");
+    wait_joined(cluster.node(number)).await;
+
+    let life = storage.join(MessageStore::LIVES).join("old-node");
+    assert!(life.join(TOPIC).is_dir(), "the messages wait in their life");
+    assert!(Manifest::read(&life).is_some());
+    assert!(!storage.join(TOPIC).exists(), "the node's disk is empty");
+    // The running life has its own manifest, with its own ID.
+    eventually("the manifest of the new life", || {
+        Manifest::read(&storage).is_some_and(|m| m.node_id == cluster.node_id(number))
+    })
+    .await;
     cluster.shutdown().await;
 }
 

@@ -118,7 +118,7 @@ A base de votantes é só quem o votante enxerga. Numa **partição de rede** em
 3. Envia as encontradas ao nó responsável pelo bloco (`POST /cluster/messages/recover`). Quem aceita grava direto nos responsáveis, **idempotente pelo ID**, e dá a baixa da perda.
 4. Tenta de novo a cada `cluster.bootstrap.retry.interval` até `cluster.recovery.timeout` (padrão 5 min); só então **limpa o estado local** e refaz o ingresso do zero, **como nó novo**.
 
-**Reinício do processo.** Um processo que reinicia nasce como **nó novo (ID novo)**, mas o disco da vida anterior **não é apagado na partida**: é posto de lado (`${storage.dir}/_previous-life`), o nó entra com disco vazio e, **depois de ativo e em segundo plano**, devolve ao cluster o que esse disco tem das perdas. A recuperação não atrasa o ingresso.
+**Reinício do processo.** Um processo que reinicia nasce como **nó novo (ID novo)**, mas o disco da vida anterior **não é apagado na partida**: é posto de lado numa **pasta com o ID antigo** (`${storage.dir}/_lives/<ID antigo>`, com o manifesto da vida; um disco sem manifesto, de versão anterior, vai para `_previous-life`), o nó entra com disco vazio e, **depois de ativo e em segundo plano**, devolve ao cluster o que esse disco tem das perdas. A recuperação não atrasa o ingresso e **não apaga** a pasta da vida (doc 37, seção 4.5).
 
 ## 5. Sincronização de um nó que entra
 

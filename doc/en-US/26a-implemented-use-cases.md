@@ -42,13 +42,13 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 13 | 19 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 21 | 8 |
-| `ING` | Node join (bootstrap) | 30 | 5 |
+| `ING` | Node join (bootstrap) | 31 | 5 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 3 | 12 |
-| `RTN` | Return of an excluded node and recovery of losses | 22 | 0 |
+| `RTN` | Return of an excluded node and recovery of losses | 25 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
 | `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
 | `DEV` | Development mode | 3 | 10 |
@@ -5690,6 +5690,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ING-036
+
+**Case:** A disk from an **earlier version** (no manifest) is not migrated: it is not a life
+**Then:** the new node follows today's path: it puts the disk in `_previous-life`, returns only the listed losses and deletes the folder at the end.
+**Level:** U
+**Tests:**
+  - `src/storage/messages/tests.rs::the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one`
+
+---
+
 
 ## FAL: Failure detection, exclusion vote and exit by failure
 
@@ -6777,7 +6787,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-014
 
 **Case:** The process restart **does not wait** for recovery to join  
-**Then:** the node sets aside the disk of the previous life (`${storage.dir}/_previous-life`), joins with an empty disk and becomes `active` as soon as synchronization finishes, even if a member of the listing does not answer (PRB-048).  
+**Then:** the node sets aside the disk of the previous life (`${storage.dir}/_lives/<old ID>`), joins with an empty disk and becomes `active` as soon as synchronization finishes, even if a member of the listing does not answer (PRB-048).  
 **Level:** C  
 **Tests:**
   - `src/storage/messages/tests.rs::the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one`
@@ -6788,7 +6798,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-015
 
 **Case:** After becoming active, the node that restarted recovers in the background  
-**Then:** queries the loss list, returns to the responsible node what the disk of the previous life has of them and deletes the `_previous-life` folder when it finishes. The member that was mute is called again every `cluster.bootstrap.retry.interval`, until `cluster.recovery.timeout` (5 min, D110); when exhausted, the node proceeds with the lists it has and deletes the folder.  
+**Then:** queries the loss list, returns to the responsible node what the disk of the previous life has of them and **keeps** the folder of the life (it is only deleted when the restoration ends, doc 37, section 4.7; the `_previous-life` folder, of a disk with no manifest, is deleted). The member that was mute is called again every `cluster.bootstrap.retry.interval`, until `cluster.recovery.timeout` (5 min, D110); when exhausted, the node proceeds with the lists it has.  
 **Level:** C  
 **Tests:**
   - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
@@ -6811,7 +6821,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-017
 
 **Case:** The **first node** of a new cluster (`cluster.first-node=true`, listing with no one) has no one to recover from  
-**Then:** what was on the disk of the previous life is deleted at start, by the usual path, and the `_previous-life` folder is not created (D111).  
+**Then:** a disk with **no manifest** (earlier version) is deleted at start, by the usual path, and the `_previous-life` folder does not stay (D111); a disk **with a manifest** becomes the folder of the life (UC-RTN-023), because the cold start decides what to do with it (doc 37, section 4.9).  
 **Level:** C  
 **Tests:**
   - `tests/recovery.rs::the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life`
@@ -6870,6 +6880,41 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/cluster/restore/tests.rs::with_a_node_missing_only_what_every_logger_of_it_missed_can_come_back`
   - `src/cluster/restore/tests.rs::nothing_starts_before_the_grace_period_while_an_expected_node_is_missing`
+
+---
+
+### UC-RTN-023
+
+**Case:** The disk of the previous life **always** becomes a folder with the **old ID** in its name (`${storage.dir}/_lives/<old ID>`, with the topics and the manifest), whether the node found the cluster or not; several lives coexist (a second restart does not erase the first)
+**Then:** the first node of a new cluster also sets a disk with a manifest aside instead of wiping it; a life with no messages keeps the manifest, because it counts for the expected nodes; the ID of the life has to be a folder name.
+**Level:** C
+**Tests:**
+  - `src/storage/messages/tests.rs::a_disk_with_a_manifest_becomes_the_folder_of_its_life_and_the_lives_coexist`
+  - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
+  - `tests/recovery.rs::the_first_node_does_not_wipe_a_disk_that_has_a_manifest_it_keeps_it_as_a_life`
+
+---
+
+### UC-RTN-024
+
+**Case:** The running life keeps the **manifest** in the root of the disk: the ID, the **active members** of the table with the IPs, the table version, `last_seen` and the watermark
+**Then:** it is written when the node becomes active and at every change of the table, `last_seen` moves every 10 s and on a clean stop, and the write is atomic (temporary file and swap). The watermark still goes empty (it arrives with the FIFO, doc 37, section 4.10).
+**Level:** C
+**Tests:**
+  - `tests/recovery.rs::the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop`
+  - `src/cluster/restore/tests.rs::the_manifest_is_written_atomically_and_read_back`
+  - `src/cluster/restore/tests.rs::a_folder_without_a_readable_manifest_is_not_a_life`
+
+---
+
+### UC-RTN-025
+
+**Case:** The **quarantine is not deleted** by today's recovery: the folder of each life stays until the restoration ends (vote, doc 37, section 4.7)
+**Then:** the loss recovery returns what the list asks for, and the folder of the life keeps its topics and manifest, even when the `cluster.recovery.timeout` deadline runs out.
+**Level:** C
+**Tests:**
+  - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
+  - `tests/recovery.rs::the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_stays_mute`
 
 ---
 

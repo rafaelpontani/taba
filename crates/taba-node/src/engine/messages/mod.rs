@@ -611,7 +611,13 @@ impl Messages {
     /// Sets aside the previous life's disk and leaves the node with an empty disk, so it can join without waiting for
     /// the recovery (PRB-048). Returns whether there is anything to recover.
     pub fn set_aside_old_disk(&self) -> io::Result<bool> {
-        let previous = self.store.set_aside_old_disk()?.map(Arc::new);
+        // A disk with a manifest becomes the folder of that life; one without it (an earlier version) keeps
+        // the path of the loss list only (doc 37, section 4.12).
+        let life = crate::cluster::restore::Manifest::read(self.store.root()).map(|m| m.node_id);
+        let previous = self
+            .store
+            .set_aside_old_disk(life.as_deref())?
+            .map(Arc::new);
         // The disk is new, and so is its log of excluded messages: the recording starts now.
         self.store.set_excluded_since(self.clock.now_millis())?;
         self.store.forget_excluded_inheritance()?;
@@ -620,7 +626,13 @@ impl Messages {
         Ok(some)
     }
 
-    /// The restart recovery is over: the previous life's disk is deleted.
+    /// The `storage.dir` (where the manifest of the running life is written).
+    pub fn storage_root(&self) -> &std::path::Path {
+        self.store.root()
+    }
+
+    /// The restart recovery is over: the disk with no manifest is deleted. The folder of a life stays until the
+    /// end of the restoration (doc 37, section 4.7).
     pub fn finish_previous_life(&self) {
         *lock(&self.previous_life) = None;
         if let Err(e) = self.store.drop_old_disk() {

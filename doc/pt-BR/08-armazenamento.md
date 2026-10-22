@@ -26,7 +26,9 @@ ${storage.dir}/
   _node.db                 banco do nó (SQLite, WAL)
   _backup.db               banco do backup em S3 (só com `backup.s3.bucket`): fila de envio, referências, segmentos
   _sync/sync.db            banco de eventos; só existe durante a sincronização
-  _previous-life/          disco da vida anterior, posto de lado num reinício (até a recuperação)
+  manifest.json            manifesto da vida em execução: ID, membros ativos com IPs, versão da tabela, `last_seen` (a cada 10 s)
+  _lives/<ID antigo>/      uma pasta por vida anterior: os tópicos dela e o `manifest.json`; ficam até o fim da restauração
+  _previous-life/          disco sem manifesto (versão anterior), posto de lado num reinício; apagado ao fim da recuperação
   <topico>/                uma pasta por tópico (maiúsculas viram "~" + minúscula: Pedidos → ~pedidos/)
     _topic.db              banco do tópico (SQLite, WAL), só com o que está em disco
     <id>.body              o corpo de cada mensagem em disco, só os bytes como vieram
@@ -99,7 +101,7 @@ Existe só durante a sincronização de um nó que entra: tabela `events` (núme
 
 | Situação | O que acontece |
 |---|---|
-| **Produção** | Todo reinício é de **nó novo** (ID novo). O disco antigo é posto de lado em `_previous-life` e usado, em segundo plano, para devolver ao cluster mensagens que só ele tinha |
+| **Produção** | Todo reinício é de **nó novo** (ID novo). O disco antigo é posto de lado em `_lives/<ID antigo>` (sem manifesto, em `_previous-life`) e usado, em segundo plano, para devolver ao cluster mensagens que só ele tinha |
 | **Desenvolvimento**, `resume-on-start` ligado | Retoma o que está em `storage.dir`: definições (mantendo `id` e data), mensagens e metadados, listas reconstruídas |
 | **Desenvolvimento**, desligado | Apaga `storage.dir` e começa limpo, com aviso |
 

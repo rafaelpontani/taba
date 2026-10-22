@@ -26,7 +26,9 @@ ${storage.dir}/
   _node.db                 node database (SQLite, WAL)
   _backup.db               S3 backup database (only with `backup.s3.bucket`): send queue, references, segments
   _sync/sync.db            event database; only exists during synchronization
-  _previous-life/          disk of the previous life, set aside on a restart (until recovery)
+  manifest.json            manifest of the running life: ID, active members with IPs, table version, `last_seen` (every 10 s)
+  _lives/<old ID>/         one folder per previous life: its topics and its `manifest.json`; they stay until the restoration ends
+  _previous-life/          disk with no manifest (earlier version), set aside on a restart; deleted when the recovery ends
   <topic>/                 one folder per topic (uppercase becomes "~" + lowercase: Pedidos → ~pedidos/)
     _topic.db              topic database (SQLite, WAL), only with what is on disk
     <id>.body              the body of each message on disk, only the bytes as they came
@@ -99,7 +101,7 @@ It exists only during the synchronization of a node that joins: table `events` (
 
 | Situation | What happens |
 |---|---|
-| **Production** | Every restart is a **new node** (new ID). The old disk is set aside in `_previous-life` and used, in the background, to return to the cluster messages that only it had |
+| **Production** | Every restart is a **new node** (new ID). The old disk is set aside in `_lives/<old ID>` (with no manifest, in `_previous-life`) and used, in the background, to return to the cluster messages that only it had |
 | **Development**, `resume-on-start` on | Resumes what is in `storage.dir`: definitions (keeping `id` and date), messages and metadata, rebuilt lists |
 | **Development**, off | Deletes `storage.dir` and starts clean, with a warning |
 

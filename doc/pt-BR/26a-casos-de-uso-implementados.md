@@ -42,13 +42,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 13 | 19 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 21 | 8 |
-| `ING` | Entrada de nó (bootstrap) | 30 | 5 |
+| `ING` | Entrada de nó (bootstrap) | 31 | 5 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 3 | 12 |
-| `RTN` | Retorno de nó excluído e recuperação de perdas | 22 | 0 |
+| `RTN` | Retorno de nó excluído e recuperação de perdas | 25 | 0 |
 | `FWD` | Repasse de chamadas de cliente | 4 | 8 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
 | `DEV` | Modo desenvolvimento | 3 | 10 |
@@ -5690,6 +5690,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ING-036
+
+**Caso:** Um disco de **versão anterior** (sem manifesto) não é migrado: não é uma vida
+**Então:** o nó novo segue o caminho de hoje: põe o disco em `_previous-life`, devolve só as perdas listadas e apaga a pasta ao fim.
+**Nível:** U
+**Testes:**
+  - `src/storage/messages/tests.rs::the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one`
+
+---
+
 
 ## FAL: Detecção de falhas, votação de exclusão e saída por falha
 
@@ -6777,7 +6787,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-014
 
 **Caso:** O reinício do processo **não espera** a recuperação para entrar  
-**Então:** o nó põe de lado o disco da vida anterior (`${storage.dir}/_previous-life`), entra com o disco vazio e fica `active` assim que a sincronização acaba, mesmo que um membro da listagem não responda (PRB-048).  
+**Então:** o nó põe de lado o disco da vida anterior (`${storage.dir}/_lives/<ID antigo>`), entra com o disco vazio e fica `active` assim que a sincronização acaba, mesmo que um membro da listagem não responda (PRB-048).  
 **Nível:** C  
 **Testes:**
   - `src/storage/messages/tests.rs::the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one`
@@ -6788,7 +6798,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-015
 
 **Caso:** Depois de ativo, o nó que reiniciou recupera em segundo plano  
-**Então:** consulta a lista de perdas, devolve ao responsável o que o disco da vida anterior tem delas e apaga a pasta `_previous-life` quando acaba. O membro que estava mudo é chamado de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout` (5 min, D110); esgotado, o nó segue com as listas que tem e apaga a pasta.  
+**Então:** consulta a lista de perdas, devolve ao responsável o que o disco da vida anterior tem delas e **mantém** a pasta da vida (ela só é apagada no fim da restauração, doc 37, seção 4.7; a pasta `_previous-life`, de disco sem manifesto, é apagada). O membro que estava mudo é chamado de novo a cada `cluster.bootstrap.retry.interval`, até `cluster.recovery.timeout` (5 min, D110); esgotado, o nó segue com as listas que tem.  
 **Nível:** C  
 **Testes:**
   - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
@@ -6811,7 +6821,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-017
 
 **Caso:** O **primeiro nó** de um cluster novo (`cluster.first-node=true`, listagem sem ninguém) não tem de quem recuperar  
-**Então:** o que havia no disco da vida anterior é apagado na partida, pelo caminho de sempre, e a pasta `_previous-life` não é criada (D111).  
+**Então:** um disco **sem manifesto** (versão anterior) é apagado na partida, pelo caminho de sempre, e a pasta `_previous-life` não fica (D111); um disco **com manifesto** vira a pasta da vida (UC-RTN-023), porque a partida a frio decide o que fazer com ele (doc 37, seção 4.9).  
 **Nível:** C  
 **Testes:**
   - `tests/recovery.rs::the_first_node_of_a_new_cluster_wipes_the_old_disk_and_keeps_no_previous_life`
@@ -6870,6 +6880,41 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/cluster/restore/tests.rs::with_a_node_missing_only_what_every_logger_of_it_missed_can_come_back`
   - `src/cluster/restore/tests.rs::nothing_starts_before_the_grace_period_while_an_expected_node_is_missing`
+
+---
+
+### UC-RTN-023
+
+**Caso:** O disco da vida anterior vira **sempre** uma pasta com o **ID antigo** no nome (`${storage.dir}/_lives/<ID antigo>`, com os tópicos e o manifesto), tenha o nó achado o cluster ou não; várias vidas convivem (um segundo reinício não apaga a primeira)
+**Então:** o primeiro nó de um cluster novo também põe o disco com manifesto de lado, em vez de apagá-lo; uma vida sem mensagens guarda o manifesto, porque conta para os nós esperados; o ID da vida tem de ser um nome de pasta.
+**Nível:** C
+**Testes:**
+  - `src/storage/messages/tests.rs::a_disk_with_a_manifest_becomes_the_folder_of_its_life_and_the_lives_coexist`
+  - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
+  - `tests/recovery.rs::the_first_node_does_not_wipe_a_disk_that_has_a_manifest_it_keeps_it_as_a_life`
+
+---
+
+### UC-RTN-024
+
+**Caso:** A vida em execução mantém o **manifesto** na raiz do disco: o ID, os **membros ativos** da tabela com os IPs, a versão da tabela, o `last_seen` e a marca d'água
+**Então:** é gravado quando o nó fica ativo e a cada mudança da tabela, o `last_seen` anda a cada 10 s e na parada limpa, e a escrita é atômica (arquivo temporário e troca). A marca d'água ainda vai vazia (ela chega com a FIFO, doc 37, seção 4.10).
+**Nível:** C
+**Testes:**
+  - `tests/recovery.rs::the_running_life_keeps_its_manifest_and_moves_last_seen_on_a_clean_stop`
+  - `src/cluster/restore/tests.rs::the_manifest_is_written_atomically_and_read_back`
+  - `src/cluster/restore/tests.rs::a_folder_without_a_readable_manifest_is_not_a_life`
+
+---
+
+### UC-RTN-025
+
+**Caso:** A **quarentena não é apagada** pela recuperação de hoje: a pasta de cada vida fica até o fim da restauração (voto, doc 37, seção 4.7)
+**Então:** a recuperação das perdas devolve o que a lista pede, e a pasta da vida continua com os tópicos e o manifesto, inclusive quando o prazo de `cluster.recovery.timeout` esgota.
+**Nível:** C
+**Testes:**
+  - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`
+  - `tests/recovery.rs::the_recovery_of_a_restarted_process_ends_at_the_timeout_even_if_a_node_stays_mute`
 
 ---
 
