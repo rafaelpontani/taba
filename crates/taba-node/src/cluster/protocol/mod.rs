@@ -163,6 +163,8 @@ pub enum Request {
     Forward(ForwardRequest),
     /// `GET /cluster/blocks/{id}/ids`
     BlockIds { block: String, query: StreamQuery },
+    /// `GET /cluster/blocks/{id}/excluded`: the block's log of excluded messages (doc 37, section 4.4).
+    BlockExcluded { block: String, query: StreamQuery },
     /// `GET /cluster/blocks/{id}/messages`
     BlockMessages { block: String, query: StreamQuery },
     /// `GET /cluster/blocks/{id}/messages/{messageId}`
@@ -271,6 +273,7 @@ impl Request {
             Request::Status => "status",
             Request::Forward(_) => "forward",
             Request::BlockIds { .. } => "block-ids",
+            Request::BlockExcluded { .. } => "block-excluded",
             Request::BlockMessages { .. } => "block-messages",
             Request::BlockMessage { .. } => "block-message",
             Request::MessageLoss(_) => "message-loss",

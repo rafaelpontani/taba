@@ -10,6 +10,8 @@ use rusqlite::{OptionalExtension, params};
 use super::db::NodeDb;
 
 const SAVE_COMPLETED: &str = "save_completed";
+const EXCLUDED_SINCE: &str = "excluded_since";
+const EXCLUDED_INHERITED: &str = "excluded_inherited";
 
 #[derive(Debug, Clone)]
 pub struct NodeStateStore {
@@ -49,6 +51,61 @@ impl NodeStateStore {
         conn.execute("DELETE FROM state WHERE key = ?1", params![SAVE_COMPLETED])
             .map_err(|e| self.db.fail(e))?;
         Ok(value.and_then(|v| v.parse().ok()))
+    }
+
+    /// The start of the continuous recording of the excluded log (doc 37, section 4.4), in ms.
+    pub fn excluded_since(&self) -> io::Result<Option<u64>> {
+        let value: Option<String> = self
+            .db
+            .conn()
+            .query_row(
+                "SELECT value FROM state WHERE key = ?1",
+                params![EXCLUDED_SINCE],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| self.db.fail(e))?;
+        Ok(value.and_then(|v| v.parse().ok()))
+    }
+
+    pub fn set_excluded_since(&self, ms: u64) -> io::Result<()> {
+        self.db
+            .conn()
+            .execute(
+                "INSERT INTO state (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![EXCLUDED_SINCE, ms.to_string()],
+            )
+            .map(|_| ())
+            .map_err(|e| self.db.fail(e))
+    }
+
+    /// Did this life already inherit the start of the recording from the sources of its first synchronization?
+    pub fn excluded_inherited(&self) -> io::Result<bool> {
+        let value: Option<String> = self
+            .db
+            .conn()
+            .query_row(
+                "SELECT value FROM state WHERE key = ?1",
+                params![EXCLUDED_INHERITED],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| self.db.fail(e))?;
+        Ok(value.is_some())
+    }
+
+    pub fn set_excluded_inherited(&self, inherited: bool) -> io::Result<()> {
+        let conn = self.db.conn();
+        let result = if inherited {
+            conn.execute(
+                "INSERT OR REPLACE INTO state (key, value) VALUES (?1, '1')",
+                params![EXCLUDED_INHERITED],
+            )
+        } else {
+            conn.execute("DELETE FROM state WHERE key = ?1", params![EXCLUDED_INHERITED])
+        };
+        result.map(|_| ()).map_err(|e| self.db.fail(e))
     }
 
     /// Deletes the mark without reading (the drain was cancelled: it went back to writing in memory).

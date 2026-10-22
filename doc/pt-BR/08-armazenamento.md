@@ -65,6 +65,8 @@ Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `g
 
 Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um bloco (faixa pela posição, para os streams de sincronização e a limpeza) e as contagens.
 
+**Log de excluídos.** A tabela `excluded` (`id`, `position`, `at_ms`) guarda o `id` de toda mensagem que **saiu do tópico morta** (ack, `prune`, envio à dead-letter; o `ttl` não entra), com a posição no anel (o bloco é achado por ela). O registro é gravado **na mesma transação** que apaga a mensagem, sem fsync extra (`storage.db.synchronous` segue como configurado). O log tem limite de idade (`storage.excluded.max-age`, 24 h) e de tamanho (`storage.excluded.max-size`, 100 MB, somando todos os tópicos); os registros mais antigos saem primeiro, e a **data de início da gravação contínua** (chave `excluded_since` da tabela `state` do `_node.db`) avança até o instante do registro mais novo descartado ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)).
+
 **Escritor único.** Toda escrita no banco de um tópico passa por **uma fila de comandos**, executada uma de cada vez. Leituras longas (os streams de sincronização) usam conexões de leitura próprias (modo WAL) e não bloqueiam o escritor.
 
 **Ordem de gravação** (para a queda não corromper): na escrita, **primeiro o arquivo, depois a linha**; no ack, **primeiro a linha, depois o arquivo**. Uma queda deixa no máximo **arquivo sem linha** (lixo inofensivo) ou **linha sem arquivo** (a mensagem se perdeu e é descartada na leitura). O nó que reinicia volta como nó novo e refaz do cluster.

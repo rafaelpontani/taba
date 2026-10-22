@@ -30,12 +30,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 2 | 7 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 7 | 10 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 14 | 22 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 14 | 24 |
 | `ANE` | Anel de hash, blocos e papéis | 4 | 8 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 11 | 21 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 21 | 10 |
 | `INV` | Invisibilidade no dono e nas réplicas | 19 | 13 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 17 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 21 |
 | `ING` | Entrada de nó (bootstrap) | 5 | 30 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 1 | 32 |
 | `FRZ` | Período de freezing | 1 | 13 |

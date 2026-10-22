@@ -302,6 +302,7 @@ impl Replication {
                     .map(Response::Taken)
             }
             request @ (Request::BlockIds { .. }
+            | Request::BlockExcluded { .. }
             | Request::BlockMessages { .. }
             | Request::BlockMessage { .. }) => self.source.handle(request).await,
             Request::Vote(vote) => self.voting.cast(vote).await,

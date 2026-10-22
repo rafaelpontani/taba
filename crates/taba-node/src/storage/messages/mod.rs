@@ -20,6 +20,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::db::to_io;
 use crate::config::DbSynchronous;
 
+mod excluded;
+use excluded::ExcludedLog;
+pub use excluded::{
+    DEFAULT_MAX_AGE_MS, DEFAULT_MAX_BYTES, ExcludedLimits, ExcludedRow, merged_since,
+};
+
 pub const TOPIC_DB_FILE: &str = "_topic.db";
 const BODY_EXT: &str = "body";
 
@@ -104,6 +110,13 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS messages_invisible_until ON messages (invisible_until);
     CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
+    CREATE TABLE IF NOT EXISTS excluded (
+        id       TEXT PRIMARY KEY NOT NULL,
+        position INTEGER NOT NULL,
+        at_ms    INTEGER NOT NULL
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS excluded_at ON excluded (at_ms);
+    CREATE INDEX IF NOT EXISTS excluded_position ON excluded (position);
 ";
 
 /// The indexes of the FIFO queue columns, created after `migrate` (a database from before them
@@ -208,6 +221,8 @@ pub struct MessageStore {
     root: PathBuf,
     synchronous: DbSynchronous,
     topics: Mutex<HashMap<String, Arc<TopicDisk>>>,
+    /// The log of excluded messages (doc 37, section 4.4).
+    excluded: ExcludedLog,
 }
 
 impl MessageStore {
@@ -217,6 +232,7 @@ impl MessageStore {
             root: root.to_path_buf(),
             synchronous,
             topics: Mutex::new(HashMap::new()),
+            excluded: ExcludedLog::default(),
         }
     }
 
@@ -496,11 +512,17 @@ impl MessageStore {
         let target = self.disk(to, true)?.expect("created");
         std::fs::rename(source.body_path(&meta.id), target.body_path(&meta.id))?;
         Self::insert_row(&target, meta)?;
-        source
-            .conn()
-            .execute("DELETE FROM messages WHERE id = ?1", params![meta.id])
+        // It leaves the source dead: the exclusion is recorded in the transaction that deletes it.
+        let mut conn = source.conn();
+        let tx = conn.transaction().map_err(to_io)?;
+        tx.execute(
+            excluded::RECORD_FROM_ROW,
+            params![meta.id, meta.dead_lettered_ms.unwrap_or_default() as i64],
+        )
+        .map_err(to_io)?;
+        tx.execute("DELETE FROM messages WHERE id = ?1", params![meta.id])
             .map_err(to_io)?;
-        Ok(())
+        tx.commit().map_err(to_io)
     }
 
     /// The FIFO queue's ack: the message becomes a short row with `delete_at` (doc 17, section 16.7).
@@ -508,23 +530,7 @@ impl MessageStore {
     /// row applies even if the message was only in memory. First the row, then the file.
     pub fn tombstone(&self, topic: &str, meta: &MessageMeta, delete_at_ms: u64) -> io::Result<()> {
         let disk = self.disk(topic, true)?.expect("created");
-        disk.conn()
-            .execute(
-                "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
-                 delivery_count, invisible_until, receipt_token, dead_lettered_at, \
-                 dead_letter_reason, age_base, deduplication_id, delete_at, position) \
-                 VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6, ?7)",
-                params![
-                    meta.id,
-                    meta.group_id,
-                    meta.published_ms as i64,
-                    meta.published_ms as i64,
-                    meta.deduplication_id,
-                    delete_at_ms as i64,
-                    position_to_db(meta.position),
-                ],
-            )
-            .map_err(to_io)?;
+        write_tombstone(&disk.conn(), meta, delete_at_ms)?;
         match std::fs::remove_file(disk.body_path(&meta.id)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
@@ -690,6 +696,28 @@ impl MessageStore {
             _ => Ok(()),
         }
     }
+}
+
+/// Writes the FIFO queue's short row (the SQL of `tombstone`, shared with the one that also records the
+/// exclusion in the same transaction).
+fn write_tombstone(conn: &Connection, meta: &MessageMeta, delete_at_ms: u64) -> io::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
+         delivery_count, invisible_until, receipt_token, dead_lettered_at, \
+         dead_letter_reason, age_base, deduplication_id, delete_at, position) \
+         VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6, ?7)",
+        params![
+            meta.id,
+            meta.group_id,
+            meta.published_ms as i64,
+            meta.published_ms as i64,
+            meta.deduplication_id,
+            delete_at_ms as i64,
+            position_to_db(meta.position),
+        ],
+    )
+    .map(|_| ())
+    .map_err(to_io)
 }
 
 /// Moves a folder. Where the system does not allow renaming (on Windows, with a file of the folder still

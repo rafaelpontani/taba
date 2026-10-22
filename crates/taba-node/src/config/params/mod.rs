@@ -52,6 +52,8 @@ pub static PARAMS: &[Param] = &[
     p("memory.topic.reserve", Some("1000")),
     p("storage.dir", Some("/var/lib/taba")),
     p("storage.db.synchronous", Some("NORMAL")),
+    p("storage.excluded.max-size", Some("100MB")),
+    p("storage.excluded.max-age", Some("24h")),
     // Messages
     p("message.max-bytes", Some("5MB")),
     p("message.hard-limit", None),

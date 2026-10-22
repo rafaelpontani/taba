@@ -485,6 +485,9 @@ struct Taken {
 /// How often the overflow summary goes to the log (provisional, D118).
 pub const OVERFLOW_SUMMARY_EVERY: Duration = Duration::from_secs(60);
 
+/// How often the limits of the log of excluded messages are applied.
+const EXCLUDED_TRIM_EVERY: Duration = Duration::from_secs(30);
+
 pub struct Messages {
     topics: Arc<Topics>,
     clock: Arc<dyn Clock>,
@@ -609,6 +612,9 @@ impl Messages {
     /// the recovery (PRB-048). Returns whether there is anything to recover.
     pub fn set_aside_old_disk(&self) -> io::Result<bool> {
         let previous = self.store.set_aside_old_disk()?.map(Arc::new);
+        // The disk is new, and so is its log of excluded messages: the recording starts now.
+        self.store.set_excluded_since(self.clock.now_millis())?;
+        self.store.forget_excluded_inheritance()?;
         let some = previous.is_some();
         *lock(&self.previous_life) = previous;
         Ok(some)
@@ -1369,7 +1375,7 @@ impl Messages {
             return self.remove_message(state, topic, &meta.id, place);
         }
         self.store
-            .tombstone(topic, &meta, delete_at)
+            .tombstone_excluded(topic, &meta, delete_at, now)
             .map_err(|e| self.disk_error("failed to write the FIFO queue's ack", &e))?;
         let owned = state.index.contains(&meta.id);
         self.take_from_memory(state, &meta.id);
@@ -1378,7 +1384,8 @@ impl Messages {
         Ok(())
     }
 
-    /// Takes the message from wherever it is and from the index.
+    /// Takes the message from wherever it is and from the index, recording its **exclusion** in the log
+    /// (doc 37, section 4.4): ack, prune.
     fn remove_message(
         &self,
         state: &mut TopicState,
@@ -1386,11 +1393,35 @@ impl Messages {
         id: &str,
         place: Place,
     ) -> Result<(), TabaError> {
+        self.remove_message_as(state, topic, id, place, true)
+    }
+
+    /// Like `remove_message`; with `exclude` false (the `ttl` expiry) nothing is recorded: a copy that comes
+    /// back from an old life expires again by the same rule.
+    fn remove_message_as(
+        &self,
+        state: &mut TopicState,
+        topic: &str,
+        id: &str,
+        place: Place,
+        exclude: bool,
+    ) -> Result<(), TabaError> {
         let owned = state.index.contains(id);
+        let now = self.clock.now_millis();
         match place {
             Place::Memory => {
-                self.take_from_memory(state, id);
+                if let Some(stored) = self.take_from_memory(state, id)
+                    && exclude
+                {
+                    self.store
+                        .record_excluded(topic, id, stored.meta.position, now)
+                        .map_err(|e| self.disk_error("failed to record the exclusion", &e))?;
+                }
             }
+            Place::Disk if exclude => self
+                .store
+                .remove_excluded(topic, id, now)
+                .map_err(|e| self.disk_error("failed to remove the message from disk", &e))?,
             Place::Disk => self
                 .store
                 .remove(topic, id)
@@ -1764,7 +1795,7 @@ impl Messages {
             } else {
                 Place::Disk
             };
-            match self.remove_message(&mut state, name, &id, place) {
+            match self.remove_message_as(&mut state, name, &id, place, false) {
                 Ok(()) => {
                     state.stats.expired += 1;
                     NodeCounters::add(&self.counters.expired, 1);
@@ -1788,7 +1819,10 @@ impl Messages {
             } else {
                 Place::Disk
             };
-            if self.remove_message(&mut state, name, &id, place).is_err() {
+            if self
+                .remove_message_as(&mut state, name, &id, place, false)
+                .is_err()
+            {
                 tracing::error!(topic = %name, id = %id, "failed to delete the expired replica");
             }
         }
@@ -1884,6 +1918,12 @@ impl Messages {
             let group;
             if let Some(mut stored) = self.take_from_memory(source_state, &id) {
                 original = Some(stored.meta.clone());
+                if let Err(e) = self
+                    .store
+                    .record_excluded(source, &id, stored.meta.position, now)
+                {
+                    tracing::error!(error = %e, topic = %source, id = %id, "failed to record the exclusion");
+                }
                 stored.meta = reset(stored.meta);
                 group = stored.meta.group_id.clone();
                 self.put_in_memory(&mut target_state, stored);
@@ -1995,6 +2035,37 @@ impl Messages {
         }
     }
 
+    /// Applies the limits of the log of excluded messages (doc 37, section 4.4). The log is trimmed on its own
+    /// schedule, not at each pass of the sweep.
+    pub fn trim_excluded(&self) {
+        let now = self.clock.now_millis();
+        match self.store.trim_excluded(now) {
+            Ok(0) => {}
+            Ok(removed) => tracing::info!(
+                removed,
+                "the log of excluded messages dropped what the limits do not allow"
+            ),
+            Err(e) => tracing::error!(error = %e, "failed to trim the log of excluded messages"),
+        }
+    }
+
+    /// Does the node's log say the message left the topic dead (ack, prune, dead-letter)?
+    pub fn is_excluded(&self, topic: &str, id: &str) -> bool {
+        self.store.is_excluded(topic, id).unwrap_or(false)
+    }
+
+    /// The sources of the first synchronization tell from when they record (see
+    /// `MessageStore::inherit_excluded_since`).
+    pub fn inherit_excluded_since(&self, sources_ms: u64) -> io::Result<bool> {
+        self.store.inherit_excluded_since(sources_ms)
+    }
+
+    /// The start of the continuous recording of the log of excluded messages (ms).
+    pub fn excluded_since(&self) -> u64 {
+        let now = self.clock.now_millis();
+        self.store.excluded_since(now).unwrap_or(now)
+    }
+
     /// The sweep task, until `cancel`. The interval is `retention.sweep.interval`, but
     /// it never exceeds 1 s: the same pass takes to the dead-letter the message whose invisibility
     /// expired, and whoever consumes the dead-letter should not wait for the whole interval.
@@ -2003,12 +2074,18 @@ impl Messages {
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut last_summary = tokio::time::Instant::now();
+        let mut last_trim = tokio::time::Instant::now();
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
                 _ = ticker.tick() => {
                     let this = self.clone();
                     let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                    if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY {
+                        let this = self.clone();
+                        let _ = tokio::task::spawn_blocking(move || this.trim_excluded()).await;
+                        last_trim = tokio::time::Instant::now();
+                    }
                     if last_summary.elapsed() >= OVERFLOW_SUMMARY_EVERY {
                         self.log_overflow_summary(OVERFLOW_SUMMARY_EVERY);
                         last_summary = tokio::time::Instant::now();

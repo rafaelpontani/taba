@@ -40,7 +40,7 @@ use crate::storage;
 use crate::storage::backup::{BackupDb, ObjectStore, Prefixed, S3Settings, S3Store};
 use crate::storage::db::NodeDb;
 use crate::storage::losses::LossStore;
-use crate::storage::messages::MessageStore;
+use crate::storage::messages::{ExcludedLimits, MessageStore};
 use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::SqliteTokenStore;
 use crate::storage::topics::SqliteTopicStore;
@@ -408,10 +408,16 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     .map_err(storage_error)?;
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
     let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id()));
-    let message_store = Arc::new(MessageStore::new(
-        &config.storage.dir,
-        config.storage.db_synchronous,
-    ));
+    let message_store = Arc::new(
+        MessageStore::new(&config.storage.dir, config.storage.db_synchronous).with_excluded(
+            ExcludedLimits {
+                max_bytes: config.storage.excluded_max_bytes,
+                max_age_ms: u64::try_from(config.storage.excluded_max_age.as_millis())
+                    .unwrap_or(u64::MAX),
+            },
+            Some(saves.clone()),
+        ),
+    );
     let disk_store = message_store.clone();
     let messages = if !dev && deps.cluster.is_some() {
         // In a cluster the previous life's disk waits for the restart recovery (D111).

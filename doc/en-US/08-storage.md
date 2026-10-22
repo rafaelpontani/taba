@@ -65,6 +65,8 @@ Table `messages`, **one row per message on disk**: `id`, `content_type`, `group_
 
 It answers: the oldest message, the next ones to expire, the messages of a block (range by position, for the synchronization streams and cleanup) and the counts.
 
+**Log of excluded messages.** The `excluded` table (`id`, `position`, `at_ms`) keeps the `id` of every message that **left the topic dead** (ack, `prune`, sent to the dead-letter; the `ttl` is not included), with the ring position (the block is found by it). The record is written **in the same transaction** that deletes the message, with no extra fsync (`storage.db.synchronous` stays as configured). The log has an age limit (`storage.excluded.max-age`, 24 h) and a size limit (`storage.excluded.max-size`, 100 MB, adding all topics); the oldest rows go first, and the **start of the continuous recording** (key `excluded_since` of the `state` table in `_node.db`) moves forward to the instant of the newest discarded row ([37-cluster-cold-start.md](37-cluster-cold-start.md)).
+
 **Single writer.** Every write to a topic's database goes through **one command queue**, executed one at a time. Long reads (the synchronization streams) use their own read connections (WAL mode) and do not block the writer.
 
 **Write order** (so a crash does not corrupt): on write, **first the file, then the row**; on ack, **first the row, then the file**. A crash leaves at most a **file without a row** (harmless garbage) or a **row without a file** (the message was lost and is discarded on read). The node that restarts comes back as a new node and rebuilds from the cluster.

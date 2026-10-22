@@ -35,13 +35,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 10 | 7 |
 | `CNT` | Conectores | 35 | 0 |
 | `CLI` | O `taba-cli`, a linha de comando do cliente | 36 | 0 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 22 | 14 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 24 | 14 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 21 | 11 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 10 | 21 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 13 | 19 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 17 | 8 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 21 | 8 |
 | `ING` | Entrada de nó (bootstrap) | 30 | 5 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
@@ -4295,6 +4295,31 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ESC-037
+
+**Caso:** Ao confirmar (ack) uma mensagem, **todo nó que guarda uma cópia** (o primário e as réplicas, em memória ou em disco) grava o registro de exclusão (`id`, posição no anel e instante) no **log de excluídos** do tópico, na mesma transação que apaga a mensagem; na fila FIFO o registro acompanha a linha curta da deduplicação  
+**Então:** o id fica registrado como morto em todos os nós que tinham a cópia; uma mensagem que não foi confirmada não é registrada. A mensagem que estava só em memória é registrada pelo `id` e pela posição.  
+**Nível:** U e C  
+**Testes:**
+  - `tests/excluded_log.rs::an_ack_records_the_exclusion_on_every_node_that_keeps_a_copy`
+  - `src/storage/messages/excluded/tests.rs::removing_with_exclusion_deletes_the_message_and_records_it_in_the_same_transaction`
+  - `src/storage/messages/excluded/tests.rs::a_message_that_was_only_in_memory_is_recorded_by_its_id_and_position`
+  - `src/storage/messages/excluded/tests.rs::the_fifo_ack_records_the_exclusion_together_with_the_short_row`
+  - `src/storage/messages/excluded/tests.rs::rows_are_listed_by_the_ranges_of_a_block_in_id_order`
+
+---
+
+### UC-ESC-038
+
+**Caso:** Ao enviar uma mensagem à dead-letter (`maxDeliveries` esgotado), todo nó que guarda uma cópia grava a exclusão no log da **fila de origem**  
+**Então:** o id é morto na fila de origem e continua vivo na dead-letter (o log é por tópico).  
+**Nível:** U e C  
+**Testes:**
+  - `tests/excluded_log.rs::the_dead_letter_records_the_exclusion_in_the_source_queue_on_every_node`
+  - `src/storage/messages/excluded/tests.rs::moving_to_the_dead_letter_records_the_exclusion_in_the_source_only`
+
+---
+
 
 ## ANE: Anel de hash, blocos e papéis
 
@@ -5299,6 +5324,51 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `src/engine/messages/tests.rs::drain_saves_everything_in_memory_with_its_metadata_and_a_restart_resumes_it`
+
+---
+
+### UC-ARM-026
+
+**Caso:** O log de excluídos tem **limite de idade** (`storage.excluded.max-age`, 24 h) e **de tamanho** (`storage.excluded.max-size`, 100 MB, somando todos os tópicos)  
+**Então:** os registros mais antigos saem primeiro, de qualquer tópico, até o log caber; a poda roda a cada 30 s.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/messages/excluded/tests.rs::the_limits_drop_the_oldest_rows_first_and_move_the_start_forward`
+  - `src/storage/messages/excluded/tests.rs::the_size_limit_counts_every_topic_and_drops_the_oldest_of_all`
+
+---
+
+### UC-ARM-027
+
+**Caso:** O log guarda a **data de início da gravação contínua**: começa na criação do log (no `_node.db`, sobrevive ao reinício) e só avança quando um registro é descartado por um limite  
+**Então:** ela passa a ser o instante do registro mais novo descartado; sem descarte, um cluster sem exclusões por dias continua cobrindo esses dias.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/messages/excluded/tests.rs::the_limits_drop_the_oldest_rows_first_and_move_the_start_forward`
+  - `src/storage/messages/excluded/tests.rs::the_start_of_the_recording_does_not_move_without_a_discarded_row`
+  - `src/storage/messages/excluded/tests.rs::the_start_of_the_recording_is_kept_in_the_node_database`
+
+---
+
+### UC-ARM-028
+
+**Caso:** O log de uma **vida passada** é incorporado ao atual (`import_excluded`) e a data de início só recua se o intervalo antigo e o atual se encontram, sem buraco  
+**Então:** os registros somam (o instante mais antigo de um `id` fica); com buraco, a data de início continua onde está.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/messages/excluded/tests.rs::a_past_life_adds_its_rows_and_moves_the_start_back_only_if_there_is_no_hole`
+
+---
+
+### UC-ARM-029
+
+**Caso:** O registro é gravado na **mesma transação** que apaga a mensagem, com `storage.db.synchronous` como configurado (`NORMAL` por padrão): sem fsync extra no ack. Um banco de tópico de versão anterior ganha a tabela `excluded` ao abrir  
+**Então:** a mensagem some e o registro existe, ou nenhum dos dois; nenhuma sincronização além da configurada.  
+**Nível:** U  
+**Testes:**
+  - `src/storage/messages/excluded/tests.rs::removing_with_exclusion_deletes_the_message_and_records_it_in_the_same_transaction`
+  - `src/storage/messages/excluded/tests.rs::recording_adds_no_synchronization_beyond_the_configured_one`
+  - `src/storage/messages/excluded/tests.rs::a_topic_database_from_before_the_log_gets_the_table`
 
 ---
 

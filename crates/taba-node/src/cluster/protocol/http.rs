@@ -267,6 +267,10 @@ impl Request {
             Request::BlockIds { block, query } => {
                 get_call(stream_path(&format!("/cluster/blocks/{block}/ids"), query))
             }
+            Request::BlockExcluded { block, query } => get_call(stream_path(
+                &format!("/cluster/blocks/{block}/excluded"),
+                query,
+            )),
             Request::BlockMessages { block, query } => get_call(stream_path(
                 &format!("/cluster/blocks/{block}/messages"),
                 query,
@@ -503,6 +507,10 @@ impl Request {
                 block: (*block).to_owned(),
                 query: parse_stream_query(query)?,
             }),
+            ["cluster", "blocks", block, "excluded"] if is("GET") => Ok(Request::BlockExcluded {
+                block: (*block).to_owned(),
+                query: parse_stream_query(query)?,
+            }),
             ["cluster", "blocks", block, "messages"] if is("GET") => Ok(Request::BlockMessages {
                 block: (*block).to_owned(),
                 query: parse_stream_query(query)?,
@@ -586,6 +594,7 @@ impl Request {
             | Request::ListTokens(_)
             | Request::ListTombstones(_)
             | Request::BlockIds { .. }
+            | Request::BlockExcluded { .. }
             | Request::BlockMessages { .. } => {
                 let text = String::from_utf8(reply.body).map_err(|_| unreadable("not UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
