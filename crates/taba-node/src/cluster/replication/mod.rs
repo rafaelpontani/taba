@@ -319,9 +319,17 @@ impl Replication {
             Request::MessageLoss(query) => self.recovery.serve_losses(&query),
             Request::LossRegister(record) => self.recovery.register_loss(record),
             Request::LossRemove { topic, id } => self.recovery.remove_loss(&topic, &id),
-            Request::Recover { records, replicate } => {
-                self.recovery.accept(records, replicate).await
-            }
+            Request::Recover {
+                records,
+                replicate,
+                durable,
+            } => self.recovery.accept(records, replicate, durable).await,
+            Request::Restore {
+                topic,
+                topic_id,
+                records,
+            } => self.recovery.accept_restore(topic, topic_id, records).await,
+            Request::Dead { topic, ids } => self.recovery.serve_dead(topic, ids).await,
             _ => Err(TabaError::route_not_found()),
         }
     }

@@ -111,6 +111,9 @@ pub struct ClusterRules {
     pub message_loss_ttl: Duration,
     /// `cluster.recovery.timeout` (to be defined: 5 minutes).
     pub recovery_timeout: Duration,
+    /// `cluster.restore.*`: the grace period, the strict mode and the clock slack of the restoration of the past
+    /// lives (doc 37, sections 4.4 and 4.8).
+    pub restore: restore::Rules,
     /// `cluster.reunion.interval` (to be defined: ten times the heartbeat, at least 1 s): how often
     /// the node checks whether the other side of a symmetric partition has come back (D101).
     pub reunion_interval: Duration,
@@ -198,6 +201,7 @@ impl ClusterRules {
                 .cluster
                 .recovery_timeout
                 .unwrap_or(Duration::from_secs(300)),
+            restore: restore::Rules::from(&config.cluster.restore),
             reunion_interval: config
                 .cluster
                 .reunion_interval
@@ -486,6 +490,7 @@ impl ClusterService {
             table_version: table.version,
             last_seen_ms: self.clock.now_millis(),
             watermark: None,
+            excluded_since_ms: Some(replication.messages.messages().excluded_since()),
         };
         if let Err(e) = manifest.write(replication.messages.messages().storage_root()) {
             tracing::warn!(error = %e, "could not write the manifest of the life");
@@ -1745,12 +1750,17 @@ impl ClusterService {
             return;
         };
         let messages = replication.messages.messages().clone();
-        if peers.is_empty() {
-            tokio::task::spawn_blocking(move || messages.finish_previous_life());
-            return;
-        }
         tokio::spawn(async move {
-            replication.recovery.run_streaming(peers).await;
+            // The two paths run side by side: the loss list (what the peers declared lost, by the disk of this
+            // boot's life) and the restoration of the lives inside the window of the log (everything they keep,
+            // doc 37, section 4.6). A mute node only delays the first.
+            let recovery = replication.recovery.clone();
+            let losses = async {
+                if !peers.is_empty() {
+                    recovery.run_streaming(peers).await;
+                }
+            };
+            tokio::join!(losses, replication.recovery.restore_lives());
             let _ = tokio::task::spawn_blocking(move || messages.finish_previous_life()).await;
         });
     }

@@ -26,7 +26,7 @@ ${storage.dir}/
   _node.db                 banco do nó (SQLite, WAL)
   _backup.db               banco do backup em S3 (só com `backup.s3.bucket`): fila de envio, referências, segmentos
   _sync/sync.db            banco de eventos; só existe durante a sincronização
-  manifest.json            manifesto da vida em execução: ID, membros ativos com IPs, versão da tabela, `last_seen` (a cada 10 s)
+  manifest.json            manifesto da vida em execução: ID, membros ativos com IPs, versão da tabela, `last_seen` (a cada 10 s), início do log de excluídos
   _lives/<ID antigo>/      uma pasta por vida anterior: os tópicos dela e o `manifest.json`; ficam até o fim da restauração
   _previous-life/          disco sem manifesto (versão anterior), posto de lado num reinício; apagado ao fim da recuperação
   <topico>/                uma pasta por tópico (maiúsculas viram "~" + minúscula: Pedidos → ~pedidos/)
@@ -66,6 +66,8 @@ A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão
 Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (de onde o `ttl` conta: a publicação, ou a entrada na dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (a posição no anel) e, na FIFO, `deduplication_id` e `delete_at`. Índices por `invisible_until`, `age_base`, `position` e `(group_id, deduplication_id)` e `delete_at`.
 
 Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um bloco (faixa pela posição, para os streams de sincronização e a limpeza) e as contagens.
+
+**`topic_meta`.** Cada banco de tópico guarda o `topicId` para o qual a pasta foi criada (chave `topic_id`); a restauração de uma vida anterior descarta as mensagens de um tópico recriado com outro `topicId` ([37-retomada-do-cluster.md](37-retomada-do-cluster.md), seção 4.6). Uma pasta de antes do registro não o tem, e o tópico conta como o mesmo.
 
 **Log de excluídos.** A tabela `excluded` (`id`, `position`, `at_ms`) guarda o `id` de toda mensagem que **saiu do tópico morta** (ack, `prune`, envio à dead-letter; o `ttl` não entra), com a posição no anel (o bloco é achado por ela). O registro é gravado **na mesma transação** que apaga a mensagem, sem fsync extra (`storage.db.synchronous` segue como configurado). O log tem limite de idade (`storage.excluded.max-age`, 24 h) e de tamanho (`storage.excluded.max-size`, 100 MB, somando todos os tópicos); os registros mais antigos saem primeiro, e a **data de início da gravação contínua** (chave `excluded_since` da tabela `state` do `_node.db`) avança até o instante do registro mais novo descartado ([37-retomada-do-cluster.md](37-retomada-do-cluster.md)).
 

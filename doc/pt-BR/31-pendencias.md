@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D164** e **PRB-061**).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D170** e **PRB-062**).
 
 ## Limites conhecidos
 
@@ -52,6 +52,7 @@ Achados ao implementar D152 a D155 ([30-decisoes.md](30-decisoes.md)). Cada um t
 | **PRB-059** | **As estatísticas consolidadas são aproximações em dois campos, e o `/metrics/topics*` da API de operação continua a visão de um nó só** (achado A, em parte resolvido pela D156: o `/stats/topics…` da API de cliente junta o cluster). Os percentis de latência são o **máximo** dos nós (o percentil real do cluster exige os histogramas), e `groups` e o maior grupo são o máximo (um limite inferior; a condição de grupo ruidoso pode não ver um grupo espalhado entre nós); quem lê o percentil do cluster recebe um limite superior | Mandar os histogramas de latência e as listas de grupos entre os nós; ou fazer o `/metrics/topics*` da API de operação consolidar também |
 | **PRB-060** | **Sem `operations.port` as operações do cluster inteiro ficam sem token na porta de cliente** (`POST /cluster/stop`, `/cluster/backup/flush`, `/node/drain`...): a API de cliente só monta suas cópias autenticadas quando a API de operação tem porta própria, porque os nomes são os mesmos. Herdado de D63 e D150, mas agora existe um gêmeo protegido por token que não pode ser montado | Com a autenticação ligada, não juntar as rotas de operação à porta de cliente (ou protegê-las com o token raiz) |
 | **PRB-061** | **Um nó que saiu por drain só é listado e endereçável enquanto o nó que recebe se lembra dele** (até 64, em memória): depois que o receptor reinicia, `GET /nodes` já não o mostra e `/nodes/{nodeId}/drain` responde `404`, então ele não pode ser devolvido pela API | Guardar os nós que saíram no banco do nó, ou derivá-los da lista de parada e dos batimentos do S3 |
+| **PRB-062** | **A restauração não toma o maior `deliveryCount` entre duas cópias de uma mensagem** (doc 37, seção 4.3): se o primário já tem a mensagem (`Existing`), a cópia dele prevalece e o contador da cópia da vida, se maior, se perde. O efeito é uma mensagem que pode ser entregue além de `maxDeliveries` depois de uma retomada. Invisibilidade e recibo são zerados, e uma cópia morta vence (a consulta de mortos), como no desenho | No `Existing`, o primário toma o maior `deliveryCount` e o replica |
 
 ## 1. Sem bloqueio
 

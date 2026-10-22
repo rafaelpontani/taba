@@ -29,6 +29,7 @@ fn manifest(node: &str, version: u64, members: &[&str], last_seen_ms: u64) -> Ma
         table_version: version,
         last_seen_ms,
         watermark: Some("01H".into()),
+        excluded_since_ms: Some(500),
     }
 }
 

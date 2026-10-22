@@ -408,3 +408,39 @@ fn a_disk_with_a_manifest_becomes_the_folder_of_its_life_and_the_lives_coexist()
     // The ID of a life is a folder name.
     assert!(first.set_aside_old_disk(Some("../x")).is_err());
 }
+
+/// UC: UC-RTN-027
+#[test]
+fn the_folder_of_a_topic_records_the_topic_id_it_was_created_for_and_keeps_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let first = store(tmp.path());
+    // No folder, no record; and a folder created before the resolver is set has none either (a disk of a
+    // version before this record).
+    assert_eq!(first.topic_id("orders").unwrap(), None);
+    first.put("legacy", &meta("l1"), b"x").unwrap();
+    assert_eq!(first.topic_id("legacy").unwrap(), None);
+
+    first.set_topic_id_resolver(Box::new(|topic| Some(format!("id-of-{topic}"))));
+    first.put("orders", &meta("a1"), b"x").unwrap();
+    first.put("orders", &meta("a2"), b"x").unwrap();
+    assert_eq!(
+        first.topic_id("orders").unwrap().as_deref(),
+        Some("id-of-orders")
+    );
+
+    // A later life of the same folder does not rewrite it: the folder belongs to the topic it was created for.
+    let second = store(tmp.path());
+    second.set_topic_id_resolver(Box::new(|_| Some("another".into())));
+    second.put("orders", &meta("a3"), b"x").unwrap();
+    assert_eq!(
+        second.topic_id("orders").unwrap().as_deref(),
+        Some("id-of-orders")
+    );
+
+    // The store over a life reads the same record.
+    let life = second.open_life(tmp.path());
+    assert_eq!(
+        life.topic_id("orders").unwrap().as_deref(),
+        Some("id-of-orders")
+    );
+}

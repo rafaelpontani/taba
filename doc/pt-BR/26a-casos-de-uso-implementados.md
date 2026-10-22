@@ -42,13 +42,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 13 | 19 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 21 | 8 |
-| `ING` | Entrada de nó (bootstrap) | 31 | 5 |
+| `ING` | Entrada de nó (bootstrap) | 32 | 5 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
 | `CNC` | Concorrência entre mudanças de membros | 12 | 3 |
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 3 | 12 |
-| `RTN` | Retorno de nó excluído e recuperação de perdas | 25 | 0 |
+| `RTN` | Retorno de nó excluído e recuperação de perdas | 30 | 0 |
 | `FWD` | Repasse de chamadas de cliente | 4 | 8 |
 | `DRN` | Parada e modo drain (inclui o drain como save) | 25 | 3 |
 | `DEV` | Modo desenvolvimento | 3 | 10 |
@@ -5700,6 +5700,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ING-037
+
+**Caso:** Enquanto um membro **não informa** desde quando grava o log de excluídos (um nó de versão anterior, ou que não responde), **nenhuma vida é restaurável**
+**Então:** a data de corte do cluster fica indefinida e as vidas ficam fora da janela (seguem o caminho da lista de perdas); quando todos informam, a vida volta a ser restaurada.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::no_life_is_restorable_while_a_member_does_not_tell_when_its_log_started`
+
+---
+
 
 ## FAL: Detecção de falhas, votação de exclusão e saída por falha
 
@@ -6806,6 +6816,65 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-RTN-026
+
+**Caso:** Uma vida **dentro da janela** do log (o `last_seen` dela é posterior à data de corte do cluster mais a folga) tem **todas** as mensagens enviadas ao **novo primário** do bloco, com o ID original, sem que nenhum nó tenha declarado perda; o que o primário já tem (`Existing`) é pulado
+**Então:** o primário ativa pelo caminho de `recover` (grava e replica com o quórum); o `deliveryCount` fica, a invisibilidade e o recibo são zerados; o que o primário confirma sai da pasta da vida, e uma nova passada não reenvia nada. O log de excluídos da vida entra no do nó, e a data de início do log recua quando os intervalos se encontram sem buraco. Uma vida fora da janela segue o caminho da lista de perdas (UC-RTN-018).
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::a_life_inside_the_window_is_sent_whole_to_the_new_primary_with_its_original_id`
+  - `src/engine/messages/tests/lives.rs::the_log_of_a_life_is_added_to_the_nodes_and_the_start_goes_back_only_if_they_meet`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+  - `src/cluster/protocol/tests.rs::the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter`
+
+---
+
+### UC-RTN-027
+
+**Caso:** Mensagem de um tópico **excluído**, ou **recriado com outro `topicId`** (o da vida fica registrado junto do tópico, na pasta)
+**Então:** o primário a descarta sem consultar mortos; o que foi descartado conta como resolvido, e sai da pasta da vida. Uma pasta de antes do registro não prova a recriação, e o tópico conta como o mesmo.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::messages_of_a_deleted_or_recreated_topic_are_discarded_without_asking_the_dead`
+  - `src/engine/messages/tests/lives.rs::the_topic_of_a_message_of_a_life_is_the_same_gone_or_recreated`
+  - `src/storage/messages/tests.rs::the_folder_of_a_topic_records_the_topic_id_it_was_created_for_and_keeps_it`
+
+---
+
+### UC-RTN-028
+
+**Caso:** O `id` consta no **log de excluídos** do primário, ou no de **qualquer outro nó presente** (a consulta vai em lote, por tópico, a todos os presentes, não só aos donos do bloco)
+**Então:** a mensagem é descartada; o log dos outros responde por `POST /cluster/topics/{topic}/messages/dead`.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::the_new_primary_discards_what_its_own_log_or_the_log_of_any_present_node_says_is_dead`
+  - `src/engine/messages/tests/lives.rs::the_node_tells_which_ids_its_log_of_excluded_messages_has`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+  - `src/cluster/protocol/tests.rs::the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter`
+
+---
+
+### UC-RTN-029
+
+**Caso:** Com o backup em S3, o **diário** do tópico registra a remoção do `id`; ou o S3 está inacessível
+**Então:** a remoção no diário descarta a mensagem (o diário é lido uma vez por tópico, com cache curto); S3 inacessível é evidência ausente: o primário decide com o log local e o dos outros nós e registra um aviso.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::the_journal_in_s3_discards_what_it_removed_and_a_silent_s3_only_leaves_a_warning`
+
+---
+
+### UC-RTN-030
+
+**Caso:** **Recebimento durável**: o primário grava a mensagem restaurada **em disco**, em todos os donos, e só confirma com o quórum
+**Então:** só o que o primário confirmou é marcado como enviado (sai da pasta da vida); o que ele não confirmou fica na pasta e é reenviado até o prazo de `cluster.recovery.timeout`; depois de confirmado, nada é reenviado.
+**Nível:** C
+**Testes:**
+  - `tests/restore_lives.rs::a_restored_message_is_on_the_disk_of_every_owner_even_with_memory_to_spare`
+  - `tests/restore_lives.rs::a_batch_the_primary_did_not_confirm_stays_in_the_life_and_is_sent_again`
+
+---
+
 ### UC-RTN-016
 
 **Caso:** O que o disco da vida anterior tem e a lista de perdas não pede não volta a ninguém, e o disco novo nunca ressuscita uma mensagem antiga  
@@ -6910,7 +6979,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-RTN-025
 
 **Caso:** A **quarentena não é apagada** pela recuperação de hoje: a pasta de cada vida fica até o fim da restauração (voto, doc 37, seção 4.7)
-**Então:** a recuperação das perdas devolve o que a lista pede, e a pasta da vida continua com os tópicos e o manifesto, inclusive quando o prazo de `cluster.recovery.timeout` esgota.
+**Então:** a recuperação das perdas devolve o que a lista pede, e a pasta da vida continua com os tópicos e o manifesto, inclusive quando o prazo de `cluster.recovery.timeout` esgota. Só as linhas que um primário confirmou na restauração (UC-RTN-026) saem dela.
 **Nível:** C
 **Testes:**
   - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`

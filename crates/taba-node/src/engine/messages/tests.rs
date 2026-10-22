@@ -2925,6 +2925,7 @@ mod stats_events;
 mod backup;
 mod blocks;
 mod cluster;
+mod lives;
 mod prune;
 
 /// UC: UC-VOL-013, UC-VOL-020

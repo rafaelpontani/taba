@@ -536,6 +536,31 @@ impl Backup {
         }
     }
 
+    /// The IDs the topic's journal in the bucket registers as removed (ack, `ttl`, dead-letter): the proof of death
+    /// the restoration of a past life asks S3 for (doc 37, section 4.6). `None` when S3 does not answer: the
+    /// evidence is absent, and whoever asked decides with the other sources.
+    pub async fn removed_in_journal(
+        &self,
+        topic: &str,
+    ) -> Option<std::collections::HashSet<String>> {
+        let topic_id = self.topics.get(topic).ok()?.definition.id;
+        let journals = self
+            .store
+            .list(&keys::journals_prefix(topic, &topic_id))
+            .await
+            .ok()?;
+        let mut removed = std::collections::HashSet::new();
+        for object in journals {
+            let content = self.store.get(&object.key).await.ok().flatten()?;
+            let Ok((_, records)) = journal::decode(&content.body) else {
+                tracing::error!(key = %object.key, "backup: unreadable journal; ignored");
+                continue;
+            };
+            removed.extend(records.into_iter().filter(|r| r.removed).map(|r| r.id));
+        }
+        Some(removed)
+    }
+
     /// Message `id` of the topic, as the bucket has it (segments plus the journal's last state);
     /// `None` if it is not in the bucket or was removed by the journal.
     pub async fn find_message(

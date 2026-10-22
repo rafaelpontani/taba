@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D164** and **PRB-061**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D170** and **PRB-062**).
 
 ## Known limits
 
@@ -52,6 +52,7 @@ Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)). Each
 | **PRB-059** | **The consolidated statistics are approximations in two fields, and the operations API's `/metrics/topics*` are still the view of one node** (finding A, in part resolved by D156: the client API's `/stats/topics…` joins the cluster). The latency percentiles are the **maximum** of the nodes' (the real percentile of the cluster needs the histograms), and `groups` and the largest group are the maximum (a lower bound; the noisy-group condition can miss a group spread over nodes); a client that reads the percentile of the cluster gets an upper bound | Send the latency histograms and the group lists between nodes; or make `/metrics/topics*` of the operations API consolidate too |
 | **PRB-060** | **Without `operations.port` the cluster-wide operations stay without a token on the client port** (`POST /cluster/stop`, `/cluster/backup/flush`, `/node/drain`...): the client API only mounts its authenticated copies when the operations API has a port of its own, because the names are the same. Inherited from D63 and D150, but now a token-protected twin exists that cannot be mounted | With authentication on, do not merge the operations routes into the client port (or protect them with the root token) |
 | **PRB-061** | **A node that left by drain is listed and addressable only while the receiving node remembers it** (up to 64, in memory): after the receiver restarts, `GET /nodes` no longer shows it and `/nodes/{nodeId}/drain` answers `404`, so it cannot be returned through the API | Keep the nodes that left in the node database, or derive them from the S3 stop list and heartbeats |
+| **PRB-062** | **The restoration does not take the greater `deliveryCount` between two copies of a message** (doc 37, section 4.3): if the primary already has the message (`Existing`), its copy prevails and the counter of the life's copy, if greater, is lost. The effect is a message that may be delivered beyond `maxDeliveries` after a resumption. Invisibility and receipt are zeroed, and a dead copy wins (the query of the dead), as in the design | On `Existing`, the primary takes the greater `deliveryCount` and replicates it |
 
 ## 1. Unblocked
 

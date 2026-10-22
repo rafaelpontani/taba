@@ -184,11 +184,26 @@ pub enum Request {
     },
     /// `POST /cluster/messages/recover`: the messages the returning node found (accepts whoever is
     /// not yet a member). With `replicate`, whoever receives it also writes to the other responsible nodes;
-    /// without it (`?replicate=false`), it only writes to its own disk.
+    /// without it (`?replicate=false`), it only writes to its own disk. With `durable` (`?durable=true`), whoever
+    /// writes puts the messages **on disk**, not only in memory (the restoration of a past life, doc 37, 4.7).
     Recover {
         records: Vec<MessageRecord>,
         replicate: bool,
+        durable: bool,
     },
+    /// `POST /cluster/topics/{topic}/messages/restore`: the messages of a past life, sent to the new primary of
+    /// their block with the original ID (doc 37, section 4.6). Whoever receives checks the topic (and the
+    /// `topicId` the life had), then the dead, and only then activates what is alive. Not for a node of an
+    /// earlier version.
+    Restore {
+        topic: String,
+        /// The `topicId` the topic had in the life (`None` for a folder from before the record).
+        topic_id: Option<String>,
+        records: Vec<MessageRecord>,
+    },
+    /// `POST /cluster/topics/{topic}/messages/dead`: which of the `ids` this node's log of excluded messages
+    /// has (doc 37, section 4.6). The answer is a `Json` `{ "dead": [ids] }`.
+    Dead { topic: String, ids: Vec<String> },
     /// `POST /cluster/backup/flush`: the S3 backup flush on this node (doc 23, section 1.11).
     BackupFlush,
     /// `POST /cluster/backup/stop`: this node's drain for the cluster's planned stop, with the
@@ -280,6 +295,8 @@ impl Request {
             Request::LossRegister(_) => "loss-register",
             Request::LossRemove { .. } => "loss-remove",
             Request::Recover { .. } => "recover",
+            Request::Restore { .. } => "restore",
+            Request::Dead { .. } => "dead",
             Request::BackupFlush => "backup-flush",
             Request::BackupStop => "backup-stop",
             Request::BackupSaved(_) => "backup-saved",

@@ -26,7 +26,7 @@ ${storage.dir}/
   _node.db                 node database (SQLite, WAL)
   _backup.db               S3 backup database (only with `backup.s3.bucket`): send queue, references, segments
   _sync/sync.db            event database; only exists during synchronization
-  manifest.json            manifest of the running life: ID, active members with IPs, table version, `last_seen` (every 10 s)
+  manifest.json            manifest of the running life: ID, active members with IPs, table version, `last_seen` (every 10 s), start of the log of excluded messages
   _lives/<old ID>/         one folder per previous life: its topics and its `manifest.json`; they stay until the restoration ends
   _previous-life/          disk with no manifest (earlier version), set aside on a restart; deleted when the recovery ends
   <topic>/                 one folder per topic (uppercase becomes "~" + lowercase: Pedidos → ~pedidos/)
@@ -66,6 +66,8 @@ The schema version is written to the database (`SCHEMA_VERSION`); a database of 
 Table `messages`, **one row per message on disk**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (where the `ttl` counts from: publication, or entry into the dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (the position on the ring) and, in FIFO, `deduplication_id` and `delete_at`. Indexes by `invisible_until`, `age_base`, `position` and `(group_id, deduplication_id)` and `delete_at`.
 
 It answers: the oldest message, the next ones to expire, the messages of a block (range by position, for the synchronization streams and cleanup) and the counts.
+
+**`topic_meta`.** Each topic database keeps the `topicId` the folder was created for (key `topic_id`); the restoration of a previous life discards the messages of a topic recreated with another `topicId` ([37-cluster-cold-start.md](37-cluster-cold-start.md), section 4.6). A folder from before the record does not have it, and the topic counts as the same.
 
 **Log of excluded messages.** The `excluded` table (`id`, `position`, `at_ms`) keeps the `id` of every message that **left the topic dead** (ack, `prune`, sent to the dead-letter; the `ttl` is not included), with the ring position (the block is found by it). The record is written **in the same transaction** that deletes the message, with no extra fsync (`storage.db.synchronous` stays as configured). The log has an age limit (`storage.excluded.max-age`, 24 h) and a size limit (`storage.excluded.max-size`, 100 MB, adding all topics); the oldest rows go first, and the **start of the continuous recording** (key `excluded_since` of the `state` table in `_node.db`) moves forward to the instant of the newest discarded row ([37-cluster-cold-start.md](37-cluster-cold-start.md)).
 

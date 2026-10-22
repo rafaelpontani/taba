@@ -64,6 +64,10 @@ pub struct Manifest {
     pub last_seen_ms: u64,
     /// The largest message `id` the life generated (section 4.10); the new generator starts above it.
     pub watermark: Option<String>,
+    /// When the life's log of excluded messages started recording (ms), to merge it with the node's log when the
+    /// life is restored (section 4.4). Absent in a manifest from before this field.
+    #[serde(default)]
+    pub excluded_since_ms: Option<u64>,
 }
 
 impl Manifest {

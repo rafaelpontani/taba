@@ -42,13 +42,13 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 13 | 19 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 21 | 8 |
-| `ING` | Node join (bootstrap) | 31 | 5 |
+| `ING` | Node join (bootstrap) | 32 | 5 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 3 | 12 |
-| `RTN` | Return of an excluded node and recovery of losses | 25 | 0 |
+| `RTN` | Return of an excluded node and recovery of losses | 30 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
 | `DRN` | Stop and drain mode (includes drain as save) | 25 | 3 |
 | `DEV` | Development mode | 3 | 10 |
@@ -5700,6 +5700,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ING-037
+
+**Case:** While a member **does not tell** since when it records the log of excluded messages (a node of an earlier version, or one that does not answer), **no life is restorable**
+**Then:** the cluster cut-off date is undefined and the lives are outside the window (they follow the path of the loss list); when everybody tells, the life is restored again.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::no_life_is_restorable_while_a_member_does_not_tell_when_its_log_started`
+
+---
+
 
 ## FAL: Failure detection, exclusion vote and exit by failure
 
@@ -6806,6 +6816,65 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-RTN-026
+
+**Case:** A life **inside the window** of the log (its `last_seen` is after the cluster cut-off date plus the slack) has **all** its messages sent to the **new primary** of the block, with the original ID, without any node having declared a loss; what the primary already has (`Existing`) is skipped
+**Then:** the primary activates through the path of `recover` (it writes and replicates with the quorum); the `deliveryCount` stays, the invisibility and the receipt are zeroed; what the primary confirms leaves the folder of the life, and a new pass sends nothing again. The life's log of excluded messages is added to the node's, and the start of the log goes back when the intervals meet with no hole. A life outside the window follows the path of the loss list (UC-RTN-018).
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::a_life_inside_the_window_is_sent_whole_to_the_new_primary_with_its_original_id`
+  - `src/engine/messages/tests/lives.rs::the_log_of_a_life_is_added_to_the_nodes_and_the_start_goes_back_only_if_they_meet`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+  - `src/cluster/protocol/tests.rs::the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter`
+
+---
+
+### UC-RTN-027
+
+**Case:** A message of a topic that was **deleted**, or **recreated with another `topicId`** (the life's one is recorded with the topic, in the folder)
+**Then:** the primary discards it without asking the dead; what was discarded counts as resolved, and leaves the folder of the life. A folder from before the record does not prove the recreation, and the topic counts as the same.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::messages_of_a_deleted_or_recreated_topic_are_discarded_without_asking_the_dead`
+  - `src/engine/messages/tests/lives.rs::the_topic_of_a_message_of_a_life_is_the_same_gone_or_recreated`
+  - `src/storage/messages/tests.rs::the_folder_of_a_topic_records_the_topic_id_it_was_created_for_and_keeps_it`
+
+---
+
+### UC-RTN-028
+
+**Case:** The `id` is in the primary's **log of excluded messages**, or in the one of **any other present node** (the query goes in a batch, per topic, to all the present nodes, not only to the block's owners)
+**Then:** the message is discarded; the other nodes' log answers through `POST /cluster/topics/{topic}/messages/dead`.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::the_new_primary_discards_what_its_own_log_or_the_log_of_any_present_node_says_is_dead`
+  - `src/engine/messages/tests/lives.rs::the_node_tells_which_ids_its_log_of_excluded_messages_has`
+  - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+  - `src/cluster/protocol/tests.rs::the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter`
+
+---
+
+### UC-RTN-029
+
+**Case:** With the S3 backup, the topic's **journal** registers the removal of the `id`; or S3 is unreachable
+**Then:** the removal in the journal discards the message (the journal is read once per topic, with a short cache); an unreachable S3 is absent evidence: the primary decides with its own log and the other nodes' and records a warning.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::the_journal_in_s3_discards_what_it_removed_and_a_silent_s3_only_leaves_a_warning`
+
+---
+
+### UC-RTN-030
+
+**Case:** **Durable receipt**: the primary writes the restored message **to disk**, on every owner, and only confirms with the quorum
+**Then:** only what the primary confirmed is marked as sent (it leaves the folder of the life); what it did not confirm stays in the folder and is sent again until the `cluster.recovery.timeout` deadline; once confirmed, nothing is sent again.
+**Level:** C
+**Tests:**
+  - `tests/restore_lives.rs::a_restored_message_is_on_the_disk_of_every_owner_even_with_memory_to_spare`
+  - `tests/restore_lives.rs::a_batch_the_primary_did_not_confirm_stays_in_the_life_and_is_sent_again`
+
+---
+
 ### UC-RTN-016
 
 **Case:** What the disk of the previous life has and the loss list does not ask for does not go back to anyone, and the new disk never resurrects an old message  
@@ -6910,7 +6979,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-RTN-025
 
 **Case:** The **quarantine is not deleted** by today's recovery: the folder of each life stays until the restoration ends (vote, doc 37, section 4.7)
-**Then:** the loss recovery returns what the list asks for, and the folder of the life keeps its topics and manifest, even when the `cluster.recovery.timeout` deadline runs out.
+**Then:** the loss recovery returns what the list asks for, and the folder of the life keeps its topics and manifest, even when the `cluster.recovery.timeout` deadline runs out. Only the rows a primary confirmed in the restoration (UC-RTN-026) leave it.
 **Level:** C
 **Tests:**
   - `tests/recovery.rs::a_restarted_process_joins_without_waiting_and_recovers_its_old_disk_afterwards`

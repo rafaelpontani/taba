@@ -333,6 +333,17 @@ impl Messages {
         meta: MessageMeta,
         body: Vec<u8>,
     ) -> Result<Loaded, TabaError> {
+        self.apply_load_with(topic, meta, body, false)
+    }
+
+    /// Like [`apply_load`](Self::apply_load); with `durable` the message is written straight to disk.
+    pub fn apply_load_with(
+        &self,
+        topic: &str,
+        meta: MessageMeta,
+        body: Vec<u8>,
+        durable: bool,
+    ) -> Result<Loaded, TabaError> {
         let Ok(view) = self.topics.get(topic) else {
             return Ok(Loaded::UnknownTopic);
         };
@@ -350,7 +361,7 @@ impl Messages {
         if self.holds(topic, &meta.id) {
             return Ok(Loaded::Existing);
         }
-        self.apply_publish(topic, meta, body)?;
+        self.apply_publish_with(topic, meta, body, durable)?;
         Ok(Loaded::Stored)
     }
 

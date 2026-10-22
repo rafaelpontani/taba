@@ -404,19 +404,40 @@ fn requests() -> Vec<Request> {
                 record("application/octet-stream", &[0, 1, 2]),
             ],
             replicate: true,
+            durable: false,
         },
         Request::Recover {
             records: vec![record("text/plain", b"oi")],
             replicate: false,
+            durable: false,
+        },
+        Request::Recover {
+            records: vec![record("text/plain", b"oi")],
+            replicate: false,
+            durable: true,
         },
         Request::FifoPublish {
             topic: "pedidos".into(),
             record: record("application/json", br#"{"a":1}"#),
         },
+        Request::Restore {
+            topic: "pedidos".into(),
+            topic_id: Some(guid(7)),
+            records: vec![record("application/json", br#"{"a":1}"#)],
+        },
+        Request::Restore {
+            topic: "pedidos".into(),
+            topic_id: None,
+            records: vec![record("text/plain", b"oi")],
+        },
+        Request::Dead {
+            topic: "pedidos".into(),
+            ids: vec![guid(4), guid(5)],
+        },
     ]
 }
 
-/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026, UC-SIN-031
+/// UC: UC-ESC-025, UC-INV-013, UC-DEF-033, UC-RTN-001, UC-RTN-003, UC-FIF-026, UC-SIN-031, UC-RTN-026, UC-RTN-028
 #[test]
 fn every_request_survives_the_trip_to_http_and_back() {
     for request in requests() {
@@ -746,9 +767,52 @@ fn the_replies_are_read_by_the_kind_of_the_request() {
     let recover = Request::Recover {
         records: vec![],
         replicate: true,
+        durable: false,
     };
     let done = Response::Recovered(RecoverResult::new(2));
     assert_eq!(recover.parse_reply(done.clone().into_http()).unwrap(), done);
+    // The restoration answers like the recovery, and the query of the dead answers a small JSON.
+    let restore = Request::Restore {
+        topic: "pedidos".into(),
+        topic_id: None,
+        records: vec![],
+    };
+    assert_eq!(restore.parse_reply(done.clone().into_http()).unwrap(), done);
+    let dead = Request::Dead {
+        topic: "pedidos".into(),
+        ids: vec![guid(4)],
+    };
+    let answer = Response::Json(serde_json::json!({ "dead": [guid(4)] }));
+    assert_eq!(
+        dead.parse_reply(answer.clone().into_http()).unwrap(),
+        answer
+    );
+}
+
+/// UC: UC-RTN-026, UC-RTN-028
+#[test]
+fn the_restore_and_dead_routes_refuse_a_wrong_media_type_and_an_unknown_parameter() {
+    let json = vec![("content-type".to_owned(), "application/json".to_owned())];
+    let ndjson = vec![("content-type".to_owned(), "application/x-ndjson".to_owned())];
+    let body = recover_body(&[record("text/plain", b"oi")]);
+    let restore = "/cluster/topics/pedidos/messages/restore";
+    // The body of the restoration is NDJSON, as the recovery's.
+    assert!(Request::from_http("POST", restore, &json, &body).is_err());
+    assert!(
+        Request::from_http(
+            "POST",
+            &format!("{restore}?replicate=false"),
+            &ndjson,
+            &body
+        )
+        .is_err()
+    );
+    assert!(Request::from_http("POST", restore, &ndjson, &body).is_ok());
+    // The query of the dead is JSON with just `ids`.
+    let dead = "/cluster/topics/pedidos/messages/dead";
+    assert!(Request::from_http("POST", dead, &json, br#"{"ids":["a"],"extra":1}"#).is_err());
+    assert!(Request::from_http("POST", dead, &ndjson, br#"{"ids":["a"]}"#).is_err());
+    assert!(Request::from_http("GET", dead, &json, b"").is_err());
 }
 
 /// UC: UC-FWD-004

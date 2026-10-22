@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -117,7 +117,26 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS excluded_at ON excluded (at_ms);
     CREATE INDEX IF NOT EXISTS excluded_position ON excluded (position);
+    CREATE TABLE IF NOT EXISTS topic_meta (
+        key   TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+    ) WITHOUT ROWID;
 ";
+
+/// Key of the `topic_meta` table that holds the `topicId` the folder was created for (doc 37, section 4.6).
+const TOPIC_ID_KEY: &str = "topic_id";
+
+/// Tells the `topicId` of a topic name, when the folder of the topic is created.
+pub type TopicIdResolver = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// The resolver, wrapped to let the store derive `Debug`.
+struct Resolver(TopicIdResolver);
+
+impl std::fmt::Debug for Resolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Resolver")
+    }
+}
 
 /// The indexes of the FIFO queue columns, created after `migrate` (a database from before them
 /// does not have them yet).
@@ -223,6 +242,8 @@ pub struct MessageStore {
     topics: Mutex<HashMap<String, Arc<TopicDisk>>>,
     /// The log of excluded messages (doc 37, section 4.4).
     excluded: ExcludedLog,
+    /// Records the `topicId` in each folder created, so a restoration can tell a recreated topic.
+    topic_ids: OnceLock<Resolver>,
 }
 
 impl MessageStore {
@@ -233,7 +254,33 @@ impl MessageStore {
             synchronous,
             topics: Mutex::new(HashMap::new()),
             excluded: ExcludedLog::default(),
+            topic_ids: OnceLock::new(),
         }
+    }
+
+    /// From now on, each topic folder created records the `topicId` the resolver tells. Only the first call counts.
+    pub fn set_topic_id_resolver(&self, resolver: TopicIdResolver) {
+        let _ = self.topic_ids.set(Resolver(resolver));
+    }
+
+    /// The `topicId` the topic's folder was created for; `None` for a folder from before the record.
+    pub fn topic_id(&self, topic: &str) -> io::Result<Option<String>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(None);
+        };
+        disk.conn()
+            .query_row(
+                "SELECT value FROM topic_meta WHERE key = ?1",
+                params![TOPIC_ID_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(to_io)
+    }
+
+    /// A store over another folder (the folder of a past life), with the same durability.
+    pub fn open_life(&self, dir: &Path) -> MessageStore {
+        MessageStore::new(dir, self.synchronous)
     }
 
     fn topics(&self) -> MutexGuard<'_, HashMap<String, Arc<TopicDisk>>> {
@@ -263,6 +310,13 @@ impl MessageStore {
         conn.execute_batch(SCHEMA).map_err(to_io)?;
         migrate(&conn).map_err(to_io)?;
         conn.execute_batch(FIFO_INDEXES).map_err(to_io)?;
+        if let Some(id) = self.topic_ids.get().and_then(|resolve| (resolve.0)(topic)) {
+            conn.execute(
+                "INSERT OR IGNORE INTO topic_meta (key, value) VALUES (?1, ?2)",
+                params![TOPIC_ID_KEY, id],
+            )
+            .map_err(to_io)?;
+        }
         let disk = Arc::new(TopicDisk {
             dir,
             conn: Mutex::new(conn),

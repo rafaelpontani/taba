@@ -409,6 +409,7 @@ async fn the_loss_routes_take_a_caller_that_is_not_a_member_for_the_list_and_the
             Request::Recover {
                 records: vec![],
                 replicate: true,
+                durable: false,
             },
         )
         .await
@@ -470,6 +471,7 @@ async fn resending_a_recover_batch_ignores_what_was_already_applied() {
     let send = || Request::Recover {
         records: vec![lost.clone()],
         replicate: true,
+        durable: false,
     };
     for round in 0..2 {
         let reply = outsider.call(&target, send()).await.unwrap();
@@ -722,6 +724,7 @@ async fn the_first_node_does_not_wipe_a_disk_that_has_a_manifest_it_keeps_it_as_
         table_version: 3,
         last_seen_ms: 1,
         watermark: None,
+        excluded_since_ms: None,
     }
     .write(&storage)
     .unwrap();

@@ -36,12 +36,14 @@
 mod backup;
 mod blocks;
 mod index;
+mod lives;
 mod rates;
 mod replicas;
 pub mod stats;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
+pub use lives::TopicCheck;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -667,6 +669,12 @@ impl Messages {
             Ok(_) => {}
             Err(e) => tracing::warn!(error = %e, "could not list the messages on disk"),
         }
+        // Each topic folder records the `topicId` it was created for: a restoration discards the messages of a
+        // topic that was recreated with another one (doc 37, section 4.6).
+        let for_ids = topics.clone();
+        store.set_topic_id_resolver(Box::new(move |name| {
+            for_ids.get(name).ok().map(|view| view.definition.id)
+        }));
         let started_ms = clock.now_millis();
         let messages = Arc::new(Self {
             topics: topics.clone(),
@@ -2837,8 +2845,20 @@ impl Messages {
     pub fn apply_publish(
         &self,
         topic: &str,
+        meta: MessageMeta,
+        body: Vec<u8>,
+    ) -> Result<(), TabaError> {
+        self.apply_publish_with(topic, meta, body, false)
+    }
+
+    /// Like [`apply_publish`](Self::apply_publish); with `durable` the body goes **straight to disk**, whatever the
+    /// memory limit says (the restoration of a past life must survive a second crash, doc 37, section 4.7).
+    pub fn apply_publish_with(
+        &self,
+        topic: &str,
         mut meta: MessageMeta,
         body: Vec<u8>,
+        durable: bool,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
         meta.position = self.position_for(topic, &meta.id, meta.group_id.as_deref());
@@ -2868,13 +2888,13 @@ impl Messages {
             let group = meta.group_id.clone();
             let age = meta.age_base_ms();
             let (until, deliveries) = (meta.invisible_until_ms, meta.delivery_count);
-            if self.reserve_memory(&state, topic, size, now) {
+            if !durable && self.reserve_memory(&state, topic, size, now) {
                 state.memory.insert(id.clone(), Stored { meta, body });
             } else {
                 self.store
                     .put(topic, &meta, &body)
                     .map_err(|e| self.disk_error("failed to write the message to disk", &e))?;
-                if !self.draining.load(Ordering::SeqCst) {
+                if !durable && !self.draining.load(Ordering::SeqCst) {
                     NodeCounters::add(&self.counters.overflow, 1);
                 }
             }
