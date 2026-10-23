@@ -2,7 +2,7 @@
  1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 Nó 01a13640-0000-7000-8000-000000000001
 Estado: active · Drain: active
-Versão: 1.4.0 · production
+Versão: 1.4.0
 Início: 15/10/2026 08:00:00 (4h 02m)
 
 Armazenamento

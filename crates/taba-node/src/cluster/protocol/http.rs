@@ -46,6 +46,35 @@ fn json_headers() -> Vec<(String, String)> {
     vec![("content-type".to_owned(), JSON.to_owned())]
 }
 
+/// Body of `POST /cluster/topics/{topic}/messages/dead`.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeadBody {
+    ids: Vec<String>,
+}
+
+/// `topicId` from the `restore` query; any other parameter is refused.
+fn parse_topic_id(query: &str) -> Result<Option<String>, TabaError> {
+    let mut topic_id = None;
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        match pair.split_once('=').unwrap_or((pair, "")) {
+            ("topicId", value) if !value.is_empty() => topic_id = Some(value.to_owned()),
+            (other, _) => {
+                return Err(TabaError::new(
+                    ErrorCode::ValidationUnknownField,
+                    format!("The parameter `{other}` does not exist on this route."),
+                )
+                .with_detail(
+                    other,
+                    ErrorCode::ValidationUnknownField,
+                    "Unknown parameter.",
+                ));
+            }
+        }
+    }
+    Ok(topic_id)
+}
+
 /// Body of `POST /cluster/topics/{topic}/prune`.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -155,13 +184,27 @@ fn parse_step<R: DeserializeOwned>(
     })
 }
 
-/// `replicate` from the `recover` query (`true` if absent); any other parameter is refused.
-fn parse_replicate(query: &str) -> Result<bool, TabaError> {
-    let mut replicate = true;
+/// `replicate` (`true` if absent) and `durable` (`false` if absent) from the `recover` query; any other
+/// parameter is refused.
+fn parse_recover_query(query: &str) -> Result<(bool, bool), TabaError> {
+    let (mut replicate, mut durable) = (true, false);
     for pair in query.split('&').filter(|p| !p.is_empty()) {
         match pair.split_once('=').unwrap_or((pair, "")) {
             ("replicate", "true") => replicate = true,
             ("replicate", "false") => replicate = false,
+            ("durable", "true") => durable = true,
+            ("durable", "false") => durable = false,
+            ("durable", _) => {
+                return Err(TabaError::new(
+                    ErrorCode::ValidationFailed,
+                    "`durable` must be `true` or `false`.",
+                )
+                .with_detail(
+                    "durable",
+                    ErrorCode::ValidationFailed,
+                    "Expected true or false.",
+                ));
+            }
             ("replicate", _) => {
                 return Err(TabaError::new(
                     ErrorCode::ValidationFailed,
@@ -186,7 +229,7 @@ fn parse_replicate(query: &str) -> Result<bool, TabaError> {
             }
         }
     }
-    Ok(replicate)
+    Ok((replicate, durable))
 }
 
 /// `from`, `to` and `limit` of a stream's query; any other parameter is refused.
@@ -267,6 +310,10 @@ impl Request {
             Request::BlockIds { block, query } => {
                 get_call(stream_path(&format!("/cluster/blocks/{block}/ids"), query))
             }
+            Request::BlockExcluded { block, query } => get_call(stream_path(
+                &format!("/cluster/blocks/{block}/excluded"),
+                query,
+            )),
             Request::BlockMessages { block, query } => get_call(stream_path(
                 &format!("/cluster/blocks/{block}/messages"),
                 query,
@@ -289,15 +336,59 @@ impl Request {
                 format!("/cluster/topics/{topic}/fifo/publish"),
                 record,
             ),
-            Request::Recover { records, replicate } => HttpCall {
+            Request::Recover {
+                records,
+                replicate,
+                durable,
+            } => HttpCall {
                 method: "POST".to_owned(),
-                path: if *replicate {
-                    "/cluster/messages/recover".to_owned()
-                } else {
-                    "/cluster/messages/recover?replicate=false".to_owned()
+                path: {
+                    let mut params = Vec::new();
+                    if !*replicate {
+                        params.push("replicate=false");
+                    }
+                    if *durable {
+                        params.push("durable=true");
+                    }
+                    if params.is_empty() {
+                        "/cluster/messages/recover".to_owned()
+                    } else {
+                        format!("/cluster/messages/recover?{}", params.join("&"))
+                    }
                 },
                 headers: vec![("content-type".to_owned(), NDJSON.to_owned())],
                 body: recover_body(records),
+            },
+            Request::Restore {
+                topic,
+                topic_id,
+                records,
+            } => HttpCall {
+                method: "POST".to_owned(),
+                path: match topic_id {
+                    Some(id) => format!("/cluster/topics/{topic}/messages/restore?topicId={id}"),
+                    None => format!("/cluster/topics/{topic}/messages/restore"),
+                },
+                headers: vec![("content-type".to_owned(), NDJSON.to_owned())],
+                body: recover_body(records),
+            },
+            Request::Dead { topic, ids } => json_call(
+                "POST",
+                format!("/cluster/topics/{topic}/messages/dead"),
+                &DeadBody { ids: ids.clone() },
+            ),
+            Request::RestoreState => get_call("/cluster/restore".to_owned()),
+            Request::RestoreDecided => HttpCall {
+                method: "POST".to_owned(),
+                path: "/cluster/restore/decided".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+            },
+            Request::RestoreForce => HttpCall {
+                method: "POST".to_owned(),
+                path: "/cluster/restore/force".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
             },
             Request::BackupFlush => HttpCall {
                 method: "POST".to_owned(),
@@ -463,6 +554,31 @@ impl Request {
                 topic: (*topic).to_owned(),
                 record: parse_body::<MessageRecord>(headers, body)?,
             }),
+            ["cluster", "topics", topic, "messages", "restore"] if post() => {
+                let media = headers
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+                    .and_then(|(_, value)| value.split(';').next())
+                    .map(|value| value.trim().to_ascii_lowercase());
+                if media.as_deref() != Some(NDJSON) {
+                    return Err(TabaError::new(
+                        ErrorCode::MediaUnsupported,
+                        "Use `Content-Type: application/x-ndjson`.",
+                    ));
+                }
+                Ok(Request::Restore {
+                    topic: (*topic).to_owned(),
+                    topic_id: parse_topic_id(query)?,
+                    records: parse_recover_body(body)?,
+                })
+            }
+            ["cluster", "topics", topic, "messages", "dead"] if post() => {
+                let body: DeadBody = parse_body(headers, body)?;
+                Ok(Request::Dead {
+                    topic: (*topic).to_owned(),
+                    ids: body.ids,
+                })
+            }
             ["cluster", "topics", topic, "messages", "take"] if post() => Ok(Request::Take {
                 topic: (*topic).to_owned(),
                 request: parse_body::<TakeRequest>(headers, body)?,
@@ -503,6 +619,10 @@ impl Request {
                 block: (*block).to_owned(),
                 query: parse_stream_query(query)?,
             }),
+            ["cluster", "blocks", block, "excluded"] if is("GET") => Ok(Request::BlockExcluded {
+                block: (*block).to_owned(),
+                query: parse_stream_query(query)?,
+            }),
             ["cluster", "blocks", block, "messages"] if is("GET") => Ok(Request::BlockMessages {
                 block: (*block).to_owned(),
                 query: parse_stream_query(query)?,
@@ -525,6 +645,9 @@ impl Request {
                 topic: (*topic).to_owned(),
                 id: (*id).to_owned(),
             }),
+            ["cluster", "restore"] if is("GET") => Ok(Request::RestoreState),
+            ["cluster", "restore", "decided"] if post() => Ok(Request::RestoreDecided),
+            ["cluster", "restore", "force"] if post() => Ok(Request::RestoreForce),
             ["cluster", "backup", "flush"] if post() => Ok(Request::BackupFlush),
             ["cluster", "backup", "stop"] if post() => Ok(Request::BackupStop),
             ["cluster", "backup", "saved"] if post() => {
@@ -544,9 +667,11 @@ impl Request {
                         "Use `Content-Type: application/x-ndjson`.",
                     ));
                 }
+                let (replicate, durable) = parse_recover_query(query)?;
                 Ok(Request::Recover {
                     records: parse_recover_body(body)?,
-                    replicate: parse_replicate(query)?,
+                    replicate,
+                    durable,
                 })
             }
             _ => Err(not_found()),
@@ -586,6 +711,7 @@ impl Request {
             | Request::ListTokens(_)
             | Request::ListTombstones(_)
             | Request::BlockIds { .. }
+            | Request::BlockExcluded { .. }
             | Request::BlockMessages { .. } => {
                 let text = String::from_utf8(reply.body).map_err(|_| unreadable("not UTF-8"))?;
                 StreamPage::from_ndjson(&text).map(Response::Stream)
@@ -633,7 +759,7 @@ impl Request {
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::FifoPublished(published))
             }
-            Request::Recover { .. } => {
+            Request::Recover { .. } | Request::Restore { .. } => {
                 let result: RecoverResult =
                     serde_json::from_slice(&reply.body).map_err(|e| unreadable(&e.to_string()))?;
                 Ok(Response::Recovered(result))
@@ -642,6 +768,10 @@ impl Request {
             Request::Prune { .. }
             | Request::TopicStats
             | Request::TopicGroups { .. }
+            | Request::Dead { .. }
+            | Request::RestoreState
+            | Request::RestoreDecided
+            | Request::RestoreForce
             | Request::Departed => Ok(Response::Json(json(&reply)?)),
             _ => {
                 let ack =

@@ -1,10 +1,10 @@
 ---
 title: Cluster
-summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, development mode.
+summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, one-node profile and resuming from disk after a total fall.
 type: explanation
 status: stable
-verified-on: 2026-10-14 @ efeb47a
-sources: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, http/forward]
+verified-on: 2026-10-22 @ 2f1919d
+sources: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, http/forward]
 ---
 
 # Cluster
@@ -55,7 +55,7 @@ The node has a **state** (`taba.node.state`) and, separately, a **drain state**:
 
 ![Failure registering a new node](../diagrams/img/en-US/node-register-failure.svg)
 
-1. **Discovery.** The node calls the node listing (`GET /cluster/nodes`) at the load balancer address (`cluster.entry-address`, host and **cluster port**). If the key is missing, the node does not start (except the first node and development mode).
+1. **Discovery.** The node calls the node listing (`GET /cluster/nodes`) at the load balancer address (`cluster.entry-address`, host and **cluster port**). If the key is missing, the node does not start (except the first node and the one-node profile).
 2. **First node.** Only with `cluster.first-node=true`, and only if **no one answers over the network** (connection refused or timeout), the node starts the cluster by itself as the only member. Whoever answers, even with an error (`503`), was found: the node tries again every `cluster.bootstrap.retry.interval` (default 5 s), up to `cluster.bootstrap.retry.max-attempts` (default 0 = no limit).
 3. **Join request.** The node picks a member at random and sends, in a single synchronous call, `POST /cluster/nodes/join` with its own IPs and the cluster port; that member starts to **coordinate** the join.
 4. **Connection test.** The coordinator tries to call the new node back at each reported IP. If it fails, the join is aborted.
@@ -118,7 +118,7 @@ The voting base is only whoever the voter sees. In a **network partition** where
 3. Sends those found to the node responsible for the block (`POST /cluster/messages/recover`). Whoever accepts writes directly to the responsible nodes, **idempotent by ID**, and clears the loss.
 4. Tries again every `cluster.bootstrap.retry.interval` up to `cluster.recovery.timeout` (default 5 min); only then **clears the local state** and redoes the join from scratch, **as a new node**.
 
-**Process restart.** A process that restarts is born as a **new node (new ID)**, but the disk of the previous life is **not erased at start**: it is set aside (`${storage.dir}/_previous-life`), the node joins with an empty disk and, **after becoming active and in the background**, returns to the cluster what that disk has of the losses. Recovery does not delay the join.
+**Process restart.** A process that restarts is born as a **new node (new ID)**, but the disk of the previous life is **not erased at start**: it is set aside in a **folder named with the old ID** (`${storage.dir}/_lives/<old ID>`, with the manifest of the life; a disk with no manifest, from an earlier version, goes to `_previous-life`), the node joins with an empty disk and, **after becoming active and in the background**, returns to the cluster what that disk has of the losses. Recovery does not delay the join and does **not delete** the folder of the life ([07-cluster.md](07-cluster.md), section 10.4).
 
 ## 5. Synchronization of a node that joins
 
@@ -183,16 +183,16 @@ A node that is not yet healthy (synchronizing, in drain or in failure) may recei
 
 Leaving by drain does **not** cause freezing. Pending item **D75**: if the drain requested through the API exceeds `drain.timeout`, the node stays `draining` until someone calls `DELETE` ([31-pending-items.md](31-pending-items.md)).
 
-## 8. Cluster size and development mode
+## 8. Cluster size and the one-node profile
 
 | Environment | Minimum nodes | Why |
 |---|---|---|
-| Test and development | **1** (`mode=development`) | Run locally without the weight of the cluster |
+| Test and development | **1** (the one-node profile: `replication.factor=1`) | Run locally without the weight of the cluster |
 | Production | **3** | Allows a vote with one node down (2 healthy voters) and avoids a decision by a single node |
 
-In **development mode** the node is a cluster of one and everything that exists to coordinate several nodes is **disabled**: bootstrap, channel, vote, freezing, synchronization, replication and the **cluster port** (it is not opened; `cluster.port` is ignored). `replication.factor` and `write.quorum` are **1** (configured values are ignored, with a warning). **Not for production:** losing the node or the disk means losing the messages. The log warns at startup and `GET /health/cluster` shows `"mode":"development"`. The mode does not change at runtime.
+In the **one-node profile** (`replication.factor=1`, no `cluster.entry-address`) the node is a cluster of one: it starts alone, is the primary of every block and the quorum is 1, but the path is the production one (empty cluster, cluster port, register and commit). What the profile relaxes (`cluster.tls.enabled=false`, `auth.dev-token`) only holds with factor 1 ([22-configuration.md](22-configuration.md)); the log lists what is relaxed at start and `/health` shows the `reduced-profile` condition. **Not for production:** losing the node or the disk means losing the messages.
 
-**Drain as a *save*.** In development, drain writes everything to disk and marks `save_completed` in `_node.db`. At the next start, with `development.resume-on-start` on (default), the node **resumes whatever it finds in `storage.dir`**: definitions, messages with metadata, rebuilt lists. The `ttl` counts from the ID, so the stopped time counts. **Without a completed save** (crash, `kill -9`), it resumes what is on disk anyway and warns that what was only in memory was lost. With `development.resume-on-start=false`, it deletes `storage.dir` and starts clean.
+**Restart.** Every restart is a new node: the old disk is set aside in `_lives/<old ID>` and the node restores it for itself, as new messages, ready, with the same `deliveryCount` and a new `receiptToken` (section 10). The `development` mode and `development.resume-on-start` no longer exist: to start clean, delete the volume or the directory.
 
 ## 9. The cluster conditions
 
@@ -208,8 +208,120 @@ In **development mode** the node is a cluster of one and everything that exists 
 | `syncing` | warning | There are node(s) synchronizing |
 | `under-replicated` | warning | Some block is below the full replication factor |
 | `storage-pressure` | warning | Free disk space below `stats.disk.free-min` (without a value, it never fires) |
+| `upgrade-stalled` | warning | The retirement of earlier versions stopped on a node that did not finish draining (D165) |
+| `members-missing` | warning | The probe of the old IPs ended and nodes of the previous life's table are missing (section 10.11) |
+| `reduced-profile` | warning | The node runs the one-node profile with something relaxed: factor 1, TLS off or `auth.dev-token`. Informative |
+| `previous-life-pending` | warning | The restoration of the previous lives has not ended: the FIFO queues receive and do not deliver (section 10.8) |
 
 What to do for each one is in [23-operations.md](23-operations.md).
+
+## 10. Resuming after a total fall
+
+When **all** the nodes fall and come back, the cluster resumes from disk: the definitions, the messages that were on disk and the order of the FIFO queues. What was **only in memory** on every node is lost ([11-durability.md](11-durability.md)). When only **some** nodes fall none of this is used: the replicas have the message and the new node synchronizes (sections 4 and 5).
+
+**Central idea: availability first, truth later.** The cluster comes up and serves **new** messages at once. The **old** ones stay in quarantine on disk and are only delivered again after the block's new primary checks that they are not dead.
+
+A **life** is the run of a process, with the ID it had. The disk of a previous life becomes a folder (`_lives/<old ID>`) and is restored by the rules below.
+
+### 10.1 Why the ID is still new, and what persists
+
+Every process is born with a new ID. It is a defence: a node that was down and went out of sync must not bring back data that was already excluded or is out of date. Instead of reusing the ID, the node restores the previous life through the common path, checking each message. The price is that every restart resynchronizes the node's blocks (the new ID changes its position on the ring).
+
+| Data | Persists between lives? | Where |
+|---|---|---|
+| Topics and tokens, with version and tombstone | **Yes**; read at start only when the node starts alone (10.2) | `definition_versions` in `_node.db` ([08-storage.md](08-storage.md)) |
+| Messages | **Yes**, in the folder of the life that wrote them, in quarantine | `_lives/<old ID>` |
+| Log of excluded messages | **Yes** | `excluded` table of each topic's database (10.3) |
+| The life's member table, `last_seen`, watermark | **Yes** | `manifest.json` in the life's folder (10.4) |
+
+### 10.2 Definitions
+
+- Each definition has a **version** and an owner on the ring, with the fingerprint as tie-breaker. When two states are merged the **highest version** wins per definition, and a tombstone of a higher version wins over the definition. The `topicId` goes in the tombstone, so removing a topic does not erase one that was recreated with the same name.
+- The node **reads** the definitions from disk only when it **starts alone** (10.5). If it joins a cluster that is already up, it keeps what the disk had, clears it, receives the cluster's definitions and then **offers** them: the highest version of each wins, tombstone included, and a disk older than the cluster imposes nothing.
+- A tombstone expires after 1 hour. A definition that the cluster deleted longer ago and that is still alive on a disk that joins comes back to the cluster (PRB-064).
+
+### 10.3 The log of excluded messages
+
+- Every node that keeps a copy of a block, primary or not, records the `id` of each message excluded from it (ack, `prune`, sending to the dead-letter) in the `excluded` table of the topic's database, **in the same transaction** that deletes the message. Expiry by `ttl` is not recorded: a copy that comes back expires again by the same rule. The ack gets no extra `fsync` (`storage.db.synchronous` stays `NORMAL`).
+- The log has a size and an age limit: `storage.excluded.max-size` (100 MB, summing the topics) and `storage.excluded.max-age` (24 h), both greater than zero, applied every 30 s with the oldest record going first.
+- Each node keeps the **start of the continuous recording** (`state.excluded_since`, in `_node.db`): the instant from which the log guarantees it has the exclusions. It begins with the log and only advances when a record is dropped by the limit. A new node copies the log of each source along with each block (`GET /cluster/blocks/{id}/excluded`) and **inherits** the most recent date among the sources.
+- The **cluster's cut-off date** is the most **recent** of those dates among the active members (the weakest link): every exclusion after it is recorded on all the owners that record it. It is visible in `summary.excludedCutoff` of `GET /health/cluster` (each node reports its own as `excludedSince` in the `NodeStatus`). A node that deletes early because of the size shortens the window of the whole cluster: size the limit for that.
+- The logs of past lives are merged into the current one, and the start date only goes back if the life's interval and the sources' meet with no gap.
+- A life is only restorable if its `last_seen` is later than the cut-off date plus the `cluster.restore.clock-slack` slack (5 s). With no cut-off date, or outside the window, the life follows the common path: a new identity and only the losses the peers list. If the real clock skew is larger than the slack the risk is accepted: the consequence is the residual redelivery (10.10).
+- S3 is only **proof of death**, never of life: the journal lags by up to `backup.meta.interval`, so it does not widen the window ([33-s3-backup.md](33-s3-backup.md)).
+
+### 10.4 One folder per life
+
+- The disk of the previous life **always** becomes a folder `_lives/<old ID>`, whether the node found the cluster or not, and several lives coexist (a second restart does not delete the first). A disk **without a manifest** (a previous version of the program) is not migrated: it follows the old path (`_previous-life`, only the listed losses, folder deleted).
+- The **manifest** (`manifest.json`) holds the ID, the active members with IPs and port, the table version, the `last_seen`, the watermark of the highest `id` and the start of the excluded log. It is written by atomic replacement when the node becomes active, on each table change, every 10 s and on a clean stop. A folder without a readable manifest is not a restorable life.
+- The recovery of losses does **not** delete the life's folder: only the end of the restoration (10.8) deletes it, and only if everything it holds was confirmed.
+- There is no space ceiling of its own for the folders: if the disk fills up, the usual behaviour applies (the node goes to `failed`).
+
+### 10.5 The start
+
+| # | Step | How it is |
+|---|---|---|
+| 1 | Identity | A new ID per process; the old one becomes the name of the life's folder |
+| 2 | `_node.db` | Opens and reads the definitions into memory, but only uses them if the node starts alone |
+| 3 | Messages on disk | The disk becomes the life's folder (10.4); nothing is deleted before the end of the restoration |
+| 4 | `_backup.db` | Zeroed on every start |
+| 5 | Discovery | Listing at `cluster.entry-address`. A node **with a previous life** also tries the IPs of the manifest's table: whoever answers with a table is the cluster it joins; whoever answers `cluster.node-syncing` is alive and also looking |
+| 6 | Starting alone | After `cluster.restore.cold-start.wait` (15 s), the node whose **old ID** is the lowest among the live ones and itself starts alone. It takes over the disk: loads topics, tokens, versions and tombstones, continues the excluded log (the start date goes back to the manifest's) and begins the restoration. With no previous life only `cluster.first-node` starts alone (with S3, the bucket's decision still holds) |
+| 7 | Join and synchronization | The other nodes keep trying and join the one that started, by the normal join, as new, clean nodes (10.2 for their definitions) |
+| 8 | Restoration | In the background, each node sends the lives it keeps to the new primary of each block (10.6) |
+| 9 | Queues | The **common** queues receive and deliver as soon as the definitions are distributed; the **FIFO** only receives until the end of the restoration (10.9) |
+| 10 | End | Vote of the present nodes, **restored from disk** status and folders deleted (10.8) |
+| 11 | In the background | The probe of the old IPs (10.11) and the writing of `last_seen` |
+
+**Accepted risk window.** A late node that starts alone serves with the definitions it has, and a token revoked while it was away would be accepted. The window ends as soon as some node answers (the higher version wins) and is bounded by token expiry.
+
+### 10.6 Restoring the messages
+
+- Each node reads the `_lives/<ID>` folders whose `last_seen` is inside the window (10.3), topic by topic, and **sends** the messages to the block's primary on the current ring, **with the original ID** (`POST /cluster/topics/{topic}/messages/restore`, NDJSON). The sending node decides nothing.
+- The primary checks each message and **discards** it if: the topic was deleted or recreated with another `topicId` (stored in `topic_meta`); the `id` is in its local log; it is in the log of **any** present node (`POST …/messages/dead`, in batches per block, to **all**, not just the owners, because the logs are on the nodes and not on the ring); or the S3 journal records the removal. S3 unreachable is missing evidence: it decides with the other sources and warns.
+- The rest is **activated**: replicated to the current owners with the quorum, **on disk**, and made available. A message that is only in the life, inside the window and with no exclusion record, is activated: it was a confirmed message or a publication that did not reach the quorum, and delivering it is acceptable under *at-least-once*. If the primary already has it (`Existing`) it skips it; the highest `deliveryCount` among the copies stays on the owners.
+- Invisibility and receipt are zeroed (the message comes back ready, with a new `receiptToken`). Exclusion is an absorbing state: if any copy says dead, dead wins.
+- The primary only confirms after writing to disk and replicating with the quorum. Only then does the origin node mark the message as **sent**, deleting the row from the life's folder; what was not confirmed is resent up to `cluster.recovery.timeout`. So a second fall does not lose a message that was saved.
+- With the S3 backup the pass has a **last step**, the scan of the bucket ([33-s3-backup.md](33-s3-backup.md)); the node's "I finished" (10.8) includes it.
+
+### 10.7 Nodes that do not come back
+
+- The restoration of the messages only **begins** when all the **expected nodes** (the active members of the largest table among the announced manifests) have announced their lives, or after `G` (`cluster.restore.grace`, 5 min). This does not delay the definitions or the common queues. It waits for **all**, not a majority, because the exclusion vote uses the healthy nodes as its base and a healthy pair can exclude the majority of the table.
+- After `G`, in the default mode it **goes on with a warning** and uses the present nodes. In **strict mode** (`cluster.restore.strict`) it stays held until someone forces it.
+- **Forcing** is `POST /cluster/restore/force` (root token on the client API, no token on the operations port): it changes the status, releases what is held, and is spread to every node. The risk is declared: messages already consumed may reappear (10.10). It is what releases the restoration when a node of a cluster that got stuck by the loss of two nodes does not come back ([23-operations.md](23-operations.md)).
+- The `previous-life-pending` condition of `/health/cluster` stays visible while the restoration has not ended, and `GET /cluster/restore` says which old nodes are still expected.
+
+### 10.8 The end of the restoration
+
+- Each node has a status: `unknown`, `restoring` or `restored` (`GET /cluster/restore`). A node that joins asks the others: if any is `restoring`, it joins the restoration; otherwise it restores its own lives without a vote.
+- In `restoring` the nodes poll each other every 500 ms (manifests, `finished`, `forced`). Each node announces `finished` when everything it sent was confirmed. The **coordinator** (the lowest ID among the active nodes) calls `POST /cluster/restore/decided` on all of them when **all** the active members have finished. The decision requires every present node, because each one has disk to send.
+- Whoever decides releases the FIFO (10.9), marks the cluster **restored from disk** (a name not to be confused with the S3 restore) and deletes the lives' folders, if everything was confirmed.
+- If the vote does not close (in strict mode, while an expected node is missing), the FIFO stays without delivery and `previous-life-pending` stays visible until the force operation.
+- A node that comes back **after** the release joins as a new, clean node, and its lives follow the path of 10.6. Its FIFO messages are activated in `id` order, and their order relative to the group's newer messages, already delivered, is not guaranteed. It is the exception.
+
+### 10.9 FIFO queues during the restoration
+
+- The FIFO **receives and does not deliver** until the status changes to restored from disk, because only then is everything that was on disk at its primary. `take` delivers nothing.
+- New publications go to a **provisional list** at the group's primary, with no effective position in the queue, and no deduplication happens: all are accepted. The ID generator stays above the **watermark** (the highest `id` of the previous lives, announced between the nodes), so new IDs are always greater than the old ones and no `id` already returned to the producer changes later.
+- Restored messages reach the group's primary through 10.6 and also stay undelivered.
+- At the release, the primary deduplicates the provisional list against the restored keys and within itself, in `id` order, drops the duplicates with an ack without a receipt (`discard`) and only then releases delivery. The producer of a message later dropped as a duplicate received `duplicate=false`: it is the exception.
+- Limits (PRB-063): the deduplication holds within the `fifo.dedup.window` window, and the provisional list is in the memory of the group's primary.
+
+### 10.10 Guarantees and limits
+
+- The restoration keeps *at-least-once*: the messages that were on disk come back, and those already consumed do **not**, except in two cases: (a) a node that has exclusion records is not present (after `G`, or only nodes that confirm each other came back); (b) a system crash made the log lose its last entries. This is the **residual redelivery**, and the consumer must be idempotent, as is already required for the S3 restore.
+- With **all the expected nodes present** redelivery by (a) does not happen. It is the property the tests prove ([25-testing.md](25-testing.md)).
+- What was only in memory on every node is lost.
+- While a node of a previous version is in the cluster it does not write the excluded log; by the cut-off date rule (10.3), no life is restorable until it leaves ([23-operations.md](23-operations.md)).
+
+### 10.11 Probe of the old IPs and the regrouping of groups
+
+Two groups of nodes that came up without reaching each other each take over the disk they have. To find each other:
+
+- Every node reads the previous life's table (the manifest) when it starts and, **while the cluster has fewer active members than it**, tries its missing IPs every `cluster.restore.probe.interval` (10 s), up to `cluster.restore.probe.timeout` (2 h).
+- The probe ends when the table is complete. If time runs out with nodes missing, the log warns and the `members-missing` condition stays visible while the table is incomplete; the missing node joins later by the normal join.
+- When one group reaches another, the partition reunion tie-break applies: **the side with fewer members loses** and, on a tie, the one with the lowest `nodeId`. The loser **deletes nothing**: it writes the manifest, moves the disk to `_lives/<ID>`, keeps the definitions to offer them to the winner, changes the ID and redoes the join. What it accepted while separated lives in the life's folder and is restored and checked against the dead (10.6).
+- Limits (PRB-066): after the time is up, two groups that meet later do not join on their own; completeness is by count, so a cluster that was reduced on purpose shows `members-missing` until the time runs out; the loser is out of service during the regrouping.
 
 ## Known limits
 

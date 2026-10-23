@@ -106,7 +106,7 @@ fn outbox_total(cluster: &TestCluster) -> u64 {
 /// UC: UC-BKP-001
 #[tokio::test]
 async fn without_a_bucket_the_backup_does_not_exist_and_its_routes_say_so() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     assert!(node.node.backup().is_none());
     for (method, path) in [
         ("GET", "/node/backup"),
@@ -1066,7 +1066,7 @@ async fn with_s3_down_the_stop_still_drains_every_node_and_warns_that_the_backup
 
 /// UC: UC-BKP-040
 #[tokio::test]
-async fn a_single_node_in_development_mode_owns_everything_and_backs_up_too() {
+async fn a_single_node_owns_everything_and_backs_up_too() {
     let s3 = Arc::new(MemoryStore::new());
     let node = TestNode::builder()
         .backup_store(s3.clone())

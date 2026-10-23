@@ -965,27 +965,27 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="580" y="968" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d4-0x" data-node-id="cluster-d4-0x" data-node-label="mode=development" tabindex="0" role="button" aria-label="Focus mode=development, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
-          <title>mode=development · detalhe · Architecture component</title>
+        <g id="node-cluster-d4-0x" data-node-id="cluster-d4-0x" data-node-label="replication.factor=1" tabindex="0" role="button" aria-label="Focus replication.factor=1, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>replication.factor=1 · detalhe · Architecture component</title>
           <rect x="745" y="928" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="928" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 934) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="952" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">mode=development</text>
+          <text data-node-label="" x="892.5" y="952" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">replication.factor=1</text>
         <text x="892.5" y="968" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-d4-1" data-node-id="cluster-d4-1" data-node-label="Sem votação nem quórum" tabindex="0" role="button" aria-label="Focus Sem votação nem quórum, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
-          <title>Sem votação nem quórum · decisão · Architecture component</title>
+        <g id="node-cluster-d4-1" data-node-id="cluster-d4-1" data-node-label="Quórum de 1" tabindex="0" role="button" aria-label="Focus Quórum de 1, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Quórum de 1 · decisão · Architecture component</title>
           <rect x="450" y="994" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="994" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 1000) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="580" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sem votação nem quórum</text>
+          <text data-node-label="" x="580" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Quórum de 1</text>
         <text x="580" y="1034" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
@@ -1001,38 +1001,38 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="892.5" y="1034" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 
-        <g id="node-cluster-t4" data-node-id="cluster-t4" data-node-label="Modo desenvolvimento" tabindex="0" role="button" aria-label="Focus Modo desenvolvimento, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
-          <title>Modo desenvolvimento · tema · Architecture component</title>
+        <g id="node-cluster-t4" data-node-id="cluster-t4" data-node-label="Perfil de um nó" tabindex="0" role="button" aria-label="Focus Perfil de um nó, tema, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="tema" data-node-context="Architecture component">
+          <title>Perfil de um nó · tema · Architecture component</title>
           <rect x="225" y="994" width="190" height="52" rx="6" class="c-mask"/>
           <rect x="225" y="994" width="190" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(231 1000) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" x="320" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Modo desenvolvimento</text>
+          <text data-node-label="" x="320" y="1018" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Perfil de um nó</text>
         <text x="320" y="1034" class="t-muted" font-size="9" text-anchor="middle">tema</text>
         </g>
 
-        <g id="node-cluster-d4-2" data-node-id="cluster-d4-2" data-node-label="Drain como save" tabindex="0" role="button" aria-label="Focus Drain como save, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
-          <title>Drain como save · decisão · Architecture component</title>
+        <g id="node-cluster-d4-2" data-node-id="cluster-d4-2" data-node-label="Todo reinício é de nó novo" tabindex="0" role="button" aria-label="Focus Todo reinício é de nó novo, decisão, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="decisão" data-node-context="Architecture component">
+          <title>Todo reinício é de nó novo · decisão · Architecture component</title>
           <rect x="450" y="1060" width="260" height="52" rx="6" class="c-mask"/>
           <rect x="450" y="1060" width="260" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(456 1066) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="580" y="1084" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Drain como save</text>
+          <text data-node-label="" x="580" y="1084" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Todo reinício é de nó novo</text>
         <text x="580" y="1100" class="t-muted" font-size="9" text-anchor="middle">decisão</text>
         </g>
 
-        <g id="node-cluster-d4-2x" data-node-id="cluster-d4-2x" data-node-label="retoma do disco na partida" tabindex="0" role="button" aria-label="Focus retoma do disco na partida, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
-          <title>retoma do disco na partida · detalhe · Architecture component</title>
+        <g id="node-cluster-d4-2x" data-node-id="cluster-d4-2x" data-node-label="disco antigo restaurado como mensagens novas" tabindex="0" role="button" aria-label="Focus disco antigo restaurado como mensagens novas, detalhe, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="detalhe" data-node-context="Architecture component">
+          <title>disco antigo restaurado como mensagens novas · detalhe · Architecture component</title>
           <rect x="745" y="1060" width="295" height="52" rx="6" class="c-mask"/>
           <rect x="745" y="1060" width="295" height="52" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(751 1066) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="892.5" y="1084" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">retoma do disco na partida</text>
+          <text data-node-label="" x="892.5" y="1084" class="t-primary" font-size="10.8" font-weight="600" text-anchor="middle">disco antigo restaurado como mensagens novas</text>
         <text x="892.5" y="1100" class="t-muted" font-size="9" text-anchor="middle">detalhe</text>
         </g>
 

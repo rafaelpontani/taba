@@ -173,7 +173,7 @@ One **WebSocket per pair of nodes**, shared by **all** topics (never one per lon
 - **Initial state:** on opening the channel, each side first sends a **snapshot** (topics with listeners, with ready messages and the nodes in freezing) and only then the changes. A synchronizing node only consumes it when it becomes ready.
 - **Bounded output queue:** **state** signals of the same topic **replace** each other (only the last matters); old **notices** (over 10 s) are **discarded**; `frozen` **does not expire**. Beyond `cluster.channel.queue.max-size`/`max-age`, the node on the other side is treated as **failed** and the vote opens ([07-cluster.md](07-cluster.md)).
 
-In **development mode** there is no channel or `take`: long polling only waits for messages to arrive on the node itself. **In drain**, the node answers `take` empty and the peers stop asking it.
+On a **single node** (factor 1) there is no other node for the `take`: long polling only waits for messages to arrive on the node itself. **In drain**, the node answers `take` empty and the peers stop asking it.
 
 ## Expiration (`ttl`), delivery limit and dead-letter
 
@@ -212,7 +212,7 @@ The **noisy neighbor**: a producer that dumps thousands of messages makes the me
 size = in processing + weight × ready        (weight = delivery.fair.ready-weight, default 0.1)
 ```
 
-The weight sits between SQS (`0`: only what is in processing, which reacts late to a burst) and the whole backlog (`1`: penalizes a large, harmless group of a slow consumer). The count is **local** (no exchange between nodes): since the ID decides the block, the messages of a group spread across the owners proportionally, so each node sees a faithful sample and fairness is **approximate in the cluster** and **exact in development mode**. The number of tracked groups has a ceiling (`delivery.fair.max-groups`); above it, new groups **share a counter**.
+The weight sits between SQS (`0`: only what is in processing, which reacts late to a burst) and the whole backlog (`1`: penalizes a large, harmless group of a slow consumer). The count is **local** (no exchange between nodes): since the ID decides the block, the messages of a group spread across the owners proportionally, so each node sees a faithful sample and fairness is **approximate in the cluster** and **exact on a single node**. The number of tracked groups has a ceiling (`delivery.fair.max-groups`); above it, new groups **share a counter**.
 
 **Preference.** The size becomes a **band** `⌊log2(size)⌋` (size < 1 counts as 1): 1 → band 0, 2–3 → 1, 4–7 → 2… Power-of-2 bands avoid reordering the list at every message.
 

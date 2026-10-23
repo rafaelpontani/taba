@@ -13,6 +13,8 @@ pub struct MemoryStore {
     down: AtomicBool,
     /// No conditional write (an old S3): `put_if_*` fail.
     no_conditional: AtomicBool,
+    /// Slow: the reads and the listings of the messages and of the journal wait until the test releases them.
+    slow: AtomicBool,
     version: AtomicU64,
     puts: AtomicU64,
     gets: AtomicU64,
@@ -30,6 +32,19 @@ impl MemoryStore {
     /// Turns the failure of all calls on or off.
     pub fn set_down(&self, down: bool) {
         self.down.store(down, Ordering::SeqCst);
+    }
+
+    /// Makes the reads and the listings of the messages and of the journal wait (a slow bucket) until it is turned
+    /// off. The rest of the bucket (definitions, tokens, nodes) keeps answering, so a node still starts.
+    pub fn set_slow(&self, slow: bool) {
+        self.slow.store(slow, Ordering::SeqCst);
+    }
+
+    async fn wait_while_slow(&self, key: &str) {
+        let data = key.contains("messages/") || key.contains("journal/");
+        while data && self.slow.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
     }
 
     /// Turns conditional write support on or off.
@@ -133,6 +148,7 @@ impl ObjectStore for MemoryStore {
     fn get(&self, key: &str) -> StoreFuture<'_, Option<Object>> {
         let key = key.to_owned();
         Box::pin(async move {
+            self.wait_while_slow(&key).await;
             self.check()?;
             self.gets.fetch_add(1, Ordering::SeqCst);
             Ok(self.objects().get(&key).cloned())
@@ -142,6 +158,7 @@ impl ObjectStore for MemoryStore {
     fn get_range(&self, key: &str, start: u64, len: u64) -> StoreFuture<'_, Option<Vec<u8>>> {
         let key = key.to_owned();
         Box::pin(async move {
+            self.wait_while_slow(&key).await;
             self.check()?;
             self.gets.fetch_add(1, Ordering::SeqCst);
             Ok(self.objects().get(&key).map(|o| {
@@ -155,6 +172,7 @@ impl ObjectStore for MemoryStore {
     fn get_suffix(&self, key: &str, len: u64) -> StoreFuture<'_, Option<Vec<u8>>> {
         let key = key.to_owned();
         Box::pin(async move {
+            self.wait_while_slow(&key).await;
             self.check()?;
             self.gets.fetch_add(1, Ordering::SeqCst);
             Ok(self.objects().get(&key).map(|o| {
@@ -167,6 +185,7 @@ impl ObjectStore for MemoryStore {
     fn list(&self, prefix: &str) -> StoreFuture<'_, Vec<ObjectInfo>> {
         let prefix = prefix.to_owned();
         Box::pin(async move {
+            self.wait_while_slow(&prefix).await;
             self.check()?;
             Ok(self
                 .objects()

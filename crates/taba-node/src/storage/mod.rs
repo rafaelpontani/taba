@@ -11,6 +11,7 @@ pub mod state;
 pub mod synclog;
 pub mod tokens;
 pub mod topics;
+pub mod versions;
 
 use std::io;
 use std::path::Path;

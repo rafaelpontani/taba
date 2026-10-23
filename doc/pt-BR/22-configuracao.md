@@ -43,7 +43,6 @@ topics:
 
 ```bash
 # as mesmas chaves como variáveis
-TABA_MODE=production
 TABA_API_PORT=8080
 TABA_CLUSTER_PORT=8081
 TABA_CLUSTER_ENTRY_ADDRESS=taba-lb.interno:8081
@@ -65,11 +64,12 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 - `retention.ttl.default`, `retention.max-deliveries.default` ou `topics.volatile.idle-timeout.default` estão fora das faixas de [19-erros-e-limites.md](19-erros-e-limites.md);
 - `cluster.tls.dir` definido não existe, ou a pasta existe sem nenhum par válido;
 - `auth.enabled=true` sem token raiz; token raiz com menos de 32 caracteres; `auth.root-token-file` definido que não existe;
+- `cluster.tls.enabled=false` ou `auth.dev-token` com `replication.factor` diferente de 1; `auth.dev-token` com menos de 32 caracteres ou com ponto;
 - `operations.allowed-ips` ou `client-ip.trusted-proxies` têm uma entrada inválida;
 - `backup.s3.access-key` sem `backup.s3.secret-key` (ou o contrário); `backup.segment.max-bytes` ou `backup.segment.max-messages` iguais a zero; a regra `backup.disk.evict-to` < `backup.disk.evict-above` < `backup.disk.pause-at` ≤ 100 desrespeitada; `backup.dead-after` que não passa de `backup.heartbeat.interval` (todo nó pareceria morto).
 
 
-Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados**, com um aviso no log.
+`mode` e `development.resume-on-start` **deixaram de existir** (o modo desenvolvimento saiu, [07-cluster.md](07-cluster.md), seção 8): um arquivo ou uma variável que ainda os defina continua subindo, com um aviso no log, e eles não fazem nada. Para rodar um nó só, use o perfil de um nó (`replication.factor=1`, e se quiser `cluster.tls.enabled=false` e `auth.dev-token`).
 
 ## Como ler as tabelas
 
@@ -82,15 +82,13 @@ Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.
 
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
-| `development.resume-on-start` | `TABA_DEVELOPMENT_RESUME_ON_START` | **true** | Só em `mode=development`: na partida, o nó retoma mensagens, tópicos e estado salvos em `storage.dir` (o drain serve de save). `false` **apaga** o conteúdo de `storage.dir` e começa limpo. Ignorado em `production`. |
-| `mode` | `TABA_MODE` | **production** | `production` ou `development`. Em `development` o nó é um cluster de um só: sem bootstrap, canal entre nós, votação, freezing, replicação nem sincronização; `replication.factor` e `write.quorum` valem 1; `cluster.entry-address` não é exigido; a porta do cluster não é aberta. Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são **ignorados** nesse modo (aviso no log). Não é para produção. |
 
 ## Portas
 
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
 | `api.port` | `TABA_API_PORT` | **8080** | Porta das rotas da API de cliente (seção 8.1). Sem `operations.port`, serve também as rotas de operação. Responde `404` a `/cluster/*`. |
-| `cluster.port` | `TABA_CLUSTER_PORT` | **8081** | Porta das rotas `/cluster/*` e do canal WebSocket entre nós. É a que a tabela de membros guarda e a que o `cluster.entry-address` aponta. Só os outros nós devem alcançá-la; **não publicar** no balanceador de clientes. Ignorada em `mode=development`, em que não é aberta. |
+| `cluster.port` | `TABA_CLUSTER_PORT` | **8081** | Porta das rotas `/cluster/*` e do canal WebSocket entre nós. É a que a tabela de membros guarda e a que o `cluster.entry-address` aponta. Só os outros nós devem alcançá-la; **não publicar** no balanceador de clientes. Um nó só (fator 1) a abre do mesmo jeito. |
 | `operations.port` | `TABA_OPERATIONS_PORT` | a porta de cliente | Ver a seção "Observabilidade" abaixo. |
 
 ### Segurança da porta do cluster
@@ -98,7 +96,8 @@ Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
 | `secrets.dir` | `TABA_SECRETS_DIR` | **/etc/taba/secrets** | Pasta que o operador cria uma vez com `taba init --out <pasta>` e monta em todos os nós, como segredo da plataforma. Tem `tls/` (certificados do cluster) e `root-token` (token raiz). Os dois parâmetros abaixo derivam dela, e quem quiser outros caminhos os define à parte. |
-| `cluster.tls.dir` | `TABA_CLUSTER_TLS_DIR` | **<secrets.dir>/tls** (do código) | Pasta com os certificados do cluster, em pares `<nome>.crt` (PEM) e `<nome>.key`, gerados por `taba init` ou `taba cert generate`. O nó confia em todo certificado não expirado da pasta e apresenta o par de início mais recente que já começou a valer. O TLS mútuo liga **sozinho** quando a pasta existe, e o nó não sobe sem ao menos um par válido; se ela não existe, a porta atende em HTTP puro com aviso no log. Um valor definido que não existe impede a subida. Ignorado em `mode=development`. |
+| `cluster.tls.dir` | `TABA_CLUSTER_TLS_DIR` | **<secrets.dir>/tls** (do código) | Pasta com os certificados do cluster, em pares `<nome>.crt` (PEM) e `<nome>.key`, gerados por `taba init` ou `taba cert generate`. O nó confia em todo certificado não expirado da pasta e apresenta o par de início mais recente que já começou a valer. O TLS mútuo liga **sozinho** quando a pasta existe, e o nó não sobe sem ao menos um par válido; se ela não existe, a porta atende em HTTP puro com aviso no log. Um valor definido que não existe impede a subida. |
+| `cluster.tls.enabled` | `TABA_CLUSTER_TLS_ENABLED` | **true** | `false` desliga o TLS do cluster (sem pasta de segredos). **Só é aceito com `replication.factor=1`**: com mais de um nó o processo recusa partir. Parte do perfil de um nó, só para desenvolvimento ([07-cluster.md](07-cluster.md), seção 8). |
 | `cluster.tls.reload-interval` | `TABA_CLUSTER_TLS_RELOAD_INTERVAL` | **60s** | De quanto em quanto tempo a pasta é conferida. Mudanças valem sem reiniciar o nó; pasta inválida mantém o conjunto anterior e registra `error`. |
 | `cluster.tls.expiry-warning` | `TABA_CLUSTER_TLS_EXPIRY_WARNING` | **30d** | Antecedência com que o nó registra `warn` no log para o certificado em uso que está para expirar. |
 
@@ -106,10 +105,12 @@ Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.
 
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
-| `auth.enabled` | `TABA_AUTH_ENABLED` | **auto** | `auto`: liga **sozinha** quando existe um token raiz (o `root-token` da pasta de segredos, `auth.root-token-file` ou `auth.root-token`) e fica desligada sem ele. `false` força desligada, mesmo com a pasta montada. `true` exige o token raiz (o nó não sobe sem ele). Ligada, as rotas de cliente exigem `Authorization: Bearer`. Ignorada (sempre desligada) em `mode=development`. |
+| `auth.enabled` | `TABA_AUTH_ENABLED` | **auto** | `auto`: liga **sozinha** quando existe um token raiz (o `root-token` da pasta de segredos, `auth.root-token-file` ou `auth.root-token`) e fica desligada sem ele. `false` força desligada, mesmo com a pasta montada. `true` exige o token raiz (o nó não sobe sem ele). Ligada, as rotas de cliente exigem `Authorization: Bearer`. |
 | `auth.root-token` | `TABA_AUTH_ROOT_TOKEN` | vazio | Segredo, igual em todos os nós, com **acesso total** à API de cliente (todas as permissões e o único que gerencia `/tokens`). Criado pelo `taba init` (ou avulso, por `taba token generate`); no mínimo 32 caracteres. A existência de um token raiz (este, `auth.root-token-file` ou o `root-token` da pasta de segredos) é o que liga a autenticação em `auth.enabled=auto`. |
 | `auth.root-token-file` | `TABA_AUTH_ROOT_TOKEN_FILE` | **<secrets.dir>/root-token** (do código) | Caminho de um arquivo com o token raiz, entregue como segredo da plataforma. Aceita **duas linhas** (a atual e a anterior), para trocar o segredo sem reiniciar. Prevalece sobre `auth.root-token`. |
 | `auth.reload-interval` | `TABA_AUTH_RELOAD_INTERVAL` | **60s** | De quanto em quanto tempo `auth.root-token-file` é relido. |
+| `auth.dev-token` | `TABA_AUTH_DEV_TOKEN` | vazio | Segredo de pelo menos 32 caracteres (sem ponto). A partida **cria** o token de trabalho `dev` (`admin`, `publish` e `consume`; só o hash é guardado) e liga a autenticação; o cliente usa `tb_dev.<segredo>`. Se o segredo mudou, a partida o atualiza. **Só é aceito com `replication.factor=1`**, e é só para desenvolvimento: não é o token raiz, então não para o cluster nem gerencia outros `admin`. |
+| `health.single-node-condition` | `TABA_HEALTH_SINGLE_NODE_CONDITION` | **true** | Mostra a condição informativa `reduced-profile` no `/health/cluster` quando o nó roda com algo relaxado (`replication.factor=1`, `cluster.tls.enabled=false` ou `auth.dev-token`). `false` a esconde. Não derruba o `/health/ready`. |
 
 ## Parada e modo drain
 
@@ -165,9 +166,15 @@ Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.
 | `cluster.vote.quorum-percent` | `TABA_CLUSTER_VOTE_QUORUM_PERCENT` | **51** | Percentual dos nós **saudáveis** (os que o votante enxerga e que respondem; os fora do ar não votam nem entram na base) que precisa concordar para efetivar a exclusão do nó: `ceil(S × percentual)`. |
 | `cluster.vote.min-voters` | `TABA_CLUSTER_VOTE_MIN_VOTERS` | **2** | Número mínimo de nós saudáveis para uma votação valer; abaixo disso, nenhuma exclusão se efetiva. Impede que um nó isolado exclua todos os demais. |
 | `cluster.freezing.duration` | `TABA_CLUSTER_FREEZING_DURATION` | **5m** (do código) | Tempo em que um nó desregistrado por falha fica impedido de se registrar novamente (anti-flapping). Durante o freezing o pedido de ingresso é rejeitado com `Retry-After`. |
-| `cluster.entry-address` | `TABA_CLUSTER_ENTRY_ADDRESS` | obrigatório em produção (exceto o primeiro nó) | Endereço (`host:porta`, a porta de 1 a 65535; uma forma inválida impede o nó de subir) do balanceador à frente do cluster, **na porta do cluster** (`cluster.port`, não a da API de cliente), usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe, **exceto em `mode=development`**, em que não é usado. |
-| `cluster.advertise-addresses` | `TABA_CLUSTER_ADVERTISE_ADDRESSES` | **detectado (interface que sai para o entry-address)** (do código) | Lista de IPs (separados por vírgula) que o nó põe no `join` e que a tabela de membros guarda; os outros nós o reconhecem pelo IP de origem das conexões. Sem valor, o nó usa o endereço local de um soquete UDP "conectado" ao `cluster.entry-address` (nada é enviado), isto é, a interface que sai para o cluster. Quem tem NAT, várias interfaces ou um nome que não resolve para a interface certa define o parâmetro. Ignorado em `mode=development`. |
-| `cluster.first-node` | `TABA_CLUSTER_FIRST_NODE` | **false** | Só no primeiro nó de um cluster novo: se a listagem não encontra nenhum membro, ele inicia o cluster sozinho. Nos demais, a listagem sem resposta é erro e o nó tenta de novo. |
+| `cluster.entry-address` | `TABA_CLUSTER_ENTRY_ADDRESS` | obrigatório com `replication.factor` acima de 1 (exceto o primeiro nó) | Endereço (`host:porta`, a porta de 1 a 65535; uma forma inválida impede o nó de subir) do balanceador à frente do cluster, **na porta do cluster** (`cluster.port`, não a da API de cliente), usado pelo nó ao iniciar para listar os membros (`GET /cluster/nodes`) e entrar no cluster. Sem ele o nó não sobe, **exceto o primeiro nó e o perfil de um nó** (`replication.factor=1`), em que não é usado. |
+| `cluster.advertise-addresses` | `TABA_CLUSTER_ADVERTISE_ADDRESSES` | **detectado (interface que sai para o entry-address)** (do código) | Lista de IPs (separados por vírgula) que o nó põe no `join` e que a tabela de membros guarda; os outros nós o reconhecem pelo IP de origem das conexões. Sem valor, o nó usa o endereço local de um soquete UDP "conectado" ao `cluster.entry-address` (nada é enviado), isto é, a interface que sai para o cluster. Quem tem NAT, várias interfaces ou um nome que não resolve para a interface certa define o parâmetro. |
+| `cluster.first-node` | `TABA_CLUSTER_FIRST_NODE` | **false** | Só no primeiro nó de um cluster que **nunca existiu**: se a listagem não encontra nenhum membro, ele inicia o cluster sozinho. Um nó **com vida anterior** não precisa dela: ele procura o cluster também pelos IPs da tabela anterior e, passado `cluster.restore.cold-start.wait`, parte sozinho se for o de menor ID antigo entre os vivos. Nos demais, a listagem sem resposta é erro e o nó tenta de novo. |
+| `cluster.restore.grace` | `TABA_CLUSTER_RESTORE_GRACE` | **5m** | Prazo `G` que a restauração das mensagens das vidas anteriores espera pelos nós esperados (os membros da maior tabela antiga). Passado o prazo, ela segue com um aviso e os nós presentes (ou fica retida, no modo estrito). Maior que zero. |
+| `cluster.restore.strict` | `TABA_CLUSTER_RESTORE_STRICT` | **false** | Modo estrito: passado `G`, a restauração fica retida até a operação de forçar, em vez de seguir com os nós presentes. |
+| `cluster.restore.clock-slack` | `TABA_CLUSTER_RESTORE_CLOCK_SLACK` | **5s** | Folga ao comparar o `last_seen` de uma vida (relógio do nó que a escreveu) com a data de corte do cluster (relógios de outros nós): só se restaura a vida vista depois da data **mais** a folga. |
+| `cluster.restore.probe.timeout` | `TABA_CLUSTER_RESTORE_PROBE_TIMEOUT` | **2h** | Tempo total em que o nó sonda os IPs da tabela da vida anterior que ainda faltam no cluster. Não menor que o intervalo. |
+| `cluster.restore.probe.interval` | `TABA_CLUSTER_RESTORE_PROBE_INTERVAL` | **10s** | Intervalo entre duas sondagens. Maior que zero. |
+| `cluster.restore.cold-start.wait` | `TABA_CLUSTER_RESTORE_COLD_START_WAIT` | **15s** | Quanto tempo um nó **com vida anterior** procura o cluster (pelo endereço de entrada e pelos IPs da tabela da vida anterior) antes de poder partir sozinho. Passado o prazo, parte o de menor ID antigo entre os nós vivos. Um nó sem vida anterior nunca parte sozinho (só `cluster.first-node`). |
 | `cluster.bootstrap.retry.interval` | `TABA_CLUSTER_BOOTSTRAP_RETRY_INTERVAL` | **5s** | Tempo de espera entre uma tentativa de entrar no cluster e a seguinte, depois de uma falha (listagem, registro, sincronização ou exclusão por falha no registro). |
 | `cluster.bootstrap.retry.max-attempts` | `TABA_CLUSTER_BOOTSTRAP_RETRY_MAX_ATTEMPTS` | **0** | Número máximo de tentativas; `0` repete sem parar. Esgotado, o nó encerra com erro. |
 | `cluster.message-loss.ttl` | `TABA_CLUSTER_MESSAGE_LOSS_TTL` | **14d** (do código) | Tempo depois do qual um registro da tabela `losses` expira; um nó que volta depois disso já não consegue recuperar a mensagem. |
@@ -191,6 +198,8 @@ Em **modo desenvolvimento**, os parâmetros `cluster.*`, `ring.*`, `replication.
 | `delivery.invisible-list.size` | `TABA_DELIVERY_INVISIBLE_LIST_SIZE` | — | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para a tabela de expiração do banco local. ⚠️ **Aceito, mas sem efeito hoje** (o código lê o valor e não o usa). |
 | `delivery.invisible.reload-threshold` | `TABA_DELIVERY_INVISIBLE_RELOAD_THRESHOLD` | — | Quando a lista de invisíveis em memória cai abaixo deste tamanho, a thread a recarrega com os próximos a vencer da tabela de expiração. ⚠️ **Aceito, mas sem efeito hoje** (o código lê o valor e não o usa). |
 | `storage.db.synchronous` | `TABA_STORAGE_DB_SYNCHRONOUS` | **NORMAL** | Modo de sincronização do SQLite. A durabilidade vem da replicação entre nós, então `NORMAL` basta. |
+| `storage.excluded.max-size` | `TABA_STORAGE_EXCLUDED_MAX_SIZE` | **100MB** | Tamanho máximo do log de mensagens excluídas (soma de todos os tópicos). Passando dele, os registros mais antigos saem primeiro e a data de início da gravação avança. Maior que zero. |
+| `storage.excluded.max-age` | `TABA_STORAGE_EXCLUDED_MAX_AGE` | **24h** | Idade máxima de um registro do log de mensagens excluídas. Maior que zero. |
 | `delivery.max-messages.default` | `TABA_DELIVERY_MAX_MESSAGES_DEFAULT` | **10** | Quantidade de mensagens do `GET` quando o cliente não informa `maxMessages`. |
 | `delivery.max-messages.max` | `TABA_DELIVERY_MAX_MESSAGES_MAX` | sem teto | Maior `maxMessages` aceito. Não vale para os streams de sincronização entre nós (`cluster.sync.stream.*`). |
 | `delivery.get.max-attempts` | `TABA_DELIVERY_GET_MAX_ATTEMPTS` | **3** (do código) | Quantos IDs da lista o `GET` tenta quando o registro de invisibilidade falha; esgotado, responde `503`. |

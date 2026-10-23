@@ -164,7 +164,7 @@ curl -s -X POST localhost:8080/topics/ordens/messages -d '{"n":3}'
 
 - `groupId` é **obrigatório** (1 a 128 caracteres, `A-Za-z0-9_-.:`). `deduplicationId` é opcional (mesmos caracteres); numa fila que **não** é FIFO o parâmetro é recusado com `400`.
 - A mensagem entregue traz `groupId` e `deduplicationId`.
-- Exige `replication.factor` ≥ **2** (recusa com `422` num cluster de produção com fator 1). Em modo desenvolvimento, não.
+- Aceita qualquer `replication.factor`: o quórum da FIFO é `min(2, fator)` (primário e secundário; com fator 1, só o primário).
 
 ### Onde o grupo mora
 
@@ -237,6 +237,6 @@ A fila FIFO não duplica publicações repetidas dentro de uma **janela** (`fifo
 ## Fontes e provas
 
 - `core/topic` (definição), `engine/topics` (registro e regras), `engine/messages/index` (lista de prontos por grupo), `cluster/volatile` (gestor), `cluster/replication/forward.rs` (repasse FIFO), `http/topics`, `http/messages`.
-- Respostas dos exemplos copiadas de um nó real em modo desenvolvimento.
+- Respostas dos exemplos copiadas de um nó real, sozinho (perfil de um nó).
 - Casos de uso: UC-TOP (tópicos), UC-DST (distribuidor), UC-VOL (volátil e gestor), UC-FIF (FIFO), UC-GRP (grupos); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/topics.rs`, `fifo.rs`, `fifo_cluster.rs`, `volatile.rs`, `volatile_cluster.rs`.
 - Histórico: `15-topicos-distribuidor.md`, `17-topicos-fifo.md`.

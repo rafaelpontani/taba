@@ -33,6 +33,7 @@ sources: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operati
 | `POST` | `/node/backup/flush` | admin | `200` `FlushReport` (or `422 backup.not-configured`) |
 | `POST` | `/cluster/backup/flush` | admin | `200` `ClusterFlushReport` (or `422 backup.not-configured`) |
 | `POST` | `/cluster/stop` | admin | `200` `StopReport` |
+| `POST` | `/cluster/restore/force` | admin (root token on the client API) | `200` `RestoreForce` |
 
 "Exempt" = never answers `429`: they are light and called by machines; a `429` on `/health/ready` would make the load balancer remove the node from rotation by mistake.
 
@@ -63,7 +64,7 @@ Cluster state for **people and scripts**: conditions, summary and the state of e
 |---|---|---|
 | `scope` | `cluster` | `cluster`: queries **all nodes** (`GET /cluster/status`), *best-effort*: a node that does not answer appears with `reachable: false`. `node`: **local** read, without querying other nodes |
 
-On a single node (development mode) the two scopes are the same. Errors: `400 validation.failed` (unknown `scope`), `403`, `429` (only with `scope=cluster`).
+On a single node (factor 1) the two scopes are the same. Errors: `400 validation.failed` (unknown `scope`), `403`, `429` (only with `scope=cluster`).
 
 ```json
 {"collectedAt":"2026-10-13T17:13:10.812Z","partial":false,"scope":"cluster","worstCondition":"ok","conditions":[],
@@ -81,10 +82,10 @@ During a real failure (a node brought down with `kill`), the same route showed: 
 | `partial` | `true` if some node did not answer |
 | `worstCondition` | The one of highest severity (`ok` if none) |
 | `conditions` | List of `{condition, severity}` ([13-observability.md](13-observability.md)) |
-| `summary` | `members` (count per state), `membersVersion`, `quorumAvailable`, `syncingBlocks` |
+| `summary` | `members` (count per state), `membersVersion`, `quorumAvailable`, `syncingBlocks`, `excludedCutoff` (the cut-off date of the log of excluded messages: the most recent `excludedSince` among the active members; `null` with none) |
 | `nodes` | One per member: `nodeId`, `reachable`, `status` (`NodeStatus`, or `null`) |
 
-**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (if configured), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) and `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
+**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (if configured), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `excludedSince` (since when the node records the log of excluded messages), `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) and `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
 
 ---
 
@@ -233,9 +234,20 @@ curl -s -X POST http://node:9090/cluster/stop
 
 `stopList: false` with `warnings` when S3 was unavailable: the disk drain was done, but the backup was **not sent**. A node that did not answer stays out of the list and is treated as dead on start.
 
+### `POST /cluster/restore/force`: force the restoration of the previous lives
+
+After a total fall the cluster restores the old messages and only then releases the FIFO queues ([07-cluster.md](07-cluster.md), sections 10.8 and 10.7). While the vote does not close, `GET /health/cluster` shows `previous-life-pending`. The call declares the cluster **restored from disk** with the nodes that are present: the node that receives it spreads it to the others (`POST /cluster/restore/force` on the cluster port), the FIFO queues are released and a restoration held by `cluster.restore.strict` goes on. Messages already consumed may come back ([07-cluster.md](07-cluster.md), section 10.10). On the client API it needs the **root token**; on the operations port, like `/cluster/stop`, it uses no token.
+
+```bash
+curl -s -X POST http://node:9090/cluster/restore/force
+# {"wasRestoring":true,"status":"restored","silentNodes":[]}
+```
+
+`wasRestoring: false` when the cluster was not restoring (nothing changes); `silentNodes` lists the nodes that did not answer the spread (they learn it on their next poll).
+
 ## Sources and evidence
 
 - `http/backup.rs` (the backup routes), `http/operations.rs` (the routes and `HealthResponse`), `http/metrics`, `http/topic_stats`, `cluster/drain` (states and transitions), `cluster/health` (conditions), `cluster/state`.
-- Responses copied from a real node (a development node and a 3-node cluster through Compose).
+- Responses copied from a real node (a single node and a 3-node cluster through Compose).
 - Use cases: UC-OPS (health, metrics and statistics), UC-DRN (drain), UC-LIM (limits of the operations routes); see [26a](26a-implemented-use-cases.md). Tests: `tests/operations.rs`, `metrics.rs`, `topic_stats.rs`, `drain_cluster.rs`.
 - History: `06b-api-operacao.md`, `11-observabilidade.md`.

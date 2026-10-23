@@ -178,7 +178,7 @@ They count as a **plan** (proposals, subject to D68, D70.1, D70.2). "Base versio
 1. **Read** [16-client-api.md](16-client-api.md) and this contract; **use `taba-cli`** as the executable reference (each command is an API call, and what it does is what the connector repeats).
 2. **Self-contained folder** `connectors/<language>/`: `README.md` (installation, a 10-line example, base version), the language's packaging, `src/`, `test/` and `examples/`. No folder imports code from another (except `cpp/` over `c/`).
 3. **Implement** the nine operations, the retry in the table above, the minimal JSON reader and the `client.*` errors.
-4. **Test**: unit tests with a fake transport (Rust has `taba_client::testing`; C# has `ScriptedHandler`) checking the **built request** and the reading of ready-made responses; integration against a Taba in development mode, or Compose.
+4. **Test**: unit tests with a fake transport (Rust has `taba_client::testing`; C# has `ScriptedHandler`) checking the **built request** and the reading of ready-made responses; integration against a one-node Taba (`replication.factor=1`), or Compose.
 5. **Cite the use cases** in the tests on a `UC: UC-CNT-NNN` line (the server's `uc_coverage` reads the citations from the connector folders too) ([26-use-cases.md](26-use-cases.md)).
 
 > Planned and **not yet existing**: the shared conformance suite (`connectors/contrato/` with fixtures and scenarios) and the OpenAPI contract, which would freeze the contract for the eight remaining connectors ([32-roadmap.md](32-roadmap.md)). Today the "source of truth" of the contract is this text, `taba-cli` and the tests of the two connectors.

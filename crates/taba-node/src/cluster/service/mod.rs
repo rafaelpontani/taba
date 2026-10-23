@@ -15,13 +15,16 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+mod probe;
+
 use super::backup::{BackupPort, StartupDecision, not_configured};
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
 use super::protocol::{
     Ack, DefinitionApply, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
     Request, Response, UnregisterReason,
 };
-use super::replication::Replication;
+use super::replication::{Replication, Stored};
+use super::restore;
 use super::state::{NodeShared, NodeState};
 use super::sync::SyncError;
 use super::transport::{
@@ -38,6 +41,8 @@ use crate::telemetry::{Telemetry, trace};
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// The `join` deadline: the request waits its turn and coordinates two phases, so it takes longer.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(60);
+/// How often the `last_seen` of the manifest of the running life moves (doc 07, section 10.4).
+const MANIFEST_INTERVAL: Duration = Duration::from_secs(10);
 /// Seconds suggested in `Retry-After` when the node does not have the table yet.
 const SYNCING_RETRY_AFTER_SECS: u64 = 5;
 
@@ -56,6 +61,11 @@ pub struct ClusterRules {
     pub bootstrap_max_attempts: u32,
     /// `cluster.first-node`
     pub first_node: bool,
+    /// The one-node profile: `replication.factor=1` and no `cluster.entry-address`. The node has no cluster to
+    /// join and starts alone, taking over its disk (doc 07, section 8).
+    pub single_node: bool,
+    /// The one-node profile relaxes something and `health.single-node-condition` is on: `reduced-profile` shows.
+    pub reduced_profile: bool,
     /// `cluster.entry-address`
     pub entry: Option<PeerAddr>,
     /// `write.pending.ttl`
@@ -108,11 +118,30 @@ pub struct ClusterRules {
     pub message_loss_ttl: Duration,
     /// `cluster.recovery.timeout` (to be defined: 5 minutes).
     pub recovery_timeout: Duration,
+    /// `cluster.restore.*`: the grace period, the strict mode and the clock slack of the restoration of the past
+    /// lives (doc 07, sections 10.3 and 10.7).
+    pub restore: restore::Rules,
+    /// `cluster.restore.cold-start.wait`: how long a node with a previous life looks for the cluster before it may
+    /// start alone (doc 07, section 10.5).
+    pub cold_start_wait: Duration,
+    /// `cluster.restore.probe.timeout`: how long the node probes the old addresses (doc 07, section 10.11).
+    pub probe_timeout: Duration,
+    /// `cluster.restore.probe.interval`: the time between two rounds of the probe.
+    pub probe_interval: Duration,
     /// `cluster.reunion.interval` (to be defined: ten times the heartbeat, at least 1 s): how often
     /// the node checks whether the other side of a symmetric partition has come back (D101).
     pub reunion_interval: Duration,
     /// `fifo.forward.max-attempts` (to be defined: 3).
     pub fifo_forward_max_attempts: u32,
+    /// The version of this node's program, which the others read in its `NodeStatus` (D165): the build's
+    /// (`CARGO_PKG_VERSION`), unless whoever assembles the node hands in another (the tests).
+    pub program_version: String,
+    /// How often the node checks whether there are members of an earlier version to retire (D165): the same
+    /// interval as the reunion of partitions.
+    pub upgrade_interval: Duration,
+    /// How long a drain asked for by the upgrade may take before the upgrade stops on it: `drain.timeout` plus
+    /// the time the node takes to leave the table.
+    pub upgrade_drain_deadline: Duration,
 }
 
 impl ClusterRules {
@@ -128,6 +157,9 @@ impl ClusterRules {
             bootstrap_retry_interval: config.cluster.bootstrap_retry_interval,
             bootstrap_max_attempts: config.cluster.bootstrap_retry_max_attempts,
             first_node: config.cluster.first_node,
+            single_node: config.is_single_node() && config.cluster.entry_address.is_none(),
+            reduced_profile: config.health.single_node_condition
+                && !config.relaxations().is_empty(),
             entry: config
                 .cluster
                 .entry_address
@@ -186,11 +218,21 @@ impl ClusterRules {
                 .cluster
                 .recovery_timeout
                 .unwrap_or(Duration::from_secs(300)),
+            restore: restore::Rules::from(&config.cluster.restore),
+            cold_start_wait: config.cluster.restore.cold_start_wait,
+            probe_timeout: config.cluster.restore.probe_timeout,
+            probe_interval: config.cluster.restore.probe_interval,
             reunion_interval: config
                 .cluster
                 .reunion_interval
                 .unwrap_or_else(|| (keepalive_interval * 10).max(Duration::from_secs(1))),
             fifo_forward_max_attempts: config.fifo.forward_max_attempts.map_or(3, |n| n.max(1)),
+            program_version: env!("CARGO_PKG_VERSION").to_owned(),
+            upgrade_interval: config
+                .cluster
+                .reunion_interval
+                .unwrap_or_else(|| (keepalive_interval * 10).max(Duration::from_secs(1))),
+            upgrade_drain_deadline: config.drain.timeout + Duration::from_secs(30),
         }
     }
 }
@@ -202,6 +244,18 @@ pub enum BootstrapError {
     Exhausted { attempts: u32, last: String },
     #[error("the node stopped before joining the cluster")]
     Cancelled,
+}
+
+/// What the node finds when it looks for the cluster through the nodes of its previous life.
+enum Discovery {
+    /// A node of the old table answered with a member table: the cluster to join.
+    Found(MemberTable),
+    /// Nobody has a table and this node is the one that starts (the lowest old ID among those alive).
+    StartAlone,
+    /// Nobody has a table yet, and it is not time (or not this node's turn) to start alone.
+    Waiting(String),
+    /// The node has no previous life: only `cluster.first-node` starts a cluster that never existed.
+    NoPreviousLife,
 }
 
 /// A bootstrap attempt that did not work out.
@@ -233,9 +287,23 @@ pub struct ClusterService {
     /// The process has already queried the other nodes' loss list (D111): only the first listing of the
     /// bootstrap does this, and a node returning from an exclusion or from a drain has already done it.
     boot_recovered: AtomicBool,
+    /// When the node first looked for a cluster without finding one (the start of the cold start's wait).
+    cold_since: StdMutex<Option<Instant>>,
+    /// The task that keeps the manifest of the running life up to date is already running.
+    manifest_writer: AtomicBool,
+    /// The table of the previous life, read when the bootstrap starts: the addresses the probe tries (section 4.14).
+    previous_table: OnceLock<Vec<restore::ManifestMember>>,
+    /// The probe ended with nodes of the previous table missing (the `members-missing` condition).
+    probe_gave_up: AtomicBool,
+    /// The table of the group that won a reunion: the loser's next join goes to it (section 4.14).
+    join_hint: StdMutex<Option<MemberTable>>,
+    /// The restoration of the previous lives, as this node sees it (doc 07, sections 10.8 and 10.7).
+    restoration: restore::Restoration,
     /// The members the restart's listing brought, to whom the node returns what the previous life's
     /// disk has of the losses, once active (PRB-048).
     old_disk_peers: StdMutex<Vec<Member>>,
+    /// What the disk held of definitions when the node joined a running cluster: it offers them once active.
+    offered_definitions: StdMutex<Vec<Stored>>,
     /// Who builds this node's `NodeStatus` (the operations layer; `GET /cluster/status`).
     status_source: OnceLock<StatusSource>,
     /// Who runs a call of the operations API against this node (`Request::NodeCall`).
@@ -245,6 +313,8 @@ pub struct ClusterService {
     /// The optional S3 backup (doc 23): its service, by weak reference (the service keeps the
     /// cluster, and the cluster cannot hold it back).
     backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
+    /// The versions of the other members and the upgrade in progress (doc 23, rolling update).
+    upgrade: super::upgrade::Upgrade,
 }
 
 /// The nodes that left by drain, as `Request::Departed` answers (and as `GET /nodes` reads them).
@@ -360,12 +430,28 @@ impl ClusterService {
             open_votes: StdMutex::new(HashMap::new()),
             excluded: AtomicBool::new(false),
             boot_recovered: AtomicBool::new(false),
+            cold_since: StdMutex::new(None),
+            manifest_writer: AtomicBool::new(false),
+            previous_table: OnceLock::new(),
+            probe_gave_up: AtomicBool::new(false),
+            join_hint: StdMutex::new(None),
+            restoration: restore::Restoration::default(),
             old_disk_peers: StdMutex::new(Vec::new()),
+            offered_definitions: StdMutex::new(Vec::new()),
             status_source: OnceLock::new(),
             node_calls: OnceLock::new(),
             reads: OnceLock::new(),
             backup: OnceLock::new(),
+            upgrade: super::upgrade::Upgrade::default(),
         })
+    }
+
+    pub(crate) fn upgrade(&self) -> &super::upgrade::Upgrade {
+        &self.upgrade
+    }
+
+    pub(crate) fn node_shared(&self) -> &Arc<NodeShared> {
+        &self.node
     }
 
     /// Attaches the S3 backup. Only the first call counts.
@@ -398,6 +484,37 @@ impl ClusterService {
         let _ = self.replication.set(replication);
     }
 
+    /// The restoration of the previous lives on this node.
+    pub fn restoration(&self) -> &restore::Restoration {
+        &self.restoration
+    }
+
+    /// The cluster is in restoration from now on (doc 07, section 10.8): the status changes and the FIFO queues are
+    /// held. It does not start the pass; [`begin_restoration`](Self::begin_restoration) does.
+    pub fn hold_for_restoration(&self) {
+        let Some(replication) = self.replication.get() else {
+            return;
+        };
+        if !self.restoration.is_restoring() {
+            self.restoration.begin(self.clock.now_millis());
+            replication.messages.messages().hold_fifo();
+        }
+    }
+
+    /// The cluster enters the restoration of the previous lives and this node starts its pass, which includes the
+    /// vote. A cold start with lives to restore calls it; a joining node does the same when it finds the cluster
+    /// restoring.
+    pub fn begin_restoration(self: &Arc<Self>) {
+        let Some(replication) = self.replication.get().cloned() else {
+            return;
+        };
+        self.hold_for_restoration();
+        tokio::spawn(async move {
+            let summary = replication.recovery.restoration().await;
+            replication.recovery.drop_lives(&summary);
+        });
+    }
+
     pub fn replication(&self) -> Option<&Arc<Replication>> {
         self.replication.get()
     }
@@ -417,6 +534,66 @@ impl ClusterService {
         if let Some(hook) = self.on_change.get() {
             hook();
         }
+        self.write_manifest();
+    }
+
+    /// Writes the manifest of the running life in the root of the disk (doc 07, section 10.4): the ID, the active
+    /// members of the table with their IPs, the version of the table and the instant it was last seen active. A
+    /// restart moves it, with the topics, to the folder of the life. Only while the node is a member: a table
+    /// that does not have it is not the one this life lived in.
+    pub fn write_manifest(&self) {
+        let Some(replication) = self.replication.get() else {
+            return;
+        };
+        let me = self.node_id();
+        let Some(table) = self.membership.table() else {
+            return;
+        };
+        if !table
+            .members
+            .iter()
+            .any(|m| m.node_id == me && m.state == MemberState::Active)
+        {
+            return;
+        }
+        let manifest = restore::Manifest {
+            node_id: me,
+            members: table
+                .members
+                .iter()
+                .filter(|m| m.state == MemberState::Active)
+                .map(|m| restore::ManifestMember {
+                    node_id: m.node_id.clone(),
+                    addresses: m.addresses.clone(),
+                    port: m.port,
+                })
+                .collect(),
+            table_version: table.version,
+            last_seen_ms: self.clock.now_millis(),
+            watermark: replication.messages.messages().watermark(),
+            excluded_since_ms: Some(replication.messages.messages().excluded_since()),
+        };
+        if let Err(e) = manifest.write(replication.messages.messages().storage_root()) {
+            tracing::warn!(error = %e, "could not write the manifest of the life");
+        }
+    }
+
+    /// Keeps `last_seen` of the manifest moving while the node lives, and writes it once more on a clean
+    /// stop (the cancellation). Started once, when the node becomes active.
+    fn spawn_manifest_writer(self: &Arc<Self>) {
+        if self.manifest_writer.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    () = me.cancel.cancelled() => break,
+                    () = tokio::time::sleep(MANIFEST_INTERVAL) => me.write_manifest(),
+                }
+            }
+            me.write_manifest();
+        });
     }
 
     /// After the commit of an exclusion by vote, queues the `frozen` frame for all peers:
@@ -1495,13 +1672,9 @@ impl ClusterService {
             else {
                 continue;
             };
-            let separate = !theirs.members.is_empty()
-                && theirs.member(&self.node_id()).is_none()
-                && theirs
-                    .members
-                    .iter()
-                    .all(|m| mine.member(&m.node_id).is_none());
-            if separate && loses_reunion(&mine, &theirs) {
+            if probe::is_other_group(&self.node_id(), &mine, &theirs)
+                && loses_reunion(&mine, &theirs)
+            {
                 tracing::warn!(
                     node_id = %self.node_id(),
                     other = %other.node_id,
@@ -1653,20 +1826,39 @@ impl ClusterService {
         let Some(replication) = self.replication.get().cloned() else {
             return;
         };
+        let offered = std::mem::take(
+            &mut *self
+                .offered_definitions
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        );
         let messages = replication.messages.messages().clone();
-        if peers.is_empty() {
-            tokio::task::spawn_blocking(move || messages.finish_previous_life());
-            return;
-        }
         tokio::spawn(async move {
-            replication.recovery.run_streaming(peers).await;
+            // The definitions the disk held go to the cluster first: the highest version wins (doc 07, section 10.5).
+            replication.definitions.offer(offered).await;
+            // The two paths run side by side: the loss list (what the peers declared lost, by the disk of this
+            // boot's life) and the restoration of the lives inside the window of the log (everything they keep,
+            // doc 07, section 10.6). A mute node only delays the first.
+            let recovery = replication.recovery.clone();
+            let losses = async {
+                if !peers.is_empty() {
+                    recovery.run_streaming(peers).await;
+                }
+            };
+            let (_, summary) = tokio::join!(losses, replication.recovery.restoration());
             let _ = tokio::task::spawn_blocking(move || messages.finish_previous_life()).await;
+            replication.recovery.drop_lives(&summary);
         });
     }
 
     /// Deletes what was left on the previous life's disk and releases the sweep (D111).
     async fn release_old_disk(&self) {
         if let Some(replication) = self.replication.get().cloned() {
+            let stored = replication.definitions.stored_changes().await;
+            self.offered_definitions
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend(stored);
             replication.reset_local().await;
             replication.messages.messages().release_old_disk();
         }
@@ -1676,10 +1868,16 @@ impl ClusterService {
     /// full bootstrap, with a new position on the ring. There is no freezing: the ID is different and the exit was
     /// voluntary.
     pub async fn rejoin_as_new(self: &Arc<Self>) {
-        self.recover_losses().await;
+        // A node alone has no cluster to hand its messages back to, nor one to synchronize from: its disk is all there
+        // is, and the start takes it over as the quarantine of the life that ends here.
+        if !self.rules.single_node {
+            self.recover_losses().await;
+        }
         self.boot_recovered.store(true, Ordering::SeqCst);
         let new_id = id::new_at(self.clock.now_millis());
-        if let Some(replication) = self.replication.get().cloned() {
+        if !self.rules.single_node
+            && let Some(replication) = self.replication.get().cloned()
+        {
             replication.reset_local().await;
         }
         self.local
@@ -1702,19 +1900,78 @@ impl ClusterService {
         });
     }
 
+    /// The node starts alone and takes over the definitions on its disk before it serves (doc 07, section 10.5).
+    async fn start_alone_with_disk(self: &Arc<Self>) {
+        if let Some(replication) = self.replication.get().cloned() {
+            replication.definitions.resume_from_disk().await;
+        }
+        self.start_alone();
+    }
+
+    /// The one-node profile (doc 07, section 8): there is no cluster to find, so the node starts alone and takes
+    /// over the disk, restoring the quarantine for itself. With the S3 backup the bucket still decides, as for the
+    /// first node of a cluster.
+    async fn start_single_node(self: &Arc<Self>) -> Result<(), Failure> {
+        let Some(port) = self.backup() else {
+            self.start_alone_with_disk().await;
+            return Ok(());
+        };
+        let backup = port.backup();
+        match backup.startup_decision(true).await {
+            StartupDecision::StartAlone => {
+                self.start_alone_with_disk().await;
+                backup.spawn_restore();
+                Ok(())
+            }
+            StartupDecision::KeepTrying => Err(Failure {
+                reason: "list",
+                message: "the backup does not authorize starting alone yet".into(),
+            }),
+        }
+    }
+
     /// The first node of a new cluster: the table is just itself.
-    pub fn start_alone(&self) {
+    pub fn start_alone(self: &Arc<Self>) {
+        // The first node has no one to return the old disk to, but it does not wipe it either: a disk with a
+        // manifest becomes the folder of its life (doc 07, section 10.4); one without it follows the usual path.
+        if let Some(replication) = self.replication.get() {
+            let messages = replication.messages.messages();
+            if let Err(e) = messages.set_aside_old_disk() {
+                tracing::warn!(error = %e, "could not set aside the previous life's disk");
+            }
+            // The cluster is starting from this disk: the log of excluded messages goes on from the previous life's
+            // (the nodes that join take its date), or no life would be inside the window of the log.
+            if let Some(since) = replication
+                .recovery
+                .latest_manifest()
+                .and_then(|manifest| manifest.excluded_since_ms)
+                && let Err(e) = messages.take_over_excluded_since(since)
+            {
+                tracing::warn!(error = %e, "could not take over the start of the excluded log");
+            }
+            messages.finish_previous_life();
+            messages.release_old_disk();
+        }
         self.membership.install(MemberTable {
             version: 1,
             members: vec![self.local()],
             ..MemberTable::default()
         });
-        // The first node has no one to recover from: the old disk follows the usual path.
-        if let Some(replication) = self.replication.get() {
-            replication.messages.messages().release_old_disk();
-        }
         self.node.set_state(NodeState::Active);
         self.membership_changed();
+        self.spawn_manifest_writer();
+        // A cold start with lives on the disk puts the cluster in restoration: the FIFO stays held until the
+        // expected nodes come back, or `G` passes, and the vote closes (doc 07, sections 10.8 and 10.5). Without
+        // lives there is nothing to restore.
+        let lives = self
+            .replication
+            .get()
+            .is_some_and(|replication| replication.recovery.has_lives());
+        if lives {
+            self.begin_restoration();
+        } else if self.restoration.status() == restore::Status::Unknown {
+            self.restoration.complete();
+        }
         tracing::info!(node_id = %self.node_id(), "first node: the cluster starts with just it");
     }
 
@@ -1796,7 +2053,7 @@ impl ClusterService {
 
     /// The node is healthy: its state in the table becomes `active`, the peers get to know (with
     /// attempts) and only then does it start serving and owning the messages of its blocks.
-    async fn activate(&self, table: &MemberTable) {
+    async fn activate(self: &Arc<Self>, table: &MemberTable) {
         let me = self.node_id();
         self.membership.set_state(&me, MemberState::Active);
         self.local.write().unwrap_or_else(|e| e.into_inner()).state = MemberState::Active;
@@ -1807,6 +2064,7 @@ impl ClusterService {
         let members = table.members.len();
         self.node.set_state(NodeState::Active);
         self.membership_changed();
+        self.spawn_manifest_writer();
         tracing::info!(node_id = %me, version, members, "node in the cluster");
     }
 
@@ -1814,6 +2072,7 @@ impl ClusterService {
     /// join and installs the table that comes back. Repeats every `cluster.bootstrap.retry.interval`
     /// up to `cluster.bootstrap.retry.max-attempts` (`0` does not limit).
     pub async fn bootstrap(self: &Arc<Self>) -> Result<(), BootstrapError> {
+        self.remember_previous_table();
         let mut attempts = 0u32;
         loop {
             attempts += 1;
@@ -1842,7 +2101,65 @@ impl ClusterService {
         }
     }
 
+    /// The cold start's discovery (doc 07, section 10.5). The node that has a previous life asks the nodes of that
+    /// life's table (by the IPs in the manifest): one that answers with a table is a cluster to join; one that
+    /// answers that it has no table yet is alive and also looking. After `cluster.restore.cold-start.wait`, the one
+    /// with the lowest **old** ID among those that are alive starts alone and takes over the disk; the others keep
+    /// trying and join it. A node without a previous life never starts alone here (only `cluster.first-node` does).
+    async fn discover_previous_table(&self) -> Discovery {
+        let Some(previous) = self
+            .replication
+            .get()
+            .and_then(|replication| replication.recovery.latest_manifest())
+        else {
+            return Discovery::NoPreviousLife;
+        };
+        let mut alive = vec![previous.node_id.clone()];
+        for member in previous
+            .members
+            .iter()
+            .filter(|m| m.node_id != previous.node_id)
+        {
+            for address in &member.addresses {
+                let to = PeerAddr::new(address.clone(), member.port);
+                match self
+                    .call_addr(&to, Request::ListNodes, self.rules.call_timeout)
+                    .await
+                {
+                    Ok(Response::Members(table)) => return Discovery::Found(table),
+                    Err(CallError::Remote(e)) if e.code == ErrorCode::ClusterNodeSyncing => {
+                        alive.push(member.node_id.clone());
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let since = *self
+            .cold_since
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_or_insert_with(Instant::now);
+        let lowest = alive.iter().min() == Some(&previous.node_id);
+        if since.elapsed() >= self.rules.cold_start_wait && lowest {
+            tracing::warn!(
+                previous_life = %previous.node_id,
+                alive = alive.len(),
+                "no cluster found through the entry address or the previous life's table: this node takes over the disk and starts alone"
+            );
+            return Discovery::StartAlone;
+        }
+        Discovery::Waiting(format!(
+            "no cluster found yet; waiting to start alone (previous life {}, {} alive in its table)",
+            previous.node_id,
+            alive.len()
+        ))
+    }
+
     async fn attempt_join(self: &Arc<Self>) -> Result<(), Failure> {
+        if self.rules.single_node {
+            return self.start_single_node().await;
+        }
         let entry = self.rules.entry.clone().ok_or_else(|| Failure {
             reason: "config",
             message: "cluster.entry-address is not a host:port".into(),
@@ -1852,6 +2169,34 @@ impl ClusterService {
         let listed = self
             .call_addr(&entry, Request::ListNodes, self.rules.call_timeout)
             .await;
+        // The entry address found no cluster: a node with a previous life also tries the nodes of its table, and may
+        // be the one that starts alone (doc 07, section 10.5).
+        // The group that lost a reunion already holds the table of the winner (section 4.14).
+        let hint = self
+            .join_hint
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let listed = match listed {
+            _ if hint.is_some() => Ok(Response::Members(hint.expect("checked above"))),
+            Err(e) if e.found_no_cluster() => match self.discover_previous_table().await {
+                Discovery::Found(table) => Ok(Response::Members(table)),
+                Discovery::StartAlone if self.backup().is_none() => {
+                    self.start_alone_with_disk().await;
+                    return Ok(());
+                }
+                Discovery::Waiting(message)
+                    if self.backup().is_none() && !self.rules.first_node =>
+                {
+                    return Err(Failure {
+                        reason: "list",
+                        message,
+                    });
+                }
+                _ => Err(e),
+            },
+            other => other,
+        };
         let table = match listed {
             Ok(Response::Members(table)) => table,
             Ok(_) => {
@@ -1867,7 +2212,7 @@ impl ClusterService {
                 let backup = port.backup();
                 match backup.startup_decision(self.rules.first_node).await {
                     StartupDecision::StartAlone => {
-                        self.start_alone();
+                        self.start_alone_with_disk().await;
                         backup.spawn_restore();
                         return Ok(());
                     }
@@ -1884,7 +2229,7 @@ impl ClusterService {
             Err(e) if e.is_network() && self.rules.first_node => {
                 // Only the first node of a new cluster starts alone, and only when the listing
                 // finds no one.
-                self.start_alone();
+                self.start_alone_with_disk().await;
                 return Ok(());
             }
             Err(e) => {
@@ -1912,7 +2257,7 @@ impl ClusterService {
             node_id: self.local().node_id,
             addresses: self.local().addresses,
             port: self.local().port,
-            version: env!("CARGO_PKG_VERSION").to_owned(),
+            version: self.rules.program_version.clone(),
         });
         let mut last = Failure {
             reason: "join",

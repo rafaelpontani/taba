@@ -40,6 +40,8 @@ taba-cli health ready                   # {"health":"ready"} em cada nó
 Esperado num cluster saudável: `summary.members.active = N`, `quorumAvailable: true`, `syncingBlocks: 0`, `conditions: []`.
 
 > **Primeiro nó e reinício:** `cluster.first-node=true` só inicia o cluster sozinho se **nenhuma resposta de rede** vier do endereço de entrada. Se os outros nós estão de pé, ele **entra** neles. Por isso é seguro deixar a chave ligada nele para sempre (o Compose faz isso).
+>
+> **Partida a frio:** se todos os nós caem e voltam juntos, com os discos, **nenhum precisa de `cluster.first-node`**: cada um tenta o endereço de entrada e os IPs da tabela da vida anterior (no manifesto); passado `cluster.restore.cold-start.wait`, parte sozinho o de **menor ID antigo** entre os vivos, assume o disco (tópicos, tokens, mensagens em quarentena) e os outros entram nele. A restauração das mensagens espera os nós esperados (`cluster.restore.grace`); a FIFO só é liberada depois. Um nó que nunca teve disco ainda precisa de `cluster.first-node` para criar o cluster.
 
 ## Escalar
 
@@ -50,13 +52,19 @@ Esperado num cluster saudável: `summary.members.active = N`, `quorumAvailable: 
 
 ## Atualizar a versão (rolling)
 
-**Um nó por vez**, esperando `healthy` (`/health/ready`) antes do próximo. Verificado: reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (`docker/cluster.sh restart <nó>`) com 14 mensagens no tópico e consumir tudo devolveu **14 de 14**.
+**Suba a versão nova ao lado da antiga: os nós novos retiram os antigos.** Cada nó anuncia a versão do programa (o campo `version` do seu `NodeStatus`), e um nó que vê membros de versão **anterior** os drena, **um de cada vez**, com o mesmo drain de "Retirar um nó de propósito": o nó antigo grava a memória em disco e sai da tabela, e o orquestrador pode então pará-lo.
 
-1. Pare o nó com `SIGTERM` (ele faz drain, grava a memória em disco, se desregistra e encerra com código 0).
-2. Suba a versão nova (ela entra como **nó novo**, sincroniza, fica pronta).
-3. Confira `health cluster` (sem condições) e **só então** vá ao próximo.
+1. Adicione um nó da versão nova (Compose: aumente as réplicas com a imagem nova; Kubernetes: o rollout acrescenta o pod novo). Ele entra como **nó novo** e sincroniza.
+2. Quando ele está `active`, o cluster drena o membro mais antigo. O drain seguinte só começa depois que o anterior saiu da tabela, e **só se pelo menos 3 nós continuarem ativos** depois dele: num cluster de 3, suba primeiro o nó novo (4 ativos) para que um antigo possa sair.
+3. Repita até não restar nó de versão anterior e confira `health cluster` (sem condições).
 
-> **Todos os nós de um cluster devem rodar a mesma versão:** a API do cluster é interna e não tem garantia de compatibilidade entre versões ([18-api-cluster.md](18-api-cluster.md)). O `membersVersion` sobe a cada mudança de membros, o que é normal num rolling.
+Só **um** nó age: o de menor `nodeId` entre os da versão mais nova, para que dois nós nunca peçam drains diferentes ao mesmo tempo. Um nó de versão **anterior** que entra não drena os mais novos; os novos o retiram. Um membro que não publica versão (uma versão anterior do programa) conta como o mais antigo.
+
+Se um nó não termina o drain em `drain.timeout` mais 30 s, o processo **para nele** e aparece a condição `upgrade-stalled` (aviso): cancele o drain do nó (`DELETE /node/drain`) ou pare-o, e a atualização segue.
+
+**Reiniciar no lugar, um nó por vez,** também funciona, esperando `healthy` (`/health/ready`) antes do próximo. Verificado: reiniciar `taba-2`, `taba-3` e `taba-1` em sequência (`docker/cluster.sh restart <nó>`) com 14 mensagens no tópico e consumir tudo devolveu **14 de 14**.
+
+> As versões **não** são compatíveis entre si: a API do cluster é interna e não tem garantia de compatibilidade entre versões ([18-api-cluster.md](18-api-cluster.md)); o que uma versão nova acrescenta entre nós só é enviado aos nós que anunciaram essa versão. O `membersVersion` sobe a cada mudança de membros, o que é normal numa atualização.
 
 O `stop_grace_period` (Compose) ou `terminationGracePeriodSeconds` (Kubernetes, 30 s por padrão) precisa ser **maior que `drain.timeout`** (25 s). O Compose do repositório usa **40 s**. Senão o processo é morto antes de registrar o resultado.
 
@@ -86,6 +94,10 @@ Sair por drain **não** gera freezing. Se o drain estourar `drain.timeout` pedid
 | `quorum-lost` | **crítica** | Menos nós saudáveis que `cluster.vote.min-voters` (2): **nenhuma exclusão se efetiva** | Há **um só** nó vivo. Veja "Cluster travado" abaixo |
 | `membership-divergent` | **crítica** | Tabelas de membros com versões diferentes | Propagação incompleta de uma mudança; normalmente some sozinha em segundos. Persistente: veja os logs `membership` e reinicie o nó divergente (**um de cada vez**) |
 | `storage-pressure` | aviso | Espaço livre em `storage.dir` abaixo de `stats.disk.free-min` (só dispara se configurado) | Libere disco ou aumente o volume **antes** de encher: **disco cheio leva o nó a `failed`** |
+| `upgrade-stalled` | aviso | A atualização que retira versões anteriores parou num nó que não terminou o drain a tempo | Cancele o drain desse nó (`DELETE /node/drain` na porta de operações dele) ou pare-o; a atualização segue com o próximo. O nó é o que está em `draining` em `GET /nodes` |
+| `members-missing` | aviso | A sondagem dos IPs antigos acabou com nós da vida anterior faltando | O cluster funciona; o nó que falta entra pelo join normal quando voltar. Se ele não vai voltar (o cluster foi reduzido de propósito), a condição some quando a tabela completar ou ao reiniciar os nós ([07-cluster.md](07-cluster.md), seção 10.11) |
+| `reduced-profile` | aviso | O nó roda o perfil de um nó (desenvolvimento) | Esperada em desenvolvimento. Em produção, mostra que algo relaxado ficou ligado: confira `replication.factor`, `cluster.tls.enabled` e `auth.dev-token` ([07-cluster.md](07-cluster.md), seção 8) |
+| `previous-life-pending` | aviso | A restauração das vidas anteriores não terminou (a votação não fechou, ou a restauração espera nós que não voltaram) | As filas FIFO recebem e **não entregam** enquanto isso. `GET /health/cluster` e o estado do nó (`GET /cluster/restore`) dizem quais nós antigos são esperados. Espere `cluster.restore.grace`; se um nó não vai voltar, force com `POST /cluster/restore/force` (token root, ou a porta de operações): mensagens já consumidas podem voltar ([07-cluster.md](07-cluster.md), seção 10.10) |
 
 ## Falhas e como reagir
 
@@ -101,13 +113,13 @@ Durante a janela de ~4 s, publicações nos blocos do nó caído **podem** respo
 
 **Sintomas:** `conditions = [write-quorum-at-risk, quorum-lost, member-unreachable, node-frozen]`; publicações e consumos em partes dos blocos falham ou voltam vazios.
 
-**Não há recuperação automática nem comando de exclusão forçada.** O que funcionou (verificado): **derrubar o cluster inteiro e subir de novo**. ⚠️ **Isso perde as mensagens e os tópicos** (o cluster nasce vazio). Antes de fazê-lo, se o sobrevivente ainda atende, **consuma e salve o que puder**. Prevenção: um nó por vez; considere aumentar o número de nós (5) e `cluster.vote.min-voters` (uma maioria) em clusters grandes.
+**Não há recuperação automática nem comando de exclusão forçada.** O que funciona: **derrubar o cluster inteiro e subir de novo, com os mesmos volumes**. O cluster retoma do disco (veja "Todos os nós caíram"): tópicos, tokens e as mensagens que estavam em disco voltam, e se perde o que estava só em memória. Antes de fazê-lo, se o sobrevivente ainda atende, **consuma e salve o que puder**; sem os volumes o cluster nasce vazio. Prevenção: um nó por vez; considere aumentar o número de nós (5) e `cluster.vote.min-voters` (uma maioria) em clusters grandes.
 
 ### Todos os nós caíram
 
 **Com o backup em S3** ([33-backup-s3.md](33-backup-s3.md)): suba os processos de novo (`docker compose start`). O primeiro nó que não achar ninguém batendo no bucket espera o batimento dos mortos vencer (`backup.dead-after`, 60 s), pega a trava de restauração, restaura definições, tokens e mensagens, e os demais entram como nós normais. Perde-se só o que ainda não tinha ido ao S3 (a janela de `backup.delay`) e o estado da última janela do diário.
 
-**Sem o backup**, em produção **mensagens e tópicos se perdem** (todo reinício é de nó novo; o disco só devolve "perdas" listadas por nós vivos). Suba o primeiro nó (`first-node`), depois os demais; **recrie os tópicos e tokens**. O **token raiz e o certificado** estão na pasta de segredos e sobrevivem. Planeje para isto: produtores com repetição e tópicos recriáveis por automação.
+**Sem o backup, com os volumes mantidos:** suba todos os nós de novo (`docker compose start`), sem `first-node`. Cada nó põe o disco da vida anterior numa pasta `_lives/<ID antigo>`; passado `cluster.restore.cold-start.wait` (15 s) parte sozinho o nó de menor ID antigo entre os vivos e assume o disco (tópicos e tokens), os outros entram nele, e as mensagens voltam pela restauração das vidas anteriores ([07-cluster.md](07-cluster.md), seção 10). Acompanhe `GET /health/cluster`: `previous-life-pending` some quando a restauração termina. Se um nó antigo não volta, a restauração segue com os presentes depois de `cluster.restore.grace` (5 min), ou antes, forçada (`POST /cluster/restore/force`); com `cluster.restore.strict` ela espera a força. Perde-se o que estava **só em memória** em todos os nós, e uma mensagem já consumida só reaparece nos casos da seção 10.10 (o consumidor precisa ser idempotente). **Sem os volumes** mensagens e tópicos se perdem: recrie os tópicos e tokens. O **token raiz e o certificado** estão na pasta de segredos e sobrevivem. Planeje para isto: produtores com repetição e tópicos recriáveis por automação.
 
 ### Nó em `failed` (disco cheio ou banco corrompido)
 

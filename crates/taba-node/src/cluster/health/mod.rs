@@ -38,10 +38,14 @@ pub enum Condition {
     Syncing,
     UnderReplicated,
     StoragePressure,
+    UpgradeStalled,
+    MembersMissing,
+    PreviousLifePending,
+    ReducedProfile,
 }
 
 impl Condition {
-    pub const ALL: [Condition; 8] = [
+    pub const ALL: [Condition; 12] = [
         Condition::WriteQuorumAtRisk,
         Condition::QuorumLost,
         Condition::MembershipDivergent,
@@ -50,6 +54,10 @@ impl Condition {
         Condition::Syncing,
         Condition::UnderReplicated,
         Condition::StoragePressure,
+        Condition::UpgradeStalled,
+        Condition::MembersMissing,
+        Condition::PreviousLifePending,
+        Condition::ReducedProfile,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -62,6 +70,10 @@ impl Condition {
             Condition::Syncing => "syncing",
             Condition::UnderReplicated => "under-replicated",
             Condition::StoragePressure => "storage-pressure",
+            Condition::UpgradeStalled => "upgrade-stalled",
+            Condition::MembersMissing => "members-missing",
+            Condition::PreviousLifePending => "previous-life-pending",
+            Condition::ReducedProfile => "reduced-profile",
         }
     }
 
@@ -98,6 +110,18 @@ pub struct HealthSignals {
     pub blocks_below_quorum: u64,
     /// Nodes in a freezing period.
     pub frozen_nodes: u64,
+    /// The upgrade retiring earlier versions stopped on a node that did not finish draining.
+    #[serde(default)]
+    pub upgrade_stalled: bool,
+    /// The probe of the old addresses ended with nodes of the previous table missing (doc 07, section 10.11).
+    #[serde(default)]
+    pub members_missing: bool,
+    /// The cluster is still being restored from the previous lives: the FIFO queues are held (doc 07, section 10.8).
+    #[serde(default)]
+    pub restore_pending: bool,
+    /// The node runs the one-node profile with something relaxed (doc 07, section 8). Informative.
+    #[serde(default)]
+    pub reduced_profile: bool,
 }
 
 impl HealthSignals {
@@ -125,6 +149,18 @@ impl HealthSignals {
         }
         if storage_pressure {
             out.push(Condition::StoragePressure);
+        }
+        if self.upgrade_stalled {
+            out.push(Condition::UpgradeStalled);
+        }
+        if self.members_missing {
+            out.push(Condition::MembersMissing);
+        }
+        if self.restore_pending {
+            out.push(Condition::PreviousLifePending);
+        }
+        if self.reduced_profile {
+            out.push(Condition::ReducedProfile);
         }
         out.sort();
         out
@@ -218,6 +254,10 @@ pub fn collect(service: &ClusterService) -> Option<HealthSignals> {
         blocks_below_replication: below_replication,
         blocks_below_quorum: below_quorum,
         frozen_nodes: membership.frozen_count(service.now(), rules.freezing_duration) as u64,
+        upgrade_stalled: service.upgrade_stalled().is_some(),
+        members_missing: service.members_missing(),
+        restore_pending: service.restoration().is_restoring(),
+        reduced_profile: rules.reduced_profile,
     })
 }
 

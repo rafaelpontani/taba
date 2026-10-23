@@ -17,10 +17,28 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A FIFO restart test that waits 30 s in a combined run](#a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 | — |
 | [A notice test that waits 30 s once in the full suite](#a-notice-test-that-waits-30-s-once-in-the-full-suite) | Open | 2026-10-20 | — |
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A FIFO restart test that waits 30 s in a combined run
+
+**Status:** Open · **Found on:** 2026-10-22 · **Fixed on:** —
+
+- **Test:** `fifo.rs` › `a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate` and, with the same symptom, `messages.rs` › `stopping_saves_memory_to_disk_and_the_next_start_resumes_it` (both restart a node over the disk of the previous life).
+- **Symptom:** `waited 30 s for: the folders of the previous lives to be restored` (`TestNode` waits for the restoration of the disk it takes over before it returns). Seen in 2 of 4 combined runs (the `fifo`, `messages`, `volatile`, `operations`, `topics` and `auth` binaries one after the other, and the full suite); alone it passed 8 times in a row, and 12 runs of the whole `fifo` binary and 5 more combined runs with the logs on did not fail.
+- **Cause:** not identified. Two real causes of the same symptom were found and fixed on the way (a sweep that read the old disk into the state of a topic before it was set aside, and the Windows move of the topic folder racing the sweeper); this one did not reproduce afterwards.
+- **Next step:** on the next occurrence keep the `INFO` log of the second start (`tracing_subscriber` in the test) to see whether the move of the folder failed (`could not set aside the previous life's disk`) or the restoration did not finish.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-22 | Found while moving the integration tests to the one-node profile: failed in two combined runs, passed alone and with the logs on in later runs. |
+| 2026-10-22 | Failed in two full runs in a row (`cargo test --no-fail-fast`, `waited 30 s`, in `common/cluster.rs`); the `fifo` binary alone passed 4 times and a third full run did not fail. The cause is still not identified. |
+| 2026-10-22 | Three full runs (`cargo test -p taba-node --no-fail-fast`) failed with the same `waited 30 s` and one, without the new test in `messages.rs`, passed. It failed in `messages.rs` › `stopping_saves_memory_to_disk_and_the_next_start_resumes_it` (twice) and in `fifo.rs` › `a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`; the `messages` binary alone passed 3 times in a row and the test alone, 3. The cause is still not identified (it is not a single test). |
 
 ## A notice test that waits 30 s once in the full suite
 
@@ -36,6 +54,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | Date | Event |
 |---|---|
 | 2026-10-20 | Failed once in a full local run; passed alone (3 runs) and in the next full run. |
+| 2026-10-22 | Failed again in a full local run (`waited 30 s for: the old notice counted as empty`); passed 6 of 6 alone right after. The change under test does not touch the notices. Cause still not identified. |
 
 ## Rejoining after a symmetric partition
 

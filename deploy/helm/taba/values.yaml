@@ -85,7 +85,8 @@ networkPolicy:
 # Segredos nunca aqui: root token em `secrets`, chaves S3 em `backup.s3`, OTEL_*headers em `otel`.
 # ---------------------------------------------------------------------------------------------------
 config:
-  mode: production        # production | development (development = 1 nó, sem auth, sem TLS)
+  # Perfil de um nó (laboratório): `replication: { factor: 1 }` = 1 pod, sem autenticação, sem TLS de cluster, sem Secret e
+  # sem Job. `mode: development` (production | development) é o nome antigo do mesmo perfil e ainda vale.
   telemetry:
     logs:
       format: json        # text | color | json

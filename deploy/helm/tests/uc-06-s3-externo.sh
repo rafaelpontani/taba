@@ -7,7 +7,7 @@ cluster_up; trap cleanup EXIT; ns_fresh
 
 log "instalando o 'S3 externo' (release storage: 1 nó + SeaweedFS)"
 H upgrade --install storage "$CHART" -n "$NS" --set "image.tag=$TAG" \
-  --set config.mode=development --set seaweedfs.enabled=true \
+  --set config.replication.factor=1 --set seaweedfs.enabled=true \
   --set seaweedfs.auth.accessKey=taba --set seaweedfs.auth.secretKey=taba-s3-secret \
   --set persistence.size=1Gi --wait --timeout 10m >&2 || { fail "helm install storage"; summary; exit 1; }
 

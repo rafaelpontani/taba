@@ -95,7 +95,10 @@ pub async fn run(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaEr
 
 async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaError> {
     let total = plan.owners.len();
-    let required = plan.required.max(1);
+    // On FIFO the quorum includes the primary and the secondary, but never more nodes than the factor
+    // has: `min(2, factor)` (doc 07, section 8).
+    let factor = service.rules().replication_factor.max(1) as usize;
+    let required = plan.required.min(factor).max(1);
     let quorum = plan.quorum.max(required);
     if total == 0 || total < quorum {
         return Err(quorum_unavailable());

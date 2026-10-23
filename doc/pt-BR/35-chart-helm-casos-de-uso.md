@@ -37,7 +37,7 @@ O `00-static.sh` cobre cada caso também sem cluster: renderiza os `ci/*.yaml` e
 | Caso | Modo de operação | Values (`ci/`) | Script |
 |---|---|---|---|
 | [UC-01](#uc-01) | Produção mínima: 3 nós, segredos gerados | `uc-01-minimo.yaml` | `uc-01-minimo.sh` |
-| [UC-02](#uc-02) | Desenvolvimento: 1 nó, sem auth | `uc-02-desenvolvimento.yaml` | `uc-02-desenvolvimento.sh` |
+| [UC-02](#uc-02) | Um nó: perfil de um nó, sem auth | `uc-02-desenvolvimento.yaml` | `uc-02-desenvolvimento.sh` |
 | [UC-03](#uc-03) | Segredos do operador e rotação do token | `uc-03-segredos-existentes.yaml` | `uc-03-segredos-existentes.sh` |
 | [UC-04](#uc-04) | Ingress (host, classe, TLS) | `uc-04-ingress.yaml` | `uc-04-ingress.sh` |
 | [UC-05](#uc-05) | Backup em S3 embutido (SeaweedFS) | `uc-05-backup-seaweedfs.yaml` | `uc-05-backup-seaweedfs.sh` |
@@ -77,7 +77,7 @@ helm install taba deploy/helm/taba -n taba --create-namespace
 
 ## UC-02
 
-**Desenvolvimento.** `config.mode: development`: um nó, sem autenticação, sem TLS de cluster, sem Secret e sem Job. Para laboratório e testes de integração de aplicações.
+**Um nó.** `config.replication.factor: 1` (o antigo `config.mode: development` vale também): um nó, sem autenticação, sem TLS de cluster, sem Secret e sem Job. Para laboratório e testes de integração de aplicações.
 
 **Esperado:** um pod; nenhum Secret nem Job; mesmo com `replicaCount: 3` o StatefulSet fica em 1; publicar sem token funciona.
 

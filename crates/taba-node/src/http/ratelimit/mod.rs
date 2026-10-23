@@ -168,6 +168,7 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         | "/node/backup/flush"
         | "/cluster/backup/flush"
         | "/cluster/stop"
+        | "/cluster/restore/force"
         | "/nodes/{node_id}/drain"
         | "/nodes/{node_id}/backup/flush" => Some(Category::Admin),
         // Emptying a queue is an administrative act.

@@ -22,7 +22,7 @@ mod source;
 
 pub use source::BlockSource;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -43,6 +43,7 @@ use crate::core::ring::{BlockId, Ring};
 use crate::core::time;
 use crate::engine::messages::{Loaded, Messages};
 use crate::storage::losses::{Loss, LossStore};
+use crate::storage::messages::ExcludedRow;
 use crate::storage::synclog::{StoredEvent, SyncLog};
 use crate::telemetry::metrics::{
     SYNC_BLOCKS_ACTIVE, SYNC_BYTES, SYNC_DURATION, SYNC_FAILURES, SYNC_IDS_LISTED, SYNC_LOG_BYTES,
@@ -308,6 +309,11 @@ pub struct Syncer {
     cleaned_version: Mutex<Option<u64>>,
     /// When the definitions were pulled again because of an unknown topic.
     refreshed_at: Mutex<Option<Instant>>,
+    /// The start of the continuous recording of each source that sent its log of excluded messages in this
+    /// synchronization (doc 07, section 10.3).
+    excluded_sources: Mutex<HashMap<String, u64>>,
+    /// A source did not send its log or its date: the node does not inherit the date.
+    excluded_incomplete: AtomicBool,
     /// Test hook: waits on the semaphore on entering the phase.
     pause: Mutex<Option<(&'static str, Arc<tokio::sync::Semaphore>)>>,
 }
@@ -334,6 +340,8 @@ impl Syncer {
             round_robin: AtomicUsize::new(0),
             cleaned_version: Mutex::new(None),
             refreshed_at: Mutex::new(None),
+            excluded_sources: Mutex::new(HashMap::new()),
+            excluded_incomplete: AtomicBool::new(false),
             pause: Mutex::new(None),
         })
     }
@@ -352,6 +360,8 @@ impl Syncer {
     pub fn begin(&self) -> io::Result<()> {
         let log = SyncLog::create(&self.rules.storage_dir)?;
         self.overflow.store(false, Ordering::SeqCst);
+        self.excluded_incomplete.store(false, Ordering::SeqCst);
+        lock(&self.excluded_sources).clear();
         *lock(&self.recording) = Some(Arc::new(log));
         Ok(())
     }
@@ -473,6 +483,7 @@ impl Syncer {
             self.check()?;
             self.sync_block_waiting(&ring, *block, &log).await?;
         }
+        self.inherit_excluded_since();
 
         self.phase("replay").await;
         self.replay(&log, false).await?;
@@ -637,6 +648,7 @@ impl Syncer {
         registry.add(&SYNC_BLOCKS_ACTIVE, &[], -1.0);
         registry.observe(&SYNC_DURATION, &[], started.elapsed().as_secs_f64());
         if result.is_ok() {
+            self.pull_excluded(&block.to_string(), &sources).await;
             tracing::info!(block = %block, sources = sources.len(), "bloco sincronizado");
         }
         result
@@ -662,6 +674,102 @@ impl Syncer {
                 .add(&SYNC_IDS_LISTED, &[], batch.len() as f64);
             let missing = self.pull_range(&text, sources, &batch, log).await?;
             self.settle_missing(&text, sources, missing).await?;
+        }
+    }
+
+    /// Adds to the node's log the exclusions each source recorded for the block, and learns from when the
+    /// source records. A source that fails leaves the log incomplete: the node then keeps its own date.
+    async fn pull_excluded(&self, block: &str, sources: &[Member]) {
+        for source in sources {
+            if self.pull_excluded_from(block, source).await.is_err() {
+                self.excluded_incomplete.store(true, Ordering::SeqCst);
+                tracing::warn!(
+                    block,
+                    source = %source.node_id,
+                    "could not copy the log of excluded messages"
+                );
+            }
+        }
+    }
+
+    async fn pull_excluded_from(&self, block: &str, source: &Member) -> Result<(), TabaError> {
+        let mut cursor: Option<String> = None;
+        loop {
+            self.check().map_err(|_| TabaError::internal())?;
+            let request = Request::BlockExcluded {
+                block: block.to_owned(),
+                query: StreamQuery {
+                    from: cursor.clone(),
+                    to: None,
+                    limit: Some(u32::try_from(self.rules.max_items).unwrap_or(u32::MAX)),
+                },
+            };
+            let Response::Stream(page) = self.call_source(source, request).await? else {
+                return Err(TabaError::internal());
+            };
+            let mut by_topic: HashMap<String, Vec<ExcludedRow>> = HashMap::new();
+            for item in &page.items {
+                let (Some(id), Some(topic), Some(position), Some(at_ms)) = (
+                    item["id"].as_str(),
+                    item["topic"].as_str(),
+                    item["position"].as_u64(),
+                    item["atMs"].as_u64(),
+                ) else {
+                    return Err(TabaError::internal());
+                };
+                by_topic
+                    .entry(topic.to_owned())
+                    .or_default()
+                    .push(ExcludedRow {
+                        id: id.to_owned(),
+                        position,
+                        at_ms,
+                    });
+            }
+            let messages = self.messages.clone();
+            tokio::task::spawn_blocking(move || {
+                for (topic, rows) in by_topic {
+                    messages.import_excluded(&topic, &rows)?;
+                }
+                Ok::<(), TabaError>(())
+            })
+            .await
+            .map_err(|_| TabaError::internal())??;
+            if !page.end.has_more || page.end.last == cursor || page.items.is_empty() {
+                break;
+            }
+            cursor = page.end.last;
+        }
+        self.learn_excluded_since(source).await
+    }
+
+    /// Reads the start of the source's recording (its `NodeStatus.excludedSince`), once per source.
+    async fn learn_excluded_since(&self, source: &Member) -> Result<(), TabaError> {
+        if lock(&self.excluded_sources).contains_key(&source.node_id) {
+            return Ok(());
+        }
+        let Response::Status(status) = self.call_source(source, Request::Status).await? else {
+            return Err(TabaError::internal());
+        };
+        let since = status["excludedSince"]
+            .as_str()
+            .and_then(time::parse_ms)
+            .ok_or_else(TabaError::internal)?;
+        lock(&self.excluded_sources).insert(source.node_id.clone(), since);
+        Ok(())
+    }
+
+    /// The first synchronization of a disk: the node covers from when its sources cover (the latest of
+    /// their dates), because that is what it copied. Without every source's log, it keeps its own date.
+    fn inherit_excluded_since(&self) {
+        if self.excluded_incomplete.load(Ordering::SeqCst) {
+            return;
+        }
+        let latest = lock(&self.excluded_sources).values().copied().max();
+        if let Some(since) = latest
+            && let Err(e) = self.messages.inherit_excluded_since(since)
+        {
+            tracing::warn!(error = %e, "could not record the start of the excluded log");
         }
     }
 

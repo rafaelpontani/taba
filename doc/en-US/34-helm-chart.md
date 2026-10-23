@@ -86,7 +86,7 @@ config:
 
 The node **refuses an unknown key** (a typo prevents startup), so a wrong `config` shows up on the first `helm install --wait`. The chart controls and **overrides**: `api.port`, `operations.port`, `cluster.port`, `cluster.entry-address`, `storage.dir`, `secrets.dir` and, with backup, `backup.s3.bucket`/`endpoint`/`region`/`prefix`/`path-style`. The parameters the node accepts and ignores ([22-configuration.md](22-configuration.md)) are not in `values.yaml`.
 
-`config.mode: development` starts **one node**, with no authentication, no cluster TLS, no Secret and no Job (for a lab).
+`config.replication.factor: 1` (the one-node profile) starts **one node**, with no authentication, no cluster TLS, no Secret and no Job (for a lab). The old name, `config.mode: development`, still works and is the same profile; the chart does not pass it to the node.
 
 Changing `config` changes a checksum on the pod and the nodes are restarted **one at a time** on `helm upgrade`.
 
@@ -101,8 +101,8 @@ Changing `config` changes a checksum on the pod and the nodes are restarted **on
 - `config.backup.disk` does not satisfy `evict-to < evict-above < pause-at ≤ 100`;
 - `seaweedfs.enabled` and `backup.s3.bucket` are both on;
 - `backup.s3.accessKey` and `secretKey` do not come as a pair;
-- `collector.type`, `config.mode`, `config.telemetry.logs.format` or `config.telemetry.topics.mode` have an invalid value (`values.schema.json`);
-- autoscaling has `minReplicas` below the safe minimum, is in `mode: development`, has no Prometheus, or uses `disk.source=app` without `capacityBytes`.
+- `collector.type`, `config.mode` (`production` or `development`), `config.telemetry.logs.format` or `config.telemetry.topics.mode` have an invalid value (`values.schema.json`);
+- autoscaling has `minReplicas` below the safe minimum, is in the one-node profile (`replication.factor: 1`), has no Prometheus, or uses `disk.source=app` without `capacityBytes`.
 
 ### Cluster secrets
 

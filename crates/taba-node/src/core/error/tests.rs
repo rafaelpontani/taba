@@ -41,7 +41,6 @@ fn every_code_has_the_documented_status() {
         ("media.unsupported", 415),
         ("fifo.misdirected", 421),
         ("cluster.wrong-node", 421),
-        ("topic.fifo-needs-replication", 422),
         ("distributor.too-many-targets", 422),
         ("topic.volatile-limit", 422),
         ("cluster.join-unreachable", 422),

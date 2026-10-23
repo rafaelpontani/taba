@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-13, commit 71183b9):** **183** casos sem teste, de **885**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-13, commit 71183b9):** **176** casos sem teste, de **878**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -30,21 +30,21 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 2 | 7 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 7 | 10 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 14 | 22 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 14 | 24 |
 | `ANE` | Anel de hash, blocos e papéis | 4 | 8 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 11 | 19 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 11 | 21 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 21 | 10 |
 | `INV` | Invisibilidade no dono e nas réplicas | 19 | 13 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 17 |
-| `ING` | Entrada de nó (bootstrap) | 5 | 23 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 21 |
+| `ING` | Entrada de nó (bootstrap) | 5 | 30 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 1 | 32 |
 | `FRZ` | Período de freezing | 1 | 13 |
 | `CNC` | Concorrência entre mudanças de membros | 3 | 12 |
 | `SIN` | Sincronização distribuída de blocos | 1 | 29 |
 | `STR` | Streams NDJSON entre nós | 12 | 3 |
 | `FWD` | Repasse de chamadas de cliente | 8 | 4 |
-| `DRN` | Parada e modo drain (inclui o drain como save) | 3 | 25 |
-| `DEV` | Modo desenvolvimento | 10 | 3 |
+| `DRN` | Parada e modo drain | 2 | 19 |
+| `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 4 | 3 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 9 | 39 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 7 | 3 |
 | `CFG` | Configuração e validações de partida | 2 | 10 |
@@ -1422,57 +1422,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-DRN-025
-
-**Caso:** O `ttl` conta do ID, então o tempo parado conta  
-**Então:** o que venceu enquanto o nó estava fora é descartado na primeira varredura.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.10
-
----
-
 ### UC-DRN-028
 
-**Caso:** Em modo desenvolvimento, as chamadas de cliente durante o drain respondem `503` com `Retry-After` (não há outro nó para repassar).  
+**Caso:** Num nó só (perfil de um nó), as chamadas de cliente durante o drain respondem `503` com `Retry-After` (não há outro nó para repassar).  
 **Nível:** I  
 **Fonte histórica:** 04 §6.4 e 6.10
 
 ---
 
 
-## DEV: Modo desenvolvimento
-
-### UC-DEV-001
-
-**Caso:** `mode` vale `production` por padrão; `development` (`TABA_MODE`) faz o nó ser um cluster de um só. O modo não muda em execução.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 10
-
----
-
-### UC-DEV-003
-
-**Caso:** `replication.factor` e `write.quorum` valem **1**; os valores configurados são ignorados, com aviso no log. O registro e o commit acontecem só no próprio nó, sem réplica, retry entre nós nem rollback por falta de quórum.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 05 §7.2
-
----
-
-### UC-DEV-004
-
-**Caso:** Os parâmetros `cluster.*`, `ring.*`, `replication.*` e `write.quorum` são ignorados, com aviso no log.  
-**Nível:** I  
-**Fonte histórica:** 10
-
----
-
-### UC-DEV-005
-
-**Caso:** Ao subir o nó registra `warn` informando o modo, e `GET /health/cluster` traz o campo `mode` de cada nó.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 06b
-
----
+## DEV: Perfil de um nó (o antigo modo desenvolvimento)
 
 ### UC-DEV-006
 
@@ -1505,22 +1464,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** A entrega justa por grupos vale igual, com contagem exata.  
 **Nível:** I  
 **Fonte histórica:** 04 §6.4, 13 §12.11
-
----
-
-### UC-DEV-010
-
-**Caso:** A autenticação nunca é exigida e as rotas `/tokens` respondem `404` `route.not-found` (UC-AUT-007 e UC-AUT-025).  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4
-
----
-
-### UC-DEV-013
-
-**Caso:** Sem réplicas, perder o nó ou o disco é perder as mensagens (exceto pelo drain como save, UC-DRN-021 a UC-DRN-027).  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4
 
 ---
 
@@ -1688,7 +1631,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## Casos retirados
 
-Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010.
+Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (o modo desenvolvimento e o drain como save saíram, [07-cluster.md](07-cluster.md), seção 8).
 
 ## Fontes e provas
 

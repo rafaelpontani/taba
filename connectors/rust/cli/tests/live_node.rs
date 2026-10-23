@@ -1,5 +1,5 @@
 //! The interface's core against a real node (doc 34, section 10, "Contra um nó"). Optional: it only runs when
-//! `TABA_LIVE_URL` points at a node (for example one started with `TABA_MODE=development`), with
+//! `TABA_LIVE_URL` points at a node (for example one started with `TABA_REPLICATION_FACTOR=1`), with
 //! `TABA_LIVE_TOKEN` if the node asks for a token. It drives `update` and the workers, with no terminal, and never
 //! drains or stops the node. Run it with:
 //!

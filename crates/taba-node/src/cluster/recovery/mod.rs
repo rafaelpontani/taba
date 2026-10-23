@@ -9,9 +9,15 @@
 //! - **Who returns:** the node that finds out it was excluded, or that comes back from the drain, queries the loss
 //!   list of all the nodes it reaches, looks for each message in what it still keeps and sends it to the
 //!   block's responsible party; only then does it clean the local state and redo the join.
+//!
+//! The restoration of the past lives (doc 07, sections 10.4 and 10.6) is in [`restoration`]: every node sends the
+//! whole folder of each life inside the window of the log of excluded messages to the new primary of each block,
+//! and the primary checks the topic and the dead before it activates. Its end is in [`finish`]: the nodes poll each
+//! other, the coordinator closes the vote, the FIFO queues are released and the folders of the lives are deleted
+//! (sections 4.7 and 4.8).
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::json;
@@ -32,6 +38,13 @@ use crate::engine::messages::{Loaded, Messages};
 use crate::storage::losses::{Loss, LossStore};
 use crate::telemetry::metrics::{CLUSTER_RECOVER, RECOVER_MESSAGES};
 
+mod finish;
+mod restoration;
+pub use restoration::RestoreSummary;
+
+/// The IDs a topic's journal registers as removed, and when it was read.
+type CachedJournal = (Instant, Arc<HashSet<String>>);
+
 /// What the return recovered, for the log and the tests.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Summary {
@@ -51,6 +64,10 @@ pub struct Recovery {
     losses: LossStore,
     /// The ceiling of lines in a page of the loss list and in a send (`cluster.sync.stream.max-items`).
     max_items: usize,
+    /// The journal of each topic in S3, read for a restoration (the IDs it registers as removed), and when.
+    journals: Mutex<HashMap<String, CachedJournal>>,
+    /// One decision of the vote at a time (the coordinator's call and the node's own poll may meet).
+    decision: tokio::sync::Mutex<()>,
 }
 
 fn disk(error: &std::io::Error) -> TabaError {
@@ -78,6 +95,8 @@ impl Recovery {
             messages,
             losses,
             max_items: max_items.max(2),
+            journals: Mutex::new(HashMap::new()),
+            decision: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -153,16 +172,27 @@ impl Recovery {
     /// Stores the recovered message on this node, without the two phases: the message does not exist on the owners,
     /// nobody competes for it. The invisibility is zeroed and the receipt of an old delivery disappears;
     /// the `deliveryCount` stays.
-    async fn apply_local(&self, record: &MessageRecord) -> Result<Loaded, TabaError> {
+    async fn apply_local(
+        &self,
+        record: &MessageRecord,
+        durable: bool,
+    ) -> Result<Loaded, TabaError> {
         let messages = self.messages.clone();
         let topic = record.topic.clone();
         let mut meta = record.to_meta();
         meta.invisible_until_ms = 0;
         meta.receipt_token = None;
         let body = record.body.clone();
-        tokio::task::spawn_blocking(move || messages.apply_load(&topic, meta, body))
-            .await
-            .map_err(|_| TabaError::internal())?
+        tokio::task::spawn_blocking(move || {
+            let loaded = messages.apply_load_with(&topic, meta.clone(), body, durable)?;
+            // Two copies of the same message: the one this node already has stays, with the greater counter.
+            if loaded == Loaded::Existing {
+                messages.raise_delivery_count(&topic, &meta.id, meta.delivery_count)?;
+            }
+            Ok(loaded)
+        })
+        .await
+        .map_err(|_| TabaError::internal())?
     }
 
     /// `POST /cluster/messages/recover`. Each record goes to the nodes responsible for the block; with
@@ -173,6 +203,7 @@ impl Recovery {
         self: &Arc<Self>,
         records: Vec<MessageRecord>,
         replicate: bool,
+        durable: bool,
     ) -> Result<Response, TabaError> {
         if self.service.node_state() != NodeState::Active {
             return Err(node_syncing());
@@ -194,7 +225,7 @@ impl Recovery {
             needed[index] = quorum.min(owners.len()).max(1);
             for owner in owners {
                 if owner.node_id == me {
-                    match self.apply_local(record).await {
+                    match self.apply_local(record, durable).await {
                         Ok(Loaded::Stored) => {
                             applied += 1;
                             confirmed[index] += 1;
@@ -237,7 +268,7 @@ impl Recovery {
             let service = self.service.clone();
             let batch: Vec<MessageRecord> = indexes.iter().map(|i| records[*i].clone()).collect();
             set.spawn(async move {
-                let stored = Self::send_to_owner(&service, &member, batch).await;
+                let stored = Self::send_to_owner(&service, &member, batch, durable).await;
                 (indexes, stored)
             });
         }
@@ -266,6 +297,7 @@ impl Recovery {
         service: &Arc<ClusterService>,
         owner: &Member,
         batch: Vec<MessageRecord>,
+        durable: bool,
     ) -> Vec<bool> {
         let call = |records: Vec<MessageRecord>| {
             let service = service.clone();
@@ -274,6 +306,7 @@ impl Recovery {
                 let request = Request::Recover {
                     records,
                     replicate: false,
+                    durable,
                 };
                 // Calls through the `Transport` (never the node itself, which is not responsible here): avoids
                 // `accept` appearing inside its own future type.
@@ -549,6 +582,7 @@ impl Recovery {
             let request = Request::Recover {
                 records: chunk.to_vec(),
                 replicate: true,
+                durable: false,
             };
             match self
                 .service

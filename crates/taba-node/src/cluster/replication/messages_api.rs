@@ -161,9 +161,11 @@ impl ClusterMessages {
                 .publish_distributor(&view.definition.name, prefixes, request)
                 .await;
         }
-        self.publish_queue(&view, &request)
-            .await
-            .map(|(id, duplicate)| Published::Queue { id, duplicate })
+        let started = std::time::Instant::now();
+        let (id, duplicate) = self.publish_queue(&view, &request).await?;
+        self.messages
+            .record_publish_latency(&view.definition.name, started.elapsed().as_secs_f64());
+        Ok(Published::Queue { id, duplicate })
     }
 
     /// A message on a queue: register on all the responsible nodes and commit by quorum.
@@ -505,6 +507,48 @@ impl ClusterMessages {
                     coordinator_id: coordinator_id.clone(),
                     receipt_token: receipt.clone(),
                     delete_at_ms,
+                    discard: false,
+                }),
+            },
+            |t, op| Request::Ack {
+                topic: t.to_owned(),
+                id: id.to_owned(),
+                step: Step::Commit(op),
+            },
+            |t, op| Request::Ack {
+                topic: t.to_owned(),
+                id: id.to_owned(),
+                step: Step::Rollback(op),
+            },
+            &operation_id,
+        )?;
+        coordinator::run(&self.service, plan).await
+    }
+
+    /// The release of the restoration discards a FIFO duplicate this node, the group's primary, accepted while the
+    /// queue was held (doc 07, section 10.9): an ack on the owners with no receipt.
+    pub async fn discard(self: &Arc<Self>, topic: &str, id: &str) -> Result<(), TabaError> {
+        let view = self.messages.queue_view(topic)?;
+        let Some(info) = self.messages.message_info(topic, id)? else {
+            return Ok(());
+        };
+        let topic = view.definition.name.clone();
+        let route = (info.meta.position, 2);
+        let delete_at_ms = Some(self.messages.fifo_delete_at(id));
+        let operation_id = self.service.new_operation_id();
+        let coordinator_id = self.service.node_id().to_owned();
+        let plan = self.operation_plan(
+            &topic,
+            route,
+            |op| Request::Ack {
+                topic: topic.clone(),
+                id: id.to_owned(),
+                step: Step::Register(AckRegisterRequest {
+                    operation_id: op.to_owned(),
+                    coordinator_id: coordinator_id.clone(),
+                    receipt_token: String::new(),
+                    delete_at_ms,
+                    discard: true,
                 }),
             },
             |t, op| Request::Ack {

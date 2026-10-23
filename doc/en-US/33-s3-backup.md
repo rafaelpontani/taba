@@ -125,6 +125,10 @@ Two restorers at the same time would diverge. `restore/lock.json` is created wit
 
 A dead node that returns joins as a **new node**, with a new id; it does not resume the old id. The `nodes/<id>.json` of a dead node stays until the cluster works again; then any node deletes the files of ids that **do not belong to the cluster and** whose heartbeat is expired. **A fresh file is never deleted** (it may be a live node in another partition). A node that leaves cleanly (drain) removes its own file.
 
+### Scan at start
+
+With the backup on, the last step of a node's restoration is the **S3 scan** ([33-s3-backup.md](33-s3-backup.md), section "Scan at start"): for each queue (and its dead-letter) the node reads the journal once, reads the footer of each segment and brings back the messages that the journal does not remove, that it does not have and whose block it is primary of. They go through the same check as the messages of a life (topic, log of excluded messages, journal, quorum). With S3 down the step is skipped with a warning.
+
 ## Full disk: eviction
 
 - Above `backup.disk.evict-above` (85%) the node deletes the **body file** (`.body`) of messages that already have a reference in the bucket, until use falls to `backup.disk.evict-to` (70%). The **row** in `_topic.db` stays, so the "file first, row after" order of [08-storage.md](08-storage.md) still holds.

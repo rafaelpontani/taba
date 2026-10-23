@@ -74,7 +74,6 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `media.unsupported` | 415 | `Content-Type` ≠ `application/json` numa rota com corpo JSON (não vale na publicação) |
 | `fifo.misdirected` | 421 | **Entre nós:** o nó não é o primário do grupo |
 | `cluster.wrong-node` | 421 | **Entre nós, no canal:** outro processo no mesmo endereço |
-| `topic.fifo-needs-replication` | 422 | Criar fila FIFO com `replication.factor` < 2 |
 | `distributor.too-many-targets` | 422 | A publicação casaria mais filas que `topics.distributor.max-targets` (nenhuma cópia é feita) |
 | `topic.volatile-limit` | 422 | O `autoCreate` esbarra em `topics.volatile.max-count` |
 | `cluster.join-unreachable` | 422 | Entre nós: o coordenador do ingresso não conseguiu conectar de volta ao nó novo |
@@ -93,7 +92,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `cluster.prune-incomplete` | 503 | O prune de uma fila falhou em alguns nós (nomeados na mensagem e em `details`). A fila pode estar vazia nos outros; repetir a chamada é seguro |
 | `cluster.commit-timeout` | 503 | O registro foi confirmado, mas o commit não chegou a todos em `write.commit.timeout`. **A operação continua em segundo plano e vai se completar** |
 | `cluster.node-syncing` | 503 | O nó está sincronizando e não achou outro para repassar |
-| `cluster.node-draining` | 503 | O nó está em drain e não achou outro para repassar (em desenvolvimento, sempre) |
+| `cluster.node-draining` | 503 | O nó está em drain e não achou outro para repassar (num nó só, sempre) |
 | `node.failed` | 503 | O nó está em falha (disco cheio ou banco corrompido) e não achou outro para repassar |
 | `fifo.primary-unavailable` | 503 | O primário do grupo FIFO está fora do ar, sincronizando, ou esgotou `fifo.forward.max-attempts` |
 | `delivery.unavailable` | 503 | O `GET` não capturou nenhuma mensagem e houve falha no registro de invisibilidade (nunca devolve vazio nesse caso) |

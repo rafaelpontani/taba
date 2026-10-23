@@ -13,12 +13,18 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::db::to_io;
 use crate::config::DbSynchronous;
+
+mod excluded;
+use excluded::ExcludedLog;
+pub use excluded::{
+    DEFAULT_MAX_AGE_MS, DEFAULT_MAX_BYTES, ExcludedLimits, ExcludedRow, merged_since,
+};
 
 pub const TOPIC_DB_FILE: &str = "_topic.db";
 const BODY_EXT: &str = "body";
@@ -104,7 +110,33 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS messages_invisible_until ON messages (invisible_until);
     CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
+    CREATE TABLE IF NOT EXISTS excluded (
+        id       TEXT PRIMARY KEY NOT NULL,
+        position INTEGER NOT NULL,
+        at_ms    INTEGER NOT NULL
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS excluded_at ON excluded (at_ms);
+    CREATE INDEX IF NOT EXISTS excluded_position ON excluded (position);
+    CREATE TABLE IF NOT EXISTS topic_meta (
+        key   TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+    ) WITHOUT ROWID;
 ";
+
+/// Key of the `topic_meta` table that holds the `topicId` the folder was created for (doc 07, section 10.6).
+const TOPIC_ID_KEY: &str = "topic_id";
+
+/// Tells the `topicId` of a topic name, when the folder of the topic is created.
+pub type TopicIdResolver = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// The resolver, wrapped to let the store derive `Debug`.
+struct Resolver(TopicIdResolver);
+
+impl std::fmt::Debug for Resolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Resolver")
+    }
+}
 
 /// The indexes of the FIFO queue columns, created after `migrate` (a database from before them
 /// does not have them yet).
@@ -208,6 +240,10 @@ pub struct MessageStore {
     root: PathBuf,
     synchronous: DbSynchronous,
     topics: Mutex<HashMap<String, Arc<TopicDisk>>>,
+    /// The log of excluded messages (doc 07, section 10.3).
+    excluded: ExcludedLog,
+    /// Records the `topicId` in each folder created, so a restoration can tell a recreated topic.
+    topic_ids: OnceLock<Resolver>,
 }
 
 impl MessageStore {
@@ -217,7 +253,39 @@ impl MessageStore {
             root: root.to_path_buf(),
             synchronous,
             topics: Mutex::new(HashMap::new()),
+            excluded: ExcludedLog::default(),
+            topic_ids: OnceLock::new(),
         }
+    }
+
+    /// From now on, each topic folder created records the `topicId` the resolver tells. Only the first call counts.
+    pub fn set_topic_id_resolver(&self, resolver: TopicIdResolver) {
+        let _ = self.topic_ids.set(Resolver(resolver));
+    }
+
+    /// The `topicId` the topic's folder was created for; `None` for a folder from before the record.
+    pub fn topic_id(&self, topic: &str) -> io::Result<Option<String>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(None);
+        };
+        disk.conn()
+            .query_row(
+                "SELECT value FROM topic_meta WHERE key = ?1",
+                params![TOPIC_ID_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(to_io)
+    }
+
+    /// A store over another folder (the folder of a past life), with the same durability.
+    pub fn open_life(&self, dir: &Path) -> MessageStore {
+        MessageStore::new(dir, self.synchronous)
+    }
+
+    /// Closes the topic databases the store holds open.
+    pub fn release_files(&self) {
+        self.topics().clear();
     }
 
     fn topics(&self) -> MutexGuard<'_, HashMap<String, Arc<TopicDisk>>> {
@@ -247,6 +315,13 @@ impl MessageStore {
         conn.execute_batch(SCHEMA).map_err(to_io)?;
         migrate(&conn).map_err(to_io)?;
         conn.execute_batch(FIFO_INDEXES).map_err(to_io)?;
+        if let Some(id) = self.topic_ids.get().and_then(|resolve| (resolve.0)(topic)) {
+            conn.execute(
+                "INSERT OR IGNORE INTO topic_meta (key, value) VALUES (?1, ?2)",
+                params![TOPIC_ID_KEY, id],
+            )
+            .map_err(to_io)?;
+        }
         let disk = Arc::new(TopicDisk {
             dir,
             conn: Mutex::new(conn),
@@ -496,11 +571,17 @@ impl MessageStore {
         let target = self.disk(to, true)?.expect("created");
         std::fs::rename(source.body_path(&meta.id), target.body_path(&meta.id))?;
         Self::insert_row(&target, meta)?;
-        source
-            .conn()
-            .execute("DELETE FROM messages WHERE id = ?1", params![meta.id])
+        // It leaves the source dead: the exclusion is recorded in the transaction that deletes it.
+        let mut conn = source.conn();
+        let tx = conn.transaction().map_err(to_io)?;
+        tx.execute(
+            excluded::RECORD_FROM_ROW,
+            params![meta.id, meta.dead_lettered_ms.unwrap_or_default() as i64],
+        )
+        .map_err(to_io)?;
+        tx.execute("DELETE FROM messages WHERE id = ?1", params![meta.id])
             .map_err(to_io)?;
-        Ok(())
+        tx.commit().map_err(to_io)
     }
 
     /// The FIFO queue's ack: the message becomes a short row with `delete_at` (doc 17, section 16.7).
@@ -508,23 +589,7 @@ impl MessageStore {
     /// row applies even if the message was only in memory. First the row, then the file.
     pub fn tombstone(&self, topic: &str, meta: &MessageMeta, delete_at_ms: u64) -> io::Result<()> {
         let disk = self.disk(topic, true)?.expect("created");
-        disk.conn()
-            .execute(
-                "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
-                 delivery_count, invisible_until, receipt_token, dead_lettered_at, \
-                 dead_letter_reason, age_base, deduplication_id, delete_at, position) \
-                 VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6, ?7)",
-                params![
-                    meta.id,
-                    meta.group_id,
-                    meta.published_ms as i64,
-                    meta.published_ms as i64,
-                    meta.deduplication_id,
-                    delete_at_ms as i64,
-                    position_to_db(meta.position),
-                ],
-            )
-            .map_err(to_io)?;
+        write_tombstone(&disk.conn(), meta, delete_at_ms)?;
         match std::fs::remove_file(disk.body_path(&meta.id)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
@@ -649,16 +714,39 @@ impl MessageStore {
         Ok(out)
     }
 
-    /// The folder where the previous life's disk waits for the restart recovery (PRB-048).
+    /// The folder of a disk with no manifest (a version before the quarantine per life): it waits for the restart
+    /// recovery of the losses and is deleted at the end of it (PRB-048; doc 23, rolling update).
     pub const PREVIOUS_LIFE: &str = "_previous-life";
 
-    /// Sets aside what was left on the previous life's disk: each topic folder goes to
-    /// `${root}/_previous-life`, and the node goes on with an empty disk. A folder that was already there (a
-    /// restart that crashed halfway through the recovery) stays as it is and the new one is deleted: the first is
-    /// the one that may have what only it kept; the new one only brings copies the cluster already has. Returns
-    /// the previous life's disk, or `None` if there is nothing on it.
-    pub fn set_aside_old_disk(&self) -> io::Result<Option<MessageStore>> {
-        let aside = self.root.join(Self::PREVIOUS_LIFE);
+    /// The folder that holds one subfolder per previous life, named with the node ID of that life (doc 07,
+    /// section 10.4). Nothing here is deleted by the recovery.
+    pub const LIVES: &str = "_lives";
+
+    /// The manifest of a life, in the root of the disk of the running life and, afterwards, in its folder.
+    pub const LIFE_MANIFEST: &str = "manifest.json";
+
+    /// The `storage.dir`.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Sets aside what was left on the previous life's disk: each topic folder (and the manifest) goes to
+    /// `${root}/_lives/<life>`, and the node goes on with an empty disk. Without `life` (a disk with no manifest),
+    /// the folders go to `${root}/_previous-life`. A topic folder that was already there (a restart that crashed
+    /// halfway through the move) stays as it is and the new one is deleted: the first is the one that may have
+    /// what only it kept; the new one only brings copies the cluster already has. Returns the previous life's
+    /// disk, or `None` if there are no messages on it.
+    pub fn set_aside_old_disk(&self, life: Option<&str>) -> io::Result<Option<MessageStore>> {
+        if life.is_some_and(|id| id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.')) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the ID of the life is not a folder name",
+            ));
+        }
+        let aside = match life {
+            Some(id) => self.root.join(Self::LIVES).join(id),
+            None => self.root.join(Self::PREVIOUS_LIFE),
+        };
         for topic in self.topics_on_disk()? {
             let from = self.root.join(dir_name(&topic));
             let to = aside.join(dir_name(&topic));
@@ -670,11 +758,19 @@ impl MessageStore {
             std::fs::create_dir_all(&aside)?;
             move_dir(&from, &to)?;
         }
+        let manifest = self.root.join(Self::LIFE_MANIFEST);
+        if life.is_some() && manifest.is_file() {
+            std::fs::create_dir_all(&aside)?;
+            let to = aside.join(Self::LIFE_MANIFEST);
+            // The one from the running disk is the latest: it replaces the one of a move that crashed.
+            let _ = std::fs::remove_file(&to);
+            std::fs::rename(&manifest, &to)?;
+        }
         let previous = MessageStore::new(&aside, self.synchronous);
         Ok((!previous.topics_on_disk()?.is_empty()).then_some(previous))
     }
 
-    /// Deletes the previous life's disk (the recovery is over).
+    /// Deletes the folder of a disk with no manifest (its recovery is over). The folders of the lives stay.
     pub fn drop_old_disk(&self) -> io::Result<()> {
         match std::fs::remove_dir_all(self.root.join(Self::PREVIOUS_LIFE)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
@@ -692,11 +788,38 @@ impl MessageStore {
     }
 }
 
+/// Writes the FIFO queue's short row (the SQL of `tombstone`, shared with the one that also records the
+/// exclusion in the same transaction).
+fn write_tombstone(conn: &Connection, meta: &MessageMeta, delete_at_ms: u64) -> io::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO messages (id, content_type, group_id, published_at, \
+         delivery_count, invisible_until, receipt_token, dead_lettered_at, \
+         dead_letter_reason, age_base, deduplication_id, delete_at, position) \
+         VALUES (?1, '', ?2, ?3, 0, 0, NULL, NULL, NULL, ?4, ?5, ?6, ?7)",
+        params![
+            meta.id,
+            meta.group_id,
+            meta.published_ms as i64,
+            meta.published_ms as i64,
+            meta.deduplication_id,
+            delete_at_ms as i64,
+            position_to_db(meta.position),
+        ],
+    )
+    .map(|_| ())
+    .map_err(to_io)
+}
+
 /// Moves a folder. Where the system does not allow renaming (on Windows, with a file of the folder still
 /// open), it copies and deletes the original, repeating the delete for up to three seconds.
 fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
+    // A handle that is still closing (the previous owner of the folder, an antivirus) makes the rename fail for a
+    // moment; copying meanwhile would miss what is still in the databases' write-ahead logs.
+    for _ in 0..20 {
+        if std::fs::rename(from, to).is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     copy_dir(from, to)?;
     let mut result = std::fs::remove_dir_all(from);

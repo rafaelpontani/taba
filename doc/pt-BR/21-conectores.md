@@ -178,7 +178,7 @@ Valem como **plano** (propostas, sujeitas a D68, D70.1, D70.2). "Versão-base" �
 1. **Leia** [16-api-cliente.md](16-api-cliente.md) e este contrato; **use o `taba-cli`** como referência executável (cada comando é uma chamada da API, e o que ele faz é o que o conector repete).
 2. **Pasta autônoma** `connectors/<linguagem>/`: `README.md` (instalação, um exemplo de 10 linhas, versão-base), o empacotamento da linguagem, `src/`, `test/` e `exemplos/`. Nenhuma pasta importa código de outra (exceto `cpp/` sobre `c/`).
 3. **Implemente** as nove operações, a repetição da tabela acima, o leitor de JSON mínimo e os erros `client.*`.
-4. **Teste**: unitários com um transporte de mentira (o Rust tem `taba_client::testing`; o C# tem `ScriptedHandler`) conferindo a **requisição montada** e a leitura de respostas prontas; integração contra um Taba em modo desenvolvimento, ou o Compose.
+4. **Teste**: unitários com um transporte de mentira (o Rust tem `taba_client::testing`; o C# tem `ScriptedHandler`) conferindo a **requisição montada** e a leitura de respostas prontas; integração contra um Taba de um nó (`replication.factor=1`), ou o Compose.
 5. **Cite os casos de uso** nos testes numa linha `UC: UC-CNT-NNN` (o `uc_coverage` do servidor lê as citações das pastas de conectores também) ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
 > Planejado e **ainda inexistente**: a suíte de conformidade compartilhada (`connectors/contrato/` com fixtures e cenários) e o contrato OpenAPI, que congelaria o contrato para os oito conectores restantes ([32-roadmap.md](32-roadmap.md)). Hoje a "fonte da verdade" do contrato é este texto, o `taba-cli` e os testes dos dois conectores.

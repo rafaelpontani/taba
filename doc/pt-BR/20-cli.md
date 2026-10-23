@@ -43,7 +43,7 @@ Os parâmetros também vêm das variáveis `TABA_*`; **a variável vence o arqui
 
 ```bash
 taba init --out ./secrets          # certificado do cluster + token raiz
-TABA_MODE=development TABA_STORAGE_DIR=/tmp/taba-dev/taba taba   # um nó para testar
+TABA_REPLICATION_FACTOR=1 TABA_STORAGE_DIR=/tmp/taba-dev/taba taba   # um nó para testar
 ```
 
 A segurança dos artefatos criados está em [14-seguranca.md](14-seguranca.md).
@@ -143,7 +143,7 @@ profiles:
     ca-file: /etc/ssl/taba-hml-ca.pem
 ```
 
-**Sem configuração** vale o padrão embutido: `http://127.0.0.1:8080`, sem token (basta para um nó local em modo desenvolvimento).
+**Sem configuração** vale o padrão embutido: `http://127.0.0.1:8080`, sem token (basta para um nó local no perfil de um nó, sem token raiz).
 
 | Campo | Padrão | Descrição |
 |---|---|---|

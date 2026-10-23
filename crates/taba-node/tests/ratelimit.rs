@@ -245,7 +245,7 @@ async fn the_resolved_ip_is_the_one_checked_against_allowed_ips() {
 /// UC: UC-LIM-001
 #[tokio::test]
 async fn without_configured_rates_nothing_is_limited() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     for _ in 0..50 {
         assert_eq!(get(&node, "/topics", None).await.status(), 200);
     }

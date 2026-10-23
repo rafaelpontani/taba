@@ -125,6 +125,10 @@ Dois restauradores ao mesmo tempo divergiriam. `restore/lock.json` é criado com
 
 Um nó morto que volta entra como **nó novo**, com id novo; não retoma o id antigo. O `nodes/<id>.json` de um nó morto fica até o cluster voltar a funcionar; então qualquer nó apaga os arquivos de ids que **não pertencem ao cluster e** cujo batimento está vencido. **Um arquivo fresco nunca é apagado** (pode ser um nó vivo em outra partição). Um nó que sai limpo (drain) remove o próprio arquivo.
 
+### Varredura na partida
+
+Com o backup ligado, o último passo da restauração de um nó é a **varredura do S3** ([33-backup-s3.md](33-backup-s3.md), seção "Varredura na partida"): para cada fila (e sua dead-letter) o nó lê o diário uma vez, lê o rodapé de cada segmento e traz de volta as mensagens que o diário não remove, que ele não tem e cujo bloco ele é primário. Elas passam pela mesma conferência das mensagens de uma vida (tópico, log de excluídos, diário, quórum). Com o S3 fora do ar o passo é pulado com um aviso.
+
 ## Disco cheio: evicção
 
 - Acima de `backup.disk.evict-above` (85%) o nó apaga o **arquivo do corpo** (`.body`) das mensagens que já têm referência no bucket, até o uso cair a `backup.disk.evict-to` (70%). A **linha** em `_topic.db` fica, então a ordem "arquivo primeiro, linha depois" de [08-armazenamento.md](08-armazenamento.md) continua valendo.

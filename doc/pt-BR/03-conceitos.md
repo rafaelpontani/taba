@@ -20,7 +20,7 @@ Aplicações **publicam mensagens** em **tópicos**; o Taba as guarda em vários
 | Termo | O que é |
 |---|---|
 | **Nó** | Uma instância do programa `taba`. Todos são iguais; não há mestre. Cada nó tem um **ID** (GUID v7) gerado a cada partida. |
-| **Cluster** | O conjunto de nós que se conhecem. Mínimo em produção: **3**. Com **1** nó, só em **modo desenvolvimento**. |
+| **Cluster** | O conjunto de nós que se conhecem. Mínimo em produção: **3**. Com **1** nó, só no **perfil de um nó**. |
 | **Tabela de membros** | A lista de nós do cluster (IDs e endereços), com uma **versão** que sobe a cada mudança. Todo nó tem uma cópia. |
 | **Cliente** | Qualquer aplicação que fala com a API de cliente (produtor ou consumidor). |
 | **Operador** | Quem roda o cluster. Fala com a API de operação e com a linha de comando. |
@@ -67,7 +67,7 @@ Aplicações **publicam mensagens** em **tópicos**; o Taba as guarda em vários
 | **Freezing** | Período em que um nó excluído por falha não pode voltar, para evitar instabilidade. |
 | **Sincronização** | O que um nó novo faz ao entrar: puxa tópicos e blocos dos nós que já os têm, guardando num **banco de eventos** o que chega no meio. Só então fica **pronto**. |
 | **Drain** | Sair do cluster sem perder o que está só em memória: tudo vai para o disco e o nó se desregistra. |
-| **Modo desenvolvimento** | `mode=development`: um nó, sem votação, quórum, canal nem réplicas. |
+| **Perfil de um nó** | `replication.factor=1`: um cluster de um nó, que parte sozinho e é o primário de tudo; o caminho é o de produção, com quórum 1. |
 
 ## As três portas
 

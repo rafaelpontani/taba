@@ -35,13 +35,16 @@
 
 mod backup;
 mod blocks;
+mod hold;
 mod index;
+mod lives;
 mod rates;
 mod replicas;
 pub mod stats;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
+pub use lives::TopicCheck;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -280,6 +283,10 @@ struct TopicState {
     dead_letter_inflight: HashSet<String>,
     /// The last "has ready messages" notified to the other nodes.
     ready_signaled: bool,
+    /// FIFO queue only, on the group's primary during the restoration of the previous lives (doc 07, section
+    /// 10.9): the `id` of each publication accepted without deduplication, and its key, in `id` order. The
+    /// release deduplicates them against what the restoration brought.
+    provisional: BTreeMap<String, (String, String)>,
 }
 
 fn message_not_found() -> TabaError {
@@ -485,6 +492,9 @@ struct Taken {
 /// How often the overflow summary goes to the log (provisional, D118).
 pub const OVERFLOW_SUMMARY_EVERY: Duration = Duration::from_secs(60);
 
+/// How often the limits of the log of excluded messages are applied.
+const EXCLUDED_TRIM_EVERY: Duration = Duration::from_secs(30);
+
 pub struct Messages {
     topics: Arc<Topics>,
     clock: Arc<dyn Clock>,
@@ -499,6 +509,9 @@ pub struct Messages {
     draining: AtomicBool,
     /// The previous life's disk awaits the restart recovery: the sweep does not delete it.
     keep_old_disk: AtomicBool,
+    /// The FIFO queues receive and do not deliver, and publications are not deduplicated, until the cluster is
+    /// restored from disk (doc 07, section 10.9).
+    fifo_held: AtomicBool,
     /// The previous life's disk, set aside until the restart recovery ends (PRB-048).
     previous_life: Mutex<Option<Arc<MessageStore>>>,
     /// Wakes the waiting `GET`s (long polling) when a message arrives or the topic goes away.
@@ -578,18 +591,16 @@ impl Messages {
         }
     }
 
-    /// `resume`: resumes the messages that are on disk (development with
-    /// `development.resume-on-start`). Without it, what is left on disk from an earlier
-    /// run is deleted: the node starts empty. Folders of topics that no longer exist are also
-    /// deleted, so a topic recreated with the same name does not resurrect messages.
+    /// What is left on disk from an earlier run is deleted: the node starts empty (a restart brings the messages
+    /// back through the restoration of the previous life, doc 07, section 10.8), so a topic recreated with the same name does not
+    /// resurrect messages.
     pub fn new(
         topics: Arc<Topics>,
         clock: Arc<dyn Clock>,
         rules: MessageRules,
         store: Arc<MessageStore>,
-        resume: bool,
     ) -> Arc<Self> {
-        Self::build(topics, clock, rules, store, resume, false)
+        Self::build(topics, clock, rules, store, false)
     }
 
     /// Like `new`, for the production node in a cluster: what is left on the previous life's disk is **not**
@@ -602,19 +613,56 @@ impl Messages {
         rules: MessageRules,
         store: Arc<MessageStore>,
     ) -> Arc<Self> {
-        Self::build(topics, clock, rules, store, false, true)
+        Self::build(topics, clock, rules, store, true)
     }
 
     /// Sets aside the previous life's disk and leaves the node with an empty disk, so it can join without waiting for
     /// the recovery (PRB-048). Returns whether there is anything to recover.
     pub fn set_aside_old_disk(&self) -> io::Result<bool> {
-        let previous = self.store.set_aside_old_disk()?.map(Arc::new);
+        // A disk with a manifest becomes the folder of that life; one without it (an earlier version) keeps
+        // the path of the loss list only (doc 23, rolling update).
+        let life = crate::cluster::restore::Manifest::read(self.store.root()).map(|m| m.node_id);
+        let previous = self
+            .store
+            .set_aside_old_disk(life.as_deref())?
+            .map(Arc::new);
+        // A sweep that ran before the move may have read the old disk into the state of a topic: that state
+        // belongs to the life that moved away, and the restoration would find the messages "already held".
+        let stale = std::mem::take(&mut *self.states.write().unwrap_or_else(|e| e.into_inner()));
+        for state in stale.values() {
+            let bytes: u64 = lock(state)
+                .memory
+                .values()
+                .map(|s| s.body.len() as u64)
+                .sum();
+            self.memory_bytes.fetch_sub(bytes, Ordering::SeqCst);
+        }
+        // The disk is new, and so is its log of excluded messages: the recording starts now.
+        self.store.set_excluded_since(self.clock.now_millis())?;
+        self.store.forget_excluded_inheritance()?;
         let some = previous.is_some();
         *lock(&self.previous_life) = previous;
         Ok(some)
     }
 
-    /// The restart recovery is over: the previous life's disk is deleted.
+    /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
+    pub fn record_publish_latency(&self, topic: &str, secs: f64) {
+        let state = self.state_of(topic);
+        lock(&state).stats.publish_latency.record(secs);
+    }
+
+    /// The node stopped: closes the topic databases (the files can be moved or deleted).
+    pub fn release_files(&self) {
+        self.store.release_files();
+    }
+
+    /// The `storage.dir` (where the manifest of the running life is written).
+    pub fn storage_root(&self) -> &std::path::Path {
+        self.store.root()
+    }
+
+    /// The restart recovery is over: the disk with no manifest is deleted. The folder of a life stays until the
+    /// end of the restoration (doc 07, section 10.8).
     pub fn finish_previous_life(&self) {
         *lock(&self.previous_life) = None;
         if let Err(e) = self.store.drop_old_disk() {
@@ -632,23 +680,26 @@ impl Messages {
         clock: Arc<dyn Clock>,
         rules: MessageRules,
         store: Arc<MessageStore>,
-        resume: bool,
         keep_old_disk: bool,
     ) -> Arc<Self> {
         match store.topics_on_disk() {
             Ok(on_disk) if !keep_old_disk => {
                 for name in on_disk {
-                    if !resume || topics.get(&name).is_err() {
-                        tracing::info!(topic = %name, "deleting old messages from disk");
-                        if let Err(e) = store.drop_topic(&name) {
-                            tracing::warn!(topic = %name, error = %e, "could not delete");
-                        }
+                    tracing::info!(topic = %name, "deleting old messages from disk");
+                    if let Err(e) = store.drop_topic(&name) {
+                        tracing::warn!(topic = %name, error = %e, "could not delete");
                     }
                 }
             }
             Ok(_) => {}
             Err(e) => tracing::warn!(error = %e, "could not list the messages on disk"),
         }
+        // Each topic folder records the `topicId` it was created for: a restoration discards the messages of a
+        // topic that was recreated with another one (doc 07, section 10.6).
+        let for_ids = topics.clone();
+        store.set_topic_id_resolver(Box::new(move |name| {
+            for_ids.get(name).ok().map(|view| view.definition.id)
+        }));
         let started_ms = clock.now_millis();
         let messages = Arc::new(Self {
             topics: topics.clone(),
@@ -660,6 +711,7 @@ impl Messages {
             memory_bytes: AtomicU64::new(0),
             draining: AtomicBool::new(false),
             keep_old_disk: AtomicBool::new(keep_old_disk),
+            fifo_held: AtomicBool::new(false),
             previous_life: Mutex::new(None),
             notifiers: Mutex::new(HashMap::new()),
             on_failure: OnceLock::new(),
@@ -835,6 +887,7 @@ impl Messages {
             replicas: ReplicaSet::default(),
             dead_letter_inflight: HashSet::new(),
             ready_signaled: false,
+            provisional: BTreeMap::new(),
         }));
         states.insert(name.to_owned(), state.clone());
         state
@@ -1369,7 +1422,7 @@ impl Messages {
             return self.remove_message(state, topic, &meta.id, place);
         }
         self.store
-            .tombstone(topic, &meta, delete_at)
+            .tombstone_excluded(topic, &meta, delete_at, now)
             .map_err(|e| self.disk_error("failed to write the FIFO queue's ack", &e))?;
         let owned = state.index.contains(&meta.id);
         self.take_from_memory(state, &meta.id);
@@ -1378,7 +1431,8 @@ impl Messages {
         Ok(())
     }
 
-    /// Takes the message from wherever it is and from the index.
+    /// Takes the message from wherever it is and from the index, recording its **exclusion** in the log
+    /// (doc 07, section 10.3): ack, prune.
     fn remove_message(
         &self,
         state: &mut TopicState,
@@ -1386,11 +1440,35 @@ impl Messages {
         id: &str,
         place: Place,
     ) -> Result<(), TabaError> {
+        self.remove_message_as(state, topic, id, place, true)
+    }
+
+    /// Like `remove_message`; with `exclude` false (the `ttl` expiry) nothing is recorded: a copy that comes
+    /// back from an old life expires again by the same rule.
+    fn remove_message_as(
+        &self,
+        state: &mut TopicState,
+        topic: &str,
+        id: &str,
+        place: Place,
+        exclude: bool,
+    ) -> Result<(), TabaError> {
         let owned = state.index.contains(id);
+        let now = self.clock.now_millis();
         match place {
             Place::Memory => {
-                self.take_from_memory(state, id);
+                if let Some(stored) = self.take_from_memory(state, id)
+                    && exclude
+                {
+                    self.store
+                        .record_excluded(topic, id, stored.meta.position, now)
+                        .map_err(|e| self.disk_error("failed to record the exclusion", &e))?;
+                }
             }
+            Place::Disk if exclude => self
+                .store
+                .remove_excluded(topic, id, now)
+                .map_err(|e| self.disk_error("failed to remove the message from disk", &e))?,
             Place::Disk => self
                 .store
                 .remove(topic, id)
@@ -1526,7 +1604,8 @@ impl Messages {
     pub fn wait_hints(&self, topic: &str) -> (Option<u64>, bool) {
         let state = self.state_of(topic);
         let state = lock(&state);
-        (state.index.next_visible(), state.index.has_ready())
+        let held = state.index.is_fifo() && self.fifo_held();
+        (state.index.next_visible(), state.index.has_ready() && !held)
     }
 
     /// The present instant on the node's clock.
@@ -1764,7 +1843,7 @@ impl Messages {
             } else {
                 Place::Disk
             };
-            match self.remove_message(&mut state, name, &id, place) {
+            match self.remove_message_as(&mut state, name, &id, place, false) {
                 Ok(()) => {
                     state.stats.expired += 1;
                     NodeCounters::add(&self.counters.expired, 1);
@@ -1788,7 +1867,10 @@ impl Messages {
             } else {
                 Place::Disk
             };
-            if self.remove_message(&mut state, name, &id, place).is_err() {
+            if self
+                .remove_message_as(&mut state, name, &id, place, false)
+                .is_err()
+            {
                 tracing::error!(topic = %name, id = %id, "failed to delete the expired replica");
             }
         }
@@ -1884,6 +1966,12 @@ impl Messages {
             let group;
             if let Some(mut stored) = self.take_from_memory(source_state, &id) {
                 original = Some(stored.meta.clone());
+                if let Err(e) = self
+                    .store
+                    .record_excluded(source, &id, stored.meta.position, now)
+                {
+                    tracing::error!(error = %e, topic = %source, id = %id, "failed to record the exclusion");
+                }
                 stored.meta = reset(stored.meta);
                 group = stored.meta.group_id.clone();
                 self.put_in_memory(&mut target_state, stored);
@@ -1957,6 +2045,11 @@ impl Messages {
     /// One pass of the sweep over all the queues: deletes what expired by `ttl` and sends
     /// to the dead-letter what used up its deliveries. Each node does its own, propagating nothing.
     pub fn sweep(&self) {
+        // While the previous life's disk waits for the restart recovery it is not this node's: reading it here would
+        // load its messages into the state of a topic, and holding its files would keep the move away from them.
+        if self.keep_old_disk.load(Ordering::SeqCst) {
+            return;
+        }
         let now = self.clock.now_millis();
         let mut names: Vec<String> = self
             .existing_states()
@@ -1995,6 +2088,47 @@ impl Messages {
         }
     }
 
+    /// Applies the limits of the log of excluded messages (doc 07, section 10.3). The log is trimmed on its own
+    /// schedule, not at each pass of the sweep.
+    pub fn trim_excluded(&self) {
+        let now = self.clock.now_millis();
+        match self.store.trim_excluded(now) {
+            Ok(0) => {}
+            Ok(removed) => tracing::info!(
+                removed,
+                "the log of excluded messages dropped what the limits do not allow"
+            ),
+            Err(e) => tracing::error!(error = %e, "failed to trim the log of excluded messages"),
+        }
+    }
+
+    /// Does the node's log say the message left the topic dead (ack, prune, dead-letter)?
+    pub fn is_excluded(&self, topic: &str, id: &str) -> bool {
+        self.store.is_excluded(topic, id).unwrap_or(false)
+    }
+
+    /// The sources of the first synchronization tell from when they record (see
+    /// `MessageStore::inherit_excluded_since`).
+    pub fn inherit_excluded_since(&self, sources_ms: u64) -> io::Result<bool> {
+        self.store.inherit_excluded_since(sources_ms)
+    }
+
+    /// The node that starts alone takes over the recording of its previous life: nobody that was running recorded in
+    /// the hole between that life and this start, so the start of the recording goes back to the life's (doc 07,
+    /// section 10.5). Never moves it forward.
+    pub fn take_over_excluded_since(&self, past_ms: u64) -> io::Result<()> {
+        if past_ms < self.excluded_since() {
+            self.store.set_excluded_since(past_ms)?;
+        }
+        Ok(())
+    }
+
+    /// The start of the continuous recording of the log of excluded messages (ms).
+    pub fn excluded_since(&self) -> u64 {
+        let now = self.clock.now_millis();
+        self.store.excluded_since(now).unwrap_or(now)
+    }
+
     /// The sweep task, until `cancel`. The interval is `retention.sweep.interval`, but
     /// it never exceeds 1 s: the same pass takes to the dead-letter the message whose invisibility
     /// expired, and whoever consumes the dead-letter should not wait for the whole interval.
@@ -2003,12 +2137,18 @@ impl Messages {
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut last_summary = tokio::time::Instant::now();
+        let mut last_trim = tokio::time::Instant::now();
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
                 _ = ticker.tick() => {
                     let this = self.clone();
                     let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                    if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY {
+                        let this = self.clone();
+                        let _ = tokio::task::spawn_blocking(move || this.trim_excluded()).await;
+                        last_trim = tokio::time::Instant::now();
+                    }
                     if last_summary.elapsed() >= OVERFLOW_SUMMARY_EVERY {
                         self.log_overflow_summary(OVERFLOW_SUMMARY_EVERY);
                         last_summary = tokio::time::Instant::now();
@@ -2349,6 +2489,12 @@ impl Messages {
         let state = self.state_of(name);
         let mut state = lock(&state);
         let until = now + visibility_secs * 1000;
+        // The FIFO queue receives but does not deliver until the cluster is restored from disk.
+        let max = if state.index.is_fifo() && self.fifo_held() {
+            0
+        } else {
+            max
+        };
 
         let mut delivered = Vec::new();
         while delivered.len() < max {
@@ -2715,12 +2861,20 @@ impl Messages {
         let name = view.definition.name.clone();
         let state = self.state_of(&name);
         let mut state = lock(&state);
-        if let Some(original) = self.duplicate_of(&mut state, &name, &key, now) {
+        // While the previous lives are being restored nothing is deduplicated: everything is accepted and
+        // remembered, and the release decides (doc 07, section 10.9).
+        let held = self.fifo_held();
+        if !held && let Some(original) = self.duplicate_of(&mut state, &name, &key, now) {
             return Ok(Draft::Duplicate { id: original });
         }
         let at = now.max(state.group_ms.get(&group).map_or(0, |last| last + 1));
         let id = self.ids.new_at(at);
         let published_ms = crate::core::id::unix_millis_of(&id).unwrap_or(at);
+        if held {
+            state
+                .provisional
+                .insert(id.clone(), (group.clone(), key.1.clone()));
+        }
         // Reserves the instant right away: the group's next publication starts from after it, even if this one
         // has not committed yet.
         state.group_ms.insert(group.clone(), published_ms);
@@ -2748,8 +2902,20 @@ impl Messages {
     pub fn apply_publish(
         &self,
         topic: &str,
+        meta: MessageMeta,
+        body: Vec<u8>,
+    ) -> Result<(), TabaError> {
+        self.apply_publish_with(topic, meta, body, false)
+    }
+
+    /// Like [`apply_publish`](Self::apply_publish); with `durable` the body goes **straight to disk**, whatever the
+    /// memory limit says (the restoration of a past life must survive a second crash, doc 07, section 10.8).
+    pub fn apply_publish_with(
+        &self,
+        topic: &str,
         mut meta: MessageMeta,
         body: Vec<u8>,
+        durable: bool,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
         meta.position = self.position_for(topic, &meta.id, meta.group_id.as_deref());
@@ -2768,10 +2934,24 @@ impl Messages {
                 let last = state.group_ms.entry(group.clone()).or_default();
                 *last = (*last).max(meta.published_ms);
                 if let Some(key) = &meta.deduplication_id {
-                    state
+                    let state = &mut *state;
+                    let key = (group.clone(), key.clone());
+                    // A restored message is older than the provisional one that took the key first: the key
+                    // is its (doc 07, section 10.9).
+                    let provisional_owner = state
                         .dedup
-                        .entry((group.clone(), key.clone()))
-                        .or_insert((meta.id.clone(), meta.published_ms));
+                        .get(&key)
+                        .is_some_and(|(first, _)| state.provisional.contains_key(first));
+                    if provisional_owner && !state.provisional.contains_key(&meta.id) {
+                        state
+                            .dedup
+                            .insert(key, (meta.id.clone(), meta.published_ms));
+                    } else {
+                        state
+                            .dedup
+                            .entry(key)
+                            .or_insert((meta.id.clone(), meta.published_ms));
+                    }
                 }
             }
             let size = body.len() as u64;
@@ -2779,13 +2959,13 @@ impl Messages {
             let group = meta.group_id.clone();
             let age = meta.age_base_ms();
             let (until, deliveries) = (meta.invisible_until_ms, meta.delivery_count);
-            if self.reserve_memory(&state, topic, size, now) {
+            if !durable && self.reserve_memory(&state, topic, size, now) {
                 state.memory.insert(id.clone(), Stored { meta, body });
             } else {
                 self.store
                     .put(topic, &meta, &body)
                     .map_err(|e| self.disk_error("failed to write the message to disk", &e))?;
-                if !self.draining.load(Ordering::SeqCst) {
+                if !durable && !self.draining.load(Ordering::SeqCst) {
                     NodeCounters::add(&self.counters.overflow, 1);
                 }
             }
@@ -2895,6 +3075,49 @@ impl Messages {
             self.wake(topic, 1);
         }
         Ok(())
+    }
+
+    /// Raises the `deliveryCount` of a message the node already keeps to `count`, when the other copy has the
+    /// greater one (doc 07, section 10.6: of two copies, the restoration keeps the greatest counter). It never
+    /// lowers it and touches neither the invisibility nor the receipt. Returns whether it changed.
+    pub fn raise_delivery_count(
+        &self,
+        topic: &str,
+        id: &str,
+        count: u32,
+    ) -> Result<bool, TabaError> {
+        let now = self.clock.now_millis();
+        let state = self.state_of(topic);
+        let mut state = lock(&state);
+        let owned = state.index.contains(id);
+        if !owned && !state.replicas.contains(id) {
+            return Ok(false);
+        }
+        let place = if state.memory.contains_key(id) {
+            Place::Memory
+        } else {
+            Place::Disk
+        };
+        let mut meta = match place {
+            Place::Memory => state.memory[id].meta.clone(),
+            Place::Disk => match self
+                .store
+                .get(topic, id)
+                .map_err(|e| self.disk_error("failed to read the message on disk", &e))?
+            {
+                Some(meta) => meta,
+                None => return Ok(false),
+            },
+        };
+        if meta.delivery_count >= count {
+            return Ok(false);
+        }
+        meta.delivery_count = count;
+        self.save_meta(&mut state, topic, &meta, place)?;
+        if owned {
+            state.index.deliver(id, meta.invisible_until_ms, now, count);
+        }
+        Ok(true)
     }
 
     /// Removes the message on the ack commit (leaving no trace, doc 13, section 12.4). Only the owner
@@ -3029,6 +3252,10 @@ impl Messages {
         self.settle(view, now);
         let state = self.state_of(name);
         let mut state = lock(&state);
+        // The FIFO queue receives but does not deliver until the cluster is restored from disk.
+        if state.index.is_fifo() && self.fifo_held() {
+            return Ok(Vec::new());
+        }
         let until = now + visibility_secs * 1000;
         let mut out = Vec::new();
         while out.len() < max {

@@ -18,6 +18,15 @@ pub struct BlockEntry {
     pub delete_at_ms: Option<u64>,
 }
 
+/// A row of a block's log of excluded messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExcludedEntry {
+    pub topic: String,
+    pub id: String,
+    pub position: u64,
+    pub at_ms: u64,
+}
+
 /// A message of the block, with the body.
 #[derive(Debug, Clone)]
 pub struct BlockMessage {
@@ -109,6 +118,44 @@ impl Messages {
         out.dedup_by(|a, b| a.id == b.id && a.topic == b.topic);
         out.truncate(limit);
         Ok(out)
+    }
+
+    /// The log of excluded messages in the block (the position ranges), of all topics, in ID order,
+    /// between `from` and `to` (inclusive), at most `limit`.
+    pub fn excluded_entries(
+        &self,
+        ranges: &[(u64, u64)],
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<ExcludedEntry>, TabaError> {
+        let mut out: Vec<ExcludedEntry> = Vec::new();
+        for topic in self.message_topics() {
+            let rows = self
+                .store
+                .excluded_rows(&topic, ranges, from, to, limit)
+                .map_err(|e| self.disk_error("failed to list the excluded messages", &e))?;
+            out.extend(rows.into_iter().map(|row| ExcludedEntry {
+                topic: topic.clone(),
+                id: row.id,
+                position: row.position,
+                at_ms: row.at_ms,
+            }));
+        }
+        out.sort_by(|a, b| a.id.cmp(&b.id).then_with(|| a.topic.cmp(&b.topic)));
+        out.truncate(limit);
+        Ok(out)
+    }
+
+    /// Adds to a topic's log the rows a source sent (the oldest instant of an ID stays).
+    pub fn import_excluded(
+        &self,
+        topic: &str,
+        rows: &[crate::storage::messages::ExcludedRow],
+    ) -> Result<(), TabaError> {
+        self.store
+            .import_excluded(topic, rows)
+            .map_err(|e| self.disk_error("failed to record the excluded messages", &e))
     }
 
     /// Reads the message the node keeps (memory or disk), without checking whether it is in the index or
@@ -286,6 +333,17 @@ impl Messages {
         meta: MessageMeta,
         body: Vec<u8>,
     ) -> Result<Loaded, TabaError> {
+        self.apply_load_with(topic, meta, body, false)
+    }
+
+    /// Like [`apply_load`](Self::apply_load); with `durable` the message is written straight to disk.
+    pub fn apply_load_with(
+        &self,
+        topic: &str,
+        meta: MessageMeta,
+        body: Vec<u8>,
+        durable: bool,
+    ) -> Result<Loaded, TabaError> {
         let Ok(view) = self.topics.get(topic) else {
             return Ok(Loaded::UnknownTopic);
         };
@@ -303,7 +361,7 @@ impl Messages {
         if self.holds(topic, &meta.id) {
             return Ok(Loaded::Existing);
         }
-        self.apply_publish(topic, meta, body)?;
+        self.apply_publish_with(topic, meta, body, durable)?;
         Ok(Loaded::Stored)
     }
 

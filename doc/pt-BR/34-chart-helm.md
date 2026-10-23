@@ -86,7 +86,7 @@ config:
 
 O nó **recusa chave desconhecida** (erro de digitação impede o start), então um `config` errado aparece no primeiro `helm install --wait`. O chart controla e **sobrescreve**: `api.port`, `operations.port`, `cluster.port`, `cluster.entry-address`, `storage.dir`, `secrets.dir` e, com backup, `backup.s3.bucket`/`endpoint`/`region`/`prefix`/`path-style`. Os parâmetros aceitos e ignorados pelo nó ([22-configuracao.md](22-configuracao.md)) não estão no `values.yaml`.
 
-`config.mode: development` sobe **um nó**, sem autenticação, sem TLS de cluster, sem Secret e sem Job (para laboratório).
+`config.replication.factor: 1` (o perfil de um nó) sobe **um nó**, sem autenticação, sem TLS de cluster, sem Secret e sem Job (para laboratório). O nome antigo, `config.mode: development`, ainda vale e é o mesmo perfil; o chart não o repassa ao nó.
 
 Mudar `config` muda um checksum no pod e os nós são reiniciados **um por vez** no `helm upgrade`.
 
@@ -101,8 +101,8 @@ O `helm install`/`upgrade`/`template` falha com mensagem em português quando:
 - `config.backup.disk` não cumpre `evict-to < evict-above < pause-at ≤ 100`;
 - `seaweedfs.enabled` e `backup.s3.bucket` estão ligados juntos;
 - `backup.s3.accessKey` e `secretKey` não vêm em par;
-- `collector.type`, `config.mode`, `config.telemetry.logs.format` ou `config.telemetry.topics.mode` têm valor inválido (`values.schema.json`);
-- o autoscaling tem `minReplicas` abaixo do mínimo seguro, está em `mode: development`, não tem Prometheus ou usa `disk.source=app` sem `capacityBytes`.
+- `collector.type`, `config.mode` (`production` ou `development`), `config.telemetry.logs.format` ou `config.telemetry.topics.mode` têm valor inválido (`values.schema.json`);
+- o autoscaling tem `minReplicas` abaixo do mínimo seguro, está no perfil de um nó (`replication.factor: 1`), não tem Prometheus ou usa `disk.source=app` sem `capacityBytes`.
 
 ### Segredos do cluster
 

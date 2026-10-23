@@ -363,7 +363,6 @@ async fn a_folder_whose_pair_is_not_valid_stops_the_node_from_starting() {
 async fn a_certificates_folder_that_does_not_exist_is_a_start_error() {
     let missing = std::env::temp_dir().join("taba-folder-that-does-not-exist");
     let env = taba_node::config::MapEnv::new([
-        ("TABA_MODE", "production"),
         ("TABA_CLUSTER_ENTRY_ADDRESS", "127.0.0.1:8081"),
         ("TABA_CLUSTER_TLS_DIR", missing.to_str().unwrap()),
     ]);

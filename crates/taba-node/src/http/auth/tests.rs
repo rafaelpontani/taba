@@ -20,7 +20,6 @@ fn secret(text: &str) -> Secret {
     // `Secret` is only created through the configuration; `serde` is not on it, so it uses the parse.
     use crate::config::{Config, MapEnv};
     let env = MapEnv::new([
-        ("TABA_MODE", "production"),
         ("TABA_CLUSTER_ENTRY_ADDRESS", "127.0.0.1:1"),
         ("TABA_AUTH_ROOT_TOKEN", text),
     ]);

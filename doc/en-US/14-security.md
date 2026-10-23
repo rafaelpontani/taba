@@ -55,7 +55,7 @@ secrets/
 | No root token | **Off**: no route requires anything |
 | `auth.enabled=false` | Forced off, even with the folder mounted (to keep TLS without requiring a token) |
 | `auth.enabled=true` **without** a root token | The node **does not start** |
-| **Development mode** | **Never** required; the `/tokens` routes answer `404` |
+| **One-node profile** with `auth.dev-token` | **On**, only with the `dev` working token (`tb_dev.<secret>`); without it and with no root token, the "There is no root token" row applies |
 
 The root token needs **at least 32 characters**, otherwise the node does not start. The operations routes and `/cluster/*` do **not** use tokens.
 
@@ -120,7 +120,7 @@ The cluster port uses **mutual TLS with a single cluster certificate**, read fro
 | **Host name** | **Not verified**: the nodes connect by **IP** (the one in the member table) |
 | **Without the folder** | The cluster port serves **plain HTTP** and the node logs `warn` |
 | **Folder set and nonexistent, or without a valid pair** | The node **does not start** |
-| **Development mode** | The port is not opened |
+| **One-node profile** (`cluster.tls.enabled=false`) | The port opens over plain HTTP and the log lists what is relaxed |
 
 **Identity of the caller:** since everyone uses the same certificate, the cluster recognizes the caller by the connection's **source IP** and checks it in the member table. That is why the node reports its IPs (`cluster.advertise-addresses`, or the interface that goes out to the `cluster.entry-address`).
 

@@ -90,7 +90,7 @@ A API de cliente também está em `http://localhost:8080` para qualquer cliente 
 
 ## Perguntas frequentes
 
-**O Taba é um servidor único?** Não. É um cluster de nós idênticos, sem coordenador. Três nós são o mínimo recomendado para produção; um nó é um modo de desenvolvimento.
+**O Taba é um servidor único?** Não. É um cluster de nós idênticos, sem coordenador. Três nós são o mínimo recomendado para produção; um nó é o perfil de um nó, para desenvolvimento.
 
 **Ele escala horizontalmente?** Sim. Os tópicos são divididos em blocos num anel de hash consistente; um nó novo assume a sua parte e um nó que sai entrega a sua parte antes. No Kubernetes, o chart pode escalar com KEDA.
 
@@ -125,7 +125,7 @@ O que o Taba não faz:
 Para desenvolver, um contêiner basta (um cluster de um nó, dados dentro do contêiner, **sem autenticação e sem token raiz**, então nunca deve ficar exposto numa rede):
 
 ```bash
-docker run -d --name taba-dev -p 8080:8080 -e TABA_MODE=development rafaelpontani/taba
+docker run -d --name taba-dev -p 8080:8080 -e TABA_REPLICATION_FACTOR=1 rafaelpontani/taba
 
 # o taba-cli (Linux, macOS, Git Bash; no PowerShell: scripts/install-cli.ps1). Por padrão usa http://127.0.0.1:8080 sem token
 curl -fsSL https://raw.githubusercontent.com/rafaelpontani/taba/main/scripts/install-cli.sh | sh
@@ -154,8 +154,8 @@ kubectl -n taba port-forward svc/taba 8080:8080                                 
 Configurações comuns (todas opcionais, combine como precisar):
 
 ```bash
-# um único nó para desenvolvimento (sem autenticação, sem TLS de cluster)
-helm install taba deploy/helm/taba -n taba --create-namespace --set config.mode=development
+# um único nó para desenvolvimento (replication.factor=1: sem autenticação, sem TLS de cluster)
+helm install taba deploy/helm/taba -n taba --create-namespace --set config.replication.factor=1
 
 # expor a API por um Ingress (use qualquer controlador de Ingress mantido)
 helm upgrade --install taba deploy/helm/taba -n taba \

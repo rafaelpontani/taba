@@ -26,7 +26,9 @@ ${storage.dir}/
   _node.db                 banco do nó (SQLite, WAL)
   _backup.db               banco do backup em S3 (só com `backup.s3.bucket`): fila de envio, referências, segmentos
   _sync/sync.db            banco de eventos; só existe durante a sincronização
-  _previous-life/          disco da vida anterior, posto de lado num reinício (até a recuperação)
+  manifest.json            manifesto da vida em execução: ID, membros ativos com IPs, versão da tabela, `last_seen` (a cada 10 s), marca d'água dos IDs (o maior instante que o gerador usou, acima do qual a próxima vida começa), início do log de excluídos
+  _lives/<ID antigo>/      uma pasta por vida anterior: os tópicos dela e o `manifest.json`; ficam até o fim da restauração
+  _previous-life/          disco sem manifesto (versão anterior), posto de lado num reinício; apagado ao fim da recuperação
   <topico>/                uma pasta por tópico (maiúsculas viram "~" + minúscula: Pedidos → ~pedidos/)
     _topic.db              banco do tópico (SQLite, WAL), só com o que está em disco
     <id>.body              o corpo de cada mensagem em disco, só os bytes como vieram
@@ -55,6 +57,7 @@ SQLite local, **uma conexão atrás de um `Mutex`** (escritor único). Tabelas:
 | `tokens` | `id` | Os tokens de acesso: nome, permissões, prefixos, datas, **sal** (128 bits) e **hash salgado** do segredo. **Nunca o segredo** |
 | `state` | `key` | Estado do nó; hoje a marca `save_completed` (o fim do drain) |
 | `losses` | `(topic, id)` | As mensagens declaradas perdidas numa sincronização, consultadas por quem volta de uma exclusão. Expiram em `cluster.message-loss.ttl` (padrão 14 d) |
+| `definition_versions` | `(kind, key)` | A **versão** de cada tópico e de cada token que o nó aplicou e a **lápide** de cada remoção, com o `topicId` do tópico e o instante em que foi aplicada. Uma linha por definição, escrita junto com a definição; a lápide sai depois de 1 hora ([07-cluster.md](07-cluster.md), seção 10) |
 
 A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão **mais nova** que a do nó não é tocado.
 
@@ -63,6 +66,10 @@ A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão
 Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (de onde o `ttl` conta: a publicação, ou a entrada na dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (a posição no anel) e, na FIFO, `deduplication_id` e `delete_at`. Índices por `invisible_until`, `age_base`, `position` e `(group_id, deduplication_id)` e `delete_at`.
 
 Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um bloco (faixa pela posição, para os streams de sincronização e a limpeza) e as contagens.
+
+**`topic_meta`.** Cada banco de tópico guarda o `topicId` para o qual a pasta foi criada (chave `topic_id`); a restauração de uma vida anterior descarta as mensagens de um tópico recriado com outro `topicId` ([07-cluster.md](07-cluster.md), seção 10.6). Uma pasta de antes do registro não o tem, e o tópico conta como o mesmo.
+
+**Log de excluídos.** A tabela `excluded` (`id`, `position`, `at_ms`) guarda o `id` de toda mensagem que **saiu do tópico morta** (ack, `prune`, envio à dead-letter; o `ttl` não entra), com a posição no anel (o bloco é achado por ela). O registro é gravado **na mesma transação** que apaga a mensagem, sem fsync extra (`storage.db.synchronous` segue como configurado). O log tem limite de idade (`storage.excluded.max-age`, 24 h) e de tamanho (`storage.excluded.max-size`, 100 MB, somando todos os tópicos); os registros mais antigos saem primeiro, e a **data de início da gravação contínua** (chave `excluded_since` da tabela `state` do `_node.db`) avança até o instante do registro mais novo descartado ([07-cluster.md](07-cluster.md), seção 10).
 
 **Escritor único.** Toda escrita no banco de um tópico passa por **uma fila de comandos**, executada uma de cada vez. Leituras longas (os streams de sincronização) usam conexões de leitura próprias (modo WAL) e não bloqueiam o escritor.
 
@@ -81,7 +88,7 @@ Uma definição de tópico ou de token é um dado **pequeno, raro de mudar e do 
 - **Falha:** nunca há alteração parcial visível; um nó só serve a nova definição **no commit**.
 - **Remoção:** `DELETE /topics/{topic}` **sempre funciona**, mesmo com mensagens pendentes: cada nó apaga todas as mensagens do tópico que tem (memória, disco e metadados).
 - **Dead-letter:** não tem definição própria; é derivada da fila de origem, criada e excluída com ela, e não gera linha em `topics`.
-- **Tokens:** o segredo **nunca trafega entre nós**: só o sal e o hash. A validação é uma consulta **local em memória**. Fora do modo desenvolvimento o nó **não confia** nos tokens que acha no disco (podem estar desatualizados); eles vêm do cluster.
+- **Tokens:** o segredo **nunca trafega entre nós**: só o sal e o hash. A validação é uma consulta **local em memória**. O nó **não confia** nos tokens que acha no disco (podem estar desatualizados); eles vêm do cluster.
 - **Dados de consumo** (profundidade, taxas, histogramas) **nunca vão ao disco**: ficam em memória, por nó.
 
 ## O que se refaz na partida
@@ -96,9 +103,8 @@ Existe só durante a sincronização de um nó que entra: tabela `events` (núme
 
 | Situação | O que acontece |
 |---|---|
-| **Produção** | Todo reinício é de **nó novo** (ID novo). O disco antigo é posto de lado em `_previous-life` e usado, em segundo plano, para devolver ao cluster mensagens que só ele tinha |
-| **Desenvolvimento**, `resume-on-start` ligado | Retoma o que está em `storage.dir`: definições (mantendo `id` e data), mensagens e metadados, listas reconstruídas |
-| **Desenvolvimento**, desligado | Apaga `storage.dir` e começa limpo, com aviso |
+| **Produção** | Todo reinício é de **nó novo** (ID novo). O disco antigo é posto de lado em `_lives/<ID antigo>` (sem manifesto, em `_previous-life`) e usado, em segundo plano, para devolver ao cluster mensagens que só ele tinha |
+| **Um nó só** (fator 1) | Igual: o nó restaura a vida anterior para si, e os tópicos e tokens voltam com ela. Para começar limpo, apague o volume ou o diretório |
 
 ## O banco do backup (`_backup.db`)
 
@@ -123,6 +129,6 @@ Numa partida em produção o banco é **zerado**: o nó é novo, e o que o anter
 
 ## Fontes e provas
 
-- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
+- `storage/backup` (o depósito de objetos, o segmento, o diário, os nomes e o `_backup.db`); `storage/db` (`_node.db`, esquema), `storage/messages` (corpo, banco do tópico, ordem de gravação, nome da pasta), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
 - Casos de uso: UC-ARM (armazenamento), UC-DEF (definições replicadas), UC-DRN (drain como save); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md` (3.2 a 3.4).

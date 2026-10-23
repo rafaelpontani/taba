@@ -19,7 +19,7 @@ mod signals;
 
 use std::sync::Arc;
 
-pub use definitions::{Definitions, Pulled};
+pub use definitions::{Definitions, Pulled, Stored};
 pub use forward::{ForwardExecutor, Forwarder};
 pub use messages_api::ClusterMessages;
 pub use replica::Replica;
@@ -38,6 +38,7 @@ use crate::engine::messages::{ClusterHooks, DeadLetterJob, Messages, Placement};
 use crate::engine::tokens::Tokens;
 use crate::engine::topics::Topics;
 use crate::storage::losses::LossStore;
+use crate::storage::versions::{VersionRow, VersionStore};
 use crate::telemetry::Telemetry;
 
 /// The node is a message's delivery owner if it is the primary of its block on the ring (doc 13, 12.7).
@@ -86,6 +87,7 @@ pub fn attach(
     telemetry: Arc<Telemetry>,
     losses: LossStore,
     sync_rules: SyncRules,
+    versions: (VersionStore, Vec<VersionRow>),
 ) -> Attached {
     let replica = Replica::new(
         messages.clone(),
@@ -101,7 +103,13 @@ pub fn attach(
         topics.clone(),
         signals.clone(),
     );
-    let definitions = Definitions::new(service.clone(), topics.clone(), tokens.clone());
+    let definitions = Definitions::new(
+        service.clone(),
+        topics.clone(),
+        tokens.clone(),
+        versions.0,
+        versions.1,
+    );
     let recovery = Recovery::new(
         service.clone(),
         messages.clone(),
@@ -294,6 +302,7 @@ impl Replication {
                     .map(Response::Taken)
             }
             request @ (Request::BlockIds { .. }
+            | Request::BlockExcluded { .. }
             | Request::BlockMessages { .. }
             | Request::BlockMessage { .. }) => self.source.handle(request).await,
             Request::Vote(vote) => self.voting.cast(vote).await,
@@ -310,9 +319,20 @@ impl Replication {
             Request::MessageLoss(query) => self.recovery.serve_losses(&query),
             Request::LossRegister(record) => self.recovery.register_loss(record),
             Request::LossRemove { topic, id } => self.recovery.remove_loss(&topic, &id),
-            Request::Recover { records, replicate } => {
-                self.recovery.accept(records, replicate).await
-            }
+            Request::Recover {
+                records,
+                replicate,
+                durable,
+            } => self.recovery.accept(records, replicate, durable).await,
+            Request::Restore {
+                topic,
+                topic_id,
+                records,
+            } => self.recovery.accept_restore(topic, topic_id, records).await,
+            Request::Dead { topic, ids } => self.recovery.serve_dead(topic, ids).await,
+            Request::RestoreState => self.recovery.serve_state(),
+            Request::RestoreDecided => self.recovery.serve_decided().await,
+            Request::RestoreForce => self.recovery.serve_force().await,
             _ => Err(TabaError::route_not_found()),
         }
     }

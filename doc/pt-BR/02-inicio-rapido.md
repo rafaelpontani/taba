@@ -13,21 +13,21 @@ Em cerca de dez minutos você sobe o Taba, publica e consome uma mensagem e vê 
 
 | Caminho | Quando usar | O que sobe |
 |---|---|---|
-| **A. Um nó** (modo desenvolvimento) | Conhecer a API, desenvolver um cliente | 1 processo, sem réplicas |
+| **A. Um nó** (perfil de um nó) | Conhecer a API, desenvolver um cliente | 1 processo, sem réplicas |
 | **B. Cluster de três nós** (Docker Compose) | Ver replicação, falha e recuperação | 3 nós + HAProxy de exemplo |
 
 > Pré-requisitos: **A** pede o binário `taba` (veja [05-dependencias.md](05-dependencias.md) para compilar) ou Docker. **B** pede Docker com Compose.
 
-## A. Um nó, em modo desenvolvimento
+## A. Um nó, no perfil de um nó
 
 ```bash
 # A pasta de dados precisa terminar em "taba" (o nó recusa outro nome).
 mkdir -p /tmp/taba-dev/taba
-TABA_MODE=development TABA_STORAGE_DIR=/tmp/taba-dev/taba \
+TABA_REPLICATION_FACTOR=1 TABA_STORAGE_DIR=/tmp/taba-dev/taba \
 TABA_API_PORT=8080 TABA_OPERATIONS_PORT=9090 taba
 ```
 
-O log avisa que o nó é "um cluster de um só" e não deve ser usado em produção. Em modo desenvolvimento **não há autenticação** (não há token raiz).
+O log avisa que é o perfil de um nó, para desenvolvimento e não para produção. Sem token raiz **não há autenticação**.
 
 ```bash
 # 1. Criar um tópico do tipo fila
@@ -159,6 +159,6 @@ docker compose down -v      # apaga contêineres e volumes (inclusive o token ra
 ## Fontes e provas
 
 - `docker-compose.yml`, `docker/haproxy.cfg`, `Dockerfile`, `crates/taba-node/src/cli/mod.rs` (`taba init`).
-- Os exemplos do caminho A foram executados contra um nó real em modo desenvolvimento (respostas copiadas da execução).
+- Os exemplos do caminho A foram executados contra um nó real no perfil de um nó (respostas copiadas da execução).
 - `docker/validate.sh` automatiza o roteiro do caminho B de ponta a ponta.
-- Casos de uso: UC-DEV (modo desenvolvimento), UC-ING (entrada de nós), UC-CLI (`taba-cli`); veja [26a](26a-casos-de-uso-implementados.md).
+- Casos de uso: UC-DEV (perfil de um nó), UC-ING (entrada de nós), UC-CLI (`taba-cli`); veja [26a](26a-casos-de-uso-implementados.md).

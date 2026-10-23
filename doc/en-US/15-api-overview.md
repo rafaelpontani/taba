@@ -21,7 +21,7 @@ sources: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, cr
 | **Operations** | `operations.port` (or the client port) | Operator, Prometheus, orchestrator | None (network) | [17](17-operations-api.md) |
 | **Cluster** | `cluster.port` (8081) | **Only the other nodes** | Mutual TLS | [18](18-cluster-api.md) |
 
-Each API has **its own audience** and the network restricts each port. The client port answers `404 route.not-found` to `/cluster/*`; the cluster port, to anything that is not `/cluster/*`. In development mode, the cluster port does not exist.
+Each API has **its own audience** and the network restricts each port. The client port answers `404 route.not-found` to `/cluster/*`; the cluster port, to anything that is not `/cluster/*`.
 
 ![The node's three APIs and their routes](../diagrams/img/en-US/node-ports.svg)
 

@@ -173,7 +173,7 @@ Um **WebSocket por par de nós**, compartilhado por **todos** os tópicos (nunca
 - **Estado inicial:** ao abrir o canal, cada lado envia primeiro um **instantâneo** (tópicos com ouvintes, com prontas e os nós em freezing) e só depois as mudanças. Um nó sincronizando só o consome ao ficar pronto.
 - **Fila de saída limitada:** sinais de **estado** do mesmo tópico se **substituem** (só o último importa); **avisos** velhos (mais de 10 s) são **descartados**; o `frozen` **não expira**. Passando de `cluster.channel.queue.max-size`/`max-age`, o nó do outro lado é tratado como **falho** e a votação abre ([07-cluster.md](07-cluster.md)).
 
-Em **modo desenvolvimento** não há canal nem `take`: o long polling só espera mensagens chegarem no próprio nó. **Em drain**, o nó responde `take` vazio e os pares deixam de pedir a ele.
+Num **nó só** (fator 1) não há outro nó para o `take`: o long polling só espera mensagens chegarem no próprio nó. **Em drain**, o nó responde `take` vazio e os pares deixam de pedir a ele.
 
 ## Expiração (`ttl`), limite de entregas e dead-letter
 
@@ -212,7 +212,7 @@ O **vizinho barulhento**: um produtor que despeja milhares de mensagens faz as d
 tamanho = em processamento + peso × prontas        (peso = delivery.fair.ready-weight, padrão 0,1)
 ```
 
-O peso fica entre o SQS (`0`: só o que está em processamento, que reage tarde a uma rajada) e o backlog inteiro (`1`: penaliza um grupo grande e inofensivo de consumidor lento). A contagem é **local** (sem troca entre nós): como o ID decide o bloco, as mensagens de um grupo se espalham pelos donos de forma proporcional, então cada nó vê uma amostra fiel e a justiça é **aproximada no cluster** e **exata em modo desenvolvimento**. O número de grupos acompanhados tem teto (`delivery.fair.max-groups`); acima dele, os grupos novos **compartilham um contador**.
+O peso fica entre o SQS (`0`: só o que está em processamento, que reage tarde a uma rajada) e o backlog inteiro (`1`: penaliza um grupo grande e inofensivo de consumidor lento). A contagem é **local** (sem troca entre nós): como o ID decide o bloco, as mensagens de um grupo se espalham pelos donos de forma proporcional, então cada nó vê uma amostra fiel e a justiça é **aproximada no cluster** e **exata num nó só**. O número de grupos acompanhados tem teto (`delivery.fair.max-groups`); acima dele, os grupos novos **compartilham um contador**.
 
 **Preferência.** O tamanho vira uma **faixa** `⌊log2(tamanho)⌋` (tamanho < 1 conta como 1): 1 → faixa 0, 2–3 → 1, 4–7 → 2… Faixas por potência de 2 evitam reordenar a lista a cada mensagem.
 

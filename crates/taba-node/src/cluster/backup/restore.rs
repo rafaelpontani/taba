@@ -520,6 +520,76 @@ impl Backup {
         recovered
     }
 
+    /// The queues (and their dead-letters) the scan of the start looks at, each with its `topicId`.
+    pub fn scan_topics(&self) -> Vec<(String, String)> {
+        let suffix = self.topics.rules().dead_letter_suffix.clone();
+        let mut out = Vec::new();
+        for name in self.topics.names() {
+            if self
+                .topics
+                .definition(&name)
+                .is_none_or(|d| d.queue().is_none())
+            {
+                continue;
+            }
+            for name in [name.clone(), format!("{name}{suffix}")] {
+                if let Ok(view) = self.topics.get(&name) {
+                    out.push((name, view.definition.id));
+                }
+            }
+        }
+        out
+    }
+
+    /// The messages the bucket holds alive of the blocks this node is **primary** of and the node does not have
+    /// (doc 33, the scan at the start): the ones in a segment that the journal (`removed`, read once by the caller) does not
+    /// remove. The bucket is not proof of life: whoever receives them still checks the topic and the dead. Empty
+    /// when the bucket does not answer.
+    pub async fn scan_topic(
+        &self,
+        name: &str,
+        topic_id: &str,
+        removed: &std::collections::HashSet<String>,
+    ) -> Vec<crate::cluster::protocol::MessageRecord> {
+        let me = self.node_id();
+        let listed = self
+            .store
+            .list(&keys::segments_prefix(name, topic_id))
+            .await;
+        self.note("LIST of segments", &listed);
+        let mut found = Vec::new();
+        for object in listed.unwrap_or_default() {
+            let Some(footer) = self.footer_of(&object.key).await else {
+                continue;
+            };
+            for entry in &footer.entries {
+                if removed.contains(&entry.id) || self.messages.holds(name, &entry.id) {
+                    continue;
+                }
+                let Some(raw) = self
+                    .store
+                    .get_range(&object.key, entry.offset, entry.len)
+                    .await
+                    .ok()
+                    .flatten()
+                else {
+                    continue;
+                };
+                let Ok((meta, body)) = segment::decode_entry(&raw) else {
+                    continue;
+                };
+                let meta: MessageMeta = meta.into();
+                if self.topology.owners(meta.position).first() != Some(&me) {
+                    continue;
+                }
+                found.push(crate::cluster::protocol::MessageRecord::from_stored(
+                    name, meta, body,
+                ));
+            }
+        }
+        found
+    }
+
     /// Deletes from `nodes/` the files of ids that do not belong to the cluster **and** whose heartbeat is
     /// expired. A fresh file is never deleted: it may be a live node in another partition.
     pub async fn cleanup_nodes(&self) {
@@ -534,6 +604,31 @@ impl Backup {
                 self.note("DELETE do batimento morto", &deleted);
             }
         }
+    }
+
+    /// The IDs the topic's journal in the bucket registers as removed (ack, `ttl`, dead-letter): the proof of death
+    /// the restoration of a past life asks S3 for (doc 07, section 10.6). `None` when S3 does not answer: the
+    /// evidence is absent, and whoever asked decides with the other sources.
+    pub async fn removed_in_journal(
+        &self,
+        topic: &str,
+    ) -> Option<std::collections::HashSet<String>> {
+        let topic_id = self.topics.get(topic).ok()?.definition.id;
+        let journals = self
+            .store
+            .list(&keys::journals_prefix(topic, &topic_id))
+            .await
+            .ok()?;
+        let mut removed = std::collections::HashSet::new();
+        for object in journals {
+            let content = self.store.get(&object.key).await.ok().flatten()?;
+            let Ok((_, records)) = journal::decode(&content.body) else {
+                tracing::error!(key = %object.key, "backup: unreadable journal; ignored");
+                continue;
+            };
+            removed.extend(records.into_iter().filter(|r| r.removed).map(|r| r.id));
+        }
+        Some(removed)
     }
 
     /// Message `id` of the topic, as the bucket has it (segments plus the journal's last state);

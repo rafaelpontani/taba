@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-13, commit 71183b9):** **183** cases without a test, out of **885**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-13, commit 71183b9):** **176** cases without a test, out of **878**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -30,21 +30,21 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `LIM` | Rate limit and client IP | 2 | 13 |
 | `PAG` | Pagination | 2 | 7 |
 | `CNV` | Common API conventions (format, headers, errors, status) | 7 | 10 |
-| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 14 | 22 |
+| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 14 | 24 |
 | `ANE` | Hash ring, blocks and roles | 4 | 8 |
-| `DEF` | Topic and token definition replicated in the cluster | 11 | 19 |
+| `DEF` | Topic and token definition replicated in the cluster | 11 | 21 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 21 | 10 |
 | `INV` | Invisibility on the owner and on the replicas | 19 | 13 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 8 | 17 |
-| `ING` | Node join (bootstrap) | 5 | 23 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 8 | 21 |
+| `ING` | Node join (bootstrap) | 5 | 30 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 1 | 32 |
 | `FRZ` | Freezing period | 1 | 13 |
 | `CNC` | Concurrency between membership changes | 3 | 12 |
 | `SIN` | Distributed synchronization of blocks | 1 | 29 |
 | `STR` | NDJSON streams between nodes | 12 | 3 |
 | `FWD` | Forwarding of client calls | 8 | 4 |
-| `DRN` | Stop and drain mode (includes drain as save) | 3 | 25 |
-| `DEV` | Development mode | 10 | 3 |
+| `DRN` | Stop and drain mode | 2 | 19 |
+| `DEV` | One-node profile (the former development mode) | 4 | 3 |
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 9 | 39 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 7 | 3 |
 | `CFG` | Configuration and startup validations | 2 | 10 |
@@ -1422,57 +1422,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-DRN-025
-
-**Case:** The `ttl` counts from the ID, so the stopped time counts  
-**Then:** what expired while the node was away is discarded at the first sweep.  
-**Level:** I  
-**Historical source:** 04 §6.10
-
----
-
 ### UC-DRN-028
 
-**Case:** In development mode, client calls during drain answer `503` with `Retry-After` (there is no other node to forward to).  
+**Case:** On a single node (one-node profile), client calls during drain answer `503` with `Retry-After` (there is no other node to forward to).  
 **Level:** I  
 **Historical source:** 04 §6.4 and 6.10
 
 ---
 
 
-## DEV: Development mode
-
-### UC-DEV-001
-
-**Case:** `mode` is `production` by default; `development` (`TABA_MODE`) makes the node a cluster of one. The mode does not change at runtime.  
-**Level:** I  
-**Historical source:** 04 §6.4, 10
-
----
-
-### UC-DEV-003
-
-**Case:** `replication.factor` and `write.quorum` are **1**; configured values are ignored, with a warning in the log. Register and commit happen only on the node itself, with no replica, retry between nodes or rollback for lack of quorum.  
-**Level:** I  
-**Historical source:** 04 §6.4, 05 §7.2
-
----
-
-### UC-DEV-004
-
-**Case:** The `cluster.*`, `ring.*`, `replication.*` and `write.quorum` parameters are ignored, with a warning in the log.  
-**Level:** I  
-**Historical source:** 10
-
----
-
-### UC-DEV-005
-
-**Case:** On starting, the node logs `warn` stating the mode, and `GET /health/cluster` carries each node's `mode` field.  
-**Level:** I  
-**Historical source:** 04 §6.4, 06b
-
----
+## DEV: One-node profile (the former development mode)
 
 ### UC-DEV-006
 
@@ -1505,22 +1464,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** Fair delivery by groups applies the same, with an exact count.  
 **Level:** I  
 **Historical source:** 04 §6.4, 13 §12.11
-
----
-
-### UC-DEV-010
-
-**Case:** Authentication is never required and the `/tokens` routes answer `404` `route.not-found` (UC-AUT-007 and UC-AUT-025).  
-**Level:** I  
-**Historical source:** 04 §6.4
-
----
-
-### UC-DEV-013
-
-**Case:** Without replicas, losing the node or the disk means losing the messages (except by drain as save, UC-DRN-021 to UC-DRN-027).  
-**Level:** I  
-**Historical source:** 04 §6.4
 
 ---
 
@@ -1688,7 +1631,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## Retired cases
 
-Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010.
+Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (the development mode and the drain as save went away, [07-cluster.md](07-cluster.md), section 8).
 
 ## Sources and evidence
 

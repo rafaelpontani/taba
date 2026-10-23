@@ -63,7 +63,7 @@ async fn consume(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
 /// UC: UC-MSG-001, UC-MSG-018, UC-MSG-019, UC-CNS-001, UC-CNS-008
 #[tokio::test]
 async fn publishing_json_without_content_type_and_consuming_it_back() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
 
     let response = node
@@ -107,7 +107,7 @@ async fn publishing_json_without_content_type_and_consuming_it_back() {
 /// UC: UC-MSG-001, UC-CNS-008
 #[tokio::test]
 async fn the_json_body_comes_back_exactly_as_it_was_sent() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     let sent = r#"{ "amount": 129.90,  "n": 1e3 }"#;
     publish(&node, "orders", sent).await;
@@ -120,7 +120,7 @@ async fn the_json_body_comes_back_exactly_as_it_was_sent() {
 /// UC: UC-MSG-002, UC-MSG-003, UC-MSG-007, UC-CNS-009, UC-CNS-010, UC-CNS-011, UC-CNS-012, UC-MSG-020
 #[tokio::test]
 async fn a_mixed_batch_keeps_each_content_type_and_the_exact_bytes() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "files").await;
     let all_bytes: Vec<u8> = (0..=255).collect();
 
@@ -171,7 +171,7 @@ async fn a_mixed_batch_keeps_each_content_type_and_the_exact_bytes() {
 /// UC: UC-MSG-004, UC-MSG-005, UC-MSG-006
 #[tokio::test]
 async fn invalid_content_type_and_invalid_bodies_are_400() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
 
     let response = publish_raw(&node, "orders", "", Some("not-e-media-type"), b"x".to_vec()).await;
@@ -209,7 +209,7 @@ async fn invalid_content_type_and_invalid_bodies_are_400() {
 /// UC: UC-MSG-008, UC-MSG-009, UC-TOP-031
 #[tokio::test]
 async fn the_size_limit_counts_bytes_and_a_topic_may_exceed_the_general_one() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_topic(
         &node,
         json!({ "name": "small", "type": "queue", "maxMessageBytes": 100 }),
@@ -265,7 +265,7 @@ async fn the_size_limit_counts_bytes_and_a_topic_may_exceed_the_general_one() {
 /// UC: UC-MSG-010, UC-CNS-018, UC-CNS-017
 #[tokio::test]
 async fn unknown_topics_are_404_and_a_distributor_is_not_consumed() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_topic(
         &node,
         json!({ "name": "all", "type": "distributor", "prefixes": ["a"] }),
@@ -284,7 +284,7 @@ async fn unknown_topics_are_404_and_a_distributor_is_not_consumed() {
 /// UC: UC-MSG-011, UC-MSG-012, UC-FIF-002
 #[tokio::test]
 async fn group_and_deduplication_ids_are_validated() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     create_topic(
         &node,
@@ -332,7 +332,7 @@ async fn group_and_deduplication_ids_are_validated() {
 /// UC: UC-CNS-002, UC-CNS-004, UC-CNS-006, UC-CNS-007
 #[tokio::test]
 async fn a_delivered_message_is_invisible_and_returns_with_a_new_receipt_after_the_timeout() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
 
     let response = consume_raw(&node, "orders", "").await;
@@ -362,7 +362,7 @@ async fn a_delivered_message_is_invisible_and_returns_with_a_new_receipt_after_t
 /// UC: UC-CNS-003, UC-CNS-005, UC-CNS-024
 #[tokio::test]
 async fn consume_parameters_are_checked() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     for i in 0..12 {
         publish(&node, "orders", &i.to_string()).await;
@@ -396,7 +396,7 @@ async fn consume_parameters_are_checked() {
 /// UC: UC-CNS-015
 #[tokio::test]
 async fn a_message_past_its_ttl_is_not_delivered() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_topic(
         &node,
         json!({ "name": "short", "type": "queue", "ttl": 60 }),
@@ -411,7 +411,7 @@ async fn a_message_past_its_ttl_is_not_delivered() {
 /// UC: UC-CNS-016
 #[tokio::test]
 async fn the_dead_letter_can_be_published_to_and_consumed() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders-dead-letter", "1").await;
     assert_eq!(consume(&node, "orders-dead-letter", "").await.len(), 1);
@@ -422,7 +422,7 @@ async fn the_dead_letter_can_be_published_to_and_consumed() {
 /// UC: UC-CNS-025, UC-CNS-027
 #[tokio::test]
 async fn long_polling_returns_as_soon_as_a_message_is_published() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
 
     let url = node.client_url("/topics/orders/messages?waitTime=20&maxMessages=5");
@@ -445,7 +445,7 @@ async fn long_polling_returns_as_soon_as_a_message_is_published() {
 /// UC: UC-CNS-026
 #[tokio::test]
 async fn long_polling_ends_with_an_empty_list_when_nothing_arrives() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     let started = std::time::Instant::now();
     assert!(consume(&node, "orders", "?waitTime=1").await.is_empty());
@@ -456,7 +456,7 @@ async fn long_polling_ends_with_an_empty_list_when_nothing_arrives() {
 /// UC: UC-CNS-028
 #[tokio::test]
 async fn a_client_that_gives_up_does_not_swallow_the_next_message() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
 
     let impatient = reqwest::Client::builder()
@@ -485,7 +485,7 @@ async fn a_client_that_gives_up_does_not_swallow_the_next_message() {
 /// UC: UC-DST-001, UC-DST-002, UC-DST-003, UC-DST-009, UC-DST-011
 #[tokio::test]
 async fn a_distributor_copies_to_matching_queues_and_reports_each_one() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders-eu").await;
     queue(&node, "orders-us").await;
     queue(&node, "other").await;
@@ -578,7 +578,7 @@ async fn max_targets_refuses_the_whole_publication() {
 /// UC: UC-TOP-039
 #[tokio::test]
 async fn deleting_a_queue_drops_its_ready_and_in_flight_messages() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     publish(&node, "orders", "2").await;
@@ -634,7 +634,7 @@ async fn one_delivered(node: &TestNode, visibility: u32) -> Value {
 /// UC: UC-ACK-001, UC-ACK-003, UC-ACK-011
 #[tokio::test]
 async fn ack_removes_the_message_for_good() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 30).await;
@@ -654,7 +654,7 @@ async fn ack_removes_the_message_for_good() {
 /// UC: UC-ACK-002, UC-ACK-007
 #[tokio::test]
 async fn ack_validates_the_request_and_the_topic() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     create_topic(
         &node,
@@ -672,6 +672,9 @@ async fn ack_validates_the_request_and_the_topic() {
     let response = ack_raw(&node, "nothing", id, "?receiptToken=x").await;
     assert_eq!(error_code(response, 404).await, "topic.not-found");
     let response = ack_raw(&node, "orders", "does-not-exist", "?receiptToken=x").await;
+    assert_eq!(error_code(response, 400).await, "validation.failed");
+    let unknown = "01a11115-be00-7000-8000-000000000000";
+    let response = ack_raw(&node, "orders", unknown, "?receiptToken=x").await;
     assert_eq!(error_code(response, 404).await, "message.not-found");
     node.shutdown().await;
 }
@@ -679,7 +682,7 @@ async fn ack_validates_the_request_and_the_topic() {
 /// UC: UC-ACK-004, UC-ACK-005, UC-VIS-006
 #[tokio::test]
 async fn a_stale_token_is_409_and_changes_nothing() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     let first = one_delivered(&node, 10).await;
@@ -706,7 +709,7 @@ async fn a_stale_token_is_409_and_changes_nothing() {
 /// UC: UC-ACK-005
 #[tokio::test]
 async fn ack_after_the_deadline_but_before_redelivery_works() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 10).await;
@@ -718,7 +721,7 @@ async fn ack_after_the_deadline_but_before_redelivery_works() {
 /// UC: UC-ACK-006, UC-VIS-007
 #[tokio::test]
 async fn a_message_past_its_ttl_cannot_be_acked_or_extended() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_topic(
         &node,
         json!({ "name": "orders", "type": "queue", "ttl": 60 }),
@@ -726,8 +729,16 @@ async fn a_message_past_its_ttl_cannot_be_acked_or_extended() {
     .await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
-    node.clock.advance(Duration::from_secs(60));
+    node.clock.advance(Duration::from_secs(61));
 
+    // The sweeper deletes the expired message (it runs every second); until then it is still there.
+    for _ in 0..400 {
+        let response = set_visibility(&node, &m, json!({ "visibilityTimeout": 5 })).await;
+        if response.status() == 404 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
     let response = set_visibility(&node, &m, json!({ "visibilityTimeout": 5 })).await;
     assert_eq!(error_code(response, 404).await, "message.not-found");
     let response = ack(&node, &m).await;
@@ -738,7 +749,7 @@ async fn a_message_past_its_ttl_cannot_be_acked_or_extended() {
 /// UC: UC-VIS-001, UC-VIS-002, UC-VIS-004, UC-VIS-009, UC-VIS-010
 #[tokio::test]
 async fn visibility_replaces_the_deadline_and_keeps_count_and_token() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 30).await;
@@ -772,7 +783,7 @@ async fn visibility_replaces_the_deadline_and_keeps_count_and_token() {
 /// UC: UC-VIS-003
 #[tokio::test]
 async fn visibility_zero_releases_the_message_for_the_next_get() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
@@ -822,7 +833,7 @@ async fn visibility_validates_query_and_body() {
 /// UC: UC-ACK-012, UC-VIS-007
 #[tokio::test]
 async fn ack_and_visibility_after_the_topic_is_removed_are_404() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
@@ -847,14 +858,22 @@ async fn limited_queue(node: &TestNode, name: &str, max_deliveries: u32) {
     .await;
 }
 
+/// Reads from a dead-letter: in the cluster the move is asynchronous, so it waits for the message to get there.
 async fn consume_from(node: &TestNode, topic: &str, query: &str) -> Vec<Value> {
-    consume(node, topic, query).await
+    for _ in 0..400 {
+        let found = consume(node, topic, query).await;
+        if !found.is_empty() {
+            return found;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    Vec::new()
 }
 
 /// UC: UC-RET-008, UC-RET-009
 #[tokio::test]
 async fn the_message_goes_to_the_dead_letter_after_max_deliveries_without_ack() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 2).await;
     let id = publish(&node, "orders", r#"{ "order": 1 }"#).await["id"].clone();
 
@@ -885,7 +904,7 @@ async fn the_message_goes_to_the_dead_letter_after_max_deliveries_without_ack() 
 /// UC: UC-RET-008
 #[tokio::test]
 async fn an_acked_message_does_not_reach_the_dead_letter() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 1).await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 10).await;
@@ -898,7 +917,7 @@ async fn an_acked_message_does_not_reach_the_dead_letter() {
 /// UC: UC-VIS-011
 #[tokio::test]
 async fn visibility_zero_on_the_last_delivery_sends_the_message_to_the_dead_letter() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 1).await;
     publish(&node, "orders", "1").await;
     let m = one_delivered(&node, 600).await;
@@ -914,7 +933,7 @@ async fn visibility_zero_on_the_last_delivery_sends_the_message_to_the_dead_lett
 /// UC: UC-RET-014
 #[tokio::test]
 async fn a_corrected_message_can_be_published_back_and_the_dead_one_acked() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 1).await;
     publish(&node, "orders", r#"{ "ruim": true }"#).await;
     one_delivered(&node, 10).await;
@@ -945,7 +964,7 @@ async fn a_corrected_message_can_be_published_back_and_the_dead_one_acked() {
 /// UC: UC-RET-013
 #[tokio::test]
 async fn the_dead_letter_never_has_its_own_dead_letter() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 1).await;
     publish(&node, "orders", "1").await;
     one_delivered(&node, 10).await;
@@ -965,7 +984,7 @@ async fn the_dead_letter_never_has_its_own_dead_letter() {
 /// UC: UC-RET-016
 #[tokio::test]
 async fn a_distributor_never_copies_into_a_dead_letter() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     create_topic(
         &node,
@@ -984,7 +1003,7 @@ async fn a_distributor_never_copies_into_a_dead_letter() {
 /// UC: UC-RET-001, UC-RET-002, UC-RET-004, UC-TOP-030
 #[tokio::test]
 async fn a_shorter_ttl_expires_what_is_already_stored_even_in_flight() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 1).await;
     publish(&node, "orders", "1").await;
     publish(&node, "orders", "2").await;
@@ -1018,7 +1037,7 @@ async fn a_shorter_ttl_expires_what_is_already_stored_even_in_flight() {
 /// UC: UC-RET-005, UC-RET-008
 #[tokio::test]
 async fn the_background_sweeper_moves_it_even_if_nobody_touches_the_source_queue() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     limited_queue(&node, "orders", 1).await;
     publish(&node, "orders", "1").await;
     one_delivered(&node, 10).await;
@@ -1107,7 +1126,7 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
 /// UC: UC-ARM-001
 #[tokio::test]
 async fn without_a_memory_limit_nothing_goes_to_disk_by_overflow() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     for i in 0..20 {
         publish(&node, "orders", &i.to_string()).await;
@@ -1116,13 +1135,15 @@ async fn without_a_memory_limit_nothing_goes_to_disk_by_overflow() {
     node.shutdown().await;
 }
 
-/// UC: UC-DRN-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024
+/// UC: UC-DRN-010
 #[tokio::test]
 async fn stopping_saves_memory_to_disk_and_the_next_start_resumes_it() {
     let tmp = tempfile::tempdir().unwrap();
     let storage = tmp.path().join("taba").display().to_string();
+    let clock = std::sync::Arc::new(taba_node::core::clock::ManualClock::at_doc_epoch());
     let start = || {
         TestNode::builder()
+            .clock(clock.clone())
             .env("TABA_STORAGE_DIR", &storage)
             .try_start()
     };
@@ -1148,29 +1169,43 @@ async fn stopping_saves_memory_to_disk_and_the_next_start_resumes_it() {
         0,
         "everything in memory so far"
     );
+    clock.advance(Duration::from_secs(60)); // the life is inside the window of the excluded log
     node.shutdown().await; // the drain writes everything to disk
     grouped = in_flight[0].clone();
 
     let node = start().await.unwrap();
-    // What was being processed stays invisible, and the same token still confirms.
-    let pending = consume(&node, "orders", "?maxMessages=10&visibilityTimeout=30").await;
-    assert_eq!(pending.len(), 1, "only the ready one");
-    assert_eq!(pending[0]["id"], ready["id"]);
-    assert_eq!(pending[0]["body"], json!({ "ready": true }));
+    // The restoration of the life brings back everything that was alive, as new messages: the one that was being
+    // processed comes back ready too, and its old token no longer confirms anything.
+    let mut pending = Vec::new();
+    for _ in 0..400 {
+        pending.extend(consume(&node, "orders", "?maxMessages=10&visibilityTimeout=30").await);
+        if pending.len() >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let mut ids: Vec<&str> = pending.iter().map(|m| m["id"].as_str().unwrap()).collect();
+    ids.sort_unstable();
+    let mut expected = [
+        grouped["id"].as_str().unwrap(),
+        ready["id"].as_str().unwrap(),
+    ];
+    expected.sort_unstable();
+    assert_eq!(ids, expected, "both come back ready");
     let id = grouped["id"].as_str().unwrap();
     let token = grouped["receiptToken"].as_str().unwrap();
     let response = ack_raw(&node, "orders", id, &format!("?receiptToken={token}")).await;
-    assert_eq!(response.status(), 204, "the receiptToken survived the save");
+    assert_eq!(error_code(response, 409).await, "message.stale-receipt");
 
-    // The deadline is an absolute instant: once the time passes, the message comes back with the right counter.
+    // The deadline is an absolute instant: once the time passes, the messages come back with the right counter.
     node.clock.advance(Duration::from_secs(60));
-    let again = consume(&node, "orders", "").await;
-    assert_eq!(again[0]["id"], ready["id"]);
-    assert_eq!(again[0]["deliveryCount"], 2);
+    let again = consume(&node, "orders", "?maxMessages=10").await;
+    assert_eq!(again.len(), 2);
+    assert!(again.iter().all(|m| m["deliveryCount"].as_u64() >= Some(2)));
     node.shutdown().await;
 }
 
-/// UC: UC-DRN-003, UC-DRN-026
+/// UC: UC-DRN-003
 #[tokio::test]
 async fn without_drain_on_stop_what_was_only_in_memory_is_lost() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1199,31 +1234,58 @@ async fn without_drain_on_stop_what_was_only_in_memory_is_lost() {
     node.shutdown().await;
 }
 
-/// UC: UC-DRN-027
+/// UC: UC-RTN-048
 #[tokio::test]
-async fn without_resume_on_start_the_messages_on_disk_are_erased() {
+async fn the_folders_of_the_previous_lives_have_no_cap_of_their_own() {
+    // Several lives, each with many large messages: nothing is refused or discarded for the size of the folders.
+    // What happens with a full disk is the usual rule (UC-FAL-028): the node goes to `failed`.
     let tmp = tempfile::tempdir().unwrap();
     let storage = tmp.path().join("taba").display().to_string();
-    let node = TestNode::builder()
-        .env("TABA_STORAGE_DIR", &storage)
-        .start()
-        .await;
-    queue(&node, "orders").await;
-    publish(&node, "orders", "1").await;
-    node.shutdown().await;
-    assert!(
-        tmp.path().join("taba").join("orders").is_dir(),
-        "the drain left it on disk"
+    let clock = std::sync::Arc::new(taba_node::core::clock::ManualClock::at_doc_epoch());
+    let start = || {
+        TestNode::builder()
+            .clock(clock.clone())
+            .env("TABA_STORAGE_DIR", &storage)
+            .env("TABA_DRAIN_ON_STOP", "false")
+            .env("TABA_MEMORY_LIMIT", "1B")
+            .try_start()
+    };
+    let big = "x".repeat(50_000);
+    let mut expected = Vec::new();
+    for life in 0..3 {
+        let node = start().await.unwrap();
+        if life == 0 {
+            queue(&node, "orders").await;
+        }
+        for n in 0..20 {
+            let message = publish(
+                &node,
+                "orders",
+                &format!("{{\"life\":{life},\"n\":{n},\"pad\":\"{big}\"}}"),
+            )
+            .await;
+            expected.push(message["id"].as_str().unwrap().to_owned());
+        }
+        clock.advance(Duration::from_secs(60));
+        node.shutdown().await;
+    }
+    let node = start().await.unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..400 {
+        for message in consume(&node, "orders", "?maxMessages=10&visibilityTimeout=600").await {
+            seen.insert(message["id"].as_str().unwrap().to_owned());
+        }
+        if seen.len() >= expected.len() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    expected.sort_unstable();
+    assert_eq!(seen.into_iter().collect::<Vec<_>>(), expected);
+    assert_eq!(
+        node.node.shared().state(),
+        taba_node::cluster::state::NodeState::Active
     );
-
-    let node = TestNode::builder()
-        .env("TABA_STORAGE_DIR", &storage)
-        .env("TABA_DEVELOPMENT_RESUME_ON_START", "false")
-        .start()
-        .await;
-    assert!(!tmp.path().join("taba").join("orders").exists());
-    queue(&node, "orders").await;
-    assert!(consume(&node, "orders", "").await.is_empty());
     node.shutdown().await;
 }
 
@@ -1256,7 +1318,7 @@ async fn the_dead_letter_receives_the_body_file_of_a_message_on_disk() {
 /// UC: UC-GRP-010, UC-GRP-002, UC-GRP-003
 #[tokio::test]
 async fn a_noisy_producer_does_not_delay_a_small_one_over_http() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     for i in 0..100 {
         let r = publish_raw(
