@@ -10,3 +10,4 @@ doc/diagrams/html/
 /examples/**/obj
 /dist
 root-token.txt
+admin-token
