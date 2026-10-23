@@ -87,9 +87,9 @@ The node **does not start** (message in Portuguese, one per problem) when:
 
 | Key | Variable | Default | What it does |
 |---|---|---|---|
-| `api.port` | `TABA_API_PORT` | **8080** | Port of the client API routes (section 8.1). Without `operations.port`, it also serves the operations routes. Answers `404` to `/cluster/*`. |
+| `api.port` | `TABA_API_PORT` | **8080** | Port of the client API routes (section 8.1), which includes `/health/live` and `/health/ready` (no token) and `/metrics` (any valid token). Answers `404` to `/cluster/*`. |
 | `cluster.port` | `TABA_CLUSTER_PORT` | **8081** | Port of the `/cluster/*` routes and the WebSocket channel between nodes. It is the one the member table stores and the one `cluster.entry-address` points to. Only the other nodes should reach it; **do not publish** on the client load balancer. A single node (factor 1) opens it the same way. |
-| `operations.port` | `TABA_OPERATIONS_PORT` | the client port | See the "Observability" section below. |
+| `operations.port` | `TABA_OPERATIONS_PORT` | **9090** | Port of the operations API (monitoring), **always open**. See the "Observability" section below. |
 
 ### Cluster port security
 
@@ -240,8 +240,8 @@ The node **does not start** (message in Portuguese, one per problem) when:
 | Key | Variable | Default | What it does |
 |---|---|---|---|
 | `telemetry.prometheus.enabled` | `TABA_TELEMETRY_PROMETHEUS_ENABLED` | **true** | Turns `GET /metrics` on/off (Prometheus format, only this node's metrics). |
-| `operations.port` | `TABA_OPERATIONS_PORT` | the client port | Own port for `/metrics`, `/metrics/topics/*`, `/health/*` and `/node/drain`. Optional; if defined, these routes cease to exist on the client API port. Must be different from `api.port` and from `cluster.port`. |
-| `operations.allowed-ips` | `TABA_OPERATIONS_ALLOWED_IPS` | no restriction | List of IPs/CIDR ranges with access to `/metrics`, `/metrics/topics/*`, `/health/*` and `/node/drain`; the others receive `403`. Optional. Without a port or a list, these routes are treated like any other. |
+| `operations.port` | `TABA_OPERATIONS_PORT` | **9090** | Port of the operations API, **no authentication**: `/metrics`, `/metrics/topics/*`, `/health/*`, `/node/drain`, the S3 backup and the cluster-wide routes. It is for the collectors and the orchestrator **inside** the infrastructure (Prometheus, Telegraf, probes), never for people or for `taba-cli`. The node always opens it; it must differ from `api.port` and from `cluster.port`. The client port also serves `/metrics`, **with a token**, and the two probes without one ([16-client-api.md](16-client-api.md)). |
+| `operations.allowed-ips` | `TABA_OPERATIONS_ALLOWED_IPS` | no restriction | List of IPs/CIDR ranges with access to the operations port; the others receive `403`. Optional. Without a list, the network is the only protection. |
 | `telemetry.topics.mode` | `TABA_TELEMETRY_TOPICS_MODE` | **off** | Applies to OTLP and `/metrics`: `off` (only `/metrics/topics` routes), `by-tags` (aggregated by tags) or `per-topic` (one series per topic, with a ceiling). |
 | `telemetry.topics.group-by-tags` | `TABA_TELEMETRY_TOPICS_GROUP_BY_TAGS` | empty | Tag keys used to aggregate in `by-tags` mode. |
 | `telemetry.topics.max-topics` | `TABA_TELEMETRY_TOPICS_MAX_TOPICS` | **1000** (from the code) | Maximum number of per-topic series in `per-topic` mode; the excess is aggregated in `messaging.destination.name="_other"`. |

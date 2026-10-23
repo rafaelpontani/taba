@@ -87,9 +87,9 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
-| `api.port` | `TABA_API_PORT` | **8080** | Porta das rotas da API de cliente (seção 8.1). Sem `operations.port`, serve também as rotas de operação. Responde `404` a `/cluster/*`. |
+| `api.port` | `TABA_API_PORT` | **8080** | Porta das rotas da API de cliente (seção 8.1), que inclui `/health/live` e `/health/ready` (sem token) e `/metrics` (qualquer token válido). Responde `404` a `/cluster/*`. |
 | `cluster.port` | `TABA_CLUSTER_PORT` | **8081** | Porta das rotas `/cluster/*` e do canal WebSocket entre nós. É a que a tabela de membros guarda e a que o `cluster.entry-address` aponta. Só os outros nós devem alcançá-la; **não publicar** no balanceador de clientes. Um nó só (fator 1) a abre do mesmo jeito. |
-| `operations.port` | `TABA_OPERATIONS_PORT` | a porta de cliente | Ver a seção "Observabilidade" abaixo. |
+| `operations.port` | `TABA_OPERATIONS_PORT` | **9090** | Porta da API de operação (monitoramento), **sempre aberta**. Ver a seção "Observabilidade" abaixo. |
 
 ### Segurança da porta do cluster
 
@@ -240,8 +240,8 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 | Chave | Variável | Padrão | O que faz |
 |---|---|---|---|
 | `telemetry.prometheus.enabled` | `TABA_TELEMETRY_PROMETHEUS_ENABLED` | **true** | Liga/desliga `GET /metrics` (formato Prometheus, só as métricas deste nó). |
-| `operations.port` | `TABA_OPERATIONS_PORT` | a porta de cliente | Porta própria para `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain`. Opcional; se definida, essas rotas deixam de existir na porta da API de cliente. Deve ser diferente de `api.port` e de `cluster.port`. |
-| `operations.allowed-ips` | `TABA_OPERATIONS_ALLOWED_IPS` | sem restrição | Lista de IPs/faixas CIDR com acesso a `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain`; os demais recebem `403`. Opcional. Sem porta nem lista, essas rotas são tratadas como qualquer outra. |
+| `operations.port` | `TABA_OPERATIONS_PORT` | **9090** | Porta da API de operação, **sem autenticação**: `/metrics`, `/metrics/topics/*`, `/health/*`, `/node/drain`, o backup em S3 e as rotas do cluster inteiro. Serve aos coletores e ao orquestrador **dentro** da infraestrutura (Prometheus, Telegraf, sondas), nunca a pessoas nem ao `taba-cli`. O nó sempre a abre; deve ser diferente de `api.port` e de `cluster.port`. A porta de cliente também serve `/metrics`, **com token**, e as duas sondas sem ele ([16-api-cliente.md](16-api-cliente.md)). |
+| `operations.allowed-ips` | `TABA_OPERATIONS_ALLOWED_IPS` | sem restrição | Lista de IPs/faixas CIDR com acesso à porta de operação; os demais recebem `403`. Opcional. Sem lista, a rede é a única proteção. |
 | `telemetry.topics.mode` | `TABA_TELEMETRY_TOPICS_MODE` | **off** | Vale para OTLP e `/metrics`: `off` (só rotas `/metrics/topics`), `by-tags` (agregado por tags) ou `per-topic` (uma série por tópico, com teto). |
 | `telemetry.topics.group-by-tags` | `TABA_TELEMETRY_TOPICS_GROUP_BY_TAGS` | vazio | Chaves de tag usadas para agregar no modo `by-tags`. |
 | `telemetry.topics.max-topics` | `TABA_TELEMETRY_TOPICS_MAX_TOPICS` | **1000** (do código) | Máximo de séries por tópico no modo `per-topic`; o excedente é agregado em `messaging.destination.name="_other"`. |

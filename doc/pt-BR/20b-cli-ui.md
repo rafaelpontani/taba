@@ -145,7 +145,7 @@ A aba Cluster mostra, de cima para baixo, as **condições** ativas do cluster (
 - **Detalhe do nó** (`i`): id, estado, drain, versão, início e tempo no ar; memória contra o limite (amarelo a 80 %, vermelho a 95 %); mensagens em memória e em disco; os sinais do nó (canais, quórum, blocos em sincronização, abaixo da replicação, nós congelados); e o **backup S3**, só quando está configurado (acessível, pendentes, último sucesso, segmentos).
 - **Drenar** (`d`): mostra o que acontece e acompanha `pendingMessages` até `drained`. Um nó em drain ou drenado oferece **devolver** (`u`); ele volta como nó novo. Um cluster de **um só nó** em drain recusa tudo, inclusive o próprio retorno (`503 cluster.node-draining`): é um limite do servidor (PRB-061).
 - **Flush de backup** (`b` um nó, `B` todos): mostra um relatório por nó (completo ou não, pendentes, tempo esgotado). Sem S3 configurado o servidor responde `422 backup.not-configured` e a interface diz isso.
-- **Parar o cluster** (`S`): pede o **nome do cluster digitado**. Os nós ficam `drained` e continuam como processos; pará-los é com o orquestrador. Precisa da API de operação em porta própria; sem ela a tecla aparece apagada, com o motivo.
+- **Parar o cluster** (`S`): pede o **nome do cluster digitado**. Os nós ficam `drained` e continuam como processos; pará-los é com o orquestrador.
 - **Gráficos do cluster** (`m`): uma **lista de seis indicadores à esquerda** (memória contra o limite, mensagens prontas, mensagens em disco, requisições em andamento, rejeições `429`, RTT do canal), cada um com o valor atual; o gráfico do indicador sob o cursor aparece ao lado. `↑ ↓` escolhem, `Enter` dá a ele a **tela cheia** e `Esc` volta (primeiro da tela cheia, depois dos gráficos).
 - **Com um token comum** a aba mostra só a lista de nós e troca o resto pelo aviso de que o token precisa ser `admin` ou o raiz.
 
@@ -201,7 +201,7 @@ Uma tabela com nome, id, permissões, prefixos e validade; o **segredo nunca est
 
 A lista mostra os perfis do `config.yml`, com o padrão (●) e o que está em uso. `Enter` abre o menu; `c` **conecta**: as próximas chamadas vão ao servidor do perfil, os históricos e as telas recomeçam, e a resposta que ainda vinha do servidor antigo é descartada.
 
-- **Novo** (`n`) e **editar** (`e`): nome, `url`, `ops-url`, `token-file`, `token`, `ca-file` e a caixa do perfil padrão; os outros campos do perfil (`output` e os tempos) são mantidos como estão. `Ctrl+t` testa os valores **ainda não salvos**.
+- **Novo** (`n`) e **editar** (`e`): nome, `url`, `token-file`, `token`, `ca-file` e a caixa do perfil padrão; os outros campos do perfil (`output` e os tempos) são mantidos como estão. `Ctrl+t` testa os valores **ainda não salvos**.
 - **Padrão** (`d`), **remover** (`Del` ou `x`, com confirmação em **Cancelar**) e **testar** (`t`, que faz `GET /topics?limit=1`).
 - Gravar só troca `default` e `profiles` no arquivo: `ui` e `history` ficam como estão. O arquivo é reescrito inteiro e **comentários feitos à mão não são preservados**.
 - Um token digitado no formulário vai para o arquivo **como foi digitado** (o `config.yml` não é criptografado) e a tela nunca o desenha (aparece como pontos); o formulário recomenda o `token-file`.
@@ -240,7 +240,7 @@ Cada linha tem nome na legenda **e** marcador próprio, não só cor. O título 
 | `taba-cli tui` imprime a ajuda e sai com `2` | Não há terminal (entrada ou saída redirecionada); rode num terminal |
 | "Preciso de pelo menos 60 colunas por 16 linhas" | Aumente a janela; a tela volta sozinha |
 | A aba Cluster só lista os nós e pede o token raiz | O token do perfil não é `admin` nem raiz; use `o` para outro perfil |
-| Uma tecla aparece apagada com um motivo na linha de baixo | O token não tem a permissão, o nó não está num estado que aceite a ação, ou falta a porta de operação |
+| Uma tecla aparece apagada com um motivo na linha de baixo | O token não tem a permissão, o nó não está num estado que aceite a ação |
 | Símbolos estranhos no lugar de ícones e barras | `TABA_CLI_ASCII=1` |
 | Sem cores | `NO_COLOR` está definida |
 | "incompleto: nó X não respondeu" | Um nó não respondeu em 5 s; os números são os dos outros nós |

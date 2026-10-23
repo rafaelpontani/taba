@@ -24,8 +24,8 @@
     {
       "id": "operator",
       "type": "external",
-      "label": "Operator",
-      "sublabel": "Prometheus, load balancer",
+      "label": "Collectors",
+      "sublabel": "Prometheus, probes",
       "pos": [
         30,
         200
@@ -67,7 +67,7 @@
       "id": "ops",
       "type": "frontend",
       "label": "Operations API",
-      "sublabel": "operations.port · no auth",
+      "sublabel": "operations.port 9090 · no auth",
       "pos": [
         300,
         200

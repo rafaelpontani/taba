@@ -388,25 +388,31 @@ Light routes for orchestrators and load balancers, **without** fan-out:
 
 ## Access to the operations routes
 
-The operations routes are `/metrics`, `/metrics/topics/*`, `/health/*` and `/node/drain`. They have **no authentication** (decision D63): whoever installs them protects them with the network. Two optional, independent restrictions:
+The operations routes are `/metrics`, `/metrics/topics/*`, `/health/*` and `/node/drain`. They live on the **operations port** (`operations.port`, default 9090, always open) and have **no authentication** there (decisions D63 and D177): whoever installs the node protects the port with the network. One optional restriction on top of it:
 
 | Parameter | Effect |
 |---|---|
-| `operations.port` | Serves the routes on a **port of their own**; they **cease to exist** on the client port (`404`) |
-| `operations.allowed-ips` | List of authorized IPs and CIDR ranges. From outside the list: `403 ops.ip-not-allowed`. Applies on any port that serves the routes |
+| `operations.allowed-ips` | List of authorized IPs and CIDR ranges. From outside the list: `403 ops.ip-not-allowed`. Applies to the operations port |
 
 | Configuration | Behavior |
 |---|---|
-| None (default) | The routes stay **on the client API port**, unrestricted |
-| Only `operations.port` | Separate port, no filter: whoever reaches the port accesses |
-| Only `operations.allowed-ips` | Same port as the API, but only the listed IPs access these routes |
-| Both | Separate port, accessible only by the listed IPs |
+| Default | The operations port answers whoever reaches it: the network is the only protection |
+| With `operations.allowed-ips` | Only the listed IPs access the operations port |
 
-- **Production:** use at least the IP list (Prometheus, load balancer, operators) and, ideally, the separate port: `/metrics` exposes topic names and tags and `/health/cluster` exposes the topology.
+**Scraping the metrics: which port, with or without a token.**
+
+| Where the collector runs | Port | Authentication |
+|---|---|---|
+| Inside the infrastructure (Prometheus, Telegraf, OpenTelemetry Collector) | `operations.port` (9090), `GET /metrics` | **None**: this is the door for collectors |
+| Outside, or any place that only reaches the client port | `api.port` (8080), `GET /metrics` | **`Authorization: Bearer <token>`** with **any** valid token (no particular permission) |
+
+The probes `GET /health/live` and `GET /health/ready` need no token on either port, because an orchestrator's probe cannot send one. The other operations routes (`/health/cluster`, `/metrics/topics/*`, `/node/drain`, backup) exist only on the operations port; outside, the client API has their equivalents behind a token (`GET /cluster/status`, `/stats/topics*`, `/nodes/{nodeId}/…`).
+
+- **Production:** use the IP list (Prometheus, load balancer, operators) and keep the operations port out of any public network or ingress: `/metrics` exposes topic names and tags and `/health/cluster` exposes the topology.
 - The list must include the **load balancer** that calls `/health/ready` and the **Prometheus or Collector** that scrapes.
 - The IP evaluated is the **client IP resolved** by the same rule as the rate limit: the connection's or, with `client-ip.headers.enabled`, the header's (`X-Forwarded-For`), accepted only from `client-ip.trusted-proxies`. **With an empty proxy list, any client forges the header** and bypasses the IP list (PRB-015).
 - OTLP sending is an **outgoing** connection and does not go through these restrictions. The `/cluster/*` routes stay on the cluster port and are not affected.
-- The node **does not start** if `operations.port` is in use or if the list has an invalid entry.
+- The node **does not start** if one of the three ports is in use or repeated, or if the list has an invalid entry.
 - Pending item **D76:** `kubelet` and the load balancer call `/health/*` from IPs that may not be in the list; today the list filters the health checks too.
 
 ## Traces

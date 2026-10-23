@@ -59,10 +59,10 @@ Each one is its own *listener*, so the network can restrict access to each one s
 | Port | Key | Default | Router (`http/mod.rs`) | Layers the call goes through |
 |---|---|---|---|---|
 | Client | `api.port` | 8080 | `client_router` | authenticate → rate limit → refusal by drain/synchronization/failure → authorize |
-| Operations | `operations.port` | — | `operations_router` | IP filter (`operations.allowed-ips`), rate limit per IP |
+| Operations | `operations.port` | 9090 | `operations_router` | IP filter (`operations.allowed-ips`), rate limit per IP; **no token** |
 | Cluster | `cluster.port` | 8081 | `cluster_router` | mutual TLS; only `/cluster/*` |
 
-- Without `operations.port`, the operations routes are served **also on the client port**.
+- The three ports are **always open** and must differ. The operations routes live **only** on the operations port, with one exception: the client port also serves `/health/live` and `/health/ready` (no token, for probes that cannot send one) and `/metrics` (any valid token). `/metrics` is therefore open on the operations port, for the collectors inside the infrastructure, and behind a token on the client port, for whoever reaches the node from outside. `taba-cli` only uses the client port.
 - A node alone (`replication.factor=1`) opens the cluster port the same way; no other node just uses it.
 - `/tokens` routes only exist with authentication on; otherwise they answer `404`.
 - A node in drain, synchronization or failure **does not serve** client calls: in a cluster it **forwards** them to another node (through the destination's cluster port) and, with no destination, answers `503` with `Retry-After`. The reads that say what the cluster is doing (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` and the `/nodes/{nodeId}/…` calls, which include returning a node) are the exception: they are forwarded while another node can take them, and otherwise answered by the node itself, so a stopped cluster can still be inspected. In drain the node only validates the root token (the other tokens are data).

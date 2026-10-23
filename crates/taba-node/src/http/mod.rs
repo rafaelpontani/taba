@@ -1,6 +1,6 @@
 //! The three HTTP APIs, each on a listener of its own (doc 06, section 8.0): client
-//! (`api.port`), operations (`operations.port`, or the API port) and cluster
-//! (`cluster.port`). The cluster port's mTLS comes in at step 16.
+//! (`api.port`), operations (`operations.port`) and cluster (`cluster.port`). The cluster port's
+//! mTLS comes in at step 16.
 
 pub mod auth;
 pub mod backup;
@@ -155,13 +155,15 @@ fn answers_in_any_state(method: &axum::http::Method, path: &str) -> bool {
     }
 }
 
-/// Client API. Without `operations.port`, it also serves the operations routes. The `/tokens` routes
-/// only exist with authentication on (otherwise they answer `404`).
+/// Client API. The `/tokens` routes only exist with authentication on (otherwise they answer `404`).
+/// Of the monitoring routes it serves `/health/live` and `/health/ready`, which need no token (the
+/// orchestrator's probes do not send one), and `/metrics`, which takes any valid token; the same
+/// routes, without a token, live on the operations port ([`operations_router`]).
 ///
 /// The layers, from the outside in: who is calling (`authenticate`), the rate limit, the drain
 /// refusal and authorization (`authorize`). The rate limit comes after knowing who is calling, so the
 /// token becomes the counter's key, and before refusing, so the `401` also counts by IP.
-pub fn client_router(state: AppState, with_operations: bool) -> Router {
+pub fn client_router(state: AppState) -> Router {
     let mut routes = Router::new()
         .merge(topics::routes())
         .merge(messages::routes());
@@ -169,14 +171,12 @@ pub fn client_router(state: AppState, with_operations: bool) -> Router {
         routes = routes.merge(tokens::routes());
     }
     // Who the token is, the nodes and the cluster. The cluster-wide routes share their names with the
-    // operations API's, which already serve them on this port when it has no port of its own.
+    // operations API's, and both ports serve them.
     routes = routes
         .merge(auth::routes())
         .merge(nodes::routes())
-        .merge(topic_stats::client_routes());
-    if !with_operations {
-        routes = routes.merge(nodes::cluster_wide());
-    }
+        .merge(topic_stats::client_routes())
+        .merge(nodes::cluster_wide());
     let routes = routes
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -191,11 +191,23 @@ pub fn client_router(state: AppState, with_operations: bool) -> Router {
             state.clone(),
             auth::authenticate,
         ));
-    let routes = if with_operations {
-        routes.merge(operations::routes(&state))
-    } else {
-        routes
-    };
+    let mut routes = routes.merge(operations::probe_routes());
+    // `/metrics` describes this node, so it stays out of the drain refusal (which would forward it to another
+    // node); it only asks for a token. With `telemetry.prometheus.enabled` off the route does not exist, and a
+    // layer on an empty router is an error in axum.
+    if state.telemetry.prometheus_enabled {
+        routes = routes.merge(
+            operations::metrics_route(&state)
+                .route_layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    auth::authorize,
+                ))
+                .route_layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    auth::authenticate,
+                )),
+        );
+    }
     common::finish(routes, state)
 }
 

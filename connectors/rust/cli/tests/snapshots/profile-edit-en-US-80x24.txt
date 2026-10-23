@@ -2,10 +2,10 @@
  1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │Name             Address                       Token        Default           │
+│  dev            http://localhost:8080         file         ○                 │
 │ ┌ Edit the profile ────────────────────────────────────────────────────────┐ │
-│ │▶ Name                   lab▏                                             │ │
-│▶│  Address (url)          https://lab.example                              │ │
-│ │  Operations address                                                      │ │
+│▶│▶ Name                   lab▏                                             │ │
+│ │  Address (url)          https://lab.example                              │ │
 │ │  Token file                                                              │ │
 │ │  Token (kept in the file)                                                │ │
 │ │  CA certificate file                                                     │ │

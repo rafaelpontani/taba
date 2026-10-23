@@ -68,12 +68,29 @@ fn unix_ms(at: SystemTime) -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+/// `/health/live` and `/health/ready`: what the client port also serves, with no token.
+pub fn probe_routes() -> Router<AppState> {
+    Router::new()
+        .route("/health/live", get(live))
+        .route("/health/ready", get(ready))
+}
+
+/// `GET /metrics` alone (nothing if `telemetry.prometheus.enabled` is off): the client port serves it
+/// behind a token, the operations port without one.
+pub fn metrics_route(state: &AppState) -> Router<AppState> {
+    let mut routes = Router::new();
+    if state.telemetry.prometheus_enabled {
+        routes = routes.route("/metrics", get(super::metrics::prometheus));
+    }
+    routes
+}
+
 /// The operations routes without the IP filter and the rate limit: what a node serves to itself and to
 /// the other members (`/nodes/{nodeId}/...` of the client API).
 fn bare_routes(state: &AppState) -> Router<AppState> {
-    let mut routes = Router::new()
-        .route("/health/live", get(live))
-        .route("/health/ready", get(ready))
+    Router::new()
+        .merge(probe_routes())
+        .merge(metrics_route(state))
         .route("/health/cluster", get(cluster_health))
         .route(
             "/node/drain",
@@ -81,12 +98,7 @@ fn bare_routes(state: &AppState) -> Router<AppState> {
         )
         .merge(super::topic_stats::routes())
         .merge(super::backup::routes())
-        .merge(super::restore::routes());
-    // With `telemetry.prometheus.enabled` off the route does not exist (`404`).
-    if state.telemetry.prometheus_enabled {
-        routes = routes.route("/metrics", get(super::metrics::prometheus));
-    }
-    routes
+        .merge(super::restore::routes())
 }
 
 /// The operations routes as a router of their own, with no IP filter or rate limit: the calls that come

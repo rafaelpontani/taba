@@ -325,6 +325,15 @@ Routes for **any valid token** (with authentication off, everyone). They show wh
 | `GET /nodes` | `collectedAt`, `membersVersion`, `partial`, `missingNodes` and `items`: one `Node` per member — `nodeId`, `self` (it is the node that answered), `reachable`, `state` (`active`, `syncing`, `drained`...), `drainState`, `version`, `memberState`. **No addresses.** A node that left by drain shows `state: "drained"`, **in the answer of any node**: each node only remembers the departures it saw, and one that returns from a drain starts with an empty memory, so the list unites what every member knows. A drained node that came back has a new id and is no longer listed under the old one |
 | `GET /stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | The same DTOs and parameters as `/metrics/topics*` of the operations API ([17-operations-api.md](17-operations-api.md)), but **of the whole cluster**, with `partial` and `missingNodes`. The list only has the topics **within the token's prefixes** (as `GET /topics` does); `/stats/topics/{topic}` outside them is `403 auth.out-of-scope`. `?scope=node` gives the view of the node that answers alone |
 
+### Probes and metrics on this port
+
+| Route | Token | Answers |
+|---|---|---|
+| `GET /health/live`, `GET /health/ready` | **none** | The same `HealthResponse` as on the operations port ([17-operations-api.md](17-operations-api.md)). They need no token because the probe of an orchestrator cannot send one |
+| `GET /metrics` | **any valid token** (no particular permission; `401` without one) | The Prometheus text of **the node that answers** (`Accept: application/openmetrics-text` asks for OpenMetrics), as `GET /nodes/{nodeId}/metrics` gives for a chosen node. `404 route.not-found` with `telemetry.prometheus.enabled` off |
+
+> **Metrics and authentication, by port.** `/metrics` has no authentication on the **operations port** (default 9090), which is the door for the collectors **inside** the infrastructure: Prometheus and Telegraf scrape `:9090/metrics` with no credentials. On the **client port** (default 8080, or the value of `api.port`) the same route asks for a token, because that port is reachable from outside. Point a collector that lives outside to the client port and give it a token (`Authorization: Bearer …`); point the ones inside to the operations port. A node in drain only validates the root token, so a plain token is refused on this route while the node drains (PRB-069); the operations port is not affected.
+
 ### Consolidated reads (`partial` and `missingNodes`)
 
 `GET /nodes`, `GET /cluster/status`, `GET /cluster/backup` and `GET /stats/topics…` answer for the **whole cluster**. Each node says what **it** sees, on the cluster API ([18-cluster-api.md](18-cluster-api.md)); the node that receives the call asks every member at once (itself without the network) and joins the answers. Each call has a deadline of 5 s (fixed). A node that does not answer in time does **not** fail the read: the response is `200` and says it is incomplete.
@@ -360,7 +369,7 @@ The operations API ([17-operations-api.md](17-operations-api.md)) has no token a
 | `GET /nodes/{nodeId}/metrics` | The node's Prometheus text (what `GET /metrics` gives) |
 | `GET`, `POST`, `DELETE /nodes/{nodeId}/drain` | Status, start and return from the drain of that node: what `/node/drain` does |
 | `GET /nodes/{nodeId}/backup`, `POST /nodes/{nodeId}/backup/flush` | The S3 backup of that node (`422 backup.not-configured` without it) |
-| `POST /cluster/backup/flush`, `POST /cluster/stop` | The whole cluster: the same as the operations API's. Only mounted when the operations API has a port of its own; without `operations.port` the operations routes already serve these names on the client port, with no token |
+| `POST /cluster/backup/flush`, `POST /cluster/stop` | The whole cluster: the same as the operations API's, here behind a token (`POST /cluster/restore/force` and `POST /cluster/stop` ask for the root token) |
 
 Starting or killing **processes** is not offered: it is the orchestrator's job (`drain` stops the node from receiving, and the return brings it back as a new node).
 

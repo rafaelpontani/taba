@@ -75,7 +75,7 @@ Aplicações **publicam mensagens** em **tópicos**; o Taba as guarda em vários
 |---|---|---|---|
 | **Cliente** (`api.port`) | 8080 | Aplicações | Tópicos, mensagens, tokens |
 | **Cluster** (`cluster.port`) | 8081 | Outros nós | Rotas `/cluster/*` e o canal permanente; TLS mútuo |
-| **Operação** (`operations.port`) | sem padrão (sem a chave, as rotas de operação ficam na porta de cliente) | Operador, balanceador, Prometheus | `/health/*`, `/metrics*`, drain |
+| **Operação** (`operations.port`) | 9090 | Coletores e orquestrador dentro da infraestrutura (Prometheus, Telegraf, sondas); sem token | `/health/*`, `/metrics*`, drain |
 
 Detalhes em [15-api-visao-geral.md](15-api-visao-geral.md).
 

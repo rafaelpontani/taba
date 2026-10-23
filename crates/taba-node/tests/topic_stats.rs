@@ -616,11 +616,11 @@ async fn the_json_routes_count_in_the_ops_category_and_metrics_does_not() {
         .env("TABA_RATELIMIT_BURST", "1")
         .start()
         .await;
-    assert_eq!(node.client_get("/metrics/topics").await.status(), 200);
-    let limited = node.client_get("/metrics/topics").await;
+    assert_eq!(node.client_get_ops("/metrics/topics").await.status(), 200);
+    let limited = node.client_get_ops("/metrics/topics").await;
     assert_eq!(limited.headers()["retry-after"], "1");
     assert_eq!(error_code(limited, 429).await, "rate-limit.exceeded");
-    assert_eq!(node.client_get("/metrics").await.status(), 200);
+    assert_eq!(node.client_get_ops("/metrics").await.status(), 200);
     assert_eq!(node.client_get("/health/live").await.status(), 200);
     node.shutdown().await;
 }

@@ -11,7 +11,9 @@ sources: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operati
 
 > Common conventions: [15-api-overview.md](15-api-overview.md). The meaning of the metrics and conditions: [13-observability.md](13-observability.md). What to do about them: [23-operations.md](23-operations.md).
 
-**Port:** `operations.port` or, if absent, the **client port**. **Authentication: none**; protection is by network (own port, `operations.allowed-ips`). IP outside the list: `403 ops.ip-not-allowed`. Without `operations.port`, these routes **do not use the client token**.
+**Port:** `operations.port` (default **9090**, always open). **Authentication: none**; protection is by network (own port, `operations.allowed-ips`). IP outside the list: `403 ops.ip-not-allowed`. These routes exist **only** on this port, with two exceptions that the client port also serves: `/health/live` and `/health/ready` (no token) and `/metrics` (any valid token, [16-client-api.md](16-client-api.md)).
+
+> **Who uses this API.** The collectors and the orchestrator **inside** the infrastructure: Prometheus, Telegraf, the probes of Kubernetes, the load balancer. `taba-cli` and any client that lives outside it never call it: they use the client API, which has the same information behind a token (`/stats/topics*`, `/cluster/status`, `/nodes/{nodeId}/…`).
 
 > The `/node/drain` routes apply **only to the node that receives the call**: the operator calls them on the node (operations port directly), **not through the load balancer**.
 
@@ -173,7 +175,7 @@ Verified on a 3-node cluster: `drain start` took the node to `drained` in ~4 s a
 
 The feature is optional ([33-s3-backup.md](33-s3-backup.md)). These routes, like `/node/drain`, do not use a token: protection is by network. Without `backup.s3.bucket`, `GET /node/backup` and the two *flush* routes answer `422` `backup.not-configured`; `POST /cluster/stop` still drains the nodes.
 
-> These routes live in the **operations API** (the operations port, or the client port without `operations.port`), **not** on the cluster port: node-to-node calls use `/cluster/backup/flush`, `/cluster/backup/stop` and `/cluster/backup/saved` on the cluster port (mTLS), described in [18-cluster-api.md](18-cluster-api.md).
+> These routes live in the **operations API** (the operations port), **not** on the cluster port: node-to-node calls use `/cluster/backup/flush`, `/cluster/backup/stop` and `/cluster/backup/saved` on the cluster port (mTLS), described in [18-cluster-api.md](18-cluster-api.md).
 
 ### `GET /node/backup`: the state
 

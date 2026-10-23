@@ -9,7 +9,16 @@ use reqwest::Response;
 use serde_json::json;
 
 async fn get(node: &TestNode, path: &str, forwarded: Option<&str>) -> Response {
-    let mut request = node.client.get(node.client_url(path));
+    // The monitoring routes live on the operations port; the rest on the client port.
+    let url = if path.starts_with("/health")
+        || path.starts_with("/metrics")
+        || path.starts_with("/node/")
+    {
+        node.operations_url(path)
+    } else {
+        node.client_url(path)
+    };
+    let mut request = node.client.get(url);
     if let Some(ip) = forwarded {
         request = request.header("x-forwarded-for", ip);
     }

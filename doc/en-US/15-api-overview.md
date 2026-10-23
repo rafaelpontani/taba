@@ -18,7 +18,7 @@ sources: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, cr
 | API | Port (default) | Who uses it | Authentication | Document |
 |---|---|---|---|---|
 | **Client** | `api.port` (8080) | Applications (producers and consumers) | Optional token | [16](16-client-api.md) |
-| **Operations** | `operations.port` (or the client port) | Operator, Prometheus, orchestrator | None (network) | [17](17-operations-api.md) |
+| **Operations** | `operations.port` (9090) | Collectors and orchestrator **inside** the infrastructure; never `taba-cli` | None (network) | [17](17-operations-api.md) |
 | **Cluster** | `cluster.port` (8081) | **Only the other nodes** | Mutual TLS | [18](18-cluster-api.md) |
 
 Each API has **its own audience** and the network restricts each port. The client port answers `404 route.not-found` to `/cluster/*`; the cluster port, to anything that is not `/cluster/*`.

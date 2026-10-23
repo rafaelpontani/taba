@@ -33,8 +33,8 @@ Receita completa e executável em [02-inicio-rapido.md](02-inicio-rapido.md). Em
 **Verifique:**
 
 ```bash
-taba-cli health cluster -o table        # 3 nós ativos, "conditions" vazia, worstCondition "ok"
-taba-cli health ready                   # {"health":"ready"} em cada nó
+taba-cli cluster status -o table        # 3 nós ativos, "conditions" vazia, worstCondition "ok"
+taba-cli node list -o table                # todos os nós com estado "active"; a sonda é curl http://no:9090/health/ready
 ```
 
 Esperado num cluster saudável: `summary.members.active = N`, `quorumAvailable: true`, `syncingBlocks: 0`, `conditions: []`.
@@ -56,7 +56,7 @@ Esperado num cluster saudável: `summary.members.active = N`, `quorumAvailable: 
 
 1. Adicione um nó da versão nova (Compose: aumente as réplicas com a imagem nova; Kubernetes: o rollout acrescenta o pod novo). Ele entra como **nó novo** e sincroniza.
 2. Quando ele está `active`, o cluster drena o membro mais antigo. O drain seguinte só começa depois que o anterior saiu da tabela, e **só se pelo menos 3 nós continuarem ativos** depois dele: num cluster de 3, suba primeiro o nó novo (4 ativos) para que um antigo possa sair.
-3. Repita até não restar nó de versão anterior e confira `health cluster` (sem condições).
+3. Repita até não restar nó de versão anterior e confira `taba-cli cluster status` (sem condições).
 
 Só **um** nó age: o de menor `nodeId` entre os da versão mais nova, para que dois nós nunca peçam drains diferentes ao mesmo tempo. Um nó de versão **anterior** que entra não drena os mais novos; os novos o retiram. Um membro que não publica versão (uma versão anterior do programa) conta como o mais antigo.
 
@@ -71,12 +71,15 @@ O `stop_grace_period` (Compose) ou `terminationGracePeriodSeconds` (Kubernetes, 
 ## Retirar um nó de propósito (drain)
 
 ```bash
-# no nó a retirar, pela porta de operação DELE (não pelo balanceador)
-taba-cli drain start       # POST /node/drain
-taba-cli drain status      # drainState: draining → drained; pendingMessages cai a 0
+# de fora, pela API de cliente (token admin): a CLI nomeia o nó, qualquer que seja o escolhido pelo balanceador
+taba-cli node list                          # os ids
+taba-cli drain start --node <id>            # POST /nodes/{id}/drain
+taba-cli drain status --node <id>           # drainState: draining → drained; pendingMessages cai a 0
+# de dentro da infraestrutura, na porta de operação do próprio nó (não pelo balanceador)
+curl -s -X POST http://no:9090/node/drain
 ```
 
-Verificado: `drained` em ~4 s; `/health/ready` passa a `503`; o cluster fica com os nós restantes ativos e sem condições. O nó **continua de pé** (repassando chamadas de cliente a outro nó); pare o processo quando quiser. Para **voltar**: `taba-cli drain cancel` — antes da saída cancela; depois da saída **volta como nó novo** (em ~20 s o cluster voltou a 3 ativos, sem condições).
+Verificado: `drained` em ~4 s; `/health/ready` passa a `503`; o cluster fica com os nós restantes ativos e sem condições. O nó **continua de pé** (repassando chamadas de cliente a outro nó); pare o processo quando quiser. Para **voltar**: `taba-cli drain cancel --node <id>` — antes da saída cancela; depois da saída **volta como nó novo** (em ~20 s o cluster voltou a 3 ativos, sem condições).
 
 Sair por drain **não** gera freezing. Se o drain estourar `drain.timeout` pedido pela API, o nó fica `draining` até alguém chamar `drain cancel` (D75).
 
@@ -133,10 +136,10 @@ O nó deixa de atender **chamadas de cliente** (repassa a outro nó, ou `503 nod
 
 | Código | Causa provável | Ação |
 |---|---|---|
-| `cluster.quorum-unavailable` | Sem nós para fechar o quórum, ou o primário do bloco/grupo fora | Veja `health cluster`; repita após `Retry-After` |
+| `cluster.quorum-unavailable` | Sem nós para fechar o quórum, ou o primário do bloco/grupo fora | Veja `taba-cli cluster status`; repita após `Retry-After` |
 | `cluster.commit-timeout` | Registro confirmado, commit lento | Em tópico/token a operação **vai se completar**; consulte antes de repetir |
 | `cluster.node-syncing` / `cluster.node-draining` | O nó atendeu mas não achou outro para repassar | Tire o nó do balanceador; repita |
-| `fifo.primary-unavailable` | O primário do grupo FIFO fora, sincronizando ou esgotou tentativas | Veja `health cluster`; repita |
+| `fifo.primary-unavailable` | O primário do grupo FIFO fora, sincronizando ou esgotou tentativas | Veja `taba-cli cluster status`; repita |
 
 ## Certificados: rotação sem reiniciar
 
@@ -207,7 +210,7 @@ O repositório tem um **chart Helm** (`deploy/helm/taba/`, [34-chart-helm.md](34
 docker compose up -d                               # sobe tudo (imagens públicas; TABA_VERSION escolhe a tag)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d   # o mesmo, construindo do repositório
 docker compose ps                                  # saúde dos nós
-docker compose run --rm taba-cli health cluster -o table
+docker compose run --rm taba-cli cluster status -o table
 docker compose up -d --scale taba=4                # mais nós: o serviço `taba` tem as réplicas (nós 2 em diante)
 docker compose logs -f taba-0                      # logs coloridos (`taba` mostra as réplicas)
 docker/cluster.sh stop taba-2  / start taba-2      # parada normal (drain) e volta; taba-N é a réplica N (taba-0 é o seed)

@@ -14,9 +14,8 @@ use crate::tui::screens::cluster::moved;
 pub mod view;
 
 /// The fields of a profile the form edits; the others (`output`, the timeouts) are kept as they are.
-pub const FORM_FIELDS: [(&str, &str); 5] = [
+pub const FORM_FIELDS: [(&str, &str); 4] = [
     ("url", "editor.field.url"),
-    ("ops-url", "editor.field.ops-url"),
     ("token-file", "editor.field.token-file"),
     ("token", "editor.field.token"),
     ("ca-file", "editor.field.ca-file"),

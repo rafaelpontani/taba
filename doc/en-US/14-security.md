@@ -19,7 +19,7 @@ Taba separates the audiences **by port** (not only by path), so the network (fir
 |---|---|---|
 | **Client** (`api.port`, 8080) | Applications | Optional **token** (turns on by itself with a root token) + rate limit. Use HTTPS on the load balancer |
 | **Cluster** (`cluster.port`, 8081) | **Only the other nodes** | **Mutual TLS** with the cluster certificate. Never expose outside the nodes' network |
-| **Operations** (`operations.port`) | Operator, Prometheus, load balancer | **No authentication**: network protection only (own port + `operations.allowed-ips`) |
+| **Operations** (`operations.port`, 9090) | Collectors and orchestrator inside the infrastructure | **No authentication**: network protection only (own port + `operations.allowed-ips`) |
 
 ![Trust zones of the three ports](../diagrams/img/en-US/security-zones.svg)
 
@@ -178,7 +178,16 @@ For calls counted **per IP** (and for `operations.allowed-ips`), the IP may come
 
 ## Operations routes: network protection
 
-`/metrics`, `/metrics/topics/*`, `/health/*` and `/node/drain` have **no authentication** (decision D63). Use **the own port** (`operations.port`), the **network** (security group, `NetworkPolicy`) and, in addition, `operations.allowed-ips` (403 `ops.ip-not-allowed`). Beware of `POST /node/drain`: **anyone who reaches the operations port can take a node out of the cluster**. Details in [13-observability.md](13-observability.md).
+`/metrics`, `/metrics/topics/*`, `/health/*` and `/node/drain` have **no authentication** on the operations port (decision D63). It is the one port the node always opens for them (`operations.port`, 9090): protect it with the **network** (security group, `NetworkPolicy`) and, in addition, `operations.allowed-ips` (403 `ops.ip-not-allowed`). Beware of `POST /node/drain`: **anyone who reaches the operations port can take a node out of the cluster**. Details in [13-observability.md](13-observability.md).
+
+**Metrics and authentication, by port** (decision D177):
+
+| Port | `/metrics` | `/health/live`, `/health/ready` | Rest of the operations routes |
+|---|---|---|---|
+| Operations (9090) | no token | no token | no token |
+| Client (8080) | **any valid token** (`401` without one) | no token (probes do not send one) | do not exist (`404`) |
+
+So a collector inside the infrastructure scrapes `:9090/metrics` with no credentials, and whoever has to read the metrics from outside uses the client port with a token. `taba-cli` never calls the operations port: it lives outside the infrastructure and reaches the cluster only through the client API. A node in drain only validates the root token, so a plain token gets `401` on the client port's `/metrics` while the node drains (PRB-069); the operations port is not affected.
 
 ## Summary of known risks
 

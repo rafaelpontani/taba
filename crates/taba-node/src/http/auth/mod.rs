@@ -247,7 +247,7 @@ fn need(method: &Method, route: &str) -> Option<Need> {
         // The tokens (an `admin` token itself is only created, changed and revoked by the root: see `http::tokens`).
         "/tokens" | "/tokens/{id}" => Some(Need::Permission(Permission::Admin)),
         // What any valid token sees within its scope: who it is, the nodes, the topic statistics.
-        "/auth/me" | "/nodes" => Some(Need::Any),
+        "/auth/me" | "/nodes" | "/metrics" => Some(Need::Any),
         "/stats/topics" | "/stats/topics/{topic}" | "/stats/topics/{topic}/groups" => {
             Some(Need::Any)
         }

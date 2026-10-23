@@ -51,9 +51,9 @@ pub fn routes() -> Router<AppState> {
         .route("/nodes/{node_id}/backup/flush", post(backup_flush))
 }
 
-/// The routes that apply to the whole cluster and have the same name as the operations API's. They are only
-/// mounted when the operations API has a port of its own: without it, those routes already exist on the
-/// client port (with no token), and mounting them twice would be a conflict.
+/// The routes that apply to the whole cluster and have the same name as the operations API's: here behind a
+/// token (`admin`, or the root token for the stop and the forced restoration), there on the operations port with
+/// none.
 pub fn cluster_wide() -> Router<AppState> {
     Router::new()
         .route("/cluster/backup/flush", post(backup::cluster_flush))

@@ -145,7 +145,7 @@ The Cluster tab shows, from top to bottom, the active **conditions** of the clus
 - **Node detail** (`i`): id, state, drain, version, start and uptime; memory against the limit (yellow at 80 %, red at 95 %); messages in memory and on disk; the node's signals (channels, quorum, blocks being synchronized, below replication, frozen nodes); and the **S3 backup**, only when configured (reachable, pending, last success, segments).
 - **Drain** (`d`): shows what happens and follows `pendingMessages` until `drained`. A node in drain or drained offers **return** (`u`); it comes back as a new node. A **single-node** cluster in drain refuses everything, including its own return (`503 cluster.node-draining`): a server limit (PRB-061).
 - **Backup flush** (`b` one node, `B` all): shows a report per node (complete or not, pending, timed out). Without S3 configured the server answers `422 backup.not-configured` and the interface says so.
-- **Stop the cluster** (`S`): asks for the **cluster name typed**. The nodes become `drained` and stay running as processes; stopping them is up to the orchestrator. It needs the operations API on its own port; without it the key appears dimmed, with the reason.
+- **Stop the cluster** (`S`): asks for the **cluster name typed**. The nodes become `drained` and stay running as processes; stopping them is up to the orchestrator.
 - **Charts of the cluster** (`m`): a **list of six indicators on the left** (memory against the limit, ready messages, messages on disk, requests in flight, `429` rejections, channel RTT), each with its current value; the chart of the indicator under the cursor is drawn beside it. `↑ ↓` choose, `Enter` gives it the **full screen** and `Esc` goes back (first from the full screen, then from the charts).
 - **With an ordinary token** the tab shows only the list of nodes and replaces the rest with a notice that the token must be `admin` or the root.
 
@@ -201,7 +201,7 @@ A table with name, id, permissions, prefixes and expiry; the **secret is never i
 
 The list shows the profiles of `config.yml`, with the default (●) and the one in use. `Enter` opens the menu; `c` **connects**: the next calls go to the profile's server, the histories and the screens start over, and a reply still coming from the old server is discarded.
 
-- **New** (`n`) and **edit** (`e`): name, `url`, `ops-url`, `token-file`, `token`, `ca-file` and the default-profile box; the other fields of the profile (`output` and the timeouts) are kept as they are. `Ctrl+t` tests the values **not yet saved**.
+- **New** (`n`) and **edit** (`e`): name, `url`, `token-file`, `token`, `ca-file` and the default-profile box; the other fields of the profile (`output` and the timeouts) are kept as they are. `Ctrl+t` tests the values **not yet saved**.
 - **Default** (`d`), **remove** (`Del` or `x`, with a confirmation on **Cancel**) and **test** (`t`, which does `GET /topics?limit=1`).
 - Saving only changes `default` and `profiles` in the file: `ui` and `history` stay as they are. The file is rewritten whole and **comments made by hand are not preserved**.
 - A token typed in the form goes to the file **as typed** (`config.yml` is not encrypted) and the screen never draws it (it shows as dots); the form recommends the `token-file`.
@@ -240,7 +240,7 @@ Each line has a name in the legend **and** its own marker, not just color. The t
 | `taba-cli tui` prints the help and exits with `2` | There is no terminal (input or output redirected); run it on a terminal |
 | "I need at least 60 columns by 16 lines" | Enlarge the window; the screen comes back by itself |
 | The Cluster tab only lists the nodes and asks for the root token | The profile's token is neither `admin` nor root; use `o` for another profile |
-| A key appears dimmed with a reason on the line below | The token lacks the permission, the node is not in a state that accepts the action, or the operations port is missing |
+| A key appears dimmed with a reason on the line below | The token lacks the permission, the node is not in a state that accepts the action |
 | Strange symbols instead of icons and bars | `TABA_CLI_ASCII=1` |
 | No colors | `NO_COLOR` is set |
 | "incomplete: node X did not answer" | A node did not answer in 5 s; the numbers are those of the other nodes |
