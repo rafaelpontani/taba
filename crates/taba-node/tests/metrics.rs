@@ -47,7 +47,7 @@ fn port(node: &TestNode) -> u16 {
 /// UC: UC-OPS-006, UC-OPS-016, UC-OPS-045, UC-DEV-011
 #[tokio::test]
 async fn metrics_is_the_prometheus_text_of_this_node_only() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     node.clock.advance(Duration::from_secs(90));
     let response = node.client_get("/metrics").await;
     assert_eq!(response.status(), 200);
@@ -72,10 +72,6 @@ async fn metrics_is_the_prometheus_text_of_this_node_only() {
     );
     let connections = format!("taba_node_connections{{server_port=\"{}\"}}", port(&node));
     assert!(series(&text, &connections).unwrap() >= 1.0, "{text}");
-    assert!(
-        !text.contains("taba_cluster_"),
-        "without a cluster there are no cluster metrics"
-    );
     assert!(text.contains("# TYPE taba_node_state gauge\n"));
 
     let open = node
@@ -99,7 +95,7 @@ async fn metrics_is_the_prometheus_text_of_this_node_only() {
 /// UC: UC-OPS-016
 #[tokio::test]
 async fn on_linux_the_process_metrics_have_memory_threads_and_files() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let text = node.metrics().await;
     assert!(series(&text, "process_memory_usage_bytes").unwrap() > 0.0);
     assert!(series(&text, "process_thread_count").unwrap() >= 1.0);
@@ -137,7 +133,7 @@ async fn metrics_is_404_when_off_and_403_for_an_ip_outside_the_list() {
 /// UC: UC-OPS-012, UC-OPS-041
 #[tokio::test]
 async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
     assert_eq!(publish(&node, "orders", "", "a").await.status(), 201);
     assert_eq!(publish(&node, "orders", "", "b").await.status(), 201);
@@ -240,7 +236,7 @@ async fn storage_metrics_count_overflow_and_reads_by_tier() {
 /// UC: UC-RET-018, UC-RET-007
 #[tokio::test]
 async fn redeliveries_dead_letters_and_expirations_are_counted() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(
         &node,
         json!({ "name": "orders", "type": "queue", "maxDeliveries": 2 }),
@@ -275,7 +271,7 @@ async fn redeliveries_dead_letters_and_expirations_are_counted() {
 /// UC: UC-GRP-017
 #[tokio::test]
 async fn the_wait_is_measured_per_band_and_small_groups_wait_less() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
     for _ in 0..20 {
         publish(&node, "orders", "?groupId=big", "a").await;
@@ -436,7 +432,7 @@ mod authentication {
 /// UC: UC-AUT-036
 #[tokio::test]
 async fn without_authentication_there_are_no_auth_series() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     node.client_get("/topics").await;
     let text = node.metrics().await;
     assert!(!text.contains("taba_auth_"), "{text}");
@@ -446,7 +442,7 @@ async fn without_authentication_there_are_no_auth_series() {
 /// UC: UC-ENT-031
 #[tokio::test]
 async fn long_polling_is_counted_while_waiting_and_by_outcome() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
 
     let waiting = {
@@ -492,7 +488,7 @@ async fn long_polling_is_counted_while_waiting_and_by_outcome() {
 /// UC: UC-OPS-014
 #[tokio::test]
 async fn topic_metrics_are_off_by_default() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
     publish(&node, "orders", "", "a").await;
     let text = node.metrics().await;
@@ -668,7 +664,7 @@ async fn the_resource_attributes_come_from_the_otel_variables_and_the_node() {
     )));
     node.shutdown().await;
 
-    let plain = TestNode::development().await;
+    let plain = TestNode::single().await;
     let text = plain.metrics().await;
     assert!(text.contains("service_name=\"taba\""));
     plain.shutdown().await;
@@ -677,7 +673,10 @@ async fn the_resource_attributes_come_from_the_otel_variables_and_the_node() {
 /// UC: UC-ARM-009, UC-OPS-018
 #[tokio::test]
 async fn free_disk_space_is_a_metric_and_below_the_minimum_is_storage_pressure() {
-    let node = TestNode::development().await;
+    let node = TestNode::builder()
+        .env("TABA_HEALTH_SINGLE_NODE_CONDITION", "false")
+        .start()
+        .await;
     let text = node.metrics().await;
     assert!(series(&text, "taba_storage_disk_free_bytes").unwrap() > 0.0);
     let health = node.stats("/health/cluster").await;
@@ -691,6 +690,7 @@ async fn free_disk_space_is_a_metric_and_below_the_minimum_is_storage_pressure()
     node.shutdown().await;
 
     let pressed = TestNode::builder()
+        .env("TABA_HEALTH_SINGLE_NODE_CONDITION", "false")
         .env("TABA_STATS_DISK_FREE_MIN", "1000000000000000")
         .start()
         .await;

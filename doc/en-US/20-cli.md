@@ -45,7 +45,7 @@ The parameters also come from the `TABA_*` variables; **the variable wins over t
 
 ```bash
 taba init --out ./secrets          # cluster certificate + root token
-TABA_MODE=development TABA_STORAGE_DIR=/tmp/taba-dev/taba taba   # one node to test
+TABA_REPLICATION_FACTOR=1 TABA_STORAGE_DIR=/tmp/taba-dev/taba taba   # one node to test
 ```
 
 The security of the artifacts created is in [14-security.md](14-security.md).
@@ -145,7 +145,7 @@ profiles:
     ca-file: /etc/ssl/taba-hml-ca.pem
 ```
 
-**Without configuration** the built-in default applies: `http://127.0.0.1:8080`, no token (enough for a local node in development mode).
+**Without configuration** the built-in default applies: `http://127.0.0.1:8080`, no token (enough for a local node in the one-node profile, with no root token).
 
 | Field | Default | Description |
 |---|---|---|

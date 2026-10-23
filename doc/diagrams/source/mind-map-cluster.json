@@ -458,7 +458,7 @@
     {
       "id": "cluster-d4-0x",
       "type": "database",
-      "label": "mode=development",
+      "label": "replication.factor=1",
       "sublabel": "detail",
       "pos": [
         745,
@@ -472,7 +472,7 @@
     {
       "id": "cluster-d4-1",
       "type": "security",
-      "label": "No vote or quorum",
+      "label": "Quorum of 1",
       "sublabel": "decision",
       "pos": [
         450,
@@ -500,7 +500,7 @@
     {
       "id": "cluster-t4",
       "type": "cloud",
-      "label": "Development mode",
+      "label": "One-node profile",
       "sublabel": "theme",
       "pos": [
         225,
@@ -514,7 +514,7 @@
     {
       "id": "cluster-d4-2",
       "type": "security",
-      "label": "Drain as save",
+      "label": "Every restart is a new node",
       "sublabel": "decision",
       "pos": [
         450,
@@ -528,7 +528,7 @@
     {
       "id": "cluster-d4-2x",
       "type": "database",
-      "label": "resumes from disk at startup",
+      "label": "old disk restored as new messages",
       "sublabel": "detail",
       "pos": [
         745,

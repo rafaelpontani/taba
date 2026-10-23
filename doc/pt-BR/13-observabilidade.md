@@ -291,6 +291,10 @@ Um alvo por nó: o Prometheus guarda uma série por nó. O total sai por agrega�
 | `quorum-lost` | **crítica** | Menos nós saudáveis que `cluster.vote.min-voters`: nenhuma exclusão se efetiva. **Não** é sobre durabilidade de mensagens |
 | `membership-divergent` | **crítica** | Tabelas de membros com **versões diferentes** entre nós |
 | `storage-pressure` | aviso | Espaço livre de `storage.dir` abaixo de `stats.disk.free-min` (sem valor, nunca dispara) |
+| `upgrade-stalled` | aviso | A atualização que retira versões anteriores parou num nó que não terminou o drain em `drain.timeout` mais 30 s |
+| `members-missing` | aviso | O tempo da sondagem dos IPs antigos (`cluster.restore.probe.timeout`) acabou e o cluster tem menos membros ativos que a tabela da vida anterior. Some quando a tabela completa |
+| `reduced-profile` | aviso | O nó roda o perfil de um nó com algo relaxado (`replication.factor=1`, `cluster.tls.enabled=false` ou `auth.dev-token`). Informativa: não derruba o `/health/ready`; `health.single-node-condition=false` a esconde |
+| `previous-life-pending` | aviso | O cluster ainda está sendo restaurado das vidas anteriores (a votação não fechou): as filas FIFO recebem e não entregam. Some quando a votação fecha ou o operador força |
 
 > **Como o nó calcula (provisório, D102–D104).** *Saudável* é este nó mais os pares com canal conectado. `quorum-lost` vale quando os saudáveis não alcançam `min(cluster.vote.min-voters, membros)` (com um nó só não há quem excluir). Uma réplica é *íntegra* quando o dono do bloco está `active` na tabela e o canal com ele está de pé. `under-replicated` aparece quando há mais blocos abaixo da replicação que abaixo do quórum; `syncing` quando algum dono de bloco está `syncing`. `membership-divergent` compara a versão da tabela de cada nó.
 
@@ -301,7 +305,7 @@ A degradação de replicação é propriedade do **cluster**, não do tópico: c
 ```bash
 curl -s localhost:9090/health/cluster
 # {"collectedAt":"…","conditions":[],"nodes":[{"nodeId":"…","reachable":true,"status":{
-#    "drainState":"active","mode":"development","state":"active","version":"0.1.0",
+#    "drainState":"active","state":"active","version":"0.1.0",
 #    "signals":{"blocksBelowQuorum":0,"blocksBelowReplication":0,"quorumAvailable":true,…},
 #    "storage":{"diskFreeBytes":9322598400,"diskMessages":0,"memoryMessages":0,…}}}],
 #  "partial":false,"scope":"cluster","summary":{"members":{"active":1},"membersVersion":0,
@@ -322,7 +326,7 @@ Ficam **fora** da exportação padrão e são lidas por rotas dedicadas ([17-api
 | `GET /metrics/topics/{topic}` | Detalhe de **um** tópico, com os maiores grupos |
 | `GET /metrics/topics/{topic}/groups` | Um grupo por linha |
 
-Exemplo (modo desenvolvimento):
+Exemplo (um nó só):
 
 ```bash
 curl -s localhost:9090/metrics/topics/pedidos
@@ -438,7 +442,7 @@ Logs **estruturados**: no `stdout` com `telemetry.logs.format` (`text`, padrão,
 | `401`/`403` (com o `id` do token, se houver; amostrado em volume) | `warn` / `debug` |
 | Drain iniciado, concluído, cancelado, nó que volta como novo | `info` |
 | Drain que estourou `drain.timeout` ou teve erro de I/O | `error` |
-| Partida em modo desenvolvimento: retomada ou limpeza de `storage.dir` | `info` / `warn` |
+| Partida com disco da vida anterior: posto de lado e restauração | `info` / `warn` |
 | Falha de bootstrap | `error` |
 | Início e fim de sincronização de bloco | `info` |
 | **Perda de mensagem** (ID, bloco, nós consultados) | `error` |

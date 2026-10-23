@@ -70,7 +70,7 @@ fontes: [doc/pt-BR]
 - **Falha:** canal cai → reconecta (3×) → **votação** (51%, ≥ 2 votantes) → desregistro → **freezing** (5 min)
 - **Retorno:** lista de perdas → devolve o que tem → entra **como nó novo**
 - **Drain:** tudo para o disco → desregistro **sem votação** · `SIGTERM` dispara
-- **Modo desenvolvimento:** 1 nó, sem réplicas · drain = *save*
+- **Perfil de um nó:** `replication.factor=1`, sem réplicas · todo reinício é de nó novo
 - **Armazenamento:** **memória primeiro**; **overflow** em disco (`memory.limit`) · `_node.db` · `<topico>/_topic.db` + `<id>.body` · `_sync/sync.db`
 - **Estados do nó:** `joining` · `syncing` · `active` · `returning` · `failed` (+ `drainState`)
 
@@ -78,7 +78,7 @@ fontes: [doc/pt-BR]
 
 - **OTLP** (push: métricas, traces, logs) · **`/metrics`** Prometheus (um alvo por nó) · **JSON** (`/health/cluster`, `/metrics/topics*`)
 - **84 métricas** de nó (`taba.*`, `http.server.*`, `process.*`) · de tópico **opt-in** (`telemetry.topics.mode`)
-- **Condições do cluster (8):** `member-unreachable` · `node-frozen` · `syncing` · `under-replicated` · `write-quorum-at-risk` · `quorum-lost` · `membership-divergent` · `storage-pressure`
+- **Condições do cluster (12):** `member-unreachable` · `node-frozen` · `syncing` · `under-replicated` · `write-quorum-at-risk` · `quorum-lost` · `membership-divergent` · `storage-pressure` · `upgrade-stalled` · `members-missing` · `previous-life-pending` · `reduced-profile`
 - **Saúde:** `/health/live` · `/health/ready` (503 em drain/sincronização)
 
 ## 7. Segurança ([14](14-seguranca.md))

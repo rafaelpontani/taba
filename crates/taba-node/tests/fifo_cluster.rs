@@ -600,7 +600,7 @@ async fn a_distributor_keeps_the_order_by_group_in_a_fifo_target() {
 
 /// UC: UC-FIF-042, UC-CNS-037
 #[tokio::test]
-async fn auto_create_accepts_fifo_only_when_the_replication_factor_allows_it() {
+async fn auto_create_accepts_fifo_with_any_replication_factor() {
     let cluster = TestCluster::start(3).await;
     settled(&cluster).await;
     let auto = cluster
@@ -622,11 +622,12 @@ async fn auto_create_accepts_fifo_only_when_the_replication_factor_allows_it() {
 
     let single = TestCluster::start_with(2, &[("TABA_REPLICATION_FACTOR", "1")]).await;
     settled(&single).await;
-    let refused = single
+    // With factor 1 the FIFO has no secondary: the quorum is `min(2, factor)` (doc 07, section 8).
+    let auto = single
         .node(1)
         .client_get("/topics/auto/messages?autoCreate=true&fifo=true")
         .await;
-    assert_eq!(code_of(refused, 422).await, "topic.fifo-needs-replication");
+    assert_eq!(auto.status(), 200);
     let created = single
         .node(1)
         .client
@@ -635,6 +636,19 @@ async fn auto_create_accepts_fifo_only_when_the_replication_factor_allows_it() {
         .send()
         .await
         .unwrap();
-    assert_eq!(code_of(created, 422).await, "topic.fifo-needs-replication");
+    assert_eq!(created.status(), 201);
+    let published = single
+        .node(1)
+        .client
+        .post(
+            single
+                .node(1)
+                .client_url("/topics/queue/messages?groupId=g"),
+        )
+        .json(&json!({ "n": 1 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(published.status(), 201, "{:?}", published.text().await);
     single.shutdown().await;
 }

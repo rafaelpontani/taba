@@ -40,7 +40,7 @@ Each module knows only those on its left. This is verifiable: `core` imports no 
 | `core` | Domain types and pure rules: IDs (GUID v7), time, errors (`ErrorCode`), validations, the **hash ring**, topic, token, pagination | No I/O |
 | `storage` | The node database (`_node.db`), messages on disk, the synchronization event database, tokens and losses | Delivery rules |
 | `engine` | Topics, messages, ready and invisible lists, fair delivery, FIFO, dead-letter, tokens, statistics | Network |
-| `cluster` | Members, node protocol, channel, voting, freezing, synchronization, replication, drain, recovery, volatile topics, health | Client HTTP |
+| `cluster` | Members, node protocol, channel, voting, freezing, synchronization, replication, drain, version upgrade, recovery, volatile topics, health | Client HTTP |
 | `http` | The three APIs, authentication, rate limit, client IP, forwarding, metrics | Domain rules (only reads the request and builds the response) |
 | `telemetry` | Metrics, traces and logs; OTLP and Prometheus export | — |
 | `config` | `.yml` file, `TABA_*` variables, the parameter table and the startup validations | — |
@@ -63,7 +63,7 @@ Each one is its own *listener*, so the network can restrict access to each one s
 | Cluster | `cluster.port` | 8081 | `cluster_router` | mutual TLS; only `/cluster/*` |
 
 - Without `operations.port`, the operations routes are served **also on the client port**.
-- In **development mode** the cluster port is **not opened**.
+- A node alone (`replication.factor=1`) opens the cluster port the same way; no other node just uses it.
 - `/tokens` routes only exist with authentication on; otherwise they answer `404`.
 - A node in drain, synchronization or failure **does not serve** client calls: in a cluster it **forwards** them to another node (through the destination's cluster port) and, with no destination, answers `503` with `Retry-After`. The reads that say what the cluster is doing (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` and the `/nodes/{nodeId}/…` calls, which include returning a node) are the exception: they are forwarded while another node can take them, and otherwise answered by the node itself, so a stopped cluster can still be inspected. In drain the node only validates the root token (the other tokens are data).
 
@@ -102,12 +102,12 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           secrets folder (cluster certificate, root token)
-  storage/           db (the `_node.db`) messages topics tokens state losses synclog
+  storage/           db (the `_node.db`) messages topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: the `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
-                     channel drain health members protocol recovery replication
-                     service state sync tls transport (http, memory) vote volatile
+                     channel drain health members protocol recovery replication restore
+                     service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
@@ -118,7 +118,7 @@ Each folder has a `mod.rs` that starts with a `//!` comment saying what it does.
 ## How the node starts (`node.rs`)
 
 1. Reads and validates the configuration (for example, `storage.dir` must end in a folder named `taba`).
-2. Prepares the disk: `_node.db`, the topic folders; in development mode with `development.resume-on-start`, resumes whatever is on disk.
+2. Prepares the disk: `_node.db`, the topic folders; the previous life's disk is set aside and comes back through the restoration ([07-cluster.md](07-cluster.md), section 10).
 3. Creates the shared node state, the telemetry, the topic and token registries, and the messages.
 4. In production: creates the `ClusterService`, the replication and the transport, and **joins the cluster** (bootstrap) or, if it is the first node (`cluster.first-node`), starts the cluster by itself.
 5. Opens the listeners of the three ports and from then on serves. The node only becomes **ready** (`/health/ready`) when it finishes synchronizing.
@@ -128,5 +128,5 @@ The detail of joining and synchronization is in [07-cluster.md](07-cluster.md).
 ## Sources and evidence
 
 - `crates/taba-node/src/lib.rs` (the dependency rule), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `drain_guard`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
-- Use cases: UC-SEG (ports and mutual TLS), UC-DEV (development mode), UC-FWD (forwarding), UC-CFG (configuration); see [26a](26a-implemented-use-cases.md).
+- Use cases: UC-SEG (ports and mutual TLS), UC-DEV (one-node profile), UC-FWD (forwarding), UC-CFG (configuration); see [26a](26a-implemented-use-cases.md).
 - History: `02-arquitetura.md`, `18-estrutura-codigo.md`.

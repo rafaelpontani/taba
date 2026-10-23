@@ -95,6 +95,34 @@ impl BlockSource {
                     .collect();
                 Ok(Response::Stream(StreamPage::new(items, more)))
             }
+            Request::BlockExcluded { block, query } => {
+                let ranges = self.ranges(&block)?;
+                let limit = self.page_size(&query);
+                let entries = tokio::task::spawn_blocking(move || {
+                    messages.excluded_entries(
+                        &ranges,
+                        query.from.as_deref(),
+                        query.to.as_deref(),
+                        limit + 1,
+                    )
+                })
+                .await
+                .map_err(|_| TabaError::internal())??;
+                let more = entries.len() > limit;
+                let items: Vec<Value> = entries
+                    .into_iter()
+                    .take(limit)
+                    .map(|entry| {
+                        json!({
+                            "id": entry.id,
+                            "topic": entry.topic,
+                            "position": entry.position,
+                            "atMs": entry.at_ms,
+                        })
+                    })
+                    .collect();
+                Ok(Response::Stream(StreamPage::new(items, more)))
+            }
             Request::BlockMessages { block, query } => {
                 let ranges = self.ranges(&block)?;
                 let (limit, max_bytes) = (self.page_size(&query), self.rules.max_bytes);

@@ -8,7 +8,7 @@ fn env_name_follows_the_documented_rule() {
         env_name("topics.distributor.max-targets"),
         "TABA_TOPICS_DISTRIBUTOR_MAX_TARGETS"
     );
-    assert_eq!(env_name("mode"), "TABA_MODE");
+    assert_eq!(env_name("replication.factor"), "TABA_REPLICATION_FACTOR");
     assert_eq!(
         env_name("cluster.entry-address"),
         "TABA_CLUSTER_ENTRY_ADDRESS"

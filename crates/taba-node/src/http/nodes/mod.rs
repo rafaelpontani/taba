@@ -58,6 +58,7 @@ pub fn cluster_wide() -> Router<AppState> {
     Router::new()
         .route("/cluster/backup/flush", post(backup::cluster_flush))
         .route("/cluster/stop", post(backup::cluster_stop))
+        .route("/cluster/restore/force", post(super::restore::force))
 }
 
 fn node_not_found(node_id: &str) -> TabaError {

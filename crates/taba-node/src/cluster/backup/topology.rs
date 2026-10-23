@@ -1,12 +1,11 @@
 //! What the backup needs to know about the cluster, behind a trait: who owns what and who is up.
-//! A node without a cluster (`mode=development`) owns everything ([`Solo`]).
 
 use std::sync::Arc;
 
 use crate::cluster::members::MemberState;
 use crate::cluster::protocol::{BACKUP_SAVED_MAX_ITEMS, BackupSaved, BackupSavedItem, Request};
 use crate::cluster::service::ClusterService;
-use crate::cluster::state::{NodeShared, NodeState};
+use crate::cluster::state::NodeState;
 use crate::core::ring::definition_position;
 use crate::storage::backup::SavedRef;
 
@@ -41,55 +40,6 @@ pub trait Topology: Send + Sync + 'static {
     /// Tells `node_id`, a replica, which of the topic's messages are already in the bucket (without waiting for an
     /// answer: the notice is best effort, the replica only gets the eviction with it).
     fn send_saved(&self, _node_id: &str, _topic: &str, _items: Vec<(String, SavedRef)>) {}
-}
-
-/// A cluster of a single node.
-pub struct Solo {
-    shared: Arc<NodeShared>,
-}
-
-impl Solo {
-    pub fn new(shared: Arc<NodeShared>) -> Self {
-        Self { shared }
-    }
-}
-
-impl Topology for Solo {
-    fn node_id(&self) -> String {
-        self.shared.node_id()
-    }
-
-    fn addresses(&self) -> Vec<String> {
-        Vec::new()
-    }
-
-    fn port(&self) -> u16 {
-        0
-    }
-
-    fn is_active(&self) -> bool {
-        true
-    }
-
-    fn owns_position(&self, _position: u64) -> bool {
-        true
-    }
-
-    fn owners(&self, _position: u64) -> Vec<String> {
-        vec![self.shared.node_id()]
-    }
-
-    fn manages_definition(&self, _kind: &str, _key: &str) -> bool {
-        true
-    }
-
-    fn members(&self) -> Vec<String> {
-        vec![self.shared.node_id()]
-    }
-
-    fn reaches(&self, _node_id: &str) -> bool {
-        false
-    }
 }
 
 /// The real cluster, through the `ClusterService`.

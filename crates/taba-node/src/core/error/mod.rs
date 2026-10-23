@@ -73,7 +73,6 @@ catalog! {
     MediaUnsupported => ("media.unsupported", 415),
     FifoMisdirected => ("fifo.misdirected", 421),
     ClusterWrongNode => ("cluster.wrong-node", 421),
-    TopicFifoNeedsReplication => ("topic.fifo-needs-replication", 422),
     DistributorTooManyTargets => ("distributor.too-many-targets", 422),
     TopicVolatileLimit => ("topic.volatile-limit", 422),
     ClusterJoinUnreachable => ("cluster.join-unreachable", 422),

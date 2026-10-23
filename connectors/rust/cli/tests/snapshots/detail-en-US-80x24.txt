@@ -2,7 +2,7 @@
  1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 Node 01a13640-0000-7000-8000-000000000001                                      ▲
 State: active · Drain: active                                                  █
-Version: 1.4.0 · production                                                    █
+Version: 1.4.0                                                                 █
 Started: 2026-10-15 08:00:00 (4h 02m)                                          █
                                                                                █
 Storage                                                                        █

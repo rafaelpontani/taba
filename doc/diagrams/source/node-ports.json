@@ -176,7 +176,7 @@
       "title": "Separate audiences",
       "items": [
         "Each port has its own audience and the network restricts each one",
-        "In development mode the cluster port does not exist"
+        "The cluster port always opens (plain HTTP in the one-node profile)"
       ]
     }
   ]

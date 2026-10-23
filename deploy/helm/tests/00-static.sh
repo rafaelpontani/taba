@@ -144,7 +144,8 @@ check_fails "UC-15 recusa collector.type inválido" render --set collector.type=
 check_fails "UC-15 recusa mode inválido"        render --set config.mode=staging
 check_fails "UC-15 recusa autoscaling abaixo de 3" render --set autoscaling.enabled=true --set autoscaling.minReplicas=2 --set autoscaling.prometheus.serverAddress=http://p:9090
 check_fails "UC-15 recusa autoscaling sem Prometheus" render --set autoscaling.enabled=true
-check_fails "UC-15 recusa autoscaling em development" render --set autoscaling.enabled=true --set config.mode=development --set autoscaling.prometheus.serverAddress=http://p:9090
+check_fails "UC-15 recusa autoscaling no perfil de um nó" render --set autoscaling.enabled=true --set config.replication.factor=1 --set autoscaling.prometheus.serverAddress=http://p:9090
+check_fails "UC-15 recusa autoscaling com o nome antigo (mode=development)" render --set autoscaling.enabled=true --set config.mode=development --set autoscaling.prometheus.serverAddress=http://p:9090
 check_fails "UC-15 recusa disk.source=app sem capacidade" render --set autoscaling.enabled=true --set autoscaling.disk.source=app --set autoscaling.prometheus.serverAddress=http://p:9090
 
 summary

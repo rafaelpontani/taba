@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UC-02 — Desenvolvimento: mode=development, 1 nó, sem auth e sem TLS de cluster, sem Secret.
+# UC-02 — Perfil de um nó: replication.factor=1, 1 nó, sem auth e sem TLS de cluster, sem Secret.
 UC=uc-02-desenvolvimento
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 cluster_up; trap cleanup EXIT; ns_fresh

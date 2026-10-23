@@ -75,7 +75,7 @@ fn conditions(topic: &Value) -> Vec<&str> {
 /// UC: UC-OPS-019, UC-OPS-024, UC-OPS-029
 #[tokio::test]
 async fn lists_the_topics_by_name_with_their_numbers_and_the_dead_letter_too() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create(
         &node,
         json!({ "name": "orders", "type": "queue", "tags": { "time": "fin" } }),
@@ -146,7 +146,7 @@ async fn lists_the_topics_by_name_with_their_numbers_and_the_dead_letter_too() {
 /// UC: UC-OPS-019
 #[tokio::test]
 async fn pages_by_name_and_validates_the_parameters() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create(
         &node,
         json!({ "name": "a", "type": "queue", "tags": { "time": "fin" } }),
@@ -208,7 +208,7 @@ async fn pages_by_name_and_validates_the_parameters() {
 /// UC: UC-OPS-019
 #[tokio::test]
 async fn group_by_a_tag_gives_one_row_per_value_with_the_sums() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     for (name, time) in [("a", "fin"), ("b", "fin"), ("c", "ops")] {
         create(
             &node,
@@ -250,7 +250,7 @@ async fn group_by_a_tag_gives_one_row_per_value_with_the_sums() {
 /// UC: UC-DST-018
 #[tokio::test]
 async fn a_distributor_only_shows_what_it_received_copied_and_failed_to_copy() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders-1").await;
     queue(&node, "orders-2").await;
     create(
@@ -455,7 +455,7 @@ async fn the_shared_counter_shows_as_overflow_and_an_empty_group_disappears() {
 /// UC: UC-GRP-016, UC-OPS-028
 #[tokio::test]
 async fn noisy_group_fires_with_two_groups_and_the_largest_over_the_share() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     queue(&node, "orders").await;
     queue(&node, "calmo").await;
     for _ in 0..9 {
@@ -628,7 +628,7 @@ async fn the_json_routes_count_in_the_ops_category_and_metrics_does_not() {
 /// UC: UC-FIF-045
 #[tokio::test]
 async fn noisy_group_points_at_the_hot_group_of_a_fifo_queue() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     create(
         &node,
         json!({ "name": "orders", "type": "queue", "fifo": true }),

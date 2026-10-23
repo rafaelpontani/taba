@@ -45,25 +45,11 @@ async fn an_occupied_cluster_port_stops_startup_in_production() {
     assert!(error.to_string().contains("cluster"), "{error}");
 }
 
-/// UC: UC-SEG-005
-#[tokio::test]
-async fn in_development_the_cluster_port_is_ignored_even_when_occupied() {
-    let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = occupied.local_addr().unwrap().port().to_string();
-
-    let node = TestNode::builder()
-        .env("TABA_CLUSTER_PORT", &port)
-        .start()
-        .await;
-    assert_eq!(node.node.cluster_addr(), None);
-    node.shutdown().await;
-}
-
 /// UC: UC-ING-001
 #[test]
-fn production_without_the_entry_address_does_not_start() {
+fn a_cluster_without_the_entry_address_does_not_start() {
     // The configuration is refused before opening any port; `taba` exits with code 2.
-    let env = MapEnv::new([("TABA_MODE", "production"), ("TABA_API_PORT", "0")]);
+    let env = MapEnv::new([("TABA_API_PORT", "0")]);
     let error = Config::parse(None, &env).unwrap_err();
     assert!(
         error.to_string().contains("cluster.entry-address"),
@@ -93,7 +79,7 @@ async fn a_storage_dir_that_cannot_be_created_stops_startup() {
 
 #[tokio::test]
 async fn startup_creates_storage_dir_when_missing() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     assert!(node.storage_dir().is_dir());
     node.shutdown().await;
 }

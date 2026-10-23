@@ -10,7 +10,7 @@ use std::time::Duration;
 use ipnet::IpNet;
 
 use super::error::ConfigError;
-use super::params::{self, PARAMS};
+use super::params::{self, PARAMS, REMOVED};
 
 /// The environment variables, behind a trait so the tests do not touch the process.
 pub trait EnvSource {
@@ -76,10 +76,10 @@ impl Source {
 
         let mut known_env = BTreeSet::new();
         known_env.insert("TABA_CONFIG_FILE".to_owned());
-        for param in PARAMS {
-            let name = params::env_name(param.key);
+        for key in PARAMS.iter().map(|p| p.key).chain(REMOVED.iter().copied()) {
+            let name = params::env_name(key);
             if let Some(value) = env.get(&name).filter(|v| !v.trim().is_empty()) {
-                explicit.insert(param.key.to_owned(), value);
+                explicit.insert(key.to_owned(), value);
             }
             known_env.insert(name);
         }
@@ -169,7 +169,7 @@ fn flatten_yaml(
     ) -> Result<(), ConfigError> {
         use serde_norway::Value;
         let leaf = |out: &mut BTreeMap<String, String>, text: String| -> Result<(), ConfigError> {
-            if params::find(prefix).is_none() {
+            if params::find(prefix).is_none() && !REMOVED.contains(&prefix) {
                 return Err(ConfigError::UnknownKey(prefix.to_owned()));
             }
             out.insert(prefix.to_owned(), text);

@@ -12,7 +12,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::cluster::backup::{
-    Backup, BackupArgs, BackupPort, BackupRules, ClusterTopology, Solo, Topology,
+    Backup, BackupArgs, BackupPort, BackupRules, ClusterTopology, Topology,
 };
 use crate::cluster::drain::DrainController;
 use crate::cluster::members::{Member, MemberState};
@@ -40,10 +40,11 @@ use crate::storage;
 use crate::storage::backup::{BackupDb, ObjectStore, Prefixed, S3Settings, S3Store};
 use crate::storage::db::NodeDb;
 use crate::storage::losses::LossStore;
-use crate::storage::messages::MessageStore;
+use crate::storage::messages::{ExcludedLimits, MessageStore};
 use crate::storage::state::NodeStateStore;
 use crate::storage::tokens::SqliteTokenStore;
 use crate::storage::topics::SqliteTopicStore;
+use crate::storage::versions::VersionStore;
 use crate::telemetry::Telemetry;
 use crate::telemetry::otlp::{self, Pipeline};
 
@@ -100,18 +101,17 @@ pub struct Deps {
     /// The backup object store (the tests hand in the in-memory one). Without it, with
     /// `backup.s3.bucket`, the node opens the S3 client.
     pub backup_store: Option<Arc<dyn ObjectStore>>,
+    /// The program version the node announces to the cluster; without it, the build's. The tests use it to
+    /// simulate a cluster with two releases.
+    pub program_version: Option<String>,
 }
 
 impl Deps {
-    /// The pieces of a real node (`taba`): the system clock and, in `mode=production`, the
-    /// HTTP `Transport` (with mutual TLS if there is a certificates folder) and the IPs the node tells the
-    /// others: `cluster.advertise-addresses` or, without it, the interface that goes out to
-    /// `cluster.entry-address` (D95). In development there is no cluster.
+    /// The pieces of a real node (`taba`): the system clock, the HTTP `Transport` (with mutual TLS if there is
+    /// a certificates folder) and the IPs the node tells the others: `cluster.advertise-addresses` or, without
+    /// it, the interface that goes out to `cluster.entry-address` (D95).
     pub fn production(config: &Config) -> Result<Self, NodeError> {
         let mut deps = Self::default();
-        if config.is_development() {
-            return Ok(deps);
-        }
         let tls = config
             .tls
             .dir
@@ -120,7 +120,12 @@ impl Deps {
             .transpose()
             .map_err(NodeError::Tls)?;
         let transport = HttpTransport::new(tls.as_ref()).map_err(NodeError::Transport)?;
-        let addresses = if config.cluster.advertise_addresses.is_empty() {
+        let addresses = if !config.cluster.advertise_addresses.is_empty() {
+            config.cluster.advertise_addresses.clone()
+        } else if config.cluster.entry_address.is_none() && config.is_single_node() {
+            // A node alone has no entry address to find its interface by, and no peer that needs to reach it.
+            vec!["127.0.0.1".to_owned()]
+        } else {
             let entry: PeerAddr = config
                 .cluster
                 .entry_address
@@ -133,8 +138,6 @@ impl Deps {
                     "{why}; set cluster.advertise-addresses to this node's IPs"
                 ))
             })?]
-        } else {
-            config.cluster.advertise_addresses.clone()
         };
         deps.tls = tls;
         deps.cluster = Some(ClusterDeps {
@@ -154,6 +157,7 @@ impl Default for Deps {
             cluster: None,
             tls: None,
             backup_store: None,
+            program_version: None,
         }
     }
 }
@@ -221,10 +225,12 @@ pub struct RunningNode {
     fatal_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
     client_addr: SocketAddr,
     operations_addr: Option<SocketAddr>,
-    cluster_addr: Option<SocketAddr>,
+    cluster_addr: SocketAddr,
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
     drain: Arc<DrainController>,
+    /// The message engine: when the node stops, it lets go of the topic databases.
+    messages: Arc<Messages>,
     /// `drain.on-stop`: on stopping, the in-memory messages go to disk.
     drain_on_stop: bool,
     /// The manager of this node's volatile queues (only in a cluster).
@@ -283,8 +289,8 @@ impl RunningNode {
         self.operations_addr
     }
 
-    /// `None` in development mode: the cluster port is not opened.
-    pub fn cluster_addr(&self) -> Option<SocketAddr> {
+    /// The cluster port actually opened.
+    pub fn cluster_addr(&self) -> SocketAddr {
         self.cluster_addr
     }
 
@@ -319,6 +325,9 @@ impl RunningNode {
                 Err(e) => tracing::error!(error = %e, "listener task failed"),
             }
         }
+        // The engine and the cluster hold each other, so the files would stay open until the process ends: a node
+        // started on the same disk in the same process (the tests) could not move them.
+        self.messages.release_files();
     }
 }
 
@@ -341,74 +350,59 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         source,
     })?;
 
-    let dev = config.is_development();
     // The cluster certificates: at least one valid pair in the folder, otherwise the node does not start.
-    let tls = match (dev, deps.tls.clone(), config.tls.dir.as_deref()) {
-        (true, ..) | (false, None, None) => None,
-        (false, Some(store), _) => Some(store),
-        (false, None, Some(dir)) => Some(TlsStore::open(dir).map_err(NodeError::Tls)?),
+    let tls = match (deps.tls.clone(), config.tls.dir.as_deref()) {
+        (None, None) => None,
+        (Some(store), _) => Some(store),
+        (None, Some(dir)) => Some(TlsStore::open(dir).map_err(NodeError::Tls)?),
     };
     let client = bind("of the client API", deps.bind_ip, config.ports.api).await?;
     let operations = match config.ports.operations {
         Some(port) => Some(bind("of operations", deps.bind_ip, port).await?),
         None => None,
     };
-    let cluster = if dev {
-        None
-    } else {
-        Some(bind("do cluster", deps.bind_ip, config.ports.cluster).await?)
-    };
+    let cluster = bind("do cluster", deps.bind_ip, config.ports.cluster).await?;
 
     let now = deps.clock.now();
-    let shared = Arc::new(NodeShared::new(
-        id::new_at(deps.clock.now_millis()),
-        config.mode,
-        now,
-    ));
+    let shared = Arc::new(NodeShared::new(id::new_at(deps.clock.now_millis()), now));
     let storage_dir = config.storage.dir.clone();
     let storage_error = |source: io::Error| NodeError::Storage {
         dir: storage_dir.clone(),
         source,
     };
-    // In development the node resumes what is on disk (the drain serves as the save); in
-    // production every start is a new node, and the definitions come from the cluster.
-    if dev && !config.resume_on_start {
-        tracing::warn!(
-            "development.resume-on-start=false: deleting the contents of {}",
-            config.storage.dir.display()
-        );
-        storage::wipe_dir_contents(&config.storage.dir).map_err(storage_error)?;
-    }
+    // Every start is a new node: what is on disk comes back through the restoration, and the definitions from the
+    // cluster.
     let node_db = Arc::new(
         NodeDb::open(&config.storage.dir, config.storage.db_synchronous).map_err(storage_error)?,
     );
     let saves = NodeStateStore::new(node_db.clone());
     let losses = LossStore::new(node_db.clone());
-    let topics = Topics::open(
+    let topics = Arc::new(Topics::new(
         TopicRules::from_config(&config),
         Arc::new(SqliteTopicStore::new(node_db.clone())),
         deps.clock.clone(),
-        dev && config.resume_on_start,
-    )
-    .await
-    .map_err(storage_error)?;
-    let topics = Arc::new(topics);
-    let tokens = Tokens::open(
+        Vec::new(),
+    ));
+    let tokens = Tokens::new(
         TokenRules::from_config(&config),
         Arc::new(SqliteTokenStore::new(node_db.clone())),
         deps.clock.clone(),
-        dev && config.resume_on_start,
-    )
-    .await
-    .map_err(storage_error)?;
+        Vec::new(),
+    );
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
     let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id()));
-    let message_store = Arc::new(MessageStore::new(
-        &config.storage.dir,
-        config.storage.db_synchronous,
-    ));
+    let message_store = Arc::new(
+        MessageStore::new(&config.storage.dir, config.storage.db_synchronous).with_excluded(
+            ExcludedLimits {
+                max_bytes: config.storage.excluded_max_bytes,
+                max_age_ms: u64::try_from(config.storage.excluded_max_age.as_millis())
+                    .unwrap_or(u64::MAX),
+            },
+            Some(saves.clone()),
+        ),
+    );
     let disk_store = message_store.clone();
-    let messages = if !dev && deps.cluster.is_some() {
+    let messages = if deps.cluster.is_some() {
         // In a cluster the previous life's disk waits for the restart recovery (D111).
         Messages::new_keeping_disk(
             topics.clone(),
@@ -422,10 +416,10 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             deps.clock.clone(),
             MessageRules::from_config(&config),
             message_store,
-            dev && config.resume_on_start,
         )
     };
-    check_save_mark(&saves, dev && config.resume_on_start, topics.count());
+    // The start of the continuous recording of the excluded log is fixed when the node starts, not at the first exclusion.
+    messages.excluded_since();
     {
         let shared = shared.clone();
         messages.on_failure(Arc::new(move || {
@@ -443,7 +437,6 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let drain = DrainController::new(
         shared.clone(),
         messages.clone(),
-        saves,
         deps.clock.clone(),
         config.drain.timeout,
     );
@@ -457,26 +450,30 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     };
     let client_addr = addr_of(&client)?;
     let operations_addr = operations.as_ref().map(addr_of).transpose()?;
-    let cluster_addr = cluster.as_ref().map(addr_of).transpose()?;
+    let cluster_addr = addr_of(&cluster)?;
     let cancel = CancellationToken::new();
 
     // In production, with a `Transport`, the node joins a cluster; without it, it stays in
     // `bootstrapping`.
     let cluster_node = match (cluster_addr, deps.cluster) {
-        (Some(addr), Some(cluster_deps)) => {
+        (addr, Some(cluster_deps)) => {
             let local = Member {
                 node_id: shared.node_id(),
                 addresses: cluster_deps.addresses.clone(),
                 port: addr.port(),
                 state: MemberState::Active,
             };
+            let mut rules = ClusterRules::from_config(&config);
+            if let Some(version) = &deps.program_version {
+                rules.program_version = version.clone();
+            }
             let service = ClusterService::new(
                 local,
                 shared.clone(),
                 cluster_deps.transport.clone(),
                 deps.clock.clone(),
                 telemetry.clone(),
-                ClusterRules::from_config(&config),
+                rules,
                 cancel.clone(),
             );
             Some((service, cluster_deps))
@@ -484,6 +481,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         _ => None,
     };
     // The cluster connects to the message engine: who the owner is, the signals and the dead-letters.
+    // The versions and tombstones of the definitions come back with the definitions that are resumed.
+    let version_store = VersionStore::new(node_db.clone());
     let attached = cluster_node.as_ref().map(|(service, _)| {
         replication::attach(
             service,
@@ -494,22 +493,18 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             telemetry.clone(),
             losses,
             SyncRules::from_config(&config),
+            (version_store, Vec::new()),
         )
     });
     // The optional S3 backup: without `backup.s3.bucket` none of this exists and the node is the usual one.
-    let backup_parts = match &config.backup.s3 {
-        Some(s3) => {
+    let backup_parts = match (&config.backup.s3, &cluster_node) {
+        (Some(s3), Some((service, _))) => {
             let store = open_backup_store(s3, deps.backup_store.clone()).await;
             let db = Arc::new(BackupDb::open(&config.storage.dir).map_err(storage_error)?);
-            if !dev || !config.resume_on_start {
-                // Every start in production is a new node: what the previous life's `_backup.db`
-                // kept (send queue, references) does not apply to the new identity.
-                db.reset().map_err(storage_error)?;
-            }
-            let topology: Arc<dyn Topology> = match &cluster_node {
-                Some((service, _)) => Arc::new(ClusterTopology(service.clone())),
-                None => Arc::new(Solo::new(shared.clone())),
-            };
+            // Every start is a new node: what the previous life's `_backup.db` kept (send queue, references) does
+            // not apply to the new identity.
+            db.reset().map_err(storage_error)?;
+            let topology: Arc<dyn Topology> = Arc::new(ClusterTopology(service.clone()));
             let backup = Backup::new(BackupArgs {
                 rules: BackupRules::from_config(&config),
                 store,
@@ -528,12 +523,16 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
                 backup: backup.clone(),
                 drain: drain.clone(),
             });
-            if let Some((service, _)) = &cluster_node {
-                service.set_backup(&port);
-            }
+            service.set_backup(&port);
             Some((backup, port))
         }
-        None => None,
+        (Some(_), None) => {
+            tracing::warn!(
+                "no transport between nodes: the S3 backup needs the cluster and stays off"
+            );
+            None
+        }
+        (None, _) => None,
     };
     let backup = backup_parts.as_ref().map(|(backup, _)| backup.clone());
     let state = AppState {
@@ -568,17 +567,21 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         None => None,
     };
 
-    if dev {
-        tracing::warn!(node_id = %shared.node_id(), "mode=development: the node is a cluster of one, with no replicas; do not use in production");
-    } else {
-        if cluster_node.is_none() {
-            tracing::warn!(
-                "no transport between nodes: the node stays in `bootstrapping` and /health/ready answers 503"
-            );
-        }
-        if tls.is_none() {
-            tracing::warn!("no certificates folder: the cluster port serves plain HTTP");
-        }
+    if cluster_node.is_none() {
+        tracing::warn!(
+            "no transport between nodes: the node stays in `bootstrapping` and /health/ready answers 503"
+        );
+    }
+    if tls.is_none() && config.tls.enabled {
+        tracing::warn!("no certificates folder: the cluster port serves plain HTTP");
+    }
+    let relaxed = config.relaxations();
+    if !relaxed.is_empty() {
+        tracing::warn!(
+            node_id = %shared.node_id(),
+            relaxed = %relaxed.join(", "),
+            "one-node profile: for development, not for production"
+        );
     }
 
     let mut tasks = JoinSet::new();
@@ -648,7 +651,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             None,
         );
     }
-    if let (Some(listener), Some(addr)) = (cluster, cluster_addr) {
+    {
+        let (listener, addr) = (cluster, cluster_addr);
         let server_config = tls
             .as_ref()
             .map(|store| store.server_config())
@@ -673,7 +677,8 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             Ok(())
         });
     }
-    if let (Some((service, cluster_deps)), Some(addr)) = (&cluster_node, cluster_addr) {
+    if let Some((service, cluster_deps)) = &cluster_node {
+        let addr = cluster_addr;
         if let Some(attach) = &cluster_deps.attach {
             for address in &cluster_deps.addresses {
                 attach(
@@ -683,9 +688,21 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             }
         }
         let (service, fatal) = (service.clone(), fatal_tx.clone());
+        let dev_token = config.auth.dev_token.clone();
+        let tokens = auth.tokens.clone();
         tasks.spawn(async move {
             match service.bootstrap().await {
-                Ok(()) | Err(BootstrapError::Cancelled) => Ok(()),
+                Ok(()) => {
+                    // The one-node profile: the `admin` work token for examples, Compose and tests (the node is
+                    // active, so what the start resumed from disk is already in place).
+                    if let Some(secret) = dev_token
+                        && let Err(e) = tokens.ensure_dev(secret.expose()).await
+                    {
+                        tracing::error!(error = %e, "could not create the dev token");
+                    }
+                    Ok(())
+                }
+                Err(BootstrapError::Cancelled) => Ok(()),
                 Err(e) => {
                     let _ = fatal.send(e.to_string());
                     Err(io::Error::other(e.to_string()))
@@ -732,6 +749,20 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         let service = service.clone();
         tasks.spawn(async move {
             service.run_reunion().await;
+            Ok(())
+        });
+    }
+    if let Some((service, _)) = &cluster_node {
+        let service = service.clone();
+        tasks.spawn(async move {
+            service.run_probe().await;
+            Ok(())
+        });
+    }
+    if let Some((service, _)) = &cluster_node {
+        let service = service.clone();
+        tasks.spawn(async move {
+            service.run_upgrade().await;
             Ok(())
         });
     }
@@ -787,7 +818,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         node_id = %shared.node_id(),
         client = %client_addr,
         operations = ?operations_addr,
-        cluster = ?cluster_addr,
+        cluster = %cluster_addr,
         "node is up"
     );
     Ok(RunningNode {
@@ -801,30 +832,11 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         cancel,
         tasks,
         drain,
+        messages: state_messages,
         drain_on_stop: config.drain.on_stop,
         volatile,
         otlp,
         backup,
         _backup_port: backup_parts.map(|(_, port)| port),
     })
-}
-
-/// Consumes the save mark (the start deletes it, so a crash after it does not count as a clean save). Resuming
-/// with topics on disk, without the mark the node warns that what was only in
-/// memory was lost (doc 04, section 6.10).
-fn check_save_mark(saves: &NodeStateStore, resuming: bool, topics: usize) {
-    match saves.take_save_mark() {
-        Ok(Some(at_ms)) if resuming => {
-            tracing::info!(
-                save_completed_at_ms = at_ms,
-                "resuming from disk: the previous save was completed"
-            );
-        }
-        Ok(None) if resuming && topics > 0 => tracing::warn!(
-            "the previous node did not complete the save (crash or interrupted drain): \
-             what was only in memory was lost"
-        ),
-        Ok(_) => {}
-        Err(e) => tracing::warn!(error = %e, "could not read the save mark"),
-    }
 }

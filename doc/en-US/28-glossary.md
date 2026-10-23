@@ -54,7 +54,7 @@ sources: [crates/taba-node/src, doc/pt-BR]
 | **Distributor (DT)** | A topic that does not store messages: copies each publication to the queues whose name starts with one of its prefixes | [09](09-topics.md) |
 | **Drain** | Leaving the cluster without losing what is in memory: everything goes to disk and the node deregisters | [07](07-cluster.md), [17](17-operations-api.md) |
 | **Drain mode** | See *Drain* | [07](07-cluster.md) |
-| **Development mode** | `mode=development`: a one-node cluster, with no vote, quorum, channel or replicas | [07](07-cluster.md) |
+| **One-node profile** | `replication.factor=1`: a one-node cluster that starts alone; it relaxes the cluster TLS and authentication only with factor 1 (the former development mode) | [07](07-cluster.md) |
 
 ## E
 
@@ -116,7 +116,7 @@ sources: [crates/taba-node/src, doc/pt-BR]
 |---|---|---|
 | **NDJSON** | One JSON object per line: the format of the synchronization streams between nodes | [18](18-cluster-api.md) |
 | **Node** | An instance of the `taba` program; they are all equal | [04](04-architecture.md) |
-| **Node database** | `_node.db`: local SQLite with the tables `topics`, `tokens`, `state` and `losses` | [08](08-storage.md) |
+| **Node database** | `_node.db`: local SQLite with the tables `topics`, `tokens`, `state`, `losses` and `definition_versions` | [08](08-storage.md) |
 | **Managing node** | The primary of the position of a volatile queue's `id`: decides the deletion for idleness | [09](09-topics.md) |
 
 ## O
@@ -158,7 +158,6 @@ sources: [crates/taba-node/src, doc/pt-BR]
 
 | Term | Meaning | Detail |
 |---|---|---|
-| **Save (drain as)** | In development mode, drain writes everything to disk and the next start resumes | [07](07-cluster.md) |
 | **Secrets folder** | Created by `taba init`: cluster certificates (`tls/`) and root token (`root-token`) | [14](14-security.md) |
 | **Single writer** | Every write to a SQLite database goes through a single command queue | [04](04-architecture.md), [08](08-storage.md) |
 | **Synchronization** | What a new node does when it joins: load of topics and blocks, replay of the event database, final check | [07](07-cluster.md) |

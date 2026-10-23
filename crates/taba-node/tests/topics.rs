@@ -56,7 +56,7 @@ fn names(page: &Value) -> Vec<String> {
 /// UC: UC-TOP-001
 #[tokio::test]
 async fn creating_a_queue_returns_201_with_location_and_the_defaults() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let response = create(&node, json!({ "name": "orders", "type": "queue" })).await;
 
     assert_eq!(response.status(), 201);
@@ -81,7 +81,7 @@ async fn creating_a_queue_returns_201_with_location_and_the_defaults() {
 /// UC: UC-TOP-002, UC-TOP-017
 #[tokio::test]
 async fn a_distributor_shows_prefixes_and_none_of_the_queue_fields() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let topic = created(
         &node,
         json!({ "name": "dist", "type": "distributor", "prefixes": ["orders"] }),
@@ -107,7 +107,7 @@ async fn a_distributor_shows_prefixes_and_none_of_the_queue_fields() {
 /// UC: UC-TOP-003, UC-TOP-004, UC-TOP-005
 #[tokio::test]
 async fn volatile_fifo_and_own_limits_come_back_as_defined() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let v = created(
         &node,
         json!({ "name": "v", "type": "queue", "volatile": true }),
@@ -147,7 +147,7 @@ async fn volatile_fifo_and_own_limits_come_back_as_defined() {
 /// UC: UC-TOP-006, UC-TOP-022, UC-TOP-027
 #[tokio::test]
 async fn every_queue_comes_with_a_read_only_dead_letter_in_the_listing() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     created(
         &node,
         json!({ "name": "orders", "type": "queue", "ttl": 500, "tags": { "time": "fin" } }),
@@ -170,7 +170,7 @@ async fn every_queue_comes_with_a_read_only_dead_letter_in_the_listing() {
 /// UC: UC-TOP-008, UC-TOP-009, UC-TOP-010
 #[tokio::test]
 async fn invalid_names_and_tags_are_400_with_the_field_in_details() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     for (name, code) in [
         ("", "validation.invalid-name"),
         ("with space", "validation.invalid-name"),
@@ -206,7 +206,7 @@ async fn invalid_names_and_tags_are_400_with_the_field_in_details() {
 /// UC: UC-TOP-011, UC-TOP-012, UC-TOP-020
 #[tokio::test]
 async fn names_are_case_sensitive_duplicates_conflict_and_recreating_changes_the_id() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let lower = created(&node, json!({ "name": "orders", "type": "queue" })).await;
     let upper = created(&node, json!({ "name": "Pedidos", "type": "queue" })).await;
     assert_ne!(lower["id"], upper["id"]);
@@ -223,7 +223,7 @@ async fn names_are_case_sensitive_duplicates_conflict_and_recreating_changes_the
 /// UC: UC-TOP-013, UC-TOP-014
 #[tokio::test]
 async fn fields_out_of_place_or_out_of_range_are_400() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let cases = [
         (
             json!({ "name": "d", "type": "distributor", "ttl": 100 }),
@@ -310,7 +310,7 @@ async fn max_message_bytes_can_pass_the_default_but_not_the_hard_limit() {
 /// UC: UC-TOP-016
 #[tokio::test]
 async fn distributor_prefixes_follow_the_limits() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let too_many: Vec<String> = (0..21).map(|i| format!("p{i}")).collect();
     for prefixes in [
         json!(too_many),
@@ -331,7 +331,7 @@ async fn distributor_prefixes_follow_the_limits() {
 /// UC: UC-TOP-018, UC-CNV-009
 #[tokio::test]
 async fn unknown_and_missing_fields_are_400_naming_the_field() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
 
     let response = create(
         &node,
@@ -365,7 +365,7 @@ async fn unknown_and_missing_fields_are_400_naming_the_field() {
 /// UC: UC-CNV-003
 #[tokio::test]
 async fn a_json_route_with_another_content_type_is_415() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let response = node
         .client
         .post(node.client_url("/topics"))
@@ -391,7 +391,7 @@ async fn a_json_route_with_another_content_type_is_415() {
 /// UC: UC-TOP-021
 #[tokio::test]
 async fn listing_without_topics_is_an_empty_page() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let response = node.client_get("/topics").await;
     assert_eq!(response.status(), 200);
     assert_eq!(body(response).await, json!({ "items": [] }));
@@ -401,7 +401,7 @@ async fn listing_without_topics_is_an_empty_page() {
 /// UC: UC-TOP-023, UC-TOP-024
 #[tokio::test]
 async fn listing_sorts_and_filters() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     for name in ["b", "a", "c"] {
         created(&node, json!({ "name": name, "type": "distributor" })).await;
         node.clock.advance(std::time::Duration::from_millis(10));
@@ -434,7 +434,7 @@ async fn listing_sorts_and_filters() {
 /// UC: UC-TOP-026, UC-TOP-037
 #[tokio::test]
 async fn reading_a_topic_returns_it_and_an_unknown_one_is_404() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     let made = created(&node, json!({ "name": "orders", "type": "queue" })).await;
     assert_eq!(body(node.client_get("/topics/orders").await).await, made);
 
@@ -450,7 +450,7 @@ async fn reading_a_topic_returns_it_and_an_unknown_one_is_404() {
 /// UC: UC-TOP-028, UC-TOP-029
 #[tokio::test]
 async fn patch_is_partial_tags_replace_and_null_goes_back_to_the_default() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     created(
         &node,
         json!({ "name": "p", "type": "queue", "tags": { "a": "1" }, "ttl": 100, "maxDeliveries": 4 }),
@@ -478,7 +478,7 @@ async fn patch_is_partial_tags_replace_and_null_goes_back_to_the_default() {
 /// UC: UC-TOP-032
 #[tokio::test]
 async fn patching_distributor_prefixes_replaces_them() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     created(
         &node,
         json!({ "name": "d", "type": "distributor", "prefixes": ["a"] }),
@@ -492,7 +492,7 @@ async fn patching_distributor_prefixes_replaces_them() {
 /// UC: UC-TOP-034, UC-TOP-035, UC-TOP-036
 #[tokio::test]
 async fn patch_refuses_immutable_misplaced_and_dead_letter_changes() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     created(&node, json!({ "name": "q", "type": "queue" })).await;
     created(&node, json!({ "name": "d", "type": "distributor" })).await;
 
@@ -536,7 +536,7 @@ async fn patch_refuses_immutable_misplaced_and_dead_letter_changes() {
 /// UC: UC-TOP-038, UC-TOP-040, UC-TOP-041, UC-TOP-042, UC-TOP-043
 #[tokio::test]
 async fn delete_removes_the_topic_and_its_dead_letter() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     created(&node, json!({ "name": "q", "type": "queue" })).await;
     created(
         &node,
@@ -571,7 +571,7 @@ async fn delete_removes_the_topic_and_its_dead_letter() {
 /// UC: UC-PAG-001, UC-PAG-002, UC-PAG-008
 #[tokio::test]
 async fn pages_carry_next_cursor_only_when_there_is_more_and_bad_params_are_400() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     for name in ["a", "b", "c"] {
         created(&node, json!({ "name": name, "type": "distributor" })).await;
     }
@@ -605,7 +605,7 @@ async fn pages_carry_next_cursor_only_when_there_is_more_and_bad_params_are_400(
 /// UC: UC-PAG-003, UC-PAG-005, UC-PAG-006
 #[tokio::test]
 async fn walking_the_pages_returns_everything_once_and_cursors_are_stable_and_bound_to_the_query() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     for i in 0..7 {
         created(&node, json!({ "name": format!("t{i}"), "type": "queue" })).await;
     }
@@ -696,22 +696,5 @@ async fn definitions_are_saved_in_the_node_database_and_resumed_after_a_restart(
     assert_eq!(node.client_get("/topics/orders").await.status(), 200);
     assert_eq!(delete(&node, "Pedidos").await.status(), 204);
     assert!(!storage.join("_topics").exists(), "no file per topic");
-    node.shutdown().await;
-
-    // Without `development.resume-on-start`, the node starts clean and deletes the disk.
-    let node = TestNode::builder()
-        .env("TABA_STORAGE_DIR", &storage_str)
-        .env("TABA_DEVELOPMENT_RESUME_ON_START", "false")
-        .start()
-        .await;
-    assert_eq!(
-        body(node.client_get("/topics").await).await,
-        json!({ "items": [] })
-    );
-    assert!(!storage.join("_topics").exists());
-    assert!(
-        storage.join("_node.db").is_file(),
-        "the database is recreated empty"
-    );
     node.shutdown().await;
 }

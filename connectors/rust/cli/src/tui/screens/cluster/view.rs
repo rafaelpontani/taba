@@ -457,11 +457,7 @@ pub fn detail_lines(m: &Model) -> Vec<Line<'static>> {
         &tx.t("col.state"),
         format!("{} · {}: {}", s.state, tx.t("col.drain"), s.drain_state),
     ));
-    lines.push(pair(
-        m,
-        &tx.t("col.version"),
-        format!("{} · {}", s.version, s.mode),
-    ));
+    lines.push(pair(m, &tx.t("col.version"), s.version.clone()));
     if let Some(started) = s.started_at.as_deref().and_then(i18n::parse_instant) {
         let up = u64::try_from((m.wall_ms - started) / 1000).unwrap_or(0);
         lines.push(pair(

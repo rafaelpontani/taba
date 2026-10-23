@@ -36,7 +36,7 @@ fontes: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, c
 | `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush` | `admin` | admin | `200` |
 | `POST` | `/cluster/stop` | só o raiz | admin | `200` |
 
-Os exemplos usam `localhost:8080` sem autenticação (modo desenvolvimento). Com autenticação, acrescente `-H "Authorization: Bearer $TOKEN"`.
+Os exemplos usam `localhost:8080` sem autenticação (nó sem token raiz nem `auth.dev-token`). Com autenticação, acrescente `-H "Authorization: Bearer $TOKEN"`.
 
 ---
 
@@ -93,7 +93,6 @@ curl -s -X POST localhost:8080/topics -H 'Content-Type: application/json' \
 | `400` | `validation.failed`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit`, `unknown-field` | Corpo inválido |
 | `401`/`403` | `auth.unauthorized`, `auth.forbidden`, `auth.out-of-scope` | Sem `create`, ou nome/`prefixes` fora dos prefixos do token |
 | `409` | `topic.already-exists` | Nome já existe |
-| `422` | `topic.fifo-needs-replication` | FIFO com fator < 2 |
 | `429` | `rate-limit.exceeded` | — |
 | `503` | `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing` | Algum nó não confirmou (nada foi criado), ou o commit se completa em segundo plano |
 
@@ -254,7 +253,7 @@ Exemplo com texto e binário (verificado):
 | `401`/`403` | `auth.*` | Exige `consume`, e `create` se o `autoCreate` for criar |
 | `404` | `topic.not-found` | Não existe e sem `autoCreate` |
 | `409` | `topic.wrong-type` | O tópico é um distribuidor |
-| `422` | `topic.volatile-limit`, `topic.fifo-needs-replication` | Limites do `autoCreate` |
+| `422` | `topic.volatile-limit` | Limite do `autoCreate` |
 | `429` | `rate-limit.exceeded` | — |
 | `503` | `delivery.unavailable`, `cluster.quorum-unavailable`, `cluster.node-syncing` | **Nenhuma** mensagem capturada e houve falha de registro: nunca responde vazio nesse caso. Se ao menos uma foi capturada, `200` com as que conseguiu |
 
@@ -302,7 +301,7 @@ Erros: `403` (`auth.forbidden` com `required: "manage"`, `auth.out-of-scope`), `
 
 ## Tokens
 
-Só existem com a **autenticação ligada** e só aceitam o **token raiz**. Sem autenticação ou em modo desenvolvimento: `404 route.not-found`. Modelo e permissões em [14-seguranca.md](14-seguranca.md).
+Só existem com a **autenticação ligada** e só aceitam o **token raiz**. Sem autenticação: `404 route.not-found`. Modelo e permissões em [14-seguranca.md](14-seguranca.md).
 
 | Rota | Faz | Sucesso |
 |---|---|---|

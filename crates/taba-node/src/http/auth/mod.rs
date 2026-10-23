@@ -252,7 +252,7 @@ fn need(method: &Method, route: &str) -> Option<Need> {
             Some(Need::Any)
         }
         // Stopping the whole cluster is the root token's alone.
-        "/cluster/stop" => Some(Need::Root),
+        "/cluster/stop" | "/cluster/restore/force" => Some(Need::Root),
         // The cluster and the nodes' insides: the `admin` permission.
         "/cluster/status"
         | "/cluster/backup"

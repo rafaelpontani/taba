@@ -39,32 +39,6 @@ const LINE_ENVELOPE_MARGIN: u64 = 4096;
 const ROOT_TOKEN_MIN_LEN: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    Production,
-    Development,
-}
-
-impl Mode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Mode::Production => "production",
-            Mode::Development => "development",
-        }
-    }
-}
-
-impl Parse for Mode {
-    const EXPECTED: &'static str = "`production` or `development`";
-    fn parse(s: &str) -> Option<Self> {
-        match s {
-            "production" => Some(Mode::Production),
-            "development" => Some(Mode::Development),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AuthSwitch {
     Auto,
     On,
@@ -189,6 +163,8 @@ pub struct Ports {
 
 #[derive(Debug, Clone)]
 pub struct Tls {
+    /// `cluster.tls.enabled`: `false` only in the one-node profile (doc 07, section 8).
+    pub enabled: bool,
     /// `None`: the cluster port serves plain HTTP, with a warning in the log.
     pub dir: Option<PathBuf>,
     pub reload_interval: Duration,
@@ -200,7 +176,15 @@ pub struct Auth {
     /// Already resolved: `auto` became `true` or `false`. Always `false` in development.
     pub enabled: bool,
     pub root_token: RootToken,
+    /// `auth.dev-token`: the secret of the `admin` work token the start creates (one-node profile only).
+    pub dev_token: Option<Secret>,
     pub reload_interval: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct Health {
+    /// `health.single-node-condition`: shows the reduced-profile condition when something is relaxed.
+    pub single_node_condition: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -275,6 +259,10 @@ pub struct Storage {
     pub rate_window: Duration,
     pub topic_reserve: u64,
     pub db_synchronous: DbSynchronous,
+    /// Size limit of the log of excluded messages (`storage.excluded.max-size`).
+    pub excluded_max_bytes: u64,
+    /// Age limit of the log of excluded messages (`storage.excluded.max-age`).
+    pub excluded_max_age: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -331,6 +319,25 @@ pub struct Cluster {
     pub recovery_timeout: Option<Duration>,
     pub reunion_interval: Option<Duration>,
     pub sync: ClusterSync,
+    pub restore: ClusterRestore,
+}
+
+/// The restoration of the previous lives' messages (doc 07, sections 10.3, 10.7 and 10.11).
+#[derive(Debug, Clone)]
+pub struct ClusterRestore {
+    /// `cluster.restore.grace` (`G`): how long the restoration waits for the expected nodes.
+    pub grace: Duration,
+    /// `cluster.restore.strict`: after `G` the restoration stays held until the operator forces it.
+    pub strict: bool,
+    /// `cluster.restore.clock-slack`: tolerance when comparing the clocks of two nodes.
+    pub clock_slack: Duration,
+    /// `cluster.restore.probe.timeout`: total time spent probing the old addresses.
+    pub probe_timeout: Duration,
+    /// `cluster.restore.probe.interval`: time between two probes.
+    pub probe_interval: Duration,
+    /// `cluster.restore.cold-start.wait`: how long a node with a previous life looks for the cluster (through the
+    /// entry address and the old IPs) before it may start alone.
+    pub cold_start_wait: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -450,13 +457,12 @@ pub struct ClientIp {
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub mode: Mode,
-    pub resume_on_start: bool,
     pub ports: Ports,
     pub pagination: Pagination,
     pub secrets_dir: PathBuf,
     pub tls: Tls,
     pub auth: Auth,
+    pub health: Health,
     pub drain: Drain,
     pub backup: Backup,
     pub storage: Storage,
@@ -478,8 +484,25 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn is_development(&self) -> bool {
-        self.mode == Mode::Development
+    /// The one-node profile: a cluster of one, with no one to join (doc 07, section 8).
+    pub fn is_single_node(&self) -> bool {
+        self.write.replication_factor == 1
+    }
+
+    /// What the one-node profile relaxes in this configuration, for the start log and the
+    /// `reduced-profile` condition. Empty in a production cluster.
+    pub fn relaxations(&self) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        if self.write.replication_factor == 1 {
+            out.push("replication.factor=1");
+        }
+        if !self.tls.enabled {
+            out.push("cluster.tls.enabled=false");
+        }
+        if self.auth.dev_token.is_some() {
+            out.push("auth.dev-token");
+        }
+        out
     }
 
     /// Reads the file (`--config`, `TABA_CONFIG_FILE` or the default) and the process environment.
@@ -520,19 +543,18 @@ impl Config {
     }
 
     fn build(s: &Source, warnings: &mut Vec<String>) -> Result<Self, ConfigError> {
-        let mode: Mode = s.get("mode")?;
-        let dev = mode == Mode::Development;
         let mut problems: Vec<String> = Vec::new();
+        let configured_factor: u32 = s.get("replication.factor")?;
+        // The one-node profile (doc 07, section 8): what it relaxes only exists with factor 1.
+        let single = configured_factor == 1;
 
-        if dev {
-            let ignored =
-                s.set_keys_with_prefix(&["cluster.", "ring.", "replication.", "write.quorum"]);
-            if !ignored.is_empty() {
-                warnings.push(format!(
-                    "mode=development: parameters ignored in a one-node cluster: {}",
-                    ignored.join(", ")
-                ));
-            }
+        // `mode` and `development.resume-on-start` no longer exist: the development uses the one-node profile.
+        let removed = s.set_keys_with_prefix(&["mode", "development."]);
+        if !removed.is_empty() {
+            warnings.push(format!(
+                "parameters removed and ignored (use the one-node profile, replication.factor=1): {}",
+                removed.join(", ")
+            ));
         }
 
         // Portas
@@ -541,7 +563,7 @@ impl Config {
             cluster: s.get("cluster.port")?,
             operations: s.opt("operations.port")?,
         };
-        check_distinct_ports(&ports, dev, &mut problems);
+        check_distinct_ports(&ports, &mut problems);
         let pagination = Pagination {
             default_limit: s.get("api.pagination.default-limit")?,
             max_limit: s.get("api.pagination.max-limit")?,
@@ -555,8 +577,15 @@ impl Config {
 
         // Security: secrets folder, cluster TLS and root token
         let secrets_dir: PathBuf = PathBuf::from(s.get::<String>("secrets.dir")?);
+        let tls_enabled: bool = s.get("cluster.tls.enabled")?;
+        if !tls_enabled && !single {
+            problems.push(
+                "cluster.tls.enabled=false is only accepted with replication.factor=1".into(),
+            );
+        }
         let tls = Tls {
-            dir: if dev {
+            enabled: tls_enabled,
+            dir: if !tls_enabled {
                 None
             } else {
                 resolve_tls_dir(s, &secrets_dir, &mut problems)?
@@ -564,7 +593,7 @@ impl Config {
             reload_interval: s.get("cluster.tls.reload-interval")?,
             expiry_warning: s.get("cluster.tls.expiry-warning")?,
         };
-        let auth = resolve_auth(s, &secrets_dir, dev, &mut problems)?;
+        let auth = resolve_auth(s, &secrets_dir, single, &mut problems)?;
 
         let drain = Drain {
             on_stop: s.get("drain.on-stop")?,
@@ -581,12 +610,21 @@ impl Config {
             rate_window: s.get("memory.rate.window")?,
             topic_reserve: s.get("memory.topic.reserve")?,
             db_synchronous: s.get("storage.db.synchronous")?,
+            excluded_max_bytes: s.get::<Bytes>("storage.excluded.max-size")?.0,
+            excluded_max_age: s.get("storage.excluded.max-age")?,
         };
         if storage.dir.file_name().is_none_or(|n| n != "taba") {
             problems.push(format!(
                 "storage.dir (`{}`): the last folder must be named `taba`",
                 storage.dir.display()
             ));
+        }
+        // Um log que não guarda nada deixaria toda vida anterior fora da janela: a restauração seria calada.
+        if storage.excluded_max_bytes == 0 {
+            problems.push("storage.excluded.max-size must be greater than zero".into());
+        }
+        if storage.excluded_max_age.is_zero() {
+            problems.push("storage.excluded.max-age must be greater than zero".into());
         }
         let messages = Messages {
             max_bytes: s.get::<Bytes>("message.max-bytes")?.0,
@@ -605,39 +643,33 @@ impl Config {
         }
 
         // Writing and durability
-        let configured_factor: u32 = s.get("replication.factor")?;
         let configured_quorum: Option<u32> = s.opt("write.quorum")?;
         if configured_factor == 0 {
             problems.push("replication.factor must be 1 or more".into());
         }
         let default_quorum = configured_factor / 2 + 1;
-        let write = if dev {
-            Write {
-                replication_factor: 1,
-                quorum: 1,
-                ..write_rest(s)?
-            }
-        } else {
-            let quorum = configured_quorum.unwrap_or(default_quorum);
-            if configured_factor > 0 && !(1..=configured_factor).contains(&quorum) {
-                problems.push(format!(
-                    "write.quorum ({quorum}) must be between 1 and replication.factor ({configured_factor})"
-                ));
-            }
-            Write {
-                replication_factor: configured_factor,
-                quorum,
-                ..write_rest(s)?
-            }
+        let quorum = configured_quorum.unwrap_or(default_quorum);
+        if configured_factor > 0 && !(1..=configured_factor).contains(&quorum) {
+            problems.push(format!(
+                "write.quorum ({quorum}) must be between 1 and replication.factor ({configured_factor})"
+            ));
+        }
+        let write = Write {
+            replication_factor: configured_factor,
+            quorum,
+            ..write_rest(s)?
         };
 
         // Cluster
         let cluster = cluster_config(s)?;
-        match (&cluster.entry_address, dev) {
-            (None, false) => {
-                problems.push("cluster.entry-address is required in mode=production".into());
+        match &cluster.entry_address {
+            // A node alone (factor 1) has no cluster to join.
+            None if !single => {
+                problems.push(
+                    "cluster.entry-address is required with replication.factor above 1".into(),
+                );
             }
-            (Some(address), false) if !is_host_port(address) => problems.push(format!(
+            Some(address) if !is_host_port(address) => problems.push(format!(
                 "cluster.entry-address (`{address}`) must be host:port, on the cluster port"
             )),
             _ => {}
@@ -647,6 +679,18 @@ impl Config {
         }
         if cluster.vote_min_voters == 0 {
             problems.push("cluster.vote.min-voters must be 1 or more".into());
+        }
+        if cluster.restore.grace.is_zero() {
+            problems.push("cluster.restore.grace must be greater than zero".into());
+        }
+        if cluster.restore.probe_interval.is_zero() {
+            problems.push("cluster.restore.probe.interval must be greater than zero".into());
+        }
+        if cluster.restore.probe_timeout < cluster.restore.probe_interval {
+            problems.push(
+                "cluster.restore.probe.timeout cannot be shorter than cluster.restore.probe.interval"
+                    .into(),
+            );
         }
         if cluster.virtual_nodes == 0 {
             problems.push("ring.virtual-nodes must be 1 or more".into());
@@ -793,13 +837,14 @@ impl Config {
         }
 
         Ok(Config {
-            mode,
-            resume_on_start: s.get("development.resume-on-start")?,
             ports,
             pagination,
             secrets_dir,
             tls,
             auth,
+            health: Health {
+                single_node_condition: s.get("health.single-node-condition")?,
+            },
             drain,
             backup,
             storage,
@@ -821,12 +866,9 @@ impl Config {
 }
 
 /// The three ports must differ from each other; `0` (any free port, only
-/// in the tests) never counts as repeated. In development the cluster one is not opened.
-fn check_distinct_ports(ports: &Ports, dev: bool, problems: &mut Vec<String>) {
-    let mut named = vec![("api.port", ports.api)];
-    if !dev {
-        named.push(("cluster.port", ports.cluster));
-    }
+/// in the tests) never counts as repeated.
+fn check_distinct_ports(ports: &Ports, problems: &mut Vec<String>) {
+    let mut named = vec![("api.port", ports.api), ("cluster.port", ports.cluster)];
     if let Some(p) = ports.operations {
         named.push(("operations.port", p));
     }
@@ -899,19 +941,27 @@ fn has_cert_pair(dir: &Path) -> bool {
 fn resolve_auth(
     s: &Source,
     secrets_dir: &Path,
-    dev: bool,
+    single: bool,
     problems: &mut Vec<String>,
 ) -> Result<Auth, ConfigError> {
     let reload_interval = s.get("auth.reload-interval")?;
     let switch: AuthSwitch = s.get("auth.enabled")?;
     let inline: Option<String> = s.opt("auth.root-token")?;
     let file: Option<String> = s.opt("auth.root-token-file")?;
-    if dev {
-        return Ok(Auth {
-            enabled: false,
-            root_token: RootToken::None,
-            reload_interval,
-        });
+    // The `admin` work token the start creates; it turns authentication on (only with factor 1).
+    let dev_token: Option<String> = s.opt("auth.dev-token")?;
+    if let Some(secret) = &dev_token {
+        if !single {
+            problems.push("auth.dev-token is only accepted with replication.factor=1".into());
+        }
+        if secret.chars().count() < ROOT_TOKEN_MIN_LEN {
+            problems.push(format!(
+                "auth.dev-token must have at least {ROOT_TOKEN_MIN_LEN} characters"
+            ));
+        }
+        if secret.contains('.') {
+            problems.push("auth.dev-token cannot contain a dot".into());
+        }
     }
 
     let file_path = match file {
@@ -964,10 +1014,10 @@ fn resolve_auth(
 
     let has_token = root_token != RootToken::None;
     let enabled = match switch {
-        AuthSwitch::Auto => has_token,
+        AuthSwitch::Auto => has_token || dev_token.is_some(),
         AuthSwitch::Off => false,
         AuthSwitch::On => {
-            if !has_token {
+            if !has_token && dev_token.is_none() {
                 problems.push("auth.enabled=true requires a root token (auth.root-token, auth.root-token-file or the secrets folder's root-token)".into());
             }
             true
@@ -976,6 +1026,7 @@ fn resolve_auth(
     Ok(Auth {
         enabled,
         root_token,
+        dev_token: dev_token.map(Secret),
         reload_interval,
     })
 }
@@ -1028,6 +1079,14 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
             range_size: s.opt("cluster.sync.range.size")?,
             log_max_bytes: s.opt::<Bytes>("cluster.sync.log.max-bytes")?.map(|b| b.0),
             timeout: s.opt("cluster.sync.timeout")?,
+        },
+        restore: ClusterRestore {
+            grace: s.get("cluster.restore.grace")?,
+            strict: s.get("cluster.restore.strict")?,
+            clock_slack: s.get("cluster.restore.clock-slack")?,
+            probe_timeout: s.get("cluster.restore.probe.timeout")?,
+            probe_interval: s.get("cluster.restore.probe.interval")?,
+            cold_start_wait: s.get("cluster.restore.cold-start.wait")?,
         },
     })
 }

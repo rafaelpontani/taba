@@ -21,7 +21,7 @@ fontes: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, cra
 | **Operação** | `operations.port` (ou a porta de cliente) | Operador, Prometheus, orquestrador | Nenhuma (rede) | [17](17-api-operacao.md) |
 | **Cluster** | `cluster.port` (8081) | **Só os outros nós** | TLS mútuo | [18](18-api-cluster.md) |
 
-Cada API tem **o seu público** e a rede restringe cada porta. A porta de cliente responde `404 route.not-found` a `/cluster/*`; a do cluster, a tudo que não seja `/cluster/*`. Em modo desenvolvimento, a porta do cluster não existe.
+Cada API tem **o seu público** e a rede restringe cada porta. A porta de cliente responde `404 route.not-found` a `/cluster/*`; a do cluster, a tudo que não seja `/cluster/*`.
 
 ![As três APIs do nó e suas rotas](../diagrams/img/pt-BR/node-ports.svg)
 

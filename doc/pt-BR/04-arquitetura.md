@@ -40,7 +40,7 @@ Cada módulo conhece apenas os da esquerda. Isso é verificável: `core` não im
 | `core` | Tipos de domínio e regras puras: IDs (GUID v7), tempo, erros (`ErrorCode`), validações, o **anel de hash**, tópico, token, paginação | Nenhum I/O |
 | `storage` | O banco do nó (`_node.db`), as mensagens em disco, o banco de eventos de sincronização, tokens e perdas | Regras de entrega |
 | `engine` | Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO, dead-letter, tokens, estatísticas | Rede |
-| `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, recuperação, tópicos voláteis, saúde | HTTP de cliente |
+| `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, atualização de versão, recuperação, tópicos voláteis, saúde | HTTP de cliente |
 | `http` | As três APIs, autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
 | `telemetry` | Métricas, traces e logs; exportação OTLP e Prometheus | — |
 | `config` | Arquivo `.yml`, variáveis `TABA_*`, a tabela de parâmetros e as validações de partida | — |
@@ -63,7 +63,7 @@ Cada uma é um *listener* próprio, para que a rede possa restringir o acesso a 
 | Cluster | `cluster.port` | 8081 | `cluster_router` | TLS mútuo; só `/cluster/*` |
 
 - Sem `operations.port`, as rotas de operação são servidas **também na porta de cliente**.
-- Em **modo desenvolvimento** a porta do cluster **não é aberta**.
+- Um nó sozinho (`replication.factor=1`) abre a porta do cluster do mesmo jeito; só nenhum outro nó a usa.
 - Rotas `/tokens` só existem com a autenticação ligada; senão respondem `404`.
 - Um nó em drain, em sincronização ou em falha **não atende** chamadas de cliente: num cluster ele as **repassa** a outro nó (pela porta do cluster do destino) e, sem destino, responde `503` com `Retry-After`. As leituras que dizem o que o cluster está fazendo (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` e as chamadas `/nodes/{nodeId}/…`, que incluem devolver um nó) são a exceção: são repassadas enquanto outro nó puder atendê-las e, senão, respondidas pelo próprio nó, de modo que um cluster parado ainda pode ser inspecionado. Em drain o nó só valida o token root (os outros tokens são dados).
 
@@ -102,12 +102,12 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           pasta de segredos (certificado do cluster, token raiz)
-  storage/           db (o `_node.db`) messages topics tokens state losses synclog
+  storage/           db (o `_node.db`) messages topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: o `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
-                     channel drain health members protocol recovery replication
-                     service state sync tls transport (http, memory) vote volatile
+                     channel drain health members protocol recovery replication restore
+                     service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
@@ -118,7 +118,7 @@ Cada pasta tem um `mod.rs` que começa com um comentário `//!` dizendo o que fa
 ## Como o nó sobe (`node.rs`)
 
 1. Lê a configuração e valida (por exemplo, `storage.dir` precisa terminar em uma pasta chamada `taba`).
-2. Prepara o disco: o `_node.db`, as pastas de tópicos; em modo desenvolvimento com `development.resume-on-start`, retoma o que estiver no disco.
+2. Prepara o disco: o `_node.db`, as pastas de tópicos; o disco da vida anterior é posto de lado e volta pela restauração ([07-cluster.md](07-cluster.md), seção 10).
 3. Cria o estado compartilhado do nó, a telemetria, os registros de tópicos e tokens, e as mensagens.
 4. Em produção: cria o `ClusterService`, a replicação e o transporte, e **entra no cluster** (bootstrap) ou, se for o primeiro nó (`cluster.first-node`), começa o cluster sozinho.
 5. Abre os listeners das três portas e, a partir daí, atende. O nó só fica **pronto** (`/health/ready`) quando termina de sincronizar.
@@ -128,5 +128,5 @@ O detalhe de entrada e sincronização está em [07-cluster.md](07-cluster.md).
 ## Fontes e provas
 
 - `crates/taba-node/src/lib.rs` (a regra de dependência), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `drain_guard`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
-- Casos de uso: UC-SEG (portas e TLS mútuo), UC-DEV (modo desenvolvimento), UC-FWD (repasse), UC-CFG (configuração); veja [26a](26a-casos-de-uso-implementados.md).
+- Casos de uso: UC-SEG (portas e TLS mútuo), UC-DEV (perfil de um nó), UC-FWD (repasse), UC-CFG (configuração); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md`, `18-estrutura-codigo.md`.

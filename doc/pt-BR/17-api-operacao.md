@@ -33,6 +33,7 @@ fontes: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operatio
 | `POST` | `/node/backup/flush` | admin | `200` `FlushReport` (ou `422 backup.not-configured`) |
 | `POST` | `/cluster/backup/flush` | admin | `200` `ClusterFlushReport` (ou `422 backup.not-configured`) |
 | `POST` | `/cluster/stop` | admin | `200` `StopReport` |
+| `POST` | `/cluster/restore/force` | admin (token root na API de clientes) | `200` `RestoreForce` |
 
 "Isenta" = nunca responde `429`: são leves e chamadas por máquina; um `429` no `/health/ready` faria o balanceador tirar o nó da rotação por engano.
 
@@ -63,7 +64,7 @@ Estado do cluster para **pessoas e scripts**: condições, resumo e o estado de 
 |---|---|---|
 | `scope` | `cluster` | `cluster`: consulta **todos os nós** (`GET /cluster/status`), *best-effort*: nó que não responde aparece com `reachable: false`. `node`: leitura **local**, sem consultar outros nós |
 
-Num nó só (modo desenvolvimento) os dois escopos são iguais. Erros: `400 validation.failed` (`scope` desconhecido), `403`, `429` (só com `scope=cluster`).
+Num nó só (fator 1) os dois escopos são iguais. Erros: `400 validation.failed` (`scope` desconhecido), `403`, `429` (só com `scope=cluster`).
 
 ```json
 {"collectedAt":"2026-10-13T17:13:10.812Z","partial":false,"scope":"cluster","worstCondition":"ok","conditions":[],
@@ -81,10 +82,10 @@ Durante uma falha real (um nó derrubado com `kill`), a mesma rota mostrou: `con
 | `partial` | `true` se algum nó não respondeu |
 | `worstCondition` | A de maior severidade (`ok` se nenhuma) |
 | `conditions` | Lista de `{condition, severity}` ([13-observabilidade.md](13-observabilidade.md)) |
-| `summary` | `members` (contagem por estado), `membersVersion`, `quorumAvailable`, `syncingBlocks` |
+| `summary` | `members` (contagem por estado), `membersVersion`, `quorumAvailable`, `syncingBlocks`, `excludedCutoff` (a data de corte do log de excluídos: a mais recente das `excludedSince` entre os membros ativos; `null` sem nenhum) |
 | `nodes` | Um por membro: `nodeId`, `reachable`, `status` (`NodeStatus`, ou `null`) |
 
-**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (se configurados), `mode` (`production`/`development`), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) e `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
+**`NodeStatus`:** `nodeId`, `version`, `clusterName`/`environment` (se configurados), `state` (`joining`, `active`, `syncing`, `returning`, `failed`), `drainState`, `startedAt`, `collectedAt`, `excludedSince` (desde quando o nó grava o log de excluídos), `storage` (`memoryUsedBytes`, `memoryLimitBytes`, `memoryMessages`, `diskMessages`, `diskFreeBytes`) e `signals` (`membersVersion`, `quorumAvailable`, `channels`, `syncingBlocks`, `blocksBelowReplication`, `blocksBelowQuorum`, `frozenNodes`).
 
 ---
 
@@ -233,9 +234,20 @@ curl -s -X POST http://nó:9090/cluster/stop
 
 `stopList: false` com `warnings` quando o S3 estava indisponível: o drain em disco foi feito, mas o backup **não foi enviado**. Um nó que não respondeu fica fora da lista e é tratado como morto ao subir.
 
+### `POST /cluster/restore/force`: forçar a restauração das vidas anteriores
+
+Depois de uma queda total o cluster restaura as mensagens antigas e só então libera as filas FIFO ([07-cluster.md](07-cluster.md), seções 10.8 e 10.7). Enquanto a votação não fecha, `GET /health/cluster` mostra `previous-life-pending`. A chamada declara o cluster **restaurado do disco** com os nós que estão presentes: o nó que a recebe espalha para os outros (`POST /cluster/restore/force` na porta do cluster), as filas FIFO são liberadas e uma restauração retida por `cluster.restore.strict` segue. Mensagens já consumidas podem voltar ([07-cluster.md](07-cluster.md), seção 10.10). Na API de clientes exige o **token root**; na porta de operações, como `/cluster/stop`, não usa token.
+
+```bash
+curl -s -X POST http://nó:9090/cluster/restore/force
+# {"wasRestoring":true,"status":"restored","silentNodes":[]}
+```
+
+`wasRestoring: false` quando o cluster não estava em restauração (nada muda); `silentNodes` lista os nós que não responderam ao espalhamento (eles aprendem na próxima consulta).
+
 ## Fontes e provas
 
 - `http/backup.rs` (as rotas do backup), `http/operations.rs` (as rotas e `HealthResponse`), `http/metrics`, `http/topic_stats`, `cluster/drain` (estados e transições), `cluster/health` (condições), `cluster/state`.
-- Respostas copiadas de um nó real (um nó em desenvolvimento e um cluster de 3 nós pelo Compose).
+- Respostas copiadas de um nó real (um nó só e um cluster de 3 nós pelo Compose).
 - Casos de uso: UC-OPS (saúde, métricas e estatísticas), UC-DRN (drain), UC-LIM (limites das rotas de operação); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/operations.rs`, `metrics.rs`, `topic_stats.rs`, `drain_cluster.rs`.
 - Histórico: `06b-api-operacao.md`, `11-observabilidade.md`.

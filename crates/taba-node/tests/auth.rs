@@ -86,23 +86,11 @@ async fn publish(node: &TestNode, topic: &str, token: &str) -> Response {
 
 /// UC: UC-AUT-001, UC-AUT-007, UC-AUT-025
 #[tokio::test]
-async fn without_a_root_token_or_in_development_nothing_is_required_and_tokens_are_404() {
+async fn without_a_root_token_nothing_is_required_and_tokens_are_404() {
     let node = TestNode::builder().production().start().await;
     assert_eq!(get(&node, "/topics", None).await.status(), 200);
     assert_eq!(
         error_code(get(&node, "/tokens", None).await, 404).await,
-        "route.not-found"
-    );
-    node.shutdown().await;
-
-    // In development authentication is never required, even with the root token defined.
-    let node = TestNode::builder()
-        .env("TABA_AUTH_ROOT_TOKEN", ROOT)
-        .start()
-        .await;
-    assert_eq!(get(&node, "/topics", None).await.status(), 200);
-    assert_eq!(
-        error_code(get(&node, "/tokens", Some(ROOT)).await, 404).await,
         "route.not-found"
     );
     node.shutdown().await;

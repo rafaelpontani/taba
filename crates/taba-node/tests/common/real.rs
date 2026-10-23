@@ -90,11 +90,7 @@ impl RealCluster {
     pub async fn add_node(&mut self, env: &[(&str, &str)]) -> &TestNode {
         let number = self.nodes.len() + 1;
         let entry = match self.nodes.first() {
-            Some(first) => first
-                .node
-                .cluster_addr()
-                .expect("porta do cluster")
-                .to_string(),
+            Some(first) => first.node.cluster_addr().to_string(),
             None => "127.0.0.1:1".to_owned(),
         };
         let mut builder = TestNode::builder().real(&ip_of(number), &entry);
@@ -122,10 +118,7 @@ impl RealCluster {
 
     /// The address of the node's cluster port.
     pub fn cluster_addr(&self, number: usize) -> SocketAddr {
-        self.node(number)
-            .node
-            .cluster_addr()
-            .expect("porta do cluster")
+        self.node(number).node.cluster_addr()
     }
 
     /// Waits for all the nodes to see `size` members.

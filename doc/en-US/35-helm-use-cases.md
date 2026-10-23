@@ -37,7 +37,7 @@ Variables: `TABA_TEST_TAG` (tag of the `taba` and `taba-cli` images, default `rc
 | Case | Operating mode | Values (`ci/`) | Script |
 |---|---|---|---|
 | [UC-01](#uc-01) | Minimal production: 3 nodes, generated secrets | `uc-01-minimo.yaml` | `uc-01-minimo.sh` |
-| [UC-02](#uc-02) | Development: 1 node, no auth | `uc-02-desenvolvimento.yaml` | `uc-02-desenvolvimento.sh` |
+| [UC-02](#uc-02) | One node: the one-node profile, no auth | `uc-02-desenvolvimento.yaml` | `uc-02-desenvolvimento.sh` |
 | [UC-03](#uc-03) | Operator's secrets and token rotation | `uc-03-segredos-existentes.yaml` | `uc-03-segredos-existentes.sh` |
 | [UC-04](#uc-04) | Ingress (host, class, TLS) | `uc-04-ingress.yaml` | `uc-04-ingress.sh` |
 | [UC-05](#uc-05) | Backup to built-in S3 (SeaweedFS) | `uc-05-backup-seaweedfs.yaml` | `uc-05-backup-seaweedfs.sh` |
@@ -77,7 +77,7 @@ helm install taba deploy/helm/taba -n taba --create-namespace
 
 ## UC-02
 
-**Development.** `config.mode: development`: one node, no authentication, no cluster TLS, no Secret and no Job. For a lab and application integration tests.
+**One node.** `config.replication.factor: 1` (the old `config.mode: development` works too): one node, no authentication, no cluster TLS, no Secret and no Job. For a lab and application integration tests.
 
 **Expected:** one pod; no Secret or Job; even with `replicaCount: 3` the StatefulSet stays at 1; publishing without a token works.
 

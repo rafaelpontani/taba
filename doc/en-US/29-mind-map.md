@@ -70,7 +70,7 @@ sources: [doc/pt-BR]
 - **Failure:** channel drops → reconnects (3×) → **vote** (51%, ≥ 2 voters) → deregistration → **freezing** (5 min)
 - **Return:** loss list → returns what it has → joins **as a new node**
 - **Drain:** everything to disk → deregistration **without a vote** · `SIGTERM` triggers it
-- **Development mode:** 1 node, no replicas · drain = *save*
+- **One-node profile:** `replication.factor=1`, no replicas · every restart is a new node
 - **Storage:** **memory first**; **overflow** to disk (`memory.limit`) · `_node.db` · `<topic>/_topic.db` + `<id>.body` · `_sync/sync.db`
 - **Node states:** `joining` · `syncing` · `active` · `returning` · `failed` (+ `drainState`)
 
@@ -78,7 +78,7 @@ sources: [doc/pt-BR]
 
 - **OTLP** (push: metrics, traces, logs) · **`/metrics`** Prometheus (one target per node) · **JSON** (`/health/cluster`, `/metrics/topics*`)
 - **84 node metrics** (`taba.*`, `http.server.*`, `process.*`) · topic ones **opt-in** (`telemetry.topics.mode`)
-- **Cluster conditions (8):** `member-unreachable` · `node-frozen` · `syncing` · `under-replicated` · `write-quorum-at-risk` · `quorum-lost` · `membership-divergent` · `storage-pressure`
+- **Cluster conditions (12):** `member-unreachable` · `node-frozen` · `syncing` · `under-replicated` · `write-quorum-at-risk` · `quorum-lost` · `membership-divergent` · `storage-pressure` · `upgrade-stalled` · `members-missing` · `previous-life-pending` · `reduced-profile`
 - **Health:** `/health/live` · `/health/ready` (503 in drain/synchronization)
 
 ## 7. Security ([14](14-security.md))

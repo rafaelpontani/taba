@@ -20,7 +20,7 @@ O **Taba** é um sistema de mensageria: aplicações **publicam** mensagens em *
 
 O nome vem de **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos. Em tupi, *taba* é a aldeia: cada nó é uma oca, o cluster é a aldeia.
 
-Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotado numa única imagem Docker. Um cluster são três ou mais nós iguais, sem coordenador, sem banco externo e sem broker à parte. Para testar, um nó basta (modo desenvolvimento).
+Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotado numa única imagem Docker. Um cluster são três ou mais nós iguais, sem coordenador, sem banco externo e sem broker à parte. Para testar, um nó basta (o perfil de um nó).
 
 ![Contexto: quem usa o Taba](../diagrams/img/pt-BR/c4-level0-context.svg)
 
@@ -66,7 +66,7 @@ Os requisitos têm código estável (`RF` funcional, `RNF` não funcional) para 
 | RF-12 | Detecção de falha, **votação** de exclusão e **freezing** | ✅ | [07-cluster.md](07-cluster.md) |
 | RF-13 | Retorno de um nó excluído, com recuperação de mensagens perdidas | ✅ | [07-cluster.md](07-cluster.md) |
 | RF-14 | **Drain**: sair do cluster sem perder o que está em memória | ✅ | [07-cluster.md](07-cluster.md) |
-| RF-15 | **Modo desenvolvimento**: um nó só, sem cluster | ✅ | [07-cluster.md](07-cluster.md) |
+| RF-15 | **Perfil de um nó**: um cluster de um nó só (`replication.factor=1`) | ✅ | [07-cluster.md](07-cluster.md) |
 | RF-16 | Autenticação por **token** com permissões e prefixos | ✅ | [14-seguranca.md](14-seguranca.md) |
 | RF-17 | **TLS mútuo** entre nós, com certificado do cluster e rotação | ✅ | [14-seguranca.md](14-seguranca.md) |
 | RF-18 | Limite de taxa (rate limit) e filtro de IPs de operação | ✅ | [14-seguranca.md](14-seguranca.md) |

@@ -11,7 +11,7 @@ sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/
 
 > ⚠️ **Internal.** No client application should call these routes, and there is **no stability guarantee** between versions: all nodes of a cluster must run the same version. Common conventions: [15-api-overview.md](15-api-overview.md). How the cluster uses these routes: [07-cluster.md](07-cluster.md), [10-publishing.md](10-publishing.md), [12-delivery.md](12-delivery.md).
 
-**Port:** `cluster.port` (8081), **only** the other nodes. **Authentication:** mutual TLS ([14-security.md](14-security.md)); a connection without an accepted certificate fails **at the handshake**. In **development mode the port is not opened**: a production node cannot join a development node.
+**Port:** `cluster.port` (8081), **only** the other nodes. **Authentication:** mutual TLS ([14-security.md](14-security.md)); a connection without an accepted certificate fails **at the handshake**.
 
 The protocol exists in two forms that are **the same thing**: the `Request` type (`cluster/protocol`) and the HTTP route. The real `Transport` translates them to HTTP; the in-memory network of the tests delivers the type directly.
 
@@ -49,7 +49,7 @@ Extracted from `cluster/protocol/http.rs`, the translator between `Request` and 
 | **Members and channel** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
 | **Definitions** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
 | **Messages** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
-| **Synchronization and recovery** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover` |
+| **Synchronization and recovery** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/excluded`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover`; `POST /cluster/topics/{topic}/messages/restore`; `POST /cluster/topics/{topic}/messages/dead`; `GET /cluster/restore`; `POST /cluster/restore/decided`; `POST /cluster/restore/force` |
 | **Observability** | `GET /cluster/status`; `GET /cluster/stats/topics`; `GET /cluster/stats/topics/{topic}/groups` |
 | **S3 backup** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved`; `GET /cluster/backup/status`, `GET /cluster/departed` |
 | **Forwarding** | `* /cluster/forward/{path}`; `* /cluster/node-call/{path}` |
@@ -109,7 +109,7 @@ Each definition has an **owner** on the ring (the first active node at the posit
 | `POST /cluster/definitions/propose` | From the node that received the client **to the owner**. Body `DefinitionProposal`: `kind` (`topic`/`token`), `operation` (`create`/`update`/`delete`), `key`, `body`, `expectedId?` (used by the volatile queue manager to only delete the expected `id`) |
 | `POST /cluster/definitions/apply` | From the owner to each node and to the heir. `DefinitionApply`: `kind`, `key`, `version`, `deleted`, `body`, `relay?` |
 | `GET /cluster/topics`, `GET /cluster/tokens` | **Streams** of the definitions, ordered by `id`, for the bootstrap |
-| `GET /cluster/definitions/tombstones` | **Stream** of the tombstones (removed definitions and the version of the removal), so a late creation does not resurrect what was removed |
+| `GET /cluster/definitions/tombstones` | **Stream** of the tombstones (removed definitions, the version of the removal and, for a topic, its `topicId`), so a late creation does not resurrect what was removed |
 | `GET /cluster/topics/{id}/idle` | How long ago the topic's last `GET` was **on this node** (`IdleResponse`: `topicId`, `idleSeconds`, `sinceStart`). Used by the volatile queue manager |
 
 - The owner checks (name already exists, unknown topic, `expectedId`), assigns the **next version**, writes to the **heir**, applies to itself, sends `apply` to the others and answers after those that answer within `write.commit.timeout`. The others receive it through the `definition` frame of the channel.
@@ -125,7 +125,7 @@ All carry the `topic` and the `id` in the path and the `operationId` in the body
 |---|---|
 | `…/messages/{id}/register` | `MessageRegisterRequest`: `operationId`, `coordinatorId`, `kind` (`publish` or `dead-letter`), `message` (`MessageRecord`), `sourceTopic` (`dead-letter` only). The **same pair of routes** does the move to the dead-letter (creates there and removes from the source, with the same `id`) |
 | `…/messages/{id}/visibility/register` | `VisibilityRegisterRequest`: `kind` (`delivery`/`change`), `invisibleUntil` (**absolute**), `receiptToken`, `deliveryCount` (`delivery` only). The coordinator is always the **owner** |
-| `…/messages/{id}/ack/register` | `AckRegisterRequest`: `receiptToken` (must match) and `deleteAt` (FIFO only) |
+| `…/messages/{id}/ack/register` | `AckRegisterRequest`: `receiptToken` (must match), `deleteAt` (FIFO only) and `discard` (the group's primary dropping a duplicate at the release of the restoration: there is no receipt to check) |
 
 `commit` and `rollback` of each one receive `OperationRef` (`operationId`) and answer `Ack`. Errors: `404 message.not-found`, `409 cluster.conflict` (a pending register already exists, or the message is already invisible), `409 message.stale-receipt`.
 
@@ -142,12 +142,18 @@ All the streams follow the [NDJSON](#ndjson-streams) contract.
 | Route | Does |
 |---|---|
 | `GET /cluster/blocks/{id}/ids` | IDs of messages the node has for the block, with the topic, ordered by ID (`BlockIdLine`: `id`, `topic`, and in FIFO `deleteAt`). **First step** of synchronization |
+| `GET /cluster/blocks/{id}/excluded?from=&to=` | The node's **log of excluded messages** for the block ([07-cluster.md](07-cluster.md), section 10): one line per `id` that left the topic dead (`id`, `topic`, `position`, `atMs`), ordered by ID, with **inclusive** IDs. Whoever synchronizes the block copies the log together with the messages |
 | `GET /cluster/blocks/{id}/messages?from=&to=` | The block's messages in the range (IDs **inclusive**): `MessageRecord`. It is the call **balanced** across sources. In FIFO, a logically deleted message comes **without a body** and with `deleteAt` |
 | `GET /cluster/blocks/{id}/messages/{messageId}` | **One** message; last resort for one that was missing in a range |
 | `GET /cluster/message-loss` | The node's `losses` table (`LossLine`: `id`, `topic`); accepts a non-member |
 | `POST /cluster/message-loss` | Records a loss (`LossRecord`: `topic`, `id`, `block`, `detectedAt`); response `LossAck` (`changed`) |
 | `DELETE /cluster/message-loss/{topic}/{id}` | **Clears** a loss |
-| `POST /cluster/messages/recover[?replicate=false]` | A node that **returns** sends the responsible one the messages it found in the loss list. **The body is an NDJSON stream** (`Content-Type: application/x-ndjson`) of `MessageRecord` with the final line; response `RecoverResult` (`end`, `count` applied). With `replicate=false` it only writes to the local disk. `415` with another `Content-Type` |
+| `POST /cluster/messages/recover[?replicate=false][&durable=true]` | A node that **returns** sends the responsible one the messages it found in the loss list. **The body is an NDJSON stream** (`Content-Type: application/x-ndjson`) of `MessageRecord` with the final line; response `RecoverResult` (`end`, `count` applied). With `replicate=false` it only writes to the local disk; with `durable=true` whoever writes puts the message **on disk**, not only in memory (the restoration of the previous lives uses it between the owners). `415` with another `Content-Type` |
+| `POST /cluster/topics/{topic}/messages/restore[?topicId=]` | The node that keeps the **folder of a previous life** sends the **new primary** of the block its messages, with the original ID ([07-cluster.md](07-cluster.md), section 10.6). NDJSON body like `recover`'s; `topicId` is the topic's when the folder was created. The primary checks the topic (deleted, or recreated with another `topicId`, discards), its own log of excluded messages, the other present nodes' and the S3 journal, and activates what is alive through the path of `recover` (disk and quorum). Response `RecoverResult`: `count` is what ended up **resolved** (activated, already there or discarded). Members only |
+| `POST /cluster/topics/{topic}/messages/dead` | Body `{"ids":[...]}`; answers `{"dead":[...]}` with the IDs that are in this node's **log of excluded messages**. It is the batch query the restoring primary makes to the present nodes. Members only |
+| `GET /cluster/restore` | The state of the node's restoration of the previous lives ([07-cluster.md](07-cluster.md), section 10.8): `status` (`unknown`, `restoring` or `restored`), `finished` (it sent everything its lives keep), `forced`, `missing` (the old nodes still awaited) and `lives` (the manifests of the lives it keeps, with the watermark). The nodes poll it every 500 ms while they restore. Members only |
+| `POST /cluster/restore/decided` | The coordinator (the lowest ID) tells each node that the vote closed: the node deduplicates the FIFO queues, releases them and marks the cluster **restored from disk**. Idempotent. Members only |
+| `POST /cluster/restore/force` | The operator's force, spread by the node that received it ([17-operations-api.md](17-operations-api.md)): the node decides at once, whatever the vote says. Members only |
 
 A malformed block `{id}`: `400 validation.failed`.
 
@@ -175,7 +181,7 @@ They only exist with the backup configured ([33-s3-backup.md](33-s3-backup.md));
 
 ## NDJSON streams
 
-The routes that move volume (`/cluster/topics`, `/cluster/tokens`, `/cluster/definitions/tombstones`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/messages`, `/cluster/message-loss` and the body of `/cluster/messages/recover`) **do not use the client pagination**: whoever synchronizes needs to know it received **everything**.
+The routes that move volume (`/cluster/topics`, `/cluster/tokens`, `/cluster/definitions/tombstones`, `/cluster/blocks/{id}/ids`, `/cluster/blocks/{id}/excluded`, `/cluster/blocks/{id}/messages`, `/cluster/message-loss` and the body of `/cluster/messages/recover`) **do not use the client pagination**: whoever synchronizes needs to know it received **everything**.
 
 | Rule | Effect |
 |---|---|

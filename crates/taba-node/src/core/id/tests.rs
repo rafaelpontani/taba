@@ -22,6 +22,26 @@ fn rejects_other_versions_and_uppercase() {
     assert_eq!(unix_millis_of("550e8400-e29b-41d4-a716-446655440000"), None);
 }
 
+/// UC: UC-FIF-049
+#[test]
+fn a_generator_with_a_floor_never_goes_below_it_and_reports_its_watermark() {
+    let generator = IdGenerator::new();
+    assert_eq!(generator.watermark(), None);
+    generator.raise_floor(2_000_000);
+    // An instant before the floor is lifted to it.
+    let id = generator.new_at(1_000_000);
+    assert_eq!(unix_millis_of(&id), Some(2_000_000));
+    let later = generator.new_at(3_000_000);
+    assert!(id < later);
+    assert_eq!(
+        unix_millis_of(&generator.watermark().unwrap()),
+        Some(3_000_000)
+    );
+    // The floor only goes up, and the IDs never go backwards.
+    generator.raise_floor(10);
+    assert!(generator.new_at(1) > later);
+}
+
 #[test]
 fn ids_sort_by_creation_time() {
     let a = new_at(1_000_000);

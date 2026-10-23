@@ -36,7 +36,7 @@ sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, 
 | `POST` | `/nodes/{nodeId}/backup/flush`, `/cluster/backup/flush` | `admin` | admin | `200` |
 | `POST` | `/cluster/stop` | root only | admin | `200` |
 
-The examples use `localhost:8080` without authentication (development mode). With authentication, add `-H "Authorization: Bearer $TOKEN"`.
+The examples use `localhost:8080` without authentication (a node without a root token or `auth.dev-token`). With authentication, add `-H "Authorization: Bearer $TOKEN"`.
 
 ---
 
@@ -93,7 +93,6 @@ curl -s -X POST localhost:8080/topics -H 'Content-Type: application/json' \
 | `400` | `validation.failed`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit`, `unknown-field` | Invalid body |
 | `401`/`403` | `auth.unauthorized`, `auth.forbidden`, `auth.out-of-scope` | Without `create`, or name/`prefixes` outside the token's prefixes |
 | `409` | `topic.already-exists` | Name already exists |
-| `422` | `topic.fifo-needs-replication` | FIFO with factor < 2 |
 | `429` | `rate-limit.exceeded` | — |
 | `503` | `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing` | Some node did not confirm (nothing was created), or the commit completes in the background |
 
@@ -254,7 +253,7 @@ Example with text and binary (verified):
 | `401`/`403` | `auth.*` | Requires `consume`, and `create` if `autoCreate` is going to create |
 | `404` | `topic.not-found` | Does not exist and no `autoCreate` |
 | `409` | `topic.wrong-type` | The topic is a distributor |
-| `422` | `topic.volatile-limit`, `topic.fifo-needs-replication` | `autoCreate` limits |
+| `422` | `topic.volatile-limit` | `autoCreate` limit |
 | `429` | `rate-limit.exceeded` | — |
 | `503` | `delivery.unavailable`, `cluster.quorum-unavailable`, `cluster.node-syncing` | **No** message captured and there was a register failure: never answers empty in that case. If at least one was captured, `200` with the ones it got |
 
@@ -302,7 +301,7 @@ Errors: `403` (`auth.forbidden` with `required: "manage"`, `auth.out-of-scope`),
 
 ## Tokens
 
-They only exist with **authentication on** and only accept the **root token**. Without authentication or in development mode: `404 route.not-found`. Model and permissions in [14-security.md](14-security.md).
+They only exist with **authentication on** and only accept the **root token**. Without authentication: `404 route.not-found`. Model and permissions in [14-security.md](14-security.md).
 
 | Route | Does | Success |
 |---|---|---|

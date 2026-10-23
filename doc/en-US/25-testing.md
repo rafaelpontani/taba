@@ -20,7 +20,7 @@ In a distributed system, the most valuable test **starts several nodes in the sa
 | Level | Acronym | What runs | Where it is |
 |---|---|---|---|
 | **Unit** | `U` | An isolated piece, with no real network or disk: domain, validation, ring, lists, quorum, JSON reader | `src/**/tests.rs`, **sibling of the module** |
-| **One node** | `I` | A real node in **development mode**, real HTTP, real disk (temporary folder). What the client sees | `crates/taba-node/tests/*.rs` with `TestNode` |
+| **One node** | `I` | A real node in the **one-node profile**, real HTTP, real disk (temporary folder). What the client sees | `crates/taba-node/tests/*.rs` with `TestNode` |
 | **Cluster** | `C` | **Several nodes in the same process**, in-memory network (programmable loss, delay, partition) and manual `Clock`. Quorum, rollback, failure, voting, synchronization, drain | `crates/taba-node/tests/*.rs` with `TestCluster` |
 | **Connector** | `K` | The connector against a fake transport (unit) and against a real Taba (integration) | `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests` |
 | **End to end** | — | The real 3-node Compose | `docker/validate.sh`, `connectors/csharp/scripts/integration.sh` |
@@ -50,7 +50,7 @@ In numbers: ~330 tests in these files plus the unit tests of the modules; the cl
 
 | Tool | What it gives |
 |---|---|
-| **`TestNode`** (`mod.rs`) | Starts **one real node** on free ports, disk in a temporary folder. `TestNode::development()` and `::production()`; `builder()` with `.env(name, value)`, `.in_network(&network, host)`, `.clock(clock)`, `.real(ip, entry)`, `.production()`. Methods: `client_url()`, `operations_url()`, `cluster_url()`, `client_get()`, `metrics()`, `stats()`, `storage_dir()`, `shutdown()`. Helpers: `series()` (reads a `/metrics` series), `error_code()` (checks status and returns the `code`) |
+| **`TestNode`** (`mod.rs`) | Starts **one real node** on free ports, disk in a temporary folder. `TestNode::single()` (a node in the one-node profile, already active and with its restoration done) and `::production()`; `builder()` (the one-node profile by default) with `.env(name, value)`, `.in_network(&network, host)`, `.clock(clock)`, `.real(ip, entry)`, `.single_node()`, `.production()`. Methods: `client_url()`, `operations_url()`, `cluster_url()`, `client_get()`, `metrics()`, `stats()`, `storage_dir()`, `shutdown()`. Helpers: `series()` (reads a `/metrics` series), `error_code()` (checks status and returns the `code`) |
 | **`TestCluster`** (`cluster.rs`) | **Several nodes in the same process** (node `n` = `10.0.0.n`), linked by the **`MemoryNetwork`** and by **a shared manual `Clock`**; the load balancer (`balancer:8081`) distributes the calls. `start(n)`, `start_with(n, env)`, `add_node()`, `spawn_node()`, `respawn_node()`, `node(n)`, `table(n)`, `member_ids(n)`. Helpers: `eventually(…)` (waits for a condition), `settled()` (stable cluster), `create_queue()`, `name_owned_by()` (finds a topic name whose owner is node n), `pause_sync()`/`wait_phase()` (stops in the middle of a synchronization phase), `replication_of()`, `channels_of()`, `signals_of()` |
 | **`MemoryNetwork`** (`src/cluster/transport/memory`) | The test `Transport`: **partition** between two nodes or isolation of one, **loss** of the next calls to a node (or of a kind), **delay** on all calls, **mute** node (accepts and does not answer), node that **goes down** (disappears from the network) and **load balancer** |
 | **`ManualClock`** (`src/core/clock`) | The test clock: the test advances it (invisibility, `ttl`, freezing, voting, `idleTimeout`) |
@@ -65,7 +65,7 @@ In numbers: ~330 tests in these files plus the unit tests of the modules; the cl
 /// UC: UC-TOP-001
 #[tokio::test]
 async fn creating_a_queue_returns_201_with_location_and_the_defaults() {
-    let node = TestNode::development().await;
+    let node = TestNode::single().await;
     // … POST /topics, checks status, Location and body …
     node.shutdown().await;
 }

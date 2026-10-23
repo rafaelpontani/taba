@@ -429,11 +429,14 @@ async fn a_sampled_traceparent_is_respected_and_the_ratio_sampler_drops_the_rest
         })
         .await;
     let spans = collector.spans();
-    let sampled = spans
-        .iter()
-        .find(|s| hex(&s.trace_id) == trace)
-        .expect("span filho do traceparent");
-    assert_eq!(hex(&sampled.parent_span_id), "00f067aa0ba902b7");
+    // In a cluster the request has more spans in the same trace (the operation between nodes): the one of the
+    // request is the child of the caller's span.
+    assert!(
+        spans
+            .iter()
+            .any(|s| hex(&s.trace_id) == trace && hex(&s.parent_span_id) == "00f067aa0ba902b7"),
+        "span filho do traceparent"
+    );
     // The one without a parent (fraction 0) and the one with an unsampled parent do not go out.
     assert!(
         spans

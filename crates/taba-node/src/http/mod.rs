@@ -16,6 +16,7 @@ pub mod nodes;
 pub mod observe;
 pub mod operations;
 pub mod ratelimit;
+pub mod restore;
 pub mod tokens;
 pub mod topic_stats;
 pub mod topics;

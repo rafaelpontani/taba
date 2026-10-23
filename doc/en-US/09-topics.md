@@ -164,7 +164,7 @@ curl -s -X POST localhost:8080/topics/ordens/messages -d '{"n":3}'
 
 - `groupId` is **required** (1 to 128 characters, `A-Za-z0-9_-.:`). `deduplicationId` is optional (same characters); on a queue that is **not** FIFO the parameter is refused with `400`.
 - The delivered message carries `groupId` and `deduplicationId`.
-- It requires `replication.factor` ≥ **2** (refuses with `422` in a production cluster with factor 1). In development mode, it does not.
+- It accepts any `replication.factor`: the FIFO quorum is `min(2, factor)` (primary and secondary; with factor 1, only the primary).
 
 ### Where the group lives
 
@@ -237,6 +237,6 @@ The FIFO queue does not duplicate repeated publications within a **window** (`fi
 ## Sources and evidence
 
 - `core/topic` (definition), `engine/topics` (registry and rules), `engine/messages/index` (ready list per group), `cluster/volatile` (manager), `cluster/replication/forward.rs` (FIFO forwarding), `http/topics`, `http/messages`.
-- Example responses copied from a real node in development mode.
+- Example responses copied from a real node, alone (one-node profile).
 - Use cases: UC-TOP (topics), UC-DST (distributor), UC-VOL (volatile and manager), UC-FIF (FIFO), UC-GRP (groups); see [26a](26a-implemented-use-cases.md). Tests: `tests/topics.rs`, `fifo.rs`, `fifo_cluster.rs`, `volatile.rs`, `volatile_cluster.rs`.
 - History: `15-topicos-distribuidor.md`, `17-topicos-fifo.md`.

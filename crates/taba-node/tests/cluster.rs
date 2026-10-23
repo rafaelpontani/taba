@@ -25,7 +25,7 @@ fn guid() -> String {
 fn address_of(cluster: &TestCluster, number: usize) -> PeerAddr {
     PeerAddr::new(
         host_of(number),
-        cluster.node(number).node.cluster_addr().unwrap().port(),
+        cluster.node(number).node.cluster_addr().port(),
     )
 }
 
@@ -57,7 +57,7 @@ async fn the_first_node_starts_the_cluster_alone() {
     let me = &table.members[0];
     assert_eq!(me.node_id, cluster.node_id(1));
     assert_eq!(me.addresses, ["10.0.0.1"]);
-    assert_eq!(me.port, cluster.node(1).node.cluster_addr().unwrap().port());
+    assert_eq!(me.port, cluster.node(1).node.cluster_addr().port());
     assert_eq!(me.state, MemberState::Active);
 
     let ready = cluster.node(1).client_get_ops("/health/ready").await;

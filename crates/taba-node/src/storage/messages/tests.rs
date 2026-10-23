@@ -315,7 +315,7 @@ fn the_short_fifo_row_is_listed_with_its_delete_at() {
     assert_eq!(rows[0].delete_at_ms, Some(9_000));
 }
 
-/// UC: UC-RTN-014, UC-RTN-016
+/// UC: UC-RTN-014, UC-RTN-016, UC-ING-036
 #[test]
 fn the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one() {
     let tmp = tempfile::tempdir().unwrap();
@@ -325,7 +325,7 @@ fn the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one() {
 
     let store = store(tmp.path());
     let previous = store
-        .set_aside_old_disk()
+        .set_aside_old_disk(None)
         .unwrap()
         .expect("there were messages on disk");
     assert!(
@@ -337,11 +337,110 @@ fn the_old_disk_is_set_aside_and_the_node_goes_on_with_an_empty_one() {
     // A second restart does not lose what was already set aside: the new folder disappears and the old one stays.
     drop(previous);
     store.put("orders", &meta("a2"), b"new").unwrap();
-    let previous = store.set_aside_old_disk().unwrap().expect("there still is");
+    let previous = store
+        .set_aside_old_disk(None)
+        .unwrap()
+        .expect("there still is");
     assert!(previous.get("orders", "a1").unwrap().is_some());
     assert!(previous.get("orders", "a2").unwrap().is_none());
 
     drop(previous);
     store.drop_old_disk().unwrap();
     assert!(!tmp.path().join(MessageStore::PREVIOUS_LIFE).exists());
+}
+
+/// UC: UC-RTN-023, UC-RTN-025
+#[test]
+fn a_disk_with_a_manifest_becomes_the_folder_of_its_life_and_the_lives_coexist() {
+    let tmp = tempfile::tempdir().unwrap();
+    let manifest = tmp.path().join(MessageStore::LIFE_MANIFEST);
+
+    // First life: its disk and its manifest go to the folder with its ID.
+    let first = store(tmp.path());
+    first.put("orders", &meta("a1"), b"one").unwrap();
+    std::fs::write(&manifest, b"{\"life\":1}").unwrap();
+    let previous = first
+        .set_aside_old_disk(Some("node-a"))
+        .unwrap()
+        .expect("there were messages on disk");
+    assert_eq!(previous.body("orders", "a1").unwrap(), b"one");
+    assert!(
+        !manifest.exists(),
+        "the root has no manifest of a past life"
+    );
+    let lives = tmp.path().join(MessageStore::LIVES);
+    assert!(
+        lives
+            .join("node-a")
+            .join(MessageStore::LIFE_MANIFEST)
+            .is_file()
+    );
+
+    // Second life, after another restart: the first one stays, next to it.
+    drop(previous);
+    first.put("orders", &meta("a2"), b"two").unwrap();
+    std::fs::write(&manifest, b"{\"life\":2}").unwrap();
+    let previous = first.set_aside_old_disk(Some("node-b")).unwrap().unwrap();
+    assert!(previous.get("orders", "a2").unwrap().is_some());
+    assert!(lives.join("node-a").join("orders").is_dir());
+    assert!(lives.join("node-b").join("orders").is_dir());
+
+    // A life without messages is still a life: the manifest is kept for the nodes that were expected.
+    std::fs::write(&manifest, b"{\"life\":3}").unwrap();
+    assert!(first.set_aside_old_disk(Some("node-c")).unwrap().is_none());
+    assert!(
+        lives
+            .join("node-c")
+            .join(MessageStore::LIFE_MANIFEST)
+            .is_file()
+    );
+
+    // The end of the recovery of a disk with no manifest does not touch the lives.
+    drop(previous);
+    first.drop_old_disk().unwrap();
+    for life in ["node-a", "node-b", "node-c"] {
+        assert!(
+            lives.join(life).is_dir(),
+            "{life} stays until the restoration ends"
+        );
+    }
+
+    // The ID of a life is a folder name.
+    assert!(first.set_aside_old_disk(Some("../x")).is_err());
+}
+
+/// UC: UC-RTN-027
+#[test]
+fn the_folder_of_a_topic_records_the_topic_id_it_was_created_for_and_keeps_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let first = store(tmp.path());
+    // No folder, no record; and a folder created before the resolver is set has none either (a disk of a
+    // version before this record).
+    assert_eq!(first.topic_id("orders").unwrap(), None);
+    first.put("legacy", &meta("l1"), b"x").unwrap();
+    assert_eq!(first.topic_id("legacy").unwrap(), None);
+
+    first.set_topic_id_resolver(Box::new(|topic| Some(format!("id-of-{topic}"))));
+    first.put("orders", &meta("a1"), b"x").unwrap();
+    first.put("orders", &meta("a2"), b"x").unwrap();
+    assert_eq!(
+        first.topic_id("orders").unwrap().as_deref(),
+        Some("id-of-orders")
+    );
+
+    // A later life of the same folder does not rewrite it: the folder belongs to the topic it was created for.
+    let second = store(tmp.path());
+    second.set_topic_id_resolver(Box::new(|_| Some("another".into())));
+    second.put("orders", &meta("a3"), b"x").unwrap();
+    assert_eq!(
+        second.topic_id("orders").unwrap().as_deref(),
+        Some("id-of-orders")
+    );
+
+    // The store over a life reads the same record.
+    let life = second.open_life(tmp.path());
+    assert_eq!(
+        life.topic_id("orders").unwrap().as_deref(),
+        Some("id-of-orders")
+    );
 }

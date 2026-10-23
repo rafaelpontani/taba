@@ -31,7 +31,7 @@ UC-<AREA>-<NNN>        example: UC-MSG-003
 | Acronym | Level | Where |
 |---|---|---|
 | **U** | Unit | `src/**/tests.rs` |
-| **I** | One node (development mode, real HTTP and disk) | `tests/*.rs` with `TestNode` |
+| **I** | One node (one-node profile, real HTTP and disk) | `tests/*.rs` with `TestNode` |
 | **C** | Simulated cluster (in-memory network and manual clock) | `tests/*.rs` with `TestCluster` |
 | **K** | Connector conformance | `connectors/<language>/…` |
 
@@ -117,7 +117,7 @@ Both are **maintained by hand**, in both languages: a new case goes in as a card
 | `RTN` | Return of an excluded node and recovery of losses |
 | `FWD` | Forwarding of client calls |
 | `DRN` | Stop and drain (includes drain as save) |
-| `DEV` | Development mode |
+| `DEV` | One-node profile (the former development mode) |
 | `SEG` | Ports, mutual TLS and cluster certificates |
 | `OPS` | Observability, statistics, metrics and health |
 | `CLR` | Contract of the cluster routes |

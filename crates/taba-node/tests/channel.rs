@@ -545,7 +545,9 @@ async fn a_channel_opens_with_a_snapshot_of_the_state_the_listeners_and_the_read
 /// UC: UC-FAL-001
 #[tokio::test]
 async fn there_is_no_ping_apart_from_the_channel_between_the_nodes() {
-    let cluster = TestCluster::start(3).await;
+    // The upgrade round (version of the members, `status`) and the reunion are periodic calls of their own, every
+    // 10 heartbeats; they are pushed out of the observed second so the test sees only what keeps the nodes alive.
+    let cluster = TestCluster::start_with(3, &[("TABA_CLUSTER_REUNION_INTERVAL", "600s")]).await;
     settled(&cluster).await;
     cluster.network.clear_calls();
     tokio::time::sleep(Duration::from_secs(1)).await;

@@ -68,7 +68,7 @@ O anel é **derivado da tabela de membros**: quando um nó entra ou sai, todos r
 
 ![Blocos que mudam de responsável quando entra um nó](../diagrams/img/pt-BR/ring-before-after.svg)
 
-## Modo desenvolvimento
+## Perfil de um nó
 
 Com um nó só, o anel tem um nó, que é primário de todos os blocos. `ring.virtual-nodes` não tem efeito prático, não há rebalanceamento, e `replication.factor` e `write.quorum` valem 1.
 
