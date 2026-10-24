@@ -157,8 +157,7 @@ pub struct Pagination {
 pub struct Ports {
     pub api: u16,
     pub cluster: u16,
-    /// `None`: the operations routes stay on the API port.
-    pub operations: Option<u16>,
+    pub operations: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -561,7 +560,7 @@ impl Config {
         let ports = Ports {
             api: s.get("api.port")?,
             cluster: s.get("cluster.port")?,
-            operations: s.opt("operations.port")?,
+            operations: s.get("operations.port")?,
         };
         check_distinct_ports(&ports, &mut problems);
         let pagination = Pagination {
@@ -868,10 +867,11 @@ impl Config {
 /// The three ports must differ from each other; `0` (any free port, only
 /// in the tests) never counts as repeated.
 fn check_distinct_ports(ports: &Ports, problems: &mut Vec<String>) {
-    let mut named = vec![("api.port", ports.api), ("cluster.port", ports.cluster)];
-    if let Some(p) = ports.operations {
-        named.push(("operations.port", p));
-    }
+    let named = [
+        ("api.port", ports.api),
+        ("cluster.port", ports.cluster),
+        ("operations.port", ports.operations),
+    ];
     for (i, (a_name, a)) in named.iter().enumerate() {
         for (b_name, b) in &named[i + 1..] {
             if a == b && *a != 0 {

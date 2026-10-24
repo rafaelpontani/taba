@@ -2,10 +2,10 @@
  1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │Nome             Endereço                      Token        Padrão            │
+│  dev            http://localhost:8080         arquivo      ○                 │
 │ ┌ Editar o perfil ─────────────────────────────────────────────────────────┐ │
-│ │▶ Nome                   lab▏                                             │ │
-│▶│  Endereço (url)         https://lab.example                              │ │
-│ │  Endereço de operação                                                    │ │
+│▶│▶ Nome                   lab▏                                             │ │
+│ │  Endereço (url)         https://lab.example                              │ │
 │ │  Arquivo do token                                                        │ │
 │ │  Token (guardado no arquivo)                                             │ │
 │ │  Arquivo do certificado CA                                               │ │

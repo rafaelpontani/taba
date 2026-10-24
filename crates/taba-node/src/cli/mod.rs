@@ -23,6 +23,8 @@ pub enum Command {
     },
     /// `taba token generate`: prints a random 256-bit secret.
     TokenGenerate,
+    /// `taba openapi client|monitoring`: prints the OpenAPI document of a published API.
+    Openapi { api: crate::http::openapi::Api },
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -38,6 +40,7 @@ Usage: taba [--config <file.yml>]
      taba init --out <folder> [--days <n>]
      taba cert generate --days <n> [--starts-in <duration>] --out <folder>
      taba token generate
+     taba openapi client|monitoring
 
   --config <file>   YAML configuration file (or TABA_CONFIG_FILE)
   --version            shows the version
@@ -49,6 +52,8 @@ Subcomandos:
   cert generate   creates only a cluster certificate pair, for a rotation.
                   --starts-in (e.g. 14d) postpones the start of the validity
   token generate  prints a random 256-bit secret (a standalone root token)
+  openapi         prints the OpenAPI document of the client API or of the monitoring API (the same
+                  ones a running node serves at /openapi/<api>.json)
 
 The parameters also come from the TABA_* variables; the variable beats the file.";
 
@@ -95,6 +100,17 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Args, String> {
             }
             Ok(Args {
                 command: Command::TokenGenerate,
+                ..Args::default()
+            })
+        }
+        Some("openapi") => {
+            let api = args
+                .get(1)
+                .and_then(|name| crate::http::openapi::Api::parse(name))
+                .filter(|_| args.len() == 2)
+                .ok_or("use `taba openapi client` or `taba openapi monitoring`")?;
+            Ok(Args {
+                command: Command::Openapi { api },
                 ..Args::default()
             })
         }

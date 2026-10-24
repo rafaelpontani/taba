@@ -18,47 +18,48 @@
 //! answer as it came. It never forwards a call that was already forwarded; an unknown `nodeId` is
 //! `404 node.not-found`, and a node that does not answer is a failure that names it, with no retry.
 
-use axum::extract::{Path, Request, State};
+use axum::Json;
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
-use axum::routing::{get, post};
-use axum::{Json, Router};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::{Value, json};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::common::ApiError;
 use super::consolidate;
-use super::operations::{self, StatusParts};
+use super::openapi::{AuthErrors, ClusterStatus, NodePage, RateLimited};
+use super::operations::{self, DrainStatusDto, StatusParts};
 use super::{AppState, backup, forward};
 use crate::cluster::members::Member;
 use crate::cluster::protocol::{ForwardRequest, Request as PeerRequest, Response as PeerResponse};
 use crate::cluster::service::ClusterService;
 use crate::cluster::transport::CallError;
+use crate::core::error::ErrorResponse;
 use crate::core::error::{ErrorCode, TabaError};
 use crate::core::time::format_ms;
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/nodes", get(list))
-        .route("/cluster/status", get(operations::cluster_health))
-        .route("/cluster/backup", get(cluster_backup))
-        .route("/nodes/{node_id}/metrics", get(metrics))
-        .route(
-            "/nodes/{node_id}/drain",
-            get(drain).post(drain).delete(drain),
-        )
-        .route("/nodes/{node_id}/backup", get(backup_status))
-        .route("/nodes/{node_id}/backup/flush", post(backup_flush))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list))
+        .routes(routes!(cluster_status))
+        .routes(routes!(cluster_backup))
+        .routes(routes!(metrics))
+        .routes(routes!(drain_status, drain_start, drain_cancel))
+        .routes(routes!(backup_status))
+        .routes(routes!(backup_flush))
 }
 
-/// The routes that apply to the whole cluster and have the same name as the operations API's. They are only
-/// mounted when the operations API has a port of its own: without it, those routes already exist on the
-/// client port (with no token), and mounting them twice would be a conflict.
-pub fn cluster_wide() -> Router<AppState> {
-    Router::new()
-        .route("/cluster/backup/flush", post(backup::cluster_flush))
-        .route("/cluster/stop", post(backup::cluster_stop))
-        .route("/cluster/restore/force", post(super::restore::force))
+/// The routes that apply to the whole cluster and have the same name as the operations API's: here behind a
+/// token (`admin`, or the root token for the stop and the forced restoration), there on the operations port with
+/// none.
+pub fn cluster_wide() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(backup::cluster_flush))
+        .routes(routes!(backup::cluster_stop))
+        .routes(routes!(super::restore::force))
 }
 
 fn node_not_found(node_id: &str) -> TabaError {
@@ -68,8 +69,22 @@ fn node_not_found(node_id: &str) -> TabaError {
     )
 }
 
-/// `GET /nodes`: who is in the cluster and in what state. A node that does not answer shows up with
-/// `reachable: false` and the state the member table has; a node that left by drain shows up as `drained`.
+/// Who is in the cluster and in what state, without addresses. A node that does not answer shows up with
+/// `reachable: false` and the state the member table has; a node that left by drain shows up as `drained`, in the
+/// answer of any node. The numbers are consolidated across the cluster (`partial` and `missingNodes` say if some node
+/// did not answer within 5 seconds).
+///
+/// Permission: any valid token.
+#[utoipa::path(
+    get,
+    path = "/nodes",
+    tag = "Cluster",
+    operation_id = "listNodes",
+    responses(
+        (status = 200, description = "The nodes.", body = NodePage),
+        AuthErrors, RateLimited
+    )
+)]
 async fn list(State(state): State<AppState>) -> Json<Value> {
     let me = state.node.node_id();
     let table = state.cluster.as_ref().and_then(|c| c.membership().table());
@@ -255,7 +270,48 @@ fn unanswered(node_id: &str, why: &str) -> TabaError {
     )
 }
 
-/// `GET /nodes/{nodeId}/metrics`: the node's Prometheus text.
+/// The state and the conditions of the cluster: the `NodeStatus` of every node and the conditions found. It is what
+/// `GET /health/cluster` gives on the monitoring port, here behind a token. With `scope=node` only the node that
+/// answers is read.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    get,
+    path = "/cluster/status",
+    tag = "Cluster",
+    operation_id = "getClusterStatus",
+    params(("scope" = Option<String>, Query, description = "`cluster` (default: asks every node, best-effort) or `node` (the node that answers).")),
+    responses(
+        (status = 200, description = "The cluster.", body = ClusterStatus),
+        (status = 400, description = "`validation.failed`: unknown `scope`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
+async fn cluster_status(
+    state: State<AppState>,
+    query: Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    operations::cluster_health(state, query).await
+}
+
+/// The Prometheus text of one node (what `GET /metrics` gives on that node). The node that receives the call asks the
+/// one named, once, on the cluster port.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    get,
+    path = "/nodes/{nodeId}/metrics",
+    tag = "Cluster",
+    operation_id = "getNodeMetrics",
+    params(("nodeId" = String, Path, description = "The node `id` (`GET /nodes`).")),
+    responses(
+        (status = 200, description = "Prometheus text (`text/plain; version=0.0.4`).", body = String, content_type = "text/plain"),
+        (status = 404, description = "`node.not-found`, or `route.not-found` with `telemetry.prometheus.enabled` off.", body = ErrorResponse),
+        (status = 502, description = "`forward.bad-gateway`: the node did not answer.", body = ErrorResponse),
+        (status = 504, description = "`forward.timeout`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn metrics(
     State(state): State<AppState>,
     Path(node_id): Path<String>,
@@ -263,8 +319,21 @@ async fn metrics(
     on_node(&state, &node_id, "GET", "/metrics".to_owned()).await
 }
 
-/// `GET /cluster/backup`: the S3 backup state of **every** node, each as `GET /nodes/{nodeId}/backup` gives
-/// it, with the envelope of the consolidated reads (`partial`, `missingNodes`).
+/// The S3 backup state of **every** node, each as `GET /nodes/{nodeId}/backup` gives it, with the envelope of the
+/// consolidated reads (`partial`, `missingNodes`).
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    get,
+    path = "/cluster/backup",
+    tag = "Cluster",
+    operation_id = "getClusterBackup",
+    responses(
+        (status = 200, description = "`collectedAt`, `partial`, `missingNodes` and `nodes`, one backup state per node.", body = Object),
+        (status = 422, description = "`backup.not-configured`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn cluster_backup(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let backup = state
         .backup
@@ -298,15 +367,98 @@ async fn cluster_backup(State(state): State<AppState>) -> Result<Json<Value>, Ap
     Ok(Json(Value::Object(out)))
 }
 
-async fn drain(
+/// The drain progress of one node.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    get,
+    path = "/nodes/{nodeId}/drain",
+    tag = "Cluster",
+    operation_id = "getNodeDrain",
+    params(("nodeId" = String, Path, description = "The node `id` (`GET /nodes`).")),
+    responses(
+        (status = 200, description = "The drain status.", body = DrainStatusDto),
+        (status = 404, description = "`node.not-found`.", body = ErrorResponse),
+        (status = 502, description = "`forward.bad-gateway`: the node did not answer.", body = ErrorResponse),
+        (status = 504, description = "`forward.timeout`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
+async fn drain_status(
     State(state): State<AppState>,
     Path(node_id): Path<String>,
-    request: Request,
 ) -> Result<Response, ApiError> {
-    let method = request.method().as_str().to_owned();
-    on_node(&state, &node_id, &method, "/node/drain".to_owned()).await
+    on_node(&state, &node_id, "GET", "/node/drain".to_owned()).await
 }
 
+/// Puts one node into drain: it stops receiving client calls (it forwards them to another node), moves its messages
+/// from memory to disk and leaves the cluster. The node **stays up** until the process is stopped.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    post,
+    path = "/nodes/{nodeId}/drain",
+    tag = "Cluster",
+    operation_id = "startNodeDrain",
+    params(("nodeId" = String, Path, description = "The node `id` (`GET /nodes`).")),
+    responses(
+        (status = 202, description = "The drain started.", body = DrainStatusDto),
+        (status = 200, description = "The node was already in drain.", body = DrainStatusDto),
+        (status = 404, description = "`node.not-found`.", body = ErrorResponse),
+        (status = 502, description = "`forward.bad-gateway`: the node did not answer.", body = ErrorResponse),
+        (status = 504, description = "`forward.timeout`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
+async fn drain_start(
+    State(state): State<AppState>,
+    Path(node_id): Path<String>,
+) -> Result<Response, ApiError> {
+    on_node(&state, &node_id, "POST", "/node/drain".to_owned()).await
+}
+
+/// Cancels the drain of one node, or makes a node that already left come back **as a new node** (a new `id`).
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    delete,
+    path = "/nodes/{nodeId}/drain",
+    tag = "Cluster",
+    operation_id = "cancelNodeDrain",
+    params(("nodeId" = String, Path, description = "The node `id` (`GET /nodes`).")),
+    responses(
+        (status = 200, description = "Nothing to cancel, or the drain was cancelled.", body = DrainStatusDto),
+        (status = 202, description = "The node is coming back as a new node.", body = DrainStatusDto),
+        (status = 404, description = "`node.not-found`.", body = ErrorResponse),
+        (status = 409, description = "`drain.conflict`.", body = ErrorResponse),
+        (status = 502, description = "`forward.bad-gateway`: the node did not answer.", body = ErrorResponse),
+        (status = 504, description = "`forward.timeout`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
+async fn drain_cancel(
+    State(state): State<AppState>,
+    Path(node_id): Path<String>,
+) -> Result<Response, ApiError> {
+    on_node(&state, &node_id, "DELETE", "/node/drain".to_owned()).await
+}
+
+/// The S3 backup state of one node.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    get,
+    path = "/nodes/{nodeId}/backup",
+    tag = "Cluster",
+    operation_id = "getNodeBackup",
+    params(("nodeId" = String, Path, description = "The node `id` (`GET /nodes`).")),
+    responses(
+        (status = 200, description = "The backup state of the node.", body = Object),
+        (status = 404, description = "`node.not-found`.", body = ErrorResponse),
+        (status = 422, description = "`backup.not-configured`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn backup_status(
     State(state): State<AppState>,
     Path(node_id): Path<String>,
@@ -314,6 +466,22 @@ async fn backup_status(
     on_node(&state, &node_id, "GET", "/node/backup".to_owned()).await
 }
 
+/// Sends the memory and the disk of one node to the S3 bucket, without stopping anything.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    post,
+    path = "/nodes/{nodeId}/backup/flush",
+    tag = "Cluster",
+    operation_id = "flushNodeBackup",
+    params(("nodeId" = String, Path, description = "The node `id` (`GET /nodes`).")),
+    responses(
+        (status = 200, description = "The report of the flush: `complete` says if nothing was left pending.", body = Object),
+        (status = 404, description = "`node.not-found`.", body = ErrorResponse),
+        (status = 422, description = "`backup.not-configured`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn backup_flush(
     State(state): State<AppState>,
     Path(node_id): Path<String>,

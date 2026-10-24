@@ -41,7 +41,7 @@ Cada módulo conhece apenas os da esquerda. Isso é verificável: `core` não im
 | `storage` | O banco do nó (`_node.db`), as mensagens em disco, o banco de eventos de sincronização, tokens e perdas | Regras de entrega |
 | `engine` | Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO, dead-letter, tokens, estatísticas | Rede |
 | `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, atualização de versão, recuperação, tópicos voláteis, saúde | HTTP de cliente |
-| `http` | As três APIs, autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
+| `http` | As três APIs, seus documentos OpenAPI (`http/openapi`), autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
 | `telemetry` | Métricas, traces e logs; exportação OTLP e Prometheus | — |
 | `config` | Arquivo `.yml`, variáveis `TABA_*`, a tabela de parâmetros e as validações de partida | — |
 | `secrets` | A pasta de segredos: certificado do cluster e token raiz (`taba init`, `taba cert generate`, `taba token generate`) | — |
@@ -59,10 +59,10 @@ Cada uma é um *listener* próprio, para que a rede possa restringir o acesso a 
 | Porta | Chave | Padrão | Roteador (`http/mod.rs`) | Camadas por onde passa a chamada |
 |---|---|---|---|---|
 | Cliente | `api.port` | 8080 | `client_router` | autenticar → rate limit → recusa por drain/sincronização/falha → autorizar |
-| Operação | `operations.port` | — | `operations_router` | filtro de IPs (`operations.allowed-ips`), rate limit por IP |
+| Operação | `operations.port` | 9090 | `operations_router` | filtro de IPs (`operations.allowed-ips`), rate limit por IP; **sem token** |
 | Cluster | `cluster.port` | 8081 | `cluster_router` | TLS mútuo; só `/cluster/*` |
 
-- Sem `operations.port`, as rotas de operação são servidas **também na porta de cliente**.
+- As três portas estão **sempre abertas** e devem ser diferentes. As rotas de operação ficam **só** na porta de operação, com uma exceção: a porta de cliente também serve `/health/live` e `/health/ready` (sem token, para sondas que não conseguem enviá-lo) e `/metrics` (qualquer token válido). Assim, `/metrics` é aberto na porta de operação, para os coletores dentro da infraestrutura, e fica atrás de token na porta de cliente, para quem alcança o nó de fora. O `taba-cli` só usa a porta de cliente.
 - Um nó sozinho (`replication.factor=1`) abre a porta do cluster do mesmo jeito; só nenhum outro nó a usa.
 - Rotas `/tokens` só existem com a autenticação ligada; senão respondem `404`.
 - Um nó em drain, em sincronização ou em falha **não atende** chamadas de cliente: num cluster ele as **repassa** a outro nó (pela porta do cluster do destino) e, sem destino, responde `503` com `Retry-After`. As leituras que dizem o que o cluster está fazendo (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` e as chamadas `/nodes/{nodeId}/…`, que incluem devolver um nó) são a exceção: são repassadas enquanto outro nó puder atendê-las e, senão, respondidas pelo próprio nó, de modo que um cluster parado ainda pode ser inspecionado. Em drain o nó só valida o token root (os outros tokens são dados).
@@ -109,7 +109,7 @@ crates/taba-node/src/
                      channel drain health members protocol recovery replication restore
                      service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
-                     nodes operations ratelimit tokens topic_stats topics
+                     nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 

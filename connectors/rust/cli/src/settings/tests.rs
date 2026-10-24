@@ -18,7 +18,6 @@ fn file() -> ConfigFile {
     f.add("local", local).unwrap();
     let mut stg = Profile::default();
     stg.set("url", "https://stg:8443").unwrap();
-    stg.set("ops-url", "https://stg-ops:9443").unwrap();
     stg.set("token", "tb_literal").unwrap();
     f.add("stg", stg).unwrap();
     f
@@ -30,7 +29,6 @@ fn without_file_variables_or_profile_the_built_in_defaults_apply() {
     let e = resolve(&ConfigFile::default(), None, &env_of(&[])).unwrap();
     assert_eq!(e.profile, None);
     assert_eq!(e.url(), "http://127.0.0.1:8080");
-    assert_eq!(e.ops_url(), "http://127.0.0.1:8080");
     assert_eq!(e.get("token"), None);
     assert_eq!(e.token_source(), TokenSource::None);
     assert_eq!(
@@ -110,27 +108,6 @@ fn an_invalid_variable_value_is_reported_with_its_name() {
     assert!(e.contains("TABA_CLI_URL"), "{e}");
 }
 
-/// UC: UC-CLI-001
-#[test]
-fn ops_url_defaults_to_the_url_itself_because_the_node_serves_both_on_one_port_by_default() {
-    let f = file();
-    assert_eq!(
-        resolve(&f, None, &env_of(&[])).unwrap().ops_url(),
-        "http://10.0.0.1:8080"
-    );
-    assert_eq!(
-        resolve(&f, Some("stg"), &env_of(&[])).unwrap().ops_url(),
-        "https://stg-ops:9443"
-    );
-    let e = resolve(
-        &f,
-        None,
-        &env_of(&[("TABA_CLI_URL", "https://taba.example.com")]),
-    )
-    .unwrap();
-    assert_eq!(e.ops_url(), "https://taba.example.com");
-}
-
 /// UC: UC-CLI-002
 #[test]
 fn the_token_comes_from_the_highest_level_and_the_file_wins_a_tie() {
@@ -160,7 +137,7 @@ fn the_token_comes_from_the_highest_level_and_the_file_wins_a_tie() {
 
 #[test]
 fn variable_names_follow_the_field_names() {
-    assert_eq!(variable_name("ops-url"), "TABA_CLI_OPS_URL");
+    assert_eq!(variable_name("token-file"), "TABA_CLI_TOKEN_FILE");
     assert_eq!(variable_name("max-attempts"), "TABA_CLI_MAX_ATTEMPTS");
     assert_eq!(variable_name("url"), "TABA_CLI_URL");
 }

@@ -74,11 +74,11 @@ curl -s localhost:8080/topics/nao-existe
 O `taba-cli` é a linha de comando do cliente ([20-cli.md](20-cli.md)). Aponte-o para o nó por variáveis:
 
 ```bash
-export TABA_CLI_URL=http://localhost:8080 TABA_CLI_OPS_URL=http://localhost:9090
+export TABA_CLI_URL=http://localhost:8080
 taba-cli topic create fila2 --type queue
 echo '{"x":1}' | taba-cli publish fila2 --stdin
 taba-cli consume fila2 --wait 1 --ack        # recebe e confirma
-taba-cli health cluster -o table
+taba-cli cluster status -o table
 ```
 
 ## B. Cluster de três nós com Docker Compose
@@ -108,7 +108,7 @@ O que o Compose faz, em ordem (`docker-compose.yml`):
 Use o `taba-cli` do Compose, já apontado para o cluster e com o token raiz:
 
 ```bash
-docker compose run --rm taba-cli health cluster -o table            # três nós, sem condições
+docker compose run --rm taba-cli cluster status -o table            # três nós, sem condições
 docker compose run --rm taba-cli topic create pedidos --type queue
 echo '{"pedido": 9001}' | docker compose run --rm -T taba-cli publish pedidos --stdin
 docker compose run --rm taba-cli consume pedidos --wait 5 --ack
@@ -127,13 +127,13 @@ Há **duas** formas de tirar um nó, e elas são diferentes. As réplicas são d
 ```bash
 # 1. Parada normal: SIGTERM -> o nó faz DRAIN e sai do cluster por conta própria (sem votação)
 docker/cluster.sh stop taba-2
-docker compose run --rm taba-cli health cluster -o table   # já mostra 2 nós ativos, membersVersion subiu
+docker compose run --rm taba-cli cluster status -o table   # já mostra 2 nós ativos, membersVersion subiu
 docker/cluster.sh start taba-2                               # volta como nó novo e sincroniza
 
 # 2. Falha: SIGKILL -> o cluster precisa DETECTAR a queda e votar
 docker/cluster.sh kill taba-2
-docker compose run --rm taba-cli health cluster              # em ~4 s: write-quorum-at-risk, member-unreachable, under-replicated
-docker compose run --rm taba-cli health cluster              # em ~8 s: taba-2 excluído; sobra a condição node-frozen
+docker compose run --rm taba-cli cluster status              # em ~4 s: write-quorum-at-risk, member-unreachable, under-replicated
+docker compose run --rm taba-cli cluster status              # em ~8 s: taba-2 excluído; sobra a condição node-frozen
 docker/cluster.sh start taba-2                               # volta como nó novo (ID novo: sem freezing) e sincroniza
 ```
 

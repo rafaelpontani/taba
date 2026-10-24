@@ -22,6 +22,7 @@ fn arrows_and_tab_move_between_fields_and_buttons_wrapping_around() {
     f.handle(Key::Down);
     f.handle(Key::Tab);
     assert_eq!(f.focus, 2);
+    assert_eq!(LABELS[f.focus], "token-file");
     f.handle(Key::Up);
     f.handle(Key::BackTab);
     f.handle(Key::BackTab);
@@ -83,7 +84,7 @@ fn output_is_a_choice_and_the_default_is_a_box() {
 
 /// UC: UC-CLI-030
 #[test]
-fn empty_fields_show_the_value_that_will_apply_and_the_ops_url_follows_the_url() {
+fn empty_fields_show_the_value_that_will_apply() {
     let mut f = Form::new(None, false, vec![]);
     let shown = text_of(&f.render(plain(), 80, 30));
     assert!(
@@ -92,9 +93,10 @@ fn empty_fields_show_the_value_that_will_apply_and_the_ops_url_follows_the_url()
     );
     assert_eq!(
         shown.matches("(http://127.0.0.1:8080)").count(),
-        2,
+        1,
         "{shown}"
     );
+    assert!(!shown.contains("ops-url"), "{shown}");
     assert!(
         shown.contains("(system roots)")
             && shown.contains("(5)")
@@ -104,9 +106,8 @@ fn empty_fields_show_the_value_that_will_apply_and_the_ops_url_follows_the_url()
     f.handle(Key::Down);
     type_text(&mut f, "https://taba.example.com");
     let shown = text_of(&f.render(plain(), 80, 30));
-    assert_eq!(
-        shown.matches("(https://taba.example.com)").count(),
-        1,
+    assert!(
+        shown.contains("https://taba.example.com") && !shown.contains("(http://127.0.0.1:8080)"),
         "{shown}"
     );
 }
@@ -132,12 +133,12 @@ fn invalid_values_get_a_message_under_the_field() {
     type_text(&mut f, "local");
     f.handle(Key::Down);
     type_text(&mut f, "taba:8080");
-    f.focus = 8;
+    f.focus = 7;
     type_text(&mut f, "0");
     let errors = f.errors();
     assert!(errors[NAME].as_ref().unwrap().contains("already exists"));
     assert!(errors[1].as_ref().unwrap().contains("http://"));
-    assert!(errors[8].as_ref().unwrap().contains("1 to 3600"));
+    assert!(errors[7].as_ref().unwrap().contains("1 to 3600"));
     assert!(!f.is_valid());
     let shown = text_of(&f.render(plain(), 80, 40));
     assert!(

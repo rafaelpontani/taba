@@ -76,11 +76,11 @@ curl -s localhost:8080/topics/nao-existe
 `taba-cli` is the client command line ([20-cli.md](20-cli.md)). Point it at the node with variables:
 
 ```bash
-export TABA_CLI_URL=http://localhost:8080 TABA_CLI_OPS_URL=http://localhost:9090
+export TABA_CLI_URL=http://localhost:8080
 taba-cli topic create fila2 --type queue
 echo '{"x":1}' | taba-cli publish fila2 --stdin
 taba-cli consume fila2 --wait 1 --ack        # receives and confirms
-taba-cli health cluster -o table
+taba-cli cluster status -o table
 ```
 
 ## B. Three-node cluster with Docker Compose
@@ -110,7 +110,7 @@ What Compose does, in order (`docker-compose.yml`):
 Use the Compose `taba-cli`, already pointed at the cluster and with the root token:
 
 ```bash
-docker compose run --rm taba-cli health cluster -o table            # three nodes, no conditions
+docker compose run --rm taba-cli cluster status -o table            # three nodes, no conditions
 docker compose run --rm taba-cli topic create pedidos --type queue
 echo '{"pedido": 9001}' | docker compose run --rm -T taba-cli publish pedidos --stdin
 docker compose run --rm taba-cli consume pedidos --wait 5 --ack
@@ -129,13 +129,13 @@ There are **two** ways to take a node away, and they are different. The replicas
 ```bash
 # 1. Normal stop: SIGTERM -> the node does DRAIN and leaves the cluster on its own (no vote)
 docker/cluster.sh stop taba-2
-docker compose run --rm taba-cli health cluster -o table   # already shows 2 active nodes, membersVersion went up
+docker compose run --rm taba-cli cluster status -o table   # already shows 2 active nodes, membersVersion went up
 docker/cluster.sh start taba-2                               # comes back as a new node and synchronizes
 
 # 2. Failure: SIGKILL -> the cluster has to DETECT the loss and vote
 docker/cluster.sh kill taba-2
-docker compose run --rm taba-cli health cluster              # in ~4 s: write-quorum-at-risk, member-unreachable, under-replicated
-docker compose run --rm taba-cli health cluster              # in ~8 s: taba-2 excluded; the node-frozen condition remains
+docker compose run --rm taba-cli cluster status              # in ~4 s: write-quorum-at-risk, member-unreachable, under-replicated
+docker compose run --rm taba-cli cluster status              # in ~8 s: taba-2 excluded; the node-frozen condition remains
 docker/cluster.sh start taba-2                               # comes back as a new node (new ID: no freezing) and synchronizes
 ```
 

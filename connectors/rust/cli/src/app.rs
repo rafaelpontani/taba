@@ -223,16 +223,6 @@ impl<'a> Ctx<'a> {
         Ok(self.platform.client(config)?)
     }
 
-    /// The operations API client: no token. `attempts` overrides the profile's `max-attempts`.
-    pub fn ops_client(&mut self, attempts: Option<u32>) -> Result<Client, CliError> {
-        let url = self.settings()?.ops_url();
-        let mut config = self.client_config(url, false)?;
-        if let Some(n) = attempts {
-            config.max_attempts = n;
-        }
-        Ok(self.platform.client(config)?)
-    }
-
     /// Writes a line to standard output.
     pub fn say(&mut self, text: &str) -> Result<(), CliError> {
         writeln!(self.out, "{text}").map_err(|e| {

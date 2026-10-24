@@ -93,31 +93,40 @@ async fn client_port_hides_cluster_routes_and_cluster_port_serves_only_cluster_r
 
 /// UC: UC-SEG-003
 #[tokio::test]
-async fn operations_routes_move_to_their_own_port_when_one_is_set() {
-    let node = TestNode::builder()
-        .env("TABA_OPERATIONS_PORT", "0")
-        .start()
-        .await;
-    let operations = node.node.operations_addr().expect("operations port open");
+async fn the_operations_routes_live_on_their_own_port_and_the_client_port_only_has_the_probes() {
+    let node = TestNode::single().await;
+    let operations = node.node.operations_addr();
     assert_ne!(operations, node.node.client_addr());
+    assert_ne!(operations, node.node.cluster_addr());
 
-    let response = node
-        .client
-        .get(node.operations_url("/health/live"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
+    for path in [
+        "/health/live",
+        "/health/ready",
+        "/health/cluster",
+        "/node/drain",
+        "/metrics",
+        "/metrics/topics",
+    ] {
+        let response = node
+            .client
+            .get(node.operations_url(path))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200, "{path} on the operations port");
+    }
 
-    // On the API port the operations routes cease to exist.
-    assert_eq!(
-        error_code(node.client_get("/health/live").await, 404).await,
-        "route.not-found"
-    );
-    assert_eq!(
-        error_code(node.client_get("/health/ready").await, 404).await,
-        "route.not-found"
-    );
+    // The probes carry no token, so the client port serves them too; the rest of the operations API does not exist there.
+    for path in ["/health/live", "/health/ready"] {
+        assert_eq!(node.client_get(path).await.status(), 200, "{path}");
+    }
+    for path in ["/health/cluster", "/node/drain", "/metrics/topics"] {
+        assert_eq!(
+            error_code(node.client_get(path).await, 404).await,
+            "route.not-found",
+            "{path} on the client port"
+        );
+    }
 
     node.shutdown().await;
 }

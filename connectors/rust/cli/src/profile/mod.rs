@@ -8,9 +8,8 @@ use std::path::{Path, PathBuf};
 use crate::yaml::{self, Node};
 
 /// The fields of a profile, in the order they are written and shown.
-pub const FIELDS: [&str; 9] = [
+pub const FIELDS: [&str; 8] = [
     "url",
-    "ops-url",
     "token-file",
     "token",
     "ca-file",
@@ -19,6 +18,9 @@ pub const FIELDS: [&str; 9] = [
     "timeout",
     "max-attempts",
 ];
+
+/// The profile field of the versions that called the operations API; read and ignored.
+const LEGACY_OPS_URL: &str = "ops-url";
 
 pub const DEFAULT_URL: &str = "http://127.0.0.1:8080";
 pub const OUTPUTS: [&str; 3] = ["json", "table", "raw"];
@@ -83,7 +85,7 @@ pub fn validate_field(field: &str, value: &str) -> Result<(), String> {
     }
     let bad = |m: &str| Err(format!("{field}: {m}"));
     match field {
-        "url" | "ops-url" => taba_client::http::Url::parse(value)
+        "url" => taba_client::http::Url::parse(value)
             .map(|_| ())
             .or_else(|e| bad(&e)),
         "output" if !OUTPUTS.contains(&value) => bad("use json, table or raw"),
@@ -215,6 +217,12 @@ impl ConfigFile {
                             let Node::Text(value) = value else {
                                 return Err(format!("`{name}.{field}` must be a text"));
                             };
+                            // The operations API is for the collectors inside the infrastructure; the CLI no
+                            // longer calls it. Files written by older versions keep loading (and lose the field
+                            // on the next save).
+                            if field == LEGACY_OPS_URL {
+                                continue;
+                            }
                             profile
                                 .set(&field, &value)
                                 .map_err(|e| format!("profile `{name}`: {e}"))?;

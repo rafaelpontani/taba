@@ -11,11 +11,30 @@ use serde_json::{Value, json};
 
 use super::blocking;
 use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse};
-use crate::core::error::{ErrorCode, TabaError};
+use crate::core::error::{ErrorCode, ErrorResponse, TabaError};
 use crate::core::id;
 use crate::http::AppState;
 use crate::http::common::ApiError;
+use crate::http::openapi::{AuthErrors, ClusterUnavailable, PruneResult, RateLimited};
 
+/// Removes **every message** of the queue, visible and invisible and the copies the replicas keep, in the whole
+/// cluster. The topic and its definition stay. It answers success only if every node succeeded; otherwise it is
+/// `503 cluster.prune-incomplete` and repeating the call is safe.
+///
+/// Permission: `manage` on the topic.
+#[utoipa::path(
+    delete,
+    path = "/topics/{topic}/messages",
+    tag = "Messages",
+    operation_id = "pruneQueue",
+    params(("topic" = String, Path, description = "The queue name.")),
+    responses(
+        (status = 200, description = "What was removed.", body = PruneResult),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        (status = 409, description = "`topic.wrong-type`: a distributor has no messages to remove.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 pub(super) async fn prune(
     State(state): State<AppState>,
     Path(topic): Path<String>,

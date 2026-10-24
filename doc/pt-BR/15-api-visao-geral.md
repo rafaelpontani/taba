@@ -11,14 +11,14 @@ fontes: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, cra
 
 > Leia antes: [04-arquitetura.md](04-arquitetura.md) (as três portas). Depois: [16-api-cliente.md](16-api-cliente.md), [17-api-operacao.md](17-api-operacao.md), [18-api-cluster.md](18-api-cluster.md) e o catálogo de erros em [19-erros-e-limites.md](19-erros-e-limites.md).
 
-> **Estado do contrato:** ainda **não há contrato OpenAPI** nem prefixo de versão nos caminhos (`/topics`, não `/v1/topics`). Este documento e os três seguintes são hoje a especificação. O `taba-cli version` mostra uma "versão do contrato" (1). ⬜ Contrato OpenAPI: [32-roadmap.md](32-roadmap.md).
+> **Estado do contrato:** a API de cliente e a API de monitoramento são descritas por documentos **OpenAPI 3.1**, gerados das próprias rotas e servidos por cada nó, abertos (sem token): `GET /openapi/client.json` na `api.port` e `GET /openapi/monitoring.json` na `operations.port`, cada um com uma interface em `/docs` embutida no binário (nada é carregado da internet). Os mesmos documentos estão no repositório, em `openapi/`, e `taba openapi client|monitoring` os imprime. A API de cluster é interna e **não** é publicada. Ainda **não há prefixo de versão** nos caminhos (`/topics`, não `/v1/topics`): a política está pendente ([32-roadmap.md](32-roadmap.md)). Este documento e os três seguintes explicam o que os documentos dizem; o `taba-cli version` mostra uma "versão do contrato" (1).
 
 ## Quem usa o quê
 
 | API | Porta (padrão) | Quem usa | Autenticação | Documento |
 |---|---|---|---|---|
 | **Cliente** | `api.port` (8080) | Aplicações (produtores e consumidores) | Token opcional | [16](16-api-cliente.md) |
-| **Operação** | `operations.port` (ou a porta de cliente) | Operador, Prometheus, orquestrador | Nenhuma (rede) | [17](17-api-operacao.md) |
+| **Operação** | `operations.port` (9090) | Coletores e orquestrador **dentro** da infraestrutura; nunca o `taba-cli` | Nenhuma (rede) | [17](17-api-operacao.md) |
 | **Cluster** | `cluster.port` (8081) | **Só os outros nós** | TLS mútuo | [18](18-api-cluster.md) |
 
 Cada API tem **o seu público** e a rede restringe cada porta. A porta de cliente responde `404 route.not-found` a `/cluster/*`; a do cluster, a tudo que não seja `/cluster/*`.

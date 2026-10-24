@@ -144,18 +144,18 @@ taba_healthy_nodes() {
 
 taba_node_count() { set -- $TABA_NODES; echo "$#"; }
 
-# How many active members the cluster sees (through taba-0; if it is down, empty).
+# How many active members the cluster sees (through the load balancer; if it is down, empty).
 taba_active_members() {
-  taba_cli health cluster -o json | grep -o '"active": *[0-9]*' | head -n 1 | grep -o '[0-9]*$' || true
+  taba_cli cluster status -o json | grep -o '"active": *[0-9]*' | head -n 1 | grep -o '[0-9]*$' || true
 }
 
 # The cluster conditions, minus the `node-frozen` warning: the old ID of a node that crashed stays frozen
 # for cluster.freezing.duration (5 min); the restarted node has a new ID and is not affected.
 taba_other_conditions() {
-  taba_cli health cluster -o json | grep -o '"condition": *"[^"]*"' | grep -v node-frozen || true
+  taba_cli cluster status -o json | grep -o '"condition": *"[^"]*"' | grep -v node-frozen || true
 }
 
-taba_status() { taba_cli health cluster -o table; }
+taba_status() { taba_cli cluster status -o table; }
 
 # --- waits -----------------------------------------------------------------------------------
 

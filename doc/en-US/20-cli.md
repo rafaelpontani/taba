@@ -101,15 +101,17 @@ The `receiptToken` changes at each delivery and comes in the `Message`: that is 
 
 `token create` (`--name`, `--permission` repeatable or comma-separated, `--prefix`, `--expires-at`, `--token-only`), `token list`, `token get <id>`, `token update <id>` (`--name`, `--expires-at <date>|none`), `token revoke <id>` (`--yes`).
 
-**Operations** (uses the profile's `ops-url`; no token):
+**Cluster, nodes and statistics** (all through the **client API**, with the profile's token; the `admin` permission where the route asks for it):
 
 | Command | Route |
 |---|---|
-| `health live` / `health ready` | `GET /health/live`, `/health/ready` (code `0` if `200`, `1` if not; prints the `reason`) |
-| `health cluster [--scope cluster\|node]` | `GET /health/cluster` (with `-o table`: one row per node and the conditions) |
-| `metrics [--openmetrics]` | `GET /metrics` (this node only; the text comes out as it came) |
-| `stats topics`, `stats topic <name>`, `stats groups <topic>` | `GET /metrics/topics*` (`--scope`, `--tag`, `--condition`, `--fields`, `--group-by`, `--limit`, `--cursor`, `--all`) |
-| `drain start`, `drain status`, `drain cancel` | `POST/GET/DELETE /node/drain` — **the node of the `ops-url`** |
+| `cluster status [--scope cluster\|node]` | `GET /cluster/status` (`admin`; with `-o table`: one row per node and the conditions) |
+| `node list` | `GET /nodes` (any valid token): id, state, drain state and version of each node |
+| `metrics [--node <id>] [--openmetrics]` | `GET /metrics` (any valid token; the node that answers) or `GET /nodes/{id}/metrics` (`admin`); the text comes out as it came |
+| `stats topics`, `stats topic <name>`, `stats groups <topic>` | `GET /stats/topics*` (any valid token, whole cluster; `--scope`, `--tag`, `--condition`, `--fields`, `--group-by`, `--limit`, `--cursor`, `--all`) |
+| `drain start`, `drain status`, `drain cancel` `--node <id>` | `POST/GET/DELETE /nodes/{id}/drain` (`admin`); `--node` is required, and `node list` shows the ids |
+
+> **The CLI never calls the operations API** (`operations.port`, the `/health/*` probes, `/node/drain`): that port is for the collectors and the orchestrator **inside** the infrastructure, and `taba-cli` is always outside it. There are no `health` commands and no `ops-url` field; a `config.yml` written by an older version keeps loading (the field is ignored and dropped on the next save). Where this changes something for the person: `health cluster` became `cluster status`, `health live|ready` have no replacement (they are probes), `drain …` now names the node with `--node`, and `metrics` and `stats` need a token.
 
 **Local** (do not call the server): `version`, `config show` (the effective configuration and **where each value came from**, without the token), `profile …`, `help [command]`.
 
@@ -141,7 +143,6 @@ profiles:
     token-file: C:\taba\secrets\root-token
   homologacao:
     url: https://taba.hml.example.com
-    ops-url: https://taba-ops.hml.example.com
     ca-file: /etc/ssl/taba-hml-ca.pem
 ```
 
@@ -150,7 +151,6 @@ profiles:
 | Field | Default | Description |
 |---|---|---|
 | `url` | `http://127.0.0.1:8080` | The **client API** (the client port or the load balancer) |
-| `ops-url` | the `url` itself | The **operations API**: only `health`, `metrics`, `stats`, `drain`. With `operations.port`, set it |
 | `token-file` | — | Reads the token from the first line of the file. It is the way to use the `root-token` |
 | `token` | — | The token in clear text. **Prefer `token-file`** |
 | `ca-file` | system roots | CA (PEM) to trust. There is **no** field to turn off TLS verification |
@@ -180,7 +180,6 @@ profiles:
 
  ▸ Nome              local
    url               http://127.0.0.1:8080
-   ops-url           (http://127.0.0.1:8080)
    token-file        root-token
    token             (nenhum)
    ca-file           (raízes do sistema)
@@ -237,13 +236,13 @@ taba-cli consume pedidos --max 5 --wait 20 --visibility 60
 taba-cli consume pedidos --max 1 --ack -o raw
 taba-cli ack pedidos <id> --receipt <receiptToken>
 taba-cli subscribe pedidos --exec ./processa.sh
-taba-cli health cluster -o table
-taba-cli drain status
+taba-cli cluster status -o table
+taba-cli drain status --node 01a1…
 ```
 
 ### Docker image and binaries
 
-- **Image** (`connectors/rust/cli/Dockerfile`): minimal, **Alpine**, with only the `taba-cli` binary (static, musl), unprivileged user, `ENTRYPOINT` = `taba-cli`. Two stages; `docker buildx build --platform linux/amd64,linux/arm64`. In the root Compose it is the `taba-cli` service under the `tools` *profile*, already pointed at the nodes (`TABA_CLI_URL`, `TABA_CLI_OPS_URL`, `TABA_CLI_TOKEN_FILE`).
+- **Image** (`connectors/rust/cli/Dockerfile`): minimal, **Alpine**, with only the `taba-cli` binary (static, musl), unprivileged user, `ENTRYPOINT` = `taba-cli`. Two stages; `docker buildx build --platform linux/amd64,linux/arm64`. In the root Compose it is the `taba-cli` service under the `tools` *profile*, already pointed at the nodes (`TABA_CLI_URL`, `TABA_CLI_TOKEN_FILE`).
 - **Binaries** (`scripts/build.sh` and `build.ps1`): six targets — Windows (x64, arm64), static Linux musl (x64, arm64) and macOS (x64, arm64). Without an argument, builds for the machine; `--target <target>` and `--all` (those the machine can). Output in `connectors/rust/cli/dist/<target>/` with `SHA256SUMS`; `--locked`, no symbols, size-optimized. Cross-building to macOS from another system is not supported by the scripts (the CI matrix uses one *runner* of each).
 - **Build locally:** `cd connectors/rust && cargo build -p taba-cli`.
 

@@ -198,7 +198,7 @@ fn a_second_profile_does_not_take_the_default_unless_the_box_is_ticked() {
     press(&mut a, &mut fake, &[Key::Char('n')]);
     press(&mut a, &mut fake, &typed("other"));
     // From the name to the "Default profile" box: 10 steps down.
-    press(&mut a, &mut fake, &[Key::Down; 10]);
+    press(&mut a, &mut fake, &[Key::Down; 9]);
     press(&mut a, &mut fake, &[Key::Char(' '), Key::Ctrl('s')]);
     assert_eq!(fake.saved.last().unwrap().default.as_deref(), Some("other"));
 }
@@ -248,7 +248,7 @@ fn unticking_the_box_of_the_default_profile_removes_the_default() {
     let mut a = app();
     let mut fake = Fake::default();
     press(&mut a, &mut fake, &[Key::Enter]);
-    press(&mut a, &mut fake, &[Key::Down; 10]);
+    press(&mut a, &mut fake, &[Key::Down; 9]);
     press(&mut a, &mut fake, &[Key::Char(' '), Key::Ctrl('s')]);
     assert_eq!(fake.saved.last().unwrap().default, None);
 }
@@ -266,7 +266,7 @@ fn test_connection_uses_the_unsaved_values_and_only_reports() {
     press(&mut a, &mut fake, &[Key::Down]);
     press(&mut a, &mut fake, &typed("http://x:1"));
     // Up to the Test button: from the url field (1) to the button (12).
-    press(&mut a, &mut fake, &[Key::Down; 11]);
+    press(&mut a, &mut fake, &[Key::Down; 10]);
     press(&mut a, &mut fake, &[Key::Enter]);
     assert_eq!(fake.checks.len(), 1);
     assert_eq!(fake.checks[0].get("url"), Some("http://x:1"));
@@ -288,7 +288,7 @@ fn testing_is_refused_while_the_form_has_errors() {
     let mut fake = Fake::default();
     press(&mut a, &mut fake, &[Key::Char('n'), Key::Down, Key::Down]);
     press(&mut a, &mut fake, &typed("nope"));
-    press(&mut a, &mut fake, &[Key::Down; 10]);
+    press(&mut a, &mut fake, &[Key::Down; 9]);
     press(&mut a, &mut fake, &[Key::Enter]);
     assert!(fake.checks.is_empty());
     assert!(shown(&a).contains("Fix the fields in red before testing."));

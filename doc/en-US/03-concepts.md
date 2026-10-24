@@ -75,7 +75,7 @@ Applications **publish messages** to **topics**; Taba stores them on several **n
 |---|---|---|---|
 | **Client** (`api.port`) | 8080 | Applications | Topics, messages, tokens |
 | **Cluster** (`cluster.port`) | 8081 | Other nodes | `/cluster/*` routes and the permanent channel; mutual TLS |
-| **Operations** (`operations.port`) | no default (without the key, the operations routes are on the client port) | Operator, load balancer, Prometheus | `/health/*`, `/metrics*`, drain |
+| **Operations** (`operations.port`) | 9090 | Collectors and orchestrator inside the infrastructure (Prometheus, Telegraf, probes); no token | `/health/*`, `/metrics*`, drain |
 
 Details in [15-api-overview.md](15-api-overview.md).
 

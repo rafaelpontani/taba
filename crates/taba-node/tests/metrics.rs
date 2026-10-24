@@ -49,7 +49,7 @@ fn port(node: &TestNode) -> u16 {
 async fn metrics_is_the_prometheus_text_of_this_node_only() {
     let node = TestNode::single().await;
     node.clock.advance(Duration::from_secs(90));
-    let response = node.client_get("/metrics").await;
+    let response = node.client_get_ops("/metrics").await;
     assert_eq!(response.status(), 200);
     assert_eq!(
         response.headers()["content-type"],
@@ -70,13 +70,17 @@ async fn metrics_is_the_prometheus_text_of_this_node_only() {
         series(&text, "taba_node_drain_state{taba_state=\"active\"}"),
         Some(1.0)
     );
-    let connections = format!("taba_node_connections{{server_port=\"{}\"}}", port(&node));
+    // The scrape came in on the operations port, so that is the port with an open connection.
+    let connections = format!(
+        "taba_node_connections{{server_port=\"{}\"}}",
+        node.node.operations_addr().port()
+    );
     assert!(series(&text, &connections).unwrap() >= 1.0, "{text}");
     assert!(text.contains("# TYPE taba_node_state gauge\n"));
 
     let open = node
         .client
-        .get(node.client_url("/metrics"))
+        .get(node.operations_url("/metrics"))
         .header("accept", "application/openmetrics-text")
         .send()
         .await
@@ -111,7 +115,7 @@ async fn metrics_is_404_when_off_and_403_for_an_ip_outside_the_list() {
         .start()
         .await;
     assert_eq!(
-        error_code(off.client_get("/metrics").await, 404).await,
+        error_code(off.client_get_ops("/metrics").await, 404).await,
         "route.not-found"
     );
     off.shutdown().await;
@@ -122,7 +126,7 @@ async fn metrics_is_404_when_off_and_403_for_an_ip_outside_the_list() {
         .await;
     for path in ["/metrics", "/metrics/topics", "/metrics/topics/x/groups"] {
         assert_eq!(
-            error_code(listed.client_get(path).await, 403).await,
+            error_code(listed.client_get_ops(path).await, 403).await,
             "ops.ip-not-allowed",
             "{path}"
         );
@@ -140,6 +144,7 @@ async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
     assert_eq!(node.client_get("/nothing/here").await.status(), 404);
     let text = node.metrics().await;
     let p = port(&node);
+    let ops = node.node.operations_addr().port();
 
     let route = "http_route=\"/topics/{topic}/messages\"";
     let labels = format!(
@@ -178,12 +183,12 @@ async fn requests_are_measured_by_route_template_never_by_topic_or_path() {
         series(
             &text,
             &format!(
-                "http_server_active_requests{{http_request_method=\"GET\",server_port=\"{p}\",\
+                "http_server_active_requests{{http_request_method=\"GET\",server_port=\"{ops}\",\
                  url_scheme=\"http\"}}"
             )
         ),
         Some(1.0),
-        "the read itself is in progress"
+        "the read itself (on the operations port) is in progress"
     );
     assert!(!text.contains("orders"), "the topic is never a node label");
     assert!(!text.contains("/nothing/here"));
@@ -329,12 +334,12 @@ async fn rate_limit_rejections_are_counted_by_category_and_key_and_metrics_is_ex
     create_queue(&node, json!({ "name": "orders", "type": "queue" })).await;
     assert_eq!(publish(&node, "orders", "", "a").await.status(), 201);
     assert_eq!(publish(&node, "orders", "", "b").await.status(), 429);
-    assert_eq!(node.client_get("/metrics/topics").await.status(), 200);
-    assert_eq!(node.client_get("/metrics/topics").await.status(), 429);
+    assert_eq!(node.client_get_ops("/metrics/topics").await.status(), 200);
+    assert_eq!(node.client_get_ops("/metrics/topics").await.status(), 429);
 
     for _ in 0..5 {
         assert_eq!(
-            node.client_get("/metrics").await.status(),
+            node.client_get_ops("/metrics").await.status(),
             200,
             "`/metrics` never answers 429"
         );

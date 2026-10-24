@@ -40,6 +40,21 @@ Os exemplos usam `localhost:8080` sem autenticação (nó sem token raiz nem `au
 
 ---
 
+## O documento OpenAPI
+
+O contrato desta API é um documento **OpenAPI 3.1**, gerado das próprias rotas (cada rota é registrada junto com sua descrição, então elas não se afastam) e servido por todo nó:
+
+| O quê | Onde |
+|---|---|
+| O documento | `GET /openapi/client.json` na `api.port` |
+| Uma interface para ler e experimentar | `/docs` (embutida no binário: nada é carregado da internet) |
+| Uma cópia no repositório | `openapi/client.json` (um teste falha se ela estiver desatualizada) |
+| Sem subir um nó | `taba openapi client` |
+
+As duas rotas são **abertas**: não pedem token, mesmo com a autenticação ligada, e a interface permite colar um (`Authorize`) para experimentar as rotas. O documento lista **as rotas que este nó tem**: sem autenticação não há rotas `/tokens`, e com `telemetry.prometheus.enabled` desligado não há `/metrics`. Cada operação diz na descrição a **permissão** de que precisa. A API de monitoramento tem documento próprio na `operations.port` ([17-api-operacao.md](17-api-operacao.md)); a API de cluster é interna e não é publicada.
+
+O que o documento **não** diz: as categorias do rate limit, a ordem em que as validações rodam e o conjunto exato de códigos de erro de cada rota (os status que ele lista são conferidos; os códigos estão nas descrições e em [19-erros-e-limites.md](19-erros-e-limites.md)).
+
 ## Tópicos
 
 ### Regras de nome, tags e faixas
@@ -325,6 +340,15 @@ Rotas para **qualquer token válido** (com a autenticação desligada, para todo
 | `GET /nodes` | `collectedAt`, `membersVersion`, `partial`, `missingNodes` e `items`: um `Node` por membro — `nodeId`, `self` (é o nó que respondeu), `reachable`, `state` (`active`, `syncing`, `drained`...), `drainState`, `version`, `memberState`. **Sem endereços.** Um nó que saiu por drain aparece com `state: "drained"` **na resposta de qualquer nó**: cada nó só lembra das saídas que viu, e um que volta de um drain começa com a memória vazia, então a lista une o que todos os membros sabem. Um nó drenado que voltou tem um id novo e deixa de aparecer com o id antigo |
 | `GET /stats/topics`, `/stats/topics/{topic}`, `/stats/topics/{topic}/groups` | Os mesmos DTOs e parâmetros de `/metrics/topics*` da API de operação ([17-api-operacao.md](17-api-operacao.md)), mas **do cluster inteiro**, com `partial` e `missingNodes`. A lista só traz os tópicos **dentro dos prefixos do token** (como o `GET /topics`); `/stats/topics/{topic}` fora deles é `403 auth.out-of-scope`. `?scope=node` dá a visão só do nó que responde |
 
+### Sondas e métricas nesta porta
+
+| Rota | Token | Responde |
+|---|---|---|
+| `GET /health/live`, `GET /health/ready` | **nenhum** | O mesmo `HealthResponse` da porta de operação ([17-api-operacao.md](17-api-operacao.md)). Não pedem token porque a sonda de um orquestrador não consegue enviá-lo |
+| `GET /metrics` | **qualquer token válido** (sem permissão específica; `401` sem ele) | O texto Prometheus **do nó que responde** (`Accept: application/openmetrics-text` pede OpenMetrics), como `GET /nodes/{nodeId}/metrics` dá para um nó escolhido. `404 route.not-found` com `telemetry.prometheus.enabled` desligado |
+
+> **Métricas e autenticação, por porta.** `/metrics` não tem autenticação na **porta de operação** (padrão 9090), que é a porta dos coletores **dentro** da infraestrutura: Prometheus e Telegraf raspam `:9090/metrics` sem credenciais. Na **porta de cliente** (padrão 8080, ou o valor de `api.port`) a mesma rota pede token, porque essa porta é alcançável de fora. Aponte para a porta de cliente um coletor que vive fora e dê a ele um token (`Authorization: Bearer …`); aponte para a de operação os que vivem dentro. Um nó em drain só valida o token raiz, então um token comum é recusado nesta rota enquanto o nó está em drain (PRB-069); a porta de operação não é afetada.
+
 ### Leituras consolidadas (`partial` e `missingNodes`)
 
 `GET /nodes`, `GET /cluster/status`, `GET /cluster/backup` e `GET /stats/topics…` respondem pelo **cluster inteiro**. Cada nó diz o que **ele** vê, na API do cluster ([18-api-cluster.md](18-api-cluster.md)); o nó que recebe a chamada pergunta a todos os membros ao mesmo tempo (ele mesmo sem rede) e junta as respostas. Cada chamada tem prazo de 5 s (fixo). Um nó que não responde no prazo **não** derruba a leitura: a resposta é `200` e diz que está incompleta.
@@ -360,7 +384,7 @@ A API de operação ([17-api-operacao.md](17-api-operacao.md)) não tem token e 
 | `GET /nodes/{nodeId}/metrics` | O texto Prometheus do nó (o que o `GET /metrics` dá) |
 | `GET`, `POST`, `DELETE /nodes/{nodeId}/drain` | Estado, início e retorno do drain daquele nó: o que o `/node/drain` faz |
 | `GET /nodes/{nodeId}/backup`, `POST /nodes/{nodeId}/backup/flush` | O backup em S3 daquele nó (`422 backup.not-configured` sem ele) |
-| `POST /cluster/backup/flush`, `POST /cluster/stop` | O cluster inteiro: o mesmo da API de operação. Só montadas quando a API de operação tem porta própria; sem `operations.port` as rotas de operação já servem esses nomes na porta de cliente, sem token |
+| `POST /cluster/backup/flush`, `POST /cluster/stop` | O cluster inteiro: o mesmo da API de operação, aqui atrás de token (`POST /cluster/restore/force` e `POST /cluster/stop` pedem o token raiz) |
 
 Ligar ou matar **processos** não é oferecido: é tarefa do orquestrador (o `drain` faz o nó parar de receber, e o retorno o traz de volta como um nó novo).
 

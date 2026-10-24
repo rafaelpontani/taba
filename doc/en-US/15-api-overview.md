@@ -11,14 +11,14 @@ sources: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, cr
 
 > Read first: [04-architecture.md](04-architecture.md) (the three ports). Then: [16-client-api.md](16-client-api.md), [17-operations-api.md](17-operations-api.md), [18-cluster-api.md](18-cluster-api.md) and the error catalogue in [19-errors-and-limits.md](19-errors-and-limits.md).
 
-> **State of the contract:** there is **no OpenAPI contract yet** nor a version prefix in the paths (`/topics`, not `/v1/topics`). This document and the next three are today the specification. `taba-cli version` shows a "contract version" (1). ⬜ OpenAPI contract: [32-roadmap.md](32-roadmap.md).
+> **State of the contract:** the client API and the monitoring API are described by **OpenAPI 3.1** documents, generated from the routes themselves and served by each node, open (no token): `GET /openapi/client.json` on `api.port` and `GET /openapi/monitoring.json` on `operations.port`, each with an interface at `/docs` that is embedded in the binary (nothing is loaded from the internet). The same documents are in the repository, in `openapi/`, and `taba openapi client|monitoring` prints them. The cluster API is internal and is **not** published. There is still **no version prefix** in the paths (`/topics`, not `/v1/topics`): the policy is pending ([32-roadmap.md](32-roadmap.md)). This document and the next three explain what the documents say; `taba-cli version` shows a "contract version" (1).
 
 ## Who uses what
 
 | API | Port (default) | Who uses it | Authentication | Document |
 |---|---|---|---|---|
 | **Client** | `api.port` (8080) | Applications (producers and consumers) | Optional token | [16](16-client-api.md) |
-| **Operations** | `operations.port` (or the client port) | Operator, Prometheus, orchestrator | None (network) | [17](17-operations-api.md) |
+| **Operations** | `operations.port` (9090) | Collectors and orchestrator **inside** the infrastructure; never `taba-cli` | None (network) | [17](17-operations-api.md) |
 | **Cluster** | `cluster.port` (8081) | **Only the other nodes** | Mutual TLS | [18](18-cluster-api.md) |
 
 Each API has **its own audience** and the network restricts each port. The client port answers `404 route.not-found` to `/cluster/*`; the cluster port, to anything that is not `/cluster/*`.

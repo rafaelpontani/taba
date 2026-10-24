@@ -1325,51 +1325,30 @@ fn without_authentication_the_tokens_routes_answer_404_and_the_cli_says_so() {
 
 /// UC: UC-CLI-016
 #[test]
-fn health_uses_the_ops_url_without_a_token_and_prints_the_body() {
+fn cluster_status_goes_through_the_client_api_with_the_token() {
     let rig = Rig::new();
-    rig.set_env("TABA_CLI_TOKEN", "tb_nao_deve_ir");
+    rig.set_env("TABA_CLI_TOKEN", "tb_admin");
     rig.set_env("TABA_CLI_URL", "http://taba-1:8080");
-    rig.mock().reply(200, &[], "{\"health\":\"live\"}");
     rig.mock()
         .reply(200, &[], "{\"scope\":\"node\",\"nodes\":[]}");
-    let live = rig.run(&["health", "live"]);
-    assert_eq!(
-        (live.code, live.out.as_str()),
-        (0, "{\n  \"health\": \"live\"\n}\n")
-    );
-    rig.run(&["health", "cluster", "--scope", "node"]);
+    rig.mock().reply(200, &[], "{\"items\":[]}");
+    let status = rig.run(&["cluster", "status", "--scope", "node"]);
+    assert_eq!(status.code, 0, "{}", status.err);
+    rig.run(&["node", "list"]);
     let seen = rig.seen();
     assert_eq!(seen[0].origin, "http://taba-1:8080");
-    assert_eq!(seen[0].request.target, "/health/live");
-    assert_eq!(seen[0].header("Authorization"), None);
-    assert_eq!(seen[1].request.target, "/health/cluster?scope=node");
+    assert_eq!(seen[0].request.target, "/cluster/status?scope=node");
+    assert_eq!(seen[0].header("Authorization"), Some("Bearer tb_admin"));
+    assert_eq!(seen[1].request.target, "/nodes");
+    assert_eq!(seen[1].header("Authorization"), Some("Bearer tb_admin"));
 }
 
 /// UC: UC-CLI-016
 #[test]
-fn health_ready_shows_the_reason_on_a_503_and_exits_1_without_retrying() {
-    let rig = Rig::new();
-    rig.mock().reply(
-        503,
-        &[],
-        "{\"health\":\"not-ready\",\"reason\":\"the node is syncing\"}",
-    );
-    let out = rig.run(&["health", "ready"]);
-    assert_eq!(out.code, 1);
-    assert!(
-        out.out.contains("\"reason\": \"the node is syncing\""),
-        "{}",
-        out.out
-    );
-    assert_eq!(rig.seen().len(), 1, "a health 503 is not retried");
-}
-
-/// UC: UC-CLI-016
-#[test]
-fn health_cluster_validates_the_scope() {
+fn cluster_status_validates_the_scope() {
     let rig = Rig::new();
     assert_eq!(
-        rig.run(&["health", "cluster", "--scope", "galaxia"]).code,
+        rig.run(&["cluster", "status", "--scope", "galaxia"]).code,
         2
     );
     assert!(rig.seen().is_empty());
@@ -1377,36 +1356,47 @@ fn health_cluster_validates_the_scope() {
 
 /// UC: UC-CLI-016
 #[test]
-fn health_live_with_nothing_listening_exits_3() {
+fn the_cli_has_no_health_commands_because_it_never_calls_the_monitoring_api() {
     let rig = Rig::new();
-    rig.mock().fail(TransportError::Connect("refused".into()));
-    assert_eq!(rig.run(&["health", "live"]).code, 3);
-    assert_eq!(rig.seen().len(), 1);
+    for args in [
+        &["health", "live"][..],
+        &["health", "ready"],
+        &["health", "cluster"],
+    ] {
+        assert_eq!(rig.run(args).code, 2, "{args:?}");
+    }
+    assert!(rig.seen().is_empty());
 }
 
 /// UC: UC-CLI-017
 #[test]
 fn metrics_prints_the_text_as_it_came_and_openmetrics_changes_the_accept_header() {
     let rig = Rig::new();
+    rig.set_env("TABA_CLI_TOKEN", "tb_qualquer");
     rig.mock().reply(
         200,
         &[("Content-Type", "text/plain")],
         "# HELP taba_x x\ntaba_x 1\n",
     );
     rig.mock().reply(200, &[], "# EOF\n");
+    rig.mock().reply(200, &[], "taba_y 2\n");
     let out = rig.run(&["metrics", "-o", "table"]);
     assert_eq!(out.out, "# HELP taba_x x\ntaba_x 1\n");
     rig.run(&["metrics", "--openmetrics"]);
+    rig.run(&["metrics", "--node", "n1"]);
     let seen = rig.seen();
+    // The client port, with the token: the monitoring port is for the collectors inside the infrastructure.
     assert_eq!(
         (seen[0].origin.as_str(), seen[0].request.target.as_str()),
         ("http://127.0.0.1:8080", "/metrics")
     );
+    assert_eq!(seen[0].header("Authorization"), Some("Bearer tb_qualquer"));
     assert_eq!(seen[0].header("Accept"), Some("text/plain"));
     assert_eq!(
         seen[1].header("Accept"),
         Some("application/openmetrics-text")
     );
+    assert_eq!(seen[2].request.target, "/nodes/n1/metrics");
 }
 
 /// UC: UC-CLI-017
@@ -1445,15 +1435,12 @@ fn stats_pass_scope_tags_condition_fields_group_by_and_pagination() {
     rig.run(&["stats", "topic", "orders", "--scope", "cluster"]);
     let all = rig.run(&["stats", "groups", "orders", "--all", "-o", "raw"]);
     let seen = rig.seen();
-    assert_eq!(seen[0].request.target, "/metrics/topics?scope=node&tag.time=fin&tag.env=prod&condition=backlog&fields=name%2Cdepth&groupBy=time&limit=10&cursor=c");
-    assert_eq!(
-        seen[1].request.target,
-        "/metrics/topics/orders?scope=cluster"
-    );
-    assert_eq!(seen[2].request.target, "/metrics/topics/orders/groups");
+    assert_eq!(seen[0].request.target, "/stats/topics?scope=node&tag.time=fin&tag.env=prod&condition=backlog&fields=name%2Cdepth&groupBy=time&limit=10&cursor=c");
+    assert_eq!(seen[1].request.target, "/stats/topics/orders?scope=cluster");
+    assert_eq!(seen[2].request.target, "/stats/topics/orders/groups");
     assert_eq!(
         seen[3].request.target,
-        "/metrics/topics/orders/groups?cursor=n"
+        "/stats/topics/orders/groups?cursor=n"
     );
     assert_eq!(
         all.out,
@@ -1463,27 +1450,20 @@ fn stats_pass_scope_tags_condition_fields_group_by_and_pagination() {
 
 /// UC: UC-CLI-018
 #[test]
-fn drain_acts_on_the_node_of_the_profile_ops_url() {
+fn drain_acts_on_the_node_named_by_the_option_through_the_client_api() {
     let rig = Rig::new();
-    rig.run(&[
-        "profile",
-        "add",
-        "no2",
-        "--url",
-        "http://n2:8080",
-        "--ops-url",
-        "http://n2:9191",
-    ]);
+    rig.set_env("TABA_CLI_URL", "http://lb:8080");
+    rig.set_env("TABA_CLI_TOKEN", "tb_admin");
     for _ in 0..3 {
         rig.mock().reply(202, &[], "{\"state\":\"draining\"}");
     }
-    let start = rig.run(&["drain", "start"]);
+    let start = rig.run(&["drain", "start", "--node", "n2"]);
     assert_eq!(
         (start.code, start.out.as_str()),
         (0, "{\n  \"state\": \"draining\"\n}\n")
     );
-    rig.run(&["drain", "status"]);
-    rig.run(&["drain", "cancel"]);
+    rig.run(&["drain", "status", "--node", "n2"]);
+    rig.run(&["drain", "cancel", "--node", "n2"]);
     let seen = rig.seen();
     let routes: Vec<(&str, &str, &str)> = seen
         .iter()
@@ -1498,11 +1478,24 @@ fn drain_acts_on_the_node_of_the_profile_ops_url() {
     assert_eq!(
         routes,
         [
-            ("http://n2:9191", "POST", "/node/drain"),
-            ("http://n2:9191", "GET", "/node/drain"),
-            ("http://n2:9191", "DELETE", "/node/drain"),
+            ("http://lb:8080", "POST", "/nodes/n2/drain"),
+            ("http://lb:8080", "GET", "/nodes/n2/drain"),
+            ("http://lb:8080", "DELETE", "/nodes/n2/drain"),
         ]
     );
+    assert!(seen
+        .iter()
+        .all(|s| s.header("Authorization") == Some("Bearer tb_admin")));
+}
+
+/// UC: UC-CLI-018
+#[test]
+fn drain_without_a_node_is_a_usage_error_that_calls_nothing() {
+    let rig = Rig::new();
+    let out = rig.run(&["drain", "start"]);
+    assert_eq!(out.code, 2);
+    assert!(out.err.contains("--node"), "{}", out.err);
+    assert!(rig.seen().is_empty());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1537,7 +1530,7 @@ fn help_lists_the_commands_and_shows_each_one() {
         "consume",
         "subscribe",
         "token create",
-        "health cluster",
+        "cluster status",
         "drain start",
         "profile add",
         "config show",
@@ -1932,7 +1925,6 @@ fn the_interactive_screen_creates_a_profile_that_the_commands_then_use() {
     keys.push(Key::Down);
     keys.extend(chars("https://taba.example.com"));
     keys.push(Key::Down);
-    keys.push(Key::Down);
     keys.extend(chars("/sec/prod.tok"));
     keys.extend([Key::Ctrl('s'), Key::Char('q')]);
     let frames = with_terminal(&mut rig, &keys);
@@ -1995,7 +1987,6 @@ fn the_interactive_test_button_calls_the_client_api_with_the_unsaved_values() {
     keys.extend(chars("t"));
     keys.push(Key::Down);
     keys.extend(chars("http://test:7"));
-    keys.push(Key::Down);
     keys.push(Key::Down);
     keys.push(Key::Down);
     keys.extend(chars("tb_visivel"));

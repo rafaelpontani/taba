@@ -388,25 +388,31 @@ Rotas leves para orquestradores e balanceadores, **sem** fan-out:
 
 ## Acesso às rotas de operação
 
-As rotas de operação são `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain`. **Não têm autenticação** (decisão D63): quem instala as protege com a rede. Duas restrições opcionais e independentes:
+As rotas de operação são `/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain`. Ficam na **porta de operação** (`operations.port`, padrão 9090, sempre aberta) e **não têm autenticação** ali (decisões D63 e D177): quem instala o nó protege a porta com a rede. Uma restrição opcional por cima:
 
 | Parâmetro | Efeito |
 |---|---|
-| `operations.port` | Serve as rotas numa **porta própria**; elas **deixam de existir** na porta de cliente (`404`) |
-| `operations.allowed-ips` | Lista de IPs e faixas CIDR autorizados. De fora da lista: `403 ops.ip-not-allowed`. Vale em qualquer porta que sirva as rotas |
+| `operations.allowed-ips` | Lista de IPs e faixas CIDR autorizados. De fora da lista: `403 ops.ip-not-allowed`. Vale para a porta de operação |
 
 | Configuração | Comportamento |
 |---|---|
-| Nenhuma (padrão) | As rotas ficam **na porta da API de cliente**, sem restrição |
-| Só `operations.port` | Porta separada, sem filtro: quem alcança a porta acessa |
-| Só `operations.allowed-ips` | Mesma porta da API, mas só os IPs listados acessam essas rotas |
-| Ambas | Porta separada, acessível só pelos IPs listados |
+| Padrão | A porta de operação responde a quem a alcança: a rede é a única proteção |
+| Com `operations.allowed-ips` | Só os IPs listados acessam a porta de operação |
 
-- **Produção:** use ao menos a lista de IPs (Prometheus, balanceador, operadores) e, idealmente, a porta própria: `/metrics` expõe nomes de tópicos e tags e `/health/cluster` expõe a topologia.
+**Coletando as métricas: qual porta, com ou sem token.**
+
+| Onde o coletor roda | Porta | Autenticação |
+|---|---|---|
+| Dentro da infraestrutura (Prometheus, Telegraf, OpenTelemetry Collector) | `operations.port` (9090), `GET /metrics` | **Nenhuma**: é a porta dos coletores |
+| Fora, ou onde só se alcança a porta de cliente | `api.port` (8080), `GET /metrics` | **`Authorization: Bearer <token>`** com **qualquer** token válido (sem permissão específica) |
+
+As sondas `GET /health/live` e `GET /health/ready` não pedem token em nenhuma das portas, porque a sonda de um orquestrador não consegue enviá-lo. As demais rotas de operação (`/health/cluster`, `/metrics/topics/*`, `/node/drain`, backup) existem só na porta de operação; de fora, a API de cliente tem os equivalentes atrás de um token (`GET /cluster/status`, `/stats/topics*`, `/nodes/{nodeId}/…`).
+
+- **Produção:** use a lista de IPs (Prometheus, balanceador, operadores) e mantenha a porta de operação fora de qualquer rede pública ou ingress: `/metrics` expõe nomes de tópicos e tags e `/health/cluster` expõe a topologia.
 - A lista deve incluir o **balanceador** que chama `/health/ready` e o **Prometheus ou Collector** que raspa.
 - O IP avaliado é o **IP do cliente resolvido** pela mesma regra do rate limit: o da conexão ou, com `client-ip.headers.enabled`, o do cabeçalho (`X-Forwarded-For`), aceito só de `client-ip.trusted-proxies`. **Com a lista de proxies vazia, qualquer cliente forja o cabeçalho** e burla a lista de IPs (PRB-015).
 - O envio OTLP é uma conexão **de saída** e não passa por essas restrições. As rotas `/cluster/*` ficam na porta do cluster e não são afetadas.
-- O nó **não sobe** se `operations.port` estiver ocupada ou se a lista tiver uma entrada inválida.
+- O nó **não sobe** se uma das três portas estiver ocupada ou repetida, ou se a lista tiver uma entrada inválida.
 - Pendência **D76:** o `kubelet` e o balanceador chamam `/health/*` de IPs que talvez não estejam na lista; hoje a lista filtra os health checks também.
 
 ## Traces
