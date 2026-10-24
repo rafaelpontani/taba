@@ -130,8 +130,8 @@ Both are **maintained by hand**, in both languages: a new case goes in as a card
 
 - Parameters with no fixed value in the original design documents ("To be defined") **have no default fixed by the tests**: the tests configure the value they need.
 - Cases that depend on an open pending item (D68, D70.1, D70.2: connectors) are marked **(pendente: D##)**: the expected result may change when the question is decided.
-- The names of routes, fields and codes follow [15](15-api-overview.md) to [19](19-errors-and-limits.md) and will follow the OpenAPI contract when it exists.
-- The cases **do not cover performance** (no benchmark) nor the content of the OpenAPI contract (which does not exist).
+- The names of routes, fields and codes follow [15](15-api-overview.md) to [19](19-errors-and-limits.md) and the OpenAPI documents (`openapi/`), which `tests/openapi.rs` checks against real responses.
+- The cases **do not cover performance** (no benchmark) nor the wording of the descriptions in the OpenAPI documents (what is tested is that they list the routes the node has and that real answers match their schemas).
 
 ## Sources and evidence
 

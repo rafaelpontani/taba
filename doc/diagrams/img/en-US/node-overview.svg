@@ -478,16 +478,16 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="115" y="106" class="t-muted" font-size="9" text-anchor="middle">producers and consumers</text>
         </g>
 
-        <g id="node-operator" data-node-id="operator" data-node-label="Operator" tabindex="0" role="button" aria-label="Focus Operator, Prometheus, load balancer, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Prometheus, load balancer" data-node-context="Architecture component">
-          <title>Operator · Prometheus, load balancer · Architecture component</title>
+        <g id="node-operator" data-node-id="operator" data-node-label="Collectors" tabindex="0" role="button" aria-label="Focus Collectors, Prometheus, probes, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Prometheus, probes" data-node-context="Architecture component">
+          <title>Collectors · Prometheus, probes · Architecture component</title>
           <rect x="30" y="200" width="170" height="64" rx="6" class="c-mask"/>
           <rect x="30" y="200" width="170" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(36 206) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" x="115" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Operator</text>
-        <text x="115" y="246" class="t-muted" font-size="9" text-anchor="middle">Prometheus, load balancer</text>
+          <text data-node-label="" x="115" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Collectors</text>
+        <text x="115" y="246" class="t-muted" font-size="9" text-anchor="middle">Prometheus, probes</text>
         </g>
 
         <g id="node-peers" data-node-id="peers" data-node-label="Other nodes" tabindex="0" role="button" aria-label="Focus Other nodes, same image, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="same image" data-node-context="Architecture component">
@@ -516,8 +516,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="395" y="106" class="t-muted" font-size="9" text-anchor="middle">api.port 8080 · token</text>
         </g>
 
-        <g id="node-ops" data-node-id="ops" data-node-label="Operations API" tabindex="0" role="button" aria-label="Focus Operations API, operations.port · no auth, A node (taba process)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="operations.port · no auth" data-node-context="A node (taba process)">
-          <title>Operations API · operations.port · no auth · A node (taba process)</title>
+        <g id="node-ops" data-node-id="ops" data-node-label="Operations API" tabindex="0" role="button" aria-label="Focus Operations API, operations.port 9090 · no auth, A node (taba process)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="operations.port 9090 · no auth" data-node-context="A node (taba process)">
+          <title>Operations API · operations.port 9090 · no auth · A node (taba process)</title>
           <rect x="300" y="200" width="190" height="64" rx="6" class="c-mask"/>
           <rect x="300" y="200" width="190" height="64" rx="6" class="c-frontend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(306 206) scale(0.6875)">
@@ -527,7 +527,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" x="395" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Operations API</text>
-        <text x="395" y="246" class="t-muted" font-size="9" text-anchor="middle">operations.port · no auth</text>
+        <text x="395" y="246" class="t-muted" font-size="9" text-anchor="middle">operations.port 9090 · no auth</text>
         </g>
 
         <g id="node-cl" data-node-id="cl" data-node-label="Cluster API" tabindex="0" role="button" aria-label="Focus Cluster API, cluster.port 8081 · mTLS, A node (taba process)" aria-pressed="false" data-node-kind="security" data-node-sublabel="cluster.port 8081 · mTLS" data-node-context="A node (taba process)">

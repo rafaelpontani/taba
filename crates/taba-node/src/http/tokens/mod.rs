@@ -6,17 +6,23 @@
 
 use std::collections::HashMap;
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Json, Router};
 use serde_json::{Map, Value, json};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::auth::{Principal, forbidden};
 use super::common::ApiError;
+use super::openapi::{
+    AuthErrors, ClusterUnavailable, RateLimited, Token, TokenCreateRequest, TokenCreated,
+    TokenPage, TokenUpdateRequest,
+};
 use super::{AppState, json as body};
+use crate::core::error::ErrorResponse;
 use crate::core::time::format_ms;
 use crate::core::token::{Permission, TokenRecord};
 use crate::engine::tokens::{CreateToken, ListQuery, UpdateToken};
@@ -26,10 +32,10 @@ const PATCH_FIELDS: &[&str] = &["name", "expiresAt"];
 /// Fields the `PATCH` recognizes only to refuse them as immutable.
 const IMMUTABLE_FIELDS: &[&str] = &["permissions", "topicPrefixes", "id", "createdAt", "token"];
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/tokens", get(list).post(create))
-        .route("/tokens/{id}", get(read).patch(update).delete(revoke))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list, create))
+        .routes(routes!(read, update, revoke))
 }
 
 /// The doc 06a `Token`: never carries the secret or the hash.
@@ -75,6 +81,23 @@ fn is_admin_token(state: &AppState, id: &str) -> bool {
         .is_some_and(|record| record.permissions.contains(&Permission::Admin))
 }
 
+/// Creates a token. The response carries its secret in `token` (`tb_<id>.<secret>`), **only here**. A token with the
+/// `admin` permission is only created by the root token.
+///
+/// Permission: `admin`. Only exists with authentication on (otherwise `404 route.not-found`).
+#[utoipa::path(
+    post,
+    path = "/tokens",
+    tag = "Tokens",
+    operation_id = "createToken",
+    request_body(content = TokenCreateRequest, content_type = "application/json"),
+    responses(
+        (status = 201, description = "Created.", body = TokenCreated,
+            headers(("Location" = String, description = "`/tokens/{id}`"))),
+        (status = 400, description = "`validation.*`: unknown permission, empty list, invalid prefix or `expiresAt` in the past.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 async fn create(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -103,6 +126,26 @@ async fn create(
         .into_response())
 }
 
+/// Lists the tokens, paginated. It never returns a secret.
+///
+/// Permission: `admin`. Only exists with authentication on.
+#[utoipa::path(
+    get,
+    path = "/tokens",
+    tag = "Tokens",
+    operation_id = "listTokens",
+    params(
+        ("limit" = Option<u32>, Query, description = "Page size. Default 100."),
+        ("cursor" = Option<String>, Query, description = "The `nextCursor` of the previous page."),
+        ("sort" = Option<String>, Query, description = "`id` or `createdAt` (not `name`); a leading `-` sorts descending."),
+        ("name" = Option<String>, Query, description = "Only tokens whose name contains the text.")
+    ),
+    responses(
+        (status = 200, description = "A page of tokens.", body = TokenPage),
+        (status = 400, description = "`validation.out-of-range`, `invalid-cursor` or `failed`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn list(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
@@ -130,6 +173,21 @@ async fn list(
     Ok(Json(Value::Object(page)))
 }
 
+/// Reads a token (never its secret).
+///
+/// Permission: `admin`. Only exists with authentication on.
+#[utoipa::path(
+    get,
+    path = "/tokens/{id}",
+    tag = "Tokens",
+    operation_id = "getToken",
+    params(("id" = String, Path, description = "The token `id`.")),
+    responses(
+        (status = 200, description = "The token.", body = Token),
+        (status = 404, description = "`token.not-found`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn read(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -139,6 +197,24 @@ async fn read(
     ))))
 }
 
+/// Changes only the `name` and the `expiresAt` of a token (`null` removes the deadline). Permissions and prefixes are
+/// immutable: create another token and revoke this one. An `admin` token is only changed by the root token.
+///
+/// Permission: `admin`. Only exists with authentication on.
+#[utoipa::path(
+    patch,
+    path = "/tokens/{id}",
+    tag = "Tokens",
+    operation_id = "updateToken",
+    params(("id" = String, Path, description = "The token `id`.")),
+    request_body(content = TokenUpdateRequest, content_type = "application/json"),
+    responses(
+        (status = 200, description = "The token after the change.", body = Token),
+        (status = 400, description = "`validation.immutable-field`, `validation.out-of-range` (`expiresAt` in the past) or another `validation.*`.", body = ErrorResponse),
+        (status = 404, description = "`token.not-found`.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 async fn update(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -167,6 +243,21 @@ async fn update(
     Ok(Json(Value::Object(token_json(&record))))
 }
 
+/// Revokes a token: it takes effect on every node at the commit. An `admin` token is only revoked by the root token.
+///
+/// Permission: `admin`. Only exists with authentication on.
+#[utoipa::path(
+    delete,
+    path = "/tokens/{id}",
+    tag = "Tokens",
+    operation_id = "revokeToken",
+    params(("id" = String, Path, description = "The token `id`.")),
+    responses(
+        (status = 204, description = "Revoked."),
+        (status = 404, description = "`token.not-found`.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 async fn revoke(
     State(state): State<AppState>,
     Path(id): Path<String>,

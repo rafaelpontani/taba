@@ -159,14 +159,52 @@ async fn with_a_root_token_every_client_route_asks_for_a_valid_one_and_the_401_n
 #[tokio::test]
 async fn the_operations_routes_do_not_use_the_access_token() {
     let node = start().await;
-    assert_eq!(node.client_get("/health/live").await.status(), 200);
-    assert_eq!(
-        get(&node, "/health/cluster?scope=node", None)
+    for path in [
+        "/health/live",
+        "/health/cluster?scope=node",
+        "/node/drain",
+        "/metrics",
+        "/metrics/topics",
+    ] {
+        let response = node
+            .client
+            .get(node.operations_url(path))
+            .send()
             .await
-            .status(),
-        200
+            .unwrap();
+        assert_eq!(response.status(), 200, "{path} on the operations port");
+    }
+    node.shutdown().await;
+}
+
+/// UC: UC-AUT-040
+#[tokio::test]
+async fn on_the_client_port_the_probes_are_open_and_the_metrics_take_any_valid_token() {
+    let node = start().await;
+    // The probes of the orchestrator carry no token.
+    assert_eq!(get(&node, "/health/live", None).await.status(), 200);
+    assert_eq!(get(&node, "/health/ready", None).await.status(), 503);
+
+    // `/metrics` asks for a token here (the operations port serves it without one), but any valid one will do.
+    assert_eq!(
+        error_code(get(&node, "/metrics", None).await, 401).await,
+        "auth.unauthorized"
     );
-    assert_eq!(get(&node, "/node/drain", None).await.status(), 200);
+    assert_eq!(
+        error_code(get(&node, "/metrics", Some("invalid")).await, 401).await,
+        "auth.unauthorized"
+    );
+    let (_, secret) = token(&node, &["consume"], &[]).await;
+    let response = get(&node, "/metrics", Some(&secret)).await;
+    assert_eq!(response.status(), 200);
+    assert!(response.text().await.unwrap().contains("taba_"));
+    assert_eq!(get(&node, "/metrics", Some(ROOT)).await.status(), 200);
+
+    // The rest of the operations API is not on the client port.
+    assert_eq!(
+        error_code(get(&node, "/node/drain", Some(ROOT)).await, 404).await,
+        "route.not-found"
+    );
     node.shutdown().await;
 }
 

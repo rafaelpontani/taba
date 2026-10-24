@@ -28,12 +28,12 @@ pub fn find(key: &str) -> Option<&'static Param> {
 }
 
 pub static PARAMS: &[Param] = &[
-    // Ports (the doc's suggestions apply as defaults: 8080 and 8081)
+    // Ports (the doc's suggestions apply as defaults: 8080, 8081 and 9090)
     p("api.port", Some("8080")),
     p("api.pagination.default-limit", Some("100")),
     p("api.pagination.max-limit", Some("1000")),
     p("cluster.port", Some("8081")),
-    p("operations.port", None),
+    p("operations.port", Some("9090")),
     // Cluster port security
     p("secrets.dir", Some("/etc/taba/secrets")),
     p("cluster.tls.enabled", Some("true")), // `false` só com replication.factor=1

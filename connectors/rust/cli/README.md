@@ -1,6 +1,6 @@
 # taba-cli
 
-The Taba client command line ([documentation](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/20-cli.md#taba-cli-client)): topics, publish, consume, `subscribe`, ack, invisibility, tokens, health, metrics and drain, plus the **connection profiles** (with an interactive screen: `taba-cli profile`).
+The Taba client command line ([documentation](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/20-cli.md#taba-cli-client)): topics, publish, consume, `subscribe`, ack, invisibility, tokens, cluster status, nodes, statistics, metrics and drain, plus the **connection profiles** (with an interactive screen: `taba-cli profile`).
 
 > Other languages: [Português (Brasil)](https://github.com/rafaelpontani/taba/blob/main/doc/pt-BR/20-cli.md#taba-cli-cliente) · [all languages](https://github.com/rafaelpontani/taba/blob/main/doc/README.md)
 
@@ -9,7 +9,7 @@ taba-cli profile add local --url http://127.0.0.1:8080 --token-file ./secrets/ro
 taba-cli topic create orders --type queue --fifo
 echo '{"order": 9001}' | taba-cli publish orders --stdin --group-id customer-42
 taba-cli consume orders --wait 20 --ack
-taba-cli health cluster -o table
+taba-cli cluster status -o table
 ```
 
 Without a profile, `http://127.0.0.1:8080` applies, with no token. `taba-cli help` lists the commands.

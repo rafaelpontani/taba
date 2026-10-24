@@ -146,6 +146,10 @@ fn run_secrets_command(command: &Command) -> ExitCode {
             println!("{}", secrets::generate_root_token());
             Ok(())
         }
+        Command::Openapi { api } => {
+            println!("{}", taba_node::http::openapi::document(*api));
+            Ok(())
+        }
         Command::Run => Ok(()),
     };
     match result {

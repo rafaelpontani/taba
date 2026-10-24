@@ -2,10 +2,10 @@
  1 Cluster │ 2 Topics │ 3 Tokens │ 4 Profiles
 Loading...
 
+
   ┌ New profile ─────────────────────────────────────────────────────────────┐
   │▶ Name                   ▏                                                │
   │  Address (url)                                                           │
-  │  Operations address                                                      │
   │  Token file                                                              │
   │  Token (kept in the file)                                                │
   │  CA certificate file                                                     │

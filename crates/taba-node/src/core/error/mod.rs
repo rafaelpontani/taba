@@ -4,6 +4,7 @@
 //! status line, never in the body, and `Retry-After` only in the header (section 8.3.3).
 
 use serde::Serialize;
+use utoipa::ToSchema;
 
 macro_rules! catalog {
     ($( $variant:ident => ($code:literal, $status:literal) ),+ $(,)?) => {
@@ -106,9 +107,12 @@ impl Serialize for ErrorCode {
 }
 
 /// A specific problem inside a validation error (`details`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct ErrorDetail {
+    /// The field the problem is in (`name`, `permissions[1]`, `query.limit`...).
     pub field: String,
+    /// A code of the catalogue ([doc 19](../19-errors-and-limits.md)).
+    #[schema(value_type = String, example = "validation.out-of-range")]
     pub code: ErrorCode,
     pub message: String,
 }
@@ -197,14 +201,20 @@ impl std::fmt::Display for TabaError {
 impl std::error::Error for TabaError {}
 
 /// Body of every error response (`4xx` and `5xx`) of a JSON route.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
+    /// A stable code of the catalogue, in the `group.reason` format. A client must tolerate codes it does not
+    /// know yet: the catalogue only grows.
+    #[schema(value_type = String, example = "topic.not-found")]
     pub code: ErrorCode,
     pub message: String,
+    /// The same value as the `X-Request-Id` header of the response.
     pub request_id: String,
+    /// What is wrong in each field, on a validation error.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub details: Vec<ErrorDetail>,
+    /// On a `403 auth.forbidden`: what the token lacked, `root` or the name of a permission.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<String>,
 }

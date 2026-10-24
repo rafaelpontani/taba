@@ -64,7 +64,7 @@ Para construir as imagens a partir deste repositório (desenvolvimento): `docker
 Depois, com o [`taba-cli`](doc/pt-BR/20-cli.md), que já vem no Compose apontado para o cluster (e com o token raiz):
 
 ```bash
-docker compose run --rm taba-cli health cluster -o table             # os três nós, sem condições
+docker compose run --rm taba-cli cluster status -o table             # os três nós, sem condições
 docker compose run --rm taba-cli topic create orders --type queue
 echo '{"order": 9001}' | docker compose run --rm -T taba-cli publish orders --stdin
 docker compose run --rm taba-cli consume orders --wait 5 --ack      # recebe e confirma

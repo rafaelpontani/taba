@@ -224,7 +224,7 @@ pub struct RunningNode {
     _fatal_keepalive: tokio::sync::mpsc::UnboundedSender<String>,
     fatal_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
     client_addr: SocketAddr,
-    operations_addr: Option<SocketAddr>,
+    operations_addr: SocketAddr,
     cluster_addr: SocketAddr,
     cancel: CancellationToken,
     tasks: JoinSet<io::Result<()>>,
@@ -284,8 +284,8 @@ impl RunningNode {
         self.client_addr
     }
 
-    /// `None`: the operations routes stay on the API port.
-    pub fn operations_addr(&self) -> Option<SocketAddr> {
+    /// The operations port actually opened.
+    pub fn operations_addr(&self) -> SocketAddr {
         self.operations_addr
     }
 
@@ -357,10 +357,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         (None, Some(dir)) => Some(TlsStore::open(dir).map_err(NodeError::Tls)?),
     };
     let client = bind("of the client API", deps.bind_ip, config.ports.api).await?;
-    let operations = match config.ports.operations {
-        Some(port) => Some(bind("of operations", deps.bind_ip, port).await?),
-        None => None,
-    };
+    let operations = bind("of operations", deps.bind_ip, config.ports.operations).await?;
     let cluster = bind("do cluster", deps.bind_ip, config.ports.cluster).await?;
 
     let now = deps.clock.now();
@@ -449,7 +446,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         })
     };
     let client_addr = addr_of(&client)?;
-    let operations_addr = operations.as_ref().map(addr_of).transpose()?;
+    let operations_addr = addr_of(&operations)?;
     let cluster_addr = addr_of(&cluster)?;
     let cancel = CancellationToken::new();
 
@@ -616,7 +613,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
             None => tasks.spawn(observe::serve(listener, router, observer, cancel)),
         };
     };
-    let client_router = http::client_router(state.clone(), operations.is_none());
+    let client_router = http::client_router(state.clone());
     // The hand-off received from a draining node runs against this same client API.
     if let Some(replication) = state.cluster.as_ref().and_then(|c| c.replication()) {
         replication
@@ -643,14 +640,12 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         )));
     }
     serve(client, client_router, client_addr.port(), None);
-    if let (Some(listener), Some(addr)) = (operations, operations_addr) {
-        serve(
-            listener,
-            http::operations_router(state.clone()),
-            addr.port(),
-            None,
-        );
-    }
+    serve(
+        operations,
+        http::operations_router(state.clone()),
+        operations_addr.port(),
+        None,
+    );
     {
         let (listener, addr) = (cluster, cluster_addr);
         let server_config = tls
@@ -817,7 +812,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     tracing::info!(
         node_id = %shared.node_id(),
         client = %client_addr,
-        operations = ?operations_addr,
+        operations = %operations_addr,
         cluster = %cluster_addr,
         "node is up"
     );

@@ -2,7 +2,7 @@
 # The end-to-end validation of version 0.1 (doc/pt-BR/32-roadmap.md).
 #
 # Starts the root Compose from scratch and checks, in this order:
-#   1. the cluster forms: three healthy nodes and `taba-cli health cluster` with no conditions;
+#   1. the cluster forms: three healthy nodes and `taba-cli cluster status` with no conditions;
 #   2. taba-cli publishes and consumes (topic, publish, consume --ack, list);
 #   3. an abrupt node crash (`docker compose kill`): it is detected, the node is excluded by vote,
 #      publishing and consuming go on with two nodes, and the node returns as a new node (`docker compose start`);
@@ -79,9 +79,9 @@ drain_topic() {
 
 taba_up
 
-step "The cluster formed: taba-cli health cluster"
+step "The cluster formed: taba-cli cluster status"
 [ "$(active_members)" = "3" ] || die "expected 3 active members, found '$(active_members)'"
-cli health cluster -o json | grep -q '"conditions": \[\]' || die "the cluster has conditions: $(cli health cluster -o table)"
+cli cluster status -o json | grep -q '"conditions": \[\]' || die "the cluster has conditions: $(cli cluster status -o table)"
 ok "3 active members and no conditions"
 
 # --- 2. taba-cli --------------------------------------------------------------------------------

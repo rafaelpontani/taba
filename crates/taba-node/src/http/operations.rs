@@ -17,9 +17,13 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 use serde_json::{Value, json};
+use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::common::ApiError;
 use super::consolidate::{self, Missing};
+use super::openapi::{ClusterStatus, RateLimited};
 use super::{AppState, ratelimit};
 use crate::cluster::drain::{Cancelled, DrainStatus, Started};
 use crate::cluster::health::{self, HealthSignals};
@@ -28,27 +32,34 @@ use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse}
 use crate::cluster::service::ClusterService;
 use crate::cluster::state::{DrainState, NodeShared, NodeState};
 use crate::core::clock::Clock;
-use crate::core::error::{ErrorCode, TabaError};
+use crate::core::error::{ErrorCode, ErrorResponse, TabaError};
 use crate::core::time::{format_ms, parse_ms};
 use crate::engine::messages::Messages;
 use crate::engine::messages::stats::StatsRules;
 
 /// Body of `/health/live` and `/health/ready`. These routes never return an `ErrorResponse`
 /// (doc 06b), so the orchestrator can read the reason without handling errors.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
+    /// `live`, `ready` or `not-ready`.
     pub health: &'static str,
+    /// Only on `not-ready`: `bootstrapping`, `syncing`, `returning`, `draining`, `drained` or `failed`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<&'static str>,
 }
 
 /// `DrainStatus` (doc 06b).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct DrainStatusDto {
+#[schema(as = DrainStatus)]
+pub(super) struct DrainStatusDto {
+    /// `active`, `draining` or `drained`.
     drain_state: &'static str,
+    /// What started the drain: `api` or `signal`; `null` when there is none.
     trigger: Option<&'static str>,
+    #[schema(format = DateTime)]
     started_at: Option<String>,
+    /// Messages still in memory that the drain has to move.
     pending_messages: u64,
 }
 
@@ -68,25 +79,52 @@ fn unix_ms(at: SystemTime) -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// The operations routes without the IP filter and the rate limit: what a node serves to itself and to
-/// the other members (`/nodes/{nodeId}/...` of the client API).
-fn bare_routes(state: &AppState) -> Router<AppState> {
-    let mut routes = Router::new()
-        .route("/health/live", get(live))
-        .route("/health/ready", get(ready))
-        .route("/health/cluster", get(cluster_health))
+/// `/health/live` and `/health/ready`: what the client port also serves, with no token.
+pub fn probe_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(live))
+        .routes(routes!(ready))
+}
+
+/// `GET /metrics` alone (nothing if `telemetry.prometheus.enabled` is off): the client port serves it
+/// behind a token, the operations port without one.
+pub fn metrics_route(prometheus_enabled: bool) -> OpenApiRouter<AppState> {
+    let mut routes = OpenApiRouter::new();
+    if prometheus_enabled {
+        routes = routes.routes(routes!(super::metrics::prometheus));
+    }
+    routes
+}
+
+/// The documented routes of the monitoring API: the probes, `/metrics`, `/health/cluster` and the per-topic metrics.
+/// It needs no state, so `taba openapi monitoring` can print the document without starting a node.
+pub fn monitoring_api(prometheus_enabled: bool) -> OpenApiRouter<AppState> {
+    OpenApiRouter::with_openapi(super::openapi::monitoring_base())
+        .merge(probe_routes())
+        .merge(metrics_route(prometheus_enabled))
+        .routes(routes!(cluster_health))
+        .merge(super::topic_stats::routes())
+}
+
+/// What the operations port serves and the contract does not publish: the node's drain, the S3 backup and the forced
+/// restoration.
+fn unpublished_routes() -> Router<AppState> {
+    Router::new()
         .route(
             "/node/drain",
             get(drain_status).post(drain_start).delete(drain_cancel),
         )
-        .merge(super::topic_stats::routes())
         .merge(super::backup::routes())
-        .merge(super::restore::routes());
-    // With `telemetry.prometheus.enabled` off the route does not exist (`404`).
-    if state.telemetry.prometheus_enabled {
-        routes = routes.route("/metrics", get(super::metrics::prometheus));
-    }
-    routes
+        .merge(super::restore::routes())
+}
+
+/// The operations routes without the IP filter and the rate limit: what a node serves to itself and to
+/// the other members (`/nodes/{nodeId}/...` of the client API).
+fn bare_routes(state: &AppState) -> Router<AppState> {
+    monitoring_api(state.telemetry.prometheus_enabled)
+        .split_for_parts()
+        .0
+        .merge(unpublished_routes())
 }
 
 /// The operations routes as a router of their own, with no IP filter or rate limit: the calls that come
@@ -95,9 +133,13 @@ pub fn local_router(state: AppState) -> Router {
     super::common::finish(bare_routes(&state), state)
 }
 
-/// The operations routes, already with the `operations.allowed-ips` filter.
+/// The operations routes and the interface of their documentation, already with the `operations.allowed-ips`
+/// filter (the interface is on the same port, so the same filter protects it).
 pub fn routes(state: &AppState) -> Router<AppState> {
-    bare_routes(state)
+    let (published, spec) = monitoring_api(state.telemetry.prometheus_enabled).split_for_parts();
+    published
+        .merge(unpublished_routes())
+        .merge(super::openapi::docs("/openapi/monitoring.json", spec))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             ratelimit::rate_limit,
@@ -125,6 +167,16 @@ async fn ip_filter(State(state): State<AppState>, request: Request, next: Next) 
     }
 }
 
+/// The process is up and answering. If it fails, the orchestrator restarts the process. It needs no token, on either
+/// port, because the probe of an orchestrator cannot send one.
+#[utoipa::path(
+    get,
+    path = "/health/live",
+    tag = "Health",
+    operation_id = "getHealthLive",
+    security(()),
+    responses((status = 200, description = "The process is up.", body = HealthResponse))
+)]
 async fn live() -> Json<HealthResponse> {
     Json(HealthResponse {
         health: "live",
@@ -132,6 +184,20 @@ async fn live() -> Json<HealthResponse> {
     })
 }
 
+/// The node is **able to receive traffic**: registered, synchronization finished, outside bootstrap and return. In drain
+/// it answers `503`. It never answers with an `ErrorResponse`: the body is always a `HealthResponse`, so the
+/// orchestrator can read the reason. It needs no token, on either port.
+#[utoipa::path(
+    get,
+    path = "/health/ready",
+    tag = "Health",
+    operation_id = "getHealthReady",
+    security(()),
+    responses(
+        (status = 200, description = "Ready.", body = HealthResponse),
+        (status = 503, description = "Not ready: `reason` says why.", body = HealthResponse)
+    )
+)]
 async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     match state.node.not_ready_reason() {
         None => (
@@ -249,10 +315,25 @@ fn runtime_json(telemetry: &crate::telemetry::Telemetry) -> Value {
 /// A node in the `GET /health/cluster` response: the `NodeStatus`, or `None` if it did not answer.
 type Reported = (String, Option<Value>);
 
-/// `GET /health/cluster`. With `scope=cluster` (the default) it asks all the members for
-/// `GET /cluster/status` and joins the conditions; one that does not answer shows up with `reachable: false`.
-/// With `scope=node`, or without the member table (a node in development, or one that has not joined yet),
-/// the cluster is this node.
+/// The state of the cluster for people and scripts: the conditions, a summary and the state of each node. It does not
+/// repeat the metrics. With `scope=cluster` (the default) it asks all the members for their status and joins the
+/// conditions, best-effort: one that does not answer shows up with `reachable: false`. With `scope=node`, or without the
+/// member table (a node in development, or one that has not joined yet), the cluster is this node.
+///
+/// The client API has the same answer at `GET /cluster/status`, behind a token.
+#[utoipa::path(
+    get,
+    path = "/health/cluster",
+    tag = "Health",
+    operation_id = "getHealthCluster",
+    params(("scope" = Option<String>, Query, description = "`cluster` (default: asks every node) or `node` (a local read).")),
+    responses(
+        (status = 200, description = "The cluster.", body = ClusterStatus),
+        (status = 400, description = "`validation.failed`: unknown `scope`.", body = ErrorResponse),
+        (status = 403, description = "`ops.ip-not-allowed`: the source IP is not in `operations.allowed-ips`.", body = ErrorResponse),
+        RateLimited
+    )
+)]
 pub(super) async fn cluster_health(
     State(state): State<AppState>,
     Query(query): Query<HashMap<String, String>>,

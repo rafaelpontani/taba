@@ -1,0 +1,5135 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Taba client API",
+    "description": "The API that applications and `taba-cli` use, on `api.port` (default 8080): topics, messages (publish, consume, invisibility, confirm, prune), tokens, who the caller is, the nodes, the statistics and, for an `admin` token, the cluster. A route's `Permission` is in its description; each one applies only with authentication on. Errors are always an `ErrorResponse`, and every response carries `X-Request-Id`.\n\nThe monitoring API (`/health/*`, `/metrics`, `/metrics/topics*` without a token, for the collectors inside the infrastructure) is a separate document, served on `operations.port`.",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "Caller"
+        ],
+        "summary": "Who the token is and what it can do, so a client can enable or disable what it shows before calling. With\nauthentication off everyone is the `open` caller, with every permission.",
+        "description": "Permission: any valid token. It is exempt from the rate limit.",
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "description": "The caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cluster/backup": {
+      "get": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "The S3 backup state of **every** node, each as `GET /nodes/{nodeId}/backup` gives it, with the envelope of the\nconsolidated reads (`partial`, `missingNodes`).",
+        "description": "Permission: `admin`.",
+        "operationId": "getClusterBackup",
+        "responses": {
+          "200": {
+            "description": "`collectedAt`, `partial`, `missingNodes` and `nodes`, one backup state per node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`backup.not-configured`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cluster/backup/flush": {
+      "post": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Sends the memory and the disk of **every** node to the S3 bucket, without stopping anything. The node that receives\nit forwards to the others and joins the answers. In the client API it asks for a token; on the monitoring port the\nsame route has none.",
+        "description": "Permission: `admin`.",
+        "operationId": "flushClusterBackup",
+        "responses": {
+          "200": {
+            "description": "`complete` says if nothing was left pending, and `nodes` has the report of each node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`backup.not-configured`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cluster/restore/force": {
+      "post": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Declares the cluster restored from disk with the nodes that are present: the FIFO queues are released and a\nrestoration held by the strict mode goes on. It is spread to every node. **Messages already consumed may\nreappear.** It is what releases a cluster stuck by the loss of two nodes.",
+        "description": "Permission: **the root token** only.",
+        "operationId": "forceRestore",
+        "responses": {
+          "200": {
+            "description": "What the force did.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreForce"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cluster/status": {
+      "get": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "The state and the conditions of the cluster: the `NodeStatus` of every node and the conditions found. It is what\n`GET /health/cluster` gives on the monitoring port, here behind a token. With `scope=node` only the node that\nanswers is read.",
+        "description": "Permission: `admin`.",
+        "operationId": "getClusterStatus",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default: asks every node, best-effort) or `node` (the node that answers).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cluster.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.failed`: unknown `scope`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cluster/stop": {
+      "post": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Stops the whole cluster: it drains every node and, with S3, writes the list of the nodes that were alive. The\nprocesses keep running as `drained`: stopping them is up to the orchestrator.",
+        "description": "Permission: **the root token** only.",
+        "operationId": "stopCluster",
+        "responses": {
+          "200": {
+            "description": "What the stop did.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "The process is up and answering. If it fails, the orchestrator restarts the process. It needs no token, on either\nport, because the probe of an orchestrator cannot send one.",
+        "operationId": "getHealthLive",
+        "responses": {
+          "200": {
+            "description": "The process is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "The node is **able to receive traffic**: registered, synchronization finished, outside bootstrap and return. In drain\nit answers `503`. It never answers with an `ErrorResponse`: the body is always a `HealthResponse`, so the\norchestrator can read the reason. It needs no token, on either port.",
+        "operationId": "getHealthReady",
+        "responses": {
+          "200": {
+            "description": "Ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready: `reason` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "The metrics of **this node**, in Prometheus text (`Accept: application/openmetrics-text` asks for OpenMetrics). One\ntarget per node: the node does not query the others. The route does not exist (`404`) with\n`telemetry.prometheus.enabled` off.",
+        "description": "**Authentication depends on the port.** On the monitoring port (`operations.port`) it needs no token, for the\ncollectors inside the infrastructure. On the client port it takes **any valid token**, no particular permission,\nbecause that port is reachable from outside. A node in drain only validates the root token.",
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "description": "The metrics, as text: Prometheus (`text/plain; version=0.0.4`) or, if the `Accept` header asks for `application/openmetrics-text`, OpenMetrics.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/openmetrics-text": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`route.not-found`: `telemetry.prometheus.enabled` is off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes": {
+      "get": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Who is in the cluster and in what state, without addresses. A node that does not answer shows up with\n`reachable: false` and the state the member table has; a node that left by drain shows up as `drained`, in the\nanswer of any node. The numbers are consolidated across the cluster (`partial` and `missingNodes` say if some node\ndid not answer within 5 seconds).",
+        "description": "Permission: any valid token.",
+        "operationId": "listNodes",
+        "responses": {
+          "200": {
+            "description": "The nodes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes/{nodeId}/backup": {
+      "get": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "The S3 backup state of one node.",
+        "description": "Permission: `admin`.",
+        "operationId": "getNodeBackup",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "description": "The node `id` (`GET /nodes`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The backup state of the node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`node.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`backup.not-configured`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes/{nodeId}/backup/flush": {
+      "post": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Sends the memory and the disk of one node to the S3 bucket, without stopping anything.",
+        "description": "Permission: `admin`.",
+        "operationId": "flushNodeBackup",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "description": "The node `id` (`GET /nodes`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report of the flush: `complete` says if nothing was left pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`node.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`backup.not-configured`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes/{nodeId}/drain": {
+      "get": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "The drain progress of one node.",
+        "description": "Permission: `admin`.",
+        "operationId": "getNodeDrain",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "description": "The node `id` (`GET /nodes`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The drain status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrainStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`node.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`forward.bad-gateway`: the node did not answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "`forward.timeout`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Puts one node into drain: it stops receiving client calls (it forwards them to another node), moves its messages\nfrom memory to disk and leaves the cluster. The node **stays up** until the process is stopped.",
+        "description": "Permission: `admin`.",
+        "operationId": "startNodeDrain",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "description": "The node `id` (`GET /nodes`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The node was already in drain.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrainStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The drain started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrainStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`node.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`forward.bad-gateway`: the node did not answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "`forward.timeout`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "Cancels the drain of one node, or makes a node that already left come back **as a new node** (a new `id`).",
+        "description": "Permission: `admin`.",
+        "operationId": "cancelNodeDrain",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "description": "The node `id` (`GET /nodes`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nothing to cancel, or the drain was cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrainStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The node is coming back as a new node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrainStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`node.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`drain.conflict`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`forward.bad-gateway`: the node did not answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "`forward.timeout`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes/{nodeId}/metrics": {
+      "get": {
+        "tags": [
+          "Cluster"
+        ],
+        "summary": "The Prometheus text of one node (what `GET /metrics` gives on that node). The node that receives the call asks the\none named, once, on the cluster port.",
+        "description": "Permission: `admin`.",
+        "operationId": "getNodeMetrics",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "description": "The node `id` (`GET /nodes`).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prometheus text (`text/plain; version=0.0.4`).",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`node.not-found`, or `route.not-found` with `telemetry.prometheus.enabled` off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`forward.bad-gateway`: the node did not answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "`forward.timeout`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats/topics": {
+      "get": {
+        "tags": [
+          "Statistics"
+        ],
+        "summary": "The numbers of the topics, **consolidated across the cluster** (the node that receives asks every member and joins\nthe numbers; one that does not answer in 5 s makes the answer `partial`). Only the topics within the token's\nprefixes come. It is the client API's twin of `GET /metrics/topics` of the monitoring port. A parameter\n`tag.<key>=<value>` (for example `tag.time=fin`) keeps only the topics with that tag.",
+        "description": "Permission: any valid token.",
+        "operationId": "listTopicStats",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The `nextCursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default) or `node` (only the node that answers).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "condition",
+            "in": "query",
+            "description": "Only topics with this condition (`backlog`, `stalled`...).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "description": "Comma-separated fields to return (`name,depth,oldestAge`); `id` and `name` always come.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "description": "A tag name: one row per value of the tag, with the sums.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of topic numbers, with `partial` and `missingNodes`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicStatsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.unknown-field`, `out-of-range`, `invalid-cursor` or `failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats/topics/{topic}": {
+      "get": {
+        "tags": [
+          "Statistics"
+        ],
+        "summary": "One topic in detail, **consolidated across the cluster**: its numbers plus `topGroups`.",
+        "description": "Permission: any valid token, **within its prefixes** (`403 auth.out-of-scope` outside them).",
+        "operationId": "getTopicStats",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default) or `node` (only the node that answers).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The topic's numbers, with `partial` and `missingNodes`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicStats"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats/topics/{topic}/groups": {
+      "get": {
+        "tags": [
+          "Statistics"
+        ],
+        "summary": "The numbers per `groupId` of a topic, **consolidated across the cluster**. Paginated by `groupId`.",
+        "description": "Permission: any valid token, **within its prefixes**.",
+        "operationId": "listTopicGroupStats",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The `nextCursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default) or `node` (only the node that answers).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of group numbers, with `partial` and `missingNodes`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupStatsPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens": {
+      "get": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Lists the tokens, paginated. It never returns a secret.",
+        "description": "Permission: `admin`. Only exists with authentication on.",
+        "operationId": "listTokens",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size. Default 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The `nextCursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "`id` or `createdAt` (not `name`); a leading `-` sorts descending.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Only tokens whose name contains the text.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.out-of-range`, `invalid-cursor` or `failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Creates a token. The response carries its secret in `token` (`tb_<id>.<secret>`), **only here**. A token with the\n`admin` permission is only created by the root token.",
+        "description": "Permission: `admin`. Only exists with authentication on (otherwise `404 route.not-found`).",
+        "operationId": "createToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`/tokens/{id}`"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.*`: unknown permission, empty list, invalid prefix or `expiresAt` in the past.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens/{id}": {
+      "get": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Reads a token (never its secret).",
+        "description": "Permission: `admin`. Only exists with authentication on.",
+        "operationId": "getToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The token `id`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`token.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Revokes a token: it takes effect on every node at the commit. An `admin` token is only revoked by the root token.",
+        "description": "Permission: `admin`. Only exists with authentication on.",
+        "operationId": "revokeToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The token `id`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`token.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Tokens"
+        ],
+        "summary": "Changes only the `name` and the `expiresAt` of a token (`null` removes the deadline). Permissions and prefixes are\nimmutable: create another token and revoke this one. An `admin` token is only changed by the root token.",
+        "description": "Permission: `admin`. Only exists with authentication on.",
+        "operationId": "updateToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The token `id`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The token after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.immutable-field`, `validation.out-of-range` (`expiresAt` in the past) or another `validation.*`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`token.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics": {
+      "get": {
+        "tags": [
+          "Topics"
+        ],
+        "summary": "Lists the topics, paginated by `name` (or the chosen `sort`). It is answered locally. With authentication on, only\nthe topics within the token's prefixes come, and the dead-letter queues are included.",
+        "description": "Permission: any valid token.",
+        "operationId": "listTopics",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size. Default 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The `nextCursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "`name` (default), `id` or `createdAt`; a leading `-` sorts descending.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Only topics whose name contains the text (case-sensitive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of topics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.out-of-range`, `invalid-cursor` or `failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Topics"
+        ],
+        "summary": "Creates a topic. It generates the `id`, propagates the definition to **all nodes** and answers only afterwards.\nEvery queue gets its `{name}-dead-letter` with it.",
+        "description": "Permission: `create`, within the token's prefixes (on a distributor, each prefix too).",
+        "operationId": "createTopic",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`/topics/{name}`"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topic"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body: `validation.failed`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit` or `unknown-field`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.already-exists`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics/{topic}": {
+      "get": {
+        "tags": [
+          "Topics"
+        ],
+        "summary": "Reads a topic. On a dead-letter queue the values are those of the source queue, read-only, with `deadLetter` and\n`source`.",
+        "description": "Permission: any valid token, within its prefixes.",
+        "operationId": "getTopic",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The topic.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topic"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Topics"
+        ],
+        "summary": "Removes the topic and **all its messages, even the pending ones**, and its dead-letter queue. It always works, with\nno check. On `503 cluster.commit-timeout` the removal will complete.",
+        "description": "Permission: `manage`, within the token's prefixes.",
+        "operationId": "deleteTopic",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.read-only`: remove the source queue instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Topics"
+        ],
+        "summary": "Changes a topic: only what is sent changes. It also applies to the messages already stored (a new `ttl` at the next\nsweep).",
+        "description": "Permission: `manage`, within the token's prefixes.",
+        "operationId": "updateTopic",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The topic after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topic"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, or an immutable field (`validation.immutable-field`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.read-only`: a dead-letter queue follows its source queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics/{topic}/messages": {
+      "get": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Delivers up to `maxMessages` **ready** messages, each invisible for `visibilityTimeout`. It returns what is ready\nwithout waiting to fill `maxMessages` (with `waitTime` above 0 it waits only for the first one). Any `GET` counts as\na consumer for the idleness of a volatile queue.",
+        "description": "Permission: `consume` (and `create` if `autoCreate` is going to create the queue).",
+        "operationId": "consumeMessages",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The queue name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxMessages",
+            "in": "query",
+            "description": "1 to `delivery.max-messages.max`. Default 10.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "visibilityTimeout",
+            "in": "query",
+            "description": "Seconds, 0 to `delivery.visibility-timeout.max`. Default 120.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "waitTime",
+            "in": "query",
+            "description": "Long polling, 0 to 20 seconds. Default 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "autoCreate",
+            "in": "query",
+            "description": "Create the queue if it does not exist. The next parameters only apply at creation.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "volatile",
+            "in": "query",
+            "description": "With `autoCreate`. Default `true`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "idleTimeout",
+            "in": "query",
+            "description": "With `autoCreate`. Default 600.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "fifo",
+            "in": "query",
+            "description": "With `autoCreate`. Default `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The messages that were ready; an empty list if none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsumeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.out-of-range`, `reserved-name` or `invalid-name`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`: it does not exist and there was no `autoCreate`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.wrong-type`: the topic is a distributor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`topic.volatile-limit`: the `autoCreate` limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Publishes a message. The body is the **bytes** of the message and `Content-Type` says what they are (without it,\n`application/json`); Taba stores the bytes as they came. `application/json` must be valid JSON and `text/*` valid\nUTF-8. The node that receives is the coordinator and answers when the quorum confirms.",
+        "description": "On a queue the answer is `201` with the `id` (on a FIFO queue, `200` with `duplicate: true` when the publication\nrepeated one inside the deduplication window); on a distributor it is `200` with what happened to each destination\nqueue.\n\nPermission: `publish`. On a distributor only it is checked, not the destination queues.",
+        "operationId": "publishMessage",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupId",
+            "in": "query",
+            "description": "Group (1 to 128 characters of `A-Za-z0-9_-.:`). Required on a FIFO queue; elsewhere it guides the fair delivery.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deduplicationId",
+            "in": "query",
+            "description": "FIFO queues only: the deduplication key inside the group (default: the SHA-256 of the body). Elsewhere it is `400 validation.not-applicable`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The message bytes, of any media type up to the topic's `maxMessageBytes` (default 5 MB).",
+          "content": {
+            "*/*": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageBytes"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A duplicate on a FIFO queue, or the result of a distributor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishOutcome"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Published to a queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.group-id-required`, `invalid-body`, `invalid-content-type`, `not-applicable` or `failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`message.too-large`: above the topic's limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`distributor.too-many-targets`: refused entirely.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`forward.bad-gateway`: the forward failed after the body was sent. Outside FIFO it is not repeated (it would duplicate).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "`forward.timeout`, as the `502`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Removes **every message** of the queue, visible and invisible and the copies the replicas keep, in the whole\ncluster. The topic and its definition stay. It answers success only if every node succeeded; otherwise it is\n`503 cluster.prune-incomplete` and repeating the call is safe.",
+        "description": "Permission: `manage` on the topic.",
+        "operationId": "pruneQueue",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The queue name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PruneResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.wrong-type`: a distributor has no messages to remove.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics/{topic}/messages/{id}": {
+      "delete": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Confirms (acknowledges) a message with a decision by quorum; a failure before the quorum cancels the ack and the\nmessage stays available.",
+        "description": "Permission: `consume`.",
+        "operationId": "ackMessage",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The queue name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The message `id`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "receiptToken",
+            "in": "query",
+            "description": "The `receiptToken` of the last delivery.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Confirmed and removed."
+          },
+          "400": {
+            "description": "`validation.required`: no `receiptToken`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found` or `message.not-found` (including a second ack, or a message expired by `ttl`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`message.stale-receipt` (the message was redelivered to another consumer) or `topic.wrong-type`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics/{topic}/messages/{id}/visibility": {
+      "put": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Sets the invisibility deadline of a message **already delivered**, counted from now (not an increment), without\nincrementing `deliveryCount`. `0` releases the message at once. `PUT` because the value replaces and repeating it\ngives the same result.",
+        "description": "Permission: `consume`.",
+        "operationId": "setMessageVisibility",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The queue name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The message `id`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "receiptToken",
+            "in": "query",
+            "description": "The `receiptToken` of the last delivery.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisibilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The new deadline.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisibilityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.required` or `validation.out-of-range`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found` or `message.not-found` (already confirmed, expired by `ttl`, or the topic is gone).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`message.stale-receipt`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClusterStatus": {
+        "type": "object",
+        "description": "The state and the conditions of the cluster.",
+        "required": [
+          "scope",
+          "collectedAt",
+          "partial",
+          "missingNodes",
+          "worstCondition",
+          "conditions",
+          "summary",
+          "nodes"
+        ],
+        "properties": {
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            }
+          },
+          "missingNodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClusterStatusNode"
+            }
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string",
+            "description": "`cluster` (asks every node) or `node` (only the one that answers)."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ClusterSummary"
+          },
+          "worstCondition": {
+            "type": "string",
+            "description": "The condition of highest severity; `ok` if none."
+          }
+        }
+      },
+      "ClusterStatusNode": {
+        "type": "object",
+        "description": "One node in the cluster status.",
+        "required": [
+          "nodeId",
+          "reachable"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NodeStatus",
+                "description": "`null` if the node did not answer."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ClusterSummary": {
+        "type": "object",
+        "description": "The cluster in numbers.",
+        "required": [
+          "members",
+          "membersVersion",
+          "quorumAvailable",
+          "syncingBlocks",
+          "servingNodes",
+          "stopped",
+          "plannedStop"
+        ],
+        "properties": {
+          "excludedCutoff": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "members": {
+            "type": "object",
+            "description": "How many members are in each state.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "membersVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plannedStop": {
+            "type": "boolean",
+            "description": "`true` if the stop was `POST /cluster/stop` (it left a stop list in S3)."
+          },
+          "quorumAvailable": {
+            "type": "boolean"
+          },
+          "servingNodes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Nodes that are active and out of drain.",
+            "minimum": 0
+          },
+          "stopped": {
+            "type": "boolean",
+            "description": "`true` if every node that answered is in drain."
+          },
+          "stoppedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "syncingBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "Condition": {
+        "type": "object",
+        "description": "A condition of the cluster.",
+        "required": [
+          "condition",
+          "severity"
+        ],
+        "properties": {
+          "condition": {
+            "type": "string",
+            "description": "`quorum-lost`, `write-quorum-at-risk`, `member-unreachable`, `under-replicated`, `node-frozen`..."
+          },
+          "severity": {
+            "type": "string",
+            "description": "`warning` or `critical`."
+          }
+        }
+      },
+      "ConsumeResponse": {
+        "type": "object",
+        "description": "`ConsumeResponse`: serialized directly, so the JSON `body` does not go through a `Value` and lose\nthe form in which it was sent.",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "description": "Empty when nothing was ready: the answer is then `200`, never `204`."
+          }
+        }
+      },
+      "DeliveryError": {
+        "type": "object",
+        "description": "Why a copy of a message to one destination queue failed.",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A code of the catalogue."
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "DistributorDelivery": {
+        "type": "object",
+        "description": "What happened to one destination queue of a distributor: `id` (a copy was created) or `error`.",
+        "required": [
+          "topic"
+        ],
+        "properties": {
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "topic": {
+            "type": "string"
+          }
+        }
+      },
+      "DistributorPublishResponse": {
+        "type": "object",
+        "description": "Answer of a publication to a distributor. Zero matches is not an error.",
+        "required": [
+          "matched",
+          "deliveries"
+        ],
+        "properties": {
+          "deliveries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DistributorDelivery"
+            }
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Queues whose name matched a prefix.",
+            "minimum": 0
+          }
+        }
+      },
+      "DistributorStats": {
+        "type": "object",
+        "description": "What a distributor received and copied.",
+        "required": [
+          "received",
+          "copies",
+          "copyErrors"
+        ],
+        "properties": {
+          "copies": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "copyErrors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "received": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DrainStatus": {
+        "type": "object",
+        "description": "`DrainStatus` (doc 06b).",
+        "required": [
+          "drainState",
+          "pendingMessages"
+        ],
+        "properties": {
+          "drainState": {
+            "type": "string",
+            "description": "`active`, `draining` or `drained`."
+          },
+          "pendingMessages": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Messages still in memory that the drain has to move.",
+            "minimum": 0
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "trigger": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What started the drain: `api` or `signal`; `null` when there is none."
+          }
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "description": "A specific problem inside a validation error (`details`).",
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A code of the catalogue ([doc 19](../19-errors-and-limits.md)).",
+            "example": "validation.out-of-range"
+          },
+          "field": {
+            "type": "string",
+            "description": "The field the problem is in (`name`, `permissions[1]`, `query.limit`...)."
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Body of every error response (`4xx` and `5xx`) of a JSON route.",
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A stable code of the catalogue, in the `group.reason` format. A client must tolerate codes it does not\nknow yet: the catalogue only grows.",
+            "example": "topic.not-found"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "description": "What is wrong in each field, on a validation error."
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "description": "The same value as the `X-Request-Id` header of the response."
+          },
+          "required": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On a `403 auth.forbidden`: what the token lacked, `root` or the name of a permission."
+          }
+        }
+      },
+      "GroupStats": {
+        "type": "object",
+        "description": "The numbers of one group (`groupId`) of a topic.",
+        "required": [
+          "messages",
+          "visibleMessages",
+          "invisibleMessages",
+          "share"
+        ],
+        "properties": {
+          "groupId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invisibleMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "oldestAge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "oldestMessageAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "overflow": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true` for the row that sums the groups past the ceiling."
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "The fraction of the topic's messages that are in the group."
+          },
+          "visibleMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "GroupStatsPage": {
+        "type": "object",
+        "description": "A page of group numbers.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupStats"
+            }
+          },
+          "missingNodes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "description": "Body of `/health/live` and `/health/ready`. These routes never return an `ErrorResponse`\n(doc 06b), so the orchestrator can read the reason without handling errors.",
+        "required": [
+          "health"
+        ],
+        "properties": {
+          "health": {
+            "type": "string",
+            "description": "`live`, `ready` or `not-ready`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only on `not-ready`: `bootstrapping`, `syncing`, `returning`, `draining`, `drained` or `failed`."
+          }
+        }
+      },
+      "Latency": {
+        "type": "object",
+        "description": "Latency percentiles, in seconds; `null` with no observation.",
+        "properties": {
+          "p50": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "p95": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "p99": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "Me": {
+        "type": "object",
+        "description": "Who the caller is and what it can do.",
+        "required": [
+          "authEnabled",
+          "root",
+          "name",
+          "permissions",
+          "topicPrefixes"
+        ],
+        "properties": {
+          "authEnabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` for the root token."
+          },
+          "name": {
+            "type": "string",
+            "description": "`root`, `open` (authentication off) or the token's name."
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "root": {
+            "type": "boolean",
+            "description": "`true` for the root token and, with authentication off, for everyone."
+          },
+          "topicPrefixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "description": "A delivered message.",
+        "required": [
+          "id",
+          "body",
+          "contentType",
+          "receiptToken",
+          "deliveryCount",
+          "publishedAt",
+          "invisibleUntil"
+        ],
+        "properties": {
+          "body": {
+            "description": "What was published, according to `contentType`: the native JSON for `application/json` (or `*/*+json`), a\nstring for `text/*` in UTF-8, and the bytes in base64 for any other type (then `bodyEncoding` is `base64`)."
+          },
+          "bodyEncoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`base64`, when the body is not JSON nor text."
+          },
+          "contentType": {
+            "type": "string",
+            "description": "The one given at publication."
+          },
+          "deadLetterReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only on a dead-letter queue."
+          },
+          "deadLetteredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Only on a dead-letter queue."
+          },
+          "deduplicationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deliveryCount": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Deliveries so far, this one included.",
+            "minimum": 0
+          },
+          "groupId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "GUID v7."
+          },
+          "invisibleUntil": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The end of the invisibility of this delivery."
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "receiptToken": {
+            "type": "string",
+            "description": "Keep it: it is required to confirm the message and to change its invisibility."
+          }
+        }
+      },
+      "MessageBytes": {
+        "type": "string",
+        "format": "binary",
+        "description": "The bytes of a message, of any media type: the request body of a publication."
+      },
+      "MissingNode": {
+        "type": "object",
+        "description": "A node that did not answer a consolidated read.",
+        "required": [
+          "nodeId",
+          "reason"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "description": "`timeout`, `unreachable` or `error`."
+          }
+        }
+      },
+      "Node": {
+        "type": "object",
+        "description": "One member of the cluster. There are no addresses.",
+        "required": [
+          "nodeId",
+          "self",
+          "reachable"
+        ],
+        "properties": {
+          "drainState": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`active`, `draining` or `drained`."
+          },
+          "memberState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "self": {
+            "type": "boolean",
+            "description": "`true` for the node that answered."
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`active`, `syncing`, `joining`, `returning`, `failed` or `drained`."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "NodePage": {
+        "type": "object",
+        "description": "The nodes of the cluster.",
+        "required": [
+          "collectedAt",
+          "membersVersion",
+          "partial",
+          "missingNodes",
+          "items"
+        ],
+        "properties": {
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "membersVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "missingNodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "`true` if some node did not answer in time (the numbers are those of the ones that did)."
+          }
+        }
+      },
+      "NodeRuntime": {
+        "type": "object",
+        "description": "What a node's registry says about its load.",
+        "required": [
+          "activeRequests",
+          "rateLimitRejected"
+        ],
+        "properties": {
+          "activeRequests": {
+            "type": "number",
+            "format": "double"
+          },
+          "channelRttP95Seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The worst `p95` of the round trip of the node's channels; `null` with no observation."
+          },
+          "rateLimitRejected": {
+            "type": "number",
+            "format": "double",
+            "description": "Requests refused with `429` since the start."
+          }
+        }
+      },
+      "NodeStatus": {
+        "type": "object",
+        "description": "The state of one node.",
+        "required": [
+          "nodeId",
+          "version",
+          "state",
+          "drainState",
+          "startedAt",
+          "collectedAt",
+          "excludedSince",
+          "storage",
+          "runtime",
+          "signals"
+        ],
+        "properties": {
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "drainState": {
+            "type": "string",
+            "description": "`active`, `draining` or `drained`."
+          },
+          "excludedSince": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/NodeRuntime"
+          },
+          "signals": {
+            "type": "object",
+            "description": "The raw signals the conditions come from."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "description": "`joining`, `active`, `syncing`, `returning` or `failed`."
+          },
+          "storage": {
+            "$ref": "#/components/schemas/NodeStorage"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "NodeStorage": {
+        "type": "object",
+        "description": "What a node stores.",
+        "required": [
+          "memoryUsedBytes",
+          "memoryMessages",
+          "diskMessages"
+        ],
+        "properties": {
+          "diskFreeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryLimitBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryUsedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "Permission": {
+        "type": "string",
+        "description": "What a token may do.",
+        "enum": [
+          "publish",
+          "consume",
+          "create",
+          "manage",
+          "admin"
+        ]
+      },
+      "PruneNode": {
+        "type": "object",
+        "description": "What each node removed in a prune.",
+        "required": [
+          "nodeId",
+          "removed"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "PruneResult": {
+        "type": "object",
+        "description": "Answer of `DELETE /topics/{topic}/messages`.",
+        "required": [
+          "pruneId",
+          "removed",
+          "nodes"
+        ],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PruneNode"
+            }
+          },
+          "pruneId": {
+            "type": "string",
+            "description": "Identifies the operation; it makes the call idempotent on each node."
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Messages removed, each counted once (the node that owns a message counts it, the replicas do not).",
+            "minimum": 0
+          }
+        }
+      },
+      "PublishOutcome": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PublishResponse"
+          },
+          {
+            "$ref": "#/components/schemas/DistributorPublishResponse"
+          }
+        ],
+        "description": "What a publication answers with `200`: a duplicate on a FIFO queue, or the result of a distributor."
+      },
+      "PublishResponse": {
+        "type": "object",
+        "description": "Answer of a publication to a queue.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "duplicate": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "FIFO queues only: `true` if the publication repeated one inside the deduplication window (nothing was\ncreated; the status is then `200`)."
+          },
+          "id": {
+            "type": "string",
+            "description": "The message `id`; on a duplicate, the one of the original."
+          }
+        }
+      },
+      "RestoreForce": {
+        "type": "object",
+        "description": "What forcing the restoration did.",
+        "required": [
+          "wasRestoring",
+          "status"
+        ],
+        "properties": {
+          "silentNodes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "wasRestoring": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StopReport": {
+        "type": "object",
+        "description": "What the stop of the whole cluster did.",
+        "required": [
+          "stopped",
+          "stopList",
+          "warnings",
+          "nodes"
+        ],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "One entry per node: `nodeId`, `drained` and, if it failed, `error`."
+          },
+          "stopList": {
+            "type": "boolean",
+            "description": "`true` if the stop list was written to S3."
+          },
+          "stopped": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Token": {
+        "type": "object",
+        "description": "An access token, without its secret.",
+        "required": [
+          "id",
+          "name",
+          "permissions",
+          "topicPrefixes",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "topicPrefixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty means every topic."
+          }
+        }
+      },
+      "TokenCreateRequest": {
+        "type": "object",
+        "description": "Body of `POST /tokens`.",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "At least one. An `admin` token is only created by the root token."
+          },
+          "topicPrefixes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty or absent means every topic."
+          }
+        }
+      },
+      "TokenCreated": {
+        "type": "object",
+        "description": "The creation of a token: the `Token` plus its secret, which shows up **only here**.",
+        "required": [
+          "id",
+          "name",
+          "permissions",
+          "topicPrefixes",
+          "createdAt",
+          "token"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "token": {
+            "type": "string",
+            "description": "`tb_<id>.<secret>`. It is never returned again."
+          },
+          "topicPrefixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TokenPage": {
+        "type": "object",
+        "description": "A page of tokens.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TokenUpdateRequest": {
+        "type": "object",
+        "description": "Body of `PATCH /tokens/{id}`. Permissions and prefixes are immutable.",
+        "properties": {
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "A date in the future; `null` removes the deadline."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Topic": {
+        "type": "object",
+        "description": "A topic: a queue (with its dead-letter queue) or a distributor.",
+        "required": [
+          "id",
+          "name",
+          "type",
+          "tags",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deadLetter": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Only on a dead-letter queue, where it is `true`. A dead-letter queue is read-only and follows its source."
+          },
+          "effective": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TopicEffective",
+                "description": "Queue only: the values that apply."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fifo": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue only. Immutable."
+          },
+          "id": {
+            "type": "string",
+            "description": "GUID v7."
+          },
+          "idleTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Volatile queue only: seconds without a consumer until the queue is deleted.",
+            "minimum": 0
+          },
+          "maxDeliveries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: `null` means the node default (10).",
+            "minimum": 0
+          },
+          "maxMessageBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: `null` means the node default (`message.max-bytes`).",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefixes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Distributor only: the destination prefixes."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only on a dead-letter queue: the name of the queue it belongs to."
+          },
+          "tags": {
+            "type": "object",
+            "description": "Telemetry tags; they do not change the behaviour.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "ttl": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: `null` means the node default (14 days).",
+            "minimum": 0
+          },
+          "type": {
+            "$ref": "#/components/schemas/TopicType"
+          },
+          "volatile": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue only."
+          }
+        }
+      },
+      "TopicCondition": {
+        "type": "object",
+        "description": "A condition found on a topic.",
+        "required": [
+          "condition",
+          "severity"
+        ],
+        "properties": {
+          "condition": {
+            "type": "string",
+            "description": "`backlog`, `stalled`, `idle`, `noisy-group`, `dead-letter-growing`..."
+          },
+          "severity": {
+            "type": "string",
+            "description": "`warning` or `critical`."
+          }
+        }
+      },
+      "TopicCreateRequest": {
+        "type": "object",
+        "description": "Body of `POST /topics`. A field that does not apply to the type is `400 validation.not-applicable`.",
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "fifo": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue only. Immutable. Needs `replication.factor` of at least 2."
+          },
+          "idleTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Volatile queue only: 60 to 604800 seconds. Default 600.",
+            "minimum": 0
+          },
+          "maxDeliveries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: 1 to 1000.",
+            "minimum": 0
+          },
+          "maxMessageBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: 1 up to `message.hard-limit`.",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "`^[A-Za-z0-9_-]{1,100}$`. A name ending in `-dead-letter` is reserved."
+          },
+          "prefixes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Distributor only: up to 20 prefixes of 1 to 100 characters (`A-Za-z0-9_-`)."
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Up to 20 tags: key of 1 to 64 and value of 0 to 128 characters of `A-Za-z0-9_-.:`.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "ttl": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Queue only: 60 to 31536000 seconds.",
+            "minimum": 0
+          },
+          "type": {
+            "$ref": "#/components/schemas/TopicType"
+          },
+          "volatile": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue only. Default `false`."
+          }
+        }
+      },
+      "TopicEffective": {
+        "type": "object",
+        "description": "The limits in force for a queue: its own value, or the node default where it has none.",
+        "required": [
+          "maxMessageBytes",
+          "ttl",
+          "maxDeliveries"
+        ],
+        "properties": {
+          "maxDeliveries": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Deliveries without an ack until the message goes to the dead-letter queue.",
+            "minimum": 0
+          },
+          "maxMessageBytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes a message may have.",
+            "minimum": 0
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds a message lives.",
+            "minimum": 0
+          }
+        }
+      },
+      "TopicPage": {
+        "type": "object",
+        "description": "A page of topics.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Topic"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent on the last page; pass it as `cursor` to read the next one."
+          }
+        }
+      },
+      "TopicStats": {
+        "type": "object",
+        "description": "The numbers of a topic. With `fields`, only the requested ones come (`id` and `name` always do).",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "ackRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "acked": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "collectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "conditions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TopicCondition"
+            }
+          },
+          "consumeLatency": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Latency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consumeRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "consumed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deadLetter": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Messages in the queue, visible and invisible.",
+            "minimum": 0
+          },
+          "diskBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "distributor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DistributorStats",
+                "description": "Only on a distributor."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "groups": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "idleTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "invisibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryShare": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "name": {
+            "type": "string"
+          },
+          "noisyShare": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "oldestAge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Seconds since `oldestMessageAt`."
+          },
+          "oldestMessageAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Only in the client API: some node did not answer, so the numbers are those of the ones that did."
+          },
+          "publishErrors": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishLatency": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Latency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publishRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Messages per second."
+          },
+          "published": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "topGroups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/GroupStats"
+            },
+            "description": "Only on the detail of one topic: up to `stats.topics.top-groups` (default 10) groups, largest first."
+          },
+          "type": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TopicType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "volatile": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "worstCondition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`ok`, `warning` or `critical`."
+          }
+        }
+      },
+      "TopicStatsGroup": {
+        "type": "object",
+        "description": "With `groupBy`, one row per value of the tag: the sums of the topics that have that value.",
+        "required": [
+          "tag",
+          "value",
+          "topics"
+        ],
+        "properties": {
+          "ackRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "acked": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "collectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "conditions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TopicCondition"
+            }
+          },
+          "consumeRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "consumed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "groups": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "invisibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "oldestAge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "oldestMessageAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "publishErrors": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "published": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "tag": {
+            "type": "string",
+            "description": "The tag the rows are grouped by."
+          },
+          "topics": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many topics have that value.",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string",
+            "description": "The value of the tag in this row."
+          },
+          "visibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "worstCondition": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TopicStatsPage": {
+        "type": "object",
+        "description": "A page of topic numbers (or, with `groupBy`, of rows per tag value).",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopicStatsRow"
+            }
+          },
+          "missingNodes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "TopicStatsRow": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TopicStats"
+          },
+          {
+            "$ref": "#/components/schemas/TopicStatsGroup"
+          }
+        ],
+        "description": "An item of a page of topic numbers: a topic, or, with `groupBy`, a row per tag value."
+      },
+      "TopicType": {
+        "type": "string",
+        "description": "The kind of a topic.",
+        "enum": [
+          "queue",
+          "distributor"
+        ]
+      },
+      "TopicUpdateRequest": {
+        "type": "object",
+        "description": "Body of `PATCH /topics/{topic}`: only what is sent changes. `tags` replaces the whole map, and `null` in\n`maxMessageBytes`, `ttl` or `maxDeliveries` goes back to the node default. `name`, `id`, `type`, `volatile` and\n`fifo` are immutable: sending them, even with the current value, is `400 validation.immutable-field`.",
+        "properties": {
+          "idleTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Volatile queue only.",
+            "minimum": 0
+          },
+          "maxDeliveries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "maxMessageBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "prefixes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Distributor only."
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "ttl": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "VisibilityRequest": {
+        "type": "object",
+        "description": "Body of `PUT .../visibility`.",
+        "required": [
+          "visibilityTimeout"
+        ],
+        "properties": {
+          "visibilityTimeout": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The new invisibility, in seconds **from now** (not an increment). `0` releases the message at once. At most\n`delivery.visibility-timeout.max`.",
+            "minimum": 0
+          }
+        }
+      },
+      "VisibilityResponse": {
+        "type": "object",
+        "description": "Answer of `PUT .../visibility`.",
+        "required": [
+          "id",
+          "invisibleUntil"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "invisibleUntil": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The end of the invisibility; with `0`, the current instant."
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`Authorization: Bearer <token>`. A node that has neither a root token nor `auth.dev-token` runs with authentication off and takes no token."
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Topics",
+      "description": "Queues and distributors."
+    },
+    {
+      "name": "Messages",
+      "description": "Publish, consume, change the invisibility, confirm and prune."
+    },
+    {
+      "name": "Tokens",
+      "description": "Access tokens. Only with authentication on."
+    },
+    {
+      "name": "Caller",
+      "description": "Who the token is."
+    },
+    {
+      "name": "Statistics",
+      "description": "The numbers of the topics, for the whole cluster."
+    },
+    {
+      "name": "Cluster",
+      "description": "The nodes and the cluster (`admin` permission)."
+    },
+    {
+      "name": "Health",
+      "description": "The probes of the orchestrator. They take no token."
+    },
+    {
+      "name": "Metrics",
+      "description": "This node's Prometheus metrics, behind a token on this port."
+    }
+  ]
+}

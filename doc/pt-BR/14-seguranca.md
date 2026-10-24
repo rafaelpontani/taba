@@ -19,7 +19,7 @@ O Taba separa os públicos **por porta** (não só por caminho), para a rede (fi
 |---|---|---|
 | **Cliente** (`api.port`, 8080) | Aplicações | **Token** opcional (liga sozinho com um token raiz) + rate limit. Use HTTPS no balanceador |
 | **Cluster** (`cluster.port`, 8081) | **Só os outros nós** | **TLS mútuo** com o certificado do cluster. Nunca publicar fora da rede dos nós |
-| **Operação** (`operations.port`) | Operador, Prometheus, balanceador | **Sem autenticação**: proteção só de rede (porta própria + `operations.allowed-ips`) |
+| **Operação** (`operations.port`, 9090) | Coletores e orquestrador dentro da infraestrutura | **Sem autenticação**: proteção só de rede (porta própria + `operations.allowed-ips`) |
 
 ![Zonas de confiança das três portas](../diagrams/img/pt-BR/security-zones.svg)
 
@@ -178,7 +178,18 @@ Para as chamadas contadas **por IP** (e para `operations.allowed-ips`), o IP pod
 
 ## Rotas de operação: proteção de rede
 
-`/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain` **não têm autenticação** (decisão D63). Use **a porta própria** (`operations.port`), a **rede** (grupo de segurança, `NetworkPolicy`) e, em complemento, `operations.allowed-ips` (403 `ops.ip-not-allowed`). Atenção ao `POST /node/drain`: **qualquer um que alcance a porta de operação pode tirar um nó do cluster**. Detalhes em [13-observabilidade.md](13-observabilidade.md).
+`/metrics`, `/metrics/topics/*`, `/health/*` e `/node/drain` **não têm autenticação** na porta de operação (decisão D63). É a porta que o nó sempre abre para elas (`operations.port`, 9090): proteja-a com a **rede** (grupo de segurança, `NetworkPolicy`) e, em complemento, `operations.allowed-ips` (403 `ops.ip-not-allowed`). Atenção ao `POST /node/drain`: **qualquer um que alcance a porta de operação pode tirar um nó do cluster**. Detalhes em [13-observabilidade.md](13-observabilidade.md).
+
+**Métricas e autenticação, por porta** (decisão D177):
+
+| Porta | `/metrics` | `/health/live`, `/health/ready` | Demais rotas de operação |
+|---|---|---|---|
+| Operação (9090) | sem token | sem token | sem token |
+| Cliente (8080) | **qualquer token válido** (`401` sem ele) | sem token (as sondas não enviam token) | não existem (`404`) |
+
+Assim, um coletor dentro da infraestrutura lê `:9090/metrics` sem credenciais, e quem precisa ler as métricas de fora usa a porta de cliente com um token. O `taba-cli` nunca chama a porta de operação: vive fora da infraestrutura e alcança o cluster só pela API de cliente. Um nó em drain só valida o token raiz, então um token comum recebe `401` no `/metrics` da porta de cliente enquanto o nó está em drain (PRB-069); a porta de operação não é afetada.
+
+**A documentação das APIs é aberta.** `GET /openapi/client.json` e `/docs` na porta de cliente, e `GET /openapi/monitoring.json` e `/docs` na porta de operação, não pedem token mesmo com a autenticação ligada: descrevem a API, não os dados. Na porta de operação seguem o mesmo filtro `operations.allowed-ips` do resto da porta. A interface é embutida no binário e não carrega nada da internet. Os documentos listam as rotas do nó, o que inclui se a autenticação está ligada (as rotas `/tokens` só existem com ela): isso não é segredo, já que as rotas respondem `401` ou `404` do mesmo jeito a qualquer um ([13-observabilidade.md](13-observabilidade.md), [16-api-cliente.md](16-api-cliente.md)).
 
 ## Resumo dos riscos conhecidos
 

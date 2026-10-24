@@ -64,7 +64,7 @@ To build the images from this repository instead (for development): `docker comp
 Then, with the [`taba-cli`](doc/en-US/20-cli.md), which already ships in the Compose file pointed at the cluster (and with the root token):
 
 ```bash
-docker compose run --rm taba-cli health cluster -o table             # the three nodes, no conditions
+docker compose run --rm taba-cli cluster status -o table             # the three nodes, no conditions
 docker compose run --rm taba-cli topic create orders --type queue
 echo '{"order": 9001}' | docker compose run --rm -T taba-cli publish orders --stdin
 docker compose run --rm taba-cli consume orders --wait 5 --ack      # receive and confirm

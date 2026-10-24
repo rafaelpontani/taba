@@ -125,8 +125,8 @@ fn a_new_profile_is_checked_and_saved_with_the_default_if_ticked() {
     type_text(&mut sim, "stage");
     sim.code(KeyCode::Tab);
     type_text(&mut sim, "https://stage.example");
-    // url, ops-url, token-file, token: four fields further the token is typed.
-    for _ in 0..3 {
+    // url, token-file, token: three fields further the token is typed.
+    for _ in 0..2 {
         sim.code(KeyCode::Tab);
     }
     type_text(&mut sim, "hunter2");

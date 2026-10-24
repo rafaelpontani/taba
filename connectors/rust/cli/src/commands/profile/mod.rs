@@ -10,9 +10,8 @@ use crate::profile::{self, ConfigFile, Profile, FIELDS};
 use crate::settings;
 
 /// The options that are profile fields.
-const FIELD_OPTS: [Opt; 9] = [
+const FIELD_OPTS: [Opt; 8] = [
     val("url"),
-    val("ops-url"),
     val("token-file"),
     val("token"),
     val("ca-file"),
@@ -129,9 +128,9 @@ pub fn commands() -> Vec<Command> {
     ]
 }
 
-const ADD_OPTS: [Opt; 10] = with_extra(flag("default"));
-const SET_OPTS: [Opt; 10] = with_extra(val("unset"));
-const SESSION_OPTS: [Opt; 11] = {
+const ADD_OPTS: [Opt; 9] = with_extra(flag("default"));
+const SET_OPTS: [Opt; 9] = with_extra(val("unset"));
+const SESSION_OPTS: [Opt; 10] = {
     let base = with_extra(flag("clear"));
     [
         base[0],
@@ -143,12 +142,11 @@ const SESSION_OPTS: [Opt; 11] = {
         base[6],
         base[7],
         base[8],
-        base[9],
         val("shell"),
     ]
 };
 
-const fn with_extra(extra: Opt) -> [Opt; 10] {
+const fn with_extra(extra: Opt) -> [Opt; 9] {
     [
         FIELD_OPTS[0],
         FIELD_OPTS[1],
@@ -158,7 +156,6 @@ const fn with_extra(extra: Opt) -> [Opt; 10] {
         FIELD_OPTS[5],
         FIELD_OPTS[6],
         FIELD_OPTS[7],
-        FIELD_OPTS[8],
         extra,
     ]
 }

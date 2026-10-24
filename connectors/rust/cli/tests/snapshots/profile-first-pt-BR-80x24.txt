@@ -2,10 +2,10 @@
  1 Cluster │ 2 Tópicos │ 3 Tokens │ 4 Perfis
 Carregando...
 
+
   ┌ Novo perfil ─────────────────────────────────────────────────────────────┐
   │▶ Nome                   ▏                                                │
   │  Endereço (url)                                                          │
-  │  Endereço de operação                                                    │
   │  Arquivo do token                                                        │
   │  Token (guardado no arquivo)                                             │
   │  Arquivo do certificado CA                                               │

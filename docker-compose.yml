@@ -7,7 +7,7 @@
 #                                       the same cluster, but building the images from this repository
 #                                       (for developers; see docker-compose.dev.yml)
 #   docker compose ps                   the nodes turn "healthy" when they finish syncing
-#   docker compose run --rm taba-cli health cluster -o table
+#   docker compose run --rm taba-cli cluster status -o table
 #
 # The optional S3 backup (doc/pt-BR/33-backup-s3.md) is already on, in a SeaweedFS that starts alongside. In
 # production the bucket would be the cloud's S3 (or a Kubernetes Service): change the TABA_BACKUP_S3_*
@@ -149,8 +149,6 @@ services:
     profiles: ["tools"]
     environment:
       TABA_CLI_URL: http://haproxy:8080
-      # The operations routes do not go through HAProxy; this profile talks to the first node.
-      TABA_CLI_OPS_URL: http://taba-0:9090
       TABA_CLI_TOKEN_FILE: /secrets/root-token
     volumes:
       - secrets:/secrets:ro

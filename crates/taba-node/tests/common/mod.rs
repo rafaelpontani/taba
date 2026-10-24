@@ -228,6 +228,7 @@ impl TestNode {
             env: vec![
                 ("TABA_API_PORT".into(), "0".into()),
                 ("TABA_CLUSTER_PORT".into(), "0".into()),
+                ("TABA_OPERATIONS_PORT".into(), "0".into()),
             ],
             network: None,
             clock: None,
@@ -256,14 +257,9 @@ impl TestNode {
         url(self.node.client_addr(), path)
     }
 
-    /// The operations port, if any; otherwise the API's (where the operations routes live).
+    /// A route of the operations port (no token).
     pub fn operations_url(&self, path: &str) -> String {
-        url(
-            self.node
-                .operations_addr()
-                .unwrap_or(self.node.client_addr()),
-            path,
-        )
+        url(self.node.operations_addr(), path)
     }
 
     pub fn cluster_url(&self, path: &str) -> String {

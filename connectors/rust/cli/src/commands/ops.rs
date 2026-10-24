@@ -1,60 +1,49 @@
-//! The operations API: health, metrics, statistics and drain (doc 19b, section 18.11.6). These routes
-//! carry no token.
+//! The cluster, the nodes and the statistics (doc 19b, section 18.11.6). All of them go through the client API,
+//! with the profile's token: the CLI lives outside the infrastructure and never calls the operations API, which is
+//! for the collectors inside it.
 
 use super::{call, emit, number, one_of, paged, pairs};
-use crate::app::{CliError, Command, Ctx, EXIT_API};
+use crate::app::{CliError, Command, Ctx};
 use crate::args::{flag, val, Parsed};
 use crate::output::{self, Format};
 
 pub fn commands() -> Vec<Command> {
     vec![
         Command {
-            path: &["health", "live"],
+            path: &["cluster", "status"],
             args: "",
-            summary: "Is the process up? Exits 0 if the node answered 200, and 1 if not.",
-            min_pos: 0,
-            max_pos: 0,
-            opts: vec![],
-            run: |ctx, _| health(ctx, "/health/live", Vec::new()),
-        },
-        Command {
-            path: &["health", "ready"],
-            args: "",
-            summary: "Is the node ready? With 503 it shows the reason.",
-            min_pos: 0,
-            max_pos: 0,
-            opts: vec![],
-            run: |ctx, _| health(ctx, "/health/ready", Vec::new()),
-        },
-        Command {
-            path: &["health", "cluster"],
-            args: "",
-            summary: "Cluster state and conditions; --scope cluster|node.",
+            summary: "Cluster state and conditions (admin); --scope cluster|node.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![val("scope")],
-            run: |ctx, p| {
-                let query = one_of(p, "scope", &["cluster", "node"])?
-                    .map(|s| vec![("scope".to_owned(), s)])
-                    .unwrap_or_default();
-                health(ctx, "/health/cluster", query)
+            run: cluster_status,
+        },
+        Command {
+            path: &["node", "list"],
+            args: "",
+            summary: "The nodes of the cluster: id, state, drain state and version.",
+            min_pos: 0,
+            max_pos: 0,
+            opts: vec![],
+            run: |ctx, _| {
+                let client = ctx.api_client()?;
+                emit(ctx, &client.call(&call(ctx, "GET", "/nodes"))?.text())
             },
         },
         Command {
             path: &["metrics"],
             args: "",
-            summary:
-                "This node's Prometheus metrics; --openmetrics asks for the OpenMetrics format.",
+            summary: "Prometheus metrics of the node that answers, or of --node <id> (admin); --openmetrics asks for the OpenMetrics format.",
             min_pos: 0,
             max_pos: 0,
-            opts: vec![flag("openmetrics")],
+            opts: vec![val("node"), flag("openmetrics")],
             run: metrics,
         },
         Command {
             path: &["stats", "topics"],
             args: "",
             summary:
-                "Topic metrics: --scope, --tag k=v, --condition, --fields, --group-by, pagination.",
+                "Topic statistics of the cluster: --scope, --tag k=v, --condition, --fields, --group-by, pagination.",
             min_pos: 0,
             max_pos: 0,
             opts: vec![
@@ -72,7 +61,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["stats", "topic"],
             args: "<name>",
-            summary: "Metrics and condition of a topic; --scope cluster|node.",
+            summary: "Statistics and condition of a topic; --scope cluster|node.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![val("scope")],
@@ -81,7 +70,7 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["stats", "groups"],
             args: "<topic>",
-            summary: "Metrics per group of a topic.",
+            summary: "Statistics per group of a topic.",
             min_pos: 1,
             max_pos: 1,
             opts: vec![val("limit"), val("cursor"), flag("all")],
@@ -90,73 +79,71 @@ pub fn commands() -> Vec<Command> {
         Command {
             path: &["drain", "start"],
             args: "",
-            summary: "Puts the profile's ops-url node into drain.",
+            summary: "Puts the node --node <id> into drain (admin).",
             min_pos: 0,
             max_pos: 0,
-            opts: vec![],
-            run: |ctx, _| drain(ctx, "POST"),
+            opts: vec![val("node")],
+            run: |ctx, p| drain(ctx, p, "POST"),
         },
         Command {
             path: &["drain", "status"],
             args: "",
-            summary: "The node's drain progress.",
+            summary: "The drain progress of the node --node <id> (admin).",
             min_pos: 0,
             max_pos: 0,
-            opts: vec![],
-            run: |ctx, _| drain(ctx, "GET"),
+            opts: vec![val("node")],
+            run: |ctx, p| drain(ctx, p, "GET"),
         },
         Command {
             path: &["drain", "cancel"],
             args: "",
             summary:
-                "Cancels the drain, or makes a node that already left come back as a new node.",
+                "Cancels the drain of --node <id>, or makes a node that already left come back as a new node (admin).",
             min_pos: 0,
             max_pos: 0,
-            opts: vec![],
-            run: |ctx, _| drain(ctx, "DELETE"),
+            opts: vec![val("node")],
+            run: |ctx, p| drain(ctx, p, "DELETE"),
         },
     ]
 }
 
-/// Health: the response body belongs to the endpoint itself, not an `ErrorResponse`, so a `503` is also
-/// printed (on standard output) and the exit code is 1. Without retrying: the orchestrator asks
-/// again by itself.
-fn health(ctx: &mut Ctx<'_>, path: &str, query: Vec<(String, String)>) -> Result<(), CliError> {
-    let client = ctx.ops_client(Some(1))?;
-    let mut c = call(ctx, "GET", path);
-    c.query = query;
-    match client.call(&c) {
-        Ok(reply) => {
-            let text = reply.text();
-            if path == "/health/cluster" && !ctx.globals.quiet && ctx.format()? == Format::Table {
-                if let Some(table) = output::cluster_table(&text) {
-                    return ctx.say(&table);
-                }
-            }
-            emit(ctx, &text)
-        }
-        Err(e) if e.status > 0 => {
-            let body = String::from_utf8_lossy(&e.body).into_owned();
-            if !body.trim().is_empty() && !ctx.globals.quiet {
-                let format = ctx.format()?;
-                let text = output::render(&body, format);
-                ctx.say(&text)?;
-            }
-            Err(CliError::Exit(EXIT_API))
-        }
-        Err(e) => Err(e.into()),
+/// The `--node` option, which names a node of the cluster (`node list` shows the ids).
+fn node_id(p: &Parsed) -> Result<String, CliError> {
+    p.value("node")
+        .map(taba_client::http::percent_encode)
+        .ok_or_else(|| {
+            CliError::Usage("--node <id> is required (`taba-cli node list` shows the ids)".into())
+        })
+}
+
+fn cluster_status(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
+    let mut c = call(ctx, "GET", "/cluster/status");
+    if let Some(scope) = one_of(p, "scope", &["cluster", "node"])? {
+        c.query.push(("scope".to_owned(), scope));
     }
+    let client = ctx.api_client()?;
+    let text = client.call(&c)?.text();
+    if !ctx.globals.quiet && ctx.format()? == Format::Table {
+        if let Some(table) = output::cluster_table(&text) {
+            return ctx.say(&table);
+        }
+    }
+    emit(ctx, &text)
 }
 
 fn metrics(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
-    let client = ctx.ops_client(None)?;
-    let mut c = call(ctx, "GET", "/metrics");
+    let path = match p.value("node") {
+        Some(_) => format!("/nodes/{}/metrics", node_id(p)?),
+        None => "/metrics".to_owned(),
+    };
+    let mut c = call(ctx, "GET", path);
     let accept = if p.flag("openmetrics") {
         "application/openmetrics-text"
     } else {
         "text/plain"
     };
     c.headers.push(("Accept".to_owned(), accept.to_owned()));
+    let client = ctx.api_client()?;
     let text = client.call(&c)?.text();
     // Metrics are not JSON: they come out as they came, whatever the format.
     if !ctx.globals.quiet {
@@ -186,11 +173,11 @@ fn stats_topics(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
             query.push((key.to_owned(), v.to_owned()));
         }
     }
-    let client = ctx.ops_client(None)?;
+    let client = ctx.api_client()?;
     let text = paged(
         ctx,
         &client,
-        "/metrics/topics",
+        "/stats/topics",
         query,
         p.flag("all"),
         p.value("cursor").map(str::to_owned),
@@ -203,14 +190,14 @@ fn stats_topic(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         ctx,
         "GET",
         format!(
-            "/metrics/topics/{}",
+            "/stats/topics/{}",
             taba_client::http::percent_encode(&p.positional[0])
         ),
     );
     if let Some(scope) = one_of(p, "scope", &["cluster", "node"])? {
         c.query.push(("scope".to_owned(), scope));
     }
-    let client = ctx.ops_client(None)?;
+    let client = ctx.api_client()?;
     emit(ctx, &client.call(&c)?.text())
 }
 
@@ -220,9 +207,9 @@ fn stats_groups(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
         number(p, "limit")?;
         query.push(("limit".to_owned(), v.to_owned()));
     }
-    let client = ctx.ops_client(None)?;
+    let client = ctx.api_client()?;
     let path = format!(
-        "/metrics/topics/{}/groups",
+        "/stats/topics/{}/groups",
         taba_client::http::percent_encode(&p.positional[0])
     );
     let text = paged(
@@ -236,8 +223,9 @@ fn stats_groups(ctx: &mut Ctx<'_>, p: &Parsed) -> Result<(), CliError> {
     emit(ctx, &text)
 }
 
-fn drain(ctx: &mut Ctx<'_>, method: &'static str) -> Result<(), CliError> {
-    let client = ctx.ops_client(None)?;
-    let reply = client.call(&call(ctx, method, "/node/drain"))?;
+fn drain(ctx: &mut Ctx<'_>, p: &Parsed, method: &'static str) -> Result<(), CliError> {
+    let path = format!("/nodes/{}/drain", node_id(p)?);
+    let client = ctx.api_client()?;
+    let reply = client.call(&call(ctx, method, path))?;
     emit(ctx, &reply.text())
 }

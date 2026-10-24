@@ -34,7 +34,7 @@ fn documented_defaults_apply_when_nothing_is_set() {
     let c = prod_with(&[]).unwrap();
     assert_eq!(
         (c.ports.api, c.ports.cluster, c.ports.operations),
-        (8080, 8081, None)
+        (8080, 8081, 9090)
     );
     assert_eq!(c.write.replication_factor, 3);
     assert_eq!(c.write.quorum, 2);

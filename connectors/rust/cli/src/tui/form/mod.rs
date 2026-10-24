@@ -6,18 +6,17 @@ use super::{Frame, Style};
 use crate::profile::{self, Profile, DEFAULT_URL, FIELDS, OUTPUTS};
 
 pub const NAME: usize = 0;
-pub const OUTPUT: usize = 6;
-pub const DEFAULT: usize = 10;
-pub const SAVE: usize = 11;
-pub const TEST: usize = 12;
-pub const CANCEL: usize = 13;
-const ITEMS: usize = 14;
+pub const OUTPUT: usize = 5;
+pub const DEFAULT: usize = 9;
+pub const SAVE: usize = 10;
+pub const TEST: usize = 11;
+pub const CANCEL: usize = 12;
+const ITEMS: usize = 13;
 const LABEL_WIDTH: usize = 18;
 
-const LABELS: [&str; 11] = [
+const LABELS: [&str; 10] = [
     "Name",
     "url",
-    "ops-url",
     "token-file",
     "token",
     "ca-file",
@@ -110,7 +109,7 @@ impl Form {
         is_default: bool,
         taken_names: Vec<String>,
     ) -> Form {
-        let mut texts = vec![Text::default(); 10];
+        let mut texts = vec![Text::default(); 9];
         let mut output = 0;
         if let Some((name, profile)) = existing {
             texts[NAME] = Text::from(name);
@@ -329,20 +328,12 @@ impl Form {
     fn placeholder(&self, item: usize) -> Option<String> {
         match item {
             1 => Some(DEFAULT_URL.to_owned()),
-            2 => {
-                let url = self.value(1);
-                Some(if url.is_empty() {
-                    DEFAULT_URL.to_owned()
-                } else {
-                    url
-                })
-            }
-            3 | 4 => Some("none".to_owned()),
-            5 => Some("system roots".to_owned()),
-            6 => Some("json".to_owned()),
-            7 => Some("5".to_owned()),
-            8 => Some("30".to_owned()),
-            9 => Some("3".to_owned()),
+            2 | 3 => Some("none".to_owned()),
+            4 => Some("system roots".to_owned()),
+            5 => Some("json".to_owned()),
+            6 => Some("5".to_owned()),
+            7 => Some("30".to_owned()),
+            8 => Some("3".to_owned()),
             _ => None,
         }
     }

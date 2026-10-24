@@ -41,7 +41,7 @@ Each module knows only those on its left. This is verifiable: `core` imports no 
 | `storage` | The node database (`_node.db`), messages on disk, the synchronization event database, tokens and losses | Delivery rules |
 | `engine` | Topics, messages, ready and invisible lists, fair delivery, FIFO, dead-letter, tokens, statistics | Network |
 | `cluster` | Members, node protocol, channel, voting, freezing, synchronization, replication, drain, version upgrade, recovery, volatile topics, health | Client HTTP |
-| `http` | The three APIs, authentication, rate limit, client IP, forwarding, metrics | Domain rules (only reads the request and builds the response) |
+| `http` | The three APIs, their OpenAPI documents (`http/openapi`), authentication, rate limit, client IP, forwarding, metrics | Domain rules (only reads the request and builds the response) |
 | `telemetry` | Metrics, traces and logs; OTLP and Prometheus export | — |
 | `config` | `.yml` file, `TABA_*` variables, the parameter table and the startup validations | — |
 | `secrets` | The secrets folder: cluster certificate and root token (`taba init`, `taba cert generate`, `taba token generate`) | — |
@@ -59,10 +59,10 @@ Each one is its own *listener*, so the network can restrict access to each one s
 | Port | Key | Default | Router (`http/mod.rs`) | Layers the call goes through |
 |---|---|---|---|---|
 | Client | `api.port` | 8080 | `client_router` | authenticate → rate limit → refusal by drain/synchronization/failure → authorize |
-| Operations | `operations.port` | — | `operations_router` | IP filter (`operations.allowed-ips`), rate limit per IP |
+| Operations | `operations.port` | 9090 | `operations_router` | IP filter (`operations.allowed-ips`), rate limit per IP; **no token** |
 | Cluster | `cluster.port` | 8081 | `cluster_router` | mutual TLS; only `/cluster/*` |
 
-- Without `operations.port`, the operations routes are served **also on the client port**.
+- The three ports are **always open** and must differ. The operations routes live **only** on the operations port, with one exception: the client port also serves `/health/live` and `/health/ready` (no token, for probes that cannot send one) and `/metrics` (any valid token). `/metrics` is therefore open on the operations port, for the collectors inside the infrastructure, and behind a token on the client port, for whoever reaches the node from outside. `taba-cli` only uses the client port.
 - A node alone (`replication.factor=1`) opens the cluster port the same way; no other node just uses it.
 - `/tokens` routes only exist with authentication on; otherwise they answer `404`.
 - A node in drain, synchronization or failure **does not serve** client calls: in a cluster it **forwards** them to another node (through the destination's cluster port) and, with no destination, answers `503` with `Retry-After`. The reads that say what the cluster is doing (`GET /auth/me`, `/nodes`, `/cluster/status`, `/cluster/backup` and the `/nodes/{nodeId}/…` calls, which include returning a node) are the exception: they are forwarded while another node can take them, and otherwise answered by the node itself, so a stopped cluster can still be inspected. In drain the node only validates the root token (the other tokens are data).
@@ -109,7 +109,7 @@ crates/taba-node/src/
                      channel drain health members protocol recovery replication restore
                      service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
-                     nodes operations ratelimit tokens topic_stats topics
+                     nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 
