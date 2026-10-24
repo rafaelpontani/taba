@@ -189,6 +189,8 @@ For calls counted **per IP** (and for `operations.allowed-ips`), the IP may come
 
 So a collector inside the infrastructure scrapes `:9090/metrics` with no credentials, and whoever has to read the metrics from outside uses the client port with a token. `taba-cli` never calls the operations port: it lives outside the infrastructure and reaches the cluster only through the client API. A node in drain only validates the root token, so a plain token gets `401` on the client port's `/metrics` while the node drains (PRB-069); the operations port is not affected.
 
+**The documentation of the APIs is open.** `GET /openapi/client.json` and `/docs` on the client port, and `GET /openapi/monitoring.json` and `/docs` on the operations port, need no token even with authentication on: they describe the API, not the data. On the operations port they follow the same `operations.allowed-ips` filter as the rest of the port. The interface is embedded in the binary and loads nothing from the internet. The documents list the routes of the node, which includes whether authentication is on (the `/tokens` routes only exist with it): that is not a secret, since the routes answer `401` or `404` the same way to anyone ([13-observability.md](13-observability.md), [16-client-api.md](16-client-api.md)).
+
 ## Summary of known risks
 
 | Code | Risk | Mitigation |

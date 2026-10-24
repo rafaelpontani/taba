@@ -15,18 +15,20 @@ mod raw;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use axum::Json;
 use axum::extract::{Extension, Path, Query, State};
-use axum::routing::get;
-use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::AppState;
 use super::auth::Principal;
 use super::common::ApiError;
 use super::consolidate::{self, Missing};
+use super::openapi::{AuthErrors, GroupStatsPage, RateLimited, TopicStats, TopicStatsPage};
 use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse};
-use crate::core::error::{ErrorCode, TabaError};
+use crate::core::error::{ErrorCode, ErrorResponse, TabaError};
 use crate::core::pagination;
 use crate::core::time::format_ms;
 use crate::engine::messages::stats::{
@@ -35,21 +37,21 @@ use crate::engine::messages::stats::{
 use crate::engine::topics::TopicView;
 use raw::{NodeStats, RawDistributor, RawGroup, RawKind, RawQueue, RawTopic};
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/metrics/topics", get(list))
-        .route("/metrics/topics/{topic}", get(detail))
-        .route("/metrics/topics/{topic}/groups", get(groups))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list))
+        .routes(routes!(detail))
+        .routes(routes!(groups))
 }
 
 /// The same measures in the client API (doc 34, D-TUI-9), for any valid token, **consolidated across the
 /// cluster**: the list only shows the topics within the token's prefixes (and `/stats/topics/{topic}...`
 /// answers `403 auth.out-of-scope` outside them, in the `authorize` layer).
-pub fn client_routes() -> Router<AppState> {
-    Router::new()
-        .route("/stats/topics", get(client_list))
-        .route("/stats/topics/{topic}", get(client_detail))
-        .route("/stats/topics/{topic}/groups", get(client_groups))
+pub fn client_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(client_list))
+        .routes(routes!(client_detail))
+        .routes(routes!(client_groups))
 }
 
 /// The `TopicStats` fields that `fields` accepts (the queue ones and the distributor one).
@@ -690,6 +692,29 @@ impl Aggregate {
     }
 }
 
+/// The numbers of the topics, paginated **by name**, as **this node** sees them (`scope=cluster` does not aggregate
+/// here: the client API's `/stats/topics` does). `groupBy` returns one row per value of a tag instead of one per topic.
+/// A parameter `tag.<key>=<value>` (for example `tag.time=fin`) keeps only the topics with that tag.
+#[utoipa::path(
+    get,
+    path = "/metrics/topics",
+    tag = "Metrics",
+    operation_id = "listTopicMetrics",
+    params(
+        ("limit" = Option<u32>, Query, description = "Page size."),
+        ("cursor" = Option<String>, Query, description = "The `nextCursor` of the previous page."),
+        ("scope" = Option<String>, Query, description = "`cluster` (default) or `node`; here both give this node's view."),
+        ("condition" = Option<String>, Query, description = "Only topics with this condition (`backlog`, `stalled`...)."),
+        ("fields" = Option<String>, Query, description = "Comma-separated fields to return (`name,depth,oldestAge`); `id` and `name` always come."),
+        ("groupBy" = Option<String>, Query, description = "A tag name: one row per value of the tag, with the sums.")
+    ),
+    responses(
+        (status = 200, description = "A page of topic numbers.", body = TopicStatsPage),
+        (status = 400, description = "`validation.unknown-field`, `out-of-range`, `invalid-cursor` or `failed`.", body = ErrorResponse),
+        (status = 403, description = "`ops.ip-not-allowed`.", body = ErrorResponse),
+        RateLimited
+    )
+)]
 async fn list(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
@@ -703,6 +728,31 @@ async fn list(
     ))
 }
 
+/// The numbers of the topics, **consolidated across the cluster** (the node that receives asks every member and joins
+/// the numbers; one that does not answer in 5 s makes the answer `partial`). Only the topics within the token's
+/// prefixes come. It is the client API's twin of `GET /metrics/topics` of the monitoring port. A parameter
+/// `tag.<key>=<value>` (for example `tag.time=fin`) keeps only the topics with that tag.
+///
+/// Permission: any valid token.
+#[utoipa::path(
+    get,
+    path = "/stats/topics",
+    tag = "Statistics",
+    operation_id = "listTopicStats",
+    params(
+        ("limit" = Option<u32>, Query, description = "Page size."),
+        ("cursor" = Option<String>, Query, description = "The `nextCursor` of the previous page."),
+        ("scope" = Option<String>, Query, description = "`cluster` (default) or `node` (only the node that answers)."),
+        ("condition" = Option<String>, Query, description = "Only topics with this condition (`backlog`, `stalled`...)."),
+        ("fields" = Option<String>, Query, description = "Comma-separated fields to return (`name,depth,oldestAge`); `id` and `name` always come."),
+        ("groupBy" = Option<String>, Query, description = "A tag name: one row per value of the tag, with the sums.")
+    ),
+    responses(
+        (status = 200, description = "A page of topic numbers, with `partial` and `missingNodes`.", body = TopicStatsPage),
+        (status = 400, description = "`validation.unknown-field`, `out-of-range`, `invalid-cursor` or `failed`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn client_list(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -880,6 +930,23 @@ fn list_topics(
 
 // ---- GET /metrics/topics/{topic} ----
 
+/// One topic in detail, as **this node** sees it: its numbers plus `topGroups`. On a distributor, only its own metrics.
+#[utoipa::path(
+    get,
+    path = "/metrics/topics/{topic}",
+    tag = "Metrics",
+    operation_id = "getTopicMetrics",
+    params(
+        ("topic" = String, Path, description = "The topic name."),
+        ("scope" = Option<String>, Query, description = "`cluster` (default) or `node`; here both give this node's view.")
+    ),
+    responses(
+        (status = 200, description = "The topic's numbers.", body = TopicStats),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        (status = 403, description = "`ops.ip-not-allowed`.", body = ErrorResponse),
+        RateLimited
+    )
+)]
 async fn detail(
     State(state): State<AppState>,
     Path(topic): Path<String>,
@@ -898,6 +965,24 @@ async fn detail(
     ))
 }
 
+/// One topic in detail, **consolidated across the cluster**: its numbers plus `topGroups`.
+///
+/// Permission: any valid token, **within its prefixes** (`403 auth.out-of-scope` outside them).
+#[utoipa::path(
+    get,
+    path = "/stats/topics/{topic}",
+    tag = "Statistics",
+    operation_id = "getTopicStats",
+    params(
+        ("topic" = String, Path, description = "The topic name."),
+        ("scope" = Option<String>, Query, description = "`cluster` (default) or `node` (only the node that answers).")
+    ),
+    responses(
+        (status = 200, description = "The topic's numbers, with `partial` and `missingNodes`.", body = TopicStats),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn client_detail(
     State(state): State<AppState>,
     Path(topic): Path<String>,
@@ -974,6 +1059,24 @@ struct GroupCursor {
     n: String,
 }
 
+/// The numbers per `groupId` of a topic, as **this node** sees them, to find the noisy producer. Paginated by `groupId`.
+#[utoipa::path(
+    get,
+    path = "/metrics/topics/{topic}/groups",
+    tag = "Metrics",
+    operation_id = "listTopicGroupMetrics",
+    params(
+        ("topic" = String, Path, description = "The topic name."),
+        ("limit" = Option<u32>, Query, description = "Page size."),
+        ("cursor" = Option<String>, Query, description = "The `nextCursor` of the previous page.")
+    ),
+    responses(
+        (status = 200, description = "A page of group numbers.", body = GroupStatsPage),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        (status = 403, description = "`ops.ip-not-allowed`.", body = ErrorResponse),
+        RateLimited
+    )
+)]
 async fn groups(
     State(state): State<AppState>,
     Path(topic): Path<String>,
@@ -991,6 +1094,26 @@ async fn groups(
     ))
 }
 
+/// The numbers per `groupId` of a topic, **consolidated across the cluster**. Paginated by `groupId`.
+///
+/// Permission: any valid token, **within its prefixes**.
+#[utoipa::path(
+    get,
+    path = "/stats/topics/{topic}/groups",
+    tag = "Statistics",
+    operation_id = "listTopicGroupStats",
+    params(
+        ("topic" = String, Path, description = "The topic name."),
+        ("limit" = Option<u32>, Query, description = "Page size."),
+        ("cursor" = Option<String>, Query, description = "The `nextCursor` of the previous page."),
+        ("scope" = Option<String>, Query, description = "`cluster` (default) or `node` (only the node that answers).")
+    ),
+    responses(
+        (status = 200, description = "A page of group numbers, with `partial` and `missingNodes`.", body = GroupStatsPage),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn client_groups(
     State(state): State<AppState>,
     Path(topic): Path<String>,

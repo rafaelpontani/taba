@@ -40,6 +40,21 @@ Os exemplos usam `localhost:8080` sem autenticação (nó sem token raiz nem `au
 
 ---
 
+## O documento OpenAPI
+
+O contrato desta API é um documento **OpenAPI 3.1**, gerado das próprias rotas (cada rota é registrada junto com sua descrição, então elas não se afastam) e servido por todo nó:
+
+| O quê | Onde |
+|---|---|
+| O documento | `GET /openapi/client.json` na `api.port` |
+| Uma interface para ler e experimentar | `/docs` (embutida no binário: nada é carregado da internet) |
+| Uma cópia no repositório | `openapi/client.json` (um teste falha se ela estiver desatualizada) |
+| Sem subir um nó | `taba openapi client` |
+
+As duas rotas são **abertas**: não pedem token, mesmo com a autenticação ligada, e a interface permite colar um (`Authorize`) para experimentar as rotas. O documento lista **as rotas que este nó tem**: sem autenticação não há rotas `/tokens`, e com `telemetry.prometheus.enabled` desligado não há `/metrics`. Cada operação diz na descrição a **permissão** de que precisa. A API de monitoramento tem documento próprio na `operations.port` ([17-api-operacao.md](17-api-operacao.md)); a API de cluster é interna e não é publicada.
+
+O que o documento **não** diz: as categorias do rate limit, a ordem em que as validações rodam e o conjunto exato de códigos de erro de cada rota (os status que ele lista são conferidos; os códigos estão nas descrições e em [19-erros-e-limites.md](19-erros-e-limites.md)).
+
 ## Tópicos
 
 ### Regras de nome, tags e faixas

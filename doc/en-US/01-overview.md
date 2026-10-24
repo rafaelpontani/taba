@@ -73,7 +73,7 @@ The requirements have a stable code (`RF` functional, `RNF` non-functional) so t
 | RF-19 | Metrics, health and conditions; OTLP and Prometheus export | ✅ | [13-observability.md](13-observability.md) |
 | RF-20 | Server (`taba`) and client (`taba-cli`) command lines | ✅ | [20-cli.md](20-cli.md) |
 | RF-21 | Client connectors in ten languages | 🟡 | Rust and C# ready; eight planned ([21-connectors.md](21-connectors.md)) |
-| RF-22 | OpenAPI contract for the client API | ⬜ | [32-roadmap.md](32-roadmap.md) |
+| RF-22 | OpenAPI contract of the client API and of the monitoring API, served by each node | ✅ | [15-api-overview.md](15-api-overview.md) |
 
 ### Non-functional requirements
 
@@ -125,7 +125,7 @@ These eight principles explain many choices in the code. Each one points to wher
 - **End-to-end validation:** `docker/validate.sh` starts Compose from scratch and checks cluster formation, the `taba-cli`, nodes going down and coming back, and the absence of loss of confirmed messages.
 - **Version:** published as `0.1.x` on Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases; the pipeline computes the number from the commits ([27-ci-cd.md](27-ci-cd.md)), and `Cargo.toml` keeps `0.1.0`. Licenses: the server is **AGPL-3.0-only** and the connectors (`connectors/`) are **Apache-2.0**, with a CLA for contributions ([30-decisions.md](30-decisions.md#license-and-contributions-d164)).
 - **Ready besides the server:** the Helm chart, tested on kind ([34-helm-chart.md](34-helm-chart.md)), the optional S3 backup ([33-s3-backup.md](33-s3-backup.md)) and the `taba-cli` terminal interface ([20b-cli-ui.md](20b-cli-ui.md)).
-- **Missing:** OpenAPI contract, the other eight connectors, validation on a real Kubernetes cluster and published benchmarks ([32-roadmap.md](32-roadmap.md)).
+- **Missing:** the versioning policy in the paths (`/v1`), the other eight connectors, validation on a real Kubernetes cluster and published benchmarks ([32-roadmap.md](32-roadmap.md)).
 
 ## Sources and evidence
 

@@ -41,7 +41,7 @@ Cada módulo conhece apenas os da esquerda. Isso é verificável: `core` não im
 | `storage` | O banco do nó (`_node.db`), as mensagens em disco, o banco de eventos de sincronização, tokens e perdas | Regras de entrega |
 | `engine` | Tópicos, mensagens, listas de prontos e de invisíveis, entrega justa, FIFO, dead-letter, tokens, estatísticas | Rede |
 | `cluster` | Membros, protocolo entre nós, canal, votação, freezing, sincronização, replicação, drain, atualização de versão, recuperação, tópicos voláteis, saúde | HTTP de cliente |
-| `http` | As três APIs, autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
+| `http` | As três APIs, seus documentos OpenAPI (`http/openapi`), autenticação, rate limit, IP do cliente, repasse, métricas | Regras de domínio (só lê a requisição e monta a resposta) |
 | `telemetry` | Métricas, traces e logs; exportação OTLP e Prometheus | — |
 | `config` | Arquivo `.yml`, variáveis `TABA_*`, a tabela de parâmetros e as validações de partida | — |
 | `secrets` | A pasta de segredos: certificado do cluster e token raiz (`taba init`, `taba cert generate`, `taba token generate`) | — |
@@ -109,7 +109,7 @@ crates/taba-node/src/
                      channel drain health members protocol recovery replication restore
                      service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
-                     nodes operations ratelimit tokens topic_stats topics
+                     nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 

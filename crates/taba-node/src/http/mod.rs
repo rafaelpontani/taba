@@ -14,6 +14,7 @@ pub mod messages;
 pub mod metrics;
 pub mod nodes;
 pub mod observe;
+pub mod openapi;
 pub mod operations;
 pub mod ratelimit;
 pub mod restore;
@@ -28,6 +29,7 @@ use axum::extract::{Request, State};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use ipnet::IpNet;
+use utoipa_axum::router::OpenApiRouter;
 
 use crate::cluster::drain::DrainController;
 use crate::cluster::replication::ClusterMessages;
@@ -155,7 +157,39 @@ fn answers_in_any_state(method: &axum::http::Method, path: &str) -> bool {
     }
 }
 
-/// Client API. The `/tokens` routes only exist with authentication on (otherwise they answer `404`).
+/// The routes of the client API that go through the whole stack (authentication, rate limit, drain refusal and
+/// authorization). The `/tokens` routes only exist with authentication on (otherwise they answer `404`).
+fn client_core(auth_enabled: bool) -> OpenApiRouter<AppState> {
+    let mut routes = OpenApiRouter::new()
+        .merge(topics::routes())
+        .merge(messages::routes());
+    if auth_enabled {
+        routes = routes.merge(tokens::routes());
+    }
+    // Who the token is, the nodes and the cluster. The cluster-wide routes share their names with the
+    // operations API's, and both ports serve them.
+    routes
+        .merge(auth::routes())
+        .merge(nodes::routes())
+        .merge(topic_stats::client_routes())
+        .merge(nodes::cluster_wide())
+}
+
+/// The documented client API, without layers and without state: every route, with the same conditions as a node
+/// running with `auth_enabled` and `prometheus_enabled`. `taba openapi client` prints it.
+pub fn client_api(auth_enabled: bool, prometheus_enabled: bool) -> OpenApiRouter<AppState> {
+    OpenApiRouter::with_openapi(openapi::client_base())
+        .merge(client_core(auth_enabled))
+        .merge(operations::metrics_route(prometheus_enabled))
+        .merge(operations::probe_routes())
+}
+
+/// The documented monitoring API, without layers and without state. `taba openapi monitoring` prints it.
+pub fn monitoring_api(prometheus_enabled: bool) -> OpenApiRouter<AppState> {
+    operations::monitoring_api(prometheus_enabled)
+}
+
+/// Client API, with its documentation (`/openapi/client.json` and the interface at `/docs`, both open).
 /// Of the monitoring routes it serves `/health/live` and `/health/ready`, which need no token (the
 /// orchestrator's probes do not send one), and `/metrics`, which takes any valid token; the same
 /// routes, without a token, live on the operations port ([`operations_router`]).
@@ -164,20 +198,7 @@ fn answers_in_any_state(method: &axum::http::Method, path: &str) -> bool {
 /// refusal and authorization (`authorize`). The rate limit comes after knowing who is calling, so the
 /// token becomes the counter's key, and before refusing, so the `401` also counts by IP.
 pub fn client_router(state: AppState) -> Router {
-    let mut routes = Router::new()
-        .merge(topics::routes())
-        .merge(messages::routes());
-    if state.auth.enabled {
-        routes = routes.merge(tokens::routes());
-    }
-    // Who the token is, the nodes and the cluster. The cluster-wide routes share their names with the
-    // operations API's, and both ports serve them.
-    routes = routes
-        .merge(auth::routes())
-        .merge(nodes::routes())
-        .merge(topic_stats::client_routes())
-        .merge(nodes::cluster_wide());
-    let routes = routes
+    let core = client_core(state.auth.enabled)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::authorize,
@@ -191,13 +212,15 @@ pub fn client_router(state: AppState) -> Router {
             state.clone(),
             auth::authenticate,
         ));
-    let mut routes = routes.merge(operations::probe_routes());
+    let mut api = OpenApiRouter::with_openapi(openapi::client_base())
+        .merge(core)
+        .merge(operations::probe_routes());
     // `/metrics` describes this node, so it stays out of the drain refusal (which would forward it to another
     // node); it only asks for a token. With `telemetry.prometheus.enabled` off the route does not exist, and a
     // layer on an empty router is an error in axum.
     if state.telemetry.prometheus_enabled {
-        routes = routes.merge(
-            operations::metrics_route(&state)
+        api = api.merge(
+            operations::metrics_route(true)
                 .route_layer(middleware::from_fn_with_state(
                     state.clone(),
                     auth::authorize,
@@ -208,7 +231,11 @@ pub fn client_router(state: AppState) -> Router {
                 )),
         );
     }
-    common::finish(routes, state)
+    let (routes, spec) = api.split_for_parts();
+    common::finish(
+        routes.merge(openapi::docs("/openapi/client.json", spec)),
+        state,
+    )
 }
 
 /// Operations API, on its own port.

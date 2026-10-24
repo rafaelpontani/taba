@@ -13,11 +13,27 @@ use serde_json::{Value, json};
 
 use super::AppState;
 use super::common::ApiError;
+use super::openapi::{AuthErrors, RateLimited, RestoreForce};
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/cluster/restore/force", post(force))
 }
 
+/// Declares the cluster restored from disk with the nodes that are present: the FIFO queues are released and a
+/// restoration held by the strict mode goes on. It is spread to every node. **Messages already consumed may
+/// reappear.** It is what releases a cluster stuck by the loss of two nodes.
+///
+/// Permission: **the root token** only.
+#[utoipa::path(
+    post,
+    path = "/cluster/restore/force",
+    tag = "Cluster",
+    operation_id = "forceRestore",
+    responses(
+        (status = 200, description = "What the force did.", body = RestoreForce),
+        AuthErrors, RateLimited
+    )
+)]
 pub(super) async fn force(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let Some(cluster) = state.cluster.clone() else {
         return Ok(Json(json!({ "wasRestoring": false, "status": "restored" })));

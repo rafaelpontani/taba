@@ -1,0 +1,1567 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Taba monitoring API",
+    "description": "The routes for the collectors and the orchestrator **inside** the infrastructure (Prometheus, Telegraf, Kubernetes probes), on `operations.port` (default 9090). They have **no authentication**: the network and `operations.allowed-ips` protect them (`403 ops.ip-not-allowed` from outside the list). Outside the infrastructure use the client API, which has `/metrics` behind a token.\n\nThe drain, the S3 backup and the cluster-wide operations also live on this port but are not part of the published contract.",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health/cluster": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "The state of the cluster for people and scripts: the conditions, a summary and the state of each node. It does not\nrepeat the metrics. With `scope=cluster` (the default) it asks all the members for their status and joins the\nconditions, best-effort: one that does not answer shows up with `reachable: false`. With `scope=node`, or without the\nmember table (a node in development, or one that has not joined yet), the cluster is this node.",
+        "description": "The client API has the same answer at `GET /cluster/status`, behind a token.",
+        "operationId": "getHealthCluster",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default: asks every node) or `node` (a local read).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cluster.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.failed`: unknown `scope`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ops.ip-not-allowed`: the source IP is not in `operations.allowed-ips`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "The process is up and answering. If it fails, the orchestrator restarts the process. It needs no token, on either\nport, because the probe of an orchestrator cannot send one.",
+        "operationId": "getHealthLive",
+        "responses": {
+          "200": {
+            "description": "The process is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "The node is **able to receive traffic**: registered, synchronization finished, outside bootstrap and return. In drain\nit answers `503`. It never answers with an `ErrorResponse`: the body is always a `HealthResponse`, so the\norchestrator can read the reason. It needs no token, on either port.",
+        "operationId": "getHealthReady",
+        "responses": {
+          "200": {
+            "description": "Ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready: `reason` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "The metrics of **this node**, in Prometheus text (`Accept: application/openmetrics-text` asks for OpenMetrics). One\ntarget per node: the node does not query the others. The route does not exist (`404`) with\n`telemetry.prometheus.enabled` off.",
+        "description": "**Authentication depends on the port.** On the monitoring port (`operations.port`) it needs no token, for the\ncollectors inside the infrastructure. On the client port it takes **any valid token**, no particular permission,\nbecause that port is reachable from outside. A node in drain only validates the root token.",
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "description": "The metrics, as text: Prometheus (`text/plain; version=0.0.4`) or, if the `Accept` header asks for `application/openmetrics-text`, OpenMetrics.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/openmetrics-text": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`route.not-found`: `telemetry.prometheus.enabled` is off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics/topics": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "The numbers of the topics, paginated **by name**, as **this node** sees them (`scope=cluster` does not aggregate\nhere: the client API's `/stats/topics` does). `groupBy` returns one row per value of a tag instead of one per topic.\nA parameter `tag.<key>=<value>` (for example `tag.time=fin`) keeps only the topics with that tag.",
+        "operationId": "listTopicMetrics",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The `nextCursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default) or `node`; here both give this node's view.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "condition",
+            "in": "query",
+            "description": "Only topics with this condition (`backlog`, `stalled`...).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "description": "Comma-separated fields to return (`name,depth,oldestAge`); `id` and `name` always come.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "description": "A tag name: one row per value of the tag, with the sums.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of topic numbers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicStatsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.unknown-field`, `out-of-range`, `invalid-cursor` or `failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ops.ip-not-allowed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics/topics/{topic}": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "One topic in detail, as **this node** sees it: its numbers plus `topGroups`. On a distributor, only its own metrics.",
+        "operationId": "getTopicMetrics",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`cluster` (default) or `node`; here both give this node's view.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The topic's numbers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicStats"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ops.ip-not-allowed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics/topics/{topic}/groups": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "The numbers per `groupId` of a topic, as **this node** sees them, to find the noisy producer. Paginated by `groupId`.",
+        "operationId": "listTopicGroupMetrics",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The `nextCursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of group numbers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupStatsPage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`ops.ip-not-allowed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClusterStatus": {
+        "type": "object",
+        "description": "The state and the conditions of the cluster.",
+        "required": [
+          "scope",
+          "collectedAt",
+          "partial",
+          "missingNodes",
+          "worstCondition",
+          "conditions",
+          "summary",
+          "nodes"
+        ],
+        "properties": {
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            }
+          },
+          "missingNodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClusterStatusNode"
+            }
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string",
+            "description": "`cluster` (asks every node) or `node` (only the one that answers)."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ClusterSummary"
+          },
+          "worstCondition": {
+            "type": "string",
+            "description": "The condition of highest severity; `ok` if none."
+          }
+        }
+      },
+      "ClusterStatusNode": {
+        "type": "object",
+        "description": "One node in the cluster status.",
+        "required": [
+          "nodeId",
+          "reachable"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeStatus",
+                "description": "`null` if the node did not answer."
+              }
+            ]
+          }
+        }
+      },
+      "ClusterSummary": {
+        "type": "object",
+        "description": "The cluster in numbers.",
+        "required": [
+          "members",
+          "membersVersion",
+          "quorumAvailable",
+          "syncingBlocks",
+          "servingNodes",
+          "stopped",
+          "plannedStop"
+        ],
+        "properties": {
+          "excludedCutoff": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "members": {
+            "type": "object",
+            "description": "How many members are in each state.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "membersVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "plannedStop": {
+            "type": "boolean",
+            "description": "`true` if the stop was `POST /cluster/stop` (it left a stop list in S3)."
+          },
+          "quorumAvailable": {
+            "type": "boolean"
+          },
+          "servingNodes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Nodes that are active and out of drain.",
+            "minimum": 0
+          },
+          "stopped": {
+            "type": "boolean",
+            "description": "`true` if every node that answered is in drain."
+          },
+          "stoppedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "syncingBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "Condition": {
+        "type": "object",
+        "description": "A condition of the cluster.",
+        "required": [
+          "condition",
+          "severity"
+        ],
+        "properties": {
+          "condition": {
+            "type": "string",
+            "description": "`quorum-lost`, `write-quorum-at-risk`, `member-unreachable`, `under-replicated`, `node-frozen`..."
+          },
+          "severity": {
+            "type": "string",
+            "description": "`warning` or `critical`."
+          }
+        }
+      },
+      "DistributorStats": {
+        "type": "object",
+        "description": "What a distributor received and copied.",
+        "required": [
+          "received",
+          "copies",
+          "copyErrors"
+        ],
+        "properties": {
+          "copies": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "copyErrors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "received": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "description": "A specific problem inside a validation error (`details`).",
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A code of the catalogue ([doc 19](../19-errors-and-limits.md)).",
+            "example": "validation.out-of-range"
+          },
+          "field": {
+            "type": "string",
+            "description": "The field the problem is in (`name`, `permissions[1]`, `query.limit`...)."
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Body of every error response (`4xx` and `5xx`) of a JSON route.",
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A stable code of the catalogue, in the `group.reason` format. A client must tolerate codes it does not\nknow yet: the catalogue only grows.",
+            "example": "topic.not-found"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "description": "What is wrong in each field, on a validation error."
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "description": "The same value as the `X-Request-Id` header of the response."
+          },
+          "required": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On a `403 auth.forbidden`: what the token lacked, `root` or the name of a permission."
+          }
+        }
+      },
+      "GroupStats": {
+        "type": "object",
+        "description": "The numbers of one group (`groupId`) of a topic.",
+        "required": [
+          "messages",
+          "visibleMessages",
+          "invisibleMessages",
+          "share"
+        ],
+        "properties": {
+          "groupId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invisibleMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "messages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "oldestAge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "oldestMessageAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "overflow": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true` for the row that sums the groups past the ceiling."
+          },
+          "share": {
+            "type": "number",
+            "format": "double",
+            "description": "The fraction of the topic's messages that are in the group."
+          },
+          "visibleMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "GroupStatsPage": {
+        "type": "object",
+        "description": "A page of group numbers.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupStats"
+            }
+          },
+          "missingNodes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "description": "Body of `/health/live` and `/health/ready`. These routes never return an `ErrorResponse`\n(doc 06b), so the orchestrator can read the reason without handling errors.",
+        "required": [
+          "health"
+        ],
+        "properties": {
+          "health": {
+            "type": "string",
+            "description": "`live`, `ready` or `not-ready`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only on `not-ready`: `bootstrapping`, `syncing`, `returning`, `draining`, `drained` or `failed`."
+          }
+        }
+      },
+      "Latency": {
+        "type": "object",
+        "description": "Latency percentiles, in seconds; `null` with no observation.",
+        "properties": {
+          "p50": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "p95": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "p99": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "MissingNode": {
+        "type": "object",
+        "description": "A node that did not answer a consolidated read.",
+        "required": [
+          "nodeId",
+          "reason"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "description": "`timeout`, `unreachable` or `error`."
+          }
+        }
+      },
+      "NodeRuntime": {
+        "type": "object",
+        "description": "What a node's registry says about its load.",
+        "required": [
+          "activeRequests",
+          "rateLimitRejected"
+        ],
+        "properties": {
+          "activeRequests": {
+            "type": "number",
+            "format": "double"
+          },
+          "channelRttP95Seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The worst `p95` of the round trip of the node's channels; `null` with no observation."
+          },
+          "rateLimitRejected": {
+            "type": "number",
+            "format": "double",
+            "description": "Requests refused with `429` since the start."
+          }
+        }
+      },
+      "NodeStatus": {
+        "type": "object",
+        "description": "The state of one node.",
+        "required": [
+          "nodeId",
+          "version",
+          "state",
+          "drainState",
+          "startedAt",
+          "collectedAt",
+          "excludedSince",
+          "storage",
+          "runtime",
+          "signals"
+        ],
+        "properties": {
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "drainState": {
+            "type": "string",
+            "description": "`active`, `draining` or `drained`."
+          },
+          "excludedSince": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/NodeRuntime"
+          },
+          "signals": {
+            "type": "object",
+            "description": "The raw signals the conditions come from."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "description": "`joining`, `active`, `syncing`, `returning` or `failed`."
+          },
+          "storage": {
+            "$ref": "#/components/schemas/NodeStorage"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "NodeStorage": {
+        "type": "object",
+        "description": "What a node stores.",
+        "required": [
+          "memoryUsedBytes",
+          "memoryMessages",
+          "diskMessages"
+        ],
+        "properties": {
+          "diskFreeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryLimitBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryMessages": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryUsedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "TopicCondition": {
+        "type": "object",
+        "description": "A condition found on a topic.",
+        "required": [
+          "condition",
+          "severity"
+        ],
+        "properties": {
+          "condition": {
+            "type": "string",
+            "description": "`backlog`, `stalled`, `idle`, `noisy-group`, `dead-letter-growing`..."
+          },
+          "severity": {
+            "type": "string",
+            "description": "`warning` or `critical`."
+          }
+        }
+      },
+      "TopicStats": {
+        "type": "object",
+        "description": "The numbers of a topic. With `fields`, only the requested ones come (`id` and `name` always do).",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "ackRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "acked": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "collectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "conditions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TopicCondition"
+            }
+          },
+          "consumeLatency": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Latency"
+              }
+            ]
+          },
+          "consumeRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "consumed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deadLetter": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Messages in the queue, visible and invisible.",
+            "minimum": 0
+          },
+          "diskBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "distributor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DistributorStats",
+                "description": "Only on a distributor."
+              }
+            ]
+          },
+          "groups": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "idleTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "invisibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryShare": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "name": {
+            "type": "string"
+          },
+          "noisyShare": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "oldestAge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Seconds since `oldestMessageAt`."
+          },
+          "oldestMessageAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Only in the client API: some node did not answer, so the numbers are those of the ones that did."
+          },
+          "publishErrors": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishLatency": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Latency"
+              }
+            ]
+          },
+          "publishRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Messages per second."
+          },
+          "published": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "topGroups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/GroupStats"
+            },
+            "description": "Only on the detail of one topic: up to `stats.topics.top-groups` (default 10) groups, largest first."
+          },
+          "type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TopicType"
+              }
+            ]
+          },
+          "visibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "volatile": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "worstCondition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`ok`, `warning` or `critical`."
+          }
+        }
+      },
+      "TopicStatsGroup": {
+        "type": "object",
+        "description": "With `groupBy`, one row per value of the tag: the sums of the topics that have that value.",
+        "required": [
+          "tag",
+          "value",
+          "topics"
+        ],
+        "properties": {
+          "ackRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "acked": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "collectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "conditions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TopicCondition"
+            }
+          },
+          "consumeRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "consumed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "diskMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "groups": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "invisibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "oldestAge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "oldestMessageAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "publishErrors": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "published": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "publishedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "tag": {
+            "type": "string",
+            "description": "The tag the rows are grouped by."
+          },
+          "topics": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many topics have that value.",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string",
+            "description": "The value of the tag in this row."
+          },
+          "visibleMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "worstCondition": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TopicStatsPage": {
+        "type": "object",
+        "description": "A page of topic numbers (or, with `groupBy`, of rows per tag value).",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopicStatsRow"
+            }
+          },
+          "missingNodes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MissingNode"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "TopicStatsRow": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TopicStats"
+          },
+          {
+            "$ref": "#/components/schemas/TopicStatsGroup"
+          }
+        ],
+        "description": "An item of a page of topic numbers: a topic, or, with `groupBy`, a row per tag value."
+      },
+      "TopicType": {
+        "type": "string",
+        "description": "The kind of a topic.",
+        "enum": [
+          "queue",
+          "distributor"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`Authorization: Bearer <token>`. A node that has neither a root token nor `auth.dev-token` runs with authentication off and takes no token."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Probes of the orchestrator."
+    },
+    {
+      "name": "Metrics",
+      "description": "Prometheus and per-topic metrics."
+    }
+  ]
+}

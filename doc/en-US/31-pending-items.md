@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D177** and **PRB-069**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D178** and **PRB-072**).
 
 ## Known limits
 
@@ -57,6 +57,8 @@ Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)). Each
 | **PRB-067** | **A full restart does not carry the deduplication rows of acknowledged FIFO messages** (found when the tests moved to the one-node profile): the restoration of a life sends only the messages that were alive, so the short row that an ack leaves for the deduplication window is lost, and the same `deduplicationId` published after the restart is accepted again (`201` instead of `200`). The key of a message that was alive still deduplicates (proposal: send the short rows that have not expired together with the life, as the synchronization does). |
 | **PRB-068** | **In the cluster path, a message past its `ttl` can still be acknowledged or have its invisibility changed until the sweeper removes it** (it runs every second at most): `ack` and `visibility` check the message on the owner without settling the queue first, unlike the single-node path of before. Found when the tests moved to the one-node profile; the test now waits for the sweeper (proposal: settle the queue before the register step of `ack` and `visibility`). |
 | **PRB-069** | **While a node drains, a plain token cannot read `GET /metrics` on the client port.** A node in drain only validates the root token (the other tokens are data, and the node counts by IP and forwards), and `/metrics` asks for a valid token but stays out of the drain refusal, so only the root token reads the metrics of a draining node there. The operations port (no token) and the history the collectors keep are not affected | Keep it, since the operations port is the door of the collectors (D177), and document it; alternative: let `/metrics` accept any token the node still remembers while it drains |
+| **PRB-071** | **The permission a route needs is only in its description.** The OpenAPI documents say `Permission: admin` in the text, but not in a field a generator or a gateway can read (no `x-required-permission`, and the security scheme has no scopes) | Add the vendor extension on each operation, with a test that checks it against `need()` in `http/auth`, so the two cannot differ |
+| **PRB-072** | **Some answers are documented as a free-form object.** The S3 backup reports (`/nodes/{nodeId}/backup`, `/cluster/backup`, the flush routes) and the `signals` of a node status are `object` without fields, because the server builds them with `json!`; a generated client gets an untyped map there | Give each one a `struct` (or a documentation twin checked by `tests/openapi.rs`), as was done for the other DTOs |
 
 ## 1. Unblocked
 

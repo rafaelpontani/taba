@@ -40,6 +40,21 @@ The examples use `localhost:8080` without authentication (a node without a root 
 
 ---
 
+## The OpenAPI document
+
+The contract of this API is an **OpenAPI 3.1** document, generated from the routes themselves (each route is registered together with its description, so they cannot drift apart) and served by every node:
+
+| What | Where |
+|---|---|
+| The document | `GET /openapi/client.json` on `api.port` |
+| An interface to read and try it | `/docs` (embedded in the binary: nothing is loaded from the internet) |
+| A copy in the repository | `openapi/client.json` (a test fails if it is out of date) |
+| Without starting a node | `taba openapi client` |
+
+Both routes are **open**: they need no token, even with authentication on, and the interface lets you paste one (`Authorize`) to try the routes. The document lists **the routes this node has**: without authentication there are no `/tokens` routes, and with `telemetry.prometheus.enabled` off there is no `/metrics`. Each operation says in its description the **permission** it needs. The monitoring API has its own document on `operations.port` ([17-operations-api.md](17-operations-api.md)); the cluster API is internal and is not published.
+
+What the document does **not** say: the rate-limit categories, the order in which the validations run and the exact set of error codes of each route (the status codes it lists are checked; the codes are in the descriptions and in [19-errors-and-limits.md](19-errors-and-limits.md)).
+
 ## Topics
 
 ### Rules for name, tags and ranges

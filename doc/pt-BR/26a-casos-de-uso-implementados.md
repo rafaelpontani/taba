@@ -2934,6 +2934,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-AUT-041
+
+**Caso:** Toda rota do documento de cliente tem sua exigência decidida na tabela de autorização
+**Então:** uma rota é casada pelo gabarito com que foi registrada, e os documentos a registram com o gabarito que mostram; toda rota documentada, exceto as sondas (abertas de propósito), tem uma entrada em `need()`, então renomear um parâmetro de caminho não pode fazer uma rota escapar da sua permissão.
+**Nível:** U
+**Testes:**
+  - `src/http/auth/tests.rs::every_route_of_the_client_document_has_its_requirement_decided`
+
+---
+
 ## LIM: Rate limit e IP do cliente
 
 ### UC-LIM-001
@@ -3256,6 +3266,43 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+
+### UC-CNV-018
+
+**Caso:** Cada porta serve o documento OpenAPI da sua API e uma interface, sem token
+**Então:** `GET /openapi/client.json` e `/docs` na `api.port`, `GET /openapi/monitoring.json` e `/docs` na `operations.port`, abertos mesmo com a autenticação ligada; cada porta tem só o seu documento (`404` para o outro); a interface é embutida (nada é carregado da internet); o documento lista só as rotas que o nó tem (sem `/tokens` sem autenticação, sem `/metrics` com o Prometheus desligado) e é o que o `taba openapi` imprime. Toda operação tem `operationId`, uma tag e respostas, toda resposta de erro é um `ErrorResponse` (as sondas, um `HealthResponse`), e as sondas não pedem token onde o resto pede.
+**Nível:** I, U
+**Testes:**
+  - `tests/openapi.rs::each_port_serves_its_own_document_and_an_interface_without_a_token`
+  - `tests/openapi.rs::the_document_only_lists_the_routes_the_node_has`
+  - `tests/openapi.rs::every_operation_is_identified_described_and_has_its_security_decided`
+  - `tests/openapi.rs::the_documentation_of_the_monitoring_port_follows_its_ip_filter`
+
+---
+
+### UC-CNV-019
+
+**Caso:** As respostas que um nó realmente dá são as que os documentos descrevem
+**Então:** para cada rota exercitada (tópicos, mensagens com corpos JSON, texto e binário e um distribuidor, tokens, quem é o chamador, os nós, o cluster, as estatísticas, as sondas e as rotas de monitoramento) o status está listado no documento e o corpo JSON bate com o schema documentado para aquele status; a própria verificação recusa um corpo que não bate e um status que não está listado.
+**Nível:** I
+**Testes:**
+  - `tests/openapi.rs::the_answers_of_the_client_api_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_tokens_routes_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_monitoring_port_match_the_document`
+  - `tests/openapi.rs::the_check_refuses_a_body_that_does_not_match_its_schema`
+  - `tests/openapi.rs::the_check_refuses_a_status_the_document_does_not_list`
+
+---
+
+### UC-CNV-020
+
+**Caso:** Os documentos em `openapi/` são os que o servidor gera
+**Então:** `openapi/client.json` e `openapi/monitoring.json` são iguais ao que o `taba openapi` imprime (o `info.version` à parte); senão o teste falha e diz como gerá-los de novo.
+**Nível:** I
+**Testes:**
+  - `tests/openapi.rs::the_published_documents_are_the_ones_the_server_generates`
+
+---
 
 ## CNT: Conectores
 

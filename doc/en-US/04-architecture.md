@@ -41,7 +41,7 @@ Each module knows only those on its left. This is verifiable: `core` imports no 
 | `storage` | The node database (`_node.db`), messages on disk, the synchronization event database, tokens and losses | Delivery rules |
 | `engine` | Topics, messages, ready and invisible lists, fair delivery, FIFO, dead-letter, tokens, statistics | Network |
 | `cluster` | Members, node protocol, channel, voting, freezing, synchronization, replication, drain, version upgrade, recovery, volatile topics, health | Client HTTP |
-| `http` | The three APIs, authentication, rate limit, client IP, forwarding, metrics | Domain rules (only reads the request and builds the response) |
+| `http` | The three APIs, their OpenAPI documents (`http/openapi`), authentication, rate limit, client IP, forwarding, metrics | Domain rules (only reads the request and builds the response) |
 | `telemetry` | Metrics, traces and logs; OTLP and Prometheus export | — |
 | `config` | `.yml` file, `TABA_*` variables, the parameter table and the startup validations | — |
 | `secrets` | The secrets folder: cluster certificate and root token (`taba init`, `taba cert generate`, `taba token generate`) | — |
@@ -109,7 +109,7 @@ crates/taba-node/src/
                      channel drain health members protocol recovery replication restore
                      service state sync tls transport (http, memory) upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
-                     nodes operations ratelimit tokens topic_stats topics
+                     nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace
 ```
 

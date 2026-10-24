@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D177** e **PRB-069**).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D178** e **PRB-072**).
 
 ## Limites conhecidos
 
@@ -57,6 +57,8 @@ Achados ao implementar D152 a D155 ([30-decisoes.md](30-decisoes.md)). Cada um t
 | **PRB-067** | **Um reinício completo não leva as linhas de deduplicação das mensagens FIFO confirmadas** (achado quando os testes foram para o perfil de um nó): a restauração de uma vida só envia as mensagens que estavam vivas, então a linha curta que o ack deixa para a janela de deduplicação se perde, e o mesmo `deduplicationId` publicado depois do reinício é aceito de novo (`201` em vez de `200`). A chave de uma mensagem que estava viva continua deduplicando (proposta: enviar junto com a vida as linhas curtas que não expiraram, como faz a sincronização). |
 | **PRB-068** | **No caminho do cluster, uma mensagem além do `ttl` ainda pode ser confirmada ou ter a invisibilidade alterada até o varredor removê-la** (ele roda a cada segundo, no máximo): `ack` e `visibility` conferem a mensagem no dono sem acertar a fila antes, ao contrário do caminho de um nó que havia antes. Achado quando os testes foram para o perfil de um nó; o teste agora espera o varredor (proposta: acertar a fila antes do passo de registro de `ack` e `visibility`). |
 | **PRB-069** | **Enquanto um nó está em drain, um token comum não lê `GET /metrics` na porta de cliente.** Um nó em drain só valida o token raiz (os outros tokens são dados, e o nó conta por IP e repassa), e `/metrics` pede um token válido mas fica fora da recusa do drain, então só o token raiz lê ali as métricas de um nó em drain. A porta de operação (sem token) e o histórico que os coletores guardam não são afetados | Manter, já que a porta de operação é a porta dos coletores (D177), e documentar; alternativa: deixar `/metrics` aceitar qualquer token que o nó ainda lembre enquanto drena |
+| **PRB-071** | **A permissão que uma rota exige só está na descrição.** Os documentos OpenAPI dizem `Permissão: admin` no texto, mas não num campo que um gerador ou um gateway leia (não há `x-required-permission`, e o esquema de segurança não tem escopos) | Acrescentar a extensão em cada operação, com um teste que a confira com o `need()` de `http/auth`, para os dois não diferirem |
+| **PRB-072** | **Algumas respostas estão documentadas como objeto livre.** Os relatórios do backup em S3 (`/nodes/{nodeId}/backup`, `/cluster/backup`, as rotas de flush) e os `signals` do status de um nó são `object` sem campos, porque o servidor os monta com `json!`; um cliente gerado recebe um mapa sem tipo ali | Dar a cada um uma `struct` (ou um gêmeo de documentação conferido pelo `tests/openapi.rs`), como foi feito com os outros DTOs |
 
 ## 1. Sem bloqueio
 

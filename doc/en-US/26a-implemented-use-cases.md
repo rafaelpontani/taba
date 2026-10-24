@@ -2934,6 +2934,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-AUT-041
+
+**Case:** Every route of the client document has its requirement decided in the authorization table
+**Then:** a route is matched by the template it is registered with, and the documents register it with the template they show; every documented route, but the probes (open on purpose), has an entry in `need()`, so renaming a path parameter cannot make a route skip its permission.
+**Level:** U
+**Tests:**
+  - `src/http/auth/tests.rs::every_route_of_the_client_document_has_its_requirement_decided`
+
+---
+
 ## LIM: Rate limit and client IP
 
 ### UC-LIM-001
@@ -3256,6 +3266,43 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+
+### UC-CNV-018
+
+**Case:** Each port serves the OpenAPI document of its API and an interface, without a token
+**Then:** `GET /openapi/client.json` and `/docs` on `api.port`, `GET /openapi/monitoring.json` and `/docs` on `operations.port`, open even with authentication on; each port has only its own document (`404` for the other); the interface is embedded (nothing loaded from the internet); the document lists only the routes the node has (no `/tokens` without authentication, no `/metrics` with Prometheus off) and is the one `taba openapi` prints. Every operation has an `operationId`, a tag and responses, every error answer is an `ErrorResponse` (the probes, a `HealthResponse`), and the probes need no token where the rest does.
+**Level:** I, U
+**Tests:**
+  - `tests/openapi.rs::each_port_serves_its_own_document_and_an_interface_without_a_token`
+  - `tests/openapi.rs::the_document_only_lists_the_routes_the_node_has`
+  - `tests/openapi.rs::every_operation_is_identified_described_and_has_its_security_decided`
+  - `tests/openapi.rs::the_documentation_of_the_monitoring_port_follows_its_ip_filter`
+
+---
+
+### UC-CNV-019
+
+**Case:** The answers a node really gives are the ones the documents describe
+**Then:** for each route exercised (topics, messages with JSON, text and binary bodies and a distributor, tokens, who the caller is, the nodes, the cluster, the statistics, the probes and the monitoring routes) the status is listed in the document and the JSON body matches the schema documented for that status; the check itself refuses a body that does not match and a status that is not listed.
+**Level:** I
+**Tests:**
+  - `tests/openapi.rs::the_answers_of_the_client_api_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_tokens_routes_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_monitoring_port_match_the_document`
+  - `tests/openapi.rs::the_check_refuses_a_body_that_does_not_match_its_schema`
+  - `tests/openapi.rs::the_check_refuses_a_status_the_document_does_not_list`
+
+---
+
+### UC-CNV-020
+
+**Case:** The documents in `openapi/` are the ones the server generates
+**Then:** `openapi/client.json` and `openapi/monitoring.json` equal what `taba openapi` prints (the `info.version` aside); otherwise the test fails and says how to generate them again.
+**Level:** I
+**Tests:**
+  - `tests/openapi.rs::the_published_documents_are_the_ones_the_server_generates`
+
+---
 
 ## CNT: Connectors
 

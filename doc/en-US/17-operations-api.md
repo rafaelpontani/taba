@@ -41,6 +41,19 @@ sources: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operati
 
 ---
 
+## The OpenAPI document
+
+The routes of the probes and of the metrics have an **OpenAPI 3.1** document of their own, generated from the routes and served on this port, open:
+
+| What | Where |
+|---|---|
+| The document | `GET /openapi/monitoring.json` on `operations.port` |
+| An interface to read and try it | `/docs` (embedded in the binary) |
+| A copy in the repository | `openapi/monitoring.json` |
+| Without starting a node | `taba openapi monitoring` |
+
+It lists `/health/live`, `/health/ready`, `/health/cluster`, `/metrics` and `/metrics/topics*`, with no security scheme: the network and `operations.allowed-ips` protect the port, so the document and the interface are also refused (`403 ops.ip-not-allowed`) to an IP outside the list. The drain, the S3 backup and the cluster-wide operations of this port are **not** part of the published contract: outside the infrastructure the client API has their copies behind a token ([16-client-api.md](16-client-api.md)).
+
 ## Health
 
 ### `GET /health/live`
