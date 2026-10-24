@@ -3036,11 +3036,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NodeStatus",
                 "description": "`null` if the node did not answer."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -3175,10 +3175,10 @@
           "error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DeliveryError"
               },
               {
-                "$ref": "#/components/schemas/DeliveryError"
+                "type": "null"
               }
             ]
           },
@@ -4173,11 +4173,11 @@
           "effective": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TopicEffective",
                 "description": "Queue only: the values that apply."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -4479,10 +4479,10 @@
           "consumeLatency": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Latency"
               },
               {
-                "$ref": "#/components/schemas/Latency"
+                "type": "null"
               }
             ]
           },
@@ -4542,11 +4542,11 @@
           "distributor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DistributorStats",
                 "description": "Only on a distributor."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -4643,10 +4643,10 @@
           "publishLatency": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Latency"
               },
               {
-                "$ref": "#/components/schemas/Latency"
+                "type": "null"
               }
             ]
           },
@@ -4705,10 +4705,10 @@
           "type": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TopicType"
               },
               {
-                "$ref": "#/components/schemas/TopicType"
+                "type": "null"
               }
             ]
           },
