@@ -13,7 +13,7 @@ fontes: [crates/taba-node/src, connectors, doc/pt-BR/30-decisoes.md]
 >
 > **Legenda:** `[ ]` em aberto, sem decisão; `[~]` parcialmente resolvida (o texto traz **só as perguntas que faltam**, cada uma com seu sub-código); **Depende de** = a dúvida só se responde depois de outra.
 >
-> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D178** e **PRB-072**).
+> **Mantido à mão**, nas duas pastas de idioma, no commit da mudança que abre, altera ou fecha um item. Os próximos códigos livres seguem os mais altos já usados (hoje **D178** e **PRB-073**).
 
 ## Limites conhecidos
 
@@ -59,6 +59,7 @@ Achados ao implementar D152 a D155 ([30-decisoes.md](30-decisoes.md)). Cada um t
 | **PRB-069** | **Enquanto um nó está em drain, um token comum não lê `GET /metrics` na porta de cliente.** Um nó em drain só valida o token raiz (os outros tokens são dados, e o nó conta por IP e repassa), e `/metrics` pede um token válido mas fica fora da recusa do drain, então só o token raiz lê ali as métricas de um nó em drain. A porta de operação (sem token) e o histórico que os coletores guardam não são afetados | Manter, já que a porta de operação é a porta dos coletores (D177), e documentar; alternativa: deixar `/metrics` aceitar qualquer token que o nó ainda lembre enquanto drena |
 | **PRB-071** | **A permissão que uma rota exige só está na descrição.** Os documentos OpenAPI dizem `Permissão: admin` no texto, mas não num campo que um gerador ou um gateway leia (não há `x-required-permission`, e o esquema de segurança não tem escopos) | Acrescentar a extensão em cada operação, com um teste que a confira com o `need()` de `http/auth`, para os dois não diferirem |
 | **PRB-072** | **Algumas respostas estão documentadas como objeto livre.** Os relatórios do backup em S3 (`/nodes/{nodeId}/backup`, `/cluster/backup`, as rotas de flush) e os `signals` do status de um nó são `object` sem campos, porque o servidor os monta com `json!`; um cliente gerado recebe um mapa sem tipo ali | Dar a cada um uma `struct` (ou um gêmeo de documentação conferido pelo `tests/openapi.rs`), como foi feito com os outros DTOs |
+| **PRB-073** | **O `cargo audit` ignora o `RUSTSEC-2026-0387` (`crypto-bigint` 0.5.5, variação de tempo).** O crate vem do `aws-sigv4` 1.6.3 (o mais recente), que o backup em S3 usa, e nenhuma versão publicada evita o `crypto-bigint` antigo. Só o assinador SigV4a (ECDSA) alcança as operações afetadas, e o backup assina com SigV4 (HMAC), então o nó não está exposto; a exceção está em `.cargo/audit.toml` | Quando o `aws-sigv4` depender de `crypto-bigint` >= 0.7.6 (`cargo update -p aws-sigv4`), apagar a linha de `.cargo/audit.toml` e este item |
 
 ## 1. Sem bloqueio
 
