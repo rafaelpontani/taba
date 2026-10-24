@@ -24,7 +24,7 @@
     {
       "id": "oper",
       "type": "external",
-      "label": "Operator and Prometheus",
+      "label": "Collectors and probes",
       "sublabel": "operations network",
       "pos": [
         30,
@@ -177,7 +177,7 @@
       "items": [
         "The three ports are different from each other",
         "The client port answers 404 to /cluster/*",
-        "Without operations.port, operations share the client port"
+        "The operations port is always open (9090)"
       ]
     }
   ]

@@ -2873,7 +2873,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-AUT-035
 
-**Caso:** As rotas de operação e do cluster não usam o token de acesso.  
+**Caso:** As rotas de operação (na porta de operação) e as do cluster não usam o token de acesso.  
 **Nível:** I  
 **Testes:**
   - `tests/auth.rs::the_operations_routes_do_not_use_the_access_token`
@@ -2923,6 +2923,26 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+
+### UC-AUT-040
+
+**Caso:** Na porta do cliente as sondas são abertas e `/metrics` aceita qualquer token válido  
+**Então:** `GET /health/live` e `GET /health/ready` respondem sem token; `GET /metrics` responde `401` sem token ou com token inválido e `200` com qualquer token válido (sem permissão específica); o resto das rotas de operação não existe ali (`404`). Na porta de operação `/metrics` não pede token.  
+**Nível:** I  
+**Testes:**
+  - `tests/auth.rs::on_the_client_port_the_probes_are_open_and_the_metrics_take_any_valid_token`
+
+---
+
+### UC-AUT-041
+
+**Caso:** Toda rota do documento de cliente tem sua exigência decidida na tabela de autorização
+**Então:** uma rota é casada pelo gabarito com que foi registrada, e os documentos a registram com o gabarito que mostram; toda rota documentada, exceto as sondas (abertas de propósito), tem uma entrada em `need()`, então renomear um parâmetro de caminho não pode fazer uma rota escapar da sua permissão.
+**Nível:** U
+**Testes:**
+  - `src/http/auth/tests.rs::every_route_of_the_client_document_has_its_requirement_decided`
+
+---
 
 ## LIM: Rate limit e IP do cliente
 
@@ -3246,6 +3266,43 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+
+### UC-CNV-018
+
+**Caso:** Cada porta serve o documento OpenAPI da sua API e uma interface, sem token
+**Então:** `GET /openapi/client.json` e `/docs` na `api.port`, `GET /openapi/monitoring.json` e `/docs` na `operations.port`, abertos mesmo com a autenticação ligada; cada porta tem só o seu documento (`404` para o outro); a interface é embutida (nada é carregado da internet); o documento lista só as rotas que o nó tem (sem `/tokens` sem autenticação, sem `/metrics` com o Prometheus desligado) e é o que o `taba openapi` imprime. Toda operação tem `operationId`, uma tag e respostas, toda resposta de erro é um `ErrorResponse` (as sondas, um `HealthResponse`), e as sondas não pedem token onde o resto pede.
+**Nível:** I, U
+**Testes:**
+  - `tests/openapi.rs::each_port_serves_its_own_document_and_an_interface_without_a_token`
+  - `tests/openapi.rs::the_document_only_lists_the_routes_the_node_has`
+  - `tests/openapi.rs::every_operation_is_identified_described_and_has_its_security_decided`
+  - `tests/openapi.rs::the_documentation_of_the_monitoring_port_follows_its_ip_filter`
+
+---
+
+### UC-CNV-019
+
+**Caso:** As respostas que um nó realmente dá são as que os documentos descrevem
+**Então:** para cada rota exercitada (tópicos, mensagens com corpos JSON, texto e binário e um distribuidor, tokens, quem é o chamador, os nós, o cluster, as estatísticas, as sondas e as rotas de monitoramento) o status está listado no documento e o corpo JSON bate com o schema documentado para aquele status; a própria verificação recusa um corpo que não bate e um status que não está listado.
+**Nível:** I
+**Testes:**
+  - `tests/openapi.rs::the_answers_of_the_client_api_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_tokens_routes_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_monitoring_port_match_the_document`
+  - `tests/openapi.rs::the_check_refuses_a_body_that_does_not_match_its_schema`
+  - `tests/openapi.rs::the_check_refuses_a_status_the_document_does_not_list`
+
+---
+
+### UC-CNV-020
+
+**Caso:** Os documentos em `openapi/` são os que o servidor gera
+**Então:** `openapi/client.json` e `openapi/monitoring.json` são iguais ao que o `taba openapi` imprime (o `info.version` à parte); senão o teste falha e diz como gerá-los de novo.
+**Nível:** I
+**Testes:**
+  - `tests/openapi.rs::the_published_documents_are_the_ones_the_server_generates`
+
+---
 
 ## CNT: Conectores
 
@@ -3689,14 +3746,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CLI-001
 
-**Caso:** A conexão vem do perfil; os comandos de API não têm opção de conexão (`--url`, `--token` etc.), só `--profile`, `-o`, `-q` e `--request-id`. A precedência de cada campo é variável `TABA_CLI_*`, perfil e valor embutido. `ops-url` sem valor usa o próprio `url`.  
+**Caso:** A conexão vem do perfil; os comandos de API não têm opção de conexão (`--url`, `--token` etc.), só `--profile`, `-o`, `-q` e `--request-id`. A precedência de cada campo é variável `TABA_CLI_*`, perfil e valor embutido. Não existe `ops-url`: a CLI só usa a API do cliente.  
 **Nível:** K  
 **Testes:**
   - `connectors/rust/cli/src/args/tests.rs::reads_values_flags_and_positionals_in_any_order`
   - `connectors/rust/cli/src/args/tests.rs::accepts_equals_attached_short_values_and_a_dash_value`
   - `connectors/rust/cli/src/args/tests.rs::repeated_options_keep_every_value_and_the_last_wins_for_single_reads`
   - `connectors/rust/cli/src/args/tests.rs::double_dash_ends_options_and_a_lone_dash_is_positional`
-  - `connectors/rust/cli/src/settings/tests.rs::ops_url_defaults_to_the_url_itself_because_the_node_serves_both_on_one_port_by_default`
   - `connectors/rust/cli/tests/commands.rs::without_any_configuration_it_calls_localhost_8080_without_a_token`
   - `connectors/rust/cli/tests/commands.rs::the_default_profile_gives_the_url_and_the_token_from_its_file`
 
@@ -3872,20 +3928,19 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CLI-016
 
-**Caso:** `health live`, `health ready` e `health cluster` usam a API de operação, sem token; `ready` mostra o `reason` do `503`, e `cluster` aceita `--scope`.  
+**Caso:** `cluster status` e `node list` usam a API do cliente com o token do perfil; `cluster status` aceita `--scope`, e os comandos `health` não existem porque a CLI nunca chama a API de monitoramento.  
 **Nível:** K  
 **Testes:**
   - `connectors/rust/cli/src/output/tests.rs::the_cluster_status_table_has_one_row_per_node_and_per_condition`
-  - `connectors/rust/cli/tests/commands.rs::health_uses_the_ops_url_without_a_token_and_prints_the_body`
-  - `connectors/rust/cli/tests/commands.rs::health_ready_shows_the_reason_on_a_503_and_exits_1_without_retrying`
-  - `connectors/rust/cli/tests/commands.rs::health_cluster_validates_the_scope`
-  - `connectors/rust/cli/tests/commands.rs::health_live_with_nothing_listening_exits_3`
+  - `connectors/rust/cli/tests/commands.rs::cluster_status_goes_through_the_client_api_with_the_token`
+  - `connectors/rust/cli/tests/commands.rs::cluster_status_validates_the_scope`
+  - `connectors/rust/cli/tests/commands.rs::the_cli_has_no_health_commands_because_it_never_calls_the_monitoring_api`
 
 ---
 
 ### UC-CLI-017
 
-**Caso:** `metrics` (com `--openmetrics`), `stats topics`, `stats topic` e `stats groups` repassam `scope`, `tag`, `condition`, `fields`, `groupBy` e a paginação.  
+**Caso:** `metrics` (com `--openmetrics` e `--node`), `stats topics`, `stats topic` e `stats groups` vão pela API do cliente (`/metrics`, `/nodes/{id}/metrics`, `/stats/topics*`) e repassam `scope`, `tag`, `condition`, `fields`, `groupBy` e a paginação.  
 **Nível:** K  
 **Testes:**
   - `connectors/rust/cli/tests/commands.rs::metrics_prints_the_text_as_it_came_and_openmetrics_changes_the_accept_header`
@@ -3895,10 +3950,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CLI-018
 
-**Caso:** `drain start`, `drain status` e `drain cancel` agem sobre o nó do `ops-url` do perfil e mostram o `DrainStatus`.  
+**Caso:** `drain start`, `drain status` e `drain cancel` agem sobre o nó indicado pela opção obrigatória `--node`, por `/nodes/{id}/drain` da API do cliente, e mostram o `DrainStatus`.  
 **Nível:** K  
 **Testes:**
-  - `connectors/rust/cli/tests/commands.rs::drain_acts_on_the_node_of_the_profile_ops_url`
+  - `connectors/rust/cli/tests/commands.rs::drain_acts_on_the_node_named_by_the_option_through_the_client_api`
+  - `connectors/rust/cli/tests/commands.rs::drain_without_a_node_is_a_usage_error_that_calls_nothing`
 
 ---
 
@@ -3965,6 +4021,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `connectors/rust/cli/src/profile/tests.rs::the_first_profile_becomes_the_default_and_names_are_validated`
   - `connectors/rust/cli/src/profile/tests.rs::fields_are_validated_when_set`
+  - `connectors/rust/cli/src/profile/tests.rs::a_file_with_the_old_ops_url_field_still_loads_and_drops_it_when_written_again`
   - `connectors/rust/cli/src/profile/tests.rs::removing_the_default_leaves_the_file_without_one`
   - `connectors/rust/cli/tests/commands.rs::profile_add_creates_the_file_the_first_profile_is_the_default_and_a_duplicate_exits_2`
   - `connectors/rust/cli/tests/commands.rs::profile_set_changes_fields_and_unset_clears_them`
@@ -4061,7 +4118,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `connectors/rust/cli/src/tui/form/tests.rs::text_fields_are_edited_in_place_with_the_cursor_keys`
   - `connectors/rust/cli/src/tui/form/tests.rs::editing_handles_multibyte_characters`
   - `connectors/rust/cli/src/tui/form/tests.rs::output_is_a_choice_and_the_default_is_a_box`
-  - `connectors/rust/cli/src/tui/form/tests.rs::empty_fields_show_the_value_that_will_apply_and_the_ops_url_follows_the_url`
+  - `connectors/rust/cli/src/tui/form/tests.rs::empty_fields_show_the_value_that_will_apply`
   - `connectors/rust/cli/src/tui/form/tests.rs::an_empty_field_is_left_out_of_the_profile_like_unset`
   - `connectors/rust/cli/src/tui/form/tests.rs::ctrl_s_and_the_buttons_ask_to_save_test_and_cancel`
   - `connectors/rust/cli/src/tui/form/tests.rs::the_cursor_sits_after_the_typed_text_of_the_focused_field`
@@ -7646,10 +7703,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-SEG-003
 
-**Caso:** Sem `operations.port`, as rotas de operação ficam na `api.port`; com ela, **deixam de existir** na `api.port` (`404`).  
+**Caso:** As rotas de operação ficam só na `operations.port` (sempre aberta, padrão 9090); na `api.port` existem apenas `/health/live` e `/health/ready` (sem token) e `/metrics` (qualquer token válido), e o resto responde `404`.  
 **Nível:** I  
 **Testes:**
-  - `tests/listeners.rs::operations_routes_move_to_their_own_port_when_one_is_set`
+  - `tests/listeners.rs::the_operations_routes_live_on_their_own_port_and_the_client_port_only_has_the_probes`
 
 ---
 
@@ -8128,11 +8185,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-OPS-035
 
 **Caso:** Acesso às rotas de operação  
-**Então:** sem `operations.port` nem `operations.allowed-ips`, ficam na `api.port` sem restrição de origem; só `operations.port`: porta separada sem filtro; só `allowed-ips`: mesma porta, só os IPs/CIDR da lista acessam (os demais: `403`); ambas: porta separada e filtro.  
+**Então:** a porta de operação responde a quem a alcançar; com `operations.allowed-ips`, só os IPs/CIDR da lista acessam (os demais: `403`), enquanto a `api.port` e suas sondas continuam abertas.  
 **Nível:** I  
 **Testes:**
   - `tests/operations.rs::the_operations_routes_only_accept_the_allowed_ips`
-  - `tests/operations.rs::with_an_operations_port_the_client_port_does_not_serve_the_operations_routes`
 
 ---
 

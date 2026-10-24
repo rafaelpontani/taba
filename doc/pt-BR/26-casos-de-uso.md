@@ -130,8 +130,8 @@ Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como ca
 
 - Os parâmetros sem valor fixo na doc histórica ("A definir") **não têm padrão fixado pelos testes**: os testes configuram o valor de que precisam.
 - Os casos que dependem de pendência em aberto (D68, D70.1, D70.2: conectores) estão marcados **(pendente: D##)**: o resultado esperado pode mudar quando a dúvida for decidida.
-- Os nomes de rotas, campos e códigos seguem [15](15-api-visao-geral.md) a [19](19-erros-e-limites.md) e acompanharão o contrato OpenAPI quando existir.
-- Os casos **não cobrem desempenho** (sem benchmark) nem o conteúdo do contrato OpenAPI (que não existe).
+- Os nomes de rotas, campos e códigos seguem [15](15-api-visao-geral.md) a [19](19-erros-e-limites.md) e os documentos OpenAPI (`openapi/`), que o `tests/openapi.rs` confere com respostas reais.
+- Os casos **não cobrem desempenho** (sem benchmark) nem o texto das descrições nos documentos OpenAPI (o que se testa é que listam as rotas que o nó tem e que as respostas reais batem com seus schemas).
 
 ## Fontes e provas
 

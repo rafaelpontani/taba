@@ -420,9 +420,6 @@ fn failure_lines(m: &Model, fail: &Fail) -> Vec<Line<'static>> {
     } else if fail.code == "backup.not-configured" {
         lines.push(Line::default());
         lines.push(Line::from(tx.t("report.failure.no-backup")));
-    } else if fail.status == 404 && fail.code.contains("route") {
-        lines.push(Line::default());
-        lines.push(Line::from(tx.t("report.failure.no-ops-port")));
     } else if fail.status == 502 || fail.status == 504 {
         lines.push(Line::default());
         lines.push(Line::from(tx.t("report.failure.node-hint")));

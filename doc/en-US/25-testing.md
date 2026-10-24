@@ -98,7 +98,7 @@ docker/validate.sh                                             # end to end (≈
 ## `docker/validate.sh` and `docker/cluster.sh`
 
 - **`cluster.sh`** (library to `source`, or command): `taba_up`, `taba_down`, `taba_kill` (abrupt failure), `taba_stop` (orderly exit, with drain), `taba_start`, `taba_restart`, `taba_wait_healthy`, `taba_wait_members N`, `taba_wait_stable`, `taba_create_token`, `taba_ensure_topic`, `taba_cli …`, `taba_status`. The connector tests should **reuse it**.
-- **`validate.sh`** (≈ 5 minutes): starts Compose from scratch and checks (1) the cluster formed (`health cluster` without conditions); (2) `taba-cli`: create topic, publish, consume; (3) abrupt failure of `taba-2` (`kill`; `docker/cluster.sh` maps `taba-N`, N ≥ 1, to replica N of the `taba` service); (4) orderly exit of `taba-1` (`stop`, with drain); (5) **no confirmed message was lost**; (6) final state. **Run before closing changes that affect cluster, channel, Compose or connectors.**
+- **`validate.sh`** (≈ 5 minutes): starts Compose from scratch and checks (1) the cluster formed (`taba-cli cluster status` without conditions); (2) `taba-cli`: create topic, publish, consume; (3) abrupt failure of `taba-2` (`kill`; `docker/cluster.sh` maps `taba-N`, N ≥ 1, to replica N of the `taba` service); (4) orderly exit of `taba-1` (`stop`, with drain); (5) **no confirmed message was lost**; (6) final state. **Run before closing changes that affect cluster, channel, Compose or connectors.**
 
 ## Strategy: what each level protects
 

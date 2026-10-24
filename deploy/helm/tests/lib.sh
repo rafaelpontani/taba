@@ -169,7 +169,6 @@ spec:
       command: ["sleep", "7200"]
       env:
         - { name: TABA_CLI_URL, value: "http://$(fullname):8080" }
-        - { name: TABA_CLI_OPS_URL, value: "http://$(pod0).$(fullname)-headless:9090" }
 ${tokenenv}
 YAML
   K -n "$NS" wait --for=condition=Ready pod/tcli --timeout=180s >/dev/null

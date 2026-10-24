@@ -462,8 +462,8 @@ rect.c-bg-rect { fill: var(--bg); }
         </g>
 
         <!-- Components -->
-        <g id="node-apps" data-node-id="apps" data-node-label="Aplicações" tabindex="0" role="button" aria-label="Focus Aplicações, produtores e consumidores, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="produtores e consumidores" data-node-context="Architecture component">
-          <title>Aplicações · produtores e consumidores · Architecture component</title>
+        <g id="node-apps" data-node-id="apps" data-node-label="Aplicações" tabindex="0" role="button" aria-label="Focus Aplicações, produtores, consumidores, taba-cli, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="produtores, consumidores, taba-cli" data-node-context="Architecture component">
+          <title>Aplicações · produtores, consumidores, taba-cli · Architecture component</title>
           <rect x="30" y="60" width="170" height="64" rx="6" class="c-mask"/>
           <rect x="30" y="60" width="170" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(36 66) scale(0.6875)">
@@ -471,19 +471,19 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
           <text data-node-label="" x="115" y="90" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Aplicações</text>
-        <text x="115" y="106" class="t-muted" font-size="9" text-anchor="middle">produtores e consumidores</text>
+        <text x="115" y="106" class="t-muted" font-size="7.9" text-anchor="middle">produtores, consumidores, taba-cli</text>
         </g>
 
-        <g id="node-oper" data-node-id="oper" data-node-label="Operador" tabindex="0" role="button" aria-label="Focus Operador, Prometheus, CLI, balanceador, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Prometheus, CLI, balanceador" data-node-context="Architecture component">
-          <title>Operador · Prometheus, CLI, balanceador · Architecture component</title>
+        <g id="node-oper" data-node-id="oper" data-node-label="Coletores" tabindex="0" role="button" aria-label="Focus Coletores, Prometheus, Telegraf, sondas, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Prometheus, Telegraf, sondas" data-node-context="Architecture component">
+          <title>Coletores · Prometheus, Telegraf, sondas · Architecture component</title>
           <rect x="30" y="210" width="170" height="64" rx="6" class="c-mask"/>
           <rect x="30" y="210" width="170" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(36 216) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" x="115" y="240" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Operador</text>
-        <text x="115" y="256" class="t-muted" font-size="9" text-anchor="middle">Prometheus, CLI, balanceador</text>
+          <text data-node-label="" x="115" y="240" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Coletores</text>
+        <text x="115" y="256" class="t-muted" font-size="9" text-anchor="middle">Prometheus, Telegraf, sondas</text>
         </g>
 
         <g id="node-peers" data-node-id="peers" data-node-label="Outros nós" tabindex="0" role="button" aria-label="Focus Outros nós, mesma imagem, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="mesma imagem" data-node-context="Architecture component">
@@ -512,8 +512,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <text x="440" y="106" class="t-muted" font-size="9" text-anchor="middle">api.port 8080 · token opcional</text>
         </g>
 
-        <g id="node-ops" data-node-id="ops" data-node-label="API de operação" tabindex="0" role="button" aria-label="Focus API de operação, operations.port · sem auth, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="operations.port · sem auth" data-node-context="Architecture component">
-          <title>API de operação · operations.port · sem auth · Architecture component</title>
+        <g id="node-ops" data-node-id="ops" data-node-label="API de operação" tabindex="0" role="button" aria-label="Focus API de operação, operations.port 9090 · sem auth, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="operations.port 9090 · sem auth" data-node-context="Architecture component">
+          <title>API de operação · operations.port 9090 · sem auth · Architecture component</title>
           <rect x="330" y="210" width="220" height="64" rx="6" class="c-mask"/>
           <rect x="330" y="210" width="220" height="64" rx="6" class="c-frontend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(336 216) scale(0.6875)">
@@ -523,7 +523,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" x="440" y="240" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API de operação</text>
-        <text x="440" y="256" class="t-muted" font-size="9" text-anchor="middle">operations.port · sem auth</text>
+        <text x="440" y="256" class="t-muted" font-size="9" text-anchor="middle">operations.port 9090 · sem auth</text>
         </g>
 
         <g id="node-cluster" data-node-id="cluster" data-node-label="API do cluster" tabindex="0" role="button" aria-label="Focus API do cluster, cluster.port 8081 · mTLS, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="cluster.port 8081 · mTLS" data-node-context="Architecture component">

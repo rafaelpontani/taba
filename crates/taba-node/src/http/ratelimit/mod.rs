@@ -169,8 +169,8 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         | "/cluster/backup/flush"
         | "/cluster/stop"
         | "/cluster/restore/force"
-        | "/nodes/{node_id}/drain"
-        | "/nodes/{node_id}/backup/flush" => Some(Category::Admin),
+        | "/nodes/{nodeId}/drain"
+        | "/nodes/{nodeId}/backup/flush" => Some(Category::Admin),
         // Emptying a queue is an administrative act.
         "/topics/{topic}/messages" if method == Method::DELETE => Some(Category::Admin),
         "/topics/{topic}/messages" if method == Method::POST => Some(Category::Publish),
@@ -188,8 +188,8 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         | "/nodes"
         | "/cluster/status"
         | "/cluster/backup"
-        | "/nodes/{node_id}/metrics"
-        | "/nodes/{node_id}/backup" => Some(Category::Ops),
+        | "/nodes/{nodeId}/metrics"
+        | "/nodes/{nodeId}/backup" => Some(Category::Ops),
         // Only `scope=cluster` (the default) queries other nodes.
         "/health/cluster" => {
             let node_only = query

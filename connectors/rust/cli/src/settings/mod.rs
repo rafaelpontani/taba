@@ -142,12 +142,6 @@ impl Effective {
         self.get("url").unwrap_or(DEFAULT_URL)
     }
 
-    /// The operations API address: the `ops-url`, or the `url` itself. Without `operations.port`, the node
-    /// serves the operations routes on the client API port.
-    pub fn ops_url(&self) -> String {
-        self.get("ops-url").unwrap_or_else(|| self.url()).to_owned()
-    }
-
     pub fn number(&self, field: &str) -> u64 {
         self.get(field).and_then(|v| v.parse().ok()).unwrap_or(0)
     }

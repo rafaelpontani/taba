@@ -2873,7 +2873,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-AUT-035
 
-**Case:** The operations and cluster routes do not use the access token.  
+**Case:** The operations routes (on the operations port) and the cluster ones do not use the access token.  
 **Level:** I  
 **Tests:**
   - `tests/auth.rs::the_operations_routes_do_not_use_the_access_token`
@@ -2923,6 +2923,26 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+
+### UC-AUT-040
+
+**Case:** On the client port the probes are open and `/metrics` takes any valid token  
+**Then:** `GET /health/live` and `GET /health/ready` answer without a token; `GET /metrics` answers `401` without a token or with an invalid one and `200` with any valid token (no particular permission); the rest of the operations routes do not exist there (`404`). On the operations port `/metrics` needs no token.  
+**Level:** I  
+**Tests:**
+  - `tests/auth.rs::on_the_client_port_the_probes_are_open_and_the_metrics_take_any_valid_token`
+
+---
+
+### UC-AUT-041
+
+**Case:** Every route of the client document has its requirement decided in the authorization table
+**Then:** a route is matched by the template it is registered with, and the documents register it with the template they show; every documented route, but the probes (open on purpose), has an entry in `need()`, so renaming a path parameter cannot make a route skip its permission.
+**Level:** U
+**Tests:**
+  - `src/http/auth/tests.rs::every_route_of_the_client_document_has_its_requirement_decided`
+
+---
 
 ## LIM: Rate limit and client IP
 
@@ -3246,6 +3266,43 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+
+### UC-CNV-018
+
+**Case:** Each port serves the OpenAPI document of its API and an interface, without a token
+**Then:** `GET /openapi/client.json` and `/docs` on `api.port`, `GET /openapi/monitoring.json` and `/docs` on `operations.port`, open even with authentication on; each port has only its own document (`404` for the other); the interface is embedded (nothing loaded from the internet); the document lists only the routes the node has (no `/tokens` without authentication, no `/metrics` with Prometheus off) and is the one `taba openapi` prints. Every operation has an `operationId`, a tag and responses, every error answer is an `ErrorResponse` (the probes, a `HealthResponse`), and the probes need no token where the rest does.
+**Level:** I, U
+**Tests:**
+  - `tests/openapi.rs::each_port_serves_its_own_document_and_an_interface_without_a_token`
+  - `tests/openapi.rs::the_document_only_lists_the_routes_the_node_has`
+  - `tests/openapi.rs::every_operation_is_identified_described_and_has_its_security_decided`
+  - `tests/openapi.rs::the_documentation_of_the_monitoring_port_follows_its_ip_filter`
+
+---
+
+### UC-CNV-019
+
+**Case:** The answers a node really gives are the ones the documents describe
+**Then:** for each route exercised (topics, messages with JSON, text and binary bodies and a distributor, tokens, who the caller is, the nodes, the cluster, the statistics, the probes and the monitoring routes) the status is listed in the document and the JSON body matches the schema documented for that status; the check itself refuses a body that does not match and a status that is not listed.
+**Level:** I
+**Tests:**
+  - `tests/openapi.rs::the_answers_of_the_client_api_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_tokens_routes_match_the_document`
+  - `tests/openapi.rs::the_answers_of_the_monitoring_port_match_the_document`
+  - `tests/openapi.rs::the_check_refuses_a_body_that_does_not_match_its_schema`
+  - `tests/openapi.rs::the_check_refuses_a_status_the_document_does_not_list`
+
+---
+
+### UC-CNV-020
+
+**Case:** The documents in `openapi/` are the ones the server generates
+**Then:** `openapi/client.json` and `openapi/monitoring.json` equal what `taba openapi` prints (the `info.version` aside); otherwise the test fails and says how to generate them again.
+**Level:** I
+**Tests:**
+  - `tests/openapi.rs::the_published_documents_are_the_ones_the_server_generates`
+
+---
 
 ## CNT: Connectors
 
@@ -3689,14 +3746,13 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CLI-001
 
-**Case:** The connection comes from the profile; the API commands have no connection option (`--url`, `--token` etc.), only `--profile`, `-o`, `-q` and `--request-id`. The precedence of each field is `TABA_CLI_*` variable, profile and built-in value. `ops-url` without a value uses the `url` itself.  
+**Case:** The connection comes from the profile; the API commands have no connection option (`--url`, `--token` etc.), only `--profile`, `-o`, `-q` and `--request-id`. The precedence of each field is `TABA_CLI_*` variable, profile and built-in value. There is no `ops-url`: the CLI only uses the client API.  
 **Level:** K  
 **Tests:**
   - `connectors/rust/cli/src/args/tests.rs::reads_values_flags_and_positionals_in_any_order`
   - `connectors/rust/cli/src/args/tests.rs::accepts_equals_attached_short_values_and_a_dash_value`
   - `connectors/rust/cli/src/args/tests.rs::repeated_options_keep_every_value_and_the_last_wins_for_single_reads`
   - `connectors/rust/cli/src/args/tests.rs::double_dash_ends_options_and_a_lone_dash_is_positional`
-  - `connectors/rust/cli/src/settings/tests.rs::ops_url_defaults_to_the_url_itself_because_the_node_serves_both_on_one_port_by_default`
   - `connectors/rust/cli/tests/commands.rs::without_any_configuration_it_calls_localhost_8080_without_a_token`
   - `connectors/rust/cli/tests/commands.rs::the_default_profile_gives_the_url_and_the_token_from_its_file`
 
@@ -3872,20 +3928,19 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CLI-016
 
-**Case:** `health live`, `health ready` and `health cluster` use the operations API, without a token; `ready` shows the `reason` of the `503`, and `cluster` accepts `--scope`.  
+**Case:** `cluster status` and `node list` use the client API with the profile's token; `cluster status` accepts `--scope`, and the `health` commands do not exist because the CLI never calls the monitoring API.  
 **Level:** K  
 **Tests:**
   - `connectors/rust/cli/src/output/tests.rs::the_cluster_status_table_has_one_row_per_node_and_per_condition`
-  - `connectors/rust/cli/tests/commands.rs::health_uses_the_ops_url_without_a_token_and_prints_the_body`
-  - `connectors/rust/cli/tests/commands.rs::health_ready_shows_the_reason_on_a_503_and_exits_1_without_retrying`
-  - `connectors/rust/cli/tests/commands.rs::health_cluster_validates_the_scope`
-  - `connectors/rust/cli/tests/commands.rs::health_live_with_nothing_listening_exits_3`
+  - `connectors/rust/cli/tests/commands.rs::cluster_status_goes_through_the_client_api_with_the_token`
+  - `connectors/rust/cli/tests/commands.rs::cluster_status_validates_the_scope`
+  - `connectors/rust/cli/tests/commands.rs::the_cli_has_no_health_commands_because_it_never_calls_the_monitoring_api`
 
 ---
 
 ### UC-CLI-017
 
-**Case:** `metrics` (with `--openmetrics`), `stats topics`, `stats topic` and `stats groups` pass on `scope`, `tag`, `condition`, `fields`, `groupBy` and pagination.  
+**Case:** `metrics` (with `--openmetrics` and `--node`), `stats topics`, `stats topic` and `stats groups` go through the client API (`/metrics`, `/nodes/{id}/metrics`, `/stats/topics*`) and pass on `scope`, `tag`, `condition`, `fields`, `groupBy` and pagination.  
 **Level:** K  
 **Tests:**
   - `connectors/rust/cli/tests/commands.rs::metrics_prints_the_text_as_it_came_and_openmetrics_changes_the_accept_header`
@@ -3895,10 +3950,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CLI-018
 
-**Case:** `drain start`, `drain status` and `drain cancel` act on the node of the profile's `ops-url` and show the `DrainStatus`.  
+**Case:** `drain start`, `drain status` and `drain cancel` act on the node named by the required `--node` option, through `/nodes/{id}/drain` of the client API, and show the `DrainStatus`.  
 **Level:** K  
 **Tests:**
-  - `connectors/rust/cli/tests/commands.rs::drain_acts_on_the_node_of_the_profile_ops_url`
+  - `connectors/rust/cli/tests/commands.rs::drain_acts_on_the_node_named_by_the_option_through_the_client_api`
+  - `connectors/rust/cli/tests/commands.rs::drain_without_a_node_is_a_usage_error_that_calls_nothing`
 
 ---
 
@@ -3965,6 +4021,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/rust/cli/src/profile/tests.rs::the_first_profile_becomes_the_default_and_names_are_validated`
   - `connectors/rust/cli/src/profile/tests.rs::fields_are_validated_when_set`
+  - `connectors/rust/cli/src/profile/tests.rs::a_file_with_the_old_ops_url_field_still_loads_and_drops_it_when_written_again`
   - `connectors/rust/cli/src/profile/tests.rs::removing_the_default_leaves_the_file_without_one`
   - `connectors/rust/cli/tests/commands.rs::profile_add_creates_the_file_the_first_profile_is_the_default_and_a_duplicate_exits_2`
   - `connectors/rust/cli/tests/commands.rs::profile_set_changes_fields_and_unset_clears_them`
@@ -4061,7 +4118,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/rust/cli/src/tui/form/tests.rs::text_fields_are_edited_in_place_with_the_cursor_keys`
   - `connectors/rust/cli/src/tui/form/tests.rs::editing_handles_multibyte_characters`
   - `connectors/rust/cli/src/tui/form/tests.rs::output_is_a_choice_and_the_default_is_a_box`
-  - `connectors/rust/cli/src/tui/form/tests.rs::empty_fields_show_the_value_that_will_apply_and_the_ops_url_follows_the_url`
+  - `connectors/rust/cli/src/tui/form/tests.rs::empty_fields_show_the_value_that_will_apply`
   - `connectors/rust/cli/src/tui/form/tests.rs::an_empty_field_is_left_out_of_the_profile_like_unset`
   - `connectors/rust/cli/src/tui/form/tests.rs::ctrl_s_and_the_buttons_ask_to_save_test_and_cancel`
   - `connectors/rust/cli/src/tui/form/tests.rs::the_cursor_sits_after_the_typed_text_of_the_focused_field`
@@ -7646,10 +7703,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-SEG-003
 
-**Case:** Without `operations.port`, the operations routes stay on `api.port`; with it, they **cease to exist** on `api.port` (`404`).  
+**Case:** The operations routes live only on `operations.port` (always open, default 9090); on `api.port` only `/health/live` and `/health/ready` (no token) and `/metrics` (any valid token) exist, and the rest answers `404`.  
 **Level:** I  
 **Tests:**
-  - `tests/listeners.rs::operations_routes_move_to_their_own_port_when_one_is_set`
+  - `tests/listeners.rs::the_operations_routes_live_on_their_own_port_and_the_client_port_only_has_the_probes`
 
 ---
 
@@ -8128,11 +8185,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-OPS-035
 
 **Case:** Access to the operations routes  
-**Then:** without `operations.port` or `operations.allowed-ips`, they stay on `api.port` with no origin restriction; only `operations.port`: separate port without a filter; only `allowed-ips`: same port, only the IPs/CIDR in the list access (the others: `403`); both: separate port and filter.  
+**Then:** the operations port answers whoever reaches it; with `operations.allowed-ips`, only the IPs/CIDR in the list access (the others: `403`), while `api.port` and its probes stay open.  
 **Level:** I  
 **Tests:**
   - `tests/operations.rs::the_operations_routes_only_accept_the_allowed_ips`
-  - `tests/operations.rs::with_an_operations_port_the_client_port_does_not_serve_the_operations_routes`
 
 ---
 

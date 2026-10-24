@@ -205,16 +205,16 @@ async fn the_operations_routes_only_accept_the_allowed_ips() {
         .env("TABA_OPERATIONS_ALLOWED_IPS", "10.0.0.0/8, 192.168.1.10")
         .start()
         .await;
-    // Only the list: the operations routes stay on the API port, and the client API stays open.
-    assert_eq!(node.node.operations_addr(), None);
+    // The list filters the operations port; the client API (and its probes) stay open.
     for path in [
         "/health/live",
         "/health/ready",
         "/health/cluster",
         "/node/drain",
+        "/metrics",
     ] {
         assert_eq!(
-            error_code(node.client_get(path).await, 403).await,
+            error_code(node.client_get_ops(path).await, 403).await,
             "ops.ip-not-allowed",
             "{path}"
         );
@@ -222,7 +222,7 @@ async fn the_operations_routes_only_accept_the_allowed_ips() {
     assert_eq!(
         error_code(
             node.client
-                .post(node.client_url("/node/drain"))
+                .post(node.operations_url("/node/drain"))
                 .send()
                 .await
                 .unwrap(),
@@ -232,40 +232,15 @@ async fn the_operations_routes_only_accept_the_allowed_ips() {
         "ops.ip-not-allowed"
     );
     assert_eq!(node.client_get("/topics").await.status(), 200);
+    assert_eq!(node.client_get("/health/ready").await.status(), 200);
     node.shutdown().await;
 
     let node = TestNode::builder()
         .env("TABA_OPERATIONS_ALLOWED_IPS", "127.0.0.0/8")
         .start()
         .await;
-    assert_eq!(node.client_get("/health/ready").await.status(), 200);
-    assert_eq!(node.client_get("/node/drain").await.status(), 200);
-    node.shutdown().await;
-}
-
-/// UC: UC-OPS-035
-#[tokio::test]
-async fn with_an_operations_port_the_client_port_does_not_serve_the_operations_routes() {
-    let node = TestNode::builder()
-        .env("TABA_OPERATIONS_PORT", "0")
-        .env("TABA_OPERATIONS_ALLOWED_IPS", "10.0.0.0/8")
-        .start()
-        .await;
-    assert_eq!(
-        error_code(node.client_get("/health/live").await, 404).await,
-        "route.not-found"
-    );
-    let ops = node
-        .client
-        .get(node.operations_url("/health/live"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        error_code(ops, 403).await,
-        "ops.ip-not-allowed",
-        "own port and filter"
-    );
+    assert_eq!(node.client_get_ops("/health/ready").await.status(), 200);
+    assert_eq!(node.client_get_ops("/node/drain").await.status(), 200);
     node.shutdown().await;
 }
 
@@ -281,7 +256,9 @@ async fn cluster_health_describes_the_single_node() {
     publish(&node, "orders", "1").await;
 
     for scope in ["", "?scope=node", "?scope=cluster"] {
-        let response = node.client_get(&format!("/health/cluster{scope}")).await;
+        let response = node
+            .client_get_ops(&format!("/health/cluster{scope}"))
+            .await;
         assert_eq!(response.status(), 200, "{scope}");
         let body: Value = response.json().await.unwrap();
         assert_eq!(body["partial"], false);
@@ -302,7 +279,7 @@ async fn cluster_health_describes_the_single_node() {
         assert_eq!(status["signals"]["quorumAvailable"], true);
     }
     assert_eq!(
-        node.client_get("/health/cluster?scope=node")
+        node.client_get_ops("/health/cluster?scope=node")
             .await
             .json::<Value>()
             .await
@@ -310,7 +287,7 @@ async fn cluster_health_describes_the_single_node() {
         "node"
     );
 
-    let invalid = node.client_get("/health/cluster?scope=other").await;
+    let invalid = node.client_get_ops("/health/cluster?scope=other").await;
     assert_eq!(error_code(invalid, 400).await, "validation.failed");
     node.shutdown().await;
 }
@@ -345,7 +322,7 @@ async fn a_corrupt_topic_database_fails_the_node() {
     );
     assert_eq!(node.client_get("/health/live").await.status(), 200);
     let status: Value = node
-        .client_get("/health/cluster")
+        .client_get_ops("/health/cluster")
         .await
         .json()
         .await

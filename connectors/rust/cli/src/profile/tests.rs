@@ -107,6 +107,22 @@ fn fields_are_validated_when_set() {
     assert!(p.entries().is_empty());
 }
 
+/// UC: UC-CLI-024
+#[test]
+fn a_file_with_the_old_ops_url_field_still_loads_and_drops_it_when_written_again() {
+    let text = "default: stg\nprofiles:\n  stg:\n    url: https://taba.example.com\n    ops-url: https://taba-ops.example.com:9090\n    token-file: /sec/tok\n";
+    let file = ConfigFile::parse(text).expect("an older file keeps loading");
+    let stg = file.get("stg").unwrap();
+    assert_eq!(stg.get("url"), Some("https://taba.example.com"));
+    assert_eq!(stg.get("ops-url"), None);
+    assert!(!file.render().contains("ops-url"));
+    // The field is not offered any more: setting it by hand is refused like any other unknown one.
+    assert!(Profile::default()
+        .set("ops-url", "https://taba:9090")
+        .unwrap_err()
+        .contains("is not a profile field"));
+}
+
 /// UC: UC-CLI-024, UC-CLI-025
 #[test]
 fn removing_the_default_leaves_the_file_without_one() {

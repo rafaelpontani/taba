@@ -33,8 +33,8 @@ The complete, executable recipe is in [02-quick-start.md](02-quick-start.md). In
 **Check:**
 
 ```bash
-taba-cli health cluster -o table        # 3 active nodes, empty "conditions", worstCondition "ok"
-taba-cli health ready                   # {"health":"ready"} on each node
+taba-cli cluster status -o table        # 3 active nodes, empty "conditions", worstCondition "ok"
+taba-cli node list -o table                # every node with state "active"; the probe is curl http://node:9090/health/ready
 ```
 
 Expected on a healthy cluster: `summary.members.active = N`, `quorumAvailable: true`, `syncingBlocks: 0`, `conditions: []`.
@@ -56,7 +56,7 @@ Expected on a healthy cluster: `summary.members.active = N`, `quorumAvailable: t
 
 1. Add a node of the new version (Compose: scale up with the new image; Kubernetes: the rollout adds the new pod). It joins as a **new node** and synchronizes.
 2. When it is `active`, the cluster drains the oldest member. The next drain only starts after the previous one left the table, and **only if at least 3 nodes stay active afterwards**: in a cluster of 3, add the new node first (4 active) so that an old one can leave.
-3. Repeat until no node of an earlier version is left, and check `health cluster` (no conditions).
+3. Repeat until no node of an earlier version is left, and check `taba-cli cluster status` (no conditions).
 
 Only **one** node acts: the lowest `nodeId` among those of the newest version, so two nodes never ask for different drains at once. A node of an **earlier** version that joins does not drain the newer ones; the new ones retire it. A member that publishes no version (an earlier release) counts as the oldest.
 
@@ -71,12 +71,15 @@ The `stop_grace_period` (Compose) or `terminationGracePeriodSeconds` (Kubernetes
 ## Retire a node on purpose (drain)
 
 ```bash
-# on the node to retire, through ITS operations port (not through the load balancer)
-taba-cli drain start       # POST /node/drain
-taba-cli drain status      # drainState: draining → drained; pendingMessages falls to 0
+# from outside, through the client API (admin token): the CLI names the node, whichever node the load balancer picks
+taba-cli node list                          # the ids
+taba-cli drain start --node <id>            # POST /nodes/{id}/drain
+taba-cli drain status --node <id>           # drainState: draining → drained; pendingMessages falls to 0
+# from inside the infrastructure, on the node's own operations port (not through the load balancer)
+curl -s -X POST http://node:9090/node/drain
 ```
 
-Verified: `drained` in ~4 s; `/health/ready` becomes `503`; the cluster is left with the remaining nodes active and no conditions. The node **stays up** (forwarding client calls to another node); stop the process whenever you want. To **come back**: `taba-cli drain cancel` — before leaving it cancels; after leaving it **returns as a new node** (in ~20 s the cluster went back to 3 active, no conditions).
+Verified: `drained` in ~4 s; `/health/ready` becomes `503`; the cluster is left with the remaining nodes active and no conditions. The node **stays up** (forwarding client calls to another node); stop the process whenever you want. To **come back**: `taba-cli drain cancel --node <id>` — before leaving it cancels; after leaving it **returns as a new node** (in ~20 s the cluster went back to 3 active, no conditions).
 
 Leaving by drain does **not** cause freezing. If the drain requested through the API exceeds `drain.timeout`, the node stays `draining` until someone calls `drain cancel` (D75).
 
@@ -133,10 +136,10 @@ The node stops serving **client calls** (forwards to another node, or `503 node.
 
 | Code | Likely cause | Action |
 |---|---|---|
-| `cluster.quorum-unavailable` | Not enough nodes to close the quorum, or the block/group primary is out | Look at `health cluster`; repeat after `Retry-After` |
+| `cluster.quorum-unavailable` | Not enough nodes to close the quorum, or the block/group primary is out | Look at `taba-cli cluster status`; repeat after `Retry-After` |
 | `cluster.commit-timeout` | Register confirmed, commit slow | On topic/token the operation **will complete**; query before repeating |
 | `cluster.node-syncing` / `cluster.node-draining` | The node served but found no other to forward to | Take the node out of the load balancer; repeat |
-| `fifo.primary-unavailable` | The FIFO group's primary is out, synchronizing or exhausted attempts | Look at `health cluster`; repeat |
+| `fifo.primary-unavailable` | The FIFO group's primary is out, synchronizing or exhausted attempts | Look at `taba-cli cluster status`; repeat |
 
 ## Certificates: rotation without restarting
 
@@ -207,7 +210,7 @@ The repository has a **Helm chart** (`deploy/helm/taba/`, [34-helm-chart.md](34-
 docker compose up -d                               # starts everything (public images; TABA_VERSION chooses the tag)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d   # the same, building from the repository
 docker compose ps                                  # node health
-docker compose run --rm taba-cli health cluster -o table
+docker compose run --rm taba-cli cluster status -o table
 docker compose up -d --scale taba=4                # more nodes: the `taba` service has the replicas (nodes 2 onwards)
 docker compose logs -f taba-0                      # colored logs (`taba` shows the replicas)
 docker/cluster.sh stop taba-2  / start taba-2      # normal stop (drain) and return; taba-N is replica N (taba-0 is the seed)

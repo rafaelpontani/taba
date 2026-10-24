@@ -99,15 +99,17 @@ O `receiptToken` muda a cada entrega e vem no `Message`: por isso `consume` **se
 
 `token create` (`--name`, `--permission` repetível ou separadas por vírgula, `--prefix`, `--expires-at`, `--token-only`), `token list`, `token get <id>`, `token update <id>` (`--name`, `--expires-at <data>|none`), `token revoke <id>` (`--yes`).
 
-**Operação** (usa o `ops-url` do perfil; sem token):
+**Cluster, nós e estatísticas** (todos pela **API de cliente**, com o token do perfil; a permissão `admin` onde a rota a pede):
 
 | Comando | Rota |
 |---|---|
-| `health live` / `health ready` | `GET /health/live`, `/health/ready` (código `0` se `200`, `1` se não; imprime o `reason`) |
-| `health cluster [--scope cluster\|node]` | `GET /health/cluster` (com `-o table`: uma linha por nó e as condições) |
-| `metrics [--openmetrics]` | `GET /metrics` (só este nó; o texto sai como veio) |
-| `stats topics`, `stats topic <nome>`, `stats groups <tópico>` | `GET /metrics/topics*` (`--scope`, `--tag`, `--condition`, `--fields`, `--group-by`, `--limit`, `--cursor`, `--all`) |
-| `drain start`, `drain status`, `drain cancel` | `POST/GET/DELETE /node/drain` — **o nó do `ops-url`** |
+| `cluster status [--scope cluster\|node]` | `GET /cluster/status` (`admin`; com `-o table`: uma linha por nó e as condições) |
+| `node list` | `GET /nodes` (qualquer token válido): id, estado, estado de drain e versão de cada nó |
+| `metrics [--node <id>] [--openmetrics]` | `GET /metrics` (qualquer token válido; o nó que responde) ou `GET /nodes/{id}/metrics` (`admin`); o texto sai como veio |
+| `stats topics`, `stats topic <nome>`, `stats groups <tópico>` | `GET /stats/topics*` (qualquer token válido, cluster inteiro; `--scope`, `--tag`, `--condition`, `--fields`, `--group-by`, `--limit`, `--cursor`, `--all`) |
+| `drain start`, `drain status`, `drain cancel` `--node <id>` | `POST/GET/DELETE /nodes/{id}/drain` (`admin`); `--node` é obrigatório, e `node list` mostra os ids |
+
+> **A CLI nunca chama a API de operação** (`operations.port`, as sondas `/health/*`, `/node/drain`): essa porta é dos coletores e do orquestrador **dentro** da infraestrutura, e o `taba-cli` está sempre fora dela. Não há comandos `health` nem campo `ops-url`; um `config.yml` escrito por uma versão anterior continua carregando (o campo é ignorado e some na próxima gravação). O que muda para a pessoa: `health cluster` virou `cluster status`, `health live|ready` não têm substituto (são sondas), `drain …` agora nomeia o nó com `--node`, e `metrics` e `stats` pedem token.
 
 **Locais** (não chamam o servidor): `version`, `config show` (a configuração efetiva e **de onde veio cada valor**, sem o token), `profile …`, `help [comando]`.
 
@@ -139,7 +141,6 @@ profiles:
     token-file: C:\taba\secrets\root-token
   homologacao:
     url: https://taba.hml.exemplo.com
-    ops-url: https://taba-ops.hml.exemplo.com
     ca-file: /etc/ssl/taba-hml-ca.pem
 ```
 
@@ -148,7 +149,6 @@ profiles:
 | Campo | Padrão | Descrição |
 |---|---|---|
 | `url` | `http://127.0.0.1:8080` | A **API de cliente** (a porta de cliente ou o balanceador) |
-| `ops-url` | o próprio `url` | A **API de operação**: só `health`, `metrics`, `stats`, `drain`. Com `operations.port`, defina-o |
 | `token-file` | — | Lê o token da primeira linha do arquivo. É o jeito de usar o `root-token` |
 | `token` | — | O token em texto claro. **Prefira `token-file`** |
 | `ca-file` | raízes do sistema | CA (PEM) a confiar. **Não existe** campo para desligar a verificação de TLS |
@@ -178,7 +178,6 @@ profiles:
 
  ▸ Nome              local
    url               http://127.0.0.1:8080
-   ops-url           (http://127.0.0.1:8080)
    token-file        root-token
    token             (nenhum)
    ca-file           (raízes do sistema)
@@ -235,13 +234,13 @@ taba-cli consume pedidos --max 5 --wait 20 --visibility 60
 taba-cli consume pedidos --max 1 --ack -o raw
 taba-cli ack pedidos <id> --receipt <receiptToken>
 taba-cli subscribe pedidos --exec ./processa.sh
-taba-cli health cluster -o table
-taba-cli drain status
+taba-cli cluster status -o table
+taba-cli drain status --node 01a1…
 ```
 
 ### Imagem Docker e binários
 
-- **Imagem** (`connectors/rust/cli/Dockerfile`): mínima, **Alpine**, só com o binário `taba-cli` (estático, musl), usuário sem privilégios, `ENTRYPOINT` = `taba-cli`. Duas etapas; `docker buildx build --platform linux/amd64,linux/arm64`. No Compose da raiz é o serviço `taba-cli` sob o *profile* `tools`, já apontado para os nós (`TABA_CLI_URL`, `TABA_CLI_OPS_URL`, `TABA_CLI_TOKEN_FILE`).
+- **Imagem** (`connectors/rust/cli/Dockerfile`): mínima, **Alpine**, só com o binário `taba-cli` (estático, musl), usuário sem privilégios, `ENTRYPOINT` = `taba-cli`. Duas etapas; `docker buildx build --platform linux/amd64,linux/arm64`. No Compose da raiz é o serviço `taba-cli` sob o *profile* `tools`, já apontado para os nós (`TABA_CLI_URL`, `TABA_CLI_TOKEN_FILE`).
 - **Binários** (`scripts/build.sh` e `build.ps1`): seis alvos — Windows (x64, arm64), Linux estático musl (x64, arm64) e macOS (x64, arm64). Sem argumento, constrói para a máquina; `--target <alvo>` e `--all` (os que a máquina consegue). Saída em `connectors/rust/cli/dist/<alvo>/` com `SHA256SUMS`; `--locked`, sem símbolos, otimizado para tamanho. Cruzar para macOS a partir de outro sistema não é suportado pelos scripts (a matriz do CI usa um *runner* de cada).
 - **Compilar localmente:** `cd connectors/rust && cargo build -p taba-cli`.
 

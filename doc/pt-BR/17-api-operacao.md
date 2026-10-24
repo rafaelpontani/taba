@@ -11,7 +11,9 @@ fontes: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operatio
 
 > Convenções comuns: [15-api-visao-geral.md](15-api-visao-geral.md). O significado das métricas e condições: [13-observabilidade.md](13-observabilidade.md). O que fazer diante delas: [23-operacao.md](23-operacao.md).
 
-**Porta:** `operations.port` ou, se ausente, a **porta de cliente**. **Autenticação: nenhuma**; a proteção é de rede (porta própria, `operations.allowed-ips`). IP fora da lista: `403 ops.ip-not-allowed`. Sem `operations.port`, essas rotas **não usam o token** de cliente.
+**Porta:** `operations.port` (padrão **9090**, sempre aberta). **Autenticação: nenhuma**; a proteção é de rede (porta própria, `operations.allowed-ips`). IP fora da lista: `403 ops.ip-not-allowed`. Essas rotas existem **só** nesta porta, com duas exceções que a porta de cliente também serve: `/health/live` e `/health/ready` (sem token) e `/metrics` (qualquer token válido, [16-api-cliente.md](16-api-cliente.md)).
+
+> **Quem usa esta API.** Os coletores e o orquestrador **dentro** da infraestrutura: Prometheus, Telegraf, as sondas do Kubernetes, o balanceador. O `taba-cli` e qualquer cliente que viva fora dela nunca a chamam: usam a API de cliente, que traz a mesma informação atrás de um token (`/stats/topics*`, `/cluster/status`, `/nodes/{nodeId}/…`).
 
 > As rotas `/node/drain` valem **só para o nó que recebe a chamada**: o operador as chama no nó (porta de operação direta), **não pelo balanceador**.
 
@@ -38,6 +40,19 @@ fontes: [crates/taba-node/src/http/backup.rs, crates/taba-node/src/http/operatio
 "Isenta" = nunca responde `429`: são leves e chamadas por máquina; um `429` no `/health/ready` faria o balanceador tirar o nó da rotação por engano.
 
 ---
+
+## O documento OpenAPI
+
+As rotas das sondas e das métricas têm um documento **OpenAPI 3.1** próprio, gerado das rotas e servido nesta porta, aberto:
+
+| O quê | Onde |
+|---|---|
+| O documento | `GET /openapi/monitoring.json` na `operations.port` |
+| Uma interface para ler e experimentar | `/docs` (embutida no binário) |
+| Uma cópia no repositório | `openapi/monitoring.json` |
+| Sem subir um nó | `taba openapi monitoring` |
+
+Ele lista `/health/live`, `/health/ready`, `/health/cluster`, `/metrics` e `/metrics/topics*`, sem esquema de segurança: a rede e o `operations.allowed-ips` protegem a porta, então o documento e a interface também são recusados (`403 ops.ip-not-allowed`) a um IP fora da lista. O drain, o backup em S3 e as operações do cluster inteiro desta porta **não** fazem parte do contrato publicado: fora da infraestrutura a API de cliente tem as cópias deles atrás de um token ([16-api-cliente.md](16-api-cliente.md)).
 
 ## Saúde
 
@@ -173,7 +188,7 @@ Verificado num cluster de 3 nós: `drain start` levou o nó a `drained` em ~4 s 
 
 O recurso é opcional ([33-backup-s3.md](33-backup-s3.md)). Estas rotas, como `/node/drain`, não usam token: a proteção é de rede. Sem `backup.s3.bucket`, `GET /node/backup` e os dois *flush* respondem `422` `backup.not-configured`; `POST /cluster/stop` ainda drena os nós.
 
-> Estas rotas moram na **API de operação** (a porta de operação, ou a de cliente sem `operations.port`), **não** na porta do cluster: as chamadas entre nós usam `/cluster/backup/flush`, `/cluster/backup/stop` e `/cluster/backup/saved` na porta do cluster (mTLS), descritas em [18-api-cluster.md](18-api-cluster.md).
+> Estas rotas moram na **API de operação** (a porta de operação), **não** na porta do cluster: as chamadas entre nós usam `/cluster/backup/flush`, `/cluster/backup/stop` e `/cluster/backup/saved` na porta do cluster (mTLS), descritas em [18-api-cluster.md](18-api-cluster.md).
 
 ### `GET /node/backup`: o estado
 

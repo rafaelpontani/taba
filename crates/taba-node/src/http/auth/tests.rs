@@ -121,10 +121,10 @@ fn the_monitoring_routes_split_between_any_token_and_the_root_token() {
     assert_eq!(want(Method::GET, "/stats/topics/{topic}/groups"), "any");
     for route in [
         "/cluster/status",
-        "/nodes/{node_id}/metrics",
-        "/nodes/{node_id}/drain",
-        "/nodes/{node_id}/backup",
-        "/nodes/{node_id}/backup/flush",
+        "/nodes/{nodeId}/metrics",
+        "/nodes/{nodeId}/drain",
+        "/nodes/{nodeId}/backup",
+        "/nodes/{nodeId}/backup/flush",
         "/cluster/backup",
         "/cluster/backup/flush",
     ] {
@@ -132,6 +132,32 @@ fn the_monitoring_routes_split_between_any_token_and_the_root_token() {
     }
     assert_eq!(want(Method::POST, "/cluster/stop"), "root");
     assert_eq!(want(Method::DELETE, "/topics/{topic}/messages"), "manage");
+}
+
+/// UC: UC-AUT-041
+#[test]
+fn every_route_of_the_client_document_has_its_requirement_decided() {
+    // A route is matched by the template it was registered with, and the documents register it with the template
+    // they show: a renamed parameter would silently make `need()` miss the route, and any valid token would reach
+    // it. So every documented route, but the probes (open on purpose), must have an entry.
+    let document: serde_json::Value = serde_json::from_str(&crate::http::openapi::document(
+        crate::http::openapi::Api::Client,
+    ))
+    .unwrap();
+    let mut unknown = Vec::new();
+    for (route, item) in document["paths"].as_object().unwrap() {
+        for method in item.as_object().unwrap().keys() {
+            let method = Method::from_bytes(method.to_uppercase().as_bytes()).unwrap();
+            let open = route == "/health/live" || route == "/health/ready";
+            if need(&method, route).is_none() != open {
+                unknown.push(format!("{method} {route}"));
+            }
+        }
+    }
+    assert!(
+        unknown.is_empty(),
+        "routes whose requirement is not in `need()` (or probes that have one): {unknown:?}"
+    );
 }
 
 /// UC: UC-AUT-001

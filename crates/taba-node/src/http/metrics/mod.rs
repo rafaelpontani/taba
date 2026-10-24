@@ -17,7 +17,7 @@ use crate::cluster::health::{self, Condition};
 use crate::cluster::members::MemberState;
 use crate::cluster::state::{DrainState, NodeState};
 use crate::config::TopicsMetricsMode;
-use crate::core::error::TabaError;
+use crate::core::error::{ErrorResponse, TabaError};
 use crate::engine::messages::stats::{self, NodeObservation, TopicSnapshot};
 use crate::telemetry::metrics::*;
 use crate::telemetry::{process, prometheus};
@@ -31,6 +31,24 @@ fn band_label(band: usize) -> String {
     }
 }
 
+/// The metrics of **this node**, in Prometheus text (`Accept: application/openmetrics-text` asks for OpenMetrics). One
+/// target per node: the node does not query the others. The route does not exist (`404`) with
+/// `telemetry.prometheus.enabled` off.
+///
+/// **Authentication depends on the port.** On the monitoring port (`operations.port`) it needs no token, for the
+/// collectors inside the infrastructure. On the client port it takes **any valid token**, no particular permission,
+/// because that port is reachable from outside. A node in drain only validates the root token.
+#[utoipa::path(
+    get,
+    path = "/metrics",
+    tag = "Metrics",
+    operation_id = "getMetrics",
+    responses(
+        (status = 200, description = "The metrics, as text: Prometheus (`text/plain; version=0.0.4`) or, if the `Accept` header asks for `application/openmetrics-text`, OpenMetrics.",
+            content((String = "text/plain"), (String = "application/openmetrics-text"))),
+        (status = 404, description = "`route.not-found`: `telemetry.prometheus.enabled` is off.", body = ErrorResponse)
+    )
+)]
 pub async fn prometheus(
     State(state): State<AppState>,
     headers: HeaderMap,

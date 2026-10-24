@@ -21,8 +21,10 @@ use serde_json::{Value, json};
 
 use super::AppState;
 use super::common::ApiError;
+use super::openapi::{AuthErrors, RateLimited, StopReport};
 use crate::cluster::backup::{Backup, BackupStatus, not_configured};
 use crate::cluster::protocol::{Request as PeerRequest, Response as PeerResponse};
+use crate::core::error::ErrorResponse;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -82,6 +84,22 @@ async fn ask_all(state: &AppState, request: PeerRequest) -> Vec<(String, Result<
     answers
 }
 
+/// Sends the memory and the disk of **every** node to the S3 bucket, without stopping anything. The node that receives
+/// it forwards to the others and joins the answers. In the client API it asks for a token; on the monitoring port the
+/// same route has none.
+///
+/// Permission: `admin`.
+#[utoipa::path(
+    post,
+    path = "/cluster/backup/flush",
+    tag = "Cluster",
+    operation_id = "flushClusterBackup",
+    responses(
+        (status = 200, description = "`complete` says if nothing was left pending, and `nodes` has the report of each node.", body = Object),
+        (status = 422, description = "`backup.not-configured`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 pub(super) async fn cluster_flush(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let backup = backup_of(&state)?;
     if state.cluster.is_none() {
@@ -112,6 +130,20 @@ pub(super) async fn cluster_flush(State(state): State<AppState>) -> Result<Json<
     Ok(Json(json!({ "complete": complete, "nodes": nodes })))
 }
 
+/// Stops the whole cluster: it drains every node and, with S3, writes the list of the nodes that were alive. The
+/// processes keep running as `drained`: stopping them is up to the orchestrator.
+///
+/// Permission: **the root token** only.
+#[utoipa::path(
+    post,
+    path = "/cluster/stop",
+    tag = "Cluster",
+    operation_id = "stopCluster",
+    responses(
+        (status = 200, description = "What the stop did.", body = StopReport),
+        AuthErrors, RateLimited
+    )
+)]
 pub(super) async fn cluster_stop(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let backup = state.backup.clone();
     let mut warnings: Vec<String> = Vec::new();

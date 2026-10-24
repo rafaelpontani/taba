@@ -6,23 +6,29 @@ mod request;
 
 use std::collections::HashMap;
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Json, Router};
 use serde_json::{Map, Value};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::auth::{Principal, out_of_scope};
 use super::common::ApiError;
+use super::openapi::{
+    AuthErrors, ClusterUnavailable, RateLimited, Topic, TopicCreateRequest, TopicPage,
+    TopicUpdateRequest,
+};
 use super::{AppState, json};
+use crate::core::error::ErrorResponse;
 use crate::engine::topics::ListQuery;
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/topics", get(list).post(create))
-        .route("/topics/{topic}", get(read).patch(update).delete(remove))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list, create))
+        .routes(routes!(read, update, remove))
 }
 
 /// The token only creates a topic within its prefixes; on a distributor, each distribution prefix too
@@ -42,6 +48,24 @@ fn check_scope(
     }
 }
 
+/// Creates a topic. It generates the `id`, propagates the definition to **all nodes** and answers only afterwards.
+/// Every queue gets its `{name}-dead-letter` with it.
+///
+/// Permission: `create`, within the token's prefixes (on a distributor, each prefix too).
+#[utoipa::path(
+    post,
+    path = "/topics",
+    tag = "Topics",
+    operation_id = "createTopic",
+    request_body(content = TopicCreateRequest, content_type = "application/json"),
+    responses(
+        (status = 201, description = "Created.", body = Topic,
+            headers(("Location" = String, description = "`/topics/{name}`"))),
+        (status = 400, description = "Invalid body: `validation.failed`, `invalid-name`, `reserved-name`, `not-applicable`, `out-of-range`, `max-bytes-above-hard-limit` or `unknown-field`.", body = ErrorResponse),
+        (status = 409, description = "`topic.already-exists`.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 async fn create(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -61,6 +85,27 @@ async fn create(
         .into_response())
 }
 
+/// Lists the topics, paginated by `name` (or the chosen `sort`). It is answered locally. With authentication on, only
+/// the topics within the token's prefixes come, and the dead-letter queues are included.
+///
+/// Permission: any valid token.
+#[utoipa::path(
+    get,
+    path = "/topics",
+    tag = "Topics",
+    operation_id = "listTopics",
+    params(
+        ("limit" = Option<u32>, Query, description = "Page size. Default 100."),
+        ("cursor" = Option<String>, Query, description = "The `nextCursor` of the previous page."),
+        ("sort" = Option<String>, Query, description = "`name` (default), `id` or `createdAt`; a leading `-` sorts descending."),
+        ("name" = Option<String>, Query, description = "Only topics whose name contains the text (case-sensitive).")
+    ),
+    responses(
+        (status = 200, description = "A page of topics.", body = TopicPage),
+        (status = 400, description = "`validation.out-of-range`, `invalid-cursor` or `failed`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn list(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -84,6 +129,22 @@ async fn list(
     Ok(Json(Value::Object(page)))
 }
 
+/// Reads a topic. On a dead-letter queue the values are those of the source queue, read-only, with `deadLetter` and
+/// `source`.
+///
+/// Permission: any valid token, within its prefixes.
+#[utoipa::path(
+    get,
+    path = "/topics/{topic}",
+    tag = "Topics",
+    operation_id = "getTopic",
+    params(("topic" = String, Path, description = "The topic name.")),
+    responses(
+        (status = 200, description = "The topic.", body = Topic),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        AuthErrors, RateLimited
+    )
+)]
 async fn read(
     State(state): State<AppState>,
     Path(topic): Path<String>,
@@ -91,6 +152,25 @@ async fn read(
     Ok(Json(state.topics.get(&topic)?.to_json()))
 }
 
+/// Changes a topic: only what is sent changes. It also applies to the messages already stored (a new `ttl` at the next
+/// sweep).
+///
+/// Permission: `manage`, within the token's prefixes.
+#[utoipa::path(
+    patch,
+    path = "/topics/{topic}",
+    tag = "Topics",
+    operation_id = "updateTopic",
+    params(("topic" = String, Path, description = "The topic name.")),
+    request_body(content = TopicUpdateRequest, content_type = "application/json"),
+    responses(
+        (status = 200, description = "The topic after the change.", body = Topic),
+        (status = 400, description = "Invalid body, or an immutable field (`validation.immutable-field`).", body = ErrorResponse),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        (status = 409, description = "`topic.read-only`: a dead-letter queue follows its source queue.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 async fn update(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -105,6 +185,23 @@ async fn update(
     Ok(Json(view.to_json()))
 }
 
+/// Removes the topic and **all its messages, even the pending ones**, and its dead-letter queue. It always works, with
+/// no check. On `503 cluster.commit-timeout` the removal will complete.
+///
+/// Permission: `manage`, within the token's prefixes.
+#[utoipa::path(
+    delete,
+    path = "/topics/{topic}",
+    tag = "Topics",
+    operation_id = "deleteTopic",
+    params(("topic" = String, Path, description = "The topic name.")),
+    responses(
+        (status = 204, description = "Removed."),
+        (status = 404, description = "`topic.not-found`.", body = ErrorResponse),
+        (status = 409, description = "`topic.read-only`: remove the source queue instead.", body = ErrorResponse),
+        AuthErrors, RateLimited, ClusterUnavailable
+    )
+)]
 async fn remove(
     State(state): State<AppState>,
     Path(topic): Path<String>,

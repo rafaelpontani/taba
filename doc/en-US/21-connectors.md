@@ -181,7 +181,7 @@ They count as a **plan** (proposals, subject to D68, D70.1, D70.2). "Base versio
 4. **Test**: unit tests with a fake transport (Rust has `taba_client::testing`; C# has `ScriptedHandler`) checking the **built request** and the reading of ready-made responses; integration against a one-node Taba (`replication.factor=1`), or Compose.
 5. **Cite the use cases** in the tests on a `UC: UC-CNT-NNN` line (the server's `uc_coverage` reads the citations from the connector folders too) ([26-use-cases.md](26-use-cases.md)).
 
-> Planned and **not yet existing**: the shared conformance suite (`connectors/contrato/` with fixtures and scenarios) and the OpenAPI contract, which would freeze the contract for the eight remaining connectors ([32-roadmap.md](32-roadmap.md)). Today the "source of truth" of the contract is this text, `taba-cli` and the tests of the two connectors.
+> Planned and **not yet existing**: the shared conformance suite (`connectors/contrato/` with fixtures and scenarios), which would check the eight remaining connectors against the contract ([32-roadmap.md](32-roadmap.md)). The OpenAPI documents of the client API exist ([15-api-overview.md](15-api-overview.md)) and the connectors can be generated from them or checked against them; besides them, the "source of truth" of the contract is this text, `taba-cli` and the tests of the two connectors.
 
 ## Pending items in this area
 

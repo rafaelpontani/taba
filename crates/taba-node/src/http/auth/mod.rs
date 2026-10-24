@@ -14,16 +14,18 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use axum::Json;
 use axum::extract::{Extension, MatchedPath, RawPathParams, Request, State};
 use axum::http::{HeaderMap, Method, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Json, Router};
 use serde_json::{Value, json};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::AppState;
 use super::common::ApiError;
+use super::openapi::{AuthErrors, Me};
 use crate::cluster::state::DrainState;
 use crate::config::{Auth as AuthConfig, RootToken};
 use crate::core::error::{ErrorCode, TabaError};
@@ -247,7 +249,7 @@ fn need(method: &Method, route: &str) -> Option<Need> {
         // The tokens (an `admin` token itself is only created, changed and revoked by the root: see `http::tokens`).
         "/tokens" | "/tokens/{id}" => Some(Need::Permission(Permission::Admin)),
         // What any valid token sees within its scope: who it is, the nodes, the topic statistics.
-        "/auth/me" | "/nodes" => Some(Need::Any),
+        "/auth/me" | "/nodes" | "/metrics" => Some(Need::Any),
         "/stats/topics" | "/stats/topics/{topic}" | "/stats/topics/{topic}/groups" => {
             Some(Need::Any)
         }
@@ -257,10 +259,10 @@ fn need(method: &Method, route: &str) -> Option<Need> {
         "/cluster/status"
         | "/cluster/backup"
         | "/cluster/backup/flush"
-        | "/nodes/{node_id}/metrics"
-        | "/nodes/{node_id}/drain"
-        | "/nodes/{node_id}/backup"
-        | "/nodes/{node_id}/backup/flush" => Some(Need::Permission(Permission::Admin)),
+        | "/nodes/{nodeId}/metrics"
+        | "/nodes/{nodeId}/drain"
+        | "/nodes/{nodeId}/backup"
+        | "/nodes/{nodeId}/backup/flush" => Some(Need::Permission(Permission::Admin)),
         _ => None,
     }
 }
@@ -361,12 +363,24 @@ pub async fn authorize(
     next.run(request).await
 }
 
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/auth/me", get(me))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new().routes(routes!(me))
 }
 
-/// `GET /auth/me`: who the token is and what it can do, so a client can enable or disable what it
-/// shows before calling. With authentication off everyone is the `open` caller, with every permission.
+/// Who the token is and what it can do, so a client can enable or disable what it shows before calling. With
+/// authentication off everyone is the `open` caller, with every permission.
+///
+/// Permission: any valid token. It is exempt from the rate limit.
+#[utoipa::path(
+    get,
+    path = "/auth/me",
+    tag = "Caller",
+    operation_id = "getMe",
+    responses(
+        (status = 200, description = "The caller.", body = Me),
+        AuthErrors
+    )
+)]
 async fn me(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,

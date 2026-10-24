@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-summary: What is already ready (version 0.1) and what comes next, in milestones — OpenAPI contract, other connectors, publishing, Kubernetes, operation — with the pending items each milestone closes.
+summary: What is already ready (version 0.1) and what comes next, in milestones — versioning of the client contract, other connectors, publishing, Kubernetes, operation — with the pending items each milestone closes.
 type: reference
 status: partial
 verified-on: 2026-10-14 @ efeb47a
@@ -13,7 +13,7 @@ sources: [connectors/README.md, doc/en-US/30-decisions.md, doc/en-US/31-pending-
 
 ## Where we are: version 0.1
 
-**0.1 closes** when a person starts a three-node cluster with one command, uses the API through `taba-cli` in a terminal and through a C# console application. The five steps are **done**:
+**0.1 closes** when a person starts a three-node cluster with one command, uses the API through `taba-cli` in a terminal and through a C# console application. The first five steps closed it (a sixth, the OpenAPI contract, came after); all are **done**:
 
 | Step | State |
 |---|---|
@@ -22,6 +22,7 @@ sources: [connectors/README.md, doc/en-US/30-decisions.md, doc/en-US/31-pending-
 | 3 — C# connector (nine operations, `subscribe`, dependency injection, unit and integration tests) | ✅ |
 | 4 — C# console example (`examples/csharp-console/`) | ✅ |
 | 5 — End-to-end validation (`docker/validate.sh`: cluster, `taba-cli`, nodes going down and coming back, no message loss) | ✅ |
+| 6 — OpenAPI contract (client and monitoring APIs), generated from the routes, served by each node with an interface at `/docs`, and published in `openapi/` | ✅ |
 
 The whole **server** is also ready (node, cluster, FIFO, volatile, distributor, tokens, mTLS, observability) and the **CI/CD** with automatic versioning ([27-ci-cd.md](27-ci-cd.md)).
 
@@ -35,7 +36,7 @@ The order is a **proposal**; milestones 1 and 2 do not depend on each other.
 
 | Item | Detail | Closes |
 |---|---|---|
-| **OpenAPI contract** of the client API ⬜ | Today the contract is the text of [15](15-api-overview.md) and [16](16-client-api.md), `taba-cli` and the tests. Fix the OpenAPI **before** the other connectors, so they do not diverge from what C# fixed. Includes the versioning policy in the paths (today there is no `/v1`) | RF-22 |
+| **Versioning policy in the paths** ⬜ | The OpenAPI documents exist ([15](15-api-overview.md)); what is left is deciding the policy of the prefix (today there is no `/v1`) **before** the other connectors fix the paths | RF-22 |
 | **Conformance suite** ⬜ | `connectors/contrato/`: fixtures (request/response pairs), the JSON reader test documents, the scenarios and a one-node `docker-compose` of Taba (one-node profile) | UC-CNT (level `K`) |
 
 ### Milestone 2 — The other connectors
