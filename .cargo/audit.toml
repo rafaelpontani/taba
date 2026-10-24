@@ -1,0 +1,9 @@
+# `cargo audit` reads this file when run from the repository root (the `rust-audit` job of ci.yml).
+[advisories]
+ignore = [
+    # crypto-bigint 0.5.5 comes from `aws-sigv4` (the latest, 1.6.3, still depends on it), which the S3 backup
+    # uses. The advisory is about timing variability in secret-dependent operations; here it is only reached by the
+    # SigV4a (ECDSA) signer, which Taba never uses (the backup signs with SigV4 and HMAC). Remove this line when
+    # `aws-sigv4` moves to crypto-bigint >= 0.7.6 (PRB-073).
+    "RUSTSEC-2026-0387",
+]
