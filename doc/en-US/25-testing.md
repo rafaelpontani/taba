@@ -3,8 +3,8 @@ title: Testing
 summary: How Taba is tested — the levels (unit, one node, simulated cluster, connectors, end to end), the test tools (TestNode, TestCluster, in-memory network, manual clock, fake OTLP collector) and how to write and run a test.
 type: guide
 status: stable
-verified-on: 2026-10-13 @ 71183b9
-sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh]
+verified-on: 2026-10-24 @ 34e9246
+sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh, docker/seed-demo.sh]
 ---
 
 # Testing
@@ -100,6 +100,50 @@ docker/validate.sh                                             # end to end (≈
 - **`cluster.sh`** (library to `source`, or command): `taba_up`, `taba_down`, `taba_kill` (abrupt failure), `taba_stop` (orderly exit, with drain), `taba_start`, `taba_restart`, `taba_wait_healthy`, `taba_wait_members N`, `taba_wait_stable`, `taba_create_token`, `taba_ensure_topic`, `taba_cli …`, `taba_status`. The connector tests should **reuse it**.
 - **`validate.sh`** (≈ 5 minutes): starts Compose from scratch and checks (1) the cluster formed (`taba-cli cluster status` without conditions); (2) `taba-cli`: create topic, publish, consume; (3) abrupt failure of `taba-2` (`kill`; `docker/cluster.sh` maps `taba-N`, N ≥ 1, to replica N of the `taba` service); (4) orderly exit of `taba-1` (`stop`, with drain); (5) **no confirmed message was lost**; (6) final state. **Run before closing changes that affect cluster, channel, Compose or connectors.**
 
+## Demo data: `docker/seed-demo.sh`
+
+For manual tests, load tests and demos (the TUI, the charts, the `noisy-group` condition), `docker/seed-demo.sh` brings up a populated cluster in a few minutes:
+
+```bash
+docker/seed-demo.sh                    # from scratch; leaves the cluster running at the end
+docker/seed-demo.sh --no-build         # reuses the images already built
+docker/seed-demo.sh --messages 10000   # another amount per distributor (default 100000; minimum 1000)
+docker/seed-demo.sh --no-profile         # does not touch the taba-cli profile
+PARALLEL=16 docker/seed-demo.sh        # more publisher containers at the same time (default 8)
+```
+
+What it does, in this order:
+
+1. **Deletes everything:** `docker compose down -v` (volumes, secrets, node data and the backup bucket) and starts the three-node cluster building this repository's images (the same `taba_up` as `validate.sh`). Whatever was in that Compose is lost. It needs port 8080 free.
+2. **Creates a local admin token.** The **root token** (full access, from the Compose `secrets` volume) only bootstraps: it is the only one that can create an `admin` token, and the script uses it for that (through the Compose `taba-cli`) and nowhere else on your machine. The script creates the token **`local-admin`** with the `admin` permission (it manages tokens and operates the cluster) and writes its secret, which only appears in the creation response, to **`docker/.local/admin-token`**, with no line break at the end and mode `0600` where the system allows it. Then it calls `GET /auth/me` to check that the API accepts it as an `admin` (`"root": false`). This is the way to use Taba: a named, revocable token, not the root one ([14-security.md](14-security.md)). The file is on your machine only: `docker/.local/` and every file called `admin-token` are in `.gitignore`. Every run **recreates** the volume, so the token is **new** and the file is overwritten (`ADMIN_NAME=` changes the token name). It shows up in the Tokens tab of the `taba-cli tui` and in `GET /tokens`; the root token does not, because it does not come from the table. Use it like this:
+
+   ```bash
+   curl -H "Authorization: Bearer $(cat docker/.local/admin-token)" http://localhost:8080/topics
+   ```
+
+   To use another path: `TOKEN_FILE=/path/token docker/seed-demo.sh`. The `taba-cli` of the Compose does not need the file (it reads the token from the volume itself).
+3. **Configures the `taba-cli` profile.** If a `taba-cli` is installed on the machine (`TABA_CLI_BIN`, the `PATH`, or this repository's build in `connectors/rust/target/release`), the script points the profile **`local_admin`** (`PROFILE=` changes the name) to `http://localhost:8080` and to the new token: if the profile exists, only its `url` and `token` change (the token becomes `token-file`, pointing to `docker/.local/admin-token`); if not, it is created and becomes the **default**. Afterwards `taba-cli topic list` works without options. `--no-profile` skips the step; without a `taba-cli` it is skipped with the command to run by hand. The profile file is the one in [20-cli.md](20-cli.md#profiles) (`TABA_CLI_CONFIG` changes the path).
+4. **Creates the topics** (the queues first, because a distributor only copies to the queues that exist when it publishes) and **publishes** the messages with `taba-cli publish --count`, in parallel containers.
+
+| Topic | Type | Content |
+|---|---|---|
+| `demo-orders-billing` | queue | 100,000 messages (copies from `demo-orders`) |
+| `demo-orders-stock` | queue | 100,000 messages (copies from `demo-orders`) |
+| `demo-events-audit` | queue | 100,000 messages (copies from `demo-events`): **the noisy queue** |
+| `demo-orders` | distributor, prefix `demo-orders-` | receives 100,000 publications; stores nothing |
+| `demo-events` | distributor, prefix `demo-events-` | receives 100,000 publications; stores nothing |
+| `demo-payments-fifo` | FIFO queue | 10,000 messages (10% of the amount), published directly: 20 accounts (`account-01` … `account-20`) × 500, numbered `seq` 1…500 |
+
+So the three queues end up with 100,000 messages each (plus their `-dead-letter` queues, empty; the FIFO queue has the 10,000 above), and the two distributors are the ones that receive the 200,000 publications. The groups ([12-delivery.md](12-delivery.md)) are what differ:
+
+- **`demo-payments-fifo` (FIFO):** each account is a group (`groupId`) and the queue keeps the order *within* the group: consuming it returns `seq` 1, 2, 3… of each account (`taba-cli consume demo-payments-fifo --max 10`). Every message has a `deduplicationId` (`account-NN-seq`), because FIFO drops a repeated body in the same group.
+- **`demo-orders-*` (balanced):** 100 groups (`customer-001` … `customer-100`) with 1,000 messages each.
+- **`demo-events-audit` (noisy):** 95% of the messages (95,000) belong to a single group, `noisy-integration`, and the other 5% are spread over 50 groups (`service-01` … `service-50`, 100 each). It is the noisy-neighbor example: delivery favors the groups with fewer messages, so a consumer of this queue receives the `service-NN` messages first. To see it: `taba-cli stats groups demo-events-audit` (or `/stats/topics/demo-events-audit/groups`) shows `noisy-integration` with `share` 0.95, and `/stats/topics/demo-events-audit?scope=node` shows `noisyShare` ≈ 0.95 and the `noisy-group` condition ([13-observability.md](13-observability.md)). The cluster-wide view (without `scope=node`) gives a **lower bound** of `noisyShare` (≈ 0.33 with three nodes, because each node holds a third of the messages) and does **not** raise the condition: measured with `--messages 2000`.
+
+At the end the script prints the depth of each queue and leaves the cluster up: explore it (`docker compose run --rm taba-cli tui`, `stats topics`, `consume`) and delete everything with `docker/cluster.sh down`. With `--messages N`, the amounts scale (N per distributor, 95% noisy); the 100,000 above are the default.
+
+> The publishing time depends on the machine (each publication waits for the quorum through HAProxy); the script prints how long it took. A failure of any publisher stops the script with an error.
+
 ## Strategy: what each level protects
 
 | Risk | Where it is caught |
@@ -119,7 +163,7 @@ The test turned off with `#[ignore]` because it fails intermittently in CI, with
 
 ## Sources and evidence
 
-- `crates/taba-node/tests/*.rs` and `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
+- `crates/taba-node/tests/*.rs` and `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate,seed-demo}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
 - The "702 of 885" scoreboard and the "Tests" column failure were **run** on 2026-10-13 (`cargo test --test uc_coverage -- --nocapture`). Also **run and green** on that date: `cargo test --lib` (**509 unit tests**, 2.25 s) and the files `topics` (21), `messages` (41), `failures` (21), `freezing` (5) and `drain_cluster` (7). **The rest of the suite was not run** in this verification: the machine ran out of disk space at *link* (`LNK1201`), the `target/` problem described in [24-conventions.md](24-conventions.md).
 - Use cases: all (each test cites its own); see [26a](26a-implemented-use-cases.md).
 - History: `doc/20-casos-de-uso.md` (19.4, 19.5), `18-estrutura-codigo.md` (17.5).

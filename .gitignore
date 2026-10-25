@@ -11,3 +11,4 @@ doc/diagrams/html/
 /dist
 root-token.txt
 admin-token
+/docker/.local/

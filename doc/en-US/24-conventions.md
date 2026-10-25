@@ -41,7 +41,7 @@ taba/
       uc_coverage.rs            checks the use-case codes
   connectors/                   connectors (one folder per language; own workspace for Rust)
     rust/{client,cli}/  csharp/  README.md
-  docker/                       cluster.sh, validate.sh, haproxy.cfg, test-cpu.sh
+  docker/                       cluster.sh, validate.sh, seed-demo.sh, haproxy.cfg, test-cpu.sh
   Dockerfile  Dockerfile.ci  docker-compose.yml
   examples/csharp-console/      example of using the C# connector
   doc/                          README.md, diagrams/, one folder per language
