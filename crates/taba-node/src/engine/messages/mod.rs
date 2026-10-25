@@ -63,7 +63,7 @@ use crate::core::validation;
 use crate::engine::topics::{CreateTopic, Kind, TopicView, Topics};
 use crate::storage;
 use crate::storage::messages::{MessageMeta, MessageStore};
-use index::{GroupKey, IndexRules, TopicIndex};
+use index::{GroupKey, IndexRules, SpillOp, TopicIndex};
 use rates::Rates;
 use replicas::ReplicaSet;
 use sha2::{Digest, Sha256};
@@ -114,6 +114,12 @@ pub struct MessageRules {
     pub fair_ready_weight: f64,
     pub fair_max_groups: Option<usize>,
     pub fair_normal_every: u32,
+    /// `delivery.ready-list.size`: IDs in the ready window.
+    pub ready_list_size: usize,
+    /// `delivery.invisible-list.size` and `delivery.invisible.reload-threshold`; without the size, the
+    /// list has no ceiling, and without the threshold the list is reloaded below half of the size.
+    pub invisible_list_size: Option<usize>,
+    pub invisible_reload_threshold: Option<usize>,
     /// `fifo.dedup.window`, in milliseconds.
     pub fifo_dedup_window_ms: u64,
 }
@@ -134,6 +140,12 @@ impl MessageRules {
             fair_ready_weight: config.delivery.fair_ready_weight,
             fair_max_groups: config.delivery.fair_max_groups.map(|n| n as usize),
             fair_normal_every: config.delivery.fair_normal_every,
+            ready_list_size: config.delivery.ready_list_size as usize,
+            invisible_list_size: config.delivery.invisible_list_size.map(|n| n as usize),
+            invisible_reload_threshold: config
+                .delivery
+                .invisible_reload_threshold
+                .map(|n| n as usize),
             fifo_dedup_window_ms: u64::try_from(config.fifo.dedup_window.as_millis())
                 .unwrap_or(u64::MAX),
         }
@@ -145,6 +157,13 @@ impl MessageRules {
             max_groups: self.fair_max_groups,
             normal_every: self.fair_normal_every,
             fifo,
+            ready_cap: self.ready_list_size.max(1),
+            invisible_cap: self.invisible_list_size.map_or(usize::MAX, |n| n.max(1)),
+            reload_threshold: match (self.invisible_list_size, self.invisible_reload_threshold) {
+                (_, Some(threshold)) => threshold,
+                (Some(size), None) => size / 2,
+                (None, None) => 0,
+            },
         }
     }
 }
@@ -837,6 +856,10 @@ impl Messages {
             .get(name)
             .is_ok_and(|view| view.definition.queue().is_some_and(|q| q.fifo));
         let mut index = TopicIndex::new(self.rules.index_rules(fifo));
+        // The expiry table is derived from the metadata: what is in it from the previous life goes away.
+        if let Err(e) = self.store.expiry_clear(name) {
+            self.disk_error("failed to clear the expiry table", &e);
+        }
         let mut dedup = HashMap::new();
         let mut group_ms: HashMap<String, u64> = HashMap::new();
         match self.store.scan(name) {
@@ -875,6 +898,10 @@ impl Messages {
             Err(e) => {
                 self.disk_error("failed to read the topic index on disk", &e);
             }
+        }
+        index.reset_window();
+        if let Err(e) = self.apply_spill(name, index.take_spill_ops()) {
+            self.disk_error("failed to write the expiry table", &e);
         }
         let state = Arc::new(Mutex::new(TopicState {
             memory: BTreeMap::new(),
@@ -1427,6 +1454,7 @@ impl Messages {
         let owned = state.index.contains(&meta.id);
         self.take_from_memory(state, &meta.id);
         state.index.remove(&meta.id);
+        self.expiry_changed(topic, state);
         self.backup_removed(topic, &meta.id, owned);
         Ok(())
     }
@@ -1475,6 +1503,7 @@ impl Messages {
                 .map_err(|e| self.disk_error("failed to remove the message from disk", &e))?,
         }
         state.index.remove(id);
+        self.expiry_changed(topic, state);
         state.replicas.remove(id);
         self.backup_removed(topic, id, owned);
         Ok(())
@@ -1545,6 +1574,7 @@ impl Messages {
             meta.invisible_until_ms = now + secs * 1000;
             self.save_meta(&mut state, name, &meta, place)?;
             state.index.set_until(id, meta.invisible_until_ms, now);
+            self.expiry_changed(name, &mut state);
             // Releasing a message that already used up its deliveries sends it to the dead-letter, instead of
             // returning it to the queue (doc 13, section 12.10).
             if secs == 0 && self.exhausted(&view, meta.delivery_count) {
@@ -1603,7 +1633,8 @@ impl Messages {
     /// becomes deliverable again and whether the owner still has a ready message.
     pub fn wait_hints(&self, topic: &str) -> (Option<u64>, bool) {
         let state = self.state_of(topic);
-        let state = lock(&state);
+        let mut state = lock(&state);
+        self.reload_expiry(topic, &mut state);
         let held = state.index.is_fifo() && self.fifo_held();
         (state.index.next_visible(), state.index.has_ready() && !held)
     }
@@ -1876,7 +1907,14 @@ impl Messages {
         }
         // Invisibility that expired returns the message to ready; one that had already used up the
         // deliveries goes to the dead-letter instead of going back to the queue.
-        let released = state.index.release_due(now);
+        let mut released = Vec::new();
+        // The list may empty with due pairs still in the table: reload and go on.
+        for _ in 0..64 {
+            released.extend(state.index.release_due(now));
+            if !self.reload_expiry(name, &mut state) {
+                break;
+            }
+        }
         let mut exhausted: Vec<String> = released
             .iter()
             .filter(|id| {
@@ -2497,6 +2535,8 @@ impl Messages {
         };
 
         let mut delivered = Vec::new();
+        // What each message was before this call, to undo the deliveries if the table write fails.
+        let mut undo: Vec<(MessageMeta, Place)> = Vec::new();
         while delivered.len() < max {
             let Some(id) = state.index.pick() else {
                 break;
@@ -2554,6 +2594,7 @@ impl Messages {
                 state.stats.redelivered += 1;
                 NodeCounters::add(&self.counters.redeliveries, 1);
             }
+            undo.push((meta.clone(), place));
             meta.delivery_count += 1;
             meta.invisible_until_ms = until;
             let receipt_token = self.ids.new_at(now);
@@ -2584,6 +2625,18 @@ impl Messages {
             for message in &delivered {
                 state.index.set_until(&message.id, until, now);
             }
+        }
+        // The table write is part of the delivery: if it fails, the deliveries are undone (index and
+        // metadata) before the answer.
+        if let Err(e) = self.flush_expiry(name, &mut state) {
+            for (previous, place) in undo {
+                state
+                    .index
+                    .deliver(&previous.id, 0, now, previous.delivery_count);
+                let _ = self.save_meta(&mut state, name, &previous, place);
+            }
+            self.ready_changed(name, &mut state);
+            return Err(self.disk_error("failed to write the expiry table", &e));
         }
         state
             .rates
@@ -2641,8 +2694,72 @@ impl Messages {
         })
     }
 
+    /// Applies on the `expiry` table the operations the invisible list queued.
+    fn apply_spill(&self, name: &str, ops: Vec<SpillOp>) -> io::Result<()> {
+        let rows: Vec<(bool, u64, String)> = ops
+            .into_iter()
+            .map(|op| match op {
+                SpillOp::Put(until, id) => (true, until, id),
+                SpillOp::Delete(until, id) => (false, until, id),
+            })
+            .collect();
+        self.store.expiry_apply(name, &rows)
+    }
+
+    /// Writes the queued table operations; on failure they go back to the queue, in order.
+    fn flush_expiry(&self, name: &str, state: &mut TopicState) -> io::Result<()> {
+        let ops = state.index.take_spill_ops();
+        if ops.is_empty() {
+            return Ok(());
+        }
+        if let Err(e) = self.apply_spill(name, ops.clone()) {
+            state.index.restore_spill_ops(ops);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// The change of an index entry reaches the table in the same step as the metadata's. A write
+    /// that fails stays queued and is tried again with the next change.
+    fn expiry_changed(&self, name: &str, state: &mut TopicState) {
+        if let Err(e) = self.flush_expiry(name, state) {
+            self.disk_error("failed to write the expiry table", &e);
+        }
+    }
+
+    /// If the invisible list is empty or below the reload threshold and the table has pairs, moves
+    /// the earliest ones to the list (and deletes the rows read). `true` if some pair entered.
+    fn reload_expiry(&self, name: &str, state: &mut TopicState) -> bool {
+        let wanted = state.index.reload_wanted();
+        if wanted == 0 {
+            return false;
+        }
+        if let Err(e) = self.flush_expiry(name, state) {
+            self.disk_error("failed to write the expiry table", &e);
+            return false;
+        }
+        let rows = match self.store.expiry_earliest(name, wanted) {
+            Ok(rows) => rows,
+            Err(e) => {
+                self.disk_error("failed to read the expiry table", &e);
+                return false;
+            }
+        };
+        let loaded = state.index.reload(rows);
+        if let Err(e) = self.flush_expiry(name, state) {
+            self.disk_error("failed to write the expiry table", &e);
+        }
+        loaded > 0
+    }
+
     /// Notifies the cluster when the topic starts (or stops) having ready messages here.
     fn ready_changed(&self, name: &str, state: &mut TopicState) {
+        // The room that opened in the ready window is refilled once, and the invisible list's
+        // overflow reaches the table.
+        state.index.refill();
+        if let Err(e) = self.flush_expiry(name, state) {
+            self.disk_error("failed to write the expiry table", &e);
+        }
         let has = state.index.has_ready();
         if state.ready_signaled != has {
             state.ready_signaled = has;
@@ -3060,6 +3177,7 @@ impl Messages {
                 Some((count, _)) => state.index.deliver(id, until_ms, now, count),
                 None => state.index.set_until(id, until_ms, now),
             }
+            self.expiry_changed(topic, &mut state);
         }
         let released = owned && delivery.is_none() && until_ms <= now;
         // Releasing a message that already used up its deliveries sends it to the dead-letter (doc 13, 12.10).
@@ -3116,6 +3234,7 @@ impl Messages {
         self.save_meta(&mut state, topic, &meta, place)?;
         if owned {
             state.index.deliver(id, meta.invisible_until_ms, now, count);
+            self.expiry_changed(topic, &mut state);
         }
         Ok(true)
     }
@@ -3317,6 +3436,17 @@ impl Messages {
                 previous_deliveries,
                 band,
             });
+        }
+        // The table write is part of the delivery: if it fails, the delivery is undone before the
+        // answer.
+        if let Err(e) = self.flush_expiry(name, &mut state) {
+            for candidate in &out {
+                state
+                    .index
+                    .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
+            }
+            self.ready_changed(name, &mut state);
+            return Err(self.disk_error("failed to write the expiry table", &e));
         }
         self.ready_changed(name, &mut state);
         Ok(out)

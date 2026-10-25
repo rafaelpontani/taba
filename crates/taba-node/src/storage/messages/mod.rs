@@ -121,6 +121,11 @@ const SCHEMA: &str = "
         key   TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
     ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS expiry (
+        invisible_until INTEGER NOT NULL,
+        id              TEXT NOT NULL,
+        PRIMARY KEY (invisible_until, id)
+    ) WITHOUT ROWID;
 ";
 
 /// Key of the `topic_meta` table that holds the `topicId` the folder was created for (doc 07, section 10.6).
@@ -396,6 +401,77 @@ impl MessageStore {
                     meta.receipt_token
                 ],
             )
+            .map_err(to_io)?;
+        Ok(())
+    }
+
+    /// Applies in order the operations on the `expiry` table (the invisible pairs that did not fit
+    /// in the owner's list): `true` writes the pair, `false` deletes it. All in one transaction.
+    pub fn expiry_apply(&self, topic: &str, ops: &[(bool, u64, String)]) -> io::Result<()> {
+        if ops.is_empty() {
+            return Ok(());
+        }
+        let Some(disk) = self.disk(topic, true)? else {
+            return Ok(());
+        };
+        let mut conn = disk.conn();
+        let tx = conn.transaction().map_err(to_io)?;
+        for (put, until, id) in ops {
+            if *put {
+                tx.execute(
+                    "INSERT OR REPLACE INTO expiry (invisible_until, id) VALUES (?1, ?2)",
+                    params![*until as i64, id],
+                )
+            } else {
+                tx.execute(
+                    "DELETE FROM expiry WHERE invisible_until = ?1 AND id = ?2",
+                    params![*until as i64, id],
+                )
+            }
+            .map_err(to_io)?;
+        }
+        tx.commit().map_err(to_io)
+    }
+
+    /// The `limit` pairs of the `expiry` table with the earliest deadline (ordered query by the table's
+    /// own key).
+    pub fn expiry_earliest(&self, topic: &str, limit: usize) -> io::Result<Vec<(u64, String)>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(Vec::new());
+        };
+        let conn = disk.conn();
+        let mut stmt = conn
+            .prepare("SELECT invisible_until, id FROM expiry ORDER BY invisible_until, id LIMIT ?1")
+            .map_err(to_io)?;
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?))
+            })
+            .map_err(to_io)?;
+        rows.collect::<Result<_, _>>().map_err(to_io)
+    }
+
+    /// How many pairs the `expiry` table holds.
+    pub fn expiry_count(&self, topic: &str) -> io::Result<u64> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(0);
+        };
+        let conn = disk.conn();
+        conn.query_row("SELECT COUNT(*) FROM expiry", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map(|n| n as u64)
+        .map_err(to_io)
+    }
+
+    /// Empties the `expiry` table: it is derived state and is rebuilt from the messages when the topic
+    /// is opened.
+    pub fn expiry_clear(&self, topic: &str) -> io::Result<()> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(());
+        };
+        disk.conn()
+            .execute("DELETE FROM expiry", [])
             .map_err(to_io)?;
         Ok(())
     }

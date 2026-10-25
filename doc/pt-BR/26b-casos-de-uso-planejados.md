@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-24):** **134** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-24):** **117** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -33,9 +33,9 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 29 |
 | `ANE` | Anel de hash, blocos e papéis | 3 | 8 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 10 | 21 |
-| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 19 | 11 |
-| `INV` | Invisibilidade no dono e nas réplicas | 15 | 16 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 7 | 22 |
+| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 13 | 17 |
+| `INV` | Invisibilidade no dono e nas réplicas | 5 | 26 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 6 | 23 |
 | `ING` | Entrada de nó (bootstrap) | 3 | 31 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 1 | 32 |
 | `FRZ` | Período de freezing | 0 | 13 |
@@ -639,61 +639,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
-### UC-ENT-008
-
-**Caso:** A lista de prontos é mantida por tópico em cada nó, em memória, com `delivery.ready-list.size` IDs (padrão 1000).  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de prontos limitada (`delivery.ready-list.size`) com reposição por cursores. Hoje o índice é completo em memória e o parâmetro é lido e ignorado.  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-009
-
-**Caso:** Uma thread repõe a lista quando o semáforo abre espaço (entrega commitada, ID que sai), repondo a quantidade que abriu, sem consultar à toa.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de prontos limitada (`delivery.ready-list.size`) com reposição por cursores. Hoje o índice é completo em memória e o parâmetro é lido e ignorado.  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-010
-
-**Caso:** A reposição segue a sanfona  
-**Então:** dois cursores sobre as mensagens do nó (da mais antiga para a frente e da mais nova para trás, por GUID v7, em memória e em disco), alternando as duas pontas.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de prontos limitada (`delivery.ready-list.size`) com reposição por cursores. Hoje o índice é completo em memória e o parâmetro é lido e ignorado.  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-012
-
-**Caso:** Uma mensagem nova que chega ao dono entra direto na lista se há lugar e o cursor da ponta nova está no fim; senão é encontrada depois pela thread.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de prontos limitada (`delivery.ready-list.size`) com reposição por cursores. Hoje o índice é completo em memória e o parâmetro é lido e ignorado.  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-014
-
-**Caso:** A mensagem cuja invisibilidade vence volta à lista pela posição do GUID v7, **não** pela varredura; se a lista está cheia, o ID do **meio** sai para dar lugar e é reposto depois (nenhuma mensagem se perde).  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de prontos limitada (`delivery.ready-list.size`) com reposição por cursores. Hoje o índice é completo em memória e o parâmetro é lido e ignorado.  
-**Fonte histórica:** 13 §12.6, 14 §13.6
-
----
-
-### UC-ENT-015
-
-**Caso:** O `GET` só consulta a lista, sem varrer memória e disco a cada chamada.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de prontos limitada (`delivery.ready-list.size`) com reposição por cursores. Hoje o índice é completo em memória e o parâmetro é lido e ignorado.  
-**Fonte histórica:** 13 §12.6
-
----
-
 ### UC-ENT-016
 
 **Caso:** Cenário 1  
@@ -816,101 +761,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-INV-017
-
-**Caso:** A thread do dono olha a cabeça da lista de invisíveis, dorme até o prazo dela (com um teto curto para reagir a alterações e entradas mais cedo) e, no vencimento, remove a entrada e **confere** nos metadados  
-**Então:** a mensagem ainda existe, o nó ainda é dono e o prazo ainda é o da entrada; senão descarta e segue.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-018
-
-**Caso:** Passada a conferência, a mensagem entra na lista de prontos pela posição do GUID v7 (perto da ponta antiga); com a lista cheia, o ID do meio sai.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-021
-
-**Caso:** Se a lista de invisíveis esvazia e ainda há linhas na tabela de expiração, a thread faz a recarga antes de dormir.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-022
-
-**Caso:** A lista de invisíveis é, por tópico e só no dono, uma lista de pares (ID, `invisibleUntil`) ordenada por prazo, com no máximo `delivery.invisible-list.size` entradas; busca por ID para alteração e ack.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.4
-
----
-
-### UC-INV-023
-
-**Caso:** Regra de inclusão com a lista cheia  
-**Então:** se o prazo novo é **anterior** ao último da lista, o par novo entra e o último vai para a tabela; senão o par novo vai direto para a tabela.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-024
-
-**Caso:** Invariante  
-**Então:** tudo na lista vence antes de tudo na tabela; a thread nunca consulta a tabela enquanto a lista não esvazia.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-025
-
-**Caso:** Recarga  
-**Então:** abaixo de `delivery.invisible.reload-threshold` (ou vazia), a thread lê da tabela os pares de menor `invisibleUntil` (consulta ordenada com limite pelo índice), move-os para a lista e apaga as linhas lidas.  
-**Nível:** U, I  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-026
-
-**Caso:** Sem entradas velhas  
-**Então:** ack, alteração e nova entrega apagam ou atualizam a linha da tabela no mesmo commit que atualiza a lista. Não há remoção preguiçosa.  
-**Nível:** U, I  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-027
-
-**Caso:** A gravação na tabela faz parte do commit no dono  
-**Então:** se falhar, o commit não se completa e a entrega é desfeita antes da resposta ao cliente.  
-**Nível:** I  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-028
-
-**Caso:** Com a lista com espaço, nenhuma escrita além dos metadados.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: a lista de invisíveis com teto (`delivery.invisible-list.size`), a tabela `expiry` e a recarga. Hoje a lista é um conjunto em memória, sem teto, e os dois parâmetros são lidos e ignorados.  
-**Fonte histórica:** 14 §13.5
-
----
-
 ### UC-INV-031
 
 **Caso:** Reinício  
@@ -922,14 +772,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 
 ## ARM: Armazenamento: memória, overflow, SQLite, integridade
-
-### UC-ARM-012
-
-**Caso:** A tabela `expiry` guarda os pares que não couberam na lista de invisíveis, com índice por prazo.  
-**Nível:** I  
-**Fonte histórica:** 02 §3.2, 14 §13.5
-
----
 
 ### UC-ARM-016
 

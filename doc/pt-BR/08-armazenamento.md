@@ -93,7 +93,7 @@ Uma definição de tópico ou de token é um dado **pequeno, raro de mudar e do 
 
 ## O que se refaz na partida
 
-A **lista de prontos**, a **lista de invisíveis**, as **contagens por grupo** e as **taxas** são **derivadas** dos metadados e reconstruídas quando o tópico é aberto (reinício ou novo dono). Não se guardam. A lista de invisíveis é **completa** e derivada do `invisible_until` das mensagens; por isso **a tabela `expiry`** que a documentação histórica cita **não existe** no código (pendência D82).
+A **lista de prontos**, a **lista de invisíveis**, as **contagens por grupo** e as **taxas** são **derivadas** dos metadados e reconstruídas quando o tópico é aberto (reinício ou novo dono). Não se guardam. A lista de invisíveis tem teto (`delivery.invisible-list.size`); os pares que não cabem ficam na tabela **`expiry`** do banco do tópico (`invisible_until`, `id`, chave pelo prazo), que também é derivada: é esvaziada e refeita dos metadados quando o tópico é aberto.
 
 ## Banco de eventos (`_sync/sync.db`)
 

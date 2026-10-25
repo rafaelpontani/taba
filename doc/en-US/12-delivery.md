@@ -85,7 +85,7 @@ Per topic and per node, the **list of ready IDs** that the node owns.
 - **When memory is short**, what leaves first is what is being processed and, afterwards, the **middle** of the ready list (the last one the accordion would reach); the ends stay, being the next to deliver.
 - The index is **derived** from the metadata: rebuilt when the topic is opened (restart or new owner).
 
-> **How the code is today (differs from the historical documentation).** The index (`engine/messages/index`) keeps **all** the owner's ready and invisible messages in memory (ordered sets), and there is no task that refills a fixed-size list. The parameters `delivery.ready-list.size`, `delivery.invisible-list.size` and `delivery.invisible.reload-threshold` are **accepted but have no effect** (see [22-configuration.md](22-configuration.md) and [31-pending-items.md](31-pending-items.md)). The `expiry` table does not exist either.
+> **How the code is.** The index (`engine/messages/index`) keeps the **exact counters** (ready, in processing, per group) and two **bounded** lists. The **ready list** is a window of `delivery.ready-list.size` IDs, refilled by two cursors (from the oldest forward and from the newest backward, by GUID v7, alternating the ends) only when room opens; a message that returns to the list enters by the position of its GUID v7 and, with the window full, the ID at the middle leaves and is found again by the cursor. The **invisible list** holds up to `delivery.invisible-list.size` pairs (ID, deadline) by deadline; what does not fit goes to the `expiry` table of the topic database, and the list is reloaded from it below `delivery.invisible.reload-threshold`. The index's message map (group, deadline, age, deliveries, about 150 bytes per message) is still **complete** in memory (D88).
 
 ## Change the invisibility
 
@@ -243,7 +243,8 @@ The `take` and the weighted draw between nodes **do not change**: fairness is ap
 - **D96:** who fixes the deadline of `PUT visibility` and of the ack, and the forwarding deadline, still has open points.
 - **D109:** the channel constants (10 s of notice validity, 3 consecutive `not-member`) are in the code.
 - **D113:** the FIFO receipt carries the group position (decided in the implementation).
-- Parameters with no effect today: `delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.reload-threshold`.
+- The index's message map is still complete in memory: only the lists have a ceiling (D88).
+- The write to the `expiry` table undoes the delivery if it fails (single-node path); on deadline changes and on the ack the write is tried in the same step and, if it fails, the pair stays queued and is retried on the next change.
 
 ## Sources and evidence
 

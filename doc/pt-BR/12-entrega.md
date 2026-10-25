@@ -85,7 +85,7 @@ Por tópico e por nó, a **lista de IDs prontos** de que o nó é dono.
 - **Quando falta lugar na memória**, quem sai primeiro é o que está em processamento e, depois, o **meio** da lista de prontos (o último que a sanfona alcançaria); as pontas ficam, por serem as próximas a entregar.
 - O índice é **derivado** dos metadados: refeito quando o tópico é aberto (reinício ou novo dono).
 
-> **Como o código está hoje (diverge da doc histórica).** O índice (`engine/messages/index`) mantém **todas** as mensagens prontas e invisíveis do dono em memória (conjuntos ordenados), e não há uma tarefa que reponha uma lista de tamanho fixo. Os parâmetros `delivery.ready-list.size`, `delivery.invisible-list.size` e `delivery.invisible.reload-threshold` são **aceitos mas sem efeito** (ver [22-configuracao.md](22-configuracao.md) e [31-pendencias.md](31-pendencias.md)). A tabela `expiry` também não existe.
+> **Como o código é.** O índice (`engine/messages/index`) guarda os **contadores exatos** (prontas, em processamento, por grupo) e duas listas **limitadas**. A **lista de prontas** é uma janela de `delivery.ready-list.size` IDs, reposta por dois cursores (do mais antigo para a frente e do mais novo para trás, por GUID v7, alternando as pontas) só quando abre lugar; a mensagem que volta à lista entra pela posição do GUID v7 e, com a janela cheia, o ID do meio sai e é reencontrado pelo cursor. A **lista de invisíveis** guarda até `delivery.invisible-list.size` pares (ID, prazo) por prazo; o que não cabe vai para a tabela `expiry` do banco do tópico, e a lista é recarregada dela abaixo de `delivery.invisible.reload-threshold`. O mapa de mensagens do índice (grupo, prazo, idade, entregas, uns 150 bytes por mensagem) continua **completo** em memória (D88).
 
 ## Alterar a invisibilidade
 
@@ -243,7 +243,8 @@ O `take` e o sorteio com peso entre nós **não mudam**: a justiça é aplicada 
 - **D96:** quem fixa o prazo do `PUT visibility` e do ack, e o prazo do repasse, ainda tem pontos em aberto.
 - **D109:** as constantes do canal (10 s de validade do aviso, 3 `not-member` seguidos) estão no código.
 - **D113:** o recibo da FIFO carrega a posição do grupo (decidido na implementação).
-- Parâmetros sem efeito hoje: `delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.reload-threshold`.
+- O mapa de mensagens do índice continua completo em memória: só as listas têm teto (D88).
+- A gravação na tabela `expiry` desfaz a entrega se falhar (caminho de um nó); nas mudanças de prazo e no ack a gravação é tentada no mesmo passo e, se falhar, o par fica na fila e é repetido na próxima mudança.
 
 ## Fontes e provas
 

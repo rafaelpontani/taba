@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **775** de **909** casos têm ao menos um teste (85.3%); **134** não têm; **42** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **792** de **909** casos têm ao menos um teste (87.1%); **117** não têm; **42** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -38,10 +38,10 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 29 | 9 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 23 | 11 |
-| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 11 | 20 |
+| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 17 | 14 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
-| `INV` | Invisibilidade no dono e nas réplicas | 16 | 16 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 22 | 7 |
+| `INV` | Invisibilidade no dono e nas réplicas | 26 | 6 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 23 | 6 |
 | `ING` | Entrada de nó (bootstrap) | 33 | 4 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
@@ -4898,6 +4898,35 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ENT-008
+
+**Caso:** A lista de prontos é mantida por tópico em cada nó, em memória, com `delivery.ready-list.size` IDs (padrão 1000).  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_ready_list_holds_at_most_the_configured_size_and_the_counters_stay_exact`
+  - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
+
+---
+
+### UC-ENT-009
+
+**Caso:** Uma thread repõe a lista quando o semáforo abre espaço (entrega commitada, ID que sai), repondo a quantidade que abriu, sem consultar à toa.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::only_the_room_that_opened_is_refilled_and_a_full_list_costs_nothing`
+
+---
+
+### UC-ENT-010
+
+**Caso:** A reposição segue a sanfona  
+**Então:** dois cursores sobre as mensagens do nó (da mais antiga para a frente e da mais nova para trás, por GUID v7, em memória e em disco), alternando as duas pontas.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_refill_walks_two_cursors_alternating_the_oldest_and_the_newest_end`
+
+---
+
 ### UC-ENT-011
 
 **Caso:** A entrega consome as duas pontas de forma **intercalada**  
@@ -4908,12 +4937,40 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-ENT-012
+
+**Caso:** Uma mensagem nova que chega ao dono entra direto na lista se há lugar e o cursor da ponta nova está no fim; senão é encontrada depois pela thread.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::a_new_message_enters_the_list_if_there_is_room_and_nothing_waits_else_the_cursor_finds_it`
+
+---
+
 ### UC-ENT-013
 
 **Caso:** Ao receber o commit de uma entrega, o nó remove o ID da lista. O primário está sempre no quórum, então a mensagem deixa de ser candidata a nova entrega no próprio nó que a entregou no mesmo instante em que o cliente a recebe.  
 **Nível:** C  
 **Testes:**
   - `src/engine/messages/tests/cluster.rs::a_candidate_is_reserved_until_the_quorum_commits_or_aborts`
+
+---
+
+### UC-ENT-014
+
+**Caso:** A mensagem cuja invisibilidade vence volta à lista pela posição do GUID v7, **não** pela varredura; se a lista está cheia, o ID do **meio** sai para dar lugar e é reposto depois (nenhuma mensagem se perde).  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full`
+
+---
+
+### UC-ENT-015
+
+**Caso:** O `GET` só consulta a lista, sem varrer memória e disco a cada chamada.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::choosing_the_next_message_only_reads_the_list_and_scans_nothing`
+  - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
 
 ---
 
@@ -5380,6 +5437,26 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-INV-017
+
+**Caso:** A thread do dono olha a cabeça da lista de invisíveis, dorme até o prazo dela (com um teto curto para reagir a alterações e entradas mais cedo) e, no vencimento, remove a entrada e **confere** nos metadados  
+**Então:** a mensagem ainda existe, o nó ainda é dono e o prazo ainda é o da entrada; senão descarta e segue.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_head_is_taken_out_and_checked_and_a_pair_that_is_not_the_messages_is_dropped`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+
+---
+
+### UC-INV-018
+
+**Caso:** Passada a conferência, a mensagem entra na lista de prontos pela posição do GUID v7 (perto da ponta antiga); com a lista cheia, o ID do meio sai.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::after_the_check_the_message_joins_the_ready_list_by_its_position_and_the_middle_leaves`
+
+---
+
 ### UC-INV-019
 
 **Caso:** Passada a conferência com `deliveryCount ≥ maxDeliveries`, a mensagem **não** volta à lista  
@@ -5397,7 +5474,89 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** U  
 **Testes:**
   - `src/engine/messages/index/tests.rs::in_a_fifo_queue_the_returning_message_is_the_group_head_and_frees_the_group`
-**Observação:** Não prova o trecho "sem a regra do meio da lista": a lista de prontos ainda não tem teto.
+  - `src/engine/messages/index/bounded_tests.rs::on_a_fifo_queue_the_ready_list_has_no_ceiling_and_no_middle_rule`
+
+---
+
+### UC-INV-021
+
+**Caso:** Se a lista de invisíveis esvazia e ainda há linhas na tabela de expiração, a thread faz a recarga antes de dormir.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::when_the_list_empties_with_pairs_in_the_table_the_reload_is_asked_for_before_sleeping`
+
+---
+
+### UC-INV-022
+
+**Caso:** A lista de invisíveis é, por tópico e só no dono, uma lista de pares (ID, `invisibleUntil`) ordenada por prazo, com no máximo `delivery.invisible-list.size` entradas; busca por ID para alteração e ack.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_invisible_list_is_ordered_by_deadline_with_a_ceiling_and_found_by_id`
+
+---
+
+### UC-INV-023
+
+**Caso:** Regra de inclusão com a lista cheia  
+**Então:** se o prazo novo é **anterior** ao último da lista, o par novo entra e o último vai para a tabela; senão o par novo vai direto para a tabela.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::with_a_full_list_an_earlier_deadline_enters_and_the_last_goes_to_the_table`
+
+---
+
+### UC-INV-024
+
+**Caso:** Invariante  
+**Então:** tudo na lista vence antes de tudo na tabela; a thread nunca consulta a tabela enquanto a lista não esvazia.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+
+---
+
+### UC-INV-025
+
+**Caso:** Recarga  
+**Então:** abaixo de `delivery.invisible.reload-threshold` (ou vazia), a thread lê da tabela os pares de menor `invisibleUntil` (consulta ordenada com limite pelo índice), move-os para a lista e apaga as linhas lidas.  
+**Nível:** U, I  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+  - `src/engine/messages/index/bounded_tests.rs::the_reload_starts_below_the_threshold_reads_the_earliest_and_deletes_the_rows_read`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+
+---
+
+### UC-INV-026
+
+**Caso:** Sem entradas velhas  
+**Então:** ack, alteração e nova entrega apagam ou atualizam a linha da tabela no mesmo commit que atualiza a lista. Não há remoção preguiçosa.  
+**Nível:** U, I  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+**Observação:** A mudança de prazo, o ack e a nova entrega apagam ou atualizam a linha no mesmo passo em que atualizam a lista; se a gravação falhar, o par fica na fila e é repetido na próxima mudança (só a entrega desfaz a operação, ver UC-INV-027).
+
+---
+
+### UC-INV-027
+
+**Caso:** A gravação na tabela faz parte do commit no dono  
+**Então:** se falhar, o commit não se completa e a entrega é desfeita antes da resposta ao cliente.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/expiry.rs::a_failed_table_write_undoes_the_delivery_before_the_answer`
+**Observação:** Provado no caminho de um nó (`take`); o caminho do cluster (`take_candidates`) aplica a mesma regra, mas ainda não tem teste.
+
+---
+
+### UC-INV-028
+
+**Caso:** Com a lista com espaço, nenhuma escrita além dos metadados.  
+**Nível:** U  
+**Testes:**
+  - `src/engine/messages/index/bounded_tests.rs::with_room_in_the_list_nothing_is_written_beyond_the_metadata`
 
 ---
 
@@ -5542,6 +5701,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/storage/messages/tests.rs::a_message_is_a_body_file_plus_a_row_in_the_topic_database`
   - `src/storage/messages/tests.rs::a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place`
+
+---
+
+### UC-ARM-012
+
+**Caso:** A tabela `expiry` guarda os pares que não couberam na lista de invisíveis, com índice por prazo.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/storage/messages/tests.rs::the_expiry_table_keeps_the_pairs_that_did_not_fit_ordered_by_deadline`
 
 ---
 

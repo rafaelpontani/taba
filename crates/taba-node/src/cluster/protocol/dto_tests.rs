@@ -318,7 +318,10 @@ fn an_invalid_body_on_a_cluster_route_is_a_400_with_a_validation_code() {
 
     // The query of a stream is validated the same way.
     let query = |path: &str| Request::from_http("GET", path, &[], b"").unwrap_err().code;
-    assert_eq!(query("/cluster/topics?limit=abc"), ErrorCode::ValidationFailed);
+    assert_eq!(
+        query("/cluster/topics?limit=abc"),
+        ErrorCode::ValidationFailed
+    );
     assert_eq!(
         query("/cluster/topics?sort=id"),
         ErrorCode::ValidationUnknownField
@@ -388,12 +391,7 @@ fn the_cluster_dtos_have_the_documented_fields_and_types() {
     .unwrap();
     assert_eq!(apply.body, Value::Null);
     assert!(!apply.relay);
-    assert!(
-        serde_json::to_value(&apply)
-            .unwrap()
-            .get("relay")
-            .is_none()
-    );
+    assert!(serde_json::to_value(&apply).unwrap().get("relay").is_none());
 
     // A field the DTO does not define is refused, whatever the DTO.
     assert!(
@@ -402,10 +400,12 @@ fn the_cluster_dtos_have_the_documented_fields_and_types() {
         )
         .is_err()
     );
-    assert!(serde_json::from_value::<Member>(json!({
-        "nodeId": guid(1), "addresses": [], "port": 1, "state": "dormant"
-    }))
-    .is_err());
+    assert!(
+        serde_json::from_value::<Member>(json!({
+            "nodeId": guid(1), "addresses": [], "port": 1, "state": "dormant"
+        }))
+        .is_err()
+    );
 
     // `TokenRecord`: the salt and the salted hash, never the secret.
     let token = TokenRecord {
@@ -485,8 +485,13 @@ fn the_stream_query_carries_from_to_and_limit_and_all_three_are_optional() {
         }
     );
 
-    let bare = Request::from_http("GET", &format!("/cluster/blocks/{block}/messages"), &[], b"")
-        .unwrap();
+    let bare = Request::from_http(
+        "GET",
+        &format!("/cluster/blocks/{block}/messages"),
+        &[],
+        b"",
+    )
+    .unwrap();
     assert_eq!(
         bare,
         Request::BlockMessages {
@@ -539,7 +544,10 @@ fn the_stream_query_carries_from_to_and_limit_and_all_three_are_optional() {
 fn a_stretch_names_the_last_id_to_resume_from_and_the_resumption_asks_for_it_again() {
     let (a, b, c) = (guid(1), guid(2), guid(3));
     let page = StreamPage::new(
-        vec![json!({"id": a, "topic": "t"}), json!({"id": b, "topic": "t"})],
+        vec![
+            json!({"id": a, "topic": "t"}),
+            json!({"id": b, "topic": "t"}),
+        ],
         true,
     );
     assert_eq!(page.end.last.as_deref(), Some(b.as_str()));

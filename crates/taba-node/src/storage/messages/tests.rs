@@ -466,3 +466,50 @@ fn the_delivery_metadata_lives_in_the_message_row_and_survives_a_reopening() {
     assert_eq!(read, m);
     assert_eq!(reopened.count("t").unwrap(), 1, "no side record");
 }
+
+/// UC: UC-ARM-012
+#[test]
+fn the_expiry_table_keeps_the_pairs_that_did_not_fit_ordered_by_deadline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    store
+        .expiry_apply(
+            "orders",
+            &[
+                (true, 300, "c".into()),
+                (true, 100, "a".into()),
+                (true, 200, "b".into()),
+                (true, 100, "z".into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(store.expiry_count("orders").unwrap(), 4);
+    // The earliest first, with a limit, by the table's own key.
+    assert_eq!(
+        store.expiry_earliest("orders", 3).unwrap(),
+        [
+            (100, "a".to_owned()),
+            (100, "z".to_owned()),
+            (200, "b".to_owned())
+        ]
+    );
+    // Operations apply in order: a delete then a put of the same pair leaves it there.
+    store
+        .expiry_apply(
+            "orders",
+            &[
+                (false, 100, "a".into()),
+                (true, 100, "a".into()),
+                (false, 300, "c".into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(store.expiry_count("orders").unwrap(), 3);
+    // The table is derived: clearing it leaves the messages alone.
+    store.expiry_clear("orders").unwrap();
+    assert_eq!(store.expiry_count("orders").unwrap(), 0);
+    assert!(store.expiry_earliest("orders", 10).unwrap().is_empty());
+    // A topic without a folder has an empty table and reading creates nothing.
+    assert_eq!(store.expiry_count("nothing").unwrap(), 0);
+    assert!(!tmp.path().join(dir_name("nothing")).exists());
+}

@@ -204,10 +204,7 @@ fn from_is_inclusive_and_limit_lowers_the_ceiling_of_the_definition_streams() {
         names(Some(third.id.as_str()), 10),
         (vec!["c".to_owned()], false)
     );
-    assert_eq!(
-        names(None, 2),
-        (vec!["a".to_owned(), "b".to_owned()], true)
-    );
+    assert_eq!(names(None, 2), (vec!["a".to_owned(), "b".to_owned()], true));
 
     // `limit` of the query lowers the ceiling of 500 lines, never raises it; never below 2.
     let page = |limit: Option<u32>| {

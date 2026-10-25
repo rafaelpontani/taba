@@ -6,6 +6,7 @@ fn rules(weight: f64, max_groups: Option<usize>, normal_every: u32) -> IndexRule
         max_groups,
         normal_every,
         fifo: false,
+        ..IndexRules::default()
     }
 }
 
@@ -319,6 +320,7 @@ fn fifo_index() -> TopicIndex {
         max_groups: Some(1),
         normal_every: 3,
         fifo: true,
+        ..IndexRules::default()
     })
 }
 

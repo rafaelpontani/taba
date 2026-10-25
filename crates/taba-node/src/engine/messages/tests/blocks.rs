@@ -317,7 +317,12 @@ async fn from_and_to_are_inclusive_and_limit_lowers_the_ceiling_of_the_block_str
     let all = [(0, u64::MAX)];
     let entries = |from: Option<&String>, to: Option<&String>, limit: usize| -> Vec<String> {
         h.messages
-            .block_entries(&all, from.map(String::as_str), to.map(String::as_str), limit)
+            .block_entries(
+                &all,
+                from.map(String::as_str),
+                to.map(String::as_str),
+                limit,
+            )
             .unwrap()
             .into_iter()
             .map(|entry| entry.id)
@@ -392,16 +397,15 @@ async fn resuming_from_the_last_id_repeats_that_line_and_the_receiver_ignores_it
                 .unwrap()
         })
         .collect();
-    assert_eq!(
-        outcomes,
-        [
-            Loaded::Existing,
-            Loaded::Stored,
-            Loaded::Stored
-        ]
-    );
+    assert_eq!(outcomes, [Loaded::Existing, Loaded::Stored, Loaded::Stored]);
     for id in &ids {
-        assert!(receiver.messages.message_info("orders", id).unwrap().is_some());
+        assert!(
+            receiver
+                .messages
+                .message_info("orders", id)
+                .unwrap()
+                .is_some()
+        );
     }
     let (all_copies, _) = receiver
         .messages

@@ -93,7 +93,7 @@ A topic or token definition is **small data, rarely changed and of interest to t
 
 ## What is rebuilt at start
 
-The **ready list**, the **invisible list**, the **per-group counts** and the **rates** are **derived** from the metadata and rebuilt when the topic is opened (restart or new owner). They are not stored. The invisible list is **complete** and derived from the `invisible_until` of the messages; that is why **the `expiry` table** that the historical documentation mentions **does not exist** in the code (pending item D82).
+The **ready list**, the **invisible list**, the **per-group counts** and the **rates** are **derived** from the metadata and rebuilt when the topic is opened (restart or new owner). They are not stored. The invisible list has a ceiling (`delivery.invisible-list.size`); the pairs that do not fit stay in the **`expiry`** table of the topic database (`invisible_until`, `id`, keyed by the deadline), which is also derived: it is emptied and rebuilt from the metadata when the topic is opened.
 
 ## Event database (`_sync/sync.db`)
 

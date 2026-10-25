@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **775** of **909** cases have at least one test (85.3%); **134** do not; **42** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **792** of **909** cases have at least one test (87.1%); **117** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -38,10 +38,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 29 | 9 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
 | `DEF` | Topic and token definition replicated in the cluster | 23 | 11 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 11 | 20 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 17 | 14 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
-| `INV` | Invisibility on the owner and on the replicas | 16 | 16 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 22 | 7 |
+| `INV` | Invisibility on the owner and on the replicas | 26 | 6 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 23 | 6 |
 | `ING` | Node join (bootstrap) | 33 | 4 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
@@ -4898,6 +4898,35 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ENT-008
+
+**Case:** The ready list is kept per topic on each node, in memory, with `delivery.ready-list.size` IDs (default 1000).  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_ready_list_holds_at_most_the_configured_size_and_the_counters_stay_exact`
+  - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
+
+---
+
+### UC-ENT-009
+
+**Case:** A thread refills the list when the semaphore opens room (committed delivery, ID leaving), refilling the amount that opened, without querying for nothing.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::only_the_room_that_opened_is_refilled_and_a_full_list_costs_nothing`
+
+---
+
+### UC-ENT-010
+
+**Case:** The refill follows the accordion  
+**Then:** two cursors over the node's messages (from the oldest forwards and from the newest backwards, by GUID v7, in memory and on disk), alternating the two ends.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_refill_walks_two_cursors_alternating_the_oldest_and_the_newest_end`
+
+---
+
 ### UC-ENT-011
 
 **Case:** Delivery consumes the two ends **interleaved**  
@@ -4908,12 +4937,40 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ENT-012
+
+**Case:** A new message that arrives at the owner enters the list directly if there is room and the new-end cursor is at the end; otherwise it is found later by the thread.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::a_new_message_enters_the_list_if_there_is_room_and_nothing_waits_else_the_cursor_finds_it`
+
+---
+
 ### UC-ENT-013
 
 **Case:** On receiving the commit of a delivery, the node removes the ID from the list. The primary is always in the quorum, so the message stops being a candidate for a new delivery on the very node that delivered it at the same instant the client receives it.  
 **Level:** C  
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::a_candidate_is_reserved_until_the_quorum_commits_or_aborts`
+
+---
+
+### UC-ENT-014
+
+**Case:** The message whose invisibility expires returns to the list by the GUID v7 position, **not** by the scan; if the list is full, the **middle** ID leaves to make room and is refilled later (no message is lost).  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full`
+
+---
+
+### UC-ENT-015
+
+**Case:** The `GET` only queries the list, without scanning memory and disk at each call.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::choosing_the_next_message_only_reads_the_list_and_scans_nothing`
+  - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
 
 ---
 
@@ -5380,6 +5437,26 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-INV-017
+
+**Case:** The owner's thread looks at the head of the invisible list, sleeps until its deadline (with a short ceiling to react to changes and earlier entries) and, on expiry, removes the entry and **checks** the metadata  
+**Then:** the message still exists, the node is still the owner and the deadline is still the entry's; otherwise it discards and moves on.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_head_is_taken_out_and_checked_and_a_pair_that_is_not_the_messages_is_dropped`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+
+---
+
+### UC-INV-018
+
+**Case:** After the check, the message enters the ready list by the GUID v7 position (near the old end); with the list full, the middle ID leaves.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::after_the_check_the_message_joins_the_ready_list_by_its_position_and_the_middle_leaves`
+
+---
+
 ### UC-INV-019
 
 **Case:** Once the check passes with `deliveryCount ≥ maxDeliveries`, the message does **not** return to the list  
@@ -5397,7 +5474,89 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** U  
 **Tests:**
   - `src/engine/messages/index/tests.rs::in_a_fifo_queue_the_returning_message_is_the_group_head_and_frees_the_group`
-**Note:** It does not prove the "without the middle-of-the-list rule" part: the ready list has no ceiling yet.
+  - `src/engine/messages/index/bounded_tests.rs::on_a_fifo_queue_the_ready_list_has_no_ceiling_and_no_middle_rule`
+
+---
+
+### UC-INV-021
+
+**Case:** If the invisible list empties and there are still rows in the expiry table, the thread does the reload before sleeping.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::when_the_list_empties_with_pairs_in_the_table_the_reload_is_asked_for_before_sleeping`
+
+---
+
+### UC-INV-022
+
+**Case:** The invisible list is, per topic and only on the owner, a list of (ID, `invisibleUntil`) pairs ordered by deadline, with at most `delivery.invisible-list.size` entries; lookup by ID for change and ack.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_invisible_list_is_ordered_by_deadline_with_a_ceiling_and_found_by_id`
+
+---
+
+### UC-INV-023
+
+**Case:** Inclusion rule with the list full  
+**Then:** if the new deadline is **earlier** than the last one in the list, the new pair enters and the last goes to the table; otherwise the new pair goes straight to the table.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::with_a_full_list_an_earlier_deadline_enters_and_the_last_goes_to_the_table`
+
+---
+
+### UC-INV-024
+
+**Case:** Invariant  
+**Then:** everything in the list expires before everything in the table; the thread never queries the table while the list does not empty.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+
+---
+
+### UC-INV-025
+
+**Case:** Reload  
+**Then:** below `delivery.invisible.reload-threshold` (or empty), the thread reads from the table the pairs with the lowest `invisibleUntil` (an ordered query with a limit by the index), moves them to the list and deletes the rows read.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+  - `src/engine/messages/index/bounded_tests.rs::the_reload_starts_below_the_threshold_reads_the_earliest_and_deletes_the_rows_read`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+
+---
+
+### UC-INV-026
+
+**Case:** No old entries  
+**Then:** ack, change and new delivery delete or update the table row in the same commit that updates the list. There is no lazy removal.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+**Note:** A deadline change, the ack and a new delivery delete or update the row in the same step that updates the list; if the write fails, the pair stays queued and is retried on the next change (only the delivery undoes the operation, see UC-INV-027).
+
+---
+
+### UC-INV-027
+
+**Case:** The write to the table is part of the commit on the owner  
+**Then:** if it fails, the commit does not complete and the delivery is undone before the response to the client.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/expiry.rs::a_failed_table_write_undoes_the_delivery_before_the_answer`
+**Note:** Proven on the single-node path (`take`); the cluster path (`take_candidates`) applies the same rule but has no test yet.
+
+---
+
+### UC-INV-028
+
+**Case:** With room in the list, no write beyond the metadata.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::with_room_in_the_list_nothing_is_written_beyond_the_metadata`
 
 ---
 
@@ -5542,6 +5701,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/storage/messages/tests.rs::a_message_is_a_body_file_plus_a_row_in_the_topic_database`
   - `src/storage/messages/tests.rs::a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place`
+
+---
+
+### UC-ARM-012
+
+**Case:** The `expiry` table stores the pairs that did not fit in the invisible list, with an index by deadline.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/storage/messages/tests.rs::the_expiry_table_keeps_the_pairs_that_did_not_fit_ordered_by_deadline`
 
 ---
 

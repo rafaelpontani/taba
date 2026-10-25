@@ -2736,6 +2736,7 @@ mod stats_events;
 mod backup;
 mod blocks;
 mod cluster;
+mod expiry;
 mod hold;
 mod lives;
 mod prune;

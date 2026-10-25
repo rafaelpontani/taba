@@ -65,7 +65,10 @@ fn the_cluster_view_adds_what_each_primary_counts_and_takes_the_oldest_date() {
         Vec::new(),
     );
     let seen = &source.queues["orders"];
-    assert_eq!((seen.visible, seen.invisible, seen.oldest_ms), (7, 3, Some(1_000)));
+    assert_eq!(
+        (seen.visible, seen.invisible, seen.oldest_ms),
+        (7, 3, Some(1_000))
+    );
     assert_eq!(source.memory_total, 300);
     assert!(!source.partial());
 

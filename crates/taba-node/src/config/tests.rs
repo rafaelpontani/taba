@@ -866,7 +866,10 @@ fn the_stream_line_limit_is_exactly_the_hard_limit_in_base64_plus_the_envelope()
     assert!(with_line(needed).is_ok(), "the exact size fits");
     assert!(with_line(needed * 4).is_ok());
     let refused = problems(with_line(needed - 1));
-    assert!(refused.contains("cluster.sync.stream.max-line-bytes"), "{refused}");
+    assert!(
+        refused.contains("cluster.sync.stream.max-line-bytes"),
+        "{refused}"
+    );
     assert!(refused.contains(&needed.to_string()), "{refused}");
     // The raw bytes of the hard limit are not enough: the base64 grows them by a third.
     assert!(problems(with_line(1_048_576 + 4_096)).contains("max-line-bytes"));

@@ -818,7 +818,14 @@ async fn the_cluster_definition_is_the_topic_json_without_effective_dead_letter_
         assert!(wire.get(derived).is_none(), "{derived}");
     }
     assert_eq!(&TopicDefinition::from_json(&wire).unwrap(), orders);
-    assert!(h.topics.get("orders").unwrap().to_json().get("effective").is_some());
+    assert!(
+        h.topics
+            .get("orders")
+            .unwrap()
+            .to_json()
+            .get("effective")
+            .is_some()
+    );
     let dead = h.topics.get("orders-dead-letter").unwrap().to_json();
     assert_eq!(dead["deadLetter"], true);
     assert_eq!(dead["source"], "orders");

@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-24):** **134** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **117** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -33,9 +33,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
 | `ANE` | Hash ring, blocks and roles | 3 | 8 |
 | `DEF` | Topic and token definition replicated in the cluster | 10 | 21 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 19 | 11 |
-| `INV` | Invisibility on the owner and on the replicas | 15 | 16 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 7 | 22 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 13 | 17 |
+| `INV` | Invisibility on the owner and on the replicas | 5 | 26 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 6 | 23 |
 | `ING` | Node join (bootstrap) | 3 | 31 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 1 | 32 |
 | `FRZ` | Freezing period | 0 | 13 |
@@ -639,61 +639,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ---
 
 
-### UC-ENT-008
-
-**Case:** The ready list is kept per topic on each node, in memory, with `delivery.ready-list.size` IDs (default 1000).  
-**Level:** U  
-**Blocked:** Depends on implementation: the bounded ready list (`delivery.ready-list.size`) with cursor-based refill. Today the index is complete in memory and the parameter is read and ignored.  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-009
-
-**Case:** A thread refills the list when the semaphore opens room (committed delivery, ID leaving), refilling the amount that opened, without querying for nothing.  
-**Level:** U  
-**Blocked:** Depends on implementation: the bounded ready list (`delivery.ready-list.size`) with cursor-based refill. Today the index is complete in memory and the parameter is read and ignored.  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-010
-
-**Case:** The refill follows the accordion  
-**Then:** two cursors over the node's messages (from the oldest forwards and from the newest backwards, by GUID v7, in memory and on disk), alternating the two ends.  
-**Level:** U  
-**Blocked:** Depends on implementation: the bounded ready list (`delivery.ready-list.size`) with cursor-based refill. Today the index is complete in memory and the parameter is read and ignored.  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-012
-
-**Case:** A new message that arrives at the owner enters the list directly if there is room and the new-end cursor is at the end; otherwise it is found later by the thread.  
-**Level:** U  
-**Blocked:** Depends on implementation: the bounded ready list (`delivery.ready-list.size`) with cursor-based refill. Today the index is complete in memory and the parameter is read and ignored.  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-014
-
-**Case:** The message whose invisibility expires returns to the list by the GUID v7 position, **not** by the scan; if the list is full, the **middle** ID leaves to make room and is refilled later (no message is lost).  
-**Level:** U  
-**Blocked:** Depends on implementation: the bounded ready list (`delivery.ready-list.size`) with cursor-based refill. Today the index is complete in memory and the parameter is read and ignored.  
-**Historical source:** 13 §12.6, 14 §13.6
-
----
-
-### UC-ENT-015
-
-**Case:** The `GET` only queries the list, without scanning memory and disk at each call.  
-**Level:** U  
-**Blocked:** Depends on implementation: the bounded ready list (`delivery.ready-list.size`) with cursor-based refill. Today the index is complete in memory and the parameter is read and ignored.  
-**Historical source:** 13 §12.6
-
----
-
 ### UC-ENT-016
 
 **Case:** Scenario 1  
@@ -816,101 +761,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-INV-017
-
-**Case:** The owner's thread looks at the head of the invisible list, sleeps until its deadline (with a short ceiling to react to changes and earlier entries) and, on expiry, removes the entry and **checks** the metadata  
-**Then:** the message still exists, the node is still the owner and the deadline is still the entry's; otherwise it discards and moves on.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-018
-
-**Case:** After the check, the message enters the ready list by the GUID v7 position (near the old end); with the list full, the middle ID leaves.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-021
-
-**Case:** If the invisible list empties and there are still rows in the expiry table, the thread does the reload before sleeping.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-022
-
-**Case:** The invisible list is, per topic and only on the owner, a list of (ID, `invisibleUntil`) pairs ordered by deadline, with at most `delivery.invisible-list.size` entries; lookup by ID for change and ack.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.4
-
----
-
-### UC-INV-023
-
-**Case:** Inclusion rule with the list full  
-**Then:** if the new deadline is **earlier** than the last one in the list, the new pair enters and the last goes to the table; otherwise the new pair goes straight to the table.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-024
-
-**Case:** Invariant  
-**Then:** everything in the list expires before everything in the table; the thread never queries the table while the list does not empty.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-025
-
-**Case:** Reload  
-**Then:** below `delivery.invisible.reload-threshold` (or empty), the thread reads from the table the pairs with the lowest `invisibleUntil` (an ordered query with a limit by the index), moves them to the list and deletes the rows read.  
-**Level:** U, I  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-026
-
-**Case:** No old entries  
-**Then:** ack, change and new delivery delete or update the table row in the same commit that updates the list. There is no lazy removal.  
-**Level:** U, I  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-027
-
-**Case:** The write to the table is part of the commit on the owner  
-**Then:** if it fails, the commit does not complete and the delivery is undone before the response to the client.  
-**Level:** I  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-028
-
-**Case:** With room in the list, no write beyond the metadata.  
-**Level:** U  
-**Blocked:** Depends on implementation: the invisible list with a ceiling (`delivery.invisible-list.size`), the `expiry` table and the reload. Today the list is an in-memory set with no ceiling, and both parameters are read and ignored.  
-**Historical source:** 14 §13.5
-
----
-
 ### UC-INV-031
 
 **Case:** Restart  
@@ -922,14 +772,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## ARM: Storage: memory, overflow, SQLite, integrity
-
-### UC-ARM-012
-
-**Case:** The `expiry` table stores the pairs that did not fit in the invisible list, with an index by deadline.  
-**Level:** I  
-**Historical source:** 02 §3.2, 14 §13.5
-
----
 
 ### UC-ARM-016
 
