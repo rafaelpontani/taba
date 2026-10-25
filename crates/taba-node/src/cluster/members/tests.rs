@@ -645,3 +645,36 @@ fn the_freezing_of_a_node_learned_by_the_membership_frame_counts_from_the_instan
     );
     assert_eq!(membership.frozen_remaining("cc", at(12), freezing), None);
 }
+
+/// UC: UC-CLR-002
+#[test]
+fn a_registration_without_commit_or_rollback_expires_and_each_phase_repeats_by_its_operation_id() {
+    let membership = alone("a");
+    // Each phase repeated with the same `operationId` answers the same and changes nothing more.
+    membership
+        .register("op1", Change::Add(member("bb")), at(0))
+        .unwrap();
+    membership
+        .register("op1", Change::Add(member("bb")), at(1))
+        .unwrap();
+    let committed = membership.commit("op1", at(2)).unwrap();
+    assert_eq!(membership.commit("op1", at(3)).unwrap(), committed);
+    membership
+        .register("op2", Change::Add(member("ccc")), at(4))
+        .unwrap();
+    membership.rollback("op2", at(5)).unwrap();
+    membership.rollback("op2", at(6)).unwrap();
+    assert_eq!(membership.version(), Some(committed.version));
+
+    // Neither commit nor rollback: after the TTL the operation is unknown.
+    membership
+        .register("op3", Change::Add(member("dddd")), at(10))
+        .unwrap();
+    assert!(membership.has_pending(at(10) + TTL - Duration::from_secs(1)));
+    assert!(!membership.has_pending(at(10) + TTL));
+    assert_eq!(
+        membership.commit("op3", at(10) + TTL),
+        Err(MembershipError::UnknownOperation)
+    );
+    assert!(!membership.is_member("dddd"));
+}

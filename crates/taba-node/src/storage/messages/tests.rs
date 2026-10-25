@@ -444,3 +444,25 @@ fn the_folder_of_a_topic_records_the_topic_id_it_was_created_for_and_keeps_it() 
         Some("id-of-orders")
     );
 }
+
+/// UC: UC-INV-001
+#[test]
+fn the_delivery_metadata_lives_in_the_message_row_and_survives_a_reopening() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    let mut m = meta("a");
+    store.put("t", &m, b"x").unwrap();
+    // Delivery count, absolute deadline and receipt token are written together, in one commit.
+    m.delivery_count = 2;
+    m.invisible_until_ms = 123_456;
+    m.receipt_token = Some("receipt-1".into());
+    store.update_delivery("t", &m).unwrap();
+
+    let reopened = self::store(tmp.path());
+    let read = reopened.get("t", "a").unwrap().unwrap();
+    assert_eq!(read.delivery_count, 2);
+    assert_eq!(read.invisible_until_ms, 123_456, "an absolute instant");
+    assert_eq!(read.receipt_token.as_deref(), Some("receipt-1"));
+    assert_eq!(read, m);
+    assert_eq!(reopened.count("t").unwrap(), 1, "no side record");
+}

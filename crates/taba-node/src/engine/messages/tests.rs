@@ -2138,6 +2138,28 @@ async fn demotion_takes_the_middle_of_the_ready_list_and_keeps_the_ends() {
     }
 }
 
+/// UC: UC-ARM-008
+#[tokio::test]
+async fn the_database_only_holds_what_is_on_disk_and_memory_messages_never_touch_it() {
+    let h = harness();
+    h.topics.create(queue("orders")).await.unwrap();
+    let ids: Vec<String> = (0..3)
+        .map(|n| publish_ok(&h, "orders", &n.to_string()))
+        .collect();
+    // With room in memory, the ready messages are not in the database at all.
+    assert_eq!(h.messages.usage("orders"), (3, 0));
+    assert_eq!(h.messages.ready_count_of("orders"), 3);
+    for id in &ids {
+        assert_eq!(h.store.get("orders", id).unwrap(), None);
+    }
+    // Delivering them changes memory and the ready list, still without writing a row.
+    let got = consume(&h, "orders", q(Some("3"), Some("600"), None)).await;
+    assert_eq!(got.len(), 3);
+    assert_eq!(h.messages.ready_count_of("orders"), 0);
+    assert_eq!(h.store.count("orders").unwrap(), 0);
+    assert_eq!(h.messages.usage("orders"), (3, 0));
+}
+
 /// UC: UC-ARM-007
 #[tokio::test]
 async fn messages_in_processing_are_demoted_before_the_ready_ones() {

@@ -255,3 +255,191 @@ async fn of_two_copies_the_greater_delivery_count_prevails_and_never_decreases()
         "a message the node does not keep is not created"
     );
 }
+
+/// Applies `count` messages of one topic one second apart, in the **reverse** order of their creation,
+/// and returns the IDs in the order they were created.
+fn applied_backwards(h: &Harness, topic: &str, count: usize) -> Vec<String> {
+    let mut made = Vec::new();
+    for n in 0..count {
+        h.clock.advance(Duration::from_secs(1));
+        let (meta, body) = record(h, topic, &format!("{{\"n\":{n}}}"));
+        made.push((meta, body));
+    }
+    let ids: Vec<String> = made.iter().map(|(meta, _)| meta.id.clone()).collect();
+    for (meta, body) in made.into_iter().rev() {
+        h.messages.apply_publish(topic, meta, body).unwrap();
+    }
+    ids
+}
+
+/// UC: UC-STR-002
+#[tokio::test]
+async fn the_block_streams_come_in_ascending_id_order_whatever_the_order_of_arrival() {
+    let (h, _) = clustered(&[("TABA_MEMORY_LIMIT", "20B")]);
+    h.topics.create(queue("orders")).await.unwrap();
+    let ids = applied_backwards(&h, "orders", 6);
+    assert!(h.messages.storage_stats().disk_messages > 0);
+    assert!(h.messages.storage_stats().memory_messages > 0);
+
+    // The GUID v7 as text, in the canonical lowercase form, is the order of the publication.
+    let mut sorted = ids.clone();
+    sorted.sort();
+    assert_eq!(ids, sorted, "text order is the order of creation");
+    assert!(ids.iter().all(|id| *id == id.to_ascii_lowercase()));
+
+    let all = [(0, u64::MAX)];
+    let listed: Vec<String> = h
+        .messages
+        .block_entries(&all, None, None, 100)
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect();
+    assert_eq!(listed, sorted, "memory and disk, merged in ID order");
+
+    let (found, more) = h
+        .messages
+        .block_messages(&all, None, None, 100, u64::MAX)
+        .unwrap();
+    assert!(!more);
+    assert_eq!(
+        found.into_iter().map(|m| m.meta.id).collect::<Vec<_>>(),
+        sorted
+    );
+}
+
+/// UC: UC-STR-003
+#[tokio::test]
+async fn from_and_to_are_inclusive_and_limit_lowers_the_ceiling_of_the_block_streams() {
+    let (h, _) = clustered(&[("TABA_MEMORY_LIMIT", "20B")]);
+    h.topics.create(queue("orders")).await.unwrap();
+    let ids = applied_backwards(&h, "orders", 6);
+    let all = [(0, u64::MAX)];
+    let entries = |from: Option<&String>, to: Option<&String>, limit: usize| -> Vec<String> {
+        h.messages
+            .block_entries(&all, from.map(String::as_str), to.map(String::as_str), limit)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect()
+    };
+
+    assert_eq!(entries(Some(&ids[1]), Some(&ids[3]), 100), ids[1..=3]);
+    assert_eq!(entries(Some(&ids[4]), None, 100), ids[4..]);
+    assert_eq!(entries(None, Some(&ids[1]), 100), ids[..=1]);
+    assert_eq!(entries(Some(&ids[2]), Some(&ids[2]), 100), ids[2..=2]);
+    assert_eq!(entries(None, None, 100), ids);
+    assert_eq!(entries(None, None, 2), ids[..2], "the limit cuts the tail");
+
+    let (found, more) = h
+        .messages
+        .block_messages(&all, Some(&ids[2]), Some(&ids[4]), 100, u64::MAX)
+        .unwrap();
+    assert_eq!(
+        found.into_iter().map(|m| m.meta.id).collect::<Vec<_>>(),
+        ids[2..=4]
+    );
+    assert!(!more);
+    let (found, more) = h
+        .messages
+        .block_messages(&all, Some(&ids[2]), Some(&ids[4]), 2, u64::MAX)
+        .unwrap();
+    assert_eq!(found.len(), 2);
+    assert!(more, "the limit left one line for the next stretch");
+}
+
+/// UC: UC-STR-006
+#[tokio::test]
+async fn resuming_from_the_last_id_repeats_that_line_and_the_receiver_ignores_it() {
+    let (source, _) = clustered(&[]);
+    source.topics.create(queue("orders")).await.unwrap();
+    let ids = applied_backwards(&source, "orders", 5);
+    let (receiver, _) = clustered(&[]);
+    receiver.topics.create(queue("orders")).await.unwrap();
+    let all = [(0, u64::MAX)];
+
+    // First stretch: cut at three lines.
+    let (first, more) = source
+        .messages
+        .block_messages(&all, None, None, 3, u64::MAX)
+        .unwrap();
+    assert!(more);
+    for line in first {
+        let loaded = receiver
+            .messages
+            .apply_load(&line.topic, line.meta, line.body)
+            .unwrap();
+        assert_eq!(loaded, Loaded::Stored);
+    }
+
+    // The receiver repeats from the last ID it read: the sender gives that line again...
+    let (second, more) = source
+        .messages
+        .block_messages(&all, Some(&ids[2]), None, 10, u64::MAX)
+        .unwrap();
+    assert!(!more);
+    assert_eq!(
+        second.iter().map(|m| m.meta.id.clone()).collect::<Vec<_>>(),
+        ids[2..]
+    );
+    // ... and the receiver ignores the repeated one and stores only the new ones.
+    let outcomes: Vec<Loaded> = second
+        .into_iter()
+        .map(|line| {
+            receiver
+                .messages
+                .apply_load(&line.topic, line.meta, line.body)
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        outcomes,
+        [
+            Loaded::Existing,
+            Loaded::Stored,
+            Loaded::Stored
+        ]
+    );
+    for id in &ids {
+        assert!(receiver.messages.message_info("orders", id).unwrap().is_some());
+    }
+    let (all_copies, _) = receiver
+        .messages
+        .block_messages(&all, None, None, 100, u64::MAX)
+        .unwrap();
+    assert_eq!(all_copies.len(), ids.len(), "no duplicate line was created");
+}
+
+/// UC: UC-OPS-023
+#[tokio::test]
+async fn only_the_owner_counts_a_message_in_the_visible_invisible_and_oldest_numbers() {
+    let config = Config::parse(None, &MapEnv::new([("TABA_REPLICATION_FACTOR", "1")])).unwrap();
+    let rules = StatsRules::from_config(&config);
+
+    // A node that only keeps a copy (it is not the delivery owner) does not count it.
+    let (replica, _) = clustered(&[]);
+    replica.topics.create(queue("orders")).await.unwrap();
+    let (meta, body) = record(&replica, "orders", "{\"a\":1}");
+    let id = meta.id.clone();
+    replica.messages.apply_load("orders", meta, body).unwrap();
+    assert!(
+        !replica
+            .messages
+            .message_info("orders", &id)
+            .unwrap()
+            .unwrap()
+            .owned
+    );
+    let copy = replica.messages.topic_snapshot("orders", &rules).unwrap();
+    assert_eq!((copy.visible, copy.invisible, copy.oldest_ms), (0, 0, None));
+    assert_eq!(copy.depth(), 0);
+
+    // The owner counts it, once.
+    let owner = harness();
+    owner.topics.create(queue("orders")).await.unwrap();
+    publish_ok(&owner, "orders", "1");
+    let counted = owner.messages.topic_snapshot("orders", &rules).unwrap();
+    assert_eq!((counted.visible, counted.invisible), (1, 0));
+    assert_eq!(counted.depth(), 1);
+    assert!(counted.oldest_ms.is_some());
+}

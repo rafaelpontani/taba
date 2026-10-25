@@ -198,6 +198,17 @@ fn inside_a_band_the_oldest_and_the_newest_alternate_like_an_accordion() {
     assert_eq!(drain_order(&mut index, 0), ["a", "e", "b", "d", "c"]);
 }
 
+/// UC: UC-ENT-011
+#[test]
+fn delivery_interleaves_the_two_ends_oldest_newest_second_oldest_second_newest() {
+    let mut index = index();
+    let ids = ["a", "b", "c", "d", "e", "f"];
+    for (n, id) in ids.into_iter().enumerate() {
+        index.insert(id, None, n as u64, 0, 0, 0);
+    }
+    assert_eq!(drain_order(&mut index, 0), ["a", "f", "b", "e", "c", "d"]);
+}
+
 /// UC: UC-GRP-011
 #[test]
 fn every_nth_delivery_takes_the_oldest_of_any_group() {
@@ -379,4 +390,60 @@ fn with_a_zero_visibility_the_group_is_free_again_after_the_batch() {
     // ...and, with zero invisibility, it goes back to ready at the end.
     index.set_until(&id, 0, 0);
     assert_eq!(index.pick().as_deref(), Some("1"));
+}
+
+/// UC: UC-INV-005
+#[test]
+fn a_message_is_ready_invisible_or_removed_by_its_deadline() {
+    let mut index = index();
+    // No deadline (never delivered) and a deadline in the past: both are ready.
+    index.insert("a", None, 1, 0, 0, 5_000);
+    index.insert("b", None, 2, 4_000, 1, 5_000);
+    // A deadline in the future: invisible.
+    index.insert("c", None, 3, 9_000, 1, 5_000);
+    assert_eq!(index.ready_ids(), ["a", "b"]);
+    assert!(!index.is_processing("a"));
+    assert!(!index.is_processing("b"));
+    assert!(index.is_processing("c"));
+    assert_eq!(index.counts(), (2, 1));
+
+    // The deadline arriving makes it ready again.
+    assert_eq!(index.release_due(9_000), ["c"]);
+    assert!(!index.is_processing("c"));
+
+    // Delivery makes it invisible; the ack removes it for good.
+    index.deliver("a", 20_000, 9_000, 1);
+    assert!(index.is_processing("a"));
+    assert!(index.remove("a"));
+    assert!(!index.contains("a"));
+    assert!(!index.is_processing("a"));
+    assert_eq!(index.counts(), (2, 0));
+}
+
+/// UC: UC-INV-020
+#[test]
+fn in_a_fifo_queue_the_returning_message_is_the_group_head_and_frees_the_group() {
+    let mut index = fifo_index();
+    index.insert("1-a", Some("a"), 1, 0, 0, 0);
+    index.insert("2-b", Some("b"), 2, 0, 0, 0);
+    index.insert("3-a", Some("a"), 3, 0, 0, 0);
+    index.insert("4-c", Some("c"), 4, 0, 0, 0);
+
+    // "1-a" goes out and makes group "a" busy; "2-b" goes out too.
+    assert_eq!(index.pick().as_deref(), Some("1-a"));
+    index.deliver("1-a", 1_000, 0, 1);
+    assert_eq!(index.pick().as_deref(), Some("2-b"));
+    index.deliver("2-b", 5_000, 0, 1);
+    // Group "a" is busy: the list only has the head of "c".
+    assert_eq!(index.pick().as_deref(), Some("4-c"));
+
+    // The invisibility of "1-a" ends: it is back as the head of "a" (not "3-a") and the group
+    // is free again, going into the list by its ID position, ahead of "4-c".
+    assert_eq!(index.release_due(1_000), ["1-a"]);
+    assert_eq!(index.pick().as_deref(), Some("1-a"));
+    assert_eq!(index.deliveries("1-a"), Some(1), "the count is kept");
+
+    // Once delivered again the group is busy again and "3-a" stays behind it.
+    index.deliver("1-a", 9_000, 1_000, 2);
+    assert_eq!(index.pick().as_deref(), Some("4-c"));
 }

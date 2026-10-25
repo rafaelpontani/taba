@@ -88,7 +88,7 @@ Todo erro de API é um **`ErrorCode`** do catálogo (`core/error`), com **status
 | `forward.bad-gateway` | 502 | O repasse falhou depois de enviado o corpo |
 | `forward.timeout` | 504 | O repasse estourou o tempo depois de enviado o corpo |
 | `cluster.quorum-unavailable` | 503 | Sem nós suficientes para fechar o quórum de escrita, entrega ou ack |
-| `cluster.registration-failed` | 503 | Um registro (tópico, token, nó) não foi confirmado por todos e foi cancelado. **Nada foi aplicado** |
+| `cluster.registration-failed` | 503 | Um registro (nó, mensagem) não foi confirmado por todos e foi cancelado. **Nada foi aplicado** |
 | `cluster.prune-incomplete` | 503 | O prune de uma fila falhou em alguns nós (nomeados na mensagem e em `details`). A fila pode estar vazia nos outros; repetir a chamada é seguro |
 | `cluster.commit-timeout` | 503 | O registro foi confirmado, mas o commit não chegou a todos em `write.commit.timeout`. **A operação continua em segundo plano e vai se completar** |
 | `cluster.node-syncing` | 503 | O nó está sincronizando e não achou outro para repassar |

@@ -88,7 +88,7 @@ Every API error is an **`ErrorCode`** of the catalogue (`core/error`), with a **
 | `forward.bad-gateway` | 502 | The forwarding failed after the body was sent |
 | `forward.timeout` | 504 | The forwarding timed out after the body was sent |
 | `cluster.quorum-unavailable` | 503 | Not enough nodes to close the write, delivery or ack quorum |
-| `cluster.registration-failed` | 503 | A register (topic, token, node) was not confirmed by all and was canceled. **Nothing was applied** |
+| `cluster.registration-failed` | 503 | A register (node, message) was not confirmed by all and was canceled. **Nothing was applied** |
 | `cluster.prune-incomplete` | 503 | The prune of a queue failed on some nodes (named in the message and in `details`). The queue may be empty on the others; repeating the call is safe |
 | `cluster.commit-timeout` | 503 | The register was confirmed, but the commit did not reach all within `write.commit.timeout`. **The operation continues in the background and will complete** |
 | `cluster.node-syncing` | 503 | The node is synchronizing and found no other to forward to |

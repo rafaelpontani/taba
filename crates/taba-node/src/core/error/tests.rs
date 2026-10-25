@@ -137,3 +137,25 @@ fn a_forbidden_error_says_what_was_missing_and_other_errors_leave_the_field_out(
     let other = serde_json::to_value(TabaError::internal().to_response("r2")).unwrap();
     assert!(other.get("required").is_none());
 }
+
+/// UC: UC-CLR-010
+#[test]
+fn the_codes_only_the_cluster_uses_are_in_the_catalog_with_their_statuses() {
+    // Written by hand from 06d, section 8.3.6.
+    let cluster_only: &[(&str, u16)] = &[
+        ("cluster.not-member", 403),
+        ("cluster.node-frozen", 403),
+        ("cluster.join-unreachable", 422),
+        ("cluster.conflict", 409),
+        ("cluster.wrong-node", 421),
+        ("fifo.misdirected", 421),
+        ("cluster.operation-unknown", 404),
+    ];
+    for (text, status) in cluster_only {
+        let code = ErrorCode::parse(text).unwrap_or_else(|| panic!("{text} is not in the catalog"));
+        assert_eq!(code.as_str(), *text);
+        assert_eq!(code.status(), *status, "{text}");
+        let body = serde_json::to_value(TabaError::new(code, "x").to_response("r")).unwrap();
+        assert_eq!(body["code"], *text);
+    }
+}
