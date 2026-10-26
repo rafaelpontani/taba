@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **805** of **909** cases have at least one test (88.6%); **104** do not; **42** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **818** of **909** cases have at least one test (90.0%); **91** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -19,29 +19,29 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 | Area | Subject | With test | Without test |
 |---|---|---:|---:|
-| `TOP` | Topics: create, list, read, change and remove | 45 | 4 |
+| `TOP` | Topics: create, list, read, change and remove | 46 | 3 |
 | `MSG` | Publishing and the message body | 19 | 1 |
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 39 | 1 |
 | `ACK` | Confirmation of consumption | 13 | 0 |
 | `VIS` | Change of invisibility | 10 | 2 |
 | `RET` | Expiration (`ttl`), delivery limit and dead-letter | 18 | 2 |
-| `DST` | Distributor Topic | 16 | 2 |
+| `DST` | Distributor Topic | 17 | 1 |
 | `VOL` | Volatile queue and managing node | 23 | 0 |
 | `FIF` | FIFO queue | 53 | 0 |
 | `GRP` | Message groups and fair delivery | 17 | 0 |
-| `AUT` | Authentication and access tokens | 33 | 6 |
+| `AUT` | Authentication and access tokens | 34 | 5 |
 | `LIM` | Rate limit and client IP | 13 | 2 |
-| `PAG` | Pagination | 7 | 2 |
-| `CNV` | Common API conventions (format, headers, errors, status) | 11 | 6 |
+| `PAG` | Pagination | 8 | 1 |
+| `CNV` | Common API conventions (format, headers, errors, status) | 14 | 3 |
 | `CNT` | Connectors | 35 | 0 |
 | `CLI` | `taba-cli`, the client command line | 36 | 0 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 29 | 9 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
-| `DEF` | Topic and token definition replicated in the cluster | 24 | 10 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 17 | 14 |
+| `DEF` | Topic and token definition replicated in the cluster | 26 | 8 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 18 | 13 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 26 | 6 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 23 | 6 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 24 | 5 |
 | `ING` | Node join (bootstrap) | 33 | 4 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
@@ -49,11 +49,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 8 | 7 |
 | `RTN` | Return of an excluded node and recovery of losses | 45 | 0 |
-| `FWD` | Forwarding of client calls | 4 | 8 |
+| `FWD` | Forwarding of client calls | 5 | 7 |
 | `DRN` | Stop and drain mode | 19 | 2 |
 | `DEV` | One-node profile (the former development mode) | 3 | 4 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 20 | 0 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 43 | 8 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 44 | 7 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 8 | 2 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 45 | 0 |
@@ -116,6 +116,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `tests/topics.rs::every_queue_comes_with_a_read_only_dead_letter_in_the_listing`
+
+---
+
+### UC-TOP-007
+
+**Case:** Create with valid tags (up to 20; key of 1 to 64 and value of 0 to 128 characters of `A-Za-z0-9_-.:`)  
+**Then:** `201` and the tags come back in the `Topic`.  
+**Level:** I  
+**Tests:**
+  - `src/engine/topics/tests.rs::tags_at_the_limits_are_accepted_and_come_back_in_the_topic`
 
 ---
 
@@ -1745,6 +1755,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-DST-017
+
+**Case:** The `publish` permission is checked only on the distributor; the destination queues are not checked again (nor the token's prefixes).  
+**Level:** I  
+**Tests:**
+  - `tests/auth.rs::publishing_to_a_distributor_checks_only_the_distributor`
+
+---
+
 ### UC-DST-018
 
 **Case:** The distributor's metrics are only `received`, `copies` and `copyErrors` (the queue ones apply to the destination queues).  
@@ -2746,6 +2765,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-AUT-004
+
+**Case:** `auth.enabled=true` without a root token prevents the node from starting; so does a defined `auth.root-token-file` that does not exist.  
+**Level:** I  
+**Tests:**
+  - `src/config/tests.rs::forcing_auth_without_a_root_token_stops_startup`
+  - `src/config/tests.rs::a_named_root_token_file_that_does_not_exist_stops_startup`
+
+---
+
 ### UC-AUT-005
 
 **Case:** Root token with fewer than 32 characters  
@@ -3307,6 +3336,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-PAG-009
+
+**Case:** `GET /metrics/topics` does not accept `sort` (`400`) and always paginates by name.  
+**Level:** I  
+**Tests:**
+  - `tests/topic_stats.rs::pages_by_name_and_validates_the_parameters`
+
+---
 
 ## CNV: Common API conventions (format, headers, errors, status)
 
@@ -3393,6 +3430,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-CNV-010
+
+**Case:** `POST`, `PATCH` and `DELETE` that do not expect a body ignore whatever comes; `204` never has a body.  
+**Level:** I  
+**Tests:**
+  - `tests/operations.rs::a_post_that_expects_no_body_ignores_the_one_it_gets`
+  - `tests/topics.rs::a_delete_ignores_the_body_it_gets_and_the_204_has_none`
+
+---
+
 ### UC-CNV-011
 
 **Case:** The client port answers `404` `route.not-found` to `/cluster/*`; the cluster port answers `404` to anything that is not `/cluster/*`.  
@@ -3412,6 +3459,25 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+
+### UC-CNV-014
+
+**Case:** An error inside a partial result (`200` of the distributor) carries `error` with `code` and `message`, **without status**  
+**Then:** the item's status is that of the `code` in the catalogue.  
+**Level:** I  
+**Tests:**
+  - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
+
+---
+
+### UC-CNV-016
+
+**Case:** `Accept: application/openmetrics-text` on `/metrics` asks for OpenMetrics; the default is Prometheus text.  
+**Level:** I  
+**Tests:**
+  - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
+
+---
 
 ### UC-CNV-017
 
@@ -4733,6 +4799,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## DEF: Topic and token definition replicated in the cluster
 
+### UC-DEF-010
+
+**Case:** The file stores **only the definition**  
+**Then:** consumption data (depth, rates, histograms) never goes into it.  
+**Level:** I  
+**Tests:**
+  - `tests/stored_definition.rs::the_file_keeps_only_the_definition_and_never_consumption_data`
+
+---
+
 ### UC-DEF-011
 
 **Case:** The dead-letter has no definition row in the `topics` table  
@@ -4740,6 +4816,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
+
+### UC-DEF-012
+
+**Case:** Each token is a row of the `tokens` table of `_node.db` (with `id`, `name`, permissions, prefixes, dates, the salt and the salted hash of the secret, never the secret).  
+**Level:** I  
+**Tests:**
+  - `tests/stored_definition.rs::each_token_is_a_row_with_the_salted_hash_and_never_the_secret`
 
 ---
 
@@ -5114,6 +5199,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/replication.rs::a_get_on_any_node_delivers_what_the_other_nodes_own`
+
+---
+
+### UC-ENT-019
+
+**Case:** The peer is drawn with a **weight** proportional to the ready messages reported in the heartbeat; without quantity information, the draw is uniform.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/replication/signals/tests.rs::the_peer_is_drawn_with_a_weight_proportional_to_the_ready_ones_it_said`
+  - `src/cluster/replication/signals/tests.rs::without_the_quantity_of_some_peer_the_draw_is_uniform`
+  - `src/cluster/replication/signals/tests.rs::a_peer_that_said_zero_still_has_a_chance_and_every_peer_comes_once`
 
 ---
 
@@ -5890,6 +5986,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/storage/db/tests.rs::opens_in_wal_mode_with_the_configured_synchronous`
   - `tests/topics.rs::definitions_are_saved_in_the_node_database_and_resumed_after_a_restart`
+
+---
+
+### UC-ARM-021
+
+**Case:** The node creates `storage.dir` (default `/var/lib/taba`, the last folder is named `taba`) at start; if it cannot create or write, it does not start.  
+**Level:** I  
+**Tests:**
+  - `tests/startup.rs::a_storage_dir_that_cannot_be_created_stops_startup`
+  - `tests/startup.rs::startup_creates_storage_dir_when_missing`
 
 ---
 
@@ -7926,6 +8032,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-FWD-003
+
+**Case:** Destination in drain  
+**Then:** the **freest node** (lowest load by the heartbeat, plus the calls already forwarded and in progress to that destination), with a tie drawn at random; only ready nodes outside drain enter; the choice is made **at each call**. After the channel closes, the last indicator and the last known table apply.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/replication/forward/tests.rs::the_freest_destination_is_the_one_with_the_lowest_load`
+  - `src/cluster/replication/forward/tests.rs::a_tie_leaves_every_tied_destination_to_be_drawn_and_no_candidate_leaves_none`
+  - `tests/drain_cluster.rs::a_draining_node_forwards_each_call_to_the_node_with_the_lowest_load_of_the_last_heartbeat`
+
+---
+
 ### UC-FWD-004
 
 **Case:** **Transparent** forwarding  
@@ -8720,6 +8838,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `tests/operations.rs::the_operations_routes_only_accept_the_allowed_ips`
+
+---
+
+### UC-OPS-036
+
+**Case:** The node does not start if `operations.port` is in use or if `operations.allowed-ips` has an invalid entry.  
+**Level:** I  
+**Tests:**
+  - `src/config/tests.rs::allowed_ips_must_be_valid_addresses_or_cidr`
+  - `tests/startup.rs::an_occupied_operations_port_stops_startup`
 
 ---
 

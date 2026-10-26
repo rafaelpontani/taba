@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **805** de **909** casos têm ao menos um teste (88.6%); **104** não têm; **42** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **818** de **909** casos têm ao menos um teste (90.0%); **91** não têm; **42** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -19,29 +19,29 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 | Área | Assunto | Com teste | Sem teste |
 |---|---|---:|---:|
-| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 45 | 4 |
+| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 46 | 3 |
 | `MSG` | Publicação e o corpo da mensagem | 19 | 1 |
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 39 | 1 |
 | `ACK` | Confirmação do consumo | 13 | 0 |
 | `VIS` | Alteração da invisibilidade | 10 | 2 |
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 18 | 2 |
-| `DST` | Tópico Distribuidor | 16 | 2 |
+| `DST` | Tópico Distribuidor | 17 | 1 |
 | `VOL` | Fila volátil e nó gestor | 23 | 0 |
 | `FIF` | Fila FIFO | 53 | 0 |
 | `GRP` | Grupos de mensagens e entrega justa | 17 | 0 |
-| `AUT` | Autenticação e tokens de acesso | 33 | 6 |
+| `AUT` | Autenticação e tokens de acesso | 34 | 5 |
 | `LIM` | Rate limit e IP do cliente | 13 | 2 |
-| `PAG` | Paginação | 7 | 2 |
-| `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 11 | 6 |
+| `PAG` | Paginação | 8 | 1 |
+| `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 14 | 3 |
 | `CNT` | Conectores | 35 | 0 |
 | `CLI` | O `taba-cli`, a linha de comando do cliente | 36 | 0 |
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 29 | 9 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 24 | 10 |
-| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 17 | 14 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 26 | 8 |
+| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 18 | 13 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 26 | 6 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 23 | 6 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 24 | 5 |
 | `ING` | Entrada de nó (bootstrap) | 33 | 4 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 32 | 1 |
 | `FRZ` | Período de freezing | 13 | 1 |
@@ -49,11 +49,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 8 | 7 |
 | `RTN` | Retorno de nó excluído e recuperação de perdas | 45 | 0 |
-| `FWD` | Repasse de chamadas de cliente | 4 | 8 |
+| `FWD` | Repasse de chamadas de cliente | 5 | 7 |
 | `DRN` | Parada e modo drain | 19 | 2 |
 | `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 3 | 4 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 20 | 0 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 43 | 8 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 44 | 7 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 8 | 2 |
 | `CFG` | Configuração e validações de partida | 11 | 2 |
 | `BKP` | Backup opcional em S3 | 45 | 0 |
@@ -116,6 +116,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `tests/topics.rs::every_queue_comes_with_a_read_only_dead_letter_in_the_listing`
+
+---
+
+### UC-TOP-007
+
+**Caso:** Criar com tags válidas (até 20; chave de 1 a 64 e valor de 0 a 128 caracteres de `A-Za-z0-9_-.:`)  
+**Então:** `201` e as tags voltam no `Topic`.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/topics/tests.rs::tags_at_the_limits_are_accepted_and_come_back_in_the_topic`
 
 ---
 
@@ -1745,6 +1755,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-DST-017
+
+**Caso:** A permissão `publish` é conferida só no distribuidor; as filas destino não são conferidas de novo (nem os prefixos do token).  
+**Nível:** I  
+**Testes:**
+  - `tests/auth.rs::publishing_to_a_distributor_checks_only_the_distributor`
+
+---
+
 ### UC-DST-018
 
 **Caso:** As métricas do distribuidor são só `received`, `copies` e `copyErrors` (as de fila se aplicam às filas destino).  
@@ -2746,6 +2765,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-AUT-004
+
+**Caso:** `auth.enabled=true` sem token raiz impede o nó de subir; um `auth.root-token-file` definido que não existe também.  
+**Nível:** I  
+**Testes:**
+  - `src/config/tests.rs::forcing_auth_without_a_root_token_stops_startup`
+  - `src/config/tests.rs::a_named_root_token_file_that_does_not_exist_stops_startup`
+
+---
+
 ### UC-AUT-005
 
 **Caso:** Token raiz com menos de 32 caracteres  
@@ -3307,6 +3336,14 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-PAG-009
+
+**Caso:** `GET /metrics/topics` não aceita `sort` (`400`) e pagina sempre por nome.  
+**Nível:** I  
+**Testes:**
+  - `tests/topic_stats.rs::pages_by_name_and_validates_the_parameters`
+
+---
 
 ## CNV: Convenções comuns da API (formato, cabeçalhos, erros, status)
 
@@ -3393,6 +3430,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-CNV-010
+
+**Caso:** `POST`, `PATCH` e `DELETE` que não esperam corpo ignoram o que vier; `204` nunca tem corpo.  
+**Nível:** I  
+**Testes:**
+  - `tests/operations.rs::a_post_that_expects_no_body_ignores_the_one_it_gets`
+  - `tests/topics.rs::a_delete_ignores_the_body_it_gets_and_the_204_has_none`
+
+---
+
 ### UC-CNV-011
 
 **Caso:** A porta de cliente responde `404` `route.not-found` a `/cluster/*`; a porta do cluster responde `404` a tudo que não seja `/cluster/*`.  
@@ -3412,6 +3459,25 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+
+### UC-CNV-014
+
+**Caso:** Erro dentro de um resultado parcial (`200` do distribuidor) leva `error` com `code` e `message`, **sem status**  
+**Então:** o status do item é o do `code` no catálogo.  
+**Nível:** I  
+**Testes:**
+  - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
+
+---
+
+### UC-CNV-016
+
+**Caso:** `Accept: application/openmetrics-text` no `/metrics` pede OpenMetrics; o padrão é o texto do Prometheus.  
+**Nível:** I  
+**Testes:**
+  - `tests/metrics.rs::metrics_is_the_prometheus_text_of_this_node_only`
+
+---
 
 ### UC-CNV-017
 
@@ -4733,6 +4799,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## DEF: Definição de tópicos e de tokens replicada no cluster
 
+### UC-DEF-010
+
+**Caso:** O arquivo guarda **só a definição**  
+**Então:** dados de consumo (profundidade, taxas, histogramas) nunca vão para ele.  
+**Nível:** I  
+**Testes:**
+  - `tests/stored_definition.rs::the_file_keeps_only_the_definition_and_never_consumption_data`
+
+---
+
 ### UC-DEF-011
 
 **Caso:** A dead-letter não tem linha de definição na tabela `topics`  
@@ -4740,6 +4816,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
+
+### UC-DEF-012
+
+**Caso:** Cada token é uma linha da tabela `tokens` do `_node.db` (com `id`, `name`, permissões, prefixos, datas, o sal e o hash salgado do segredo, nunca o segredo).  
+**Nível:** I  
+**Testes:**
+  - `tests/stored_definition.rs::each_token_is_a_row_with_the_salted_hash_and_never_the_secret`
 
 ---
 
@@ -5114,6 +5199,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/replication.rs::a_get_on_any_node_delivers_what_the_other_nodes_own`
+
+---
+
+### UC-ENT-019
+
+**Caso:** O peer é sorteado com **peso** proporcional às mensagens prontas informadas no sinal de vida; sem informação de quantidade, o sorteio é uniforme.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/replication/signals/tests.rs::the_peer_is_drawn_with_a_weight_proportional_to_the_ready_ones_it_said`
+  - `src/cluster/replication/signals/tests.rs::without_the_quantity_of_some_peer_the_draw_is_uniform`
+  - `src/cluster/replication/signals/tests.rs::a_peer_that_said_zero_still_has_a_chance_and_every_peer_comes_once`
 
 ---
 
@@ -5890,6 +5986,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/storage/db/tests.rs::opens_in_wal_mode_with_the_configured_synchronous`
   - `tests/topics.rs::definitions_are_saved_in_the_node_database_and_resumed_after_a_restart`
+
+---
+
+### UC-ARM-021
+
+**Caso:** O nó cria `storage.dir` (padrão `/var/lib/taba`, a última pasta se chama `taba`) ao iniciar; se não conseguir criar ou gravar, não sobe.  
+**Nível:** I  
+**Testes:**
+  - `tests/startup.rs::a_storage_dir_that_cannot_be_created_stops_startup`
+  - `tests/startup.rs::startup_creates_storage_dir_when_missing`
 
 ---
 
@@ -7926,6 +8032,18 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-FWD-003
+
+**Caso:** Destino no drain  
+**Então:** o **nó mais livre** (menor carga pelo sinal de vida, mais as chamadas já repassadas e em andamento por aquele destino), com empate sorteado; só entram nós prontos e fora de drain; a escolha é feita **a cada chamada**. Depois que o canal fecha, vale o último indicador e a última tabela conhecida.  
+**Nível:** U, C  
+**Testes:**
+  - `src/cluster/replication/forward/tests.rs::the_freest_destination_is_the_one_with_the_lowest_load`
+  - `src/cluster/replication/forward/tests.rs::a_tie_leaves_every_tied_destination_to_be_drawn_and_no_candidate_leaves_none`
+  - `tests/drain_cluster.rs::a_draining_node_forwards_each_call_to_the_node_with_the_lowest_load_of_the_last_heartbeat`
+
+---
+
 ### UC-FWD-004
 
 **Caso:** Repasse **transparente**  
@@ -8720,6 +8838,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `tests/operations.rs::the_operations_routes_only_accept_the_allowed_ips`
+
+---
+
+### UC-OPS-036
+
+**Caso:** O nó não sobe se `operations.port` estiver ocupada ou se `operations.allowed-ips` tiver entrada inválida.  
+**Nível:** I  
+**Testes:**
+  - `src/config/tests.rs::allowed_ips_must_be_valid_addresses_or_cidr`
+  - `tests/startup.rs::an_occupied_operations_port_stops_startup`
 
 ---
 

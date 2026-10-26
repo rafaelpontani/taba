@@ -197,6 +197,47 @@ async fn name_and_tags_are_validated_with_the_field_in_details() {
     assert_eq!(err.details[0].field, "tags.k");
 }
 
+/// UC: UC-TOP-007
+#[tokio::test]
+async fn tags_at_the_limits_are_accepted_and_come_back_in_the_topic() {
+    let h = harness();
+    let at_the_limit: BTreeMap<String, String> = (0..19)
+        .map(|i| (format!("k{i}"), String::new()))
+        .chain([("a".repeat(64), "A-z_0.9:-".repeat(14) + "ab")])
+        .collect();
+    assert_eq!(at_the_limit.len(), 20);
+    assert_eq!(at_the_limit.values().map(String::len).max(), Some(128));
+    let created = h
+        .topics
+        .create(CreateTopic {
+            tags: Some(at_the_limit.clone()),
+            ..queue("tagged")
+        })
+        .await
+        .unwrap();
+    assert_eq!(created.definition.tags, at_the_limit);
+    assert_eq!(
+        h.topics.get("tagged").unwrap().definition.tags,
+        at_the_limit
+    );
+
+    let too_many: BTreeMap<String, String> =
+        (0..21).map(|i| (format!("k{i}"), String::new())).collect();
+    let too_long_key = BTreeMap::from([("a".repeat(65), String::new())]);
+    let too_long_value = BTreeMap::from([("k".to_owned(), "v".repeat(129))]);
+    for tags in [too_many, too_long_key, too_long_value] {
+        let err = h
+            .topics
+            .create(CreateTopic {
+                tags: Some(tags),
+                ..queue("refused")
+            })
+            .await
+            .unwrap_err();
+        assert!(!err.details.is_empty());
+    }
+}
+
 /// UC: UC-TOP-013
 #[tokio::test]
 async fn fields_that_do_not_apply_to_the_type_are_refused() {

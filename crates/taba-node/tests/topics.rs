@@ -698,3 +698,23 @@ async fn definitions_are_saved_in_the_node_database_and_resumed_after_a_restart(
     assert!(!storage.join("_topics").exists(), "no file per topic");
     node.shutdown().await;
 }
+
+/// UC: UC-CNV-010
+#[tokio::test]
+async fn a_delete_ignores_the_body_it_gets_and_the_204_has_none() {
+    let node = TestNode::single().await;
+    created(&node, json!({ "name": "q", "type": "queue" })).await;
+
+    let response = node
+        .client
+        .delete(node.client_url("/topics/q"))
+        .header("content-type", "application/json")
+        .body("{ not even json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 204);
+    assert!(response.bytes().await.unwrap().is_empty());
+    assert_eq!(node.client_get("/topics/q").await.status(), 404);
+    node.shutdown().await;
+}

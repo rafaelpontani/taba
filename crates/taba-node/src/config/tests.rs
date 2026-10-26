@@ -358,6 +358,7 @@ fn wrong_type_stops_startup_naming_the_parameter() {
     }
 }
 
+/// UC: UC-OPS-036
 #[test]
 fn allowed_ips_must_be_valid_addresses_or_cidr() {
     let c = prod_with(&[("TABA_OPERATIONS_ALLOWED_IPS", "10.0.0.0/8, 192.168.1.10")]).unwrap();
@@ -473,6 +474,7 @@ mod secrets {
         );
     }
 
+    /// UC: UC-AUT-004
     #[test]
     fn forcing_auth_without_a_root_token_stops_startup() {
         assert!(
@@ -480,6 +482,7 @@ mod secrets {
         );
     }
 
+    /// UC: UC-AUT-004
     #[test]
     fn a_named_root_token_file_that_does_not_exist_stops_startup() {
         let dir = TempDir::new().unwrap();

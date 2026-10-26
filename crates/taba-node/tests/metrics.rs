@@ -44,7 +44,7 @@ fn port(node: &TestNode) -> u16 {
     node.node.client_addr().port()
 }
 
-/// UC: UC-OPS-006, UC-OPS-016, UC-OPS-045, UC-DEV-011
+/// UC: UC-OPS-006, UC-OPS-016, UC-OPS-045, UC-DEV-011, UC-CNV-016
 #[tokio::test]
 async fn metrics_is_the_prometheus_text_of_this_node_only() {
     let node = TestNode::single().await;
