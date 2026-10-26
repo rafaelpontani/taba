@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-24):** **93** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **92** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -33,7 +33,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
 | `ANE` | Hash ring, blocks and roles | 3 | 8 |
 | `DEF` | Topic and token definition replicated in the cluster | 7 | 24 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 13 | 17 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 12 | 18 |
 | `INV` | Invisibility on the owner and on the replicas | 5 | 26 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 5 | 24 |
 | `ING` | Node join (bootstrap) | 3 | 31 |
@@ -468,15 +468,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** The `take` carries the **quantity still missing** to complete the client's `maxMessages` and the requested `visibilityTimeout`.  
 **Level:** C  
 **Historical source:** 13 §12.2 and 12.8, 06c
-
----
-
-### UC-ENT-019
-
-**Case:** The peer is drawn with a **weight** proportional to the ready messages reported in the heartbeat; without quantity information, the draw is uniform.  
-**Level:** U  
-**Blocked:** Depends on implementation: the `ready_peers` draw is uniform; there is no weight by the ready count reported in the heartbeat.  
-**Historical source:** 13 §12.8
 
 ---
 

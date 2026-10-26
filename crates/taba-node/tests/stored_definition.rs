@@ -38,7 +38,12 @@ async fn the_file_keeps_only_the_definition_and_never_consumption_data() {
         .env("TABA_AUTH_ROOT_TOKEN", ROOT)
         .start()
         .await;
-    post(&node, "/topics", json!({ "name": "orders", "type": "queue" })).await;
+    post(
+        &node,
+        "/topics",
+        json!({ "name": "orders", "type": "queue" }),
+    )
+    .await;
     for i in 0..3 {
         let response = node
             .client
@@ -70,13 +75,7 @@ async fn the_file_keeps_only_the_definition_and_never_consumption_data() {
         .unwrap();
     assert_eq!(
         tables,
-        [
-            "definition_versions",
-            "losses",
-            "state",
-            "tokens",
-            "topics"
-        ],
+        ["definition_versions", "losses", "state", "tokens", "topics"],
         "no table for messages, depth or rates"
     );
     let definition: String = db

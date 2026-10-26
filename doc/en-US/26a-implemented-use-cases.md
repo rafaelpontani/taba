@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **816** of **909** cases have at least one test (89.8%); **93** do not; **42** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **817** of **909** cases have at least one test (89.9%); **92** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -38,7 +38,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 29 | 9 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
 | `DEF` | Topic and token definition replicated in the cluster | 26 | 8 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 17 | 14 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 18 | 13 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 26 | 6 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 24 | 5 |
@@ -5199,6 +5199,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/replication.rs::a_get_on_any_node_delivers_what_the_other_nodes_own`
+
+---
+
+### UC-ENT-019
+
+**Case:** The peer is drawn with a **weight** proportional to the ready messages reported in the heartbeat; without quantity information, the draw is uniform.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/replication/signals/tests.rs::the_peer_is_drawn_with_a_weight_proportional_to_the_ready_ones_it_said`
+  - `src/cluster/replication/signals/tests.rs::without_the_quantity_of_some_peer_the_draw_is_uniform`
+  - `src/cluster/replication/signals/tests.rs::a_peer_that_said_zero_still_has_a_chance_and_every_peer_comes_once`
 
 ---
 

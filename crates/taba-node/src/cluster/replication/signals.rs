@@ -26,8 +26,9 @@ use crate::telemetry::metrics::CLUSTER_NOTIFICATIONS;
 
 #[derive(Default)]
 struct Tables {
-    /// Topic → nodes that have ready messages.
-    ready: HashMap<String, HashSet<String>>,
+    /// Topic → nodes that have ready messages, with how many the heartbeat said (`None` while only a
+    /// `Ready` signal said it: the quantity is not known).
+    ready: HashMap<String, HashMap<String, Option<u64>>>,
     /// Topic → nodes that have listeners.
     listeners: HashMap<String, HashSet<String>>,
     /// Nodes in drain: nobody asks them for a `take`.
@@ -217,7 +218,7 @@ impl Signals {
                     .ready
                     .entry(ready.topic.clone())
                     .or_default()
-                    .insert(from.to_owned());
+                    .insert(from.to_owned(), Some(ready.count));
             }
         }
         self.apply_state(from, &keepalive.state);
@@ -524,7 +525,8 @@ impl Signals {
                 let mut tables = self.lock();
                 let set = tables.ready.entry(topic).or_default();
                 if has_ready {
-                    set.insert(from);
+                    // A quantity the heartbeat already brought is kept: this signal does not carry one.
+                    set.entry(from).or_insert(None);
                 } else {
                     set.remove(&from);
                 }
@@ -611,7 +613,8 @@ impl Signals {
         }
     }
 
-    /// The nodes that have ready messages of the topic, minus this one, those in drain, those that left the table and
+    /// The nodes that have ready messages of the topic, in the order of a draw weighted by how many each said it has
+    /// (uniform while any of them did not say), minus this one, those in drain, those that left the table and
     /// those with a down channel: asking a peer that does not answer for a `take` costs the call deadline
     /// (5 s) on each attempt, and the reopened channel brings the snapshot back.
     /// The node that notified last comes first.
@@ -619,33 +622,32 @@ impl Signals {
         // The tables lock is released before asking the membership and the channels: `build_batch` holds a
         // channel's peer lock while it calls the signals, so the opposite order would deadlock.
         let me = self.me();
-        let (candidates, hint): (Vec<String>, Option<String>) = {
+        let (candidates, hint): (Vec<(String, Option<u64>)>, Option<String>) = {
             let tables = self.lock();
             let candidates = tables
                 .ready
                 .get(topic)
                 .map(|set| {
                     set.iter()
-                        .filter(|n| **n != me && !tables.draining.contains(*n))
-                        .cloned()
+                        .filter(|(n, _)| **n != me && !tables.draining.contains(*n))
+                        .map(|(n, count)| (n.clone(), *count))
                         .collect()
                 })
                 .unwrap_or_default();
             (candidates, tables.hints.get(topic).cloned())
         };
-        let mut peers: Vec<String> = candidates
+        let candidates: Vec<(String, Option<u64>)> = candidates
             .into_iter()
-            .filter(|n| {
+            .filter(|(n, _)| {
                 self.service.membership().is_active(n)
                     && self.channels().is_none_or(|c| c.is_live(n))
             })
             .collect();
-        // The draw among the nodes is uniform: the heartbeat only says that there are ready ones.
-        for i in (1..peers.len()).rev() {
+        let mut peers = draw_order(candidates, |bound| {
             let mut bytes = [0u8; 8];
             getrandom::fill(&mut bytes).expect("the system has no source of random numbers");
-            peers.swap(i, (u64::from_le_bytes(bytes) % (i as u64 + 1)) as usize);
-        }
+            u64::from_le_bytes(bytes) % bound
+        });
         if let Some(hint) = hint
             && let Some(position) = peers.iter().position(|n| *n == hint)
         {
@@ -683,7 +685,7 @@ impl Signals {
         {
             let mut tables = self.lock();
             for set in tables.ready.values_mut() {
-                set.retain(|n| current.contains(n));
+                set.retain(|n, _| current.contains(n));
             }
             for set in tables.listeners.values_mut() {
                 set.retain(|n| current.contains(n));
@@ -695,3 +697,45 @@ impl Signals {
         }
     }
 }
+
+/// Orders the candidates by successive draws without replacement, each with the chance of its quantity of ready
+/// messages among those left. When some candidate has no quantity the draw is uniform. `below(n)` returns a
+/// number in `0..n`.
+fn draw_order(
+    mut candidates: Vec<(String, Option<u64>)>,
+    mut below: impl FnMut(u64) -> u64,
+) -> Vec<String> {
+    let weighted = candidates.iter().all(|(_, count)| count.is_some());
+    let weight = |count: &Option<u64>| {
+        if weighted {
+            count.unwrap_or(1).max(1)
+        } else {
+            1
+        }
+    };
+    let mut order = Vec::with_capacity(candidates.len());
+    while !candidates.is_empty() {
+        let total = candidates
+            .iter()
+            .map(|(_, c)| weight(c))
+            .fold(0, u64::saturating_add);
+        let mut point = below(total);
+        let position = candidates
+            .iter()
+            .position(|(_, c)| {
+                let w = weight(c);
+                if point < w {
+                    true
+                } else {
+                    point -= w;
+                    false
+                }
+            })
+            .unwrap_or(candidates.len() - 1);
+        order.push(candidates.remove(position).0);
+    }
+    order
+}
+
+#[cfg(test)]
+mod tests;

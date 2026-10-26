@@ -216,7 +216,10 @@ async fn tags_at_the_limits_are_accepted_and_come_back_in_the_topic() {
         .await
         .unwrap();
     assert_eq!(created.definition.tags, at_the_limit);
-    assert_eq!(h.topics.get("tagged").unwrap().definition.tags, at_the_limit);
+    assert_eq!(
+        h.topics.get("tagged").unwrap().definition.tags,
+        at_the_limit
+    );
 
     let too_many: BTreeMap<String, String> =
         (0..21).map(|i| (format!("k{i}"), String::new())).collect();

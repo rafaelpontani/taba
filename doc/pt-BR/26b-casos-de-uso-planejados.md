@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-24):** **93** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-24):** **92** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -33,7 +33,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 29 |
 | `ANE` | Anel de hash, blocos e papéis | 3 | 8 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 7 | 24 |
-| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 13 | 17 |
+| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 12 | 18 |
 | `INV` | Invisibilidade no dono e nas réplicas | 5 | 26 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 5 | 24 |
 | `ING` | Entrada de nó (bootstrap) | 3 | 31 |
@@ -468,15 +468,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** O `take` leva a **quantidade que ainda falta** para completar o `maxMessages` do cliente e o `visibilityTimeout` pedido.  
 **Nível:** C  
 **Fonte histórica:** 13 §12.2 e 12.8, 06c
-
----
-
-### UC-ENT-019
-
-**Caso:** O peer é sorteado com **peso** proporcional às mensagens prontas informadas no sinal de vida; sem informação de quantidade, o sorteio é uniforme.  
-**Nível:** U  
-**Bloqueado:** Depende de implementar: o sorteio de `ready_peers` é uniforme; não há peso pela quantidade de prontas informada no sinal de vida.  
-**Fonte histórica:** 13 §12.8
 
 ---
 

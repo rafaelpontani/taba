@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **816** de **909** casos têm ao menos um teste (89.8%); **93** não têm; **42** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **817** de **909** casos têm ao menos um teste (89.9%); **92** não têm; **42** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -38,7 +38,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 29 | 9 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 26 | 8 |
-| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 17 | 14 |
+| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 18 | 13 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 26 | 6 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 24 | 5 |
@@ -5199,6 +5199,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/replication.rs::a_get_on_any_node_delivers_what_the_other_nodes_own`
+
+---
+
+### UC-ENT-019
+
+**Caso:** O peer é sorteado com **peso** proporcional às mensagens prontas informadas no sinal de vida; sem informação de quantidade, o sorteio é uniforme.  
+**Nível:** U  
+**Testes:**
+  - `src/cluster/replication/signals/tests.rs::the_peer_is_drawn_with_a_weight_proportional_to_the_ready_ones_it_said`
+  - `src/cluster/replication/signals/tests.rs::without_the_quantity_of_some_peer_the_draw_is_uniform`
+  - `src/cluster/replication/signals/tests.rs::a_peer_that_said_zero_still_has_a_chance_and_every_peer_comes_once`
 
 ---
 
