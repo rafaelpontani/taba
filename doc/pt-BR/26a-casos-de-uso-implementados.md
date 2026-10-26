@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **792** de **909** casos têm ao menos um teste (87.1%); **117** não têm; **42** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **805** de **909** casos têm ao menos um teste (88.6%); **104** não têm; **42** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -24,11 +24,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 39 | 1 |
 | `ACK` | Confirmação do consumo | 13 | 0 |
 | `VIS` | Alteração da invisibilidade | 10 | 2 |
-| `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 17 | 3 |
-| `DST` | Tópico Distribuidor | 6 | 12 |
+| `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 18 | 2 |
+| `DST` | Tópico Distribuidor | 16 | 2 |
 | `VOL` | Fila volátil e nó gestor | 23 | 0 |
 | `FIF` | Fila FIFO | 53 | 0 |
-| `GRP` | Grupos de mensagens e entrega justa | 16 | 1 |
+| `GRP` | Grupos de mensagens e entrega justa | 17 | 0 |
 | `AUT` | Autenticação e tokens de acesso | 33 | 6 |
 | `LIM` | Rate limit e IP do cliente | 13 | 2 |
 | `PAG` | Paginação | 7 | 2 |
@@ -37,7 +37,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CLI` | O `taba-cli`, a linha de comando do cliente | 36 | 0 |
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 29 | 9 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 23 | 11 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 24 | 10 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 17 | 14 |
 | `CAN` | Canal permanente entre nós e filas de sinais | 28 | 0 |
 | `INV` | Invisibilidade no dono e nas réplicas | 26 | 6 |
@@ -1522,6 +1522,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-RET-012
+
+**Caso:** A dead-letter não tem definição própria  
+**Então:** não há linha na tabela `topics` e as configurações são as da fila de origem.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
+
 ### UC-RET-013
 
 **Caso:** A dead-letter não tem dead-letter  
@@ -1618,6 +1628,44 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-DST-004
+
+**Caso:** Uma fila que casa com **dois ou mais prefixos do mesmo** distribuidor recebe **uma** cópia.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::a_queue_matching_two_prefixes_of_one_distributor_gets_one_copy`
+
+---
+
+### UC-DST-005
+
+**Caso:** Uma fila que casa com prefixos de **distribuidores diferentes** recebe uma cópia de cada publicação em cada um.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-006
+
+**Caso:** Só filas são destino  
+**Então:** um distribuidor nunca recebe cópia (sem laços).  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-007
+
+**Caso:** O casamento é feito na hora da publicação  
+**Então:** uma fila criada depois só recebe o que for publicado depois.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::the_match_is_made_when_publishing_and_a_new_prefix_counts_from_then_on`
+
+---
+
 ### UC-DST-009
 
 **Caso:** Cópia sem `groupId` para uma fila FIFO falha só naquela fila, com `validation.group-id-required` no item; as outras cópias seguem.  
@@ -1625,6 +1673,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/engine/messages/tests.rs::a_distributor_copy_to_a_fifo_queue_without_group_fails_only_that_queue`
   - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
+
+---
+
+### UC-DST-010
+
+**Caso:** O `groupId` e o `deduplicationId` informados vão para todas as cópias; sem `deduplicationId`, cada cópia usa o hash do corpo.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::the_group_and_the_deduplication_key_go_to_every_copy`
 
 ---
 
@@ -1637,6 +1694,54 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/engine/messages/tests.rs::a_distributor_over_max_targets_refuses_the_whole_publication`
   - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
   - `tests/messages.rs::max_targets_refuses_the_whole_publication`
+
+---
+
+### UC-DST-012
+
+**Caso:** Num distribuidor vale o `message.max-bytes` geral, e as cópias não são conferidas de novo contra o `maxMessageBytes` de cada fila.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_checks_the_general_size_and_not_that_of_each_queue`
+
+---
+
+### UC-DST-013
+
+**Caso:** O `PATCH` de `prefixes` vale a partir do commit, só para publicações posteriores.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::the_match_is_made_when_publishing_and_a_new_prefix_counts_from_then_on`
+
+---
+
+### UC-DST-014
+
+**Caso:** O distribuidor não guarda mensagens  
+**Então:** não há mensagem em memória nem em disco para ele, e nenhuma lista de prontos.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
+
+---
+
+### UC-DST-015
+
+**Caso:** Não há ordem entre as filas destino. O teste não pode exigir ordem.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::a_queue_matching_two_prefixes_of_one_distributor_gets_one_copy`
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-016
+
+**Caso:** `GET` e ack num distribuidor  
+**Então:** `409` `topic.wrong-type`.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
 
 ---
 
@@ -2564,6 +2669,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** refeitas dos metadados e da coluna `group_id` quando o nó assume blocos ou reinicia.  
 **Nível:** C  
 **Testes:**
+
+---
+
+### UC-GRP-014
+
+**Caso:** Num distribuidor, o `groupId` é repassado a todas as cópias.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/messages/tests/distributor.rs::the_group_and_the_deduplication_key_go_to_every_copy`
 
 ---
 
@@ -4618,6 +4732,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 
 ## DEF: Definição de tópicos e de tokens replicada no cluster
+
+### UC-DEF-011
+
+**Caso:** A dead-letter não tem linha de definição na tabela `topics`  
+**Então:** é derivada da fila de origem, criada e excluída na mesma operação.  
+**Nível:** I  
+**Testes:**
+  - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
 
 ### UC-DEF-025
 

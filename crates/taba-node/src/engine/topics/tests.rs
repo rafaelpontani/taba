@@ -468,6 +468,7 @@ async fn unknown_topics_are_404_and_dead_letters_are_read_only() {
     }
 }
 
+/// UC: UC-RET-012, UC-DEF-011
 #[tokio::test]
 async fn the_dead_letter_is_derived_from_its_queue_and_never_stored() {
     let h = harness();

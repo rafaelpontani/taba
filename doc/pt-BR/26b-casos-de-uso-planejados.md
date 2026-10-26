@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-24):** **117** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-24):** **104** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -23,16 +23,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `MSG` | Publicação e o corpo da mensagem | 1 | 19 |
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 1 | 39 |
 | `VIS` | Alteração da invisibilidade | 2 | 10 |
-| `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 3 | 17 |
-| `DST` | Tópico Distribuidor | 12 | 6 |
-| `GRP` | Grupos de mensagens e entrega justa | 1 | 16 |
+| `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 2 | 18 |
+| `DST` | Tópico Distribuidor | 2 | 16 |
+| `GRP` | Grupos de mensagens e entrega justa | 0 | 17 |
 | `AUT` | Autenticação e tokens de acesso | 6 | 33 |
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 2 | 7 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 6 | 11 |
 | `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 29 |
 | `ANE` | Anel de hash, blocos e papéis | 3 | 8 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 10 | 21 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 9 | 22 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 13 | 17 |
 | `INV` | Invisibilidade no dono e nas réplicas | 5 | 26 |
 | `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 6 | 23 |
@@ -123,15 +123,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## RET: Expiração (`ttl`), limite de entregas e dead-letter
 
-### UC-RET-012
-
-**Caso:** A dead-letter não tem definição própria  
-**Então:** não há linha na tabela `topics` e as configurações são as da fila de origem.  
-**Nível:** I  
-**Fonte histórica:** 13 §12.10, 02 §3.3
-
----
-
 ### UC-RET-019
 
 **Caso:** Na fila FIFO, a mensagem que atinge `maxDeliveries` vai para a dead-letter e o grupo segue com a próxima; a vencida por `ttl` na cabeça também libera o grupo (casos `FIF`).  
@@ -151,96 +142,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## DST: Tópico Distribuidor
 
-### UC-DST-004
-
-**Caso:** Uma fila que casa com **dois ou mais prefixos do mesmo** distribuidor recebe **uma** cópia.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-005
-
-**Caso:** Uma fila que casa com prefixos de **distribuidores diferentes** recebe uma cópia de cada publicação em cada um.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-006
-
-**Caso:** Só filas são destino  
-**Então:** um distribuidor nunca recebe cópia (sem laços).  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-007
-
-**Caso:** O casamento é feito na hora da publicação  
-**Então:** uma fila criada depois só recebe o que for publicado depois.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
 ### UC-DST-008
 
 **Caso:** Falha parcial  
 **Então:** uma cópia falha (por exemplo, sem quórum) e as outras seguem; a resposta é `200`, com `error` (`code`, `message`) no item que falhou e `id` nos demais, e o evento `taba.distributor.partial`. Nada é desfeito.  
 **Nível:** C  
 **Fonte histórica:** 06a, 15 §14.2
-
----
-
-### UC-DST-010
-
-**Caso:** O `groupId` e o `deduplicationId` informados vão para todas as cópias; sem `deduplicationId`, cada cópia usa o hash do corpo.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2, 17 §16.8
-
----
-
-### UC-DST-012
-
-**Caso:** Num distribuidor vale o `message.max-bytes` geral, e as cópias não são conferidas de novo contra o `maxMessageBytes` de cada fila.  
-**Nível:** I  
-**Fonte histórica:** 12
-
----
-
-### UC-DST-013
-
-**Caso:** O `PATCH` de `prefixes` vale a partir do commit, só para publicações posteriores.  
-**Nível:** I  
-**Fonte histórica:** 06a, 15 §14.2
-
----
-
-### UC-DST-014
-
-**Caso:** O distribuidor não guarda mensagens  
-**Então:** não há mensagem em memória nem em disco para ele, e nenhuma lista de prontos.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-015
-
-**Caso:** Não há ordem entre as filas destino. O teste não pode exigir ordem.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-016
-
-**Caso:** `GET` e ack num distribuidor  
-**Então:** `409` `topic.wrong-type`.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.1
 
 ---
 
@@ -254,14 +161,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 
 ## GRP: Grupos de mensagens e entrega justa
-
-### UC-GRP-014
-
-**Caso:** Num distribuidor, o `groupId` é repassado a todas as cópias.  
-**Nível:** I  
-**Fonte histórica:** 13 §12.11, 15 §14.2
-
----
 
 
 ## AUT: Autenticação e tokens de acesso
@@ -528,15 +427,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 **Caso:** O arquivo guarda **só a definição**  
 **Então:** dados de consumo (profundidade, taxas, histogramas) nunca vão para ele.  
-**Nível:** I  
-**Fonte histórica:** 02 §3.3
-
----
-
-### UC-DEF-011
-
-**Caso:** A dead-letter não tem linha de definição na tabela `topics`  
-**Então:** é derivada da fila de origem, criada e excluída na mesma operação.  
 **Nível:** I  
 **Fonte histórica:** 02 §3.3
 

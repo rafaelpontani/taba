@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **792** of **909** cases have at least one test (87.1%); **117** do not; **42** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **805** of **909** cases have at least one test (88.6%); **104** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -24,11 +24,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 39 | 1 |
 | `ACK` | Confirmation of consumption | 13 | 0 |
 | `VIS` | Change of invisibility | 10 | 2 |
-| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 17 | 3 |
-| `DST` | Distributor Topic | 6 | 12 |
+| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 18 | 2 |
+| `DST` | Distributor Topic | 16 | 2 |
 | `VOL` | Volatile queue and managing node | 23 | 0 |
 | `FIF` | FIFO queue | 53 | 0 |
-| `GRP` | Message groups and fair delivery | 16 | 1 |
+| `GRP` | Message groups and fair delivery | 17 | 0 |
 | `AUT` | Authentication and access tokens | 33 | 6 |
 | `LIM` | Rate limit and client IP | 13 | 2 |
 | `PAG` | Pagination | 7 | 2 |
@@ -37,7 +37,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CLI` | `taba-cli`, the client command line | 36 | 0 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 29 | 9 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
-| `DEF` | Topic and token definition replicated in the cluster | 23 | 11 |
+| `DEF` | Topic and token definition replicated in the cluster | 24 | 10 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 17 | 14 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
 | `INV` | Invisibility on the owner and on the replicas | 26 | 6 |
@@ -1522,6 +1522,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-RET-012
+
+**Case:** The dead-letter has no definition of its own  
+**Then:** there is no row in the `topics` table and the settings are those of the source queue.  
+**Level:** I  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
+
 ### UC-RET-013
 
 **Case:** The dead-letter has no dead-letter  
@@ -1618,6 +1628,44 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-DST-004
+
+**Case:** A queue that matches **two or more prefixes of the same** distributor receives **one** copy.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_queue_matching_two_prefixes_of_one_distributor_gets_one_copy`
+
+---
+
+### UC-DST-005
+
+**Case:** A queue that matches prefixes of **different distributors** receives one copy of each publication on each.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-006
+
+**Case:** Only queues are destinations  
+**Then:** a distributor never receives a copy (no loops).  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-007
+
+**Case:** The match is made at publish time  
+**Then:** a queue created later only receives what is published afterwards.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_match_is_made_when_publishing_and_a_new_prefix_counts_from_then_on`
+
+---
+
 ### UC-DST-009
 
 **Case:** A copy without `groupId` to a FIFO queue fails only for that queue, with `validation.group-id-required` in the item; the other copies continue.  
@@ -1625,6 +1673,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/tests.rs::a_distributor_copy_to_a_fifo_queue_without_group_fails_only_that_queue`
   - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
+
+---
+
+### UC-DST-010
+
+**Case:** The informed `groupId` and `deduplicationId` go to all the copies; without `deduplicationId`, each copy uses the body hash.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_group_and_the_deduplication_key_go_to_every_copy`
 
 ---
 
@@ -1637,6 +1694,54 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests.rs::a_distributor_over_max_targets_refuses_the_whole_publication`
   - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
   - `tests/messages.rs::max_targets_refuses_the_whole_publication`
+
+---
+
+### UC-DST-012
+
+**Case:** On a distributor the general `message.max-bytes` applies, and the copies are not checked again against each queue's `maxMessageBytes`.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_checks_the_general_size_and_not_that_of_each_queue`
+
+---
+
+### UC-DST-013
+
+**Case:** The `PATCH` of `prefixes` applies from the commit, only to later publications.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_match_is_made_when_publishing_and_a_new_prefix_counts_from_then_on`
+
+---
+
+### UC-DST-014
+
+**Case:** The distributor does not store messages  
+**Then:** there is no message in memory or on disk for it, and no ready list.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
+
+---
+
+### UC-DST-015
+
+**Case:** There is no order between the destination queues. The test cannot require order.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_queue_matching_two_prefixes_of_one_distributor_gets_one_copy`
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-016
+
+**Case:** `GET` and ack on a distributor  
+**Then:** `409` `topic.wrong-type`.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
 
 ---
 
@@ -2564,6 +2669,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** rebuilt from the metadata and the `group_id` column when the node takes over blocks or restarts.  
 **Level:** C  
 **Tests:**
+
+---
+
+### UC-GRP-014
+
+**Case:** On a distributor, the `groupId` is passed on to all the copies.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_group_and_the_deduplication_key_go_to_every_copy`
 
 ---
 
@@ -4618,6 +4732,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## DEF: Topic and token definition replicated in the cluster
+
+### UC-DEF-011
+
+**Case:** The dead-letter has no definition row in the `topics` table  
+**Then:** it is derived from the source queue, created and deleted in the same operation.  
+**Level:** I  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
 
 ### UC-DEF-025
 

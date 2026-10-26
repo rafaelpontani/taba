@@ -2737,6 +2737,7 @@ mod backup;
 mod blocks;
 mod bounded;
 mod cluster;
+mod distributor;
 mod expiry;
 mod hold;
 mod lives;

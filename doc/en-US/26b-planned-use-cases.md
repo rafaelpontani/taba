@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-24):** **117** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **104** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -23,16 +23,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `MSG` | Publishing and the message body | 1 | 19 |
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 1 | 39 |
 | `VIS` | Change of invisibility | 2 | 10 |
-| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 3 | 17 |
-| `DST` | Distributor Topic | 12 | 6 |
-| `GRP` | Message groups and fair delivery | 1 | 16 |
+| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 2 | 18 |
+| `DST` | Distributor Topic | 2 | 16 |
+| `GRP` | Message groups and fair delivery | 0 | 17 |
 | `AUT` | Authentication and access tokens | 6 | 33 |
 | `LIM` | Rate limit and client IP | 2 | 13 |
 | `PAG` | Pagination | 2 | 7 |
 | `CNV` | Common API conventions (format, headers, errors, status) | 6 | 11 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
 | `ANE` | Hash ring, blocks and roles | 3 | 8 |
-| `DEF` | Topic and token definition replicated in the cluster | 10 | 21 |
+| `DEF` | Topic and token definition replicated in the cluster | 9 | 22 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 13 | 17 |
 | `INV` | Invisibility on the owner and on the replicas | 5 | 26 |
 | `ARM` | Storage: memory, overflow, SQLite, integrity | 6 | 23 |
@@ -123,15 +123,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## RET: Expiration (`ttl`), delivery limit and dead-letter
 
-### UC-RET-012
-
-**Case:** The dead-letter has no definition of its own  
-**Then:** there is no row in the `topics` table and the settings are those of the source queue.  
-**Level:** I  
-**Historical source:** 13 §12.10, 02 §3.3
-
----
-
 ### UC-RET-019
 
 **Case:** On the FIFO queue, the message that reaches `maxDeliveries` goes to the dead-letter and the group continues with the next one; one expired by `ttl` at the head also releases the group (`FIF` cases).  
@@ -151,96 +142,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## DST: Distributor Topic
 
-### UC-DST-004
-
-**Case:** A queue that matches **two or more prefixes of the same** distributor receives **one** copy.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-005
-
-**Case:** A queue that matches prefixes of **different distributors** receives one copy of each publication on each.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-006
-
-**Case:** Only queues are destinations  
-**Then:** a distributor never receives a copy (no loops).  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-007
-
-**Case:** The match is made at publish time  
-**Then:** a queue created later only receives what is published afterwards.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
 ### UC-DST-008
 
 **Case:** Partial failure  
 **Then:** one copy fails (for example, without quorum) and the others continue; the response is `200`, with `error` (`code`, `message`) on the item that failed and `id` on the others, and the event `taba.distributor.partial`. Nothing is undone.  
 **Level:** C  
 **Historical source:** 06a, 15 §14.2
-
----
-
-### UC-DST-010
-
-**Case:** The informed `groupId` and `deduplicationId` go to all the copies; without `deduplicationId`, each copy uses the body hash.  
-**Level:** I  
-**Historical source:** 15 §14.2, 17 §16.8
-
----
-
-### UC-DST-012
-
-**Case:** On a distributor the general `message.max-bytes` applies, and the copies are not checked again against each queue's `maxMessageBytes`.  
-**Level:** I  
-**Historical source:** 12
-
----
-
-### UC-DST-013
-
-**Case:** The `PATCH` of `prefixes` applies from the commit, only to later publications.  
-**Level:** I  
-**Historical source:** 06a, 15 §14.2
-
----
-
-### UC-DST-014
-
-**Case:** The distributor does not store messages  
-**Then:** there is no message in memory or on disk for it, and no ready list.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-015
-
-**Case:** There is no order between the destination queues. The test cannot require order.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-016
-
-**Case:** `GET` and ack on a distributor  
-**Then:** `409` `topic.wrong-type`.  
-**Level:** I  
-**Historical source:** 15 §14.1
 
 ---
 
@@ -254,14 +161,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## GRP: Message groups and fair delivery
-
-### UC-GRP-014
-
-**Case:** On a distributor, the `groupId` is passed on to all the copies.  
-**Level:** I  
-**Historical source:** 13 §12.11, 15 §14.2
-
----
 
 
 ## AUT: Authentication and access tokens
@@ -528,15 +427,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 **Case:** The file stores **only the definition**  
 **Then:** consumption data (depth, rates, histograms) never goes into it.  
-**Level:** I  
-**Historical source:** 02 §3.3
-
----
-
-### UC-DEF-011
-
-**Case:** The dead-letter has no definition row in the `topics` table  
-**Then:** it is derived from the source queue, created and deleted in the same operation.  
 **Level:** I  
 **Historical source:** 02 §3.3
 
