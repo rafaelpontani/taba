@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **815** de **909** casos têm ao menos um teste (89.7%); **94** não têm; **42** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **816** de **909** casos têm ao menos um teste (89.8%); **93** não têm; **42** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -25,7 +25,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `ACK` | Confirmação do consumo | 13 | 0 |
 | `VIS` | Alteração da invisibilidade | 10 | 2 |
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 18 | 2 |
-| `DST` | Tópico Distribuidor | 16 | 2 |
+| `DST` | Tópico Distribuidor | 17 | 1 |
 | `VOL` | Fila volátil e nó gestor | 23 | 0 |
 | `FIF` | Fila FIFO | 53 | 0 |
 | `GRP` | Grupos de mensagens e entrega justa | 17 | 0 |
@@ -1752,6 +1752,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** I  
 **Testes:**
   - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
+
+---
+
+### UC-DST-017
+
+**Caso:** A permissão `publish` é conferida só no distribuidor; as filas destino não são conferidas de novo (nem os prefixos do token).  
+**Nível:** I  
+**Testes:**
+  - `tests/auth.rs::publishing_to_a_distributor_checks_only_the_distributor`
 
 ---
 

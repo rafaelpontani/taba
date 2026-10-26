@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **815** of **909** cases have at least one test (89.7%); **94** do not; **42** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **816** of **909** cases have at least one test (89.8%); **93** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -25,7 +25,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `ACK` | Confirmation of consumption | 13 | 0 |
 | `VIS` | Change of invisibility | 10 | 2 |
 | `RET` | Expiration (`ttl`), delivery limit and dead-letter | 18 | 2 |
-| `DST` | Distributor Topic | 16 | 2 |
+| `DST` | Distributor Topic | 17 | 1 |
 | `VOL` | Volatile queue and managing node | 23 | 0 |
 | `FIF` | FIFO queue | 53 | 0 |
 | `GRP` | Message groups and fair delivery | 17 | 0 |
@@ -1752,6 +1752,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
+
+---
+
+### UC-DST-017
+
+**Case:** The `publish` permission is checked only on the distributor; the destination queues are not checked again (nor the token's prefixes).  
+**Level:** I  
+**Tests:**
+  - `tests/auth.rs::publishing_to_a_distributor_checks_only_the_distributor`
 
 ---
 

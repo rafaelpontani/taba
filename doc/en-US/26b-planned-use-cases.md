@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-24):** **94** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **93** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -24,7 +24,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 1 | 39 |
 | `VIS` | Change of invisibility | 2 | 10 |
 | `RET` | Expiration (`ttl`), delivery limit and dead-letter | 2 | 18 |
-| `DST` | Distributor Topic | 2 | 16 |
+| `DST` | Distributor Topic | 1 | 17 |
 | `GRP` | Message groups and fair delivery | 0 | 17 |
 | `AUT` | Authentication and access tokens | 5 | 34 |
 | `LIM` | Rate limit and client IP | 2 | 13 |
@@ -139,14 +139,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** one copy fails (for example, without quorum) and the others continue; the response is `200`, with `error` (`code`, `message`) on the item that failed and `id` on the others, and the event `taba.distributor.partial`. Nothing is undone.  
 **Level:** C  
 **Historical source:** 06a, 15 §14.2
-
----
-
-### UC-DST-017
-
-**Case:** The `publish` permission is checked only on the distributor; the destination queues are not checked again (nor the token's prefixes).  
-**Level:** I  
-**Historical source:** 06a §8.1.3
 
 ---
 

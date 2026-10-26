@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-24):** **94** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-24):** **93** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -24,7 +24,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 1 | 39 |
 | `VIS` | Alteração da invisibilidade | 2 | 10 |
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 2 | 18 |
-| `DST` | Tópico Distribuidor | 2 | 16 |
+| `DST` | Tópico Distribuidor | 1 | 17 |
 | `GRP` | Grupos de mensagens e entrega justa | 0 | 17 |
 | `AUT` | Autenticação e tokens de acesso | 5 | 34 |
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
@@ -139,14 +139,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** uma cópia falha (por exemplo, sem quórum) e as outras seguem; a resposta é `200`, com `error` (`code`, `message`) no item que falhou e `id` nos demais, e o evento `taba.distributor.partial`. Nada é desfeito.  
 **Nível:** C  
 **Fonte histórica:** 06a, 15 §14.2
-
----
-
-### UC-DST-017
-
-**Caso:** A permissão `publish` é conferida só no distribuidor; as filas destino não são conferidas de novo (nem os prefixos do token).  
-**Nível:** I  
-**Fonte histórica:** 06a §8.1.3
 
 ---
 
