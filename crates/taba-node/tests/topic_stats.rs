@@ -143,7 +143,7 @@ async fn lists_the_topics_by_name_with_their_numbers_and_the_dead_letter_too() {
     node.shutdown().await;
 }
 
-/// UC: UC-OPS-019
+/// UC: UC-OPS-019, UC-PAG-009
 #[tokio::test]
 async fn pages_by_name_and_validates_the_parameters() {
     let node = TestNode::single().await;

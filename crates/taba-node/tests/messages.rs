@@ -482,7 +482,7 @@ async fn a_client_that_gives_up_does_not_swallow_the_next_message() {
     node.shutdown().await;
 }
 
-/// UC: UC-DST-001, UC-DST-002, UC-DST-003, UC-DST-009, UC-DST-011
+/// UC: UC-DST-001, UC-DST-002, UC-DST-003, UC-DST-009, UC-DST-011, UC-CNV-014
 #[tokio::test]
 async fn a_distributor_copies_to_matching_queues_and_reports_each_one() {
     let node = TestNode::single().await;

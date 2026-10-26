@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-24):** **104** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **94** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -19,23 +19,23 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 | Area | Subject | Without test | With test |
 |---|---|---:|---:|
-| `TOP` | Topics: create, list, read, change and remove | 3 | 45 |
+| `TOP` | Topics: create, list, read, change and remove | 2 | 46 |
 | `MSG` | Publishing and the message body | 1 | 19 |
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 1 | 39 |
 | `VIS` | Change of invisibility | 2 | 10 |
 | `RET` | Expiration (`ttl`), delivery limit and dead-letter | 2 | 18 |
 | `DST` | Distributor Topic | 2 | 16 |
 | `GRP` | Message groups and fair delivery | 0 | 17 |
-| `AUT` | Authentication and access tokens | 6 | 33 |
+| `AUT` | Authentication and access tokens | 5 | 34 |
 | `LIM` | Rate limit and client IP | 2 | 13 |
-| `PAG` | Pagination | 2 | 7 |
-| `CNV` | Common API conventions (format, headers, errors, status) | 6 | 11 |
+| `PAG` | Pagination | 1 | 8 |
+| `CNV` | Common API conventions (format, headers, errors, status) | 3 | 14 |
 | `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
 | `ANE` | Hash ring, blocks and roles | 3 | 8 |
-| `DEF` | Topic and token definition replicated in the cluster | 9 | 22 |
+| `DEF` | Topic and token definition replicated in the cluster | 7 | 24 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 13 | 17 |
 | `INV` | Invisibility on the owner and on the replicas | 5 | 26 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 6 | 23 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 5 | 24 |
 | `ING` | Node join (bootstrap) | 3 | 31 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 1 | 32 |
 | `FRZ` | Freezing period | 0 | 13 |
@@ -45,20 +45,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `FWD` | Forwarding of client calls | 7 | 4 |
 | `DRN` | Stop and drain mode | 2 | 19 |
 | `DEV` | One-node profile (the former development mode) | 0 | 3 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 7 | 40 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 6 | 41 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 8 |
 | `CFG` | Configuration and startup validations | 1 | 10 |
 
 ## TOP: Topics: create, list, read, change and remove
-
-### UC-TOP-007
-
-**Case:** Create with valid tags (up to 20; key of 1 to 64 and value of 0 to 128 characters of `A-Za-z0-9_-.:`)  
-**Then:** `201` and the tags come back in the `Topic`.  
-**Level:** I  
-**Historical source:** 06a
-
----
 
 
 ### UC-TOP-025
@@ -165,14 +156,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## AUT: Authentication and access tokens
 
-### UC-AUT-004
-
-**Case:** `auth.enabled=true` without a root token prevents the node from starting; so does a defined `auth.root-token-file` that does not exist.  
-**Level:** I  
-**Historical source:** 06a §8.1.3, 10
-
----
-
 ### UC-AUT-019
 
 **Case:** Validation is a local in-memory lookup, with no network call  
@@ -247,14 +230,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-PAG-009
-
-**Case:** `GET /metrics/topics` does not accept `sort` (`400`) and always paginates by name.  
-**Level:** I  
-**Historical source:** 06b, 11
-
----
-
 
 ## CNV: Common API conventions (format, headers, errors, status)
 
@@ -267,27 +242,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-CNV-010
-
-**Case:** `POST`, `PATCH` and `DELETE` that do not expect a body ignore whatever comes; `204` never has a body.  
-**Level:** I  
-**Historical source:** 06d §8.3.1
-
----
-
 ### UC-CNV-013
 
 **Case:** The `/health/*` routes return `HealthResponse` (never `ErrorResponse`), and a failure **after the `200`** of an NDJSON stream uses the line `{"error":"..."}`.  
 **Level:** I, C  
-**Historical source:** 06d §8.3.3
-
----
-
-### UC-CNV-014
-
-**Case:** An error inside a partial result (`200` of the distributor) carries `error` with `code` and `message`, **without status**  
-**Then:** the item's status is that of the `code` in the catalogue.  
-**Level:** I  
 **Historical source:** 06d §8.3.3
 
 ---
@@ -298,14 +256,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** on repeating, `409` `topic.already-exists` (creation) or `404` (removal) mean the operation had already been applied. A `503` `cluster.quorum-unavailable` applied nothing.  
 **Level:** C  
 **Historical source:** 06d §8.3.5
-
----
-
-### UC-CNV-016
-
-**Case:** `Accept: application/openmetrics-text` on `/metrics` asks for OpenMetrics; the default is Prometheus text.  
-**Level:** I  
-**Historical source:** 06d §8.3.2, 06b
 
 ---
 
@@ -422,23 +372,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## DEF: Topic and token definition replicated in the cluster
-
-### UC-DEF-010
-
-**Case:** The file stores **only the definition**  
-**Then:** consumption data (depth, rates, histograms) never goes into it.  
-**Level:** I  
-**Historical source:** 02 §3.3
-
----
-
-### UC-DEF-012
-
-**Case:** Each token is a row of the `tokens` table of `_node.db` (with `id`, `name`, permissions, prefixes, dates, the salt and the salted hash of the secret, never the secret).  
-**Level:** I  
-**Historical source:** 02 §3.4
-
----
 
 ### UC-DEF-013
 
@@ -698,14 +631,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-ARM-021
-
-**Case:** The node creates `storage.dir` (default `/var/lib/taba`, the last folder is named `taba`) at start; if it cannot create or write, it does not start.  
-**Level:** I  
-**Historical source:** 10
-
----
-
 ### UC-ARM-025
 
 **Case:** **Consumption** data (depth, visible, invisible, rates, latencies) stays only in memory and specific to each node.  
@@ -960,14 +885,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** Replication degradation (`under-replicated`, `syncing`) is a property of the **cluster**, not of the topic  
 **Then:** it appears in the cluster condition, not in the topic one.  
 **Level:** C  
-**Historical source:** 11
-
----
-
-### UC-OPS-036
-
-**Case:** The node does not start if `operations.port` is in use or if `operations.allowed-ips` has an invalid entry.  
-**Level:** I  
 **Historical source:** 11
 
 ---

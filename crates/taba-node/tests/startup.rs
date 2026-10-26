@@ -57,7 +57,7 @@ fn a_cluster_without_the_entry_address_does_not_start() {
     );
 }
 
-/// UC: UC-CFG-004
+/// UC: UC-CFG-004, UC-ARM-021
 #[tokio::test]
 async fn a_storage_dir_that_cannot_be_created_stops_startup() {
     let tmp = tempfile::tempdir().unwrap();
@@ -77,9 +77,28 @@ async fn a_storage_dir_that_cannot_be_created_stops_startup() {
     assert!(error.to_string().contains("storage.dir"), "{error}");
 }
 
+/// UC: UC-ARM-021
 #[tokio::test]
 async fn startup_creates_storage_dir_when_missing() {
     let node = TestNode::single().await;
     assert!(node.storage_dir().is_dir());
     node.shutdown().await;
+}
+
+/// UC: UC-OPS-036
+#[tokio::test]
+async fn an_occupied_operations_port_stops_startup() {
+    let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = occupied.local_addr().unwrap().port().to_string();
+
+    let result = TestNode::builder()
+        .env("TABA_OPERATIONS_PORT", &port)
+        .try_start()
+        .await;
+
+    let Err(error) = result else {
+        panic!("the node should not start with the operations port taken")
+    };
+    assert!(matches!(error, NodeError::Bind { .. }), "{error}");
+    assert!(error.to_string().contains(&port), "{error}");
 }
