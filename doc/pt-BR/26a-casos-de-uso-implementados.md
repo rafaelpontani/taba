@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connecto
 
 > **Mantido à mão.** Cada cartão traz o caso, o nível e os testes que o citam (as linhas `/// UC: UC-XXX-NNN` do código). Formato dos códigos e regra de cobertura: [26-casos-de-uso.md](26-casos-de-uso.md). Os casos **sem teste** estão em [26b-casos-de-uso-planejados.md](26b-casos-de-uso-planejados.md).
 
-**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **817** de **909** casos têm ao menos um teste (89.9%); **92** não têm; **42** estão retirados (o código não é reaproveitado).
+**Placar (2026-10-15, commit 56121c9, mais 15 casos do trabalho de servidor para a TUI):** **818** de **909** casos têm ao menos um teste (90.0%); **91** não têm; **42** estão retirados (o código não é reaproveitado).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Cada caso é um bloco: o **código** no cabeçalho; abaixo, **Caso** (a situação), **Então** (o resultado esperado), **Nível** e **Testes** (`arquivo::função`, relativo a `crates/taba-node`, ou à raiz do repositório para os conectores).
 
@@ -49,7 +49,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `SIN` | Sincronização distribuída de blocos | 31 | 1 |
 | `STR` | Streams NDJSON entre nós | 8 | 7 |
 | `RTN` | Retorno de nó excluído e recuperação de perdas | 45 | 0 |
-| `FWD` | Repasse de chamadas de cliente | 4 | 8 |
+| `FWD` | Repasse de chamadas de cliente | 5 | 7 |
 | `DRN` | Parada e modo drain | 19 | 2 |
 | `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 3 | 4 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 20 | 0 |
@@ -8029,6 +8029,18 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/drain_cluster.rs::a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_vote`
+
+---
+
+### UC-FWD-003
+
+**Caso:** Destino no drain  
+**Então:** o **nó mais livre** (menor carga pelo sinal de vida, mais as chamadas já repassadas e em andamento por aquele destino), com empate sorteado; só entram nós prontos e fora de drain; a escolha é feita **a cada chamada**. Depois que o canal fecha, vale o último indicador e a última tabela conhecida.  
+**Nível:** U, C  
+**Testes:**
+  - `src/cluster/replication/forward/tests.rs::the_freest_destination_is_the_one_with_the_lowest_load`
+  - `src/cluster/replication/forward/tests.rs::a_tie_leaves_every_tied_destination_to_be_drawn_and_no_candidate_leaves_none`
+  - `tests/drain_cluster.rs::a_draining_node_forwards_each_call_to_the_node_with_the_lowest_load_of_the_last_heartbeat`
 
 ---
 

@@ -47,6 +47,8 @@ struct Tables {
     notified: HashMap<String, HashSet<String>>,
     /// The quantity of the last notice received for each topic.
     notices: HashMap<String, u64>,
+    /// Node → the load indicator of its last heartbeat. It stays after the channel closes: the last one known applies.
+    loads: HashMap<String, u64>,
 }
 
 pub struct Signals {
@@ -207,6 +209,7 @@ impl Signals {
     pub fn apply_keepalive(&self, from: &str, keepalive: &Keepalive) {
         {
             let mut tables = self.lock();
+            tables.loads.insert(from.to_owned(), keepalive.load);
             let listed: HashSet<&str> = keepalive.ready.iter().map(|r| r.topic.as_str()).collect();
             for (topic, nodes) in &mut tables.ready {
                 if !listed.contains(topic.as_str()) {
@@ -657,6 +660,11 @@ impl Signals {
         peers
     }
 
+    /// The load indicator of the node's last heartbeat (0 while none arrived).
+    pub fn peer_load(&self, node: &str) -> u64 {
+        self.lock().loads.get(node).copied().unwrap_or(0)
+    }
+
     /// The `take` on a node came back empty: the hint that it had messages was old.
     pub fn mark_empty(&self, topic: &str, node: &str) {
         let mut tables = self.lock();
@@ -691,6 +699,7 @@ impl Signals {
                 set.retain(|n| current.contains(n));
             }
             tables.draining.retain(|n| current.contains(n));
+            tables.loads.retain(|n, _| current.contains(n));
         }
         if let Some(channels) = self.channels() {
             channels.sync_members();

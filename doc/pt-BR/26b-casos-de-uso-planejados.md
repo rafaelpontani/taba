@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-24):** **92** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-24):** **91** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -42,7 +42,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `CNC` | Concorrência entre mudanças de membros | 2 | 12 |
 | `SIN` | Sincronização distribuída de blocos | 0 | 29 |
 | `STR` | Streams NDJSON entre nós | 7 | 8 |
-| `FWD` | Repasse de chamadas de cliente | 7 | 4 |
+| `FWD` | Repasse de chamadas de cliente | 6 | 5 |
 | `DRN` | Parada e modo drain | 2 | 19 |
 | `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 0 | 3 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 6 | 41 |
@@ -758,16 +758,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** Destino na sincronização  
 **Então:** um membro da tabela com canal ativo, escolhido ao acaso (só há um nó em sincronização por vez).  
 **Nível:** C  
-**Fonte histórica:** 04 §6.9
-
----
-
-### UC-FWD-003
-
-**Caso:** Destino no drain  
-**Então:** o **nó mais livre** (menor carga pelo sinal de vida, mais as chamadas já repassadas e em andamento por aquele destino), com empate sorteado; só entram nós prontos e fora de drain; a escolha é feita **a cada chamada**. Depois que o canal fecha, vale o último indicador e a última tabela conhecida.  
-**Nível:** U, C  
-**Bloqueado:** O código diverge do cartão: `Forwarder::pick` usa só as chamadas em andamento do próprio nó e sorteia o empate; a carga do sinal de vida não entra. Decidir se o cartão ou o código muda antes de testar.  
 **Fonte histórica:** 04 §6.9
 
 ---

@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **817** of **909** cases have at least one test (89.9%); **92** do not; **42** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **818** of **909** cases have at least one test (90.0%); **91** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -49,7 +49,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
 | `STR` | NDJSON streams between nodes | 8 | 7 |
 | `RTN` | Return of an excluded node and recovery of losses | 45 | 0 |
-| `FWD` | Forwarding of client calls | 4 | 8 |
+| `FWD` | Forwarding of client calls | 5 | 7 |
 | `DRN` | Stop and drain mode | 19 | 2 |
 | `DEV` | One-node profile (the former development mode) | 3 | 4 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 20 | 0 |
@@ -8029,6 +8029,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/drain_cluster.rs::a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_vote`
+
+---
+
+### UC-FWD-003
+
+**Case:** Destination in drain  
+**Then:** the **freest node** (lowest load by the heartbeat, plus the calls already forwarded and in progress to that destination), with a tie drawn at random; only ready nodes outside drain enter; the choice is made **at each call**. After the channel closes, the last indicator and the last known table apply.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/replication/forward/tests.rs::the_freest_destination_is_the_one_with_the_lowest_load`
+  - `src/cluster/replication/forward/tests.rs::a_tie_leaves_every_tied_destination_to_be_drawn_and_no_candidate_leaves_none`
+  - `tests/drain_cluster.rs::a_draining_node_forwards_each_call_to_the_node_with_the_lowest_load_of_the_last_heartbeat`
 
 ---
 

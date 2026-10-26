@@ -3,9 +3,9 @@
 //! forwards **all** of them to the freest node, from when the drain starts until the process ends, even
 //! after leaving the cluster.
 //!
-//! - **Destination:** on each call, the ready member (out of drain) with the fewest forwarded calls in
-//!   progress from this node, breaking ties at random. The heartbeat's load indicator comes in with the
-//!   channel (step 15).
+//! - **Destination:** on each call, the ready member (out of drain) with the lowest load: the indicator of its
+//!   last heartbeat plus the calls this node forwarded to it and are still in progress, breaking ties at
+//!   random. After the channel closes, the last indicator and the last known table apply.
 //! - **Transparent forward:** method, path, query, body and headers go as they came, and the
 //!   response comes back as the destination gave it (`409`, `413`, `429`...). It also applies to `GET` with
 //!   long polling.
@@ -104,6 +104,14 @@ fn random_index(n: usize) -> usize {
     (u64::from_le_bytes(bytes) % n.max(1) as u64) as usize
 }
 
+/// The positions with the lowest score (all of them, when tied); empty when there is no candidate.
+fn freest(scores: &[u64]) -> Vec<usize> {
+    let Some(least) = scores.iter().min() else {
+        return Vec::new();
+    };
+    (0..scores.len()).filter(|&i| scores[i] == *least).collect()
+}
+
 impl Forwarder {
     pub fn new(service: Arc<ClusterService>, signals: Arc<Signals>) -> Arc<Self> {
         Arc::new(Self {
@@ -123,7 +131,7 @@ impl Forwarder {
     }
 
     /// This call's destination: among the ready members out of drain not yet
-    /// tried, the one with the fewest calls in progress; tie, a draw.
+    /// tried, the one with the lowest load (heartbeat indicator plus calls in progress from here); tie, a draw.
     fn pick(&self, tried: &HashSet<String>) -> Option<Member> {
         let table = self.service.membership().table()?;
         let me = self.service.node_id();
@@ -138,15 +146,17 @@ impl Forwarder {
                     && !self.signals.is_draining(&m.node_id)
             })
             .collect();
-        let least = candidates
+        let scores: Vec<u64> = candidates
             .iter()
-            .map(|m| in_flight.get(&m.node_id).copied().unwrap_or(0))
-            .min()?;
-        let tied: Vec<&&Member> = candidates
-            .iter()
-            .filter(|m| in_flight.get(&m.node_id).copied().unwrap_or(0) == least)
+            .map(|m| {
+                self.signals
+                    .peer_load(&m.node_id)
+                    .saturating_add(in_flight.get(&m.node_id).copied().unwrap_or(0) as u64)
+            })
             .collect();
-        Some((**tied[random_index(tied.len())]).clone())
+        let tied = freest(&scores);
+        let chosen = *tied.get(random_index(tied.len()))?;
+        Some(candidates[chosen].clone())
     }
 
     fn count(&self, outcome: &str) {
@@ -216,3 +226,6 @@ impl Forwarder {
         executor(request).await.map(Response::Forwarded)
     }
 }
+
+#[cfg(test)]
+mod tests;

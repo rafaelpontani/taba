@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-24):** **92** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **91** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -42,7 +42,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNC` | Concurrency between membership changes | 2 | 12 |
 | `SIN` | Distributed synchronization of blocks | 0 | 29 |
 | `STR` | NDJSON streams between nodes | 7 | 8 |
-| `FWD` | Forwarding of client calls | 7 | 4 |
+| `FWD` | Forwarding of client calls | 6 | 5 |
 | `DRN` | Stop and drain mode | 2 | 19 |
 | `DEV` | One-node profile (the former development mode) | 0 | 3 |
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 6 | 41 |
@@ -758,16 +758,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** Destination in synchronization  
 **Then:** a member of the table with an active channel, chosen at random (there is only one node in synchronization at a time).  
 **Level:** C  
-**Historical source:** 04 §6.9
-
----
-
-### UC-FWD-003
-
-**Case:** Destination in drain  
-**Then:** the **freest node** (lowest load by the heartbeat, plus the calls already forwarded and in progress to that destination), with a tie drawn at random; only ready nodes outside drain enter; the choice is made **at each call**. After the channel closes, the last indicator and the last known table apply.  
-**Level:** U, C  
-**Blocked:** The code diverges from the card: `Forwarder::pick` uses only the node's own in-flight calls and draws among ties; the heartbeat load is not used. Decide whether the card or the code changes before testing.  
 **Historical source:** 04 §6.9
 
 ---
