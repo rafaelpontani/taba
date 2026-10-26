@@ -442,4 +442,6 @@ impl<R> Step<R> {
 }
 
 #[cfg(test)]
+mod dto_tests;
+#[cfg(test)]
 mod tests;

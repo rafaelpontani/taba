@@ -287,3 +287,6 @@ pub fn join_groups(nodes: Vec<Vec<GroupSnapshot>>) -> Vec<GroupSnapshot> {
     }
     joined
 }
+
+#[cfg(test)]
+mod tests;

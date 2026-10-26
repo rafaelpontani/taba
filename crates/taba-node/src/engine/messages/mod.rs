@@ -38,14 +38,16 @@ mod blocks;
 mod hold;
 mod index;
 mod lives;
+mod memory;
 mod rates;
 mod replicas;
 pub mod stats;
+mod window;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
 pub use lives::TopicCheck;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
@@ -62,8 +64,9 @@ use crate::core::ring::{fifo_position, message_position};
 use crate::core::validation;
 use crate::engine::topics::{CreateTopic, Kind, TopicView, Topics};
 use crate::storage;
-use crate::storage::messages::{MessageMeta, MessageStore};
-use index::{GroupKey, IndexRules, TopicIndex};
+use crate::storage::messages::{MessageMeta, MessageStore, PageQuery};
+use index::{GroupKey, IndexRules, SpillOp, TopicIndex};
+use memory::Memory;
 use rates::Rates;
 use replicas::ReplicaSet;
 use sha2::{Digest, Sha256};
@@ -114,6 +117,12 @@ pub struct MessageRules {
     pub fair_ready_weight: f64,
     pub fair_max_groups: Option<usize>,
     pub fair_normal_every: u32,
+    /// `delivery.ready-list.size`: IDs in the ready window.
+    pub ready_list_size: usize,
+    /// `delivery.invisible-list.size` and `delivery.invisible.reload-threshold`; without the size, the
+    /// list has no ceiling, and without the threshold the list is reloaded below half of the size.
+    pub invisible_list_size: Option<usize>,
+    pub invisible_reload_threshold: Option<usize>,
     /// `fifo.dedup.window`, in milliseconds.
     pub fifo_dedup_window_ms: u64,
 }
@@ -134,6 +143,12 @@ impl MessageRules {
             fair_ready_weight: config.delivery.fair_ready_weight,
             fair_max_groups: config.delivery.fair_max_groups.map(|n| n as usize),
             fair_normal_every: config.delivery.fair_normal_every,
+            ready_list_size: config.delivery.ready_list_size as usize,
+            invisible_list_size: config.delivery.invisible_list_size.map(|n| n as usize),
+            invisible_reload_threshold: config
+                .delivery
+                .invisible_reload_threshold
+                .map(|n| n as usize),
             fifo_dedup_window_ms: u64::try_from(config.fifo.dedup_window.as_millis())
                 .unwrap_or(u64::MAX),
         }
@@ -145,6 +160,13 @@ impl MessageRules {
             max_groups: self.fair_max_groups,
             normal_every: self.fair_normal_every,
             fifo,
+            ready_cap: self.ready_list_size.max(1),
+            invisible_cap: self.invisible_list_size.map_or(usize::MAX, |n| n.max(1)),
+            reload_threshold: match (self.invisible_list_size, self.invisible_reload_threshold) {
+                (_, Some(threshold)) => threshold,
+                (Some(size), None) => size / 2,
+                (None, None) => 0,
+            },
         }
     }
 }
@@ -244,6 +266,9 @@ pub struct StorageStats {
     pub disk_messages: u64,
 }
 
+/// Rows read per page when a topic is opened.
+const OPEN_PAGE: usize = 1000;
+
 /// A message in memory: the metadata is the same as the database row's.
 struct Stored {
     meta: MessageMeta,
@@ -260,7 +285,7 @@ enum Place {
 /// A topic's state, behind the topic lock.
 struct TopicState {
     /// In `id` order: the lowercase GUID v7 sorts by publication instant.
-    memory: BTreeMap<String, Stored>,
+    memory: Memory,
     /// Everything the topic has (memory and disk), derived from the metadata.
     index: TopicIndex,
     rates: Rates,
@@ -785,18 +810,21 @@ impl Messages {
     /// The `id`s of the messages the node owns in the topic (those the primary sends to S3).
     pub fn owned_ids(&self, topic: &str) -> Vec<String> {
         let state = self.state_of(topic);
-        lock(&state).index.ids()
+        let state = lock(&state);
+        self.owned_ids_of(topic, &state)
     }
 
     /// The metadata and body of a message the node keeps, for the backup. `None` if it
     /// no longer exists or if the body is not on disk.
     pub fn backup_load(&self, topic: &str, id: &str) -> Option<(MessageMeta, Vec<u8>)> {
         let state = self.state_of(topic);
-        let state = lock(&state);
+        let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
             return Some((stored.meta.clone(), stored.body.clone()));
         }
-        if !state.index.contains(id) && !state.replicas.contains(id) {
+        let owned = self.know(topic, &mut state, id);
+        state.index.forget_adopted();
+        if !owned && !state.replicas.contains(id) {
             return None;
         }
         let meta = self.store.get(topic, id).ok().flatten()?;
@@ -836,59 +864,84 @@ impl Messages {
             .topics
             .get(name)
             .is_ok_and(|view| view.definition.queue().is_some_and(|q| q.fifo));
-        let mut index = TopicIndex::new(self.rules.index_rules(fifo));
-        let mut dedup = HashMap::new();
-        let mut group_ms: HashMap<String, u64> = HashMap::new();
-        match self.store.scan(name) {
-            Ok(rows) => {
-                for row in rows {
-                    if fifo && let Some(group) = &row.group_id {
-                        let last = group_ms.entry(group.clone()).or_default();
-                        *last = (*last).max(row.published_ms);
-                    }
-                    if fifo
-                        && row
-                            .published_ms
-                            .saturating_add(self.rules.fifo_dedup_window_ms)
-                            > now
-                        && let (Some(group), Some(key)) = (&row.group_id, &row.deduplication_id)
-                    {
-                        dedup.insert(
-                            (group.clone(), key.clone()),
-                            (row.id.clone(), row.published_ms),
-                        );
-                    }
-                    // The ack's short row only serves deduplication.
-                    if row.delete_at_ms.is_some() {
-                        continue;
-                    }
-                    index.insert(
-                        &row.id,
-                        row.group_id.as_deref(),
-                        row.age_ms,
-                        row.invisible_until_ms,
-                        row.delivery_count,
-                        now,
-                    );
-                }
-            }
-            Err(e) => {
-                self.disk_error("failed to read the topic index on disk", &e);
-            }
+        let index = TopicIndex::new(self.rules.index_rules(fifo));
+        // The expiry table is derived from the metadata: what is in it from the previous life goes away.
+        if let Err(e) = self.store.expiry_clear(name) {
+            self.disk_error("failed to clear the expiry table", &e);
         }
-        let state = Arc::new(Mutex::new(TopicState {
-            memory: BTreeMap::new(),
+        let mut opened = TopicState {
+            memory: Memory::default(),
             index,
             rates: Rates::default(),
-            dedup,
-            group_ms,
+            dedup: HashMap::new(),
+            group_ms: HashMap::new(),
             checked_max_deliveries: None,
             stats: TopicCounters::new(),
             replicas: ReplicaSet::default(),
             dead_letter_inflight: HashSet::new(),
             ready_signaled: false,
             provisional: BTreeMap::new(),
-        }));
+        };
+        // The rows come in pages: the index counts them and keeps only what the window and the
+        // invisible list hold.
+        let mut after: Option<String> = None;
+        loop {
+            let query = PageQuery {
+                after: after.clone(),
+                limit: OPEN_PAGE,
+                tombstones: true,
+                ..PageQuery::default()
+            };
+            let rows = match self.store.page(name, &query) {
+                Ok(rows) => rows,
+                Err(e) => {
+                    self.disk_error("failed to read the topic index on disk", &e);
+                    break;
+                }
+            };
+            let full = rows.len() == OPEN_PAGE;
+            after = rows.last().map(|row| row.id.clone());
+            for row in rows {
+                if fifo && let Some(group) = &row.group_id {
+                    let last = opened.group_ms.entry(group.clone()).or_default();
+                    *last = (*last).max(row.published_ms);
+                }
+                if fifo
+                    && row
+                        .published_ms
+                        .saturating_add(self.rules.fifo_dedup_window_ms)
+                        > now
+                    && let (Some(group), Some(key)) = (&row.group_id, &row.deduplication_id)
+                {
+                    opened.dedup.insert(
+                        (group.clone(), key.clone()),
+                        (row.id.clone(), row.published_ms),
+                    );
+                }
+                // The ack's short row only serves deduplication.
+                if row.delete_at_ms.is_some() {
+                    continue;
+                }
+                opened.index.insert(
+                    &row.id,
+                    row.group_id.as_deref(),
+                    row.age_ms,
+                    row.invisible_until_ms,
+                    row.delivery_count,
+                    now,
+                );
+            }
+            if !full {
+                break;
+            }
+        }
+        opened.index.reset_window();
+        // The table first (the refill leaves out the pairs it holds), then the window.
+        if let Err(e) = self.flush_expiry(name, &mut opened) {
+            self.disk_error("failed to write the expiry table", &e);
+        }
+        self.refill_window(name, &mut opened);
+        let state = Arc::new(Mutex::new(opened));
         states.insert(name.to_owned(), state.clone());
         state
     }
@@ -1348,12 +1401,26 @@ impl Messages {
     /// is not the last delivery's is `409`.
     fn locate(
         &self,
-        state: &TopicState,
+        state: &mut TopicState,
         topic: &str,
         id: &str,
         receipt_token: &str,
     ) -> Result<(MessageMeta, Place), TabaError> {
-        if !state.index.contains(id) {
+        let found = self.locate_known(state, topic, id, receipt_token);
+        if found.is_err() {
+            state.index.forget_adopted();
+        }
+        found
+    }
+
+    fn locate_known(
+        &self,
+        state: &mut TopicState,
+        topic: &str,
+        id: &str,
+        receipt_token: &str,
+    ) -> Result<(MessageMeta, Place), TabaError> {
+        if !self.know(topic, state, id) {
             return Err(message_not_found());
         }
         let found = match state.memory.get(id) {
@@ -1384,7 +1451,7 @@ impl Messages {
         let name = &view.definition.name;
         let state = self.state_of(name);
         let mut state = lock(&state);
-        let (meta, place) = self.locate(&state, name, id, receipt_token)?;
+        let (meta, place) = self.locate(&mut state, name, id, receipt_token)?;
         if view.definition.queue().is_some_and(|q| q.fifo) {
             self.fifo_ack(&mut state, name, meta, place, now)?;
         } else {
@@ -1424,9 +1491,10 @@ impl Messages {
         self.store
             .tombstone_excluded(topic, &meta, delete_at, now)
             .map_err(|e| self.disk_error("failed to write the FIFO queue's ack", &e))?;
-        let owned = state.index.contains(&meta.id);
+        let owned = self.know(topic, state, &meta.id);
         self.take_from_memory(state, &meta.id);
         state.index.remove(&meta.id);
+        self.expiry_changed(topic, state);
         self.backup_removed(topic, &meta.id, owned);
         Ok(())
     }
@@ -1453,7 +1521,7 @@ impl Messages {
         place: Place,
         exclude: bool,
     ) -> Result<(), TabaError> {
-        let owned = state.index.contains(id);
+        let owned = self.know(topic, state, id);
         let now = self.clock.now_millis();
         match place {
             Place::Memory => {
@@ -1475,6 +1543,7 @@ impl Messages {
                 .map_err(|e| self.disk_error("failed to remove the message from disk", &e))?,
         }
         state.index.remove(id);
+        self.expiry_changed(topic, state);
         state.replicas.remove(id);
         self.backup_removed(topic, id, owned);
         Ok(())
@@ -1488,12 +1557,10 @@ impl Messages {
         meta: &MessageMeta,
         place: Place,
     ) -> Result<(), TabaError> {
-        let owned = state.index.contains(&meta.id);
+        let owned = self.know(topic, state, &meta.id);
         let saved = match place {
             Place::Memory => {
-                if let Some(stored) = state.memory.get_mut(&meta.id) {
-                    stored.meta = meta.clone();
-                }
+                state.memory.set_meta(meta);
                 Ok(())
             }
             Place::Disk => self
@@ -1541,10 +1608,11 @@ impl Messages {
         let meta = {
             let state = self.state_of(name);
             let mut state = lock(&state);
-            let (mut meta, place) = self.locate(&state, name, id, receipt_token)?;
+            let (mut meta, place) = self.locate(&mut state, name, id, receipt_token)?;
             meta.invisible_until_ms = now + secs * 1000;
             self.save_meta(&mut state, name, &meta, place)?;
             state.index.set_until(id, meta.invisible_until_ms, now);
+            self.expiry_changed(name, &mut state);
             // Releasing a message that already used up its deliveries sends it to the dead-letter, instead of
             // returning it to the queue (doc 13, section 12.10).
             if secs == 0 && self.exhausted(&view, meta.delivery_count) {
@@ -1603,7 +1671,8 @@ impl Messages {
     /// becomes deliverable again and whether the owner still has a ready message.
     pub fn wait_hints(&self, topic: &str) -> (Option<u64>, bool) {
         let state = self.state_of(topic);
-        let state = lock(&state);
+        let mut state = lock(&state);
+        self.reload_expiry(topic, &mut state);
         let held = state.index.is_fifo() && self.fifo_held();
         (state.index.next_visible(), state.index.has_ready() && !held)
     }
@@ -1837,7 +1906,15 @@ impl Messages {
         let state = self.state_of(name);
         let mut state = lock(&state);
         let ttl_ms = view.ttl_secs().unwrap_or(u64::MAX).saturating_mul(1000);
-        for id in state.index.expired(now, ttl_ms) {
+        let mut ttl_ids = Vec::new();
+        if state.index.ttl_due(now, ttl_ms) {
+            ttl_ids = self.expired_owned(name, &mut state, now, ttl_ms);
+        }
+        let ttl_checked = state.index.ttl_due(now, ttl_ms);
+        for id in ttl_ids {
+            if !self.know(name, &mut state, &id) {
+                continue;
+            }
             let place = if state.memory.contains_key(&id) {
                 Place::Memory
             } else {
@@ -1859,6 +1936,11 @@ impl Messages {
                 }
             }
         }
+        if ttl_checked {
+            // What is left is younger than the `ttl`: the index counts from there.
+            let oldest = self.oldest_owned_age(name, &state);
+            state.index.set_age_floor(oldest);
+        }
         // Each node deletes its own copies by the same rule (doc 13, section 12.10); the replica does not
         // count in the statistics, which are the owner's only.
         for id in state.replicas.expired(now, ttl_ms) {
@@ -1876,30 +1958,35 @@ impl Messages {
         }
         // Invisibility that expired returns the message to ready; one that had already used up the
         // deliveries goes to the dead-letter instead of going back to the queue.
-        let released = state.index.release_due(now);
+        let mut released = Vec::new();
+        // The list may empty with due pairs still in the table: reload and go on.
+        for _ in 0..64 {
+            released.extend(state.index.release_due_counted(now));
+            if !self.reload_expiry(name, &mut state) {
+                break;
+            }
+        }
         let mut exhausted: Vec<String> = released
             .iter()
-            .filter(|id| {
-                state
-                    .index
-                    .deliveries(id)
-                    .is_some_and(|n| n > 0 && self.exhausted(view, n))
-            })
-            .cloned()
+            .filter(|(_, n)| *n > 0 && self.exhausted(view, *n))
+            .map(|(id, _)| id.clone())
             .collect();
         // First time the topic is seen, or `maxDeliveries` changed through `PATCH`: the ready ones
         // that already exceed the limit also leave.
         let max = view.max_deliveries();
         if state.checked_max_deliveries != Some(max) {
             state.checked_max_deliveries = Some(max);
-            for (id, deliveries) in state.index.ready_delivered() {
+            for (id, deliveries) in self.ready_delivered_of(name, &mut state) {
                 if self.exhausted(view, deliveries) && !exhausted.contains(&id) {
                     exhausted.push(id);
                 }
             }
         }
-        let back_to_ready =
-            released.len() - released.iter().filter(|id| exhausted.contains(id)).count();
+        let back_to_ready = released.len()
+            - released
+                .iter()
+                .filter(|(id, _)| exhausted.contains(id))
+                .count();
         if !exhausted.is_empty() {
             self.dead_letter(&mut state, view, exhausted, now);
         }
@@ -1921,6 +2008,7 @@ impl Messages {
         };
         for id in ids {
             if state.dead_letter_inflight.insert(id.clone()) {
+                self.know(&view.definition.name, state, &id);
                 state.index.set_until(&id, u64::MAX / 2, now);
                 let _ = hooks.dead_letters.send(DeadLetterJob {
                     topic: view.definition.name.clone(),
@@ -1950,7 +2038,7 @@ impl Messages {
         let fifo = view.definition.queue().is_some_and(|q| q.fifo);
         for id in ids {
             // In the cluster the replica also does the move, but only the owner counts and indexes.
-            let owned = source_state.index.contains(&id);
+            let owned = self.know(source, source_state, &id);
             source_state.dead_letter_inflight.remove(&id);
             let original: Option<MessageMeta>;
             let reset = |mut meta: MessageMeta| {
@@ -2347,7 +2435,7 @@ impl Messages {
                 ack_rate: state.rates.acked.per_second(now, window),
                 visible: state.index.ready_count() as u64,
                 invisible: state.index.processing_count() as u64,
-                oldest_ms: state.index.oldest_age_ms(),
+                oldest_ms: self.oldest_owned_age(name, &state),
                 memory_messages,
                 disk_messages: ((state.index.message_count() + state.replicas.len()) as u64)
                     .saturating_sub(memory_messages),
@@ -2359,7 +2447,7 @@ impl Messages {
                 stalled_group: rules
                     .group_stalled_deliveries
                     .filter(|_| fifo)
-                    .and_then(|over| state.index.stalled_group(over)),
+                    .and_then(|over| self.stalled_group_of(name, &state, over)),
                 publish_latency: Percentiles::of(&state.stats.publish_latency),
                 consume_latency: Percentiles::of(&state.stats.consume_latency),
             }
@@ -2376,11 +2464,13 @@ impl Messages {
     pub fn group_snapshots(&self, topic: &str) -> Result<Vec<GroupSnapshot>, TabaError> {
         let view = self.queue_view(topic)?;
         self.settle(&view, self.clock.now_millis());
-        let handle = self.state_of(&view.definition.name);
+        let name = &view.definition.name;
+        let handle = self.state_of(name);
         let state = lock(&handle);
+        let oldest = self.oldest_by_group(name, &state);
         Ok(state
             .index
-            .group_infos()
+            .group_infos(&oldest)
             .into_iter()
             .map(|info| {
                 let (group_id, overflow) = match info.key {
@@ -2497,8 +2587,10 @@ impl Messages {
         };
 
         let mut delivered = Vec::new();
+        // What each message was before this call, to undo the deliveries if the table write fails.
+        let mut undo: Vec<(MessageMeta, Place)> = Vec::new();
         while delivered.len() < max {
-            let Some(id) = state.index.pick() else {
+            let Some(id) = self.pick_next(name, &mut state) else {
                 break;
             };
             let place = if state.memory.contains_key(&id) {
@@ -2554,6 +2646,7 @@ impl Messages {
                 state.stats.redelivered += 1;
                 NodeCounters::add(&self.counters.redeliveries, 1);
             }
+            undo.push((meta.clone(), place));
             meta.delivery_count += 1;
             meta.invisible_until_ms = until;
             let receipt_token = self.ids.new_at(now);
@@ -2584,6 +2677,23 @@ impl Messages {
             for message in &delivered {
                 state.index.set_until(&message.id, until, now);
             }
+        }
+        // The table write is part of the delivery: if it fails, the deliveries are undone (index and
+        // metadata) before the answer.
+        if let Err(e) = self.flush_expiry(name, &mut state) {
+            for (previous, place) in undo {
+                // The pair of a delivery may be waiting in the table write that failed: the
+                // message comes back to the index as it was delivered, and is then released.
+                state
+                    .index
+                    .adopt(window::fact_of(&previous), (until > now).then_some(until));
+                state
+                    .index
+                    .deliver(&previous.id, 0, now, previous.delivery_count);
+                let _ = self.save_meta(&mut state, name, &previous, place);
+            }
+            self.ready_changed(name, &mut state);
+            return Err(self.disk_error("failed to write the expiry table", &e));
         }
         state
             .rates
@@ -2641,8 +2751,50 @@ impl Messages {
         })
     }
 
+    /// Applies on the `expiry` table the operations the invisible list queued.
+    fn apply_spill(&self, name: &str, ops: Vec<SpillOp>) -> io::Result<()> {
+        let rows: Vec<(bool, u64, String)> = ops
+            .into_iter()
+            .map(|op| match op {
+                SpillOp::Put(until, id) => (true, until, id),
+                SpillOp::Delete(until, id) => (false, until, id),
+            })
+            .collect();
+        self.store.expiry_apply(name, &rows)
+    }
+
+    /// Writes the queued table operations; on failure they go back to the queue, in order.
+    fn flush_expiry(&self, name: &str, state: &mut TopicState) -> io::Result<()> {
+        let ops = state.index.take_spill_ops();
+        if ops.is_empty() {
+            return Ok(());
+        }
+        if let Err(e) = self.apply_spill(name, ops.clone()) {
+            state.index.restore_spill_ops(ops);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// The change of an index entry reaches the table in the same step as the metadata's. A write
+    /// that fails stays queued and is tried again with the next change.
+    fn expiry_changed(&self, name: &str, state: &mut TopicState) {
+        if let Err(e) = self.flush_expiry(name, state) {
+            self.disk_error("failed to write the expiry table", &e);
+        }
+    }
+
     /// Notifies the cluster when the topic starts (or stops) having ready messages here.
     fn ready_changed(&self, name: &str, state: &mut TopicState) {
+        // The room that opened in the ready window is refilled once, and the invisible list's
+        // overflow reaches the table.
+        if state.index.refill_due() {
+            self.refill_window(name, state);
+        }
+        if let Err(e) = self.flush_expiry(name, state) {
+            self.disk_error("failed to write the expiry table", &e);
+        }
+        state.index.forget_adopted();
         let has = state.index.has_ready();
         if state.ready_signaled != has {
             state.ready_signaled = has;
@@ -2705,8 +2857,9 @@ impl Messages {
     /// Does the node keep this message? Returns the metadata and whether it is the owner.
     pub fn message_info(&self, topic: &str, id: &str) -> Result<Option<MessageInfo>, TabaError> {
         let state = self.state_of(topic);
-        let state = lock(&state);
-        let owned = state.index.contains(id);
+        let mut state = lock(&state);
+        let owned = self.know(topic, &mut state, id);
+        state.index.forget_adopted();
         if !owned && !state.replicas.contains(id) {
             return Ok(None);
         }
@@ -2731,11 +2884,13 @@ impl Messages {
         id: &str,
     ) -> Result<Option<(MessageMeta, Vec<u8>)>, TabaError> {
         let state = self.state_of(topic);
-        let state = lock(&state);
+        let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
             return Ok(Some((stored.meta.clone(), stored.body.clone())));
         }
-        if !state.index.contains(id) && !state.replicas.contains(id) {
+        let owned = self.know(topic, &mut state, id);
+        state.index.forget_adopted();
+        if !owned && !state.replicas.contains(id) {
             return Ok(None);
         }
         let Some(meta) = self
@@ -2923,7 +3078,9 @@ impl Messages {
         {
             let state = self.state_of(topic);
             let mut state = lock(&state);
-            if state.index.contains(&meta.id) || state.replicas.contains(&meta.id) {
+            let known = self.know(topic, &mut state, &meta.id);
+            state.index.forget_adopted();
+            if known || state.replicas.contains(&meta.id) {
                 return Ok(());
             }
             // On FIFO every copy remembers the deduplication key and the instant of the group's last `id`:
@@ -3032,7 +3189,7 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let owned = state.index.contains(id);
+        let owned = self.know(topic, &mut state, id);
         if !owned && !state.replicas.contains(id) {
             return Err(message_not_found());
         }
@@ -3060,6 +3217,7 @@ impl Messages {
                 Some((count, _)) => state.index.deliver(id, until_ms, now, count),
                 None => state.index.set_until(id, until_ms, now),
             }
+            self.expiry_changed(topic, &mut state);
         }
         let released = owned && delivery.is_none() && until_ms <= now;
         // Releasing a message that already used up its deliveries sends it to the dead-letter (doc 13, 12.10).
@@ -3089,7 +3247,7 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let owned = state.index.contains(id);
+        let owned = self.know(topic, &mut state, id);
         if !owned && !state.replicas.contains(id) {
             return Ok(false);
         }
@@ -3116,6 +3274,7 @@ impl Messages {
         self.save_meta(&mut state, topic, &meta, place)?;
         if owned {
             state.index.deliver(id, meta.invisible_until_ms, now, count);
+            self.expiry_changed(topic, &mut state);
         }
         Ok(true)
     }
@@ -3126,7 +3285,7 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let owned = state.index.contains(id);
+        let owned = self.know(topic, &mut state, id);
         if !owned && !state.replicas.contains(id) {
             return Ok(());
         }
@@ -3179,17 +3338,8 @@ impl Messages {
         }
         let state = self.state_of(topic);
         let mut state = lock(&state);
-        let mut ids: BTreeSet<String> = state.memory.keys().cloned().collect();
-        let rows = self
-            .store
-            .scan(topic)
-            .map_err(|e| self.disk_error("failed to list the messages on disk", &e))?;
         // The FIFO queue's short rows (`deleteAt`) are the deduplication window, not messages.
-        ids.extend(
-            rows.into_iter()
-                .filter(|row| row.delete_at_ms.is_none())
-                .map(|row| row.id),
-        );
+        let ids = self.all_ids_of(topic, &state);
         let mut removed = 0;
         for id in &ids {
             let place = if state.memory.contains_key(id) {
@@ -3197,7 +3347,7 @@ impl Messages {
             } else {
                 Place::Disk
             };
-            removed += u64::from(state.index.contains(id));
+            removed += u64::from(self.know(topic, &mut state, id));
             self.remove_message(&mut state, topic, id, place)?;
         }
         state.dead_letter_inflight.clear();
@@ -3230,6 +3380,7 @@ impl Messages {
         let mut state = lock(&state);
         state.dead_letter_inflight.remove(id);
         if !moved {
+            self.know(topic, &mut state, id);
             state.index.set_until(id, 0, now);
             // The next settle checks again the ready ones that used up their deliveries and redoes the request.
             state.checked_max_deliveries = None;
@@ -3259,7 +3410,7 @@ impl Messages {
         let until = now + visibility_secs * 1000;
         let mut out = Vec::new();
         while out.len() < max {
-            let Some(id) = state.index.pick() else {
+            let Some(id) = self.pick_next(name, &mut state) else {
                 break;
             };
             let (mut meta, body) = if let Some(stored) = state.memory.get(&id) {
@@ -3318,6 +3469,21 @@ impl Messages {
                 band,
             });
         }
+        // The table write is part of the delivery: if it fails, the delivery is undone before the
+        // answer.
+        if let Err(e) = self.flush_expiry(name, &mut state) {
+            for candidate in &out {
+                // The pair may be waiting in the table write that failed (see `take`).
+                state
+                    .index
+                    .adopt(window::fact_of(&candidate.meta), Some(until.max(now + 1)));
+                state
+                    .index
+                    .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
+            }
+            self.ready_changed(name, &mut state);
+            return Err(self.disk_error("failed to write the expiry table", &e));
+        }
         self.ready_changed(name, &mut state);
         Ok(out)
     }
@@ -3327,6 +3493,7 @@ impl Messages {
         let now = self.clock.now_millis();
         let state = self.state_of(topic);
         let mut state = lock(&state);
+        self.know(topic, &mut state, &candidate.meta.id);
         state
             .index
             .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
@@ -3377,15 +3544,13 @@ impl Messages {
             {
                 let mut state = lock(&state);
                 let fifo = state.index.is_fifo();
-                for id in state.index.ids() {
+                for fact in self.owned_facts(&name, &state) {
+                    let id = fact.id;
                     // On FIFO the owner comes from the group, which only the metadata tells.
-                    let group = if fifo {
-                        self.held_meta(&state, &name, &id).and_then(|m| m.group_id)
-                    } else {
-                        None
-                    };
+                    let group = if fifo { fact.group } else { None };
                     if !self.owns(&name, &id, group.as_deref()) {
-                        let age = state.index.age_of(&id).unwrap_or(now);
+                        let age = fact.age_ms;
+                        self.know(&name, &mut state, &id);
                         state.index.remove(&id);
                         state.replicas.insert(&id, age);
                         if let Some(sink) = self.backup.get() {

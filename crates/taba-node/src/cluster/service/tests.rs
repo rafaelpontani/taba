@@ -79,3 +79,14 @@ fn the_reunion_and_recovery_parameters_default_to_what_was_decided_and_can_be_ch
     assert_eq!(changed.message_loss_ttl, Duration::from_secs(2 * 24 * 3600));
     assert_eq!(changed.recovery_timeout, Duration::from_secs(90));
 }
+
+/// UC: UC-ESC-012
+#[test]
+fn write_quorum_is_a_single_value_for_write_delivery_and_ack() {
+    // The coordinator of every operation (publish, invisibility on delivery, ack) reads the same
+    // `ClusterRules::quorum`, which comes from `write.quorum`: there is no other quorum key to tune.
+    let rules = rules_with(&[("TABA_REPLICATION_FACTOR", "5"), ("TABA_WRITE_QUORUM", "4")]);
+    assert_eq!((rules.replication_factor, rules.quorum), (5, 4));
+    let derived = rules_with(&[("TABA_REPLICATION_FACTOR", "5")]);
+    assert_eq!(derived.quorum, 3);
+}

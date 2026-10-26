@@ -63,7 +63,7 @@ The schema version is written to the database (`SCHEMA_VERSION`); a database of 
 
 ## The topic database (`<topic>/_topic.db`)
 
-Table `messages`, **one row per message on disk**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (where the `ttl` counts from: publication, or entry into the dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (the position on the ring) and, in FIFO, `deduplication_id` and `delete_at`. Indexes by `invisible_until`, `age_base`, `position` and `(group_id, deduplication_id)` and `delete_at`.
+Table `messages`, **one row per message on disk**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (where the `ttl` counts from: publication, or entry into the dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (the position on the ring) and, in FIFO, `deduplication_id` and `delete_at`. Indexes by `invisible_until`, `age_base`, `group_id` (the end of a group is read from it, in `id` order), `position` and `(group_id, deduplication_id)` and `delete_at`.
 
 It answers: the oldest message, the next ones to expire, the messages of a block (range by position, for the synchronization streams and cleanup) and the counts.
 
@@ -93,7 +93,7 @@ A topic or token definition is **small data, rarely changed and of interest to t
 
 ## What is rebuilt at start
 
-The **ready list**, the **invisible list**, the **per-group counts** and the **rates** are **derived** from the metadata and rebuilt when the topic is opened (restart or new owner). They are not stored. The invisible list is **complete** and derived from the `invisible_until` of the messages; that is why **the `expiry` table** that the historical documentation mentions **does not exist** in the code (pending item D82).
+The **ready list**, the **invisible list**, the **per-group counts** and the **rates** are **derived** from the metadata and rebuilt when the topic is opened (restart or new owner). They are not stored. The invisible list has a ceiling (`delivery.invisible-list.size`); the pairs that do not fit stay in the **`expiry`** table of the topic database (`invisible_until`, `id`, keyed by the deadline, with an index by `id` to find the pair of a message), which is also derived: it is emptied and rebuilt from the metadata when the topic is opened.
 
 ## Event database (`_sync/sync.db`)
 
@@ -124,7 +124,7 @@ On a production start the database is **zeroed**: the node is new, and what the 
 ## Known limits
 
 - **PRB-025:** `diskBytes` and `bytes` sum the size of the topic's `.body` files, **one call per message on disk**, at each read of `/metrics/topics*`.
-- **PRB-019:** finding the middle message to demote and checking the ready ones when `maxDeliveries` changes scan the topic's memory.
+- **PRB-019:** finding the middle message to demote and checking the ready ones when `maxDeliveries` changes scan the topic's memory; the `maxDeliveries` check and the on-demand queries read the messages in pages.
 - **D80:** the topic name becomes a folder name; Windows reserved names (`con`, `nul`, `aux`, `com1`…) are not handled yet.
 
 ## Sources and evidence

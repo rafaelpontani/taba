@@ -146,3 +146,23 @@ fn the_reduced_profile_is_an_informative_warning() {
     );
     assert!(Condition::ALL.contains(&Condition::ReducedProfile));
 }
+
+/// UC: UC-CNV-017
+#[test]
+fn a_condition_entry_has_a_name_and_a_severity_of_the_document() {
+    for condition in Condition::ALL {
+        let entry = condition.entry();
+        let object = entry.as_object().unwrap();
+        assert_eq!(
+            object.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["condition", "severity"],
+            "{condition:?} has only these two fields"
+        );
+        assert_eq!(entry["condition"], condition.as_str());
+        let severity = entry["severity"].as_str().unwrap();
+        assert!(
+            ["info", "warning", "critical"].contains(&severity),
+            "{condition:?}: {severity}"
+        );
+    }
+}

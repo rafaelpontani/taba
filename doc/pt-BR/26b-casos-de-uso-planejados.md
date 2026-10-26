@@ -11,7 +11,7 @@ fontes: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Mantido à mão.** Um caso aqui **não quer dizer que o comportamento não existe**: quer dizer que **nenhum teste o cita** hoje. Alguns recursos já funcionam (e aparecem em outros documentos como ✅) sem prova por caso; outros são ⬜ planejados. Os casos com teste estão em [26a-casos-de-uso-implementados.md](26a-casos-de-uso-implementados.md).
 
-**Placar (2026-10-13, commit 71183b9):** **176** casos sem teste, de **878**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
+**Placar (2026-10-24):** **104** casos sem teste, de **862**. Os casos marcados "(pendente: D##)" dependem de uma dúvida ainda aberta ([31-pendencias.md](31-pendencias.md)).
 
 Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conector. Para fechar um caso, cite-o num teste (`/// UC: UC-XXX-NNN`) do nível indicado e regenere ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
@@ -19,35 +19,35 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 | Área | Assunto | Sem teste | Com teste |
 |---|---|---:|---:|
-| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 4 | 45 |
+| `TOP` | Tópicos: criar, listar, ler, alterar e remover | 3 | 45 |
 | `MSG` | Publicação e o corpo da mensagem | 1 | 19 |
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 1 | 39 |
 | `VIS` | Alteração da invisibilidade | 2 | 10 |
-| `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 6 | 14 |
-| `DST` | Tópico Distribuidor | 12 | 6 |
-| `GRP` | Grupos de mensagens e entrega justa | 1 | 16 |
+| `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 2 | 18 |
+| `DST` | Tópico Distribuidor | 2 | 16 |
+| `GRP` | Grupos de mensagens e entrega justa | 0 | 17 |
 | `AUT` | Autenticação e tokens de acesso | 6 | 33 |
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 2 | 7 |
-| `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 7 | 10 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 14 | 24 |
-| `ANE` | Anel de hash, blocos e papéis | 4 | 8 |
-| `DEF` | Definição de tópicos e de tokens replicada no cluster | 11 | 21 |
-| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 21 | 10 |
-| `INV` | Invisibilidade no dono e nas réplicas | 19 | 13 |
-| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 8 | 21 |
-| `ING` | Entrada de nó (bootstrap) | 5 | 30 |
+| `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 6 | 11 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 29 |
+| `ANE` | Anel de hash, blocos e papéis | 3 | 8 |
+| `DEF` | Definição de tópicos e de tokens replicada no cluster | 9 | 22 |
+| `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 13 | 17 |
+| `INV` | Invisibilidade no dono e nas réplicas | 5 | 26 |
+| `ARM` | Armazenamento: memória, overflow, SQLite, integridade | 6 | 23 |
+| `ING` | Entrada de nó (bootstrap) | 3 | 31 |
 | `FAL` | Detecção de falhas, votação de exclusão e saída por falha | 1 | 32 |
-| `FRZ` | Período de freezing | 1 | 13 |
-| `CNC` | Concorrência entre mudanças de membros | 3 | 12 |
-| `SIN` | Sincronização distribuída de blocos | 1 | 29 |
-| `STR` | Streams NDJSON entre nós | 12 | 3 |
-| `FWD` | Repasse de chamadas de cliente | 8 | 4 |
+| `FRZ` | Período de freezing | 0 | 13 |
+| `CNC` | Concorrência entre mudanças de membros | 2 | 12 |
+| `SIN` | Sincronização distribuída de blocos | 0 | 29 |
+| `STR` | Streams NDJSON entre nós | 7 | 8 |
+| `FWD` | Repasse de chamadas de cliente | 7 | 4 |
 | `DRN` | Parada e modo drain | 2 | 19 |
-| `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 4 | 3 |
-| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 9 | 39 |
-| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 7 | 3 |
-| `CFG` | Configuração e validações de partida | 2 | 10 |
+| `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 0 | 3 |
+| `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 7 | 40 |
+| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 8 |
+| `CFG` | Configuração e validações de partida | 1 | 10 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -60,14 +60,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-TOP-019
-
-**Caso:** Criar fila FIFO com `replication.factor` abaixo de 2  
-**Então:** `422` `topic.fifo-needs-replication`.  
-**Nível:** C  
-**Fonte histórica:** 06a, 17 §16.2
-
----
 
 ### UC-TOP-025
 
@@ -102,7 +94,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CNS-039
 
-**Caso:** O primeiro `GET` com `autoCreate` paga o registro + commit em todos os nós; os seguintes não.  
+**Caso:** O primeiro `GET` com `autoCreate` paga a criação da definição (proposta ao dono e aplicada em todos os nós); os seguintes não.  
 **Nível:** C  
 **Fonte histórica:** 15 §14.4
 
@@ -131,40 +123,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## RET: Expiração (`ttl`), limite de entregas e dead-letter
 
-### UC-RET-003
-
-**Caso:** O padrão do `ttl` (14 dias) vale na hora da conferência  
-**Então:** mudar `retention.ttl.default` afeta as filas sem `ttl` próprio, e não as que o definiram.  
-**Nível:** U, I  
-**Fonte histórica:** 13 §12.10
-
----
-
-### UC-RET-010
-
-**Caso:** A mensagem na dead-letter cai no mesmo bloco e nos mesmos nós da mensagem original (mesmo `id`).  
-**Nível:** U, C  
-**Fonte histórica:** 13 §12.10
-
----
-
-### UC-RET-012
-
-**Caso:** A dead-letter não tem definição própria  
-**Então:** não há linha na tabela `topics` e as configurações são as da fila de origem.  
-**Nível:** I  
-**Fonte histórica:** 13 §12.10, 02 §3.3
-
----
-
-### UC-RET-015
-
-**Caso:** O sufixo da dead-letter é configurável (`topics.dead-letter.suffix`) e passa a ser o nome reservado.  
-**Nível:** U, I  
-**Fonte histórica:** 10
-
----
-
 ### UC-RET-019
 
 **Caso:** Na fila FIFO, a mensagem que atinge `maxDeliveries` vai para a dead-letter e o grupo segue com a próxima; a vencida por `ttl` na cabeça também libera o grupo (casos `FIF`).  
@@ -184,96 +142,12 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## DST: Tópico Distribuidor
 
-### UC-DST-004
-
-**Caso:** Uma fila que casa com **dois ou mais prefixos do mesmo** distribuidor recebe **uma** cópia.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-005
-
-**Caso:** Uma fila que casa com prefixos de **distribuidores diferentes** recebe uma cópia de cada publicação em cada um.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-006
-
-**Caso:** Só filas são destino  
-**Então:** um distribuidor nunca recebe cópia (sem laços).  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-007
-
-**Caso:** O casamento é feito na hora da publicação  
-**Então:** uma fila criada depois só recebe o que for publicado depois.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
 ### UC-DST-008
 
 **Caso:** Falha parcial  
 **Então:** uma cópia falha (por exemplo, sem quórum) e as outras seguem; a resposta é `200`, com `error` (`code`, `message`) no item que falhou e `id` nos demais, e o evento `taba.distributor.partial`. Nada é desfeito.  
 **Nível:** C  
 **Fonte histórica:** 06a, 15 §14.2
-
----
-
-### UC-DST-010
-
-**Caso:** O `groupId` e o `deduplicationId` informados vão para todas as cópias; sem `deduplicationId`, cada cópia usa o hash do corpo.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2, 17 §16.8
-
----
-
-### UC-DST-012
-
-**Caso:** Num distribuidor vale o `message.max-bytes` geral, e as cópias não são conferidas de novo contra o `maxMessageBytes` de cada fila.  
-**Nível:** I  
-**Fonte histórica:** 12
-
----
-
-### UC-DST-013
-
-**Caso:** O `PATCH` de `prefixes` vale a partir do commit, só para publicações posteriores.  
-**Nível:** I  
-**Fonte histórica:** 06a, 15 §14.2
-
----
-
-### UC-DST-014
-
-**Caso:** O distribuidor não guarda mensagens  
-**Então:** não há mensagem em memória nem em disco para ele, e nenhuma lista de prontos.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-015
-
-**Caso:** Não há ordem entre as filas destino. O teste não pode exigir ordem.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.2
-
----
-
-### UC-DST-016
-
-**Caso:** `GET` e ack num distribuidor  
-**Então:** `409` `topic.wrong-type`.  
-**Nível:** I  
-**Fonte histórica:** 15 §14.1
 
 ---
 
@@ -287,14 +161,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 
 ## GRP: Grupos de mensagens e entrega justa
-
-### UC-GRP-014
-
-**Caso:** Num distribuidor, o `groupId` é repassado a todas as cópias.  
-**Nível:** I  
-**Fonte histórica:** 13 §12.11, 15 §14.2
-
----
 
 
 ## AUT: Autenticação e tokens de acesso
@@ -318,8 +184,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-AUT-030
 
-**Caso:** Criar, alterar e revogar usam o registro + commit com confirmação de **todos** os nós; com algum nó fora do ar  
-**Então:** `503` `cluster.registration-failed` (e `cluster.commit-timeout` conforme o caso).  
+**Caso:** Criar, alterar e revogar um token são propostos ao **dono** do token no anel, que dá a próxima versão, grava no herdeiro e aplica em todos os nós (`definitions/propose` e `apply`); não esperam todos os nós  
+**Então:** o dono responde depois dos nós que respondem em `write.commit.timeout`, e os demais recebem pelo canal; sem o dono (fora do ar e ainda na tabela) ou sem nenhum outro dono para confirmar, `503` `cluster.quorum-unavailable` e nada é aplicado.  
 **Nível:** C  
 **Fonte histórica:** 06a, 02 §3.4
 
@@ -328,7 +194,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-AUT-031
 
 **Caso:** O segredo nunca trafega entre nós  
-**Então:** o `register` leva só o `salt` e o `secretHash`.  
+**Então:** o `TokenRecord` do `propose` e do `apply` leva só o `salt` e o `secretHash`.  
 **Nível:** C  
 **Fonte histórica:** 06c, 02 §3.4
 
@@ -428,8 +294,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-CNV-015
 
-**Caso:** Um `503` ou `504` de operação que cria ou apaga (tópico, token) pode já ter sido aplicado em parte do cluster  
-**Então:** ao repetir, `409` `topic.already-exists` (criação) ou `404` (remoção) significam que a operação já tinha sido aplicada.  
+**Caso:** Uma operação que cria ou apaga (tópico, token) e fica sem resposta definitiva (`504` ou conexão cortada) pode já ter sido aplicada pelo dono  
+**Então:** ao repetir, `409` `topic.already-exists` (criação) ou `404` (remoção) significam que a operação já tinha sido aplicada. Um `503` `cluster.quorum-unavailable` não aplicou nada.  
 **Nível:** C  
 **Fonte histórica:** 06d §8.3.5
 
@@ -443,49 +309,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-CNV-017
-
-**Caso:** Os DTOs reutilizados `Ack`, `StreamEnd` e `ConditionEntry` têm os campos e tipos definidos em 06d §8.3.7 (`severity` de `ConditionEntry` só vale `info`, `warning` ou `critical`).  
-**Nível:** U  
-**Fonte histórica:** 06d §8.3.7
-
----
-
 
 ## ESC: Escrita: registro + commit, quórum, rollback, teto de commit
-
-### UC-ESC-001
-
-**Caso:** O coordenador gera o GUID v7 **antes** da fase de registro e calcula, pelo ID, o bloco e os nós responsáveis (primário, secundário, terciário).  
-**Nível:** U, C  
-**Fonte histórica:** 05 §7.2
-
----
-
-### UC-ESC-008
-
-**Caso:** O padrão de `write.quorum` é `floor(rf / 2) + 1`  
-**Então:** 2 com rf 3, 3 com rf 5, 1 com rf 1.  
-**Nível:** U  
-**Fonte histórica:** 05 §7.2, 10
-
----
-
-### UC-ESC-009
-
-**Caso:** `write.quorum` é validado entre 1 e `replication.factor`; fora disso, a configuração é recusada. Abaixo da maioria é aceito.  
-**Nível:** U  
-**Fonte histórica:** 05 §7.2, 10
-
----
-
-### UC-ESC-012
-
-**Caso:** `write.quorum` é um valor **único** para escrita, entrega (invisibilidade) e ack.  
-**Nível:** U, C  
-**Fonte histórica:** 05 §7.2
-
----
 
 ### UC-ESC-018
 
@@ -493,15 +318,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Então:** nunca é enviado depois de o quórum decidir.  
 **Nível:** C  
 **Fonte histórica:** 05 §7.2
-
----
-
-### UC-ESC-026
-
-**Caso:** Todas as fases são **idempotentes pelo `operationId`**  
-**Então:** repetir `register`, `commit` ou `rollback` devolve o mesmo `Ack`, sem efeito novo.  
-**Nível:** U, C  
-**Fonte histórica:** 06c
 
 ---
 
@@ -594,13 +410,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-ANE-011
-
-**Caso:** Com um nó só (modo desenvolvimento) o nó é primário de todos os blocos, sem rebalanceamento.  
-**Nível:** I  
-**Fonte histórica:** 05 §7.1
-
----
 
 ### UC-ANE-012
 
@@ -623,15 +432,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-DEF-011
-
-**Caso:** A dead-letter não tem linha de definição na tabela `topics`  
-**Então:** é derivada da fila de origem, criada e excluída na mesma operação.  
-**Nível:** I  
-**Fonte histórica:** 02 §3.3
-
----
-
 ### UC-DEF-012
 
 **Caso:** Cada token é uma linha da tabela `tokens` do `_node.db` (com `id`, `name`, permissões, prefixos, datas, o sal e o hash salgado do segredo, nunca o segredo).  
@@ -642,15 +442,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-DEF-013
 
-**Caso:** Na partida, o nó (em desenvolvimento, retomando do disco) carrega as definições da tabela `topics` do `_node.db`, preservando o `id` e a data de criação de cada uma.  
-**Nível:** I  
+**Caso:** Na partida em que o nó parte **sozinho** (o primeiro nó, ou o de menor ID antigo na retomada), ele carrega as definições do `_node.db` (tabelas `topics` e `tokens`), com as versões e as lápides de `definition_versions`, preservando o `id` e a data de criação de cada uma. Um nó que entra num cluster que já está de pé não as usa: recebe as do cluster e só as **oferece** depois.  
+**Nível:** I, C  
 **Fonte histórica:** 04 §6.10
 
 ---
 
 ### UC-DEF-014
 
-**Caso:** O `DELETE` sempre funciona, mesmo com mensagens não entregues ou não confirmadas. No commit, cada nó apaga todas as mensagens do tópico que tem localmente (memória, `${topic}/` em disco e metadados), sem checar se estão pendentes.  
+**Caso:** O `DELETE` sempre funciona, mesmo com mensagens não entregues ou não confirmadas. Ao aplicar a remoção (`apply` com `deleted`), cada nó apaga todas as mensagens do tópico que tem localmente (memória, `${topic}/` em disco e metadados), sem checar se estão pendentes, e fica a lápide da definição.  
 **Nível:** C  
 **Fonte histórica:** 02 §3.3
 
@@ -658,7 +458,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-DEF-017
 
-**Caso:** A carga é aplicada direto no armazenamento final; tudo o que chega por registro e commit durante a carga (criação, alteração, remoção) vai para o banco de eventos, na ordem de chegada, e o nó confirma o registro **depois de gravar**.  
+**Caso:** A carga é aplicada direto no armazenamento final; tudo o que chega durante a carga (as mudanças de definição por `apply` e as fases de registro + commit das mensagens) vai para o banco de eventos, na ordem de chegada, e o nó confirma o registro **depois de gravar**.  
 **Nível:** C  
 **Fonte histórica:** 02 §3.3
 
@@ -699,14 +499,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-DEF-023
-
-**Caso:** Em modo desenvolvimento a definição é aplicada só no próprio nó, sem esperar outros, sem bootstrap nem carga.  
-**Nível:** I  
-**Fonte histórica:** 02 §3.3
-
----
-
 
 ## ENT: Entrega no dono: lista de prontos, `take`, long polling
 
@@ -736,71 +528,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-ENT-007
-
-**Caso:** Em modo desenvolvimento o nó é o dono de todas as mensagens.  
-**Nível:** I  
-**Fonte histórica:** 13 §12.7
-
----
-
-### UC-ENT-008
-
-**Caso:** A lista de prontos é mantida por tópico em cada nó, em memória, com `delivery.ready-list.size` IDs (padrão 1000).  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-009
-
-**Caso:** Uma thread repõe a lista quando o semáforo abre espaço (entrega commitada, ID que sai), repondo a quantidade que abriu, sem consultar à toa.  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-010
-
-**Caso:** A reposição segue a sanfona  
-**Então:** dois cursores sobre as mensagens do nó (da mais antiga para a frente e da mais nova para trás, por GUID v7, em memória e em disco), alternando as duas pontas.  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-011
-
-**Caso:** A entrega consome as duas pontas de forma **intercalada**  
-**Então:** a mais antiga, a mais nova, a segunda mais antiga, a segunda mais nova.  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-012
-
-**Caso:** Uma mensagem nova que chega ao dono entra direto na lista se há lugar e o cursor da ponta nova está no fim; senão é encontrada depois pela thread.  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6
-
----
-
-### UC-ENT-014
-
-**Caso:** A mensagem cuja invisibilidade vence volta à lista pela posição do GUID v7, **não** pela varredura; se a lista está cheia, o ID do **meio** sai para dar lugar e é reposto depois (nenhuma mensagem se perde).  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6, 14 §13.6
-
----
-
-### UC-ENT-015
-
-**Caso:** O `GET` só consulta a lista, sem varrer memória e disco a cada chamada.  
-**Nível:** U  
-**Fonte histórica:** 13 §12.6
-
----
 
 ### UC-ENT-016
 
@@ -823,6 +550,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 **Caso:** O peer é sorteado com **peso** proporcional às mensagens prontas informadas no sinal de vida; sem informação de quantidade, o sorteio é uniforme.  
 **Nível:** U  
+**Bloqueado:** Depende de implementar: o sorteio de `ready_peers` é uniforme; não há peso pela quantidade de prontas informada no sinal de vida.  
 **Fonte histórica:** 13 §12.8
 
 ---
@@ -889,29 +617,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## INV: Invisibilidade no dono e nas réplicas
 
-### UC-INV-001
-
-**Caso:** Os metadados são `deliveryCount`, `invisibleUntil` (data absoluta) e `receiptToken`, guardados e replicados juntos  
-**Então:** no mesmo registro + commit, em memória ou no banco local do tópico.  
-**Nível:** U, C  
-**Fonte histórica:** 14 §13.2
-
----
-
 ### UC-INV-002
 
 **Caso:** `invisibleUntil` é calculado pelo **dono** (`agora + visibilityTimeout`, pelo relógio dele); as réplicas guardam o valor pronto e nunca recalculam a partir de duração.  
 **Nível:** C  
 **Fonte histórica:** 14 §13.2 e 13.3
-
----
-
-### UC-INV-005
-
-**Caso:** Os estados da mensagem para o dono  
-**Então:** **pronta** (`invisibleUntil` ausente ou no passado), **invisível** (no futuro) e **removida** (ack).  
-**Nível:** U  
-**Fonte histórica:** 14 §13.1
 
 ---
 
@@ -941,136 +651,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-INV-017
-
-**Caso:** A thread do dono olha a cabeça da lista de invisíveis, dorme até o prazo dela (com um teto curto para reagir a alterações e entradas mais cedo) e, no vencimento, remove a entrada e **confere** nos metadados  
-**Então:** a mensagem ainda existe, o nó ainda é dono e o prazo ainda é o da entrada; senão descarta e segue.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-018
-
-**Caso:** Passada a conferência, a mensagem entra na lista de prontos pela posição do GUID v7 (perto da ponta antiga); com a lista cheia, o ID do meio sai.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-020
-
-**Caso:** Na fila FIFO, a mensagem que volta é a cabeça do grupo; o grupo deixa de estar ocupado e entra na lista de prontos pela posição do ID, sem a regra do meio da lista.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-021
-
-**Caso:** Se a lista de invisíveis esvazia e ainda há linhas na tabela de expiração, a thread faz a recarga antes de dormir.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.6
-
----
-
-### UC-INV-022
-
-**Caso:** A lista de invisíveis é, por tópico e só no dono, uma lista de pares (ID, `invisibleUntil`) ordenada por prazo, com no máximo `delivery.invisible-list.size` entradas; busca por ID para alteração e ack.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.4
-
----
-
-### UC-INV-023
-
-**Caso:** Regra de inclusão com a lista cheia  
-**Então:** se o prazo novo é **anterior** ao último da lista, o par novo entra e o último vai para a tabela; senão o par novo vai direto para a tabela.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-024
-
-**Caso:** Invariante  
-**Então:** tudo na lista vence antes de tudo na tabela; a thread nunca consulta a tabela enquanto a lista não esvazia.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-025
-
-**Caso:** Recarga  
-**Então:** abaixo de `delivery.invisible.reload-threshold` (ou vazia), a thread lê da tabela os pares de menor `invisibleUntil` (consulta ordenada com limite pelo índice), move-os para a lista e apaga as linhas lidas.  
-**Nível:** U, I  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-026
-
-**Caso:** Sem entradas velhas  
-**Então:** ack, alteração e nova entrega apagam ou atualizam a linha da tabela no mesmo commit que atualiza a lista. Não há remoção preguiçosa.  
-**Nível:** U, I  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-027
-
-**Caso:** A gravação na tabela faz parte do commit no dono  
-**Então:** se falhar, o commit não se completa e a entrega é desfeita antes da resposta ao cliente.  
-**Nível:** I  
-**Fonte histórica:** 14 §13.5
-
----
-
-### UC-INV-028
-
-**Caso:** Com a lista com espaço, nenhuma escrita além dos metadados.  
-**Nível:** U  
-**Fonte histórica:** 14 §13.5
-
----
-
 ### UC-INV-031
 
 **Caso:** Reinício  
-**Então:** a tabela de expiração é descartada junto com o estado antigo; as listas são reconstruídas quando o nó assumir blocos.  
+**Então:** a tabela de expiração é descartada junto com o estado antigo; as mensagens da vida anterior voltam pela restauração (`_lives`), prontas, com a invisibilidade zerada e um `receiptToken` novo, e as listas são reconstruídas quando o nó assumir blocos.  
 **Nível:** C  
 **Fonte histórica:** 14 §13.7
 
 ---
 
-### UC-INV-032
-
-**Caso:** Em modo desenvolvimento o registro e o commit acontecem só no próprio nó (quórum 1), sem propagação; só vale o caso do reinício.  
-**Nível:** I  
-**Fonte histórica:** 14 §13.3 e 13.7
-
----
-
 
 ## ARM: Armazenamento: memória, overflow, SQLite, integridade
-
-### UC-ARM-008
-
-**Caso:** A lista de prontos e as mensagens em memória não mudam por causa do banco  
-**Então:** ele só cuida do que está em disco.  
-**Nível:** U  
-**Fonte histórica:** 02 §3.2
-
----
-
-### UC-ARM-012
-
-**Caso:** A tabela `expiry` guarda os pares que não couberam na lista de invisíveis, com índice por prazo.  
-**Nível:** I  
-**Fonte histórica:** 02 §3.2, 14 §13.5
-
----
 
 ### UC-ARM-016
 
@@ -1083,7 +674,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-ARM-018
 
-**Caso:** O banco do nó, `${storage.dir}/_node.db`, é estritamente local, com as tabelas `topics` (as definições de tópico) e `losses` (`topic`, `id`, `block`, `detected_at`), escrita por uma thread única.  
+**Caso:** O banco do nó, `${storage.dir}/_node.db`, é estritamente local, com as tabelas `topics` (as definições de tópico), `tokens`, `state`, `losses` (`topic`, `id`, `block`, `detected_at`) e `definition_versions` (as versões e as lápides), escrita por uma conexão única, o único escritor.  
 **Nível:** I  
 **Fonte histórica:** 02 §3.2
 
@@ -1126,14 +717,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## ING: Entrada de nó (bootstrap)
 
-### UC-ING-007
-
-**Caso:** O nó se auto-nomeia com um **GUID v7** a cada início do processo, só em memória, e se identifica por ele, inclusive no pedido de ingresso.  
-**Nível:** U, C  
-**Fonte histórica:** 04 §6.7
-
----
-
 ### UC-ING-012
 
 **Caso:** Ao final, o nó novo conhece todos os demais membros e vice-versa, e abre ativamente o canal permanente com cada nó da tabela.  
@@ -1150,19 +733,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-ING-025
-
-**Caso:** Em modo desenvolvimento não há bootstrap  
-**Então:** o nó sobe sozinho, e outro nó não consegue ingressar (a porta do cluster não é aberta). Um nó em produção que tenta ingressar num nó em desenvolvimento não consegue.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 06c
-
----
 
 ### UC-ING-026
 
-**Caso:** A tabela de membros **não** é persistida  
-**Então:** o reinício do processo perde a tabela e o nó volta como nó novo.  
+**Caso:** A tabela de membros **não** é persistida como estado vivo  
+**Então:** o reinício do processo perde a tabela e o nó volta como nó novo, com ID novo; o `manifest.json` da vida anterior guarda uma cópia dela só para a restauração e a sondagem dos IPs antigos, e não faz o nó voltar como o antigo.  
 **Nível:** C  
 **Fonte histórica:** 13 §12.9
 
@@ -1181,26 +756,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
-## FRZ: Período de freezing
-
-### UC-FRZ-008
-
-**Caso:** Em modo desenvolvimento o freezing não se aplica (`cluster.freezing.*` é ignorado).  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4
-
----
-
-
 ## CNC: Concorrência entre mudanças de membros
 
-### UC-CNC-008
-
-**Caso:** Em modo desenvolvimento não há mudança de membros a coordenar.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4
-
----
 
 ### UC-CNC-011
 
@@ -1221,49 +778,13 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
-## SIN: Sincronização distribuída de blocos
-
-### UC-SIN-024
-
-**Caso:** Em modo desenvolvimento não há entrada de nó, sincronização, banco de eventos nem recuperação de perdas.  
-**Nível:** I  
-**Fonte histórica:** 05 §7.3
-
----
-
-
 ## STR: Streams NDJSON entre nós
-
-### UC-STR-002
-
-**Caso:** A ordem é por **ID ascendente** (GUID v7 comparado como texto na forma canônica em minúsculas).  
-**Nível:** U  
-**Fonte histórica:** 06c §8.2.1
-
----
-
-### UC-STR-003
-
-**Caso:** `from` e `to` (ambos inclusivos e opcionais) delimitam a faixa; `limit` opcional reduz o teto de itens.  
-**Nível:** U, C  
-**Fonte histórica:** 06c §8.2.1
-
----
 
 ### UC-STR-005
 
 **Caso:** Teto por stream  
 **Então:** o emissor fecha ao atingir `cluster.sync.stream.max-items` ou `max-bytes`, com `hasMore: true`; o receptor abre outro com `from=<last>`.  
 **Nível:** C  
-**Fonte histórica:** 06c §8.2.1
-
----
-
-### UC-STR-006
-
-**Caso:** Retomada depois de um corte ou de `hasMore`  
-**Então:** o receptor repete com `from=<último ID lido>`; o emissor devolve de novo essa linha e o receptor a **ignora** (aplicação idempotente por ID). Sem token nem estado no servidor.  
-**Nível:** U, C  
 **Fonte histórica:** 06c §8.2.1
 
 ---
@@ -1285,29 +806,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-STR-009
-
-**Caso:** Limite do tamanho da linha (`cluster.sync.stream.max-line-bytes`)  
-**Então:** precisa caber a maior mensagem possível (hard-limit em base64 mais o envelope).  
-**Nível:** U  
-**Fonte histórica:** 06c §8.2.1, 10
-
----
-
 ### UC-STR-010
 
 **Caso:** Contrapressão  
 **Então:** o receptor lê no próprio ritmo e o emissor não mantém transação nem lista congelada aberta; lê o armazenamento em blocos pequenos.  
 **Nível:** C  
-**Fonte histórica:** 06c §8.2.1
-
----
-
-### UC-STR-011
-
-**Caso:** Linhas de cada rota  
-**Então:** `TopicDefinition`, `TokenRecord`, `{id, topic}` (e `deleteAt` na FIFO), `{id, topic}` das perdas e `MessageRecord` (sem `body` e com `deleteAt` na FIFO com exclusão lógica).  
-**Nível:** U  
 **Fonte histórica:** 06c §8.2.1
 
 ---
@@ -1323,8 +826,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-STR-014
 
-**Caso:** O contrato não cria tombstone nem log novo  
-**Então:** a remoção continua por ausência do ID.  
+**Caso:** Os streams de mensagens (`ids` e `messages`) não carregam lápide  
+**Então:** a remoção de uma mensagem continua por ausência do ID; o que impede uma cópia morta de voltar é o log de excluídos (`/cluster/blocks/{id}/excluded`) e, nas definições, o stream de lápides (`/cluster/definitions/tombstones`), cada um em rota própria.  
 **Nível:** C  
 **Fonte histórica:** 06c §8.2.1
 
@@ -1356,6 +859,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Caso:** Destino no drain  
 **Então:** o **nó mais livre** (menor carga pelo sinal de vida, mais as chamadas já repassadas e em andamento por aquele destino), com empate sorteado; só entram nós prontos e fora de drain; a escolha é feita **a cada chamada**. Depois que o canal fecha, vale o último indicador e a última tabela conhecida.  
 **Nível:** U, C  
+**Bloqueado:** O código diverge do cartão: `Forwarder::pick` usa só as chamadas em andamento do próprio nó e sorteia o empate; a carga do sinal de vida não entra. Decidir se o cartão ou o código muda antes de testar.  
 **Fonte histórica:** 04 §6.9
 
 ---
@@ -1403,14 +907,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-FWD-012
-
-**Caso:** Em modo desenvolvimento nenhuma chamada é repassada.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4 e 6.9
-
----
-
 
 ## DRN: Parada e modo drain (inclui o drain como save)
 
@@ -1431,43 +927,6 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
-## DEV: Perfil de um nó (o antigo modo desenvolvimento)
-
-### UC-DEV-006
-
-**Caso:** O comportamento de cliente é o mesmo do cluster  
-**Então:** API, overflow, entrega e invisibilidade, `ttl`, `maxDeliveries`, dead-letter, distribuidores e filas voláteis, limites e rate limit (a mesma bateria de casos `I` roda aqui).  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4
-
----
-
-### UC-DEV-007
-
-**Caso:** O nó é dono de todas as mensagens  
-**Então:** não há `take` nem avisos entre nós, e o long polling é só local.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 13 §12.7
-
----
-
-### UC-DEV-008
-
-**Caso:** O nó é o gestor de todas as filas voláteis, e a verificação final consulta só ele.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 15 §14.5
-
----
-
-### UC-DEV-009
-
-**Caso:** A entrega justa por grupos vale igual, com contagem exata.  
-**Nível:** I  
-**Fonte histórica:** 04 §6.4, 13 §12.11
-
----
-
-
 ## OPS: Observabilidade (OpenTelemetry), estatísticas, métricas e saúde
 
 ### UC-OPS-015
@@ -1480,37 +939,21 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-OPS-020
 
-**Caso:** O resultado de `/metrics/topics` fica em cache por `stats.topics.cache-ttl` (com `collectedAt`); o filtro e o `limit` são aplicados **depois** do merge entre nós; sem `sort` (`400`).  
+**Caso:** No `GET /stats/topics` (API de cliente) o filtro e o `limit` são aplicados **depois** do merge entre nós, e `sort` não existe (`400`). O cache do resultado por `stats.topics.cache-ttl` (com `collectedAt`) está planejado: hoje o parâmetro não tem efeito.  
 **Nível:** C  
 **Fonte histórica:** 06b, 11
 
 ---
 
-### UC-OPS-023
-
-**Caso:** Visão do nó × visão do cluster  
-**Então:** **só o primário conta** (senão a soma seria multiplicada pelo fator de replicação); o cluster soma `visibleMessages`, `invisibleMessages` e `depth`, e `oldestMessageAt` é a **menor** data entre os nós; `oldestAge = agora − oldestMessageAt`.  
-**Nível:** U, C  
-**Fonte histórica:** 11
-
----
-
 ### UC-OPS-025
 
-**Caso:** Nó que não responde fica de fora e o resultado é marcado `partial`  
+**Caso:** No `/stats/topics`, um nó que não responde fica de fora e o resultado é marcado `partial`, com `missingNodes`  
 **Então:** as somas viram piso.  
 **Nível:** C  
 **Fonte histórica:** 11
 
 ---
 
-### UC-OPS-027
-
-**Caso:** `GET /cluster/metrics/topics` devolve `TopicCounters` (`collectedAt` e `topics` com `visibleMessages`, `invisibleMessages`, `oldestMessageAt`), só das mensagens em que o nó é primário; o parâmetro `topic` pede só um tópico.  
-**Nível:** C  
-**Fonte histórica:** 06c, 11
-
----
 
 ### UC-OPS-030
 
@@ -1550,45 +993,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ## CLR: Contrato das rotas do cluster (DTOs e regras comuns)
 
-### UC-CLR-002
-
-**Caso:** Todo `register`, `commit` e `rollback` leva o `operationId` (GUID v7 do coordenador) e é idempotente por ele. Um registro sem commit nem rollback expira após `write.pending.ttl`.  
-**Nível:** U, C  
-**Fonte histórica:** 06c
-
----
-
 ### UC-CLR-003
 
 **Caso:** A resposta de `register`, `commit` e `rollback` é `Ack` (`operationId`, `accepted`).  
 **Nível:** U  
 **Fonte histórica:** 06c, 06d §8.3.7
-
----
-
-### UC-CLR-004
-
-**Caso:** Corpo inválido nas rotas do cluster  
-**Então:** `400` `validation.failed`, `validation.required` ou `validation.unknown-field`.  
-**Nível:** U, C  
-**Fonte histórica:** 06c
-
----
-
-### UC-CLR-005
-
-**Caso:** Os DTOs do cluster (`Member`, `MemberTable`, `JoinRequest`, `NodeRegisterRequest`, `NodeUnregisterRequest`, `OperationRef`, `VoteRequest`, `VoteResponse`, `TopicRegisterRequest`, `TopicDefinition`, `TokenRegisterRequest`, `TokenRecord`, `MessageRegisterRequest`, `VisibilityRegisterRequest`, `AckRegisterRequest`, `TakeRequest`, `TakeResponse`, `MessageRecord`, `IdleResponse`, `RecoverResult`, `TopicCounters`) serializam e desserializam com os campos e tipos documentados, e os valores `null` de `ttl`, `maxDeliveries` e `maxMessageBytes` da `TopicDefinition` são enviados como `null`.  
-**Nível:** U  
-**Fonte histórica:** 06c
-
----
-
-### UC-CLR-006
-
-**Caso:** O DTO `TopicDefinition` é igual ao JSON guardado na tabela `topics`  
-**Então:** os campos de `Topic` sem `effective`, `deadLetter` e `source`.  
-**Nível:** U  
-**Fonte histórica:** 06c, 02 §3.3
 
 ---
 
@@ -1600,38 +1009,21 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
-### UC-CLR-010
-
-**Caso:** Códigos só do cluster  
-**Então:** `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `cluster.wrong-node`, `fifo.misdirected` e `cluster.operation-unknown`.  
-**Nível:** U, C  
-**Fonte histórica:** 06d §8.3.6
-
----
-
 
 ## CFG: Configuração e validações de partida
 
 ### UC-CFG-006
 
-**Caso:** Todos os nós rodam a **mesma imagem**; o papel de cada um vem só da configuração (`cluster.first-node`, `mode`).  
+**Caso:** Todos os nós rodam a **mesma imagem**; o papel de cada um vem só da configuração (`cluster.first-node`, `cluster.entry-address`, `replication.factor`).  
 **Nível:** I  
 **Fonte histórica:** 01, 06 §8.0.1
-
----
-
-### UC-CFG-007
-
-**Caso:** `mode=development` ignora `cluster.*`, `ring.*`, `replication.*` e `write.quorum` com aviso (UC-DEV-004).  
-**Nível:** I  
-**Fonte histórica:** 10
 
 ---
 
 
 ## Casos retirados
 
-Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (o modo desenvolvimento e o drain como save saíram, [07-cluster.md](07-cluster.md), seção 8).
+Os códigos nunca são reaproveitados: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005, UC-ANE-011, UC-DEF-023, UC-ENT-007, UC-INV-032, UC-ING-025, UC-FRZ-008, UC-CNC-008, UC-SIN-024, UC-FWD-012, UC-DEV-006, UC-DEV-007, UC-DEV-008, UC-DEV-009, UC-CFG-007, UC-TOP-019, UC-OPS-027 (o modo desenvolvimento e o drain como save saíram, [07-cluster.md](07-cluster.md), seção 8; UC-TOP-019, porque a fila FIFO aceita qualquer `replication.factor`, [09-topicos.md](09-topicos.md); UC-OPS-027, porque a rota `GET /cluster/metrics/topics` não existe, [18-api-cluster.md](18-api-cluster.md)).
 
 ## Fontes e provas
 

@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connect
 
 > **Maintained by hand.** Each card carries the case, the level and the tests that cite it (the `/// UC: UC-XXX-NNN` lines of the code). Format of the codes and coverage rule: [26-use-cases.md](26-use-cases.md). The cases **without a test** are in [26b-planned-use-cases.md](26b-planned-use-cases.md). This file is the English rendering of `doc/pt-BR/26a-casos-de-uso-implementados.md`: codes, levels and test names (`file::function`) are the same; only the prose of each case is translated.
 
-**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **749** of **925** cases have at least one test (81.0%); **176** do not; **26** are retired (the code is not reused).
+**Scoreboard (2026-10-15, commit 56121c9, plus 15 cases of the server work for the TUI):** **805** of **909** cases have at least one test (88.6%); **104** do not; **42** are retired (the code is not reused).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. Each case is a block: the **code** in the heading; below, **Case** (the situation), **Then** (the expected result), **Level** and **Tests** (`file::function`, relative to `crates/taba-node`, or to the repository root for the connectors).
 
@@ -24,37 +24,37 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 39 | 1 |
 | `ACK` | Confirmation of consumption | 13 | 0 |
 | `VIS` | Change of invisibility | 10 | 2 |
-| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 14 | 6 |
-| `DST` | Distributor Topic | 6 | 12 |
+| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 18 | 2 |
+| `DST` | Distributor Topic | 16 | 2 |
 | `VOL` | Volatile queue and managing node | 23 | 0 |
 | `FIF` | FIFO queue | 53 | 0 |
-| `GRP` | Message groups and fair delivery | 16 | 1 |
+| `GRP` | Message groups and fair delivery | 17 | 0 |
 | `AUT` | Authentication and access tokens | 33 | 6 |
 | `LIM` | Rate limit and client IP | 13 | 2 |
 | `PAG` | Pagination | 7 | 2 |
-| `CNV` | Common API conventions (format, headers, errors, status) | 10 | 7 |
+| `CNV` | Common API conventions (format, headers, errors, status) | 11 | 6 |
 | `CNT` | Connectors | 35 | 0 |
 | `CLI` | `taba-cli`, the client command line | 36 | 0 |
-| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 24 | 14 |
+| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 29 | 9 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
-| `DEF` | Topic and token definition replicated in the cluster | 23 | 11 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 10 | 21 |
+| `DEF` | Topic and token definition replicated in the cluster | 24 | 10 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 17 | 14 |
 | `CAN` | Permanent channel between nodes and signal queues | 28 | 0 |
-| `INV` | Invisibility on the owner and on the replicas | 13 | 19 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 21 | 8 |
-| `ING` | Node join (bootstrap) | 32 | 5 |
+| `INV` | Invisibility on the owner and on the replicas | 26 | 6 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 23 | 6 |
+| `ING` | Node join (bootstrap) | 33 | 4 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 32 | 1 |
 | `FRZ` | Freezing period | 13 | 1 |
 | `CNC` | Concurrency between membership changes | 12 | 3 |
 | `SIN` | Distributed synchronization of blocks | 31 | 1 |
-| `STR` | NDJSON streams between nodes | 3 | 12 |
+| `STR` | NDJSON streams between nodes | 8 | 7 |
 | `RTN` | Return of an excluded node and recovery of losses | 45 | 0 |
 | `FWD` | Forwarding of client calls | 4 | 8 |
 | `DRN` | Stop and drain mode | 19 | 2 |
 | `DEV` | One-node profile (the former development mode) | 3 | 4 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 20 | 0 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 42 | 9 |
-| `CLR` | Contract of the cluster routes (DTOs and common rules) | 3 | 7 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 43 | 8 |
+| `CLR` | Contract of the cluster routes (DTOs and common rules) | 8 | 2 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 45 | 0 |
 
@@ -1401,10 +1401,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** A message with more than `ttl` since publication is discarded, delivered or not, and does **not** go to the dead-letter.  
 **Level:** I  
 **Tests:**
-  - `src/engine/messages/index/tests.rs::messages_past_their_ttl_are_found_by_age`
+  - `src/engine/messages/index/tests.rs::the_index_only_says_when_a_ttl_check_is_worth_a_read`
   - `src/engine/messages/tests.rs::sweeping_drops_expired_messages_even_in_flight_and_not_to_the_dead_letter`
   - `src/engine/messages/tests.rs::ttl_and_the_dead_letter_work_on_messages_on_disk`
   - `tests/messages.rs::a_shorter_ttl_expires_what_is_already_stored_even_in_flight`
+  - `src/engine/messages/tests/bounded.rs::the_ttl_removes_the_ready_messages_that_wait_outside_the_window`
 
 ---
 
@@ -1416,6 +1417,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/tests.rs::a_new_ttl_applies_to_messages_already_stored`
   - `tests/messages.rs::a_shorter_ttl_expires_what_is_already_stored_even_in_flight`
+
+---
+
+### UC-RET-003
+
+**Case:** The `ttl` default (14 days) applies at the time of the check  
+**Then:** changing `retention.ttl.default` affects queues without their own `ttl`, and not those that defined it.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/topics/tests.rs::changing_the_default_ttl_affects_the_queues_without_their_own_ttl_only`
+**Note:** Only the unit part (U) is proven; the full level is U, I.
 
 ---
 
@@ -1490,6 +1502,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-RET-010
+
+**Case:** The message in the dead-letter falls on the same block and the same nodes as the original message (same `id`).  
+**Level:** U, C  
+**Tests:**
+  - `src/core/ring/tests.rs::the_dead_letter_copy_falls_in_the_same_block_and_nodes_as_the_original`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
 ### UC-RET-011
 
 **Case:** The move to the dead-letter is **one operation** of register + commit (creates in the dead-letter and removes from the source queue). Failure before the quorum  
@@ -1497,6 +1519,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::the_owner_queues_the_dead_letter_move_once_and_can_try_again_after_a_failure`
+
+---
+
+### UC-RET-012
+
+**Case:** The dead-letter has no definition of its own  
+**Then:** there is no row in the `topics` table and the settings are those of the source queue.  
+**Level:** I  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
 
 ---
 
@@ -1519,6 +1551,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/tests.rs::the_dead_letter_message_can_be_published_back_to_the_source`
   - `tests/messages.rs::a_corrected_message_can_be_published_back_and_the_dead_one_acked`
+
+---
+
+### UC-RET-015
+
+**Case:** The dead-letter suffix is configurable (`topics.dead-letter.suffix`) and becomes the reserved name.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_dead_letter_suffix_is_configurable_and_becomes_the_reserved_name`
+**Note:** Only the unit part (U) is proven; the full level is U, I.
 
 ---
 
@@ -1586,6 +1628,44 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-DST-004
+
+**Case:** A queue that matches **two or more prefixes of the same** distributor receives **one** copy.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_queue_matching_two_prefixes_of_one_distributor_gets_one_copy`
+
+---
+
+### UC-DST-005
+
+**Case:** A queue that matches prefixes of **different distributors** receives one copy of each publication on each.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-006
+
+**Case:** Only queues are destinations  
+**Then:** a distributor never receives a copy (no loops).  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-007
+
+**Case:** The match is made at publish time  
+**Then:** a queue created later only receives what is published afterwards.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_match_is_made_when_publishing_and_a_new_prefix_counts_from_then_on`
+
+---
+
 ### UC-DST-009
 
 **Case:** A copy without `groupId` to a FIFO queue fails only for that queue, with `validation.group-id-required` in the item; the other copies continue.  
@@ -1593,6 +1673,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/tests.rs::a_distributor_copy_to_a_fifo_queue_without_group_fails_only_that_queue`
   - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
+
+---
+
+### UC-DST-010
+
+**Case:** The informed `groupId` and `deduplicationId` go to all the copies; without `deduplicationId`, each copy uses the body hash.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_group_and_the_deduplication_key_go_to_every_copy`
 
 ---
 
@@ -1605,6 +1694,54 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests.rs::a_distributor_over_max_targets_refuses_the_whole_publication`
   - `tests/messages.rs::a_distributor_copies_to_matching_queues_and_reports_each_one`
   - `tests/messages.rs::max_targets_refuses_the_whole_publication`
+
+---
+
+### UC-DST-012
+
+**Case:** On a distributor the general `message.max-bytes` applies, and the copies are not checked again against each queue's `maxMessageBytes`.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_checks_the_general_size_and_not_that_of_each_queue`
+
+---
+
+### UC-DST-013
+
+**Case:** The `PATCH` of `prefixes` applies from the commit, only to later publications.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_match_is_made_when_publishing_and_a_new_prefix_counts_from_then_on`
+
+---
+
+### UC-DST-014
+
+**Case:** The distributor does not store messages  
+**Then:** there is no message in memory or on disk for it, and no ready list.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
+
+---
+
+### UC-DST-015
+
+**Case:** There is no order between the destination queues. The test cannot require order.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_queue_matching_two_prefixes_of_one_distributor_gets_one_copy`
+  - `src/engine/messages/tests/distributor.rs::distributors_with_the_same_prefix_each_send_a_copy_and_never_to_a_distributor`
+
+---
+
+### UC-DST-016
+
+**Case:** `GET` and ack on a distributor  
+**Then:** `409` `topic.wrong-type`.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::a_distributor_keeps_no_message_and_has_no_ack`
 
 ---
 
@@ -2535,6 +2672,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-GRP-014
+
+**Case:** On a distributor, the `groupId` is passed on to all the copies.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/distributor.rs::the_group_and_the_deduplication_key_go_to_every_copy`
+
+---
+
 ### UC-GRP-015
 
 **Case:** `GET /metrics/topics/{topic}/groups` returns messages, share, age and rates per `groupId`; `top=N` returns the `N` largest without pagination; `groupId=` returns only that one; a group with no messages and no activity disappears.  
@@ -3266,6 +3412,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+
+### UC-CNV-017
+
+**Case:** The reused DTOs `Ack`, `StreamEnd` and `ConditionEntry` have the fields and types defined in 06d §8.3.7 (the `severity` of `ConditionEntry` only takes `info`, `warning` or `critical`).  
+**Level:** U  
+**Tests:**
+  - `src/cluster/health/tests.rs::a_condition_entry_has_a_name_and_a_severity_of_the_document`
+  - `src/cluster/protocol/dto_tests.rs::the_ack_and_the_stream_end_have_the_fields_and_types_of_the_document`
+**Note:** `Severity` today only has `warning` and `critical`: no condition produces `info`.
+
+---
 
 ### UC-CNV-018
 
@@ -4209,6 +4366,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## ESC: Write: register + commit, quorum, rollback, commit ceiling
 
+### UC-ESC-001
+
+**Case:** The coordinator generates the GUID v7 **before** the register phase and computes, from the ID, the block and the responsible nodes (primary, secondary, tertiary).  
+**Level:** U, C  
+**Tests:**
+  - `src/core/ring/tests.rs::the_id_alone_gives_the_block_and_the_primary_secondary_and_tertiary`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
 ### UC-ESC-002
 
 **Case:** Phase 1 (register) goes to **all** `replication.factor` responsible nodes, not only to the quorum; each one writes the message as **pending** in memory and confirms.  
@@ -4264,6 +4431,25 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ESC-008
+
+**Case:** The default of `write.quorum` is `floor(rf / 2) + 1`  
+**Then:** 2 with rf 3, 3 with rf 5, 1 with rf 1.  
+**Level:** U  
+**Tests:**
+  - `src/config/tests.rs::write_quorum_defaults_to_floor_of_half_the_factor_plus_one`
+
+---
+
+### UC-ESC-009
+
+**Case:** `write.quorum` is validated between 1 and `replication.factor`; outside that, the configuration is refused. Below the majority is accepted.  
+**Level:** U  
+**Tests:**
+  - `src/config/tests.rs::write_quorum_must_be_between_one_and_the_factor_and_below_the_majority_is_accepted`
+
+---
+
 ### UC-ESC-010
 
 **Case:** The quorum **always includes the primary**  
@@ -4280,6 +4466,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** U, C  
 **Tests:**
   - `tests/replication.rs::the_answer_comes_only_after_the_quorum_committed_whichever_node_took_the_call`
+
+---
+
+### UC-ESC-012
+
+**Case:** `write.quorum` is a **single** value for write, delivery (invisibility) and ack.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/service/tests.rs::write_quorum_is_a_single_value_for_write_delivery_and_ack`
+  - `src/config/tests.rs::there_is_only_one_write_quorum_parameter`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
 
 ---
 
@@ -4396,6 +4593,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/cluster/protocol/tests.rs::every_request_survives_the_trip_to_http_and_back`
+
+---
+
+### UC-ESC-026
+
+**Case:** All the phases are **idempotent by `operationId`**  
+**Then:** repeating `register`, `commit` or `rollback` returns the same `Ack`, with no new effect.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/replication/replica/tests.rs::repeating_register_or_commit_returns_the_same_ack_without_a_new_effect`
+  - `src/cluster/replication/replica/tests.rs::repeating_rollback_returns_the_same_ack_and_the_message_never_appears`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
 
 ---
 
@@ -4523,6 +4732,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## DEF: Topic and token definition replicated in the cluster
+
+### UC-DEF-011
+
+**Case:** The dead-letter has no definition row in the `topics` table  
+**Then:** it is derived from the source queue, created and deleted in the same operation.  
+**Level:** I  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_dead_letter_is_derived_from_its_queue_and_never_stored`
+
+---
 
 ### UC-DEF-025
 
@@ -4804,12 +5023,87 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ENT-008
+
+**Case:** The ready list is kept per topic on each node, in memory, with `delivery.ready-list.size` IDs (default 1000).  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_ready_list_holds_at_most_the_configured_size_and_the_counters_stay_exact`
+  - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
+  - `src/engine/messages/tests/bounded.rs::the_index_keeps_no_more_entries_than_the_window_and_the_list_hold`
+  - `src/engine/messages/tests/bounded.rs::reopening_a_topic_rebuilds_the_counts_and_the_window_from_the_disk`
+  - `src/engine/messages/tests/cluster.rs::the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones`
+  - `src/engine/messages/tests/bounded.rs::the_oldest_message_comes_from_the_age_order_of_memory_and_disk`
+
+---
+
+### UC-ENT-009
+
+**Case:** A thread refills the list when the semaphore opens room (committed delivery, ID leaving), refilling the amount that opened, without querying for nothing.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::only_the_room_that_opened_is_refilled_and_a_full_list_costs_nothing`
+  - `src/engine/messages/tests/bounded.rs::ack_and_visibility_work_on_a_message_the_index_only_counts`
+
+---
+
+### UC-ENT-010
+
+**Case:** The refill follows the accordion  
+**Then:** two cursors over the node's messages (from the oldest forwards and from the newest backwards, by GUID v7, in memory and on disk), alternating the two ends.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_refill_walks_two_cursors_alternating_the_oldest_and_the_newest_end`
+
+---
+
+### UC-ENT-011
+
+**Case:** Delivery consumes the two ends **interleaved**  
+**Then:** the oldest, the newest, the second oldest, the second newest.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/tests.rs::delivery_interleaves_the_two_ends_oldest_newest_second_oldest_second_newest`
+
+---
+
+### UC-ENT-012
+
+**Case:** A new message that arrives at the owner enters the list directly if there is room and the new-end cursor is at the end; otherwise it is found later by the thread.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::a_new_message_enters_the_list_if_there_is_room_and_nothing_waits_else_the_cursor_finds_it`
+
+---
+
 ### UC-ENT-013
 
 **Case:** On receiving the commit of a delivery, the node removes the ID from the list. The primary is always in the quorum, so the message stops being a candidate for a new delivery on the very node that delivered it at the same instant the client receives it.  
 **Level:** C  
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::a_candidate_is_reserved_until_the_quorum_commits_or_aborts`
+  - `src/engine/messages/tests/cluster.rs::the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones`
+
+---
+
+### UC-ENT-014
+
+**Case:** The message whose invisibility expires returns to the list by the GUID v7 position, **not** by the scan; if the list is full, the **middle** ID leaves to make room and is refilled later (no message is lost).  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full`
+
+---
+
+### UC-ENT-015
+
+**Case:** The `GET` only queries the list, without scanning memory and disk at each call.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::choosing_the_next_message_only_reads_the_list_and_scans_nothing`
+  - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
+  - `src/engine/messages/tests/bounded.rs::small_lists_choose_the_same_messages_as_large_ones`
+  - `src/storage/messages/tests.rs::the_end_of_a_group_is_read_by_an_index_in_id_order`
 
 ---
 
@@ -5152,6 +5446,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## INV: Invisibility on the owner and on the replicas
 
+### UC-INV-001
+
+**Case:** The metadata are `deliveryCount`, `invisibleUntil` (absolute date) and `receiptToken`, stored and replicated together  
+**Then:** in the same register + commit, in memory or in the topic's local database.  
+**Level:** U, C  
+**Tests:**
+  - `src/storage/messages/tests.rs::the_delivery_metadata_lives_in_the_message_row_and_survives_a_reopening`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
 ### UC-INV-003
 
 **Case:** The `receiptToken` is generated by the owner at each delivery; the node compares it with that of the metadata on ack and on `PUT`, and answers `409` if different, changing nothing. The change keeps the same token.  
@@ -5168,6 +5473,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `src/engine/messages/index/tests.rs::an_inserted_message_with_a_future_deadline_starts_in_processing`
+
+---
+
+### UC-INV-005
+
+**Case:** The states of the message for the owner  
+**Then:** **ready** (`invisibleUntil` absent or in the past), **invisible** (in the future) and **removed** (ack).  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/tests.rs::a_message_is_ready_invisible_or_removed_by_its_deadline`
 
 ---
 
@@ -5255,6 +5570,27 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-INV-017
+
+**Case:** The owner's thread looks at the head of the invisible list, sleeps until its deadline (with a short ceiling to react to changes and earlier entries) and, on expiry, removes the entry and **checks** the metadata  
+**Then:** the message still exists, the node is still the owner and the deadline is still the entry's; otherwise it discards and moves on.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_head_is_taken_out_and_checked_and_a_pair_that_is_not_the_messages_is_dropped`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/engine/messages/tests/bounded.rs::reopening_a_topic_rebuilds_the_counts_and_the_window_from_the_disk`
+
+---
+
+### UC-INV-018
+
+**Case:** After the check, the message enters the ready list by the GUID v7 position (near the old end); with the list full, the middle ID leaves.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::after_the_check_the_message_joins_the_ready_list_by_its_position_and_the_middle_leaves`
+
+---
+
 ### UC-INV-019
 
 **Case:** Once the check passes with `deliveryCount ≥ maxDeliveries`, the message does **not** return to the list  
@@ -5263,6 +5599,102 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::the_owner_queues_the_dead_letter_move_once_and_can_try_again_after_a_failure`
   - `tests/replication.rs::a_message_that_spent_its_deliveries_moves_to_the_dead_letter_on_every_node`
+
+---
+
+### UC-INV-020
+
+**Case:** On the FIFO queue, the message that comes back is the head of the group; the group stops being busy and enters the ready list by the ID position, without the middle-of-the-list rule.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/tests.rs::in_a_fifo_queue_the_returning_message_is_the_group_head_and_frees_the_group`
+  - `src/engine/messages/index/bounded_tests.rs::on_a_fifo_queue_the_ready_list_has_no_ceiling_and_no_middle_rule`
+  - `src/engine/messages/tests/bounded.rs::small_lists_choose_the_same_messages_as_large_ones`
+
+---
+
+### UC-INV-021
+
+**Case:** If the invisible list empties and there are still rows in the expiry table, the thread does the reload before sleeping.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::when_the_list_empties_with_pairs_in_the_table_the_reload_is_asked_for_before_sleeping`
+
+---
+
+### UC-INV-022
+
+**Case:** The invisible list is, per topic and only on the owner, a list of (ID, `invisibleUntil`) pairs ordered by deadline, with at most `delivery.invisible-list.size` entries; lookup by ID for change and ack.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_invisible_list_is_ordered_by_deadline_with_a_ceiling_and_found_by_id`
+  - `src/engine/messages/tests/bounded.rs::the_index_keeps_no_more_entries_than_the_window_and_the_list_hold`
+
+---
+
+### UC-INV-023
+
+**Case:** Inclusion rule with the list full  
+**Then:** if the new deadline is **earlier** than the last one in the list, the new pair enters and the last goes to the table; otherwise the new pair goes straight to the table.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::with_a_full_list_an_earlier_deadline_enters_and_the_last_goes_to_the_table`
+
+---
+
+### UC-INV-024
+
+**Case:** Invariant  
+**Then:** everything in the list expires before everything in the table; the thread never queries the table while the list does not empty.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+
+---
+
+### UC-INV-025
+
+**Case:** Reload  
+**Then:** below `delivery.invisible.reload-threshold` (or empty), the thread reads from the table the pairs with the lowest `invisibleUntil` (an ordered query with a limit by the index), moves them to the list and deletes the rows read.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+  - `src/engine/messages/index/bounded_tests.rs::the_reload_starts_below_the_threshold_reads_the_earliest_and_deletes_the_rows_read`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/engine/messages/tests/bounded.rs::ack_and_visibility_work_on_a_message_the_index_only_counts`
+
+---
+
+### UC-INV-026
+
+**Case:** No old entries  
+**Then:** ack, change and new delivery delete or update the table row in the same commit that updates the list. There is no lazy removal.  
+**Level:** U, I  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+**Note:** A deadline change, the ack and a new delivery delete or update the row in the same step that updates the list; if the write fails, the pair stays queued and is retried on the next change (only the delivery undoes the operation, see UC-INV-027).
+
+---
+
+### UC-INV-027
+
+**Case:** The write to the table is part of the commit on the owner  
+**Then:** if it fails, the commit does not complete and the delivery is undone before the response to the client.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/expiry.rs::a_failed_table_write_undoes_the_delivery_before_the_answer`
+  - `src/engine/messages/tests/cluster.rs::a_failed_table_write_undoes_a_reservation_of_the_owner`
+**Note:** Proven on the single-node path (`take`); the cluster path (`take_candidates`) applies the same rule but has no test yet.
+
+---
+
+### UC-INV-028
+
+**Case:** With room in the list, no write beyond the metadata.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/index/bounded_tests.rs::with_room_in_the_list_nothing_is_written_beyond_the_metadata`
 
 ---
 
@@ -5345,6 +5777,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests.rs::above_its_reserve_a_topic_only_takes_memory_from_topics_that_are_read_less`
   - `src/engine/messages/tests.rs::publish_and_consume_rates_are_tracked_per_topic`
   - `src/storage/messages/tests.rs::the_rows_of_a_block_come_by_position_in_id_order_with_range_and_limit`
+  - `src/storage/messages/tests.rs::the_end_of_a_group_is_read_by_an_index_in_id_order`
 
 ---
 
@@ -5365,6 +5798,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/tests.rs::demotion_takes_the_middle_of_the_ready_list_and_keeps_the_ends`
   - `src/engine/messages/tests.rs::messages_in_processing_are_demoted_before_the_ready_ones`
+
+---
+
+### UC-ARM-008
+
+**Case:** The ready list and the messages in memory do not change because of the database  
+**Then:** it only takes care of what is on disk.  
+**Level:** U  
+**Tests:**
+  - `src/engine/messages/tests.rs::the_database_only_holds_what_is_on_disk_and_memory_messages_never_touch_it`
 
 ---
 
@@ -5397,6 +5840,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/storage/messages/tests.rs::a_message_is_a_body_file_plus_a_row_in_the_topic_database`
   - `src/storage/messages/tests.rs::a_topic_database_from_before_the_fifo_columns_is_upgraded_in_place`
+
+---
+
+### UC-ARM-012
+
+**Case:** The `expiry` table stores the pairs that did not fit in the invisible list, with an index by deadline.  
+**Level:** I  
+**Tests:**
+  - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/storage/messages/tests.rs::the_expiry_table_keeps_the_pairs_that_did_not_fit_ordered_by_deadline`
 
 ---
 
@@ -5578,6 +6031,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `tests/cluster.rs::a_node_that_has_no_table_yet_answers_503`
   - `tests/cluster_api.rs::a_node_without_the_table_answers_503_with_retry_after`
+
+---
+
+### UC-ING-007
+
+**Case:** The node names itself with a **GUID v7** at each process start, only in memory, and identifies itself by it, including in the join request.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/protocol/dto_tests.rs::the_node_names_itself_with_a_new_guid_v7_at_each_start_and_the_join_request_carries_it`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
 
 ---
 
@@ -6775,12 +7238,68 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-STR-002
+
+**Case:** The order is by **ascending ID** (GUID v7 compared as text in canonical lowercase form).  
+**Level:** U  
+**Tests:**
+  - `src/cluster/replication/definitions/tests.rs::the_definition_streams_list_by_ascending_id_and_not_by_name`
+  - `src/engine/messages/tests/blocks.rs::the_block_streams_come_in_ascending_id_order_whatever_the_order_of_arrival`
+
+---
+
+### UC-STR-003
+
+**Case:** `from` and `to` (both inclusive and optional) delimit the range; optional `limit` lowers the item ceiling.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/protocol/dto_tests.rs::the_stream_query_carries_from_to_and_limit_and_all_three_are_optional`
+  - `src/cluster/replication/definitions/tests.rs::from_is_inclusive_and_limit_lowers_the_ceiling_of_the_definition_streams`
+  - `src/engine/messages/tests/blocks.rs::from_and_to_are_inclusive_and_limit_lowers_the_ceiling_of_the_block_streams`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
 ### UC-STR-004
 
 **Case:** The stream ends with the `StreamEnd` line (`end: true`, `count`, `last`, `hasMore`); without that line the chunk is considered **failed**, even if the connection closed cleanly.  
 **Level:** U, C  
 **Tests:**
   - `src/cluster/protocol/tests.rs::a_stream_ends_with_the_end_line_and_without_it_the_chunk_is_a_failure`
+
+---
+
+### UC-STR-006
+
+**Case:** Resume after a cut or `hasMore`  
+**Then:** the receiver repeats with `from=<last ID read>`; the sender returns that line again and the receiver **ignores** it (idempotent application by ID). No token or state on the server.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/protocol/dto_tests.rs::a_stretch_names_the_last_id_to_resume_from_and_the_resumption_asks_for_it_again`
+  - `src/engine/messages/tests/blocks.rs::resuming_from_the_last_id_repeats_that_line_and_the_receiver_ignores_it`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
+### UC-STR-009
+
+**Case:** Line size limit (`cluster.sync.stream.max-line-bytes`)  
+**Then:** the largest possible message must fit (hard-limit in base64 plus the envelope).  
+**Level:** U  
+**Tests:**
+  - `src/config/tests.rs::the_stream_line_limit_is_exactly_the_hard_limit_in_base64_plus_the_envelope`
+**Note:** Only the startup configuration rule is proven; the sender does not yet enforce the line size.
+
+---
+
+### UC-STR-011
+
+**Case:** Lines of each route  
+**Then:** `TopicDefinition`, `TokenRecord`, `{id, kind, key, version}` (tombstones), `{id, topic}` (and `deleteAt` on the FIFO) for the block's IDs, `{id, topic, position, atMs}` for the excluded, `{id, topic}` for the losses and `MessageRecord` (without `body` and with `deleteAt` on the FIFO with logical deletion).  
+**Level:** U  
+**Tests:**
+  - `src/cluster/replication/definitions/tests.rs::the_topic_and_token_lines_are_the_record_plus_the_version_this_node_applied`
+**Note:** Only the definition and token lines are covered; the tombstone, block ID, excluded and loss lines have no unit test yet.
 
 ---
 
@@ -8086,6 +8605,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-OPS-023
+
+**Case:** Node view × cluster view in `/stats/topics` (`scope=node` or the default, the cluster)  
+**Then:** **only the primary counts** (otherwise the sum would be multiplied by the replication factor); the cluster adds `visibleMessages`, `invisibleMessages` and `depth`, and `oldestMessageAt` is the **earliest** date among the nodes; `oldestAge = now − oldestMessageAt`.  
+**Level:** U, C  
+**Tests:**
+  - `src/engine/messages/tests/blocks.rs::only_the_owner_counts_a_message_in_the_visible_invisible_and_oldest_numbers`
+  - `src/http/topic_stats/raw/tests.rs::the_cluster_view_adds_what_each_primary_counts_and_takes_the_oldest_date`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
 ### UC-OPS-024
 
 **Case:** A node without messages of the topic has `oldestMessageAt` **absent**, never zero (a zero would win the "oldest").  
@@ -8360,6 +8891,58 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## CLR: Contract of the cluster routes (DTOs and common rules)
+
+### UC-CLR-002
+
+**Case:** Every `register`, `commit` and `rollback` carries the `operationId` (GUID v7 of the coordinator) and is idempotent by it. A register with no commit or rollback expires after `write.pending.ttl`.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/members/tests.rs::a_registration_without_commit_or_rollback_expires_and_each_phase_repeats_by_its_operation_id`
+  - `src/cluster/protocol/dto_tests.rs::every_phase_of_every_two_phase_call_carries_the_operation_id`
+**Note:** Only the unit part (U) is proven; the full level is U, C. Expiry by `write.pending.ttl` is proven only for node registrations; it is missing for message operations.
+
+---
+
+### UC-CLR-004
+
+**Case:** Invalid body on the cluster routes  
+**Then:** `400` `validation.failed`, `validation.required` or `validation.unknown-field`.  
+**Level:** U, C  
+**Tests:**
+  - `src/cluster/protocol/dto_tests.rs::an_invalid_body_on_a_cluster_route_is_a_400_with_a_validation_code`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
+
+### UC-CLR-005
+
+**Case:** The cluster DTOs (`Member`, `MemberTable`, `JoinRequest`, `NodeRegisterRequest`, `NodeUnregisterRequest`, `OperationRef`, `VoteRequest`, `VoteResponse`, `DefinitionProposal`, `DefinitionApply`, `TopicDefinition`, `TokenRecord`, `MessageRegisterRequest`, `VisibilityRegisterRequest`, `AckRegisterRequest`, `TakeRequest`, `TakeResponse`, `MessageRecord`, `IdleResponse`, `LossRecord`, `LossAck`, `RecoverResult`, `StreamEnd`) serialize and deserialize with the documented fields and types, and the `null` values of `ttl`, `maxDeliveries` and `maxMessageBytes` of the `TopicDefinition` are sent as `null`.  
+**Level:** U  
+**Tests:**
+  - `src/cluster/protocol/dto_tests.rs::the_cluster_dtos_have_the_documented_fields_and_types`
+
+---
+
+### UC-CLR-006
+
+**Case:** The `TopicDefinition` DTO equals the JSON stored in the `topics` table  
+**Then:** the `Topic` fields without `effective`, `deadLetter` and `source`.  
+**Level:** U  
+**Tests:**
+  - `src/engine/topics/tests.rs::the_cluster_definition_is_the_topic_json_without_effective_dead_letter_and_source`
+
+---
+
+### UC-CLR-010
+
+**Case:** Cluster-only codes  
+**Then:** `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `cluster.wrong-node`, `fifo.misdirected` and `cluster.operation-unknown`.  
+**Level:** U, C  
+**Tests:**
+  - `src/core/error/tests.rs::the_codes_only_the_cluster_uses_are_in_the_catalog_with_their_statuses`
+**Note:** Only the unit part (U) is proven; the full level is U, C.
+
+---
 
 ### UC-OPS-054
 

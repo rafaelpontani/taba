@@ -323,3 +323,44 @@ fn recreating_a_fifo_topic_moves_its_groups_in_the_ring() {
         "another topic `id`, another position for every group"
     );
 }
+
+/// UC: UC-ESC-001
+#[test]
+fn the_id_alone_gives_the_block_and_the_primary_secondary_and_tertiary() {
+    let (ids, ring) = ring_of(5, 32);
+    // The coordinator generates the GUID v7 first...
+    let message = id::new_at(1_791_288_000_123);
+    assert!(id::is_guid_v7(&message));
+    // ...and from it alone it reaches the block and the three responsible nodes, in order.
+    let position = message_position(&message);
+    let block = ring.block_of(position).unwrap();
+    let owners = ring.block_owners(block, 3).unwrap();
+    assert_eq!(owners.len(), 3);
+    let (primary, secondary, tertiary) = (owners[0], owners[1], owners[2]);
+    assert_eq!(ring.primary(position), Some(primary));
+    assert_eq!(ring.owners(position, 3), vec![primary, secondary, tertiary]);
+    assert!(
+        primary != secondary && secondary != tertiary && primary != tertiary,
+        "three distinct nodes"
+    );
+    assert!(
+        owners.iter().all(|o| ids.iter().any(|n| n == o)),
+        "all of them are members of the ring"
+    );
+}
+
+/// UC: UC-RET-010
+#[test]
+fn the_dead_letter_copy_falls_in_the_same_block_and_nodes_as_the_original() {
+    // The position of a message depends on its `id` alone, never on the queue it is in: the
+    // original (in the queue) and the copy (in its dead-letter) have the same `id`, hence the same
+    // block and the same primary, secondary and tertiary.
+    let (_, ring) = ring_of(5, 32);
+    for message in message_ids(200) {
+        let original = message_position(&message);
+        let dead_letter = message_position(&message);
+        assert_eq!(original, dead_letter);
+        assert_eq!(ring.block_of(original), ring.block_of(dead_letter));
+        assert_eq!(ring.owners(original, 3), ring.owners(dead_letter, 3));
+    }
+}

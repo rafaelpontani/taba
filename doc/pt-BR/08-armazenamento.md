@@ -63,7 +63,7 @@ A versão do esquema é gravada no banco (`SCHEMA_VERSION`); um banco de versão
 
 ## O banco do tópico (`<topico>/_topic.db`)
 
-Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (de onde o `ttl` conta: a publicação, ou a entrada na dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (a posição no anel) e, na FIFO, `deduplication_id` e `delete_at`. Índices por `invisible_until`, `age_base`, `position` e `(group_id, deduplication_id)` e `delete_at`.
+Tabela `messages`, **uma linha por mensagem em disco**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (de onde o `ttl` conta: a publicação, ou a entrada na dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (a posição no anel) e, na FIFO, `deduplication_id` e `delete_at`. Índices por `invisible_until`, `age_base`, `group_id` (o fim de um grupo sai dele, em ordem de `id`), `position` e `(group_id, deduplication_id)` e `delete_at`.
 
 Ele responde: a mensagem mais antiga, as próximas a vencer, as mensagens de um bloco (faixa pela posição, para os streams de sincronização e a limpeza) e as contagens.
 
@@ -93,7 +93,7 @@ Uma definição de tópico ou de token é um dado **pequeno, raro de mudar e do 
 
 ## O que se refaz na partida
 
-A **lista de prontos**, a **lista de invisíveis**, as **contagens por grupo** e as **taxas** são **derivadas** dos metadados e reconstruídas quando o tópico é aberto (reinício ou novo dono). Não se guardam. A lista de invisíveis é **completa** e derivada do `invisible_until` das mensagens; por isso **a tabela `expiry`** que a documentação histórica cita **não existe** no código (pendência D82).
+A **lista de prontos**, a **lista de invisíveis**, as **contagens por grupo** e as **taxas** são **derivadas** dos metadados e reconstruídas quando o tópico é aberto (reinício ou novo dono). Não se guardam. A lista de invisíveis tem teto (`delivery.invisible-list.size`); os pares que não cabem ficam na tabela **`expiry`** do banco do tópico (`invisible_until`, `id`, chave pelo prazo, com índice por `id` para achar o par de uma mensagem), que também é derivada: é esvaziada e refeita dos metadados quando o tópico é aberto.
 
 ## Banco de eventos (`_sync/sync.db`)
 
@@ -124,7 +124,7 @@ Numa partida em produção o banco é **zerado**: o nó é novo, e o que o anter
 ## Limites conhecidos
 
 - **PRB-025:** `diskBytes` e `bytes` somam o tamanho dos arquivos `.body` do tópico, **uma chamada por mensagem em disco**, a cada leitura de `/metrics/topics*`.
-- **PRB-019:** achar a mensagem do meio para rebaixar e conferir as prontas quando `maxDeliveries` muda varrem a memória do tópico.
+- **PRB-019:** achar a mensagem do meio para rebaixar e conferir as prontas quando `maxDeliveries` muda varrem a memória do tópico; a conferência do `maxDeliveries` e as consultas sob demanda leem as mensagens em páginas.
 - **D80:** o nome do tópico vira nome de pasta; nomes reservados do Windows (`con`, `nul`, `aux`, `com1`…) ainda não são tratados.
 
 ## Fontes e provas
