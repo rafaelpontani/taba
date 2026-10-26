@@ -330,3 +330,19 @@ async fn a_corrupt_topic_database_fails_the_node() {
     assert_eq!(status["nodes"][0]["status"]["state"], "failed");
     node.shutdown().await;
 }
+
+/// UC: UC-CNV-010
+#[tokio::test]
+async fn a_post_that_expects_no_body_ignores_the_one_it_gets() {
+    let node = TestNode::single().await;
+    let started = node
+        .client
+        .post(node.operations_url("/node/drain"))
+        .header("content-type", "application/json")
+        .body("{ not even json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(started.status(), 202);
+    node.shutdown().await;
+}

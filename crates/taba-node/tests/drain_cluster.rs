@@ -8,8 +8,9 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use common::cluster::{NO_VOTE, TestCluster, eventually, eventually_async};
+use common::cluster::{NO_VOTE, QUIET, TestCluster, eventually, eventually_async, signals_of};
 use common::{TestNode, error_code};
+use taba_node::cluster::protocol::Keepalive;
 
 async fn drain_state(node: &TestNode) -> String {
     let response = node.client_get_ops("/node/drain").await;
@@ -147,6 +148,74 @@ async fn a_draining_node_forwards_client_calls_and_leaves_the_cluster_without_a_
         .await
         .unwrap();
     assert_eq!(via_drained.status(), 200);
+    cluster.shutdown().await;
+}
+
+fn heartbeat(load: u64) -> Keepalive {
+    Keepalive {
+        at: "2026-10-26T12:00:00.000Z".into(),
+        load,
+        version: 0,
+        state: "active".into(),
+        ready: vec![],
+    }
+}
+
+/// Where the  calls went since the last clear, by host.
+fn forwarded_to(cluster: &TestCluster) -> Vec<String> {
+    cluster
+        .network
+        .calls()
+        .iter()
+        .filter(|c| c.request == "forward")
+        .map(|c| c.to.host.clone())
+        .collect()
+}
+
+/// UC: UC-FWD-003
+#[tokio::test]
+async fn a_draining_node_forwards_each_call_to_the_node_with_the_lowest_load_of_the_last_heartbeat()
+{
+    // Heartbeats every 30 s: the ones applied here stay as the last indicator.
+    let cluster = TestCluster::start_with(3, &[QUIET]).await;
+    let (node1, node2_id, node3_id) = (cluster.node(1), cluster.node_id(2), cluster.node_id(3));
+    let signals = signals_of(&cluster, 1);
+    signals.apply_keepalive(&node2_id, &heartbeat(50));
+    signals.apply_keepalive(&node3_id, &heartbeat(0));
+    assert_eq!(
+        (signals.peer_load(&node2_id), signals.peer_load(&node3_id)),
+        (50, 0)
+    );
+
+    start_drain(node1).await;
+    wait_drain_state(node1, "drained").await;
+    // The channels are closed now: the last indicator and the last known table still decide.
+    cluster.network.clear_calls();
+    for _ in 0..4 {
+        let response = node1
+            .client
+            .get(node1.client_url("/topics"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+    }
+    assert_eq!(forwarded_to(&cluster), ["10.0.0.3"; 4]);
+
+    // The choice is made at each call: when the indicators change, the next call follows them.
+    signals.apply_keepalive(&node2_id, &heartbeat(0));
+    signals.apply_keepalive(&node3_id, &heartbeat(50));
+    cluster.network.clear_calls();
+    for _ in 0..4 {
+        let response = node1
+            .client
+            .get(node1.client_url("/topics"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+    }
+    assert_eq!(forwarded_to(&cluster), ["10.0.0.2"; 4]);
     cluster.shutdown().await;
 }
 

@@ -77,7 +77,7 @@ pub struct ReadyCount {
 pub struct Keepalive {
     /// The date and time of the sending node.
     pub at: String,
-    /// The load indicator: client calls being forwarded in progress.
+    /// The load indicator: the `GET`s waiting here (long polling). The node in drain picks the freest destination by it.
     pub load: u64,
     /// The version (epoch) of the node's member table, or `0` without a table.
     pub version: u64,

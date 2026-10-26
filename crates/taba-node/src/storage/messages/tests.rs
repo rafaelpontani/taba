@@ -444,3 +444,124 @@ fn the_folder_of_a_topic_records_the_topic_id_it_was_created_for_and_keeps_it() 
         Some("id-of-orders")
     );
 }
+
+/// UC: UC-INV-001
+#[test]
+fn the_delivery_metadata_lives_in_the_message_row_and_survives_a_reopening() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    let mut m = meta("a");
+    store.put("t", &m, b"x").unwrap();
+    // Delivery count, absolute deadline and receipt token are written together, in one commit.
+    m.delivery_count = 2;
+    m.invisible_until_ms = 123_456;
+    m.receipt_token = Some("receipt-1".into());
+    store.update_delivery("t", &m).unwrap();
+
+    let reopened = self::store(tmp.path());
+    let read = reopened.get("t", "a").unwrap().unwrap();
+    assert_eq!(read.delivery_count, 2);
+    assert_eq!(read.invisible_until_ms, 123_456, "an absolute instant");
+    assert_eq!(read.receipt_token.as_deref(), Some("receipt-1"));
+    assert_eq!(read, m);
+    assert_eq!(reopened.count("t").unwrap(), 1, "no side record");
+}
+
+/// UC: UC-ARM-012
+#[test]
+fn the_expiry_table_keeps_the_pairs_that_did_not_fit_ordered_by_deadline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    store
+        .expiry_apply(
+            "orders",
+            &[
+                (true, 300, "c".into()),
+                (true, 100, "a".into()),
+                (true, 200, "b".into()),
+                (true, 100, "z".into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(store.expiry_count("orders").unwrap(), 4);
+    // The earliest first, with a limit, by the table's own key.
+    assert_eq!(
+        store.expiry_earliest("orders", 3).unwrap(),
+        [
+            (100, "a".to_owned()),
+            (100, "z".to_owned()),
+            (200, "b".to_owned())
+        ]
+    );
+    // Operations apply in order: a delete then a put of the same pair leaves it there.
+    store
+        .expiry_apply(
+            "orders",
+            &[
+                (false, 100, "a".into()),
+                (true, 100, "a".into()),
+                (false, 300, "c".into()),
+            ],
+        )
+        .unwrap();
+    assert_eq!(store.expiry_count("orders").unwrap(), 3);
+    // The table is derived: clearing it leaves the messages alone.
+    store.expiry_clear("orders").unwrap();
+    assert_eq!(store.expiry_count("orders").unwrap(), 0);
+    assert!(store.expiry_earliest("orders", 10).unwrap().is_empty());
+    // A topic without a folder has an empty table and reading creates nothing.
+    assert_eq!(store.expiry_count("nothing").unwrap(), 0);
+    assert!(!tmp.path().join(dir_name("nothing")).exists());
+}
+
+/// UC: UC-ENT-015, UC-ARM-005
+#[test]
+fn the_end_of_a_group_is_read_by_an_index_in_id_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    for i in 0..30 {
+        let mut m = meta(&format!("m{i:02}"));
+        m.group_id = (i % 3 != 0).then(|| format!("g{}", i % 3));
+        store.put("t", &m, b"{}").unwrap();
+    }
+    let group = |name: &str, desc: bool, limit: usize| -> Vec<String> {
+        store
+            .page(
+                "t",
+                &PageQuery {
+                    group: Some(name.into()),
+                    desc,
+                    limit,
+                    ..PageQuery::default()
+                },
+            )
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect()
+    };
+    assert_eq!(group("g1", false, 3), ["m01", "m04", "m07"]);
+    assert_eq!(group("g2", true, 2), ["m29", "m26"]);
+    assert_eq!(
+        group("", false, 2),
+        ["m00", "m03"],
+        "the messages without a group"
+    );
+
+    // The plan walks the index of the group, with no sort and no scan of the table.
+    let db = tmp.path().join(dir_name("t")).join(TOPIC_DB_FILE);
+    let conn = rusqlite::Connection::open(db).unwrap();
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN SELECT id FROM messages WHERE delete_at IS NULL AND group_id = ?1              AND id > ?2 AND NOT EXISTS (SELECT 1 FROM expiry WHERE expiry.id = messages.id)              ORDER BY id LIMIT 64",
+        )
+        .unwrap();
+    let plan: Vec<String> = stmt
+        .query_map(["g1", "a"], |row| row.get::<_, String>(3))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let plan = plan.join(" | ");
+    assert!(plan.contains("messages_group"), "plan: {plan}");
+    assert!(!plan.contains("TEMP B-TREE"), "plan: {plan}");
+}

@@ -533,3 +533,6 @@ impl Replica {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

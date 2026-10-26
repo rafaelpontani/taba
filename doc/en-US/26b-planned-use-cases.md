@@ -11,7 +11,7 @@ sources: [crates/taba-node/tests/uc_coverage.rs]
 
 > **Maintained by hand.** A case here **does not mean the behavior does not exist**: it means that **no test cites it** today. Some features already work (and appear in other documents as ✅) without proof per case; others are ⬜ planned. The cases with a test are in [26a-implemented-use-cases.md](26a-implemented-use-cases.md). This file is the English rendering of `doc/pt-BR/26b-casos-de-uso-planejados.md`: the codes, levels and test names are the same; "Fonte histórica" is rendered as "Historical source".
 
-**Scoreboard (2026-10-13, commit 71183b9):** **176** cases without a test, out of **878**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
+**Scoreboard (2026-10-24):** **91** cases without a test, out of **862**. The cases marked "(pendente: D##)" depend on a question still open ([31-pending-items.md](31-pending-items.md)).
 
 Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. To close a case, cite it in a test (`/// UC: UC-XXX-NNN`) of the indicated level and regenerate ([26-use-cases.md](26-use-cases.md)).
 
@@ -19,55 +19,38 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 | Area | Subject | Without test | With test |
 |---|---|---:|---:|
-| `TOP` | Topics: create, list, read, change and remove | 4 | 45 |
+| `TOP` | Topics: create, list, read, change and remove | 2 | 46 |
 | `MSG` | Publishing and the message body | 1 | 19 |
 | `CNS` | Consumption (`GET`), long polling and `autoCreate` | 1 | 39 |
 | `VIS` | Change of invisibility | 2 | 10 |
-| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 6 | 14 |
-| `DST` | Distributor Topic | 12 | 6 |
-| `GRP` | Message groups and fair delivery | 1 | 16 |
-| `AUT` | Authentication and access tokens | 6 | 33 |
+| `RET` | Expiration (`ttl`), delivery limit and dead-letter | 2 | 18 |
+| `DST` | Distributor Topic | 1 | 17 |
+| `GRP` | Message groups and fair delivery | 0 | 17 |
+| `AUT` | Authentication and access tokens | 5 | 34 |
 | `LIM` | Rate limit and client IP | 2 | 13 |
-| `PAG` | Pagination | 2 | 7 |
-| `CNV` | Common API conventions (format, headers, errors, status) | 7 | 10 |
-| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 14 | 24 |
-| `ANE` | Hash ring, blocks and roles | 4 | 8 |
-| `DEF` | Topic and token definition replicated in the cluster | 11 | 21 |
-| `ENT` | Delivery on the owner: ready list, `take`, long polling | 21 | 10 |
-| `INV` | Invisibility on the owner and on the replicas | 19 | 13 |
-| `ARM` | Storage: memory, overflow, SQLite, integrity | 8 | 21 |
-| `ING` | Node join (bootstrap) | 5 | 30 |
+| `PAG` | Pagination | 1 | 8 |
+| `CNV` | Common API conventions (format, headers, errors, status) | 3 | 14 |
+| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
+| `ANE` | Hash ring, blocks and roles | 3 | 8 |
+| `DEF` | Topic and token definition replicated in the cluster | 7 | 24 |
+| `ENT` | Delivery on the owner: ready list, `take`, long polling | 12 | 18 |
+| `INV` | Invisibility on the owner and on the replicas | 5 | 26 |
+| `ARM` | Storage: memory, overflow, SQLite, integrity | 5 | 24 |
+| `ING` | Node join (bootstrap) | 3 | 31 |
 | `FAL` | Failure detection, exclusion vote and exit by failure | 1 | 32 |
-| `FRZ` | Freezing period | 1 | 13 |
-| `CNC` | Concurrency between membership changes | 3 | 12 |
-| `SIN` | Distributed synchronization of blocks | 1 | 29 |
-| `STR` | NDJSON streams between nodes | 12 | 3 |
-| `FWD` | Forwarding of client calls | 8 | 4 |
+| `FRZ` | Freezing period | 0 | 13 |
+| `CNC` | Concurrency between membership changes | 2 | 12 |
+| `SIN` | Distributed synchronization of blocks | 0 | 29 |
+| `STR` | NDJSON streams between nodes | 7 | 8 |
+| `FWD` | Forwarding of client calls | 6 | 5 |
 | `DRN` | Stop and drain mode | 2 | 19 |
-| `DEV` | One-node profile (the former development mode) | 4 | 3 |
-| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 9 | 39 |
-| `CLR` | Contract of the cluster routes (DTOs and common rules) | 7 | 3 |
-| `CFG` | Configuration and startup validations | 2 | 10 |
+| `DEV` | One-node profile (the former development mode) | 0 | 3 |
+| `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 6 | 41 |
+| `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 8 |
+| `CFG` | Configuration and startup validations | 1 | 10 |
 
 ## TOP: Topics: create, list, read, change and remove
 
-### UC-TOP-007
-
-**Case:** Create with valid tags (up to 20; key of 1 to 64 and value of 0 to 128 characters of `A-Za-z0-9_-.:`)  
-**Then:** `201` and the tags come back in the `Topic`.  
-**Level:** I  
-**Historical source:** 06a
-
----
-
-### UC-TOP-019
-
-**Case:** Create a FIFO queue with `replication.factor` below 2  
-**Then:** `422` `topic.fifo-needs-replication`.  
-**Level:** C  
-**Historical source:** 06a, 17 §16.2
-
----
 
 ### UC-TOP-025
 
@@ -102,7 +85,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CNS-039
 
-**Case:** The first `GET` with `autoCreate` pays the register + commit on all nodes; the following ones do not.  
+**Case:** The first `GET` with `autoCreate` pays for creating the definition (proposed to the owner and applied on all nodes); the following ones do not.  
 **Level:** C  
 **Historical source:** 15 §14.4
 
@@ -131,40 +114,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## RET: Expiration (`ttl`), delivery limit and dead-letter
 
-### UC-RET-003
-
-**Case:** The `ttl` default (14 days) applies at the time of the check  
-**Then:** changing `retention.ttl.default` affects queues without their own `ttl`, and not those that defined it.  
-**Level:** U, I  
-**Historical source:** 13 §12.10
-
----
-
-### UC-RET-010
-
-**Case:** The message in the dead-letter falls on the same block and the same nodes as the original message (same `id`).  
-**Level:** U, C  
-**Historical source:** 13 §12.10
-
----
-
-### UC-RET-012
-
-**Case:** The dead-letter has no definition of its own  
-**Then:** there is no row in the `topics` table and the settings are those of the source queue.  
-**Level:** I  
-**Historical source:** 13 §12.10, 02 §3.3
-
----
-
-### UC-RET-015
-
-**Case:** The dead-letter suffix is configurable (`topics.dead-letter.suffix`) and becomes the reserved name.  
-**Level:** U, I  
-**Historical source:** 10
-
----
-
 ### UC-RET-019
 
 **Case:** On the FIFO queue, the message that reaches `maxDeliveries` goes to the dead-letter and the group continues with the next one; one expired by `ttl` at the head also releases the group (`FIF` cases).  
@@ -184,40 +133,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## DST: Distributor Topic
 
-### UC-DST-004
-
-**Case:** A queue that matches **two or more prefixes of the same** distributor receives **one** copy.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-005
-
-**Case:** A queue that matches prefixes of **different distributors** receives one copy of each publication on each.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-006
-
-**Case:** Only queues are destinations  
-**Then:** a distributor never receives a copy (no loops).  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-007
-
-**Case:** The match is made at publish time  
-**Then:** a queue created later only receives what is published afterwards.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
 ### UC-DST-008
 
 **Case:** Partial failure  
@@ -227,85 +142,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-DST-010
-
-**Case:** The informed `groupId` and `deduplicationId` go to all the copies; without `deduplicationId`, each copy uses the body hash.  
-**Level:** I  
-**Historical source:** 15 §14.2, 17 §16.8
-
----
-
-### UC-DST-012
-
-**Case:** On a distributor the general `message.max-bytes` applies, and the copies are not checked again against each queue's `maxMessageBytes`.  
-**Level:** I  
-**Historical source:** 12
-
----
-
-### UC-DST-013
-
-**Case:** The `PATCH` of `prefixes` applies from the commit, only to later publications.  
-**Level:** I  
-**Historical source:** 06a, 15 §14.2
-
----
-
-### UC-DST-014
-
-**Case:** The distributor does not store messages  
-**Then:** there is no message in memory or on disk for it, and no ready list.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-015
-
-**Case:** There is no order between the destination queues. The test cannot require order.  
-**Level:** I  
-**Historical source:** 15 §14.2
-
----
-
-### UC-DST-016
-
-**Case:** `GET` and ack on a distributor  
-**Then:** `409` `topic.wrong-type`.  
-**Level:** I  
-**Historical source:** 15 §14.1
-
----
-
-### UC-DST-017
-
-**Case:** The `publish` permission is checked only on the distributor; the destination queues are not checked again (nor the token's prefixes).  
-**Level:** I  
-**Historical source:** 06a §8.1.3
-
----
-
 
 ## GRP: Message groups and fair delivery
 
-### UC-GRP-014
-
-**Case:** On a distributor, the `groupId` is passed on to all the copies.  
-**Level:** I  
-**Historical source:** 13 §12.11, 15 §14.2
-
----
-
 
 ## AUT: Authentication and access tokens
-
-### UC-AUT-004
-
-**Case:** `auth.enabled=true` without a root token prevents the node from starting; so does a defined `auth.root-token-file` that does not exist.  
-**Level:** I  
-**Historical source:** 06a §8.1.3, 10
-
----
 
 ### UC-AUT-019
 
@@ -318,8 +159,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-AUT-030
 
-**Case:** Create, change and revoke use register + commit with confirmation from **all** nodes; with some node down  
-**Then:** `503` `cluster.registration-failed` (and `cluster.commit-timeout` as the case may be).  
+**Case:** Creating, changing and revoking a token are proposed to the token's **owner** on the ring, which gives the next version, writes to the heir and applies on all nodes (`definitions/propose` and `apply`); they do not wait for all nodes  
+**Then:** the owner answers after the nodes that reply within `write.commit.timeout`, and the others receive it through the channel; without the owner (down and still in the table) or with no other owner to confirm, `503` `cluster.quorum-unavailable` and nothing is applied.  
 **Level:** C  
 **Historical source:** 06a, 02 §3.4
 
@@ -328,7 +169,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-AUT-031
 
 **Case:** The secret never travels between nodes  
-**Then:** the `register` carries only the `salt` and the `secretHash`.  
+**Then:** the `TokenRecord` of `propose` and `apply` carries only the `salt` and the `secretHash`.  
 **Level:** C  
 **Historical source:** 06c, 02 §3.4
 
@@ -381,14 +222,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-PAG-009
-
-**Case:** `GET /metrics/topics` does not accept `sort` (`400`) and always paginates by name.  
-**Level:** I  
-**Historical source:** 06b, 11
-
----
-
 
 ## CNV: Common API conventions (format, headers, errors, status)
 
@@ -401,14 +234,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-CNV-010
-
-**Case:** `POST`, `PATCH` and `DELETE` that do not expect a body ignore whatever comes; `204` never has a body.  
-**Level:** I  
-**Historical source:** 06d §8.3.1
-
----
-
 ### UC-CNV-013
 
 **Case:** The `/health/*` routes return `HealthResponse` (never `ErrorResponse`), and a failure **after the `200`** of an NDJSON stream uses the line `{"error":"..."}`.  
@@ -417,75 +242,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-CNV-014
-
-**Case:** An error inside a partial result (`200` of the distributor) carries `error` with `code` and `message`, **without status**  
-**Then:** the item's status is that of the `code` in the catalogue.  
-**Level:** I  
-**Historical source:** 06d §8.3.3
-
----
-
 ### UC-CNV-015
 
-**Case:** A `503` or `504` of an operation that creates or deletes (topic, token) may already have been applied on part of the cluster  
-**Then:** on repeating, `409` `topic.already-exists` (creation) or `404` (removal) mean the operation had already been applied.  
+**Case:** An operation that creates or deletes (topic, token) and is left without a definitive answer (`504` or a cut connection) may already have been applied by the owner  
+**Then:** on repeating, `409` `topic.already-exists` (creation) or `404` (removal) mean the operation had already been applied. A `503` `cluster.quorum-unavailable` applied nothing.  
 **Level:** C  
 **Historical source:** 06d §8.3.5
 
 ---
 
-### UC-CNV-016
-
-**Case:** `Accept: application/openmetrics-text` on `/metrics` asks for OpenMetrics; the default is Prometheus text.  
-**Level:** I  
-**Historical source:** 06d §8.3.2, 06b
-
----
-
-### UC-CNV-017
-
-**Case:** The reused DTOs `Ack`, `StreamEnd` and `ConditionEntry` have the fields and types defined in 06d §8.3.7 (the `severity` of `ConditionEntry` only takes `info`, `warning` or `critical`).  
-**Level:** U  
-**Historical source:** 06d §8.3.7
-
----
-
 
 ## ESC: Write: register + commit, quorum, rollback, commit ceiling
-
-### UC-ESC-001
-
-**Case:** The coordinator generates the GUID v7 **before** the register phase and computes, from the ID, the block and the responsible nodes (primary, secondary, tertiary).  
-**Level:** U, C  
-**Historical source:** 05 §7.2
-
----
-
-### UC-ESC-008
-
-**Case:** The default of `write.quorum` is `floor(rf / 2) + 1`  
-**Then:** 2 with rf 3, 3 with rf 5, 1 with rf 1.  
-**Level:** U  
-**Historical source:** 05 §7.2, 10
-
----
-
-### UC-ESC-009
-
-**Case:** `write.quorum` is validated between 1 and `replication.factor`; outside that, the configuration is refused. Below the majority is accepted.  
-**Level:** U  
-**Historical source:** 05 §7.2, 10
-
----
-
-### UC-ESC-012
-
-**Case:** `write.quorum` is a **single** value for write, delivery (invisibility) and ack.  
-**Level:** U, C  
-**Historical source:** 05 §7.2
-
----
 
 ### UC-ESC-018
 
@@ -493,15 +260,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Then:** it is never sent after the quorum decided.  
 **Level:** C  
 **Historical source:** 05 §7.2
-
----
-
-### UC-ESC-026
-
-**Case:** All the phases are **idempotent by `operationId`**  
-**Then:** repeating `register`, `commit` or `rollback` returns the same `Ack`, with no new effect.  
-**Level:** U, C  
-**Historical source:** 06c
 
 ---
 
@@ -594,13 +352,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-ANE-011
-
-**Case:** With a single node (development mode) the node is primary of all the blocks, with no rebalancing.  
-**Level:** I  
-**Historical source:** 05 §7.1
-
----
 
 ### UC-ANE-012
 
@@ -614,43 +365,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## DEF: Topic and token definition replicated in the cluster
 
-### UC-DEF-010
-
-**Case:** The file stores **only the definition**  
-**Then:** consumption data (depth, rates, histograms) never goes into it.  
-**Level:** I  
-**Historical source:** 02 §3.3
-
----
-
-### UC-DEF-011
-
-**Case:** The dead-letter has no definition row in the `topics` table  
-**Then:** it is derived from the source queue, created and deleted in the same operation.  
-**Level:** I  
-**Historical source:** 02 §3.3
-
----
-
-### UC-DEF-012
-
-**Case:** Each token is a row of the `tokens` table of `_node.db` (with `id`, `name`, permissions, prefixes, dates, the salt and the salted hash of the secret, never the secret).  
-**Level:** I  
-**Historical source:** 02 §3.4
-
----
-
 ### UC-DEF-013
 
-**Case:** At start, the node (in development, resuming from disk) loads the definitions from the `topics` table of `_node.db`, preserving the `id` and the creation date of each one.  
-**Level:** I  
+**Case:** On a start where the node starts **alone** (the first node, or the one with the lowest old ID on resume), it loads the definitions from `_node.db` (tables `topics` and `tokens`), with the versions and tombstones of `definition_versions`, preserving the `id` and creation date of each. A node that joins a cluster that is already up does not use them: it receives the cluster's and only **offers** them afterwards.  
+**Level:** I, C  
 **Historical source:** 04 §6.10
 
 ---
 
 ### UC-DEF-014
 
-**Case:** The `DELETE` always works, even with undelivered or unconfirmed messages. At the commit, each node deletes all the topic's messages it has locally (memory, `${topic}/` on disk and metadata), without checking whether they are pending.  
+**Case:** The `DELETE` always works, even with undelivered or unconfirmed messages. On applying the removal (`apply` with `deleted`), each node deletes all the topic's messages it has locally (memory, `${topic}/` on disk and metadata), without checking whether they are pending, and the definition's tombstone remains.  
 **Level:** C  
 **Historical source:** 02 §3.3
 
@@ -658,7 +383,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-DEF-017
 
-**Case:** The load is applied straight to final storage; everything that arrives by register and commit during the load (creation, change, removal) goes to the event database, in order of arrival, and the node confirms the register **after writing**.  
+**Case:** The load is applied straight to the final storage; everything that arrives during the load (definition changes by `apply` and the register + commit phases of messages) goes to the event database, in order of arrival, and the node confirms the registration **after writing**.  
 **Level:** C  
 **Historical source:** 02 §3.3
 
@@ -699,14 +424,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-DEF-023
-
-**Case:** In development mode the definition is applied only on the node itself, without waiting for others, with no bootstrap or load.  
-**Level:** I  
-**Historical source:** 02 §3.3
-
----
-
 
 ## ENT: Delivery on the owner: ready list, `take`, long polling
 
@@ -736,71 +453,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-ENT-007
-
-**Case:** In development mode the node is the owner of all the messages.  
-**Level:** I  
-**Historical source:** 13 §12.7
-
----
-
-### UC-ENT-008
-
-**Case:** The ready list is kept per topic on each node, in memory, with `delivery.ready-list.size` IDs (default 1000).  
-**Level:** U  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-009
-
-**Case:** A thread refills the list when the semaphore opens room (committed delivery, ID leaving), refilling the amount that opened, without querying for nothing.  
-**Level:** U  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-010
-
-**Case:** The refill follows the accordion  
-**Then:** two cursors over the node's messages (from the oldest forwards and from the newest backwards, by GUID v7, in memory and on disk), alternating the two ends.  
-**Level:** U  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-011
-
-**Case:** Delivery consumes the two ends **interleaved**  
-**Then:** the oldest, the newest, the second oldest, the second newest.  
-**Level:** U  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-012
-
-**Case:** A new message that arrives at the owner enters the list directly if there is room and the new-end cursor is at the end; otherwise it is found later by the thread.  
-**Level:** U  
-**Historical source:** 13 §12.6
-
----
-
-### UC-ENT-014
-
-**Case:** The message whose invisibility expires returns to the list by the GUID v7 position, **not** by the scan; if the list is full, the **middle** ID leaves to make room and is refilled later (no message is lost).  
-**Level:** U  
-**Historical source:** 13 §12.6, 14 §13.6
-
----
-
-### UC-ENT-015
-
-**Case:** The `GET` only queries the list, without scanning memory and disk at each call.  
-**Level:** U  
-**Historical source:** 13 §12.6
-
----
 
 ### UC-ENT-016
 
@@ -816,14 +468,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** The `take` carries the **quantity still missing** to complete the client's `maxMessages` and the requested `visibilityTimeout`.  
 **Level:** C  
 **Historical source:** 13 §12.2 and 12.8, 06c
-
----
-
-### UC-ENT-019
-
-**Case:** The peer is drawn with a **weight** proportional to the ready messages reported in the heartbeat; without quantity information, the draw is uniform.  
-**Level:** U  
-**Historical source:** 13 §12.8
 
 ---
 
@@ -889,29 +533,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## INV: Invisibility on the owner and on the replicas
 
-### UC-INV-001
-
-**Case:** The metadata are `deliveryCount`, `invisibleUntil` (absolute date) and `receiptToken`, stored and replicated together  
-**Then:** in the same register + commit, in memory or in the topic's local database.  
-**Level:** U, C  
-**Historical source:** 14 §13.2
-
----
-
 ### UC-INV-002
 
 **Case:** `invisibleUntil` is computed by the **owner** (`now + visibilityTimeout`, by its clock); the replicas store the ready value and never recompute from a duration.  
 **Level:** C  
 **Historical source:** 14 §13.2 and 13.3
-
----
-
-### UC-INV-005
-
-**Case:** The states of the message for the owner  
-**Then:** **ready** (`invisibleUntil` absent or in the past), **invisible** (in the future) and **removed** (ack).  
-**Level:** U  
-**Historical source:** 14 §13.1
 
 ---
 
@@ -941,136 +567,17 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-INV-017
-
-**Case:** The owner's thread looks at the head of the invisible list, sleeps until its deadline (with a short ceiling to react to changes and earlier entries) and, on expiry, removes the entry and **checks** the metadata  
-**Then:** the message still exists, the node is still the owner and the deadline is still the entry's; otherwise it discards and moves on.  
-**Level:** U  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-018
-
-**Case:** After the check, the message enters the ready list by the GUID v7 position (near the old end); with the list full, the middle ID leaves.  
-**Level:** U  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-020
-
-**Case:** On the FIFO queue, the message that comes back is the head of the group; the group stops being busy and enters the ready list by the ID position, without the middle-of-the-list rule.  
-**Level:** U  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-021
-
-**Case:** If the invisible list empties and there are still rows in the expiry table, the thread does the reload before sleeping.  
-**Level:** U  
-**Historical source:** 14 §13.6
-
----
-
-### UC-INV-022
-
-**Case:** The invisible list is, per topic and only on the owner, a list of (ID, `invisibleUntil`) pairs ordered by deadline, with at most `delivery.invisible-list.size` entries; lookup by ID for change and ack.  
-**Level:** U  
-**Historical source:** 14 §13.4
-
----
-
-### UC-INV-023
-
-**Case:** Inclusion rule with the list full  
-**Then:** if the new deadline is **earlier** than the last one in the list, the new pair enters and the last goes to the table; otherwise the new pair goes straight to the table.  
-**Level:** U  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-024
-
-**Case:** Invariant  
-**Then:** everything in the list expires before everything in the table; the thread never queries the table while the list does not empty.  
-**Level:** U  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-025
-
-**Case:** Reload  
-**Then:** below `delivery.invisible.reload-threshold` (or empty), the thread reads from the table the pairs with the lowest `invisibleUntil` (an ordered query with a limit by the index), moves them to the list and deletes the rows read.  
-**Level:** U, I  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-026
-
-**Case:** No old entries  
-**Then:** ack, change and new delivery delete or update the table row in the same commit that updates the list. There is no lazy removal.  
-**Level:** U, I  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-027
-
-**Case:** The write to the table is part of the commit on the owner  
-**Then:** if it fails, the commit does not complete and the delivery is undone before the response to the client.  
-**Level:** I  
-**Historical source:** 14 §13.5
-
----
-
-### UC-INV-028
-
-**Case:** With room in the list, no write beyond the metadata.  
-**Level:** U  
-**Historical source:** 14 §13.5
-
----
-
 ### UC-INV-031
 
 **Case:** Restart  
-**Then:** the expiry table is discarded together with the old state; the lists are rebuilt when the node takes over blocks.  
+**Then:** the expiry table is discarded along with the old state; the messages of the previous life come back through the restoration (`_lives`), ready, with the invisibility zeroed and a new `receiptToken`, and the lists are rebuilt when the node takes over blocks.  
 **Level:** C  
 **Historical source:** 14 §13.7
 
 ---
 
-### UC-INV-032
-
-**Case:** In development mode the register and the commit happen only on the node itself (quorum 1), with no propagation; only the restart case applies.  
-**Level:** I  
-**Historical source:** 14 §13.3 and 13.7
-
----
-
 
 ## ARM: Storage: memory, overflow, SQLite, integrity
-
-### UC-ARM-008
-
-**Case:** The ready list and the messages in memory do not change because of the database  
-**Then:** it only takes care of what is on disk.  
-**Level:** U  
-**Historical source:** 02 §3.2
-
----
-
-### UC-ARM-012
-
-**Case:** The `expiry` table stores the pairs that did not fit in the invisible list, with an index by deadline.  
-**Level:** I  
-**Historical source:** 02 §3.2, 14 §13.5
-
----
 
 ### UC-ARM-016
 
@@ -1083,7 +590,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-ARM-018
 
-**Case:** The node database, `${storage.dir}/_node.db`, is strictly local, with the tables `topics` (the topic definitions) and `losses` (`topic`, `id`, `block`, `detected_at`), written by a single thread.  
+**Case:** The node database, `${storage.dir}/_node.db`, is strictly local, with the tables `topics` (the topic definitions), `tokens`, `state`, `losses` (`topic`, `id`, `block`, `detected_at`) and `definition_versions` (the versions and tombstones), written through a single connection, the only writer.  
 **Level:** I  
 **Historical source:** 02 §3.2
 
@@ -1107,14 +614,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-ARM-021
-
-**Case:** The node creates `storage.dir` (default `/var/lib/taba`, the last folder is named `taba`) at start; if it cannot create or write, it does not start.  
-**Level:** I  
-**Historical source:** 10
-
----
-
 ### UC-ARM-025
 
 **Case:** **Consumption** data (depth, visible, invisible, rates, latencies) stays only in memory and specific to each node.  
@@ -1125,14 +624,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 
 ## ING: Node join (bootstrap)
-
-### UC-ING-007
-
-**Case:** The node names itself with a **GUID v7** at each process start, only in memory, and identifies itself by it, including in the join request.  
-**Level:** U, C  
-**Historical source:** 04 §6.7
-
----
 
 ### UC-ING-012
 
@@ -1150,19 +641,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-ING-025
-
-**Case:** In development mode there is no bootstrap  
-**Then:** the node starts alone, and another node cannot join (the cluster port is not opened). A production node that tries to join a development node cannot.  
-**Level:** I  
-**Historical source:** 04 §6.4, 06c
-
----
 
 ### UC-ING-026
 
-**Case:** The member table is **not** persisted  
-**Then:** a process restart loses the table and the node returns as a new node.  
+**Case:** The member table is **not** persisted as live state  
+**Then:** restarting the process loses the table and the node comes back as a new node, with a new ID; the previous life's `manifest.json` keeps a copy of it only for the restoration and the probing of the old IPs, and does not make the node come back as the old one.  
 **Level:** C  
 **Historical source:** 13 §12.9
 
@@ -1181,26 +664,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ---
 
 
-## FRZ: Freezing period
-
-### UC-FRZ-008
-
-**Case:** In development mode freezing does not apply (`cluster.freezing.*` is ignored).  
-**Level:** I  
-**Historical source:** 04 §6.4
-
----
-
-
 ## CNC: Concurrency between membership changes
 
-### UC-CNC-008
-
-**Case:** In development mode there is no membership change to coordinate.  
-**Level:** I  
-**Historical source:** 04 §6.4
-
----
 
 ### UC-CNC-011
 
@@ -1221,49 +686,13 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ---
 
 
-## SIN: Distributed synchronization of blocks
-
-### UC-SIN-024
-
-**Case:** In development mode there is no node join, synchronization, event database or loss recovery.  
-**Level:** I  
-**Historical source:** 05 §7.3
-
----
-
-
 ## STR: NDJSON streams between nodes
-
-### UC-STR-002
-
-**Case:** The order is by **ascending ID** (GUID v7 compared as text in canonical lowercase form).  
-**Level:** U  
-**Historical source:** 06c §8.2.1
-
----
-
-### UC-STR-003
-
-**Case:** `from` and `to` (both inclusive and optional) delimit the range; optional `limit` lowers the item ceiling.  
-**Level:** U, C  
-**Historical source:** 06c §8.2.1
-
----
 
 ### UC-STR-005
 
 **Case:** Ceiling per stream  
 **Then:** the sender closes on reaching `cluster.sync.stream.max-items` or `max-bytes`, with `hasMore: true`; the receiver opens another with `from=<last>`.  
 **Level:** C  
-**Historical source:** 06c §8.2.1
-
----
-
-### UC-STR-006
-
-**Case:** Resume after a cut or `hasMore`  
-**Then:** the receiver repeats with `from=<last ID read>`; the sender returns that line again and the receiver **ignores** it (idempotent application by ID). No token or state on the server.  
-**Level:** U, C  
 **Historical source:** 06c §8.2.1
 
 ---
@@ -1285,29 +714,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-STR-009
-
-**Case:** Line size limit (`cluster.sync.stream.max-line-bytes`)  
-**Then:** the largest possible message must fit (hard-limit in base64 plus the envelope).  
-**Level:** U  
-**Historical source:** 06c §8.2.1, 10
-
----
-
 ### UC-STR-010
 
 **Case:** Backpressure  
 **Then:** the receiver reads at its own pace and the sender holds no transaction or frozen list open; it reads storage in small chunks.  
 **Level:** C  
-**Historical source:** 06c §8.2.1
-
----
-
-### UC-STR-011
-
-**Case:** Lines of each route  
-**Then:** `TopicDefinition`, `TokenRecord`, `{id, topic}` (and `deleteAt` on FIFO), `{id, topic}` of the losses and `MessageRecord` (without `body` and with `deleteAt` on FIFO with logical delete).  
-**Level:** U  
 **Historical source:** 06c §8.2.1
 
 ---
@@ -1323,8 +734,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-STR-014
 
-**Case:** The contract creates no new tombstone or log  
-**Then:** removal continues by the absence of the ID.  
+**Case:** The message streams (`ids` and `messages`) carry no tombstone  
+**Then:** the removal of a message continues by the absence of the ID; what keeps a dead copy from coming back is the log of excluded messages (`/cluster/blocks/{id}/excluded`) and, for definitions, the tombstone stream (`/cluster/definitions/tombstones`), each on its own route.  
 **Level:** C  
 **Historical source:** 06c §8.2.1
 
@@ -1347,15 +758,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** Destination in synchronization  
 **Then:** a member of the table with an active channel, chosen at random (there is only one node in synchronization at a time).  
 **Level:** C  
-**Historical source:** 04 §6.9
-
----
-
-### UC-FWD-003
-
-**Case:** Destination in drain  
-**Then:** the **freest node** (lowest load by the heartbeat, plus the calls already forwarded and in progress to that destination), with a tie drawn at random; only ready nodes outside drain enter; the choice is made **at each call**. After the channel closes, the last indicator and the last known table apply.  
-**Level:** U, C  
 **Historical source:** 04 §6.9
 
 ---
@@ -1403,14 +805,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-FWD-012
-
-**Case:** In development mode no call is forwarded.  
-**Level:** I  
-**Historical source:** 04 §6.4 and 6.9
-
----
-
 
 ## DRN: Stop and drain mode (includes drain as save)
 
@@ -1431,43 +825,6 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ---
 
 
-## DEV: One-node profile (the former development mode)
-
-### UC-DEV-006
-
-**Case:** Client behavior is the same as the cluster's  
-**Then:** API, overflow, delivery and invisibility, `ttl`, `maxDeliveries`, dead-letter, distributors and volatile queues, limits and rate limit (the same battery of `I` cases runs here).  
-**Level:** I  
-**Historical source:** 04 §6.4
-
----
-
-### UC-DEV-007
-
-**Case:** The node is the owner of all the messages  
-**Then:** there is no `take` or notices between nodes, and long polling is only local.  
-**Level:** I  
-**Historical source:** 04 §6.4, 13 §12.7
-
----
-
-### UC-DEV-008
-
-**Case:** The node is the manager of all the volatile queues, and the final check queries only it.  
-**Level:** I  
-**Historical source:** 04 §6.4, 15 §14.5
-
----
-
-### UC-DEV-009
-
-**Case:** Fair delivery by groups applies the same, with an exact count.  
-**Level:** I  
-**Historical source:** 04 §6.4, 13 §12.11
-
----
-
-
 ## OPS: Observability (OpenTelemetry), statistics, metrics and health
 
 ### UC-OPS-015
@@ -1480,51 +837,27 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-OPS-020
 
-**Case:** The result of `/metrics/topics` is cached for `stats.topics.cache-ttl` (with `collectedAt`); the filter and the `limit` are applied **after** the merge between nodes; no `sort` (`400`).  
+**Case:** In `GET /stats/topics` (client API) the filter and the `limit` are applied **after** the merge between nodes, and `sort` does not exist (`400`). Caching the result for `stats.topics.cache-ttl` (with `collectedAt`) is planned: today the parameter has no effect.  
 **Level:** C  
 **Historical source:** 06b, 11
 
 ---
 
-### UC-OPS-023
-
-**Case:** Node view × cluster view  
-**Then:** **only the primary counts** (otherwise the sum would be multiplied by the replication factor); the cluster adds `visibleMessages`, `invisibleMessages` and `depth`, and `oldestMessageAt` is the **earliest** date among the nodes; `oldestAge = now − oldestMessageAt`.  
-**Level:** U, C  
-**Historical source:** 11
-
----
-
 ### UC-OPS-025
 
-**Case:** A node that does not answer is left out and the result is marked `partial`  
+**Case:** In `/stats/topics`, a node that does not answer is left out and the result is marked `partial`, with `missingNodes`  
 **Then:** the sums become a floor.  
 **Level:** C  
 **Historical source:** 11
 
 ---
 
-### UC-OPS-027
-
-**Case:** `GET /cluster/metrics/topics` returns `TopicCounters` (`collectedAt` and `topics` with `visibleMessages`, `invisibleMessages`, `oldestMessageAt`), only of the messages of which the node is primary; the `topic` parameter asks for a single topic.  
-**Level:** C  
-**Historical source:** 06c, 11
-
----
 
 ### UC-OPS-030
 
 **Case:** Replication degradation (`under-replicated`, `syncing`) is a property of the **cluster**, not of the topic  
 **Then:** it appears in the cluster condition, not in the topic one.  
 **Level:** C  
-**Historical source:** 11
-
----
-
-### UC-OPS-036
-
-**Case:** The node does not start if `operations.port` is in use or if `operations.allowed-ips` has an invalid entry.  
-**Level:** I  
 **Historical source:** 11
 
 ---
@@ -1550,45 +883,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ## CLR: Contract of the cluster routes (DTOs and common rules)
 
-### UC-CLR-002
-
-**Case:** Every `register`, `commit` and `rollback` carries the `operationId` (GUID v7 of the coordinator) and is idempotent by it. A register with no commit or rollback expires after `write.pending.ttl`.  
-**Level:** U, C  
-**Historical source:** 06c
-
----
-
 ### UC-CLR-003
 
 **Case:** The response of `register`, `commit` and `rollback` is `Ack` (`operationId`, `accepted`).  
 **Level:** U  
 **Historical source:** 06c, 06d §8.3.7
-
----
-
-### UC-CLR-004
-
-**Case:** Invalid body on the cluster routes  
-**Then:** `400` `validation.failed`, `validation.required` or `validation.unknown-field`.  
-**Level:** U, C  
-**Historical source:** 06c
-
----
-
-### UC-CLR-005
-
-**Case:** The cluster DTOs (`Member`, `MemberTable`, `JoinRequest`, `NodeRegisterRequest`, `NodeUnregisterRequest`, `OperationRef`, `VoteRequest`, `VoteResponse`, `TopicRegisterRequest`, `TopicDefinition`, `TokenRegisterRequest`, `TokenRecord`, `MessageRegisterRequest`, `VisibilityRegisterRequest`, `AckRegisterRequest`, `TakeRequest`, `TakeResponse`, `MessageRecord`, `IdleResponse`, `RecoverResult`, `TopicCounters`) serialize and deserialize with the documented fields and types, and the `null` values of `ttl`, `maxDeliveries` and `maxMessageBytes` of the `TopicDefinition` are sent as `null`.  
-**Level:** U  
-**Historical source:** 06c
-
----
-
-### UC-CLR-006
-
-**Case:** The `TopicDefinition` DTO equals the JSON stored in the `topics` table  
-**Then:** the `Topic` fields without `effective`, `deadLetter` and `source`.  
-**Level:** U  
-**Historical source:** 06c, 02 §3.3
 
 ---
 
@@ -1600,38 +899,21 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
-### UC-CLR-010
-
-**Case:** Cluster-only codes  
-**Then:** `cluster.not-member`, `cluster.node-frozen`, `cluster.join-unreachable`, `cluster.conflict`, `cluster.wrong-node`, `fifo.misdirected` and `cluster.operation-unknown`.  
-**Level:** U, C  
-**Historical source:** 06d §8.3.6
-
----
-
 
 ## CFG: Configuration and startup validations
 
 ### UC-CFG-006
 
-**Case:** All nodes run the **same image**; each one's role comes only from the configuration (`cluster.first-node`, `mode`).  
+**Case:** All nodes run the **same image**; the role of each comes only from the configuration (`cluster.first-node`, `cluster.entry-address`, `replication.factor`).  
 **Level:** I  
 **Historical source:** 01, 06 §8.0.1
-
----
-
-### UC-CFG-007
-
-**Case:** `mode=development` ignores `cluster.*`, `ring.*`, `replication.*` and `write.quorum` with a warning (UC-DEV-004).  
-**Level:** I  
-**Historical source:** 10
 
 ---
 
 
 ## Retired cases
 
-Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005 (the development mode and the drain as save went away, [07-cluster.md](07-cluster.md), section 8).
+Codes are never reused: UC-DEF-001, UC-DEF-002, UC-DEF-003, UC-DEF-004, UC-DEF-005, UC-DEF-006, UC-DEF-007, UC-DEF-008, UC-OPS-008, UC-OPS-009, UC-OPS-010, UC-DRN-021, UC-DRN-022, UC-DRN-023, UC-DRN-024, UC-DRN-025, UC-DRN-026, UC-DRN-027, UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DEV-005, UC-DEV-010, UC-DEV-013, UC-RTN-011, UC-SEG-005, UC-ANE-011, UC-DEF-023, UC-ENT-007, UC-INV-032, UC-ING-025, UC-FRZ-008, UC-CNC-008, UC-SIN-024, UC-FWD-012, UC-DEV-006, UC-DEV-007, UC-DEV-008, UC-DEV-009, UC-CFG-007, UC-TOP-019, UC-OPS-027 (the development mode and the drain as save went away, [07-cluster.md](07-cluster.md), section 8; UC-TOP-019, because the FIFO queue accepts any `replication.factor`, [09-topics.md](09-topics.md); UC-OPS-027, because the route `GET /cluster/metrics/topics` does not exist, [18-cluster-api.md](18-cluster-api.md)).
 
 ## Sources and evidence
 

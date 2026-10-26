@@ -6,6 +6,7 @@ fn rules(weight: f64, max_groups: Option<usize>, normal_every: u32) -> IndexRule
         max_groups,
         normal_every,
         fifo: false,
+        ..IndexRules::default()
     }
 }
 
@@ -198,6 +199,17 @@ fn inside_a_band_the_oldest_and_the_newest_alternate_like_an_accordion() {
     assert_eq!(drain_order(&mut index, 0), ["a", "e", "b", "d", "c"]);
 }
 
+/// UC: UC-ENT-011
+#[test]
+fn delivery_interleaves_the_two_ends_oldest_newest_second_oldest_second_newest() {
+    let mut index = index();
+    let ids = ["a", "b", "c", "d", "e", "f"];
+    for (n, id) in ids.into_iter().enumerate() {
+        index.insert(id, None, n as u64, 0, 0, 0);
+    }
+    assert_eq!(drain_order(&mut index, 0), ["a", "f", "b", "e", "c", "d"]);
+}
+
 /// UC: UC-GRP-011
 #[test]
 fn every_nth_delivery_takes_the_oldest_of_any_group() {
@@ -263,23 +275,23 @@ fn groups_above_the_ceiling_share_one_counter() {
 
 /// UC: UC-RET-001
 #[test]
-fn messages_past_their_ttl_are_found_by_age() {
+fn the_index_only_says_when_a_ttl_check_is_worth_a_read() {
     let mut index = index();
     index.insert("old", None, 1_000, 0, 0, 5_000);
     index.insert("new", None, 4_000, 0, 0, 5_000);
     index.insert("in-flight", None, 500, 9_000, 1, 5_000);
-    assert_eq!(index.expired(5_000, 10_000), Vec::<String>::new());
-    assert_eq!(
-        index.expired(6_000, 5_000),
-        ["in-flight", "old"],
-        "any state, by age"
-    );
-    assert_eq!(index.expired(9_000, 5_000), ["in-flight", "old", "new"]);
-    assert_eq!(
-        index.expired(100, 5_000),
-        Vec::<String>::new(),
-        "without overflowing the count"
-    );
+    assert!(!index.ttl_due(5_000, 10_000), "the oldest is 500: not yet");
+    assert!(index.ttl_due(6_000, 5_000), "any state counts");
+    assert!(!index.ttl_due(100, 5_000), "without overflowing the count");
+    // After a read the index counts from the age that is left.
+    index.set_age_floor(Some(4_000));
+    assert!(!index.ttl_due(6_000, 5_000));
+    assert!(index.ttl_due(9_000, 5_000));
+    index.set_age_floor(None);
+    assert!(!index.ttl_due(u64::MAX, 1));
+    // A message older than the bound lowers it.
+    index.insert("older", None, 10, 0, 0, 5_000);
+    assert!(index.ttl_due(6_000, 5_000));
 }
 
 /// UC: UC-INV-004
@@ -308,6 +320,7 @@ fn fifo_index() -> TopicIndex {
         max_groups: Some(1),
         normal_every: 3,
         fifo: true,
+        ..IndexRules::default()
     })
 }
 
@@ -379,4 +392,60 @@ fn with_a_zero_visibility_the_group_is_free_again_after_the_batch() {
     // ...and, with zero invisibility, it goes back to ready at the end.
     index.set_until(&id, 0, 0);
     assert_eq!(index.pick().as_deref(), Some("1"));
+}
+
+/// UC: UC-INV-005
+#[test]
+fn a_message_is_ready_invisible_or_removed_by_its_deadline() {
+    let mut index = index();
+    // No deadline (never delivered) and a deadline in the past: both are ready.
+    index.insert("a", None, 1, 0, 0, 5_000);
+    index.insert("b", None, 2, 4_000, 1, 5_000);
+    // A deadline in the future: invisible.
+    index.insert("c", None, 3, 9_000, 1, 5_000);
+    assert_eq!(index.ready_ids(), ["a", "b"]);
+    assert!(!index.is_processing("a"));
+    assert!(!index.is_processing("b"));
+    assert!(index.is_processing("c"));
+    assert_eq!(index.counts(), (2, 1));
+
+    // The deadline arriving makes it ready again.
+    assert_eq!(index.release_due(9_000), ["c"]);
+    assert!(!index.is_processing("c"));
+
+    // Delivery makes it invisible; the ack removes it for good.
+    index.deliver("a", 20_000, 9_000, 1);
+    assert!(index.is_processing("a"));
+    assert!(index.remove("a"));
+    assert!(!index.contains("a"));
+    assert!(!index.is_processing("a"));
+    assert_eq!(index.counts(), (2, 0));
+}
+
+/// UC: UC-INV-020
+#[test]
+fn in_a_fifo_queue_the_returning_message_is_the_group_head_and_frees_the_group() {
+    let mut index = fifo_index();
+    index.insert("1-a", Some("a"), 1, 0, 0, 0);
+    index.insert("2-b", Some("b"), 2, 0, 0, 0);
+    index.insert("3-a", Some("a"), 3, 0, 0, 0);
+    index.insert("4-c", Some("c"), 4, 0, 0, 0);
+
+    // "1-a" goes out and makes group "a" busy; "2-b" goes out too.
+    assert_eq!(index.pick().as_deref(), Some("1-a"));
+    index.deliver("1-a", 1_000, 0, 1);
+    assert_eq!(index.pick().as_deref(), Some("2-b"));
+    index.deliver("2-b", 5_000, 0, 1);
+    // Group "a" is busy: the list only has the head of "c".
+    assert_eq!(index.pick().as_deref(), Some("4-c"));
+
+    // The invisibility of "1-a" ends: it is back as the head of "a" (not "3-a") and the group
+    // is free again, going into the list by its ID position, ahead of "4-c".
+    assert_eq!(index.release_due(1_000), ["1-a"]);
+    assert_eq!(index.pick().as_deref(), Some("1-a"));
+    assert_eq!(index.deliveries("1-a"), Some(1), "the count is kept");
+
+    // Once delivered again the group is busy again and "3-a" stays behind it.
+    index.deliver("1-a", 9_000, 1_000, 2);
+    assert_eq!(index.pick().as_deref(), Some("4-c"));
 }

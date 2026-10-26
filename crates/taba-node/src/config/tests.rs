@@ -358,6 +358,7 @@ fn wrong_type_stops_startup_naming_the_parameter() {
     }
 }
 
+/// UC: UC-OPS-036
 #[test]
 fn allowed_ips_must_be_valid_addresses_or_cidr() {
     let c = prod_with(&[("TABA_OPERATIONS_ALLOWED_IPS", "10.0.0.0/8, 192.168.1.10")]).unwrap();
@@ -473,6 +474,7 @@ mod secrets {
         );
     }
 
+    /// UC: UC-AUT-004
     #[test]
     fn forcing_auth_without_a_root_token_stops_startup() {
         assert!(
@@ -480,6 +482,7 @@ mod secrets {
         );
     }
 
+    /// UC: UC-AUT-004
     #[test]
     fn a_named_root_token_file_that_does_not_exist_stops_startup() {
         let dir = TempDir::new().unwrap();
@@ -799,4 +802,78 @@ fn the_one_node_profile_needs_no_entry_address_and_relaxes_only_with_factor_one(
         ("TABA_AUTH_DEV_TOKEN", "short"),
     ]));
     assert!(short.contains("auth.dev-token"), "{short}");
+}
+
+/// UC: UC-ESC-008
+#[test]
+fn write_quorum_defaults_to_floor_of_half_the_factor_plus_one() {
+    for (factor, quorum) in [("1", 1), ("3", 2), ("5", 3)] {
+        let c = prod_with(&[("TABA_REPLICATION_FACTOR", factor)]).unwrap();
+        let rf: u32 = factor.parse().unwrap();
+        assert_eq!(c.write.quorum, rf / 2 + 1, "fator {factor}");
+        assert_eq!(c.write.quorum, quorum, "fator {factor}");
+    }
+}
+
+/// UC: UC-ESC-009
+#[test]
+fn write_quorum_must_be_between_one_and_the_factor_and_below_the_majority_is_accepted() {
+    for (factor, quorum) in [("3", "1"), ("3", "2"), ("3", "3"), ("5", "1"), ("5", "5")] {
+        let c = prod_with(&[
+            ("TABA_REPLICATION_FACTOR", factor),
+            ("TABA_WRITE_QUORUM", quorum),
+        ])
+        .unwrap();
+        assert_eq!(c.write.quorum.to_string(), quorum, "fator {factor}");
+    }
+    for (factor, quorum) in [("3", "0"), ("3", "4"), ("5", "6"), ("1", "2")] {
+        let message = problems(prod_with(&[
+            ("TABA_REPLICATION_FACTOR", factor),
+            ("TABA_WRITE_QUORUM", quorum),
+        ]));
+        assert!(
+            message.contains(&format!(
+                "write.quorum ({quorum}) must be between 1 and replication.factor ({factor})"
+            )),
+            "{message}"
+        );
+    }
+}
+
+/// UC: UC-ESC-012
+#[test]
+fn there_is_only_one_write_quorum_parameter() {
+    let quorum_keys: Vec<&str> = params::PARAMS
+        .iter()
+        .map(|p| p.key)
+        .filter(|key| key.contains("quorum") && !key.starts_with("cluster.vote."))
+        .collect();
+    assert_eq!(quorum_keys, ["write.quorum"]);
+}
+
+/// UC: UC-STR-009
+#[test]
+fn the_stream_line_limit_is_exactly_the_hard_limit_in_base64_plus_the_envelope() {
+    // `message.hard-limit` = 1MB (1_048_576 bytes) is 349_526 groups of 3 bytes = 1_398_104 in base64,
+    // plus the 4096 of the JSON envelope.
+    let needed = 1_398_104 + 4_096;
+    let with_line = |line: u64| {
+        let line = line.to_string();
+        prod_with(&[
+            ("TABA_MESSAGE_MAX_BYTES", "1MB"),
+            ("TABA_MESSAGE_HARD_LIMIT", "1MB"),
+            ("TABA_CLUSTER_SYNC_STREAM_MAX_LINE_BYTES", line.as_str()),
+        ])
+    };
+
+    assert!(with_line(needed).is_ok(), "the exact size fits");
+    assert!(with_line(needed * 4).is_ok());
+    let refused = problems(with_line(needed - 1));
+    assert!(
+        refused.contains("cluster.sync.stream.max-line-bytes"),
+        "{refused}"
+    );
+    assert!(refused.contains(&needed.to_string()), "{refused}");
+    // The raw bytes of the hard limit are not enough: the base64 grows them by a third.
+    assert!(problems(with_line(1_048_576 + 4_096)).contains("max-line-bytes"));
 }

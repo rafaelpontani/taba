@@ -80,7 +80,7 @@ As pendências "sem bloqueio" de [31-pendencias.md](31-pendencias.md) são, em s
 | Grupo | Itens |
 |---|---|
 | Padrões de configuração | **D84** (rate limit), **D90** (limiares das condições de tópico), **D91** (métricas de tópico em `/metrics`), **D89** (teto da deduplicação FIFO), **D87** (teto de filas voláteis), **D85** |
-| Memória do índice de entrega | **D82**, **D88**, **PRB-018**: o índice guarda tudo em memória e três parâmetros não têm efeito |
+| Memória do índice de entrega | **D88**, **PRB-020**: falta o padrão de `delivery.fair.max-groups` e o teto na fila FIFO e na tabela de réplicas |
 | Drain | **D75** (drain pela API que estoura o prazo), **D77**, **PRB-005** (recusa o ack em drain) |
 | Segurança | **D76** (filtro de IPs vs. health checks), **PRB-015** (`X-Forwarded-For` forjável com a lista vazia), **PRB-017** |
 | Cluster | **D93**, **D99**, **D102**, **D104**, **D109**, **D120**, **PRB-051** (IP de saída) |

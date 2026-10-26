@@ -197,6 +197,47 @@ async fn name_and_tags_are_validated_with_the_field_in_details() {
     assert_eq!(err.details[0].field, "tags.k");
 }
 
+/// UC: UC-TOP-007
+#[tokio::test]
+async fn tags_at_the_limits_are_accepted_and_come_back_in_the_topic() {
+    let h = harness();
+    let at_the_limit: BTreeMap<String, String> = (0..19)
+        .map(|i| (format!("k{i}"), String::new()))
+        .chain([("a".repeat(64), "A-z_0.9:-".repeat(14) + "ab")])
+        .collect();
+    assert_eq!(at_the_limit.len(), 20);
+    assert_eq!(at_the_limit.values().map(String::len).max(), Some(128));
+    let created = h
+        .topics
+        .create(CreateTopic {
+            tags: Some(at_the_limit.clone()),
+            ..queue("tagged")
+        })
+        .await
+        .unwrap();
+    assert_eq!(created.definition.tags, at_the_limit);
+    assert_eq!(
+        h.topics.get("tagged").unwrap().definition.tags,
+        at_the_limit
+    );
+
+    let too_many: BTreeMap<String, String> =
+        (0..21).map(|i| (format!("k{i}"), String::new())).collect();
+    let too_long_key = BTreeMap::from([("a".repeat(65), String::new())]);
+    let too_long_value = BTreeMap::from([("k".to_owned(), "v".repeat(129))]);
+    for tags in [too_many, too_long_key, too_long_value] {
+        let err = h
+            .topics
+            .create(CreateTopic {
+                tags: Some(tags),
+                ..queue("refused")
+            })
+            .await
+            .unwrap_err();
+        assert!(!err.details.is_empty());
+    }
+}
+
 /// UC: UC-TOP-013
 #[tokio::test]
 async fn fields_that_do_not_apply_to_the_type_are_refused() {
@@ -468,6 +509,7 @@ async fn unknown_topics_are_404_and_dead_letters_are_read_only() {
     }
 }
 
+/// UC: UC-RET-012, UC-DEF-011
 #[tokio::test]
 async fn the_dead_letter_is_derived_from_its_queue_and_never_stored() {
     let h = harness();
@@ -714,4 +756,119 @@ async fn a_cursor_only_works_with_the_sort_and_filter_that_made_it() {
         h.topics.list(garbage).err().map(|e| e.code),
         Some(ErrorCode::ValidationInvalidCursor)
     );
+}
+
+/// UC: UC-RET-003
+#[tokio::test]
+async fn changing_the_default_ttl_affects_the_queues_without_their_own_ttl_only() {
+    let h = harness();
+    h.topics.create(queue("plain")).await.unwrap();
+    let own = CreateTopic {
+        ttl: Some(100),
+        ..queue("own")
+    };
+    h.topics.create(own).await.unwrap();
+    let ttl = |topics: &Topics, name: &str| {
+        topics.get(name).unwrap().to_json()["effective"]["ttl"].clone()
+    };
+    assert_eq!(ttl(&h.topics, "plain"), 1_209_600, "14 days by default");
+    assert_eq!(ttl(&h.topics, "own"), 100);
+
+    // The default is read when the value is checked: the same definitions under another `retention.ttl.default`.
+    let env = MapEnv::new([
+        ("TABA_REPLICATION_FACTOR", "1"),
+        ("TABA_RETENTION_TTL_DEFAULT", "1h"),
+    ]);
+    let rules = TopicRules::from_config(&Config::parse(None, &env).unwrap());
+    assert_eq!(rules.ttl_default, 3600);
+    let definitions = vec![
+        h.topics.get("plain").unwrap().definition,
+        h.topics.get("own").unwrap().definition,
+    ];
+    let changed = Topics::new(rules, h.store.clone(), h.clock.clone(), definitions);
+    assert_eq!(
+        ttl(&changed, "plain"),
+        3600,
+        "the queue without `ttl` follows the new default"
+    );
+    assert_eq!(
+        ttl(&changed, "own"),
+        100,
+        "the one that defined it does not"
+    );
+    assert!(changed.get("plain").unwrap().to_json()["ttl"].is_null());
+}
+
+/// UC: UC-RET-015
+#[tokio::test]
+async fn the_dead_letter_suffix_is_configurable_and_becomes_the_reserved_name() {
+    let env = MapEnv::new([
+        ("TABA_REPLICATION_FACTOR", "1"),
+        ("TABA_TOPICS_DEAD_LETTER_SUFFIX", "-dlq"),
+    ]);
+    let rules = TopicRules::from_config(&Config::parse(None, &env).unwrap());
+    assert_eq!(rules.dead_letter_suffix, "-dlq");
+    let h = harness_with(rules);
+    h.topics.create(queue("orders")).await.unwrap();
+
+    // The new suffix is reserved; the old one is an ordinary name again.
+    assert_eq!(
+        code(h.topics.create(queue("x-dlq"))).await,
+        ErrorCode::ValidationReservedName
+    );
+    h.topics.create(queue("y-dead-letter")).await.unwrap();
+
+    // The dead-letter appears under the new name and no longer under the old one.
+    let dl = h.topics.get("orders-dlq").unwrap().to_json();
+    assert_eq!(dl["deadLetter"], true);
+    assert_eq!(dl["source"], "orders");
+    assert_eq!(
+        code(async { h.topics.get("orders-dead-letter") }).await,
+        ErrorCode::TopicNotFound
+    );
+}
+
+/// UC: UC-CLR-006
+#[tokio::test]
+async fn the_cluster_definition_is_the_topic_json_without_effective_dead_letter_and_source() {
+    let h = harness();
+    h.topics.create(queue("orders")).await.unwrap();
+    h.topics
+        .create(distributor("dist", &["ped"]))
+        .await
+        .unwrap();
+    let stored = h.topics.stored().await.unwrap();
+
+    for name in ["orders", "orders-dead-letter", "dist"] {
+        let view = h.topics.get(name).unwrap();
+        let mut api = view.to_json();
+        let object = api.as_object_mut().unwrap();
+        for derived in ["effective", "deadLetter", "source"] {
+            object.remove(derived);
+        }
+        assert_eq!(
+            api,
+            view.definition.to_json(),
+            "{name}: the Topic fields, without what is derived"
+        );
+    }
+
+    // What the nodes exchange (and the table keeps) is exactly that JSON, and it reads back to the definition.
+    let orders = stored.iter().find(|d| d.name == "orders").unwrap();
+    let wire = orders.to_json();
+    for derived in ["effective", "deadLetter", "source"] {
+        assert!(wire.get(derived).is_none(), "{derived}");
+    }
+    assert_eq!(&TopicDefinition::from_json(&wire).unwrap(), orders);
+    assert!(
+        h.topics
+            .get("orders")
+            .unwrap()
+            .to_json()
+            .get("effective")
+            .is_some()
+    );
+    let dead = h.topics.get("orders-dead-letter").unwrap().to_json();
+    assert_eq!(dead["deadLetter"], true);
+    assert_eq!(dead["source"], "orders");
 }

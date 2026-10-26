@@ -75,7 +75,7 @@ The node **does not start** (message in Portuguese, one per problem) when:
 
 - **Default in bold** = the effective value. **"(from the code)"** marks a default that the parameter table leaves without a value but the code applies (the original design documents called it "To be defined").
 - **No value** = the feature stays off or without a ceiling (the column says which).
-- ⚠️ **Accepted, but with no effect today:** `Config` reads the value and **no code uses it**. There are seven (`delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.reload-threshold`, `cluster.sync.stream.max-line-bytes`, `cluster.sync.stream.idle-timeout`, `fifo.dedup.index.max-entries`, `stats.topics.cache-ttl`): pending item recorded in [31-pending-items.md](31-pending-items.md).
+- ⚠️ **Accepted, but with no effect today:** `Config` reads the value and **no code uses it**. There are four (`cluster.sync.stream.max-line-bytes`, `cluster.sync.stream.idle-timeout`, `fifo.dedup.index.max-entries`, `stats.topics.cache-ttl`): pending item recorded in [31-pending-items.md](31-pending-items.md).
 - The tables were **assembled** from the code (`config/params/mod.rs`, the defaults and the reading of each field) and from the descriptions of `10-configuracao.md`; the script `doc/pt-BR/scripts/verificar.mjs` ([27-ci-cd.md](27-ci-cd.md)) checks that **every key in the code appears here** and that no documented key stopped existing.
 
 ## Run mode
@@ -194,9 +194,9 @@ The node **does not start** (message in Portuguese, one per problem) when:
 |---|---|---|---|
 | `delivery.visibility-timeout.default` | `TABA_DELIVERY_VISIBILITY_TIMEOUT_DEFAULT` | **120s** | Time the delivered message stays invisible to other consumers when the `GET` does not inform `visibilityTimeout`. |
 | `delivery.visibility-timeout.max` | `TABA_DELIVERY_VISIBILITY_TIMEOUT_MAX` | no ceiling | Accepted ceiling of `visibilityTimeout` on the `GET` and on `PUT .../visibility`. |
-| `delivery.ready-list.size` | `TABA_DELIVERY_READY_LIST_SIZE` | **1000** | Number of ready IDs the thread keeps, per topic, on each node. ⚠️ **Accepted, but with no effect today** (the code reads the value and does not use it). |
-| `delivery.invisible-list.size` | `TABA_DELIVERY_INVISIBLE_LIST_SIZE` | — | Maximum number of invisible messages (ID and deadline) the owner keeps in memory, per topic; the excess goes to the expiry table of the local database. ⚠️ **Accepted, but with no effect today** (the code reads the value and does not use it). |
-| `delivery.invisible.reload-threshold` | `TABA_DELIVERY_INVISIBLE_RELOAD_THRESHOLD` | — | When the in-memory invisible list falls below this size, the thread reloads it with the next to expire from the expiry table. ⚠️ **Accepted, but with no effect today** (the code reads the value and does not use it). |
+| `delivery.ready-list.size` | `TABA_DELIVERY_READY_LIST_SIZE` | **1000** | Number of ready IDs the thread keeps, per topic, on each node (the list is a window: the counters stay exact and the cursors refill it when room opens). Effective minimum 1. It does not apply to the FIFO queue (the list has one entry per free group). |
+| `delivery.invisible-list.size` | `TABA_DELIVERY_INVISIBLE_LIST_SIZE` | — | Maximum number of invisible messages (ID and deadline) the owner keeps in memory, per topic; the excess goes to the `expiry` table of the topic database. Without a value, the list has no ceiling. |
+| `delivery.invisible.reload-threshold` | `TABA_DELIVERY_INVISIBLE_RELOAD_THRESHOLD` | — | When the in-memory invisible list falls below this size, the thread reloads it with the next to expire from the `expiry` table. Without a value it is half of `delivery.invisible-list.size` (and `0`, only with the list empty, if that one has no value either). |
 | `storage.db.synchronous` | `TABA_STORAGE_DB_SYNCHRONOUS` | **NORMAL** | SQLite synchronization mode. Durability comes from replication between nodes, so `NORMAL` is enough. |
 | `storage.excluded.max-size` | `TABA_STORAGE_EXCLUDED_MAX_SIZE` | **100MB** | Maximum size of the log of excluded messages (all topics added). Past it, the oldest rows go first and the start of the recording moves forward. Greater than zero. |
 | `storage.excluded.max-age` | `TABA_STORAGE_EXCLUDED_MAX_AGE` | **24h** | Maximum age of a row of the log of excluded messages. Greater than zero. |

@@ -655,7 +655,7 @@ async fn a_token_only_creates_inside_its_prefixes_including_the_distribution_pre
     node.shutdown().await;
 }
 
-/// UC: UC-AUT-016
+/// UC: UC-AUT-016, UC-DST-017
 #[tokio::test]
 async fn publishing_to_a_distributor_checks_only_the_distributor() {
     let node = start().await;
@@ -668,12 +668,24 @@ async fn publishing_to_a_distributor_checks_only_the_distributor() {
     .await;
     assert_eq!(made.status(), 201);
     let (_, publisher) = token(&node, &["publish"], &["dist"]).await;
+    // The token has neither the permission nor the prefix to touch the destination directly...
+    assert_eq!(
+        error_code(publish(&node, "queue-a", &publisher).await, 403).await,
+        "auth.out-of-scope"
+    );
+    // ...and still the distributor delivers there: the copy is not checked again.
     let response = publish(&node, "dist", &publisher).await;
     assert_eq!(
         response.status(),
         200,
         "the copy on queue-a is not checked again"
     );
+    let body: Value = get(&node, "/topics/queue-a/messages", Some(ROOT))
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["messages"].as_array().unwrap().len(), 1);
     node.shutdown().await;
 }
 

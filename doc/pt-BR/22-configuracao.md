@@ -75,7 +75,7 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 
 - **Padrão em negrito** = o valor efetivo. **"(do código)"** marca um padrão que a tabela de parâmetros deixa sem valor mas o código aplica (a doc histórica o chamava "A definir").
 - **Sem valor** = o recurso fica desligado ou sem teto (a coluna diz qual).
-- ⚠️ **Aceito, mas sem efeito hoje:** o `Config` lê o valor e **nenhum código o usa**. São sete (`delivery.ready-list.size`, `delivery.invisible-list.size`, `delivery.invisible.reload-threshold`, `cluster.sync.stream.max-line-bytes`, `cluster.sync.stream.idle-timeout`, `fifo.dedup.index.max-entries`, `stats.topics.cache-ttl`): pendência registrada em [31-pendencias.md](31-pendencias.md).
+- ⚠️ **Aceito, mas sem efeito hoje:** o `Config` lê o valor e **nenhum código o usa**. São quatro (`cluster.sync.stream.max-line-bytes`, `cluster.sync.stream.idle-timeout`, `fifo.dedup.index.max-entries`, `stats.topics.cache-ttl`): pendência registrada em [31-pendencias.md](31-pendencias.md).
 - As tabelas foram **montadas** a partir do código (`config/params/mod.rs`, os padrões e a leitura de cada campo) e das descrições de `10-configuracao.md`; o script `doc/pt-BR/scripts/verificar.mjs` ([27-ci-cd.md](27-ci-cd.md)) confere que **toda chave do código aparece aqui** e que nenhuma chave documentada deixou de existir.
 
 ## Modo de execução
@@ -194,9 +194,9 @@ O nó **não sobe** (mensagem em português, uma por problema) quando:
 |---|---|---|---|
 | `delivery.visibility-timeout.default` | `TABA_DELIVERY_VISIBILITY_TIMEOUT_DEFAULT` | **120s** | Tempo em que a mensagem entregue fica invisível a outros consumidores quando o `GET` não informa `visibilityTimeout`. |
 | `delivery.visibility-timeout.max` | `TABA_DELIVERY_VISIBILITY_TIMEOUT_MAX` | sem teto | Teto aceito em `visibilityTimeout` no `GET` e no `PUT .../visibility`. |
-| `delivery.ready-list.size` | `TABA_DELIVERY_READY_LIST_SIZE` | **1000** | Número de IDs prontos que a thread mantém, por tópico, em cada nó. ⚠️ **Aceito, mas sem efeito hoje** (o código lê o valor e não o usa). |
-| `delivery.invisible-list.size` | `TABA_DELIVERY_INVISIBLE_LIST_SIZE` | — | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para a tabela de expiração do banco local. ⚠️ **Aceito, mas sem efeito hoje** (o código lê o valor e não o usa). |
-| `delivery.invisible.reload-threshold` | `TABA_DELIVERY_INVISIBLE_RELOAD_THRESHOLD` | — | Quando a lista de invisíveis em memória cai abaixo deste tamanho, a thread a recarrega com os próximos a vencer da tabela de expiração. ⚠️ **Aceito, mas sem efeito hoje** (o código lê o valor e não o usa). |
+| `delivery.ready-list.size` | `TABA_DELIVERY_READY_LIST_SIZE` | **1000** | Número de IDs prontos que a lista (janela) mantém, por tópico, em cada nó; as contagens continuam exatas e a lista é reposta pelos cursores quando abre lugar. Mínimo efetivo 1. Na fila FIFO não se aplica (a lista tem uma entrada por grupo livre). |
+| `delivery.invisible-list.size` | `TABA_DELIVERY_INVISIBLE_LIST_SIZE` | — | Número máximo de mensagens invisíveis (ID e prazo) que o dono guarda em memória, por tópico; o excedente vai para a tabela `expiry` do banco do tópico. Sem valor, a lista não tem teto. |
+| `delivery.invisible.reload-threshold` | `TABA_DELIVERY_INVISIBLE_RELOAD_THRESHOLD` | — | Quando a lista de invisíveis em memória cai abaixo deste tamanho, a thread a recarrega com os próximos a vencer da tabela `expiry`. Sem valor, vale a metade de `delivery.invisible-list.size` (e `0`, só com a lista vazia, se esta também não tem valor). |
 | `storage.db.synchronous` | `TABA_STORAGE_DB_SYNCHRONOUS` | **NORMAL** | Modo de sincronização do SQLite. A durabilidade vem da replicação entre nós, então `NORMAL` basta. |
 | `storage.excluded.max-size` | `TABA_STORAGE_EXCLUDED_MAX_SIZE` | **100MB** | Tamanho máximo do log de mensagens excluídas (soma de todos os tópicos). Passando dele, os registros mais antigos saem primeiro e a data de início da gravação avança. Maior que zero. |
 | `storage.excluded.max-age` | `TABA_STORAGE_EXCLUDED_MAX_AGE` | **24h** | Idade máxima de um registro do log de mensagens excluídas. Maior que zero. |
