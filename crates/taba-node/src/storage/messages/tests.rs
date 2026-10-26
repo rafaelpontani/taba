@@ -513,3 +513,55 @@ fn the_expiry_table_keeps_the_pairs_that_did_not_fit_ordered_by_deadline() {
     assert_eq!(store.expiry_count("nothing").unwrap(), 0);
     assert!(!tmp.path().join(dir_name("nothing")).exists());
 }
+
+/// UC: UC-ENT-015, UC-ARM-005
+#[test]
+fn the_end_of_a_group_is_read_by_an_index_in_id_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    for i in 0..30 {
+        let mut m = meta(&format!("m{i:02}"));
+        m.group_id = (i % 3 != 0).then(|| format!("g{}", i % 3));
+        store.put("t", &m, b"{}").unwrap();
+    }
+    let group = |name: &str, desc: bool, limit: usize| -> Vec<String> {
+        store
+            .page(
+                "t",
+                &PageQuery {
+                    group: Some(name.into()),
+                    desc,
+                    limit,
+                    ..PageQuery::default()
+                },
+            )
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect()
+    };
+    assert_eq!(group("g1", false, 3), ["m01", "m04", "m07"]);
+    assert_eq!(group("g2", true, 2), ["m29", "m26"]);
+    assert_eq!(
+        group("", false, 2),
+        ["m00", "m03"],
+        "the messages without a group"
+    );
+
+    // The plan walks the index of the group, with no sort and no scan of the table.
+    let db = tmp.path().join(dir_name("t")).join(TOPIC_DB_FILE);
+    let conn = rusqlite::Connection::open(db).unwrap();
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN SELECT id FROM messages WHERE delete_at IS NULL AND group_id = ?1              AND id > ?2 AND NOT EXISTS (SELECT 1 FROM expiry WHERE expiry.id = messages.id)              ORDER BY id LIMIT 64",
+        )
+        .unwrap();
+    let plan: Vec<String> = stmt
+        .query_map(["g1", "a"], |row| row.get::<_, String>(3))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let plan = plan.join(" | ");
+    assert!(plan.contains("messages_group"), "plan: {plan}");
+    assert!(!plan.contains("TEMP B-TREE"), "plan: {plan}");
+}

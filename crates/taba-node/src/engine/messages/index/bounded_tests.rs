@@ -1,11 +1,12 @@
 //! The bounded lists: the ready window (cursors, refill, middle rule) and the invisible list
 //! (ceiling, inclusion rule, `expiry` table, reload).
 
+use super::sim::Sim;
 use super::*;
 use std::collections::BTreeSet;
 
-fn bounded(ready_cap: usize, invisible_cap: usize, threshold: usize) -> TopicIndex {
-    TopicIndex::new(IndexRules {
+fn bounded(ready_cap: usize, invisible_cap: usize, threshold: usize) -> Sim {
+    Sim::new(IndexRules {
         ready_cap,
         invisible_cap,
         reload_threshold: threshold,
@@ -18,41 +19,13 @@ fn id(n: u32) -> String {
 }
 
 /// `count` ready messages of a single group, `m001`..., and the window rebuilt from both ends.
-fn ready_index(ready_cap: usize, count: u32) -> TopicIndex {
+fn ready_index(ready_cap: usize, count: u32) -> Sim {
     let mut index = bounded(ready_cap, usize::MAX, 0);
     for n in 1..=count {
         index.insert(&id(n), None, u64::from(n), 0, 0, 100);
     }
     index.reset_window();
     index
-}
-
-/// The `expiry` table, kept in memory for the tests: applies what the index queued.
-#[derive(Default)]
-struct Table(BTreeSet<(u64, String)>);
-
-impl Table {
-    fn apply(&mut self, index: &mut TopicIndex) {
-        for op in index.take_spill_ops() {
-            match op {
-                SpillOp::Put(until, id) => {
-                    self.0.insert((until, id));
-                }
-                SpillOp::Delete(until, id) => {
-                    self.0.remove(&(until, id));
-                }
-            }
-        }
-    }
-
-    fn reload(&mut self, index: &mut TopicIndex) -> usize {
-        self.apply(index);
-        let wanted = index.reload_wanted();
-        let rows: Vec<_> = self.0.iter().take(wanted).cloned().collect();
-        let loaded = index.reload(rows);
-        self.apply(index);
-        loaded
-    }
 }
 
 /// UC: UC-ENT-008
@@ -72,9 +45,9 @@ fn the_ready_list_holds_at_most_the_configured_size_and_the_counters_stay_exact(
 #[test]
 fn only_the_room_that_opened_is_refilled_and_a_full_list_costs_nothing() {
     let mut index = ready_index(5, 50);
-    let steps = index.scan_steps();
+    let steps = index.reads();
     assert_eq!(index.refill(), 0, "lista cheia: nada a repor");
-    assert_eq!(index.scan_steps(), steps);
+    assert_eq!(index.reads(), steps);
     for n in [1, 2, 50] {
         index.deliver(&id(n), 1_000_000, 100, 1);
     }
@@ -140,11 +113,11 @@ fn a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full
     index.deliver(&id(1), 5_000, 100, 1);
     index.refill();
     assert_eq!(index.ready_ids(), [id(2), id(3), id(9), id(10)]);
-    let steps = index.scan_steps();
+    let steps = index.reads();
 
     // The invisibility ends: the message returns by the position of its ID, with no scan.
     assert_eq!(index.release_due(5_000), [id(1)]);
-    assert_eq!(index.scan_steps(), steps);
+    assert_eq!(index.reads(), steps);
     assert_eq!(
         index.ready_ids(),
         [id(1), id(2), id(9), id(10)],
@@ -166,11 +139,11 @@ fn a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full
 #[test]
 fn choosing_the_next_message_only_reads_the_list_and_scans_nothing() {
     let mut index = ready_index(5, 200);
-    let steps = index.scan_steps();
+    let steps = index.reads();
     for _ in 0..100 {
         assert!(index.pick().is_some());
     }
-    assert_eq!(index.scan_steps(), steps);
+    assert_eq!(index.reads(), steps);
 }
 
 /// The ready window always holds the oldest ready message: the `normal` pick (the oldest of all)
@@ -245,7 +218,10 @@ fn the_invisible_list_is_ordered_by_deadline_with_a_ceiling_and_found_by_id() {
         5,
         "o contador conta também as que estão na tabela"
     );
-    assert!(index.is_processing(&id(1)) && index.is_processing(&id(2)));
+    // The pair of message 1 is in the table: the index counts it and reads it when needed.
+    assert!(!index.contains(&id(1)), "the index keeps no entry for it");
+    assert!(index.know(&id(1)) && index.is_processing(&id(1)));
+    assert!(index.is_processing(&id(2)));
     assert_eq!(index.next_visible(), Some(100));
 }
 
@@ -279,24 +255,30 @@ fn with_a_full_list_an_earlier_deadline_enters_and_the_last_goes_to_the_table() 
 #[test]
 fn when_the_list_empties_with_pairs_in_the_table_the_reload_is_asked_for_before_sleeping() {
     let mut index = bounded(usize::MAX, 2, 0);
-    let mut table = Table::default();
     for (n, until) in [(1, 10), (2, 20), (3, 30), (4, 40)] {
         index.insert(&id(n), None, 1, until, 0, 0);
     }
-    table.apply(&mut index);
+    index.apply();
     assert_eq!(
         index.reload_wanted(),
         0,
         "a lista tem entradas: não consulta a tabela"
     );
-    assert_eq!(index.release_due(25), [id(1), id(2)]);
+    // The raw index: it releases what is in the list and leaves the reload to the caller.
+    let released: Vec<_> = index
+        .index
+        .release_due_counted(25)
+        .into_iter()
+        .map(|(who, _)| who)
+        .collect();
+    assert_eq!(released, [id(1), id(2)]);
     assert_eq!(index.next_visible(), None, "a lista esvaziou");
     assert_eq!(
         index.reload_wanted(),
         2,
         "ainda há linhas na tabela: recarrega antes de dormir"
     );
-    assert_eq!(table.reload(&mut index), 2);
+    assert_eq!(index.reload(), 2);
     assert_eq!(index.next_visible(), Some(30));
 }
 
@@ -321,7 +303,15 @@ fn the_head_is_taken_out_and_checked_and_a_pair_that_is_not_the_messages_is_drop
     index.insert(&id(4), None, 1, 400, 0, 0);
     index.remove(&id(4));
     index.set_until(&id(3), 350, 0);
-    let loaded = index.reload(vec![(300, id(3)), (400, id(4))]);
+    let fact = |n| Fact {
+        id: id(n),
+        group: None,
+        age_ms: 1,
+        deliveries: 0,
+    };
+    let loaded = index
+        .index
+        .reload(vec![(300, id(3), Some(fact(3))), (400, id(4), None)]);
     assert_eq!(loaded, 0, "o prazo mudou, ou a mensagem acabou");
     assert_eq!(
         index.take_spill_ops(),
@@ -352,7 +342,6 @@ fn after_the_check_the_message_joins_the_ready_list_by_its_position_and_the_midd
 #[test]
 fn the_list_always_expires_before_the_table_and_the_table_follows_every_change() {
     let mut index = bounded(usize::MAX, 5, 2);
-    let mut table = Table::default();
     let mut seed = 99u64;
     let mut live: Vec<(String, u64)> = Vec::new();
     let mut next_id = 0u32;
@@ -384,18 +373,13 @@ fn the_list_always_expires_before_the_table_and_the_table_follows_every_change()
                 for back in index.release_due(now) {
                     live.retain(|(who, _)| *who != back);
                 }
-                while table.reload(&mut index) > 0 {
-                    for back in index.release_due(now) {
-                        live.retain(|(who, _)| *who != back);
-                    }
-                }
             }
         }
-        table.apply(&mut index);
+        index.apply();
         let list = index.invisible_pairs();
         assert!(list.len() <= 5, "passo {step}: teto");
         // Everything in the list expires before everything in the table.
-        if let (Some(last), Some(first)) = (list.last(), table.0.first()) {
+        if let (Some(last), Some(first)) = (list.last(), index.table().first()) {
             assert!(
                 last.0 <= first.0,
                 "passo {step}: a lista vence antes da tabela"
@@ -412,7 +396,11 @@ fn the_list_always_expires_before_the_table_and_the_table_follows_every_change()
                 "passo {step}: par da lista sem mensagem"
             );
         }
-        assert_eq!(table.0, expected, "passo {step}: tabela = o que não coube");
+        assert_eq!(
+            *index.table(),
+            expected,
+            "passo {step}: tabela = o que não coube"
+        );
         assert_eq!(index.counts().1, live.len());
     }
 }
@@ -421,12 +409,11 @@ fn the_list_always_expires_before_the_table_and_the_table_follows_every_change()
 #[test]
 fn the_reload_starts_below_the_threshold_reads_the_earliest_and_deletes_the_rows_read() {
     let mut index = bounded(usize::MAX, 4, 2);
-    let mut table = Table::default();
     for n in 1..=8 {
         index.insert(&id(n), None, 1, u64::from(n) * 10, 0, 0);
     }
-    table.apply(&mut index);
-    assert_eq!(table.0.len(), 4);
+    index.apply();
+    assert_eq!(index.table().len(), 4);
     index.remove(&id(1));
     index.remove(&id(2));
     assert_eq!(
@@ -440,13 +427,13 @@ fn the_reload_starts_below_the_threshold_reads_the_earliest_and_deletes_the_rows
         3,
         "abaixo do limite: lê até encher a lista"
     );
-    table.apply(&mut index);
-    assert_eq!(table.reload(&mut index), 3);
+    index.apply();
+    assert_eq!(index.reload(), 3);
     assert_eq!(
         index.invisible_pairs(),
         [(40, id(4)), (50, id(5)), (60, id(6)), (70, id(7))]
     );
-    assert_eq!(table.0.len(), 1, "as linhas lidas foram apagadas");
+    assert_eq!(index.table().len(), 1, "as linhas lidas foram apagadas");
 }
 
 /// UC: UC-INV-028
@@ -489,6 +476,7 @@ fn on_a_fifo_queue_the_ready_list_has_no_ceiling_and_no_middle_rule() {
 /// implementation detail of the same fair delivery.
 #[test]
 fn a_bounded_index_chooses_the_same_messages_as_a_complete_one() {
+    let mut needs = 0;
     for seed in 1..=32u64 {
         let ready_cap = [1, 2, 4, 9][seed as usize % 4];
         let invisible_cap = [1, 3, 5][seed as usize % 3];
@@ -497,14 +485,14 @@ fn a_bounded_index_chooses_the_same_messages_as_a_complete_one() {
             ..IndexRules::default()
         };
         let mut full = TopicIndex::new(rules);
-        let mut small = TopicIndex::new(IndexRules {
+        let mut small = Sim::new(IndexRules {
             ready_cap,
             invisible_cap,
             reload_threshold: invisible_cap / 2,
             ..rules
         });
-        let mut table = Table::default();
         let mut state = seed;
+        let mut live: BTreeSet<String> = BTreeSet::new();
         let mut next_id = 0u32;
         let mut now = 100u64;
         for step in 0..1500 {
@@ -516,44 +504,50 @@ fn a_bounded_index_chooses_the_same_messages_as_a_complete_one() {
             match roll {
                 0..=2 => {
                     next_id += 1;
-                    for index in [&mut full, &mut small] {
-                        index.insert(&id(next_id), Some(&group), u64::from(next_id), 0, 0, now);
-                    }
+                    full.insert(&id(next_id), Some(&group), u64::from(next_id), 0, 0, now);
+                    small.insert(&id(next_id), Some(&group), u64::from(next_id), 0, 0, now);
+                    live.insert(id(next_id));
                 }
                 3 | 4 => {
                     let (a, b) = (full.pick(), small.pick());
                     assert_eq!(a, b, "semente {seed}, passo {step}");
                     if let Some(picked) = a {
                         let until = now + 30 + (state >> 40) % 200;
-                        for index in [&mut full, &mut small] {
-                            index.deliver(&picked, until, now, 1);
-                        }
+                        full.deliver(&picked, until, now, 1);
+                        small.deliver(&picked, until, now, 1);
                     }
                 }
                 5 => {
                     now += 70;
                     let mut a = full.release_due(now);
                     let mut b = small.release_due(now);
-                    while table.reload(&mut small) > 0 {
-                        b.extend(small.release_due(now));
-                    }
                     a.sort();
                     b.sort();
                     assert_eq!(a, b, "semente {seed}, passo {step}");
                 }
                 _ => {
-                    let ids = full.ids();
-                    if !ids.is_empty() {
-                        let victim = &ids[(state >> 20) as usize % ids.len()];
-                        full.remove(victim);
-                        small.remove(victim);
+                    if !live.is_empty() {
+                        let victim = live
+                            .iter()
+                            .nth((state >> 20) as usize % live.len())
+                            .cloned()
+                            .expect("in range");
+                        full.remove(&victim);
+                        small.remove(&victim);
+                        live.remove(&victim);
                     }
                 }
             }
-            table.apply(&mut small);
+            small.apply();
             small.refill();
             assert_eq!(full.counts(), small.counts());
             assert!(small.window_len() <= ready_cap && small.invisible_list_len() <= invisible_cap);
+            assert!(
+                small.kept() <= ready_cap + invisible_cap,
+                "semente {seed}, passo {step}: o índice guarda só a janela e a lista"
+            );
         }
+        needs += small.needs();
     }
+    assert!(needs > 0, "the read of a group's end was exercised");
 }

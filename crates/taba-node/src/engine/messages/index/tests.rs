@@ -275,23 +275,23 @@ fn groups_above_the_ceiling_share_one_counter() {
 
 /// UC: UC-RET-001
 #[test]
-fn messages_past_their_ttl_are_found_by_age() {
+fn the_index_only_says_when_a_ttl_check_is_worth_a_read() {
     let mut index = index();
     index.insert("old", None, 1_000, 0, 0, 5_000);
     index.insert("new", None, 4_000, 0, 0, 5_000);
     index.insert("in-flight", None, 500, 9_000, 1, 5_000);
-    assert_eq!(index.expired(5_000, 10_000), Vec::<String>::new());
-    assert_eq!(
-        index.expired(6_000, 5_000),
-        ["in-flight", "old"],
-        "any state, by age"
-    );
-    assert_eq!(index.expired(9_000, 5_000), ["in-flight", "old", "new"]);
-    assert_eq!(
-        index.expired(100, 5_000),
-        Vec::<String>::new(),
-        "without overflowing the count"
-    );
+    assert!(!index.ttl_due(5_000, 10_000), "the oldest is 500: not yet");
+    assert!(index.ttl_due(6_000, 5_000), "any state counts");
+    assert!(!index.ttl_due(100, 5_000), "without overflowing the count");
+    // After a read the index counts from the age that is left.
+    index.set_age_floor(Some(4_000));
+    assert!(!index.ttl_due(6_000, 5_000));
+    assert!(index.ttl_due(9_000, 5_000));
+    index.set_age_floor(None);
+    assert!(!index.ttl_due(u64::MAX, 1));
+    // A message older than the bound lowers it.
+    index.insert("older", None, 10, 0, 0, 5_000);
+    assert!(index.ttl_due(6_000, 5_000));
 }
 
 /// UC: UC-INV-004

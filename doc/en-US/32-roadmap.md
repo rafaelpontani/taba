@@ -80,7 +80,7 @@ The "unblocked" pending items of [31-pending-items.md](31-pending-items.md) are,
 | Group | Items |
 |---|---|
 | Configuration defaults | **D84** (rate limit), **D90** (topic condition thresholds), **D91** (topic metrics in `/metrics`), **D89** (FIFO deduplication ceiling), **D87** (volatile queue ceiling), **D85** |
-| Delivery index memory | **D88**, **PRB-018**: the lists have a ceiling, but the index's message map keeps everything in memory |
+| Delivery index memory | **D88**, **PRB-020**: the `delivery.fair.max-groups` default and a ceiling for the FIFO queue and the replica table are missing |
 | Drain | **D75** (API drain that exceeds the deadline), **D77**, **PRB-005** (refuses the ack in drain) |
 | Security | **D76** (IP filter vs. health checks), **PRB-015** (`X-Forwarded-For` forgeable with an empty list), **PRB-017** |
 | Cluster | **D93**, **D99**, **D102**, **D104**, **D109**, **D120**, **PRB-051** (outgoing IP) |

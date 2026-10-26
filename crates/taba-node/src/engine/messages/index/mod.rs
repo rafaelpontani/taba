@@ -39,7 +39,7 @@
 //! expires before everything in the table.
 
 use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::Bound;
 
 /// A group's key. Groups above `delivery.fair.max-groups` share a single counter.
@@ -92,6 +92,41 @@ pub enum SpillOp {
     Delete(u64, String),
 }
 
+/// What the index needs to know about a message it does not keep: the caller reads it from the
+/// metadata (memory or the topic's database) and hands it over.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fact {
+    pub id: String,
+    /// The raw `groupId` (the index maps it to its group key).
+    pub group: Option<String>,
+    pub age_ms: u64,
+    pub deliveries: u32,
+}
+
+/// What the index asks of whoever reads the messages to refill the ready window: up to `room`
+/// ready messages after `after` (ascending `id`) and up to `room` before `before` (descending).
+/// Both bounds are exclusive; `None` is no bound.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefillAsk {
+    pub room: usize,
+    pub after: Option<String>,
+    pub before: Option<String>,
+}
+
+/// The oldest (`true`) or the newest (`false`) ready message of a group, as the reader found it.
+pub type Resolved = HashMap<(GroupKey, bool), Option<Fact>>;
+
+/// The answer of [`TopicIndex::pick_with`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pick {
+    /// The next ID to deliver.
+    Id(String),
+    /// Nothing ready.
+    Empty,
+    /// The window alone cannot tell the end of these groups: read them and ask again.
+    Need(Vec<(GroupKey, bool)>),
+}
+
 /// A group's counters. `ready` holds the group's ready IDs: all of them on FIFO, only the ones in
 /// the window on the fair queue; `ready_n` is always the exact count.
 #[derive(Default)]
@@ -112,7 +147,15 @@ struct Entry {
 
 pub struct TopicIndex {
     rules: IndexRules,
+    /// What the index keeps of a message: all of them on a FIFO queue, and on the fair queue only
+    /// the ones in the window or in the invisible list (the others are counted and read when needed).
     entries: BTreeMap<String, Entry>,
+    /// Messages the index counts, ready and in processing (`entries` may hold fewer).
+    total: usize,
+    /// Entries handed over by [`TopicIndex::adopt`] that may not be worth keeping once the caller is done.
+    adopted: Vec<String>,
+    /// A lower bound of the age of every message: the `ttl` check is only worth a read after it.
+    age_floor: u64,
     groups: HashMap<GroupKey, Group>,
     /// The groups with some ready message, by band.
     bands: BTreeSet<(u32, GroupKey)>,
@@ -134,8 +177,6 @@ pub struct TopicIndex {
     invisible: BTreeSet<(u64, String)>,
     /// Table operations waiting for whoever does the I/O.
     spill_ops: Vec<SpillOp>,
-    /// All, by age (the `ttl` counts from here).
-    by_age: BTreeSet<(u64, String)>,
     picks: u64,
     newest_next: bool,
     /// FIFO only: the head of each free group.
@@ -157,6 +198,9 @@ impl TopicIndex {
         Self {
             rules,
             entries: BTreeMap::new(),
+            total: 0,
+            adopted: Vec::new(),
+            age_floor: u64::MAX,
             groups: HashMap::new(),
             bands: BTreeSet::new(),
             ready_total: 0,
@@ -169,7 +213,6 @@ impl TopicIndex {
             invisible_total: 0,
             invisible: BTreeSet::new(),
             spill_ops: Vec::new(),
-            by_age: BTreeSet::new(),
             picks: 0,
             newest_next: false,
             free_heads: BTreeSet::new(),
@@ -179,16 +222,79 @@ impl TopicIndex {
 
     #[cfg(test)]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.total
     }
 
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.total == 0
     }
 
+    /// The index keeps the message's entry (always true for the window, the invisible list and a
+    /// FIFO queue). A message it counts but does not keep is read from the metadata and handed
+    /// over with [`TopicIndex::adopt`] before anything is done to it.
     pub fn contains(&self, id: &str) -> bool {
         self.entries.contains_key(id)
+    }
+
+    /// Entries kept right now (for the tests: the memory the index spends per message).
+    #[cfg(test)]
+    pub fn kept(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// The entry stays only if the message is in the window or in the invisible list; a FIFO queue
+    /// keeps all of them, and so does a message counted in the shared overflow group (the group
+    /// it was counted under cannot be told again from the metadata).
+    fn keeps(&self, id: &str, entry: &Entry) -> bool {
+        self.rules.fifo
+            || entry.group == GroupKey::Overflow
+            || self.window.contains(id)
+            || (entry.processing && self.invisible.contains(&(entry.until_ms, id.to_owned())))
+    }
+
+    /// Drops the message's entry if the index has no reason to keep it.
+    fn shrink(&mut self, id: &str) {
+        if self
+            .entries
+            .get(id)
+            .is_some_and(|entry| !self.keeps(id, entry))
+        {
+            self.entries.remove(id);
+        }
+    }
+
+    /// Drops the entries [`TopicIndex::adopt`] brought that the index has no reason to keep (the
+    /// caller is done with them).
+    pub fn forget_adopted(&mut self) {
+        for id in std::mem::take(&mut self.adopted) {
+            self.shrink(&id);
+        }
+    }
+
+    /// Hands the index a message it counts but does not keep. `until_ms` is `Some` when the message is
+    /// in processing (its pair is in the `expiry` table). It changes no counter. `false` if the
+    /// index already keeps it.
+    pub fn adopt(&mut self, fact: Fact, until_ms: Option<u64>) -> bool {
+        if self.entries.contains_key(&fact.id) {
+            return false;
+        }
+        let group = self.key_for(fact.group.as_deref());
+        if self.adopted.len() >= 4096 {
+            self.forget_adopted();
+        }
+        self.adopted.push(fact.id.clone());
+        self.entries.insert(
+            fact.id,
+            Entry {
+                group,
+                until_ms: until_ms.unwrap_or(0),
+                age_ms: fact.age_ms,
+                deliveries: fact.deliveries,
+                processing: until_ms.is_some(),
+            },
+        );
+        true
     }
 
     #[cfg(test)]
@@ -238,18 +344,14 @@ impl TopicIndex {
         self.entries.get(id).map(|e| &e.group)
     }
 
-    /// All the `id`s the index knows.
-    pub fn ids(&self) -> Vec<String> {
-        self.entries.keys().cloned().collect()
-    }
-
-    /// The instant the `ttl` counts from for the message.
-    pub fn age_of(&self, id: &str) -> Option<u64> {
-        self.entries.get(id).map(|e| e.age_ms)
-    }
-
+    #[cfg(test)]
     pub fn deliveries(&self, id: &str) -> Option<u32> {
         self.entries.get(id).map(|e| e.deliveries)
+    }
+
+    /// Is the ID in the ready window?
+    pub fn in_window(&self, id: &str) -> bool {
+        self.window.contains(id)
     }
 
     fn band_of(&self, group: &Group) -> u32 {
@@ -313,12 +415,13 @@ impl TopicIndex {
 
     /// Takes the ID out of the window only (it stays ready, in the gap).
     fn window_drop(&mut self, id: &str) {
-        if self.window.remove(id)
-            && let Some(key) = self.entries.get(id).map(|e| e.group.clone())
-        {
-            self.mutate(&key, |g| {
-                g.ready.remove(id);
-            });
+        if self.window.remove(id) {
+            if let Some(key) = self.entries.get(id).map(|e| e.group.clone()) {
+                self.mutate(&key, |g| {
+                    g.ready.remove(id);
+                });
+            }
+            self.shrink(id);
         }
     }
 
@@ -416,53 +519,85 @@ impl TopicIndex {
         true
     }
 
-    /// The first ready ID outside the window in the gap, walking from the oldest end (or the newest).
-    fn scan_gap(&mut self, from_old: bool) -> Option<String> {
-        let lower = self
-            .cursor_old
-            .clone()
-            .map_or(Bound::Unbounded, Bound::Excluded);
-        let upper = self
-            .cursor_new
-            .clone()
-            .map_or(Bound::Unbounded, Bound::Excluded);
-        if let (Bound::Excluded(a), Bound::Excluded(b)) = (&lower, &upper)
-            && a >= b
+    /// What the window asks to be refilled, `None` while it is full or the gap is empty: whoever
+    /// reads the messages brings up to `room` ready ones from each end of the gap (see
+    /// [`TopicIndex::refill_with`]). Nothing is read while the window is full: only the room that
+    /// opened is refilled.
+    pub fn refill_ask(&self) -> Option<RefillAsk> {
+        if self.rules.fifo || self.window.len() >= self.rules.ready_cap || self.gap_ready() == 0 {
+            return None;
+        }
+        if let (Some(old), Some(new)) = (&self.cursor_old, &self.cursor_new)
+            && old >= new
         {
             return None;
         }
-        let range = self.entries.range::<String, _>((lower, upper));
-        let mut steps = 0;
-        let mut found = None;
-        if from_old {
-            for (id, entry) in range {
-                steps += 1;
-                if !entry.processing && !self.window.contains(id) {
-                    found = Some(id.clone());
-                    break;
-                }
-            }
-        } else {
-            for (id, entry) in range.rev() {
-                steps += 1;
-                if !entry.processing && !self.window.contains(id) {
-                    found = Some(id.clone());
-                    break;
-                }
-            }
-        }
-        self.scan_steps.set(self.scan_steps.get() + steps);
-        found
+        Some(RefillAsk {
+            room: self.rules.ready_cap - self.window.len(),
+            after: self.cursor_old.clone(),
+            before: self.cursor_new.clone(),
+        })
     }
 
-    /// Fills the window up to `delivery.ready-list.size` from the two cursors, alternating the
-    /// oldest and the newest end, and returns how many IDs came in. It does nothing, and scans
-    /// nothing, while the window is full or the gap is empty: whoever frees room (a delivery that
-    /// commits, an ID that leaves) calls it, and only the room that opened is refilled.
-    pub fn refill(&mut self) -> usize {
+    /// Is a refill worth a read now? Delivering opens room one by one, and a read per delivery is
+    /// wasteful: the window waits until a quarter of it is free, unless it has nothing on the
+    /// walked old side (then the oldest ready message would be out of it) or is empty.
+    pub fn refill_due(&self) -> bool {
+        let Some(ask) = self.refill_ask() else {
+            return false;
+        };
+        let old_side_empty = self
+            .cursor_old
+            .as_deref()
+            .is_none_or(|c| self.window.first().is_none_or(|first| first.as_str() > c));
+        old_side_empty || self.window.is_empty() || ask.room >= (self.rules.ready_cap / 4).max(1)
+    }
+
+    /// Next candidate from one end that still lies in the open gap, is not in the window and is
+    /// ready. A candidate past the other cursor ends that list: everything after it is further out.
+    fn next_candidate(&mut self, list: &mut VecDeque<Fact>, from_old: bool) -> Option<Fact> {
+        while let Some(fact) = list.pop_front() {
+            self.scan_steps.set(self.scan_steps.get() + 1);
+            let beyond = if from_old {
+                self.cursor_new
+                    .as_deref()
+                    .is_some_and(|c| fact.id.as_str() >= c)
+            } else {
+                self.cursor_old
+                    .as_deref()
+                    .is_some_and(|c| fact.id.as_str() <= c)
+            };
+            if beyond {
+                list.clear();
+                return None;
+            }
+            let before_start = if from_old {
+                self.cursor_old
+                    .as_deref()
+                    .is_some_and(|c| fact.id.as_str() <= c)
+            } else {
+                self.cursor_new
+                    .as_deref()
+                    .is_some_and(|c| fact.id.as_str() >= c)
+            };
+            let known = self.entries.get(&fact.id);
+            if before_start || self.window.contains(&fact.id) || known.is_some_and(|e| e.processing)
+            {
+                continue;
+            }
+            return Some(fact);
+        }
+        None
+    }
+
+    /// Fills the window up to `delivery.ready-list.size` with what was read for [`RefillAsk`],
+    /// alternating the oldest and the newest end, and returns how many IDs came in. The caller
+    /// asks again while the window has room and this brings something.
+    pub fn refill_with(&mut self, old: Vec<Fact>, new: Vec<Fact>) -> usize {
         if self.rules.fifo {
             return 0;
         }
+        let (mut old, mut new) = (VecDeque::from(old), VecDeque::from(new));
         let mut added = 0;
         while self.window.len() < self.rules.ready_cap && self.gap_ready() > 0 {
             // The window must hold the oldest ready message: with nothing on the walked old side, that
@@ -472,27 +607,33 @@ impl TopicIndex {
                 .as_deref()
                 .is_none_or(|c| self.window.first().is_none_or(|first| first.as_str() > c));
             let from_old = self.refill_old_next || old_side_empty;
-            let found = match self.scan_gap(from_old) {
-                Some(id) => Some((id, from_old)),
-                None => self.scan_gap(!from_old).map(|id| (id, !from_old)),
-            };
-            let Some((id, old)) = found else {
+            let found =
+                match self.next_candidate(if from_old { &mut old } else { &mut new }, from_old) {
+                    Some(fact) => Some((fact, from_old)),
+                    None => self
+                        .next_candidate(if from_old { &mut new } else { &mut old }, !from_old)
+                        .map(|fact| (fact, !from_old)),
+                };
+            let Some((fact, old_end)) = found else {
                 break;
             };
-            self.refill_old_next = !old;
-            if old {
-                self.cursor_old = Some(id.clone());
+            self.refill_old_next = !old_end;
+            if old_end {
+                self.cursor_old = Some(fact.id.clone());
             } else {
-                self.cursor_new = Some(id.clone());
+                self.cursor_new = Some(fact.id.clone());
             }
+            let id = fact.id.clone();
+            self.adopt(fact, None);
             self.window_put(&id);
             added += 1;
         }
         added
     }
 
-    /// Empties the window and fills it again from the two ends: after the index is rebuilt, the
-    /// window starts with the oldest and the newest instead of only the first ones that came in.
+    /// Empties the window and forgets the cursors: after the index is rebuilt, the window starts
+    /// with the oldest and the newest (the caller refills it) instead of only the first ones that
+    /// came in.
     pub fn reset_window(&mut self) {
         if self.rules.fifo {
             return;
@@ -503,19 +644,12 @@ impl TopicIndex {
         self.cursor_old = None;
         self.cursor_new = None;
         self.refill_old_next = true;
-        self.refill();
     }
 
     /// IDs the window holds right now (for the tests and the statistics).
     #[cfg(test)]
     pub fn window_len(&self) -> usize {
         self.window.len()
-    }
-
-    /// Messages visited by the scans so far (for the tests).
-    #[cfg(test)]
-    pub fn scan_steps(&self) -> u64 {
-        self.scan_steps.get()
     }
 
     // ---- Ready and processing ----
@@ -581,7 +715,8 @@ impl TopicIndex {
         if self.invisible.len() > self.rules.invisible_cap
             && let Some((last, last_id)) = self.invisible.pop_last()
         {
-            self.spill_ops.push(SpillOp::Put(last, last_id));
+            self.spill_ops.push(SpillOp::Put(last, last_id.clone()));
+            self.shrink(&last_id);
         }
     }
 
@@ -616,22 +751,30 @@ impl TopicIndex {
         (self.rules.invisible_cap - len).min(spilled)
     }
 
-    /// Moves to the list the pairs read from the table (the earliest by deadline), checking each one
-    /// against what the index knows: the message still exists, still in processing, and the
-    /// deadline is still the pair's. A pair that fails the check is dropped. Every pair read is
-    /// deleted from the table. Returns how many entered the list.
-    pub fn reload(&mut self, rows: Vec<(u64, String)>) -> usize {
+    /// Moves to the list the pairs read from the table (the earliest by deadline). The caller
+    /// checked each one against the metadata and brings the message's [`Fact`], or `None` when
+    /// the message no longer exists (or is not in processing): that pair is dropped. Every pair read
+    /// is deleted from the table. Returns how many entered the list.
+    pub fn reload(&mut self, rows: Vec<(u64, String, Option<Fact>)>) -> usize {
         let mut loaded = 0;
-        for (until, id) in rows {
+        for (until, id, fact) in rows {
             self.spill_ops.push(SpillOp::Delete(until, id.clone()));
-            let valid = self
+            let Some(fact) = fact else {
+                continue;
+            };
+            // A message the index keeps already says what its pair is: another deadline is a ghost.
+            if self
                 .entries
                 .get(&id)
-                .is_some_and(|e| e.processing && e.until_ms == until);
-            if valid && self.invisible.len() < self.rules.invisible_cap {
+                .is_some_and(|e| !e.processing || e.until_ms != until)
+            {
+                continue;
+            }
+            if self.invisible.len() < self.rules.invisible_cap {
+                self.adopt(fact, Some(until));
                 self.invisible.insert((until, id));
                 loaded += 1;
-            } else if valid {
+            } else {
                 // No room (should not happen): it goes back to the table as it was.
                 self.spill_ops.push(SpillOp::Put(until, id));
             }
@@ -675,12 +818,14 @@ impl TopicIndex {
                 processing,
             },
         );
-        self.by_age.insert((age_ms, id.to_owned()));
+        self.total += 1;
+        self.age_floor = self.age_floor.min(age_ms);
         if processing {
             self.make_processing(id, &key, until_ms);
         } else {
             self.make_ready(id, &key);
         }
+        self.shrink(id);
     }
 
     /// Takes the message out of the index (ack, `ttl`, dead-letter). `false` if it was not there.
@@ -688,7 +833,7 @@ impl TopicIndex {
         let Some(entry) = self.entries.remove(id) else {
             return false;
         };
-        self.by_age.remove(&(entry.age_ms, id.to_owned()));
+        self.total -= 1;
         if entry.processing {
             self.invisible_remove(entry.until_ms, id);
             self.mutate(&entry.group, |g| g.processing -= 1);
@@ -729,6 +874,7 @@ impl TopicIndex {
             }
             (false, false) => {}
         }
+        self.shrink(id);
     }
 
     /// Records the delivery: one more in the counter and the new end of invisibility.
@@ -745,7 +891,16 @@ impl TopicIndex {
     /// walk goes on. Nothing is propagated: it is only the index following the metadata. It stops
     /// when the list is out of due pairs; if it emptied with pairs still in the table,
     /// [`TopicIndex::reload_wanted`] says so and the caller reloads and calls again.
+    #[cfg(test)]
     pub fn release_due(&mut self, now_ms: u64) -> Vec<String> {
+        self.release_due_counted(now_ms)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// Like [`TopicIndex::release_due`], with the deliveries each released message already had.
+    pub fn release_due_counted(&mut self, now_ms: u64) -> Vec<(String, u32)> {
         let mut released = Vec::new();
         while let Some((until, id)) = self.invisible.first().cloned() {
             if until > now_ms {
@@ -767,24 +922,30 @@ impl TopicIndex {
                 entry.processing = false;
                 entry.until_ms = 0;
             }
-            let key = self.entries[&id].group.clone();
+            let (key, deliveries) = {
+                let entry = &self.entries[&id];
+                (entry.group.clone(), entry.deliveries)
+            };
             self.mutate(&key, |g| g.processing -= 1);
             self.make_ready(&id, &key);
-            released.push(id);
+            self.shrink(&id);
+            released.push((id, deliveries));
         }
         released
     }
 
-    /// The messages whose `ttl` expired: `age + ttl ≤ now`.
-    pub fn expired(&self, now_ms: u64, ttl_ms: u64) -> Vec<String> {
-        let Some(limit) = now_ms.checked_sub(ttl_ms) else {
-            return Vec::new();
-        };
-        self.by_age
-            .iter()
-            .take_while(|(age, _)| *age <= limit)
-            .map(|(_, id)| id.clone())
-            .collect()
+    /// Can some message have its `ttl` expired (`age + ttl ≤ now`)? The index only knows a lower
+    /// bound of the ages; whoever reads the messages finds the ones that expired and gives the
+    /// bound back with [`TopicIndex::set_age_floor`].
+    pub fn ttl_due(&self, now_ms: u64, ttl_ms: u64) -> bool {
+        now_ms
+            .checked_sub(ttl_ms)
+            .is_some_and(|limit| self.total > 0 && self.age_floor <= limit)
+    }
+
+    /// The age of the oldest message left after a read of the messages (`None`: none).
+    pub fn set_age_floor(&mut self, oldest_ms: Option<u64>) {
+        self.age_floor = oldest_ms.unwrap_or(u64::MAX);
     }
 
     /// When the next invisible one becomes deliverable again (the head of the list; with the list
@@ -802,8 +963,15 @@ impl TopicIndex {
 
     /// A group's oldest (or newest) ready ID. The window is enough when it holds all of the group's
     /// ready IDs, or when the group has an ID on the walked side of the cursor on that end (nothing
-    /// older, or newer, is outside the window). Otherwise the messages are scanned.
-    fn group_end(&self, key: &GroupKey, group: &Group, oldest: bool) -> Option<String> {
+    /// older, or newer, is outside the window). Otherwise the answer is the one the caller read
+    /// from the messages, or `Err` if it was not read yet.
+    fn group_end(
+        &self,
+        key: &GroupKey,
+        group: &Group,
+        oldest: bool,
+        resolved: &Resolved,
+    ) -> Result<Option<Fact>, ()> {
         let in_window = if oldest {
             group.ready.first()
         } else {
@@ -818,80 +986,128 @@ impl TopicIndex {
                 }
             });
         if sure {
-            return in_window.cloned();
+            // The window's own ID: its entry is kept.
+            return Ok(in_window.map(|id| Fact {
+                id: id.clone(),
+                group: None,
+                age_ms: 0,
+                deliveries: 0,
+            }));
         }
-        let mut steps = 0;
-        let mut found = None;
-        let mut visit = |id: &String, entry: &Entry| {
-            steps += 1;
-            if !entry.processing && &entry.group == key {
-                found = Some(id.clone());
-                return true;
-            }
-            false
-        };
-        if oldest {
-            for (id, entry) in &self.entries {
-                if visit(id, entry) {
-                    break;
-                }
-            }
-        } else {
-            for (id, entry) in self.entries.iter().rev() {
-                if visit(id, entry) {
-                    break;
-                }
-            }
+        if *key == GroupKey::Overflow {
+            // The shared group keeps the entry of every message: the walk needs no read.
+            let mut steps = 0;
+            let mut visit = |(id, entry): (&String, &Entry)| {
+                steps += 1;
+                (!entry.processing && entry.group == GroupKey::Overflow).then(|| Fact {
+                    id: id.clone(),
+                    group: None,
+                    age_ms: entry.age_ms,
+                    deliveries: entry.deliveries,
+                })
+            };
+            let found = if oldest {
+                self.entries.iter().find_map(&mut visit)
+            } else {
+                self.entries.iter().rev().find_map(&mut visit)
+            };
+            self.scan_steps.set(self.scan_steps.get() + steps);
+            return Ok(found);
         }
-        self.scan_steps.set(self.scan_steps.get() + steps);
-        found
+        resolved.get(&(key.clone(), oldest)).cloned().ok_or(())
     }
 
     /// The next ID to deliver (without taking it off the ready list; whoever delivers calls
-    /// [`TopicIndex::deliver`]). `None` if there is no ready one.
-    pub fn pick(&mut self) -> Option<String> {
+    /// [`TopicIndex::deliver`]). When the window cannot tell a group's end, the answer is
+    /// [`Pick::Need`]: nothing changed, the caller reads those ends and asks again with them.
+    pub fn pick_with(&mut self, resolved: &Resolved) -> Pick {
         if self.rules.fifo {
-            return self.free_heads.first().cloned();
-        }
-        // Room that opened since the last delivery is refilled now; a full window costs nothing.
-        if self.window.len() < self.rules.ready_cap && self.gap_ready() > 0 {
-            self.refill();
+            return self
+                .free_heads
+                .first()
+                .cloned()
+                .map_or(Pick::Empty, Pick::Id);
         }
         let every = u64::from(self.rules.normal_every);
         let normal = every > 0 && (self.picks + 1).is_multiple_of(every);
-        self.picks += 1;
-        if normal {
-            return self.window.first().cloned();
+        let chosen = if normal {
+            Ok(self.window.first().cloned().map(|id| (id, None)))
+        } else {
+            self.choose_fair(resolved)
+        };
+        match chosen {
+            Err(need) => Pick::Need(need),
+            Ok(chosen) => {
+                self.picks += 1;
+                if !normal && self.bands.first().is_some() {
+                    self.newest_next = !self.newest_next;
+                }
+                match chosen {
+                    None => Pick::Empty,
+                    Some((id, fact)) => {
+                        // An ID read from the messages becomes known (ready) so it can be delivered.
+                        if let Some(fact) = fact {
+                            self.adopt(fact, None);
+                        }
+                        Pick::Id(id)
+                    }
+                }
+            }
         }
-        let lowest = self.bands.first()?.0;
+    }
+
+    /// The fair choice: from the lowest band, the oldest (or the newest, alternating) of the groups'
+    /// ends. `Err` lists the ends that were not read yet.
+    #[allow(clippy::type_complexity)]
+    fn choose_fair(
+        &self,
+        resolved: &Resolved,
+    ) -> Result<Option<(String, Option<Fact>)>, Vec<(GroupKey, bool)>> {
+        let Some(lowest) = self.bands.first().map(|(band, _)| *band) else {
+            return Ok(None);
+        };
         let newest = self.newest_next;
-        self.newest_next = !self.newest_next;
-        let candidates = self
+        let mut need = Vec::new();
+        let mut best: Option<(String, Option<Fact>)> = None;
+        for (_, key) in self
             .bands
             .range((lowest, GroupKey::Named(String::new()))..)
             .take_while(|(b, _)| *b == lowest)
-            .filter_map(|(_, key)| self.groups.get(key).map(|g| (key, g)))
-            .filter_map(|(key, g)| self.group_end(key, g, !newest));
-        if newest {
-            candidates.max()
-        } else {
-            candidates.min()
+        {
+            let Some(group) = self.groups.get(key) else {
+                continue;
+            };
+            match self.group_end(key, group, !newest, resolved) {
+                Err(()) => need.push((key.clone(), !newest)),
+                Ok(None) => {}
+                Ok(Some(fact)) => {
+                    let better = best
+                        .as_ref()
+                        .is_none_or(|(id, _)| if newest { fact.id > *id } else { fact.id < *id });
+                    if better {
+                        let kept = self.entries.contains_key(&fact.id);
+                        best = Some((fact.id.clone(), (!kept).then_some(fact)));
+                    }
+                }
+            }
+        }
+        if need.is_empty() { Ok(best) } else { Err(need) }
+    }
+
+    /// The next ID to deliver when the index is complete (the tests): the groups' ends all come
+    /// from the window.
+    #[cfg(test)]
+    pub fn pick(&mut self) -> Option<String> {
+        match self.pick_with(&Resolved::new()) {
+            Pick::Id(id) => Some(id),
+            Pick::Empty => None,
+            Pick::Need(need) => panic!("the window cannot tell the ends of {need:?}"),
         }
     }
 
     /// The message is in processing (invisible, already delivered and not acknowledged)?
     pub fn is_processing(&self, id: &str) -> bool {
         self.entries.get(id).is_some_and(|e| e.processing)
-    }
-
-    /// The ready ones that were already delivered at some point, with the number of deliveries: the candidates for
-    /// the dead-letter when `maxDeliveries` reaches them.
-    pub fn ready_delivered(&self) -> Vec<(String, u32)> {
-        self.entries
-            .iter()
-            .filter(|(_, e)| !e.processing && e.deliveries > 0)
-            .map(|(id, e)| (id.clone(), e.deliveries))
-            .collect()
     }
 
     /// The ready IDs the window holds, in `id` order (for the tests).
@@ -909,7 +1125,7 @@ impl TopicIndex {
 
     /// How many messages the index knows, ready and in processing.
     pub fn message_count(&self) -> usize {
-        self.entries.len()
+        self.total
     }
 
     pub fn ready_count(&self) -> usize {
@@ -918,12 +1134,6 @@ impl TopicIndex {
 
     pub fn processing_count(&self) -> usize {
         self.invisible_total
-    }
-
-    /// The instant the oldest not-yet-acknowledged message counts from (the publication, or the
-    /// entry into the dead-letter): it is the same age index as the `ttl`, so it scans nothing.
-    pub fn oldest_age_ms(&self) -> Option<u64> {
-        self.by_age.first().map(|(age, _)| *age)
     }
 
     /// The group totals: how many there are, how many messages the largest has and how many have a message in
@@ -938,16 +1148,21 @@ impl TopicIndex {
         totals
     }
 
-    /// Each group with its counts, the band and the oldest message (scans the messages
-    /// once: it is for on-demand queries, not for the hot path).
-    pub fn group_infos(&self) -> Vec<GroupInfo> {
-        let mut oldest: HashMap<&GroupKey, u64> = HashMap::new();
-        for entry in self.entries.values() {
-            oldest
-                .entry(&entry.group)
-                .and_modify(|age| *age = (*age).min(entry.age_ms))
-                .or_insert(entry.age_ms);
+    /// The key a message of the group is counted under, for a message the index already counts:
+    /// the group has a counter of its own, or the message is in the shared one.
+    pub fn counted_key(&self, group: Option<&str>) -> GroupKey {
+        let named = GroupKey::Named(group.unwrap_or_default().to_owned());
+        if self.rules.max_groups.is_some() && !self.rules.fifo && !self.groups.contains_key(&named)
+        {
+            GroupKey::Overflow
+        } else {
+            named
         }
+    }
+
+    /// Each group with its counts and the band; `oldest` is the age of each group's oldest
+    /// message, read from the messages by whoever calls (on-demand queries, not the hot path).
+    pub fn group_infos(&self, oldest: &HashMap<GroupKey, u64>) -> Vec<GroupInfo> {
         self.groups
             .iter()
             .map(|(key, group)| GroupInfo {
@@ -958,19 +1173,6 @@ impl TopicIndex {
                 oldest_age_ms: oldest.get(key).copied(),
             })
             .collect()
-    }
-
-    /// The group whose message was already delivered more than `over` times (the one with the most deliveries), for the
-    /// `group-stalled` condition. Scans the messages.
-    pub fn stalled_group(&self, over: u32) -> Option<String> {
-        self.entries
-            .values()
-            .filter(|entry| entry.deliveries > over)
-            .max_by_key(|entry| entry.deliveries)
-            .map(|entry| match &entry.group {
-                GroupKey::Named(name) => name.clone(),
-                GroupKey::Overflow => String::new(),
-            })
     }
 
     /// The group's band for the message, at the present instant.
@@ -1002,5 +1204,7 @@ pub struct GroupInfo {
 
 #[cfg(test)]
 mod bounded_tests;
+#[cfg(test)]
+mod sim;
 #[cfg(test)]
 mod tests;

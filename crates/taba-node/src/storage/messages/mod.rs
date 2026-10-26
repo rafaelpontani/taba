@@ -77,6 +77,27 @@ pub struct BlockRow {
     pub delete_at_ms: Option<u64>,
 }
 
+/// Which live rows [`MessageStore::page`] brings: a page of the topic's messages in `id` order, without the
+/// short row the FIFO queue's ack leaves.
+#[derive(Debug, Clone, Default)]
+pub struct PageQuery {
+    /// Only `id` after this (exclusive).
+    pub after: Option<String>,
+    /// Only `id` before this (exclusive).
+    pub before: Option<String>,
+    /// Descending `id` order.
+    pub desc: bool,
+    pub limit: usize,
+    /// Only messages delivered at least once.
+    pub delivered: bool,
+    /// Leaves out the ones that have a pair in the `expiry` table (those in processing).
+    pub off_table: bool,
+    /// Only this group (empty: the messages without a group).
+    pub group: Option<String>,
+    /// Also the short row the FIFO queue's ack leaves (`delete_at`).
+    pub tombstones: bool,
+}
+
 /// A row of [`MessageStore::scan`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanRow {
@@ -90,6 +111,21 @@ pub struct ScanRow {
     pub age_ms: u64,
     pub delivery_count: u32,
     pub invisible_until_ms: u64,
+}
+
+/// The `ScanRow` of a `SELECT id, group_id, age_base, delivery_count, invisible_until,
+/// deduplication_id, published_at, delete_at`.
+fn scan_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScanRow> {
+    Ok(ScanRow {
+        id: row.get(0)?,
+        group_id: row.get(1)?,
+        age_ms: row.get::<_, i64>(2)? as u64,
+        delivery_count: row.get::<_, i64>(3)? as u32,
+        invisible_until_ms: row.get::<_, i64>(4)? as u64,
+        deduplication_id: row.get(5)?,
+        published_ms: row.get::<_, i64>(6)? as u64,
+        delete_at_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
+    })
 }
 
 const SCHEMA: &str = "
@@ -110,6 +146,9 @@ const SCHEMA: &str = "
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS messages_invisible_until ON messages (invisible_until);
     CREATE INDEX IF NOT EXISTS messages_age_base ON messages (age_base);
+    -- The end of a group (oldest or newest ready message) is read by this index, in `id` order, without
+    -- walking the topic.
+    CREATE INDEX IF NOT EXISTS messages_group ON messages (group_id);
     CREATE TABLE IF NOT EXISTS excluded (
         id       TEXT PRIMARY KEY NOT NULL,
         position INTEGER NOT NULL,
@@ -126,6 +165,7 @@ const SCHEMA: &str = "
         id              TEXT NOT NULL,
         PRIMARY KEY (invisible_until, id)
     ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS expiry_id ON expiry (id);
 ";
 
 /// Key of the `topic_meta` table that holds the `topicId` the folder was created for (doc 07, section 10.6).
@@ -385,6 +425,21 @@ impl MessageStore {
             .map_err(to_io)
     }
 
+    /// Like [`MessageStore::get`], but only the live message: not the short row the FIFO queue's ack leaves.
+    pub fn get_live(&self, topic: &str, id: &str) -> io::Result<Option<MessageMeta>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(None);
+        };
+        disk.conn()
+            .query_row(
+                &format!("SELECT {COLUMNS} FROM messages WHERE id = ?1 AND delete_at IS NULL"),
+                params![id],
+                from_row,
+            )
+            .optional()
+            .map_err(to_io)
+    }
+
     /// Writes again the fields that change on delivery: counter, deadline and `receiptToken`.
     pub fn update_delivery(&self, topic: &str, meta: &MessageMeta) -> io::Result<()> {
         let Some(disk) = self.disk(topic, false)? else {
@@ -449,6 +504,23 @@ impl MessageStore {
             })
             .map_err(to_io)?;
         rows.collect::<Result<_, _>>().map_err(to_io)
+    }
+
+    /// The deadline of the message's pair in the `expiry` table, if it has one.
+    pub fn expiry_find(&self, topic: &str, id: &str) -> io::Result<Option<u64>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(None);
+        };
+        let until: Option<i64> = disk
+            .conn()
+            .query_row(
+                "SELECT invisible_until FROM expiry WHERE id = ?1 LIMIT 1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(to_io)?;
+        Ok(until.map(|v| v as u64))
     }
 
     /// How many pairs the `expiry` table holds.
@@ -523,19 +595,90 @@ impl MessageStore {
                  published_at, delete_at FROM messages ORDER BY id",
             )
             .map_err(to_io)?;
+        let rows = stmt.query_map([], scan_row).map_err(to_io)?;
+        rows.collect::<Result<_, _>>().map_err(to_io)
+    }
+
+    /// A page of the topic's live messages (see [`PageQuery`]), without the body.
+    pub fn page(&self, topic: &str, query: &PageQuery) -> io::Result<Vec<ScanRow>> {
+        use rusqlite::types::Value;
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(Vec::new());
+        };
+        let mut args: Vec<Value> = Vec::new();
+        let mut sql = String::from(
+            "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id,              published_at, delete_at FROM messages WHERE 1 = 1",
+        );
+        if !query.tombstones {
+            sql.push_str(" AND delete_at IS NULL");
+        }
+        if let Some(after) = &query.after {
+            sql.push_str(" AND id > ?");
+            args.push(Value::Text(after.clone()));
+        }
+        if let Some(before) = &query.before {
+            sql.push_str(" AND id < ?");
+            args.push(Value::Text(before.clone()));
+        }
+        if query.delivered {
+            sql.push_str(" AND delivery_count > 0");
+        }
+        match query.group.as_deref() {
+            Some("") => sql.push_str(" AND (group_id IS NULL OR group_id = '')"),
+            Some(group) => {
+                sql.push_str(" AND group_id = ?");
+                args.push(Value::Text(group.to_owned()));
+            }
+            None => {}
+        }
+        if query.off_table {
+            sql.push_str(" AND NOT EXISTS (SELECT 1 FROM expiry WHERE expiry.id = messages.id)");
+        }
+        sql.push_str(if query.desc {
+            " ORDER BY id DESC LIMIT ?"
+        } else {
+            " ORDER BY id LIMIT ?"
+        });
+        args.push(Value::Integer(
+            i64::try_from(query.limit).unwrap_or(i64::MAX),
+        ));
+        let conn = disk.conn();
+        let mut stmt = conn.prepare_cached(&sql).map_err(to_io)?;
         let rows = stmt
-            .query_map([], |row| {
-                Ok(ScanRow {
-                    id: row.get(0)?,
-                    group_id: row.get(1)?,
-                    age_ms: row.get::<_, i64>(2)? as u64,
-                    delivery_count: row.get::<_, i64>(3)? as u32,
-                    invisible_until_ms: row.get::<_, i64>(4)? as u64,
-                    deduplication_id: row.get(5)?,
-                    published_ms: row.get::<_, i64>(6)? as u64,
-                    delete_at_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
-                })
-            })
+            .query_map(rusqlite::params_from_iter(args), scan_row)
+            .map_err(to_io)?;
+        rows.collect::<Result<_, _>>().map_err(to_io)
+    }
+
+    /// A page of the live messages by age, oldest first: `(age, id)` of those with `age ≤ up_to_ms`,
+    /// after the `(age, id)` given, at most `limit`.
+    pub fn by_age(
+        &self,
+        topic: &str,
+        up_to_ms: u64,
+        after: Option<&(u64, String)>,
+        limit: usize,
+    ) -> io::Result<Vec<(u64, String)>> {
+        let Some(disk) = self.disk(topic, false)? else {
+            return Ok(Vec::new());
+        };
+        let (age, id) = after.map_or((-1, String::new()), |(a, i)| (*a as i64, i.clone()));
+        let conn = disk.conn();
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT age_base, id FROM messages WHERE delete_at IS NULL AND age_base <= ?1                  AND (age_base > ?2 OR (age_base = ?2 AND id > ?3))                  ORDER BY age_base, id LIMIT ?4",
+            )
+            .map_err(to_io)?;
+        let rows = stmt
+            .query_map(
+                params![
+                    i64::try_from(up_to_ms).unwrap_or(i64::MAX),
+                    age,
+                    id,
+                    limit as i64
+                ],
+                |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?)),
+            )
             .map_err(to_io)?;
         rows.collect::<Result<_, _>>().map_err(to_io)
     }

@@ -85,7 +85,7 @@ Per topic and per node, the **list of ready IDs** that the node owns.
 - **When memory is short**, what leaves first is what is being processed and, afterwards, the **middle** of the ready list (the last one the accordion would reach); the ends stay, being the next to deliver.
 - The index is **derived** from the metadata: rebuilt when the topic is opened (restart or new owner).
 
-> **How the code is.** The index (`engine/messages/index`) keeps the **exact counters** (ready, in processing, per group) and two **bounded** lists. The **ready list** is a window of `delivery.ready-list.size` IDs, refilled by two cursors (from the oldest forward and from the newest backward, by GUID v7, alternating the ends) only when room opens; a message that returns to the list enters by the position of its GUID v7 and, with the window full, the ID at the middle leaves and is found again by the cursor. The **invisible list** holds up to `delivery.invisible-list.size` pairs (ID, deadline) by deadline; what does not fit goes to the `expiry` table of the topic database, and the list is reloaded from it below `delivery.invisible.reload-threshold`. The index's message map (group, deadline, age, deliveries, about 150 bytes per message) is still **complete** in memory (D88).
+> **How the code is.** The index (`engine/messages/index`) keeps the **exact counters** (ready, in processing, per group) and two **bounded** lists. The **ready list** is a window of `delivery.ready-list.size` IDs, refilled by two cursors (from the oldest forward and from the newest backward, by GUID v7, alternating the ends) only when room opens (the engine reads the metadata when a quarter of the window has opened, or when the oldest end ran out of IDs, so as not to read at every delivery); a message that returns to the list enters by the position of its GUID v7 and, with the window full, the ID at the middle leaves and is found again by the cursor. The **invisible list** holds up to `delivery.invisible-list.size` pairs (ID, deadline) by deadline; what does not fit goes to the `expiry` table of the topic database, and the list is reloaded from it below `delivery.invisible.reload-threshold`. The index **does not keep an entry per message**: only the one of whoever is in the window or in the invisible list (on the FIFO queue and in the overflow group, all of them). Of the others it only has the count. Before acting on one of them (ack, removal, new deadline, `ttl`), the engine reads its group, age and deliveries from the metadata (the topic's memory or the database) and hands them to the index; refilling the window and finding the end of a group also read the metadata, in pages (the end of a group, by the group index in the database, in `id` order). The index still does no I/O: what it does not have, the engine brings. So the index's memory on the fair queue is the window, the list and the per-group counters, and does not grow with the backlog.
 
 ## Change the invisibility
 
@@ -239,11 +239,11 @@ The `take` and the weighted draw between nodes **do not change**: fairness is ap
 
 ## Known limits
 
-- **PRB-019:** finding the middle message to demote and checking the ready ones when `maxDeliveries` changes scan the topic's memory.
+- **PRB-019:** finding the middle message to demote and checking the ready ones when `maxDeliveries` changes scan the topic's memory; the `maxDeliveries` check and the on-demand queries (groups, stalled group) read the messages in pages, and the oldest message comes from the age order of the topic's memory and of the database.
 - **D96:** who fixes the deadline of `PUT visibility` and of the ack, and the forwarding deadline, still has open points.
 - **D109:** the channel constants (10 s of notice validity, 3 consecutive `not-member`) are in the code.
 - **D113:** the FIFO receipt carries the group position (decided in the implementation).
-- The index's message map is still complete in memory: only the lists have a ceiling (D88).
+- The FIFO queue keeps one entry per message, the cluster's replica table keeps the ID and age of each replica, and the groups have no ceiling (D88, PRB-020).
 - The write to the `expiry` table undoes the delivery if it fails (single-node path); on deadline changes and on the ack the write is tried in the same step and, if it fails, the pair stays queued and is retried on the next change.
 
 ## Sources and evidence

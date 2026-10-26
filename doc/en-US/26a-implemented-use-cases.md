@@ -1401,10 +1401,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Case:** A message with more than `ttl` since publication is discarded, delivered or not, and does **not** go to the dead-letter.  
 **Level:** I  
 **Tests:**
-  - `src/engine/messages/index/tests.rs::messages_past_their_ttl_are_found_by_age`
+  - `src/engine/messages/index/tests.rs::the_index_only_says_when_a_ttl_check_is_worth_a_read`
   - `src/engine/messages/tests.rs::sweeping_drops_expired_messages_even_in_flight_and_not_to_the_dead_letter`
   - `src/engine/messages/tests.rs::ttl_and_the_dead_letter_work_on_messages_on_disk`
   - `tests/messages.rs::a_shorter_ttl_expires_what_is_already_stored_even_in_flight`
+  - `src/engine/messages/tests/bounded.rs::the_ttl_removes_the_ready_messages_that_wait_outside_the_window`
 
 ---
 
@@ -4905,6 +4906,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/index/bounded_tests.rs::the_ready_list_holds_at_most_the_configured_size_and_the_counters_stay_exact`
   - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
+  - `src/engine/messages/tests/bounded.rs::the_index_keeps_no_more_entries_than_the_window_and_the_list_hold`
+  - `src/engine/messages/tests/bounded.rs::reopening_a_topic_rebuilds_the_counts_and_the_window_from_the_disk`
+  - `src/engine/messages/tests/cluster.rs::the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones`
+  - `src/engine/messages/tests/bounded.rs::the_oldest_message_comes_from_the_age_order_of_memory_and_disk`
 
 ---
 
@@ -4914,6 +4919,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** U  
 **Tests:**
   - `src/engine/messages/index/bounded_tests.rs::only_the_room_that_opened_is_refilled_and_a_full_list_costs_nothing`
+  - `src/engine/messages/tests/bounded.rs::ack_and_visibility_work_on_a_message_the_index_only_counts`
 
 ---
 
@@ -4952,6 +4958,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `src/engine/messages/tests/cluster.rs::a_candidate_is_reserved_until_the_quorum_commits_or_aborts`
+  - `src/engine/messages/tests/cluster.rs::the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones`
 
 ---
 
@@ -4971,6 +4978,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/index/bounded_tests.rs::choosing_the_next_message_only_reads_the_list_and_scans_nothing`
   - `src/engine/messages/tests/expiry.rs::a_small_ready_list_still_delivers_every_message_exactly_once`
+  - `src/engine/messages/tests/bounded.rs::small_lists_choose_the_same_messages_as_large_ones`
+  - `src/storage/messages/tests.rs::the_end_of_a_group_is_read_by_an_index_in_id_order`
 
 ---
 
@@ -5445,6 +5454,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/index/bounded_tests.rs::the_head_is_taken_out_and_checked_and_a_pair_that_is_not_the_messages_is_dropped`
   - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/engine/messages/tests/bounded.rs::reopening_a_topic_rebuilds_the_counts_and_the_window_from_the_disk`
 
 ---
 
@@ -5475,6 +5485,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/engine/messages/index/tests.rs::in_a_fifo_queue_the_returning_message_is_the_group_head_and_frees_the_group`
   - `src/engine/messages/index/bounded_tests.rs::on_a_fifo_queue_the_ready_list_has_no_ceiling_and_no_middle_rule`
+  - `src/engine/messages/tests/bounded.rs::small_lists_choose_the_same_messages_as_large_ones`
 
 ---
 
@@ -5493,6 +5504,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** U  
 **Tests:**
   - `src/engine/messages/index/bounded_tests.rs::the_invisible_list_is_ordered_by_deadline_with_a_ceiling_and_found_by_id`
+  - `src/engine/messages/tests/bounded.rs::the_index_keeps_no_more_entries_than_the_window_and_the_list_hold`
 
 ---
 
@@ -5525,6 +5537,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/index/bounded_tests.rs::the_list_always_expires_before_the_table_and_the_table_follows_every_change`
   - `src/engine/messages/index/bounded_tests.rs::the_reload_starts_below_the_threshold_reads_the_earliest_and_deletes_the_rows_read`
   - `src/engine/messages/tests/expiry.rs::pairs_over_the_ceiling_wait_in_the_expiry_table_and_come_back_on_time`
+  - `src/engine/messages/tests/bounded.rs::ack_and_visibility_work_on_a_message_the_index_only_counts`
 
 ---
 
@@ -5547,6 +5560,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** I  
 **Tests:**
   - `src/engine/messages/tests/expiry.rs::a_failed_table_write_undoes_the_delivery_before_the_answer`
+  - `src/engine/messages/tests/cluster.rs::a_failed_table_write_undoes_a_reservation_of_the_owner`
 **Note:** Proven on the single-node path (`take`); the cluster path (`take_candidates`) applies the same rule but has no test yet.
 
 ---
@@ -5639,6 +5653,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests.rs::above_its_reserve_a_topic_only_takes_memory_from_topics_that_are_read_less`
   - `src/engine/messages/tests.rs::publish_and_consume_rates_are_tracked_per_topic`
   - `src/storage/messages/tests.rs::the_rows_of_a_block_come_by_position_in_id_order_with_range_and_limit`
+  - `src/storage/messages/tests.rs::the_end_of_a_group_is_read_by_an_index_in_id_order`
 
 ---
 

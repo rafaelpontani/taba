@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use super::*;
+use crate::storage::messages::{TOPIC_DB_FILE, dir_name};
 
 /// The owner is whoever is in the list; the rest is a replica.
 #[derive(Default)]
@@ -24,7 +25,11 @@ struct Cluster {
 }
 
 fn clustered() -> Cluster {
-    let h = harness();
+    clustered_with(&[])
+}
+
+fn clustered_with(env: &[(&str, &str)]) -> Cluster {
+    let h = harness_with(env);
     let owners = Arc::new(Owners::default());
     let (tx, dead_letters) = tokio::sync::mpsc::unbounded_channel();
     let ready = Arc::new(Mutex::new(Vec::new()));
@@ -473,4 +478,89 @@ async fn the_id_of_a_group_keeps_growing_even_if_the_clock_of_the_new_primary_is
         assert!(meta.id > last, "{} should come after {last}", meta.id);
         last = meta.id;
     }
+}
+
+/// UC: UC-ENT-013, UC-ENT-008
+#[tokio::test]
+async fn the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones() {
+    let mut runs: Vec<Vec<String>> = Vec::new();
+    for env in [
+        vec![
+            ("TABA_DELIVERY_READY_LIST_SIZE", "2"),
+            ("TABA_DELIVERY_INVISIBLE_LIST_SIZE", "1"),
+        ],
+        vec![],
+    ] {
+        let c = clustered_with(&env);
+        queue_in(&c, "orders").await;
+        for i in 0..8 {
+            // A replica between every two of mine: the window must skip it.
+            c.publish("orders", &format!("\"r{i}\""), false);
+            c.publish("orders", &i.to_string(), true);
+        }
+        let view = c.view("orders");
+        let body = |t: &Candidate| String::from_utf8(t.body.clone()).unwrap();
+
+        // Deadlines that do not fit the invisible list.
+        let mut seen = Vec::new();
+        let mut taken = Vec::new();
+        for visibility in [60, 120, 180] {
+            taken.extend(c.h.messages.take_candidates(&view, 2, visibility).unwrap());
+        }
+        seen.extend(taken.iter().map(body));
+        assert_eq!(taken.len(), 6);
+        assert!(
+            seen.iter().all(|b| !b.contains('r')),
+            "no replica is delivered"
+        );
+
+        // The quorum fails for one that only the table can know: it goes back to ready, once.
+        let aborted = taken.remove(5);
+        c.h.messages.abort_take("orders", &aborted);
+        let again = c.h.messages.take_candidates(&view, 10, 60).unwrap();
+        assert_eq!(again.len(), 3, "the two left and the aborted one");
+        assert!(again.iter().any(|t| t.meta.id == aborted.meta.id));
+        seen.extend(again.iter().map(body));
+        assert!(
+            c.h.messages
+                .take_candidates(&view, 10, 60)
+                .unwrap()
+                .is_empty()
+        );
+        runs.push(seen);
+    }
+    assert_eq!(runs[0], runs[1]);
+}
+
+/// UC: UC-INV-027
+#[tokio::test]
+async fn a_failed_table_write_undoes_a_reservation_of_the_owner() {
+    let c = clustered_with(&[("TABA_DELIVERY_INVISIBLE_LIST_SIZE", "1")]);
+    queue_in(&c, "orders").await;
+    for i in 0..3 {
+        c.publish("orders", &i.to_string(), true);
+    }
+    let view = c.view("orders");
+    c.h.messages.take_candidates(&view, 1, 30).unwrap();
+
+    c.h.store
+        .expiry_apply("orders", &[(true, 1, "x".into()), (false, 1, "x".into())])
+        .unwrap();
+    let db = c.h.dir.path().join(dir_name("orders")).join(TOPIC_DB_FILE);
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    conn.execute("DROP TABLE expiry", []).unwrap();
+
+    // The second reservation falls after the first on the list, so it needs the table: it fails.
+    assert!(c.h.messages.take_candidates(&view, 1, 60).is_err());
+
+    conn.execute(
+        "CREATE TABLE expiry (invisible_until INTEGER NOT NULL, id TEXT NOT NULL, \
+         PRIMARY KEY (invisible_until, id)) WITHOUT ROWID",
+        [],
+    )
+    .unwrap();
+    // The message was not left reserved, and its counter did not go up.
+    let again = c.h.messages.take_candidates(&view, 1, 60).unwrap();
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].meta.delivery_count, 1);
 }
