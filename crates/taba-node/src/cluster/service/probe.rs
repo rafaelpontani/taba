@@ -116,7 +116,7 @@ impl ClusterService {
     /// The losing group's node leaves the other group's table to the winner: its disk becomes the folder of a life
     /// (so what the group accepted while it was apart is restored and checked against the dead), its definitions go
     /// to the winner and it joins again with a new ID. Nothing is wiped before the move succeeds.
-    async fn regroup(self: &Arc<Self>, winner: MemberTable) {
+    pub(super) async fn regroup(self: &Arc<Self>, winner: MemberTable) {
         if self.node.state() != NodeState::Active
             || self.node.drain_state() != crate::cluster::state::DrainState::Active
             || self.excluded.swap(true, Ordering::SeqCst)
@@ -130,7 +130,17 @@ impl ClusterService {
         // The manifest that goes with the disk says when this life was last seen.
         self.write_manifest();
         let messages = replication.messages.messages().clone();
-        match tokio::task::spawn_blocking(move || messages.set_aside_old_disk()).await {
+        // What a running node accepted is still in memory: it goes to the disk first, or the folder of the life would
+        // have nothing to restore (PRB-078). Whatever stays in memory (a disk error) stops the regroup.
+        let aside = tokio::task::spawn_blocking(move || {
+            let report = messages.drain_until(|| false);
+            if report.remaining > 0 {
+                return Err(std::io::Error::other("messages are still in memory"));
+            }
+            messages.set_aside_old_disk()
+        })
+        .await;
+        match aside {
             Ok(Ok(_)) => {}
             other => {
                 tracing::warn!(

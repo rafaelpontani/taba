@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D178** and **PRB-073**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D182** and **PRB-077**).
 
 ## Known limits
 
@@ -60,6 +60,16 @@ Found while implementing D152 to D155 ([30-decisions.md](30-decisions.md)). Each
 | **PRB-071** | **The permission a route needs is only in its description.** The OpenAPI documents say `Permission: admin` in the text, but not in a field a generator or a gateway can read (no `x-required-permission`, and the security scheme has no scopes) | Add the vendor extension on each operation, with a test that checks it against `need()` in `http/auth`, so the two cannot differ |
 | **PRB-072** | **Some answers are documented as a free-form object.** The S3 backup reports (`/nodes/{nodeId}/backup`, `/cluster/backup`, the flush routes) and the `signals` of a node status are `object` without fields, because the server builds them with `json!`; a generated client gets an untyped map there | Give each one a `struct` (or a documentation twin checked by `tests/openapi.rs`), as was done for the other DTOs |
 | **PRB-073** | **`cargo audit` ignores `RUSTSEC-2026-0387` (`crypto-bigint` 0.5.5, timing variability).** The crate comes from `aws-sigv4` 1.6.3 (the latest), which the S3 backup uses, and no released version avoids the old `crypto-bigint`. Only the SigV4a (ECDSA) signer reaches the affected operations, and the backup signs with SigV4 (HMAC), so the node is not exposed; the exception is in `.cargo/audit.toml` | When `aws-sigv4` depends on `crypto-bigint` >= 0.7.6 (`cargo update -p aws-sigv4`), delete the line from `.cargo/audit.toml` and this item |
+
+## Chaos run (new problems and limits)
+
+Found by the chaos run ([37-guarantees.md](37-guarantees.md)).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-077** | **An ack and a move to the dead-letter of the same message can both be decided when the register of one of them expires on the owner (`write.pending.ttl`, 30 s) before its commit arrives.** Seen only with clock jumps of 35 s in the chaos run (3 runs in 400 of four seeds, always the same shape: a message acked with `204` and then delivered again from the dead-letter queue, I3 and I5); with 8 s jumps, 1600 runs had none. The cause is **not proven**: it is the reading that fits (the expired register frees the message, the other operation registers and is decided, and both commit; the lock `by_message` that serializes them is gone). It needs a stall of more than `write.pending.ttl` in the middle of an operation, for example a long partition | Prove it with a test that expires the register between the two operations (as `tests/replication.rs` does for the ack alone, PRB-076); then decide how an expired register is told apart from a decided one (keep the operation on the owner until it is committed or rolled back, or check on commit that the message is still the one that was registered) |
+
+**Default of `cluster.vote.min-voters` in clusters of 4 nodes or more (D182).** The default (2) lets each half of a 4-node cluster exclude the other in a 2 + 2 partition; both halves accept writes and the loser regroups when they meet (D181, no message is lost). A majority of the table as the default would avoid the split, at the price of no writes at all on a 2 + 2 partition (neither half has a majority). Proposal: keep 2 (availability) and document the majority for whoever prefers consistency; the alternative is a majority by default.
 
 ## 1. Unblocked
 

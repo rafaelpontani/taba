@@ -3,7 +3,7 @@ título: Testes
 resumo: Como o Taba é testado — os níveis (unitário, um nó, cluster simulado, conectores, ponta a ponta), as ferramentas de teste (TestNode, TestCluster, rede em memória, relógio manual, coletor OTLP falso) e como escrever e rodar um teste.
 tipo: guia
 status: estável
-verificado-em: 2026-10-26 @ 75012bc
+verificado-em: 2026-10-27 @ ada9ff1
 fontes: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
@@ -42,6 +42,7 @@ Há mais **testes por TCP e TLS reais** (`tests/mtls.rs`, `tests/common/real.rs`
 | `failures.rs`, `freezing.rs`, `sync.rs`, `recovery.rs`, `drain_cluster.rs` | Falha, votação, freezing, sincronização, retorno, drain |
 | `fifo_cluster.rs`, `volatile_cluster.rs` | FIFO e voláteis no cluster |
 | `mtls.rs` | Segurança do cluster por TCP real e TLS mútuo |
+| `chaos.rs` | Falhas sorteadas de uma semente enquanto clientes publicam, consomem e dão ack; um verificador compara o histórico gravado com as garantias ([37-garantias.md](37-garantias.md)) |
 | `uc_coverage.rs` | **Confere** os casos de uso (ver [26-casos-de-uso.md](26-casos-de-uso.md)) |
 
 Em números: ~330 testes nesses arquivos mais os unitários dos módulos; o cluster tem **702 de 885** casos de uso com teste ([26a](26a-casos-de-uso-implementados.md)).
@@ -52,7 +53,7 @@ Em números: ~330 testes nesses arquivos mais os unitários dos módulos; o clus
 |---|---|
 | **`TestNode`** (`mod.rs`) | Sobe **um nó real** em portas livres, disco numa pasta temporária. `TestNode::single()` (um nó no perfil de um nó, já ativo e com a restauração concluída) e `::production()`; `builder()` (o perfil de um nó por padrão) com `.env(nome, valor)`, `.in_network(&rede, host)`, `.clock(relógio)`, `.real(ip, entry)`, `.single_node()`, `.production()`. Métodos: `client_url()`, `operations_url()`, `cluster_url()`, `client_get()`, `metrics()`, `stats()`, `storage_dir()`, `shutdown()`. Auxiliares: `series()` (lê uma série de `/metrics`), `error_code()` (confere status e devolve o `code`) |
 | **`TestCluster`** (`cluster.rs`) | **Vários nós no mesmo processo** (nó `n` = `10.0.0.n`), ligados pela **`MemoryNetwork`** e por **um `Clock` manual compartilhado**; o balanceador (`balancer:8081`) reparte as chamadas. `start(n)`, `start_with(n, env)`, `add_node()`, `spawn_node()`, `respawn_node()`, `node(n)`, `table(n)`, `member_ids(n)`. Auxiliares: `eventually(…)` (espera uma condição), `settled()` (cluster estável), `create_queue()`, `name_owned_by()` (acha um nome de tópico cujo dono é o nó n), `pause_sync()`/`wait_phase()` (para no meio de uma fase da sincronização), `replication_of()`, `channels_of()`, `signals_of()` |
-| **`MemoryNetwork`** (`src/cluster/transport/memory`) | O `Transport` de teste: **partição** entre dois nós ou isolamento de um, **perda** das próximas chamadas a um nó (ou de um tipo), **atraso** em todas as chamadas, nó **mudo** (aceita e não responde), nó que **cai** (some da rede) e **balanceador** |
+| **`MemoryNetwork`** (`src/cluster/transport/memory`) | O `Transport` de teste: **partição** entre dois nós (ou em um sentido só) ou isolamento de um, **respostas perdidas** (a chamada roda, quem chamou nunca fica sabendo), **perda** por enlace sorteada de uma semente, **cura** de tudo de uma vez, **perda** das próximas chamadas a um nó (ou de um tipo), **atraso** em todas as chamadas, nó **mudo** (aceita e não responde), nó que **cai** (some da rede) e **balanceador** |
 | **`ManualClock`** (`src/core/clock`) | O relógio do teste: o teste o avança (invisibilidade, `ttl`, freezing, votação, `idleTimeout`) |
 | **`RealCluster`** (`real.rs`) | Nós por **TCP real em `127.0.0.x`**, com o `Transport` HTTP e **TLS mútuo**; geração e rotação de certificados (`cert_dir`, `new_pair`, `add_named_pair`), conexão com ou sem certificado (`connect`, `anonymous_client`) |
 | **Coletor OTLP falso** (`otlp.rs`) | `Collector::http()` e `::grpc(tls)`, com `metrics()`, `spans()`, `log_records()`. Os testes de OTLP **andam um de cada vez**, porque o assinante do `tracing` é do processo |

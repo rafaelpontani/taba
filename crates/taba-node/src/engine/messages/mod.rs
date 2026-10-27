@@ -3447,6 +3447,15 @@ impl Messages {
                     Err(e) => return Err(self.disk_error("failed to read the body on disk", &e)),
                 }
             };
+            // The delivery limit is also checked here, at the moment of choosing: a commit that reaches the owner
+            // after its own invisibility ended (the clock moved on the way) puts the message in ready without
+            // going through the release of `settle`, and the next delivery would be one past the limit. The message is
+            // not delivered: it goes back to invisible for an instant, so the next `settle` releases it with its
+            // count and sends it to the dead-letter (after the `ttl`, as for any other release).
+            if self.exhausted(view, meta.delivery_count) {
+                state.index.deliver(&id, now + 1, now, meta.delivery_count);
+                continue;
+            }
             let band = state.index.band_of_entry(&id).unwrap_or(0);
             let previous_deliveries = meta.delivery_count;
             meta.delivery_count += 1;

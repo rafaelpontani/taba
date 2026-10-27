@@ -3,7 +3,7 @@ título: Convenções
 resumo: As regras de quem altera o código — idioma, estrutura de pastas, regras de código Rust, convenções da API e da configuração, testes, documentação, diagramas, commits — e o checklist ao terminar uma mudança.
 tipo: guia
 status: estável
-verificado-em: 2026-10-26 @ 75012bc
+verificado-em: 2026-10-27 @ ada9ff1
 fontes: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagrams]
 ---
 
@@ -47,8 +47,11 @@ taba/
   doc/                          README.md, diagrams/, uma pasta por idioma
   doc/pt-BR/                    esta documentação
   doc/en-US/                    a mesma documentação em inglês
+  doc/plans/                    planos em desenvolvimento (só nas branches de trabalho; nunca em release ou main)
   .github/                      workflows, actions e scripts
 ```
+
+**`doc/plans/`** é a única parte de `doc/` que não descreve o código como ele está: guarda planos ainda em desenvolvimento, existe só na branch de trabalho, é apagada quando o plano é executado (o que ele decidiu vai para a documentação permanente) e é barrada de `release` e `main` pelo job `Development plans` do `ci.yml` ([AGENTS.md](../../AGENTS.md#development-plans-docplans)).
 
 **Módulo** = pasta com `mod.rs` + `tests.rs` lado a lado; o `mod.rs` **começa com um comentário `//!`** que diz o que o módulo faz e em que documento está o desenho, e **termina** com `#[cfg(test)] mod tests;`. Os testes unitários **ficam no arquivo irmão**, não dentro do código.
 

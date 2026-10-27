@@ -1,0 +1,48 @@
+# Nightly sweep of the chaos run (tests/chaos.rs, doc/pt-BR/37-garantias.md): a range of seeds, each one a
+# three-node cluster hit by seeded faults while clients publish, consume and ack, with the recorded history checked
+# against the guarantees. Outside the required checks of ci.yml: it takes minutes and it is meant to find the rare
+# seed, not to gate a pull request. A seed that fails is printed in the log and becomes a test of its own.
+#
+# Each night sweeps a different range (the day of the year times 1000); by hand, `seeds` is `from..to`.
+name: Chaos
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Range of seeds, from..to (empty for the range of the day)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  sweep:
+    name: Seed sweep
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Sweep
+        env:
+          INPUT_SEEDS: ${{ inputs.seeds }}
+        run: |
+          seeds="$INPUT_SEEDS"
+          if [ -z "$seeds" ]; then
+            base=$(( 10#$(date +%j) * 1000 ))
+            seeds="${base}..$(( base + 200 ))"
+          fi
+          echo "seeds: $seeds"
+          TABA_CHAOS_SEEDS="$seeds" cargo test --locked --test chaos a_range_of_seeds -- --nocapture

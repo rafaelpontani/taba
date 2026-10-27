@@ -26,6 +26,7 @@ use taba_node::node::{self, ClusterDeps, Deps, NodeError, RunningNode};
 use taba_node::storage::backup::ObjectStore;
 
 pub mod cluster;
+pub mod history;
 pub mod otlp;
 pub mod real;
 

@@ -99,7 +99,7 @@ With `backup.s3.bucket`, "unreachable" is no longer enough: each node writes a *
 
 ### Accepted risk: partitions
 
-The voting base is only whoever the voter sees. In a **network partition** where both sides have enough healthy nodes, each side may exclude the other. `cluster.vote.min-voters` only prevents an **isolated** node from excluding all the others; whoever operates many nodes can raise it to a majority of the cluster. When both sides excluded each other, each node keeps the addresses of the excluded ones and, every `keepalive.interval × 10`, queries their table: if it belongs to **another cluster** and this side **loses** (fewer members; on a tie, the lowest `nodeId`), the node redoes the join from scratch.
+The voting base is only whoever the voter sees. In a **network partition** where both sides have enough healthy nodes, each side may exclude the other. `cluster.vote.min-voters` only prevents an **isolated** node from excluding all the others; whoever operates many nodes can raise it to a majority of the cluster. When both sides excluded each other, each node keeps the addresses of the excluded ones and, every `keepalive.interval × 10`, queries their table: if it belongs to **another cluster** and this side **loses** (fewer members; on a tie, the lowest `nodeId`), the node regroups as the loser of the probe of the old IPs does ([section 10.11](#1011-probe-of-the-old-ips-and-the-regrouping-of-groups)): it moves what it holds in memory to the disk, the disk becomes the folder of a life, and it joins the other cluster with a new ID. What it accepted while apart is restored and checked in the merged cluster (D181).
 
 ## 4. Freezing and return of the excluded node
 

@@ -3,7 +3,7 @@ title: Durability
 summary: What Taba guarantees about confirmed messages, in which failures they survive, in which they are lost, and how to adjust the balance between latency and guarantee.
 type: explanation
 status: stable
-verified-on: 2026-10-22 @ 2f1919d
+verified-on: 2026-10-27 @ ada9ff1
 sources: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/restore, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
 ---
 
@@ -96,6 +96,8 @@ The age comes **from the `id` itself** (GUID v7 carries the instant of publicati
 | Less memory | Set `memory.limit`: the excess goes to disk |
 
 ## Known limits
+
+> The guarantees above, written as rules a machine can check, and the chaos run that checks them against a recorded history are in [37-guarantees.md](37-guarantees.md).
 
 - **Total stop** in production loses what was only in memory (above); what was on disk comes back through the resume ([07-cluster.md](07-cluster.md), section 10), with the residual redelivery of section 10.10. With the S3 backup on ([33-s3-backup.md](33-s3-backup.md)) it loses only the window not yet sent, and a lost disk comes back too.
 - **PRB-005:** during drain the node refuses the ack; with no other node to forward to, the consumer cannot confirm.

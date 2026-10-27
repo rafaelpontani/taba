@@ -1076,3 +1076,44 @@ fn channel_messages_are_json_text_and_the_confirm_is_told_by_its_type() {
     }
     assert!(ChannelMessage::from_text("not JSON").is_err());
 }
+
+/// The register sent again after the decision does not check the receipt (PRB-075): an ack becomes a `discard`, and
+/// anything else is untouched.
+///
+/// UC: UC-CHS-005
+#[test]
+fn the_register_repeated_after_the_decision_checks_no_receipt() {
+    let ack = Request::Ack {
+        topic: "orders".into(),
+        id: "m1".into(),
+        step: Step::Register(AckRegisterRequest {
+            operation_id: "op".into(),
+            coordinator_id: "n1".into(),
+            receipt_token: "token".into(),
+            delete_at_ms: Some(7),
+            discard: false,
+        }),
+    };
+    let Request::Ack {
+        step: Step::Register(decided),
+        ..
+    } = ack.decided()
+    else {
+        panic!("still an ack register");
+    };
+    assert!(decided.discard, "no receipt to check any more");
+    assert_eq!(
+        (decided.operation_id.as_str(), decided.delete_at_ms),
+        ("op", Some(7)),
+        "the rest of the register is the same"
+    );
+
+    let commit = Request::Ack {
+        topic: "orders".into(),
+        id: "m1".into(),
+        step: Step::Commit(OperationRef {
+            operation_id: "op".into(),
+        }),
+    };
+    assert_eq!(commit.decided(), commit);
+}
