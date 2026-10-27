@@ -731,7 +731,15 @@ impl Definitions {
     /// A node that joined a cluster that was already up offers what its disk held before it was cleared (doc 07,
     /// section 10.5): the highest version of each definition wins, a tombstone included, so a disk that is older than
     /// the cluster imposes nothing. What wins is spread to the others like any change that a node learns.
+    ///
+    /// What wins also goes to **every member of the table** with a `definition-apply`, as a change decided by an owner
+    /// does (`spread`): the frame of `relay` only reaches the peers this node knows at that instant, and a node that
+    /// registered a few milliseconds later (it is still synchronizing, and its listing of the definitions came before
+    /// the source applied this one) would never get it. A synchronizing node records the request with the events and
+    /// applies it at the end of the synchronization. The key's lock is released before the spread, or two nodes that
+    /// offer the same definition would wait for each other.
     pub async fn offer(&self, offered: Vec<Stored>) {
+        let mut applied = Vec::new();
         for Stored { change, topic_id } in offered {
             let key = (change.kind, change.key.clone());
             let _guard = self.lock_key(&key).await;
@@ -746,13 +754,19 @@ impl Definitions {
                 continue;
             }
             match self.apply_with(&change, topic_id).await {
-                Ok(true) => self.relay(change.kind, &change.key),
+                Ok(true) => {
+                    self.relay(change.kind, &change.key);
+                    applied.extend(self.current(change.kind, &change.key));
+                }
                 Ok(false) => {}
                 Err(e) => {
                     tracing::warn!(key = %change.key, error = %e, "could not apply an offered definition")
                 }
             }
         }
+        let done = [self.service.node_id()];
+        futures_util::future::join_all(applied.iter().map(|change| self.spread(change, &done)))
+            .await;
     }
 
     // ---- New node: pulling the tables ----

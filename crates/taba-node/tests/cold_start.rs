@@ -13,7 +13,8 @@ use serde_json::json;
 
 use common::TestNode;
 use common::cluster::{
-    TestCluster, balancer, eventually, eventually_async, host_of, settled, wait_joined,
+    TestCluster, balancer, definitions_of, eventually, eventually_async, host_of, settled,
+    wait_joined,
 };
 use taba_node::cluster::protocol::MessageRecord;
 use taba_node::cluster::restore::Status;
@@ -338,6 +339,56 @@ async fn a_node_that_joins_offers_the_definitions_of_its_disk_and_the_highest_ve
         .client_get(&format!("/topics/{PLAIN}"))
         .await;
     assert_eq!(response.status(), 200);
+    cluster.shutdown().await;
+}
+
+/// UC: UC-RTN-058
+#[tokio::test]
+async fn an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows()
+ {
+    let cluster = TestCluster::start_with(3, ENV).await;
+    settled(&cluster).await;
+    common::cluster::create_queue(cluster.node(1), PLAIN).await;
+
+    // What the disk of a node that joins would offer: a queue (the one that exists, under another name and ID) at a
+    // version above any the cluster knows.
+    let mut offered = definitions_of(&cluster, 1)
+        .stored_changes()
+        .await
+        .into_iter()
+        .find(|s| s.change.key == PLAIN)
+        .expect("the disk has the queue");
+    offered.change.key = "offered".into();
+    offered.change.version = 9;
+    offered.change.body["name"] = json!("offered");
+    offered.change.body["id"] = json!(id::new_at(9));
+
+    cluster.network.clear_calls();
+    definitions_of(&cluster, 2).offer(vec![offered]).await;
+
+    // The frame of the channel only reaches the peers the node knows at that instant; a node that registered a few
+    // milliseconds later, and is still synchronizing, would never get it. The member is told with a request, like a
+    // change decided by an owner, so the synchronizing node records it with the events.
+    let calls = cluster.network.calls();
+    for target in [1, 3] {
+        assert!(
+            calls.iter().any(|c| c.from == host_of(2)
+                && c.to.host == host_of(target)
+                && c.request == "definition-apply"),
+            "node 2 tells node {target} with a definition-apply"
+        );
+    }
+    for number in 1..=3 {
+        eventually_async("the offered queue in every node", || async {
+            cluster
+                .node(number)
+                .client_get("/topics/offered")
+                .await
+                .status()
+                == 200
+        })
+        .await;
+    }
     cluster.shutdown().await;
 }
 

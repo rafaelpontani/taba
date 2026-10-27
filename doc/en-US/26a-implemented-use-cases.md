@@ -3,7 +3,7 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-10-15 @ 56121c9
+verified-on: 2026-10-26 @ 75012bc
 sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -5539,6 +5539,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-CAN-029
+
+**Case:** A channel opened by a node the peers do **not know yet** is refused **without blocking the node**  
+**Then:** `accept` looks the peer up, asks `sync_members` to adjust the channels to the table and looks again; whoever is still unknown is dropped. It never locks the peers a second time while it holds them (that deadlock stopped the node for good: doc 36, "A channel accept that locked the peers twice").  
+**Level:** C  
+**Tests:**
+  - `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`
+
+---
+
 
 ## INV: Invisibility on the owner and on the replicas
 
@@ -7906,6 +7916,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C
 **Tests:**
   - `tests/cold_start.rs::the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away`
+
+---
+### UC-RTN-058
+
+**Case:** A definition offered by a node that joined reaches **every member of the table**, not only the peers the channel knows at that instant
+**Then:** besides the frame of the channel, the node sends a `definition-apply` to each member (a change decided by an owner does the same), so a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it; the key's lock is released before the spread (doc 36, "A definition offered to a node that was still joining").
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`
 
 ---
 ### UC-RTN-016

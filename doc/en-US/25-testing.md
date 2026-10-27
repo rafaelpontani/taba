@@ -3,8 +3,8 @@ title: Testing
 summary: How Taba is tested — the levels (unit, one node, simulated cluster, connectors, end to end), the test tools (TestNode, TestCluster, in-memory network, manual clock, fake OTLP collector) and how to write and run a test.
 type: guide
 status: stable
-verified-on: 2026-10-24 @ 34e9246
-sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh, docker/seed-demo.sh]
+verified-on: 2026-10-26 @ 75012bc
+sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
 # Testing
@@ -91,9 +91,26 @@ cd connectors/rust && cargo test --workspace --all-features
 cd connectors/csharp && dotnet test Taba.Client.Tests          # unit; the integration ones require TABA_URL
 connectors/csharp/scripts/integration.sh                       # starts Compose, creates tokens and queues, runs everything
 docker/validate.sh                                             # end to end (≈ 5 min)
+docker/hang-hunt.sh nodes_api <test name>                         # a test that hangs only under load: logs + thread stacks
 ```
 
 **`uc_coverage` in detail.** It fails when: (1) a test cites a code that **does not exist** or is `(retirado)`; (2) a code appears **twice** in the documentation. A third rule, "every documented case has a test", **only fails with `TABA_UC_STRICT=1`**: with 183 cases without a test, it prints the scoreboard instead of failing. `uc_coverage` reads the `### UC-…` cards of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).
+
+### Investigating a test that hangs or fails only sometimes
+
+**In one command:** `docker/hang-hunt.sh <test-file> [test name filter...]` (for example `docker/hang-hunt.sh nodes_api a_prune_that_fails a_node_that_does_not_answer_makes`). In a Linux container it builds that test binary, starts it in `PAR` processes at once (8) round after round (`ROUNDS`, 60), with the detailed node logs on, and stops at the first problem: a process that **fails** keeps its log; a process still running after `HANG_AFTER` seconds (70) is a **hang**, and the stack of every thread is taken with `gdb` before it is killed. With `KEEP_GOING=1` it does not stop at the first problem: it goes through all the rounds keeping every bad log, which is how a fix is validated (count the logs kept and read the message of each: a different failure, like a port taken by another test, is not the one being hunted). Logs and stacks go to `target/hang-hunt/` (`run_<round>_<n>.log`, `stack_<round>_<n>.txt`, `progress.txt`); the exit code is 1 when it captured something. The detailed logs are on **only in this script** and in the runs where you set `TABA_TEST_LOG` yourself: the normal runs and the CI stay quiet. The first run builds for about 6 minutes; the build volumes are kept for the next ones. The header of the script lists the other variables (`TEST_THREADS`, `TABA_TEST_LOG`, `OUT`, `PACKAGE`, `IMAGE`). What it does, step by step, is below, for when you need to do it by hand.
+
+1. **Turn the logs on.** `TABA_TEST_LOG=<filter>` makes `TestCluster` start the node logs with that filter (the syntax of `RUST_LOG`: `debug`, or `taba_node=trace,hyper=warn,hyper_util=warn`); add `-- --nocapture`, or the test harness hides them. `TestNode` alone does not read it.
+   ```bash
+   TABA_TEST_LOG='taba_node=trace,hyper=warn,hyper_util=warn' \
+     cargo test -p taba-node --test nodes_api <test name> -- --nocapture
+   ```
+2. **Reproduce under load, not alone.** Build the binary once (`cargo test --no-run`) and start it in 6 to 8 processes at once, round after round, each with a `timeout` of about 75 s and its own log file; delete the log of the runs that pass and keep the ones that hang. A race that costs 1 run in 50 shows up in a few minutes this way and never in a sequence.
+3. **A hang with no output is a stuck runtime: take the stack.** In a Linux container (the Windows binary has no `gdb`): mount the repository read-only, build with `CARGO_TARGET_DIR` on a volume, `apt-get install gdb`, run the binary in the background, and when it does not end in 70 s run `gdb -p <pid> -batch -ex "set pagination off" -ex "thread apply all bt 40"`. Start the container with `--cap-add=SYS_PTRACE`. The `dev` profile keeps line tables, so the frames carry `file:line`.
+4. **Read the stack.** A frame of the crate's own function under `Mutex::lock` (or `RwLock::read`/`write`) with no other thread holding that lock is a lock taken twice by the same thread; two threads, each inside a lock the other holds, is an inversion. With the `current_thread` runtime of `#[tokio::test]` there is a single thread to look at.
+5. **Make the test fail instead of hang.** When the call under test can block for good, run it on its own `std::thread` (entering the runtime with `Handle::enter` if it spawns tasks) and wait with `mpsc::Receiver::recv_timeout`; see `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`.
+
+The case that taught this is in [36-known-issues.md](36-known-issues.md#a-channel-accept-that-locked-the-peers-twice).
 
 ## `docker/validate.sh` and `docker/cluster.sh`
 

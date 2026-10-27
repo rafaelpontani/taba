@@ -3,8 +3,8 @@ title: Known issues
 summary: Log, with history, of the intermittent cluster tests and known issues: each with a title, status, date found, date fixed and the history of occurrences and attempts.
 type: reference
 status: partial
-verified-on: 2026-10-19 @ 294fd03
-sources: [crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verified-on: 2026-10-26 @ 75012bc
+sources: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Known issues
@@ -17,11 +17,73 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
+| [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-10-26 |
+| [A channel accept that locked the peers twice](#a-channel-accept-that-locked-the-peers-twice) | Fixed | 2026-10-26 | 2026-10-26 |
 | [A FIFO restart test that waits 30 s in a combined run](#a-fifo-restart-test-that-waits-30-s-in-a-combined-run) | Open | 2026-10-22 | — |
 | [A notice test that waits 30 s once in the full suite](#a-notice-test-that-waits-30-s-once-in-the-full-suite) | Open | 2026-10-20 | — |
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A restarted test node that loses its port to another test
+
+**Status:** Open · **Found on:** 2026-10-26 · **Fixed on:** —
+
+- **Where:** `tests/common/cluster.rs` (`respawn_node`) and the tests that bring a node back at the address of the one that fell (`tests/cold_start.rs`: `fall`, `come_back`).
+- **Symptom:** `the process restarts: Bind { name: "do cluster", addr: 127.0.0.1:<port>, source: … AddrInUse … }` after the 30 s of `respawn_node`. Seen 3 times in about 1800 process runs of `docker/hang-hunt.sh cold_start …` (10 processes at once), in `when_several_nodes_connect_the_highest_version…` and in `a_node_that_joins_offers_the_definitions_of_its_disk…`; not seen in CI so far.
+- **Cause (checked in the log of the failing run):** `fall()` shuts the node down and frees its cluster port; the test starts the node again on the same port later. In between, the system hands the freed (ephemeral) port to another listener: in the log the port was the cluster port of the fallen node and, two seconds later, the **client** port of a node of **another test of the same process**. `respawn_node` retries for 30 s, but that node keeps the port until its own test ends, so the retry cannot win. The tests of a binary run in parallel threads, so the same can happen in CI.
+- **Proposal (not done):** reserve the port of the fallen node until the restart (a placeholder listener bound right after the shutdown and dropped just before the new bind), or give the restart tests a range of ports that the system does not hand out. Whichever is chosen goes in `tests/common/cluster.rs`, so every restart test gets it.
+- **Do not:** raise the 30 s of `respawn_node`; the port does not come back while the other test lives.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-26 | Seen once in the hunt that validated the fix of the lost offer (round 29, 10 processes at once). The log shows the port reused by another node of the same process. Not fixed: unrelated to that change. |
+| 2026-10-26 | Two more in the 1500-run validation (rounds 19 and 141), one of them in `a_node_that_joins_offers…`: the same `AddrInUse`. |
+
+## A definition offered to a node that was still joining
+
+**Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-10-26
+
+- **Where:** `src/cluster/replication/definitions.rs` (`Definitions::offer`), tested in `tests/cold_start.rs`.
+- **Symptom:** in CI, `cold_start` › `when_several_nodes_connect_the_highest_version_of_each_definition_wins_even_over_the_disk_of_the_coordinator` failed with `waited 30 s for: the highest version in every node` (on the PR run of 2026-10-26), and `a_node_that_joins_offers_the_definitions_of_its_disk_and_the_highest_version_wins` failed with `waited 30 s for: the offered queue in the cluster` (arm64, the push to `release`, the same day). Both only under load. Locally: 2 failures in about 290 runs of the two tests, with 10 processes at once.
+- **Cause:** a node that joins offers what its disk held (`offer`). The winner was applied on the node and sent only as a frame of the channel (`relay`), and a frame only reaches the peers that this node knows at that instant. In the captured run the third node became active and offered `only-3` at 46.965; the second node was registered in the table at 46.972, seven milliseconds later, and was not a peer yet, so the frame did not go to it. Its synchronization had listed the definitions before the source applied `only-3` (at 46.986), and the channel frame was never sent to it: it ended up active with `shared` but without `only-3`, for good. A change decided by an owner does not have the gap: `coordinate` also sends a `definition-apply` to every member of the table (`spread`), and a synchronizing node records that request with the events and applies it at the end. `offer` was the only path that delivered a new definition only through the channel.
+- **How it was found:** `docker/hang-hunt.sh cold_start …` reproduced it in the container; the log had no line about the offer, so temporary lines (`HUNT`, since removed) were added at the `offer`, `learn`, `relay` and `broadcast` and the failing run was captured again. Comparing, node by node, what was offered, to whom it was sent and what each node learned showed the `broadcast` with one peer, seven milliseconds before the second node appeared.
+- **Fix:** after applying what wins, `offer` releases the key's lock and sends a `definition-apply` to every member of the table (`spread`, all the definitions at once), besides the `relay`. The lock is released first: with it held, two nodes offering the same definition would wait for each other until `write.commit.timeout`.
+- **Test:** `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows` (UC-RTN-058) offers a definition from node 2 and requires a `definition-apply` to nodes 1 and 3; it fails without the fix.
+- **Open point:** the arm64 failure of `a_node_that_joins_offers…` was not reproduced (that test checks only node 1, which is always a peer). It may be the same race in another order, or not. If it comes back, reopen this section with the log from `docker/hang-hunt.sh`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-26 | First failure in the CI of the PR (`when_several_nodes_connect…`); passed locally in 3 + 40 + 9 runs. |
+| 2026-10-26 | Second failure, in the push to `release` on arm64 (`a_node_that_joins_offers…`), another test of the same binary and the same area. |
+| 2026-10-26 | `docker/hang-hunt.sh cold_start` (10 processes at once): failure in round 13 and in round 16 of another run, both in `when_several_nodes_connect…`. With the temporary log, the cause above. |
+| 2026-10-26 | Fix applied and test added (fails without the fix). The same hunt with the fix, 1500 process runs: see the next row. |
+| 2026-10-26 | Verification: `KEEP_GOING=1 docker/hang-hunt.sh cold_start …`, 150 rounds of 10 processes at once (1500 runs of the offer tests): **no** `waited 30 s` for a definition, against 2 in about 290 runs before the fix. The only 2 problems were `AddrInUse` when restarting a node (see "A restarted test node that loses its port to another test"), unrelated. |
+
+## A channel accept that locked the peers twice
+
+**Status:** Fixed · **Found on:** 2026-10-26 · **Fixed on:** 2026-10-26
+
+- **Where:** `src/cluster/channel/mod.rs` (`Channels::accept`).
+- **Symptom:** in the CI run of the server on amd64 the last test of the `nodes_api` binary stayed at "has been running for over 60 seconds", with no output and no failure message. It was `a_node_that_does_not_answer_makes_the_consolidated_reads_partial_and_says_which` in one run and `a_prune_that_fails_on_a_node_names_it_and_repeating_it_is_safe` in another: both isolate node 3 and bring it back. It does not reproduce alone: 3 hangs in 120 runs of the binary, every one under load (several processes at once).
+- **Cause:** `accept` looked the peer up with `match self.lock().get(from).cloned() { … None => { self.sync_members(); … } }`. The guard of `lock()` is a temporary in the scrutinee, and a temporary in the scrutinee of a `match` lives until the end of the whole `match`. `sync_members` (and `drop_all`, which it calls) lock the same `std::sync::Mutex` again, which is not reentrant: the thread blocks on itself forever. It only happens when a peer opens a channel that the node does not know yet (a race after the network comes back or while a node drains). On the production runtime a worker thread is lost and the lock of the peers is held for good, so every other task that touches the channels hangs: the node stays alive and stops answering the cluster. In the tests (`current_thread` runtime) nothing moves any more, **not even the timeouts**, which is why the log went silent.
+- **How it was found:** with `TABA_TEST_LOG=taba_node=trace` the log of the hung run ended in a `drain started` that never finished, and not even the `drain.timeout` (25 s, which logs when it runs out) showed up: the whole runtime was stuck, not waiting. The stack of every thread, taken with `gdb` in a Linux container (recipe in [25-testing.md](25-testing.md#investigating-a-test-that-hangs-or-fails-only-sometimes)), showed `accept → sync_members → drop_all → Channels::lock` blocked.
+- **Fix:** the lookup is its own statement (`let known = self.lock().get(from).cloned();`) and the guard is gone before `sync_members` runs; `receive` already did it this way. The same shape was removed from three `if let` that held a guard in the scrutinee (`allow_new_vote`, `Backup::usage`, `Sync::abandon`) and `clippy::significant_drop_in_scrutinee` is now on for the workspace (D179).
+- **Test:** `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node` (UC-CAN-029) calls `accept` for an unknown peer on its own thread and fails after 10 s if it does not return. It fails without the fix.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-26 | Seen in CI as a test "running for over 60 seconds" (the second occurrence in another test of the same binary). Not reproduced alone or in 40 sequential runs; reproduced with 6 concurrent processes (1 hang in 48 runs). |
+| 2026-10-26 | Logs on: 1 hang in 16 runs of the two tests; the last line was a drain that never ended. In a Linux container with `gdb`: 1 hang in 56 runs, and the stack gave the cause above. |
+| 2026-10-26 | Fix applied, test added (fails without the fix). `cargo clippy --all-targets -- -D warnings` clean with the new lint. The two tests, repeated in the same container with 8 processes at once: see the next row. |
+| 2026-10-26 | Verification: 100 rounds of 8 processes at once (800 runs of the two tests) in the container that hung before, none hung; before the fix it hung once in every 16 to 56 runs. The `channel` binary passed (16 tests). |
 
 ## A FIFO restart test that waits 30 s in a combined run
 
@@ -106,7 +168,24 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-18 | Found while analysing `NO_VOTE`. Fixed the same day (`a9ecf01`). |
 
+## Lessons learned
+
+What the issues above taught, so the next one is found faster (the checklist for an agent is in [AGENTS.md](../../AGENTS.md)):
+
+- **A test that goes silent is not a slow test.** "Has been running for over 60 seconds" with **no log after some point**, not even a timeout that should have logged, means the runtime is stuck, not waiting. Look for a lock taken twice or a lock-order inversion, not for a timeout to raise.
+- **A `std::sync::Mutex` is not reentrant, and a guard lives longer than it looks.** A temporary in the scrutinee of a `match`, `if let`, `while let` or `for` lives until the end of the whole block, `else` and arms included (in the 2024 edition an `if let` drops it before the `else`, but a `match` still does not). Take the value out in its own `let` statement and use it afterwards.
+- **It shows only under load.** These races pass alone and in sequence. Reproduce with several processes of the test binary at once, and keep the logs only of the runs that hang.
+- **On the `current_thread` runtime of `#[tokio::test]` a blocked lock freezes everything**, timers included, so the test never fails by itself: the code that calls the suspect function in a test runs it on its own thread and waits with `recv_timeout`, so the test fails instead of hanging.
+- **Take the stack, do not guess.** `docker/hang-hunt.sh <test-file> [filter...]` does the whole hunt (load, detailed logs only there, stack of every thread of a hung process). `TABA_TEST_LOG` narrows the place; the stack of every thread (`gdb -p <pid>`, `thread apply all bt`) names the exact line. It is cheaper than another day of reading logs.
+- **Search for the whole family.** The same mistake was in `accept`, and the same shape (a guard in a scrutinee) was in three more places; the lock-order inversion of 2026-10-18 is a cousin. After a fix, run `cargo clippy -- -W clippy::significant_drop_in_scrutinee` and the checks listed in [AGENTS.md](../../AGENTS.md).
+- **A `waited 30 s` for a state that never arrives is a lost delivery, not a slow one.** Ask who was supposed to send it, to whom, and who was in the list of recipients at that instant. A `broadcast` (or a frame of the channel) reaches only the peers that exist **now**: a node that registers a few milliseconds later, and is still synchronizing, never gets it unless some other path (a `definition-apply` with `spread`, the heartbeat, the synchronization itself) covers it. A new way of delivering state to the cluster needs that second path, or a reason why it is not needed.
+- **When the log has no line about the suspect path, add it, run again and take it out.** The failing run of the offer had no line about the offer. Temporary lines at each step (what was offered, to whom it was sent, what each node learned), marked with a word you can search (`HUNT`), and the same hunt, gave the order of the events in milliseconds; the lines were removed with `git checkout` before the fix. Keep the captured log (`target/`).
+- **A fix is not done without a test that fails without it** (here, one that fails by timeout and not by hanging) and without repeating the run that used to hang.
+
 ## Sources and evidence
 
-- The tests cited and `tests/common/cluster.rs` (`NO_VOTE`, `FAST`, `WAIT`).
+- The tests cited and `tests/common/cluster.rs` (`NO_VOTE`, `FAST`, `WAIT`, `TABA_TEST_LOG`).
+- `src/cluster/channel/mod.rs` (`accept`, `receive`, `sync_members`, `drop_all`, `allow_new_vote`), `src/cluster/backup/evict.rs`, `src/cluster/sync/mod.rs` and `tests/channel.rs` (UC-CAN-029).
+- `src/cluster/replication/definitions.rs` (`offer`, `spread`, `relay`, `coordinate`), `src/cluster/service/mod.rs` (`recover_previous_life`, `finish_join`, `activate`) and `tests/cold_start.rs` (UC-RTN-058); the timeline of the lost offer is in the log kept from the hunt of 2026-10-26.
+- The hang of 2026-10-26 was reproduced locally and in a Linux container; the stack, the logs and the run counts are the ones in the history table.
 - The failures were seen in the repository's CI logs; the "found" dates come from the git history and the logs.

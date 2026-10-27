@@ -16,7 +16,7 @@ use tokio::sync::Semaphore;
 use serde_json::json;
 use taba_node::cluster::channel::Channels;
 use taba_node::cluster::members::MemberTable;
-use taba_node::cluster::replication::{Replication, Signals};
+use taba_node::cluster::replication::{Definitions, Replication, Signals};
 use taba_node::cluster::transport::PeerAddr;
 use taba_node::cluster::transport::memory::MemoryNetwork;
 use taba_node::core::clock::ManualClock;
@@ -108,6 +108,10 @@ pub struct TestCluster {
 impl TestCluster {
     /// A network without nodes, with the load balancer up (no node behind it).
     pub fn empty() -> Self {
+        // `TABA_TEST_LOG=debug` (or `taba_node=trace,...`) turns the node logs on to investigate a test.
+        if let Ok(level) = std::env::var("TABA_TEST_LOG") {
+            taba_node::telemetry::init_logging(Some(&level), taba_node::config::LogFormat::Text);
+        }
         let network = MemoryNetwork::new();
         network.add_balancer(balancer(), Vec::new());
         Self {
@@ -323,6 +327,10 @@ pub fn replication_of(node: &TestNode) -> Arc<Replication> {
 
 pub fn channels_of(cluster: &TestCluster, number: usize) -> Arc<Channels> {
     replication_of(cluster.node(number)).channels.clone()
+}
+
+pub fn definitions_of(cluster: &TestCluster, number: usize) -> Arc<Definitions> {
+    replication_of(cluster.node(number)).definitions.clone()
 }
 
 pub fn signals_of(cluster: &TestCluster, number: usize) -> Arc<Signals> {

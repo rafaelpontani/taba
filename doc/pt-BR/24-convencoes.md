@@ -3,7 +3,7 @@ título: Convenções
 resumo: As regras de quem altera o código — idioma, estrutura de pastas, regras de código Rust, convenções da API e da configuração, testes, documentação, diagramas, commits — e o checklist ao terminar uma mudança.
 tipo: guia
 status: estável
-verificado-em: 2026-10-18 @ b090822
+verificado-em: 2026-10-26 @ 75012bc
 fontes: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagrams]
 ---
 
@@ -57,6 +57,7 @@ taba/
 - **Direção das dependências** `core ← storage ← engine ← cluster ← http ← node`: cada módulo conhece só os da esquerda. `core` não importa ninguém ([04-arquitetura.md](04-arquitetura.md)). Um **trait** fica na camada **mais baixa** de que o chamador precisa, junto das implementações real e de teste.
 - **Passar mensagens, não compartilhar estado.** O escritor único por banco é uma fila de comandos executada uma de cada vez; prefira isso a `Arc<Mutex<…>>` espalhado.
 - **Nunca segurar um lock durante um `.await`.**
+- **Nunca chamar, com um guard na mão, algo que trava o mesmo `Mutex` de novo.** O `std::sync::Mutex` não é reentrante: a thread bloqueia em si mesma, sem erro e sem log. Um guard criado no escrutínio de um `match`, `if let`, `while let` ou `for` vive até o fim desse bloco, então tire o valor antes (`let known = self.lock().get(k).cloned();`) e use-o depois. Quando duas travas forem necessárias, pegue-as na mesma ordem em todo lugar (o mapa de peers, depois o estado do peer). O `clippy::significant_drop_in_scrutinee` está ligado no workspace e o CI falha nele ([36-problemas-conhecidos.md](36-problemas-conhecidos.md#um-accept-de-canal-que-travou-os-peers-duas-vezes), D179).
 - **SQLite fora do executor assíncrono** (`rusqlite` é síncrono): thread dedicada ou `spawn_blocking`; leituras longas usam conexões próprias em WAL.
 - **Sem `unwrap()` fora de testes.** Erros usam um tipo próprio (`TabaError`) que mapeia direto para o catálogo de códigos.
 - **Cancelamento limpo:** toda tarefa de fundo recebe um `CancellationToken` (é o que o drain usa).
