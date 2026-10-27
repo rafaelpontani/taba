@@ -136,6 +136,26 @@ Lesson of [a channel accept that locked the peers twice](doc/en-US/36-known-issu
 - A guard held across a call to a closure or a hook (`on_down`, `disk_probe`): the closure may call back into the type.
 - A guard held across an `.await` is already caught by `clippy::await_holding_lock`.
 
+### A test that waits 30 s for something that never arrives: lost deliveries
+
+Lesson of [a definition offered to a node that was still joining](doc/en-US/36-known-issues.md#a-definition-offered-to-a-node-that-was-still-joining) (2026-10-26). Unlike a silent test, the node is alive and the log keeps moving: the test ends with `waited 30 s for: <state>` and one node simply never got something that the others have.
+
+**How to recognise it**
+
+- `waited 30 s` (or any timeout) on a check of **one or all nodes** having a definition, a membership change, a state, a message; passes alone, fails about 1 time in 100 or more under load, and on the slower runner (arm64).
+- The tests are of **joins at the same time** (cold start, several nodes returning together, a node joining while another one offers or changes something): the paths where a node is in the table but is not yet a peer of the channel, or is still synchronizing.
+- The state is delivered through a **frame of the channel** (`broadcast`, `announce_*`, `relay`) and nothing else. A frame only reaches the peers that exist at that instant, and a node that registers a few milliseconds later never gets it.
+
+**What to do**
+
+1. Run `docker/hang-hunt.sh <test-file> [filter...]` (above) until it keeps a failing run. A failure, not only a hang, stops it and keeps the log.
+2. If the log has no line about the suspect path, add temporary `tracing::info!` lines with a word to search (`HUNT`) at each step (what is offered, to whom it is sent, what each node learns and with which version), run the hunt again, **remove the lines** (`git checkout -- <files>`; check with `grep -rn HUNT crates`) and keep the captured log under `target/`.
+3. Put the events of the failing cluster in order (the node ids tell the clusters apart when two tests share the log): who sent, to whom, who was in the list of peers, who registered in the table and when. A `broadcast` whose `peers` list lacks a node that registered a few milliseconds later is the signature.
+4. The fix is a **second delivery path** for whoever is not there yet, the same that a change decided by an owner has: a `definition-apply` to every member of the table (`spread`), which a synchronizing node records with the events; never the lock of the key held while the others are called (two nodes doing the same would wait for each other).
+5. A test that fails without the fix (here, the `definition-apply` calls of the in-memory network) and the same hunt with the fix, noting how many runs passed.
+
+**Look for the same mistake elsewhere:** every caller of `Signals::announce_*`, `Channels::broadcast` and `Definitions::relay` that is the **only** way a new state reaches the cluster. Checked on 2026-10-26: `coordinate` and the heir (`handle_apply` with `relay`) also spread; `offer` did not (fixed); the node states (`announce_draining`, `announce_active`, `announce_failed`) are repeated by the heartbeat; the membership has its own two-phase commit. A new `announce_*` needs the same answer: which second path covers a node that is not a peer yet.
+
 ## Use cases
 
 The use cases that guide the tests are the cards of [26a](doc/en-US/26a-implemented-use-cases.md) and [26b](doc/en-US/26b-planned-use-cases.md), each with a `UC-<AREA>-<NNN>` code that the tests cite on a `/// UC: UC-MSG-003` line. The method is explained in [doc/en-US/26-use-cases.md](doc/en-US/26-use-cases.md).
