@@ -903,7 +903,10 @@ impl Channels {
 
     /// The peer opened the connection with this node.
     pub fn accept(self: &Arc<Self>, from: &str, io: ChannelLink) {
-        let peer = match self.lock().get(from).cloned() {
+        // The guard of `lock()` must be gone before `sync_members`, which locks the peers again: a temporary in the
+        // scrutinee of a `match` lives until the end of the `match`, so the lookup is its own statement.
+        let known = self.lock().get(from).cloned();
+        let peer = match known {
             Some(peer) => Some(peer),
             None => {
                 // A member this table already has and the channel did not know yet.
@@ -981,7 +984,8 @@ impl Channels {
     /// The peer's exclusion vote ended without effect because of a transient error: the channel's next failure
     /// opens another, instead of waiting for the channel to come back.
     pub fn allow_new_vote(&self, node_id: &str) {
-        if let Some(peer) = self.lock().get(node_id).cloned() {
+        let peer = self.lock().get(node_id).cloned();
+        if let Some(peer) = peer {
             peer.lock().vote_opened = false;
         }
     }

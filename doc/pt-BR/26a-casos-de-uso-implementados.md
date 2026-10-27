@@ -3,7 +3,7 @@ título: Casos de uso implementados
 resumo: O catálogo dos casos de uso do Taba que têm ao menos um teste que os cita, por área, com o caso, o nível e os testes que o provam.
 tipo: referência
 status: estável
-verificado-em: 2026-10-15 @ 56121c9
+verificado-em: 2026-10-26 @ 75012bc
 fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -5536,6 +5536,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** U  
 **Testes:**
   - `src/cluster/channel/queue/tests.rs::a_definition_frame_is_replaced_by_the_newer_of_the_same_definition_and_never_expires`
+
+---
+
+### UC-CAN-029
+
+**Caso:** Um canal aberto por um nó que os peers **ainda não conhecem** é recusado **sem bloquear o nó**  
+**Então:** o `accept` procura o peer, pede ao `sync_members` que ajuste os canais à tabela e procura de novo; quem continua desconhecido é descartado. Ele nunca trava os peers uma segunda vez enquanto os segura (esse deadlock parava o nó para sempre: doc 36, "Um accept de canal que travou os peers duas vezes").  
+**Nível:** C  
+**Testes:**
+  - `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`
 
 ---
 

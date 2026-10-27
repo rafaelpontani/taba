@@ -108,6 +108,10 @@ pub struct TestCluster {
 impl TestCluster {
     /// A network without nodes, with the load balancer up (no node behind it).
     pub fn empty() -> Self {
+        // `TABA_TEST_LOG=debug` (or `taba_node=trace,...`) turns the node logs on to investigate a test.
+        if let Ok(level) = std::env::var("TABA_TEST_LOG") {
+            taba_node::telemetry::init_logging(Some(&level), taba_node::config::LogFormat::Text);
+        }
         let network = MemoryNetwork::new();
         network.add_balancer(balancer(), Vec::new());
         Self {

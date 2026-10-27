@@ -785,3 +785,33 @@ async fn a_membership_frame_that_removes_the_receiving_node_is_ignored() {
     );
     cluster.shutdown().await;
 }
+
+/// UC: UC-CAN-029
+#[tokio::test]
+async fn a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node() {
+    let cluster = TestCluster::start(2).await;
+    settled(&cluster).await;
+    let channels = channels_of(&cluster, 1);
+
+    // The call runs on its own thread: if `accept` locked the peers twice it would never return, and the
+    // test must fail instead of hanging.
+    let (link, _other_end) = taba_node::cluster::transport::ChannelLink::pair();
+    let runtime = tokio::runtime::Handle::current();
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn({
+        let channels = channels.clone();
+        move || {
+            let _entered = runtime.enter();
+            channels.accept(&guid(), link);
+            let _ = done.send(());
+        }
+    });
+    finished
+        .recv_timeout(Duration::from_secs(10))
+        .expect("accept returned: it does not lock the peers again while it holds them");
+
+    // The node still works: its peers answer and the channels are up.
+    assert_eq!(channels.peers().len(), 1);
+    assert!(channels.peers().iter().all(|p| p.up));
+    cluster.shutdown().await;
+}

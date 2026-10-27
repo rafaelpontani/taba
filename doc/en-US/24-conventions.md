@@ -3,7 +3,7 @@ title: Conventions
 summary: The rules for whoever changes the code — language, folder structure, Rust code rules, API and configuration conventions, tests, documentation in several languages, diagrams, commits — and the checklist when finishing a change.
 type: guide
 status: stable
-verified-on: 2026-10-18 @ b090822
+verified-on: 2026-10-26 @ 75012bc
 sources: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagrams]
 ---
 
@@ -57,6 +57,7 @@ taba/
 - **Direction of dependencies** `core ← storage ← engine ← cluster ← http ← node`: each module knows only those on its left. `core` imports no one ([04-architecture.md](04-architecture.md)). A **trait** goes in the **lowest** layer the caller needs, together with the real and test implementations.
 - **Pass messages, do not share state.** The single writer per database is a command queue executed one at a time; prefer that to a scattered `Arc<Mutex<…>>`.
 - **Never hold a lock across an `.await`.**
+- **Never call, while holding a guard, anything that locks the same `Mutex` again.** `std::sync::Mutex` is not reentrant: the thread blocks on itself, with no error and no log. A guard created in the scrutinee of a `match`, `if let`, `while let` or `for` lives until the end of that block, so take the value out first (`let known = self.lock().get(k).cloned();`) and use it afterwards. When two locks are needed, take them in the same order everywhere (peers map, then the peer's state). `clippy::significant_drop_in_scrutinee` is on for the workspace and CI fails on it ([36-known-issues.md](36-known-issues.md#a-channel-accept-that-locked-the-peers-twice), D179).
 - **SQLite outside the async executor** (`rusqlite` is synchronous): dedicated thread or `spawn_blocking`; long reads use their own connections in WAL.
 - **No `unwrap()` outside tests.** Errors use their own type (`TabaError`) that maps directly to the code catalogue.
 - **Clean cancellation:** every background task receives a `CancellationToken` (it is what drain uses).

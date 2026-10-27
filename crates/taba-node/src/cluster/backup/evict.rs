@@ -20,7 +20,8 @@ const CHECK_EVERY: u32 = 32;
 impl Backup {
     /// Disk usage (%). The real reading holds for 200 ms: the drain asks for it on every message.
     fn usage(&self) -> u32 {
-        if let Some(probe) = lock(&self.disk_probe).clone() {
+        let probe = lock(&self.disk_probe).clone();
+        if let Some(probe) = probe {
             return probe();
         }
         let mut cached = lock(&self.disk_usage);
