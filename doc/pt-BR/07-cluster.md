@@ -3,8 +3,8 @@ título: Cluster
 resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, perfil de um nó e a retomada do disco depois de uma queda total.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-22 @ 2f1919d
-fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, http/forward]
+verificado-em: 2026-10-26 @ 5b85d85
+fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, cluster/replication/definitions.rs, http/forward]
 ---
 
 # Cluster
@@ -237,7 +237,7 @@ Todo processo nasce com ID novo. É uma defesa: um nó que ficou fora do ar e de
 ### 10.2 Definições
 
 - Cada definição tem **versão** e uma dona no anel, com desempate por impressão digital. Na junção de dois estados vence a **maior versão** por definição, e a lápide de versão maior vence a definição. O `topicId` vai na lápide, então a remoção de um tópico não apaga o que foi recriado com o mesmo nome.
-- O nó **lê** as definições do disco só quando **parte sozinho** (10.5). Se entra num cluster que já está de pé, guarda o que o disco tinha, apaga-o, recebe as definições do cluster e então as **oferece**: a maior versão de cada uma vence, lápide incluída, e um disco mais velho que o cluster não impõe nada.
+- O nó **lê** as definições do disco só quando **parte sozinho** (10.5). Se entra num cluster que já está de pé, guarda o que o disco tinha, apaga-o, recebe as definições do cluster e então as **oferece**: a maior versão de cada uma vence, lápide incluída, e um disco mais velho que o cluster não impõe nada. O que vence vai a **todo membro da tabela** com um `definition-apply`, como uma mudança decidida por um dono, além do quadro do canal (que só alcança os peers que o nó conhece naquele instante): um nó que se registrou milissegundos depois e ainda sincroniza a grava com os eventos e a aplica no fim.
 - A lápide expira em 1 hora. Uma definição que o cluster apagou há mais tempo e que ainda está viva num disco que entra volta ao cluster (PRB-064).
 
 ### 10.3 O log de mensagens excluídas

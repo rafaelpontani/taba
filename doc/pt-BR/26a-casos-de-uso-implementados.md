@@ -7918,6 +7918,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `tests/cold_start.rs::the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away`
 
 ---
+### UC-RTN-058
+
+**Caso:** Uma definição oferecida por um nó que entrou chega a **todo membro da tabela**, não só aos peers que o canal conhece naquele instante
+**Então:** além do quadro do canal, o nó envia um `definition-apply` a cada membro (uma mudança decidida por um dono faz o mesmo), então um nó que se registrou milissegundos depois e ainda sincroniza a grava com os eventos e a aplica; o lock da chave é solto antes do envio (doc 36, "Uma definição oferecida a um nó que ainda estava entrando").
+**Nível:** C
+**Testes:**
+  - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`
+
+---
 ### UC-RTN-016
 
 **Caso:** O que o disco da vida anterior tem e a lista de perdas não pede não volta a ninguém, e o disco novo nunca ressuscita uma mensagem antiga  

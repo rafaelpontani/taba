@@ -3,8 +3,8 @@ title: Cluster
 summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, one-node profile and resuming from disk after a total fall.
 type: explanation
 status: stable
-verified-on: 2026-10-22 @ 2f1919d
-sources: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, http/forward]
+verified-on: 2026-10-26 @ 5b85d85
+sources: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, cluster/replication/definitions.rs, http/forward]
 ---
 
 # Cluster
@@ -237,7 +237,7 @@ Every process is born with a new ID. It is a defence: a node that was down and w
 ### 10.2 Definitions
 
 - Each definition has a **version** and an owner on the ring, with the fingerprint as tie-breaker. When two states are merged the **highest version** wins per definition, and a tombstone of a higher version wins over the definition. The `topicId` goes in the tombstone, so removing a topic does not erase one that was recreated with the same name.
-- The node **reads** the definitions from disk only when it **starts alone** (10.5). If it joins a cluster that is already up, it keeps what the disk had, clears it, receives the cluster's definitions and then **offers** them: the highest version of each wins, tombstone included, and a disk older than the cluster imposes nothing.
+- The node **reads** the definitions from disk only when it **starts alone** (10.5). If it joins a cluster that is already up, it keeps what the disk had, clears it, receives the cluster's definitions and then **offers** them: the highest version of each wins, tombstone included, and a disk older than the cluster imposes nothing. What wins goes to **every member of the table** with a `definition-apply`, like a change decided by an owner, besides the frame of the channel (which only reaches the peers the node knows at that instant): a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it at the end.
 - A tombstone expires after 1 hour. A definition that the cluster deleted longer ago and that is still alive on a disk that joins comes back to the cluster (PRB-064).
 
 ### 10.3 The log of excluded messages

@@ -7918,6 +7918,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `tests/cold_start.rs::the_node_that_was_missing_when_the_probe_ended_joins_later_by_the_normal_join_and_the_condition_goes_away`
 
 ---
+### UC-RTN-058
+
+**Case:** A definition offered by a node that joined reaches **every member of the table**, not only the peers the channel knows at that instant
+**Then:** besides the frame of the channel, the node sends a `definition-apply` to each member (a change decided by an owner does the same), so a node that registered a few milliseconds later and is still synchronizing records it with the events and applies it; the key's lock is released before the spread (doc 36, "A definition offered to a node that was still joining").
+**Level:** C
+**Tests:**
+  - `tests/cold_start.rs::an_offered_definition_goes_to_every_member_of_the_table_and_not_only_to_the_peers_the_channel_knows`
+
+---
 ### UC-RTN-016
 
 **Case:** What the disk of the previous life has and the loss list does not ask for does not go back to anyone, and the new disk never resurrects an old message  
