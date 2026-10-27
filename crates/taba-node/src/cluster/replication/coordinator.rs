@@ -319,13 +319,23 @@ async fn commit_until_done(
         } else {
             match trace::traced(
                 trace::peer_span("taba.write.register", &owner.node_id, false),
-                service.call_member(owner, plan.register.clone()),
+                service.call_member(owner, plan.register.decided()),
             )
             .await
             {
                 Ok(_) => {
                     registered = true;
                     continue;
+                }
+                // Another operation has the message right now (it took it while this node had lost the register).
+                // The decision is final and the others already applied it, so this node waits for the other
+                // operation to end (or expire) and tries again, instead of giving up and keeping a message that no
+                // longer exists anywhere else (PRB-076).
+                Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterConflict => {
+                    Err(CallError::Unreachable(format!(
+                        "another operation holds the message: {}",
+                        error.message
+                    )))
                 }
                 Err(error) => Err(error),
             }

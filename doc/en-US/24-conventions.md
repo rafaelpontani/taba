@@ -3,7 +3,7 @@ title: Conventions
 summary: The rules for whoever changes the code — language, folder structure, Rust code rules, API and configuration conventions, tests, documentation in several languages, diagrams, commits — and the checklist when finishing a change.
 type: guide
 status: stable
-verified-on: 2026-10-26 @ 75012bc
+verified-on: 2026-10-27 @ ada9ff1
 sources: [AGENTS.md, Cargo.toml, crates/taba-node/src, crates/taba-node/tests, .releaserc.json, doc/diagrams]
 ---
 
@@ -47,8 +47,11 @@ taba/
   doc/                          README.md, diagrams/, one folder per language
   doc/pt-BR/                    the documentation in Brazilian Portuguese
   doc/en-US/                    this documentation
+  doc/plans/                    plans in development (working branches only; never in release or main)
   .github/                      workflows, actions and scripts
 ```
+
+**`doc/plans/`** is the only part of `doc/` that does not describe the code as it is: it holds plans still being developed, exists only on the working branch, is deleted when the plan is executed (what it decided goes to the permanent documentation) and is blocked from `release` and `main` by the `Development plans` job of `ci.yml` ([AGENTS.md](../../AGENTS.md#development-plans-docplans)).
 
 **Module** = folder with `mod.rs` + `tests.rs` side by side; the `mod.rs` **starts with a `//!` comment** saying what the module does and which document holds the design, and **ends** with `#[cfg(test)] mod tests;`. Unit tests **live in the sibling file**, not inside the code.
 

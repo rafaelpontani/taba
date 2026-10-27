@@ -99,7 +99,7 @@ Com `backup.s3.bucket`, "inalcançável" deixa de bastar: cada nó grava um **ba
 
 ### Risco aceito: partições
 
-A base de votantes é só quem o votante enxerga. Numa **partição de rede** em que os dois lados têm saudáveis suficientes, cada lado pode excluir o outro. O `cluster.vote.min-voters` impede só que um nó **isolado** exclua todos os demais; quem opera muitos nós pode aumentá-lo para uma maioria do cluster. Quando os dois lados se excluíram, cada nó guarda os endereços dos excluídos e, a cada `keepalive.interval × 10`, consulta a tabela deles: se for de **outro cluster** e este lado **perder** (menos membros; no empate, o do menor `nodeId`), o nó refaz o ingresso do zero.
+A base de votantes é só quem o votante enxerga. Numa **partição de rede** em que os dois lados têm saudáveis suficientes, cada lado pode excluir o outro. O `cluster.vote.min-voters` impede só que um nó **isolado** exclua todos os demais; quem opera muitos nós pode aumentá-lo para uma maioria do cluster. Quando os dois lados se excluíram, cada nó guarda os endereços dos excluídos e, a cada `keepalive.interval × 10`, consulta a tabela deles: se for de **outro cluster** e este lado **perder** (menos membros; no empate, o do menor `nodeId`), o nó se reagrupa como o perdedor da sondagem dos IPs antigos ([seção 10.11](#1011-sondagem-dos-ips-antigos-e-reencontro-dos-grupos)): passa o que tem em memória para o disco, o disco vira a pasta de uma vida e ele entra no outro cluster com ID novo. O que aceitou enquanto esteve separado é restaurado e conferido no cluster unido (D181).
 
 ## 4. Freezing e retorno do nó excluído
 

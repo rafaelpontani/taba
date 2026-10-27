@@ -256,3 +256,79 @@ async fn only_the_chosen_kind_of_call_is_lost() {
         .await
         .expect("only two were lost");
 }
+
+/// UC: UC-CHS-003
+#[tokio::test]
+async fn a_one_way_cut_stops_one_direction_only_and_heals() {
+    let (network, _) = network_with(&["10.0.0.1", "10.0.0.2"]);
+    let (one, two) = (network.transport("10.0.0.1"), network.transport("10.0.0.2"));
+    network.cut_one_way("10.0.0.1", "10.0.0.2");
+    assert!(
+        one.call(&addr("10.0.0.2"), op())
+            .await
+            .unwrap_err()
+            .is_network()
+    );
+    two.call(&addr("10.0.0.1"), op())
+        .await
+        .expect("the other direction is open");
+
+    network.heal_one_way("10.0.0.1", "10.0.0.2");
+    one.call(&addr("10.0.0.2"), op()).await.unwrap();
+}
+
+/// UC: UC-CHS-003
+#[tokio::test]
+async fn a_lost_reply_runs_the_call_and_fails_the_caller() {
+    let (network, handlers) = network_with(&["10.0.0.1", "10.0.0.2"]);
+    let one = network.transport("10.0.0.1");
+    network.lose_replies("10.0.0.1", "10.0.0.2", true);
+    let error = one.call(&addr("10.0.0.2"), op()).await.unwrap_err();
+    assert!(error.is_network(), "{error}");
+    assert_eq!(
+        handlers[1].callers.lock().unwrap().len(),
+        1,
+        "the handler did run"
+    );
+
+    network.lose_replies("10.0.0.1", "10.0.0.2", false);
+    one.call(&addr("10.0.0.2"), op()).await.unwrap();
+}
+
+/// UC: UC-CHS-003
+#[tokio::test]
+async fn the_loss_of_a_link_repeats_from_the_seed() {
+    async fn outcome(seed: u64) -> Vec<bool> {
+        let (network, _) = network_with(&["10.0.0.1", "10.0.0.2"]);
+        network.seed_links(seed);
+        network.set_link_loss("10.0.0.1", "10.0.0.2", 50);
+        let one = network.transport("10.0.0.1");
+        let mut result = Vec::new();
+        for _ in 0..40 {
+            result.push(one.call(&addr("10.0.0.2"), op()).await.is_ok());
+        }
+        result
+    }
+    let first = outcome(7).await;
+    assert_eq!(
+        first,
+        outcome(7).await,
+        "the same seed loses the same calls"
+    );
+    assert!(first.contains(&true) && first.contains(&false), "{first:?}");
+    assert_ne!(first, outcome(8).await, "another seed loses others");
+}
+
+/// UC: UC-CHS-003
+#[tokio::test]
+async fn heal_all_removes_every_programmed_failure() {
+    let (network, _) = network_with(&["10.0.0.1", "10.0.0.2", "10.0.0.3"]);
+    let one = network.transport("10.0.0.1");
+    network.partition("10.0.0.1", "10.0.0.2");
+    network.cut_one_way("10.0.0.1", "10.0.0.3");
+    network.isolate("10.0.0.3");
+    network.set_link_loss("10.0.0.1", "10.0.0.2", 100);
+    network.heal_all();
+    one.call(&addr("10.0.0.2"), op()).await.unwrap();
+    one.call(&addr("10.0.0.3"), op()).await.unwrap();
+}

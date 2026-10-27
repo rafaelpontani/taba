@@ -1126,3 +1126,106 @@ async fn a_lost_ready_signal_is_corrected_by_the_periodic_repeat() {
     );
     cluster.shutdown().await;
 }
+
+/// UC: UC-CHS-005
+///
+/// The ack was decided and the replicas applied it, but the register on the owner expired (`write.pending.ttl`) while
+/// the commit to it was on the way, and another operation took the message in the meantime. The coordinator registers
+/// the ack again, gets a conflict and must keep trying until the other operation is gone, not give up: the owner
+/// would keep a message that no longer exists on the replicas (PRB-076, found by the chaos run).
+#[tokio::test]
+async fn an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message()
+{
+    use taba_node::cluster::protocol::{AckRegisterRequest, OperationRef, Step};
+
+    let cluster = TestCluster::start_with(3, NO_VOTE).await;
+    create_queue(cluster.node(1), "orders").await;
+    let id = publish(cluster.node(1), "orders", json!({"x": 1})).await;
+    let mut got = Vec::new();
+    for _ in 0..40 {
+        got = consume(
+            cluster.node(1),
+            "orders",
+            "maxMessages=1&visibilityTimeout=600",
+        )
+        .await;
+        if !got.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let token = got[0]["receiptToken"].as_str().unwrap().to_owned();
+    let owner_id = cluster
+        .node(1)
+        .node
+        .cluster()
+        .unwrap()
+        .membership()
+        .ring()
+        .primary(message_position(&id))
+        .unwrap()
+        .to_owned();
+    let owner = (1..=3).find(|n| cluster.node_id(*n) == owner_id).unwrap();
+    let via = (1..=3).find(|n| *n != owner).unwrap();
+    let owner_host = common::cluster::host_of(owner);
+    let replica = cluster
+        .node(owner)
+        .node
+        .cluster()
+        .and_then(|c| c.replication())
+        .map(|r| r.replica.clone())
+        .unwrap();
+
+    // The commit to the owner takes 1 s: the register lands at once, and the commit is still on the way.
+    cluster
+        .network
+        .set_delay_host_kind(&owner_host, "ack-commit", Duration::from_millis(1000));
+    let client = cluster.node(via);
+    let url = client.client_url(&format!(
+        "/topics/orders/messages/{id}?receiptToken={token}"
+    ));
+    let http = client.client.clone();
+    let ack = tokio::spawn(async move { http.delete(url).send().await });
+
+    // While the commit is on the way: the register of the owner expires, and another operation takes the message.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    cluster.clock.advance(Duration::from_secs(31));
+    replica
+        .ack(
+            "orders",
+            &id,
+            Step::Register(AckRegisterRequest {
+                operation_id: "another-operation".into(),
+                coordinator_id: "test".into(),
+                receipt_token: String::new(),
+                delete_at_ms: None,
+                discard: true,
+            }),
+        )
+        .await
+        .expect("the other operation registers");
+
+    // The commit reaches the owner, finds nothing and registers again against the other operation. It must keep trying.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    replica
+        .ack(
+            "orders",
+            &id,
+            Step::Rollback(OperationRef {
+                operation_id: "another-operation".into(),
+            }),
+        )
+        .await
+        .expect("the other operation ends");
+
+    let _ = ack.await;
+    let owner_messages = messages_of(cluster.node(owner));
+    eventually("the owner to apply the ack too", move || {
+        owner_messages
+            .message_info("orders", &id)
+            .unwrap()
+            .is_none()
+    })
+    .await;
+    cluster.shutdown().await;
+}

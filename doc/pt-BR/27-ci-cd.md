@@ -3,7 +3,7 @@ título: CI/CD e releases
 resumo: Como o repositório é validado e publicado — os workflows do GitHub Actions, a ordem do release (nada público antes de tudo verde), o versionamento automático (semantic-release, candidatas e finais), as tags flutuantes por digest, a publicação em Docker Hub, GHCR, crates.io e nuget.org, e como qualquer pessoa verifica que um artefato saiu deste pipeline.
 tipo: referência
 status: estável
-verificado-em: 2026-10-17 @ 4dc8c9f
+verificado-em: 2026-10-27 @ ada9ff1
 fontes: [.github/workflows, .github/actions/node-binary, .github/scripts/set-version.sh, .github/dependabot.yml, .releaserc.json, .github/actions/registry-login, .github/actions/provenance, Dockerfile, Dockerfile.ci, connectors/csharp/Directory.Build.props, connectors/rust/Cargo.toml, SECURITY.md]
 ---
 
@@ -47,10 +47,11 @@ feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhum
 
 | Arquivo | Faz |
 |---|---|
-| `ci.yml` | Chama `build-server`, `build-connector-rust` e `build-connector-csharp`; job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`). `concurrency` cancela execuções antigas da mesma ref |
+| `ci.yml` | Chama `build-server`, `build-connector-rust` e `build-connector-csharp`; job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`); job `plans` (falha quando `doc/plans/` tem um arquivo: planos nunca chegam a `release` ou `main`). `concurrency` cancela execuções antigas da mesma ref |
 | `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64**, `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
 | `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (o que o crates.io receberia), `cargo build --release -p taba-cli` (musl); artefato `taba-cli-<arch>` |
 | `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** com o commit e o link da Release; artefato `nuget-packages` (`.nupkg` e `.snupkg`) |
+| `chaos.yml` | Toda noite (e à mão): uma varredura de 200 sementes da rodada de caos (`tests/chaos.rs`, [37-garantias.md](37-garantias.md)), uma faixa diferente por dia. Fora dos checks obrigatórios; a semente que falha é impressa no log |
 | `release.yml` | O release (abaixo) |
 | `scorecard.yml` | `ossf/scorecard-action`; o resultado vai para a aba Security e para o badge do README |
 | `codeql.yml` | CodeQL para `rust`, `csharp` e `actions`, todos com `build-mode: none` (independente das toolchains dos builds) |

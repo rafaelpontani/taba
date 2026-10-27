@@ -3,7 +3,7 @@ title: Use cases and traceability
 summary: The format of the `UC-AREA-NNN` code, the test levels, how a test cites a case, the coverage rule that `uc_coverage` checks, the index of the 38 areas and how to read the two catalogues (implemented and planned).
 type: guide
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-27 @ ada9ff1
 sources: [crates/taba-node/tests/uc_coverage.rs, doc/en-US/26a-implemented-use-cases.md, doc/en-US/26b-planned-use-cases.md]
 ---
 
@@ -123,6 +123,7 @@ Both are **maintained by hand**, in both languages: a new case goes in as a card
 | `CLR` | Contract of the cluster routes |
 | `CFG` | Configuration and startup validations |
 | `BKP` | Optional S3 backup: upload, restore, heartbeat, eviction, flush and stop |
+| `CHS` | Chaos with a verified history: seeded faults, the history checker and the network faults |
 
 (The number of cases per area and the coverage are in [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).)
 

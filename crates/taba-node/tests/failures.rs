@@ -887,6 +887,8 @@ async fn a_node_that_restarts_before_the_fall_is_detected_answers_wrong_node_and
 async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again() {
     let cluster = TestCluster::start(4).await;
     settled(&cluster).await;
+    // The loser takes a new ID when it joins again: who it is comes from the IDs of before the partition.
+    let ids: Vec<String> = (1..=4).map(|n| cluster.node_id(n)).collect();
     for left in [1, 2] {
         for right in [3, 4] {
             cluster.network.partition(&host_of(left), &host_of(right));
@@ -923,7 +925,7 @@ async fn after_a_partition_where_each_side_excluded_the_other_the_losing_side_jo
     }
 
     // Only the losing side redid the join: the one with the lowest `nodeId` of all (a 2-to-2 tie).
-    let smallest = (1..=4).min_by_key(|n| cluster.node_id(*n)).unwrap();
+    let smallest = (1..=4).min_by_key(|n| ids[n - 1].clone()).unwrap();
     let losers: Vec<String> = if smallest <= 2 {
         vec![host_of(1), host_of(2)]
     } else {

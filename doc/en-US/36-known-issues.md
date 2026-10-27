@@ -17,6 +17,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
 | [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
 | [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-10-26 |
 | [A channel accept that locked the peers twice](#a-channel-accept-that-locked-the-peers-twice) | Fixed | 2026-10-26 | 2026-10-26 |
@@ -25,6 +26,28 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## The chaos run: a delivery past the limit and an ack the owner never applied
+
+**Status:** Fixed · **Found on:** 2026-10-27 · **Fixed on:** 2026-10-27
+
+- **Where:** `src/engine/messages/mod.rs` (`take`, `take_candidates`), `src/cluster/replication/coordinator.rs` (`commit_until_done`) and `src/cluster/protocol/mod.rs` (`Request::decided`). Found by `tests/chaos.rs` ([37-guarantees.md](37-guarantees.md)).
+- **Symptom 1 (I5):** with `maxDeliveries: 2` a message was delivered with `deliveryCount: 3`, in most runs of seed 3. Cause: a delivery commit that reached the owner after its own invisibility had ended put the message in the ready list without the release that checks the limit. Fix: `take_candidates` does not deliver a message that used up its deliveries: it hides it for an instant and the next release sends it to the dead-letter (the first form of the fix, an immediate move, broke `a_shorter_ttl_expires_what_is_already_stored_even_in_flight`, which expects the `ttl` to win, and was changed). Test: `a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit` (fails without the fix).
+- **Symptom 2 (I1):** in about 1 run in 100 a confirmed message was never delivered: it was left only on its owner (the replicas had applied its ack), its delivery needs the replicas, and so its FIFO group stayed blocked for good. Cause: the commit of the ack to the owner arrived after the owner's register had expired; the coordinator registered it again and gave up on the first refusal, either because the receipt had expired or because another operation held the message (`cluster.conflict`). Fix: the register sent again after the decision checks no receipt (`Request::decided`) and, on a conflict, keeps trying until the other operation ends. Tests: `the_register_repeated_after_the_decision_checks_no_receipt` and `an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message` (fails without the fix).
+- **How it was found:** the first suspect was the checker itself: the trail of a message (`History::trail`) showed that the `maxDeliveries: 2` of one queue had been applied to the others (a false positive, fixed in the checker). Then the failure report was extended with where the message is on each node, and it showed the owner holding a message the replicas no longer had. The baseline without the delivery fix also failed (1 run in 120), so the second cause was independent.
+- **Not fixed:** an ack and a move to the dead-letter both decided when a register expires ([PRB-077](31-pending-items.md)); it needs a stall past `write.pending.ttl` and is outside the run (its clock jumps are 8 s).
+- **Do not:** raise the 30 s of `eventually` or let the run stop at the first delivery: the group blocked for good is exactly what the wait is there to show.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-27 | The run (I5 added) failed on seed 3 with `delivered 3 times, over maxDeliveries 2`; the first cause was the checker, which applied the limit to the queues without it. |
+| 2026-10-27 | After the checker was fixed, 1 run in 5 still failed (a real delivery past the limit); the cluster test of the late commit reproduced it and the check at `take` fixed it. |
+| 2026-10-27 | A second failure, I1 (a message never delivered), 1 run in 100; the same rate without the first fix, so independent. A group blocked by a message only on its owner. |
+| 2026-10-27 | Fix of the register sent again (no receipt check): still 5 failures in 300 runs of the four seeds. The cluster test with a delayed commit and another operation on the message reproduced the rest (conflict at the new register); the coordinator now keeps trying. |
+| 2026-10-27 | With both fixes and 35 s clock jumps: no I1 in 400 runs, 3 failures of another shape (I3 and I5, [PRB-077](31-pending-items.md)). With 8 s jumps (below `write.pending.ttl`): **0 failures in 400 runs of the four seeds (1600 runs)**; before the fixes, about 1 in 100 failed. |
+| 2026-10-27 | The check at `take` made `a_shorter_ttl_expires_what_is_already_stored_even_in_flight` fail (the `ttl` must win over the dead-letter); the final form hides the message and leaves the move to the release. Final code: the whole suite passes (47 binaries) and **0 failures in 250 runs of the four seeds (1000 runs)**. |
 
 ## A restarted test node that loses its port to another test
 

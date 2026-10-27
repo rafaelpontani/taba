@@ -240,6 +240,30 @@ pub enum Request {
 }
 
 impl Request {
+    /// The register of an operation the coordinator has **already decided** to commit, sent again because the node
+    /// lost the first one (it expired or the node restarted). A decision is final, so the node must not check again
+    /// what the first register checked: an ack whose receipt expired in the meantime is still an ack the other nodes
+    /// already applied, and refusing it here would leave the owner with a message that no longer exists anywhere
+    /// else (PRB-075). An ack goes through as a `discard`, which has no receipt to check; any other request is
+    /// returned as it is.
+    pub fn decided(&self) -> Request {
+        match self {
+            Request::Ack {
+                topic,
+                id,
+                step: Step::Register(register),
+            } => Request::Ack {
+                topic: topic.clone(),
+                id: id.clone(),
+                step: Step::Register(AckRegisterRequest {
+                    discard: true,
+                    ..register.clone()
+                }),
+            },
+            other => other.clone(),
+        }
+    }
+
     /// A short name, for logs and to check what passed through the in-memory network.
     pub const fn name(&self) -> &'static str {
         match self {

@@ -2,7 +2,8 @@
 //! same process, without a socket. Each node registers its `Handler` at an address (`host:port`)
 //! and calls the others through a `MemoryTransport` that knows who the caller is.
 //!
-//! The test programs the failures: **partition** between two nodes or the isolation of one, **loss** of the
+//! The test programs the failures: **partition** between two nodes (or in one direction only: `cut_one_way`) or the
+//! isolation of one, **lost replies** (the call runs, the caller never hears), **loss** per link from a seed, **loss** of the
 //! next calls to a node, **delay** on all calls (or only those of one type), a **mute** node (accepts and does not
 //! answer, so the caller's deadline runs out) and a node that **falls** (vanishes from the network). A
 //! **load balancer** splits the calls among nodes, like the real `cluster.entry-address`.
@@ -37,6 +38,14 @@ struct State {
     next_backend: usize,
     partitions: HashSet<(String, String)>,
     isolated: HashSet<String>,
+    /// Directed cuts `(from, to)`: what `from` sends to `to` does not arrive, what `to` sends to `from` does.
+    one_way: HashSet<(String, String)>,
+    /// Directed links `(from, to)` whose **answers** are lost: the call runs on `to` and `from` never hears of it.
+    lost_replies: HashSet<(String, String)>,
+    /// Loss per directed link `(from, to)`, in percent, drawn by the network's seeded generator.
+    link_loss: HashMap<(String, String), u32>,
+    /// State of the generator that decides the `link_loss` draws (xorshift64*), so a run repeats from its seed.
+    random: u64,
     lose_next: HashMap<String, usize>,
     lose_kind: HashMap<(String, String), usize>,
     silent: HashSet<String>,
@@ -132,6 +141,95 @@ impl MemoryNetwork {
         self.lock().isolated.remove(host);
     }
 
+    /// Asymmetric partition: what `from` sends to `to` stops arriving (calls fail as unreachable, channel messages
+    /// are dropped without closing the channel, like a firewall that drops one direction), while `to` still
+    /// reaches `from`. `heal_one_way` undoes it.
+    pub fn cut_one_way(&self, from: &str, to: &str) {
+        self.lock().one_way.insert((from.to_owned(), to.to_owned()));
+    }
+
+    pub fn heal_one_way(&self, from: &str, to: &str) {
+        self.lock()
+            .one_way
+            .remove(&(from.to_owned(), to.to_owned()));
+    }
+
+    /// The calls from `from` to `to` **run** on `to`, but the answer never gets back: `from` sees a failure of a
+    /// write that happened (the indeterminate outcome of a lost reply). Calls only; channel messages are not
+    /// answers.
+    pub fn lose_replies(&self, from: &str, to: &str, lose: bool) {
+        let mut state = self.lock();
+        let link = (from.to_owned(), to.to_owned());
+        if lose {
+            state.lost_replies.insert(link);
+        } else {
+            state.lost_replies.remove(&link);
+        }
+    }
+
+    /// Loses `percent` of the calls and channel messages from `from` to `to` (0 removes it). The draw comes from
+    /// the generator seeded by `seed_links`, so the same seed and the same traffic lose the same ones.
+    pub fn set_link_loss(&self, from: &str, to: &str, percent: u32) {
+        let mut state = self.lock();
+        let link = (from.to_owned(), to.to_owned());
+        if percent == 0 {
+            state.link_loss.remove(&link);
+        } else {
+            state.link_loss.insert(link, percent.min(100));
+        }
+    }
+
+    /// Seeds the generator of the per-link loss.
+    pub fn seed_links(&self, seed: u64) {
+        self.lock().random = seed | 1;
+    }
+
+    /// Removes every programmed failure (partitions, cuts, losses, delays, mute nodes) and leaves the nodes as
+    /// they are: the end of a chaos run, before the check.
+    pub fn heal_all(&self) {
+        let mut state = self.lock();
+        state.partitions.clear();
+        state.isolated.clear();
+        state.one_way.clear();
+        state.lost_replies.clear();
+        state.link_loss.clear();
+        state.lose_next.clear();
+        state.lose_kind.clear();
+        state.silent.clear();
+        state.delay = Duration::ZERO;
+        state.delay_kind.clear();
+        state.delay_host_kind.clear();
+    }
+
+    /// One draw from 0 to 99 of the network's generator (xorshift64*).
+    fn draw(state: &mut State) -> u32 {
+        let mut x = if state.random == 0 {
+            0x9E37_79B9_7F4A_7C15
+        } else {
+            state.random
+        };
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        state.random = x;
+        (x.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 33) as u32 % 100
+    }
+
+    /// Whether the programmed per-link loss eats this one.
+    fn lossy(state: &mut State, from: &str, to: &str) -> bool {
+        if from == to {
+            return false;
+        }
+        let Some(percent) = state
+            .link_loss
+            .get(&(from.to_owned(), to.to_owned()))
+            .copied()
+        else {
+            return false;
+        };
+        Self::draw(state) < percent
+    }
+
     /// Loses the next `count` calls to the node (a one-off network failure).
     pub fn lose_next(&self, host: &str, count: usize) {
         self.lock().lose_next.insert(host.to_owned(), count);
@@ -199,13 +297,13 @@ impl MemoryNetwork {
                 || state.partitions.contains(&pair(from, to)))
     }
 
+    /// The one-way cut `from → to` (does not bring the channel down: the message just does not arrive).
+    fn cut_towards(state: &State, from: &str, to: &str) -> bool {
+        from != to && state.one_way.contains(&(from.to_owned(), to.to_owned()))
+    }
+
     /// Chooses the destination, applies the programmed failures and returns who serves.
-    fn route(
-        &self,
-        from: &str,
-        to: &PeerAddr,
-        request: &'static str,
-    ) -> Result<(Arc<dyn Handler>, Duration, bool), CallError> {
+    fn route(&self, from: &str, to: &PeerAddr, request: &'static str) -> Result<Route, CallError> {
         let mut state = self.lock();
         state.calls.push(Call {
             from: from.to_owned(),
@@ -232,6 +330,13 @@ impl MemoryNetwork {
             None => to.clone(),
         };
         if Self::blocked(&state, from, &target.host) {
+            return Err(CallError::Unreachable(format!(
+                "no route from {from} to {target}"
+            )));
+        }
+        if Self::cut_towards(&state, from, &target.host)
+            || Self::lossy(&mut state, from, &target.host)
+        {
             return Err(CallError::Unreachable(format!(
                 "no route from {from} to {target}"
             )));
@@ -264,8 +369,25 @@ impl MemoryNetwork {
                 .get(&(target.host.clone(), request.to_owned()))
                 .copied()
                 .unwrap_or_default();
-        Ok((handler, delay, state.silent.contains(&target.host)))
+        let reply_lost = state
+            .lost_replies
+            .contains(&(from.to_owned(), target.host.clone()));
+        Ok(Route {
+            handler,
+            delay,
+            silent: state.silent.contains(&target.host),
+            reply_lost,
+        })
     }
+}
+
+/// What `route` decided for a call: who serves, how long it takes, whether the node is mute and whether the answer
+/// is lost on the way back.
+struct Route {
+    handler: Arc<dyn Handler>,
+    delay: Duration,
+    silent: bool,
+    reply_lost: bool,
 }
 
 impl MemoryNetwork {
@@ -297,7 +419,11 @@ impl MemoryNetwork {
             *left -= 1;
             return Err(());
         }
-        if state.silent.contains(to) || state.silent.contains(from) {
+        if state.silent.contains(to)
+            || state.silent.contains(from)
+            || Self::cut_towards(&state, from, to)
+            || Self::lossy(&mut state, from, to)
+        {
             return Ok(None);
         }
         Ok(Some(
@@ -356,17 +482,25 @@ impl Transport for MemoryTransport {
         request: Request,
     ) -> BoxFuture<'a, Result<Response, CallError>> {
         Box::pin(async move {
-            let (handler, delay, silent) = self.network.route(&self.local, to, request.name())?;
-            if !delay.is_zero() {
-                tokio::time::sleep(delay).await;
+            let route = self.network.route(&self.local, to, request.name())?;
+            if !route.delay.is_zero() {
+                tokio::time::sleep(route.delay).await;
             }
-            if silent {
+            if route.silent {
                 std::future::pending::<()>().await;
             }
-            handler
+            let answer = route
+                .handler
                 .handle(&self.local, request)
                 .await
-                .map_err(CallError::Remote)
+                .map_err(CallError::Remote);
+            if route.reply_lost {
+                return Err(CallError::Unreachable(format!(
+                    "the answer from {to} to {} was lost",
+                    self.local
+                )));
+            }
+            answer
         })
     }
 
@@ -376,7 +510,12 @@ impl Transport for MemoryTransport {
         open: ChannelOpen,
     ) -> BoxFuture<'a, Result<ChannelLink, CallError>> {
         Box::pin(async move {
-            let (handler, delay, silent) = self.network.route(&self.local, to, "channel")?;
+            let Route {
+                handler,
+                delay,
+                silent,
+                ..
+            } = self.network.route(&self.local, to, "channel")?;
             if !delay.is_zero() {
                 tokio::time::sleep(delay).await;
             }

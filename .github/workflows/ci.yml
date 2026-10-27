@@ -46,6 +46,23 @@ jobs:
           version: v3.19.0
       - run: deploy/helm/tests/run.sh static
 
+  # doc/plans/ holds plans still being developed: they live only on the working branch and are deleted when
+  # executed, so a pull request to release or main that still has a file there fails (AGENTS.md).
+  plans:
+    name: Development plans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          files="$(git ls-files doc/plans)"
+          if [ -n "$files" ]; then
+            echo "::error::doc/plans/ must not reach release or main; delete the plan files before merging:"
+            echo "$files"
+            exit 1
+          fi
+
   # Known vulnerabilities (RustSec) in the locked dependencies of the server and of the Rust connectors: the same
   # advisories the OpenSSF Scorecard counts. Dependabot opens the update; this job keeps one from being merged.
   rust-audit:

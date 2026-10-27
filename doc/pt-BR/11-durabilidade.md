@@ -3,7 +3,7 @@ título: Durabilidade
 resumo: O que o Taba garante sobre mensagens confirmadas, em quais falhas elas sobrevivem, em quais se perdem, e como ajustar o equilíbrio entre latência e garantia.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-22 @ 2f1919d
+verificado-em: 2026-10-27 @ ada9ff1
 fontes: [crates/taba-node/src/cluster/replication, crates/taba-node/src/cluster/recovery, crates/taba-node/src/cluster/restore, crates/taba-node/src/cluster/sync, crates/taba-node/src/cluster/drain, crates/taba-node/src/storage, crates/taba-node/src/engine/messages]
 ---
 
@@ -96,6 +96,8 @@ A idade vem **do próprio `id`** (GUID v7 carrega o instante da publicação; na
 | Menos memória | Defina `memory.limit`: o excedente vai para o disco |
 
 ## Limites conhecidos
+
+> As garantias acima, escritas como regras que uma máquina consegue checar, e a rodada de caos que as verifica contra um histórico gravado estão em [37-garantias.md](37-garantias.md).
 
 - **Parada total** em produção perde o que estava só em memória (acima); o que estava em disco volta pela retomada ([07-cluster.md](07-cluster.md), seção 10), com a reentrega residual da seção 10.10. Com o backup em S3 ligado ([33-backup-s3.md](33-backup-s3.md)) perde só a janela ainda não enviada, e o disco perdido também volta.
 - **PRB-005:** durante o drain o nó recusa o ack; sem outro nó para repassar, o consumidor não confirma.

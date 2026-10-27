@@ -17,6 +17,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
 | [Um nó de teste reiniciado que perde a porta para outro teste](#um-nó-de-teste-reiniciado-que-perde-a-porta-para-outro-teste) | Aberto | 2026-10-26 | — |
 | [Uma definição oferecida a um nó que ainda estava entrando](#uma-definição-oferecida-a-um-nó-que-ainda-estava-entrando) | Corrigido | 2026-10-26 | 2026-10-26 |
 | [Um accept de canal que travou os peers duas vezes](#um-accept-de-canal-que-travou-os-peers-duas-vezes) | Corrigido | 2026-10-26 | 2026-10-26 |
@@ -25,6 +26,28 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou
+
+**Status:** Corrigido · **Achado em:** 2026-10-27 · **Corrigido em:** 2026-10-27
+
+- **Onde:** `src/engine/messages/mod.rs` (`take`, `take_candidates`), `src/cluster/replication/coordinator.rs` (`commit_until_done`) e `src/cluster/protocol/mod.rs` (`Request::decided`). Achado pelo `tests/chaos.rs` ([37-garantias.md](37-garantias.md)).
+- **Sintoma 1 (I5):** com `maxDeliveries: 2` uma mensagem foi entregue com `deliveryCount: 3`, na maioria das rodadas da semente 3. Causa: um commit de entrega que chegou ao dono depois de a própria invisibilidade acabar pôs a mensagem na lista de prontas sem a liberação que confere o limite. Correção: o `take_candidates` não entrega a mensagem que gastou as entregas: esconde-a por um instante e a próxima liberação a manda para a dead-letter (a primeira forma da correção, uma ida imediata, quebrou o `a_shorter_ttl_expires_what_is_already_stored_even_in_flight`, que espera que o `ttl` vença, e foi trocada). Teste: `a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit` (falha sem a correção).
+- **Sintoma 2 (I1):** em cerca de 1 rodada em 100 uma mensagem confirmada nunca foi entregue: ficava só no dono (as réplicas tinham aplicado o ack dela), a entrega dela precisa das réplicas, e então o grupo FIFO ficava travado para sempre. Causa: o commit do ack ao dono chegou depois de o register do dono expirar; o coordenador o registrou de novo e desistiu na primeira recusa, ou porque o recibo tinha expirado ou porque outra operação segurava a mensagem (`cluster.conflict`). Correção: o register enviado de novo depois da decisão não confere recibo (`Request::decided`) e, num conflito, continua tentando até a outra operação acabar. Testes: `the_register_repeated_after_the_decision_checks_no_receipt` e `an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message` (falha sem a correção).
+- **Como foi achado:** a primeira suspeita foi o próprio verificador: a trilha de uma mensagem (`History::trail`) mostrou que o `maxDeliveries: 2` de uma fila tinha sido aplicado às outras (um falso positivo, corrigido no verificador). Depois o relatório de falha ganhou onde a mensagem está em cada nó, e mostrou o dono com uma mensagem que as réplicas já não tinham. A linha de base sem a correção da entrega também falhou (1 rodada em 120), então a segunda causa era independente.
+- **Não corrigido:** um ack e uma ida para a dead-letter, os dois decididos, quando um register expira ([PRB-077](31-pendencias.md)); exige uma parada além do `write.pending.ttl` e está fora da rodada (os saltos de relógio dela são de 8 s).
+- **Não fazer:** subir os 30 s do `eventually` ou deixar a rodada parar na primeira entrega: o grupo travado para sempre é exatamente o que a espera existe para mostrar.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-27 | A rodada (com o I5 acrescentado) falhou na semente 3 com `delivered 3 times, over maxDeliveries 2`; a primeira causa foi o verificador, que aplicava o limite às filas que não o têm. |
+| 2026-10-27 | Com o verificador corrigido, 1 rodada em 5 ainda falhava (uma entrega real além do limite); o teste de cluster do commit tardio a reproduziu e a checagem no `take` a corrigiu. |
+| 2026-10-27 | Uma segunda falha, I1 (mensagem nunca entregue), 1 rodada em 100; a mesma taxa sem a primeira correção, então independente. Um grupo travado por uma mensagem só no dono. |
+| 2026-10-27 | Correção do register enviado de novo (sem conferir recibo): ainda 5 falhas em 300 rodadas das quatro sementes. O teste de cluster com um commit atrasado e outra operação sobre a mensagem reproduziu o resto (conflito no novo register); o coordenador agora continua tentando. |
+| 2026-10-27 | Com as duas correções e saltos de relógio de 35 s: nenhum I1 em 400 rodadas, 3 falhas de outro formato (I3 e I5, [PRB-077](31-pendencias.md)). Com saltos de 8 s (abaixo do `write.pending.ttl`): **0 falhas em 400 rodadas das quatro sementes (1600 execuções)**; antes das correções, cerca de 1 em 100 falhava. |
+| 2026-10-27 | A checagem no `take` fez o `a_shorter_ttl_expires_what_is_already_stored_even_in_flight` falhar (o `ttl` precisa vencer a dead-letter); a forma final esconde a mensagem e deixa a ida para a liberação. Código final: a suíte inteira passa (47 binários) e **0 falhas em 250 rodadas das quatro sementes (1000 execuções)**. |
 
 ## Um nó de teste reiniciado que perde a porta para outro teste
 

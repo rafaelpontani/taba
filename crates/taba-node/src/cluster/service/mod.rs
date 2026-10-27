@@ -1643,7 +1643,9 @@ impl ClusterService {
     /// The reunion after a partition in which both sides excluded each other (D101): from time to
     /// time the node queries the table of whoever excluded it. If it is from another cluster (no member in
     /// common, and without this node) and this side is the loser (fewer members; tie: the side of the lowest
-    /// `nodeId`), the node redoes the join from scratch, like the excluded one that returns.
+    /// `nodeId`), the node regroups like the loser of the probe of the old IPs (`regroup`): its disk becomes the
+    /// folder of a life, so what this side accepted while apart is restored in the merged cluster, and it joins
+    /// again with a new ID (PRB-078).
     pub async fn run_reunion(self: Arc<Self>) {
         let period = self.rules.reunion_interval;
         loop {
@@ -1680,7 +1682,7 @@ impl ClusterService {
                     other = %other.node_id,
                     "the two halves of the cluster excluded each other and met again: this side redoes the join"
                 );
-                self.handle_exclusion().await;
+                self.regroup(theirs).await;
                 return;
             }
         }
