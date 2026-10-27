@@ -3,8 +3,8 @@ título: Problemas conhecidos
 resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-19 @ 294fd03
-fontes: [crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
+verificado-em: 2026-10-26 @ 75012bc
+fontes: [crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
 # Problemas conhecidos
@@ -17,11 +17,32 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Um accept de canal que travou os peers duas vezes](#um-accept-de-canal-que-travou-os-peers-duas-vezes) | Corrigido | 2026-10-26 | 2026-10-26 |
 | [Teste de reinício da FIFO que espera 30 s numa execução combinada](#teste-de-reinício-da-fifo-que-espera-30-s-numa-execução-combinada) | Aberto | 2026-10-22 | — |
 | [Teste de aviso que espera 30 s uma vez na suíte completa](#teste-de-aviso-que-espera-30-s-uma-vez-na-suíte-completa) | Aberto | 2026-10-20 | — |
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Um accept de canal que travou os peers duas vezes
+
+**Status:** Corrigido · **Achado em:** 2026-10-26 · **Solução em:** 2026-10-26
+
+- **Onde:** `src/cluster/channel/mod.rs` (`Channels::accept`).
+- **Sintoma:** na execução de CI do servidor em amd64, o último teste do binário `nodes_api` ficou em "has been running for over 60 seconds", sem saída e sem mensagem de falha. Foi `a_node_that_does_not_answer_makes_the_consolidated_reads_partial_and_says_which` numa execução e `a_prune_that_fails_on_a_node_names_it_and_repeating_it_is_safe` em outra: os dois isolam o nó 3 e o trazem de volta. Não reproduz sozinho: 3 travamentos em 120 execuções do binário, todos sob carga (vários processos ao mesmo tempo).
+- **Causa:** o `accept` procurava o peer com `match self.lock().get(from).cloned() { … None => { self.sync_members(); … } }`. O guard de `lock()` é um temporário no escrutínio, e um temporário no escrutínio de um `match` vive até o fim do `match` inteiro. `sync_members` (e `drop_all`, que ele chama) travam o mesmo `std::sync::Mutex` de novo, que não é reentrante: a thread bloqueia em si mesma para sempre. Só acontece quando um peer abre um canal que o nó ainda não conhece (corrida depois que a rede volta ou enquanto um nó faz drain). No runtime de produção, uma thread de trabalho se perde e a trava dos peers fica presa para sempre, então toda outra tarefa que mexe nos canais trava: o nó continua vivo e deixa de responder ao cluster. Nos testes (runtime `current_thread`) nada mais anda, **nem os timeouts**, e por isso o log ficou mudo.
+- **Como foi achado:** com `TABA_TEST_LOG=taba_node=trace`, o log da execução travada terminava num `drain started` que nunca acabou, e nem o `drain.timeout` (25 s, que registra quando estoura) apareceu: o runtime inteiro estava parado, não esperando. A pilha de todas as threads, tirada com `gdb` num container Linux (receita em [25-testes.md](25-testes.md#investigando-um-teste-que-trava-ou-falha-só-às-vezes)), mostrou `accept → sync_members → drop_all → Channels::lock` bloqueado.
+- **Solução:** a consulta virou uma instrução própria (`let known = self.lock().get(from).cloned();`) e o guard some antes de `sync_members` rodar; o `receive` já fazia assim. O mesmo formato foi tirado de três `if let` que seguravam um guard no escrutínio (`allow_new_vote`, `Backup::usage`, `Sync::abandon`) e o `clippy::significant_drop_in_scrutinee` agora está ligado no workspace (D179).
+- **Teste:** `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node` (UC-CAN-029) chama o `accept` de um peer desconhecido numa thread própria e falha em 10 s se ele não voltar. Sem a correção ele falha.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-26 | Visto no CI como um teste "running for over 60 seconds" (a segunda ocorrência, noutro teste do mesmo binário). Não reproduziu sozinho nem em 40 execuções em sequência; reproduziu com 6 processos concorrentes (1 travamento em 48 execuções). |
+| 2026-10-26 | Com o log ligado: 1 travamento em 16 execuções dos dois testes; a última linha era um drain que nunca terminou. Num container Linux com `gdb`: 1 travamento em 56 execuções, e a pilha deu a causa acima. |
+| 2026-10-26 | Correção aplicada, teste adicionado (falha sem a correção). `cargo clippy --all-targets -- -D warnings` limpo com o novo lint. Os dois testes, repetidos no mesmo container com 8 processos ao mesmo tempo: veja a linha seguinte. |
+| 2026-10-26 | Verificação: 100 rodadas de 8 processos ao mesmo tempo (800 execuções dos dois testes) no container que travava antes, nenhuma travou; antes da correção travava uma vez a cada 16 a 56 execuções. O binário `channel` passou (16 testes). |
 
 ## Teste de reinício da FIFO que espera 30 s numa execução combinada
 
@@ -106,7 +127,21 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-18 | Achado na análise do `NO_VOTE`. Corrigido no mesmo dia (`a9ecf01`). |
 
+## Lições aprendidas
+
+O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a lista de passos para um agente está no [AGENTS.md](../../AGENTS.md)):
+
+- **Um teste que fica mudo não é um teste lento.** "Has been running for over 60 seconds" **sem nenhum log depois de certo ponto**, nem de um timeout que deveria registrar, quer dizer que o runtime está parado, não esperando. Procure uma trava tomada duas vezes ou uma inversão de ordem de travas, não um timeout para aumentar.
+- **Um `std::sync::Mutex` não é reentrante, e um guard vive mais do que parece.** Um temporário no escrutínio de um `match`, `if let`, `while let` ou `for` vive até o fim do bloco inteiro, `else` e braços incluídos (na edição 2024 um `if let` o solta antes do `else`, mas um `match` continua não soltando). Tire o valor numa instrução `let` própria e use-o depois.
+- **Só aparece sob carga.** Essas corridas passam sozinhas e em sequência. Reproduza com vários processos do binário de teste ao mesmo tempo e guarde o log só das execuções que travam.
+- **No runtime `current_thread` do `#[tokio::test]` uma trava bloqueada congela tudo**, inclusive os temporizadores, então o teste nunca falha sozinho: o código que chama a função suspeita num teste a roda numa thread própria e espera com `recv_timeout`, para o teste falhar em vez de travar.
+- **Tire a pilha, não adivinhe.** O `docker/hang-hunt.sh <arquivo-de-teste> [filtro...]` faz a caçada inteira (carga, logs detalhados só ali, pilha de todas as threads de um processo travado). O `TABA_TEST_LOG` reduz o lugar; a pilha de todas as threads (`gdb -p <pid>`, `thread apply all bt`) dá a linha exata. É mais barato do que mais um dia lendo logs.
+- **Procure a família inteira.** O mesmo erro estava no `accept`, e o mesmo formato (um guard no escrutínio) estava em mais três lugares; a inversão de ordem de travas de 2026-10-18 é uma prima. Depois de uma correção, rode `cargo clippy -- -W clippy::significant_drop_in_scrutinee` e as verificações listadas no [AGENTS.md](../../AGENTS.md).
+- **Uma correção não está pronta sem um teste que falha sem ela** (aqui, um que falha por timeout e não travando) e sem repetir a execução que travava.
+
 ## Fontes e provas
 
-- Os testes citados e `tests/common/cluster.rs` (`NO_VOTE`, `FAST`, `WAIT`).
+- Os testes citados e `tests/common/cluster.rs` (`NO_VOTE`, `FAST`, `WAIT`, `TABA_TEST_LOG`).
+- `src/cluster/channel/mod.rs` (`accept`, `receive`, `sync_members`, `drop_all`, `allow_new_vote`), `src/cluster/backup/evict.rs`, `src/cluster/sync/mod.rs` e `tests/channel.rs` (UC-CAN-029).
+- O travamento de 2026-10-26 foi reproduzido localmente e num container Linux; a pilha, os logs e as contagens de execuções são os da tabela de histórico.
 - As falhas foram vistas nos logs do CI do repositório; as datas de "achado" vêm do histórico do git e dos logs.

@@ -368,7 +368,8 @@ impl Syncer {
 
     /// Drops the event database without processing it (the node goes back to being new).
     pub fn abandon(&self) {
-        if let Some(log) = lock(&self.recording).take() {
+        let recording = lock(&self.recording).take();
+        if let Some(log) = recording {
             let _ = log.discard();
         }
     }

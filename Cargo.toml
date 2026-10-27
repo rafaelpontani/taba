@@ -8,6 +8,11 @@ edition = "2024"
 license = "AGPL-3.0-only"
 repository = "https://github.com/rafaelpontani/taba"
 
+[workspace.lints.clippy]
+# A guard in the scrutinee of a `match`, `if let` or `for` lives until the end of it: calling anything that locks the
+# same `Mutex` inside deadlocks the thread (doc 36, "A channel accept that locked the peers twice").
+significant_drop_in_scrutinee = "warn"
+
 [profile.dev]
 # Line tables only: with full symbols each test binary took hundreds of MB
 # and `target/` filled the disk.
