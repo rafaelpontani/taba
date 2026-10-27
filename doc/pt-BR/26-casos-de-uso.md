@@ -3,7 +3,7 @@ título: Casos de uso e rastreabilidade
 resumo: O formato do código `UC-ÁREA-NNN`, os níveis de teste, como um teste cita um caso, a regra de cobertura que o `uc_coverage` confere, o índice das 38 áreas e como ler os dois catálogos (implementados e planejados).
 tipo: guia
 status: estável
-verificado-em: 2026-10-14 @ efeb47a
+verificado-em: 2026-10-27 @ ada9ff1
 fontes: [crates/taba-node/tests/uc_coverage.rs, doc/pt-BR/26a-casos-de-uso-implementados.md, doc/pt-BR/26b-casos-de-uso-planejados.md]
 ---
 
@@ -123,6 +123,7 @@ Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como ca
 | `CLR` | Contrato das rotas do cluster |
 | `CFG` | Configuração e validações de partida |
 | `BKP` | Backup opcional em S3: envio, restauração, batimento, evicção, flush e parada |
+| `CHS` | Caos com histórico verificado: falhas sorteadas, o verificador do histórico e as falhas da rede |
 
 (O número de casos por área e a cobertura estão em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md).)
 

@@ -3,7 +3,7 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-10-26 @ 75012bc
+verified-on: 2026-10-27 @ ada9ff1
 sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -57,6 +57,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 8 | 2 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 45 | 0 |
+| `CHS` | Chaos with a verified history | 5 | 0 |
 
 ## TOP: Topics: create, list, read, change and remove
 
@@ -6685,10 +6686,11 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 ### UC-FAL-026
 
 **Case:** The reunion after a partition in which **both sides** excluded each other (the tables have the same version and no channel links one side to the other)  
-**Then:** from time to time (`cluster.channel.keepalive.interval` × 10) each node queries the table of whoever it saw being excluded; if it is from another cluster (without this node and with no member in common) and this side loses (has fewer members; on a tie, the one with the lowest `nodeId`), the node redoes the join from scratch, like the excluded one that returns (UC-FAL-013). The vote mark of a node that left the table is forgotten on leaving (D101). A node that is still **synchronizing** when the sources move to a newer table without it (the join it was finishing was undone by this reunion) does not wait for `cluster.sync.timeout` to enter failure: it forgets the table and redoes the join.  
+**Then:** from time to time (`cluster.channel.keepalive.interval` × 10) each node queries the table of whoever it saw being excluded; if it is from another cluster (without this node and with no member in common) and this side loses (has fewer members; on a tie, the one with the lowest `nodeId`), the node regroups like the loser of the probe of the old IPs (UC-RTN-040): it moves its memory to the disk, the disk becomes the folder of a life, and it joins again with a new ID, so what it accepted while apart is restored in the merged cluster (D181). The vote mark of a node that left the table is forgotten on leaving (D101). A node that is still **synchronizing** when the sources move to a newer table without it (the join it was finishing was undone by this reunion) does not wait for `cluster.sync.timeout` to enter failure: it forgets the table and redoes the join.  
 **Level:** C  
 **Tests:**
   - `tests/failures.rs::after_a_partition_where_each_side_excluded_the_other_the_losing_side_joins_again`
+  - `tests/partition.rs::the_half_that_loses_the_reunion_keeps_what_it_accepted_while_apart`
   - `tests/failures.rs::a_syncing_node_that_the_sources_excluded_redoes_the_join_instead_of_failing`
 
 ---
@@ -9741,6 +9743,83 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C
 **Tests:**
   - `tests/cold_start.rs::a_slow_bucket_holds_only_the_fifo_queues_the_rest_of_the_cluster_is_available`
+
+---
+
+## CHS: Chaos with a verified history
+
+### UC-CHS-001
+
+**Case:** A three-node cluster is hit by a seeded sequence of faults (a node isolated, a pair cut in both directions or in one, replies lost, 40% loss on a link, 15 ms of delay, a mute node, the clock jumping 8 s, one at a time) while clients publish to a plain queue and to a FIFO queue with three groups, consume and ack
+**Then:** after the faults are healed and the queues drained, the recorded history has no violation of I1 (no loss), I2 (no phantom), I3 (definitive ack), I4 (FIFO order and a single storage) or I6 (every loss declared) ([37-guarantees.md](37-guarantees.md)); the run also proves it did something (confirmed and delivered messages). The same seed draws the same faults; `TABA_CHAOS_SEEDS=from..to` sweeps a range of seeds (the nightly run)
+**Level:** C
+**Tests:**
+  - `tests/chaos.rs::seed_1_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_2_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_3_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_4_keeps_the_guarantees`
+  - `tests/chaos.rs::a_range_of_seeds_keeps_the_guarantees`
+
+---
+
+### UC-CHS-002
+
+**Case:** The history checker is given a history that breaks one guarantee (a confirmed publication never delivered and not declared, a delivery nobody published, a delivery after a `204` ack, a FIFO group out of order or stored twice)
+**Then:** it reports the violation with the code of the guarantee (`I1/I6`, `I2`, `I3`, `I4`); a clean history, a loss that was declared and an indeterminate publication that was delivered are not violations; the nemesis draws the same faults from the same seed
+**Level:** U
+**Tests:**
+  - `tests/chaos.rs::a_clean_history_has_no_violation`
+  - `tests/chaos.rs::a_confirmed_publication_never_delivered_is_a_loss_unless_declared`
+  - `tests/chaos.rs::a_delivery_without_a_publication_is_a_phantom`
+  - `tests/chaos.rs::a_message_delivered_after_its_ack_is_a_violation`
+  - `tests/chaos.rs::a_group_delivered_out_of_order_or_stored_twice_is_a_violation`
+  - `tests/chaos.rs::the_same_seed_draws_the_same_faults`
+
+---
+
+### UC-CHS-003
+
+**Case:** A test programs a network fault: a cut in one direction only, replies that are lost after the call ran, loss on a link drawn from a seed, or the healing of everything at once
+**Then:** only the programmed direction fails (the other still reaches); a call with a lost reply runs on the destination and fails the caller as a network error; the same seed loses the same calls and another seed loses others; `heal_all` removes every programmed fault
+**Level:** U
+**Tests:**
+  - `src/cluster/transport/memory/tests.rs::a_one_way_cut_stops_one_direction_only_and_heals`
+  - `src/cluster/transport/memory/tests.rs::a_lost_reply_runs_the_call_and_fails_the_caller`
+  - `src/cluster/transport/memory/tests.rs::the_loss_of_a_link_repeats_from_the_seed`
+  - `src/cluster/transport/memory/tests.rs::heal_all_removes_every_programmed_failure`
+
+---
+
+### UC-CHS-004
+
+**Case:** A queue with `maxDeliveries: 2` and its dead-letter queue run inside the chaos run, with a consumer that never acks the poison messages (`seq % 3 == 0`)
+**Then:** every confirmed poison message ends in the dead-letter queue and is not delivered again from its queue afterwards; a message acked on its queue never reaches the dead-letter; the checker also demands at most `maxDeliveries` deliveries from that queue. A delivery commit that reaches the owner after its own invisibility ended does not put a message that used up its deliveries back in the ready list: the next choice hides it for an instant and the next release sends it to the dead-letter ([D180](30-decisions.md))
+**Level:** C, U
+**Tests:**
+  - `src/engine/messages/tests/cluster.rs::a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit`
+  - `tests/chaos.rs::a_poison_message_that_reaches_the_dead_letter_after_its_deliveries_is_clean`
+  - `tests/chaos.rs::a_poison_message_that_never_reaches_the_dead_letter_is_a_violation`
+  - `tests/chaos.rs::a_message_delivered_over_its_limit_is_a_violation`
+  - `tests/chaos.rs::a_message_in_both_places_is_a_violation`
+  - `tests/chaos.rs::seed_1_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_2_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_3_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_4_keeps_the_guarantees`
+  - `tests/chaos.rs::a_range_of_seeds_keeps_the_guarantees`
+
+---
+
+### UC-CHS-005
+
+**Case:** The coordinator has decided to commit an ack, a node lost the register (it expired while the node was cut off) and the coordinator registers it again before the commit, when the receipt of the delivery has expired
+**Then:** the register sent again does not check the receipt (an ack goes as a `discard`), so the owner applies the ack the other nodes already applied; the message does not stay only on the owner, and its FIFO group is not blocked ([D180](30-decisions.md)). The chaos run checks it end to end (I1: every confirmed message is delivered)
+**Level:** U, C
+**Tests:**
+  - `src/cluster/protocol/tests.rs::the_register_repeated_after_the_decision_checks_no_receipt`
+  - `tests/chaos.rs::seed_1_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_2_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_3_keeps_the_guarantees`
+  - `tests/chaos.rs::seed_4_keeps_the_guarantees`
 
 ---
 

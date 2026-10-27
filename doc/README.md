@@ -13,4 +13,4 @@ Other languages go in sibling folders named by the language code (e.g. `es-ES/`)
 
 **Every language folder has the same content, file by file** (the number prefix `NN-` is the identity of a document; the rest of the name is in the language of the folder). **Every change to the documentation must be applied to all the language folders in the same change.** The rule and the details are in [en-US/24-conventions.md](en-US/24-conventions.md#documentation-in-several-languages) and in [AGENTS.md](../AGENTS.md).
 
-Also in this folder: `diagrams/` (sources and SVGs, with one translation table per language). The original design documents were removed: they live in the git history.
+Also in this folder: `diagrams/` (sources and SVGs, with one translation table per language). During development a working branch may also have `plans/` (plans still being developed); it is deleted when the plan is executed and never reaches `release` or `main` ([AGENTS.md](../AGENTS.md#development-plans-docplans)). The original design documents were removed: they live in the git history.

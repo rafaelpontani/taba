@@ -421,6 +421,69 @@ async fn the_owner_queues_the_dead_letter_move_once_and_can_try_again_after_a_fa
     assert!(moved.owned);
 }
 
+/// A delivery whose commit reaches the owner after its own invisibility already ended (the clock moved between the
+/// reservation and the commit) must not put a message that used up its deliveries back in the ready list: the
+/// `maxDeliveries`-th delivery is the last (PRB-075, found by the chaos run).
+///
+/// UC: UC-RET-011, UC-CHS-004
+#[tokio::test]
+async fn a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit() {
+    let mut c = clustered();
+    c.h.topics
+        .create(CreateTopic {
+            max_deliveries: Some(2),
+            ..queue("orders")
+        })
+        .await
+        .unwrap();
+    let id = c.publish("orders", "1", true);
+    let view = c.view("orders");
+
+    // First delivery, committed in time.
+    let first = c.h.messages.take_candidates(&view, 1, 60).unwrap();
+    c.h.messages
+        .apply_visibility(
+            "orders",
+            &id,
+            first[0].meta.invisible_until_ms,
+            Some((1, first[0].meta.receipt_token.as_deref().unwrap())),
+        )
+        .unwrap();
+
+    // Second delivery (the last one allowed): reserved, and the clock moves past its invisibility before the commit.
+    c.h.clock.advance(Duration::from_secs(61));
+    let second = c.h.messages.take_candidates(&view, 1, 60).unwrap();
+    assert_eq!(second[0].meta.delivery_count, 2);
+    c.h.clock.advance(Duration::from_secs(61));
+    c.h.messages
+        .apply_visibility(
+            "orders",
+            &id,
+            second[0].meta.invisible_until_ms,
+            Some((2, second[0].meta.receipt_token.as_deref().unwrap())),
+        )
+        .unwrap();
+
+    // A third delivery never happens: the message goes to the dead-letter.
+    assert!(
+        c.h.messages
+            .take_candidates(&view, 1, 60)
+            .unwrap()
+            .is_empty(),
+        "delivered a third time"
+    );
+    // The message waits an instant and the next settle sends it to the dead-letter.
+    c.h.clock.advance(Duration::from_secs(1));
+    c.h.messages.sweep();
+    assert_eq!(
+        c.dead_letters.try_recv().expect("a queued move"),
+        DeadLetterJob {
+            topic: "orders".into(),
+            id
+        }
+    );
+}
+
 /// UC: UC-ESC-023
 #[tokio::test]
 async fn applying_a_commit_twice_changes_nothing() {
