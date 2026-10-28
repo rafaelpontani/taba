@@ -56,7 +56,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 - **Where:** `tests/common/cluster.rs` (`respawn_node`) and the tests that bring a node back at the address of the one that fell (`tests/cold_start.rs`: `fall`, `come_back`).
 - **Symptom:** `the process restarts: Bind { name: "do cluster", addr: 127.0.0.1:<port>, source: … AddrInUse … }` after the 30 s of `respawn_node`. Seen 3 times in about 1800 process runs of `docker/hang-hunt.sh cold_start …` (10 processes at once), in `when_several_nodes_connect_the_highest_version…` and in `a_node_that_joins_offers_the_definitions_of_its_disk…`; not seen in CI so far.
 - **Cause (checked in the log of the failing run):** `fall()` shuts the node down and frees its cluster port; the test starts the node again on the same port later. In between, the system hands the freed (ephemeral) port to another listener: in the log the port was the cluster port of the fallen node and, two seconds later, the **client** port of a node of **another test of the same process**. `respawn_node` retries for 30 s, but that node keeps the port until its own test ends, so the retry cannot win. The tests of a binary run in parallel threads, so the same can happen in CI.
-- **Proposal (not done):** reserve the port of the fallen node until the restart (a placeholder listener bound right after the shutdown and dropped just before the new bind), or give the restart tests a range of ports that the system does not hand out. Whichever is chosen goes in `tests/common/cluster.rs`, so every restart test gets it.
+- **Fix (applied 2026-10-28, verification pending):** `PortHold` in `tests/common/cluster.rs`: a placeholder listener bound right after the shutdown (in `fall` of `cold_start.rs` and `regroup.rs`) and dropped just before the new bind (`come_back`). It is still to be checked with `docker/hang-hunt.sh cold_start regroup`; the status changes to `Fixed` after that.
 - **Do not:** raise the 30 s of `respawn_node`; the port does not come back while the other test lives.
 
 **History**
@@ -65,6 +65,7 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 |---|---|
 | 2026-10-26 | Seen once in the hunt that validated the fix of the lost offer (round 29, 10 processes at once). The log shows the port reused by another node of the same process. Not fixed: unrelated to that change. |
 | 2026-10-26 | Two more in the 1500-run validation (rounds 19 and 141), one of them in `a_node_that_joins_offers…`: the same `AddrInUse`. |
+| 2026-10-28 | **First time in CI**: the `Release` run of the push to `main` (merge of PR #34, amd64) failed in `with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (`cold_start.rs`, `AddrInUse` on the cluster port). `PortHold` added; `cold_start` (13) and `regroup` (3) pass locally. |
 
 ## A definition offered to a node that was still joining
 
