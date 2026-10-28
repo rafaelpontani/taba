@@ -7,7 +7,10 @@ The Taba connectors ([doc/en-US/21-connectors.md](../doc/en-US/21-connectors.md)
 | [`rust/`](rust/) | `taba-client`: the nine operations, `subscribe` and call retries, with its own HTTP/1.1, TLS (`rustls`), JSON and base64 | Synchronous ready, on [crates.io](https://crates.io/crates/taba-client); the `async` form is missing |
 | [`cli/`](cli/) | `taba-cli`: the client command line ([doc/en-US/20-cli.md](../doc/en-US/20-cli.md)), on top of the Rust connector | Ready; the Docker image still needs checking on a real Docker, and so does the end-to-end script |
 | [`csharp/`](csharp/) | `Taba.Client`: the nine operations as `...Async` and synchronous, `subscribe`, call retries, its own JSON, no dependencies; targets `net461`, `net5.0`, `net6.0`, `net8.0` and `net10.0` | Ready (unit tests and integration against Compose, `scripts/integration.sh`; [console example](../examples/csharp-console/)); on [nuget.org](https://www.nuget.org/packages/Taba.Client) |
-| `java/`, `c/`, `cpp/`, `python/`, `php/`, `ruby/`, `go/`, `node/` | The rest ([plan](../doc/en-US/21-connectors.md)) | To do |
+| [`java/`](java/) | `taba-client` for Java 11+: the nine operations (blocking and `CompletableFuture`), `subscribe`, call retries, its own JSON, no dependencies | Ready (unit tests; `mvn test`); not published yet |
+| [`python/`](python/) | `taba-client` for Python 3.9+: `taba.Client` and the `asyncio` `taba.aio.AsyncClient`, its own JSON, no dependencies | Ready (unit tests); not published yet |
+| [`node/`](node/) | `taba-client` for Node.js 18+: the nine operations as `Promise`, `subscribe`, `AbortSignal`, types included, no dependencies | Ready (unit tests; `npm test`); not published yet |
+| `c/`, `cpp/`, `php/`, `ruby/`, `go/` | The rest ([plan](../doc/en-US/21-connectors.md)) | To do |
 
 ## Rust
 

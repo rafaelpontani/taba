@@ -211,12 +211,12 @@ A API é HTTP, então qualquer linguagem já fala com o Taba pelo cliente HTTP q
 
 | Linguagem | Pasta | Versão base | Estado | Exemplo de uso |
 |---|---|---|---|---|
-| Java | `connectors/java/` | Java 11 | planejado | TODO |
+| Java | `connectors/java/` | Java 11 | [pronto](connectors/java/README.md) (nove operações bloqueantes e com `CompletableFuture`, `subscribe`) | [README](connectors/java/README.md) |
 | C# | `connectors/csharp/` | .NET Framework 4.6.1 e .NET 5, 6, 8 e 10 | [pronto](connectors/csharp/README.md) (nove operações assíncronas e síncronas, `subscribe`) | [exemplo de console](examples/csharp-console/) |
-| Python | `connectors/python/` | 2.7.9 e 3.4.3 | planejado | TODO |
+| Python | `connectors/python/` | 3.9 | [pronto](connectors/python/README.md) (clientes síncrono e `asyncio`, `subscribe`) | [README](connectors/python/README.md) |
 | PHP | `connectors/php/` | 5.6 | planejado | TODO |
 | Ruby | `connectors/ruby/` | 2.0 | planejado | TODO |
-| Node.js | `connectors/node/` | 0.12 | planejado | TODO |
+| Node.js | `connectors/node/` | 18 | [pronto](connectors/node/README.md) (nove operações com `Promise`, `subscribe`, tipos incluídos) | [README](connectors/node/README.md) |
 | Go | `connectors/go/` | 1.7 | planejado | TODO |
 | Rust | `connectors/rust/client/` | 1.70 | síncrono pronto ([README](connectors/rust/client/README.md)) | [exemplo](connectors/rust/client/README.md) |
 | C | `connectors/c/` | C89 | planejado | TODO |

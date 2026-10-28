@@ -13,7 +13,7 @@ sources: [crates/taba-node/src, connectors, doc/en-US/30-decisions.md]
 >
 > **Legend:** `[ ]` open, undecided; `[~]` partially resolved (the text carries **only the questions still missing**, each with its sub-code); **Depends on** = the question can only be answered after another.
 >
-> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D182** and **PRB-077**).
+> **Maintained by hand**, in every language folder, in the commit of the change that opens, changes or closes an item. The next free codes follow the highest already used (today **D182** and **PRB-081**).
 
 ## Known limits
 
@@ -26,6 +26,16 @@ Found by checking the code and running the cluster; each one has its evidence. T
 | C | risk | **Losing two nodes in a row locks the cluster** (`quorum-lost`): one node is left, the exclusion of the second does not take effect, and the restarted ones do not rejoin (the register requires all in the table). There is no forced exclusion | Only recoverable by stopping everything and starting again; the resume restores what was on disk ([07-cluster.md](07-cluster.md), section 10) | The "forced exclusion" already foreseen in doc 04 (future evolution): a manual exclusion route, or a table per epoch | [07-cluster.md](07-cluster.md), [23-operations.md](23-operations.md); run with `docker compose kill` |
 | E | process | **The use-case catalogues ([26a](26a-implemented-use-cases.md)/[26b](26b-planned-use-cases.md)), the decisions ([30-decisions.md](30-decisions.md)) and these pending items are maintained by hand.** The register they were generated from left the repository; `uc_coverage` reads the `### UC-…` cards of 26a and 26b | The 26a/26b scoreboard only changes when someone updates it | A generator that reads the cards and the `/// UC:` lines and regenerates both catalogues in both languages | `crates/taba-node/tests/uc_coverage.rs`; [26-use-cases.md](26-use-cases.md) |
 | F | documentation | **`verificar.mjs` only knows `doc/pt-BR/`** (Portuguese metadata keys and file names); `verificar-idiomas.mjs` checks the parity of files, metadata and links between the folders | Routes, keys and codes cited only in the en-US text are not checked against the code | Run `verificar.mjs` per language and put both checkers in a PR job | `doc/pt-BR/scripts/`; [27-ci-cd.md](27-ci-cd.md) |
+
+## Connectors (new problems and limits)
+
+Found while writing the Java, Python and Node.js connectors ([21-connectors.md](21-connectors.md)).
+
+| Code | Effect | Proposal |
+|---|---|---|
+| **PRB-079** | **The Java, Python and Node.js connectors have no integration test against a real Taba and no publishing job.** They are checked only against a local scripted HTTP server (the same level as the C# unit tests), and no registry package is published (the identifiers are D70.1) | A `scripts/integration.sh` per connector, like `connectors/csharp/scripts/integration.sh`, run before each release; the publishing jobs once D70.1 is decided |
+| **PRB-080** | **The Python `asyncio` client runs the synchronous transport in worker threads** (`asyncio.to_thread`), because the standard library has no asynchronous HTTP client and the connector has no dependencies. A cancelled task closes the connection in flight, but each concurrent call still takes a thread | Measure with many concurrent long pollings; if it matters, an own HTTP/1.1 over `asyncio` streams, as the Rust connector has over `TcpStream` |
+| **PRB-081** | **Node.js and Python repeat a call that failed on a pooled connection the server had closed (`ECONNRESET` before any byte of the answer), like a refused connection.** If the node had already applied the call and closed the connection before answering, a non-FIFO publication could be delivered twice. The .NET and Java HTTP clients do the same inside the library | Measure how often it happens; if it matters, send `Connection: close` on publications that carry no `deduplicationId`, or repeat only idempotent verbs |
 
 ## S3 backup (new problems and limits)
 
@@ -79,7 +89,7 @@ Can be answered **now**, in any order: they do not depend on another question or
 
 - **State:** `[~]` partial · **Type:** design question
 
-**Base versions of the connectors (the other languages): confirm the table.** The one for **C#** (.NET Framework 4.6.1 and .NET 5) is decided (D68.1, in 08a). The "base version" is the oldest version of each language that the connector agrees to run on. Instead of choosing each by eye, the proposal is a single rule, derived from what has already been decided: the base is the **oldest** that (1) speaks TLS 1.2 or higher (D69), (2) has an HTTP client with `PATCH` (D72) and, where the language has async, uses it (D71). The table that comes out of the rule is in [21-connectors.md](21-connectors.md), section 18.10.1: **Java 11, .NET Framework 4.6.1 (classic) and .NET 5 (modern), Python 2.7.9 and 3.4.3, PHP 5.6, Ruby 2.0, C89 with `libcurl` 7.34, C++03, Node 0.12, Go 1.7 and Rust 1.70**. The question is: **are the rule and the table right?** The point of greatest impact is **Java**, which goes up from 6 to 11 and leaves **Java 8** (still widely used) out, only because of `PATCH`. Rust 1.70 is an estimate to close in the prototype.
+**Base versions of the connectors (the other languages): confirm the table.** The ones for **C#** (.NET Framework 4.6.1 and .NET 5) and for **Java 11, Python 3.9 and Node.js 18** are decided (D68.1, D68.2). The "base version" is the oldest version of each language that the connector agrees to run on. Instead of choosing each by eye, the proposal is a single rule, derived from what has already been decided: the base is the **oldest** that (1) speaks TLS 1.2 or higher (D69), (2) has an HTTP client with `PATCH` (D72) and, where the language has async, uses it (D71). The table that comes out of the rule is in [21-connectors.md](21-connectors.md), section 18.10.1: **PHP 5.6, Ruby 2.0, C89 with `libcurl` 7.34, C++03, Go 1.7 and Rust 1.70** for the languages still to do (the rule gave Python 2.7.9/3.4.3 and Node 0.12, and Java 11 leaves **Java 8** out only because of `PATCH`; D68.2 raised Python and Node.js). The question is: **are the rule and the table right for the languages still to do?** The same doubt as in Python and Node.js applies to PHP 5.6 and Ruby 2.0: an old base forbids the idioms the people of that language expect. Rust 1.70 is an estimate to close in the prototype.
 
 ### D70
 

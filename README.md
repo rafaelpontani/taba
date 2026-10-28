@@ -211,12 +211,12 @@ The API is HTTP, so any language can already talk to Taba with the HTTP client i
 
 | Language | Folder | Base version | State | Usage example |
 |---|---|---|---|---|
-| Java | `connectors/java/` | Java 11 | planned | TODO |
+| Java | `connectors/java/` | Java 11 | [ready](connectors/java/README.md) (nine blocking and `CompletableFuture` operations, `subscribe`) | [README](connectors/java/README.md) |
 | C# | `connectors/csharp/` | .NET Framework 4.6.1 and .NET 5, 6, 8 and 10 | [ready](connectors/csharp/README.md) (nine async and sync operations, `subscribe`) | [console example](examples/csharp-console/) |
-| Python | `connectors/python/` | 2.7.9 and 3.4.3 | planned | TODO |
+| Python | `connectors/python/` | 3.9 | [ready](connectors/python/README.md) (synchronous and `asyncio` clients, `subscribe`) | [README](connectors/python/README.md) |
 | PHP | `connectors/php/` | 5.6 | planned | TODO |
 | Ruby | `connectors/ruby/` | 2.0 | planned | TODO |
-| Node.js | `connectors/node/` | 0.12 | planned | TODO |
+| Node.js | `connectors/node/` | 18 | [ready](connectors/node/README.md) (nine `Promise` operations, `subscribe`, types included) | [README](connectors/node/README.md) |
 | Go | `connectors/go/` | 1.7 | planned | TODO |
 | Rust | `connectors/rust/client/` | 1.70 | synchronous ready ([README](connectors/rust/client/README.md)) | [example](connectors/rust/client/README.md) |
 | C | `connectors/c/` | C89 | planned | TODO |

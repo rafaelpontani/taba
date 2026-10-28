@@ -1,0 +1,30 @@
+{
+  "name": "taba-client",
+  "version": "0.1.0",
+  "description": "Taba messaging system client: the nine operations, subscribe, call retries. No dependencies.",
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rafaelpontani/taba.git",
+    "directory": "connectors/node"
+  },
+  "keywords": [
+    "taba",
+    "queue",
+    "messaging",
+    "client"
+  ]
+}

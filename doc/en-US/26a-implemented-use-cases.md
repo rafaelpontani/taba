@@ -3538,6 +3538,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::the_nine_operations_build_the_expected_routes`
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::create_topic_sends_only_what_was_filled`
   - `connectors/rust/client/src/client/tests.rs::topic_operations_build_the_expected_routes`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theNineOperationsBuildTheExpectedRoutes`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::createTopicSendsOnlyWhatWasFilled`
+  - `connectors/node/test/client.test.js::the nine operations build the expected routes`
+  - `connectors/node/test/client.test.js::create topic sends only what was filled`
+  - `connectors/python/tests/test_client.py::test_the_nine_operations_build_the_expected_routes`
+  - `connectors/python/tests/test_client.py::test_create_topic_sends_only_what_was_filled`
 
 ---
 
@@ -3548,6 +3554,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::config_defaults_and_required_base_url`
   - `connectors/rust/client/src/client/tests.rs::config_defaults_and_required_base_url`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::configDefaultsAndRequiredBaseUrl`
+  - `connectors/node/test/client.test.js::config defaults and required base url`
+  - `connectors/python/tests/test_client.py::test_config_defaults_and_required_base_url`
 
 ---
 
@@ -3559,6 +3568,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::a_token_goes_in_every_call_and_without_it_no_call_carries_authorization`
   - `connectors/rust/client/src/client/tests.rs::headers_carry_the_token_the_agent_and_the_optional_ids`
   - `connectors/rust/client/src/client/tests.rs::without_a_token_no_call_carries_authorization`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aTokenGoesInEveryCallAndWithoutItNoCallCarriesAuthorization`
+  - `connectors/node/test/client.test.js::a token goes in every call and without it no call carries authorization`
+  - `connectors/python/tests/test_client.py::test_a_token_goes_in_every_call_and_without_it_no_call_carries_authorization`
 
 ---
 
@@ -3570,6 +3582,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::publish_sends_raw_bytes_with_content_type_and_query`
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::a_distributor_answer_lists_each_copy_and_the_partial_failures`
   - `connectors/rust/client/src/client/tests.rs::publish_sends_raw_bytes_with_content_type_and_query`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::publishSendsRawBytesWithContentTypeAndQuery`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aDistributorAnswerListsEachCopyAndThePartialFailures`
+  - `connectors/node/test/client.test.js::publish sends raw bytes with content type and query`
+  - `connectors/node/test/client.test.js::a distributor answer lists each copy and the partial failures`
+  - `connectors/python/tests/test_client.py::test_publish_sends_raw_bytes_with_content_type_and_query`
+  - `connectors/python/tests/test_client.py::test_a_distributor_answer_lists_each_copy_and_the_partial_failures`
 
 ---
 
@@ -3582,6 +3600,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::auto_create_parameters_are_left_out_without_auto_create`
   - `connectors/rust/client/src/client/tests.rs::consume_sends_only_what_was_given_and_reads_for_wait_time_plus_ten`
   - `connectors/rust/client/src/client/tests.rs::auto_create_parameters_are_left_out_without_auto_create`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::consumeSendsOnlyWhatWasGiven`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::autoCreateParametersAreLeftOutWithoutAutoCreate`
+  - `connectors/node/test/client.test.js::consume sends only what was given`
+  - `connectors/node/test/client.test.js::auto create parameters are left out without auto create`
+  - `connectors/python/tests/test_client.py::test_consume_sends_only_what_was_given`
+  - `connectors/python/tests/test_client.py::test_auto_create_parameters_are_left_out_without_auto_create`
 
 ---
 
@@ -3592,6 +3616,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::ack_and_visibility_put_the_receipt_token_in_the_query`
   - `connectors/rust/client/src/client/tests.rs::ack_and_visibility_put_the_receipt_token_in_the_query`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::ackAndVisibilityPutTheReceiptTokenInTheQuery`
+  - `connectors/node/test/client.test.js::ack and visibility put the receipt token in the query`
+  - `connectors/python/tests/test_client.py::test_ack_and_visibility_put_the_receipt_token_in_the_query`
 
 ---
 
@@ -3602,6 +3629,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::list_all_topics_follows_next_cursor_until_the_last_page`
   - `connectors/rust/client/src/client/tests.rs::list_all_topics_follows_next_cursor_until_the_last_page`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::listAllTopicsFollowsNextCursorUntilTheLastPage`
+  - `connectors/node/test/client.test.js::list all topics follows next cursor until the last page`
+  - `connectors/python/tests/test_client.py::test_list_all_topics_follows_next_cursor_until_the_last_page`
 
 ---
 
@@ -3614,6 +3644,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::the_consume_read_timeout_is_wait_time_plus_ten_seconds_and_not_the_request_timeout`
   - `connectors/csharp/Taba.Client.Tests/IntegrationTests.cs::long_polling_waits_on_an_empty_queue_and_returns_as_soon_as_a_message_arrives`
   - `connectors/rust/client/src/client/tests.rs::consume_sends_only_what_was_given_and_reads_for_wait_time_plus_ten`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theConsumeReadTimeoutIsWaitTimePlusTenSecondsAndNotTheRequestTimeout`
+  - `connectors/node/test/client.test.js::the consume read timeout is wait time plus ten seconds and not the request timeout`
+  - `connectors/python/tests/test_client.py::test_the_consume_read_timeout_is_wait_time_plus_ten_seconds_and_not_the_request_timeout`
 
 ---
 
@@ -3626,6 +3659,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::a_timeout_is_not_repeated_and_is_a_client_side_error`
   - `connectors/rust/client/src/client/tests.rs::a_timeout_after_sending_is_not_repeated`
   - `connectors/rust/client/src/transport/tests.rs::a_silent_server_times_out_after_the_request_was_sent`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aTimeoutIsNotRepeatedAndIsAClientSideError`
+  - `connectors/node/test/client.test.js::a timeout is not repeated and is a client side error`
+  - `connectors/python/tests/test_client.py::test_a_timeout_is_not_repeated_and_is_a_client_side_error`
 
 ---
 
@@ -3638,6 +3674,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
   - `connectors/rust/client/src/client/tests.rs::retries_429_and_503_waiting_for_retry_after_then_backoff`
   - `connectors/rust/client/src/client/tests.rs::backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::retries429And503WaitingForRetryAfterThenBackoff`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::backoffWithoutRetryAfterIsOneTwoFourSecondsUpToMaxAttempts`
+  - `connectors/node/test/client.test.js::retries 429 and 503 waiting for retry after then backoff`
+  - `connectors/node/test/client.test.js::backoff without retry after is one two four seconds up to max attempts`
+  - `connectors/python/tests/test_client.py::test_retries_429_and_503_waiting_for_retry_after_then_backoff`
+  - `connectors/python/tests/test_client.py::test_backoff_without_retry_after_is_one_two_four_seconds_up_to_max_attempts`
 
 ---
 
@@ -3650,6 +3692,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::without_a_previous_503_a_409_or_404_is_a_plain_error`
   - `connectors/rust/client/src/client/tests.rs::after_a_503_a_409_on_create_and_a_404_on_delete_count_as_success`
   - `connectors/rust/client/src/client/tests.rs::without_a_previous_503_a_409_or_404_is_a_plain_error`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::afterA503A409OnCreateAndA404OnDeleteCountAsSuccess`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::withoutAPrevious503A409OrA404IsAPlainError`
+  - `connectors/node/test/client.test.js::after a 503 a 409 on create and a 404 on delete count as success`
+  - `connectors/node/test/client.test.js::without a previous 503 a 409 or a 404 is a plain error`
+  - `connectors/python/tests/test_client.py::test_after_a_503_a_409_on_create_and_a_404_on_delete_count_as_success`
+  - `connectors/python/tests/test_client.py::test_without_a_previous_503_a_409_or_a_404_is_a_plain_error`
 
 ---
 
@@ -3660,6 +3708,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::gateway_errors_are_only_repeated_when_publishing_to_a_fifo`
   - `connectors/rust/client/src/client/tests.rs::gateway_errors_are_only_repeated_when_publishing_to_a_fifo`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::gatewayErrorsAreOnlyRepeatedWhenPublishingToAFifo`
+  - `connectors/node/test/client.test.js::gateway errors are only repeated when publishing to a fifo`
+  - `connectors/python/tests/test_client.py::test_gateway_errors_are_only_repeated_when_publishing_to_a_fifo`
 
 ---
 
@@ -3675,6 +3726,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/rust/client/src/transport/tests.rs::a_refused_connection_is_a_failure_before_sending`
   - `connectors/rust/client/src/transport/tests.rs::a_silent_server_times_out_after_the_request_was_sent`
   - `connectors/rust/client/src/transport/tests.rs::a_connection_dropped_mid_response_is_an_io_failure`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::networkFailureAfterSendingIsNotRepeated`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aRefusedConnectionIsRepeatedAndThenANetworkError`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aRefusedConnectionSucceedsWhenTheNodeComesBack`
+  - `connectors/node/test/client.test.js::network failure before sending is repeated and after is not`
+  - `connectors/node/test/client.test.js::a refused connection is repeated and then succeeds when the node comes back`
+  - `connectors/python/tests/test_client.py::test_network_failure_after_sending_is_not_repeated`
+  - `connectors/python/tests/test_client.py::test_a_refused_connection_is_repeated_and_then_a_network_error`
+  - `connectors/python/tests/test_client.py::test_a_refused_connection_succeeds_when_the_node_comes_back`
 
 ---
 
@@ -3687,6 +3746,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::a_4xx_other_than_429_is_never_repeated`
   - `connectors/rust/client/src/client/tests.rs::without_a_previous_503_a_409_or_404_is_a_plain_error`
   - `connectors/rust/client/src/client/tests.rs::a_4xx_other_than_429_is_never_repeated`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::withoutAPrevious503A409OrA404IsAPlainError`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::a4xxOtherThan429IsNeverRepeated`
+  - `connectors/node/test/client.test.js::without a previous 503 a 409 or a 404 is a plain error`
+  - `connectors/node/test/client.test.js::a 4xx other than 429 is never repeated`
+  - `connectors/python/tests/test_client.py::test_without_a_previous_503_a_409_or_a_404_is_a_plain_error`
+  - `connectors/python/tests/test_client.py::test_a_4xx_other_than_429_is_never_repeated`
 
 ---
 
@@ -3699,6 +3764,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::messages_come_back_as_bytes_for_json_text_and_base64`
   - `connectors/csharp/Taba.Client.Tests/IntegrationTests.cs::text_json_and_binary_bodies_come_back_as_the_same_bytes`
   - `connectors/rust/client/src/client/tests.rs::messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::messagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
+  - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
 
 ---
 
@@ -3709,6 +3777,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::messages_come_back_as_bytes_for_json_text_and_base64`
   - `connectors/rust/client/src/client/tests.rs::messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::messagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
+  - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
 
 ---
 
@@ -3723,6 +3794,15 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/rust/client/src/client/tests.rs::a_timeout_after_sending_is_not_repeated`
   - `connectors/rust/client/src/client/tests.rs::the_error_carries_the_error_response_fields`
   - `connectors/rust/client/src/client/tests.rs::retry_after_and_request_id_come_from_the_headers_and_a_non_json_error_still_reports`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aTimeoutIsNotRepeatedAndIsAClientSideError`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theErrorCarriesTheErrorResponseFieldsAndTheHeaders`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aNonJsonErrorStillReportsAStatusCode`
+  - `connectors/node/test/client.test.js::a timeout is not repeated and is a client side error`
+  - `connectors/node/test/client.test.js::the error carries the error response fields and the headers`
+  - `connectors/node/test/client.test.js::a non json error still reports a status code`
+  - `connectors/python/tests/test_client.py::test_a_timeout_is_not_repeated_and_is_a_client_side_error`
+  - `connectors/python/tests/test_client.py::test_the_error_carries_the_error_response_fields_and_the_headers`
+  - `connectors/python/tests/test_client.py::test_a_non_json_error_still_reports_a_status_code`
 
 ---
 
@@ -3736,6 +3816,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/rust/client/src/client/tests.rs::headers_carry_the_token_the_agent_and_the_optional_ids`
   - `connectors/rust/client/src/client/tests.rs::retry_after_and_request_id_come_from_the_headers_and_a_non_json_error_still_reports`
   - `connectors/rust/client/src/client/tests.rs::the_reply_exposes_the_request_id_header`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::headersCarryTheAgentAndTheOptionalIds`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theErrorCarriesTheErrorResponseFieldsAndTheHeaders`
+  - `connectors/node/test/client.test.js::headers carry the agent and the optional ids`
+  - `connectors/node/test/client.test.js::the error carries the error response fields and the headers`
+  - `connectors/python/tests/test_client.py::test_headers_carry_the_agent_and_the_optional_ids`
+  - `connectors/python/tests/test_client.py::test_the_error_carries_the_error_response_fields_and_the_headers`
 
 ---
 
@@ -3759,6 +3845,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/IntegrationTests.cs::many_parallel_publishers_share_one_client`
   - `connectors/rust/client/src/client/tests.rs::the_client_is_safe_to_share_between_threads`
   - `connectors/rust/client/src/client/tests.rs::many_threads_can_use_one_client_at_the_same_time`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::manyThreadsCanUseOneClientAtTheSameTime`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::interruptingTheThreadCancelsTheCallWithoutAClientError`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::cancellingTheFutureInterruptsTheAsyncCall`
+  - `connectors/node/test/client.test.js::many concurrent calls can use one client at the same time`
+  - `connectors/node/test/client.test.js::aborting the signal cancels the call without a client error`
+  - `connectors/python/tests/test_client.py::test_many_threads_can_use_one_client_at_the_same_time`
+  - `connectors/python/tests/test_client.py::test_cancelling_the_token_cancels_the_call_without_a_client_error`
+  - `connectors/python/tests/test_client.py::test_cancelling_the_task_cancels_the_call_in_flight`
 
 ---
 
@@ -3824,6 +3918,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::messages_come_back_as_bytes_for_json_text_and_base64`
   - `connectors/csharp/Taba.Client.Tests/JsonTests.cs::quote_round_trips_through_decode`
   - `connectors/rust/client/src/json/tests.rs::quote_round_trips_through_decode`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::publishSendsRawBytesWithContentTypeAndQuery`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::messagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/node/test/client.test.js::publish sends raw bytes with content type and query`
+  - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
+  - `connectors/python/tests/test_client.py::test_publish_sends_raw_bytes_with_content_type_and_query`
+  - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
 
 ---
 
@@ -3844,6 +3944,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/rust/client/src/http/tests.rs::no_content_has_no_body`
   - `connectors/rust/client/src/http/tests.rs::rejects_malformed_responses`
   - `connectors/rust/client/src/http/tests.rs::builds_a_target_with_encoded_query`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::messagesComeBackAsBytesForJsonTextAndBase64`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::anInvalidAnswerIsAnInvalidResponseErrorAndNotACrash`
+  - `connectors/node/test/client.test.js::messages come back as bytes for json text and base64`
+  - `connectors/node/test/client.test.js::an invalid answer is an invalid response error and not a crash`
+  - `connectors/python/tests/test_client.py::test_messages_come_back_as_bytes_for_json_text_and_base64`
+  - `connectors/python/tests/test_client.py::test_an_invalid_answer_is_an_invalid_response_error_and_not_a_crash`
 
 ---
 
@@ -3878,6 +3984,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/JsonTests.cs::fields_look_up_typed_values_and_ignore_unknown_ones`
   - `connectors/rust/client/src/client/tests.rs::unknown_fields_in_responses_are_ignored`
   - `connectors/rust/client/src/json/tests.rs::fields_look_up_typed_values_and_ignore_unknown_ones`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::unknownFieldsInResponsesAreIgnoredAndTheContractVersionIsDeclared`
+  - `connectors/node/test/client.test.js::unknown fields in responses are ignored and the contract version is declared`
+  - `connectors/python/tests/test_client.py::test_unknown_fields_in_responses_are_ignored_and_the_contract_version_is_declared`
 
 ---
 
@@ -3890,6 +3999,12 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::update_topic_is_a_real_patch_without_a_method_override_header`
   - `connectors/csharp/Taba.Client.Tests/PackagingTests.cs::patch_uses_the_http_method_and_never_the_override_header`
   - `connectors/rust/client/src/client/tests.rs::topic_operations_build_the_expected_routes`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theNineOperationsBuildTheExpectedRoutes`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::updateTopicIsARealPatchWithoutAMethodOverrideHeader`
+  - `connectors/node/test/client.test.js::the nine operations build the expected routes`
+  - `connectors/node/test/client.test.js::update topic is a real PATCH without a method override header`
+  - `connectors/python/tests/test_client.py::test_the_nine_operations_build_the_expected_routes`
+  - `connectors/python/tests/test_client.py::test_update_topic_is_a_real_patch_without_a_method_override_header`
 
 ---
 
@@ -3912,6 +4027,14 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::the_sync_subscribe_blocks_until_cancelled`
   - `connectors/csharp/Taba.Client.Tests/IntegrationTests.cs::subscribe_handles_and_acks_every_message_until_cancelled`
   - `connectors/rust/client/src/client/tests.rs::subscribe_acks_only_what_the_handler_accepted_and_stops_on_demand`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::subscribeAcksOnlyWhatTheHandlerAcceptedAndStopsOnClose`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::subscribeEndsWithoutAnErrorWhenClosedDuringTheLongPolling`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aServerErrorWhileSubscribingEndsTheLoopAndSurfacesInTheCompletion`
+  - `connectors/node/test/client.test.js::subscribe acks only what the handler accepted and stops on abort`
+  - `connectors/node/test/client.test.js::subscribe ends without an error when aborted during the long polling`
+  - `connectors/python/tests/test_client.py::test_subscribe_acks_only_what_the_handler_accepted_and_stops_on_cancel`
+  - `connectors/python/tests/test_client.py::test_subscribe_returns_without_an_error_when_cancelled_during_the_long_polling`
+  - `connectors/python/tests/test_client.py::test_the_async_subscribe_acks_only_what_the_handler_accepted_and_stops_when_the_task_is_cancelled`
 
 ---
 
@@ -3922,6 +4045,10 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::the_async_forms_do_the_same_as_the_sync_ones`
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::every_operation_has_a_sync_and_an_async_form`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::theAsyncFormsDoTheSameAsTheSyncOnes`
+  - `connectors/node/test/client.test.js::every operation is asynchronous and returns a promise`
+  - `connectors/python/tests/test_client.py::test_the_async_forms_do_the_same_as_the_sync_ones`
+  - `connectors/python/tests/test_client.py::test_errors_and_retries_are_the_same_in_the_async_client`
 
 ---
 
@@ -3932,6 +4059,9 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::publish_json_serializes_the_object_and_sends_it_as_json`
   - `connectors/rust/client/src/client/handlers/tests.rs::publish_object_serializes_and_sends_json`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::publishJsonSerializesTheObjectAndSendsItAsJson`
+  - `connectors/node/test/client.test.js::publish json serializes the object and sends it as json`
+  - `connectors/python/tests/test_client.py::test_publish_json_serializes_the_object_and_sends_it_as_json`
 
 ---
 
@@ -3949,6 +4079,19 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `connectors/rust/client/src/client/handlers/tests.rs::consume_with_renews_the_visibility_while_the_handler_runs_and_lets_it_change`
   - `connectors/rust/client/src/client/handlers/tests.rs::change_visibility_in_the_handler_becomes_the_renewal_value`
   - `connectors/rust/client/src/client/handlers/tests.rs::consume_typed_hands_over_the_deserialized_body_and_refuses_a_body_that_is_not_a_t`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::consumeWithAHandlerDeletesByDefaultAndKeepsTheMessageWhenAskedOrWhenItFails`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::consumeWithAHandlerRenewsTheVisibilityWhileItRunsAndLetsItChangeIt`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::aRefusedRenewalMarksTheLeaseAsLostAndTheDeleteIsTolerated`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::consumeOfTHandsOverTheDeserializedBodyAndRefusesABodyThatIsNotAT`
+  - `connectors/node/test/client.test.js::consume with a handler deletes by default and keeps the message when asked or when it fails`
+  - `connectors/node/test/client.test.js::consume with a handler renews the visibility while it runs and lets it change it`
+  - `connectors/node/test/client.test.js::a refused renewal marks the lease as lost and the delete is tolerated`
+  - `connectors/node/test/client.test.js::consume json hands over the parsed body and refuses a body that is not json`
+  - `connectors/python/tests/test_client.py::test_consume_with_a_handler_deletes_by_default_and_keeps_the_message_when_asked_or_when_it_fails`
+  - `connectors/python/tests/test_client.py::test_consume_with_a_handler_renews_the_visibility_while_it_runs_and_lets_it_change_it`
+  - `connectors/python/tests/test_client.py::test_a_refused_renewal_marks_the_lease_as_lost_and_the_delete_is_tolerated`
+  - `connectors/python/tests/test_client.py::test_consume_json_hands_over_the_parsed_body_and_refuses_a_body_that_is_not_json`
+  - `connectors/python/tests/test_client.py::test_the_async_consume_with_renews_the_visibility_and_deletes_when_the_handler_returns`
 
 ---
 

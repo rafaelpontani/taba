@@ -45,13 +45,13 @@ Em fases ([21-conectores.md](21-conectores.md)); as fases 2, 3 e 4 **não depend
 
 | Fase | Linguagens | Observação |
 |---|---|---|
-| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) | Estressam o desenho nas duas pontas |
+| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) ✅ | Estressam o desenho nas duas pontas. Prontos (D68.2); faltam os testes de integração e a publicação (PRB-079) |
 | 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho C++03 sobre a `libtaba`) | |
-| 3 — Plataformas | **Node.js** e **Go** | |
+| 3 — Plataformas | **Node.js** ✅ e **Go** | Node.js pronto (D68.2) |
 | 4 — Restantes | **PHP** e **Ruby**; no **Rust**, a forma `async` | |
 | 5 — Integração | Os cenários passam em **todos** contra o Taba real; exemplos de uso preenchem a tabela do README | Depende do marco 1 |
 
-Decisões que precisam estar fechadas: **D68** (versões-base), **D70.1** e **D70.2** (nomes de organização e pacote; espelho do PHP; versões independentes).
+Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ainda por fazer), **D70.1** e **D70.2** (nomes de organização e pacote; espelho do PHP; versões independentes).
 
 ### Marco 3 — Publicação
 

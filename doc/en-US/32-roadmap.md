@@ -45,13 +45,13 @@ In phases ([21-connectors.md](21-connectors.md)); phases 2, 3 and 4 **do not dep
 
 | Phase | Languages | Note |
 |---|---|---|
-| 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) | Stress the design at both ends |
+| 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) ✅ | Stress the design at both ends. Ready (D68.2); integration tests and publishing missing (PRB-079) |
 | 2 — C core | **C** (`libtaba`) and **C++** (C++03 header over `libtaba`) | |
-| 3 — Platforms | **Node.js** and **Go** | |
+| 3 — Platforms | **Node.js** ✅ and **Go** | Node.js ready (D68.2) |
 | 4 — Remaining | **PHP** and **Ruby**; in **Rust**, the `async` form | |
 | 5 — Integration | The scenarios pass on **all** against the real Taba; usage examples fill the README table | Depends on milestone 1 |
 
-Decisions that must be closed: **D68** (base versions), **D70.1** and **D70.2** (organization and package names; PHP mirror; independent versions).
+Decisions that must be closed: **D68** (base versions of the languages still to do), **D70.1** and **D70.2** (organization and package names; PHP mirror; independent versions).
 
 ### Milestone 3 — Publishing
 
