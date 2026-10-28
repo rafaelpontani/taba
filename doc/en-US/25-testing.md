@@ -4,7 +4,7 @@ summary: How Taba is tested — the levels (unit, one node, simulated cluster, c
 type: guide
 status: stable
 verified-on: 2026-10-27 @ ada9ff1
-sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
+sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, connectors/contract, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
 # Testing
@@ -22,8 +22,8 @@ In a distributed system, the most valuable test **starts several nodes in the sa
 | **Unit** | `U` | An isolated piece, with no real network or disk: domain, validation, ring, lists, quorum, JSON reader | `src/**/tests.rs`, **sibling of the module** |
 | **One node** | `I` | A real node in the **one-node profile**, real HTTP, real disk (temporary folder). What the client sees | `crates/taba-node/tests/*.rs` with `TestNode` |
 | **Cluster** | `C` | **Several nodes in the same process**, in-memory network (programmable loss, delay, partition) and manual `Clock`. Quorum, rollback, failure, voting, synchronization, drain | `crates/taba-node/tests/*.rs` with `TestCluster` |
-| **Connector** | `K` | The connector against a fake transport (unit) and against a real Taba (integration) | `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests` |
-| **End to end** | — | The real 3-node Compose | `docker/validate.sh`, `connectors/csharp/scripts/integration.sh` |
+| **Connector** | `K` | The connector against a fake transport (unit) and against a real Taba (integration) | `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`; the contract tests: `connectors/contract` |
+| **End to end** | — | The real 3-node Compose | `docker/validate.sh`, `connectors/csharp/scripts/integration.sh`, `connectors/contract/run.sh` (one node) |
 
 There are also **tests over real TCP and TLS** (`tests/mtls.rs`, `tests/common/real.rs`: nodes on `127.0.0.x`, HTTP `Transport` and mutual TLS) and **OTLP tests** (`tests/otlp.rs`, with a fake collector).
 
@@ -91,6 +91,7 @@ cargo fmt --all --check
 cd connectors/rust && cargo test --workspace --all-features
 cd connectors/csharp && dotnet test Taba.Client.Tests          # unit; the integration ones require TABA_URL
 connectors/csharp/scripts/integration.sh                       # starts Compose, creates tokens and queues, runs everything
+connectors/contract/run.sh                                     # the five connectors against one real node, then against each other
 docker/validate.sh                                             # end to end (≈ 5 min)
 docker/hang-hunt.sh nodes_api <test name>                         # a test that hangs only under load: logs + thread stacks
 ```
@@ -112,6 +113,10 @@ docker/hang-hunt.sh nodes_api <test name>                         # a test that 
 5. **Make the test fail instead of hang.** When the call under test can block for good, run it on its own `std::thread` (entering the runtime with `Handle::enter` if it spawns tasks) and wait with `mpsc::Receiver::recv_timeout`; see `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`.
 
 The case that taught this is in [36-known-issues.md](36-known-issues.md#a-channel-accept-that-locked-the-peers-twice).
+
+## The connector contract tests: `connectors/contract/run.sh`
+
+One scenario, written as data (`scenarios/core.scn`), run by a small driver of **each connector** in its own language against **one Taba node** in Docker (the one-node profile), each in the container of its oldest supported runtime; then the five connectors publish to a distributor and each reads what the others sent (`scenarios/cross-*.scn`). The language of the scenario, the operations and how to add a connector are in [connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md); the summary is in [21-connectors.md](21-connectors.md#the-contract-tests). The `connector-contract` job of `ci.yml` runs it on pull requests to `release`. It does not take nodes down: the cluster behavior is `docker/validate.sh`.
 
 ## `docker/validate.sh` and `docker/cluster.sh`
 
@@ -173,7 +178,7 @@ At the end the script prints the depth of each queue and leaves the cluster up: 
 | Real integration (image, Compose, HAProxy, `SIGTERM`) | `validate.sh` |
 | Connector diverging from the contract | `K` |
 
-⬜ **Missing:** **performance and load** tests (the speed and cost goals have no benchmark), **Kubernetes** tests and the **shared conformance suite** between connectors ([32-roadmap.md](32-roadmap.md)). `docker/test-cpu.sh` is a CPU measurement script.
+⬜ **Missing:** **performance and load** tests (the speed and cost goals have no benchmark), **Kubernetes** tests and the **fixtures of the conformance suite** between connectors (request/response pairs; the scenarios and drivers exist, [32-roadmap.md](32-roadmap.md)). `docker/test-cpu.sh` is a CPU measurement script.
 
 ## Known issues
 
@@ -181,7 +186,7 @@ The test turned off with `#[ignore]` because it fails intermittently in CI, with
 
 ## Sources and evidence
 
-- `crates/taba-node/tests/*.rs` and `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate,seed-demo}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
+- `crates/taba-node/tests/*.rs` and `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate,seed-demo}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/contract`.
 - The "702 of 885" scoreboard and the "Tests" column failure were **run** on 2026-10-13 (`cargo test --test uc_coverage -- --nocapture`). Also **run and green** on that date: `cargo test --lib` (**509 unit tests**, 2.25 s) and the files `topics` (21), `messages` (41), `failures` (21), `freezing` (5) and `drain_cluster` (7). **The rest of the suite was not run** in this verification: the machine ran out of disk space at *link* (`LNK1201`), the `target/` problem described in [24-conventions.md](24-conventions.md).
 - Use cases: all (each test cites its own); see [26a](26a-implemented-use-cases.md).
 - History: `doc/20-casos-de-uso.md` (19.4, 19.5), `18-estrutura-codigo.md` (17.5).

@@ -37,7 +37,7 @@ A ordem é uma **proposta**; os marcos 1 e 2 não dependem um do outro.
 | Item | Detalhe | Fecha |
 |---|---|---|
 | **Política de versionamento nos caminhos** ⬜ | Os documentos OpenAPI existem ([15](15-api-visao-geral.md)); falta decidir a política do prefixo (hoje não há `/v1`) **antes** de os outros conectores fixarem os caminhos | RF-22 |
-| **Suíte de conformidade** ⬜ | `connectors/contrato/`: fixtures (pares requisição/resposta), os documentos de teste do leitor de JSON, os cenários e um `docker-compose` do Taba de um nó só (perfil de um nó) | UC-CNT (nível `K`) |
+| **Suíte de conformidade** 🟡 | `connectors/contract/` ✅: os cenários (`core.scn` e os entre linguagens), os drivers dos cinco conectores e um Taba de um nó no Docker ([21-conectores.md](21-conectores.md#os-testes-de-contrato), D183). Faltam ⬜: as fixtures (pares requisição/resposta) e os documentos de teste do leitor de JSON | UC-CNT (nível `K`) |
 
 ### Marco 2 — Os demais conectores
 
@@ -45,13 +45,13 @@ Em fases ([21-conectores.md](21-conectores.md)); as fases 2, 3 e 4 **não depend
 
 | Fase | Linguagens | Observação |
 |---|---|---|
-| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) | Estressam o desenho nas duas pontas |
+| 1 — Referência | **Python** (a mais legível) e **Java** (a base mais antiga) ✅ | Estressam o desenho nas duas pontas. Prontos (D68.2) com os testes de contrato (D183); falta a publicação (PRB-079) |
 | 2 — Núcleo C | **C** (`libtaba`) e **C++** (cabeçalho C++03 sobre a `libtaba`) | |
-| 3 — Plataformas | **Node.js** e **Go** | |
+| 3 — Plataformas | **Node.js** ✅ e **Go** | Node.js pronto (D68.2) |
 | 4 — Restantes | **PHP** e **Ruby**; no **Rust**, a forma `async` | |
-| 5 — Integração | Os cenários passam em **todos** contra o Taba real; exemplos de uso preenchem a tabela do README | Depende do marco 1 |
+| 5 — Integração | Os cenários passam em **todos** contra o Taba real ✅ (`connectors/contract/run.sh`, D183); exemplos de uso preenchem a tabela do README ⬜ | Depende do marco 1 |
 
-Decisões que precisam estar fechadas: **D68** (versões-base), **D70.1** e **D70.2** (nomes de organização e pacote; espelho do PHP; versões independentes).
+Decisões que precisam estar fechadas: **D68** (versões-base das linguagens ainda por fazer), **D70.1** e **D70.2** (nomes de organização e pacote; espelho do PHP; versões independentes).
 
 ### Marco 3 — Publicação
 
@@ -95,7 +95,7 @@ As pendências "sem bloqueio" de [31-pendencias.md](31-pendencias.md) são, em s
 | **`uc_coverage` lendo os catálogos novos** ✅ | Lê os cartões de `26a`/`26b`; falta um gerador que os mantenha ([31-pendencias.md](31-pendencias.md), item E) |
 | **Diagramas desta documentação** ✅ | Os 31 pontos estão desenhados (índice em [24-convencoes.md](24-convencoes.md#índice-dos-diagramas)); a fonte é o JSON do Archify |
 | **Verificação automática** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` e `verificar-idiomas.mjs` num job de PR ([27-ci-cd.md](27-ci-cd.md)) |
-| **Job de integração no CI** ⬜ | `integration.sh` e `validate.sh` (hoje só à mão) |
+| **Job de integração no CI** 🟡 | Os testes de contrato dos conectores rodam no `ci.yml` em todo pull request para `release` ✅; `connectors/csharp/scripts/integration.sh` e `validate.sh` continuam só à mão ⬜ |
 | **Traduções** 🟡 | ✅ `doc/en-US/` espelha `doc/pt-BR/`. ⬜ Outras pastas de idioma ao lado delas; toda mudança vale para todas ([24-convencoes.md](24-convencoes.md#documentação-em-vários-idiomas)) |
 
 ## Fora do escopo (por enquanto)

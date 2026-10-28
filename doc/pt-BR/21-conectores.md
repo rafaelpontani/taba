@@ -1,10 +1,10 @@
 ---
 título: Conectores
-resumo: As bibliotecas de cliente do Taba — o contrato comum (as nove operações, repetição, erros, corpo), o estado real de cada linguagem (Rust e C# prontos; oito planejadas), como usar e como escrever um novo.
+resumo: As bibliotecas de cliente do Taba — o contrato comum (as nove operações, repetição, erros, corpo), o estado real de cada linguagem (Rust, C#, Java, Python e Node.js prontos; cinco planejadas), como usar e como escrever um novo.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-18 @ 7a2fbee
-fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, examples/csharp-console]
+verificado-em: 2026-10-27 @ 9511db3
+fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/contract, examples/csharp-console]
 ---
 
 # Conectores
@@ -17,10 +17,13 @@ fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, conn
 |---|---|---|---|
 | **Rust** (`taba-client`) | `connectors/rust/client/` | ✅ **Síncrono pronto.** A forma `async` falta | ✅ [crates.io](https://crates.io/crates/taba-client) |
 | **`taba-cli`** (sobre o Rust) | `connectors/rust/cli/` | ✅ Pronto ([20-cli.md](20-cli.md)) | ✅ [crates.io](https://crates.io/crates/taba-cli), binários e imagem Docker |
-| **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Pronto**: unitários e integração contra o Compose | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
-| Java, C, C++, Python, PHP, Ruby, Go, Node.js | — | ⬜ **Planejados** (as pastas não existem) | — |
+| **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Pronto**: unitários, integração contra o Compose e os testes de contrato | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
+| **Java** (`taba-client`) | `connectors/java/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
+| **Python** (`taba-client`) | `connectors/python/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
+| **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
+| C, C++, PHP, Ruby, Go | — | ⬜ **Planejados** (as pastas não existem) | — |
 
-> A meta de **dez linguagens** é plano, não realidade: hoje **2 de 10** existem. O [roadmap](32-roadmap.md) tem a ordem. Como a API é HTTP, as demais linguagens usam o cliente HTTP delas até o conector sair.
+> A meta de **dez linguagens** é plano, não realidade: hoje **5 de 10** existem. O [roadmap](32-roadmap.md) tem a ordem. Como a API é HTTP, as demais linguagens usam o cliente HTTP delas até o conector sair.
 
 ## Os três princípios
 
@@ -29,6 +32,8 @@ fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, conn
 3. **Funciona em versões antigas** (até **15 anos**, de 2011 em diante), **só nas plataformas que falam TLS 1.2 ou superior**, fazem `PATCH` e conferem o certificado. O que não cumpre isso não é suportado: o Taba não abre porta HTTP simples nem TLS antigo para elas.
 
 Fora disso, o conector **não tenta ser esperto**: não guarda estado, não faz buffer de publicações, não reordena. O servidor decide (quórum, FIFO, entrega justa).
+
+> **Alcance.** Os 15 anos valem para as linguagens ainda por fazer e para o C# e o Rust. Para **Java 11 (2018), Python 3.9 (2020) e Node.js 18 (2022)** a base foi posta mais alto (D68.2): a regra da tabela abaixo dava Python 2.7.9/3.4.3 e Node.js 0.12, que proibiriam `async`/`await`, `asyncio`, classes e anotações de tipo, e que as ferramentas de hoje já não rodam.
 
 ## A superfície: nove operações
 
@@ -153,42 +158,107 @@ using (var client = new TabaClient(config))
 - **`ConsumeAsync<T>(topic, handler)`:** long polling de 20 s, uma mensagem por vez, 120 s de invisibilidade, corpo deserializado, **ack só se o handler terminar sem exceção**, renovação automática da invisibilidade (a cada um terço).
 - **`SubscribeAsync`:** o laço inteiro.
 - **Injeção de dependência:** `builder.Services.AddTabaClient("Taba")` lê `BaseUrl`, `Token`… da seção do `appsettings.json` e registra `ITabaClient` como *singleton*.
-- **Testes:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; os de integração só rodam com `TABA_URL`). `connectors/csharp/scripts/integration.sh` sobe o Compose, cria tokens e filas e roda tudo.
+- **Testes:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; os de integração só rodam com `TABA_URL`). `connectors/csharp/scripts/integration.sh` sobe o Compose, cria tokens e filas e roda tudo. Além dele, todo conector (este também) roda os **testes de contrato**: `connectors/csharp/contract/run.sh`, ou `connectors/contract/run.sh` para os cinco ([testes de contrato](#os-testes-de-contrato)).
 - **Exemplo:** [`examples/csharp-console/`](../../examples/csharp-console/): cria um tópico, publica, consome com long polling e confirma; lê o endereço e o token raiz de variáveis de ambiente.
+
+## Java (`io.github.rafaelpontani:taba-client`)
+
+- **Java 11 ou superior** (`java.net.http.HttpClient`, HTTP/1.1, redirecionamentos desligados). **Sem dependências em tempo de execução**: JSON mínimo próprio; JUnit só nos testes. Projeto Maven em `connectors/java/`.
+- **Bloqueante e `...Async`** (`CompletableFuture`, num pool de threads do próprio cliente ou no `TabaConfig.executor`). Uma chamada bloqueante é cancelada interrompendo a thread e uma assíncrona por `future.cancel(true)`; as duas terminam com `CancellationException`, nunca com `TabaException`. A `TabaException` é não verificada (*unchecked*). Os handlers são um `ThrowingConsumer` (uma exceção verificada sai como `HandlerFailedException`).
+- **JSON:** o JDK não tem biblioteca de JSON, então `publishJson` e o `consume` tipado precisam de um `TabaJsonSerializer` na configuração (quatro linhas com o Jackson, no README); sem ele, falham com `client.invalid-config`.
+- **`subscribe`** devolve uma `Subscription` (`AutoCloseable`) que roda o laço numa thread própria; `close()` a para, interrompendo um long polling e nunca o handler.
+
+```java
+TabaConfig config = TabaConfig.of("http://localhost:8080").token(System.getenv("TABA_TOKEN"));
+try (TabaClient client = new TabaClient(config)) {
+    client.createTopic(TopicRequest.queue("pedidos"));
+    client.publishText("pedidos", "ola");
+
+    for (Message message : client.consume("pedidos", new ConsumeOptions().waitTime(20))) {
+        System.out.println(message.getBodyText());
+        client.ack("pedidos", message);
+    }
+}
+```
+
+Testes: `cd connectors/java && mvn test` (JUnit 5 e o `com.sun.net.httpserver` do próprio JDK); o CI roda JDK 11 e 21.
+
+## Node.js (`taba-client`)
+
+- **Node.js 18 ou superior**, CommonJS (funciona com `require` e `import`), tipos em `index.d.ts`, **sem dependências** (`node:http` e `node:https`).
+- **Só `Promise`:** o Node não tem HTTP síncrono, então não existe a gêmea `...Sync`. O cancelamento é um `AbortSignal`; as opções são objetos; os nomes são `camelCase`. Num `PATCH`, `undefined` deixa o campo de fora e `null` volta ao padrão do servidor.
+- `consumeWith(topic, options, handler)` e `consumeJson` (o `consume<T>` das outras linguagens: `context.body` é o corpo já lido); `subscribe(topic, options, handler, { signal, onError })` termina sem erro quando o sinal é abortado.
+- Uma conexão do pool que o servidor fechou ociosa (`ECONNRESET` antes de qualquer byte da resposta) é repetida como uma conexão recusada (PRB-081).
+
+```js
+const { TabaClient } = require('taba-client');
+
+const client = new TabaClient({ baseUrl: 'http://localhost:8080', token: process.env.TABA_TOKEN });
+await client.createTopic({ name: 'pedidos', type: 'queue' });
+await client.publishJson('pedidos', { pedido: 9001 });
+await client.consumeWith('pedidos', { waitTime: 20 }, async ({ message }) => console.log(message.bodyText));
+client.close();
+```
+
+Testes: `cd connectors/node && npm test` (`node:test` e um servidor HTTP local); o CI roda Node 18 e 24.
+
+## Python (`taba-client`, `import taba`)
+
+- **Python 3.9 ou superior**, **sem dependências**, tipado (`py.typed`). O `taba.Client` é síncrono (uma conexão por thread, então é seguro para uso concorrente); o `taba.aio.AsyncClient` é o do `asyncio`. A biblioteca-padrão não tem cliente HTTP assíncrono, então este roda o mesmo transporte em threads de trabalho (PRB-080).
+- `snake_case`; as opções são argumentos nomeados (`client.consume("q", wait_time=20)`); `iter_topics()` é um gerador; `UNSET` e `None` dizem ao `TopicUpdate` para deixar um campo de fora ou enviar `null`. `consume_with` e `consume_json` são as formas com handler.
+- **Cancelar:** o cliente síncrono recebe um `CancelToken` (fecha a conexão em andamento, então um long polling não espera o próprio tempo-limite) e levanta `taba.Cancelled`; o `subscribe` volta sem exceção. O cliente `asyncio` se cancela do jeito do `asyncio` (`task.cancel()`), que levanta `asyncio.CancelledError`.
+
+```python
+from taba import Client, TopicRequest
+
+with Client("http://localhost:8080", token="...") as client:
+    client.create_topic(TopicRequest("pedidos", "queue"))
+    client.publish_json("pedidos", {"pedido": 9001})
+    client.consume_with("pedidos", lambda context: print(context.message.body_text), wait_time=20)
+```
+
+Testes: `cd connectors/python && python -m unittest discover -s tests -t .` (o `unittest` padrão e um servidor HTTP local); o CI roda Python 3.9 e 3.13.
+
+> **Java, Node.js e Python não são cópia do C#.** O contrato (nove operações, repetição, erros, corpo) é o mesmo; as formas são as de cada linguagem, registradas em D68.2. Os três rodam os testes de contrato contra um Taba real ([testes de contrato](#os-testes-de-contrato), D183), e nenhum está publicado (PRB-079).
 
 ## Os planejados: versão-base e publicação
 
-Valem como **plano** (propostas, sujeitas a D68, D70.1, D70.2). "Versão-base" é a mais antiga que fala TLS 1.2, tem cliente HTTP com `PATCH` e confere o certificado.
+Valem como **plano** (propostas, sujeitas a D68, D70.1, D70.2). Java, Python e Node.js saíram desta tabela quando ficaram prontos (D68.2). "Versão-base" é a mais antiga que fala TLS 1.2, tem cliente HTTP com `PATCH` e confere o certificado.
 
 | Linguagem | Versão-base | Por quê | HTTP / JSON | Publicação |
 |---|---|---|---|---|
-| Java | **11** (2018) | O `HttpURLConnection` **nunca** fez `PATCH`; o `java.net.http` do 11 faz | `java.net.http.HttpClient` / leitor mínimo | Maven Central |
-| Python | **2.7.9** e **3.4.3** | As primeiras que conferem o certificado por padrão e falam TLS 1.2 | `http.client` / `json` | PyPI |
 | PHP | **5.6** | TLS 1.2 e verificação ligada por padrão | `curl` / `json_decode` | Packagist |
 | Ruby | **2.0** | `Net::HTTP::Patch` e `json` na biblioteca-padrão | `Net::HTTP` / `json` | RubyGems |
-| Node.js | **0.12** | `Promise` nativa e TLS 1.2 por padrão | `https` / `JSON` | npm |
 | Go | **1.7** | `context.Context` e `net/http` com `PATCH` | `net/http` / `encoding/json` | Proxy de módulos (tag `connectors/go/vX`) |
 | C | **C89** + `libcurl` ≥ 7.34 | A `libcurl` 7.34 é a primeira que exige TLS 1.2 e faz `PATCH` | `libcurl` / leitor mínimo | Releases do GitHub |
 | C++ | **C++03** | Um cabeçalho sobre a `libtaba` (C) | via `libtaba` | Releases do GitHub |
 
-**Regras de código para versões antigas:** nada de sintaxe ou biblioteca posterior à versão-base (sem `record` no Java 11, sem `?.` no C# 7.3, sem *f-strings* no Python 2.7, sem `let`/`const` no Node 0.12); o CI compila e testa **na versão-base e na mais recente**; texto em **UTF-8 sempre**; o conector **não desliga a verificação do certificado** e **não depende do relógio local**. O Taba **não** aceita `X-HTTP-Method-Override`.
+**Regras de código para versões antigas:** nada de sintaxe ou biblioteca posterior à versão-base (sem `?.` no C# 7.3; sem `record` nem bloco de texto no Java 11; sem `match` no Python 3.9; sem `Object.groupBy` no Node.js 18); o CI compila e testa **na versão-base e na mais recente**; texto em **UTF-8 sempre**; o conector **não desliga a verificação do certificado** e **não depende do relógio local**. O Taba **não** aceita `X-HTTP-Method-Override`.
 
 ## Como escrever um conector novo
 
 1. **Leia** [16-api-cliente.md](16-api-cliente.md) e este contrato; **use o `taba-cli`** como referência executável (cada comando é uma chamada da API, e o que ele faz é o que o conector repete).
 2. **Pasta autônoma** `connectors/<linguagem>/`: `README.md` (instalação, um exemplo de 10 linhas, versão-base), o empacotamento da linguagem, `src/`, `test/` e `exemplos/`. Nenhuma pasta importa código de outra (exceto `cpp/` sobre `c/`).
 3. **Implemente** as nove operações, a repetição da tabela acima, o leitor de JSON mínimo e os erros `client.*`.
-4. **Teste**: unitários com um transporte de mentira (o Rust tem `taba_client::testing`; o C# tem `ScriptedHandler`) conferindo a **requisição montada** e a leitura de respostas prontas; integração contra um Taba de um nó (`replication.factor=1`), ou o Compose.
+4. **Teste**: unitários com um transporte de mentira (o Rust tem `taba_client::testing`; o C# tem `ScriptedHandler`) conferindo a **requisição montada** e a leitura de respostas prontas; integração contra um Taba de um nó (`replication.factor=1`), ou o Compose; e um **driver** para os testes de contrato ([testes de contrato](#os-testes-de-contrato)): o cenário já está escrito, o conector só precisa executá-lo.
 5. **Cite os casos de uso** nos testes numa linha `UC: UC-CNT-NNN` (o `uc_coverage` do servidor lê as citações das pastas de conectores também) ([26-casos-de-uso.md](26-casos-de-uso.md)).
 
-> Planejado e **ainda inexistente**: a suíte de conformidade compartilhada (`connectors/contrato/` com fixtures e cenários), que conferiria os oito conectores restantes com o contrato ([32-roadmap.md](32-roadmap.md)). Os documentos OpenAPI da API de cliente existem ([15-api-visao-geral.md](15-api-visao-geral.md)) e os conectores podem ser gerados a partir deles ou conferidos contra eles; além deles, a "fonte da verdade" do contrato é este texto, o `taba-cli` e os testes dos dois conectores.
+> Planejado e **ainda inexistente**: as fixtures (pares requisição/resposta) e os documentos de teste do leitor de JSON da suíte de conformidade ([32-roadmap.md](32-roadmap.md)); os cenários e os drivers já existem ([testes de contrato](#os-testes-de-contrato)). Os documentos OpenAPI da API de cliente existem ([15-api-visao-geral.md](15-api-visao-geral.md)) e os conectores podem ser gerados a partir deles ou conferidos contra eles; além deles, a "fonte da verdade" do contrato é este texto, o `taba-cli` e os testes dos dois conectores.
+
+## Os testes de contrato
+
+O mesmo cenário roda contra um Taba real por **todos os conectores** (C#, Java, Node.js, Python e Rust), cada um com um *driver* pequeno escrito na sua própria linguagem que usa só a API pública ([connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md) tem a linguagem do cenário e as operações). `connectors/contract/run.sh` sobe **um nó Taba** no Docker (o perfil de um nó) e roda, um depois do outro, o driver de cada conector **no contêiner da menor versão que ele suporta** (Node 18, Python 3.9, JDK 11, .NET 8, Rust estável); cada conector também roda sozinho (`connectors/<linguagem>/contract/run.sh`).
+
+- **`scenarios/core.scn`**, em todos os conectores: tópicos (e seus `404`, `409` e `400`), publicar, consumir, `changeVisibility` e `ack`; texto com acento, JSON e bytes voltando byte a byte; FIFO (duplicata e ordem); distribuidor; consumo com handler (apagada, falha, mantida e **renovação da invisibilidade** enquanto um handler lento segura a mensagem); `subscribe`; um long polling **cancelado** de fora (no Rust não, que é síncrono: a linha sai como `SKIP`); um token errado e uma conexão recusada.
+- **`scenarios/cross-*.scn`**, os cinco juntos: cada conector publica em um distribuidor e cada um lê a própria fila, achando o que os cinco enviaram, exatamente.
+- **Não cobre**: o `503` e as repetições com um nó caindo, e o comportamento do cluster (um nó só não mostra): ficam com o `docker/validate.sh` e os testes unitários de cada conector. O job `connector-contract` do `ci.yml` roda em todo pull request para `release`.
 
 ## Pendências desta área
 
-D68 (confirmar as versões-base das demais linguagens), D70.1 (organização e identificadores de pacote em cada registro), D70.2 (espelho do PHP; versões independentes das do servidor): [31-pendencias.md](31-pendencias.md).
+D68 (confirmar as versões-base das linguagens ainda por fazer), D70.1 (organização e identificadores de pacote em cada registro), D70.2 (espelho do PHP; versões independentes das do servidor): [31-pendencias.md](31-pendencias.md).
 
 ## Fontes e provas
 
-- `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `examples/csharp-console`, `connectors/README.md`.
-- Casos de uso: UC-CNT (35 casos, nível `K`; conectores); veja [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md). Testes: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
+- `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `examples/csharp-console`, `connectors/README.md`.
+- Casos de uso: UC-CNT (35 casos, nível `K`; conectores); veja [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md). Testes: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`; testes de contrato: `connectors/contract` (`run.sh`, `scenarios/`) e os drivers em `connectors/{csharp,java,node,python,rust}/contract`.
 - Histórico: `19-conectores.md`, `19a-conectores-linguagens.md`.

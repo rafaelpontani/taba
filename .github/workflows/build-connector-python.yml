@@ -1,0 +1,28 @@
+# Tests of the Python connector on the base version (3.9) and the latest. Called by ci.yml.
+# The connector is not published yet (D70.1: the PyPI package name is still open).
+name: Python connector build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  connector-python:
+    name: Python connector (tests, Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tests
+        env:
+          PYTHON: ${{ matrix.python }}
+        run: |
+          docker run --rm -v "$PWD/connectors/python:/work" -w /work "python:${PYTHON}-slim" \
+            python -W error::DeprecationWarning -m unittest discover -s tests -t .

@@ -130,7 +130,8 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The `.rs` and `.cs` files of a connector folder, at any depth, without the build and output folders.
+/// The source files of a connector folder (Rust, C#, Java, JavaScript and Python), at any depth, without the
+/// build, output and dependency folders.
 fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -139,13 +140,25 @@ fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.path();
         let name = entry.file_name();
         if path.is_dir() {
-            if !["target", "bin", "obj", "dist"]
-                .iter()
-                .any(|skip| name == *skip)
+            if ![
+                "target",
+                "bin",
+                "obj",
+                "dist",
+                "build",
+                "node_modules",
+                "__pycache__",
+                ".venv",
+            ]
+            .iter()
+            .any(|skip| name == *skip)
             {
                 connector_files(&path, out);
             }
-        } else if path.extension().is_some_and(|e| e == "rs" || e == "cs") {
+        } else if path
+            .extension()
+            .is_some_and(|e| ["rs", "cs", "java", "js", "py"].iter().any(|x| e == *x))
+        {
             out.push(path);
         }
     }
@@ -171,16 +184,25 @@ fn source_files() -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
+/// The list of codes of a citation line: `/// UC: …` (Rust, C#, Java, JavaScript) or `# UC: …` (Python).
+/// The markers are built here so this file does not cite itself.
+fn citation(line: &str) -> Option<&str> {
+    let slashes = format!("{} UC:", "///");
+    let hash = format!("{} UC:", "#");
+    let line = line.trim_start();
+    line.strip_prefix(slashes.as_str())
+        .or_else(|| line.strip_prefix(hash.as_str()))
+}
+
 /// Code -> files that cite it.
 fn cited_codes() -> BTreeMap<String, BTreeSet<String>> {
     let files = source_files();
 
-    let marker = format!("{} UC:", "///");
     let mut cited: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (file, base) in files {
         let text = fs::read_to_string(&file).expect("read source");
         for line in text.lines() {
-            let Some(list) = line.trim_start().strip_prefix(marker.as_str()) else {
+            let Some(list) = citation(line) else {
                 continue;
             };
             for code in list.split(',').map(str::trim).filter(|c| !c.is_empty()) {
@@ -265,13 +287,12 @@ fn coverage_report_and_optional_strict_check() {
 const TESTS_MARK: &str = "<!--t-->";
 
 /// Code -> the tests that cite it, as `file::function` (the file relative to the crate, or to the repository root for the connectors), in order.
-/// The `/// UC:` line counts for the first function that comes after it, skipping attributes and other
-/// documentation lines.
+/// The citation line counts for the first function that comes after it, skipping attributes, decorators and
+/// other documentation lines.
 fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
     let mut files = source_files();
     files.sort();
 
-    let marker = format!("{} UC:", "///");
     let mut tests: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (file, base) in files {
         let shown = file
@@ -281,11 +302,14 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
             .to_string()
             .replace('\\', "/");
         let text = fs::read_to_string(&file).expect("read source");
-        let is_csharp = file.extension().is_some_and(|e| e == "cs");
+        let extension = file
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default()
+            .to_owned();
         let mut pending: Vec<String> = Vec::new();
         for line in text.lines() {
-            let line = line.trim_start();
-            if let Some(list) = line.strip_prefix(marker.as_str()) {
+            if let Some(list) = citation(line) {
                 pending.extend(
                     list.split(',')
                         .map(str::trim)
@@ -294,24 +318,37 @@ fn tests_by_code() -> BTreeMap<String, BTreeSet<String>> {
                 );
                 continue;
             }
+            let line = line.trim_start();
             if pending.is_empty()
                 || line.is_empty()
                 || line.starts_with("#[")
-                || (is_csharp && line.starts_with('['))
+                || (extension == "py" && (line.starts_with('#') || line.starts_with('@')))
+                || (extension == "cs" && line.starts_with('['))
+                || (extension == "java" && line.starts_with('@'))
                 || line.starts_with("//")
             {
                 continue;
             }
-            // Rust: `fn name(`. C#: `public async Task name(` (the last term before the parenthesis).
-            let name = if is_csharp {
-                line.split('(')
+            // Rust: `fn name(`. C# and Java: `public async Task name(` (the last term before the parenthesis).
+            // Python: `def name(`. JavaScript: `test('name', …)`.
+            let name = match extension.as_str() {
+                "cs" | "java" => line
+                    .split('(')
                     .next()
                     .filter(|_| line.contains('('))
-                    .and_then(|head| head.split_whitespace().last())
-            } else {
-                line.split("fn ")
+                    .and_then(|head| head.split_whitespace().last()),
+                "py" => line
+                    .split("def ")
                     .nth(1)
-                    .and_then(|after| after.split(['(', '<']).next())
+                    .and_then(|after| after.split('(').next()),
+                "js" => line
+                    .strip_prefix("test(")
+                    .or_else(|| line.strip_prefix("it("))
+                    .and_then(|after| after.split(['\'', '"']).nth(1)),
+                _ => line
+                    .split("fn ")
+                    .nth(1)
+                    .and_then(|after| after.split(['(', '<']).next()),
             };
             if let Some(name) = name {
                 for code in pending.drain(..) {

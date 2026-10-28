@@ -47,9 +47,10 @@ feature/*  ── PR ──▶ ci.yml: build + testes (nada é publicado, nenhum
 
 | Arquivo | Faz |
 |---|---|
-| `ci.yml` | Chama `build-server`, `build-connector-rust` e `build-connector-csharp`; job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`); job `plans` (falha quando `doc/plans/` tem um arquivo: planos nunca chegam a `release` ou `main`). `concurrency` cancela execuções antigas da mesma ref |
+| `ci.yml` | Chama `build-server`, `build-connector-rust`, `build-connector-csharp` e os builds dos conectores Java, Node.js e Python; job `connector-contract` (`contract-connectors.yml`, só em pull requests para `release`); job `helm` (`deploy/helm/tests/run.sh static`); job `rust-audit` (`cargo audit` nos dois `Cargo.lock`: falha com um aviso do RustSec); job `workflows` (`actionlint` e `zizmor`, falha a partir de `medium`); job `plans` (falha quando `doc/plans/` tem um arquivo: planos nunca chegam a `release` ou `main`). `concurrency` cancela execuções antigas da mesma ref |
 | `build-server.yml` | **Servidor**, em **dois runners nativos** (`amd64` em `ubuntu-latest`, `arm64` em `ubuntu-24.04-arm`): `cargo fmt --all --check` e `clippy -D warnings` **só em x86_64**, `cargo test --workspace --locked`, o **binário estático musl** (ação `node-binary`) enviado como artefato `taba-node-<arch>` |
 | `build-connector-rust.yml` | **Conector Rust** (workspace `connectors/rust`), nos dois runners: `fmt`, `clippy`, `test`, `cargo package --workspace` (o que o crates.io receberia), `cargo build --release -p taba-cli` (musl); artefato `taba-cli-<arch>` |
+| `contract-connectors.yml` | **Testes de contrato dos cinco conectores** contra um nó real: constrói a imagem do servidor do commit, sobe um nó (o perfil de um nó) e roda `connectors/contract/run.sh` (cada conector no contêiner da sua menor versão, depois os cinco lendo as mensagens uns dos outros; [21-conectores.md](21-conectores.md#os-testes-de-contrato)). Chamado pelo `ci.yml` em pull requests para `release`, ou à mão. Não publica nada |
 | `build-connector-csharp.yml` | **Conector C#**: SDKs 6.0 e 8.0, `dotnet test` (sem `TABA_URL`, os de integração são **ignorados**), `dotnet pack` dos **três pacotes** com o commit e o link da Release; artefato `nuget-packages` (`.nupkg` e `.snupkg`) |
 | `chaos.yml` | Toda noite (e à mão): uma varredura de 200 sementes da rodada de caos (`tests/chaos.rs`, [37-garantias.md](37-garantias.md)), uma faixa diferente por dia. Fora dos checks obrigatórios; a semente que falha é impressa no log |
 | `release.yml` | O release (abaixo) |
@@ -179,7 +180,7 @@ O que sustenta essa confiança:
 
 ## O que ainda não está automatizado
 
-- ⬜ **Job de integração** (`connectors/csharp/scripts/integration.sh` e `docker/validate.sh`): **não roda no CI**. Existem e funcionam à mão; rode o `validate.sh` com a imagem `rc` antes do PR `release → main`.
+- 🟡 **Job de integração**: os testes de contrato dos conectores (`contract-connectors.yml`) **rodam no CI**, em pull requests para `release`. `connectors/csharp/scripts/integration.sh` e `docker/validate.sh` **não rodam no CI**. Existem e funcionam à mão; rode o `validate.sh` com a imagem `rc` antes do PR `release → main`.
 - ⬜ Os casos e2e do chart (`deploy/helm/tests/run.sh 01 05 …`, com kind) rodam à mão.
 - ⬜ Publicação dos outros conectores (só existem Rust e C#).
 - ⬜ Verificação automática da **documentação** no CI: ver `doc/pt-BR/scripts/verificar.mjs` abaixo.
@@ -203,6 +204,6 @@ Um segundo script, `node doc/pt-BR/scripts/verificar-idiomas.mjs`, confere que a
 
 ## Fontes e provas
 
-- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
+- `.github/workflows/{ci,build-server,build-connector-rust,build-connector-csharp,contract-connectors,release,scorecard,codeql}.yml`, `.github/actions/node-binary/action.yml`, `.github/scripts/set-version.sh`, `.github/dependabot.yml`, `.releaserc.json`, `.github/actions/{registry-login,provenance}/action.yml`, `Dockerfile`, `Dockerfile.ci`, `connectors/csharp/Directory.Build.props`, `connectors/rust/{Cargo.toml,client/Cargo.toml,cli/Cargo.toml}`, `SECURITY.md`.
 - Decisões: D159 a D163 ([30-decisoes.md](30-decisoes.md)).
 - Casos de uso: não há casos `UC-` de pipeline; a validação é `docker/validate.sh` ([25-testes.md](25-testes.md)).
