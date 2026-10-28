@@ -4,7 +4,7 @@ resumo: Como o Taba é testado — os níveis (unitário, um nó, cluster simula
 tipo: guia
 status: estável
 verificado-em: 2026-10-27 @ ada9ff1
-fontes: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
+fontes: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, connectors/contract, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
 # Testes
@@ -22,8 +22,8 @@ Num sistema distribuído, o teste mais valioso **sobe vários nós no mesmo proc
 | **Unitário** | `U` | Uma peça isolada, sem rede nem disco reais: domínio, validação, anel, listas, quórum, leitor de JSON | `src/**/tests.rs`, **irmão do módulo** |
 | **Um nó** | `I` | Um nó real no **perfil de um nó**, HTTP real, disco real (pasta temporária). O que o cliente enxerga | `crates/taba-node/tests/*.rs` com `TestNode` |
 | **Cluster** | `C` | **Vários nós no mesmo processo**, rede em memória (perda, atraso, partição programáveis) e `Clock` manual. Quórum, rollback, falha, votação, sincronização, drain | `crates/taba-node/tests/*.rs` com `TestCluster` |
-| **Conector** | `K` | O conector contra um transporte de mentira (unitário) e contra um Taba real (integração) | `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests` |
-| **Ponta a ponta** | — | O Compose de 3 nós, de verdade | `docker/validate.sh`, `connectors/csharp/scripts/integration.sh` |
+| **Conector** | `K` | O conector contra um transporte de mentira (unitário) e contra um Taba real (integração) | `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`; os testes de contrato: `connectors/contract` |
+| **Ponta a ponta** | — | O Compose de 3 nós, de verdade | `docker/validate.sh`, `connectors/csharp/scripts/integration.sh`, `connectors/contract/run.sh` (um nó) |
 
 Há mais **testes por TCP e TLS reais** (`tests/mtls.rs`, `tests/common/real.rs`: nós em `127.0.0.x`, `Transport` HTTP e TLS mútuo) e **testes de OTLP** (`tests/otlp.rs`, com um coletor falso).
 
@@ -91,6 +91,7 @@ cargo fmt --all --check
 cd connectors/rust && cargo test --workspace --all-features
 cd connectors/csharp && dotnet test Taba.Client.Tests          # unitários; os de integração exigem TABA_URL
 connectors/csharp/scripts/integration.sh                       # sobe o Compose, cria tokens e filas, roda tudo
+connectors/contract/run.sh                                     # os cinco conectores contra um nó real, e depois entre si
 docker/validate.sh                                             # ponta a ponta (≈ 5 min)
 docker/hang-hunt.sh nodes_api <test name>                         # a test that hangs only under load: logs + thread stacks
 ```
@@ -112,6 +113,10 @@ docker/hang-hunt.sh nodes_api <test name>                         # a test that 
 5. **Faça o teste falhar em vez de travar.** Quando a chamada testada pode bloquear para sempre, rode-a numa `std::thread` própria (entrando no runtime com `Handle::enter` se ela cria tarefas) e espere com `mpsc::Receiver::recv_timeout`; veja `tests/channel.rs::a_channel_from_a_node_the_peers_do_not_know_yet_is_refused_without_blocking_the_node`.
 
 O caso que ensinou isso está em [36-problemas-conhecidos.md](36-problemas-conhecidos.md#um-accept-de-canal-que-travou-os-peers-duas-vezes).
+
+## Os testes de contrato dos conectores: `connectors/contract/run.sh`
+
+Um cenário, escrito como dado (`scenarios/core.scn`), executado por um driver pequeno de **cada conector** na sua própria linguagem contra **um nó Taba** no Docker (o perfil de um nó), cada um no contêiner da menor versão que suporta; depois os cinco conectores publicam em um distribuidor e cada um lê o que os outros enviaram (`scenarios/cross-*.scn`). A linguagem do cenário, as operações e como acrescentar um conector estão em [connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md); o resumo está em [21-conectores.md](21-conectores.md#os-testes-de-contrato). O job `connector-contract` do `ci.yml` roda nos pull requests para `release`. Ele não derruba nós: o comportamento do cluster é o `docker/validate.sh`.
 
 ## `docker/validate.sh` e `docker/cluster.sh`
 
@@ -173,7 +178,7 @@ No fim o script imprime a profundidade de cada fila e deixa o cluster no ar: exp
 | Integração real (imagem, Compose, HAProxy, `SIGTERM`) | `validate.sh` |
 | Conector divergente do contrato | `K` |
 
-⬜ **Faltam:** testes de **desempenho e carga** (as metas de velocidade e custo não têm benchmark), de **Kubernetes** e a **suíte de conformidade compartilhada** entre conectores ([32-roadmap.md](32-roadmap.md)). `docker/test-cpu.sh` é um roteiro de medição de CPU.
+⬜ **Faltam:** testes de **desempenho e carga** (as metas de velocidade e custo não têm benchmark), de **Kubernetes** e a **fixtures da suíte de conformidade** entre conectores (pares requisição/resposta; os cenários e os drivers existem, [32-roadmap.md](32-roadmap.md)). `docker/test-cpu.sh` é um roteiro de medição de CPU.
 
 ## Problemas conhecidos
 
@@ -181,7 +186,7 @@ O teste desligado com `#[ignore]` por falhar de forma intermitente no CI, com o 
 
 ## Fontes e provas
 
-- `crates/taba-node/tests/*.rs` e `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate,seed-demo}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`.
+- `crates/taba-node/tests/*.rs` e `tests/common/{mod,cluster,real,otlp}.rs`, `src/cluster/transport/memory`, `src/core/clock`, `tests/uc_coverage.rs`, `docker/{cluster,validate,seed-demo}.sh`, `connectors/rust/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/contract`.
 - O placar "702 de 885" e a falha da coluna "Testes" foram **executados** em 2026-10-13 (`cargo test --test uc_coverage -- --nocapture`). Também **executados e verdes** nessa data: `cargo test --lib` (**509 testes unitários**, 2,25 s) e os arquivos `topics` (21), `messages` (41), `failures` (21), `freezing` (5) e `drain_cluster` (7). **O restante da suíte não foi executado** nesta verificação: a máquina ficou sem espaço em disco no *link* (`LNK1201`), o problema do `target/` descrito em [24-convencoes.md](24-convencoes.md).
 - Casos de uso: todos (cada teste cita os seus); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `doc/20-casos-de-uso.md` (19.4, 19.5), `18-estrutura-codigo.md` (17.5).

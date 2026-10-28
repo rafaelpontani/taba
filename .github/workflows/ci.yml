@@ -32,6 +32,24 @@ jobs:
     name: C# connector
     uses: ./.github/workflows/build-connector-csharp.yml
 
+  connector-node:
+    name: Node.js connector
+    uses: ./.github/workflows/build-connector-node.yml
+
+  connector-python:
+    name: Python connector
+    uses: ./.github/workflows/build-connector-python.yml
+
+  connector-java:
+    name: Java connector
+    uses: ./.github/workflows/build-connector-java.yml
+
+  # The five connectors against a real node (builds the server image: slow, so only for what goes to release).
+  connector-contract:
+    name: Connector contract tests
+    if: github.base_ref == 'release' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/contract-connectors.yml
+
   # Chart lint, rendering of every ci/*.yaml, assertions on the manifests and the chart's refusals. No cluster.
   # The e2e cases (kind) run by hand: deploy/helm/tests/run.sh 01 05 ... (doc/pt-BR/35-chart-helm-casos-de-uso.md).
   helm:

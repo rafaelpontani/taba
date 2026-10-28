@@ -1,0 +1,84 @@
+# The common scenario every connector runs against a real Taba (connectors/contract/README.md).
+# One operation per line: `op key=value ... [as=name] [=> expectation ...]`.
+
+# --- topics: create, read, list, update, delete (UC-CNT-001, UC-CNT-002) ------------------------------------
+createTopic name={p}-q type=queue => name={p}-q type=queue id=*
+getTopic name={p}-q => name={p}-q type=queue
+createTopic name={p}-q type=queue => error=topic.already-exists status=409
+getTopic name={p}-missing => error=topic.not-found status=404
+listTopics name={p}-q => count=2 names={p}-q,{p}-q-dead-letter
+updateTopic name={p}-q ttl=3600 maxDeliveries=7 => raw~"ttl":3600 raw~"maxDeliveries":7
+updateTopic name={p}-q ttl=null => name={p}-q
+createTopic name=not%20valid type=queue => error=validation.invalid-name status=400
+createTopic name={p}-gone type=queue => name={p}-gone
+deleteTopic name={p}-gone
+deleteTopic name={p}-gone => error=topic.not-found status=404
+getTopic name={p}-gone => error=topic.not-found status=404
+
+# --- publish, consume, visibility, ack ------------------------------------------------------------------------
+publishText topic={p}-q body=hello%20world => id=*
+consume topic={p}-q max=1 wait=2 visibility=30 as=m => count=1 body=hello%20world deliveryCount=1
+consume topic={p}-q wait=0 => count=0
+changeVisibility topic={p}-q id=$m.id receipt=$m.receiptToken seconds=1 => id=$m.id
+sleep seconds=2
+consume topic={p}-q max=1 wait=2 visibility=30 as=m2 => count=1 body=hello%20world deliveryCount=2
+ack topic={p}-q id=$m2.id receipt=$m2.receiptToken
+consume topic={p}-q wait=0 => count=0
+
+# --- bodies: text with accents, JSON and bytes arrive as they were sent ----------------------------------------
+createTopic name={p}-body type=queue
+publishText topic={p}-body body=caf%C3%A9%20%E2%82%AC => id=*
+publishJson topic={p}-body body={"a":1,"b":[true,null],"s":"x"} => id=*
+publishBytes topic={p}-body base64=AAEC/w== => id=*
+consume topic={p}-body max=10 wait=2 visibility=30 => count=3 bodies~caf%C3%A9%20%E2%82%AC bodies~{"a":1,"b":[true,null],"s":"x"} bodies~b64:AAEC/w==
+
+# --- FIFO queue: duplicates are reported and the order inside a group is kept ----------------------------------
+createTopic name={p}-fifo type=queue fifo=true => fifo=true
+publishText topic={p}-fifo body=a groupId=g1 deduplicationId=d1 fifo=true => duplicate=false
+publishText topic={p}-fifo body=a groupId=g1 deduplicationId=d1 fifo=true => duplicate=true
+publishText topic={p}-fifo body=b groupId=g1 deduplicationId=d2 fifo=true => duplicate=false
+publishText topic={p}-fifo body=c groupId=g1 deduplicationId=d3 fifo=true => duplicate=false
+publishText topic={p}-fifo body=x => error=*
+drain topic={p}-fifo count=3 timeout=20 => count=3 bodies=a,b,c
+
+# --- distributor: one publication reaches every queue under the prefix ------------------------------------------
+createTopic name={p}-fan-a type=queue
+createTopic name={p}-fan-b type=queue
+createTopic name={p}-fan type=distributor prefixes={p}-fan- => type=distributor
+publishText topic={p}-fan body=copy => matched=2
+consume topic={p}-fan-a wait=2 => count=1 body=copy
+consume topic={p}-fan-b wait=2 => count=1 body=copy
+
+# --- consuming with a handler ---------------------------------------------------------------------------------
+createTopic name={p}-h type=queue
+publishText topic={p}-h body=ok1
+handle topic={p}-h mode=ok wait=2 => handled=1 failed=false bodies=ok1
+consume topic={p}-h wait=0 => count=0
+publishText topic={p}-h body=bad
+handle topic={p}-h mode=fail visibility=1 wait=2 => handled=0 failed=true bodies=bad
+sleep seconds=2
+consume topic={p}-h wait=2 visibility=30 as=r => count=1 body=bad deliveryCount=2
+ack topic={p}-h id=$r.id receipt=$r.receiptToken
+publishText topic={p}-h body=kept
+handle topic={p}-h mode=keep visibility=1 wait=2 => handled=1 bodies=kept
+sleep seconds=2
+consume topic={p}-h wait=2 visibility=30 as=r2 => count=1 body=kept deliveryCount=2
+ack topic={p}-h id=$r2.id receipt=$r2.receiptToken
+publishText topic={p}-h body=slow
+handle topic={p}-h mode=slow hold=5 visibility=3 wait=2 => handled=1 failed=false leaseLost=false
+consume topic={p}-h wait=0 => count=0
+
+# --- subscribe: acknowledges what the handler accepted and gives back what it refused ---------------------------
+createTopic name={p}-sub type=queue
+publishText topic={p}-sub body=a
+publishText topic={p}-sub body=b
+subscribe topic={p}-sub count=3 failFirst=true visibility=2 timeout=30 => count=3
+consume topic={p}-sub wait=0 => count=0
+
+# --- a long polling cancelled from outside ends at once ----------------------------------------------------------
+createTopic name={p}-cancel type=queue
+cancelConsume topic={p}-cancel after=1 => cancelled=true fast=true
+
+# --- failures of the client itself ---------------------------------------------------------------------------------
+getTopic name={p}-q token=tb_nobody.0123456789abcdef0123456789abcdef => error=* status=401
+getTopic name={p}-q url=http://127.0.0.1:1 attempts=1 => error=client.network status=0

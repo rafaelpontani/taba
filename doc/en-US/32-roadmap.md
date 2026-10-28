@@ -37,7 +37,7 @@ The order is a **proposal**; milestones 1 and 2 do not depend on each other.
 | Item | Detail | Closes |
 |---|---|---|
 | **Versioning policy in the paths** ⬜ | The OpenAPI documents exist ([15](15-api-overview.md)); what is left is deciding the policy of the prefix (today there is no `/v1`) **before** the other connectors fix the paths | RF-22 |
-| **Conformance suite** ⬜ | `connectors/contrato/`: fixtures (request/response pairs), the JSON reader test documents, the scenarios and a one-node `docker-compose` of Taba (one-node profile) | UC-CNT (level `K`) |
+| **Conformance suite** 🟡 | `connectors/contract/` ✅: the scenarios (`core.scn` and the cross-language ones), the drivers of the five connectors and a one-node Taba in Docker ([21-connectors.md](21-connectors.md#the-contract-tests), D183). Missing ⬜: the fixtures (request/response pairs) and the JSON reader test documents | UC-CNT (level `K`) |
 
 ### Milestone 2 — The other connectors
 
@@ -45,13 +45,13 @@ In phases ([21-connectors.md](21-connectors.md)); phases 2, 3 and 4 **do not dep
 
 | Phase | Languages | Note |
 |---|---|---|
-| 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) | Stress the design at both ends |
+| 1 — Reference | **Python** (the most readable) and **Java** (the oldest base) ✅ | Stress the design at both ends. Ready (D68.2) with the contract tests (D183); publishing missing (PRB-079) |
 | 2 — C core | **C** (`libtaba`) and **C++** (C++03 header over `libtaba`) | |
-| 3 — Platforms | **Node.js** and **Go** | |
+| 3 — Platforms | **Node.js** ✅ and **Go** | Node.js ready (D68.2) |
 | 4 — Remaining | **PHP** and **Ruby**; in **Rust**, the `async` form | |
-| 5 — Integration | The scenarios pass on **all** against the real Taba; usage examples fill the README table | Depends on milestone 1 |
+| 5 — Integration | The scenarios pass on **all** against the real Taba ✅ (`connectors/contract/run.sh`, D183); usage examples fill the README table ⬜ | Depends on milestone 1 |
 
-Decisions that must be closed: **D68** (base versions), **D70.1** and **D70.2** (organization and package names; PHP mirror; independent versions).
+Decisions that must be closed: **D68** (base versions of the languages still to do), **D70.1** and **D70.2** (organization and package names; PHP mirror; independent versions).
 
 ### Milestone 3 — Publishing
 
@@ -95,7 +95,7 @@ The "unblocked" pending items of [31-pending-items.md](31-pending-items.md) are,
 | **`uc_coverage` reading the new catalogues** ✅ | It reads the cards of `26a`/`26b`; a generator that maintains them is still missing ([31-pending-items.md](31-pending-items.md), item E) |
 | **Diagrams of this documentation** ✅ | The 31 spots are drawn (index in [24-conventions.md](24-conventions.md#diagram-index)); the source is the Archify JSON |
 | **Automatic verification** ⬜ | `node doc/pt-BR/scripts/verificar.mjs` and `verificar-idiomas.mjs` in a PR job ([27-ci-cd.md](27-ci-cd.md)) |
-| **Integration job in CI** ⬜ | `integration.sh` and `validate.sh` (today only by hand) |
+| **Integration job in CI** 🟡 | The contract tests of the connectors run in `ci.yml` on every pull request to `release` ✅; `connectors/csharp/scripts/integration.sh` and `validate.sh` are still only by hand ⬜ |
 | **Translations** 🟡 | ✅ `doc/en-US/` mirrors `doc/pt-BR/`. ⬜ Other language folders next to them; every change goes to all ([24-conventions.md](24-conventions.md#documentation-in-several-languages)) |
 
 ## Out of scope (for now)

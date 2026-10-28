@@ -1,0 +1,7 @@
+# Cross-language, step 1 (run once): one queue per connector and a distributor over them.
+createTopic name={p}-in-csharp type=queue
+createTopic name={p}-in-java type=queue
+createTopic name={p}-in-node type=queue
+createTopic name={p}-in-python type=queue
+createTopic name={p}-in-rust type=queue
+createTopic name={p}-in type=distributor prefixes={p}-in-

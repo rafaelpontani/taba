@@ -201,6 +201,7 @@ scripts/integration.sh                  # everything, with a real cluster
 ```
 
 - **Unit** (`ClientTests`, `JsonTests`, `PackagingTests`): no network, with a fake `HttpMessageHandler` (`ScriptedHandler`). They run on .NET 6, 8 and 10.
+- **Contract tests** (`contract/run.sh`): the scenario every connector runs against a real node in Docker (`../contract/run.sh` for all of them, [how it works](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md)).
 - **Integration** (`IntegrationTests`, category `Integration`): against a real Taba. [`scripts/integration.sh`](https://github.com/rafaelpontani/taba/blob/main/connectors/csharp/scripts/integration.sh) starts the root `docker-compose.yml` (the nodes and HAProxy), waits for the nodes to be healthy, creates through `taba-cli` the test tokens (one for the application and one read-only) and the queues (a plain one, a FIFO one and a distributor with two queues, one of them FIFO for the partial failure), runs `dotnet test` with `TABA_URL`, `TABA_TOKEN` and `TABA_TOKEN_READONLY` and tears everything down at the end. `--keep` leaves the cluster up, `--no-build` reuses the images, and what comes after `--` goes to `dotnet test`. You can also point the tests at a cluster of your own, by setting the three variables and the queues `csharp-shared`, `csharp-fan`, `csharp-fan-a` and `csharp-fan-b`.
 
 The tests cite the use cases (`/// UC: UC-CNT-001`) like the server's, and `crates/taba-node/tests/uc_coverage.rs` reads them from here too.

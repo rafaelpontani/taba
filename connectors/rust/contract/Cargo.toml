@@ -1,0 +1,13 @@
+[package]
+name = "taba-contract"
+description = "The Rust driver of the connector contract tests (connectors/contract/README.md). Not published."
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Its own workspace root: the driver is not part of the connectors' workspace (which the CLI image and the release
+# build copy piece by piece), and nothing depends on it.
+[workspace]
+
+[dependencies]
+taba-client = { path = "../client" }

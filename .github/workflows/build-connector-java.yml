@@ -1,0 +1,27 @@
+# Build and tests of the Java connector on the base version (11) and the latest LTS. Called by ci.yml.
+# The connector is not published yet (D70.1: the Maven groupId is still open).
+name: Java connector build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  connector-java:
+    name: Java connector (tests, JDK ${{ matrix.jdk }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: ["11", "21"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tests
+        env:
+          JDK: ${{ matrix.jdk }}
+        run: |
+          docker run --rm -v "$PWD/connectors/java:/work" -w /work "maven:3.9-eclipse-temurin-${JDK}" mvn -B -q clean test

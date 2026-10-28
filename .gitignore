@@ -6,9 +6,17 @@ doc/diagrams/html/
 
 /connectors/csharp/**/bin
 /connectors/csharp/**/obj
+/connectors/java/target
+/connectors/node/node_modules
+/connectors/python/build
+/connectors/python/dist
+/connectors/python/*.egg-info
+__pycache__/
 /examples/**/bin
 /examples/**/obj
 /dist
 root-token.txt
 admin-token
 /docker/.local/
+/connectors/rust/contract/Cargo.lock
+/connectors/rust/contract/target
