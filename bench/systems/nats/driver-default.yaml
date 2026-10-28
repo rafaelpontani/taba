@@ -1,0 +1,4 @@
+name: NATS
+driverClass: io.openmessaging.benchmark.driver.nats.NatsBenchmarkDriver
+natsHostUrl: server:4222
+replicationFactor: 1

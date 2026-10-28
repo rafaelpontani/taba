@@ -120,7 +120,7 @@ What Taba does not do:
 - **Not a protocol replacement:** Taba speaks HTTP. There is no AMQP, MQTT or Kafka protocol compatibility, so switching brokers means switching the client.
 - **Not a streaming platform:** stream processing and replaying message history are out of scope. For queues and pub/sub, yes; for re-reading the past, no.
 - **Out of scope for now:** a web interface, advanced authentication (OAuth/OIDC) and multi-region.
-- **Still to come:** the connectors for the other languages, the OpenAPI contract and published benchmarks. See the [roadmap](doc/en-US/32-roadmap.md) and the [known issues](doc/en-US/36-known-issues.md).
+- **Still to come:** the connectors for the other languages, the OpenAPI contract and published benchmark results (the script is in [`bench/`](bench/README.md)). See the [roadmap](doc/en-US/32-roadmap.md) and the [known issues](doc/en-US/36-known-issues.md).
 
 ## Develop on one node
 

@@ -54,6 +54,22 @@ jobs:
     if: github.base_ref == 'release' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/contract-connectors.yml
 
+  # The local comparative benchmark (bench/): only the execution plan and the report test. Running benchmarks on a
+  # GitHub runner produces no useful number, so none is run.
+  bench:
+    name: Benchmark (plan and report)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Execution plan of every profile
+        run: |
+          bench/run.sh --dry-run --profile quick
+          bench/run.sh --dry-run --profile standard --durability both
+      - name: Report test
+        run: node --test bench/report.test.mjs
+
   # Chart lint, rendering of every ci/*.yaml, assertions on the manifests and the chart's refusals. No cluster.
   # The e2e cases (kind) run by hand: deploy/helm/tests/run.sh 01 05 ... (doc/pt-BR/35-chart-helm-casos-de-uso.md).
   helm:

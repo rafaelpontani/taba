@@ -48,6 +48,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 6 | 41 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 8 |
 | `CFG` | Configuração e validações de partida | 1 | 10 |
+| `BNC` | Benchmark comparativo local (`bench/run.sh`) | 1 | 3 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -910,6 +911,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+
+## BNC: Benchmark comparativo local (`bench/run.sh`)
+
+### UC-BNC-004
+
+**Caso:** O `bench/run.sh` roda um workload de ponta a ponta: constrói (ou recebe) as imagens, sobe um nó do Taba em Docker com os limites, espera ficar saudável, roda o OMB no contêiner executor, remove o nó e o volume e grava o JSON bruto, o `machine.json` e o relatório; o mesmo para Kafka, Redpanda, RabbitMQ e NATS JetStream
+**Nível:** K
+**Motivo de não ter teste citado pelo `uc_coverage`:** o `bench/test.sh` confere isso com o perfil `smoke` contra o Taba, mas precisa de Docker e leva minutos, então é um script e nenhum arquivo de teste cita o caso; os outros sistemas foram rodados uma vez à mão
+
+---
 
 ## Casos retirados
 

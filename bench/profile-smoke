@@ -1,0 +1,5 @@
+# Perfil smoke: só para testar o próprio script (bench/test.sh). 1 min por teste, sem aquecimento; os números não valem.
+ROUNDS=1
+DURATION=1
+WARMUP=0
+PROFILE_WORKLOADS="simple-1kb"

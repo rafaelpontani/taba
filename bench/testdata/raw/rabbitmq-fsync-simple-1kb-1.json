@@ -1,0 +1,1 @@
+{"workload":"simple-1kb","driver":"x","publishRate":[9000,9090,8910],"consumeRate":[9000,9000,9000],"aggregatedEndToEndLatency50pct":8,"aggregatedEndToEndLatency99pct":30,"aggregatedEndToEndLatency999pct":90}

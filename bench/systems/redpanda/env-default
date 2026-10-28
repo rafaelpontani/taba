@@ -1,0 +1,1 @@
+# default: write caching ligado no tópico (confirma antes do fsync, como o padrão do Kafka).

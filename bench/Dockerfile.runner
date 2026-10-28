@@ -1,0 +1,23 @@
+# O executor do benchmark: o OpenMessaging Benchmark no commit de connectors/omb/OMB_VERSION, com todos os drivers dele
+# e o driver do Taba (connectors/omb) dentro. Contexto: a raiz do repositório.
+#   docker build -f bench/Dockerfile.runner --build-arg OMB_COMMIT=$(cat connectors/omb/OMB_VERSION) -t taba-bench-runner:local .
+FROM maven:3.9-eclipse-temurin-11 AS build
+ARG OMB_COMMIT
+WORKDIR /src
+RUN (command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git)) \
+ && git init -q omb && cd omb \
+ && git remote add origin https://github.com/openmessaging/benchmark.git \
+ && git fetch -q --depth 1 origin "$OMB_COMMIT" && git checkout -q FETCH_HEAD
+RUN cd omb && mvn -q -B install -DskipTests -Dspotbugs.skip -Dcheckstyle.skip -Dlicense.skip \
+      -Dspotless.check.skip=true -Dmaven.javadoc.skip=true
+COPY connectors/java /repo/connectors/java
+COPY connectors/omb /repo/connectors/omb
+RUN mvn -q -B -f /repo/connectors/java/pom.xml install -DskipTests \
+ && mvn -q -B -f /repo/connectors/omb/pom.xml package -DskipTests
+
+FROM eclipse-temurin:11-jre
+COPY --from=build /src/omb/package/target/openmessaging-benchmark-0.0.1-SNAPSHOT-bin.tar.gz /tmp/omb.tgz
+RUN mkdir /opt/omb && tar -xzf /tmp/omb.tgz -C /opt/omb --strip-components=1 && rm /tmp/omb.tgz
+COPY --from=build /repo/connectors/omb/target/*-all.jar /opt/omb/lib/
+WORKDIR /opt/omb
+ENTRYPOINT ["bash", "-c"]

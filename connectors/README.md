@@ -11,7 +11,6 @@ The Taba connectors ([doc/en-US/21-connectors.md](../doc/en-US/21-connectors.md)
 | [`python/`](python/) | `taba-client` for Python 3.9+: `taba.Client` and the `asyncio` `taba.aio.AsyncClient`, its own JSON, no dependencies | Ready (unit tests and the contract tests); not published yet |
 | [`node/`](node/) | `taba-client` for Node.js 18+: the nine operations as `Promise`, `subscribe`, `AbortSignal`, types included, no dependencies | Ready (unit tests, `npm test`, and the contract tests); not published yet |
 | [`omb/`](omb/) | The **OpenMessaging Benchmark driver** for Taba, on the Java connector (Java 11): `omb/build.sh`, `omb/test.sh` | Ready (unit and integration tests); a tool, not published |
-| [`omb/`](omb/) | The **OpenMessaging Benchmark driver** for Taba, on the Java connector (Java 11): `omb/build.sh` and `omb/test.sh` | Ready (unit and integration tests); a tool, not published |
 | [`contract/`](contract/) | The **contract tests**: one scenario run against a real Taba by a driver of each connector above, and then the connectors reading each other's messages. `contract/run.sh` | Ready |
 | `c/`, `cpp/`, `php/`, `ruby/`, `go/` | The rest ([plan](../doc/en-US/21-connectors.md)) | To do |
 

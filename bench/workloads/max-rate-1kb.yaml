@@ -1,0 +1,13 @@
+name: max-rate-1kb
+topics: 1
+partitionsPerTopic: 1
+keyDistributor: "NO_KEY"
+messageSize: 1024
+payloadFile: "payload/payload-1Kb.data"
+subscriptionsPerTopic: 1
+consumerPerSubscription: 1
+producersPerTopic: 1
+producerRate: 0
+consumerBacklogSizeGB: 0
+testDurationMinutes: @DURATION@
+warmupDurationMinutes: @WARMUP@

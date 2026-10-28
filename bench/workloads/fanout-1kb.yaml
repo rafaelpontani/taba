@@ -1,0 +1,13 @@
+name: fanout-1kb
+topics: 1
+partitionsPerTopic: 1
+keyDistributor: "NO_KEY"
+messageSize: 1024
+payloadFile: "payload/payload-1Kb.data"
+subscriptionsPerTopic: 5
+consumerPerSubscription: 1
+producersPerTopic: 1
+producerRate: 5000
+consumerBacklogSizeGB: 0
+testDurationMinutes: @DURATION@
+warmupDurationMinutes: @WARMUP@

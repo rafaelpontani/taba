@@ -80,7 +80,7 @@ The requirements have a stable code (`RF` functional, `RNF` non-functional) so t
 | Code | Requirement | State | How it is met |
 |---|---|---|---|
 | RNF-01 | **Simple API**: few HTTP routes, no new protocol | ✅ | [15-api-overview.md](15-api-overview.md) |
-| RNF-02 | **Speed**: the critical path goes through memory; disk only for overflow | ✅ (no published benchmark) | [10-publishing.md](10-publishing.md) |
+| RNF-02 | **Speed**: the critical path goes through memory; disk only for overflow | ✅ (the benchmark script exists, [38-benchmarks.md](38-benchmarks.md); no published result) | [10-publishing.md](10-publishing.md) |
 | RNF-03 | **Simple scalability**: a new node joins without complex manual configuration | ✅ | [07-cluster.md](07-cluster.md) |
 | RNF-04 | **Simple configuration**: sensible defaults, everything by `.yml` file or `TABA_*` | ✅ | [22-configuration.md](22-configuration.md) |
 | RNF-05 | **A single, light Docker image** | ✅ | [27-ci-cd.md](27-ci-cd.md) |
@@ -91,7 +91,7 @@ The requirements have a stable code (`RF` functional, `RNF` non-functional) so t
 | RNF-10 | **Kubernetes as a first-class citizen** | 🟡 | Probes and stop with drain exist and there is a Helm chart ([34-helm-chart.md](34-helm-chart.md)) tested on a kind cluster; not yet validated on a production cluster ([32-roadmap.md](32-roadmap.md)) |
 | RNF-11 | **Observable** by default: OpenTelemetry | ✅ | [13-observability.md](13-observability.md) |
 
-> **Speed and cost are goals.** There is no published benchmark; the ✅ on RNF-02 says that the design puts memory on the critical path, not that there is a measurement.
+> **Speed and cost are goals.** There is no published benchmark result (the script that measures is `bench/run.sh`, [38-benchmarks.md](38-benchmarks.md)); the ✅ on RNF-02 says that the design puts memory on the critical path, not that there is a measurement.
 
 ## Design principles
 
@@ -125,7 +125,7 @@ These eight principles explain many choices in the code. Each one points to wher
 - **End-to-end validation:** `docker/validate.sh` starts Compose from scratch and checks cluster formation, the `taba-cli`, nodes going down and coming back, and the absence of loss of confirmed messages.
 - **Version:** published as `0.1.x` on Docker Hub, GHCR, crates.io, nuget.org and GitHub Releases; the pipeline computes the number from the commits ([27-ci-cd.md](27-ci-cd.md)), and `Cargo.toml` keeps `0.1.0`. Licenses: the server is **AGPL-3.0-only** and the connectors (`connectors/`) are **Apache-2.0**, with a CLA for contributions ([30-decisions.md](30-decisions.md#license-and-contributions-d164)).
 - **Ready besides the server:** the Helm chart, tested on kind ([34-helm-chart.md](34-helm-chart.md)), the optional S3 backup ([33-s3-backup.md](33-s3-backup.md)) and the `taba-cli` terminal interface ([20b-cli-ui.md](20b-cli-ui.md)).
-- **Missing:** the versioning policy in the paths (`/v1`), the other eight connectors, validation on a real Kubernetes cluster and published benchmarks ([32-roadmap.md](32-roadmap.md)).
+- **Missing:** the versioning policy in the paths (`/v1`), the other eight connectors, validation on a real Kubernetes cluster and published benchmark results ([32-roadmap.md](32-roadmap.md)).
 
 ## Sources and evidence
 

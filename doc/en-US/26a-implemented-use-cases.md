@@ -58,6 +58,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 45 | 0 |
 | `CHS` | Chaos with a verified history | 5 | 0 |
+| `BNC` | Local comparative benchmark (`bench/run.sh`) | 3 | 1 |
 
 ## TOP: Topics: create, list, read, change and remove
 
@@ -976,6 +977,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/replication.rs::a_rollback_that_does_not_arrive_leaves_a_pending_that_expires_by_itself`
+  - `src/cluster/replication/replica/tests.rs::only_the_pendings_past_the_ttl_expire_and_the_newer_ones_stay`
 
 ---
 
@@ -4869,6 +4871,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `src/cluster/replication/replica/tests.rs::repeating_register_or_commit_returns_the_same_ack_without_a_new_effect`
   - `src/cluster/replication/replica/tests.rs::repeating_rollback_returns_the_same_ack_and_the_message_never_appears`
+  - `src/cluster/replication/replica/tests.rs::the_memory_of_decided_operations_forgets_the_oldest_first_and_stays_bounded`
 **Note:** Only the unit part (U) is proven; the full level is U, C.
 
 ---
@@ -10021,8 +10024,49 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+## BNC: Local comparative benchmark (`bench/run.sh`)
+
+### UC-BNC-001
+
+**Case:** `bench/run.sh --dry-run` is run with a profile, some systems and a durability level; or with a system, a profile, a workload or a durability that does not exist
+**Then:** it prints the plan (systems, workloads, durability, the limits of each server, the same for all, the share of the OMB runner, the estimated time and the order of the systems in each round, rotated) and starts nothing; the unknown name is refused with a message and a non-zero status. `--cpus` and `--memory` replace the limit of each server ([38-benchmarks.md](38-benchmarks.md))
+**Level:** U
+**Tests:**
+  - `bench/run.test.mjs::o dry-run imprime o plano, a estimativa e a ordem em rodízio, sem tocar no Docker`
+  - `bench/run.test.mjs::o servidor recebe o mesmo limite para todos os sistemas e o executor fica com o resto`
+  - `bench/run.test.mjs::um sistema, um perfil, um workload ou uma durabilidade desconhecidos são recusados`
+
+---
+
+### UC-BNC-002
+
+**Case:** A system is added as a folder in `bench/systems/`; the workloads and the profiles are files of `bench/`
+**Then:** every folder has a `compose.yml` (a service called `server`, a healthcheck, the `BENCH_CPUS` and `BENCH_MEMORY` limits, a pinned image), the `env-` and `driver-` files of the two durability levels and a README; `--systems <name>` finds it without any change in `run.sh`; each workload takes the duration and the warm-up of the profile, and the `standard` profile runs the six
+**Level:** U
+**Tests:**
+  - `bench/run.test.mjs::cada pasta de bench/systems é um sistema completo, com imagem fixada e os dois níveis de durabilidade`
+  - `bench/run.test.mjs::um sistema novo é encontrado pela pasta, sem mudar o run.sh`
+  - `bench/run.test.mjs::os seis workloads usam a duração e o aquecimento do perfil`
+
+---
+
+### UC-BNC-003
+
+**Case:** `bench/report.mjs` reads the folder of a run (the OMB JSON of each round, `machine.json`, `failed.txt`)
+**Then:** `results.md` opens with the "local, not representative" banner, shows per workload and durability the median of the rounds with the minimum and the maximum (no interval for one round), lists the cells that failed, ends with the known differences of each system and names no winner; the latency and throughput charts are written as SVG
+**Level:** U
+**Tests:**
+  - `bench/report.test.mjs::a mediana e os nomes dos arquivos`
+  - `bench/report.test.mjs::o relatório abre com a faixa de máquina local`
+  - `bench/report.test.mjs::a tabela traz a mediana e o intervalo das rodadas`
+  - `bench/report.test.mjs::os gráficos SVG saem e a lista das falhas aparece`
+  - `bench/report.test.mjs::o relatório não elege vencedor e anota o RabbitMQ`
+
+---
+
 ## Sources and evidence
 
 - The cases came from `doc/20a`, `20b` and `20c` (the historical catalogue, removed in commit `efeb47a`); the tests, from the `/// UC:` lines of the code. The test `crates/taba-node/tests/uc_coverage.rs` checks the codes.
 - The `UC-BKP` cases (S3 backup) do not come from the historical catalogue: they were written by hand in this file, in the same format, and the test list of each one is checked by `uc_coverage`.
+- The `UC-BNC` cases (local benchmark) were written by hand in this file; their tests are Node.js files in `bench/`, which `uc_coverage` also reads.
 - Maintained by hand: a new test that cites a case goes into its card ([26-use-cases.md](26-use-cases.md)).

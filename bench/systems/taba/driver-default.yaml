@@ -1,0 +1,11 @@
+name: Taba
+driverClass: io.github.rafaelpontani.taba.omb.TabaBenchmarkDriver
+baseUrl: http://server:8080
+token: tb_dev.bench-dev-secret-0123456789abcdef0123456
+ordering: none
+producer:
+  inFlight: 1000
+consumer:
+  waitTime: 20
+  maxMessages: 100
+  visibilityTimeout: 60

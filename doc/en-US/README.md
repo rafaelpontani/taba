@@ -88,6 +88,7 @@ Taba is an open-source messaging system, shipped as a single Docker image, that 
 | [25-testing.md](25-testing.md) | Test levels and how to write one |
 | [36-known-issues.md](36-known-issues.md) | Tests turned off because they fail intermittently in CI |
 | [37-guarantees.md](37-guarantees.md) | The guarantees as checkable rules (I1 to I6) and the chaos run that checks them |
+| [38-benchmarks.md](38-benchmarks.md) | The local comparative benchmark (`bench/run.sh`): fairness rules, durability levels, workloads and the report |
 | [26-use-cases.md](26-use-cases.md) | The `UC-…` format and the coverage rule |
 | [26a-implemented-use-cases.md](26a-implemented-use-cases.md) | Cases with a test |
 | [26b-planned-use-cases.md](26b-planned-use-cases.md) | Cases without a test yet |

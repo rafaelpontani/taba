@@ -1,0 +1,21 @@
+{
+  "date": "2026-01-01T00:00:00Z",
+  "taba_commit": "abc1234",
+  "omb_commit": "8559989",
+  "profile": "quick",
+  "rounds": 3,
+  "duration_minutes": 2,
+  "warmup_minutes": 1,
+  "cpu_model": "Exemplo",
+  "docker_cpus": 8,
+  "docker_memory_gb": 16,
+  "docker_version": "29",
+  "docker_os": "Docker Desktop",
+  "server_cpus": 4,
+  "server_memory_gb": 8,
+  "runner_cpus": 4,
+  "runner_memory_gb": 8,
+  "images": {
+    "taba": "taba:bench"
+  }
+}
