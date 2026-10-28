@@ -53,6 +53,29 @@ fn reads_do_not_create_folders_for_topics_without_disk() {
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
 }
 
+#[test]
+fn a_topic_seen_without_disk_is_remembered_until_the_store_writes_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    assert!(!store.known_without_disk("orders"), "not looked up yet");
+    assert_eq!(store.get_live("orders", "a1").unwrap(), None);
+    assert!(store.known_without_disk("orders"));
+    // The write creates the database even after the topic was seen without one, and the reads find it.
+    let m = meta("a1");
+    store.put("orders", &m, b"x").unwrap();
+    assert!(!store.known_without_disk("orders"));
+    assert_eq!(store.get_live("orders", "a1").unwrap(), Some(m.clone()));
+    // A database a previous run left on disk is found by a new store at the first read.
+    let reopened = MessageStore::new(tmp.path(), DbSynchronous::Normal);
+    assert_eq!(reopened.get("orders", "a1").unwrap(), Some(m));
+    assert!(!reopened.known_without_disk("orders"));
+    // A dropped topic is looked up again.
+    store.drop_topic("orders").unwrap();
+    assert!(!store.known_without_disk("orders"));
+    assert_eq!(store.get("orders", "a1").unwrap(), None);
+    assert!(store.known_without_disk("orders"));
+}
+
 /// UC: UC-ARM-014
 #[test]
 fn removing_deletes_the_row_and_then_the_file() {

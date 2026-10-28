@@ -59,13 +59,16 @@ impl Cluster {
         if owner {
             self.owners.0.lock().unwrap().insert(meta.id.clone());
         }
-        (meta, body)
+        (meta, body.to_vec())
     }
 
     fn publish(&self, topic: &str, body: &str, owner: bool) -> String {
         let (meta, body) = self.draft(topic, body, owner);
         let id = meta.id.clone();
-        self.h.messages.apply_publish(topic, meta, body).unwrap();
+        self.h
+            .messages
+            .apply_publish(topic, meta, body.into())
+            .unwrap();
         id
     }
 
@@ -491,9 +494,11 @@ async fn applying_a_commit_twice_changes_nothing() {
     queue_in(&c, "orders").await;
     let (meta, body) = c.draft("orders", "1", true);
     c.h.messages
-        .apply_publish("orders", meta.clone(), body.clone())
+        .apply_publish("orders", meta.clone(), body.clone().into())
         .unwrap();
-    c.h.messages.apply_publish("orders", meta, body).unwrap();
+    c.h.messages
+        .apply_publish("orders", meta, body.into())
+        .unwrap();
     assert_eq!(c.h.messages.pending(), 1);
     let snapshot =
         c.h.messages
@@ -509,7 +514,7 @@ async fn the_id_of_a_group_keeps_growing_even_if_the_clock_of_the_new_primary_is
     c.h.topics.create(fifo("f")).await.unwrap();
     let view = c.view("f");
     let request = |key: &str| PublishRequest {
-        body: b"{}".to_vec(),
+        body: b"{}".to_vec().into(),
         content_type: Some("application/json".into()),
         group_id: Some("g".into()),
         deduplication_id: Some(key.to_owned()),
@@ -562,7 +567,7 @@ async fn the_owner_reserves_and_aborts_with_small_lists_as_with_large_ones() {
             c.publish("orders", &i.to_string(), true);
         }
         let view = c.view("orders");
-        let body = |t: &Candidate| String::from_utf8(t.body.clone()).unwrap();
+        let body = |t: &Candidate| String::from_utf8(t.body.to_vec()).unwrap();
 
         // Deadlines that do not fit the invisible list.
         let mut seen = Vec::new();

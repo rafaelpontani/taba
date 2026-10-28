@@ -212,7 +212,7 @@ async fn a_publication_reaches_every_responsible_node_and_only_the_primary_owns_
             .read_message("orders", id)
             .unwrap()
             .unwrap();
-        assert_eq!(body, br#"{"n":0}"#);
+        assert_eq!(body.as_ref(), br#"{"n":0}"#);
     }
     cluster.shutdown().await;
 }

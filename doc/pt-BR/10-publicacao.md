@@ -3,7 +3,7 @@ título: Publicação de mensagens
 resumo: O caminho de uma mensagem publicada — do nó que recebe a chamada até a resposta ao cliente — com registro, quórum, commit, rollback e as falhas possíveis em cada ponto.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-28 @ 2447d5e
 fontes: [crates/taba-node/src/cluster/replication/coordinator.rs, crates/taba-node/src/cluster/replication/replica.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/http/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs]
 ---
 
@@ -67,6 +67,8 @@ Só o primário decide o que é entregável. Um quórum formado por secundário 
 ## Num nó só
 
 No perfil de um nó (fator 1) o nó é o primário de tudo e o quórum vale 1: registro e commit acontecem só nele, sem réplicas, sem repetição entre nós e sem rollback por falta de quórum.
+
+Com um único nó responsável (fator 1, em qualquer tamanho de cluster) o registro dele já é a decisão: o coordenador registra e faz o commit em sequência na própria tarefa da requisição, sem uma tarefa por nó e sem esperar o quórum; só um commit que falha na primeira tentativa vai para a insistência que o coordenador mantém em segundo plano depois da decisão (veja Falhas). Uma publicação que só mexe em memória (o tópico ainda não tem banco no disco, o limite de memória tem espaço, o nó não está em drenagem e o backup em S3 está desligado) é conferida e aplicada pela réplica na mesma thread; senão as duas vão para uma thread bloqueante, porque leem ou escrevem o disco.
 
 ## Exemplo
 

@@ -3,7 +3,7 @@ title: Publishing messages
 summary: The path of a published message — from the node that receives the call to the response to the client — with register, quorum, commit, rollback and the possible failures at each point.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-28 @ 2447d5e
 sources: [crates/taba-node/src/cluster/replication/coordinator.rs, crates/taba-node/src/cluster/replication/replica.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/http/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs]
 ---
 
@@ -67,6 +67,8 @@ It is the same rule as the cluster protocol ([07-cluster.md](07-cluster.md)). Wh
 ## On a single node
 
 In the one-node profile (factor 1) the node is the primary of everything and the quorum is 1: register and commit happen only on it, with no replicas, no repetition between nodes and no rollback for lack of quorum.
+
+With a single responsible node (factor 1, in any cluster size) its register is already the decision: the coordinator registers and commits in sequence on the request's own task, with no task per node and no wait for the quorum; only a commit that fails at the first attempt goes to the insistence the coordinator keeps in the background after the decision (see Failures). A publication that only touches memory (the topic has no database on disk yet, the memory limit has room, the node is not draining and the S3 backup is off) is checked and applied by the replica on the same thread; otherwise both go to a blocking thread, because they read or write the disk.
 
 ## Example
 

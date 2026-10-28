@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, RwLock, RwLockWriteGuard};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -214,6 +214,12 @@ const COLUMNS: &str = "id, content_type, group_id, published_at, delivery_count,
                        receipt_token, dead_lettered_at, dead_letter_reason, deduplication_id, \
                        position";
 
+/// The reads of a message by `id`, with the statement kept prepared on the connection.
+static SELECT_BY_ID: LazyLock<String> =
+    LazyLock::new(|| format!("SELECT {COLUMNS} FROM messages WHERE id = ?1"));
+static SELECT_LIVE_BY_ID: LazyLock<String> =
+    LazyLock::new(|| format!("SELECT {COLUMNS} FROM messages WHERE id = ?1 AND delete_at IS NULL"));
+
 fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageMeta> {
     Ok(MessageMeta {
         id: row.get(0)?,
@@ -284,7 +290,10 @@ impl TopicDisk {
 pub struct MessageStore {
     root: PathBuf,
     synchronous: DbSynchronous,
-    topics: Mutex<HashMap<String, Arc<TopicDisk>>>,
+    /// The topics already looked up: the open disk, or `None` for a topic with no database yet. Only this
+    /// store creates a topic's database (`disk` with `create`), so a topic seen without one stays without it
+    /// until then, and the reads of a publication (does this `id` exist?) do not ask the file system each time.
+    topics: RwLock<HashMap<String, Option<Arc<TopicDisk>>>>,
     /// The log of excluded messages (doc 07, section 10.3).
     excluded: ExcludedLog,
     /// Records the `topicId` in each folder created, so a restoration can tell a recreated topic.
@@ -297,7 +306,7 @@ impl MessageStore {
         Self {
             root: root.to_path_buf(),
             synchronous,
-            topics: Mutex::new(HashMap::new()),
+            topics: RwLock::new(HashMap::new()),
             excluded: ExcludedLog::default(),
             topic_ids: OnceLock::new(),
         }
@@ -333,18 +342,40 @@ impl MessageStore {
         self.topics().clear();
     }
 
-    fn topics(&self) -> MutexGuard<'_, HashMap<String, Arc<TopicDisk>>> {
-        self.topics.lock().unwrap_or_else(|e| e.into_inner())
+    fn topics(&self) -> RwLockWriteGuard<'_, HashMap<String, Option<Arc<TopicDisk>>>> {
+        self.topics.write().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The topic was already looked up and has no database: a read of it touches nothing on disk.
+    pub fn known_without_disk(&self, topic: &str) -> bool {
+        matches!(
+            self.topics
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(topic),
+            Some(None)
+        )
     }
 
     /// The topic's disk. Without `create`, a topic without a folder is `None` (reads create nothing).
     fn disk(&self, topic: &str, create: bool) -> io::Result<Option<Arc<TopicDisk>>> {
+        {
+            let topics = self.topics.read().unwrap_or_else(|e| e.into_inner());
+            match topics.get(topic) {
+                Some(Some(disk)) => return Ok(Some(disk.clone())),
+                Some(None) if !create => return Ok(None),
+                _ => {}
+            }
+        }
         let mut topics = self.topics();
-        if let Some(disk) = topics.get(topic) {
-            return Ok(Some(disk.clone()));
+        match topics.get(topic) {
+            Some(Some(disk)) => return Ok(Some(disk.clone())),
+            Some(None) if !create => return Ok(None),
+            _ => {}
         }
         let dir = self.root.join(dir_name(topic));
         if !create && !dir.join(TOPIC_DB_FILE).is_file() {
+            topics.insert(topic.to_owned(), None);
             return Ok(None);
         }
         std::fs::create_dir_all(&dir)?;
@@ -371,7 +402,7 @@ impl MessageStore {
             dir,
             conn: Mutex::new(conn),
         });
-        topics.insert(topic.to_owned(), disk.clone());
+        topics.insert(topic.to_owned(), Some(disk.clone()));
         Ok(Some(disk))
     }
 
@@ -416,12 +447,8 @@ impl MessageStore {
             return Ok(None);
         };
         disk.conn()
-            .query_row(
-                &format!("SELECT {COLUMNS} FROM messages WHERE id = ?1"),
-                params![id],
-                from_row,
-            )
-            .optional()
+            .prepare_cached(&SELECT_BY_ID)
+            .and_then(|mut stmt| stmt.query_row(params![id], from_row).optional())
             .map_err(to_io)
     }
 
@@ -431,12 +458,8 @@ impl MessageStore {
             return Ok(None);
         };
         disk.conn()
-            .query_row(
-                &format!("SELECT {COLUMNS} FROM messages WHERE id = ?1 AND delete_at IS NULL"),
-                params![id],
-                from_row,
-            )
-            .optional()
+            .prepare_cached(&SELECT_LIVE_BY_ID)
+            .and_then(|mut stmt| stmt.query_row(params![id], from_row).optional())
             .map_err(to_io)
     }
 

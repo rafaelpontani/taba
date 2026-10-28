@@ -43,10 +43,14 @@ pub fn routes() -> OpenApiRouter<AppState> {
 }
 
 /// Reads the request body up to `limit` bytes. Past that: `413`, without reading the rest.
-async fn read_body(body: Body, limit: u64) -> Result<Vec<u8>, TabaError> {
+///
+/// The only copy of the body on the publish path: what hyper hands over can be a slice of the connection's
+/// read buffer, and a message kept in memory would hold the whole buffer alive (and the memory count, which
+/// adds up the body sizes, would be short). From here to the engine the body is shared, never copied.
+async fn read_body(body: Body, limit: u64) -> Result<Bytes, TabaError> {
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     match axum::body::to_bytes(body, limit).await {
-        Ok(bytes) => Ok(bytes.to_vec()),
+        Ok(bytes) => Ok(Bytes::copy_from_slice(&bytes)),
         Err(e) => {
             let too_large = std::error::Error::source(&e)
                 .is_some_and(|source| source.downcast_ref::<LengthLimitError>().is_some());
@@ -76,6 +80,10 @@ fn content_type(headers: &HeaderMap) -> Option<String> {
 
 /// The messaging attributes of the request span: the topic, the operation and its tags.
 fn annotate(state: &AppState, topic: &str, operation: &'static str) {
+    // Without a span (no OTLP) there is nothing to annotate, and the topic is not even read.
+    if tracing::Span::current().is_disabled() {
+        return;
+    }
     match state.topics.get(topic) {
         Ok(view) => trace::annotate_messaging(topic, operation, &view.definition.tags),
         Err(_) => trace::annotate_messaging(topic, operation, &std::collections::BTreeMap::new()),
@@ -146,7 +154,7 @@ async fn publish(
         Published::Queue {
             id,
             duplicate: None,
-        } => (StatusCode::CREATED, Json(json!({ "id": id }))).into_response(),
+        } => (StatusCode::CREATED, Json(Created { id })).into_response(),
         Published::Queue {
             id,
             duplicate: Some(duplicate),
@@ -165,6 +173,12 @@ async fn publish(
         }))
         .into_response(),
     })
+}
+
+/// The `201` of a publication on a queue: `{"id": ...}`, without going through a `serde_json::Value`.
+#[derive(Serialize)]
+struct Created {
+    id: String,
 }
 
 fn delivery_json(delivery: &DistributorDelivery) -> Value {

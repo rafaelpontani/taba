@@ -204,7 +204,7 @@ Assim, um coletor dentro da infraestrutura lê `:9090/metrics` sem credenciais, 
 
 ## Fontes e provas
 
-- `secrets/mod.rs` (`taba init`, `cert generate`, `token generate`), `cluster/tls/mod.rs` (aceitação, apresentação, recarga), `http/auth` (`authenticate`, `authorize`), `core/token` (formato e hash), `engine/tokens`, `http/ratelimit`, `http/client_ip`, `cluster/service` (identidade pelo IP).
+- `secrets/mod.rs` (`taba init`, `cert generate`, `token generate`), `cluster/tls/mod.rs` (aceitação, apresentação, recarga), `http/auth` (`identify`, `permit`; `authenticate`, `authorize`), `core/token` (formato e hash), `engine/tokens`, `http/ratelimit`, `http/client_ip`, `cluster/service` (identidade pelo IP).
 - Tabela "Exemplo verificado" executada contra um cluster de 3 nós subido pelo `docker-compose.yml`.
 - Casos de uso: UC-AUT (autenticação e tokens), UC-LIM (rate limit e IP), UC-SEG (portas, TLS mútuo e certificados); veja [26a](26a-casos-de-uso-implementados.md). Testes: `tests/auth.rs`, `ratelimit.rs`, `mtls.rs`, `secrets.rs`.
 - Histórico: `06-api.md` (8.0), `06a-api-cliente.md` (8.1.3), `12-limites-api.md`.

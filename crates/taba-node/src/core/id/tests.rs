@@ -59,3 +59,41 @@ fn generator_is_strictly_increasing_even_within_the_same_millisecond() {
     assert!(ids.windows(2).all(|w| w[0] < w[1]), "out of order");
     assert!(ids.iter().all(|id| is_guid_v7(id)));
 }
+
+/// UC: UC-MSG-013
+#[test]
+fn generator_shared_by_threads_never_repeats_and_each_thread_sees_increasing_ids() {
+    let generator = std::sync::Arc::new(IdGenerator::new());
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let generator = generator.clone();
+            std::thread::spawn(move || {
+                (0..5000)
+                    .map(|_| generator.new_at(1_791_288_000_000))
+                    .collect::<Vec<String>>()
+            })
+        })
+        .collect();
+    let mut all = std::collections::BTreeSet::new();
+    for handle in handles {
+        let ids = handle.join().unwrap();
+        assert!(ids.windows(2).all(|w| w[0] < w[1]), "out of order");
+        assert!(ids.iter().all(|id| is_guid_v7(id)));
+        all.extend(ids);
+    }
+    assert_eq!(all.len(), 8 * 5000, "repeated ID");
+}
+
+#[test]
+fn generator_moves_to_the_next_millisecond_when_the_counter_runs_out() {
+    let generator = IdGenerator::new();
+    generator.state.store(
+        (1_791_288_000_000 << COUNTER_BITS) | (COUNTER_MASK - 1),
+        std::sync::atomic::Ordering::SeqCst,
+    );
+    let last = generator.new_at(1_791_288_000_000);
+    let next = generator.new_at(1_791_288_000_000);
+    assert_eq!(unix_millis_of(&last), Some(1_791_288_000_000));
+    assert_eq!(unix_millis_of(&next), Some(1_791_288_000_001));
+    assert!(last < next);
+}

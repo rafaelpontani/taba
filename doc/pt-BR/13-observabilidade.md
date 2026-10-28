@@ -3,7 +3,7 @@ título: Observabilidade
 resumo: Como monitorar o Taba — OpenTelemetry (OTLP) e Prometheus, métricas de nó e de tópico, condições do cluster e do tópico, health checks, traces, logs e eventos.
 tipo: referência
 status: estável
-verificado-em: 2026-10-13 @ 71183b9
+verificado-em: 2026-10-28 @ 2447d5e
 fontes: [crates/taba-node/src/telemetry, crates/taba-node/src/http/metrics, crates/taba-node/src/http/topic_stats, crates/taba-node/src/http/operations.rs, crates/taba-node/src/cluster/health, crates/taba-node/src/config/otlp.rs]
 ---
 
@@ -436,6 +436,8 @@ Um trace por operação de cliente, com spans internos por etapa. Os spans HTTP 
 Logs **estruturados**: no `stdout` com `telemetry.logs.format` (`text`, padrão, `color` ou `json`) e, com OTLP, como *log records* com `trace_id` e `span_id`. O nível é `telemetry.logs.level` (`trace`, `debug`, `info`, `warn`, `error`; `info` se ausente). Logs por mensagem no caminho quente ficam em `debug`.
 
 > O log no `stdout` ainda **não leva `trace_id`/`span_id`** (PRB-050); só o OTLP leva.
+
+Os spans do nó (requisição, chamada a um nó, operação de cluster) existem só para o OTLP: sem um pipeline OTLP ligado eles nem são criados, e as linhas do `stdout` não levam os campos deles. O registro de métricas está no caminho de toda requisição: uma série que já existe é atualizada com travas de leitura e atômicos, e só uma série vista pela primeira vez pega a trava de escrita.
 
 | Evento | Nível |
 |---|---|

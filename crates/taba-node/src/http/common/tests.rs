@@ -13,6 +13,7 @@ use crate::core::error::ErrorCode;
 use crate::engine::messages::{MessageRules, Messages};
 use crate::engine::tokens::{TokenRules, Tokens};
 use crate::engine::topics::{TopicRules, Topics};
+use crate::http::AppShared;
 use crate::http::auth::Auth;
 use crate::http::client_ip::ClientIpRules;
 use crate::http::ratelimit::RateLimiter;
@@ -49,7 +50,7 @@ fn app() -> Router {
         clock.clone(),
         std::time::Duration::from_secs(25),
     );
-    let state = AppState {
+    let state = AppState::from(AppShared {
         clock: clock.clone(),
         backup: None,
         topics,
@@ -75,7 +76,7 @@ fn app() -> Router {
             &config,
         )),
         tls: None,
-    };
+    });
     let routes = Router::new()
         .route("/boom", get(boom))
         .route(

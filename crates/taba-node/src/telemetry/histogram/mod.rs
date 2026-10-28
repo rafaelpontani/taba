@@ -27,6 +27,17 @@ impl Histogram {
         }
     }
 
+    /// A histogram already counted elsewhere: `counts` per bucket (not cumulative, `+Inf` last).
+    pub fn from_parts(bounds: &'static [f64], counts: Vec<u64>, sum: f64) -> Self {
+        debug_assert_eq!(counts.len(), bounds.len() + 1);
+        Self {
+            bounds,
+            count: counts.iter().sum(),
+            counts,
+            sum,
+        }
+    }
+
     pub fn record(&mut self, value: f64) {
         let bucket = self
             .bounds

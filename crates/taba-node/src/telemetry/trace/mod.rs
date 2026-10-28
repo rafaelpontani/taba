@@ -71,6 +71,9 @@ pub fn annotate_messaging<'a>(
     tags: impl IntoIterator<Item = (&'a String, &'a String)>,
 ) {
     let span = Span::current();
+    if span.is_disabled() {
+        return;
+    }
     span.record("messaging.system", MESSAGING_SYSTEM);
     span.record("messaging.destination.name", topic);
     span.record("messaging.operation.type", operation);

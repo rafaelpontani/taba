@@ -82,7 +82,7 @@ fn distributor(name: &str, prefixes: &[&str]) -> CreateTopic {
 
 fn json_body(text: &str) -> PublishRequest {
     PublishRequest {
-        body: text.as_bytes().to_vec(),
+        body: text.as_bytes().to_vec().into(),
         ..Default::default()
     }
 }
@@ -156,7 +156,7 @@ async fn publishing_validates_content_type_and_body() {
     let h = harness();
     h.topics.create(queue("orders")).await.unwrap();
     let with = |content_type: Option<&str>, body: &[u8]| PublishRequest {
-        body: body.to_vec(),
+        body: body.to_vec().into(),
         content_type: content_type.map(Into::into),
         ..Default::default()
     };
@@ -203,7 +203,7 @@ async fn group_id_is_validated_and_deduplication_is_fifo_only() {
     let h = harness();
     h.topics.create(queue("orders")).await.unwrap();
     let with = |group: Option<&str>, dedup: Option<&str>| PublishRequest {
-        body: b"1".to_vec(),
+        body: b"1".to_vec().into(),
         group_id: group.map(Into::into),
         deduplication_id: dedup.map(Into::into),
         ..Default::default()
@@ -238,7 +238,7 @@ async fn a_fifo_queue_requires_the_group_id() {
         ErrorCode::ValidationGroupIdRequired
     );
     let ok = PublishRequest {
-        body: b"1".to_vec(),
+        body: b"1".to_vec().into(),
         group_id: Some("g".into()),
         deduplication_id: Some("d".into()),
         ..Default::default()
@@ -397,7 +397,7 @@ async fn each_message_keeps_its_content_type_and_group_in_a_mixed_batch() {
             .publish(
                 "files",
                 PublishRequest {
-                    body: body.to_vec(),
+                    body: body.to_vec().into(),
                     content_type: Some(content_type.into()),
                     group_id: group.map(Into::into),
                     ..Default::default()
@@ -1185,7 +1185,7 @@ fn tiny_memory() -> Harness {
 
 fn raw(body: &[u8], content_type: &str) -> PublishRequest {
     PublishRequest {
-        body: body.to_vec(),
+        body: body.to_vec().into(),
         content_type: Some(content_type.into()),
         ..Default::default()
     }
@@ -2282,7 +2282,7 @@ fn fifo_publish(
     body: &str,
 ) -> (String, Option<bool>) {
     let request = PublishRequest {
-        body: body.as_bytes().to_vec(),
+        body: body.as_bytes().to_vec().into(),
         group_id: Some(group.into()),
         deduplication_id: dedup.map(Into::into),
         ..Default::default()
@@ -2348,7 +2348,7 @@ async fn without_a_deduplication_id_the_sha256_of_the_body_is_the_key() {
     let (first, _) = fifo_publish(&h, "f", "g1", None, "{ \"a\": 1 }");
     // The same body is a duplicate, even with another `Content-Type`.
     let request = PublishRequest {
-        body: b"{ \"a\": 1 }".to_vec(),
+        body: b"{ \"a\": 1 }".to_vec().into(),
         content_type: Some("text/plain".into()),
         group_id: Some("g1".into()),
         ..Default::default()
@@ -2712,7 +2712,7 @@ async fn a_distributor_copy_without_a_group_fails_only_that_fifo_queue() {
 
     // With the group, the copy goes to all, and each FIFO deduplicates its own.
     let request = PublishRequest {
-        body: b"2".to_vec(),
+        body: b"2".to_vec().into(),
         group_id: Some("g".into()),
         deduplication_id: Some("k".into()),
         ..Default::default()

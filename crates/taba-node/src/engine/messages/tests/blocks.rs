@@ -38,7 +38,10 @@ fn clustered(env: &[(&str, &str)]) -> (Harness, Arc<Responsible>) {
 
 fn record(h: &Harness, topic: &str, body: &str) -> (MessageMeta, Vec<u8>) {
     let view = h.topics.get(topic).unwrap();
-    h.messages.draft_publish(&view, &json_body(body)).unwrap()
+    h.messages
+        .draft_publish(&view, &json_body(body))
+        .map(|(meta, body)| (meta, body.to_vec()))
+        .unwrap()
 }
 
 /// UC: UC-SIN-002, UC-SIN-006, UC-SIN-007
@@ -55,7 +58,7 @@ async fn the_ids_of_a_block_come_from_memory_and_disk_in_order() {
     {
         let (meta, body) = record(&h, topic, &format!("{{\"n\":{n}}}"));
         ids.push((meta.id.clone(), topic.to_owned()));
-        h.messages.apply_publish(topic, meta, body).unwrap();
+        h.messages.apply_publish(topic, meta, body.into()).unwrap();
     }
     assert!(h.messages.storage_stats().disk_messages > 0);
     assert!(h.messages.storage_stats().memory_messages > 0);
@@ -102,7 +105,9 @@ async fn block_messages_carry_the_body_and_stop_at_the_item_and_byte_ceilings() 
     for n in 0..6 {
         let (meta, body) = record(&h, "orders", &format!("{{\"n\":{n},\"x\":\"abcdefghij\"}}"));
         ids.push(meta.id.clone());
-        h.messages.apply_publish("orders", meta, body).unwrap();
+        h.messages
+            .apply_publish("orders", meta, body.into())
+            .unwrap();
     }
     let all = [(0, u64::MAX)];
     let (found, more) = h
@@ -147,7 +152,7 @@ async fn loading_skips_what_expired_and_what_the_node_already_has_and_notes_unkn
 
     assert_eq!(
         h.messages
-            .apply_load("orders", meta.clone(), body.clone())
+            .apply_load("orders", meta.clone(), body.clone().into())
             .unwrap(),
         Loaded::Stored
     );
@@ -159,14 +164,14 @@ async fn loading_skips_what_expired_and_what_the_node_already_has_and_notes_unkn
     assert_eq!(info.meta.position, message_position(&id));
     assert_eq!(
         h.messages
-            .apply_load("orders", meta.clone(), body.clone())
+            .apply_load("orders", meta.clone(), body.clone().into())
             .unwrap(),
         Loaded::Existing,
         "repeating the load changes nothing"
     );
     assert_eq!(
         h.messages
-            .apply_load("no-topic", meta.clone(), body.clone())
+            .apply_load("no-topic", meta.clone(), body.clone().into())
             .unwrap(),
         Loaded::UnknownTopic
     );
@@ -175,7 +180,9 @@ async fn loading_skips_what_expired_and_what_the_node_already_has_and_notes_unkn
     let (old, old_body) = record(&h, "orders", "{\"b\":2}");
     h.clock.advance(Duration::from_secs(30 * 24 * 3600));
     assert_eq!(
-        h.messages.apply_load("orders", old, old_body).unwrap(),
+        h.messages
+            .apply_load("orders", old, old_body.into())
+            .unwrap(),
         Loaded::Expired
     );
 }
@@ -189,7 +196,9 @@ async fn copies_of_blocks_the_node_no_longer_serves_are_forgotten_and_the_rest_s
     for n in 0..8 {
         let (meta, body) = record(&h, "orders", &format!("{{\"n\":{n}}}"));
         ids.push(meta.id.clone());
-        h.messages.apply_publish("orders", meta, body).unwrap();
+        h.messages
+            .apply_publish("orders", meta, body.into())
+            .unwrap();
     }
     // Everything is the node's responsibility: nothing is deleted.
     assert_eq!(h.messages.forget_foreign(&|_| true), 0);
@@ -232,7 +241,9 @@ async fn of_two_copies_the_greater_delivery_count_prevails_and_never_decreases()
     let (mut meta, body) = record(&h, "orders", "{\"a\":1}");
     let id = meta.id.clone();
     meta.delivery_count = 1;
-    h.messages.apply_load("orders", meta.clone(), body).unwrap();
+    h.messages
+        .apply_load("orders", meta.clone(), body.into())
+        .unwrap();
 
     assert!(h.messages.raise_delivery_count("orders", &id, 4).unwrap());
     let info = h.messages.message_info("orders", &id).unwrap().unwrap();
@@ -267,7 +278,7 @@ fn applied_backwards(h: &Harness, topic: &str, count: usize) -> Vec<String> {
     }
     let ids: Vec<String> = made.iter().map(|(meta, _)| meta.id.clone()).collect();
     for (meta, body) in made.into_iter().rev() {
-        h.messages.apply_publish(topic, meta, body).unwrap();
+        h.messages.apply_publish(topic, meta, body.into()).unwrap();
     }
     ids
 }
@@ -425,7 +436,10 @@ async fn only_the_owner_counts_a_message_in_the_visible_invisible_and_oldest_num
     replica.topics.create(queue("orders")).await.unwrap();
     let (meta, body) = record(&replica, "orders", "{\"a\":1}");
     let id = meta.id.clone();
-    replica.messages.apply_load("orders", meta, body).unwrap();
+    replica
+        .messages
+        .apply_load("orders", meta, body.into())
+        .unwrap();
     assert!(
         !replica
             .messages

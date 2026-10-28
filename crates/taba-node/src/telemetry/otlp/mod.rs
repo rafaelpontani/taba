@@ -18,6 +18,7 @@ pub mod logs;
 pub mod metrics;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
@@ -109,6 +110,8 @@ pub struct Hub {
     sampler: Arc<RwLock<SdkSampler>>,
     processor: Arc<RwLock<Option<Arc<BatchSpanProcessor>>>>,
     logs: Arc<RwLock<Option<LogSlot>>>,
+    /// A pipeline is attached: only then the spans layer sees spans (without it, a span costs nothing).
+    attached: AtomicBool,
 }
 
 /// The process's `Hub`, created on first use.
@@ -126,6 +129,7 @@ pub fn hub() -> &'static Hub {
             sampler,
             processor,
             logs: Arc::new(RwLock::new(None)),
+            attached: AtomicBool::new(false),
         }
     })
 }
@@ -141,6 +145,11 @@ impl Hub {
             .with_location(false)
             .with_threads(false)
             .with_tracked_inactivity(false)
+    }
+
+    /// `true` while a pipeline is attached.
+    pub fn is_attached(&self) -> bool {
+        self.attached.load(Ordering::Relaxed)
     }
 
     /// The logs layer (`tracing` events → *log records*).
@@ -295,6 +304,7 @@ impl Pipeline {
                 .and_then(|level| level.parse().ok())
                 .unwrap_or(LevelFilter::INFO),
         });
+        hub.attached.store(true, Ordering::Relaxed);
     }
 
     /// Releases the layers, if they are still this pipeline's.
@@ -306,6 +316,7 @@ impl Pipeline {
             .is_some_and(|current| Arc::ptr_eq(current, &self.processor))
         {
             *processor = None;
+            hub.attached.store(false, Ordering::Relaxed);
             *hub.sampler.write().unwrap_or_else(|e| e.into_inner()) = SdkSampler::AlwaysOff;
             *hub.logs.write().unwrap_or_else(|e| e.into_inner()) = None;
         }

@@ -679,24 +679,27 @@ impl ClusterService {
     /// The nodes responsible for the position, in order (primary first): `replication.factor` distinct
     /// nodes, or fewer if the cluster has fewer. `503` if the node does not have the table yet.
     pub fn owners_of(&self, position: u64) -> Result<Vec<Member>, TabaError> {
-        let table = self.membership.table().ok_or_else(node_syncing)?;
         let ring = self.membership.ring();
         let wanted = self.rules.replication_factor.max(1) as usize;
-        Ok(ring
-            .owners(position, wanted)
-            .into_iter()
-            .filter_map(|id| table.member(id).cloned())
-            .collect())
+        self.membership
+            .members_of(&ring.owners(position, wanted))
+            .ok_or_else(node_syncing)
     }
 
     /// The IP this node presents itself with (a local call goes through the same
     /// member check as one that came from the network).
     pub fn self_caller(&self) -> String {
-        self.local().addresses.first().cloned().unwrap_or_default()
+        self.local
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .addresses
+            .first()
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn is_self(&self, member: &Member) -> bool {
-        member.node_id == self.node_id()
+        member.node_id == self.local.read().unwrap_or_else(|e| e.into_inner()).node_id
     }
 
     /// Makes the call to a member: to itself without the network, to the others through the `Transport`.
@@ -1069,7 +1072,7 @@ impl ClusterService {
     /// Only whoever is in the member table calls the phase routes (doc 06c): a node that does not
     /// have the table yet does not know who is a member and answers `503`.
     pub(crate) fn require_member(&self, caller: &str) -> Result<(), TabaError> {
-        if self.membership.table().is_none() {
+        if !self.membership.has_table() {
             return Err(node_syncing());
         }
         if self.membership.is_member_address(caller) {

@@ -1012,7 +1012,7 @@ impl Syncer {
                     .await
                 && self
                     .messages
-                    .apply_load(&entry.line.topic, meta, body)
+                    .apply_load(&entry.line.topic, meta, body.into())
                     .is_ok()
             {
                 tracing::warn!(

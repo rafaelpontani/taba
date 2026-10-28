@@ -8,7 +8,8 @@
 //! disappears by itself after `write.pending.ttl`. Only one pending operation per message: the second is
 //! `409 cluster.conflict`.
 
-use std::collections::{HashMap, VecDeque};
+use bytes::Bytes;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -32,7 +33,7 @@ const FINISHED_MEMORY: usize = 4096;
 enum Action {
     Publish {
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     },
     DeadLetter {
         source: String,
@@ -50,13 +51,51 @@ struct Pending {
     topic: String,
     id: String,
     registered_at: SystemTime,
+    /// Order of registration: with `registered_at` it is the key of the operation in `State::by_age`.
+    seq: u64,
     action: Action,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Finished {
     Committed,
     RolledBack,
+}
+
+/// The decided operations the node still remembers: lookup by `operationId` without scanning, and the oldest
+/// leaves first when the memory is full.
+#[derive(Default)]
+struct Decided {
+    outcomes: HashMap<String, (Finished, u64)>,
+    /// `operationId` and the number it was remembered with, oldest first. An entry whose number is no longer the
+    /// one in `outcomes` is a repeated decision, already replaced.
+    order: VecDeque<(String, u64)>,
+    next: u64,
+}
+
+impl Decided {
+    fn get(&self, operation_id: &str) -> Option<Finished> {
+        self.outcomes.get(operation_id).map(|(outcome, _)| *outcome)
+    }
+
+    fn remember(&mut self, operation_id: &str, outcome: Finished) {
+        self.next += 1;
+        self.outcomes
+            .insert(operation_id.to_owned(), (outcome, self.next));
+        self.order.push_back((operation_id.to_owned(), self.next));
+        while self.outcomes.len() > FINISHED_MEMORY {
+            let Some((oldest, number)) = self.order.pop_front() else {
+                break;
+            };
+            if self
+                .outcomes
+                .get(&oldest)
+                .is_some_and(|(_, n)| *n == number)
+            {
+                self.outcomes.remove(&oldest);
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -64,7 +103,21 @@ struct State {
     ops: HashMap<String, Pending>,
     /// `(topic, id)` → pending operation.
     by_message: HashMap<(String, String), String>,
-    finished: VecDeque<(String, Finished)>,
+    /// The pending operations from the oldest to the newest: the sweep of the expired ones only touches the
+    /// expired ones, not every pending operation of every call.
+    by_age: BTreeMap<(SystemTime, u64), String>,
+    next_seq: u64,
+    finished: Decided,
+}
+
+impl State {
+    /// Takes the operation out of the pendings and out of the indexes that point to it.
+    fn take(&mut self, operation_id: &str) -> Option<Pending> {
+        let op = self.ops.remove(operation_id)?;
+        self.by_message.remove(&(op.topic.clone(), op.id.clone()));
+        self.by_age.remove(&(op.registered_at, op.seq));
+        Some(op)
+    }
 }
 
 pub struct Replica {
@@ -91,6 +144,56 @@ fn ack(operation_id: &str) -> Ack {
     Ack {
         operation_id: operation_id.to_owned(),
         accepted: true,
+    }
+}
+
+/// Applies a decided operation to the engine.
+fn apply(messages: &Messages, topic: &str, id: &str, action: Action) -> Result<(), TabaError> {
+    match action {
+        Action::Publish { meta, body } => messages.apply_publish(topic, meta, body),
+        Action::DeadLetter { source, at_ms } => messages.apply_dead_letter(&source, id, at_ms),
+        Action::Visibility { until_ms, delivery } => messages.apply_visibility(
+            topic,
+            id,
+            until_ms,
+            delivery
+                .as_ref()
+                .map(|(count, token)| (*count, token.as_str())),
+        ),
+        Action::Ack => messages.apply_ack(topic, id),
+    }
+}
+
+/// The register of a publication: the topic stores messages, and an `id` that already exists only
+/// passes with the same content (a repeated register is idempotent; another content, a conflict).
+fn check_publish(
+    messages: &Messages,
+    topics: &Topics,
+    topic: &str,
+    id: &str,
+    body: &[u8],
+) -> Result<(), TabaError> {
+    let view = topics.get(topic)?;
+    if view.definition.queue().is_none() {
+        return Err(TabaError::new(
+            ErrorCode::TopicWrongType,
+            "A distributor topic does not store messages.",
+        ));
+    }
+    match messages.message_info(topic, id)? {
+        None => Ok(()),
+        Some(_) => {
+            let same = messages
+                .read_message(topic, id)?
+                .is_some_and(|(_, held)| held == body);
+            if same {
+                Ok(())
+            } else {
+                Err(conflict(
+                    "The message already exists with different content.",
+                ))
+            }
+        }
     }
 }
 
@@ -132,32 +235,25 @@ impl Replica {
     /// Discards the pendings that passed `write.pending.ttl`.
     fn purge(&self, state: &mut State) {
         let now = self.clock.now();
-        let expired: Vec<String> = state
-            .ops
-            .iter()
-            .filter(|(_, p)| {
-                now.duration_since(p.registered_at)
-                    .is_ok_and(|age| age >= self.pending_ttl)
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in expired {
-            if let Some(op) = state.ops.remove(&id) {
-                state.by_message.remove(&(op.topic, op.id));
-                self.telemetry
-                    .registry
-                    .add(&WRITE_PENDING_EXPIRED, &[], 1.0);
-                tracing::warn!(operation_id = %id, "pending register expired without commit or rollback");
+        while let Some(entry) = state.by_age.first_entry() {
+            let (registered_at, _) = *entry.key();
+            let expired = now
+                .duration_since(registered_at)
+                .is_ok_and(|age| age >= self.pending_ttl);
+            if !expired {
+                break;
             }
+            let id = entry.remove();
+            state.take(&id);
+            self.telemetry
+                .registry
+                .add(&WRITE_PENDING_EXPIRED, &[], 1.0);
+            tracing::warn!(operation_id = %id, "pending register expired without commit or rollback");
         }
     }
 
     fn remember(state: &mut State, operation_id: &str, outcome: Finished) {
-        state.finished.retain(|(id, _)| id != operation_id);
-        state.finished.push_back((operation_id.to_owned(), outcome));
-        while state.finished.len() > FINISHED_MEMORY {
-            state.finished.pop_front();
-        }
+        state.finished.remember(operation_id, outcome);
     }
 
     /// Leaves the operation pending, or confirms again the one that already was (idempotent).
@@ -170,9 +266,7 @@ impl Replica {
     ) -> Result<Ack, TabaError> {
         let mut state = self.lock();
         self.purge(&mut state);
-        if state.ops.contains_key(operation_id)
-            || state.finished.iter().any(|(o, _)| o == operation_id)
-        {
+        if state.ops.contains_key(operation_id) || state.finished.get(operation_id).is_some() {
             return Ok(ack(operation_id));
         }
         let key = (topic.to_owned(), id.to_owned());
@@ -182,12 +276,19 @@ impl Replica {
             ));
         }
         state.by_message.insert(key, operation_id.to_owned());
+        let registered_at = self.clock.now();
+        state.next_seq += 1;
+        let seq = state.next_seq;
+        state
+            .by_age
+            .insert((registered_at, seq), operation_id.to_owned());
         state.ops.insert(
             operation_id.to_owned(),
             Pending {
                 topic: topic.to_owned(),
                 id: id.to_owned(),
-                registered_at: self.clock.now(),
+                registered_at,
+                seq,
                 action,
             },
         );
@@ -199,15 +300,12 @@ impl Replica {
         let pending = {
             let mut state = self.lock();
             self.purge(&mut state);
-            match state.ops.remove(operation_id) {
-                Some(op) => {
-                    state.by_message.remove(&(op.topic.clone(), op.id.clone()));
-                    op
-                }
+            match state.take(operation_id) {
+                Some(op) => op,
                 None => {
-                    return match state.finished.iter().find(|(o, _)| o == operation_id) {
-                        Some((_, Finished::Committed)) => Ok(ack(operation_id)),
-                        Some((_, Finished::RolledBack)) => {
+                    return match state.finished.get(operation_id) {
+                        Some(Finished::Committed) => Ok(ack(operation_id)),
+                        Some(Finished::RolledBack) => {
                             Err(conflict("The operation was cancelled (rollback)."))
                         }
                         None => Err(unknown_operation()),
@@ -215,25 +313,21 @@ impl Replica {
                 }
             }
         };
-        let messages = self.messages.clone();
         let Pending {
             topic, id, action, ..
         } = pending;
-        let result = tokio::task::spawn_blocking(move || match action {
-            Action::Publish { meta, body } => messages.apply_publish(&topic, meta, body),
-            Action::DeadLetter { source, at_ms } => messages.apply_dead_letter(&source, &id, at_ms),
-            Action::Visibility { until_ms, delivery } => messages.apply_visibility(
-                &topic,
-                &id,
-                until_ms,
-                delivery
-                    .as_ref()
-                    .map(|(count, token)| (*count, token.as_str())),
-            ),
-            Action::Ack => messages.apply_ack(&topic, &id),
-        })
-        .await
-        .map_err(|_| TabaError::internal())?;
+        // A publication that only touches memory is applied right here: a blocking thread would cost more
+        // than the work (two thread switches per message).
+        let light = matches!(&action, Action::Publish { body, .. }
+            if self.messages.publish_is_light(&topic, body.len() as u64));
+        let result = if light {
+            apply(&self.messages, &topic, &id, action)
+        } else {
+            let messages = self.messages.clone();
+            tokio::task::spawn_blocking(move || apply(&messages, &topic, &id, action))
+                .await
+                .map_err(|_| TabaError::internal())?
+        };
         // Applied or not, the operation left the pendings; the error (a message that vanished, for
         // example) goes to the coordinator.
         Self::remember(&mut self.lock(), operation_id, Finished::Committed);
@@ -243,14 +337,13 @@ impl Replica {
     fn rollback(&self, operation_id: &str) -> Result<Ack, TabaError> {
         let mut state = self.lock();
         self.purge(&mut state);
-        if let Some(op) = state.ops.remove(operation_id) {
-            state.by_message.remove(&(op.topic, op.id));
+        if state.take(operation_id).is_some() {
             Self::remember(&mut state, operation_id, Finished::RolledBack);
             return Ok(ack(operation_id));
         }
-        match state.finished.iter().find(|(o, _)| o == operation_id) {
-            Some((_, Finished::RolledBack)) => Ok(ack(operation_id)),
-            Some((_, Finished::Committed)) => Err(conflict(
+        match state.finished.get(operation_id) {
+            Some(Finished::RolledBack) => Ok(ack(operation_id)),
+            Some(Finished::Committed) => Err(conflict(
                 "The operation has already taken effect: there is no rollback after the commit.",
             )),
             None => Err(unknown_operation()),
@@ -328,39 +421,19 @@ impl Replica {
                     position: 0,
                 };
                 let body = record.body;
-                let check = if !checked {
-                    Ok(())
+                if !checked {
+                    // Nothing to check.
+                } else if self.messages.publish_is_light(&topic, body.len() as u64) {
+                    // The check only reads memory: right here, without a blocking thread.
+                    check_publish(&self.messages, &self.topics, &topic, &id, &body)?;
                 } else {
                     let (topic, id) = (topic.clone(), id.clone());
                     let body = body.clone();
                     self.blocking(move |messages, topics| {
-                        let view = topics.get(&topic)?;
-                        if view.definition.queue().is_none() {
-                            return Err(TabaError::new(
-                                ErrorCode::TopicWrongType,
-                                "A distributor topic does not store messages.",
-                            ));
-                        }
-                        match messages.message_info(&topic, &id)? {
-                            None => Ok(()),
-                            Some(_) => {
-                                // The same repeated content is idempotent; another, a conflict.
-                                let same = messages
-                                    .read_message(&topic, &id)?
-                                    .is_some_and(|(_, held)| held == body);
-                                if same {
-                                    Ok(())
-                                } else {
-                                    Err(conflict(
-                                        "The message already exists with different content.",
-                                    ))
-                                }
-                            }
-                        }
+                        check_publish(messages, topics, &topic, &id, &body)
                     })
-                    .await
-                };
-                check?;
+                    .await?;
+                }
                 self.register(&operation_id, &topic, &id, Action::Publish { meta, body })
             }
             WriteKind::DeadLetter => {

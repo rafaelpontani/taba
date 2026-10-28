@@ -46,6 +46,7 @@ mod window;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
+use bytes::Bytes;
 pub use lives::TopicCheck;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io;
@@ -175,7 +176,7 @@ impl MessageRules {
 /// `Content-Type` and the query.
 #[derive(Debug, Clone, Default)]
 pub struct PublishRequest {
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub content_type: Option<String>,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
@@ -272,7 +273,7 @@ const OPEN_PAGE: usize = 1000;
 /// A message in memory: the metadata is the same as the database row's.
 struct Stored {
     meta: MessageMeta,
-    body: Vec<u8>,
+    body: Bytes,
 }
 
 /// Where a message is.
@@ -419,7 +420,7 @@ pub struct ConsumeParams {
 #[derive(Debug, Clone)]
 pub enum Draft {
     /// A new message, with `id` and position already defined.
-    New { meta: MessageMeta, body: Vec<u8> },
+    New { meta: MessageMeta, body: Bytes },
     /// The key already exists in the group within the window: the original's `id` applies.
     Duplicate { id: String },
 }
@@ -478,7 +479,7 @@ pub enum VisibilityCheck {
 pub struct Candidate {
     /// The message as it will be after the delivery.
     pub meta: MessageMeta,
-    pub body: Vec<u8>,
+    pub body: Bytes,
     previous_deliveries: u32,
     band: u32,
 }
@@ -670,6 +671,23 @@ impl Messages {
         Ok(some)
     }
 
+    /// A publication of `size` bytes on the topic only touches memory: the topic has no database
+    /// yet (so asking whether the `id` exists reads nothing from disk), the memory limit has room, the
+    /// node is not draining and there is no backup to note it in. The replica then applies it without a
+    /// blocking thread. It is a forecast, not a reservation: a publication that still ends up on disk
+    /// (another one took the room in the meantime) only writes it on the calling thread, once.
+    pub fn publish_is_light(&self, topic: &str, size: u64) -> bool {
+        !self.draining.load(Ordering::Relaxed)
+            && self.backup.get().is_none()
+            && self.store.known_without_disk(topic)
+            && self.rules.memory_limit.is_none_or(|limit| {
+                self.memory_bytes
+                    .load(Ordering::Relaxed)
+                    .saturating_add(size)
+                    <= limit
+            })
+    }
+
     /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
     pub fn record_publish_latency(&self, topic: &str, secs: f64) {
         let state = self.state_of(topic);
@@ -723,7 +741,10 @@ impl Messages {
         // topic that was recreated with another one (doc 07, section 10.6).
         let for_ids = topics.clone();
         store.set_topic_id_resolver(Box::new(move |name| {
-            for_ids.get(name).ok().map(|view| view.definition.id)
+            for_ids
+                .get(name)
+                .ok()
+                .map(|view| view.definition.id.clone())
         }));
         let started_ms = clock.now_millis();
         let messages = Arc::new(Self {
@@ -820,7 +841,7 @@ impl Messages {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
-            return Some((stored.meta.clone(), stored.body.clone()));
+            return Some((stored.meta.clone(), stored.body.to_vec()));
         }
         let owned = self.know(topic, &mut state, id);
         state.index.forget_adopted();
@@ -837,7 +858,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<(), TabaError> {
         self.apply_publish(topic, meta, body)
     }
@@ -2613,11 +2634,11 @@ impl Messages {
                         continue;
                     };
                     match self.store.body(name, &id) {
-                        Ok(body) => (meta, body),
+                        Ok(body) => (meta, body.into()),
                         // The body the eviction took off disk comes back from S3 (doc 23).
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {
                             match self.backup_body(name, &id) {
-                                Some(body) => (meta, body),
+                                Some(body) => (meta, body.into()),
                                 None => {
                                     // Row without a file (a crash in the middle of writing): lost.
                                     tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
@@ -2882,7 +2903,7 @@ impl Messages {
         &self,
         topic: &str,
         id: &str,
-    ) -> Result<Option<(MessageMeta, Vec<u8>)>, TabaError> {
+    ) -> Result<Option<(MessageMeta, Bytes)>, TabaError> {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
@@ -2908,7 +2929,7 @@ impl Messages {
             },
             Err(e) => return Err(self.disk_error("failed to read the body on disk", &e)),
         };
-        Ok(Some((meta, body)))
+        Ok(Some((meta, body.into())))
     }
 
     /// Prepares a publication for the cluster: checks everything a queue's node would check and
@@ -2918,7 +2939,7 @@ impl Messages {
         &self,
         view: &TopicView,
         request: &PublishRequest,
-    ) -> Result<(MessageMeta, Vec<u8>), TabaError> {
+    ) -> Result<(MessageMeta, Bytes), TabaError> {
         let prepared = Prepared::new(request)?;
         let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
         if request.body.len() as u64 > limit {
@@ -3058,7 +3079,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<(), TabaError> {
         self.apply_publish_with(topic, meta, body, false)
     }
@@ -3069,7 +3090,7 @@ impl Messages {
         &self,
         topic: &str,
         mut meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
         durable: bool,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
@@ -3428,13 +3449,13 @@ impl Messages {
                 match self.store.body(name, &id) {
                     Ok(body) => {
                         NodeCounters::add(&self.counters.reads_disk, 1);
-                        (meta, body)
+                        (meta, body.into())
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
                         match self.backup_body(name, &id) {
                             Some(body) => {
                                 NodeCounters::add(&self.counters.reads_disk, 1);
-                                (meta, body)
+                                (meta, body.into())
                             }
                             None => {
                                 tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");

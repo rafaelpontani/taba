@@ -41,14 +41,33 @@ use crate::telemetry::{Telemetry, trace};
 pub struct Observer {
     pub telemetry: Arc<Telemetry>,
     pub port: u16,
+    /// `port` as text, written once (the attribute goes on every request).
+    port_label: Arc<str>,
+}
+
+impl Observer {
+    pub fn new(telemetry: Arc<Telemetry>, port: u16) -> Self {
+        Self {
+            telemetry,
+            port,
+            port_label: port.to_string().into(),
+        }
+    }
 }
 
 /// The verbs that become an attribute as they are; the others become `_OTHER` (bounded cardinality).
-fn method_label(method: &str) -> &str {
-    match method {
-        "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "TRACE" | "CONNECT" => {
-            method
-        }
+fn method_label(method: &axum::http::Method) -> &'static str {
+    use axum::http::Method;
+    match *method {
+        Method::GET => "GET",
+        Method::HEAD => "HEAD",
+        Method::POST => "POST",
+        Method::PUT => "PUT",
+        Method::PATCH => "PATCH",
+        Method::DELETE => "DELETE",
+        Method::OPTIONS => "OPTIONS",
+        Method::TRACE => "TRACE",
+        Method::CONNECT => "CONNECT",
         _ => "_OTHER",
     }
 }
@@ -61,17 +80,14 @@ fn is_client_operation(route: &str) -> bool {
 }
 
 /// Subtracts an active request on exit, even if the future is dropped in the middle.
-struct ActiveRequest {
-    observer: Observer,
-    method: String,
+struct ActiveRequest<'a> {
+    observer: &'a Observer,
+    method: &'static str,
 }
 
-impl ActiveRequest {
-    fn start(observer: &Observer, method: &str) -> Self {
-        let this = Self {
-            observer: observer.clone(),
-            method: method.to_owned(),
-        };
+impl<'a> ActiveRequest<'a> {
+    fn start(observer: &'a Observer, method: &'static str) -> Self {
+        let this = Self { observer, method };
         this.add(1.0);
         this
     }
@@ -80,39 +96,38 @@ impl ActiveRequest {
         self.observer.telemetry.registry.add(
             &HTTP_SERVER_ACTIVE,
             &[
-                ("http.request.method", &self.method),
+                ("http.request.method", self.method),
                 ("url.scheme", "http"),
-                ("server.port", &self.observer.port.to_string()),
+                ("server.port", &self.observer.port_label),
             ],
             delta,
         );
     }
 }
 
-impl Drop for ActiveRequest {
+impl Drop for ActiveRequest<'_> {
     fn drop(&mut self) {
         self.add(-1.0);
     }
 }
 
 async fn observe(State(observer): State<Observer>, request: Request, next: Next) -> Response {
-    let method = method_label(request.method().as_str()).to_owned();
-    let route = request
-        .extensions()
-        .get::<MatchedPath>()
-        .map(|m| m.as_str().to_owned());
+    let method = method_label(request.method());
+    // `MatchedPath` is an `Arc<str>`: cloning it does not copy the route.
+    let route = request.extensions().get::<MatchedPath>().cloned();
     let request_bytes = request
         .headers()
         .get(header::CONTENT_LENGTH)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok());
-    let _active = ActiveRequest::start(&observer, &method);
+    let _active = ActiveRequest::start(&observer, method);
     let started = Instant::now();
     // One trace per client operation; the operations routes and the inter-node ones generate no trace.
     let span = route
-        .as_deref()
+        .as_ref()
+        .map(MatchedPath::as_str)
         .filter(|route| is_client_operation(route))
-        .map(|route| trace::server_span(&method, route, observer.port, request.headers()));
+        .map(|route| trace::server_span(method, route, observer.port, request.headers()));
 
     let response = match &span {
         Some(span) => next.run(request).instrument(span.clone()).await,
@@ -122,19 +137,20 @@ async fn observe(State(observer): State<Observer>, request: Request, next: Next)
         trace::finish_server_span(span, response.status().as_u16());
     }
 
-    let status = response.status().as_u16().to_string();
-    let port = observer.port.to_string();
-    let mut labels: Vec<(&str, &str)> = vec![
-        ("http.request.method", &method),
-        ("http.response.status_code", &status),
+    let status_code = response.status();
+    let status = status_code.as_str();
+    let mut labels: Vec<(&str, &str)> = Vec::with_capacity(6);
+    labels.extend([
+        ("http.request.method", method),
+        ("http.response.status_code", status),
         ("url.scheme", "http"),
-        ("server.port", &port),
-    ];
+        ("server.port", &observer.port_label),
+    ]);
     if let Some(route) = &route {
-        labels.push(("http.route", route));
+        labels.push(("http.route", route.as_str()));
     }
     if response.status().is_server_error() {
-        labels.push(("error.type", &status));
+        labels.push(("error.type", status));
     }
     let registry = &observer.telemetry.registry;
     registry.observe(
@@ -160,7 +176,7 @@ impl ConnectionGuard {
     fn open(observer: Observer) -> Arc<Self> {
         observer.telemetry.registry.add(
             &NODE_CONNECTIONS,
-            &[("server.port", &observer.port.to_string())],
+            &[("server.port", &observer.port_label)],
             1.0,
         );
         Arc::new(Self { observer })
@@ -171,7 +187,7 @@ impl Drop for ConnectionGuard {
     fn drop(&mut self) {
         self.observer.telemetry.registry.add(
             &NODE_CONNECTIONS,
-            &[("server.port", &self.observer.port.to_string())],
+            &[("server.port", &self.observer.port_label)],
             -1.0,
         );
     }

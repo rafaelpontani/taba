@@ -204,7 +204,7 @@ So a collector inside the infrastructure scrapes `:9090/metrics` with no credent
 
 ## Sources and evidence
 
-- `secrets/mod.rs` (`taba init`, `cert generate`, `token generate`), `cluster/tls/mod.rs` (acceptance, presentation, reload), `http/auth` (`authenticate`, `authorize`), `core/token` (format and hash), `engine/tokens`, `http/ratelimit`, `http/client_ip`, `cluster/service` (identity by IP).
+- `secrets/mod.rs` (`taba init`, `cert generate`, `token generate`), `cluster/tls/mod.rs` (acceptance, presentation, reload), `http/auth` (`identify`, `permit`; `authenticate`, `authorize`), `core/token` (format and hash), `engine/tokens`, `http/ratelimit`, `http/client_ip`, `cluster/service` (identity by IP).
 - The "Verified example" table was run against a 3-node cluster started by `docker-compose.yml`.
 - Use cases: UC-AUT (authentication and tokens), UC-LIM (rate limit and IP), UC-SEG (ports, mutual TLS and certificates); see [26a](26a-implemented-use-cases.md). Tests: `tests/auth.rs`, `ratelimit.rs`, `mtls.rs`, `secrets.rs`.
 - History: `06-api.md` (8.0), `06a-api-cliente.md` (8.1.3), `12-limites-api.md`.

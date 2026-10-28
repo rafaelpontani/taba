@@ -127,6 +127,6 @@ O detalhe de entrada e sincronização está em [07-cluster.md](07-cluster.md).
 
 ## Fontes e provas
 
-- `crates/taba-node/src/lib.rs` (a regra de dependência), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `drain_guard`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
+- `crates/taba-node/src/lib.rs` (a regra de dependência), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `client_gate`, `drain_route`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
 - Casos de uso: UC-SEG (portas e TLS mútuo), UC-DEV (perfil de um nó), UC-FWD (repasse), UC-CFG (configuração); veja [26a](26a-casos-de-uso-implementados.md).
 - Histórico: `02-arquitetura.md`, `18-estrutura-codigo.md`.

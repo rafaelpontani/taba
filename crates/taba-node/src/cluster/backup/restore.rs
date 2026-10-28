@@ -355,7 +355,7 @@ impl Backup {
         let mut live: HashMap<String, u64> = HashMap::new();
         for (id, (meta, body, saved)) in alive {
             let _ = self.db.set_saved(name, &id, &saved);
-            match self.messages.apply_load(name, meta, body) {
+            match self.messages.apply_load(name, meta, body.into()) {
                 Ok(Loaded::Stored | Loaded::Existing) => {
                     report.messages += 1;
                     *live.entry(saved.segment).or_default() += 1;
@@ -509,7 +509,7 @@ impl Backup {
                     };
                     let _ = self.db.set_saved(&name, &entry.id, &saved);
                     if matches!(
-                        self.messages.apply_load(&name, meta, body),
+                        self.messages.apply_load(&name, meta, body.into()),
                         Ok(Loaded::Stored)
                     ) {
                         recovered += 1;
@@ -534,7 +534,7 @@ impl Backup {
             }
             for name in [name.clone(), format!("{name}{suffix}")] {
                 if let Ok(view) = self.topics.get(&name) {
-                    out.push((name, view.definition.id));
+                    out.push((name, view.definition.id.clone()));
                 }
             }
         }
@@ -583,7 +583,9 @@ impl Backup {
                     continue;
                 }
                 found.push(crate::cluster::protocol::MessageRecord::from_stored(
-                    name, meta, body,
+                    name,
+                    meta,
+                    body.into(),
                 ));
             }
         }
@@ -613,7 +615,7 @@ impl Backup {
         &self,
         topic: &str,
     ) -> Option<std::collections::HashSet<String>> {
-        let topic_id = self.topics.get(topic).ok()?.definition.id;
+        let topic_id = self.topics.get(topic).ok()?.definition.id.clone();
         let journals = self
             .store
             .list(&keys::journals_prefix(topic, &topic_id))
@@ -639,7 +641,7 @@ impl Backup {
         message_id: &str,
     ) -> Option<(MessageMeta, Vec<u8>)> {
         let view = self.topics.get(topic).ok()?;
-        let topic_id = view.definition.id;
+        let topic_id = view.definition.id.clone();
         let segments = self
             .store
             .list(&keys::segments_prefix(topic, &topic_id))

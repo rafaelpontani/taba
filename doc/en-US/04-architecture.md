@@ -127,6 +127,6 @@ The detail of joining and synchronization is in [07-cluster.md](07-cluster.md).
 
 ## Sources and evidence
 
-- `crates/taba-node/src/lib.rs` (the dependency rule), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `drain_guard`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
+- `crates/taba-node/src/lib.rs` (the dependency rule), `node.rs`, `http/mod.rs` (`client_router`, `operations_router`, `cluster_router`, `client_gate`, `drain_route`), `cluster/transport/mod.rs` (`Transport`), `core/clock/mod.rs`.
 - Use cases: UC-SEG (ports and mutual TLS), UC-DEV (one-node profile), UC-FWD (forwarding), UC-CFG (configuration); see [26a](26a-implemented-use-cases.md).
 - History: `02-arquitetura.md`, `18-estrutura-codigo.md`.
