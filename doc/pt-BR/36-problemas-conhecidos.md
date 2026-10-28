@@ -56,7 +56,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 - **Onde:** `tests/common/cluster.rs` (`respawn_node`) e os testes que trazem um nó de volta no endereço do que caiu (`tests/cold_start.rs`: `fall`, `come_back`).
 - **Sintoma:** `the process restarts: Bind { name: "do cluster", addr: 127.0.0.1:<porta>, source: … AddrInUse … }` depois dos 30 s do `respawn_node`. Visto 3 vezes em cerca de 1800 execuções de processo do `docker/hang-hunt.sh cold_start …` (10 processos ao mesmo tempo), em `when_several_nodes_connect_the_highest_version…` e em `a_node_that_joins_offers_the_definitions_of_its_disk…`; ainda não visto no CI.
 - **Causa (conferida no log da execução que falhou):** o `fall()` desliga o nó e libera a porta de cluster dele; o teste inicia o nó de novo na mesma porta mais tarde. No intervalo, o sistema entrega a porta liberada (efêmera) a outro listener: no log, a porta era a de cluster do nó caído e, dois segundos depois, a porta de **cliente** de um nó de **outro teste do mesmo processo**. O `respawn_node` tenta por 30 s, mas esse nó guarda a porta até o fim do próprio teste, então a nova tentativa não consegue ganhar. Os testes de um binário rodam em threads paralelas, então o mesmo pode acontecer no CI.
-- **Proposta (não feita):** reservar a porta do nó caído até o reinício (um listener de reserva aberto logo depois do desligamento e solto um instante antes do novo bind), ou dar aos testes de reinício uma faixa de portas que o sistema não distribui. Qualquer que seja a escolha, vai em `tests/common/cluster.rs`, para todo teste de reinício ganhar.
+- **Correção (aplicada em 2026-10-28, verificação pendente):** `PortHold` em `tests/common/cluster.rs`: um listener de reserva aberto logo depois do desligamento (em `fall` de `cold_start.rs` e `regroup.rs`) e solto um instante antes do novo bind (`come_back`). Falta conferir com `docker/hang-hunt.sh cold_start regroup`; o estado passa a `Corrigido` depois disso.
 - **Não fazer:** aumentar os 30 s do `respawn_node`; a porta não volta enquanto o outro teste vive.
 
 **Histórico**
@@ -65,6 +65,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 |---|---|
 | 2026-10-26 | Visto uma vez na caçada que validou a correção da oferta perdida (rodada 29, 10 processos ao mesmo tempo). O log mostra a porta reusada por outro nó do mesmo processo. Não corrigido: não tem relação com aquela mudança. |
 | 2026-10-26 | Mais duas na validação de 1500 execuções (rodadas 19 e 141), uma delas em `a_node_that_joins_offers…`: o mesmo `AddrInUse`. |
+| 2026-10-28 | **Primeira vez no CI**: a execução do `Release` no push para `main` (merge do PR #34, amd64) falhou em `with_every_node_back_no_message_that_was_confirmed_is_delivered_again_whatever_the_falls` (`cold_start.rs`, `AddrInUse` na porta do cluster). `PortHold` incluído; `cold_start` (13) e `regroup` (3) passam localmente. |
 
 ## Uma definição oferecida a um nó que ainda estava entrando
 

@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde_json::json;
 
 use common::TestNode;
-use common::cluster::{TestCluster, balancer, eventually, host_of, settled, wait_joined};
+use common::cluster::{PortHold, TestCluster, balancer, eventually, host_of, settled, wait_joined};
 use taba_node::cluster::protocol::MessageRecord;
 use taba_node::cluster::transport::PeerAddr;
 use taba_node::config::DbSynchronous;
@@ -80,6 +80,7 @@ struct Fallen {
     number: usize,
     port: u16,
     storage: PathBuf,
+    hold: PortHold,
     _dir: tempfile::TempDir,
 }
 
@@ -95,12 +96,14 @@ async fn fall(cluster: &mut TestCluster) -> Fallen {
         number,
         port,
         storage: dir.path().join("taba"),
+        hold: PortHold::new(port),
         _dir: dir,
     }
 }
 
 async fn come_back(cluster: &mut TestCluster, fallen: &Fallen, env: &[(&str, &str)]) {
     let (port, storage) = (fallen.port, fallen.storage.display().to_string());
+    fallen.hold.release();
     cluster
         .respawn_node(fallen.number, |mut builder| {
             for (name, value) in env {

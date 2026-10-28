@@ -58,6 +58,24 @@ pub fn host_of(number: usize) -> String {
 /// The deadline, in seconds, of `eventually` and `eventually_async`.
 pub const WAIT: u64 = 30;
 
+/// Keeps a port busy between the fall of a node and its return, so the system does not hand it to a node of another
+/// test of the same process (known issue "A restarted test node that loses its port to another test").
+pub struct PortHold(std::sync::Mutex<Option<std::net::TcpListener>>);
+
+impl PortHold {
+    /// Binds the port right after the node shut down. If someone took it in that instant, there is nothing to hold.
+    pub fn new(port: u16) -> Self {
+        Self(std::sync::Mutex::new(
+            std::net::TcpListener::bind(("127.0.0.1", port)).ok(),
+        ))
+    }
+
+    /// Frees the port just before the node binds it again.
+    pub fn release(&self) {
+        self.0.lock().unwrap().take();
+    }
+}
+
 pub fn balancer() -> PeerAddr {
     PeerAddr::new(BALANCER_HOST, BALANCER_PORT)
 }

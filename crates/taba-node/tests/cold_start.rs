@@ -13,8 +13,8 @@ use serde_json::json;
 
 use common::TestNode;
 use common::cluster::{
-    TestCluster, balancer, definitions_of, eventually, eventually_async, host_of, settled,
-    wait_joined,
+    PortHold, TestCluster, balancer, definitions_of, eventually, eventually_async, host_of,
+    settled, wait_joined,
 };
 use taba_node::cluster::protocol::MessageRecord;
 use taba_node::cluster::restore::Status;
@@ -89,6 +89,7 @@ struct Fallen {
     number: usize,
     port: u16,
     storage: PathBuf,
+    hold: PortHold,
     _dir: tempfile::TempDir,
 }
 
@@ -109,6 +110,7 @@ async fn fall(cluster: &mut TestCluster) -> Fallen {
         number,
         port,
         storage,
+        hold: PortHold::new(port),
         _dir: dir,
     }
 }
@@ -129,6 +131,7 @@ async fn come_back(cluster: &mut TestCluster, fallen: &Fallen) {
 /// The same, with parameters of this start only.
 async fn come_back_with(cluster: &mut TestCluster, fallen: &Fallen, env: &[(&str, &str)]) {
     let (port, storage) = (fallen.port, fallen.storage.display().to_string());
+    fallen.hold.release();
     cluster
         .respawn_node(fallen.number, |mut builder| {
             for (name, value) in env {
