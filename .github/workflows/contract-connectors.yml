@@ -1,0 +1,24 @@
+# Contract tests of all the connectors against a real Taba (connectors/contract/README.md): builds the node image from this
+# commit, starts one node (the one-node profile) and runs the same scenario through the C#, Java, Node.js, Python and
+# Rust connectors, each in the container of its oldest supported runtime, and then makes them read each other's messages.
+# Called by ci.yml (pull requests to release). Publishes nothing.
+name: Connector contract tests
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Connector contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Contract tests (all connectors)
+        run: connectors/contract/run.sh

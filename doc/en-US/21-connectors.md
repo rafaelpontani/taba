@@ -4,7 +4,7 @@ summary: Taba's client libraries — the common contract (the nine operations, r
 type: reference
 status: partial
 verified-on: 2026-10-27 @ 9511db3
-sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, examples/csharp-console]
+sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/contract, examples/csharp-console]
 ---
 
 # Connectors
@@ -17,10 +17,10 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 |---|---|---|---|
 | **Rust** (`taba-client`) | `connectors/rust/client/` | ✅ **Synchronous ready.** The `async` form is missing | ✅ [crates.io](https://crates.io/crates/taba-client) |
 | **`taba-cli`** (on top of Rust) | `connectors/rust/cli/` | ✅ Ready ([20-cli.md](20-cli.md)) | ✅ [crates.io](https://crates.io/crates/taba-cli), binaries and Docker image |
-| **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Ready**: unit and integration against Compose | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
-| **Java** (`taba-client`) | `connectors/java/` | ✅ **Ready** (unit tests; no integration test yet) | ⬜ Not published (D70.1) |
-| **Python** (`taba-client`) | `connectors/python/` | ✅ **Ready** (unit tests; no integration test yet) | ⬜ Not published (D70.1) |
-| **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Ready** (unit tests; no integration test yet) | ⬜ Not published (D70.1) |
+| **C#** (`Taba.Client`) | `connectors/csharp/` | ✅ **Ready**: unit, integration against Compose and the contract tests | ✅ [nuget.org](https://www.nuget.org/packages/Taba.Client) |
+| **Java** (`taba-client`) | `connectors/java/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **Python** (`taba-client`) | `connectors/python/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | C, C++, PHP, Ruby, Go | — | ⬜ **Planned** (the folders do not exist) | — |
 
 > The goal of **ten languages** is a plan, not reality: today **5 of 10** exist. The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.
@@ -158,7 +158,7 @@ using (var client = new TabaClient(config))
 - **`ConsumeAsync<T>(topic, handler)`:** 20 s long polling, one message at a time, 120 s of invisibility, deserialized body, **ack only if the handler ends without an exception**, automatic renewal of the invisibility (every third).
 - **`SubscribeAsync`:** the whole loop.
 - **Dependency injection:** `builder.Services.AddTabaClient("Taba")` reads `BaseUrl`, `Token`… from the `appsettings.json` section and registers `ITabaClient` as a *singleton*.
-- **Tests:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; the integration ones only run with `TABA_URL`). `connectors/csharp/scripts/integration.sh` starts Compose, creates tokens and queues and runs everything.
+- **Tests:** `cd connectors/csharp && dotnet test Taba.Client.Tests` (NUnit; the integration ones only run with `TABA_URL`). `connectors/csharp/scripts/integration.sh` starts Compose, creates tokens and queues and runs everything. Besides it, every connector (this one too) runs the **contract tests**: `connectors/csharp/contract/run.sh`, or `connectors/contract/run.sh` for all five ([contract tests](#the-contract-tests)).
 - **Example:** [`examples/csharp-console/`](../../examples/csharp-console/): creates a topic, publishes, consumes with long polling and confirms; reads the address and the root token from environment variables.
 
 ## Java (`io.github.rafaelpontani:taba-client`)
@@ -219,7 +219,7 @@ with Client("http://localhost:8080", token="...") as client:
 
 Tests: `cd connectors/python && python -m unittest discover -s tests -t .` (the standard `unittest` and a local HTTP server); CI runs Python 3.9 and 3.13.
 
-> **Java, Node.js and Python are not a copy of the C# one.** The contract (nine operations, retry, errors, body) is the same; the forms are each language's own, recorded in D68.2. None of the three has an integration test against a real Taba yet, and none is published (PRB-079).
+> **Java, Node.js and Python are not a copy of the C# one.** The contract (nine operations, retry, errors, body) is the same; the forms are each language's own, recorded in D68.2. All three run the contract tests against a real Taba ([contract tests](#the-contract-tests), D183), and none is published (PRB-079).
 
 ## The planned ones: base version and publication
 
@@ -240,10 +240,18 @@ They count as a **plan** (proposals, subject to D68, D70.1, D70.2). Java, Python
 1. **Read** [16-client-api.md](16-client-api.md) and this contract; **use `taba-cli`** as the executable reference (each command is an API call, and what it does is what the connector repeats).
 2. **Self-contained folder** `connectors/<language>/`: `README.md` (installation, a 10-line example, base version), the language's packaging, `src/`, `test/` and `examples/`. No folder imports code from another (except `cpp/` over `c/`).
 3. **Implement** the nine operations, the retry in the table above, the minimal JSON reader and the `client.*` errors.
-4. **Test**: unit tests with a fake transport (Rust has `taba_client::testing`; C# has `ScriptedHandler`) checking the **built request** and the reading of ready-made responses; integration against a one-node Taba (`replication.factor=1`), or Compose.
+4. **Test**: unit tests with a fake transport (Rust has `taba_client::testing`; C# has `ScriptedHandler`) checking the **built request** and the reading of ready-made responses; integration against a one-node Taba (`replication.factor=1`), or Compose; and a **driver** for the contract tests ([contract tests](#the-contract-tests)): the scenario is already written, the connector only needs to run it.
 5. **Cite the use cases** in the tests on a `UC: UC-CNT-NNN` line (the server's `uc_coverage` reads the citations from the connector folders too) ([26-use-cases.md](26-use-cases.md)).
 
-> Planned and **not yet existing**: the shared conformance suite (`connectors/contrato/` with fixtures and scenarios), which would check the eight remaining connectors against the contract ([32-roadmap.md](32-roadmap.md)). The OpenAPI documents of the client API exist ([15-api-overview.md](15-api-overview.md)) and the connectors can be generated from them or checked against them; besides them, the "source of truth" of the contract is this text, `taba-cli` and the tests of the two connectors.
+> Planned and **not yet existing**: the request/response fixtures and the JSON reader documents of the conformance suite ([32-roadmap.md](32-roadmap.md)); the scenarios and the drivers already exist ([contract tests](#the-contract-tests)). The OpenAPI documents of the client API exist ([15-api-overview.md](15-api-overview.md)) and the connectors can be generated from them or checked against them; besides them, the "source of truth" of the contract is this text, `taba-cli` and the tests of the two connectors.
+
+## The contract tests
+
+The same scenario runs against a real Taba through **every connector** (C#, Java, Node.js, Python and Rust), each with a small *driver* written in its own language that uses only the public API ([connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md) has the scenario language and the operations). `connectors/contract/run.sh` starts **one Taba node** in Docker (the one-node profile) and runs, one after the other, the driver of each connector **in the container of its oldest supported runtime** (Node 18, Python 3.9, JDK 11, .NET 8, Rust stable); each connector can also run alone (`connectors/<language>/contract/run.sh`).
+
+- **`scenarios/core.scn`**, in every connector: topics (and their `404`, `409` and `400`), publish, consume, `changeVisibility` and `ack`; text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate and order); distributor; consuming with a handler (deleted, failed, kept and **renewal of the invisibility** while a slow handler holds the message); `subscribe`; a long polling **cancelled** from outside (not in Rust, which is synchronous: the line is printed as `SKIP`); a wrong token and a refused connection.
+- **`scenarios/cross-*.scn`**, the five together: each connector publishes to a distributor and each one reads its own queue, finding what the five sent, exactly.
+- **Not covered**: `503` and the retries with a node going down, and the cluster behavior (one node cannot show them): they stay with `docker/validate.sh` and the unit tests of each connector. The job `connector-contract` of `ci.yml` runs it on every pull request to `release`.
 
 ## Pending items in this area
 
@@ -252,5 +260,5 @@ D68 (confirm the base versions of the languages still to do), D70.1 (organizatio
 ## Sources and evidence
 
 - `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `examples/csharp-console`, `connectors/README.md`.
-- Use cases: UC-CNT (35 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`.
+- Use cases: UC-CNT (35 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust}/contract`.
 - History: `19-conectores.md`, `19a-conectores-linguagens.md`.

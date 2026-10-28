@@ -1,0 +1,6 @@
+# Cross-language, step 2 (every connector): publishes a text with accents, a JSON and bytes to the distributor, so
+# each connector's queue receives what every other connector sent.
+publishText topic={p}-in body=text-from-{lang} => matched=5
+publishText topic={p}-in body=caf%C3%A9-%E2%82%AC-{lang} => matched=5
+publishJson topic={p}-in body={"from":"{lang}"} => matched=5
+publishBytes topic={p}-in base64=AAEC/w== => matched=5

@@ -61,4 +61,4 @@ cd connectors/node
 npm test
 ```
 
-The tests start a local HTTP server that records every request and answers from a script (the equivalent of the C# `ScriptedHandler`). There are no integration tests against a real Taba yet.
+The tests start a local HTTP server that records every request and answers from a script (the equivalent of the C# `ScriptedHandler`). The **contract tests** run the same scenario against a real Taba (one node in Docker), on the oldest supported version: `contract/run.sh` (`../contract/run.sh` for all the connectors; [how it works](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md)).

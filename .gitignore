@@ -18,3 +18,5 @@ __pycache__/
 root-token.txt
 admin-token
 /docker/.local/
+/connectors/rust/contract/Cargo.lock
+/connectors/rust/contract/target
