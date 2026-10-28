@@ -22,3 +22,5 @@ jobs:
           persist-credentials: false
       - name: Contract tests (all connectors)
         run: connectors/contract/run.sh
+      - name: OpenMessaging Benchmark driver against a node
+        run: connectors/omb/test.sh

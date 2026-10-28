@@ -44,6 +44,10 @@ jobs:
     name: Java connector
     uses: ./.github/workflows/build-connector-java.yml
 
+  connector-omb:
+    name: OMB driver
+    uses: ./.github/workflows/build-connector-omb.yml
+
   # The five connectors against a real node (builds the server image: slow, so only for what goes to release).
   connector-contract:
     name: Connector contract tests

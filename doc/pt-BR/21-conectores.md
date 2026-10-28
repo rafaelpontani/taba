@@ -4,7 +4,7 @@ resumo: As bibliotecas de cliente do Taba — o contrato comum (as nove operaç�
 tipo: referência
 status: parcial
 verificado-em: 2026-10-27 @ 9511db3
-fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/contract, examples/csharp-console]
+fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
 # Conectores
@@ -21,6 +21,7 @@ fontes: [connectors/README.md, connectors/rust/client, connectors/rust/cli, conn
 | **Java** (`taba-client`) | `connectors/java/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
 | **Python** (`taba-client`) | `connectors/python/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
 | **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Pronto** (unitários e os testes de contrato) | ⬜ Não publicado (D70.1) |
+| **Driver do OpenMessaging Benchmark** (sobre o Java) | `connectors/omb/` | ✅ **Pronto** (testes unitários e de integração contra um nó) | ⬜ Não publicado (ferramenta do repositório) |
 | C, C++, PHP, Ruby, Go | — | ⬜ **Planejados** (as pastas não existem) | — |
 
 > A meta de **dez linguagens** é plano, não realidade: hoje **5 de 10** existem. O [roadmap](32-roadmap.md) tem a ordem. Como a API é HTTP, as demais linguagens usam o cliente HTTP delas até o conector sair.
@@ -183,6 +184,14 @@ try (TabaClient client = new TabaClient(config)) {
 
 Testes: `cd connectors/java && mvn test` (JUnit 5 e o `com.sun.net.httpserver` do próprio JDK); o CI roda JDK 11 e 21.
 
+## Driver do OpenMessaging Benchmark (`connectors/omb`)
+
+- Um driver para o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) escrito sobre o conector Java, em **Java 11**; é uma ferramenta para medir o Taba com os mesmos workloads que o OMB roda contra Kafka, NATS ou RabbitMQ, e não entra em nenhum pacote. O commit do OMB contra o qual é construído está em `connectors/omb/OMB_VERSION` (o último que ainda compila em Java 11).
+- **Mapa:** um tópico do OMB é um **distribuidor** do Taba com o nome do tópico e o prefixo `<tópico>-`; cada assinatura é uma **fila** `<tópico>-<assinatura>` criada (volátil, com o maior `idleTimeout`, como rede de segurança) antes da primeira publicação e apagada quando o driver fecha. Os consumidores de uma assinatura disputam as mensagens dela. O número de partições do OMB não cria nada no Taba.
+- **Chave e ordem:** a chave da mensagem do OMB é o `groupId`. `ordering: none` (padrão) usa fila comum; `ordering: per-key` usa fila FIFO, e a mensagem sem chave recebe `p0`..`p<partições-1>` em rodízio.
+- **Hora de publicação:** o Taba não guarda atributo além do corpo, então o produtor grava o relógio dele nos 8 primeiros bytes do corpo e o consumidor os retira; o corpo no servidor tem 8 bytes a mais que o payload do OMB, e o resultado precisa dizer isso.
+- **Build e testes:** `connectors/omb/build.sh` (`driver-api` do OMB, o conector e o driver em um contêiner Java 11; um JAR com o conector dentro, `target/driver-taba-all.jar`) e `connectors/omb/test.sh` (um nó em Docker e depois os testes unitários e de integração). O job `connector-omb` do CI roda o build e os testes unitários; o `connector-contract` também roda o `test.sh`. Configuração: `connectors/omb/driver-taba.yaml`. Casos: UC-CNT-036 a 040.
+
 ## Node.js (`taba-client`)
 
 - **Node.js 18 ou superior**, CommonJS (funciona com `require` e `import`), tipos em `index.d.ts`, **sem dependências** (`node:http` e `node:https`).
@@ -260,5 +269,5 @@ D68 (confirmar as versões-base das linguagens ainda por fazer), D70.1 (organiza
 ## Fontes e provas
 
 - `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `examples/csharp-console`, `connectors/README.md`.
-- Casos de uso: UC-CNT (35 casos, nível `K`; conectores); veja [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md). Testes: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`; testes de contrato: `connectors/contract` (`run.sh`, `scenarios/`) e os drivers em `connectors/{csharp,java,node,python,rust}/contract`.
+- Casos de uso: UC-CNT (40 casos, nível `K`; conectores); veja [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md). Testes: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`, `connectors/omb/src/test`; testes de contrato: `connectors/contract` (`run.sh`, `scenarios/`) e os drivers em `connectors/{csharp,java,node,python,rust}/contract`.
 - Histórico: `19-conectores.md`, `19a-conectores-linguagens.md`.

@@ -4108,6 +4108,61 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-CNT-036
+
+**Caso:** O driver do OpenMessaging Benchmark (`connectors/omb`) cria um tópico do OMB como um **distribuidor** do Taba com o nome do tópico e o prefixo `<tópico>-`, e cada assinatura como uma **fila** `<tópico>-<assinatura>` criada antes da primeira publicação; o prefixo de nome de tópico do driver é `omb`.  
+**Então:** toda assinatura recebe toda mensagem publicada no tópico, cada cópia com o próprio `id`; o driver apaga as filas e o distribuidor ao fechar.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theTopicPrefixIsOmb`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::everySubscriptionReceivesEveryMessageAndTheTimestampComesBack`
+
+---
+
+### UC-CNT-037
+
+**Caso:** Vários consumidores do OMB são criados para a mesma assinatura do driver.  
+**Então:** eles leem a mesma fila e disputam as mensagens dela: cada mensagem vai a um deles e nenhuma se perde.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::consumersOfTheSameSubscriptionShareTheMessages`
+
+---
+
+### UC-CNT-038
+
+**Caso:** O driver do OMB publica com chave de mensagem (ou sem ela) nos modos `ordering: none` e `ordering: per-key`.  
+**Então:** a chave é o `groupId`; com `none` a fila é comum e a mensagem sem chave não tem grupo; com `per-key` a fila é FIFO, cada chave é entregue na ordem de publicação e a mensagem sem chave recebe `p0`..`p<partições-1>` em rodízio. O número de partições do OMB não cria nada no Taba.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theKeyIsTheGroupWhenThereIsOne`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::withoutKeyThereIsNoGroupInAnOrdinaryQueue`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::withoutKeyPerKeyRotatesOverThePartitionsAsGroups`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::perKeyKeepsTheOrderOfEachKey`
+
+---
+
+### UC-CNT-039
+
+**Caso:** O OMB pede ao driver a hora de publicação de cada mensagem e o Taba não guarda atributo além do corpo.  
+**Então:** o produtor grava o relógio dele (milissegundos, 8 bytes, big-endian) no começo do corpo e o consumidor o retira antes de chamar o callback do OMB, que recebe o payload original e essa hora; o corpo no servidor tem 8 bytes a mais que o payload do OMB.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theStampComesOutOfTheBodyWithThePayloadIntact`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::everySubscriptionReceivesEveryMessageAndTheTimestampComesBack`
+
+---
+
+### UC-CNT-040
+
+**Caso:** O YAML do driver do OMB tem um `ordering` diferente de `none` e `per-key`, um `consumer.waitTime` fora de 0 a 20 ou um `producer.inFlight` abaixo de 1.  
+**Então:** o driver se recusa a iniciar com um erro que cita a chave.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theConfigurationIsValidated`
+
+---
+
 
 ## CLI: O `taba-cli`, a linha de comando do cliente
 

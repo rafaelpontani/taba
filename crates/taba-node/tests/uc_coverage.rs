@@ -146,6 +146,7 @@ fn connector_files(dir: &Path, out: &mut Vec<PathBuf>) {
                 "obj",
                 "dist",
                 "build",
+                ".work",
                 "node_modules",
                 "__pycache__",
                 ".venv",

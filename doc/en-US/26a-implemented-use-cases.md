@@ -4108,6 +4108,61 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-CNT-036
+
+**Case:** The OpenMessaging Benchmark driver (`connectors/omb`) creates an OMB topic as a Taba **distributor** named like the topic, with the prefix `<topic>-`, and each subscription as a **queue** `<topic>-<subscription>` created before the first publication; the driver's topic name prefix is `omb`  
+**Then:** every subscription receives every message published to the topic, each copy with its own `id`; the driver deletes the queues and the distributor when it closes  
+**Level:** K  
+**Tests:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theTopicPrefixIsOmb`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::everySubscriptionReceivesEveryMessageAndTheTimestampComesBack`
+
+---
+
+### UC-CNT-037
+
+**Case:** Several OMB consumers are created for the same subscription of the driver  
+**Then:** they read the same queue and compete for its messages: each message goes to one of them, and none is lost  
+**Level:** K  
+**Tests:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::consumersOfTheSameSubscriptionShareTheMessages`
+
+---
+
+### UC-CNT-038
+
+**Case:** The OMB driver publishes with a message key (or without one) in the `ordering: none` and `ordering: per-key` modes  
+**Then:** the key is the `groupId`; with `none` the queue is ordinary and a message without a key has no group; with `per-key` the queue is FIFO, each key is delivered in publication order, and a message without a key takes `p0`..`p<partitions-1>` in rotation. The OMB partition count creates nothing in Taba  
+**Level:** K  
+**Tests:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theKeyIsTheGroupWhenThereIsOne`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::withoutKeyThereIsNoGroupInAnOrdinaryQueue`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::withoutKeyPerKeyRotatesOverThePartitionsAsGroups`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::perKeyKeepsTheOrderOfEachKey`
+
+---
+
+### UC-CNT-039
+
+**Case:** The OMB asks the driver for the publish time of each message and Taba keeps no attribute besides the body  
+**Then:** the producer writes its clock (milliseconds, 8 bytes, big-endian) at the start of the body and the consumer takes it out before calling the OMB callback, which gets the original payload and that time; the body in the server is 8 bytes larger than the OMB payload  
+**Level:** K  
+**Tests:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theStampComesOutOfTheBodyWithThePayloadIntact`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::everySubscriptionReceivesEveryMessageAndTheTimestampComesBack`
+
+---
+
+### UC-CNT-040
+
+**Case:** The OMB driver's YAML has an `ordering` other than `none` or `per-key`, a `consumer.waitTime` outside 0 to 20, or a `producer.inFlight` below 1  
+**Then:** the driver refuses to start with an error naming the key  
+**Level:** K  
+**Tests:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theConfigurationIsValidated`
+
+---
+
 
 ## CLI: `taba-cli`, the client command line
 
