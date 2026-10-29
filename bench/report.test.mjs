@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { BANNER, generate, median, parseName } from './report.mjs';
+import { BANNER, drainCurve, drainRate, generate, lineChart, median, parseName } from './report.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -55,4 +55,37 @@ test('o relatório não elege vencedor e anota o RabbitMQ', () => {
   const md = readFileSync(join(run(), 'results.md'), 'utf8');
   assert.doesNotMatch(md, /vencedor:|melhor sistema|ranking/i);
   assert.match(md, /rabbitmq: a fila de quórum já faz fsync/);
+});
+
+/// UC: UC-BNC-005
+test('a drenagem do backlog é a média do consumo desde o pico, sem o consumidor parado', () => {
+  // Pico no índice 2; depois dele o backlog ainda é positivo nos índices 3 e 4: média de 8000 e 8100 (e não dos zeros antes).
+  const result = { consumeRate: [0, 0, 0, 8000, 8100], backlog: [0, 100000, 200000, 150000, 100000] };
+  assert.equal(drainRate(result), 8050);
+  assert.ok(Number.isNaN(drainRate({ consumeRate: [10, 10], backlog: [0, 0] })), 'sem backlog não há drenagem');
+  assert.ok(Number.isNaN(drainRate({ consumeRate: [10, 10] })));
+});
+
+/// UC: UC-BNC-005
+test('o workload de backlog mostra a drenagem no lugar da latência e avisa que a confirmação não é igual', () => {
+  const md = readFileSync(join(run(), 'results.md'), 'utf8');
+  const section = md.slice(md.indexOf('## backlog-1kb'), md.indexOf('## simple-1kb'));
+  assert.match(section, /drenagem do backlog \(msg\/s\)/);
+  assert.doesNotMatch(section, /ponta a ponta p50/);
+  assert.match(section, /\| taba \| 2 \| 8,?\d{3}/);
+  assert.match(section, /\| kafka \| 2 \| 20,\d{3}/);
+  assert.match(md, /Confirmação no consumo.*RabbitMQ e NATS confirmam \*\*cada mensagem\*\*.*o Taba.*requisição só.*Kafka e Redpanda.*em lote/);
+  assert.ok(existsSync(join(dirname(join(run(), 'results.md')), 'charts', 'backlog-1kb-default-drain.svg')));
+});
+
+/// UC: UC-BNC-005
+test('a curva de drenagem começa depois do pico e o gráfico de linhas traz uma linha por sistema', () => {
+  const result = { consumeRate: [0, 0, 0, 8000, 8100, 9000], backlog: [0, 100000, 200000, 150000, 100000, 0] };
+  assert.deepEqual(drainCurve(result), [8000, 8100]);
+  assert.deepEqual(drainCurve({ consumeRate: [10], backlog: [0] }), []);
+  const svg = lineChart({ title: 't', unit: 'msg/s', xLabel: 'x', step: 10, series: [{ label: 'taba', values: [1, 2, 3] }, { label: 'kafka', values: [3, NaN, 1] }] });
+  assert.equal((svg.match(/<polyline/g) ?? []).length, 2);
+  assert.match(svg, /taba/);
+  const charts = join(dirname(join(run(), 'results.md')), 'charts');
+  assert.ok(existsSync(join(charts, 'backlog-1kb-default-curve.svg')));
 });

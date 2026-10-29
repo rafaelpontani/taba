@@ -3,7 +3,7 @@ title: Client API
 summary: Route-by-route manual of the API that applications use — topics, messages (publish, consume, invisibility, ack, prune), tokens, who the token is, the nodes and the statistics, and the cluster and node operations for the root token — with parameters, DTOs, statuses and examples.
 type: reference
 status: stable
-verified-on: 2026-10-15 @ 56121c9
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, crates/taba-node/src/http/tokens, crates/taba-node/src/http/auth, crates/taba-node/src/http/nodes, crates/taba-node/src/http/topic_stats, crates/taba-node/src/core/topic, crates/taba-node/src/core/validation, crates/taba-node/src/core/content]
 ---
 
@@ -24,6 +24,9 @@ sources: [crates/taba-node/src/http/topics, crates/taba-node/src/http/messages, 
 | `GET` | `/topics/{topic}/messages` | `consume` | consumption | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | consumption | `200` |
 | `DELETE` | `/topics/{topic}/messages/{id}` | `consume` | consumption | `204` |
+| `POST` | `/topics/{topic}/messages/batch` | `publish` | publishing | `200` `BatchResponse` |
+| `POST` | `/topics/{topic}/messages/ack` | `consume` | consumption | `200` `BatchResponse` |
+| `POST` | `/topics/{topic}/messages/visibility` | `consume` | consumption | `200` `BatchResponse` |
 | `DELETE` | `/topics/{topic}/messages` | `manage` | admin | `200` `PruneResult` |
 | `POST` `GET` `PATCH` `DELETE` | `/tokens`, `/tokens/{id}` | `admin` (an `admin` token: root only) | admin | see below |
 | `GET` | `/auth/me` | valid token | exempt | `200` `Me` |
@@ -295,6 +298,30 @@ Errors: `400` (`required`, `out-of-range`), `404` (`topic.not-found`, `message.n
 `?receiptToken=<token>` (required). **`204`**. Removes the message with a decision by **quorum**; a failure before the quorum **cancels** the ack and the message remains available. If the deadline expired but the message was **not yet redelivered**, the token is still valid and the ack counts.
 
 Errors: `400 validation.required` (without `receiptToken`), `404` (nonexistent, **including a second ack** or a message expired by `ttl`), `409` (`message.stale-receipt`: it was redelivered to another; `topic.wrong-type`: distributor), `429`, `503 cluster.quorum-unavailable` (the ack was canceled).
+
+### Messages in batch: `POST …/messages/batch`, `/ack` and `/visibility`
+
+Three routes do the operations above for **many messages in one request**: publish, ack and change the invisibility. They are **optional**: the single routes stay the same and a client can use one or the other. Each item goes through the same path as its single call (the same checks, the same quorum, the same answer), so a batch is **not atomic**: one item that fails does not undo nor block the others. The answer is **`200 BatchResponse`** `{ "results": [ … ] }`, one result per item **in the order of the request**, each with the `status` the single call would have answered and its body (`id`, `duplicate`, `matched`/`deliveries`, `invisibleUntil`) or its `error` (`code`, `message`, `details`). Between nodes, the items of a batch travel together in the protobuf batch of the channel ([07](07-cluster.md)).
+
+| Route | Permission | Item | Result of an item |
+|---|---|---|---|
+| `POST /topics/{topic}/messages/batch` | `publish` | `{ body, contentType?, bodyEncoding?, groupId?, deduplicationId? }` | `201` with `id`; `200` with `duplicate: true` (FIFO) or with `matched` and `deliveries` (distributor); or the error |
+| `POST /topics/{topic}/messages/ack` | `consume` | `{ id, receiptToken }` | `204` with `id`; or the error (`404 message.not-found`, `409 message.stale-receipt`, `400 validation.required`) |
+| `POST /topics/{topic}/messages/visibility` | `consume` | `{ id, receiptToken, visibilityTimeout }` | `200` with `id` and `invisibleUntil`; or the error |
+
+- **The body of a publication** comes in the form the `GET` delivers it: for `application/json` (or `*/*+json`), the JSON itself, kept byte by byte; for `text/*` in UTF-8, a string; for any other type, a string in base64 with `bodyEncoding: "base64"` (which also works for JSON and text). Without `contentType`, `application/json`. What does not fit is `400 validation.invalid-body` **in that item**; a body above the topic's `maxMessageBytes` is `413 message.too-large` in that item.
+- **FIFO queue:** the items of a group are published **in the order of the list**, one after the other; groups and items of other queues go at the same time. Deduplication is per item, so a repeated item answers `200` with `duplicate: true` and the `id` of the first one.
+- **Limits:** 1 to `api.batch.max-messages` items (default **1000**; outside, `400 validation.out-of-range`) and `api.batch.max-bytes` of request (default **16 MB**; above, `413 message.too-large`, without reading the rest). The whole request is refused, before any item is applied, for a topic that does not exist (`404`), a distributor on `/ack` and `/visibility` (`409 topic.wrong-type`), a body that is not `application/json` (`415`) or a field that does not exist (`400 validation.unknown-field`).
+- **Rate limit:** a batch counts as **one** call of its category, like a `GET` that delivers many messages ([14](14-security.md#rate-limit)).
+
+```bash
+curl -s localhost:8080/topics/orders/messages/batch -H 'Content-Type: application/json' \
+  -d '{"messages":[{"body":{"n":1}},{"body":"hello","contentType":"text/plain"},{"body":"AAE=","bodyEncoding":"base64","contentType":"image/png"}]}'
+# {"results":[{"status":201,"id":"…"},{"status":201,"id":"…"},{"status":201,"id":"…"}]}
+curl -s localhost:8080/topics/orders/messages/ack -H 'Content-Type: application/json' \
+  -d '{"messages":[{"id":"<id>","receiptToken":"<token>"},{"id":"<id2>","receiptToken":"old"}]}'
+# {"results":[{"status":204,"id":"<id>"},{"status":409,"error":{"code":"message.stale-receipt","message":"…"}}]}
+```
 
 ### `DELETE /topics/{topic}/messages`: prune (empty the queue)
 

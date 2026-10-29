@@ -3,7 +3,7 @@ title: Configuration
 summary: How to configure the node (YAML file and TABA_* variables), the precedence, and the complete table of parameters with the effective default and what each one does.
 type: reference
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/src/config/params/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/src/config/source/mod.rs]
 ---
 
@@ -56,7 +56,7 @@ The node **does not start** (message in Portuguese, one per problem) when:
 
 - `storage.dir` does not end in a folder named **`taba`**;
 - the three ports repeat ("use the same port; the three ports must be different"), or one is in use;
-- `api.pagination.default-limit` is outside 1 up to `api.pagination.max-limit`;
+- `api.pagination.default-limit` is outside 1 up to `api.pagination.max-limit`; `api.batch.max-messages` or `api.batch.max-bytes` is zero;
 - `message.max-bytes` is zero; `replication.factor` is less than 1; `write.quorum` is outside 1 up to `replication.factor`;
 - in production, `cluster.entry-address` is missing (except on the first node, `cluster.first-node=true`), or it is not `host:port`;
 - `cluster.vote.quorum-percent` is outside 1 to 100; `cluster.vote.min-voters`, `cluster.batch.max-items`, `ring.virtual-nodes` or `write.retry.attempts` are less than 1;
@@ -134,6 +134,8 @@ The node **does not start** (message in Portuguese, one per problem) when:
 |---|---|---|---|
 | `api.pagination.default-limit` | `TABA_API_PAGINATION_DEFAULT_LIMIT` | **100** | Items per page when the paginated route receives no `limit`. |
 | `api.pagination.max-limit` | `TABA_API_PAGINATION_MAX_LIMIT` | **1000** | Largest accepted `limit`; above it, `400` `validation.out-of-range`. The default cannot exceed it. |
+| `api.batch.max-messages` | `TABA_API_BATCH_MAX_MESSAGES` | **1000** | Most items of a request of the batch routes (`POST /topics/{topic}/messages/batch`, `/ack`, `/visibility`); above it (or with none), `400` `validation.out-of-range` ([16](16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility)). |
+| `api.batch.max-bytes` | `TABA_API_BATCH_MAX_BYTES` | **16MB** | Largest body of a request of the batch routes; above it, `413` `message.too-large`, without reading the rest. Each publication of a batch still has the `maxMessageBytes` of its topic. |
 
 ## Messages
 
@@ -262,8 +264,8 @@ The node **does not start** (message in Portuguese, one per problem) when:
 
 | Key | Variable | Default | What it does |
 |---|---|---|---|
-| `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | no limit | Requests per second, **per token** (or per client IP, without a valid token), for `POST /topics/{topic}/messages`. |
-| `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | no limit | Requests per second, per token (or per IP, without a valid token), for `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibility) and `DELETE /topics/{topic}/messages/{id}` (ack). |
+| `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | no limit | Requests per second, **per token** (or per client IP, without a valid token), for `POST /topics/{topic}/messages` and `POST /topics/{topic}/messages/batch` (a batch counts as one request). |
+| `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | no limit | Requests per second, per token (or per IP, without a valid token), for `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibility) and `DELETE /topics/{topic}/messages/{id}` (ack), and the batches `POST /topics/{topic}/messages/ack` and `/visibility` (one request each). |
 | `ratelimit.admin.rps` | `TABA_RATELIMIT_ADMIN_RPS` | no limit | Requests per second, per token (or per IP, without a valid token), for `POST/GET/PATCH/DELETE /topics` and `/topics/{topic}`, and `/tokens`; and, per IP, for `/node/drain`, `/node/backup/flush`, `/cluster/backup/flush` and `/cluster/stop`. |
 | `ratelimit.ops.rps` | `TABA_RATELIMIT_OPS_RPS` | no limit | Requests per second, per IP, for `/health/cluster?scope=cluster` and `/metrics/topics`. `/health/live`, `/health/ready`, `/metrics` and `/health/cluster?scope=node` are exempt. |
 | `ratelimit.burst` | `TABA_RATELIMIT_BURST` | `ceil(rps)` of each category | Size of the overshoot allowed above the rate (e.g. token bucket), to absorb short peaks without rejecting requests. Applies to each counter, token or IP. |

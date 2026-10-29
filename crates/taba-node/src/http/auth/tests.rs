@@ -96,6 +96,18 @@ fn each_route_asks_for_its_own_permission() {
         want(Method::PUT, "/topics/{topic}/messages/{id}/visibility"),
         "consume"
     );
+    assert_eq!(
+        want(Method::POST, "/topics/{topic}/messages/batch"),
+        "publish"
+    );
+    assert_eq!(
+        want(Method::POST, "/topics/{topic}/messages/ack"),
+        "consume"
+    );
+    assert_eq!(
+        want(Method::POST, "/topics/{topic}/messages/visibility"),
+        "consume"
+    );
     assert_eq!(want(Method::GET, "/tokens"), "admin");
     assert_eq!(want(Method::DELETE, "/tokens/{id}"), "admin");
     assert_eq!(want(Method::GET, "/health/live"), "none");

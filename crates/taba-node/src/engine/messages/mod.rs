@@ -126,6 +126,9 @@ pub struct MessageRules {
     pub invisible_reload_threshold: Option<usize>,
     /// `fifo.dedup.window`, in milliseconds.
     pub fifo_dedup_window_ms: u64,
+    /// `api.batch.max-messages` and `api.batch.max-bytes`: the items and the bytes of a request in batch.
+    pub batch_max_messages: usize,
+    pub batch_max_bytes: u64,
 }
 
 impl MessageRules {
@@ -152,6 +155,8 @@ impl MessageRules {
                 .map(|n| n as usize),
             fifo_dedup_window_ms: u64::try_from(config.fifo.dedup_window.as_millis())
                 .unwrap_or(u64::MAX),
+            batch_max_messages: config.batch.max_messages as usize,
+            batch_max_bytes: config.batch.max_bytes,
         }
     }
 
@@ -688,6 +693,17 @@ impl Messages {
             })
     }
 
+    /// The message is in the topic's memory: reading it, acking it or moving its deadline touches no disk (the
+    /// ack only queues its line in the log of excluded messages, written in batches), so the replica does it
+    /// without a blocking thread. It is a forecast: a message demoted in the meantime is just read on the calling
+    /// thread, once.
+    pub fn is_in_memory(&self, topic: &str, id: &str) -> bool {
+        let states = self.states.read().unwrap_or_else(|e| e.into_inner());
+        states
+            .get(topic)
+            .is_some_and(|state| lock(state).memory.contains_key(id))
+    }
+
     /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
     pub fn record_publish_latency(&self, topic: &str, secs: f64) {
         let state = self.state_of(topic);
@@ -696,6 +712,7 @@ impl Messages {
 
     /// The node stopped: closes the topic databases (the files can be moved or deleted).
     pub fn release_files(&self) {
+        self.flush_excluded();
         self.store.release_files();
     }
 
@@ -1150,6 +1167,11 @@ impl Messages {
     pub fn publish_limit(&self, topic: &str) -> Result<u64, TabaError> {
         let view = self.topics.get(topic)?;
         Ok(view.max_message_bytes().unwrap_or(self.rules.max_bytes))
+    }
+
+    /// The most items and bytes of a request in batch (`api.batch.*`).
+    pub fn batch_limits(&self) -> (usize, u64) {
+        (self.rules.batch_max_messages, self.rules.batch_max_bytes)
     }
 
     pub fn publish(&self, topic: &str, request: PublishRequest) -> Result<Published, TabaError> {
@@ -2197,6 +2219,13 @@ impl Messages {
         }
     }
 
+    /// Writes the exclusions of the acks that wait in memory (see `MessageStore::record_excluded`).
+    pub fn flush_excluded(&self) {
+        if let Err(e) = self.store.flush_excluded() {
+            self.disk_error("failed to write the log of excluded messages", &e);
+        }
+    }
+
     /// Applies the limits of the log of excluded messages (doc 07, section 10.3). The log is trimmed on its own
     /// schedule, not at each pass of the sweep.
     pub fn trim_excluded(&self) {
@@ -2252,7 +2281,11 @@ impl Messages {
                 () = cancel.cancelled() => return,
                 _ = ticker.tick() => {
                     let this = self.clone();
-                    let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        this.sweep();
+                        this.flush_excluded();
+                    })
+                    .await;
                     if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY {
                         let this = self.clone();
                         let _ = tokio::task::spawn_blocking(move || this.trim_excluded()).await;

@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, RwLock, RwLockWriteGuard};
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -272,6 +273,13 @@ fn topic_of_dir(dir: &str) -> Option<String> {
 struct TopicDisk {
     dir: PathBuf,
     conn: Mutex<Connection>,
+    /// Exclusions of messages that were only in memory, waiting to be written in one transaction
+    /// (see `excluded`).
+    pending_excluded: Mutex<Vec<excluded::PendingExclusion>>,
+    /// The writer of the exclusions already has this disk in its queue.
+    flush_queued: AtomicBool,
+    /// The topic was dropped: the writer no longer writes here.
+    dropped: AtomicBool,
 }
 
 impl TopicDisk {
@@ -339,6 +347,7 @@ impl MessageStore {
 
     /// Closes the topic databases the store holds open.
     pub fn release_files(&self) {
+        let _ = self.flush_excluded();
         self.topics().clear();
     }
 
@@ -401,6 +410,9 @@ impl MessageStore {
         let disk = Arc::new(TopicDisk {
             dir,
             conn: Mutex::new(conn),
+            pending_excluded: Mutex::new(Vec::new()),
+            flush_queued: AtomicBool::new(false),
+            dropped: AtomicBool::new(false),
         });
         topics.insert(topic.to_owned(), Some(disk.clone()));
         Ok(Some(disk))
@@ -1022,7 +1034,17 @@ impl MessageStore {
 
     /// Deletes the topic's folder, with the database and the bodies.
     pub fn drop_topic(&self, topic: &str) -> io::Result<()> {
-        self.topics().remove(topic);
+        // Taken out first: the lock of the map is not held while waiting for the writer.
+        let removed = self.topics().remove(topic);
+        if let Some(Some(disk)) = removed {
+            disk.dropped.store(true, Ordering::Release);
+            // The writer of the exclusions may hold the disk for a moment: the database closes only when it lets
+            // go, and an open file does not leave the folder on Windows.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while Arc::strong_count(&disk) > 1 && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
         match std::fs::remove_dir_all(self.root.join(dir_name(topic))) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),

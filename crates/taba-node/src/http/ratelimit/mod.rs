@@ -173,10 +173,14 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         | "/nodes/{nodeId}/backup/flush" => Some(Category::Admin),
         // Emptying a queue is an administrative act.
         "/topics/{topic}/messages" if method == Method::DELETE => Some(Category::Admin),
+        // A batch counts as one call, like a `GET` that delivers many messages.
         "/topics/{topic}/messages" if method == Method::POST => Some(Category::Publish),
+        "/topics/{topic}/messages/batch" => Some(Category::Publish),
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
-        | "/topics/{topic}/messages/{id}/visibility" => Some(Category::Consume),
+        | "/topics/{topic}/messages/{id}/visibility"
+        | "/topics/{topic}/messages/ack"
+        | "/topics/{topic}/messages/visibility" => Some(Category::Consume),
         // The topic metrics, in JSON, measure each topic: they have a category of their own.
         "/metrics/topics" | "/metrics/topics/{topic}" | "/metrics/topics/{topic}/groups" => {
             Some(Category::Ops)

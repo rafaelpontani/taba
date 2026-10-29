@@ -153,6 +153,13 @@ pub struct Pagination {
     pub max_limit: u32,
 }
 
+/// The limits of the batch routes (`api.batch.*`): items and bytes of one request.
+#[derive(Debug, Clone)]
+pub struct Batch {
+    pub max_messages: u32,
+    pub max_bytes: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Ports {
     pub api: u16,
@@ -462,6 +469,7 @@ pub struct ClientIp {
 pub struct Config {
     pub ports: Ports,
     pub pagination: Pagination,
+    pub batch: Batch,
     pub secrets_dir: PathBuf,
     pub tls: Tls,
     pub auth: Auth,
@@ -575,6 +583,15 @@ impl Config {
             problems.push(
                 "api.pagination.default-limit must be between 1 and api.pagination.max-limit"
                     .into(),
+            );
+        }
+        let batch = Batch {
+            max_messages: s.get("api.batch.max-messages")?,
+            max_bytes: s.get::<Bytes>("api.batch.max-bytes")?.0,
+        };
+        if batch.max_messages == 0 || batch.max_bytes == 0 {
+            problems.push(
+                "api.batch.max-messages and api.batch.max-bytes must be greater than zero".into(),
             );
         }
 
@@ -848,6 +865,7 @@ impl Config {
         Ok(Config {
             ports,
             pagination,
+            batch,
             secrets_dir,
             tls,
             auth,

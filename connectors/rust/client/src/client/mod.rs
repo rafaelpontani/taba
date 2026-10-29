@@ -512,6 +512,138 @@ pub struct VisibilityResponse {
     pub raw: String,
 }
 
+/// One message of [`Client::publish_batch`]: the same fields as [`Client::publish`]. The bytes travel in base64,
+/// so any type fits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchMessage {
+    pub body: Vec<u8>,
+    /// What the bytes are (`None`: `application/json`).
+    pub content_type: Option<String>,
+    /// Required on a FIFO queue; elsewhere it guides the fair delivery.
+    pub group_id: Option<String>,
+    /// FIFO queues only: the deduplication key inside the group.
+    pub deduplication_id: Option<String>,
+}
+
+impl BatchMessage {
+    pub fn new(body: impl Into<Vec<u8>>) -> Self {
+        Self {
+            body: body.into(),
+            content_type: None,
+            group_id: None,
+            deduplication_id: None,
+        }
+    }
+
+    /// A text (`text/plain; charset=utf-8`).
+    pub fn text(text: &str) -> Self {
+        Self::new(text.as_bytes()).content_type("text/plain; charset=utf-8")
+    }
+
+    pub fn content_type(mut self, content_type: &str) -> Self {
+        self.content_type = Some(content_type.to_owned());
+        self
+    }
+
+    pub fn group_id(mut self, group_id: &str) -> Self {
+        self.group_id = Some(group_id.to_owned());
+        self
+    }
+
+    pub fn deduplication_id(mut self, deduplication_id: &str) -> Self {
+        self.deduplication_id = Some(deduplication_id.to_owned());
+        self
+    }
+
+    fn to_json(&self) -> String {
+        let mut out = format!(
+            "{{\"body\":\"{}\",\"bodyEncoding\":\"base64\"",
+            crate::base64::encode(&self.body)
+        );
+        for (key, value) in [
+            ("contentType", &self.content_type),
+            ("groupId", &self.group_id),
+            ("deduplicationId", &self.deduplication_id),
+        ] {
+            if let Some(value) = value {
+                out.push_str(&format!(",\"{key}\":{}", json::quote(value)));
+            }
+        }
+        out.push('}');
+        out
+    }
+}
+
+/// The result of one item of a batch, in the order of the request: the `status` the single call would have answered
+/// and what it would have returned. An item that failed is not an `Err`: `error_code` says why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchResult {
+    /// `201` published, `200` a FIFO duplicate, a distributor or a new invisibility, `204` acked, or the error's.
+    pub status: u16,
+    pub id: Option<String>,
+    /// FIFO queue only.
+    pub duplicate: Option<bool>,
+    /// Distributor only: how many queues matched.
+    pub matched: Option<u64>,
+    /// `change_visibility_batch` only: the new deadline.
+    pub invisible_until: Option<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub raw: String,
+}
+
+impl BatchResult {
+    /// The item was applied (no error).
+    pub fn is_ok(&self) -> bool {
+        self.error_code.is_none() && self.status < 300
+    }
+
+    fn parse_all(raw: &str) -> Result<Vec<Self>, Error> {
+        let f = Fields::parse(raw).map_err(|e| bad_response("lote", e))?;
+        json::array_items(f.raw("results").unwrap_or("[]"))
+            .map_err(|e| bad_response("results", e))?
+            .into_iter()
+            .map(|item| {
+                let r = Fields::parse(item).map_err(|e| bad_response("results", e))?;
+                let error = match r.raw("error") {
+                    Some(e) if e.starts_with('{') => {
+                        Some(Fields::parse(e).map_err(|e| bad_response("error", e))?)
+                    }
+                    _ => None,
+                };
+                Ok(Self {
+                    status: r
+                        .unsigned("status")
+                        .and_then(|s| u16::try_from(s).ok())
+                        .unwrap_or(0),
+                    id: r.string("id"),
+                    duplicate: r.boolean("duplicate"),
+                    matched: r.unsigned("matched"),
+                    invisible_until: r.string("invisibleUntil"),
+                    error_code: error.as_ref().map(|e| e.string("code").unwrap_or_default()),
+                    error_message: error.as_ref().and_then(|e| e.string("message")),
+                    raw: item.to_owned(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// The items of an ack or a change of invisibility in batch: `id` and `receiptToken` of each message, plus `extra`.
+fn receipts_json(messages: &[Message], extra: &str) -> String {
+    let items: Vec<String> = messages
+        .iter()
+        .map(|m| {
+            format!(
+                "{{\"id\":{},\"receiptToken\":{}{extra}}}",
+                json::quote(&m.id),
+                json::quote(&m.receipt_token)
+            )
+        })
+        .collect();
+    format!("{{\"messages\":[{}]}}", items.join(","))
+}
+
 // ---------------------------------------------------------------------------------------------
 // Requests
 // ---------------------------------------------------------------------------------------------
@@ -775,6 +907,48 @@ impl Client {
             ..PublishOptions::default()
         };
         self.publish(topic, text.as_bytes(), &options)
+    }
+
+    /// `POST /topics/{topic}/messages/batch`: publishes many messages in one request (1 to the server's
+    /// `api.batch.max-messages`, 1000 by default). Each item is answered as its single publication and one that fails
+    /// does not undo the others (see [`BatchResult::is_ok`]). On a FIFO queue the items of a group are published in
+    /// the order of the list. A failure of the network is not retried (it could duplicate).
+    pub fn publish_batch(
+        &self,
+        topic: &str,
+        messages: &[BatchMessage],
+    ) -> Result<Vec<BatchResult>, Error> {
+        let items: Vec<String> = messages.iter().map(BatchMessage::to_json).collect();
+        let call = Call::new("POST", format!("/topics/{}/messages/batch", segment(topic)))
+            .json_body(format!("{{\"messages\":[{}]}}", items.join(",")));
+        BatchResult::parse_all(&self.call(&call)?.text())
+    }
+
+    /// `POST /topics/{topic}/messages/ack`: acknowledges many delivered messages in one request. Each item is answered
+    /// as its single ack and one that fails does not stop the others.
+    pub fn ack_batch(&self, topic: &str, messages: &[Message]) -> Result<Vec<BatchResult>, Error> {
+        let call = Call::new("POST", format!("/topics/{}/messages/ack", segment(topic)))
+            .json_body(receipts_json(messages, ""));
+        BatchResult::parse_all(&self.call(&call)?.text())
+    }
+
+    /// `POST /topics/{topic}/messages/visibility`: sets the invisibility of many delivered messages to `seconds` from
+    /// now, in one request.
+    pub fn change_visibility_batch(
+        &self,
+        topic: &str,
+        messages: &[Message],
+        seconds: u32,
+    ) -> Result<Vec<BatchResult>, Error> {
+        let call = Call::new(
+            "POST",
+            format!("/topics/{}/messages/visibility", segment(topic)),
+        )
+        .json_body(receipts_json(
+            messages,
+            &format!(",\"visibilityTimeout\":{seconds}"),
+        ));
+        BatchResult::parse_all(&self.call(&call)?.text())
     }
 
     /// `GET /topics/{topic}/messages`. The read time is `waitTime + 10 s`, not the

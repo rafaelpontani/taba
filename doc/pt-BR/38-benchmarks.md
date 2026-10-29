@@ -3,7 +3,7 @@ título: Benchmarks
 resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Nenhum número está publicado ainda.
 tipo: guia
 status: parcial
-verificado-em: 2026-10-28 @ 2447d5e
+verificado-em: 2026-10-29 @ 6e8cdf6
 fontes: [bench/cluster-trend.sh, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
@@ -33,11 +33,13 @@ bench/run.sh --report-only bench/results/<pasta>
 
 `bench/cluster-trend.sh <núcleos por nó> <conexões por nó> <imagem>...` mede **só o Taba**, para comparar duas versões dele (antes e depois de uma mudança), com um nó (`replication.factor=1`) e com três nós (fator 3), os mesmos núcleos por nó, o `wrk` espalhado pelos nós dentro de uma rede do Docker e a configuração de produção (mTLS no cluster, o token raiz do `taba init`). Imprime, por rodada, o total de publicações por segundo, o p50 e o p99 de cada nó e as falhas (`non2xx`), e a CPU de cada nó. `BODY_BYTES`, `ROUNDS`, `SECONDS_PER_ROUND` e `NODES` mudam o tamanho da mensagem, as rodadas, a duração delas e quais tamanhos rodam. Como em todo este documento, o resultado de uma máquina só se compara com outro medido **na mesma execução**.
 
+**Consumo, um nó e três nós.** `MODE=consume bench/cluster-trend.sh ...` mede o lado da leitura do mesmo jeito: por rodada enche uma fila nova durante `FILL_SECONDS` (padrão 20) e depois a drena durante `DRAIN_SECONDS` (padrão 10) com um consumidor por conexão, espalhado pelos nós. Um consumidor leva até 100 mensagens (`GET`) e confirma **cada uma** (`DELETE`), como o driver do Taba para o OMB. Imprime o backlog acumulado, as mensagens confirmadas e as confirmações por segundo; quando a drenagem esvaziou a fila, avisa, porque a taxa então fica diluída (aumente `FILL_SECONDS`). Essa comparação de um nó contra três é **o Taba contra ele mesmo**; a comparação com os outros sistemas é o perfil `consume` de um nó, abaixo, a que vale.
+
 ## Como a comparação é mantida justa
 
 - **Um sistema por vez.** O script sobe o servidor, espera ficar saudável, roda os workloads, remove o servidor **e o volume dele**, e só então sobe o próximo.
 - **Os mesmos limites.** Todo servidor recebe o mesmo `cpus` e `mem_limit` (metade dos núcleos do Docker, no máximo 4, e metade da memória, no máximo 8 GB). O OMB roda em outro contêiner com o resto, e o heap do JVM dele acompanha o limite.
-- **Um nó por sistema.** Três nós numa máquina só competiriam pelos mesmos núcleos e discos e dariam números enganosos; o cluster de três nós é uma medição de nuvem, fora deste script.
+- **Um nó por sistema.** Três nós numa máquina só competiriam pelos mesmos núcleos e discos e dariam números enganosos; o cluster de três nós é uma medição de nuvem, fora deste script. A comparação **entre sistemas é a de um nó**; os três nós são medidos só do Taba contra ele mesmo, no `bench/cluster-trend.sh`.
 - **A ordem gira** entre as rodadas (A B C, depois B C A, depois C A B), para que a deriva térmica e o cache do disco não favoreçam sempre o mesmo sistema.
 - **O mesmo executor, o mesmo OMB, os mesmos arquivos de payload.** O Taba é medido pelo driver de `connectors/omb`; Kafka e Redpanda pelo driver Kafka do OMB; RabbitMQ e NATS pelos próprios. Toda imagem tem versão fixa.
 - O relatório registra o commit do Taba, o commit do OMB, as imagens, os limites e a máquina (`machine.json`).
@@ -66,8 +68,12 @@ Um sistema que não distingue os níveis mostra os mesmos números nos dois, com
 | `keyed-1kb` | 16 chaves (no Taba, `ordering: per-key`), 1 KB, 10 000 msg/s | ordem por chave |
 | `small-100b` | 100 bytes, 20 000 msg/s | custo fixo por mensagem (HTTP/1.1 contra protocolo binário) |
 | `backlog-1kb` | 1 GB produzido com o consumidor parado e depois liberado | leitura de acúmulo |
+| `backlog-100b` | o mesmo com 100 bytes | o custo fixo de ler e confirmar uma mensagem |
+| `backlog-1kb-4c` | o mesmo, 4 partições e 4 consumidores | consumo por vários consumidores da mesma fila |
 
-Os perfis são arquivos `bench/profile-*`: `quick` (1 rodada de 2 minutos, os quatro primeiros workloads), `standard` (3 rodadas de 5 minutos, os seis) e `smoke` (1 minuto de `simple-1kb`, usado só pelo `bench/test.sh`). O minuto de aquecimento não entra nos percentis.
+Os perfis são arquivos `bench/profile-*`: `quick` (1 rodada de 2 minutos, os quatro primeiros workloads), `standard` (3 rodadas de 5 minutos, os seis) e `smoke` (1 minuto de `simple-1kb`, usado só pelo `bench/test.sh`). `consume` é o perfil do consumo: 3 rodadas de 3 minutos dos três workloads `backlog-*`, `bench/run.sh --profile consume`. O minuto de aquecimento não entra nos percentis.
+
+Num workload `backlog-*` o relatório mostra a **vazão de drenagem do backlog** (a média do consumo depois do pico do backlog, quando o consumidor é liberado, enquanto ainda resta backlog) no lugar da latência ponta a ponta, que ali é só o tempo na fila. O OMB mantém o produtor na taxa configurada durante a drenagem.
 
 ## O relatório
 
@@ -79,6 +85,8 @@ Os perfis são arquivos `bench/profile-*`: `quick` (1 rodada de 2 minutos, os qu
 - O Taba usa uma requisição HTTP/1.1 por chamada e lê até 100 mensagens por requisição; os outros usam protocolo binário com lote no cliente.
 - O `fanout` do Taba copia a mensagem para uma fila por assinatura; nos outros as assinaturas são grupos de consumidores sobre um só log.
 - Um nó: o custo da replicação de um cluster não é medido aqui.
+- **O perfil `consume` precisa de memória para o backlog.** O Taba guarda o backlog em memória, cerca de 2,4 KB por mensagem de 1 KB: o backlog de 1 GB do OMB (cerca de 1,07 milhão de mensagens) não cabe num servidor de 3 GB, e o consumo desaba ([PRB-086](31-pendencias.md)). Rode com `--memory` suficiente e trate uma célula que para no limite como um achado, não como um número.
+- **A confirmação no consumo não é igual.** RabbitMQ e NATS confirmam cada mensagem; o Taba também confirma cada mensagem, mas o driver do OMB manda as confirmações de uma leitura numa **requisição só** (`POST …/messages/ack`, [D189](30-decisoes.md)) e publica em lotes de até 100 com 1 ms de `linger`, como o produtor do Kafka; Kafka e Redpanda confirmam um offset para um lote (`enable.auto.commit=false`, um commit depois de cada leitura do consumidor, como o driver do OMB faz). Isso é mais barato por mensagem, então a vazão de drenagem do Kafka e do Redpanda não é comparável ponto a ponto com a dos outros. Eles não são forçados a um commit por mensagem porque isso os deixaria lentos artificialmente; o relatório diz isso em todo workload `backlog-*`.
 
 ## Incluir um sistema
 
@@ -91,5 +99,5 @@ Um sistema é uma pasta, `bench/systems/<nome>/`, com `compose.yml` (um serviço
 ## Fontes e provas
 
 - `bench/run.sh`, `bench/lib.sh` (o plano, os limites, o rodízio, as células), `bench/Dockerfile.runner` (o OMB com todos os drivers e o driver do Taba), `bench/systems/`, `bench/workloads/`, `bench/profile-*`, `bench/report.mjs`.
-- Casos de uso `UC-BNC-001` a `UC-BNC-004` em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md); testes em `bench/run.test.mjs`, `bench/report.test.mjs` e `bench/test.sh`.
+- Casos de uso `UC-BNC-001` a `UC-BNC-005` em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md); testes em `bench/run.test.mjs`, `bench/report.test.mjs` e `bench/test.sh`.
 - Decisão [D185](30-decisoes.md).

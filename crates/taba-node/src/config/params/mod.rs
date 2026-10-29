@@ -32,6 +32,8 @@ pub static PARAMS: &[Param] = &[
     p("api.port", Some("8080")),
     p("api.pagination.default-limit", Some("100")),
     p("api.pagination.max-limit", Some("1000")),
+    p("api.batch.max-messages", Some("1000")),
+    p("api.batch.max-bytes", Some("16MB")),
     p("cluster.port", Some("8081")),
     p("operations.port", Some("9090")),
     // Cluster port security

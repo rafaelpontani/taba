@@ -160,6 +160,30 @@ export interface VisibilityResponse {
   raw: string;
 }
 
+/** One message of `publishBatch`: the same fields as `publish`. The bytes travel in base64. */
+export interface BatchMessage {
+  body: Buffer | Uint8Array | string;
+  /** Default `application/json`. */
+  contentType?: string;
+  groupId?: string;
+  deduplicationId?: string;
+}
+
+/** The result of one item of a batch, in the order of the request. An item that failed does not reject. */
+export interface BatchResult {
+  /** `201` published, `200` a FIFO duplicate, a distributor or a new invisibility, `204` acked, or the error's. */
+  status: number;
+  /** The item was applied. */
+  ok: boolean;
+  id: string | null;
+  duplicate: boolean | null;
+  matched: number | null;
+  invisibleUntil: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  raw: string;
+}
+
 /**
  * The only kind of error: the API `ErrorResponse`, or a failure of the client itself (`status` 0 and
  * `code` `client.network`, `client.timeout`, `client.invalid-config`, `client.invalid-response` or
@@ -198,6 +222,7 @@ export class TabaClient {
   publishJson(topic: string, value: unknown, options?: PublishOptions): Promise<PublishResponse>;
   publishRawJson(topic: string, json: string, options?: PublishOptions): Promise<PublishResponse>;
   publishText(topic: string, text: string, options?: PublishOptions): Promise<PublishResponse>;
+  publishBatch(topic: string, messages: BatchMessage[], options?: CallOptions): Promise<BatchResult[]>;
 
   consume(topic: string, options?: ConsumeOptions): Promise<Message[]>;
   consumeWith(
@@ -213,6 +238,8 @@ export class TabaClient {
 
   ack(topic: string, message: MessageRef, options?: CallOptions): Promise<void>;
   changeVisibility(topic: string, message: MessageRef, seconds: number, options?: CallOptions): Promise<VisibilityResponse>;
+  ackBatch(topic: string, messages: MessageRef[], options?: CallOptions): Promise<BatchResult[]>;
+  changeVisibilityBatch(topic: string, messages: MessageRef[], seconds: number, options?: CallOptions): Promise<BatchResult[]>;
 
   subscribe(
     topic: string,

@@ -116,8 +116,8 @@ bench_run_cell() {
        sleep 1
      done
      wait \$p 2>/dev/null; [ -s /out/$name.json ]" \
-    > "$raw/$name.log" 2>&1
-  local status=$?
+    2>&1 | head -c 100000000 > "$raw/$name.log"
+  local status=${PIPESTATUS[0]}
   docker rm -f "$container" >/dev/null 2>&1 || true
   return $status
 }

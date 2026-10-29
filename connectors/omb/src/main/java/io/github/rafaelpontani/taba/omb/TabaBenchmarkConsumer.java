@@ -18,6 +18,7 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
     private final String queue;
     private final ConsumerCallback callback;
     private final ConsumeOptions options;
+    private final boolean ackBatch;
     private final Thread thread;
     private final AtomicLong redelivered = new AtomicLong();
     private volatile boolean running = true;
@@ -26,6 +27,7 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
         this.client = client;
         this.queue = queue;
         this.callback = callback;
+        this.ackBatch = config.ackBatch;
         this.options = new ConsumeOptions()
                 .maxMessages(config.maxMessages)
                 .visibilityTimeout(config.visibilityTimeout)
@@ -60,9 +62,23 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
                 if (body.length >= Stamp.SIZE) {
                     callback.messageReceived(Stamp.payload(body), Stamp.millis(body));
                 }
-                client.ackAsync(queue, message).exceptionally(failure -> {
-                    LOG.warn("ack on {} failed: {}", queue, failure.toString());
-                    return null;
+                if (!ackBatch) {
+                    client.ackAsync(queue, message).exceptionally(failure -> {
+                        LOG.warn("ack on {} failed: {}", queue, failure.toString());
+                        return null;
+                    });
+                }
+            }
+            if (ackBatch && !messages.isEmpty()) {
+                client.ackBatchAsync(queue, messages).whenComplete((results, failure) -> {
+                    if (failure != null) {
+                        LOG.warn("ack of {} messages on {} failed: {}", messages.size(), queue, failure.toString());
+                    } else {
+                        long refused = results.stream().filter(r -> !r.isOk()).count();
+                        if (refused > 0) {
+                            LOG.warn("{} of {} acks on {} were refused", refused, messages.size(), queue);
+                        }
+                    }
                 });
             }
         }

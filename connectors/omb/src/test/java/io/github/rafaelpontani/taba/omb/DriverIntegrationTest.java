@@ -158,6 +158,32 @@ class DriverIntegrationTest {
         assertArrayEquals(new int[] {20, 20}, new int[] {next1, next2});
     }
 
+    /// UC: UC-CNT-041
+    @Test
+    void aProducerInBatchesDeliversEveryMessageTheFullBatchesAndTheRestByTheLinger() throws Exception {
+        TabaBenchmarkDriver d = start("none");
+        String topic = topic("batch");
+        d.createTopic(topic, 1).get(30, TimeUnit.SECONDS);
+        Collector sub = new Collector();
+        d.createConsumer(topic, "sub", sub).get(30, TimeUnit.SECONDS);
+        TabaDriverConfig.Producer config = new TabaDriverConfig.Producer();
+        config.batchSize = 10;
+        config.lingerMs = 5;
+        TabaBenchmarkProducer producer = new TabaBenchmarkProducer(new io.github.rafaelpontani.taba.TabaClient(
+                io.github.rafaelpontani.taba.TabaConfig.of(System.getenv("TABA_URL")).token(System.getenv("TABA_TOKEN"))),
+                topic, false, 1, config);
+        List<java.util.concurrent.CompletableFuture<Void>> sent = new ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            sent.add(producer.sendAsync(Optional.empty(), ("b-" + i).getBytes(StandardCharsets.UTF_8)));
+        }
+        for (java.util.concurrent.CompletableFuture<Void> future : sent) {
+            future.get(30, TimeUnit.SECONDS);
+        }
+        sub.awaitCount(25);
+        assertEquals(25, new java.util.HashSet<>(sub.received).size());
+        producer.close();
+    }
+
     @BeforeEach
     void reset() {
         driver = null;

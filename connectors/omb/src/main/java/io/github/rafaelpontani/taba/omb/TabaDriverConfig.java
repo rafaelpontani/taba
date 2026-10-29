@@ -25,6 +25,10 @@ public class TabaDriverConfig {
     public static class Producer {
         /** Requests in flight per producer; above it {@code sendAsync} waits for a slot. */
         public int inFlight = 1000;
+        /** Messages per request ({@code POST .../messages/batch}); 1 publishes one request per message. */
+        public int batchSize = 100;
+        /** How long a message waits in the buffer for the batch to fill, in milliseconds. */
+        public long lingerMs = 1;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -34,6 +38,8 @@ public class TabaDriverConfig {
         public int maxMessages = 100;
         /** Seconds a delivered message stays invisible; it has to outlast the slowest callback. */
         public int visibilityTimeout = 60;
+        /** Acks what one {@code GET} delivered in one request ({@code POST .../messages/ack}); false acks one by one. */
+        public boolean ackBatch = true;
     }
 
     public boolean isPerKey() {
@@ -46,6 +52,12 @@ public class TabaDriverConfig {
         }
         if (producer.inFlight < 1) {
             throw new IllegalArgumentException("producer.inFlight must be at least 1");
+        }
+        if (producer.batchSize < 1) {
+            throw new IllegalArgumentException("producer.batchSize must be at least 1");
+        }
+        if (producer.lingerMs < 0) {
+            throw new IllegalArgumentException("producer.lingerMs cannot be negative");
         }
         if (consumer.waitTime < 0 || consumer.waitTime > 20) {
             throw new IllegalArgumentException("consumer.waitTime must be between 0 and 20");

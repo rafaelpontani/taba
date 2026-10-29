@@ -363,10 +363,16 @@ impl Replica {
         let Pending {
             topic, id, action, ..
         } = pending;
-        // A publication that only touches memory is applied right here: a blocking thread would cost more
-        // than the work (two thread switches per message).
-        let light = matches!(&action, Action::Publish { body, .. }
-            if self.messages.publish_is_light(&topic, body.len() as u64));
+        // An operation that only touches memory is applied right here: a blocking thread would cost more
+        // than the work (two thread switches per message). It is a publication that fits in memory, or an ack
+        // or a change of deadline of a message that is in memory.
+        let light = match &action {
+            Action::Publish { body, .. } => {
+                self.messages.publish_is_light(&topic, body.len() as u64)
+            }
+            Action::Ack | Action::Visibility { .. } => self.messages.is_in_memory(&topic, &id),
+            Action::DeadLetter { .. } => false,
+        };
         let result = if light {
             apply(&self.messages, &topic, &id, action)
         } else {
@@ -592,6 +598,10 @@ impl Replica {
                     if !checked {
                         return Ok(());
                     }
+                    // A message in memory is checked right here, without a blocking thread.
+                    if self.messages.is_in_memory(&t, &i) {
+                        return self.messages.check_visibility(&t, &i, check, &token);
+                    }
                     self.blocking(move |messages, _| {
                         messages.check_visibility(&t, &i, check, &token)
                     })
@@ -643,6 +653,14 @@ impl Replica {
                 let checking = async {
                     if !checked || request.discard {
                         return Ok(());
+                    }
+                    if self.messages.is_in_memory(&t, &i) {
+                        return self.messages.check_visibility(
+                            &t,
+                            &i,
+                            VisibilityCheck::Receipt,
+                            &token,
+                        );
                     }
                     self.blocking(move |messages, _| {
                         messages.check_visibility(&t, &i, VisibilityCheck::Receipt, &token)

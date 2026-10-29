@@ -36,6 +36,10 @@ async def main():
 asyncio.run(main())
 ```
 
+## Batches
+
+Many messages in one request, next to the single calls (optional): `publish_batch(topic, [BatchMessage(body, content_type=...)])`, `ack_batch(topic, messages)` and `change_visibility_batch(topic, messages, seconds)` (also on `AsyncClient`) return one `BatchResult` per item (`ok`, `status`, `id`, `error_code`). Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of throwing. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).
+
 ## Configuration
 
 `Client(Config(...))`, or `Client(base_url, **options)` with the same fields. The client does not read environment variables: `TABA_*` belongs to the server.

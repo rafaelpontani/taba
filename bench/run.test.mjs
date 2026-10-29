@@ -81,3 +81,23 @@ test('os seis workloads usam a duração e o aquecimento do perfil', () => {
   for (const w of names) assert.ok(standard.includes(w), `o perfil standard roda ${w}`);
   assert.match(readFileSync(join(here, 'profile-quick'), 'utf8'), /ROUNDS=1/);
 });
+
+/// UC: UC-BNC-005
+test('o perfil consume roda só os workloads de backlog e todos os sistemas leem o backlog com confirmação manual', () => {
+  const r = run('--dry-run', '--profile', 'consume');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /workloads:\s+backlog-1kb backlog-100b backlog-1kb-4c/);
+  for (const w of ['backlog-1kb', 'backlog-100b', 'backlog-1kb-4c']) {
+    const text = readFileSync(join(here, 'workloads', `${w}.yaml`), 'utf8');
+    assert.match(text, /consumerBacklogSizeGB: 1\b/, w);
+    assert.match(text, /testDurationMinutes: @DURATION@/, w);
+  }
+  // Com 4 consumidores, 4 partições: sem elas o Kafka deixaria três consumidores parados.
+  const four = readFileSync(join(here, 'workloads', 'backlog-1kb-4c.yaml'), 'utf8');
+  assert.match(four, /partitionsPerTopic: 4/);
+  assert.match(four, /consumerPerSubscription: 4/);
+  // Kafka e Redpanda confirmam por offset: o commit automático fica desligado, e o relatório diz a diferença.
+  for (const s of ['kafka', 'redpanda']) {
+    assert.match(readFileSync(join(here, 'systems', s, 'driver-default.yaml'), 'utf8'), /enable\.auto\.commit=false/, s);
+  }
+});

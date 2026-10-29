@@ -3,7 +3,7 @@ title: The three APIs — overview and conventions
 summary: The three HTTP APIs of the node (client, operations, cluster), who uses each one, and the common conventions — format, headers, error, pagination, status and retry.
 type: reference
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/src/http/mod.rs, crates/taba-node/src/http/common, crates/taba-node/src/core/error, crates/taba-node/src/core/pagination, crates/taba-node/src/core/time, crates/taba-node/src/core/id]
 ---
 
@@ -40,6 +40,7 @@ Each API has **its own audience** and the network restricts each port. The clien
 | `GET` | `/topics/{topic}/messages` | `consume` (+ `create` on `autoCreate`) | `200` |
 | `PUT` | `/topics/{topic}/messages/{id}/visibility` | `consume` | `200` |
 | `DELETE` | `/topics/{topic}/messages/{id}` | `consume` | `204` |
+| `POST` | `/topics/{topic}/messages/batch`, `/topics/{topic}/messages/ack`, `/topics/{topic}/messages/visibility` | `publish` (the first), `consume` (the others) | `200` (one result per item) |
 | `POST`, `GET`, `PATCH`, `DELETE` | `/tokens`, `/tokens/{id}` | root token only | `201`, `200`, `200`, `204` |
 
 **Operations** ([17](17-operations-api.md)): `GET /health/live`, `GET /health/ready`, `GET /health/cluster`, `GET /metrics`, `GET /metrics/topics`, `GET /metrics/topics/{topic}`, `GET /metrics/topics/{topic}/groups`, `POST`/`GET`/`DELETE /node/drain`.

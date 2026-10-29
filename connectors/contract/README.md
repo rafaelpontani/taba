@@ -14,7 +14,7 @@ Needs Docker. `run.sh` starts **one Taba node** from the image `taba:local` (bui
 
 | Scenario | What |
 |---|---|
-| `scenarios/core.scn` (every connector) | topics (create, get, list, update, delete, the `404`/`409`/`400` errors); publish, consume, `changeVisibility`, `ack`; text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate reported, order inside a group); distributor; consuming with a handler (deleted, failed, kept, **invisibility renewed** while a slow handler holds the message); `subscribe` (acknowledges what the handler accepted, gives back what it refused); a **long polling cancelled** from outside; a wrong token and a refused connection (`client.network`) |
+| `scenarios/core.scn` (every connector) | topics (create, get, list, update, delete, the `404`/`409`/`400` errors); publish, consume, `changeVisibility`, `ack`; the same in batch (one result per item, a bad item or an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate reported, order inside a group); distributor; consuming with a handler (deleted, failed, kept, **invisibility renewed** while a slow handler holds the message); `subscribe` (acknowledges what the handler accepted, gives back what it refused); a **long polling cancelled** from outside; a wrong token and a refused connection (`client.network`) |
 | `scenarios/cross-*.scn` (all five together) | `setup` creates one queue per connector and a distributor over them; every connector **publishes** a text with accents, a JSON and bytes to the distributor; every connector **drains its own queue** and finds what each of the five published, exactly |
 
 A line the connector cannot do is printed as `SKIP`, never silently ignored (today: `cancelConsume` in Rust, whose client is synchronous and has no cancellation).
@@ -45,6 +45,8 @@ op key=value key=value ... [as=name] [=> expectation expectation ...]
 | `consume` | `topic max wait visibility` | `count bodies` and, of the first message, `id receiptToken deliveryCount contentType body` |
 | `ack` | `topic id receipt` | |
 | `changeVisibility` | `topic id receipt seconds` | `id invisibleUntil` |
+| `publishBatch` | `topic texts` (one text per item) `[groupId] [bad=true]` (`bad` adds an item with an invalid content type) | `count statuses` (the `status` of each item, in order) |
+| `settleBatch` | `topic max wait visibility action` (`ack` or `visibility` with `seconds`) `[stale=true]`: consumes, then acks or changes the invisibility of what came in one batch; `stale` gives the first one back and takes it again first, so its receipt is old | `count statuses` |
 | `handle` | `topic mode max wait visibility [hold]`; mode `ok`, `fail`, `keep` or `slow` | `handled failed bodies leaseLost` |
 | `subscribe` | `topic count timeout visibility [failFirst=true]` | `count bodies` |
 | `cancelConsume` | `topic after` | `cancelled fast` |

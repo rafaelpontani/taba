@@ -47,9 +47,11 @@ machine, in this run. Every report says so in its first line.
 | `keyed-1kb` | 16 keys, per-key order, 10 000 msg/s | order per key |
 | `small-100b` | 100 bytes, 20 000 msg/s | fixed cost per message |
 | `backlog-1kb` | 1 GB produced with the consumer stopped, then released | reading a backlog |
+| `backlog-100b` | the same with 100 bytes | the fixed cost of reading and acking a message |
+| `backlog-1kb-4c` | the same, 4 partitions and 4 consumers | several consumers of one queue |
 
 `quick` (default): 1 round of 2 minutes (+1 of warm-up) of the first four. `standard`: 3 rounds of 5 minutes of the six.
-`smoke` (used by `bench/test.sh`): 1 minute of `simple-1kb`.
+`smoke` (used by `bench/test.sh`): 1 minute of `simple-1kb`. `consume`: 3 rounds of 3 minutes of the three `backlog-*` workloads (`bench/run.sh --profile consume`); the report shows the drain rate of the backlog, and says that Kafka and Redpanda commit an offset in batches while the others ack each message.
 
 ## Output
 
@@ -78,3 +80,5 @@ The CI job `bench` runs only `--dry-run` and the Node.js tests. Benchmarks are n
 ## The trend of the publish path
 
 `bench/cluster-trend.sh <cores per node> <connections per node> <image>...` compares builds of Taba itself with one node (factor 1) and three nodes (factor 3), `wrk` inside a Docker network, mutual TLS in the cluster ([doc 38](../doc/en-US/38-benchmarks.md#the-trend-of-the-publish-path-one-node-and-three-nodes)). A result from one machine only compares with another measured in the same run.
+
+`MODE=consume bench/cluster-trend.sh ...` does the same for the read side: it fills a queue, then drains it taking up to 100 messages and acking each one, with one node and with three. It compares Taba with itself; the comparison with the other systems is the one-node `consume` profile.

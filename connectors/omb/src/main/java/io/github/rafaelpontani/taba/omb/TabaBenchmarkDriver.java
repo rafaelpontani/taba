@@ -74,7 +74,7 @@ public class TabaBenchmarkDriver implements BenchmarkDriver {
     @Override
     public CompletableFuture<BenchmarkProducer> createProducer(String topic) {
         TabaBenchmarkProducer producer = new TabaBenchmarkProducer(
-                client, topic, config.isPerKey(), partitions.getOrDefault(topic, 1), config.producer.inFlight);
+                client, topic, config.isPerKey(), partitions.getOrDefault(topic, 1), config.producer);
         producers.add(producer);
         return CompletableFuture.completedFuture(producer);
     }

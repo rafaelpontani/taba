@@ -24,7 +24,9 @@ class DriverUnitTest {
 
     private static TabaBenchmarkProducer producer(boolean perKey, int groups) {
         TabaClient client = new TabaClient(TabaConfig.of("http://localhost:1"));
-        return new TabaBenchmarkProducer(client, "t", perKey, groups, 1);
+        TabaDriverConfig.Producer config = new TabaDriverConfig.Producer();
+        config.inFlight = 1;
+        return new TabaBenchmarkProducer(client, "t", perKey, groups, config);
     }
 
     /// UC: UC-CNT-038
@@ -69,6 +71,17 @@ class DriverUnitTest {
         TabaDriverConfig badInFlight = new TabaDriverConfig();
         badInFlight.producer.inFlight = 0;
         assertThrows(IllegalArgumentException.class, badInFlight::validate);
+
+        // The batch is on by default (100 messages, 1 ms); 1 turns it off, 0 is refused.
+        assertEquals(100, ok.producer.batchSize);
+        assertEquals(1, ok.producer.lingerMs);
+        assertTrue(ok.consumer.ackBatch);
+        TabaDriverConfig badBatch = new TabaDriverConfig();
+        badBatch.producer.batchSize = 0;
+        assertThrows(IllegalArgumentException.class, badBatch::validate);
+        TabaDriverConfig badLinger = new TabaDriverConfig();
+        badLinger.producer.lingerMs = -1;
+        assertThrows(IllegalArgumentException.class, badLinger::validate);
     }
 
     /// UC: UC-CNT-036

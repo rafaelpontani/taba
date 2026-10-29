@@ -249,9 +249,12 @@ fn need(method: &Method, route: &str) -> Option<Need> {
         "/topics/{topic}/messages" if method == Method::POST => {
             Some(Need::Permission(Permission::Publish))
         }
+        "/topics/{topic}/messages/batch" => Some(Need::Permission(Permission::Publish)),
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
-        | "/topics/{topic}/messages/{id}/visibility" => Some(Need::Permission(Permission::Consume)),
+        | "/topics/{topic}/messages/{id}/visibility"
+        | "/topics/{topic}/messages/ack"
+        | "/topics/{topic}/messages/visibility" => Some(Need::Permission(Permission::Consume)),
         // The tokens (an `admin` token itself is only created, changed and revoked by the root: see `http::tokens`).
         "/tokens" | "/tokens/{id}" => Some(Need::Permission(Permission::Admin)),
         // What any valid token sees within its scope: who it is, the nodes, the topic statistics.

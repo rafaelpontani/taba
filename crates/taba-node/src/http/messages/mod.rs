@@ -1,7 +1,8 @@
 //! Client API messages (doc 06a, "Messages"): `POST` (publish), `GET`
-//! (consume) and `DELETE` (prune, `prune.rs`) on `/topics/{topic}/messages`. Here the request is only read and the
-//! response built; the rules live in the `engine`.
+//! (consume) and `DELETE` (prune, `prune.rs`) on `/topics/{topic}/messages`, and the same operations in batch
+//! (`batch.rs`). Here the request is only read and the response built; the rules live in the `engine`.
 
+mod batch;
 mod prune;
 
 use std::collections::HashMap;
@@ -40,6 +41,9 @@ pub fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(consume, publish, prune::prune))
         .routes(routes!(ack))
         .routes(routes!(visibility))
+        .routes(routes!(batch::publish_batch))
+        .routes(routes!(batch::ack_batch))
+        .routes(routes!(batch::visibility_batch))
 }
 
 /// Reads the request body up to `limit` bytes. Past that: `413`, without reading the rest.

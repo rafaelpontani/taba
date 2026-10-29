@@ -48,7 +48,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 6 | 41 |
 | `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 10 |
 | `CFG` | Configuração e validações de partida | 1 | 10 |
-| `BNC` | Benchmark comparativo local (`bench/run.sh`) | 1 | 3 |
+| `BNC` | Benchmark comparativo local (`bench/run.sh`) | 1 | 4 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 

@@ -1,0 +1,13 @@
+name: backlog-1kb-4c
+topics: 1
+partitionsPerTopic: 4
+keyDistributor: "NO_KEY"
+messageSize: 1024
+payloadFile: "payload/payload-1Kb.data"
+subscriptionsPerTopic: 1
+consumerPerSubscription: 4
+producersPerTopic: 1
+producerRate: 50000
+consumerBacklogSizeGB: 1
+testDurationMinutes: @DURATION@
+warmupDurationMinutes: @WARMUP@

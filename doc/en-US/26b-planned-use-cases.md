@@ -48,7 +48,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 6 | 41 |
 | `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 10 |
 | `CFG` | Configuration and startup validations | 1 | 10 |
-| `BNC` | Local comparative benchmark (`bench/run.sh`) | 1 | 3 |
+| `BNC` | Local comparative benchmark (`bench/run.sh`) | 1 | 4 |
 
 ## TOP: Topics: create, list, read, change and remove
 

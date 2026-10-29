@@ -2719,6 +2719,395 @@
         }
       }
     },
+    "/topics/{topic}/messages/ack": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Acks up to `api.batch.max-messages` messages in one request, each as `DELETE /topics/{topic}/messages/{id}`: by\nquorum, and a failure before the quorum leaves that message available. The items are independent.",
+        "description": "Permission: `consume`.",
+        "operationId": "ackMessages",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The queue name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AckBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order: `204` (acked) or the error of that item (`404 message.not-found`, `409 message.stale-receipt`, `400 validation.required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.out-of-range` (no items, or more than `api.batch.max-messages`), `validation.unknown-field`, `validation.required` or `validation.failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.wrong-type`: the topic is a distributor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`message.too-large`: the request exceeds `api.batch.max-bytes`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "`media.unsupported`: the request is not `application/json`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics/{topic}/messages/batch": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Publishes up to `api.batch.max-messages` messages in one request. Each item is the single publication\n(`POST /topics/{topic}/messages`) with the body in the form the `GET` delivers it: JSON as it is, text as a string,\nany type in base64 with `bodyEncoding: \"base64\"`. The items are independent: one that fails does not undo the\nothers. On a FIFO queue, the items of a group are published in the order of the list.",
+        "description": "Permission: `publish`.",
+        "operationId": "publishMessages",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The topic name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order: `201` with the `id`, `200` for a FIFO duplicate or a distributor, or the error of that item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.out-of-range` (no items, or more than `api.batch.max-messages`), `validation.unknown-field`, `validation.required` or `validation.failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`message.too-large`: the request exceeds `api.batch.max-bytes`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "`media.unsupported`: the request is not `application/json`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/topics/{topic}/messages/visibility": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Changes the invisibility of up to `api.batch.max-messages` messages already delivered in one request, each as\n`PUT /topics/{topic}/messages/{id}/visibility`. The items are independent.",
+        "description": "Permission: `consume`.",
+        "operationId": "setMessagesVisibility",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "description": "The queue name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisibilityBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "One result per item, in order: `200` with the new `invisibleUntil`, or the error of that item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation.out-of-range` (no items, or more than `api.batch.max-messages`), `validation.unknown-field`, `validation.required` or `validation.failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`auth.unauthorized`: the token is missing, malformed, unknown, revoked or expired. Only with authentication on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`auth.forbidden` (the token lacks the permission; `required` says which) or `auth.out-of-scope` (the topic is\noutside the token's prefixes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`topic.not-found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`topic.wrong-type`: the topic is a distributor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`message.too-large`: the request exceeds `api.batch.max-bytes`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "`media.unsupported`: the request is not `application/json`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The rate limit of the route's category was exceeded. `Retry-After` says in how many seconds to try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`cluster.quorum-unavailable`, `cluster.registration-failed`, `cluster.commit-timeout`, `cluster.node-syncing`,\n`cluster.node-draining` or `node.failed`: nothing was accepted (or, on `cluster.commit-timeout`, the change\ncompletes in the background).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/topics/{topic}/messages/{id}": {
       "delete": {
         "tags": [
@@ -2967,6 +3356,56 @@
   },
   "components": {
     "schemas": {
+      "AckBatch": {
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AckItem"
+            },
+            "description": "1 to `api.batch.max-messages`."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AckItem": {
+        "type": "object",
+        "description": "An ack of a batch: the `id` and the `receiptToken` of the last delivery.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "receiptToken": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchResponse": {
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemResult"
+            },
+            "description": "One per item, in the order of the request."
+          }
+        }
+      },
       "ClusterStatus": {
         "type": "object",
         "description": "The state and the conditions of the cluster.",
@@ -3450,6 +3889,94 @@
           }
         }
       },
+      "ItemError": {
+        "type": "object",
+        "description": "What failed in one item: the same fields as the `ErrorResponse` of the single call, without the `requestId`\n(the request is one).",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "message.stale-receipt"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ItemResult": {
+        "type": "object",
+        "description": "The result of one item: the `status` the single call would have answered and its body.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "deliveries": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "object"
+            },
+            "description": "Distributor only: what happened in each destination queue."
+          },
+          "duplicate": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "FIFO queues only: the publication repeated one inside the deduplication window."
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The message `id`: of the publication, of the ack or of the invisibility."
+          },
+          "invisibleUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Invisibility only: the new deadline."
+          },
+          "matched": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Distributor only: how many queues the message reached.",
+            "minimum": 0
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`201` (published), `200` (a FIFO duplicate, a distributor, a new invisibility), `204` (acked) or the status\nof the error.",
+            "minimum": 0
+          }
+        }
+      },
       "Latency": {
         "type": "object",
         "description": "Latency percentiles, in seconds; `null` with no observation.",
@@ -3891,6 +4418,63 @@
             "minimum": 0
           }
         }
+      },
+      "PublishBatch": {
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublishItem"
+            },
+            "description": "1 to `api.batch.max-messages`. On a FIFO queue the order of the list is the order of publication inside each\ngroup."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublishItem": {
+        "type": "object",
+        "description": "A publication of a batch: the same fields as `POST /topics/{topic}/messages`, with the body in the form the `GET`\ndelivers it.",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "description": "For `application/json` (or `*/*+json`), the JSON itself, kept byte by byte; for `text/*` in UTF-8, a string;\nfor any other type, a string in base64 with `bodyEncoding: \"base64\"` (which also works for JSON and text)."
+          },
+          "bodyEncoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`base64` when the `body` is a string in base64."
+          },
+          "contentType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the bytes are (default `application/json`), as the `Content-Type` header of the single publication."
+          },
+          "deduplicationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "FIFO queues only: the deduplication key inside the group."
+          },
+          "groupId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required on a FIFO queue; elsewhere it guides the fair delivery."
+          }
+        },
+        "additionalProperties": false
       },
       "PublishOutcome": {
         "oneOf": [
@@ -5050,6 +5634,49 @@
             "minimum": 0
           }
         }
+      },
+      "VisibilityBatch": {
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisibilityItem"
+            },
+            "description": "1 to `api.batch.max-messages`."
+          }
+        },
+        "additionalProperties": false
+      },
+      "VisibilityItem": {
+        "type": "object",
+        "description": "A change of invisibility of a batch, as `PUT /topics/{topic}/messages/{id}/visibility`.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "receiptToken": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visibilityTimeout": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds from now, 0 to `delivery.visibility-timeout.max`."
+          }
+        },
+        "additionalProperties": false
       },
       "VisibilityRequest": {
         "type": "object",

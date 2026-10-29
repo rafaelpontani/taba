@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use taba_client::base64;
 use taba_client::{
-    Client, Config, ConsumeError, ConsumeOptions, Error, Message, Nullable, PublishOptions,
-    PublishResponse, Topic, TopicRequest, TopicUpdate,
+    BatchMessage, BatchResult, Client, Config, ConsumeError, ConsumeOptions, Error, Message,
+    Nullable, PublishOptions, PublishResponse, Topic, TopicRequest, TopicUpdate,
 };
 
 type Fields = HashMap<String, String>;
@@ -222,6 +222,14 @@ fn publish_fields(r: &PublishResponse) -> Fields {
     ])
 }
 
+fn batch_fields(results: &[BatchResult]) -> Fields {
+    let statuses: Vec<String> = results.iter().map(|r| r.status.to_string()).collect();
+    fields(&[
+        ("count", results.len().to_string()),
+        ("statuses", statuses.join(",")),
+    ])
+}
+
 fn consume_options(p: &Fields) -> ConsumeOptions {
     ConsumeOptions {
         max_messages: num(p, "max"),
@@ -274,6 +282,8 @@ fn supported(op: &str) -> bool {
             | "publishText"
             | "publishJson"
             | "publishBytes"
+            | "publishBatch"
+            | "settleBatch"
             | "consume"
             | "ack"
             | "changeVisibility"
@@ -348,6 +358,49 @@ fn run(op: &str, c: &Client, p: &Fields) -> Result<Fields, Error> {
                 .unwrap_or("application/octet-stream");
             c.publish(&get("topic"), &body, &publish_options(p, content_type))
                 .map(|r| publish_fields(&r))
+        }
+
+        // A batch of texts (one item per text); bad=true adds an item with an invalid content type.
+        "publishBatch" => {
+            let mut batch: Vec<BatchMessage> = get("texts")
+                .split(',')
+                .map(|text| {
+                    let message = BatchMessage::text(text);
+                    match p.get("groupId") {
+                        Some(group) => message.group_id(group),
+                        None => message,
+                    }
+                })
+                .collect();
+            if flag(p, "bad") == Some(true) {
+                batch.push(BatchMessage::text("x").content_type("not a type"));
+            }
+            c.publish_batch(&get("topic"), &batch)
+                .map(|r| batch_fields(&r))
+        }
+        // Consumes and settles what came in one batch: action ack or visibility (seconds). stale=true makes the receipt
+        // of the first one old before the batch: it is given back and taken again.
+        "settleBatch" => {
+            let topic = get("topic");
+            let messages = c.consume(&topic, &consume_options(p))?;
+            if flag(p, "stale") == Some(true) && !messages.is_empty() {
+                c.change_visibility(&topic, &messages[0].id, &messages[0].receipt_token, 0)?;
+                c.consume(
+                    &topic,
+                    &ConsumeOptions {
+                        max_messages: Some(1),
+                        wait_time: Some(2),
+                        visibility_timeout: num(p, "visibility"),
+                        ..ConsumeOptions::default()
+                    },
+                )?;
+            }
+            if get("action") == "visibility" {
+                c.change_visibility_batch(&topic, &messages, num(p, "seconds").unwrap_or(0))
+            } else {
+                c.ack_batch(&topic, &messages)
+            }
+            .map(|r| batch_fields(&r))
         }
 
         "consume" => c

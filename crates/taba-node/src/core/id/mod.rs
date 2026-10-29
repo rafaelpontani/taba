@@ -119,8 +119,9 @@ impl IdGenerator {
 
 /// `true` if `s` is a GUID v7 in the canonical form, lowercase.
 pub fn is_guid_v7(s: &str) -> bool {
-    s == s.to_ascii_lowercase()
-        && s.len() == 36
+    // Without building a lowercase copy: it is checked for every message of every request.
+    s.len() == 36
+        && !s.bytes().any(|b| b.is_ascii_uppercase())
         && Uuid::parse_str(s).is_ok_and(|u| u.get_version_num() == 7)
 }
 
