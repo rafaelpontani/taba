@@ -3,7 +3,7 @@ título: Garantias e como são verificadas
 resumo: As garantias que o Taba declara, escritas de forma que uma máquina consiga checar (I1 a I6 e o risco assumido R1), a rodada de caos que as verifica contra um histórico gravado, quais falhas ela aplica, o que ainda não cobre e como rodar ou varrer sementes.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-27 @ ada9ff1
+verificado-em: 2026-10-29 @ 1f43daf
 fontes: [crates/taba-node/tests/chaos.rs, crates/taba-node/tests/common/history.rs, crates/taba-node/src/cluster/transport/memory/mod.rs, crates/taba-node/tests/common/cluster.rs, .github/workflows/chaos.yml]
 ---
 
@@ -72,7 +72,7 @@ No fim os publicadores param, toda falha é curada (`heal_all`), o relógio avan
 | Morte abrupta e volta de um nó, drain durante a rodada | ainda não estão no nemesis |
 | Disco lento ou com erro | o armazenamento ainda não tem gancho para isso |
 | TCP real, TLS mútuo, timeouts do kernel, disco real | a rede em memória não os reproduz (previsto: rodada em Docker) |
-| Uma parada maior que o `write.pending.ttl` (30 s) no meio de uma operação, ou um salto de relógio além dele | os saltos da rodada (8 s) ficam abaixo dele; com saltos de 35 s a rodada acha uma mensagem confirmada e depois entregue de novo pela dead-letter ([PRB-077](31-pendencias.md)) |
+| Uma parada maior que o `write.pending.ttl` (30 s) no meio de uma operação, ou um salto de relógio além dele | os saltos da rodada (8 s) ficam abaixo dele; um register expirado que libera a mensagem para outra operação não é exercitado ([PRB-085](31-pendencias.md)). As falhas de I3 e I5 vistas com saltos de 35 s eram outra corrida, corrigida ([PRB-077](30-decisoes.md#problemas-resolvidos-prb)) |
 | Dois nós prejudicados ao mesmo tempo, ou partição com maioria nos dois lados (R1) | fora do que o cluster padrão promete, e o `NO_VOTE` esconde a votação de exclusão; o R1 tem teste próprio (`tests/partition.rs`, veja a linha dele) |
 
 ## Como rodar

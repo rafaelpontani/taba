@@ -269,7 +269,7 @@ fn declared_losses(cluster: &TestCluster) -> HashSet<String> {
 }
 
 /// Where the messages nobody received are, and what may be holding their group: printed with a failure.
-fn diagnosis(cluster: &TestCluster, history: &History) -> String {
+fn diagnosis(cluster: &TestCluster, history: &History, violated: &[u64]) -> String {
     let mut out = String::new();
     let state = |queue: &str, id: &str, out: &mut String| {
         for number in 1..=3 {
@@ -294,6 +294,16 @@ fn diagnosis(cluster: &TestCluster, history: &History) -> String {
     for id in history.undelivered_ids().iter().take(3) {
         for queue in [STD, FIFO, DLQ, DEAD] {
             state(queue, id, &mut out);
+        }
+    }
+    // The dump of a message that broke I3 or I5: where it is now on every node, in every queue (PRB-077).
+    for seq in violated {
+        let Some(id) = history.id_of(*seq) else {
+            continue;
+        };
+        out.push_str(&format!("\n  violated seq {seq} (id {id}):"));
+        for queue in [STD, FIFO, DLQ, DEAD] {
+            state(queue, &id, &mut out);
         }
     }
     for (seq, id) in history.blockers() {
@@ -384,9 +394,14 @@ async fn run(seed: u64) {
         task.await.expect("consumer");
     }
 
-    let where_are_they = diagnosis(&cluster, &history);
     let summary = history.summary();
     let violations = history.check(&declared_losses(&cluster));
+    let violated: Vec<u64> = violations
+        .iter()
+        .take(3)
+        .filter_map(|v| v.split_whitespace().find_map(|w| w.parse::<u64>().ok()))
+        .collect();
+    let where_are_they = diagnosis(&cluster, &history, &violated);
     eprintln!("seed {seed}: {summary:?}, {} faults", faults.len());
     let cluster = Arc::into_inner(cluster).expect("the clients ended");
     cluster.shutdown().await;

@@ -171,6 +171,15 @@ impl History {
             .collect()
     }
 
+    /// The ID the `201` returned for a publication, to look the message up after a violation.
+    pub fn id_of(&self, seq: u64) -> Option<String> {
+        self.lock()
+            .publishes
+            .iter()
+            .find(|p| p.seq == seq)
+            .and_then(|p| p.id.clone())
+    }
+
     /// Everything the history knows about one message, in order, to read a violation.
     pub fn trail(&self, seq: u64) -> String {
         let log = self.lock();

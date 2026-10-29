@@ -10,6 +10,7 @@
 
 use bytes::Bytes;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -117,6 +118,21 @@ impl State {
         self.by_message.remove(&(op.topic.clone(), op.id.clone()));
         self.by_age.remove(&(op.registered_at, op.seq));
         Some(op)
+    }
+}
+
+/// The reservation of a message while its register is checked: released if the check fails or the call is dropped.
+struct Reservation<'a> {
+    replica: &'a Replica,
+    operation_id: &'a str,
+    armed: bool,
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.replica.lock().take(self.operation_id);
+        }
     }
 }
 
@@ -257,17 +273,48 @@ impl Replica {
     }
 
     /// Leaves the operation pending, or confirms again the one that already was (idempotent).
-    fn register(
+    ///
+    /// The message is **reserved first** and `check` runs after, with the reservation held: the check reads the
+    /// state of the engine (the receipt, whether the message is still there), and an operation that registered and
+    /// committed between the check and the reservation (a move to the dead-letter, a new delivery) would leave
+    /// the register answering for a message that is no longer the one the check saw (PRB-077). If the check fails
+    /// or the call is dropped, the reservation is released.
+    async fn register<C>(
         &self,
         operation_id: &str,
         topic: &str,
         id: &str,
         action: Action,
-    ) -> Result<Ack, TabaError> {
+        check: C,
+    ) -> Result<Ack, TabaError>
+    where
+        C: Future<Output = Result<(), TabaError>>,
+    {
+        if !self.reserve(operation_id, topic, id, action)? {
+            return Ok(ack(operation_id));
+        }
+        let mut reservation = Reservation {
+            replica: self,
+            operation_id,
+            armed: true,
+        };
+        check.await?;
+        reservation.armed = false;
+        Ok(ack(operation_id))
+    }
+
+    /// Takes the message for the operation. `false` when the operation was already pending or decided.
+    fn reserve(
+        &self,
+        operation_id: &str,
+        topic: &str,
+        id: &str,
+        action: Action,
+    ) -> Result<bool, TabaError> {
         let mut state = self.lock();
         self.purge(&mut state);
         if state.ops.contains_key(operation_id) || state.finished.get(operation_id).is_some() {
-            return Ok(ack(operation_id));
+            return Ok(false);
         }
         let key = (topic.to_owned(), id.to_owned());
         if state.by_message.contains_key(&key) {
@@ -292,7 +339,7 @@ impl Replica {
                 action,
             },
         );
-        Ok(ack(operation_id))
+        Ok(true)
     }
 
     /// The commit: applies the pending operation to the engine.
@@ -421,20 +468,30 @@ impl Replica {
                     position: 0,
                 };
                 let body = record.body;
-                if !checked {
-                    // Nothing to check.
-                } else if self.messages.publish_is_light(&topic, body.len() as u64) {
-                    // The check only reads memory: right here, without a blocking thread.
-                    check_publish(&self.messages, &self.topics, &topic, &id, &body)?;
-                } else {
-                    let (topic, id) = (topic.clone(), id.clone());
-                    let body = body.clone();
-                    self.blocking(move |messages, topics| {
-                        check_publish(messages, topics, &topic, &id, &body)
-                    })
-                    .await?;
-                }
-                self.register(&operation_id, &topic, &id, Action::Publish { meta, body })
+                let held = body.clone();
+                let check = async {
+                    if !checked {
+                        // Nothing to check.
+                        Ok(())
+                    } else if self.messages.publish_is_light(&topic, held.len() as u64) {
+                        // The check only reads memory: right here, without a blocking thread.
+                        check_publish(&self.messages, &self.topics, &topic, &id, &held)
+                    } else {
+                        let (topic, id) = (topic.clone(), id.clone());
+                        self.blocking(move |messages, topics| {
+                            check_publish(messages, topics, &topic, &id, &held)
+                        })
+                        .await
+                    }
+                };
+                self.register(
+                    &operation_id,
+                    &topic,
+                    &id,
+                    Action::Publish { meta, body },
+                    check,
+                )
+                .await
             }
             WriteKind::DeadLetter => {
                 let source = request.source_topic.ok_or_else(|| {
@@ -451,7 +508,10 @@ impl Replica {
                 let at_ms = record
                     .dead_lettered_ms
                     .unwrap_or_else(|| self.clock.now_millis());
-                if checked {
+                let check = async {
+                    if !checked {
+                        return Ok(());
+                    }
                     let (source, target, id) = (source.clone(), topic.clone(), id.clone());
                     self.blocking(move |messages, topics| {
                         topics.get(&source)?;
@@ -466,8 +526,8 @@ impl Replica {
                             ))
                         }
                     })
-                    .await?;
-                }
+                    .await
+                };
                 self.register(
                     &operation_id,
                     &source,
@@ -476,7 +536,9 @@ impl Replica {
                         source: source.clone(),
                         at_ms,
                     },
+                    check,
                 )
+                .await
             }
         }
     }
@@ -526,12 +588,15 @@ impl Replica {
                     id.to_owned(),
                     request.receipt_token.clone(),
                 );
-                if checked {
+                let checking = async {
+                    if !checked {
+                        return Ok(());
+                    }
                     self.blocking(move |messages, _| {
                         messages.check_visibility(&t, &i, check, &token)
                     })
-                    .await?;
-                }
+                    .await
+                };
                 self.register(
                     &request.operation_id,
                     topic,
@@ -540,7 +605,9 @@ impl Replica {
                         until_ms: request.invisible_until_ms,
                         delivery,
                     },
+                    checking,
                 )
+                .await
             }
             Step::Commit(OperationRef { operation_id }) => self.commit(&operation_id).await,
             Step::Rollback(OperationRef { operation_id }) => self.rollback(&operation_id),
@@ -573,13 +640,17 @@ impl Replica {
                     request.receipt_token.clone(),
                 );
                 // A discard has no receipt: it is the group's primary dropping a duplicate (doc 07, section 10.9).
-                if checked && !request.discard {
+                let checking = async {
+                    if !checked || request.discard {
+                        return Ok(());
+                    }
                     self.blocking(move |messages, _| {
                         messages.check_visibility(&t, &i, VisibilityCheck::Receipt, &token)
                     })
-                    .await?;
-                }
-                self.register(&request.operation_id, topic, id, Action::Ack)
+                    .await
+                };
+                self.register(&request.operation_id, topic, id, Action::Ack, checking)
+                    .await
             }
             Step::Commit(OperationRef { operation_id }) => self.commit(&operation_id).await,
             Step::Rollback(OperationRef { operation_id }) => self.rollback(&operation_id),

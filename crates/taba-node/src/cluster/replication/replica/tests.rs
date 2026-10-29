@@ -291,3 +291,77 @@ fn the_memory_of_decided_operations_forgets_the_oldest_first_and_stays_bounded()
     );
     assert_eq!(decided.get("op-1"), None, "the next oldest left");
 }
+
+/// UC: UC-INV-010
+#[tokio::test]
+async fn a_register_holds_the_message_while_its_check_runs() {
+    let h = harness().await;
+    let message = id::new_at(1_791_288_000_000);
+    let (release, gate) = tokio::sync::oneshot::channel::<()>();
+
+    // The check of the first register is slow (the engine is busy): in this window another operation tries to
+    // register and commit, and must not get through (PRB-077).
+    let first = {
+        let replica = h.replica.clone();
+        let message = message.clone();
+        tokio::spawn(async move {
+            replica
+                .register("op-ack", "orders", &message, Action::Ack, async {
+                    let _ = gate.await;
+                    Ok(())
+                })
+                .await
+        })
+    };
+    while h.replica.pending() == 0 {
+        tokio::task::yield_now().await;
+    }
+
+    let other = h
+        .replica
+        .register("op-move", "orders", &message, Action::Ack, async { Ok(()) })
+        .await
+        .unwrap_err();
+    assert_eq!(other.code, ErrorCode::ClusterConflict);
+
+    release.send(()).unwrap();
+    assert_eq!(first.await.unwrap().unwrap(), expected("op-ack"));
+    assert_eq!(h.replica.pending(), 1, "the first register stays pending");
+}
+
+/// UC: UC-INV-010
+#[tokio::test]
+async fn a_register_whose_check_fails_releases_the_message() {
+    let h = harness().await;
+    let message = id::new_at(1_791_288_000_000);
+
+    let refused = h
+        .replica
+        .register("op-1", "orders", &message, Action::Ack, async {
+            Err(TabaError::new(ErrorCode::MessageNotFound, "gone"))
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::MessageNotFound);
+    assert_eq!(h.replica.pending(), 0, "a refused register leaves nothing");
+
+    // A register whose caller gave up (the future dropped in the middle of the check) leaves nothing either.
+    let dropped = tokio::time::timeout(
+        Duration::from_millis(20),
+        h.replica.register(
+            "op-2",
+            "orders",
+            &message,
+            Action::Ack,
+            std::future::pending(),
+        ),
+    )
+    .await;
+    assert!(dropped.is_err());
+    assert_eq!(h.replica.pending(), 0);
+
+    h.replica
+        .register("op-3", "orders", &message, Action::Ack, async { Ok(()) })
+        .await
+        .unwrap();
+}

@@ -3,7 +3,7 @@ título: Problemas conhecidos
 resumo: Registro, com histórico, dos testes de cluster intermitentes e dos problemas conhecidos: cada um com título, status, data em que foi achado, data da solução e o histórico de ocorrências e tentativas.
 tipo: referência
 status: parcial
-verificado-em: 2026-10-26 @ 75012bc
+verificado-em: 2026-10-29 @ 1f43daf
 fontes: [crates/taba-node/src/cluster/replication/definitions.rs, crates/taba-node/tests/cold_start.rs, crates/taba-node/src/cluster/channel/mod.rs, crates/taba-node/tests/channel.rs, crates/taba-node/tests/failures.rs, crates/taba-node/tests/replication.rs, crates/taba-node/tests/notify.rs, crates/taba-node/tests/common/cluster.rs, crates/taba-node/src/cluster/sync/mod.rs, crates/taba-node/src/cluster/service/mod.rs]
 ---
 
@@ -17,6 +17,8 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Uma votação de exclusão que falha uma vez na suíte completa](#uma-votação-de-exclusão-que-falha-uma-vez-na-suíte-completa) | Aberto | 2026-10-29 | — |
+| [Um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la) | Corrigido | 2026-10-27 | 2026-10-29 |
 | [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Aberto | 2026-10-29 | — |
 | [Um sinal de pronto perdido que a caça não corrige a tempo](#um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
 | [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
@@ -28,6 +30,41 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Uma votação de exclusão que falha uma vez na suíte completa
+
+**Status:** Aberto · **Achado em:** 2026-10-29 · **Corrigido em:** —
+
+- **Teste:** `tests/failures.rs::only_the_lowest_node_id_among_the_healthy_coordinates_the_exclusion` (UC-FAL da exclusão), a asserção sobre os coordenadores das chamadas `unregister` (linha 1087).
+- **Sintoma:** falhou uma vez num `cargo test` completo num contêiner Linux (22 testes do arquivo em paralelo com a carga dos outros binários); sozinho passou 3 de 3, e uma segunda execução completa passou.
+- **Causa:** não identificada. Não toca o register de uma mensagem (achado ao validar [um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la)). A leitura a conferir é um segundo nó saudável que também registra a saída antes de ver a primeira terminada.
+- **Próximo passo:** `docker/hang-hunt.sh failures only_the_lowest_node_id` e ler qual nó foi o coordenador a mais.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-29 | Uma falha na suíte completa, 3 passagens sozinho, 1 passagem completa depois. |
+
+## Um register que verificou a mensagem antes de tomá-la
+
+**Status:** Corrigido · **Achado em:** 2026-10-27 · **Corrigido em:** 2026-10-29
+
+- **Onde:** `src/cluster/replication/replica.rs` (`Replica::register`, `reserve`). Achado pelo `tests/chaos.rs` ([37-garantias.md](37-garantias.md)), sementes 2, 3 e 4, [PRB-077](30-decisoes.md#problemas-resolvidos-prb).
+- **Sintoma:** em cerca de 8 % dos processos da caça (`docker/hang-hunt.sh chaos`, 8 de cada vez; 13 em 160), "I5: seq N was acked on its queue and also reached the dead-letter" e, em alguns, "I3: seq N was acked (204) and delivered again".
+- **Como foi achado:** o relatório de falha da rodada de caos agora tem um dump da mensagem que quebrou o I3 ou o I5 (onde ela está, em cada nó e em cada fila: `diagnosis`), e a caça foi rodada com uma linha em cada register, commit, rollback e expiração da réplica e no começo e no fim de cada ack e ida para a dead-letter (tiradas depois). A primeira leitura (um register expirado) estava errada: **nenhum register expirou** em nenhuma das rodadas que falharam. No log de uma, a ida para a dead-letter registrou e deu commit nos três nós (+80 ms), e só depois o register do ack chegou a eles, 120 ms depois de enviado, e foi aceito.
+- **Causa:** `ack_step`, `register_write` e `visibility_step` verificavam a mensagem (`check_visibility`, `check_publish`...) numa thread bloqueante e depois chamavam o `register`. A verificação e a reserva da mensagem eram dois passos sem trava entre eles, e sob carga (8 processos ao mesmo tempo) uma operação inteira cabia no intervalo: o ack verificava uma mensagem que estava na fila, a ida para a dead-letter registrava e dava commit, e o ack registrava, dava commit (aplica-se a uma mensagem que já saiu, sem erro) e era confirmado ao cliente com `204`.
+- **Correção:** o `register` reserva a mensagem primeiro (`by_message`, `409 cluster.conflict` para quem chega nesse meio-tempo) e roda a verificação com a reserva mantida; uma verificação que falha, ou uma chamada abandonada no meio dela, solta a reserva (`Reservation`, no `Drop`). O register repetido depois da decisão e o replay de eventos não verificam nada e não são afetados.
+- **Teste:** `replica::tests::a_register_holds_the_message_while_its_check_runs` (uma verificação lenta; a segunda operação deve receber o conflito) e `a_register_whose_check_fails_releases_the_message`. Verificação: a mesma caça, 20 rodadas de 8 processos: **0 falhas em 160** (antes da correção, 13 em 160); suíte completa, clippy e fmt.
+- **Não fazer:** aumentar o `write.pending.ttl` ou as esperas da rodada: nada expirou.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-27 | Visto com saltos de relógio de 35 s (3 rodadas em 400): achou-se que era um register expirado (a primeira forma do PRB-077). |
+| 2026-10-29 | Visto sem saltos de relógio na caça (3/96, 5/96, 3/96 no código antes dos lotes e com eles): os lotes não mudaram a taxa. |
+| 2026-10-29 | O dump e as linhas em cada register mostraram que nenhum register expirou: a verificação rodava antes da reserva. Corrigido reservando primeiro. 0 falhas em 160 processos. |
 
 ## Uma rajada do canal que não chega ao outro nó na caça
 
@@ -69,7 +106,7 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 - **Sintoma 1 (I5):** com `maxDeliveries: 2` uma mensagem foi entregue com `deliveryCount: 3`, na maioria das rodadas da semente 3. Causa: um commit de entrega que chegou ao dono depois de a própria invisibilidade acabar pôs a mensagem na lista de prontas sem a liberação que confere o limite. Correção: o `take_candidates` não entrega a mensagem que gastou as entregas: esconde-a por um instante e a próxima liberação a manda para a dead-letter (a primeira forma da correção, uma ida imediata, quebrou o `a_shorter_ttl_expires_what_is_already_stored_even_in_flight`, que espera que o `ttl` vença, e foi trocada). Teste: `a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit` (falha sem a correção).
 - **Sintoma 2 (I1):** em cerca de 1 rodada em 100 uma mensagem confirmada nunca foi entregue: ficava só no dono (as réplicas tinham aplicado o ack dela), a entrega dela precisa das réplicas, e então o grupo FIFO ficava travado para sempre. Causa: o commit do ack ao dono chegou depois de o register do dono expirar; o coordenador o registrou de novo e desistiu na primeira recusa, ou porque o recibo tinha expirado ou porque outra operação segurava a mensagem (`cluster.conflict`). Correção: o register enviado de novo depois da decisão não confere recibo (`Request::decided`) e, num conflito, continua tentando até a outra operação acabar. Testes: `the_register_repeated_after_the_decision_checks_no_receipt` e `an_ack_the_replicas_applied_reaches_the_owner_even_if_another_operation_took_the_message` (falha sem a correção).
 - **Como foi achado:** a primeira suspeita foi o próprio verificador: a trilha de uma mensagem (`History::trail`) mostrou que o `maxDeliveries: 2` de uma fila tinha sido aplicado às outras (um falso positivo, corrigido no verificador). Depois o relatório de falha ganhou onde a mensagem está em cada nó, e mostrou o dono com uma mensagem que as réplicas já não tinham. A linha de base sem a correção da entrega também falhou (1 rodada em 120), então a segunda causa era independente.
-- **Não corrigido:** um ack e uma ida para a dead-letter, os dois decididos, quando um register expira ([PRB-077](31-pendencias.md)); exige uma parada além do `write.pending.ttl` e está fora da rodada (os saltos de relógio dela são de 8 s).
+- **Não corrigido:** um ack e uma ida para a dead-letter, os dois decididos, quando um register expira ([PRB-085](31-pendencias.md), não visto); as falhas que lhe foram atribuídas eram [um register que verificou a mensagem antes de tomá-la](#um-register-que-verificou-a-mensagem-antes-de-tomá-la).
 - **Não fazer:** subir os 30 s do `eventually` ou deixar a rodada parar na primeira entrega: o grupo travado para sempre é exatamente o que a espera existe para mostrar.
 
 **Histórico**
@@ -239,6 +276,7 @@ O que os problemas acima ensinaram, para o próximo ser achado mais rápido (a l
 - **Um `waited 30 s` por um estado que nunca chega é uma entrega perdida, não uma lenta.** Pergunte quem deveria enviar, a quem, e quem estava na lista de destinatários naquele instante. Um `broadcast` (ou um quadro do canal) alcança só os peers que existem **agora**: um nó que se registra milissegundos depois, e ainda sincroniza, nunca o recebe, a menos que outro caminho (um `definition-apply` com `spread`, o heartbeat, a própria sincronização) o cubra. Uma nova forma de entregar estado ao cluster precisa desse segundo caminho, ou de uma razão para não precisar.
 - **Quando o log não tem nenhuma linha do caminho suspeito, ponha uma, rode de novo e tire.** A execução que falhou na oferta não tinha nenhuma linha sobre a oferta. Linhas temporárias em cada passo (o que foi oferecido, a quem foi enviado, o que cada nó aprendeu), marcadas com uma palavra que se possa buscar (`HUNT`), e a mesma caçada, deram a ordem dos eventos em milissegundos; as linhas foram removidas com `git checkout` antes da correção. Guarde o log capturado (`target/`).
 - **Uma correção não está pronta sem um teste que falha sem ela** (aqui, um que falha por timeout e não travando) e sem repetir a execução que travava.
+- **Olhe o que aconteceu antes de teorizar sobre o que poderia.** O item pendente culpava um register expirado; o dump da mensagem que falhou e uma linha de log em cada register mostraram que nada expirou e que uma verificação e uma reserva eram dois passos. Um relatório de falha deve dizer onde a coisa está agora, em cada nó (`diagnosis` no `tests/chaos.rs`).
 
 ## Fontes e provas
 

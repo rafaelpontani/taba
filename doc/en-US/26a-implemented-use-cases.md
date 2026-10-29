@@ -3,7 +3,7 @@ title: Implemented use cases
 summary: The catalogue of Taba use cases that have at least one test citing them, by area, with the case, the level and the tests that prove it.
 type: reference
 status: stable
-verified-on: 2026-10-27 @ ada9ff1
+verified-on: 2026-10-29 @ 1f43daf
 sources: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -5860,6 +5860,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests/cluster.rs::the_registration_of_a_visibility_is_checked_against_the_message`
   - `tests/replication.rs::an_ack_on_any_node_removes_the_message_everywhere_and_a_stale_token_is_refused`
   - `tests/replication.rs::an_ack_of_a_gone_message_answers_404_even_when_the_primary_answers_last`
+  - `src/cluster/replication/replica/tests.rs::a_register_holds_the_message_while_its_check_runs`
+  - `src/cluster/replication/replica/tests.rs::a_register_whose_check_fails_releases_the_message`
 
 ---
 
