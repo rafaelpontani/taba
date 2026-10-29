@@ -495,6 +495,8 @@ impl Request {
                 "visibility" | "ack",
                 phase,
             ] => is_phase(phase),
+            ["cluster", "topics", _, "messages", "take"]
+            | ["cluster", "topics", _, "fifo", "publish"] => true,
             _ => false,
         };
         if one_operation && method.eq_ignore_ascii_case("POST") {

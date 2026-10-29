@@ -83,6 +83,9 @@ fn operation_of(request: &Request) -> Option<(String, usize)> {
         }
         Request::Visibility { step, .. } => Some((of(step, |r| &r.operation_id), 0)),
         Request::Ack { step, .. } => Some((of(step, |r| &r.operation_id), 0)),
+        // No operation to match the reply to: the empty id says so.
+        Request::Take { .. } => Some((String::new(), 0)),
+        Request::FifoPublish { record, .. } => Some((String::new(), record.body.len())),
         _ => None,
     }
 }
@@ -244,14 +247,18 @@ async fn send(service: &Arc<ClusterService>, member: &Member, items: Vec<Pending
     match call {
         Ok(Response::Batch(results)) if results.len() == waiting.len() => {
             // A reply of another operation must never be taken for this one's.
-            let matches = results
-                .iter()
-                .zip(&waiting)
-                .all(|(result, (operation, _))| {
-                    result
-                        .as_ref()
-                        .map_or(true, |ack| &ack.operation_id == operation)
-                });
+            let matches =
+                results
+                    .iter()
+                    .zip(&waiting)
+                    .all(|(result, (operation, _))| match result {
+                        Ok(Response::Ack(ack)) => {
+                            !operation.is_empty() && &ack.operation_id == operation
+                        }
+                        Ok(Response::Taken(_) | Response::FifoPublished(_)) => operation.is_empty(),
+                        Ok(_) => false,
+                        Err(_) => true,
+                    });
             if !matches {
                 fail_all(
                     waiting,
@@ -262,10 +269,7 @@ async fn send(service: &Arc<ClusterService>, member: &Member, items: Vec<Pending
                 return;
             }
             for (result, (_, reply)) in results.into_iter().zip(waiting) {
-                let _ = reply.send(match result {
-                    Ok(ack) => Ok(Response::Ack(ack)),
-                    Err(error) => Err(CallError::Remote(error)),
-                });
+                let _ = reply.send(result.map_err(CallError::Remote));
             }
         }
         Ok(_) => fail_all(

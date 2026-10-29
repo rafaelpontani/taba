@@ -16,8 +16,9 @@ use bytes::Bytes;
 use prost::Message;
 
 use super::{
-    Ack, AckRegisterRequest, MessageRecord, MessageRegisterRequest, OperationRef, Request, Step,
-    VisibilityKind, VisibilityRegisterRequest, WriteKind,
+    Ack, AckRegisterRequest, FifoPublished, MessageRecord, MessageRegisterRequest, OperationRef,
+    Request, Response, Step, TakeRequest, TakeResponse, VisibilityKind, VisibilityRegisterRequest,
+    WriteKind,
 };
 use crate::core::error::{ErrorCode, ErrorDetail, TabaError};
 
@@ -46,8 +47,9 @@ impl BatchItem {
 /// What a batch carries when it is decoded: an item the node understood, or the error that item deserves.
 pub type Entry = Result<BatchItem, TabaError>;
 
-/// The reply to one item.
-pub type Outcome = Result<Ack, TabaError>;
+/// The reply to one item: an [`Ack`] for the two-phase writes, the messages taken for a `Take`, the `id` created for a
+/// `FifoPublish`.
+pub type Outcome = Result<Response, TabaError>;
 
 // ---- The schema ------------------------------------------------------------------------------------------------
 
@@ -71,6 +73,10 @@ pub enum Kind {
     Write = 1,
     Visibility = 2,
     Ack = 3,
+    /// A node fetching the messages another one holds (it has no phases).
+    Take = 4,
+    /// The forward of a FIFO publication to the group's primary (it has no phases).
+    FifoPublish = 5,
 }
 
 /// The three phases of a two-phase operation.
@@ -113,7 +119,7 @@ pub struct Item {
     #[prost(string, tag = "5")]
     pub operation_id: String,
     /// Only on `register`, and the one that matches the `kind`.
-    #[prost(oneof = "item::Body", tags = "6, 7, 8")]
+    #[prost(oneof = "item::Body", tags = "6, 7, 8, 10, 11")]
     pub body: Option<item::Body>,
     /// The trace context of the call that asked for the operation; only with OTLP attached.
     #[prost(string, optional, tag = "9")]
@@ -129,7 +135,19 @@ pub mod item {
         Visibility(super::VisibilityRegister),
         #[prost(message, tag = "8")]
         Ack(super::AckRegister),
+        #[prost(message, tag = "10")]
+        Take(super::TakeBody),
+        #[prost(message, tag = "11")]
+        Fifo(Box<super::Record>),
     }
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct TakeBody {
+    #[prost(uint32, tag = "1")]
+    pub max_messages: u32,
+    #[prost(uint64, tag = "2")]
+    pub visibility_timeout: u64,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -211,6 +229,33 @@ pub struct ItemResult {
     pub accepted: bool,
     #[prost(message, optional, tag = "4")]
     pub error: Option<ErrorBody>,
+    /// What a `Take` or a `FifoPublish` answers (the two-phase writes only have the `accepted`).
+    #[prost(oneof = "item_result::Payload", tags = "5, 6")]
+    pub payload: Option<item_result::Payload>,
+}
+
+pub mod item_result {
+    #[derive(Clone, PartialEq, prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag = "5")]
+        Taken(super::Taken),
+        #[prost(message, tag = "6")]
+        Fifo(super::FifoResult),
+    }
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Taken {
+    #[prost(message, repeated, tag = "1")]
+    pub messages: Vec<Record>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct FifoResult {
+    #[prost(string, tag = "1")]
+    pub id: String,
+    #[prost(bool, tag = "2")]
+    pub duplicate: bool,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -336,6 +381,27 @@ fn item_without_trace(request: &Request) -> Option<Item> {
                 })),
                 _ => None,
             },
+            traceparent: None,
+        },
+        Request::Take { topic, request } => Item {
+            kind: Kind::Take as i32,
+            phase: Phase::Unspecified as i32,
+            topic: topic.clone(),
+            id: String::new(),
+            operation_id: String::new(),
+            body: Some(item::Body::Take(TakeBody {
+                max_messages: request.max_messages,
+                visibility_timeout: request.visibility_timeout,
+            })),
+            traceparent: None,
+        },
+        Request::FifoPublish { topic, record } => Item {
+            kind: Kind::FifoPublish as i32,
+            phase: Phase::Unspecified as i32,
+            topic: topic.clone(),
+            id: record.id.clone(),
+            operation_id: String::new(),
+            body: Some(item::Body::Fifo(Box::new(record_of(record)))),
             traceparent: None,
         },
         _ => return None,
@@ -489,6 +555,23 @@ fn request_without_trace(item: Item) -> Result<Request, TabaError> {
                 })
             }),
         },
+        Kind::Take => match body {
+            Some(item::Body::Take(wire)) => Request::Take {
+                topic,
+                request: TakeRequest {
+                    max_messages: wire.max_messages,
+                    visibility_timeout: wire.visibility_timeout,
+                },
+            },
+            _ => return Err(required("body")),
+        },
+        Kind::FifoPublish => match body {
+            Some(item::Body::Fifo(record)) => Request::FifoPublish {
+                topic,
+                record: message_of(*record),
+            },
+            _ => return Err(required("body")),
+        },
         Kind::Unspecified => unreachable!("handled above"),
     })
 }
@@ -542,24 +625,44 @@ fn error_of(body: ErrorBody) -> TabaError {
     error
 }
 
+fn error_result(error: &TabaError) -> ItemResult {
+    ItemResult {
+        status: u32::from(error.status()),
+        error: Some(error_body_of(error)),
+        ..ItemResult::default()
+    }
+}
+
 /// The body of the reply to a batch: one result per item, in the order of the items.
 pub fn encode_results(results: &[Outcome]) -> Vec<u8> {
     BatchReply {
         results: results
             .iter()
             .map(|result| match result {
-                Ok(ack) => ItemResult {
+                Ok(Response::Ack(ack)) => ItemResult {
                     status: 200,
                     operation_id: ack.operation_id.clone(),
                     accepted: ack.accepted,
-                    error: None,
+                    ..ItemResult::default()
                 },
-                Err(error) => ItemResult {
-                    status: u32::from(error.status()),
-                    operation_id: String::new(),
-                    accepted: false,
-                    error: Some(error_body_of(error)),
+                Ok(Response::Taken(taken)) => ItemResult {
+                    status: 200,
+                    payload: Some(item_result::Payload::Taken(Taken {
+                        messages: taken.messages.iter().map(record_of).collect(),
+                    })),
+                    ..ItemResult::default()
                 },
+                Ok(Response::FifoPublished(published)) => ItemResult {
+                    status: 200,
+                    payload: Some(item_result::Payload::Fifo(FifoResult {
+                        id: published.id.clone(),
+                        duplicate: published.duplicate,
+                    })),
+                    ..ItemResult::default()
+                },
+                // Nothing else is an answer to an item of a batch.
+                Ok(_) => error_result(&TabaError::internal()),
+                Err(error) => error_result(error),
             })
             .collect(),
     }
@@ -577,12 +680,21 @@ pub fn decode_results(body: &[u8]) -> Result<Vec<Outcome>, TabaError> {
     Ok(reply
         .results
         .into_iter()
-        .map(|result| match result.error {
-            Some(error) => Err(error_of(error)),
-            None => Ok(Ack {
+        .map(|result| match (result.error, result.payload) {
+            (Some(error), _) => Err(error_of(error)),
+            (None, Some(item_result::Payload::Taken(taken))) => Ok(Response::Taken(TakeResponse {
+                messages: taken.messages.into_iter().map(message_of).collect(),
+            })),
+            (None, Some(item_result::Payload::Fifo(fifo))) => {
+                Ok(Response::FifoPublished(FifoPublished {
+                    id: fifo.id,
+                    duplicate: fifo.duplicate,
+                }))
+            }
+            (None, None) => Ok(Response::Ack(Ack {
                 operation_id: result.operation_id,
                 accepted: result.accepted,
-            }),
+            })),
         })
         .collect())
 }

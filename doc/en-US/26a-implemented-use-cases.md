@@ -4927,6 +4927,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Tests:**
   - `tests/batch.rs::operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations`
   - `tests/batch.rs::with_max_items_1_every_operation_goes_in_a_call_of_its_own`
+  - `tests/batch.rs::fifo_publications_forwarded_to_the_same_node_travel_in_fewer_calls_than_publications`
 
 ---
 
@@ -9388,12 +9389,13 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-CLR-012
 
-**Case:** `POST /cluster/batch` on a real node answers one result per item in order (the error of an item does not touch the others, and an unreadable item is its own error), accepts an empty batch, refuses `application/json` (`415`), a body that is not a batch (`400`) and a batch above `cluster.batch.max-items` (`413`), and the routes of one operation answer `404 route.not-found`
+**Case:** `POST /cluster/batch` on a real node answers one result per item in order (the error of an item does not touch the others, and an unreadable item is its own error), accepts an empty batch, refuses `application/json` (`415`), a body that is not a batch (`400`) and a batch above `cluster.batch.max-items` (`413`), and the routes of one operation (including `take` and the FIFO forward) answer `404 route.not-found`; a `take` and a FIFO forward are items with a result of their own
 **Level:** I
 **Tests:**
   - `tests/batch.rs::the_batch_route_answers_one_result_per_item_and_an_error_in_one_does_not_touch_the_others`
   - `tests/batch.rs::the_batch_route_refuses_what_is_not_protobuf_and_what_is_not_a_batch`
   - `tests/batch.rs::a_batch_with_more_items_than_the_limit_is_refused_whole`
+  - `tests/batch.rs::a_take_and_a_fifo_publication_are_items_of_the_batch_with_a_result_of_their_own`
 
 ---
 

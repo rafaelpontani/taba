@@ -21,6 +21,8 @@ enum Kind {
   KIND_WRITE = 1;       // publication or move to the dead-letter
   KIND_VISIBILITY = 2;  // invisibility (delivery or change)
   KIND_ACK = 3;
+  KIND_TAKE = 4;          // a node fetching the messages another one holds (no phases)
+  KIND_FIFO_PUBLISH = 5;  // the forward of a FIFO publication to the group's primary (no phases)
 }
 
 enum Phase {
@@ -53,9 +55,16 @@ message Item {
     WriteRegister write = 6;
     VisibilityRegister visibility = 7;
     AckRegister ack = 8;
+    TakeBody take = 10;  // reserved number 9 is the traceparent below
+    Record fifo = 11;    // the content, the group and the deduplication id; the id is a placeholder
   }
   // The W3C trace context of the call that asked for the operation; only while OpenTelemetry is on.
   optional string traceparent = 9;
+}
+
+message TakeBody {
+  uint32 max_messages = 1;
+  uint64 visibility_timeout = 2;  // seconds
 }
 
 message WriteRegister {
@@ -101,6 +110,20 @@ message ItemResult {
   string operation_id = 2;
   bool accepted = 3;
   optional ErrorBody error = 4;
+  // What a Take or a FifoPublish answers; the two-phase writes only have `accepted`.
+  oneof payload {
+    Taken taken = 5;
+    FifoResult fifo = 6;
+  }
+}
+
+message Taken {
+  repeated Record messages = 1;
+}
+
+message FifoResult {
+  string id = 1;  // the created message, or the original's on a duplicate
+  bool duplicate = 2;
 }
 
 message ErrorBody {

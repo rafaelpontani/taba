@@ -17,6 +17,8 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 
 | Issue | Status | Found on | Fixed on |
 |---|---|---|---|
+| [A channel burst that does not reach the other node in the hunt](#a-channel-burst-that-does-not-reach-the-other-node-in-the-hunt) | Open | 2026-10-29 | — |
+| [A lost ready signal that the hunt does not correct in time](#a-lost-ready-signal-that-the-hunt-does-not-correct-in-time) | Open | 2026-10-29 | — |
 | [The chaos run: a delivery past the limit and an ack the owner never applied](#the-chaos-run-a-delivery-past-the-limit-and-an-ack-the-owner-never-applied) | Fixed | 2026-10-27 | 2026-10-27 |
 | [A restarted test node that loses its port to another test](#a-restarted-test-node-that-loses-its-port-to-another-test) | Open | 2026-10-26 | — |
 | [A definition offered to a node that was still joining](#a-definition-offered-to-a-node-that-was-still-joining) | Fixed | 2026-10-26 | 2026-10-26 |
@@ -26,6 +28,38 @@ Possible statuses: `Open`, `Fixed`, `Reopened`. The rules for handling intermitt
 | [Rejoining after a symmetric partition](#rejoining-after-a-symmetric-partition) | Fixed | 2026-10-19 | 2026-10-20 |
 | [A healthy channel that does not come back](#a-healthy-channel-that-does-not-come-back) | Fixed | 2026-10-18 | 2026-10-19 |
 | [Lock-order inversion when choosing replicas](#lock-order-inversion-when-choosing-replicas) | Fixed | 2026-10-18 | 2026-10-18 |
+
+## A channel burst that does not reach the other node in the hunt
+
+**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+
+- **Where:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (and, once each, `every_node_has_one_channel_to_each_other_node_and_measures_it` and `two_connections_at_once_end_with_a_single_channel_per_pair`).
+- **Symptom:** in `docker/hang-hunt.sh channel` (8 processes at once) it ends with `waited 30 s for: the burst to reach node 2`, in about 1 process in 14.
+- **Cause:** not identified. It is **not a consequence of the batches**: the same hunt (15 rounds of 8 processes) failed 8 times on the code before them (`ab14fa5`) and 9 times on the code with `take` and the FIFO forward in the batch.
+- **Next step:** read the log of a failing run (`target/hang-hunt-channel/`) and put in order the frames of the burst, as the method of AGENTS.md says for lost deliveries.
+- **Do not:** raise the 30 s of `eventually`.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch; the same rate on the earlier commit. |
+
+## A lost ready signal that the hunt does not correct in time
+
+**Status:** Open · **Found on:** 2026-10-29 · **Fixed on:** —
+
+- **Where:** `tests/replication.rs::a_lost_ready_signal_is_corrected_by_the_periodic_repeat`.
+- **Symptom:** in `docker/hang-hunt.sh replication` (8 processes at once, 15 threads each) it fails in about 3 of 5 processes of each round, in three ways: the node 2 consumes only part of the messages in the 10 s of the wait (`left: 4, right: 9`), or a publication is answered `503 cluster.commit-timeout` or `403 cluster.not-member` (`replication.rs:40`). It passes alone and in the normal run of the suite.
+- **Cause:** not identified. It is **not a consequence of the batches**: the same hunt on the code before them (`ab14fa5`) failed in 19 of 32 processes, on the first batch (`078c11f`) in 13 of 16 and on the code with `take` and the FIFO forward in the batch in 15 of 16; the other 19 tests of the file almost never failed (a few single failures, one test each, in the same rounds). The test loses every `channel` frame, publishes and then waits 10 s (200 × 50 ms of real time) for the repeat of the state; the manual `Clock` does not move, and the heartbeat that repeats the state runs in real time, so the reading that fits (not proven) is that under that load the margin is what is short.
+- **Next step:** read the log of a failing run (`target/hang-hunt-replication/run_*.log`) to see whether the repeat comes late or does not come, and compare the `503` with the quorum of the publication; until then the test is not a signal of a regression under the hunt.
+- **Do not:** raise the 10 s of the wait without knowing which of the two it is.
+
+**History**
+
+| Date | Event |
+|---|---|
+| 2026-10-29 | Found in the hunt that validated the `take` and the FIFO forward in the batch. The same hunt on the two earlier commits gave the same rate, so it was already there. |
 
 ## The chaos run: a delivery past the limit and an ack the owner never applied
 

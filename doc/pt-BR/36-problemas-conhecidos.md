@@ -17,6 +17,8 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 
 | Problema | Status | Achado em | Solução em |
 |---|---|---|---|
+| [Uma rajada do canal que não chega ao outro nó na caça](#uma-rajada-do-canal-que-não-chega-ao-outro-nó-na-caça) | Aberto | 2026-10-29 | — |
+| [Um sinal de pronto perdido que a caça não corrige a tempo](#um-sinal-de-pronto-perdido-que-a-caça-não-corrige-a-tempo) | Aberto | 2026-10-29 | — |
 | [A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou](#a-rodada-de-caos-uma-entrega-além-do-limite-e-um-ack-que-o-dono-nunca-aplicou) | Corrigido | 2026-10-27 | 2026-10-27 |
 | [Um nó de teste reiniciado que perde a porta para outro teste](#um-nó-de-teste-reiniciado-que-perde-a-porta-para-outro-teste) | Aberto | 2026-10-26 | — |
 | [Uma definição oferecida a um nó que ainda estava entrando](#uma-definição-oferecida-a-um-nó-que-ainda-estava-entrando) | Corrigido | 2026-10-26 | 2026-10-26 |
@@ -26,6 +28,38 @@ Status possíveis: `Aberto`, `Corrigido`, `Reaberto`. As regras para tratar test
 | [Reingresso depois de uma partição simétrica](#reingresso-depois-de-uma-partição-simétrica) | Corrigido | 2026-10-19 | 2026-10-20 |
 | [Canal saudável que não volta](#canal-saudável-que-não-volta) | Corrigido | 2026-10-18 | 2026-10-19 |
 | [Inversão de ordem de travas ao escolher réplicas](#inversão-de-ordem-de-travas-ao-escolher-réplicas) | Corrigido | 2026-10-18 | 2026-10-18 |
+
+## Uma rajada do canal que não chega ao outro nó na caça
+
+**Status:** Aberto · **Achado em:** 2026-10-29 · **Solução em:** —
+
+- **Onde:** `tests/channel.rs::each_peer_has_an_out_queue_and_an_in_queue_that_drain` (e, uma vez cada, `every_node_has_one_channel_to_each_other_node_and_measures_it` e `two_connections_at_once_end_with_a_single_channel_per_pair`).
+- **Sintoma:** em `docker/hang-hunt.sh channel` (8 processos ao mesmo tempo) termina com `waited 30 s for: the burst to reach node 2`, em cerca de 1 processo em 14.
+- **Causa:** não identificada. **Não é consequência dos lotes**: a mesma caça (15 rodadas de 8 processos) falhou 8 vezes no código anterior a eles (`ab14fa5`) e 9 vezes no código com o `take` e o repasse da FIFO no lote.
+- **Próximo passo:** ler o log de uma execução que falhou (`target/hang-hunt-channel/`) e pôr em ordem os quadros da rajada, como o método do AGENTS.md diz para entregas perdidas.
+- **Não fazer:** aumentar os 30 s do `eventually`.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote; a mesma taxa no commit anterior. |
+
+## Um sinal de pronto perdido que a caça não corrige a tempo
+
+**Status:** Aberto · **Achado em:** 2026-10-29 · **Solução em:** —
+
+- **Onde:** `tests/replication.rs::a_lost_ready_signal_is_corrected_by_the_periodic_repeat`.
+- **Sintoma:** em `docker/hang-hunt.sh replication` (8 processos ao mesmo tempo, 15 threads cada) falha em cerca de 3 de 5 processos de cada rodada, de três jeitos: o nó 2 consome só parte das mensagens nos 10 s da espera (`left: 4, right: 9`), ou uma publicação responde `503 cluster.commit-timeout` ou `403 cluster.not-member` (`replication.rs:40`). Passa sozinho e na execução normal da suíte.
+- **Causa:** não identificada. **Não é consequência dos lotes**: a mesma caça no código anterior a eles (`ab14fa5`) falhou em 19 de 32 processos, no primeiro lote (`078c11f`) em 13 de 16 e no código com o `take` e o repasse da FIFO no lote em 15 de 16; os outros 19 testes do arquivo quase nunca falharam (algumas falhas isoladas, de um teste cada, nas mesmas rodadas). O teste perde todos os quadros do `channel`, publica e espera 10 s (200 × 50 ms de tempo real) a repetição do estado; o `Clock` manual não anda, e o batimento que repete o estado roda em tempo real, então a leitura que se encaixa (não provada) é que sob essa carga é a margem que falta.
+- **Próximo passo:** ler o log de uma execução que falhou (`target/hang-hunt-replication/run_*.log`) para ver se a repetição chega tarde ou não chega, e comparar o `503` com o quórum da publicação; até lá o teste não é sinal de regressão sob a caça.
+- **Não fazer:** aumentar os 10 s da espera sem saber qual dos dois é.
+
+**Histórico**
+
+| Data | Evento |
+|---|---|
+| 2026-10-29 | Encontrado na caça que validou o `take` e o repasse da FIFO no lote. A mesma caça nos dois commits anteriores deu a mesma taxa, então já estava lá. |
 
 ## A rodada de caos: uma entrega além do limite e um ack que o dono nunca aplicou
 

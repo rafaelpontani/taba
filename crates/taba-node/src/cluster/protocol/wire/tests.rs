@@ -4,7 +4,7 @@ use prost::Message;
 use super::*;
 use crate::cluster::protocol::{
     AckRegisterRequest, MessageRecord, MessageRegisterRequest, OperationRef, Request, Step,
-    VisibilityKind, VisibilityRegisterRequest, WriteKind,
+    TakeRequest, VisibilityKind, VisibilityRegisterRequest, WriteKind,
 };
 
 const OPERATION: &str = "01900000-0000-7000-8000-000000000001";
@@ -90,6 +90,17 @@ fn every_kind() -> Vec<Request> {
             topic: "orders".to_owned(),
             id: MESSAGE.to_owned(),
             step: Step::Rollback(commit()),
+        },
+        Request::Take {
+            topic: "orders".to_owned(),
+            request: TakeRequest {
+                max_messages: 10,
+                visibility_timeout: 30,
+            },
+        },
+        Request::FifoPublish {
+            topic: "orders".to_owned(),
+            record: record(b"fifo"),
         },
     ]
 }
@@ -238,10 +249,18 @@ fn the_results_come_back_in_order_with_the_error_of_each_item() {
         .with_detail("id", ErrorCode::ClusterConflict, "Pending register.");
     conflict.retry_after = Some(5);
     let sent: Vec<Outcome> = vec![
-        Ok(Ack {
+        Ok(Response::Ack(Ack {
             operation_id: OPERATION.to_owned(),
             accepted: true,
-        }),
+        })),
+        Ok(Response::Taken(TakeResponse {
+            messages: vec![record(b"one"), record(b"")],
+        })),
+        Ok(Response::Taken(TakeResponse { messages: vec![] })),
+        Ok(Response::FifoPublished(FifoPublished {
+            id: MESSAGE.to_owned(),
+            duplicate: true,
+        })),
         Err(conflict),
         Err(TabaError::new(
             ErrorCode::MessageNotFound,
@@ -250,7 +269,7 @@ fn the_results_come_back_in_order_with_the_error_of_each_item() {
     ];
     let received = decode_results(&encode_results(&sent)).unwrap();
     assert_eq!(received, sent);
-    assert_eq!(received[1].as_ref().unwrap_err().status(), 409);
+    assert_eq!(received[4].as_ref().unwrap_err().status(), 409);
 }
 
 /// UC: UC-CLR-011

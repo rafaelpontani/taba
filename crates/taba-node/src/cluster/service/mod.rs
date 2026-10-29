@@ -728,12 +728,7 @@ impl ClusterService {
                 .await
                 .map_err(CallError::Remote);
         }
-        if self.rules.batch_max_items > 1
-            && matches!(
-                request,
-                Request::Write { .. } | Request::Visibility { .. } | Request::Ack { .. }
-            )
-        {
+        if self.rules.batch_max_items > 1 && request.is_batchable() {
             return self.call_batched(member, request).await;
         }
         self.call_peer(member, request, self.rules.call_timeout)
@@ -1468,14 +1463,11 @@ impl ClusterService {
         timeout: Duration,
     ) -> Result<Response, CallError> {
         // A message operation has no route of its own between nodes: alone, it goes as a batch of one item.
-        if matches!(
-            request,
-            Request::Write { .. } | Request::Visibility { .. } | Request::Ack { .. }
-        ) {
+        if request.is_batchable() {
             let batch = Request::Batch(vec![Ok(wire::BatchItem::traced(request))]);
             return match tokio::time::timeout(timeout, self.transport.call(to, batch)).await {
                 Ok(Ok(Response::Batch(mut results))) if results.len() == 1 => match results.pop() {
-                    Some(Ok(ack)) => Ok(Response::Ack(ack)),
+                    Some(Ok(response)) => Ok(response),
                     Some(Err(error)) => Err(CallError::Remote(error)),
                     None => unreachable!("one result was checked"),
                 },

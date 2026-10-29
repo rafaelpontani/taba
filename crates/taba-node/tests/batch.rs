@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 
 use common::cluster::TestCluster;
 use common::real::{RealCluster, cert_dir, client_of, ip_of};
-use taba_node::cluster::protocol::wire::{self, BatchReply, BatchRequest, Item, Kind, Phase};
+use taba_node::cluster::protocol::wire::{
+    self, BatchReply, BatchRequest, Item, Kind, Phase, Record, TakeBody, item,
+};
 
 const OPERATION: &str = "01900000-0000-7000-8000-000000000001";
 const MESSAGE: &str = "01900000-0000-7000-8000-000000000002";
@@ -233,6 +235,8 @@ async fn the_batch_route_refuses_what_is_not_protobuf_and_what_is_not_a_batch() 
         format!("/cluster/topics/orders/messages/{MESSAGE}/register"),
         format!("/cluster/topics/orders/messages/{MESSAGE}/ack/commit"),
         format!("/cluster/topics/orders/messages/{MESSAGE}/visibility/rollback"),
+        "/cluster/topics/orders/messages/take".to_owned(),
+        "/cluster/topics/orders/fifo/publish".to_owned(),
     ] {
         let old = client
             .post(format!("https://{addr}{path}"))
@@ -278,5 +282,127 @@ async fn a_batch_with_more_items_than_the_limit_is_refused_whole() {
     assert_eq!(refused.status(), 413);
     let body: Value = refused.json().await.unwrap();
     assert_eq!(body["code"], "message.too-large");
+    cluster.shutdown().await;
+}
+
+/// UC: UC-CLR-012
+#[tokio::test(flavor = "multi_thread")]
+async fn a_take_and_a_fifo_publication_are_items_of_the_batch_with_a_result_of_their_own() {
+    let certs = cert_dir();
+    let mut cluster = RealCluster::start(0, Some(certs.path())).await;
+    cluster.add_node(&[]).await;
+    cluster.add_node(&[]).await;
+    cluster.settled(2).await;
+    let addr = cluster.cluster_addr(1);
+    let client = member_client(certs.path(), 2);
+
+    let batch = BatchRequest {
+        items: vec![
+            // A topic this cluster does not have: the node answers each item with its own error.
+            Item {
+                kind: Kind::Take as i32,
+                phase: Phase::Unspecified as i32,
+                topic: "nothing".to_owned(),
+                id: String::new(),
+                operation_id: String::new(),
+                body: Some(item::Body::Take(TakeBody {
+                    max_messages: 5,
+                    visibility_timeout: 30,
+                })),
+                traceparent: None,
+            },
+            Item {
+                kind: Kind::FifoPublish as i32,
+                phase: Phase::Unspecified as i32,
+                topic: "nothing".to_owned(),
+                id: MESSAGE.to_owned(),
+                operation_id: String::new(),
+                body: Some(item::Body::Fifo(Box::new(Record {
+                    id: MESSAGE.to_owned(),
+                    topic: "nothing".to_owned(),
+                    group_id: Some("g".to_owned()),
+                    ..Record::default()
+                }))),
+                traceparent: None,
+            },
+            // A take without its body is an error of that item.
+            Item {
+                kind: Kind::Take as i32,
+                phase: Phase::Unspecified as i32,
+                topic: "nothing".to_owned(),
+                id: String::new(),
+                operation_id: String::new(),
+                body: None,
+                traceparent: None,
+            },
+        ],
+    };
+    let response = protobuf(&client, addr, batch.encode_to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let reply = BatchReply::decode(response.bytes().await.unwrap()).unwrap();
+    assert_eq!(reply.results.len(), 3);
+    for (n, result) in reply.results.iter().enumerate() {
+        assert!(
+            result.error.is_some(),
+            "item {n} has its own error: {result:?}"
+        );
+    }
+    assert_eq!(
+        reply.results[2].error.as_ref().unwrap().code,
+        "validation.required"
+    );
+    cluster.shutdown().await;
+}
+
+/// UC: UC-ESC-039
+#[tokio::test(flavor = "multi_thread")]
+async fn fifo_publications_forwarded_to_the_same_node_travel_in_fewer_calls_than_publications() {
+    let cluster = TestCluster::start(3).await;
+    let node = cluster.node(1);
+    let created = node
+        .client
+        .post(node.client_url("/topics"))
+        .json(&json!({"name": "orders", "type": "queue", "fifo": true}))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(created.status(), 201);
+    cluster.network.clear_calls();
+
+    let url = node.client_url("/topics/orders/messages");
+    let mut tasks = Vec::new();
+    for n in 0..240 {
+        let client = node.client.clone();
+        let url = format!("{url}?groupId=g{}", n % 60);
+        tasks.push(tokio::spawn(async move {
+            client
+                .post(url)
+                .header("content-type", "application/json")
+                .body(json!({ "n": n }).to_string())
+                .send()
+                .await
+                .expect("request")
+                .status()
+        }));
+    }
+    for task in tasks {
+        assert_eq!(task.await.unwrap(), 201);
+    }
+
+    let forwarded = cluster.network.count("fifo-publish");
+    let operations =
+        forwarded + cluster.network.count("write-register") + cluster.network.count("write-commit");
+    let batches = cluster.network.count("batch");
+    assert!(
+        forwarded >= 40,
+        "node 1 forwards the groups it does not own: {forwarded}"
+    );
+    assert!(
+        batches < operations,
+        "{operations} operations went in {batches} calls"
+    );
     cluster.shutdown().await;
 }

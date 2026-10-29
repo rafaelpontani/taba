@@ -269,9 +269,10 @@ impl Replication {
                 format!("The batch has more than {max_items} items (`cluster.batch.max-items`)."),
             ));
         }
-        let mut results = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let result = match entry {
+        // At once, like the calls would have been on their own: an item that waits for other nodes (a FIFO publication, a
+        // `Take`) does not hold back the rest of its batch. The results keep the order of the items.
+        let served = entries.into_iter().map(|entry| async move {
+            match entry {
                 Ok(item) => {
                     // The operation continues the trace of the call that asked for it, if it came with one.
                     let span = item.traceparent.as_ref().and_then(|traceparent| {
@@ -286,16 +287,21 @@ impl Replication {
                         None => served.await,
                     };
                     match served {
-                        Ok(Response::Ack(ack)) => Ok(ack),
+                        Ok(
+                            response @ (Response::Ack(_)
+                            | Response::Taken(_)
+                            | Response::FifoPublished(_)),
+                        ) => Ok(response),
                         Ok(_) => Err(TabaError::internal()),
                         Err(error) => Err(error),
                     }
                 }
                 Err(error) => Err(error),
-            };
-            results.push(result);
-        }
-        Ok(Response::Batch(results))
+            }
+        });
+        Ok(Response::Batch(
+            futures_util::future::join_all(served).await,
+        ))
     }
 
     /// Serves a call from another member (the member check was already done).

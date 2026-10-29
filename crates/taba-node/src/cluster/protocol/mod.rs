@@ -152,8 +152,8 @@ pub enum Request {
         id: String,
         step: Step<AckRegisterRequest>,
     },
-    /// `POST /cluster/batch`: several operations of the two-phase writes above (`Write`, `Visibility` and `Ack`, in any
-    /// phase) in one call, in protobuf. Each entry has its own result in [`Response::Batch`], in the same order. On the
+    /// `POST /cluster/batch`: several operations (the two-phase writes `Write`, `Visibility` and `Ack` in any phase, `Take`
+    /// and `FifoPublish`) in one call, in protobuf. Each entry has its own result in [`Response::Batch`], in the same order. On the
     /// sending side every entry is `Ok`; on the receiving side an entry that could not be read is the error of its item.
     Batch(Vec<wire::Entry>),
     /// `GET /cluster/topics/{id}/idle`
@@ -267,6 +267,19 @@ impl Request {
             },
             other => other.clone(),
         }
+    }
+
+    /// Whether the call between nodes travels in a [`Request::Batch`] (as one of its items) instead of in a route of its
+    /// own: the two-phase writes, `Take` and the forward of a FIFO publication.
+    pub const fn is_batchable(&self) -> bool {
+        matches!(
+            self,
+            Request::Write { .. }
+                | Request::Visibility { .. }
+                | Request::Ack { .. }
+                | Request::Take { .. }
+                | Request::FifoPublish { .. }
+        )
     }
 
     /// A short name, for logs and to check what passed through the in-memory network.
