@@ -1,0 +1,118 @@
+// The calls between Taba nodes, in protobuf (doc 18). Written by hand; `crates/taba-node/src/cluster/protocol/wire/`
+// is the same schema with `prost`'s derive, and the golden vectors in `crates/taba-node/tests/wire/` keep the two
+// together. A number of a field is never reused; a field that is no longer sent is `reserved`.
+//
+// Sent as the body of `POST /cluster/batch` with `Content-Type: application/x-protobuf`.
+syntax = "proto3";
+
+package taba.cluster;
+
+message BatchRequest {
+  repeated Item items = 1;
+}
+
+// One result per item, in the order of the items.
+message BatchReply {
+  repeated ItemResult results = 1;
+}
+
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_WRITE = 1;       // publication or move to the dead-letter
+  KIND_VISIBILITY = 2;  // invisibility (delivery or change)
+  KIND_ACK = 3;
+}
+
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_REGISTER = 1;
+  PHASE_COMMIT = 2;
+  PHASE_ROLLBACK = 3;
+}
+
+enum WriteMode {
+  WRITE_MODE_UNSPECIFIED = 0;
+  WRITE_MODE_PUBLISH = 1;
+  WRITE_MODE_DEAD_LETTER = 2;
+}
+
+enum VisibilityMode {
+  VISIBILITY_MODE_UNSPECIFIED = 0;
+  VISIBILITY_MODE_DELIVERY = 1;
+  VISIBILITY_MODE_CHANGE = 2;
+}
+
+message Item {
+  Kind kind = 1;
+  Phase phase = 2;
+  string topic = 3;
+  string id = 4;            // the message the operation is about
+  string operation_id = 5;
+  // Only on `register`, and the one that matches `kind`.
+  oneof body {
+    WriteRegister write = 6;
+    VisibilityRegister visibility = 7;
+    AckRegister ack = 8;
+  }
+  // The W3C trace context of the call that asked for the operation; only while OpenTelemetry is on.
+  optional string traceparent = 9;
+}
+
+message WriteRegister {
+  string coordinator_id = 1;
+  WriteMode mode = 2;
+  Record message = 3;
+  optional string source_topic = 4;  // only on dead-letter
+}
+
+message VisibilityRegister {
+  string coordinator_id = 1;
+  VisibilityMode mode = 2;
+  uint64 invisible_until_ms = 3;  // absolute instant, milliseconds since the Unix epoch
+  string receipt_token = 4;
+  optional uint32 delivery_count = 5;
+}
+
+message AckRegister {
+  string coordinator_id = 1;
+  string receipt_token = 2;
+  optional uint64 delete_at_ms = 3;  // FIFO queue only
+  bool discard = 4;
+}
+
+// The message as the nodes exchange it.
+message Record {
+  string id = 1;
+  string topic = 2;
+  bytes body = 3;
+  string content_type = 4;
+  optional string group_id = 5;
+  optional string deduplication_id = 6;
+  uint32 delivery_count = 7;
+  optional uint64 invisible_until_ms = 8;
+  optional string receipt_token = 9;
+  optional uint64 dead_lettered_ms = 10;
+  optional string dead_letter_reason = 11;
+  optional uint64 delete_at_ms = 12;
+}
+
+message ItemResult {
+  uint32 status = 1;  // the HTTP status the item would have had as a call of its own
+  string operation_id = 2;
+  bool accepted = 3;
+  optional ErrorBody error = 4;
+}
+
+message ErrorBody {
+  string code = 1;  // a code of the error catalogue (doc 19)
+  string message = 2;
+  repeated ErrorItem details = 3;
+  optional uint64 retry_after = 4;
+  optional string required = 5;
+}
+
+message ErrorItem {
+  string field = 1;
+  string code = 2;
+  string message = 3;
+}

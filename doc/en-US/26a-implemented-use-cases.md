@@ -35,7 +35,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `CNV` | Common API conventions (format, headers, errors, status) | 14 | 3 |
 | `CNT` | Connectors | 35 | 0 |
 | `CLI` | `taba-cli`, the client command line | 36 | 0 |
-| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 29 | 9 |
+| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 31 | 9 |
 | `ANE` | Hash ring, blocks and roles | 8 | 4 |
 | `DEF` | Topic and token definition replicated in the cluster | 26 | 8 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 18 | 13 |
@@ -54,7 +54,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `DEV` | One-node profile (the former development mode) | 3 | 4 |
 | `SEG` | Ports, mutual TLS and cluster certificates | 20 | 0 |
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 44 | 7 |
-| `CLR` | Contract of the cluster routes (DTOs and common rules) | 8 | 2 |
+| `CLR` | Contract of the cluster routes (DTOs and common rules) | 10 | 2 |
 | `CFG` | Configuration and startup validations | 11 | 2 |
 | `BKP` | Optional S3 backup | 45 | 0 |
 | `CHS` | Chaos with a verified history | 5 | 0 |
@@ -4919,6 +4919,29 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-ESC-039
+
+**Case:** Message operations (`register`, `commit`, `rollback`) waiting for the same node travel in **fewer calls than operations**: they go in batches on `POST /cluster/batch`, and with `cluster.batch.max-items=1` each goes in a call of its own
+**Then:** every publication is still `201`; the operation counts and the batch counts of the simulated network show it.
+**Level:** C
+**Tests:**
+  - `tests/batch.rs::operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations`
+  - `tests/batch.rs::with_max_items_1_every_operation_goes_in_a_call_of_its_own`
+
+---
+
+### UC-ESC-040
+
+**Case:** A batch closes when a send slot opens, with what is waiting, up to `cluster.batch.max-items` and the soft `cluster.batch.max-bytes`: one that reaches neither limit leaves as it is, the limits only cut the excess (which leaves in the next batch, in order), an item above the byte limit goes alone, and an operation whose caller gave up is not sent
+**Level:** U
+**Tests:**
+  - `src/cluster/service/batch/tests.rs::a_batch_that_reaches_neither_limit_leaves_with_everything_that_was_waiting`
+  - `src/cluster/service/batch/tests.rs::the_item_limit_cuts_the_batch_and_the_rest_waits_for_the_next_slot`
+  - `src/cluster/service/batch/tests.rs::the_byte_limit_is_soft_an_item_above_it_goes_alone_and_never_stays_behind`
+  - `src/cluster/service/batch/tests.rs::an_operation_whose_caller_gave_up_is_not_sent`
+
+---
+
 
 ## ANE: Hash ring, blocks and roles
 
@@ -9340,6 +9363,37 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 **Level:** C  
 **Tests:**
   - `tests/conditions.rs::every_node_answers_its_status_and_a_healthy_cluster_reports_ok`
+
+---
+
+### UC-CLR-011
+
+**Case:** The batch of message operations (`BatchRequest`/`BatchReply`, protobuf) comes back as it went for every kind of operation and phase, with the body of each message byte for byte (all 256 values and line breaks), the trace context of each item, and a field a later version adds ignored; a body that is not a batch, or a reply that is not a batch reply, is refused, and an item of an unknown kind is an error of that item only; the body of a decoded message does not keep the batch buffer alive
+**Level:** U
+**Tests:**
+  - `src/cluster/protocol/wire/tests.rs::every_operation_of_a_batch_comes_back_as_it_went`
+  - `src/cluster/protocol/wire/tests.rs::a_body_with_every_byte_value_and_line_breaks_is_kept_byte_for_byte`
+  - `src/cluster/protocol/wire/tests.rs::a_decoded_body_does_not_keep_the_batch_alive`
+  - `src/cluster/protocol/wire/tests.rs::an_empty_batch_is_valid_and_has_no_items`
+  - `src/cluster/protocol/wire/tests.rs::a_body_that_is_not_a_batch_is_an_error_of_the_whole_call`
+  - `src/cluster/protocol/wire/tests.rs::an_item_of_an_unknown_kind_is_an_error_of_that_item_only`
+  - `src/cluster/protocol/wire/tests.rs::a_field_a_later_version_adds_is_ignored`
+  - `src/cluster/protocol/wire/tests.rs::the_trace_context_of_each_item_travels_with_it`
+  - `src/cluster/protocol/wire/tests.rs::the_results_come_back_in_order_with_the_error_of_each_item`
+  - `src/cluster/protocol/wire/tests.rs::a_reply_that_is_not_a_batch_reply_is_refused`
+  - `src/cluster/protocol/wire/tests.rs::a_request_that_is_not_a_message_operation_goes_out_as_an_unspecified_item`
+  - `src/cluster/protocol/wire/tests.rs::the_bytes_of_a_batch_are_the_golden_vector`
+
+---
+
+### UC-CLR-012
+
+**Case:** `POST /cluster/batch` on a real node answers one result per item in order (the error of an item does not touch the others, and an unreadable item is its own error), accepts an empty batch, refuses `application/json` (`415`), a body that is not a batch (`400`) and a batch above `cluster.batch.max-items` (`413`), and the routes of one operation answer `404 route.not-found`
+**Level:** I
+**Tests:**
+  - `tests/batch.rs::the_batch_route_answers_one_result_per_item_and_an_error_in_one_does_not_touch_the_others`
+  - `tests/batch.rs::the_batch_route_refuses_what_is_not_protobuf_and_what_is_not_a_batch`
+  - `tests/batch.rs::a_batch_with_more_items_than_the_limit_is_refused_whole`
 
 ---
 

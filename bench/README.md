@@ -74,3 +74,7 @@ bench/test.sh                                          # Docker: the smoke profi
 ```
 
 The CI job `bench` runs only `--dry-run` and the Node.js tests. Benchmarks are not run on GitHub runners.
+
+## The trend of the publish path
+
+`bench/cluster-trend.sh <cores per node> <connections per node> <image>...` compares builds of Taba itself with one node (factor 1) and three nodes (factor 3), `wrk` inside a Docker network, mutual TLS in the cluster ([doc 38](../doc/en-US/38-benchmarks.md#the-trend-of-the-publish-path-one-node-and-three-nodes)). A result from one machine only compares with another measured in the same run.

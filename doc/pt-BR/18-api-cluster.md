@@ -13,7 +13,9 @@ fontes: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/c
 
 **Porta:** `cluster.port` (8081), **só** os outros nós. **Autenticação:** TLS mútuo ([14-seguranca.md](14-seguranca.md)); uma conexão sem certificado aceito falha **no handshake**.
 
-O protocolo existe em duas formas que são **a mesma coisa**: o tipo `Request` (`cluster/protocol`) e a rota HTTP. O `Transport` real as traduz para HTTP; a rede em memória dos testes entrega o tipo direto.
+O protocolo existe em duas formas que são **a mesma coisa**: o tipo `Request` (`cluster/protocol`) e a rota HTTP. O `Transport` real as traduz para HTTP; a rede em memória dos testes entrega o tipo direto (e, nos testes que pedem, passa cada chamada pela forma HTTP para provar o formato).
+
+**Formatos.** As operações sobre mensagens trafegam em **protobuf** (`Content-Type: application/x-protobuf`, o esquema em [`crates/taba-node/proto/taba-cluster.proto`](https://github.com/rafaelpontani/taba/blob/main/crates/taba-node/proto/taba-cluster.proto)); as demais rotas `/cluster/*` ainda são JSON (e NDJSON nas listas de sincronização) até passarem a protobuf também. Um corpo de outro tipo numa rota que é protobuf: `415 media.unsupported`.
 
 ## Regras comuns
 
@@ -48,7 +50,7 @@ Extraído de `cluster/protocol/http.rs`, o tradutor entre `Request` e HTTP.
 |---|---|
 | **Membros e canal** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
 | **Definições** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
-| **Mensagens** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
+| **Mensagens** | `POST /cluster/batch` (o `register`, `commit` e `rollback` das escritas, invisibilidades e acks, protobuf); `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
 | **Sincronização e recuperação** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/excluded`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover`; `POST /cluster/topics/{topic}/messages/restore`; `POST /cluster/topics/{topic}/messages/dead`; `GET /cluster/restore`; `POST /cluster/restore/decided`; `POST /cluster/restore/force` |
 | **Observabilidade** | `GET /cluster/status`; `GET /cluster/stats/topics`; `GET /cluster/stats/topics/{topic}/groups` |
 | **Backup em S3** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved`; `GET /cluster/backup/status`, `GET /cluster/departed` |
@@ -119,15 +121,23 @@ Cada definição tem um **dono** no anel (o primeiro nó ativo na posição de `
 
 ## Mensagens
 
-Todas levam o `topic` e o `id` no caminho e o `operationId` no corpo. `register` vai a **todos** os responsáveis; `commit` é decidido por quórum e enviado às demais em segundo plano.
+### `POST /cluster/batch`: as operações sobre mensagens
 
-| Rota | `register` (corpo) |
+As operações do protocolo de duas fases sobre mensagens (publicar e mover para a dead-letter, invisibilidade, ack) vão em **uma só rota**, em **lotes**: o corpo é um `BatchRequest` (`repeated Item items`) e a resposta um `BatchReply` (`repeated ItemResult results`) com **um resultado por item, na mesma ordem**. Um item diz o seu `kind` (`write`, `visibility`, `ack`), a sua `phase` (`register`, `commit`, `rollback`), o `topic`, o `id` da mensagem e o `operationId`; o `register` leva ainda o corpo do seu tipo. Um resultado tem o `status` que o item teria como chamada própria, o `operationId`, `accepted` e, se falhou, o erro com o mesmo `code` e `message` do [doc 19](19-erros-e-limites.md): **o erro de um item não toca os outros**, e um item de tipo que o nó não conhece é erro desse item.
+
+Quando o lote fecha: cada nó tem uma fila de operações e 4 vagas de envio; quando há uma operação esperando **e** uma vaga livre, o lote fecha naquele instante com o que estiver na fila (até `cluster.batch.max-items` e `cluster.batch.max-bytes`, [doc 22](22-configuracao.md)). Não há temporizador: com pouca carga cada operação vai sozinha, com muita a fila cresce enquanto as vagas estão ocupadas e o lote seguinte sai cheio. Quem envia confere que o `operationId` de cada resultado é o do seu item, e uma resposta que não confere conta como falha da chamada inteira.
+
+Erros da chamada inteira: `415 media.unsupported` (não é protobuf), `400 validation.failed` (um corpo que não é um lote), `413 message.too-large` (mais que `cluster.batch.max-items` itens, ou corpo maior que `cluster.batch.max-bytes` mais uma mensagem) e os comuns (`403 cluster.not-member`, `503 cluster.node-syncing`). O corpo de cada mensagem segue como os bytes com que chegou (sem base64, sem escape).
+
+Os campos de cada tipo, como antes:
+
+| Tipo | `register` (corpo) |
 |---|---|
-| `…/messages/{id}/register` | `MessageRegisterRequest`: `operationId`, `coordinatorId`, `kind` (`publish` ou `dead-letter`), `message` (`MessageRecord`), `sourceTopic` (só `dead-letter`). O **mesmo par de rotas** faz o movimento para a dead-letter (cria lá e remove da origem, com o mesmo `id`) |
-| `…/messages/{id}/visibility/register` | `VisibilityRegisterRequest`: `kind` (`delivery`/`change`), `invisibleUntil` (**absoluto**), `receiptToken`, `deliveryCount` (só `delivery`). O coordenador é sempre o **dono** |
-| `…/messages/{id}/ack/register` | `AckRegisterRequest`: `receiptToken` (deve conferir), `deleteAt` (só FIFO) e `discard` (o primário do grupo descartando uma duplicata na liberação da restauração: não há recibo a conferir) |
+| `write` | `MessageRegisterRequest`: `operationId`, `coordinatorId`, `kind` (`publish` ou `dead-letter`), `message` (`MessageRecord`), `sourceTopic` (só `dead-letter`). O **mesmo tipo** faz o movimento para a dead-letter (cria lá e remove da origem, com o mesmo `id`) |
+| `visibility` | `VisibilityRegisterRequest`: `kind` (`delivery`/`change`), `invisibleUntil` (**absoluto**), `receiptToken`, `deliveryCount` (só `delivery`). O coordenador é sempre o **dono** |
+| `ack` | `AckRegisterRequest`: `receiptToken` (deve conferir), `deleteAt` (só FIFO) e `discard` (o primário do grupo descartando uma duplicata na liberação da restauração: não há recibo a conferir) |
 
-`commit` e `rollback` de cada um recebem `OperationRef` (`operationId`) e respondem `Ack`. Erros: `404 message.not-found`, `409 cluster.conflict` (já há registro pendente, ou a mensagem já está invisível), `409 message.stale-receipt`.
+`commit` e `rollback` de cada um só dizem o `operationId` e respondem `accepted`. Erros: `404 message.not-found`, `409 cluster.conflict` (já há registro pendente, ou a mensagem já está invisível), `409 message.stale-receipt`.
 
 | Rota | Faz |
 |---|---|

@@ -210,6 +210,9 @@ Exportadas por **cada nó**, sempre, via OTLP e em `GET /metrics`. A lista abaix
 | `taba.write.retries` | counter | `{retry}` | Retries por fase e por nó de destino. |
 | `taba.write.rollbacks` | counter | `{rollback}` | Rollbacks enviados por falha em fechar o quórum (fase 1). |
 | `taba.write.commit_timeouts` | counter | `{timeout}` | Vezes que write.commit.timeout esgotou sem commit confirmado numa réplica. |
+| `taba.cluster.batch.items` | histogram | `{item}` | Operações em cada lote enviado a outro nó. |
+| `taba.cluster.batch.bytes` | histogram | `By` | Tamanho dos corpos de cada lote enviado a outro nó (os corpos das mensagens, não o envelope). |
+| `taba.cluster.batch.wait` | histogram | `s` | Quanto uma operação esperou na fila de um nó até o seu lote sair. |
 | `taba.write.received` | counter | `{message}` | Registros, commits e rollbacks recebidos. |
 | `taba.write.pending` | updowncounter | `{message}` | Registros pendentes (sem commit). |
 | `taba.write.pending.expired` | counter | `{message}` | Registros descartados por expiração (sem commit nem rollback). |

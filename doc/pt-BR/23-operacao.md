@@ -66,6 +66,8 @@ Se um nó não termina o drain em `drain.timeout` mais 30 s, o processo **para n
 
 > As versões **não** são compatíveis entre si: a API do cluster é interna e não tem garantia de compatibilidade entre versões ([18-api-cluster.md](18-api-cluster.md)); o que uma versão nova acrescenta entre nós só é enviado aos nós que anunciaram essa versão. O `membersVersion` sobe a cada mudança de membros, o que é normal numa atualização.
 
+> ⚠️ **A versão que introduziu o lote (`POST /cluster/batch`, [D186](30-decisoes.md)) não é alcançada por uma atualização em rolagem a partir de uma anterior.** As operações sobre mensagens entre nós mudaram de rota e de formato (protobuf), sem compatibilidade: um nó novo não entende as rotas de uma operação, e um antigo não tem a rota de lote, então enquanto houver nós das duas versões no cluster as escritas que precisam de uma réplica da outra versão falham. **Pare o cluster inteiro e suba a versão nova com os mesmos volumes** (o cluster retoma do disco, veja "Todos os nós caíram"). A partir da versão seguinte, vale de novo a regra acima.
+
 O `stop_grace_period` (Compose) ou `terminationGracePeriodSeconds` (Kubernetes, 30 s por padrão) precisa ser **maior que `drain.timeout`** (25 s). O Compose do repositório usa **40 s**. Senão o processo é morto antes de registrar o resultado.
 
 ## Retirar um nó de propósito (drain)

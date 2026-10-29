@@ -13,7 +13,9 @@ sources: [crates/taba-node/src/cluster/protocol/backup.rs, crates/taba-node/src/
 
 **Port:** `cluster.port` (8081), **only** the other nodes. **Authentication:** mutual TLS ([14-security.md](14-security.md)); a connection without an accepted certificate fails **at the handshake**.
 
-The protocol exists in two forms that are **the same thing**: the `Request` type (`cluster/protocol`) and the HTTP route. The real `Transport` translates them to HTTP; the in-memory network of the tests delivers the type directly.
+The protocol exists in two forms that are **the same thing**: the `Request` type (`cluster/protocol`) and the HTTP route. The real `Transport` translates them to HTTP; the in-memory network of the tests delivers the type directly (and, in the tests that ask for it, passes every call through the HTTP form to prove the format).
+
+**Formats.** The operations on messages travel in **protobuf** (`Content-Type: application/x-protobuf`, the schema in [`crates/taba-node/proto/taba-cluster.proto`](https://github.com/rafaelpontani/taba/blob/main/crates/taba-node/proto/taba-cluster.proto)); the rest of the `/cluster/*` routes are still JSON (and NDJSON in the synchronization lists) until they move to protobuf too. A body of another type on a route that is protobuf: `415 media.unsupported`.
 
 ## Common rules
 
@@ -48,7 +50,7 @@ Extracted from `cluster/protocol/http.rs`, the translator between `Request` and 
 |---|---|
 | **Members and channel** | `GET /cluster/nodes`; `POST /cluster/nodes/join`, `register`, `unregister`, `commit`, `rollback`; `POST /cluster/vote-remove`; `GET /cluster/channel` (WebSocket) |
 | **Definitions** | `POST /cluster/definitions/propose`, `apply`; `GET /cluster/topics`, `GET /cluster/tokens`, `GET /cluster/definitions/tombstones`; `GET /cluster/topics/{id}/idle` |
-| **Messages** | `POST /cluster/topics/{topic}/messages/{id}/register`, `commit`, `rollback`; `…/{id}/visibility/register`, `commit`, `rollback`; `…/{id}/ack/register`, `commit`, `rollback`; `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
+| **Messages** | `POST /cluster/batch` (the `register`, `commit` and `rollback` of the writes, invisibilities and acks, protobuf); `POST /cluster/topics/{topic}/messages/take`; `POST /cluster/topics/{topic}/fifo/publish`; `POST /cluster/topics/{topic}/prune` |
 | **Synchronization and recovery** | `GET /cluster/blocks/{id}/ids`, `GET /cluster/blocks/{id}/excluded`, `GET /cluster/blocks/{id}/messages`, `GET /cluster/blocks/{id}/messages/{messageId}`; `GET`/`POST /cluster/message-loss`; `DELETE /cluster/message-loss/{topic}/{id}`; `POST /cluster/messages/recover`; `POST /cluster/topics/{topic}/messages/restore`; `POST /cluster/topics/{topic}/messages/dead`; `GET /cluster/restore`; `POST /cluster/restore/decided`; `POST /cluster/restore/force` |
 | **Observability** | `GET /cluster/status`; `GET /cluster/stats/topics`; `GET /cluster/stats/topics/{topic}/groups` |
 | **S3 backup** | `POST /cluster/backup/flush`, `POST /cluster/backup/stop`, `POST /cluster/backup/saved`; `GET /cluster/backup/status`, `GET /cluster/departed` |
@@ -119,15 +121,23 @@ Each definition has an **owner** on the ring (the first active node at the posit
 
 ## Messages
 
-All carry the `topic` and the `id` in the path and the `operationId` in the body. `register` goes to **all** the responsible nodes; `commit` is decided by quorum and sent to the others in the background.
+### `POST /cluster/batch`: the message operations
 
-| Route | `register` (body) |
+The operations of the two-phase protocol on messages (publish and move to the dead-letter, invisibility, ack) go in **one route**, in **batches**: the body is a `BatchRequest` (`repeated Item items`) and the reply a `BatchReply` (`repeated ItemResult results`) with **one result per item, in the same order**. An item says its `kind` (`write`, `visibility`, `ack`), its `phase` (`register`, `commit`, `rollback`), the `topic`, the message `id` and the `operationId`; the `register` also carries the body of its kind. A result has the `status` the item would have had as a call of its own, the `operationId`, `accepted` and, on failure, the error with the same `code` and `message` of [doc 19](19-errors-and-limits.md): **an error in one item does not touch the others**, and an item of a kind the node does not know is an error of that item.
+
+When the batch closes: each node has a queue of operations and 4 send slots; when an operation is waiting **and** a slot is free, the batch closes at that instant with what is in the queue (up to `cluster.batch.max-items` and `cluster.batch.max-bytes`, [doc 22](22-configuration.md)). There is no timer: with little load each operation goes alone, with a lot the queue grows while the slots are busy and the next batch leaves full. The sender checks that the `operationId` of each result is the one of its item, and a reply that does not match counts as a failure of the whole call.
+
+Errors of the whole call: `415 media.unsupported` (not protobuf), `400 validation.failed` (a body that is not a batch), `413 message.too-large` (more than `cluster.batch.max-items` items, or a body larger than `cluster.batch.max-bytes` plus one message), and the common ones (`403 cluster.not-member`, `503 cluster.node-syncing`). The body of every message is kept as the bytes it came with (no base64, no escaping).
+
+The fields of each kind, as before:
+
+| Kind | `register` (body) |
 |---|---|
-| `…/messages/{id}/register` | `MessageRegisterRequest`: `operationId`, `coordinatorId`, `kind` (`publish` or `dead-letter`), `message` (`MessageRecord`), `sourceTopic` (`dead-letter` only). The **same pair of routes** does the move to the dead-letter (creates there and removes from the source, with the same `id`) |
-| `…/messages/{id}/visibility/register` | `VisibilityRegisterRequest`: `kind` (`delivery`/`change`), `invisibleUntil` (**absolute**), `receiptToken`, `deliveryCount` (`delivery` only). The coordinator is always the **owner** |
-| `…/messages/{id}/ack/register` | `AckRegisterRequest`: `receiptToken` (must match), `deleteAt` (FIFO only) and `discard` (the group's primary dropping a duplicate at the release of the restoration: there is no receipt to check) |
+| `write` | `MessageRegisterRequest`: `operationId`, `coordinatorId`, `kind` (`publish` or `dead-letter`), `message` (`MessageRecord`), `sourceTopic` (`dead-letter` only). The **same kind** does the move to the dead-letter (creates there and removes from the source, with the same `id`) |
+| `visibility` | `VisibilityRegisterRequest`: `kind` (`delivery`/`change`), `invisibleUntil` (**absolute**), `receiptToken`, `deliveryCount` (`delivery` only). The coordinator is always the **owner** |
+| `ack` | `AckRegisterRequest`: `receiptToken` (must match), `deleteAt` (FIFO only) and `discard` (the group's primary dropping a duplicate at the release of the restoration: there is no receipt to check) |
 
-`commit` and `rollback` of each one receive `OperationRef` (`operationId`) and answer `Ack`. Errors: `404 message.not-found`, `409 cluster.conflict` (a pending register already exists, or the message is already invisible), `409 message.stale-receipt`.
+`commit` and `rollback` of each one only say the `operationId` and answer `accepted`. Errors: `404 message.not-found`, `409 cluster.conflict` (a pending register already exists, or the message is already invisible), `409 message.stale-receipt`.
 
 | Route | Does |
 |---|---|

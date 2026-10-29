@@ -15,10 +15,12 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+mod batch;
 mod probe;
 
 use super::backup::{BackupPort, StartupDecision, not_configured};
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
+use super::protocol::wire;
 use super::protocol::{
     Ack, DefinitionApply, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
     Request, Response, UnregisterReason,
@@ -96,6 +98,12 @@ pub struct ClusterRules {
     /// the state signals, in place of the channel's heartbeat.
     pub keepalive_interval: Duration,
     pub call_timeout: Duration,
+    /// `cluster.batch.max-items`: operations in one call to a node; `1` turns the batch off.
+    pub batch_max_items: usize,
+    /// `cluster.batch.max-bytes`: the soft size limit of the body of a batch (an item above it goes alone).
+    pub batch_max_bytes: usize,
+    /// `message.max-bytes`: the largest item a batch can carry, which the receiver allows on top of `batch_max_bytes`.
+    pub message_max_bytes: usize,
     pub join_timeout: Duration,
     /// `cluster.channel.reconnect.retries`: consecutive calls to the channel that fail before the node
     /// opens the exclusion vote on the peer.
@@ -189,6 +197,9 @@ impl ClusterRules {
                 .unwrap_or(Duration::from_millis(50)),
             keepalive_interval,
             call_timeout: CALL_TIMEOUT,
+            batch_max_items: config.cluster.batch_max_items.max(1) as usize,
+            batch_max_bytes: usize::try_from(config.cluster.batch_max_bytes).unwrap_or(usize::MAX),
+            message_max_bytes: usize::try_from(config.messages.max_bytes).unwrap_or(usize::MAX),
             join_timeout: JOIN_TIMEOUT,
             reconnect_retries: config.cluster.reconnect_retries.map_or(3, |n| n.max(1)),
             reconnect_backoff: config
@@ -315,6 +326,8 @@ pub struct ClusterService {
     backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
     /// The versions of the other members and the upgrade in progress (doc 23, rolling update).
     upgrade: super::upgrade::Upgrade,
+    /// The queues of message operations on their way to the other nodes (`cluster.batch.*`).
+    batcher: batch::Batcher,
 }
 
 /// The nodes that left by drain, as `Request::Departed` answers (and as `GET /nodes` reads them).
@@ -443,6 +456,7 @@ impl ClusterService {
             reads: OnceLock::new(),
             backup: OnceLock::new(),
             upgrade: super::upgrade::Upgrade::default(),
+            batcher: batch::Batcher::default(),
         })
     }
 
@@ -713,6 +727,14 @@ impl ClusterService {
                 .handle(&self.self_caller(), request)
                 .await
                 .map_err(CallError::Remote);
+        }
+        if self.rules.batch_max_items > 1
+            && matches!(
+                request,
+                Request::Write { .. } | Request::Visibility { .. } | Request::Ack { .. }
+            )
+        {
+            return self.call_batched(member, request).await;
         }
         self.call_peer(member, request, self.rules.call_timeout)
             .await
@@ -1445,6 +1467,25 @@ impl ClusterService {
         request: Request,
         timeout: Duration,
     ) -> Result<Response, CallError> {
+        // A message operation has no route of its own between nodes: alone, it goes as a batch of one item.
+        if matches!(
+            request,
+            Request::Write { .. } | Request::Visibility { .. } | Request::Ack { .. }
+        ) {
+            let batch = Request::Batch(vec![Ok(wire::BatchItem::traced(request))]);
+            return match tokio::time::timeout(timeout, self.transport.call(to, batch)).await {
+                Ok(Ok(Response::Batch(mut results))) if results.len() == 1 => match results.pop() {
+                    Some(Ok(ack)) => Ok(Response::Ack(ack)),
+                    Some(Err(error)) => Err(CallError::Remote(error)),
+                    None => unreachable!("one result was checked"),
+                },
+                Ok(Ok(_)) => Err(CallError::Unreachable(
+                    "the reply to the batch has another shape".into(),
+                )),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(CallError::Timeout),
+            };
+        }
         match tokio::time::timeout(timeout, self.transport.call(to, request)).await {
             Ok(result) => result,
             Err(_) => Err(CallError::Timeout),

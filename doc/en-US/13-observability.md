@@ -210,6 +210,9 @@ Exported by **each node**, always, through OTLP and on `GET /metrics`. The list 
 | `taba.write.retries` | counter | `{retry}` | Retries per phase and per destination node. |
 | `taba.write.rollbacks` | counter | `{rollback}` | Rollbacks sent for failing to close the quorum (phase 1). |
 | `taba.write.commit_timeouts` | counter | `{timeout}` | Times write.commit.timeout ran out without a confirmed commit on a replica. |
+| `taba.cluster.batch.items` | histogram | `{item}` | Operations in each batch sent to another node. |
+| `taba.cluster.batch.bytes` | histogram | `By` | Size of the bodies in each batch sent to another node (the messages' bodies, not the envelope). |
+| `taba.cluster.batch.wait` | histogram | `s` | How long an operation waited in the queue of a node before its batch left. |
 | `taba.write.received` | counter | `{message}` | Registers, commits and rollbacks received. |
 | `taba.write.pending` | updowncounter | `{message}` | Pending registers (without commit). |
 | `taba.write.pending.expired` | counter | `{message}` | Registers discarded by expiry (without commit or rollback). |

@@ -9,6 +9,7 @@ mod messages;
 mod recovery;
 mod signals;
 mod vote;
+pub mod wire;
 
 pub use backup::{BACKUP_SAVED_MAX_ITEMS, BackupSaved, BackupSavedItem};
 pub use definitions::{
@@ -151,6 +152,10 @@ pub enum Request {
         id: String,
         step: Step<AckRegisterRequest>,
     },
+    /// `POST /cluster/batch`: several operations of the two-phase writes above (`Write`, `Visibility` and `Ack`, in any
+    /// phase) in one call, in protobuf. Each entry has its own result in [`Response::Batch`], in the same order. On the
+    /// sending side every entry is `Ok`; on the receiving side an entry that could not be read is the error of its item.
+    Batch(Vec<wire::Entry>),
     /// `GET /cluster/topics/{id}/idle`
     Idle { topic_id: String },
     /// `POST /cluster/topics/{topic}/messages/take`
@@ -314,6 +319,7 @@ impl Request {
                 step: Step::Rollback(_),
                 ..
             } => "ack-rollback",
+            Request::Batch(_) => "batch",
             Request::Idle { .. } => "idle",
             Request::Take { .. } => "take",
             Request::Vote(_) => "vote",
@@ -351,6 +357,8 @@ impl Request {
 pub enum Response {
     Members(MemberTable),
     Ack(Ack),
+    /// The results of a [`Request::Batch`], one per entry and in the same order.
+    Batch(Vec<wire::Outcome>),
     /// A definition's change as the owner decided it (response of `propose` and `apply`).
     Definition(DefinitionApply),
     /// A stretch of `GET /cluster/topics` or `/cluster/tokens`.

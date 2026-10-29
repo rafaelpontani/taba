@@ -80,6 +80,8 @@ pub static PARAMS: &[Param] = &[
     p("cluster.channel.queue.max-age", None),
     p("cluster.vote.quorum-percent", Some("51")),
     p("cluster.vote.min-voters", Some("2")),
+    p("cluster.batch.max-items", Some("1000")),
+    p("cluster.batch.max-bytes", Some("8MB")),
     p("cluster.freezing.duration", None),
     p("cluster.entry-address", None),
     p("cluster.advertise-addresses", None),

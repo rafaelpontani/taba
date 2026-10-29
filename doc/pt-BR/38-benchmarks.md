@@ -4,7 +4,7 @@ resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark 
 tipo: guia
 status: parcial
 verificado-em: 2026-10-28 @ 2447d5e
-fontes: [bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
+fontes: [bench/cluster-trend.sh, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
 # Benchmarks
@@ -28,6 +28,10 @@ bench/run.sh --report-only bench/results/<pasta>
 ```
 
 `--cpus` e `--memory` sobrescrevem o limite de cada servidor. No Windows roda no Git Bash com o Docker Desktop. `Ctrl+C` remove os contêineres e os volumes.
+
+## A tendência do caminho de publicação: um nó e três nós
+
+`bench/cluster-trend.sh <núcleos por nó> <conexões por nó> <imagem>...` mede **só o Taba**, para comparar duas versões dele (antes e depois de uma mudança), com um nó (`replication.factor=1`) e com três nós (fator 3), os mesmos núcleos por nó, o `wrk` espalhado pelos nós dentro de uma rede do Docker e a configuração de produção (mTLS no cluster, o token raiz do `taba init`). Imprime, por rodada, o total de publicações por segundo, o p50 e o p99 de cada nó e as falhas (`non2xx`), e a CPU de cada nó. `BODY_BYTES`, `ROUNDS`, `SECONDS_PER_ROUND` e `NODES` mudam o tamanho da mensagem, as rodadas, a duração delas e quais tamanhos rodam. Como em todo este documento, o resultado de uma máquina só se compara com outro medido **na mesma execução**.
 
 ## Como a comparação é mantida justa
 

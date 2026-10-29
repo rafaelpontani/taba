@@ -30,7 +30,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `LIM` | Rate limit e IP do cliente | 2 | 13 |
 | `PAG` | Paginação | 1 | 8 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 3 | 14 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 29 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 9 | 31 |
 | `ANE` | Anel de hash, blocos e papéis | 3 | 8 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 7 | 24 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 12 | 18 |
@@ -46,7 +46,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `DRN` | Parada e modo drain | 2 | 19 |
 | `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 0 | 3 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 6 | 41 |
-| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 8 |
+| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 2 | 10 |
 | `CFG` | Configuração e validações de partida | 1 | 10 |
 | `BNC` | Benchmark comparativo local (`bench/run.sh`) | 1 | 3 |
 

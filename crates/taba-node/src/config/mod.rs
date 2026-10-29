@@ -317,6 +317,10 @@ pub struct Cluster {
     pub message_loss_ttl: Option<Duration>,
     pub recovery_timeout: Option<Duration>,
     pub reunion_interval: Option<Duration>,
+    /// `cluster.batch.max-items`: operations in one call between two nodes; `1` turns the batch off.
+    pub batch_max_items: u32,
+    /// `cluster.batch.max-bytes`: the soft size limit of the body of a batch.
+    pub batch_max_bytes: u64,
     pub sync: ClusterSync,
     pub restore: ClusterRestore,
 }
@@ -678,6 +682,12 @@ impl Config {
         }
         if cluster.vote_min_voters == 0 {
             problems.push("cluster.vote.min-voters must be 1 or more".into());
+        }
+        if cluster.batch_max_items == 0 {
+            problems.push("cluster.batch.max-items must be 1 or more".into());
+        }
+        if cluster.batch_max_bytes == 0 {
+            problems.push("cluster.batch.max-bytes must be greater than zero".into());
         }
         if cluster.restore.grace.is_zero() {
             problems.push("cluster.restore.grace must be greater than zero".into());
@@ -1067,6 +1077,8 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
         message_loss_ttl: s.opt("cluster.message-loss.ttl")?,
         recovery_timeout: s.opt("cluster.recovery.timeout")?,
         reunion_interval: s.opt("cluster.reunion.interval")?,
+        batch_max_items: s.get("cluster.batch.max-items")?,
+        batch_max_bytes: s.get::<Bytes>("cluster.batch.max-bytes")?.0,
         sync: ClusterSync {
             stream_max_items: s.opt("cluster.sync.stream.max-items")?,
             stream_max_bytes: s

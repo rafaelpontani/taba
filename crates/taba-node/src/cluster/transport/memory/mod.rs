@@ -303,13 +303,24 @@ impl MemoryNetwork {
     }
 
     /// Chooses the destination, applies the programmed failures and returns who serves.
-    fn route(&self, from: &str, to: &PeerAddr, request: &'static str) -> Result<Route, CallError> {
+    ///
+    /// `requests` are the kinds of the call: one for an ordinary call and one per item for a batch, which is recorded
+    /// as the calls its items would have been, and fails or slows down as a whole when any of its items is of a kind
+    /// the test programmed to fail or to slow down.
+    fn route(
+        &self,
+        from: &str,
+        to: &PeerAddr,
+        requests: &[&'static str],
+    ) -> Result<Route, CallError> {
         let mut state = self.lock();
-        state.calls.push(Call {
-            from: from.to_owned(),
-            to: to.clone(),
-            request,
-        });
+        for request in requests {
+            state.calls.push(Call {
+                from: from.to_owned(),
+                to: to.clone(),
+                request,
+            });
+        }
         let target = match state.balancers.get(to).cloned() {
             Some(backends) => {
                 let live: Vec<&PeerAddr> = backends
@@ -341,15 +352,17 @@ impl MemoryNetwork {
                 "no route from {from} to {target}"
             )));
         }
-        if let Some(left) = state
-            .lose_kind
-            .get_mut(&(target.host.clone(), request.to_owned()))
-            && *left > 0
-        {
-            *left -= 1;
-            return Err(CallError::Unreachable(format!(
-                "call {request} to {target} lost"
-            )));
+        for request in requests {
+            if let Some(left) = state
+                .lose_kind
+                .get_mut(&(target.host.clone(), (*request).to_owned()))
+                && *left > 0
+            {
+                *left -= 1;
+                return Err(CallError::Unreachable(format!(
+                    "call {request} to {target} lost"
+                )));
+            }
         }
         if let Some(left) = state.lose_next.get_mut(&target.host)
             && *left > 0
@@ -363,11 +376,17 @@ impl MemoryNetwork {
             )));
         };
         let delay = state.delay
-            + state.delay_kind.get(request).copied().unwrap_or_default()
-            + state
-                .delay_host_kind
-                .get(&(target.host.clone(), request.to_owned()))
-                .copied()
+            + requests
+                .iter()
+                .map(|request| {
+                    state.delay_kind.get(*request).copied().unwrap_or_default()
+                        + state
+                            .delay_host_kind
+                            .get(&(target.host.clone(), (*request).to_owned()))
+                            .copied()
+                            .unwrap_or_default()
+                })
+                .max()
                 .unwrap_or_default();
         let reply_lost = state
             .lost_replies
@@ -482,7 +501,15 @@ impl Transport for MemoryTransport {
         request: Request,
     ) -> BoxFuture<'a, Result<Response, CallError>> {
         Box::pin(async move {
-            let route = self.network.route(&self.local, to, request.name())?;
+            let kinds: Vec<&'static str> = match &request {
+                Request::Batch(entries) if !entries.is_empty() => entries
+                    .iter()
+                    .map(|entry| entry.as_ref().map_or("batch", |item| item.request.name()))
+                    .chain(std::iter::once("batch"))
+                    .collect(),
+                other => vec![other.name()],
+            };
+            let route = self.network.route(&self.local, to, &kinds)?;
             if !route.delay.is_zero() {
                 tokio::time::sleep(route.delay).await;
             }
@@ -515,7 +542,7 @@ impl Transport for MemoryTransport {
                 delay,
                 silent,
                 ..
-            } = self.network.route(&self.local, to, "channel")?;
+            } = self.network.route(&self.local, to, &["channel"])?;
             if !delay.is_zero() {
                 tokio::time::sleep(delay).await;
             }

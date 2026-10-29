@@ -30,7 +30,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `LIM` | Rate limit and client IP | 2 | 13 |
 | `PAG` | Pagination | 1 | 8 |
 | `CNV` | Common API conventions (format, headers, errors, status) | 3 | 14 |
-| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 29 |
+| `ESC` | Write: register + commit, quorum, rollback, commit ceiling | 9 | 31 |
 | `ANE` | Hash ring, blocks and roles | 3 | 8 |
 | `DEF` | Topic and token definition replicated in the cluster | 7 | 24 |
 | `ENT` | Delivery on the owner: ready list, `take`, long polling | 12 | 18 |
@@ -46,7 +46,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 | `DRN` | Stop and drain mode | 2 | 19 |
 | `DEV` | One-node profile (the former development mode) | 0 | 3 |
 | `OPS` | Observability (OpenTelemetry), statistics, metrics and health | 6 | 41 |
-| `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 8 |
+| `CLR` | Contract of the cluster routes (DTOs and common rules) | 2 | 10 |
 | `CFG` | Configuration and startup validations | 1 | 10 |
 | `BNC` | Local comparative benchmark (`bench/run.sh`) | 1 | 3 |
 

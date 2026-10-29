@@ -106,8 +106,9 @@ crates/taba-node/src/
                      backup (store, keys, segment, journal, db: the `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)
-                     channel drain health members protocol recovery replication restore
-                     service state sync tls transport (http, memory) upgrade vote volatile
+                     channel drain health members protocol (wire: the protobuf of the calls) recovery
+                     replication restore service (batch) state sync tls transport (http, memory)
+                     upgrade vote volatile
   http/              auth backup client_ip cluster_api common forward messages metrics observe
                      nodes openapi operations ratelimit tokens topic_stats topics
   telemetry/         histogram metrics otlp process prometheus trace

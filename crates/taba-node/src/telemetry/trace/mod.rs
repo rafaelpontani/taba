@@ -167,6 +167,17 @@ pub fn inject(headers: &mut Vec<(String, String)>) {
     }
 }
 
+/// The `traceparent` of the current span, if it belongs to a trace (only while an OTLP pipeline is attached): what an
+/// operation in a batch carries so the node that serves it continues the trace.
+pub fn current_traceparent() -> Option<String> {
+    let mut headers = Vec::new();
+    inject(&mut headers);
+    headers
+        .into_iter()
+        .find(|(name, _)| name == "traceparent")
+        .map(|(_, value)| value)
+}
+
 /// The span of a call that arrived from another node. It is only born if the call carried a `traceparent`
 /// (came from an operation with a trace); background ones, like the heartbeat, generate no span.
 pub fn inbound_span(name: &str, headers: &[(String, String)]) -> Option<Span> {

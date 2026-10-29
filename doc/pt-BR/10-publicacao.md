@@ -64,6 +64,12 @@ Só o primário decide o que é entregável. Um quórum formado por secundário 
 - **Distribuidor:** o coordenador casa os prefixos e executa **este mesmo procedimento uma vez por fila destino**, com cópias de `id` próprio. As cópias são independentes.
 - **FIFO:** o nó que recebeu **repassa ao primário do grupo**, que gera o `id` monotônico, deduplica e coordena; o quórum inclui **primário e secundário**.
 
+## Entre nós: lotes
+
+Com fator maior que 1, cada publicação faz chamadas aos outros nós responsáveis: o `register` e, depois da decisão, o `commit`. Essas chamadas não vão uma a uma: **as operações que esperam o mesmo nó vão juntas** em `POST /cluster/batch`, em protobuf ([18-api-cluster.md](18-api-cluster.md)). O coordenador não sabe: continua chamando uma vez por operação, com as mesmas tentativas e os mesmos erros, e o lote fica por baixo dessa chamada.
+
+Um lote fecha quando uma vaga de envio abre (cada nó tem 4), com o que estiver esperando, até `cluster.batch.max-items` e o `cluster.batch.max-bytes` brando ([22-configuracao.md](22-configuracao.md)). Não há temporizador nem espera para encher: com pouca carga cada operação vai sozinha, na hora; com muita, a fila cresce enquanto as vagas estão ocupadas e o lote seguinte sai cheio. O `commit` de uma publicação e o `register` da seguinte caem no mesmo lote quando coincidem. Cada item tem o seu resultado: a falha de uma operação não toca as outras do lote, e a falha da chamada inteira (rede, prazo) faz cada operação se repetir por conta própria, num lote seguinte.
+
 ## Num nó só
 
 No perfil de um nó (fator 1) o nó é o primário de tudo e o quórum vale 1: registro e commit acontecem só nele, sem réplicas, sem repetição entre nós e sem rollback por falta de quórum.

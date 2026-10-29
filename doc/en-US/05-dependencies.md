@@ -33,7 +33,7 @@ Language **Rust**, edition 2024, async runtime **tokio**. The workspace has a si
 | Networks and IPs | `ipnet` | `operations.allowed-ips`, `client-ip.trusted-proxies` (CIDR ranges) |
 | Disk | `fs4` | Free disk space (`diskFreeBytes`) |
 | Logs and traces | `tracing`, `tracing-subscriber` (`json`, `env-filter`), `tracing-opentelemetry` | `text`, `color` or `json` format on `stdout` |
-| OpenTelemetry | `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp` (`http-proto` and `grpc-tonic`), `opentelemetry-appender-tracing`, `opentelemetry-proto`, `prost`, `tonic` | Traces and logs through the SDK; **OTLP metrics are assembled by hand** with `opentelemetry-proto`, because the SDK does not accept aggregated data from outside |
+| OpenTelemetry | `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp` (`http-proto` and `grpc-tonic`), `opentelemetry-appender-tracing`, `opentelemetry-proto`, `prost`, `tonic` | Traces and logs through the SDK; **OTLP metrics are assembled by hand** with `opentelemetry-proto`, because the SDK does not accept aggregated data from outside. `prost` also writes the protobuf of the calls between nodes (`cluster/protocol/wire`), with its derive and no `protoc` in the build |
 
 **Tests only** (`[dev-dependencies]`): `reqwest` with `json` and `tempfile` (a temporary folder per test).
 
