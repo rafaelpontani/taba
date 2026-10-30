@@ -22,5 +22,8 @@ jobs:
           persist-credentials: false
       - name: Contract tests (all connectors)
         run: connectors/contract/run.sh
+      # O test.sh usa o cache do Maven (driver-api do OMB e o conector Java) que o build.sh preenche.
+      - name: Build the OpenMessaging Benchmark driver
+        run: connectors/omb/build.sh
       - name: OpenMessaging Benchmark driver against a node
         run: connectors/omb/test.sh
