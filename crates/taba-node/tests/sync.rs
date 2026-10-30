@@ -624,7 +624,7 @@ async fn the_load_is_the_union_of_the_lists_of_the_sources_not_their_intersectio
         let messages = messages_of(node);
         let view = messages.queue_view("orders").unwrap();
         let request = taba_node::engine::messages::PublishRequest {
-            body: br#"{"so":"no-1"}"#.to_vec(),
+            body: br#"{"so":"no-1"}"#.to_vec().into(),
             ..Default::default()
         };
         let (meta, body) = messages.draft_publish(&view, &request).unwrap();

@@ -1,0 +1,2 @@
+# Padrão do Taba: a durabilidade vem da réplica em memória; storage.db.synchronous = NORMAL.
+TABA_STORAGE_DB_SYNCHRONOUS=NORMAL

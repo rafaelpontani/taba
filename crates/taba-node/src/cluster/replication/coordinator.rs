@@ -103,6 +103,9 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
     if total == 0 || total < quorum {
         return Err(quorum_unavailable());
     }
+    if total == 1 {
+        return run_single(service, plan).await;
+    }
     let plan = Arc::new(plan);
     let (events_tx, mut events) = mpsc::unbounded_channel();
     let (decision_tx, decision_rx) = watch::channel(Decision::Pending);
@@ -212,6 +215,74 @@ async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), Taba
         }
     }
     Err(commit_timeout())
+}
+
+/// A single responsible node (`replication.factor` 1, or a cluster of one node): it is the primary and the
+/// whole quorum, so its register **is** the decision. Same outcome as the general path, without a task per
+/// node, channels or waiting for a decision: register, then commit, on the caller's task. Only a commit
+/// that does not go through at the first attempt goes to the background insistence of the general path.
+/// Erased to `dyn` for the same reason as [`owner_task`].
+fn run_single(
+    service: &Arc<ClusterService>,
+    plan: Plan,
+) -> Pin<Box<dyn Future<Output = Result<(), TabaError>> + Send + '_>> {
+    Box::pin(run_single_work(service, plan))
+}
+
+async fn run_single_work(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaError> {
+    let owner = &plan.owners[0];
+    if let Err(error) = trace::traced(
+        trace::peer_span("taba.write.register", &owner.node_id, false),
+        service.call_member_retrying(owner, plan.register.clone()),
+    )
+    .await
+    {
+        if error.is_network() {
+            count_retry(service, "register", owner);
+        }
+        trace::durability_event();
+        service.telemetry().registry.add(&WRITE_ROLLBACKS, &[], 1.0);
+        tracing::error!(
+            confirmed = 0,
+            quorum = 1,
+            "operation aborted (rollback): the quorum did not close"
+        );
+        return Err(match error {
+            CallError::Remote(error) if error.status() < 500 => error,
+            _ => quorum_unavailable(),
+        });
+    }
+    let registered = match trace::traced(
+        trace::peer_span("taba.write.commit", &owner.node_id, false),
+        service.call_member(owner, plan.commit.clone()),
+    )
+    .await
+    {
+        Ok(_) => return Ok(()),
+        Err(CallError::Remote(error)) if error.code == ErrorCode::ClusterOperationUnknown => false,
+        Err(CallError::Remote(error)) if error.status() < 500 => {
+            tracing::error!(%error, "commit refused by a quorum node after the decision");
+            return Err(commit_timeout());
+        }
+        Err(_) => {
+            count_retry(service, "commit", owner);
+            true
+        }
+    };
+    let (events_tx, mut events) = mpsc::unbounded_channel();
+    let service = service.clone();
+    tokio::spawn(
+        async move { commit_until_done(&service, &plan, 0, &events_tx, registered).await }
+            .in_current_span(),
+    );
+    match events.recv().await {
+        Some(Event::Committed(_)) => Ok(()),
+        Some(Event::CommitFailed(_, error)) => {
+            tracing::error!(%error, "commit refused by a quorum node after the decision");
+            Err(commit_timeout())
+        }
+        _ => Err(commit_timeout()),
+    }
 }
 
 /// The work of a responsible node: register, wait for the decision and commit (or rollback).

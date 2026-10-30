@@ -153,6 +153,13 @@ pub struct Pagination {
     pub max_limit: u32,
 }
 
+/// The limits of the batch routes (`api.batch.*`): items and bytes of one request.
+#[derive(Debug, Clone)]
+pub struct Batch {
+    pub max_messages: u32,
+    pub max_bytes: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Ports {
     pub api: u16,
@@ -317,6 +324,10 @@ pub struct Cluster {
     pub message_loss_ttl: Option<Duration>,
     pub recovery_timeout: Option<Duration>,
     pub reunion_interval: Option<Duration>,
+    /// `cluster.batch.max-items`: operations in one call between two nodes; `1` turns the batch off.
+    pub batch_max_items: u32,
+    /// `cluster.batch.max-bytes`: the soft size limit of the body of a batch.
+    pub batch_max_bytes: u64,
     pub sync: ClusterSync,
     pub restore: ClusterRestore,
 }
@@ -458,6 +469,7 @@ pub struct ClientIp {
 pub struct Config {
     pub ports: Ports,
     pub pagination: Pagination,
+    pub batch: Batch,
     pub secrets_dir: PathBuf,
     pub tls: Tls,
     pub auth: Auth,
@@ -573,6 +585,15 @@ impl Config {
                     .into(),
             );
         }
+        let batch = Batch {
+            max_messages: s.get("api.batch.max-messages")?,
+            max_bytes: s.get::<Bytes>("api.batch.max-bytes")?.0,
+        };
+        if batch.max_messages == 0 || batch.max_bytes == 0 {
+            problems.push(
+                "api.batch.max-messages and api.batch.max-bytes must be greater than zero".into(),
+            );
+        }
 
         // Security: secrets folder, cluster TLS and root token
         let secrets_dir: PathBuf = PathBuf::from(s.get::<String>("secrets.dir")?);
@@ -678,6 +699,12 @@ impl Config {
         }
         if cluster.vote_min_voters == 0 {
             problems.push("cluster.vote.min-voters must be 1 or more".into());
+        }
+        if cluster.batch_max_items == 0 {
+            problems.push("cluster.batch.max-items must be 1 or more".into());
+        }
+        if cluster.batch_max_bytes == 0 {
+            problems.push("cluster.batch.max-bytes must be greater than zero".into());
         }
         if cluster.restore.grace.is_zero() {
             problems.push("cluster.restore.grace must be greater than zero".into());
@@ -838,6 +865,7 @@ impl Config {
         Ok(Config {
             ports,
             pagination,
+            batch,
             secrets_dir,
             tls,
             auth,
@@ -1067,6 +1095,8 @@ fn cluster_config(s: &Source) -> Result<Cluster, ConfigError> {
         message_loss_ttl: s.opt("cluster.message-loss.ttl")?,
         recovery_timeout: s.opt("cluster.recovery.timeout")?,
         reunion_interval: s.opt("cluster.reunion.interval")?,
+        batch_max_items: s.get("cluster.batch.max-items")?,
+        batch_max_bytes: s.get::<Bytes>("cluster.batch.max-bytes")?.0,
         sync: ClusterSync {
             stream_max_items: s.opt("cluster.sync.stream.max-items")?,
             stream_max_bytes: s

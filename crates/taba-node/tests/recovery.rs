@@ -51,7 +51,7 @@ fn record(cluster: &TestCluster, n: u64, text: &str) -> MessageRecord {
     MessageRecord {
         id: id::new_at(now + n),
         topic: TOPIC.into(),
-        body: json!({ "text": text }).to_string().into_bytes(),
+        body: json!({ "text": text }).to_string().into_bytes().into(),
         content_type: "application/json".into(),
         group_id: None,
         deduplication_id: None,

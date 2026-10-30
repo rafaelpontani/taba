@@ -3,7 +3,7 @@ title: Security
 summary: Who trusts whom in Taba — client API tokens, mutual TLS between nodes and certificate rotation, rate limit, client IP, operations routes without authentication and the known risks.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/src/secrets, crates/taba-node/src/cluster/tls, crates/taba-node/src/http/auth, crates/taba-node/src/http/ratelimit, crates/taba-node/src/http/client_ip, crates/taba-node/src/engine/tokens, crates/taba-node/src/core/token]
 ---
 
@@ -151,12 +151,13 @@ Limit of requests **per node**, **token bucket** per category and per key. **Off
 
 | Category | Routes | Key |
 |---|---|---|
-| **Publishing** (`ratelimit.publish.rps`) | `POST /topics/{topic}/messages` | `id` of the valid token (the root has the counter `root`); without a valid token, the **client IP** |
-| **Consumption** (`ratelimit.consume.rps`) | `GET` of messages, `PUT .../visibility`, `DELETE` (ack) | same |
+| **Publishing** (`ratelimit.publish.rps`) | `POST /topics/{topic}/messages` and `POST .../messages/batch` | `id` of the valid token (the root has the counter `root`); without a valid token, the **client IP** |
+| **Consumption** (`ratelimit.consume.rps`) | `GET` of messages, `PUT .../visibility`, `DELETE` (ack), `POST .../messages/ack` and `POST .../messages/visibility` | same |
 | **Administrative** (`ratelimit.admin.rps`) | `/topics*` and `/tokens*` | same |
 | **Operations** (`ratelimit.ops.rps`) | `/health/cluster?scope=cluster` and `/metrics/topics` | always the **IP** |
 
 - Exceeded: `429 rate-limit.exceeded` with `Retry-After`.
+- A request **in batch** counts as **one** call, like a `GET` that delivers many messages ([D189](30-decisions.md)).
 - **Exempt:** `/health/live`, `/health/ready`, `/metrics` and `/health/cluster?scope=node`: a `429` on `/health/ready` would make the load balancer remove the node by mistake.
 - **Counters are local to each node**: a client spread over N nodes can reach N times the limit (accepted).
 - **Order:** authentication (local) → rate limit → refusal by drain/synchronization → authorization. The `401` also counts **per IP**, so whoever tries to guess tokens is not left without a limit; a `403` counts on the token.
@@ -204,7 +205,7 @@ So a collector inside the infrastructure scrapes `:9090/metrics` with no credent
 
 ## Sources and evidence
 
-- `secrets/mod.rs` (`taba init`, `cert generate`, `token generate`), `cluster/tls/mod.rs` (acceptance, presentation, reload), `http/auth` (`authenticate`, `authorize`), `core/token` (format and hash), `engine/tokens`, `http/ratelimit`, `http/client_ip`, `cluster/service` (identity by IP).
+- `secrets/mod.rs` (`taba init`, `cert generate`, `token generate`), `cluster/tls/mod.rs` (acceptance, presentation, reload), `http/auth` (`identify`, `permit`; `authenticate`, `authorize`), `core/token` (format and hash), `engine/tokens`, `http/ratelimit`, `http/client_ip`, `cluster/service` (identity by IP).
 - The "Verified example" table was run against a 3-node cluster started by `docker-compose.yml`.
 - Use cases: UC-AUT (authentication and tokens), UC-LIM (rate limit and IP), UC-SEG (ports, mutual TLS and certificates); see [26a](26a-implemented-use-cases.md). Tests: `tests/auth.rs`, `ratelimit.rs`, `mtls.rs`, `secrets.rs`.
 - History: `06-api.md` (8.0), `06a-api-cliente.md` (8.1.3), `12-limites-api.md`.

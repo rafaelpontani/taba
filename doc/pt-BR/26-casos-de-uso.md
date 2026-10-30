@@ -124,6 +124,7 @@ Os dois são **mantidos à mão**, nas duas línguas: um caso novo entra como ca
 | `CFG` | Configuração e validações de partida |
 | `BKP` | Backup opcional em S3: envio, restauração, batimento, evicção, flush e parada |
 | `CHS` | Caos com histórico verificado: falhas sorteadas, o verificador do histórico e as falhas da rede |
+| `BNC` | Benchmark comparativo local: o plano do `bench/run.sh`, as pastas dos sistemas e o relatório |
 
 (O número de casos por área e a cobertura estão em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md).)
 

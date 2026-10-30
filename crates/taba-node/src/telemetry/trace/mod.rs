@@ -71,6 +71,9 @@ pub fn annotate_messaging<'a>(
     tags: impl IntoIterator<Item = (&'a String, &'a String)>,
 ) {
     let span = Span::current();
+    if span.is_disabled() {
+        return;
+    }
     span.record("messaging.system", MESSAGING_SYSTEM);
     span.record("messaging.destination.name", topic);
     span.record("messaging.operation.type", operation);
@@ -162,6 +165,17 @@ pub fn inject(headers: &mut Vec<(String, String)>) {
     if context.span().span_context().is_valid() {
         TraceContextPropagator::new().inject_context(&context, &mut Out(headers));
     }
+}
+
+/// The `traceparent` of the current span, if it belongs to a trace (only while an OTLP pipeline is attached): what an
+/// operation in a batch carries so the node that serves it continues the trace.
+pub fn current_traceparent() -> Option<String> {
+    let mut headers = Vec::new();
+    inject(&mut headers);
+    headers
+        .into_iter()
+        .find(|(name, _)| name == "traceparent")
+        .map(|(_, value)| value)
 }
 
 /// The span of a call that arrived from another node. It is only born if the call carried a `traceparent`

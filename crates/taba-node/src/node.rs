@@ -35,7 +35,7 @@ use crate::http::auth::Auth;
 use crate::http::client_ip::ClientIpRules;
 use crate::http::observe::{self, Observer};
 use crate::http::ratelimit::RateLimiter;
-use crate::http::{self, AppState};
+use crate::http::{self, AppShared, AppState};
 use crate::storage;
 use crate::storage::backup::{BackupDb, ObjectStore, Prefixed, S3Settings, S3Store};
 use crate::storage::db::NodeDb;
@@ -532,7 +532,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         (None, _) => None,
     };
     let backup = backup_parts.as_ref().map(|(backup, _)| backup.clone());
-    let state = AppState {
+    let state = AppState::from(AppShared {
         clock: deps.clock.clone(),
         node: shared.clone(),
         backup: backup.clone(),
@@ -551,7 +551,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
         telemetry: telemetry.clone(),
         stats_rules: Arc::new(StatsRules::from_config(&config)),
         tls: tls.clone(),
-    };
+    });
 
     let otlp = match &config.telemetry.otlp {
         Some(settings) => {
@@ -602,10 +602,7 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
                      port: u16,
                      tls: Option<Arc<rustls::ServerConfig>>| {
         let cancel = cancel.clone();
-        let observer = Observer {
-            telemetry: telemetry.clone(),
-            port,
-        };
+        let observer = Observer::new(telemetry.clone(), port);
         match tls {
             Some(config) => tasks.spawn(observe::serve_tls(
                 listener, router, observer, cancel, config,

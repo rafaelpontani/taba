@@ -178,6 +178,10 @@ An invalid `BaseUrl` only fails (`TabaException` with `client.invalid-config`) w
 
 In tests, since consumers depend only on the interface, swap the client for a mock (Moq, NSubstitute...) or for a fake `HttpMessageHandler`: `new TabaClient(config, handler)` accepts your handler (the client does not dispose it). Without `Microsoft.Extensions.DependencyInjection`, register `TabaClient` as the single instance of `ITabaClient` in any container (Autofac, Ninject, Unity...).
 
+## Batches
+
+Many messages in one request, next to the single calls (optional): `PublishBatchAsync(topic, IList<BatchMessage>)`, `AckBatchAsync(topic, messages)` and `ChangeVisibilityBatchAsync(topic, messages, seconds)` (and the synchronous forms) return one `BatchResult` per item (`IsOk`, `Status`, `Id`, `ErrorCode`). They are in the interface `ITabaBatchClient`, which `TabaClient` implements, so a mock of `ITabaClient` does not change. Each item is answered as its single call, in order, and an item that failed comes back with its `status` and error code instead of throwing. The bodies go in base64, so any type fits. Details: [Messages in batch](https://github.com/rafaelpontani/taba/blob/main/doc/en-US/16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility).
+
 ## Errors
 
 A single exception, `TabaException`, with `Status`, `Code`, `Message`, `RequestId`, `RetryAfter`, `Details` and `Body`. Always test the `Code` (`topic.not-found`, `auth.forbidden`...), never the message. Failures of the client itself have `Status` zero and `Code` `client.network`, `client.timeout`, `client.invalid-config` or `client.invalid-response`.

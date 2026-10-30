@@ -3,7 +3,7 @@ title: Guarantees and how they are checked
 summary: The guarantees Taba states in a form a machine can check (I1 to I6 and the assumed risk R1), the chaos run that checks them against a recorded history, which faults it applies, what it does not cover yet and how to run or sweep it.
 type: reference
 status: partial
-verified-on: 2026-10-27 @ ada9ff1
+verified-on: 2026-10-29 @ 1f43daf
 sources: [crates/taba-node/tests/chaos.rs, crates/taba-node/tests/common/history.rs, crates/taba-node/src/cluster/transport/memory/mod.rs, crates/taba-node/tests/common/cluster.rs, .github/workflows/chaos.yml]
 ---
 
@@ -72,7 +72,7 @@ At the end the publishers stop, every fault is healed (`heal_all`), the clock ad
 | Abrupt death and restart of a node, drain during the run | not in the nemesis yet |
 | Slow or failing disk | the storage has no hook for it yet |
 | Real TCP, mutual TLS, kernel timeouts, real disk | the in-memory network does not reproduce them (planned: Docker run) |
-| A stall longer than `write.pending.ttl` (30 s) in the middle of an operation, or a clock jump past it | the jumps of the run (8 s) stay below it; with 35 s jumps the run finds a message acked and then delivered again from the dead-letter ([PRB-077](31-pending-items.md)) |
+| A stall longer than `write.pending.ttl` (30 s) in the middle of an operation, or a clock jump past it | the jumps of the run (8 s) stay below it; an expired register freeing the message for another operation is not exercised ([PRB-085](31-pending-items.md)). The I3 and I5 failures that were seen with 35 s jumps were another race, fixed ([PRB-077](30-decisions.md#resolved-problems-prb)) |
 | Two nodes impaired at the same time, or a partition with a majority on both sides (R1) | outside what the default cluster promises, and `NO_VOTE` hides the exclusion vote; R1 has its own test (`tests/partition.rs`, see its row) |
 
 ## How to run

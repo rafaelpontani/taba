@@ -54,7 +54,7 @@ async fn harness(timeout: Duration) -> Harness {
             .publish(
                 "pedidos",
                 PublishRequest {
-                    body: body.as_bytes().to_vec(),
+                    body: body.as_bytes().to_vec().into(),
                     ..Default::default()
                 },
             )

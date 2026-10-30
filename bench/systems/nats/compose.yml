@@ -1,0 +1,15 @@
+# NATS JetStream (um nó, fluxo em arquivo). O sync_interval vem do arquivo de configuração do nível de durabilidade.
+services:
+  server:
+    image: nats:2.10.22-alpine
+    cpus: ${BENCH_CPUS}
+    mem_limit: ${BENCH_MEMORY}
+    env_file: env-${BENCH_DURABILITY}
+    command: ["--config", "/etc/nats/nats.conf", "-m", "8222"]
+    volumes:
+      - ./nats-${BENCH_DURABILITY}.conf:/etc/nats/nats.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
+      interval: 3s
+      timeout: 5s
+      retries: 60

@@ -1,0 +1,13 @@
+name: backlog-100b
+topics: 1
+partitionsPerTopic: 1
+keyDistributor: "NO_KEY"
+messageSize: 100
+payloadFile: "payload/payload-100b.data"
+subscriptionsPerTopic: 1
+consumerPerSubscription: 1
+producersPerTopic: 1
+producerRate: 50000
+consumerBacklogSizeGB: 1
+testDurationMinutes: @DURATION@
+warmupDurationMinutes: @WARMUP@

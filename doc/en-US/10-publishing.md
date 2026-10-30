@@ -3,7 +3,7 @@ title: Publishing messages
 summary: The path of a published message — from the node that receives the call to the response to the client — with register, quorum, commit, rollback and the possible failures at each point.
 type: explanation
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-28 @ 2447d5e
 sources: [crates/taba-node/src/cluster/replication/coordinator.rs, crates/taba-node/src/cluster/replication/replica.rs, crates/taba-node/src/cluster/replication/messages_api.rs, crates/taba-node/src/http/messages/mod.rs, crates/taba-node/src/engine/messages/mod.rs]
 ---
 
@@ -64,9 +64,17 @@ It is the same rule as the cluster protocol ([07-cluster.md](07-cluster.md)). Wh
 - **Distributor:** the coordinator matches the prefixes and runs **this same procedure once per destination queue**, with copies of their own `id`. The copies are independent.
 - **FIFO:** the node that received **forwards to the group's primary**, which generates the monotonic `id`, deduplicates and coordinates; the quorum includes **primary and secondary**.
 
+## Between nodes: batches
+
+With a factor above 1, each publication makes calls to the other responsible nodes: the `register` and, after the decision, the `commit`. Those calls do not go one by one: **the operations waiting for the same node go together** in `POST /cluster/batch`, in protobuf ([18-cluster-api.md](18-cluster-api.md)). The coordinator does not know: it keeps calling once per operation, with the same attempts and the same errors, and the batch is under that call.
+
+A batch closes when a send slot opens (each node has 4), with what is waiting, up to `cluster.batch.max-items` and the soft `cluster.batch.max-bytes` ([22-configuration.md](22-configuration.md)). There is no timer and no waiting for it to fill: with little load each operation goes alone, at once; with a lot, the queue grows while the slots are busy and the next batch leaves full. The `commit` of one publication and the `register` of the next fall in the same batch when they coincide. Each item has its own result: the failure of one operation does not touch the others of its batch, and a failure of the whole call (network, timeout) makes each operation repeat on its own, in a later batch.
+
 ## On a single node
 
 In the one-node profile (factor 1) the node is the primary of everything and the quorum is 1: register and commit happen only on it, with no replicas, no repetition between nodes and no rollback for lack of quorum.
+
+With a single responsible node (factor 1, in any cluster size) its register is already the decision: the coordinator registers and commits in sequence on the request's own task, with no task per node and no wait for the quorum; only a commit that fails at the first attempt goes to the insistence the coordinator keeps in the background after the decision (see Failures). A publication that only touches memory (the topic has no database on disk yet, the memory limit has room, the node is not draining and the S3 backup is off) is checked and applied by the replica on the same thread; otherwise both go to a blocking thread, because they read or write the disk.
 
 ## Example
 

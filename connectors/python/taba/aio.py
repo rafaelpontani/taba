@@ -15,6 +15,8 @@ from .cancel import CancelToken, Cancelled
 from .client import Client, _lost_or_gone, make_config
 from .errors import TabaError
 from .models import (
+    BatchMessage,
+    BatchResult,
     Config,
     ConsumeOptions,
     Message,
@@ -112,6 +114,9 @@ class AsyncClient:
     async def publish_text(self, topic: str, text: str, **options: Any) -> PublishResponse:
         return await self._run(self._client.publish_text, topic, text, **options)
 
+    async def publish_batch(self, topic: str, messages: List[BatchMessage]) -> List[BatchResult]:
+        return await self._run(self._client.publish_batch, topic, messages)
+
     # -- consuming -----------------------------------------------------------------------------------------
 
     async def consume(self, topic: str, **options: Any) -> List[Message]:
@@ -124,6 +129,12 @@ class AsyncClient:
         self, topic: str, message: Union[Message, str], seconds: int, receipt_token: Optional[str] = None
     ) -> VisibilityResponse:
         return await self._run(self._client.change_visibility, topic, message, seconds, receipt_token)
+
+    async def ack_batch(self, topic: str, messages: List[Message]) -> List[BatchResult]:
+        return await self._run(self._client.ack_batch, topic, messages)
+
+    async def change_visibility_batch(self, topic: str, messages: List[Message], seconds: int) -> List[BatchResult]:
+        return await self._run(self._client.change_visibility_batch, topic, messages, seconds)
 
     async def consume_with(self, topic: str, handler: Callable[[MessageContext], Awaitable[None]], **options: Any) -> int:
         """

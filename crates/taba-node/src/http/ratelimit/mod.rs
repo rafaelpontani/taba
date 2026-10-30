@@ -173,10 +173,14 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
         | "/nodes/{nodeId}/backup/flush" => Some(Category::Admin),
         // Emptying a queue is an administrative act.
         "/topics/{topic}/messages" if method == Method::DELETE => Some(Category::Admin),
+        // A batch counts as one call, like a `GET` that delivers many messages.
         "/topics/{topic}/messages" if method == Method::POST => Some(Category::Publish),
+        "/topics/{topic}/messages/batch" => Some(Category::Publish),
         "/topics/{topic}/messages"
         | "/topics/{topic}/messages/{id}"
-        | "/topics/{topic}/messages/{id}/visibility" => Some(Category::Consume),
+        | "/topics/{topic}/messages/{id}/visibility"
+        | "/topics/{topic}/messages/ack"
+        | "/topics/{topic}/messages/visibility" => Some(Category::Consume),
         // The topic metrics, in JSON, measure each topic: they have a category of their own.
         "/metrics/topics" | "/metrics/topics/{topic}" | "/metrics/topics/{topic}/groups" => {
             Some(Category::Ops)
@@ -204,13 +208,23 @@ pub fn classify(method: &Method, route: &str, query: Option<&str>) -> Option<Cat
 
 /// The middleware of the routes with a limit: finds the category, resolves the client IP and counts.
 pub async fn rate_limit(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    match admit(&state, &request) {
+        Ok(()) => next.run(request).await,
+        Err(refused) => *refused,
+    }
+}
+
+/// The rate limit of the call: `Err` with the `429` when the caller's counter (token, or IP without a valid
+/// token) ran out. Runs after [`identify`](super::auth::identify), in the client API's
+/// [`client_gate`](super::client_gate) and in [`rate_limit`].
+pub fn admit(state: &AppState, request: &Request) -> Result<(), Box<Response>> {
     // A forwarded call was already counted by whoever forwarded it (doc 04, section 6.9).
     if request
         .extensions()
         .get::<super::forward::Forwarded>()
         .is_some()
     {
-        return next.run(request).await;
+        return Ok(());
     }
     let category = request
         .extensions()
@@ -251,17 +265,19 @@ pub async fn rate_limit(State(state): State<AppState>, request: Request, next: N
                 ],
                 1.0,
             );
-            return ApiError(
-                TabaError::new(
-                    ErrorCode::RateLimitExceeded,
-                    "Request limit exceeded; try again after the Retry-After.",
+            return Err(Box::new(
+                ApiError(
+                    TabaError::new(
+                        ErrorCode::RateLimitExceeded,
+                        "Request limit exceeded; try again after the Retry-After.",
+                    )
+                    .with_retry_after(retry_after),
                 )
-                .with_retry_after(retry_after),
-            )
-            .into_response();
+                .into_response(),
+            ));
         }
     }
-    next.run(request).await
+    Ok(())
 }
 
 #[cfg(test)]

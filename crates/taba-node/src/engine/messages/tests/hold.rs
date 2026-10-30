@@ -4,7 +4,7 @@ use super::*;
 
 fn fifo_request(group: &str, key: &str, body: &str) -> PublishRequest {
     PublishRequest {
-        body: body.as_bytes().to_vec(),
+        body: body.as_bytes().to_vec().into(),
         group_id: Some(group.into()),
         deduplication_id: Some(key.into()),
         ..Default::default()
@@ -41,7 +41,7 @@ fn restored(h: &Harness, topic: &str, id: &str, group: &str, key: &str) {
     };
     assert!(matches!(
         h.messages
-            .apply_load(topic, meta, br#"{"restored":true}"#.to_vec())
+            .apply_load(topic, meta, br#"{"restored":true}"#.to_vec().into())
             .unwrap(),
         Loaded::Stored
     ));

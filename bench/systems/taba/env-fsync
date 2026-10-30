@@ -1,0 +1,3 @@
+# fsync: SQLite em FULL e a memória das mensagens limitada, para que o excesso passe pelo disco (overflow).
+TABA_STORAGE_DB_SYNCHRONOUS=FULL
+TABA_MEMORY_LIMIT=64MB

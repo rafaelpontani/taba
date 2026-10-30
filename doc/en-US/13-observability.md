@@ -3,7 +3,7 @@ title: Observability
 summary: How to monitor Taba — OpenTelemetry (OTLP) and Prometheus, node and topic metrics, cluster and topic conditions, health checks, traces, logs and events.
 type: reference
 status: stable
-verified-on: 2026-10-13 @ 71183b9
+verified-on: 2026-10-28 @ 2447d5e
 sources: [crates/taba-node/src/telemetry, crates/taba-node/src/http/metrics, crates/taba-node/src/http/topic_stats, crates/taba-node/src/http/operations.rs, crates/taba-node/src/cluster/health, crates/taba-node/src/config/otlp.rs]
 ---
 
@@ -210,6 +210,9 @@ Exported by **each node**, always, through OTLP and on `GET /metrics`. The list 
 | `taba.write.retries` | counter | `{retry}` | Retries per phase and per destination node. |
 | `taba.write.rollbacks` | counter | `{rollback}` | Rollbacks sent for failing to close the quorum (phase 1). |
 | `taba.write.commit_timeouts` | counter | `{timeout}` | Times write.commit.timeout ran out without a confirmed commit on a replica. |
+| `taba.cluster.batch.items` | histogram | `{item}` | Operations in each batch sent to another node. |
+| `taba.cluster.batch.bytes` | histogram | `By` | Size of the bodies in each batch sent to another node (the messages' bodies, not the envelope). |
+| `taba.cluster.batch.wait` | histogram | `s` | How long an operation waited in the queue of a node before its batch left. |
 | `taba.write.received` | counter | `{message}` | Registers, commits and rollbacks received. |
 | `taba.write.pending` | updowncounter | `{message}` | Pending registers (without commit). |
 | `taba.write.pending.expired` | counter | `{message}` | Registers discarded by expiry (without commit or rollback). |
@@ -436,6 +439,8 @@ One trace per client operation, with internal spans per step. HTTP spans follow 
 **Structured** logs: on `stdout` with `telemetry.logs.format` (`text`, default, `color` or `json`) and, with OTLP, as *log records* with `trace_id` and `span_id`. The level is `telemetry.logs.level` (`trace`, `debug`, `info`, `warn`, `error`; `info` if absent). Per-message logs on the hot path stay at `debug`.
 
 > The `stdout` log **does not yet carry `trace_id`/`span_id`** (PRB-050); only OTLP does.
+
+The node's spans (request, call to a node, cluster operation) exist for OTLP only: without an attached OTLP pipeline they are not even created, and the `stdout` lines do not carry their fields. The metrics registry is on the path of every request: an existing series is updated under read locks and atomics, and only a series seen for the first time takes the write lock.
 
 | Event | Level |
 |---|---|

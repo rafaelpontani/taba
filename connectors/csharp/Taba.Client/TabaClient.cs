@@ -20,7 +20,7 @@ namespace Taba
     /// <c>ServicePointManager.SecurityProtocol</c> (check that it includes TLS 1.2); from 4.7 on it is the
     /// system's. Certificate verification is never turned off.
     /// </remarks>
-    public sealed partial class TabaClient : ITabaClient
+    public sealed partial class TabaClient : ITabaClient, ITabaBatchClient
     {
         /// <summary>The version of this connector.</summary>
         public const string Version = "0.1.0";

@@ -125,6 +125,27 @@ const operations = {
     return publishFields(await c.publish(p.topic, Buffer.from(p.base64, 'base64'), options));
   },
 
+  // A batch of texts (one item per text); bad=true adds an item with an invalid content type.
+  async publishBatch(c, p) {
+    const items = list(p.texts).map((text) => ({ body: text, contentType: 'text/plain; charset=utf-8', groupId: p.groupId }));
+    if (flag(p.bad)) items.push({ body: 'x', contentType: 'not a type' });
+    const results = await c.publishBatch(p.topic, items);
+    return { count: String(results.length), statuses: results.map((r) => r.status).join(',') };
+  },
+  // Consumes and settles what came in one batch: action ack or visibility (seconds). stale=true makes the receipt of
+  // the first one old before the batch: it is given back and taken again.
+  async settleBatch(c, p) {
+    const messages = await c.consume(p.topic, consumeOptions(p));
+    if (flag(p.stale) && messages.length > 0) {
+      await c.changeVisibility(p.topic, messages[0], 0);
+      await c.consume(p.topic, { maxMessages: 1, waitTime: 2, visibilityTimeout: num(p.visibility) });
+    }
+    const results = p.action === 'visibility'
+      ? await c.changeVisibilityBatch(p.topic, messages, Number(p.seconds))
+      : await c.ackBatch(p.topic, messages);
+    return { count: String(results.length), statuses: results.map((r) => r.status).join(',') };
+  },
+
   async consume(c, p) { return messageFields(await c.consume(p.topic, consumeOptions(p))); },
   async ack(c, p) { await c.ack(p.topic, { id: p.id, receiptToken: p.receipt }); return {}; },
   async changeVisibility(c, p) {

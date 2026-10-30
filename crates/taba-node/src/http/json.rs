@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use axum::http::{HeaderMap, header};
+use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use crate::core::error::{ErrorCode, TabaError};
@@ -59,6 +60,24 @@ pub fn object(headers: &HeaderMap, body: &[u8]) -> Result<Fields, TabaError> {
             format!("The body is not valid JSON: {e}."),
         )),
     }
+}
+
+/// The body as a typed value (the batch routes, whose items are lists of objects). `415` for another
+/// `Content-Type`; a field the route does not define is `validation.unknown-field`, a missing one
+/// `validation.required` and any other problem `validation.failed`, all with serde's text, which names the field.
+pub fn typed<T: DeserializeOwned>(headers: &HeaderMap, body: &[u8]) -> Result<T, TabaError> {
+    require_json(headers)?;
+    serde_json::from_slice(body).map_err(|e| {
+        let text = e.to_string();
+        let code = if text.starts_with("unknown field") {
+            ErrorCode::ValidationUnknownField
+        } else if text.starts_with("missing field") {
+            ErrorCode::ValidationRequired
+        } else {
+            ErrorCode::ValidationFailed
+        };
+        TabaError::new(code, format!("The body is not valid: {text}."))
+    })
 }
 
 impl Fields {

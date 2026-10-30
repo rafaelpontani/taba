@@ -71,7 +71,7 @@ Decisions that must be closed: **D68** (base versions of the languages still to 
 | **Write to disk at commit** ⬜ | Write to disk on confirmation, to also preserve what was only in memory in a total fall (D176) | Cluster resume |
 | **Backup and restore** 🟡 | ✅ Done: optional S3 backup (segments, journal, definitions, heartbeat, restore, eviction, flush, cluster stop; [33-s3-backup.md](33-s3-backup.md)). ⬜ Missing: compact the journal (PRB-053), recover earlier the segments of a primary that stopped being one (PRB-054), restore without reading whole segments (PRB-055), delete from the bucket definitions removed with the manager down (PRB-056), validate against a real MinIO/AWS (today's test uses a fake S3 over HTTP) and measure publishing latency with and without S3 | Finding J |
 | **Aggregation of topic metrics across nodes** ⬜ | The internal route and the `fan-out` (with `stats.topics.cache-ttl`) | Finding A |
-| **Benchmarks** ⬜ | The speed and cost goals have no published measurement | RNF-02 |
+| **Benchmarks** 🟡 | ✅ Done: the local comparative script `bench/run.sh` (OMB in Docker against Kafka, Redpanda, RabbitMQ and NATS JetStream; [38-benchmarks.md](38-benchmarks.md)). ⬜ Missing: a published `standard` run, the three-node cluster measurement and the regression benchmark in CI | RNF-02 |
 
 ### Milestone 5 — Close the calibration pending items
 

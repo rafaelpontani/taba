@@ -297,6 +297,32 @@ public class TabaClient implements AutoCloseable {
         return serializer;
     }
 
+    /**
+     * {@code POST /topics/{topic}/messages/batch}: publishes many messages in one request (1 to the server's
+     * {@code api.batch.max-messages}, 1000 by default). Each item is answered as its single publication and one that
+     * fails does not undo the others: look at {@link BatchResult#isOk()}. On a FIFO queue the items of a group are
+     * published in the order of the list. Like the single publication outside FIFO, a failure of the network is not
+     * retried (it could duplicate).
+     */
+    public List<BatchResult> publishBatch(String topic, List<BatchMessage> messages) {
+        if (messages == null) {
+            throw new NullPointerException("messages");
+        }
+        StringBuilder json = new StringBuilder("{\"messages\":[");
+        for (int i = 0; i < messages.size(); i++) {
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append(messages.get(i).toJson());
+        }
+        ApiCall call = new ApiCall("POST", "/topics/" + segment(topic) + "/messages/batch").json(json.append("]}").toString());
+        return ModelParser.parseBatchResults(send(call).text());
+    }
+
+    public CompletableFuture<List<BatchResult>> publishBatchAsync(String topic, List<BatchMessage> messages) {
+        return async(() -> publishBatch(topic, messages));
+    }
+
     // -----------------------------------------------------------------------------------------
     // Consuming
     // -----------------------------------------------------------------------------------------
@@ -387,6 +413,52 @@ public class TabaClient implements AutoCloseable {
 
     public CompletableFuture<VisibilityResponse> changeVisibilityAsync(String topic, Message message, int seconds) {
         return async(() -> changeVisibility(topic, message, seconds));
+    }
+
+    private static String receipts(List<Message> messages, String extra) {
+        if (messages == null) {
+            throw new NullPointerException("messages");
+        }
+        StringBuilder json = new StringBuilder("{\"messages\":[");
+        for (int i = 0; i < messages.size(); i++) {
+            Message message = messages.get(i);
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append("{\"id\":").append(Json.quote(message.getId()))
+                    .append(",\"receiptToken\":").append(Json.quote(message.getReceiptToken()))
+                    .append(extra).append('}');
+        }
+        return json.append("]}").toString();
+    }
+
+    /**
+     * {@code POST /topics/{topic}/messages/ack}: acknowledges many messages received from
+     * {@link #consume(String, ConsumeOptions)} in one request. Each item is answered as its single ack
+     * ({@code 204}, or {@code 409 message.stale-receipt}, {@code 404 message.not-found}...) and one that fails does not
+     * stop the others.
+     */
+    public List<BatchResult> ackBatch(String topic, List<Message> messages) {
+        ApiCall call = new ApiCall("POST", "/topics/" + segment(topic) + "/messages/ack").json(receipts(messages, ""));
+        return ModelParser.parseBatchResults(send(call).text());
+    }
+
+    public CompletableFuture<List<BatchResult>> ackBatchAsync(String topic, List<Message> messages) {
+        return async(() -> ackBatch(topic, messages));
+    }
+
+    /**
+     * {@code POST /topics/{topic}/messages/visibility}: sets the invisibility of many messages already delivered to
+     * {@code seconds} from now, in one request. Each item is answered as its single call.
+     */
+    public List<BatchResult> changeVisibilityBatch(String topic, List<Message> messages, int seconds) {
+        ApiCall call = new ApiCall("POST", "/topics/" + segment(topic) + "/messages/visibility")
+                .json(receipts(messages, ",\"visibilityTimeout\":" + seconds));
+        return ModelParser.parseBatchResults(send(call).text());
+    }
+
+    public CompletableFuture<List<BatchResult>> changeVisibilityBatchAsync(String topic, List<Message> messages, int seconds) {
+        return async(() -> changeVisibilityBatch(topic, messages, seconds));
     }
 
     // -----------------------------------------------------------------------------------------

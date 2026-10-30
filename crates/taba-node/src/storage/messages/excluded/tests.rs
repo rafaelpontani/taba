@@ -345,3 +345,114 @@ fn a_topic_database_from_before_the_log_gets_the_table() {
     store.record_excluded("orders", "m", 1, 1).unwrap();
     assert!(store.is_excluded("orders", "m").unwrap());
 }
+
+/// The rows of the log as another connection sees them: what is really in the file.
+fn rows_on_disk(dir: &Path, topic: &str) -> i64 {
+    let conn = rusqlite::Connection::open(dir.join(topic).join(TOPIC_DB_FILE)).unwrap();
+    conn.query_row("SELECT COUNT(*) FROM excluded", [], |row| row.get(0))
+        .unwrap()
+}
+
+/// The ack of a message that was only in memory does not write a transaction by itself: the rows wait and go
+/// together, but whoever reads the log sees them all.
+/// UC: UC-ESC-037, UC-ARM-029
+#[test]
+fn the_exclusions_of_messages_in_memory_wait_and_a_read_of_the_log_sees_them() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path(), ExcludedLimits::default());
+    for n in 0..3 {
+        store
+            .record_excluded("orders", &format!("m{n}"), 10 + n, 5_000 + n)
+            .unwrap();
+    }
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), 0);
+
+    assert!(store.is_excluded("orders", "m1").unwrap());
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), 3);
+    assert_eq!(
+        ids(store.excluded_all("orders").unwrap()),
+        vec!["m0", "m1", "m2"]
+    );
+}
+
+/// Waits (up to 5 s) for the writer thread to leave `rows` rows on disk.
+fn wait_rows(dir: &Path, topic: &str, rows: i64) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while rows_on_disk(dir, topic) < rows && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(rows_on_disk(dir, topic), rows);
+}
+
+/// A full batch goes out in one transaction without anyone asking, written by a thread of its own and not by the ack
+/// that filled it; the sweep and the stop of the node write the rest.
+/// UC: UC-ARM-029
+#[test]
+fn a_full_batch_is_written_alone_and_the_sweep_and_the_stop_write_the_rest() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path(), ExcludedLimits::default());
+    for n in 0..BATCH - 1 {
+        store
+            .record_excluded("orders", &format!("m{n:04}"), 1, 1_000)
+            .unwrap();
+    }
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), 0);
+    store.record_excluded("orders", "last", 1, 1_000).unwrap();
+    wait_rows(tmp.path(), "orders", BATCH as i64);
+
+    store.record_excluded("orders", "after", 1, 1_000).unwrap();
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), BATCH as i64);
+    store.flush_excluded().unwrap();
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), BATCH as i64 + 1);
+
+    store.record_excluded("orders", "stop", 1, 1_000).unwrap();
+    store.release_files();
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), BATCH as i64 + 2);
+}
+
+/// The same id recorded twice stays one row, and the instant already in the log is not replaced.
+/// UC: UC-ESC-037
+#[test]
+fn an_exclusion_recorded_twice_in_a_batch_stays_one_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path(), ExcludedLimits::default());
+    store.record_excluded("orders", "a1", 7, 1_000).unwrap();
+    store.record_excluded("orders", "a1", 7, 2_000).unwrap();
+    assert_eq!(
+        store.excluded_all("orders").unwrap(),
+        vec![ExcludedRow {
+            id: "a1".into(),
+            position: 7,
+            at_ms: 1_000
+        }]
+    );
+}
+
+/// Far more rows than the writer takes at once all reach the disk, and a dropped topic loses its folder even while
+/// the writer may still hold its disk.
+/// UC: UC-ARM-029
+#[test]
+fn the_writer_keeps_up_with_many_batches_and_a_dropped_topic_leaves_no_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path(), ExcludedLimits::default());
+    let count = 20 * BATCH;
+    for n in 0..count {
+        store
+            .record_excluded("orders", &format!("m{n:06}"), 1, 1_000)
+            .unwrap();
+    }
+    store.flush_excluded().unwrap();
+    assert_eq!(rows_on_disk(tmp.path(), "orders"), count as i64);
+
+    for n in 0..BATCH {
+        store
+            .record_excluded("gone", &format!("g{n:04}"), 1, 1_000)
+            .unwrap();
+    }
+    store.drop_topic("gone").unwrap();
+    assert!(
+        !tmp.path()
+            .join(crate::storage::messages::dir_name("gone"))
+            .exists()
+    );
+}

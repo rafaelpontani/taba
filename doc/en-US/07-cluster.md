@@ -3,7 +3,7 @@ title: Cluster
 summary: The life cycle of the cluster — how a node joins, how failure is detected and voted on, freezing, return, call forwarding, synchronization, drain, one-node profile and resuming from disk after a total fall.
 type: explanation
 status: stable
-verified-on: 2026-10-26 @ 5b85d85
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, cluster/replication/definitions.rs, http/forward]
 ---
 
@@ -242,7 +242,7 @@ Every process is born with a new ID. It is a defence: a node that was down and w
 
 ### 10.3 The log of excluded messages
 
-- Every node that keeps a copy of a block, primary or not, records the `id` of each message excluded from it (ack, `prune`, sending to the dead-letter) in the `excluded` table of the topic's database, **in the same transaction** that deletes the message. Expiry by `ttl` is not recorded: a copy that comes back expires again by the same rule. The ack gets no extra `fsync` (`storage.db.synchronous` stays `NORMAL`).
+- Every node that keeps a copy of a block, primary or not, records the `id` of each message excluded from it (ack, `prune`, sending to the dead-letter) in the `excluded` table of the topic's database, **in the same transaction** that deletes the message. Expiry by `ttl` is not recorded: a copy that comes back expires again by the same rule. The ack gets no extra `fsync` (`storage.db.synchronous` stays `NORMAL`). The record of a message that was **only in memory** (no row to delete) is queued and written with the others of the topic in **one transaction**: by a thread of its own once 256 records wait (it takes all that wait, so under load the transactions grow; [D190](30-decisions.md)), on each pass of the sweep (1 s at most), before any read of the log (the synchronization, the vote) and when the node stops ([D188](30-decisions.md)). The ack never waits for that transaction; only if 16 384 records pile up (the thread fell behind or its writes fail) does the ack write them itself. A crash loses at most the last second of the records of messages that were only in memory, which the other owners of the block recorded too.
 - The log has a size and an age limit: `storage.excluded.max-size` (100 MB, summing the topics) and `storage.excluded.max-age` (24 h), both greater than zero, applied every 30 s with the oldest record going first.
 - Each node keeps the **start of the continuous recording** (`state.excluded_since`, in `_node.db`): the instant from which the log guarantees it has the exclusions. It begins with the log and only advances when a record is dropped by the limit. A new node copies the log of each source along with each block (`GET /cluster/blocks/{id}/excluded`) and **inherits** the most recent date among the sources.
 - The **cluster's cut-off date** is the most **recent** of those dates among the active members (the weakest link): every exclusion after it is recorded on all the owners that record it. It is visible in `summary.excludedCutoff` of `GET /health/cluster` (each node reports its own as `excludedSince` in the `NodeStatus`). A node that deletes early because of the size shortens the window of the whole cluster: size the limit for that.

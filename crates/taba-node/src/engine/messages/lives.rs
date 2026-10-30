@@ -38,7 +38,10 @@ impl Messages {
 
     /// The `topicId` the topic has today.
     pub fn current_topic_id(&self, topic: &str) -> Option<String> {
-        self.topics.get(topic).ok().map(|view| view.definition.id)
+        self.topics
+            .get(topic)
+            .ok()
+            .map(|view| view.definition.id.clone())
     }
 
     /// Which of the `ids` the node's log of excluded messages has (doc 07, section 10.6).
@@ -75,7 +78,7 @@ impl Messages {
             Ok(body) => Ok(Some(BlockMessage {
                 topic: topic.to_owned(),
                 meta,
-                body,
+                body: body.into(),
                 delete_at_ms: None,
             })),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),

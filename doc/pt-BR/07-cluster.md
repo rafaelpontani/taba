@@ -3,7 +3,7 @@ título: Cluster
 resumo: O ciclo de vida do cluster — como um nó entra, como a falha é detectada e votada, freezing, retorno, repasse de chamadas, sincronização, drain, perfil de um nó e a retomada do disco depois de uma queda total.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-26 @ 5b85d85
+verificado-em: 2026-10-29 @ 6e8cdf6
 fontes: [crates/taba-node/src/cluster/members, cluster/service, cluster/channel, cluster/vote, cluster/health, cluster/sync, cluster/recovery, cluster/drain, cluster/state, cluster/restore, cluster/upgrade, cluster/replication/definitions.rs, http/forward]
 ---
 
@@ -242,7 +242,7 @@ Todo processo nasce com ID novo. É uma defesa: um nó que ficou fora do ar e de
 
 ### 10.3 O log de mensagens excluídas
 
-- Todo nó que guarda uma cópia de um bloco, primário ou não, registra o `id` de cada mensagem excluída dali (ack, `prune`, envio à dead-letter) na tabela `excluded` do banco do tópico, **na mesma transação** que apaga a mensagem. A expiração por `ttl` não entra: uma cópia que volta expira de novo pela mesma regra. O ack não ganha `fsync` extra (`storage.db.synchronous` segue `NORMAL`).
+- Todo nó que guarda uma cópia de um bloco, primário ou não, registra o `id` de cada mensagem excluída dali (ack, `prune`, envio à dead-letter) na tabela `excluded` do banco do tópico, **na mesma transação** que apaga a mensagem. A expiração por `ttl` não entra: uma cópia que volta expira de novo pela mesma regra. O ack não ganha `fsync` extra (`storage.db.synchronous` segue `NORMAL`). O registro de uma mensagem que estava **só na memória** (não há linha para apagar) entra numa fila e é escrito junto com os outros do tópico em **uma transação**: por uma thread própria quando 256 registros esperam (ela leva todos os que esperam, então sob carga as transações crescem; [D190](30-decisoes.md)), a cada passada da varredura (1 s no máximo), antes de qualquer leitura do log (a sincronização, a votação) e quando o nó para ([D188](30-decisoes.md)). O ack nunca espera essa transação; só se 16 384 registros se acumularem (a thread ficou para trás ou as escritas dela falham) o próprio ack os escreve. Uma queda perde no máximo o último segundo dos registros de mensagens que estavam só na memória, que os outros donos do bloco também registraram.
 - O log tem limite de tamanho e de idade: `storage.excluded.max-size` (100 MB, somando os tópicos) e `storage.excluded.max-age` (24 h), os dois maiores que zero, aplicados a cada 30 s com o registro mais antigo saindo primeiro.
 - Cada nó guarda a **data de início da gravação contínua** (`state.excluded_since`, no `_node.db`): o instante a partir do qual o log garante ter as exclusões. Começa com o log e só avança quando um registro é descartado pelo limite. Um nó novo copia o log de cada origem junto com cada bloco (`GET /cluster/blocks/{id}/excluded`) e **herda** a data mais recente das origens.
 - A **data de corte do cluster** é a mais **recente** dessas datas entre os membros ativos (o elo mais fraco): toda exclusão posterior a ela está registrada em todos os donos que a registraram. Fica visível em `summary.excludedCutoff` do `GET /health/cluster` (cada nó informa a sua em `excludedSince` no `NodeStatus`). Um nó que apaga cedo por causa do tamanho encurta a janela do cluster inteiro: dimensione o limite para isso.

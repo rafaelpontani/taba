@@ -25,6 +25,16 @@ consume topic={p}-q max=1 wait=2 visibility=30 as=m2 => count=1 body=hello%20wor
 ack topic={p}-q id=$m2.id receipt=$m2.receiptToken
 consume topic={p}-q wait=0 => count=0
 
+# --- batches: one request publishes, acks or changes the invisibility of many; a bad item fails alone ------------
+createTopic name={p}-batch type=queue
+publishBatch topic={p}-batch texts=a,b,c bad=true => count=4 statuses=201,201,201,400
+settleBatch topic={p}-batch max=10 wait=2 visibility=30 action=visibility seconds=0 stale=true => count=3 statuses=409,200,200
+settleBatch topic={p}-batch max=10 wait=2 visibility=30 action=ack => count=2 statuses=204,204
+consume topic={p}-batch wait=0 => count=0
+createTopic name={p}-fbatch type=queue fifo=true => fifo=true
+publishBatch topic={p}-fbatch texts=f1,f2,f1 groupId=g1 => count=3 statuses=201,201,200
+consume topic={p}-fbatch max=10 wait=2 visibility=30 => count=1 body=f1
+
 # --- bodies: text with accents, JSON and bytes arrive as they were sent ----------------------------------------
 createTopic name={p}-body type=queue
 publishText topic={p}-body body=caf%C3%A9%20%E2%82%AC => id=*

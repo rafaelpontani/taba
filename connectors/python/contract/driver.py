@@ -16,7 +16,7 @@ import urllib.parse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from taba import UNSET, Cancelled, CancelToken, Client, TabaError, TopicRequest, TopicUpdate  # noqa: E402
+from taba import UNSET, BatchMessage, Cancelled, CancelToken, Client, TabaError, TopicRequest, TopicUpdate  # noqa: E402
 
 
 def parse_args(argv):
@@ -173,6 +173,29 @@ def op_publish_bytes(c, p):
     return publish_fields(c.publish(p["topic"], base64.b64decode(p["base64"]), content_type=p.get("contentType", "application/octet-stream"), **options))
 
 
+def op_publish_batch(c, p):
+    """A batch of texts (one item per text); bad=true adds an item with an invalid content type."""
+    batch = [BatchMessage(t, content_type="text/plain; charset=utf-8", group_id=p.get("groupId")) for t in items(p["texts"])]
+    if flag(p.get("bad")):
+        batch.append(BatchMessage("x", content_type="not a type"))
+    results = c.publish_batch(p["topic"], batch)
+    return {"count": str(len(results)), "statuses": ",".join(str(r.status) for r in results)}
+
+
+def op_settle_batch(c, p):
+    """Consumes and settles what came in one batch: action ack or visibility (seconds). stale=true makes the receipt
+    of the first one old before the batch: it is given back and taken again."""
+    messages = c.consume(p["topic"], **consume_options(p))
+    if flag(p.get("stale")) and messages:
+        c.change_visibility(p["topic"], messages[0], 0)
+        c.consume(p["topic"], max_messages=1, wait_time=2, visibility_timeout=num(p.get("visibility")))
+    if p["action"] == "visibility":
+        results = c.change_visibility_batch(p["topic"], messages, int(p["seconds"]))
+    else:
+        results = c.ack_batch(p["topic"], messages)
+    return {"count": str(len(results)), "statuses": ",".join(str(r.status) for r in results)}
+
+
 def op_change_visibility(c, p):
     r = c.change_visibility(p["topic"], p["id"], int(p["seconds"]), p["receipt"])
     return {"id": r.id, "invisibleUntil": r.invisible_until}
@@ -267,6 +290,8 @@ OPERATIONS = {
     "publishText": lambda c, p: publish_fields(c.publish_text(p["topic"], p["body"], **publish_options(p))),
     "publishJson": lambda c, p: publish_fields(c.publish_raw_json(p["topic"], p["body"], **publish_options(p))),
     "publishBytes": op_publish_bytes,
+    "publishBatch": op_publish_batch,
+    "settleBatch": op_settle_batch,
     "consume": lambda c, p: message_fields(c.consume(p["topic"], **consume_options(p))),
     "ack": lambda c, p: c.ack(p["topic"], p["id"], p["receipt"]) or {},
     "changeVisibility": op_change_visibility,

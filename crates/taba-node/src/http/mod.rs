@@ -48,9 +48,27 @@ use ratelimit::RateLimiter;
 /// `Retry-After` of the client calls refused during the drain, in seconds.
 const DRAIN_RETRY_AFTER_SECS: u64 = 5;
 
-/// What the handlers share.
+/// What the handlers share. A single `Arc`: the router and each layer clone it on every request, and
+/// cloning one pointer costs one atomic instead of one per field.
 #[derive(Clone)]
-pub struct AppState {
+pub struct AppState(Arc<AppShared>);
+
+impl From<AppShared> for AppState {
+    fn from(shared: AppShared) -> Self {
+        Self(Arc::new(shared))
+    }
+}
+
+impl std::ops::Deref for AppState {
+    type Target = AppShared;
+
+    fn deref(&self) -> &AppShared {
+        &self.0
+    }
+}
+
+/// The fields of [`AppState`].
+pub struct AppShared {
     pub clock: Arc<dyn Clock>,
     pub node: Arc<NodeShared>,
     /// The optional S3 backup; `None` without `backup.s3.bucket`.
@@ -74,16 +92,38 @@ pub struct AppState {
     pub tls: Option<Arc<crate::cluster::tls::TlsStore>>,
 }
 
+/// The client API's single layer, in this order: who is calling ([`auth::identify`]), the rate limit
+/// ([`ratelimit::admit`]), the drain refusal ([`drain_route`]) and authorization ([`auth::permit`]). The rate limit
+/// comes after knowing who is calling, so the token becomes the counter's key, and before refusing, so the `401`
+/// also counts by IP. One layer instead of four: each layer of axum costs a boxed future and a clone of the state on
+/// every request.
+async fn client_gate(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+    auth::identify(&state, &mut request);
+    if let Err(refused) = ratelimit::admit(&state, &request) {
+        return *refused;
+    }
+    drain_route(&state, request, next).await
+}
+
+/// The last step of the gate: authorization, then the route.
+async fn authorized(state: &AppState, request: Request, next: Next) -> Response {
+    match auth::permit(state, request).await {
+        Ok(request) => next.run(request).await,
+        Err(refused) => *refused,
+    }
+}
+
 /// In drain the node does not serve client calls (doc 04, section 6.10): in a cluster it forwards the call
 /// to the freest node, and the response comes back as the destination gave it. With no other node (or on a call that already
 /// arrived by forward, which is never forwarded again) it answers `503` with `Retry-After`. A node in
-/// failure (`failed`) does not serve either: it forwards, or answers `503` `node.failed` (D78.2).
-async fn drain_guard(State(state): State<AppState>, request: Request, next: Next) -> Response {
+/// failure (`failed`) does not serve either: it forwards, or answers `503` `node.failed` (D78.2). The call this node
+/// serves goes on to authorization.
+async fn drain_route(state: &AppState, request: Request, next: Next) -> Response {
     // A node that is still syncing does not serve either: it forwards the call to another (doc 04, section 6.9).
     let syncing = state.cluster.is_some() && state.node.state() == NodeState::Syncing;
     let failed = state.node.state() == NodeState::Failed;
     if state.node.drain_state() == DrainState::Active && !syncing && !failed {
-        return next.run(request).await;
+        return authorized(state, request, next).await;
     }
     // The calls that say what the cluster is doing (`answers_in_any_state`) are forwarded like any other while a
     // node can take them; when none can (every node draining, syncing or in failure, or a stale member table), this
@@ -91,11 +131,11 @@ async fn drain_guard(State(state): State<AppState>, request: Request, next: Next
     let arrived_by_forward = request.extensions().get::<forward::Forwarded>().is_some();
     let state_read = answers_in_any_state(request.method(), request.uri().path());
     if state_read && arrived_by_forward {
-        return next.run(request).await;
+        return authorized(state, request, next).await;
     }
     if state.cluster.is_some() && !arrived_by_forward {
         if !state_read {
-            return forward::forward_call(&state, request).await;
+            return forward::forward_call(state, request).await;
         }
         // The same call, kept to answer it here if the forward finds no node.
         let mut local = Request::builder()
@@ -113,11 +153,11 @@ async fn drain_guard(State(state): State<AppState>, request: Request, next: Next
         {
             local.extensions_mut().insert(*info);
         }
-        let forwarded = forward::forward_call(&state, request).await;
+        let forwarded = forward::forward_call(state, request).await;
         if forwarded.status() != axum::http::StatusCode::SERVICE_UNAVAILABLE {
             return forwarded;
         }
-        return next.run(local).await;
+        return authorized(state, local, next).await;
     }
     if failed {
         return common::ApiError(
@@ -194,24 +234,11 @@ pub fn monitoring_api(prometheus_enabled: bool) -> OpenApiRouter<AppState> {
 /// orchestrator's probes do not send one), and `/metrics`, which takes any valid token; the same
 /// routes, without a token, live on the operations port ([`operations_router`]).
 ///
-/// The layers, from the outside in: who is calling (`authenticate`), the rate limit, the drain
-/// refusal and authorization (`authorize`). The rate limit comes after knowing who is calling, so the
-/// token becomes the counter's key, and before refusing, so the `401` also counts by IP.
+/// Every route goes through [`client_gate`]: who is calling, the rate limit, the drain refusal and
+/// authorization, in one layer.
 pub fn client_router(state: AppState) -> Router {
     let core = client_core(state.auth.enabled)
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth::authorize,
-        ))
-        .route_layer(middleware::from_fn_with_state(state.clone(), drain_guard))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            ratelimit::rate_limit,
-        ))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth::authenticate,
-        ));
+        .route_layer(middleware::from_fn_with_state(state.clone(), client_gate));
     let mut api = OpenApiRouter::with_openapi(openapi::client_base())
         .merge(core)
         .merge(operations::probe_routes());

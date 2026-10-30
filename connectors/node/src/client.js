@@ -7,6 +7,7 @@ const {
   parseMessages,
   parsePage,
   parsePublishResponse,
+  parseBatchResults,
   parseTopic,
   parseVisibilityResponse,
 } = require('./models');
@@ -260,6 +261,50 @@ class TabaClient {
   /** Publishes a text (`Content-Type: text/plain; charset=utf-8`). */
   publishText(topic, text, options) {
     return this.publish(topic, Buffer.from(text, 'utf8'), Object.assign({}, options, { contentType: 'text/plain; charset=utf-8' }));
+  }
+
+  /**
+   * `POST /topics/{topic}/messages/batch`: publishes many messages in one request (1 to the server's
+   * `api.batch.max-messages`, 1000 by default). Each item is `{ body, contentType, groupId, deduplicationId }`, the
+   * same fields as `publish`; the bytes travel in base64. Each item is answered as its single publication and one
+   * that fails does not undo the others (look at `ok` of each result). A failure of the network is not repeated.
+   */
+  async publishBatch(topic, messages, { signal } = {}) {
+    const items = (messages || []).map((m) => {
+      const item = {
+        body: Buffer.from(m.body === undefined || m.body === null ? '' : m.body).toString('base64'),
+        bodyEncoding: 'base64',
+      };
+      if (m.contentType !== undefined) item.contentType = m.contentType;
+      if (m.groupId !== undefined) item.groupId = m.groupId;
+      if (m.deduplicationId !== undefined) item.deduplicationId = m.deduplicationId;
+      return item;
+    });
+    const c = call('POST', `/topics/${segment(topic)}/messages/batch`);
+    withJson(c, JSON.stringify({ messages: items }));
+    const reply = await this._send(c, signal);
+    return parseBatchResults(reply.text);
+  }
+
+  /** `POST /topics/{topic}/messages/ack`: acknowledges many messages `consume` returned, in one request. */
+  async ackBatch(topic, messages, { signal } = {}) {
+    const c = call('POST', `/topics/${segment(topic)}/messages/ack`);
+    withJson(c, JSON.stringify({ messages: (messages || []).map((m) => ({ id: m.id, receiptToken: m.receiptToken })) }));
+    const reply = await this._send(c, signal);
+    return parseBatchResults(reply.text);
+  }
+
+  /** `POST /topics/{topic}/messages/visibility`: the invisibility of many delivered messages, `seconds` from now. */
+  async changeVisibilityBatch(topic, messages, seconds, { signal } = {}) {
+    const c = call('POST', `/topics/${segment(topic)}/messages/visibility`);
+    withJson(
+      c,
+      JSON.stringify({
+        messages: (messages || []).map((m) => ({ id: m.id, receiptToken: m.receiptToken, visibilityTimeout: seconds })),
+      }),
+    );
+    const reply = await this._send(c, signal);
+    return parseBatchResults(reply.text);
   }
 
   /**

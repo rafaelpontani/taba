@@ -4,6 +4,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use bytes::Bytes;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
@@ -24,7 +25,7 @@ use crate::storage::messages::MessageMeta;
 pub struct MessageRecord {
     pub id: String,
     pub topic: String,
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub content_type: String,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
@@ -63,7 +64,7 @@ impl MessageRecord {
     }
 
     /// The inverse of [`to_meta`](Self::to_meta): a topic's message with the body.
-    pub fn from_stored(topic: &str, meta: MessageMeta, body: Vec<u8>) -> Self {
+    pub fn from_stored(topic: &str, meta: MessageMeta, body: Bytes) -> Self {
         Self {
             id: meta.id,
             topic: topic.to_owned(),
@@ -116,7 +117,7 @@ impl Serialize for MessageRecord {
             .flatten()
             // It only goes as native JSON if the text survives intact (without touching the bytes).
             .and_then(|text| RawValue::from_string(text.to_owned()).ok())
-            .filter(|raw| raw.get().as_bytes() == self.body.as_slice());
+            .filter(|raw| raw.get().as_bytes() == self.body.as_ref());
         let (body, body_encoding) = match json_body {
             // The FIFO's short row has no body.
             _ if self.delete_at_ms.is_some() => (None, None),
@@ -177,7 +178,7 @@ impl<'de> Deserialize<'de> for MessageRecord {
         Ok(Self {
             id: wire.id,
             topic: wire.topic,
-            body,
+            body: body.into(),
             content_type: wire.content_type,
             group_id: wire.group_id,
             deduplication_id: wire.deduplication_id,

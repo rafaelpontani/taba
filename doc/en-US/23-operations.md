@@ -66,6 +66,8 @@ If a node does not finish draining within `drain.timeout` plus 30 s, the process
 
 > The versions are **not** made compatible with each other: the cluster API is internal and has no compatibility guarantee between versions ([18-cluster-api.md](18-cluster-api.md)); what a newer version adds between nodes is only sent to nodes that announced that version. `membersVersion` goes up at each membership change, which is normal in a rolling upgrade.
 
+> ⚠️ **The version that introduced the batch (`POST /cluster/batch`, [D186](30-decisions.md)) cannot be reached by a rolling upgrade from an earlier one.** The operations on messages between nodes changed route and format (protobuf), with no compatibility: a new node does not understand the single-operation routes, and an old one does not have the batch route, so while nodes of both versions are in the cluster the writes that need a replica of the other version fail. **Stop the whole cluster and start the new version with the same volumes** (the cluster resumes from disk, [See "All nodes went down"](#all-nodes-went-down)). From the next version on, the rule above holds again.
+
 The `stop_grace_period` (Compose) or `terminationGracePeriodSeconds` (Kubernetes, 30 s by default) must be **greater than `drain.timeout`** (25 s). The repository's Compose uses **40 s**. Otherwise the process is killed before recording the result.
 
 ## Retire a node on purpose (drain)

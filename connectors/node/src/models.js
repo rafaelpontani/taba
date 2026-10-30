@@ -180,6 +180,34 @@ function parsePublishResponse(raw) {
   }
 }
 
+/** The `results` of a batch, one per item in the order of the request. `ok`: the item was applied. */
+function parseBatchResults(raw) {
+  const f = fields(raw, 'batch');
+  try {
+    const results = [];
+    for (const item of arrayItems(f.raw('results') || '[]')) {
+      const r = JsonFields.parse(item);
+      const error = r.raw('error');
+      const e = error !== null && error.startsWith('{') ? JsonFields.parse(error) : null;
+      const status = r.integer('status') || 0;
+      results.push({
+        status,
+        ok: e === null && status < 300,
+        id: r.string('id'),
+        duplicate: r.boolean('duplicate'),
+        matched: r.integer('matched'),
+        invisibleUntil: r.string('invisibleUntil'),
+        errorCode: e === null ? null : e.string('code') || '',
+        errorMessage: e === null ? null : e.string('message'),
+        raw: item,
+      });
+    }
+    return results;
+  } catch (e) {
+    throw invalid('batch results', e);
+  }
+}
+
 function parseVisibilityResponse(raw) {
   const f = fields(raw, 'visibility');
   try {
@@ -197,5 +225,6 @@ module.exports = {
   parseMessages,
   parsePage,
   parsePublishResponse,
+  parseBatchResults,
   parseVisibilityResponse,
 };

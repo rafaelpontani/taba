@@ -53,6 +53,8 @@ tracing-opentelemetry = { version = "0.34", default-features = false }
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 x509-parser = { version = "0.18.1", features = ["verify"] }
 uuid = { version = "1.27.0", features = ["v7"] }
+rand = "0.9"
+bytes = "1"
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["sigv4a", "http-1x", "default-https-client", "rt-tokio"] }
@@ -60,8 +62,10 @@ aws-config = "1.12.0"
 utoipa = "6"
 utoipa-axum = "0.3"
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
+mimalloc = { version = "0.1.52", default-features = false }
 
 [dev-dependencies]
+mimalloc = { version = "0.1.52", default-features = false, features = ["extended"] }
 jsonschema = { version = "0.30", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
 tempfile = "3.27.0"

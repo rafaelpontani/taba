@@ -1,0 +1,5 @@
+# Perfil quick: uma rodada de 2 min por teste, 1 min de aquecimento, os quatro primeiros workloads.
+ROUNDS=1
+DURATION=2
+WARMUP=1
+PROFILE_WORKLOADS="simple-1kb max-rate-1kb fanout-1kb keyed-1kb"

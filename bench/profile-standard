@@ -1,0 +1,5 @@
+# Perfil standard: três rodadas de 5 min por teste, 1 min de aquecimento, os seis workloads.
+ROUNDS=3
+DURATION=5
+WARMUP=1
+PROFILE_WORKLOADS="simple-1kb max-rate-1kb fanout-1kb keyed-1kb small-100b backlog-1kb"

@@ -13,6 +13,7 @@ use crate::storage::topics::MemoryTopicStore;
 
 struct Harness {
     replica: Arc<Replica>,
+    clock: Arc<ManualClock>,
     messages: Arc<Messages>,
     _dir: tempfile::TempDir,
 }
@@ -52,12 +53,13 @@ async fn harness() -> Harness {
     let replica = Replica::new(
         messages.clone(),
         topics,
-        clock,
+        clock.clone(),
         Arc::new(Telemetry::from_config(&config, "n")),
         Duration::from_secs(60),
     );
     Harness {
         replica,
+        clock,
         messages,
         _dir: dir,
     }
@@ -67,7 +69,7 @@ fn record(topic: &str, id: &str) -> MessageRecord {
     MessageRecord {
         id: id.to_owned(),
         topic: topic.to_owned(),
-        body: b"hello".to_vec(),
+        body: b"hello".to_vec().into(),
         content_type: "text/plain".into(),
         group_id: None,
         deduplication_id: None,
@@ -202,4 +204,164 @@ async fn repeating_rollback_returns_the_same_ack_and_the_message_never_appears()
             .unwrap()
             .is_none()
     );
+}
+
+/// UC: UC-CNS-023
+#[tokio::test]
+async fn only_the_pendings_past_the_ttl_expire_and_the_newer_ones_stay() {
+    let h = harness().await;
+    let old_message = id::new_at(1_791_288_000_020);
+    let old_op = id::new_at(1_791_288_000_021);
+    let new_message = id::new_at(1_791_288_000_022);
+    let new_op = id::new_at(1_791_288_000_023);
+
+    h.replica
+        .write(
+            "orders",
+            &old_message,
+            register(&old_op, "orders", &old_message),
+        )
+        .await
+        .unwrap();
+    h.clock.advance(Duration::from_secs(40));
+    h.replica
+        .write(
+            "orders",
+            &new_message,
+            register(&new_op, "orders", &new_message),
+        )
+        .await
+        .unwrap();
+    assert_eq!(h.replica.pending(), 2);
+
+    // The pending TTL of the harness is 60 s: the first is 70 s old, the second 30 s.
+    h.clock.advance(Duration::from_secs(30));
+    assert_eq!(h.replica.pending(), 1, "only the old one expired");
+    let late = h
+        .replica
+        .write("orders", &old_message, commit(&old_op))
+        .await
+        .unwrap_err();
+    assert_eq!(late.code, ErrorCode::ClusterOperationUnknown);
+    assert_eq!(
+        h.replica
+            .write("orders", &new_message, commit(&new_op))
+            .await
+            .unwrap(),
+        expected(&new_op)
+    );
+    assert_eq!(h.replica.pending(), 0);
+
+    // The slot of the expired message is free again.
+    h.replica
+        .write(
+            "orders",
+            &old_message,
+            register("another-op", "orders", &old_message),
+        )
+        .await
+        .unwrap();
+    assert_eq!(h.replica.pending(), 1);
+}
+
+/// UC: UC-ESC-026
+#[test]
+fn the_memory_of_decided_operations_forgets_the_oldest_first_and_stays_bounded() {
+    let mut decided = Decided::default();
+    decided.remember("first", Finished::RolledBack);
+    for n in 0..FINISHED_MEMORY {
+        decided.remember(&format!("op-{n}"), Finished::Committed);
+    }
+    assert_eq!(decided.get("first"), None, "the oldest left to make room");
+    assert_eq!(decided.get("op-0"), Some(Finished::Committed));
+    assert_eq!(
+        decided.get(&format!("op-{}", FINISHED_MEMORY - 1)),
+        Some(Finished::Committed)
+    );
+    assert_eq!(decided.outcomes.len(), FINISHED_MEMORY);
+
+    // Deciding again replaces the outcome and counts as the newest.
+    decided.remember("op-0", Finished::RolledBack);
+    assert_eq!(decided.get("op-0"), Some(Finished::RolledBack));
+    decided.remember("extra", Finished::Committed);
+    assert_eq!(
+        decided.get("op-0"),
+        Some(Finished::RolledBack),
+        "refreshed, it stays"
+    );
+    assert_eq!(decided.get("op-1"), None, "the next oldest left");
+}
+
+/// UC: UC-INV-010
+#[tokio::test]
+async fn a_register_holds_the_message_while_its_check_runs() {
+    let h = harness().await;
+    let message = id::new_at(1_791_288_000_000);
+    let (release, gate) = tokio::sync::oneshot::channel::<()>();
+
+    // The check of the first register is slow (the engine is busy): in this window another operation tries to
+    // register and commit, and must not get through (PRB-077).
+    let first = {
+        let replica = h.replica.clone();
+        let message = message.clone();
+        tokio::spawn(async move {
+            replica
+                .register("op-ack", "orders", &message, Action::Ack, async {
+                    let _ = gate.await;
+                    Ok(())
+                })
+                .await
+        })
+    };
+    while h.replica.pending() == 0 {
+        tokio::task::yield_now().await;
+    }
+
+    let other = h
+        .replica
+        .register("op-move", "orders", &message, Action::Ack, async { Ok(()) })
+        .await
+        .unwrap_err();
+    assert_eq!(other.code, ErrorCode::ClusterConflict);
+
+    release.send(()).unwrap();
+    assert_eq!(first.await.unwrap().unwrap(), expected("op-ack"));
+    assert_eq!(h.replica.pending(), 1, "the first register stays pending");
+}
+
+/// UC: UC-INV-010
+#[tokio::test]
+async fn a_register_whose_check_fails_releases_the_message() {
+    let h = harness().await;
+    let message = id::new_at(1_791_288_000_000);
+
+    let refused = h
+        .replica
+        .register("op-1", "orders", &message, Action::Ack, async {
+            Err(TabaError::new(ErrorCode::MessageNotFound, "gone"))
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::MessageNotFound);
+    assert_eq!(h.replica.pending(), 0, "a refused register leaves nothing");
+
+    // A register whose caller gave up (the future dropped in the middle of the check) leaves nothing either.
+    let dropped = tokio::time::timeout(
+        Duration::from_millis(20),
+        h.replica.register(
+            "op-2",
+            "orders",
+            &message,
+            Action::Ack,
+            std::future::pending(),
+        ),
+    )
+    .await;
+    assert!(dropped.is_err());
+    assert_eq!(h.replica.pending(), 0);
+
+    h.replica
+        .register("op-3", "orders", &message, Action::Ack, async { Ok(()) })
+        .await
+        .unwrap();
 }

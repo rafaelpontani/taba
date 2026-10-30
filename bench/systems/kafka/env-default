@@ -1,0 +1,1 @@
+# Padrao do Kafka: sem fsync por mensagem (o sistema operacional descarrega as paginas).

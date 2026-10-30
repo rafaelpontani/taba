@@ -245,6 +245,65 @@ impl Replication {
         self.channels.accept(&open.from, link);
     }
 
+    /// `handle` as a boxed future: a batch serves its items with it, and the cycle `handle` → `handle_batch` → `handle`
+    /// needs the indirection.
+    fn handle_boxed<'a>(
+        &'a self,
+        caller: &'a str,
+        request: Request,
+    ) -> crate::cluster::transport::BoxFuture<'a, Result<Response, TabaError>> {
+        Box::pin(self.handle(caller, request))
+    }
+
+    /// Serves the items of a batch one after the other, each as the call it would have been on its own, and answers
+    /// with one result per item, in order. An item that failed (or could not be read) is an error of that item only.
+    async fn handle_batch(
+        &self,
+        caller: &str,
+        entries: Vec<crate::cluster::protocol::wire::Entry>,
+    ) -> Result<Response, TabaError> {
+        let max_items = self.service.rules().batch_max_items;
+        if entries.len() > max_items {
+            return Err(TabaError::new(
+                ErrorCode::MessageTooLarge,
+                format!("The batch has more than {max_items} items (`cluster.batch.max-items`)."),
+            ));
+        }
+        // At once, like the calls would have been on their own: an item that waits for other nodes (a FIFO publication, a
+        // `Take`) does not hold back the rest of its batch. The results keep the order of the items.
+        let served = entries.into_iter().map(|entry| async move {
+            match entry {
+                Ok(item) => {
+                    // The operation continues the trace of the call that asked for it, if it came with one.
+                    let span = item.traceparent.as_ref().and_then(|traceparent| {
+                        crate::telemetry::trace::inbound_span(
+                            &format!("POST /cluster/batch {}", item.request.name()),
+                            &[("traceparent".to_owned(), traceparent.clone())],
+                        )
+                    });
+                    let served = self.handle_boxed(caller, item.request);
+                    let served = match span {
+                        Some(span) => tracing::Instrument::instrument(served, span).await,
+                        None => served.await,
+                    };
+                    match served {
+                        Ok(
+                            response @ (Response::Ack(_)
+                            | Response::Taken(_)
+                            | Response::FifoPublished(_)),
+                        ) => Ok(response),
+                        Ok(_) => Err(TabaError::internal()),
+                        Err(error) => Err(error),
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        });
+        Ok(Response::Batch(
+            futures_util::future::join_all(served).await,
+        ))
+    }
+
     /// Serves a call from another member (the member check was already done).
     pub async fn handle(&self, caller: &str, request: Request) -> Result<Response, TabaError> {
         // A node that is syncing stores the events in the database instead of processing them (doc 05, 7.3).
@@ -252,6 +311,7 @@ impl Replication {
             return Ok(reply);
         }
         match request {
+            Request::Batch(entries) => self.handle_batch(caller, entries).await,
             Request::Write { topic, id, step } => {
                 crate::cluster::protocol::validate_message_path(&topic, &id)?;
                 step.validate_reference()?;

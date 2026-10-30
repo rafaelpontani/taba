@@ -109,7 +109,7 @@ fn every_phase_of_every_two_phase_call_carries_the_operation_id() {
         message: MessageRecord {
             id: guid(10),
             topic: "pedidos".into(),
-            body: b"{}".to_vec(),
+            body: b"{}".to_vec().into(),
             content_type: "application/json".into(),
             group_id: None,
             deduplication_id: None,

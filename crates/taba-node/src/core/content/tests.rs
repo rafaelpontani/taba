@@ -106,3 +106,45 @@ fn renders_json_text_and_base64() {
     assert_eq!(serde_json::to_string(&png).unwrap(), "\"iVBORw0KGgo=\"");
     assert_eq!(png.encoding(), Some("base64"));
 }
+
+fn decode(content_type: &str, body: &str, encoding: Option<&str>) -> Result<Vec<u8>, TabaError> {
+    let raw = RawValue::from_string(body.to_owned()).unwrap();
+    Body::decode(&ContentType::parse(content_type).unwrap(), &raw, encoding)
+}
+
+/// UC: UC-MSG-022
+#[test]
+fn a_body_of_a_batch_comes_in_the_form_the_get_delivers() {
+    // JSON as it came, with the spaces and the order of the keys.
+    assert_eq!(
+        decode("application/json", r#"{"b": 1, "a": [2]}"#, None).unwrap(),
+        br#"{"b": 1, "a": [2]}"#
+    );
+    assert_eq!(
+        decode("text/plain; charset=utf-8", r#""olá""#, None).unwrap(),
+        "olá".as_bytes()
+    );
+    assert_eq!(
+        decode("image/png", r#""AAEC""#, Some("base64")).unwrap(),
+        [0, 1, 2]
+    );
+    // base64 also works for JSON and text.
+    assert_eq!(
+        decode("application/json", r#""e30=""#, Some("base64")).unwrap(),
+        b"{}"
+    );
+    for (content_type, body, encoding) in [
+        ("image/png", r#""AAEC""#, None),
+        ("text/plain", "12", None),
+        ("image/png", r#""não é base64""#, Some("base64")),
+        ("image/png", "[1]", Some("base64")),
+        ("image/png", r#""AAEC""#, Some("hex")),
+    ] {
+        let error = decode(content_type, body, encoding).unwrap_err();
+        assert_eq!(
+            error.code,
+            ErrorCode::ValidationInvalidBody,
+            "{content_type} {body}"
+        );
+    }
+}

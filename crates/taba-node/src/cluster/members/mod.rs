@@ -223,6 +223,23 @@ impl Membership {
         self.lock().table.clone()
     }
 
+    /// The node already has the table (without copying it).
+    pub fn has_table(&self) -> bool {
+        self.lock().table.is_some()
+    }
+
+    /// The members with these IDs, in the order given (the ones not in the table are left out); `None`
+    /// without the table. Copies only them, not the whole table.
+    pub fn members_of(&self, ids: &[&str]) -> Option<Vec<Member>> {
+        let inner = self.lock();
+        let table = inner.table.as_ref()?;
+        Some(
+            ids.iter()
+                .filter_map(|id| table.member(id).cloned())
+                .collect(),
+        )
+    }
+
     /// The table with the nodes in freezing that still apply, for whoever is joining (D106).
     pub fn table_with_frozen(&self, now: SystemTime, duration: Duration) -> Option<MemberTable> {
         let mut inner = self.lock();

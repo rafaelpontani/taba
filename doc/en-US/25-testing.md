@@ -3,7 +3,7 @@ title: Testing
 summary: How Taba is tested — the levels (unit, one node, simulated cluster, connectors, end to end), the test tools (TestNode, TestCluster, in-memory network, manual clock, fake OTLP collector) and how to write and run a test.
 type: guide
 status: stable
-verified-on: 2026-10-27 @ ada9ff1
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/tests, crates/taba-node/tests/common, crates/taba-node/src/cluster/transport/memory, crates/taba-node/src/core/clock, connectors/rust, connectors/csharp/Taba.Client.Tests, connectors/contract, docker/validate.sh, docker/seed-demo.sh, docker/hang-hunt.sh]
 ---
 
@@ -97,6 +97,25 @@ docker/hang-hunt.sh nodes_api <test name>                         # a test that 
 ```
 
 **`uc_coverage` in detail.** It fails when: (1) a test cites a code that **does not exist** or is `(retirado)`; (2) a code appears **twice** in the documentation. A third rule, "every documented case has a test", **only fails with `TABA_UC_STRICT=1`**: with 183 cases without a test, it prints the scoreboard instead of failing. `uc_coverage` reads the `### UC-…` cards of [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md).
+
+### Measuring the cost of a message without Docker
+
+A container run or a heap dump is the slow way to learn what a message costs. Two tests measure it inside the test process, with a number that does not depend on the machine (heap calls and bytes) or that is read in a `--release` build (time):
+
+```bash
+# bytes of heap per waiting message, what stays after the ack, heap calls per message
+cargo test -p taba-node --test memory_cost heap_cost -- --nocapture
+# the same, with the call stacks sampled: which functions of the node ask for the heap (takes minutes)
+TABA_ALLOC_PROFILE=1 cargo test -p taba-node --test memory_cost heap_cost -- --nocapture
+# requests per second of publish, take and ack with 16 clients, with 1 to 64 at once, and in batches of 100 (release build)
+cargo test --release -p taba-node --test memory_cost throughput -- --nocapture
+# time per message of the cluster path without HTTP, against the engine alone (release build)
+cargo test --release -p taba-node --test memory_cost cost_of_the_cluster_path -- --nocapture
+# the engine alone, time per message of publish, take and ack (release build)
+cargo test --release -p taba-node --lib engine::messages::tests::cost -- --nocapture
+```
+
+`tests/memory_cost.rs` is a binary of its own because it has a global allocator that counts on top of mimalloc, the allocator of the `taba` binary: the live bytes asked for and the ones the allocator really reserves (its size classes round up), per exact size, so a block that grows with the backlog shows up by its size. The client runs in another runtime whose threads are marked, so its allocations are not counted. The engine test removes the HTTP layer and the cluster layer: if a time grows there and not here, the cost is outside the engine. The method found that the ack cost 30 times a publication in the engine ([D188](30-decisions.md)).
 
 ### Investigating a test that hangs or fails only sometimes
 

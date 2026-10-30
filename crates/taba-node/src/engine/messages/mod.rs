@@ -46,6 +46,7 @@ mod window;
 
 pub use backup::BackupSink;
 pub use blocks::{BlockEntry, BlockMessage, Loaded};
+use bytes::Bytes;
 pub use lives::TopicCheck;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io;
@@ -125,6 +126,9 @@ pub struct MessageRules {
     pub invisible_reload_threshold: Option<usize>,
     /// `fifo.dedup.window`, in milliseconds.
     pub fifo_dedup_window_ms: u64,
+    /// `api.batch.max-messages` and `api.batch.max-bytes`: the items and the bytes of a request in batch.
+    pub batch_max_messages: usize,
+    pub batch_max_bytes: u64,
 }
 
 impl MessageRules {
@@ -151,6 +155,8 @@ impl MessageRules {
                 .map(|n| n as usize),
             fifo_dedup_window_ms: u64::try_from(config.fifo.dedup_window.as_millis())
                 .unwrap_or(u64::MAX),
+            batch_max_messages: config.batch.max_messages as usize,
+            batch_max_bytes: config.batch.max_bytes,
         }
     }
 
@@ -175,7 +181,7 @@ impl MessageRules {
 /// `Content-Type` and the query.
 #[derive(Debug, Clone, Default)]
 pub struct PublishRequest {
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub content_type: Option<String>,
     pub group_id: Option<String>,
     pub deduplication_id: Option<String>,
@@ -272,7 +278,7 @@ const OPEN_PAGE: usize = 1000;
 /// A message in memory: the metadata is the same as the database row's.
 struct Stored {
     meta: MessageMeta,
-    body: Vec<u8>,
+    body: Bytes,
 }
 
 /// Where a message is.
@@ -419,7 +425,7 @@ pub struct ConsumeParams {
 #[derive(Debug, Clone)]
 pub enum Draft {
     /// A new message, with `id` and position already defined.
-    New { meta: MessageMeta, body: Vec<u8> },
+    New { meta: MessageMeta, body: Bytes },
     /// The key already exists in the group within the window: the original's `id` applies.
     Duplicate { id: String },
 }
@@ -478,7 +484,7 @@ pub enum VisibilityCheck {
 pub struct Candidate {
     /// The message as it will be after the delivery.
     pub meta: MessageMeta,
-    pub body: Vec<u8>,
+    pub body: Bytes,
     previous_deliveries: u32,
     band: u32,
 }
@@ -670,6 +676,34 @@ impl Messages {
         Ok(some)
     }
 
+    /// A publication of `size` bytes on the topic only touches memory: the topic has no database
+    /// yet (so asking whether the `id` exists reads nothing from disk), the memory limit has room, the
+    /// node is not draining and there is no backup to note it in. The replica then applies it without a
+    /// blocking thread. It is a forecast, not a reservation: a publication that still ends up on disk
+    /// (another one took the room in the meantime) only writes it on the calling thread, once.
+    pub fn publish_is_light(&self, topic: &str, size: u64) -> bool {
+        !self.draining.load(Ordering::Relaxed)
+            && self.backup.get().is_none()
+            && self.store.known_without_disk(topic)
+            && self.rules.memory_limit.is_none_or(|limit| {
+                self.memory_bytes
+                    .load(Ordering::Relaxed)
+                    .saturating_add(size)
+                    <= limit
+            })
+    }
+
+    /// The message is in the topic's memory: reading it, acking it or moving its deadline touches no disk (the
+    /// ack only queues its line in the log of excluded messages, written in batches), so the replica does it
+    /// without a blocking thread. It is a forecast: a message demoted in the meantime is just read on the calling
+    /// thread, once.
+    pub fn is_in_memory(&self, topic: &str, id: &str) -> bool {
+        let states = self.states.read().unwrap_or_else(|e| e.into_inner());
+        states
+            .get(topic)
+            .is_some_and(|state| lock(state).memory.contains_key(id))
+    }
+
     /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
     pub fn record_publish_latency(&self, topic: &str, secs: f64) {
         let state = self.state_of(topic);
@@ -678,6 +712,7 @@ impl Messages {
 
     /// The node stopped: closes the topic databases (the files can be moved or deleted).
     pub fn release_files(&self) {
+        self.flush_excluded();
         self.store.release_files();
     }
 
@@ -723,7 +758,10 @@ impl Messages {
         // topic that was recreated with another one (doc 07, section 10.6).
         let for_ids = topics.clone();
         store.set_topic_id_resolver(Box::new(move |name| {
-            for_ids.get(name).ok().map(|view| view.definition.id)
+            for_ids
+                .get(name)
+                .ok()
+                .map(|view| view.definition.id.clone())
         }));
         let started_ms = clock.now_millis();
         let messages = Arc::new(Self {
@@ -820,7 +858,7 @@ impl Messages {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
-            return Some((stored.meta.clone(), stored.body.clone()));
+            return Some((stored.meta.clone(), stored.body.to_vec()));
         }
         let owned = self.know(topic, &mut state, id);
         state.index.forget_adopted();
@@ -837,7 +875,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<(), TabaError> {
         self.apply_publish(topic, meta, body)
     }
@@ -1129,6 +1167,11 @@ impl Messages {
     pub fn publish_limit(&self, topic: &str) -> Result<u64, TabaError> {
         let view = self.topics.get(topic)?;
         Ok(view.max_message_bytes().unwrap_or(self.rules.max_bytes))
+    }
+
+    /// The most items and bytes of a request in batch (`api.batch.*`).
+    pub fn batch_limits(&self) -> (usize, u64) {
+        (self.rules.batch_max_messages, self.rules.batch_max_bytes)
     }
 
     pub fn publish(&self, topic: &str, request: PublishRequest) -> Result<Published, TabaError> {
@@ -2176,6 +2219,13 @@ impl Messages {
         }
     }
 
+    /// Writes the exclusions of the acks that wait in memory (see `MessageStore::record_excluded`).
+    pub fn flush_excluded(&self) {
+        if let Err(e) = self.store.flush_excluded() {
+            self.disk_error("failed to write the log of excluded messages", &e);
+        }
+    }
+
     /// Applies the limits of the log of excluded messages (doc 07, section 10.3). The log is trimmed on its own
     /// schedule, not at each pass of the sweep.
     pub fn trim_excluded(&self) {
@@ -2231,7 +2281,11 @@ impl Messages {
                 () = cancel.cancelled() => return,
                 _ = ticker.tick() => {
                     let this = self.clone();
-                    let _ = tokio::task::spawn_blocking(move || this.sweep()).await;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        this.sweep();
+                        this.flush_excluded();
+                    })
+                    .await;
                     if last_trim.elapsed() >= EXCLUDED_TRIM_EVERY {
                         let this = self.clone();
                         let _ = tokio::task::spawn_blocking(move || this.trim_excluded()).await;
@@ -2613,11 +2667,11 @@ impl Messages {
                         continue;
                     };
                     match self.store.body(name, &id) {
-                        Ok(body) => (meta, body),
+                        Ok(body) => (meta, body.into()),
                         // The body the eviction took off disk comes back from S3 (doc 23).
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {
                             match self.backup_body(name, &id) {
-                                Some(body) => (meta, body),
+                                Some(body) => (meta, body.into()),
                                 None => {
                                     // Row without a file (a crash in the middle of writing): lost.
                                     tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");
@@ -2882,7 +2936,7 @@ impl Messages {
         &self,
         topic: &str,
         id: &str,
-    ) -> Result<Option<(MessageMeta, Vec<u8>)>, TabaError> {
+    ) -> Result<Option<(MessageMeta, Bytes)>, TabaError> {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         if let Some(stored) = state.memory.get(id) {
@@ -2908,7 +2962,7 @@ impl Messages {
             },
             Err(e) => return Err(self.disk_error("failed to read the body on disk", &e)),
         };
-        Ok(Some((meta, body)))
+        Ok(Some((meta, body.into())))
     }
 
     /// Prepares a publication for the cluster: checks everything a queue's node would check and
@@ -2918,7 +2972,7 @@ impl Messages {
         &self,
         view: &TopicView,
         request: &PublishRequest,
-    ) -> Result<(MessageMeta, Vec<u8>), TabaError> {
+    ) -> Result<(MessageMeta, Bytes), TabaError> {
         let prepared = Prepared::new(request)?;
         let limit = view.max_message_bytes().unwrap_or(self.rules.max_bytes);
         if request.body.len() as u64 > limit {
@@ -3058,7 +3112,7 @@ impl Messages {
         &self,
         topic: &str,
         meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<(), TabaError> {
         self.apply_publish_with(topic, meta, body, false)
     }
@@ -3069,7 +3123,7 @@ impl Messages {
         &self,
         topic: &str,
         mut meta: MessageMeta,
-        body: Vec<u8>,
+        body: Bytes,
         durable: bool,
     ) -> Result<(), TabaError> {
         let now = self.clock.now_millis();
@@ -3428,13 +3482,13 @@ impl Messages {
                 match self.store.body(name, &id) {
                     Ok(body) => {
                         NodeCounters::add(&self.counters.reads_disk, 1);
-                        (meta, body)
+                        (meta, body.into())
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
                         match self.backup_body(name, &id) {
                             Some(body) => {
                                 NodeCounters::add(&self.counters.reads_disk, 1);
-                                (meta, body)
+                                (meta, body.into())
                             }
                             None => {
                                 tracing::error!(topic = %name, id = %id, "corpo sumiu do disco");

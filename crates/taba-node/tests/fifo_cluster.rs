@@ -356,7 +356,7 @@ async fn a_node_that_is_not_the_primary_of_the_group_answers_421() {
     let record = MessageRecord {
         id: FIFO_PLACEHOLDER_ID.into(),
         topic: TOPIC.into(),
-        body: br#"{"a":1}"#.to_vec(),
+        body: br#"{"a":1}"#.to_vec().into(),
         content_type: "application/json".into(),
         group_id: Some("g1".into()),
         deduplication_id: None,
@@ -403,7 +403,7 @@ fn draft(
         .draft_fifo_publish(
             &view,
             &taba_node::engine::messages::PublishRequest {
-                body: body.as_bytes().to_vec(),
+                body: body.as_bytes().to_vec().into(),
                 content_type: Some("application/json".into()),
                 group_id: Some(group.to_owned()),
                 deduplication_id: Some(key.to_owned()),

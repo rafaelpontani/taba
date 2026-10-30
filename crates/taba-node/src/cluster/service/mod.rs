@@ -15,10 +15,12 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+mod batch;
 mod probe;
 
 use super::backup::{BackupPort, StartupDecision, not_configured};
 use super::members::{Change, Member, MemberState, MemberTable, Membership, MembershipError};
+use super::protocol::wire;
 use super::protocol::{
     Ack, DefinitionApply, JoinRequest, NodeRegisterRequest, NodeUnregisterRequest, OperationRef,
     Request, Response, UnregisterReason,
@@ -96,6 +98,12 @@ pub struct ClusterRules {
     /// the state signals, in place of the channel's heartbeat.
     pub keepalive_interval: Duration,
     pub call_timeout: Duration,
+    /// `cluster.batch.max-items`: operations in one call to a node; `1` turns the batch off.
+    pub batch_max_items: usize,
+    /// `cluster.batch.max-bytes`: the soft size limit of the body of a batch (an item above it goes alone).
+    pub batch_max_bytes: usize,
+    /// `message.max-bytes`: the largest item a batch can carry, which the receiver allows on top of `batch_max_bytes`.
+    pub message_max_bytes: usize,
     pub join_timeout: Duration,
     /// `cluster.channel.reconnect.retries`: consecutive calls to the channel that fail before the node
     /// opens the exclusion vote on the peer.
@@ -189,6 +197,9 @@ impl ClusterRules {
                 .unwrap_or(Duration::from_millis(50)),
             keepalive_interval,
             call_timeout: CALL_TIMEOUT,
+            batch_max_items: config.cluster.batch_max_items.max(1) as usize,
+            batch_max_bytes: usize::try_from(config.cluster.batch_max_bytes).unwrap_or(usize::MAX),
+            message_max_bytes: usize::try_from(config.messages.max_bytes).unwrap_or(usize::MAX),
             join_timeout: JOIN_TIMEOUT,
             reconnect_retries: config.cluster.reconnect_retries.map_or(3, |n| n.max(1)),
             reconnect_backoff: config
@@ -315,6 +326,8 @@ pub struct ClusterService {
     backup: OnceLock<std::sync::Weak<dyn BackupPort>>,
     /// The versions of the other members and the upgrade in progress (doc 23, rolling update).
     upgrade: super::upgrade::Upgrade,
+    /// The queues of message operations on their way to the other nodes (`cluster.batch.*`).
+    batcher: batch::Batcher,
 }
 
 /// The nodes that left by drain, as `Request::Departed` answers (and as `GET /nodes` reads them).
@@ -443,6 +456,7 @@ impl ClusterService {
             reads: OnceLock::new(),
             backup: OnceLock::new(),
             upgrade: super::upgrade::Upgrade::default(),
+            batcher: batch::Batcher::default(),
         })
     }
 
@@ -679,24 +693,27 @@ impl ClusterService {
     /// The nodes responsible for the position, in order (primary first): `replication.factor` distinct
     /// nodes, or fewer if the cluster has fewer. `503` if the node does not have the table yet.
     pub fn owners_of(&self, position: u64) -> Result<Vec<Member>, TabaError> {
-        let table = self.membership.table().ok_or_else(node_syncing)?;
         let ring = self.membership.ring();
         let wanted = self.rules.replication_factor.max(1) as usize;
-        Ok(ring
-            .owners(position, wanted)
-            .into_iter()
-            .filter_map(|id| table.member(id).cloned())
-            .collect())
+        self.membership
+            .members_of(&ring.owners(position, wanted))
+            .ok_or_else(node_syncing)
     }
 
     /// The IP this node presents itself with (a local call goes through the same
     /// member check as one that came from the network).
     pub fn self_caller(&self) -> String {
-        self.local().addresses.first().cloned().unwrap_or_default()
+        self.local
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .addresses
+            .first()
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn is_self(&self, member: &Member) -> bool {
-        member.node_id == self.node_id()
+        member.node_id == self.local.read().unwrap_or_else(|e| e.into_inner()).node_id
     }
 
     /// Makes the call to a member: to itself without the network, to the others through the `Transport`.
@@ -710,6 +727,9 @@ impl ClusterService {
                 .handle(&self.self_caller(), request)
                 .await
                 .map_err(CallError::Remote);
+        }
+        if self.rules.batch_max_items > 1 && request.is_batchable() {
+            return self.call_batched(member, request).await;
         }
         self.call_peer(member, request, self.rules.call_timeout)
             .await
@@ -1069,7 +1089,7 @@ impl ClusterService {
     /// Only whoever is in the member table calls the phase routes (doc 06c): a node that does not
     /// have the table yet does not know who is a member and answers `503`.
     pub(crate) fn require_member(&self, caller: &str) -> Result<(), TabaError> {
-        if self.membership.table().is_none() {
+        if !self.membership.has_table() {
             return Err(node_syncing());
         }
         if self.membership.is_member_address(caller) {
@@ -1442,6 +1462,22 @@ impl ClusterService {
         request: Request,
         timeout: Duration,
     ) -> Result<Response, CallError> {
+        // A message operation has no route of its own between nodes: alone, it goes as a batch of one item.
+        if request.is_batchable() {
+            let batch = Request::Batch(vec![Ok(wire::BatchItem::traced(request))]);
+            return match tokio::time::timeout(timeout, self.transport.call(to, batch)).await {
+                Ok(Ok(Response::Batch(mut results))) if results.len() == 1 => match results.pop() {
+                    Some(Ok(response)) => Ok(response),
+                    Some(Err(error)) => Err(CallError::Remote(error)),
+                    None => unreachable!("one result was checked"),
+                },
+                Ok(Ok(_)) => Err(CallError::Unreachable(
+                    "the reply to the batch has another shape".into(),
+                )),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(CallError::Timeout),
+            };
+        }
         match tokio::time::timeout(timeout, self.transport.call(to, request)).await {
             Ok(result) => result,
             Err(_) => Err(CallError::Timeout),

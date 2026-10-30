@@ -3,8 +3,8 @@ title: Connectors
 summary: Taba's client libraries — the common contract (the nine operations, retry, errors, body), the real state of each language (Rust, C#, Java, Python and Node.js ready; five planned), how to use and how to write a new one.
 type: reference
 status: partial
-verified-on: 2026-10-27 @ 9511db3
-sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/contract, examples/csharp-console]
+verified-on: 2026-10-29 @ 6e8cdf6
+sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, connectors/csharp, connectors/java, connectors/node, connectors/python, connectors/omb, connectors/contract, examples/csharp-console]
 ---
 
 # Connectors
@@ -21,6 +21,7 @@ sources: [connectors/README.md, connectors/rust/client, connectors/rust/cli, con
 | **Java** (`taba-client`) | `connectors/java/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **Python** (`taba-client`) | `connectors/python/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
 | **Node.js** (`taba-client`) | `connectors/node/` | ✅ **Ready** (unit tests and the contract tests) | ⬜ Not published (D70.1) |
+| **OpenMessaging Benchmark driver** (on top of Java) | `connectors/omb/` | ✅ **Ready** (unit and integration tests against a node) | ⬜ Not published (a tool of the repository) |
 | C, C++, PHP, Ruby, Go | — | ⬜ **Planned** (the folders do not exist) | — |
 
 > The goal of **ten languages** is a plan, not reality: today **5 of 10** exist. The [roadmap](32-roadmap.md) has the order. Since the API is HTTP, the other languages use their own HTTP client until the connector is out.
@@ -50,6 +51,8 @@ The same in all languages, with names adapted (`publish`, `Publish`, `publish_me
 | `consume(topic, options)` | `GET …/messages` | list of `Message` (empty if none) |
 | `ack(topic, message)` | `DELETE …/messages/{id}?receiptToken=` | — |
 | `changeVisibility(topic, message, seconds)` | `PUT …/visibility?receiptToken=` | `VisibilityResponse` |
+
+**In batch** (optional, next to the single calls, [D189](30-decisions.md)): `publishBatch(topic, messages)`, `ackBatch(topic, messages)` and `changeVisibilityBatch(topic, messages, seconds)` call `POST …/messages/batch`, `/ack` and `/visibility` and return one `BatchResult` per item, in order (`status`, `id`, `duplicate`, `matched`, `invisibleUntil`, `errorCode`, `errorMessage` and an `ok`/`isOk`); an item that failed does not throw. A message of `publishBatch` (`BatchMessage`) has the body bytes and the same options as `publish` (`contentType`, `groupId`, `deduplicationId`); the bytes go in base64, so any type fits. A network failure is not repeated, like the single publication. In C# they are in the interface `ITabaBatchClient`, which `TabaClient` also implements, so whoever implements `ITabaClient` is not broken. Names: `publish_batch`, `ack_batch`, `change_visibility_batch` in Rust and Python; `PublishBatchAsync` (and `PublishBatch`) in C#.
 
 **Outside the surface, on purpose:** tokens (`/tokens`: the operator creates them, with `curl` or `taba-cli token`), the operations API and the cluster one.
 
@@ -183,6 +186,15 @@ try (TabaClient client = new TabaClient(config)) {
 
 Tests: `cd connectors/java && mvn test` (JUnit 5 and the JDK's own `com.sun.net.httpserver`); CI runs JDK 11 and 21.
 
+## OpenMessaging Benchmark driver (`connectors/omb`)
+
+- A driver for the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) written on the Java connector, on **Java 11**; it is a tool to measure Taba with the same workloads the OMB runs against Kafka, NATS or RabbitMQ, and it goes into no package. The OMB commit it is built against is in `connectors/omb/OMB_VERSION` (the last one that still builds on Java 11).
+- **Mapping:** an OMB topic is a Taba **distributor** named like the topic, with the prefix `<topic>-`; each subscription is a **queue** `<topic>-<subscription>` created (volatile, with the longest `idleTimeout`, as a safety net) before the first publication, and deleted when the driver closes. Consumers of one subscription compete for its messages. The OMB partition count creates nothing in Taba.
+- **Key and order:** the OMB message key is the `groupId`. `ordering: none` (default) uses an ordinary queue; `ordering: per-key` uses a FIFO queue, and a message without a key takes `p0`..`p<partitions-1>` in rotation.
+- **Batches:** the producer keeps the messages in a buffer and sends them in one `POST …/messages/batch` when `producer.batchSize` (100) fill or `producer.lingerMs` (1 ms) pass, the same idea as the `linger.ms` of the Kafka producer; the time of a message is taken when it enters the buffer, so the wait counts in its latency. Like Kafka, the linger only sends a partial batch when a request is free: with every request in flight the batch keeps filling (otherwise a saturated producer sends ever smaller batches, each costing a request, and the rate falls in a spiral: measured, 600 messages per second against a node that takes 45 thousand). `producer.inFlight` (1000) counts requests; `bench/run.sh` uses 64, and the consumer reads 500 per `GET`. The consumer acks what one `GET` delivered in one `POST …/messages/ack` (`consumer.ackBatch`, `true`). `batchSize: 1` and `ackBatch: false` go back to one request per message.
+- **Publish time:** Taba keeps no attribute besides the body, so the producer writes its clock in the first 8 bytes of the body and the consumer removes it; the body in the server is 8 bytes larger than the OMB payload, and a result must say so.
+- **Build and tests:** `connectors/omb/build.sh` (OMB `driver-api`, the connector and the driver in a Java 11 container; one JAR with the connector inside, `target/omb-driver-taba-<version>-all.jar`) and `connectors/omb/test.sh` (one node in Docker, then the unit and the integration tests). The CI job `connector-omb` runs the build and the unit tests; `connector-contract` also runs `test.sh`. Configuration: `connectors/omb/driver-taba.yaml`. Cases: UC-CNT-036 to 041. The script that runs it against other systems is `bench/run.sh` ([38-benchmarks.md](38-benchmarks.md)).
+
 ## Node.js (`taba-client`)
 
 - **Node.js 18 or later**, CommonJS (works with `require` and `import`), types in `index.d.ts`, **no dependencies** (`node:http` and `node:https`).
@@ -249,7 +261,7 @@ They count as a **plan** (proposals, subject to D68, D70.1, D70.2). Java, Python
 
 The same scenario runs against a real Taba through **every connector** (C#, Java, Node.js, Python and Rust), each with a small *driver* written in its own language that uses only the public API ([connectors/contract/README.md](https://github.com/rafaelpontani/taba/blob/main/connectors/contract/README.md) has the scenario language and the operations). `connectors/contract/run.sh` starts **one Taba node** in Docker (the one-node profile) and runs, one after the other, the driver of each connector **in the container of its oldest supported runtime** (Node 18, Python 3.9, JDK 11, .NET 8, Rust stable); each connector can also run alone (`connectors/<language>/contract/run.sh`).
 
-- **`scenarios/core.scn`**, in every connector: topics (and their `404`, `409` and `400`), publish, consume, `changeVisibility` and `ack`; text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate and order); distributor; consuming with a handler (deleted, failed, kept and **renewal of the invisibility** while a slow handler holds the message); `subscribe`; a long polling **cancelled** from outside (not in Rust, which is synchronous: the line is printed as `SKIP`); a wrong token and a refused connection.
+- **`scenarios/core.scn`**, in every connector: topics (and their `404`, `409` and `400`), publish, consume, `changeVisibility` and `ack`, and the same in batch (`publishBatch`, `settleBatch`: one result per item, a bad item and an old receipt failing alone, the order of a FIFO group); text with accents, JSON and bytes coming back byte for byte; FIFO (duplicate and order); distributor; consuming with a handler (deleted, failed, kept and **renewal of the invisibility** while a slow handler holds the message); `subscribe`; a long polling **cancelled** from outside (not in Rust, which is synchronous: the line is printed as `SKIP`); a wrong token and a refused connection.
 - **`scenarios/cross-*.scn`**, the five together: each connector publishes to a distributor and each one reads its own queue, finding what the five sent, exactly.
 - **Not covered**: `503` and the retries with a node going down, and the cluster behavior (one node cannot show them): they stay with `docker/validate.sh` and the unit tests of each connector. The job `connector-contract` of `ci.yml` runs it on every pull request to `release`.
 
@@ -260,5 +272,5 @@ D68 (confirm the base versions of the languages still to do), D70.1 (organizatio
 ## Sources and evidence
 
 - `connectors/rust/client/src` (`client`, `http`, `json`, `base64`, `transport`, `testing`), `connectors/rust/client/README.md`, `connectors/csharp/Taba.Client*`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src`, `connectors/node/src`, `connectors/python/taba`, `examples/csharp-console`, `connectors/README.md`.
-- Use cases: UC-CNT (35 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust}/contract`.
+- Use cases: UC-CNT (40 cases, level `K`; connectors); see [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md). Tests: `connectors/rust/client/**/tests.rs`, `connectors/csharp/Taba.Client.Tests`, `connectors/java/src/test`, `connectors/node/test`, `connectors/python/tests`, `connectors/omb/src/test`; contract tests: `connectors/contract` (`run.sh`, `scenarios/`) and the drivers in `connectors/{csharp,java,node,python,rust}/contract`.
 - History: `19-conectores.md`, `19a-conectores-linguagens.md`.

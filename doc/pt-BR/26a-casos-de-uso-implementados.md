@@ -3,7 +3,7 @@ título: Casos de uso implementados
 resumo: O catálogo dos casos de uso do Taba que têm ao menos um teste que os cita, por área, com o caso, o nível e os testes que o provam.
 tipo: referência
 status: estável
-verificado-em: 2026-10-27 @ ada9ff1
+verificado-em: 2026-10-29 @ 6e8cdf6
 fontes: [crates/taba-node/tests, crates/taba-node/src, connectors/rust, connectors/csharp]
 ---
 
@@ -20,22 +20,22 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | Área | Assunto | Com teste | Sem teste |
 |---|---|---:|---:|
 | `TOP` | Tópicos: criar, listar, ler, alterar e remover | 46 | 3 |
-| `MSG` | Publicação e o corpo da mensagem | 19 | 1 |
+| `MSG` | Publicação e o corpo da mensagem | 22 | 1 |
 | `CNS` | Consumo (`GET`), long polling e `autoCreate` | 39 | 1 |
-| `ACK` | Confirmação do consumo | 13 | 0 |
-| `VIS` | Alteração da invisibilidade | 10 | 2 |
+| `ACK` | Confirmação do consumo | 14 | 0 |
+| `VIS` | Alteração da invisibilidade | 11 | 2 |
 | `RET` | Expiração (`ttl`), limite de entregas e dead-letter | 18 | 2 |
 | `DST` | Tópico Distribuidor | 17 | 1 |
 | `VOL` | Fila volátil e nó gestor | 23 | 0 |
-| `FIF` | Fila FIFO | 53 | 0 |
+| `FIF` | Fila FIFO | 54 | 0 |
 | `GRP` | Grupos de mensagens e entrega justa | 17 | 0 |
 | `AUT` | Autenticação e tokens de acesso | 34 | 5 |
 | `LIM` | Rate limit e IP do cliente | 13 | 2 |
 | `PAG` | Paginação | 8 | 1 |
 | `CNV` | Convenções comuns da API (formato, cabeçalhos, erros, status) | 14 | 3 |
-| `CNT` | Conectores | 35 | 0 |
+| `CNT` | Conectores | 36 | 0 |
 | `CLI` | O `taba-cli`, a linha de comando do cliente | 36 | 0 |
-| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 29 | 9 |
+| `ESC` | Escrita: registro + commit, quórum, rollback, teto de commit | 32 | 9 |
 | `ANE` | Anel de hash, blocos e papéis | 8 | 4 |
 | `DEF` | Definição de tópicos e de tokens replicada no cluster | 26 | 8 |
 | `ENT` | Entrega no dono: lista de prontos, `take`, long polling | 18 | 13 |
@@ -54,10 +54,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 | `DEV` | Perfil de um nó (o antigo modo desenvolvimento) | 3 | 4 |
 | `SEG` | Portas, TLS mútuo e certificados do cluster | 20 | 0 |
 | `OPS` | Observabilidade (OpenTelemetry), estatísticas, métricas e saúde | 44 | 7 |
-| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 8 | 2 |
+| `CLR` | Contrato das rotas do cluster (DTOs e regras comuns) | 10 | 2 |
 | `CFG` | Configuração e validações de partida | 11 | 2 |
 | `BKP` | Backup opcional em S3 | 45 | 0 |
 | `CHS` | Caos com histórico verificado | 5 | 0 |
+| `BNC` | Benchmark comparativo local (`bench/run.sh`) | 5 | 1 |
 
 ## TOP: Tópicos: criar, listar, ler, alterar e remover
 
@@ -736,6 +737,40 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
+### UC-MSG-021
+
+**Caso:** Publicar muitas mensagens numa requisição (`POST /topics/{topic}/messages/batch`), uma delas inválida  
+**Então:** `200` com um resultado por item na ordem: `201` e o `id` de cada mensagem publicada, o erro (`400 validation.invalid-body`, `validation.invalid-content-type`) só nos itens ruins, que não criam nada; as mensagens são consumidas como se publicadas uma a uma  
+**Nível:** I  
+**Testes:**
+  - `tests/messages_batch.rs::a_batch_publishes_one_message_per_item_and_a_bad_item_fails_alone`
+
+---
+
+
+### UC-MSG-022
+
+**Caso:** O corpo de um item do lote vem na forma em que o `GET` o entrega: JSON, uma string para `text/*`, base64 com `bodyEncoding`  
+**Então:** o JSON é guardado byte a byte; o texto e o base64 viram os bytes deles; um tipo binário sem base64, uma string que não é base64 ou outro `bodyEncoding` é `400 validation.invalid-body` naquele item  
+**Nível:** U e I  
+**Testes:**
+  - `src/core/content/tests.rs::a_body_of_a_batch_comes_in_the_form_the_get_delivers`
+  - `tests/messages_batch.rs::a_batch_publishes_one_message_per_item_and_a_bad_item_fails_alone`
+
+---
+
+
+### UC-MSG-023
+
+**Caso:** Um lote sem itens, com mais que `api.batch.max-messages`, acima de `api.batch.max-bytes`, com campo desconhecido ou faltando, que não é JSON ou para um tópico que não existe; um item acima de `maxMessageBytes`  
+**Então:** a requisição inteira é recusada antes de qualquer item (`400 validation.out-of-range`, `413 message.too-large`, `400 validation.unknown-field`, `400 validation.required`, `415 media.unsupported`, `404 topic.not-found`); só o item grande é `413 message.too-large` e os outros são publicados  
+**Nível:** I  
+**Testes:**
+  - `tests/messages_batch.rs::a_batch_outside_the_limits_is_refused_whole_and_a_large_item_fails_alone`
+
+---
+
+
 ## CNS: Consumo (`GET`), long polling e `autoCreate`
 
 ### UC-CNS-001
@@ -976,6 +1011,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** C  
 **Testes:**
   - `tests/replication.rs::a_rollback_that_does_not_arrive_leaves_a_pending_that_expires_by_itself`
+  - `src/cluster/replication/replica/tests.rs::only_the_pendings_past_the_ttl_expire_and_the_newer_ones_stay`
 
 ---
 
@@ -1292,6 +1328,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ---
 
 
+### UC-ACK-014
+
+**Caso:** Confirmar muitas mensagens numa requisição (`POST /topics/{topic}/messages/ack`), com um recibo velho, um id desconhecido, um ack repetido e um item sem `receiptToken`  
+**Então:** `200` com um resultado por item: `204` em cada confirmada, `409 message.stale-receipt`, `404 message.not-found` e `400 validation.required` só nesses itens; a mensagem do recibo velho fica e o recibo certo ainda a confirma; um tópico que não existe recusa a requisição inteira  
+**Nível:** I  
+**Testes:**
+  - `tests/messages_batch.rs::a_batch_of_acks_removes_each_message_and_a_stale_or_unknown_item_fails_alone`
+
+---
+
+
 ## VIS: Alteração da invisibilidade
 
 ### UC-VIS-001
@@ -1401,6 +1448,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/engine/messages/tests.rs::visibility_zero_on_an_exhausted_message_sends_it_to_the_dead_letter`
   - `src/engine/messages/tests.rs::visibility_zero_below_the_limit_just_releases_the_message`
   - `tests/messages.rs::visibility_zero_on_the_last_delivery_sends_the_message_to_the_dead_letter`
+
+---
+
+
+### UC-VIS-013
+
+**Caso:** Mudar a invisibilidade de muitas mensagens entregues numa requisição (`POST /topics/{topic}/messages/visibility`), uma com recibo velho e uma fora da faixa  
+**Então:** `200` com um resultado por item: `200` com o `id` e o novo `invisibleUntil`, `409 message.stale-receipt` e `400 validation.out-of-range` só nesses itens; a mensagem liberada com `0` é entregue de novo e as outras continuam invisíveis  
+**Nível:** I  
+**Testes:**
+  - `tests/messages_batch.rs::a_batch_of_invisibility_changes_each_message_and_a_stale_item_fails_alone`
 
 ---
 
@@ -2556,6 +2614,17 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `tests/fifo.rs::fifo_is_immutable_works_with_auto_create_on_a_single_node`
   - `tests/fifo.rs::a_restart_keeps_the_busy_groups_and_the_rows_that_deduplicate`
+
+---
+
+
+### UC-FIF-054
+
+**Caso:** Publicar em lote numa fila FIFO: dois grupos, um item repetido e um item sem `groupId`  
+**Então:** os itens de um grupo são publicados na ordem da lista (os ids crescem e o grupo os entrega nessa ordem); o repetido responde `200` com `duplicate: true` e o `id` do primeiro; o sem grupo é `400 validation.group-id-required` sozinho  
+**Nível:** I  
+**Testes:**
+  - `tests/messages_batch.rs::on_a_fifo_queue_a_batch_keeps_the_order_of_each_group_and_deduplicates`
 
 ---
 
@@ -4108,6 +4177,78 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-CNT-036
+
+**Caso:** O driver do OpenMessaging Benchmark (`connectors/omb`) cria um tópico do OMB como um **distribuidor** do Taba com o nome do tópico e o prefixo `<tópico>-`, e cada assinatura como uma **fila** `<tópico>-<assinatura>` criada antes da primeira publicação; o prefixo de nome de tópico do driver é `omb`.  
+**Então:** toda assinatura recebe toda mensagem publicada no tópico, cada cópia com o próprio `id`; o driver apaga as filas e o distribuidor ao fechar.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theTopicPrefixIsOmb`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::everySubscriptionReceivesEveryMessageAndTheTimestampComesBack`
+
+---
+
+### UC-CNT-037
+
+**Caso:** Vários consumidores do OMB são criados para a mesma assinatura do driver.  
+**Então:** eles leem a mesma fila e disputam as mensagens dela: cada mensagem vai a um deles e nenhuma se perde.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::consumersOfTheSameSubscriptionShareTheMessages`
+
+---
+
+### UC-CNT-038
+
+**Caso:** O driver do OMB publica com chave de mensagem (ou sem ela) nos modos `ordering: none` e `ordering: per-key`.  
+**Então:** a chave é o `groupId`; com `none` a fila é comum e a mensagem sem chave não tem grupo; com `per-key` a fila é FIFO, cada chave é entregue na ordem de publicação e a mensagem sem chave recebe `p0`..`p<partições-1>` em rodízio. O número de partições do OMB não cria nada no Taba.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theKeyIsTheGroupWhenThereIsOne`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::withoutKeyThereIsNoGroupInAnOrdinaryQueue`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::withoutKeyPerKeyRotatesOverThePartitionsAsGroups`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::perKeyKeepsTheOrderOfEachKey`
+
+---
+
+### UC-CNT-039
+
+**Caso:** O OMB pede ao driver a hora de publicação de cada mensagem e o Taba não guarda atributo além do corpo.  
+**Então:** o produtor grava o relógio dele (milissegundos, 8 bytes, big-endian) no começo do corpo e o consumidor o retira antes de chamar o callback do OMB, que recebe o payload original e essa hora; o corpo no servidor tem 8 bytes a mais que o payload do OMB.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theStampComesOutOfTheBodyWithThePayloadIntact`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::everySubscriptionReceivesEveryMessageAndTheTimestampComesBack`
+
+---
+
+### UC-CNT-040
+
+**Caso:** O YAML do driver do OMB tem um `ordering` diferente de `none` e `per-key`, um `consumer.waitTime` fora de 0 a 20 ou um `producer.inFlight` abaixo de 1.  
+**Então:** o driver se recusa a iniciar com um erro que cita a chave.  
+**Nível:** K  
+**Testes:**
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverUnitTest.java::theConfigurationIsValidated`
+
+---
+
+
+### UC-CNT-041
+
+**Caso:** Um conector publica, confirma e muda a invisibilidade em lote (`publishBatch`, `ackBatch`, `changeVisibilityBatch`), e o driver do OMB publica e confirma em lotes  
+**Então:** uma requisição JSON com os bytes de cada corpo em base64 e as opções dadas; um resultado por item na ordem, um item que falhou com o código dele e sem exceção; as chamadas individuais não mudam; o driver manda os lotes cheios e o resto depois de `lingerMs`, e toda mensagem chega  
+**Nível:** K  
+**Testes:**
+  - `connectors/rust/client/src/client/tests.rs::the_batches_send_one_json_and_read_one_result_per_item`
+  - `connectors/csharp/Taba.Client.Tests/ClientTests.cs::the_batches_send_one_json_and_read_one_result_per_item`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::publishBatchSendsEachBodyInBase64AndReadsOneResultPerItem`
+  - `connectors/java/src/test/java/io/github/rafaelpontani/taba/TabaClientTest.java::ackBatchAndChangeVisibilityBatchSendTheReceiptsOfTheMessages`
+  - `connectors/node/test/client.test.js::the batches send one JSON and read one result per item`
+  - `connectors/python/tests/test_client.py::test_the_batches_send_one_json_and_read_one_result_per_item`
+  - `connectors/omb/src/test/java/io/github/rafaelpontani/taba/omb/DriverIntegrationTest.java::aProducerInBatchesDeliversEveryMessageTheFullBatchesAndTheRestByTheLinger`
+
+---
+
 
 ## CLI: O `taba-cli`, a linha de comando do cliente
 
@@ -4814,6 +4955,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `src/cluster/replication/replica/tests.rs::repeating_register_or_commit_returns_the_same_ack_without_a_new_effect`
   - `src/cluster/replication/replica/tests.rs::repeating_rollback_returns_the_same_ack_and_the_message_never_appears`
+  - `src/cluster/replication/replica/tests.rs::the_memory_of_decided_operations_forgets_the_oldest_first_and_stays_bounded`
 **Observação:** Só a parte unitária (U) está provada; o nível completo é U, C.
 
 ---
@@ -4839,10 +4981,15 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 ### UC-ESC-037
 
 **Caso:** Ao confirmar (ack) uma mensagem, **todo nó que guarda uma cópia** (o primário e as réplicas, em memória ou em disco) grava o registro de exclusão (`id`, posição no anel e instante) no **log de excluídos** do tópico, na mesma transação que apaga a mensagem; na fila FIFO o registro acompanha a linha curta da deduplicação  
-**Então:** o id fica registrado como morto em todos os nós que tinham a cópia; uma mensagem que não foi confirmada não é registrada. A mensagem que estava só em memória é registrada pelo `id` e pela posição.  
+**Então:** o id fica registrado como morto em todos os nós que tinham a cópia; uma mensagem que não foi confirmada não é registrada. A mensagem que estava só em memória é registrada pelo `id` e pela posição, numa fila escrita com as outras numa transação (256 delas, a varredura, uma leitura do log ou a parada do nó; [D188](30-decisoes.md)).  
 **Nível:** U e C  
 **Testes:**
   - `tests/excluded_log.rs::an_ack_records_the_exclusion_on_every_node_that_keeps_a_copy`
+  - `src/storage/messages/excluded/tests.rs::the_exclusions_of_messages_in_memory_wait_and_a_read_of_the_log_sees_them`
+  - `src/storage/messages/excluded/tests.rs::a_full_batch_is_written_alone_and_the_sweep_and_the_stop_write_the_rest`
+  - `src/storage/messages/excluded/tests.rs::the_writer_keeps_up_with_many_batches_and_a_dropped_topic_leaves_no_folder`
+  - `src/storage/messages/excluded/tests.rs::an_exclusion_recorded_twice_in_a_batch_stays_one_row`
+  - `src/engine/messages/tests/cost.rs::the_ack_of_a_message_in_memory_shows_in_the_log_of_excluded_messages`
   - `src/storage/messages/excluded/tests.rs::removing_with_exclusion_deletes_the_message_and_records_it_in_the_same_transaction`
   - `src/storage/messages/excluded/tests.rs::a_message_that_was_only_in_memory_is_recorded_by_its_id_and_position`
   - `src/storage/messages/excluded/tests.rs::the_fifo_ack_records_the_exclusion_together_with_the_short_row`
@@ -4858,6 +5005,41 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Testes:**
   - `tests/excluded_log.rs::the_dead_letter_records_the_exclusion_in_the_source_queue_on_every_node`
   - `src/storage/messages/excluded/tests.rs::moving_to_the_dead_letter_records_the_exclusion_in_the_source_only`
+
+---
+
+### UC-ESC-039
+
+**Caso:** Operações sobre mensagens (`register`, `commit`, `rollback`) esperando o mesmo nó viajam em **menos chamadas que operações**: vão em lotes em `POST /cluster/batch`, e com `cluster.batch.max-items=1` cada uma vai numa chamada própria
+**Então:** toda publicação continua `201`; as contagens de operações e de lotes da rede simulada mostram isso.
+**Nível:** C
+**Testes:**
+  - `tests/batch.rs::operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations`
+  - `tests/batch.rs::with_max_items_1_every_operation_goes_in_a_call_of_its_own`
+  - `tests/batch.rs::fifo_publications_forwarded_to_the_same_node_travel_in_fewer_calls_than_publications`
+
+---
+
+### UC-ESC-040
+
+**Caso:** Um lote fecha quando uma vaga de envio abre, com o que estiver esperando, até `cluster.batch.max-items` e o `cluster.batch.max-bytes` brando: o que não alcança nenhum dos limites sai como está, os limites só cortam o excesso (que sai no lote seguinte, em ordem), um item acima do limite de bytes vai sozinho, e uma operação cujo chamador desistiu não é enviada
+**Nível:** U
+**Testes:**
+  - `src/cluster/service/batch/tests.rs::a_batch_that_reaches_neither_limit_leaves_with_everything_that_was_waiting`
+  - `src/cluster/service/batch/tests.rs::the_item_limit_cuts_the_batch_and_the_rest_waits_for_the_next_slot`
+  - `src/cluster/service/batch/tests.rs::the_byte_limit_is_soft_an_item_above_it_goes_alone_and_never_stays_behind`
+  - `src/cluster/service/batch/tests.rs::an_operation_whose_caller_gave_up_is_not_sent`
+
+---
+
+
+### UC-ESC-041
+
+**Caso:** Um lote publicado num nó de um cluster de três nós, depois consumido em outro e confirmado numa requisição num terceiro  
+**Então:** cada item chega aos donos da mensagem dele pelo mesmo registro e commit de uma publicação individual, e as operações para os outros nós viajam em menos chamadas que operações (o lote protobuf do canal); cada mensagem é entregue uma vez e cada ack é `204`; a fila termina vazia  
+**Nível:** C  
+**Testes:**
+  - `tests/messages_batch.rs::a_batch_on_one_node_reaches_the_owners_of_every_message_and_travels_in_few_calls`
 
 ---
 
@@ -5778,6 +5960,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/engine/messages/tests/cluster.rs::the_registration_of_a_visibility_is_checked_against_the_message`
   - `tests/replication.rs::an_ack_on_any_node_removes_the_message_everywhere_and_a_stale_token_is_refused`
   - `tests/replication.rs::an_ack_of_a_gone_message_answers_404_even_when_the_primary_answers_last`
+  - `src/cluster/replication/replica/tests.rs::a_register_holds_the_message_while_its_check_runs`
+  - `src/cluster/replication/replica/tests.rs::a_register_whose_check_fails_releases_the_message`
 
 ---
 
@@ -9285,6 +9469,38 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-CLR-011
+
+**Caso:** O lote de operações sobre mensagens (`BatchRequest`/`BatchReply`, protobuf) volta como foi para cada tipo de operação e de fase, com o corpo de cada mensagem byte a byte (os 256 valores e quebras de linha), o contexto de rastro de cada item, e um campo que uma versão futura acrescente é ignorado; um corpo que não é um lote, ou uma resposta que não é de lote, é recusado, e um item de tipo desconhecido é erro só desse item; o corpo de uma mensagem decodificada não mantém vivo o buffer do lote
+**Nível:** U
+**Testes:**
+  - `src/cluster/protocol/wire/tests.rs::every_operation_of_a_batch_comes_back_as_it_went`
+  - `src/cluster/protocol/wire/tests.rs::a_body_with_every_byte_value_and_line_breaks_is_kept_byte_for_byte`
+  - `src/cluster/protocol/wire/tests.rs::a_decoded_body_does_not_keep_the_batch_alive`
+  - `src/cluster/protocol/wire/tests.rs::an_empty_batch_is_valid_and_has_no_items`
+  - `src/cluster/protocol/wire/tests.rs::a_body_that_is_not_a_batch_is_an_error_of_the_whole_call`
+  - `src/cluster/protocol/wire/tests.rs::an_item_of_an_unknown_kind_is_an_error_of_that_item_only`
+  - `src/cluster/protocol/wire/tests.rs::a_field_a_later_version_adds_is_ignored`
+  - `src/cluster/protocol/wire/tests.rs::the_trace_context_of_each_item_travels_with_it`
+  - `src/cluster/protocol/wire/tests.rs::the_results_come_back_in_order_with_the_error_of_each_item`
+  - `src/cluster/protocol/wire/tests.rs::a_reply_that_is_not_a_batch_reply_is_refused`
+  - `src/cluster/protocol/wire/tests.rs::a_request_that_is_not_a_message_operation_goes_out_as_an_unspecified_item`
+  - `src/cluster/protocol/wire/tests.rs::the_bytes_of_a_batch_are_the_golden_vector`
+
+---
+
+### UC-CLR-012
+
+**Caso:** `POST /cluster/batch` num nó real responde um resultado por item em ordem (o erro de um item não toca os outros, e um item ilegível é erro próprio), aceita um lote vazio, recusa `application/json` (`415`), um corpo que não é um lote (`400`) e um lote acima de `cluster.batch.max-items` (`413`), e as rotas de uma operação (incluindo o `take` e o repasse da FIFO) respondem `404 route.not-found`; um `take` e um repasse da FIFO são itens com resultado próprio
+**Nível:** I
+**Testes:**
+  - `tests/batch.rs::the_batch_route_answers_one_result_per_item_and_an_error_in_one_does_not_touch_the_others`
+  - `tests/batch.rs::the_batch_route_refuses_what_is_not_protobuf_and_what_is_not_a_batch`
+  - `tests/batch.rs::a_batch_with_more_items_than_the_limit_is_refused_whole`
+  - `tests/batch.rs::a_take_and_a_fifo_publication_are_items_of_the_batch_with_a_result_of_their_own`
+
+---
+
 
 ## CFG: Configuração e validações de partida
 
@@ -9966,8 +10182,78 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+## BNC: Benchmark comparativo local (`bench/run.sh`)
+
+### UC-BNC-001
+
+**Caso:** O `bench/run.sh --dry-run` é executado com um perfil, alguns sistemas e um nível de durabilidade; ou com um sistema, um perfil, um workload ou uma durabilidade que não existe
+**Então:** ele imprime o plano (sistemas, workloads, durabilidade, o limite de cada servidor, igual para todos, a parte do executor do OMB, a estimativa de tempo e a ordem dos sistemas em cada rodada, em rodízio) e não sobe nada; o nome desconhecido é recusado com uma mensagem e status diferente de zero. `--cpus` e `--memory` trocam o limite de cada servidor ([38-benchmarks.md](38-benchmarks.md))
+**Nível:** U
+**Testes:**
+  - `bench/run.test.mjs::o dry-run imprime o plano, a estimativa e a ordem em rodízio, sem tocar no Docker`
+  - `bench/run.test.mjs::o servidor recebe o mesmo limite para todos os sistemas e o executor fica com o resto`
+  - `bench/run.test.mjs::um sistema, um perfil, um workload ou uma durabilidade desconhecidos são recusados`
+
+---
+
+### UC-BNC-002
+
+**Caso:** Um sistema entra como uma pasta em `bench/systems/`; os workloads e os perfis são arquivos de `bench/`
+**Então:** toda pasta tem um `compose.yml` (um serviço chamado `server`, healthcheck, os limites `BENCH_CPUS` e `BENCH_MEMORY`, imagem fixada), os arquivos `env-` e `driver-` dos dois níveis de durabilidade e um README; o `--systems <nome>` o encontra sem mudar o `run.sh`; cada workload recebe a duração e o aquecimento do perfil, e o perfil `standard` roda os seis
+**Nível:** U
+**Testes:**
+  - `bench/run.test.mjs::cada pasta de bench/systems é um sistema completo, com imagem fixada e os dois níveis de durabilidade`
+  - `bench/run.test.mjs::um sistema novo é encontrado pela pasta, sem mudar o run.sh`
+  - `bench/run.test.mjs::os seis workloads usam a duração e o aquecimento do perfil`
+
+---
+
+### UC-BNC-003
+
+**Caso:** O `bench/report.mjs` lê a pasta de uma execução (o JSON do OMB de cada rodada, `machine.json`, `failed.txt`)
+**Então:** o `results.md` abre com a faixa "local, não representativo", mostra por workload e durabilidade a mediana das rodadas com o mínimo e o máximo (sem intervalo para uma rodada), lista as células que falharam, termina com as diferenças conhecidas de cada sistema e não aponta vencedor; os gráficos de latência e vazão saem em SVG
+**Nível:** U
+**Testes:**
+  - `bench/report.test.mjs::a mediana e os nomes dos arquivos`
+  - `bench/report.test.mjs::o relatório abre com a faixa de máquina local`
+  - `bench/report.test.mjs::a tabela traz a mediana e o intervalo das rodadas`
+  - `bench/report.test.mjs::os gráficos SVG saem e a lista das falhas aparece`
+  - `bench/report.test.mjs::o relatório não elege vencedor e anota o RabbitMQ`
+
+---
+
+### UC-BNC-005
+
+**Caso:** O perfil `consume` (ou qualquer workload `backlog-*`) é relatado
+**Então:** cada workload `backlog-*` acumula 1 GB com o consumidor parado e o libera (`backlog-1kb`: 1 consumidor; `backlog-100b`: 100 bytes; `backlog-1kb-4c`: 4 partições e 4 consumidores); o relatório mostra a **vazão de drenagem do backlog** (a média do consumo depois do pico do backlog, enquanto ainda resta backlog) no lugar da latência ponta a ponta, que ali é só o tempo na fila, e diz que Taba, RabbitMQ e NATS confirmam cada mensagem enquanto Kafka e Redpanda confirmam um offset em lote; Kafka e Redpanda mantêm `enable.auto.commit=false`. O `bench/cluster-trend.sh` com `MODE=consume` mede a mesma drenagem só do Taba, com um nó e com três
+**Nível:** U
+**Testes:**
+  - `bench/report.test.mjs::a drenagem do backlog é a média do consumo desde o pico, sem o consumidor parado`
+  - `bench/report.test.mjs::o workload de backlog mostra a drenagem no lugar da latência e avisa que a confirmação não é igual`
+  - `bench/run.test.mjs::o perfil consume roda só os workloads de backlog e todos os sistemas leem o backlog com confirmação manual`
+
+---
+
+### UC-BNC-006
+
+**Caso:** O custo de uma mensagem é medido dentro do processo de teste, sem contêiner: o heap por mensagem esperando, as chamadas ao heap e o tempo de publicar, tomar e confirmar
+**Então:** um binário de teste com um alocador contador por cima do mimalloc publica 5 000 mensagens de 1 KB pela API HTTP de um nó real e imprime o heap vivo por mensagem (pedido e reservado, por tamanho de bloco), o que sobra depois do ack e as chamadas ao heap por mensagem do nó (as do cliente ficam de fora); mais dois testes imprimem as requisições por segundo de publicar, tomar e confirmar com 16 clientes; o teste do motor imprime o tempo por mensagem de cada operação e confere que a fila termina vazia; uma mensagem está "na memória" até ser confirmada ou ir para o disco
+**Nível:** I e U
+**Testes:**
+  - `tests/memory_cost.rs::heap_cost_of_a_message`
+  - `tests/memory_cost.rs::throughput_of_publish_take_and_ack`
+  - `tests/memory_cost.rs::throughput_of_take_and_of_ack_apart`
+  - `tests/memory_cost.rs::throughput_by_concurrency`
+  - `tests/memory_cost.rs::throughput_in_batches`
+  - `tests/memory_cost.rs::cost_of_the_cluster_path`
+  - `src/engine/messages/tests/cost.rs::publishing_taking_and_acking_a_deep_backlog_one_by_one`
+  - `src/engine/messages/tests/cost.rs::a_message_is_in_memory_until_it_is_acked_or_demoted`
+
+---
+
 ## Fontes e provas
 
 - Os casos vieram de `doc/20a`, `20b` e `20c` (o catálogo histórico, removido no commit `efeb47a`); os testes, das linhas `/// UC:` do código. O teste `crates/taba-node/tests/uc_coverage.rs` confere os códigos.
 - Os casos `UC-BKP` (backup em S3) não vêm do catálogo histórico: foram escritos à mão neste arquivo, no mesmo formato, e a lista de testes de cada um é conferida por `uc_coverage`.
+- Os casos `UC-BNC` (benchmark local) foram escritos à mão neste arquivo; os testes deles são arquivos Node.js em `bench/`, que o `uc_coverage` também lê.
 - Mantido à mão: um teste novo que cita um caso entra no cartão dele ([26-casos-de-uso.md](26-casos-de-uso.md)).

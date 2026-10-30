@@ -3,7 +3,7 @@ title: Configuration
 summary: How to configure the node (YAML file and TABA_* variables), the precedence, and the complete table of parameters with the effective default and what each one does.
 type: reference
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-29 @ 6e8cdf6
 sources: [crates/taba-node/src/config/params/mod.rs, crates/taba-node/src/config/mod.rs, crates/taba-node/src/config/source/mod.rs]
 ---
 
@@ -56,10 +56,10 @@ The node **does not start** (message in Portuguese, one per problem) when:
 
 - `storage.dir` does not end in a folder named **`taba`**;
 - the three ports repeat ("use the same port; the three ports must be different"), or one is in use;
-- `api.pagination.default-limit` is outside 1 up to `api.pagination.max-limit`;
+- `api.pagination.default-limit` is outside 1 up to `api.pagination.max-limit`; `api.batch.max-messages` or `api.batch.max-bytes` is zero;
 - `message.max-bytes` is zero; `replication.factor` is less than 1; `write.quorum` is outside 1 up to `replication.factor`;
 - in production, `cluster.entry-address` is missing (except on the first node, `cluster.first-node=true`), or it is not `host:port`;
-- `cluster.vote.quorum-percent` is outside 1 to 100; `cluster.vote.min-voters`, `ring.virtual-nodes` or `write.retry.attempts` are less than 1;
+- `cluster.vote.quorum-percent` is outside 1 to 100; `cluster.vote.min-voters`, `cluster.batch.max-items`, `ring.virtual-nodes` or `write.retry.attempts` are less than 1;
 - `delivery.visibility-timeout.default` or `delivery.max-messages.default` exceed their `.max`; `delivery.fair.ready-weight` is outside 0 to 1;
 - `retention.ttl.default`, `retention.max-deliveries.default` or `topics.volatile.idle-timeout.default` are outside the ranges of [19-errors-and-limits.md](19-errors-and-limits.md);
 - a defined `cluster.tls.dir` does not exist, or the folder exists with no valid pair;
@@ -134,6 +134,8 @@ The node **does not start** (message in Portuguese, one per problem) when:
 |---|---|---|---|
 | `api.pagination.default-limit` | `TABA_API_PAGINATION_DEFAULT_LIMIT` | **100** | Items per page when the paginated route receives no `limit`. |
 | `api.pagination.max-limit` | `TABA_API_PAGINATION_MAX_LIMIT` | **1000** | Largest accepted `limit`; above it, `400` `validation.out-of-range`. The default cannot exceed it. |
+| `api.batch.max-messages` | `TABA_API_BATCH_MAX_MESSAGES` | **1000** | Most items of a request of the batch routes (`POST /topics/{topic}/messages/batch`, `/ack`, `/visibility`); above it (or with none), `400` `validation.out-of-range` ([16](16-client-api.md#messages-in-batch-post-messagesbatch-ack-and-visibility)). |
+| `api.batch.max-bytes` | `TABA_API_BATCH_MAX_BYTES` | **16MB** | Largest body of a request of the batch routes; above it, `413` `message.too-large`, without reading the rest. Each publication of a batch still has the `maxMessageBytes` of its topic. |
 
 ## Messages
 
@@ -165,6 +167,8 @@ The node **does not start** (message in Portuguese, one per problem) when:
 | `cluster.channel.queue.max-size`<br>`cluster.channel.queue.max-age` | `TABA_CLUSTER_CHANNEL_QUEUE_MAX_SIZE`<br>`TABA_CLUSTER_CHANNEL_QUEUE_MAX_AGE` | **10000** (from the code)<br>**60s** (from the code) | Maximum size and age of the output queue for a node with a channel down; when exceeded, the node with the channel down is treated as failed and the exclusion vote is opened. |
 | `cluster.vote.quorum-percent` | `TABA_CLUSTER_VOTE_QUORUM_PERCENT` | **51** | Percentage of **healthy** nodes (those the voter sees and that answer; the ones down do not vote nor enter the base) that must agree to make the node's exclusion effective: `ceil(S × percentage)`. |
 | `cluster.vote.min-voters` | `TABA_CLUSTER_VOTE_MIN_VOTERS` | **2** | Minimum number of healthy nodes for a vote to count; below it, no exclusion takes effect. Prevents an isolated node from excluding all the others. |
+| `cluster.batch.max-items` | `TABA_CLUSTER_BATCH_MAX_ITEMS` | **1000** | The most message operations (`register`, `commit`, `rollback` of a write, an invisibility or an ack) one call between two nodes carries, and the most a node accepts in one. A batch closes when a send slot opens, with what is waiting, so with little load it has one item; this is only the ceiling. `1` turns the batch off (each operation goes alone). |
+| `cluster.batch.max-bytes` | `TABA_CLUSTER_BATCH_MAX_BYTES` | **8MB** | The soft size limit of the bodies in a batch: the sender stops adding items when it is reached, and an item larger than it goes alone. The receiver accepts this plus one message (`message.max-bytes`), and refuses more with `413 message.too-large`. |
 | `cluster.freezing.duration` | `TABA_CLUSTER_FREEZING_DURATION` | **5m** (from the code) | Time during which a node deregistered for failure is prevented from registering again (anti-flapping). During freezing the join request is rejected with `Retry-After`. |
 | `cluster.entry-address` | `TABA_CLUSTER_ENTRY_ADDRESS` | required with `replication.factor` above 1 (except the first node) | Address (`host:port`, port from 1 to 65535; an invalid form prevents the node from starting) of the load balancer in front of the cluster, **on the cluster port** (`cluster.port`, not the client API one), used by the node at start to list the members (`GET /cluster/nodes`) and join the cluster. Without it the node does not start, **except the first node and the one-node profile** (`replication.factor=1`), where it is not used. |
 | `cluster.advertise-addresses` | `TABA_CLUSTER_ADVERTISE_ADDRESSES` | **detected (interface that goes out to the entry-address)** (from the code) | List of IPs (comma-separated) that the node puts in the `join` and that the member table stores; the other nodes recognize it by the source IP of the connections. Without a value, the node uses the local address of a UDP socket "connected" to `cluster.entry-address` (nothing is sent), that is, the interface that goes out to the cluster. Whoever has NAT, several interfaces or a name that does not resolve to the right interface defines the parameter. |
@@ -260,8 +264,8 @@ The node **does not start** (message in Portuguese, one per problem) when:
 
 | Key | Variable | Default | What it does |
 |---|---|---|---|
-| `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | no limit | Requests per second, **per token** (or per client IP, without a valid token), for `POST /topics/{topic}/messages`. |
-| `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | no limit | Requests per second, per token (or per IP, without a valid token), for `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibility) and `DELETE /topics/{topic}/messages/{id}` (ack). |
+| `ratelimit.publish.rps` | `TABA_RATELIMIT_PUBLISH_RPS` | no limit | Requests per second, **per token** (or per client IP, without a valid token), for `POST /topics/{topic}/messages` and `POST /topics/{topic}/messages/batch` (a batch counts as one request). |
+| `ratelimit.consume.rps` | `TABA_RATELIMIT_CONSUME_RPS` | no limit | Requests per second, per token (or per IP, without a valid token), for `GET /topics/{topic}/messages`, `PUT /topics/{topic}/messages/{id}/visibility` (invisibility) and `DELETE /topics/{topic}/messages/{id}` (ack), and the batches `POST /topics/{topic}/messages/ack` and `/visibility` (one request each). |
 | `ratelimit.admin.rps` | `TABA_RATELIMIT_ADMIN_RPS` | no limit | Requests per second, per token (or per IP, without a valid token), for `POST/GET/PATCH/DELETE /topics` and `/topics/{topic}`, and `/tokens`; and, per IP, for `/node/drain`, `/node/backup/flush`, `/cluster/backup/flush` and `/cluster/stop`. |
 | `ratelimit.ops.rps` | `TABA_RATELIMIT_OPS_RPS` | no limit | Requests per second, per IP, for `/health/cluster?scope=cluster` and `/metrics/topics`. `/health/live`, `/health/ready`, `/metrics` and `/health/cluster?scope=node` are exempt. |
 | `ratelimit.burst` | `TABA_RATELIMIT_BURST` | `ceil(rps)` of each category | Size of the overshoot allowed above the rate (e.g. token bucket), to absorb short peaks without rejecting requests. Applies to each counter, token or IP. |
