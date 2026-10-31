@@ -75,6 +75,10 @@ Uma perda **não** compromete a saúde do nó nem para a sincronização.
 
 Se o primário cair **exatamente** entre o commit local e a replicação às réplicas fora do quórum, e for excluído antes de terminar, o novo primário herda o `invisibleUntil` de quem sobreviveu, que pode estar desatualizado: a mensagem pode voltar a ser entregável **antes** do prazo prometido ao primeiro consumidor. Não quebra o *at-least-once*; só encurta, nesse caso raro, o tempo mínimo de processamento.
 
+### Trade-off aceito na entrega do nó sozinho
+
+Com `replication.factor` 1 (o nó sozinho, D191), a entrega de uma mensagem em disco responde antes de a sua escrita chegar ao banco (D193): uma thread de fundo faz o commit alguns milissegundos depois. Se o **processo** morrer nessa janela, a mensagem volta com o contador e o prazo de antes da entrega: é entregue de novo sem esperar a invisibilidade prometida ao primeiro consumidor, o ack com o primeiro `receiptToken` é recusado como velho, e essa entrega não conta para o `maxDeliveries` (a mensagem pode ser entregue uma vez além do limite antes da dead-letter). Não quebra o *at-least-once*. Uma mensagem só em memória se perde com o processo de qualquer forma, e com mais de um nó responsável a entrega continua esperando o commit no quórum.
+
 ## Retenção
 
 | Regra | Padrão | Efeito |

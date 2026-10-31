@@ -82,3 +82,5 @@ The CI job `bench` runs only `--dry-run` and the Node.js tests. Benchmarks are n
 `bench/cluster-trend.sh <cores per node> <connections per node> <image>...` compares builds of Taba itself with one node (factor 1) and three nodes (factor 3), `wrk` inside a Docker network, mutual TLS in the cluster ([doc 38](../doc/en-US/38-benchmarks.md#the-trend-of-the-publish-path-one-node-and-three-nodes)). A result from one machine only compares with another measured in the same run.
 
 `MODE=consume bench/cluster-trend.sh ...` does the same for the read side: it fills a queue, then drains it taking up to 100 messages and acking each one, with one node and with three. It compares Taba with itself; the comparison with the other systems is the one-node `consume` profile.
+
+`bench/profile.sh` runs beside `bench/run.sh` and profiles the server during the run: live OMB rates and server CPU in `<output>/monitor.log`, then `perf record -g` when the backlog reaches `--backlog` thousand messages (or after `--after` seconds), with the mean latency per route of the same interval. `bench/profile.sh --help` lists the options.

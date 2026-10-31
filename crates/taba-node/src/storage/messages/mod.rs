@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::ops::Bound;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, MutexGuard, OnceLock, RwLock, RwLockWriteGuard};
@@ -142,6 +143,43 @@ fn scan_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScanRow> {
         published_ms: row.get::<_, i64>(6)? as u64,
         delete_at_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
     })
+}
+
+/// A linha de uma página lida por `id` (a que a fila pendente fez o SQL deixar de fora).
+const SCAN_BY_ID: &str = "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id, \
+                          published_at, delete_at FROM messages WHERE id = ?1 AND delete_at IS NULL";
+
+/// O `ScanRow` de uma mensagem viva que ainda está na fila de escrita.
+fn scan_of(meta: &MessageMeta) -> ScanRow {
+    ScanRow {
+        id: meta.id.clone(),
+        group_id: meta.group_id.clone(),
+        deduplication_id: meta.deduplication_id.clone(),
+        published_ms: meta.published_ms,
+        delete_at_ms: None,
+        age_ms: meta.age_base_ms(),
+        delivery_count: meta.delivery_count,
+        invisible_until_ms: meta.invisible_until_ms,
+    }
+}
+
+/// A linha passa nos filtros da página que não são a faixa nem a `expiry`.
+fn page_fits(query: &PageQuery, row: &ScanRow) -> bool {
+    (query.tombstones || row.delete_at_ms.is_none())
+        && (!query.delivered || row.delivery_count > 0)
+        && query.group.as_deref().is_none_or(|group| {
+            if group.is_empty() {
+                row.group_id.as_deref().is_none_or(str::is_empty)
+            } else {
+                row.group_id.as_deref() == Some(group)
+            }
+        })
+}
+
+/// A mensagem tem par gravado na `expiry`.
+fn expiry_has(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    conn.prepare_cached("SELECT EXISTS (SELECT 1 FROM expiry WHERE id = ?1)")?
+        .query_row(params![id], |row| row.get(0))
 }
 
 /// O escopo atômico de uma operação: uma transação própria quando a conexão está livre, e nada quando já há uma
@@ -368,6 +406,8 @@ struct TopicDisk {
     readers: Mutex<Vec<Connection>>,
     /// Um checkpoint em segundo plano está rodando.
     checkpointing: AtomicBool,
+    /// A thread que espera as escritas desligadas (`Written::detach`) está rodando.
+    flushing: AtomicBool,
     /// O maior corpo guardado na linha (ver [`DEFAULT_BODY_INLINE_MAX`]).
     inline_max: usize,
     /// Exclusions of messages that were only in memory, waiting to be written in one transaction
@@ -647,6 +687,7 @@ impl MessageStore {
             turn: Condvar::new(),
             readers: Mutex::new(Vec::new()),
             checkpointing: AtomicBool::new(false),
+            flushing: AtomicBool::new(false),
             inline_max: self.inline_max,
             pending_excluded: Mutex::new(Vec::new()),
             flush_queued: AtomicBool::new(false),
@@ -738,15 +779,30 @@ impl MessageStore {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(Vec::new());
         };
-        disk.flush();
-        disk.read(|conn| {
+        // Sem esperar a fila: os pares dela entram por cima do banco, e um `id` com par na fila deixa de valer pelo
+        // do banco (D193).
+        disk.read_pending(Bound::Unbounded, Bound::Unbounded, |conn, view| {
             let mut stmt = conn.prepare_cached(
                 "SELECT invisible_until, id FROM expiry ORDER BY invisible_until, id LIMIT ?1",
             )?;
-            let rows = stmt.query_map(params![limit as i64], |row| {
+            let wanted = limit.saturating_add(view.expiry.len());
+            let rows = stmt.query_map(params![wanted as i64], |row| {
                 Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?))
             })?;
-            rows.collect()
+            let mut pairs: Vec<(u64, String)> = rows
+                .filter(|row| {
+                    row.as_ref()
+                        .map_or(true, |(_, id)| !view.expiry.contains_key(id))
+                })
+                .collect::<rusqlite::Result<_>>()?;
+            pairs.extend(
+                view.expiry
+                    .iter()
+                    .filter_map(|(id, until)| until.map(|until| (until, id.clone()))),
+            );
+            pairs.sort();
+            pairs.truncate(limit);
+            Ok(pairs)
         })
     }
 
@@ -755,8 +811,10 @@ impl MessageStore {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(None);
         };
-        // O par pode estar na fila, e a marca só sobe quando ele é gravado.
-        disk.flush();
+        // O par pode estar na fila: vale o último dela, sem esperar o commit (D193).
+        if let Some(until) = disk.pending_expiry(id) {
+            return Ok(until);
+        }
         if !disk.may_hold_expiry.load(Ordering::SeqCst) {
             return Ok(None);
         }
@@ -859,7 +917,9 @@ impl MessageStore {
         })
     }
 
-    /// A page of the topic's live messages (see [`PageQuery`]), without the body.
+    /// A page of the topic's live messages (see [`PageQuery`]), without the body. Não espera a fila de escrita
+    /// (D193): o que está nela por cima do banco, num instantâneo fixado com a fila parada. A página volta cheia
+    /// (`limit` linhas) só quando pode haver mais depois da última.
     pub fn page(&self, topic: &str, query: &PageQuery) -> io::Result<Vec<ScanRow>> {
         use rusqlite::types::Value;
         let Some(disk) = self.disk(topic, false)? else {
@@ -868,33 +928,42 @@ impl MessageStore {
         if !query.tombstones && !disk.may_hold_messages.load(Ordering::SeqCst) {
             return Ok(Vec::new());
         }
-        let mut args: Vec<Value> = Vec::new();
+        if query.limit == 0 {
+            return Ok(Vec::new());
+        }
+        // A faixa caminha a partir de `start` (exclusivo) até `far` (exclusivo).
+        let (start, far) = if query.desc {
+            (query.before.as_deref(), query.after.as_deref())
+        } else {
+            (query.after.as_deref(), query.before.as_deref())
+        };
         let mut sql = String::from(
-            "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id,              published_at, delete_at FROM messages WHERE 1 = 1",
+            "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id, \
+             published_at, delete_at FROM messages WHERE 1 = 1",
         );
         if !query.tombstones {
             sql.push_str(" AND delete_at IS NULL");
         }
-        if let Some(after) = &query.after {
-            sql.push_str(" AND id > ?");
-            args.push(Value::Text(after.clone()));
-        }
-        if let Some(before) = &query.before {
-            sql.push_str(" AND id < ?");
-            args.push(Value::Text(before.clone()));
-        }
+        sql.push_str(if query.desc {
+            " AND id < ? AND id > ?"
+        } else {
+            " AND id > ? AND id < ?"
+        });
         if query.delivered {
             sql.push_str(" AND delivery_count > 0");
         }
+        let mut group_arg: Option<Value> = None;
         match query.group.as_deref() {
             Some("") => sql.push_str(" AND (group_id IS NULL OR group_id = '')"),
             Some(group) => {
                 sql.push_str(" AND group_id = ?");
-                args.push(Value::Text(group.to_owned()));
+                group_arg = Some(Value::Text(group.to_owned()));
             }
             None => {}
         }
-        if query.off_table {
+        // Sem par nenhum gravado, a subconsulta não tem o que achar.
+        let table = query.off_table && disk.may_hold_expiry.load(Ordering::SeqCst);
+        if table {
             sql.push_str(" AND NOT EXISTS (SELECT 1 FROM expiry WHERE expiry.id = messages.id)");
         }
         sql.push_str(if query.desc {
@@ -902,14 +971,122 @@ impl MessageStore {
         } else {
             " ORDER BY id LIMIT ?"
         });
-        args.push(Value::Integer(
-            i64::try_from(query.limit).unwrap_or(i64::MAX),
-        ));
-        disk.flush();
-        disk.read(|conn| {
+        let (low, high) = (
+            query
+                .after
+                .as_deref()
+                .map_or(Bound::Unbounded, Bound::Excluded),
+            query
+                .before
+                .as_deref()
+                .map_or(Bound::Unbounded, Bound::Excluded),
+        );
+        // Os limites abertos viram os extremos do texto: nenhum `id` é vazio, e todos ficam abaixo de U+10FFFF.
+        let bound = |b: Option<&str>, open: &str| Value::Text(b.unwrap_or(open).to_owned());
+        let edges = if query.desc {
+            ("\u{10FFFF}", "")
+        } else {
+            ("", "\u{10FFFF}")
+        };
+        disk.read_pending(low, high, |conn, view| {
             let mut stmt = conn.prepare_cached(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(args), scan_row)?;
-            rows.collect()
+            let mut fetch = |from: Option<&str>| -> rusqlite::Result<Vec<ScanRow>> {
+                let mut args = vec![bound(from, edges.0), bound(far, edges.1)];
+                args.extend(group_arg.clone());
+                args.push(Value::Integer(
+                    i64::try_from(query.limit).unwrap_or(i64::MAX),
+                ));
+                stmt.query_map(rusqlite::params_from_iter(args), scan_row)?
+                    .collect()
+            };
+            if view.is_empty() {
+                return fetch(start);
+            }
+            let fits = |row: &ScanRow| page_fits(query, row);
+            let in_table = |id: &str| matches!(view.expiry.get(id), Some(Some(_)));
+            let mut out: Vec<ScanRow> = Vec::new();
+            let mut cursor = start.map(str::to_owned);
+            // Onde a última leitura cheia do banco parou: depois dela o banco pode ter mais.
+            let mut horizon: Option<String>;
+            loop {
+                let rows = fetch(cursor.as_deref())?;
+                let full = rows.len() >= query.limit;
+                horizon = if full {
+                    rows.last().map(|r| r.id.clone())
+                } else {
+                    None
+                };
+                for row in rows {
+                    let row = match view.rows.get(&row.id) {
+                        Some(Pending::Gone) => continue,
+                        Some(Pending::Row { meta, .. } | Pending::Meta(meta)) => scan_of(meta),
+                        None => row,
+                    };
+                    if fits(&row) && !(query.off_table && in_table(&row.id)) {
+                        out.push(row);
+                    }
+                }
+                if !full || out.len() >= query.limit {
+                    break;
+                }
+                cursor.clone_from(&horizon);
+            }
+            let before_horizon = |id: &str| {
+                horizon
+                    .as_deref()
+                    .is_none_or(|h| if query.desc { id >= h } else { id <= h })
+            };
+            let seen: std::collections::HashSet<String> =
+                out.iter().map(|r| r.id.clone()).collect();
+            // O que a fila escreveu e o banco ainda não tem (ou tem com valores que o filtro do SQL tirou).
+            for (id, pending) in &view.rows {
+                let (Pending::Row { meta, .. } | Pending::Meta(meta)) = pending else {
+                    continue;
+                };
+                if seen.contains(id) || !before_horizon(id) {
+                    continue;
+                }
+                let row = scan_of(meta);
+                if !fits(&row) {
+                    continue;
+                }
+                if query.off_table {
+                    let paired = match view.expiry.get(id) {
+                        Some(until) => until.is_some(),
+                        None => table && expiry_has(conn, id)?,
+                    };
+                    if paired {
+                        continue;
+                    }
+                }
+                out.push(row);
+            }
+            // A linha que o SQL deixou de fora por um par que a fila apaga.
+            if table {
+                for (id, until) in &view.expiry {
+                    if until.is_some()
+                        || seen.contains(id)
+                        || view.rows.contains_key(id)
+                        || !before_horizon(id)
+                    {
+                        continue;
+                    }
+                    let row = conn
+                        .prepare_cached(SCAN_BY_ID)?
+                        .query_row(params![id], scan_row)
+                        .optional()?;
+                    if let Some(row) = row.filter(|row| fits(row)) {
+                        out.push(row);
+                    }
+                }
+            }
+            if query.desc {
+                out.sort_by(|a, b| b.id.cmp(&a.id));
+            } else {
+                out.sort_by(|a, b| a.id.cmp(&b.id));
+            }
+            out.truncate(query.limit);
+            Ok(out)
         })
     }
 

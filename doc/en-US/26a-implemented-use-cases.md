@@ -6306,7 +6306,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-ARM-013
 
-**Case:** Every **write** to a topic's database goes through a **single writer**: the frequent ones enter the topic's write queue, and the first caller that waits writes everything waiting in one transaction (group commit, D192); a batch of the engine puts its writes in the queue, releases the topic and then waits for the commit. Reads use read-only connections in WAL mode, see what is still in the queue and do not wait for the writer
+**Case:** Every **write** to a topic's database goes through a **single writer**: the frequent ones enter the topic's write queue, and the first caller that waits writes everything waiting in one transaction (group commit, D192); a batch of the engine puts its writes in the queue, releases the topic and then waits for the commit. Reads use read-only connections in WAL mode, see what is still in the queue and do not wait for the writer; the pages and the `expiry` lookups apply the queue over a pinned snapshot instead of waiting for it, and the commit of a delivery is waited for by a background thread (D193)
 **Then:** each caller gets the result of its own write, a refused write fails only its caller, and nothing written is lost under concurrent writers.
 **Level:** U, I
 **Tests:**
@@ -6316,6 +6316,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/storage/messages/writer/tests.rs::concurrent_writers_share_commits_and_lose_nothing`
   - `src/storage/messages/writer/tests.rs::a_refused_write_fails_only_its_caller_and_the_rest_of_the_round_commits`
   - `src/storage/messages/writer/tests.rs::a_read_by_id_does_not_wait_for_the_writer`
+  - `src/storage/messages/writer/tests.rs::a_page_merges_the_queue_without_waiting_for_the_writer`
+  - `src/storage/messages/writer/tests.rs::a_detached_write_reaches_the_database_without_anyone_waiting`
 ---
 
 ### UC-ARM-014

@@ -4,7 +4,7 @@ resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark 
 tipo: guia
 status: parcial
 verificado-em: 2026-10-29 @ 6e8cdf6
-fontes: [bench/cluster-trend.sh, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
+fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
 # Benchmarks
@@ -34,6 +34,8 @@ bench/run.sh --report-only bench/results/<pasta>
 `bench/cluster-trend.sh <núcleos por nó> <conexões por nó> <imagem>...` mede **só o Taba**, para comparar duas versões dele (antes e depois de uma mudança), com um nó (`replication.factor=1`) e com três nós (fator 3), os mesmos núcleos por nó, o `wrk` espalhado pelos nós dentro de uma rede do Docker e a configuração de produção (mTLS no cluster, o token raiz do `taba init`). Imprime, por rodada, o total de publicações por segundo, o p50 e o p99 de cada nó e as falhas (`non2xx`), e a CPU de cada nó. `BODY_BYTES`, `ROUNDS`, `SECONDS_PER_ROUND` e `NODES` mudam o tamanho da mensagem, as rodadas, a duração delas e quais tamanhos rodam. Como em todo este documento, o resultado de uma máquina só se compara com outro medido **na mesma execução**.
 
 **Consumo, um nó e três nós.** `MODE=consume bench/cluster-trend.sh ...` mede o lado da leitura do mesmo jeito: por rodada enche uma fila nova durante `FILL_SECONDS` (padrão 20) e depois a drena durante `DRAIN_SECONDS` (padrão 10) com um consumidor por conexão, espalhado pelos nós. Um consumidor leva até 100 mensagens (`GET`) e confirma **cada uma** (`DELETE`), como o driver do Taba para o OMB. Imprime o backlog acumulado, as mensagens confirmadas e as confirmações por segundo; quando a drenagem esvaziou a fila, avisa, porque a taxa então fica diluída (aumente `FILL_SECONDS`). Essa comparação de um nó contra três é **o Taba contra ele mesmo**; a comparação com os outros sistemas é o perfil `consume` de um nó, abaixo, a que vale.
+
+**Perfil de CPU de uma rodada.** `bench/profile.sh` roda ao lado do `bench/run.sh`: espera o executor do OMB, grava em `<saída>/monitor.log` (com o horário) as taxas que o OMB imprime, ao vivo, e a CPU e a memória do servidor, e quando o backlog chega a `--backlog` mil mensagens (ou depois de `--after` segundos) tira `--repeat` perfis de `--duration` segundos com `perf record -g` num contêiner privilegiado no espaço de processos do servidor. Cada perfil vai para `<saída>/perf-N/` (`children.txt`, `self.txt`, `threads.txt`, `tree.txt`) com, no Taba, a latência média e as chamadas por segundo de cada rota no mesmo intervalo (`routes.txt`, de `http.server.request.duration`), seguido de um perfil de espera de `--offcpu` segundos (`offcpu.txt`: o tempo que as threads do servidor passaram fora da CPU, por cadeia de chamadas; uma espera em futex da musl estática para no `syscall`); `--server-grep` copia para o mesmo log as linhas do log do servidor que casam (uma medição temporária, um pânico). Os resumos encurtam os nomes Rust com `bench/profile.awk`. As cadeias de chamadas só ficam legíveis com uma imagem compilada com frame pointers (`-C force-frame-pointers=yes`).
 
 ## Como a comparação é mantida justa
 

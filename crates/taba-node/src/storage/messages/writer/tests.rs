@@ -213,6 +213,118 @@ fn the_indexes_of_fifo_columns_become_partial_when_an_old_database_opens() {
     assert!(store.get("orders", "a1").unwrap().is_some());
 }
 
+fn ids(rows: Vec<ScanRow>) -> Vec<String> {
+    rows.into_iter().map(|row| row.id).collect()
+}
+
+/// As páginas e a `expiry` não esperam a fila (D193): com a conexão de escrita presa e escritas na fila, a página
+/// já mostra a mensagem nova, tira a removida, filtra pelos metadados novos e pelos pares da fila (um gravado e um
+/// apagado), e a paginação em pedaços passa por tudo. Depois do commit, as mesmas respostas.
+///
+/// UC: UC-ARM-013
+#[test]
+fn a_page_merges_the_queue_without_waiting_for_the_writer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    for id in ["m01", "m02", "m03", "m04", "m05"] {
+        store.put("orders", &meta(id), b"x").unwrap();
+    }
+    store
+        .expiry_apply("orders", &[(true, 900, "m05".into())])
+        .unwrap();
+    let ((), written) = store.deferred(|| {
+        store.remove("orders", "m02").unwrap();
+        let mut delivered = meta("m03");
+        delivered.delivery_count = 1;
+        store.update_delivery("orders", &delivered).unwrap();
+        store.put("orders", &meta("m06"), b"y").unwrap();
+        store
+            .expiry_apply(
+                "orders",
+                &[(false, 900, "m05".into()), (true, 950, "m04".into())],
+            )
+            .unwrap();
+    });
+    let page = |query: PageQuery| ids(store.page("orders", &query).unwrap());
+    let check = || {
+        let all = PageQuery {
+            limit: 64,
+            ..PageQuery::default()
+        };
+        assert_eq!(page(all.clone()), ["m01", "m03", "m04", "m05", "m06"]);
+        let delivered = PageQuery {
+            delivered: true,
+            ..all.clone()
+        };
+        assert_eq!(page(delivered), ["m03"]);
+        let off_table = PageQuery {
+            off_table: true,
+            ..all.clone()
+        };
+        assert_eq!(page(off_table), ["m01", "m03", "m05", "m06"]);
+        let mut walked = Vec::new();
+        let mut after = None;
+        loop {
+            let rows = page(PageQuery {
+                after: after.clone(),
+                limit: 2,
+                ..PageQuery::default()
+            });
+            let full = rows.len() == 2;
+            after = rows.last().cloned();
+            walked.extend(rows);
+            if !full {
+                break;
+            }
+        }
+        assert_eq!(walked, ["m01", "m03", "m04", "m05", "m06"]);
+        let newest = PageQuery {
+            desc: true,
+            limit: 2,
+            ..PageQuery::default()
+        };
+        assert_eq!(page(newest), ["m06", "m05"]);
+        assert_eq!(store.expiry_find("orders", "m04").unwrap(), Some(950));
+        assert_eq!(store.expiry_find("orders", "m05").unwrap(), None);
+        assert_eq!(
+            store.expiry_earliest("orders", 10).unwrap(),
+            [(950, "m04".to_owned())]
+        );
+    };
+    let disk = store.disk("orders", false).unwrap().unwrap();
+    let held = disk.conn();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            check();
+            tx.send(()).unwrap();
+        });
+        let done = rx.recv_timeout(Duration::from_secs(10));
+        drop(held);
+        assert_eq!(done, Ok(()), "the page did not wait for the writer");
+    });
+    assert!(!committed(&store, "orders", "m06"), "still in the queue");
+    written.wait().unwrap();
+    assert!(committed(&store, "orders", "m06"));
+    check();
+}
+
+/// Uma escrita desligada ([`Written::detach`]) chega ao banco sem ninguém esperar por ela.
+///
+/// UC: UC-ARM-013
+#[test]
+fn a_detached_write_reaches_the_database_without_anyone_waiting() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    let ((), written) = store.deferred(|| store.put("orders", &meta("a1"), b"x").unwrap());
+    written.detach();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !committed(&store, "orders", "a1") {
+        assert!(std::time::Instant::now() < deadline, "never written");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 /// Depois de `release_files` (o nó parou), uma leitura atrasada não reabre o banco: a pasta do tópico fica livre
 /// para ser movida (a vida anterior de um nó iniciado no mesmo disco), e uma escrita é recusada.
 ///

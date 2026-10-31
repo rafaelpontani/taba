@@ -27,7 +27,7 @@ Valem para o cluster padrão (3 nós, `replication.factor=3`, `write.quorum=2`) 
 | **I6** Perda declarada | Toda perda aparece em `/cluster/message-loss`, nunca em silêncio: uma mensagem confirmada que não foi entregue precisa ter sido declarada | ✅ |
 | **R1** Risco assumido | Uma partição com nós suficientes nos dois lados deixa cada lado excluir o outro e seguir ([07-cluster.md](07-cluster.md), "Risco aceito"): pode haver escritas nos dois lados, duplicadas ou perdidas na junção | ✅ medido por `tests/partition.rs`: partição 2 + 2 de 4 nós, escritas nas duas metades, o reencontro; toda escrita respondida `201` é entregue uma vez (D181). O padrão de `cluster.vote.min-voters` segue em aberto (D182) |
 
-Duas coisas que as garantias não dizem: a entrega é **ao-menos-uma-vez**, então uma mensagem entregue sem ack volta e um ack perdido repete a entrega (isso não viola o I3: o ack não respondeu `204`); e, depois da parada de todo o cluster, a **reentrega residual** do [07-cluster.md](07-cluster.md) (seção 10.10) é a exceção documentada ao I3.
+Três coisas que as garantias não dizem: a entrega é **ao-menos-uma-vez**, então uma mensagem entregue sem ack volta e um ack perdido repete a entrega (isso não viola o I3: o ack não respondeu `204`); depois da parada de todo o cluster, a **reentrega residual** do [07-cluster.md](07-cluster.md) (seção 10.10) é a exceção documentada ao I3; e, com `replication.factor` 1, uma queda do processo logo depois de uma entrega pode perder o contador dessa entrega ([11-durabilidade.md](11-durabilidade.md), "Trade-off aceito na entrega do nó sozinho", D193), a exceção documentada ao limite do I5. A rodada de caos usa mais de um nó responsável e não passa por ela.
 
 ## Verificando um histórico
 

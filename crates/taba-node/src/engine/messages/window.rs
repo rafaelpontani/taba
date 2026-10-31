@@ -249,11 +249,14 @@ impl Messages {
             return;
         }
         self.expiry_changed(name, state);
-        // Each round brings what the cursors left; it stops when a round brings nothing.
+        // Each round brings what the cursors left; it stops when a round brings nothing. A janela alterna as duas
+        // pontas, então cada uma lê só a metade da vaga (D193): ler a vaga inteira das duas jogava metade fora. Se uma
+        // ponta acaba, a próxima rodada pede o resto à outra.
         for _ in 0..1024 {
-            let Some(ask) = state.index.refill_ask() else {
+            let Some(mut ask) = state.index.refill_ask() else {
                 return;
             };
+            ask.room = ask.room.div_ceil(2);
             let old = self.ready_from(name, state, &ask, false);
             let new = self.ready_from(name, state, &ask, true);
             if state.index.refill_with(old, new) == 0 {

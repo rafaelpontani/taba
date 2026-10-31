@@ -75,6 +75,10 @@ A loss does **not** compromise the node's health nor stop the synchronization.
 
 If the primary goes down **exactly** between the local commit and the replication to the replicas outside the quorum, and is excluded before it finishes, the new primary inherits the `invisibleUntil` of whoever survived, which may be out of date: the message may become deliverable again **before** the deadline promised to the first consumer. It does not break *at-least-once*; it only shortens, in this rare case, the minimum processing time.
 
+### Accepted trade-off in the delivery of a node alone
+
+With `replication.factor` 1 (the node alone, D191), a delivery of a message on disk answers before its write reaches the database (D193): a background thread commits it a few milliseconds later. If the **process** dies in that window, the message comes back with the counter and the deadline it had before the delivery: it is delivered again without waiting for the invisibility promised to the first consumer, the ack with the first `receiptToken` is refused as stale, and that delivery is not counted for `maxDeliveries` (the message may be delivered once more than the limit before the dead-letter). It does not break *at-least-once*. A message only in memory is lost with the process anyway, and with more than one responsible node the delivery still waits for its commit on the quorum.
+
 ## Retention
 
 | Rule | Default | Effect |

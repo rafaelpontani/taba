@@ -4,8 +4,14 @@
 //! próxima rodada, que leva o que se juntou nesse meio-tempo. Não há thread fixa: quem espera é quem grava.
 //!
 //! **Ler o que ainda não foi gravado:** cada `id` com escrita na fila tem a sua última forma num mapa (a linha
-//! inteira, só os metadados, ou "removida"), e as leituras por `id` olham nele antes do banco. As leituras por
-//! faixa (páginas, contagens, a tabela `expiry`) esperam a fila esvaziar antes de ler.
+//! inteira, só os metadados, ou "removida"), e cada `id` com par da `expiry` na fila, o seu último par (ou
+//! "apagado"). As leituras por `id` olham neles antes do banco. As páginas e a `expiry` mais próxima não esperam a
+//! fila: leem o banco num instantâneo fixado com a fila parada ([`TopicDisk::read_pending`]) e aplicam por cima o
+//! que está pendente. As outras leituras por faixa (contagens, idade, blocos) esperam a fila esvaziar.
+//!
+//! **Escrita desligada de quem pediu:** [`Written::detach`] entrega as escritas de um escopo a uma thread de fundo
+//! (`taba-flush`) que espera o commit e registra a falha; quem pediu responde sem esperar. Só a entrega usa
+//! (D193): perder o contador de uma entrega numa queda do processo devolve a mensagem com o contador de antes.
 //!
 //! **Escopo adiado:** dentro de [`MessageStore::deferred`](super::MessageStore::deferred) as escritas só entram
 //! na fila e a espera fica para depois: o motor solta o lock do tópico antes de esperar o commit, e outras
@@ -16,12 +22,13 @@
 //! líder a cada [`CHECKPOINT_BYTES`] gravados.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::io;
+use std::ops::Bound;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, MutexGuard};
 
-use rusqlite::{Connection, OpenFlags, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use super::excluded::RECORD_FROM_ROW;
 use super::{MessageMeta, Scope, TopicDisk, to_io};
@@ -76,10 +83,29 @@ pub(super) struct Queue {
     writing: bool,
     /// As falhas das últimas rodadas: `(sequência, erro)`.
     failures: VecDeque<(u64, io::Error)>,
-    /// A última forma de cada `id` com escrita na fila: `(sequência, forma)`.
-    overlay: HashMap<String, (u64, Pending)>,
+    /// A última forma de cada `id` com escrita na fila: `(sequência, forma)`, em ordem de `id` (as páginas leem por
+    /// faixa).
+    overlay: BTreeMap<String, (u64, Pending)>,
+    /// O último par da `expiry` de cada `id` com par na fila: `(sequência, prazo)`, `None` quando foi apagado.
+    expiry: BTreeMap<String, (u64, Option<u64>)>,
+    /// As escritas desligadas ([`Written::detach`]) que a thread de fundo ainda vai esperar.
+    detached: Vec<u64>,
     /// O que se gravou desde o último checkpoint.
     since_checkpoint: u64,
+}
+
+/// O que está na fila numa faixa de `id`, copiado no instante em que a leitura fixou o instantâneo do banco.
+#[derive(Debug, Default)]
+pub(super) struct PendingView {
+    pub(super) rows: BTreeMap<String, Pending>,
+    /// O par da `expiry` de cada `id` com par na fila: `Some(prazo)` gravado, `None` apagado.
+    pub(super) expiry: BTreeMap<String, Option<u64>>,
+}
+
+impl PendingView {
+    pub(super) fn is_empty(&self) -> bool {
+        self.rows.is_empty() && self.expiry.is_empty()
+    }
 }
 
 impl Queue {
@@ -127,6 +153,13 @@ impl Written {
             }
         }
         first_error.map_or(Ok(()), Err)
+    }
+
+    /// Não espera: uma thread de fundo espera o commit e registra a falha (ver o topo do módulo).
+    pub fn detach(mut self) {
+        for (disk, seqs) in std::mem::take(&mut self.0) {
+            disk.flush_later(seqs);
+        }
     }
 }
 
@@ -210,7 +243,21 @@ impl TopicDisk {
                 Some((meta.id.clone(), pending))
             }
             Op::Remove { id, .. } => Some((id.clone(), Pending::Gone)),
-            Op::Expiry(_) => None,
+            Op::Expiry(pairs) => {
+                for (put, until, id) in pairs {
+                    if *put {
+                        queue.expiry.insert(id.clone(), (seq, Some(*until)));
+                    } else if queue
+                        .expiry
+                        .get(id)
+                        .is_none_or(|(_, last)| *last == Some(*until))
+                    {
+                        // Apagar um par antigo depois de gravar o novo não apaga o novo.
+                        queue.expiry.insert(id.clone(), (seq, None));
+                    }
+                }
+                None
+            }
         };
         if let Some((id, pending)) = pending {
             queue.overlay.insert(id, (seq, pending));
@@ -226,6 +273,94 @@ impl TopicDisk {
             return None;
         }
         queue.overlay.get(id).map(|(_, pending)| pending.clone())
+    }
+
+    /// O par da `expiry` de `id` que ainda está na fila: `Some(Some(prazo))` gravado, `Some(None)` apagado.
+    pub(super) fn pending_expiry(&self, id: &str) -> Option<Option<u64>> {
+        let queue = self.queue();
+        queue.expiry.get(id).map(|(_, until)| *until)
+    }
+
+    /// Lê com uma conexão só de leitura sem esperar a fila: com a fila parada, fixa o instantâneo do banco e copia o
+    /// que está pendente na faixa `(low, high)` de `id`. O banco nunca está à frente da cópia para um `id` que está
+    /// nela (nada entra na fila entre as duas), e `work` aplica a cópia por cima do que lê.
+    pub(super) fn read_pending<R>(
+        &self,
+        low: Bound<&str>,
+        high: Bound<&str>,
+        work: impl FnOnce(&Connection, &PendingView) -> rusqlite::Result<R>,
+    ) -> io::Result<R> {
+        self.read(|conn| {
+            let queue = self.queue();
+            if queue.overlay.is_empty() && queue.expiry.is_empty() {
+                drop(queue);
+                return work(conn, &PendingView::default());
+            }
+            conn.execute_batch("BEGIN")?;
+            /// Fecha a transação de leitura em qualquer saída.
+            struct End<'c>(&'c Connection);
+            impl Drop for End<'_> {
+                fn drop(&mut self) {
+                    let _ = self.0.execute_batch("COMMIT");
+                }
+            }
+            let _end = End(conn);
+            // A primeira leitura da transação fixa o instantâneo do WAL.
+            conn.query_row("SELECT 1 FROM sqlite_master LIMIT 1", [], |_| Ok(()))
+                .optional()?;
+            let range = (low, high);
+            let view = PendingView {
+                rows: queue
+                    .overlay
+                    .range::<str, _>(range)
+                    .map(|(id, (_, pending))| (id.clone(), pending.clone()))
+                    .collect(),
+                expiry: queue
+                    .expiry
+                    .range::<str, _>(range)
+                    .map(|(id, (_, until))| (id.clone(), *until))
+                    .collect(),
+            };
+            drop(queue);
+            work(conn, &view)
+        })
+    }
+
+    /// Entrega as escritas `seqs` à thread de fundo que espera o commit delas ([`Written::detach`]).
+    fn flush_later(self: &Arc<Self>, seqs: Vec<u64>) {
+        self.queue().detached.extend(seqs);
+        if self.flushing.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let disk = self.clone();
+        let spawned = std::thread::Builder::new()
+            .name("taba-flush".into())
+            .spawn(move || disk.flush_detached());
+        if spawned.is_err() {
+            // Sem thread, quem pediu espera.
+            self.flushing.store(false, Ordering::Release);
+            let seqs = std::mem::take(&mut self.queue().detached);
+            if let Err(e) = self.wait(&seqs) {
+                tracing::error!(error = %e, "failed to write a delivery to the topic database");
+            }
+        }
+    }
+
+    fn flush_detached(self: &Arc<Self>) {
+        loop {
+            let seqs = std::mem::take(&mut self.queue().detached);
+            if seqs.is_empty() {
+                self.flushing.store(false, Ordering::Release);
+                // Quem desligou escritas entre a cópia e a marca não achou a thread: ela continua.
+                if self.queue().detached.is_empty() || self.flushing.swap(true, Ordering::AcqRel) {
+                    return;
+                }
+                continue;
+            }
+            if let Err(e) = self.wait(&seqs) {
+                tracing::error!(error = %e, "failed to write a delivery to the topic database");
+            }
+        }
     }
 
     /// Espera tudo o que está na fila até agora chegar ao banco (gravado ou falhado). Para as leituras por faixa e
@@ -477,6 +612,7 @@ impl<'a> Round<'a> {
             queue.failures.pop_front();
         }
         queue.overlay.retain(|_, (seq, _)| *seq > done);
+        queue.expiry.retain(|_, (seq, _)| *seq > done);
         queue.since_checkpoint += bytes;
         if queue.since_checkpoint >= CHECKPOINT_BYTES {
             queue.since_checkpoint = 0;
@@ -502,6 +638,7 @@ impl Drop for Round<'_> {
         }
         let done = queue.done;
         queue.overlay.retain(|_, (seq, _)| *seq > done);
+        queue.expiry.retain(|_, (seq, _)| *seq > done);
         queue.writing = false;
         self.disk.turn.notify_all();
     }

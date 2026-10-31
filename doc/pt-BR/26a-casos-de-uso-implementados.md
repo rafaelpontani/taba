@@ -6306,7 +6306,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-ARM-013
 
-**Caso:** Toda **escrita** no banco de um tópico passa por um **escritor único**: as frequentes entram na fila de escrita do tópico, e a primeira chamada que espera grava tudo o que espera numa transação (commit em grupo, D192); um lote do motor põe as escritas na fila, solta o tópico e só então espera o commit. As leituras usam conexões só de leitura em modo WAL, veem o que ainda está na fila e não esperam o escritor
+**Caso:** Toda **escrita** no banco de um tópico passa por um **escritor único**: as frequentes entram na fila de escrita do tópico, e a primeira chamada que espera grava tudo o que espera numa transação (commit em grupo, D192); um lote do motor põe as escritas na fila, solta o tópico e só então espera o commit. As leituras usam conexões só de leitura em modo WAL, veem o que ainda está na fila e não esperam o escritor; as páginas e as consultas da `expiry` aplicam a fila sobre um instantâneo fixado em vez de esperá-la, e o commit de uma entrega é esperado por uma thread de fundo (D193)
 **Então:** cada chamada recebe o resultado da própria escrita, uma escrita recusada falha só para quem a fez, e nada gravado se perde com escritores concorrentes.
 **Nível:** U, I
 **Testes:**
@@ -6316,6 +6316,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/storage/messages/writer/tests.rs::concurrent_writers_share_commits_and_lose_nothing`
   - `src/storage/messages/writer/tests.rs::a_refused_write_fails_only_its_caller_and_the_rest_of_the_round_commits`
   - `src/storage/messages/writer/tests.rs::a_read_by_id_does_not_wait_for_the_writer`
+  - `src/storage/messages/writer/tests.rs::a_page_merges_the_queue_without_waiting_for_the_writer`
+  - `src/storage/messages/writer/tests.rs::a_detached_write_reaches_the_database_without_anyone_waiting`
 ---
 
 ### UC-ARM-014

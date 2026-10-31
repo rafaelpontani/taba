@@ -3173,7 +3173,7 @@ impl Messages {
         let mut woken = 0;
         let mut starts = Vec::with_capacity(items.len());
         let (results, written) = self.store.deferred(|| {
-            items
+            let results = items
                 .into_iter()
                 .map(|(meta, body, started)| {
                     let owned =
@@ -3186,9 +3186,10 @@ impl Messages {
                     starts.extend(started);
                     Ok(())
                 })
-                .collect::<Vec<Result<(), TabaError>>>()
+                .collect::<Vec<Result<(), TabaError>>>();
+            self.ready_changed(topic, &mut state);
+            results
         });
-        self.ready_changed(topic, &mut state);
         drop(state);
         // O commit é esperado sem o lock do tópico: as outras chamadas do tópico entram no mesmo commit (D192).
         let results = self.after_commit(written, results);
@@ -3432,7 +3433,7 @@ impl Messages {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         let (closed, written) = self.store.deferred(|| {
-            items
+            let closed = items
                 .iter()
                 .map(|(id, until, count, token)| {
                     self.check_held(topic, &mut state, id, VisibilityCheck::Delivery, token, now)
@@ -3446,15 +3447,17 @@ impl Messages {
                                 now,
                             )
                         })
+                        .is_ok()
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            self.ready_changed(topic, &mut state);
+            closed
         });
-        self.ready_changed(topic, &mut state);
         drop(state);
-        self.after_commit(written, closed)
-            .iter()
-            .map(Result::is_ok)
-            .collect()
+        // A entrega não espera o commit (D193): o índice já a tem, as leituras veem a fila, e uma thread de fundo
+        // espera a gravação. Numa queda do processo antes dela, a mensagem volta com o contador e o prazo de antes.
+        written.detach();
+        closed
     }
 
     /// The acks of a node that is the only responsible one (factor 1, D191), `(id, receiptToken)` each, under one
@@ -3468,15 +3471,17 @@ impl Messages {
         let state = self.state_of(topic);
         let mut state = lock(&state);
         let (results, written) = self.store.deferred(|| {
-            items
+            let results = items
                 .iter()
                 .map(|(id, token)| {
                     self.check_held(topic, &mut state, id, VisibilityCheck::Receipt, token, now)?;
                     self.ack_held(topic, &mut state, id, now)
                 })
-                .collect()
+                .collect();
+            // As escritas da `expiry` daqui também esperam sem o lock (D193).
+            self.ready_changed(topic, &mut state);
+            results
         });
-        self.ready_changed(topic, &mut state);
         drop(state);
         self.after_commit(written, results)
     }
@@ -3699,10 +3704,46 @@ impl Messages {
         if state.index.is_fifo() && self.fifo_held() {
             return Ok(Vec::new());
         }
+        // Os pares da `expiry` que a reserva escreve entram na fila sem esperar, e o commit é esperado sem o lock do
+        // tópico (D193): os outros consumidores do tópico não esperam a fila de escrita atrás dele.
+        let (taken, written) = self
+            .store
+            .deferred(|| self.take_held(view, &mut state, max, visibility_secs, now));
+        drop(state);
+        let Err(e) = written.wait() else {
+            return taken;
+        };
+        // The table write is part of the delivery: if it fails, the reservations are undone before the answer. Ninguém
+        // mais as tomou nesse meio-tempo (estão em processamento).
+        let state = self.state_of(name);
+        let mut state = lock(&state);
+        for candidate in taken.iter().flatten() {
+            let until = candidate.meta.invisible_until_ms;
+            state
+                .index
+                .adopt(window::fact_of(&candidate.meta), Some(until.max(now + 1)));
+            state
+                .index
+                .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
+        }
+        self.ready_changed(name, &mut state);
+        Err(self.disk_error("failed to write the expiry table", &e))
+    }
+
+    /// [`take_candidates`](Self::take_candidates) with the topic's state already held.
+    fn take_held(
+        &self,
+        view: &TopicView,
+        state: &mut TopicState,
+        max: usize,
+        visibility_secs: u64,
+        now: u64,
+    ) -> Result<Vec<Candidate>, TabaError> {
+        let name = &view.definition.name;
         let until = now + visibility_secs * 1000;
         let mut out = Vec::new();
         while out.len() < max {
-            let Some(id) = self.pick_next(name, &mut state) else {
+            let Some(id) = self.pick_next(name, state) else {
                 break;
             };
             let (mut meta, body) = if let Some(stored) = state.memory.get(&id) {
@@ -3772,7 +3813,7 @@ impl Messages {
         }
         // The table write is part of the delivery: if it fails, the delivery is undone before the
         // answer.
-        if let Err(e) = self.flush_expiry(name, &mut state) {
+        if let Err(e) = self.flush_expiry(name, state) {
             for candidate in &out {
                 // The pair may be waiting in the table write that failed (see `take`).
                 state
@@ -3782,10 +3823,10 @@ impl Messages {
                     .index
                     .deliver(&candidate.meta.id, 0, now, candidate.previous_deliveries);
             }
-            self.ready_changed(name, &mut state);
+            self.ready_changed(name, state);
             return Err(self.disk_error("failed to write the expiry table", &e));
         }
-        self.ready_changed(name, &mut state);
+        self.ready_changed(name, state);
         Ok(out)
     }
 
