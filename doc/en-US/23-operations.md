@@ -68,6 +68,8 @@ If a node does not finish draining within `drain.timeout` plus 30 s, the process
 
 > ⚠️ **The version that introduced the batch (`POST /cluster/batch`, [D186](30-decisions.md)) cannot be reached by a rolling upgrade from an earlier one.** The operations on messages between nodes changed route and format (protobuf), with no compatibility: a new node does not understand the single-operation routes, and an old one does not have the batch route, so while nodes of both versions are in the cluster the writes that need a replica of the other version fail. **Stop the whole cluster and start the new version with the same volumes** (the cluster resumes from disk, [See "All nodes went down"](#all-nodes-went-down)). From the next version on, the rule above holds again.
 
+> ⚠️ **The version that put the bodies in the topic database ([D192](30-decisions.md)) has no way back.** The upgrade needs nothing: the new version still reads the `<id>.body` files of the earlier one and deletes them with their messages. But an earlier version that opens a disk written by it does not read the bodies kept in the rows, and the messages that were only on that disk are lost. With a factor above 1, go back one node at a time: the copies on the other nodes cover the one that loses its disk. With factor 1, consume what is on disk before going back.
+
 The `stop_grace_period` (Compose) or `terminationGracePeriodSeconds` (Kubernetes, 30 s by default) must be **greater than `drain.timeout`** (25 s). The repository's Compose uses **40 s**. Otherwise the process is killed before recording the result.
 
 ## Retire a node on purpose (drain)

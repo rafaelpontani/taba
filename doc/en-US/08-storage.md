@@ -3,7 +3,7 @@ title: Storage
 summary: Where each piece of node data lives — memory first, overflow to disk, one SQLite database per topic, the node database, the event database — and what happens on a restart.
 type: explanation
 status: stable
-verified-on: 2026-10-14 @ efeb47a
+verified-on: 2026-10-31 @ 5188786
 sources: [crates/taba-node/src/storage, crates/taba-node/src/engine/messages/mod.rs, crates/taba-node/src/engine/messages/rates, crates/taba-node/src/engine/topics/mod.rs, crates/taba-node/src/engine/tokens/mod.rs]
 ---
 
@@ -30,8 +30,7 @@ ${storage.dir}/
   _lives/<old ID>/         one folder per previous life: its topics and its `manifest.json`; they stay until the restoration ends
   _previous-life/          disk with no manifest (earlier version), set aside on a restart; deleted when the recovery ends
   <topic>/                 one folder per topic (uppercase becomes "~" + lowercase: Pedidos → ~pedidos/)
-    _topic.db              topic database (SQLite, WAL), only with what is on disk
-    <id>.body              the body of each message on disk, only the bytes as they came
+    _topic.db              topic database (SQLite, WAL), only with what is on disk: rows and bodies
 ```
 
 Everything is **strictly local**: none of these files is copied between nodes. What travels are the messages and metadata through the register + commit protocol.
@@ -41,7 +40,7 @@ Everything is **strictly local**: none of these files is copied between nodes. W
 ## Memory and overflow
 
 - **Limit:** `memory.limit` (no default). **Without it, nothing goes to disk by overflow.**
-- On reaching the limit, the excess messages are written to disk: first the **body** in `<topic>/<id>.body`, then the **row** in the topic database. When reading a message that is not in memory, it is fetched from disk.
+- On reaching the limit, the excess messages are written to disk: the **row and the body** go to the topic database in one transaction. When reading a message that is not in memory, it is fetched from disk.
 - **Division among topics.** Memory is not divided equally. Each topic has a **read rate** (moving average of messages consumed per second in the `memory.rate.window` window, default **5 min**; the same window computes `publishRate` and `consumeRate`). Each topic is entitled to a **reserve** (`memory.topic.reserve`, default **1000** messages) regardless of rate, so a new topic does not start by throwing messages to disk. Above the reserves, whoever has the lowest read rate loses memory first.
 - **What stays in memory:** the ready list (the next ones to deliver) and the newly arrived. LRU/LFU is not used: each message is read **once** and deleted by the ack, so access history predicts nothing.
 - **Overflow summary:** an `info` log (`taba.storage.overflow`) every 60 s, only if there was overflow.
@@ -63,7 +62,9 @@ The schema version is written to the database (`SCHEMA_VERSION`); a database of 
 
 ## The topic database (`<topic>/_topic.db`)
 
-Table `messages`, **one row per message on disk**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (where the `ttl` counts from: publication, or entry into the dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (the position on the ring) and, in FIFO, `deduplication_id` and `delete_at`. Indexes by `invisible_until`, `age_base`, `group_id` (the end of a group is read from it, in `id` order), `position` and `(group_id, deduplication_id)` and `delete_at`.
+Table `messages`, **one row per message on disk**: `id`, `content_type`, `group_id`, `published_at`, `delivery_count`, `invisible_until`, `receipt_token`, `age_base` (where the `ttl` counts from: publication, or entry into the dead-letter), `dead_lettered_at`, `dead_letter_reason`, `position` (the position on the ring) and, in FIFO, `deduplication_id` and `delete_at`. Indexes by `invisible_until`, `age_base`, `group_id` (the end of a group is read from it, in `id` order), `position`, and the partial ones `(group_id, deduplication_id)` (only the rows with `deduplication_id`) and `delete_at` (only the short row of the FIFO ack), so the other rows pay no entry in them. A database from an earlier version has these two whole: they become partial when it opens (D192).
+
+**Body.** The body is the bytes as they came. Up to `storage.body.inline-max` (default 256 bytes) it lives in the row itself (`body` column); a larger one goes to the `bodies` table (`id`, `body`), so the state updates of the row (delivery, deadline) do not rewrite it. The row and the body are written and deleted **in the same transaction**. A topic folder from an earlier version may still have `<id>.body` files: they are read when the row has no body and deleted with the message, but nothing writes a file any more.
 
 It answers: the oldest message, the next ones to expire, the messages of a block (range by position, for the synchronization streams and cleanup) and the counts.
 
@@ -71,9 +72,13 @@ It answers: the oldest message, the next ones to expire, the messages of a block
 
 **Log of excluded messages.** The `excluded` table (`id`, `position`, `at_ms`) keeps the `id` of every message that **left the topic dead** (ack, `prune`, sent to the dead-letter; the `ttl` is not included), with the ring position (the block is found by it). The record is written **in the same transaction** that deletes the message, with no extra fsync (`storage.db.synchronous` stays as configured). The log has an age limit (`storage.excluded.max-age`, 24 h) and a size limit (`storage.excluded.max-size`, 100 MB, adding all topics); the oldest rows go first, and the **start of the continuous recording** (key `excluded_since` of the `state` table in `_node.db`) moves forward to the instant of the newest discarded row ([07-cluster.md](07-cluster.md), section 10).
 
-**Single writer.** Every write to a topic's database goes through **one command queue**, executed one at a time. Long reads (the synchronization streams) use their own read connections (WAL mode) and do not block the writer.
+**Single writer, group commit (D192).** Each topic database has **one write connection**. The frequent writes (publish, delivery, ack, the `expiry` pairs) go into the topic's **write queue**; the first caller that waits becomes the **leader**: it takes everything in the queue, writes it in **one transaction** and wakes the others. Whoever arrives while it writes goes in the next round, with what gathered meanwhile. On the batch routes ([10-publishing.md](10-publishing.md)) the engine puts the writes in the queue holding the topic, **releases the topic** and only then waits for the commit: the other calls of the topic enter the same commit, and the answer to the client still only goes after it. The rare writes (FIFO short row, dead-letter, eviction, cleanups) take the write connection after the queue is empty.
 
-**Write order** (so a crash does not corrupt): on write, **first the file, then the row**; on ack, **first the row, then the file**. A crash leaves at most a **file without a row** (harmless garbage) or a **row without a file** (the message was lost and is discarded on read). The node that restarts comes back as a new node and rebuilds from the cluster.
+**Reads.** Reads use **read-only connections** (WAL mode), in parallel with the writer. A read by `id` (metadata, body) sees what is still in the queue; a read by range (pages, counts, the `expiry` table, block listings) waits for the queue to empty first.
+
+**Checkpoint.** The copy of the WAL to the database file runs in the **background** (`PASSIVE`, with its own connection), asked by the writer every 32 MB written; the inline checkpoint of SQLite stays only as a safety net, at about 400 MB of WAL.
+
+**Write order** (so a crash does not corrupt): the row and its body go in and out in **one transaction**, so a crash leaves both or neither. With a legacy `<id>.body` file, the file is deleted after the row. The node that restarts comes back as a new node and rebuilds from the cluster.
 
 **SQLite durability:** `storage.db.synchronous` (default `NORMAL`, with WAL): since durability comes from replication, the `fsync` of every write is not paid.
 
@@ -119,16 +124,16 @@ It only exists with the **optional S3 backup** ([33-s3-backup.md](33-s3-backup.m
 
 On a production start the database is **zeroed**: the node is new, and what the previous one kept (queue, references) is not valid for the new identity (what the disk of the previous life returns comes in again through normal publishing, and the new owner queues it).
 
-**Eviction.** With the disk above `backup.disk.evict-above` (85%), the node deletes only the **body file** (`<id>.body`) of messages that already have a reference in the bucket, down to `backup.disk.evict-to` (70%). The row in `_topic.db` stays, so the "file first, row after" order still holds. On read, the missing body becomes a `Range` on the segment. Details and the pause during drain: [33-s3-backup.md](33-s3-backup.md).
+**Eviction.** With the disk above `backup.disk.evict-above` (85%), the node deletes only the **body** (the `body` column of the row, the `bodies` row or the legacy `<id>.body` file) of messages that already have a reference in the bucket, down to `backup.disk.evict-to` (70%). The row in `_topic.db` stays. On read, the missing body becomes a `Range` on the segment. Details and the pause during drain: [33-s3-backup.md](33-s3-backup.md).
 
 ## Known limits
 
-- **PRB-025:** `diskBytes` and `bytes` sum the size of the topic's `.body` files, **one call per message on disk**, at each read of `/metrics/topics*`.
+- **PRB-025:** `diskBytes` and `bytes` sum the lengths of the topic's bodies with one query per topic, which reads every row of it, at each read of `/metrics/topics*`.
 - **PRB-019:** finding the middle message to demote and checking the ready ones when `maxDeliveries` changes scan the topic's memory; the `maxDeliveries` check and the on-demand queries read the messages in pages.
 - **D80:** the topic name becomes a folder name; Windows reserved names (`con`, `nul`, `aux`, `com1`…) are not handled yet.
 
 ## Sources and evidence
 
-- `storage/backup` (the object store, the segment, the journal, the names and `_backup.db`); `storage/db` (`_node.db`, schema), `storage/messages` (body, topic database, write order, folder name), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
+- `storage/backup` (the object store, the segment, the journal, the names and `_backup.db`); `storage/db` (`_node.db`, schema), `storage/messages` (body, topic database, write order, folder name), `storage/messages/writer` (write queue, group commit, read connections, checkpoint), `storage/synclog`, `storage/state`, `storage/losses`, `storage/tokens`, `storage/versions`; `engine/messages` (overflow, `rates`, `reserve_memory`); `engine/topics`, `engine/tokens`.
 - Use cases: UC-ARM (storage), UC-DEF (replicated definitions), UC-DRN (drain as save); see [26a](26a-implemented-use-cases.md).
 - History: `02-arquitetura.md` (3.2 to 3.4).

@@ -5,12 +5,16 @@ import io.github.rafaelpontani.taba.Message;
 import io.github.rafaelpontani.taba.TabaClient;
 import io.openmessaging.benchmark.driver.BenchmarkConsumer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** One thread that long-polls the queue of the subscription, calls the OMB callback and acks. */
+/**
+ * Threads ({@code consumer.pollers}, one by default) that long-poll the queue of the subscription, call the OMB
+ * callback and ack. With more than one, each waits for its own {@code GET} while the others are already asking.
+ */
 final class TabaBenchmarkConsumer implements BenchmarkConsumer {
     private static final Logger LOG = LoggerFactory.getLogger(TabaBenchmarkConsumer.class);
 
@@ -19,7 +23,7 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
     private final ConsumerCallback callback;
     private final ConsumeOptions options;
     private final boolean ackBatch;
-    private final Thread thread;
+    private final List<Thread> threads = new ArrayList<>();
     private final AtomicLong redelivered = new AtomicLong();
     private volatile boolean running = true;
 
@@ -32,9 +36,17 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
                 .maxMessages(config.maxMessages)
                 .visibilityTimeout(config.visibilityTimeout)
                 .waitTime(config.waitTime);
-        this.thread = new Thread(this::loop, "taba-omb-consumer-" + queue);
-        this.thread.setDaemon(true);
-        this.thread.start();
+        for (int i = 0; i < config.pollers; i++) {
+            Thread thread = new Thread(this::loop, "taba-omb-consumer-" + queue + "-" + i);
+            thread.setDaemon(true);
+            threads.add(thread);
+        }
+        threads.forEach(Thread::start);
+    }
+
+    /** How many threads poll the queue. */
+    int pollers() {
+        return threads.size();
     }
 
     /** Messages delivered more than once; the OMB cannot see them. */
@@ -95,7 +107,7 @@ final class TabaBenchmarkConsumer implements BenchmarkConsumer {
     @Override
     public void close() {
         running = false;
-        thread.interrupt();
+        threads.forEach(Thread::interrupt);
         if (redelivered.get() > 0) {
             LOG.warn("{}: {} messages were delivered more than once", queue, redelivered.get());
         }

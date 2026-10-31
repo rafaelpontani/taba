@@ -1058,14 +1058,16 @@ async fn the_background_sweeper_moves_it_even_if_nobody_touches_the_source_queue
     node.shutdown().await;
 }
 
+/// The messages the node has on disk in the topic (rows with their bodies, in the topic database).
 fn body_files(node: &TestNode, topic: &str) -> usize {
-    std::fs::read_dir(node.storage_dir().join(topic))
-        .map(|dir| {
-            dir.filter_map(Result::ok)
-                .filter(|e| e.path().extension().is_some_and(|x| x == "body"))
-                .count()
-        })
-        .unwrap_or(0)
+    disk_store(node).count(topic).unwrap() as usize
+}
+
+fn disk_store(node: &TestNode) -> taba_node::storage::messages::MessageStore {
+    taba_node::storage::messages::MessageStore::new(
+        &node.storage_dir(),
+        taba_node::config::DbSynchronous::Normal,
+    )
 }
 
 /// UC: UC-ARM-001, UC-ARM-002, UC-ARM-003, UC-ARM-010, UC-ARM-014
@@ -1083,16 +1085,19 @@ async fn messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact() 
     assert_eq!(body_files(&node, "files"), 0, "it fit in memory");
     let big = publish_raw(&node, "files", "", Some("image/png"), all_bytes.clone()).await;
     assert_eq!(big.status(), 201);
-    assert_eq!(body_files(&node, "files"), 1, "the excess became a .body");
+    assert_eq!(
+        body_files(&node, "files"),
+        1,
+        "the excess went to the topic database"
+    );
     assert!(node.storage_dir().join("files").join("_topic.db").is_file());
 
-    // The file keeps only the bytes, without reserializing or encoding.
+    // The database keeps only the bytes, without reserializing or encoding.
     let id = big.json::<Value>().await.unwrap()["id"]
         .as_str()
         .unwrap()
         .to_owned();
-    let on_disk =
-        std::fs::read(node.storage_dir().join("files").join(format!("{id}.body"))).unwrap();
+    let on_disk = disk_store(&node).body("files", &id).unwrap();
     assert_eq!(on_disk, all_bytes);
 
     let messages = consume(&node, "files", "?maxMessages=10&visibilityTimeout=30").await;

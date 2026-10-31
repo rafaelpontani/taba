@@ -86,7 +86,7 @@ Por isso os testes de cluster (nível `C`, [25-testes.md](25-testes.md)) rodam v
 ## Concorrência
 
 - **Runtime:** `tokio`, vários threads.
-- **Escritor único por banco:** toda escrita num banco SQLite (o de cada tópico e o `_node.db`) passa por **um único escritor**; leituras longas, como os streams de sincronização, usam conexões de leitura próprias (modo WAL).
+- **Escritor único por banco:** toda escrita num banco SQLite (o de cada tópico e o `_node.db`) passa por **um único escritor**; no banco de um tópico as escritas frequentes esperam numa fila e entram numa transação só (commit em grupo, D192), e as leituras usam conexões de leitura próprias (modo WAL).
 - **Estado compartilhado:** tabela de membros, tabela de tópicos e tokens ficam em memória atrás de travas; mudanças de membros são **uma por vez** por nó.
 - **Tarefas de fundo:** vencimento da invisibilidade, varredura de `ttl`, gestão das filas voláteis, reunião após partição, relatório de overflow.
 
@@ -102,7 +102,7 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           pasta de segredos (certificado do cluster, token raiz)
-  storage/           db (o `_node.db`) messages topics tokens state losses versions synclog
+  storage/           db (o `_node.db`) messages (excluded, writer) topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: o `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)

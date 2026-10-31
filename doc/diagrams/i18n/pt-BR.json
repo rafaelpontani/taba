@@ -1055,5 +1055,11 @@
   "writes pending / commit": "grava pendente / commit",
   "yes": "sim",
   "Your application": "Sua aplicação",
-  "zero cost. No cloud required.": "quase zero. Sem nuvem obrigatória."
+  "zero cost. No cloud required.": "quase zero. Sem nuvem obrigatória.",
+  "bodies table": "tabela bodies",
+  "bodies above 256 B": "corpos acima de 256 B",
+  "same transaction": "mesma transação",
+  "body: row or bodies": "corpo: linha ou bodies",
+  "SQLite per topic, with the body": "SQLite por tópico, com o corpo",
+  "SQLite with the bodies": "SQLite com os corpos"
 }

@@ -265,6 +265,9 @@ pub struct Storage {
     pub rate_window: Duration,
     pub topic_reserve: u64,
     pub db_synchronous: DbSynchronous,
+    /// The largest body kept in the message's own row; a larger one goes to the `bodies` table
+    /// (`storage.body.inline-max`).
+    pub body_inline_max: u64,
     /// Size limit of the log of excluded messages (`storage.excluded.max-size`).
     pub excluded_max_bytes: u64,
     /// Age limit of the log of excluded messages (`storage.excluded.max-age`).
@@ -630,6 +633,7 @@ impl Config {
             rate_window: s.get("memory.rate.window")?,
             topic_reserve: s.get("memory.topic.reserve")?,
             db_synchronous: s.get("storage.db.synchronous")?,
+            body_inline_max: s.get::<Bytes>("storage.body.inline-max")?.0,
             excluded_max_bytes: s.get::<Bytes>("storage.excluded.max-size")?.0,
             excluded_max_age: s.get("storage.excluded.max-age")?,
         };

@@ -82,6 +82,12 @@ class DriverUnitTest {
         TabaDriverConfig badLinger = new TabaDriverConfig();
         badLinger.producer.lingerMs = -1;
         assertThrows(IllegalArgumentException.class, badLinger::validate);
+
+        // One thread polls by default; 0 is refused.
+        assertEquals(1, ok.consumer.pollers);
+        TabaDriverConfig badPollers = new TabaDriverConfig();
+        badPollers.consumer.pollers = 0;
+        assertThrows(IllegalArgumentException.class, badPollers::validate);
     }
 
     /// UC: UC-CNT-036

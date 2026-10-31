@@ -81,7 +81,7 @@
       "id": "disk",
       "type": "database",
       "label": "Disk",
-      "sublabel": "SQLite + .body bodies",
+      "sublabel": "SQLite with the bodies",
       "pos": [
         520,
         480

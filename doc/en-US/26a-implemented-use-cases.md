@@ -770,6 +770,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ---
 
+### UC-MSG-024
+
+**Case:** A node that is the only responsible node of its messages (`replication.factor=1`, `write.quorum=1`) publishes, delivers, acks and changes the invisibility, in batches and in single calls; a stale receipt among the acks of a batch; another operation already pending on a message  
+**Then:** each operation is applied straight to the engine, with no register nor commit to itself (`taba.write.received` stays at zero, `taba.write.coordinated` counts every one), and the answers are the same as through the two phases: the batch is delivered whole, once and in order, the stale receipt alone is `409 message.stale-receipt`, visibility `0` delivers the message again with `deliveryCount` 2; the message held by the node alone refuses another register (`409 cluster.conflict`) until it is released, and a pending operation refuses the hold ([D191](30-decisions.md))  
+**Level:** U, C  
+**Tests:**
+  - `tests/single_node.rs::alone_the_batches_publish_deliver_and_ack_without_the_two_phases`
+  - `tests/single_node.rs::alone_the_single_calls_and_the_visibility_take_the_same_path`
+  - `src/cluster/replication/replica/tests.rs::the_hold_of_the_node_alone_excludes_a_pending_operation_on_the_same_message`
+
+---
+
 
 ## CNS: Consumption (`GET`), long polling and `autoCreate`
 
@@ -5276,7 +5288,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 **Case:** The node that synchronizes reads the source's **tombstones** (`GET /cluster/definitions/tombstones`  
 **Then:** kind, key and the version of the removal, which the source still keeps) right after the topic and token streams. That way it knows the version already used by a removed definition: a late creation of a lower version does not resurrect it, and the recreation of the same name by it, if it becomes the owner, comes out with the next version and not with 1. A tombstone lower than the live version the node has is ignored; higher, it removes the definition.  
-**Level:** C, U  
+**Level:** U, C  
 **Tests:**
   - `tests/definitions.rs::a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the_topic_back`
 
@@ -6168,13 +6180,18 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-ARM-002
 
-**Case:** The body goes to `${topic}/${id}.body` (one folder per topic, one file per message), with the **raw bytes**, without reserializing or encoding; the `contentType` stays in the metadata.  
-**Level:** I  
+**Case:** The body goes to the topic database with the **raw bytes**, without reserializing or encoding: in the row itself up to `storage.body.inline-max` (256 bytes), above that in the `bodies` table; the `contentType` stays in the metadata. A legacy `${id}.body` file is still read and deleted with its message, and nothing writes one
+**Level:** U, I
 **Tests:**
   - `src/engine/messages/tests.rs::what_does_not_fit_in_memory_overflows_to_disk`
-  - `src/storage/messages/tests.rs::a_message_is_a_body_file_plus_a_row_in_the_topic_database`
+  - `src/storage/messages/tests.rs::a_message_is_a_row_with_its_body_in_the_topic_database_and_no_file`
+  - `src/storage/messages/tests.rs::a_body_above_the_inline_limit_goes_to_the_bodies_table_and_leaves_with_its_message`
+  - `src/storage/messages/tests.rs::a_zero_inline_limit_puts_every_body_in_the_bodies_table`
+  - `src/storage/messages/tests.rs::the_body_files_of_the_old_layout_are_still_read_and_leave_with_their_message`
+  - `src/storage/messages/tests.rs::evicting_a_body_keeps_the_row_wherever_the_body_was`
+  - `src/storage/messages/tests.rs::moving_a_message_takes_its_body_to_the_other_topic`
+  - `src/storage/messages/tests.rs::the_position_index_of_the_excluded_log_is_created_when_a_block_is_read`
   - `tests/messages.rs::messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact`
-
 ---
 
 ### UC-ARM-003
@@ -6289,23 +6306,29 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 ### UC-ARM-013
 
-**Case:** Every **write** to a topic's database goes through a **single writer** (one command queue per topic, executed one at a time); long reads use their own connections in WAL mode and do not block the writer.  
-**Level:** U, I  
+**Case:** Every **write** to a topic's database goes through a **single writer**: the frequent ones enter the topic's write queue, and the first caller that waits writes everything waiting in one transaction (group commit, D192); a batch of the engine puts its writes in the queue, releases the topic and then waits for the commit. Reads use read-only connections in WAL mode, see what is still in the queue and do not wait for the writer
+**Then:** each caller gets the result of its own write, a refused write fails only its caller, and nothing written is lost under concurrent writers.
+**Level:** U, I
 **Tests:**
   - `src/engine/messages/tests.rs::a_slow_topic_never_blocks_the_other_topics`
-
+  - `src/storage/messages/tests.rs::a_deferred_batch_keeps_every_write_and_leaves_the_connection_usable`
+  - `src/storage/messages/writer/tests.rs::a_queued_write_is_seen_by_every_read_before_its_commit`
+  - `src/storage/messages/writer/tests.rs::concurrent_writers_share_commits_and_lose_nothing`
+  - `src/storage/messages/writer/tests.rs::a_refused_write_fails_only_its_caller_and_the_rest_of_the_round_commits`
+  - `src/storage/messages/writer/tests.rs::a_read_by_id_does_not_wait_for_the_writer`
 ---
 
 ### UC-ARM-014
 
-**Case:** Write order  
-**Then:** on write, first the body file, then the row; on ack, first the row, then the file. A crash leaves at most a file without a row or a row without a file.  
-**Level:** I  
+**Case:** Write order
+**Then:** the row and its body are written and deleted in one transaction, so a crash leaves both or neither; a legacy body file is deleted after the row.
+**Level:** U, I
 **Tests:**
   - `src/engine/messages/tests.rs::a_message_on_disk_is_delivered_again_and_acked_like_any_other`
+  - `src/storage/messages/tests.rs::a_body_above_the_inline_limit_goes_to_the_bodies_table_and_leaves_with_its_message`
+  - `src/storage/messages/tests.rs::the_body_files_of_the_old_layout_are_still_read_and_leave_with_their_message`
   - `src/storage/messages/tests.rs::removing_deletes_the_row_and_then_the_file`
   - `tests/messages.rs::messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact`
-
 ---
 
 ### UC-ARM-015
@@ -6408,6 +6431,16 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/storage/messages/excluded/tests.rs::removing_with_exclusion_deletes_the_message_and_records_it_in_the_same_transaction`
   - `src/storage/messages/excluded/tests.rs::recording_adds_no_synchronization_beyond_the_configured_one`
   - `src/storage/messages/excluded/tests.rs::a_topic_database_from_before_the_log_gets_the_table`
+
+---
+
+### UC-ARM-030
+
+**Case:** A topic database from an earlier version, with the indexes `messages_group_dedup` and `messages_delete_at` covering every row, is opened
+**Then:** both become partial (only the rows with `deduplication_id`, only the short rows with `delete_at`), and the sweep of the short rows of the FIFO ack still finds them.
+**Level:** U
+**Tests:**
+  - `src/storage/messages/writer/tests.rs::the_indexes_of_fifo_columns_become_partial_when_an_old_database_opens`
 
 ---
 
@@ -7311,7 +7344,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
 
 **Case:** The member that **missed the commit of a leave** (the exclusion by vote or the drain) applies the change when the channel delivers it  
 **Then:** the `membership` frame carries the change and the table version, and the receiver applies it without depending on the pending one. Its table becomes equal to the others', the node leaves the ring and enters freezing (if it was an exclusion). The pending register of the same operation disappears, and the late commit is harmless.  
-**Level:** C, U  
+**Level:** U, C  
 **Tests:**
   - `src/cluster/members/tests.rs::a_change_told_by_the_channel_is_applied_without_the_pending_one_and_the_late_commit_is_harmless`
   - `src/cluster/members/tests.rs::a_change_told_by_the_channel_clears_the_pending_one_it_stands_for`

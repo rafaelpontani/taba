@@ -86,7 +86,7 @@ That is why the cluster tests (level `C`, [25-testing.md](25-testing.md)) run se
 ## Concurrency
 
 - **Runtime:** `tokio`, multiple threads.
-- **Single writer per database:** every write to a SQLite database (each topic's and `_node.db`) goes through **a single writer**; long reads, such as the synchronization streams, use their own read connections (WAL mode).
+- **Single writer per database:** every write to a SQLite database (each topic's and `_node.db`) goes through **a single writer**; in a topic database the frequent writes wait in a queue and go in one transaction (group commit, D192), and the reads use their own read connections (WAL mode).
 - **Shared state:** member table, topic table and tokens are in memory behind locks; membership changes are **one at a time** per node.
 - **Background tasks:** invisibility expiry, `ttl` sweep, volatile queue management, rejoin after a partition, overflow report.
 
@@ -102,7 +102,7 @@ crates/taba-node/src/
     params/ source/ otlp.rs error.rs
   core/              clock content error id pagination ring time token topic validation
   secrets/           secrets folder (cluster certificate, root token)
-  storage/           db (the `_node.db`) messages topics tokens state losses versions synclog
+  storage/           db (the `_node.db`) messages (excluded, writer) topics tokens state losses versions synclog
                      backup (store, keys, segment, journal, db: the `_backup.db`)
   engine/            topics tokens messages (blocks, index, rates, replicas, stats)
   cluster/           backup (upload, evict, definitions, heartbeat, restore, stop, topology)

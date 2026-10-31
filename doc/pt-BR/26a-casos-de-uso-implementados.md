@@ -770,6 +770,18 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ---
 
+### UC-MSG-024
+
+**Caso:** Um nó que é o único nó responsável pelas suas mensagens (`replication.factor=1`, `write.quorum=1`) publica, entrega, confirma e troca a invisibilidade, em lote e em chamadas avulsas; um recibo velho entre os acks de um lote; outra operação já pendente sobre uma mensagem  
+**Então:** cada operação é aplicada direto no motor, sem registro nem commit para si mesmo (`taba.write.received` fica em zero, `taba.write.coordinated` conta todas), e as respostas são as mesmas das duas fases: o lote é entregue inteiro, uma vez e em ordem, só o recibo velho é `409 message.stale-receipt`, a visibilidade `0` entrega a mensagem de novo com `deliveryCount` 2; a mensagem tomada pelo nó sozinho recusa outro registro (`409 cluster.conflict`) até ser solta, e uma operação pendente recusa a tomada ([D191](30-decisoes.md))  
+**Nível:** U, C  
+**Testes:**
+  - `tests/single_node.rs::alone_the_batches_publish_deliver_and_ack_without_the_two_phases`
+  - `tests/single_node.rs::alone_the_single_calls_and_the_visibility_take_the_same_path`
+  - `src/cluster/replication/replica/tests.rs::the_hold_of_the_node_alone_excludes_a_pending_operation_on_the_same_message`
+
+---
+
 
 ## CNS: Consumo (`GET`), long polling e `autoCreate`
 
@@ -5276,7 +5288,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 **Caso:** O nó que sincroniza lê as **lápides** da origem (`GET /cluster/definitions/tombstones`  
 **Então:** tipo, chave e a versão da remoção, que a origem ainda guarda) logo depois dos streams de tópicos e de tokens. Assim ele sabe a versão já usada de uma definição removida: uma criação atrasada de versão menor não a ressuscita, e a recriação do mesmo nome por ele, se virar dono, sai com a versão seguinte e não com a 1. Uma lápide menor que a versão viva que o nó tem é ignorada; maior, remove a definição.  
-**Nível:** C, U  
+**Nível:** U, C  
 **Testes:**
   - `tests/definitions.rs::a_new_node_learns_the_tombstones_and_a_late_creation_does_not_bring_the_topic_back`
 
@@ -6168,13 +6180,18 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-ARM-002
 
-**Caso:** O corpo vai para `${topic}/${id}.body` (uma pasta por tópico, um arquivo por mensagem), com os **bytes crus**, sem reserializar nem codificar; o `contentType` fica no metadado.  
-**Nível:** I  
+**Caso:** O corpo vai para o banco do tópico com os **bytes crus**, sem reserializar nem codificar: na própria linha até `storage.body.inline-max` (256 bytes), acima disso na tabela `bodies`; o `contentType` fica no metadado. Um arquivo `${id}.body` antigo ainda é lido e apagado com a mensagem, e nada grava um
+**Nível:** U, I
 **Testes:**
   - `src/engine/messages/tests.rs::what_does_not_fit_in_memory_overflows_to_disk`
-  - `src/storage/messages/tests.rs::a_message_is_a_body_file_plus_a_row_in_the_topic_database`
+  - `src/storage/messages/tests.rs::a_message_is_a_row_with_its_body_in_the_topic_database_and_no_file`
+  - `src/storage/messages/tests.rs::a_body_above_the_inline_limit_goes_to_the_bodies_table_and_leaves_with_its_message`
+  - `src/storage/messages/tests.rs::a_zero_inline_limit_puts_every_body_in_the_bodies_table`
+  - `src/storage/messages/tests.rs::the_body_files_of_the_old_layout_are_still_read_and_leave_with_their_message`
+  - `src/storage/messages/tests.rs::evicting_a_body_keeps_the_row_wherever_the_body_was`
+  - `src/storage/messages/tests.rs::moving_a_message_takes_its_body_to_the_other_topic`
+  - `src/storage/messages/tests.rs::the_position_index_of_the_excluded_log_is_created_when_a_block_is_read`
   - `tests/messages.rs::messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact`
-
 ---
 
 ### UC-ARM-003
@@ -6289,23 +6306,29 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-ARM-013
 
-**Caso:** Toda **escrita** no banco de um tópico passa por um **escritor único** (uma fila de comandos por tópico, executada uma de cada vez); leituras longas usam conexões próprias em modo WAL e não bloqueiam o escritor.  
-**Nível:** U, I  
+**Caso:** Toda **escrita** no banco de um tópico passa por um **escritor único**: as frequentes entram na fila de escrita do tópico, e a primeira chamada que espera grava tudo o que espera numa transação (commit em grupo, D192); um lote do motor põe as escritas na fila, solta o tópico e só então espera o commit. As leituras usam conexões só de leitura em modo WAL, veem o que ainda está na fila e não esperam o escritor
+**Então:** cada chamada recebe o resultado da própria escrita, uma escrita recusada falha só para quem a fez, e nada gravado se perde com escritores concorrentes.
+**Nível:** U, I
 **Testes:**
   - `src/engine/messages/tests.rs::a_slow_topic_never_blocks_the_other_topics`
-
+  - `src/storage/messages/tests.rs::a_deferred_batch_keeps_every_write_and_leaves_the_connection_usable`
+  - `src/storage/messages/writer/tests.rs::a_queued_write_is_seen_by_every_read_before_its_commit`
+  - `src/storage/messages/writer/tests.rs::concurrent_writers_share_commits_and_lose_nothing`
+  - `src/storage/messages/writer/tests.rs::a_refused_write_fails_only_its_caller_and_the_rest_of_the_round_commits`
+  - `src/storage/messages/writer/tests.rs::a_read_by_id_does_not_wait_for_the_writer`
 ---
 
 ### UC-ARM-014
 
-**Caso:** Ordem de gravação  
-**Então:** na escrita, primeiro o arquivo do corpo, depois a linha; no ack, primeiro a linha, depois o arquivo. Uma queda deixa no máximo arquivo sem linha ou linha sem arquivo.  
-**Nível:** I  
+**Caso:** Ordem de gravação
+**Então:** a linha e o corpo são gravados e apagados numa transação, então uma queda deixa os dois ou nenhum; um arquivo de corpo antigo é apagado depois da linha.
+**Nível:** U, I
 **Testes:**
   - `src/engine/messages/tests.rs::a_message_on_disk_is_delivered_again_and_acked_like_any_other`
+  - `src/storage/messages/tests.rs::a_body_above_the_inline_limit_goes_to_the_bodies_table_and_leaves_with_its_message`
+  - `src/storage/messages/tests.rs::the_body_files_of_the_old_layout_are_still_read_and_leave_with_their_message`
   - `src/storage/messages/tests.rs::removing_deletes_the_row_and_then_the_file`
   - `tests/messages.rs::messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact`
-
 ---
 
 ### UC-ARM-015
@@ -6408,6 +6431,16 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/storage/messages/excluded/tests.rs::removing_with_exclusion_deletes_the_message_and_records_it_in_the_same_transaction`
   - `src/storage/messages/excluded/tests.rs::recording_adds_no_synchronization_beyond_the_configured_one`
   - `src/storage/messages/excluded/tests.rs::a_topic_database_from_before_the_log_gets_the_table`
+
+---
+
+### UC-ARM-030
+
+**Caso:** Um banco de tópico de versão anterior, com os índices `messages_group_dedup` e `messages_delete_at` cobrindo todas as linhas, é aberto
+**Então:** os dois viram parciais (só as linhas com `deduplication_id`, só as linhas curtas com `delete_at`), e a varredura das linhas curtas do ack FIFO ainda as acha.
+**Nível:** U
+**Testes:**
+  - `src/storage/messages/writer/tests.rs::the_indexes_of_fifo_columns_become_partial_when_an_old_database_opens`
 
 ---
 
@@ -7311,7 +7344,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 **Caso:** O membro que **perdeu o commit de uma saída** (a exclusão por votação ou o drain) aplica a mudança quando o canal a entrega  
 **Então:** o quadro `membership` leva a mudança e a versão da tabela, e o receptor a aplica sem depender da pendente. A tabela dele fica igual à dos outros, o nó sai do anel e entra em freezing (se foi exclusão). O registro pendente da mesma operação some, e o commit tardio é inofensivo.  
-**Nível:** C, U  
+**Nível:** U, C  
 **Testes:**
   - `src/cluster/members/tests.rs::a_change_told_by_the_channel_is_applied_without_the_pending_one_and_the_late_commit_is_harmless`
   - `src/cluster/members/tests.rs::a_change_told_by_the_channel_clears_the_pending_one_it_stands_for`
@@ -10153,7 +10186,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 **Caso:** Uma fila com `maxDeliveries: 2` e a sua dead-letter rodam dentro da rodada de caos, com um consumidor que nunca dá ack nas mensagens veneno (`seq % 3 == 0`)
 **Então:** toda mensagem veneno confirmada termina na dead-letter e não é entregue de novo pela sua fila depois disso; uma mensagem confirmada na sua fila nunca chega à dead-letter; o verificador também exige no máximo `maxDeliveries` entregas dessa fila. Um commit de entrega que chega ao dono depois de a própria invisibilidade acabar não devolve à lista de prontas uma mensagem que gastou as entregas: a próxima escolha a esconde por um instante e a próxima liberação a manda para a dead-letter ([D180](30-decisoes.md))  
-**Nível:** C, U  
+**Nível:** U, C  
 **Testes:**
   - `src/engine/messages/tests/cluster.rs::a_commit_that_arrives_after_its_invisibility_does_not_deliver_past_the_limit`
   - `tests/chaos.rs::a_poison_message_that_reaches_the_dead_letter_after_its_deliveries_is_clean`

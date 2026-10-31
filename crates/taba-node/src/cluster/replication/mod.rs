@@ -102,6 +102,7 @@ pub fn attach(
         messages.clone(),
         topics.clone(),
         signals.clone(),
+        replica.clone(),
     );
     let definitions = Definitions::new(
         service.clone(),

@@ -377,6 +377,12 @@ pub(super) async fn publish_batch(
     let total = items.len();
     let results = match &state.replicated {
         Some(cluster) => {
+            // The node alone for every item: the whole batch in one step of the engine (D191).
+            if let Some(published) = cluster.publish_many(&topic, &items).await {
+                return Ok(Json(BatchResponse {
+                    results: published.into_iter().map(ItemResult::published).collect(),
+                }));
+            }
             let lanes = lanes(items, fifo, |item| {
                 item.as_ref().ok().and_then(|r| r.group_id.clone())
             });
@@ -441,6 +447,20 @@ pub(super) async fn ack_batch(
     let total = request.messages.len();
     let results = match &state.replicated {
         Some(cluster) => {
+            // The node alone for every item: the whole batch in one step of the engine (D191).
+            let pairs: Vec<(String, Option<String>)> = request
+                .messages
+                .iter()
+                .map(|item| (item.id.clone(), item.receipt_token.clone()))
+                .collect();
+            if let Some(acked) = cluster.ack_many(&topic, &pairs).await {
+                let results = acked
+                    .into_iter()
+                    .zip(pairs)
+                    .map(|(acked, (id, _))| ItemResult::acked(acked, id))
+                    .collect();
+                return Ok(Json(BatchResponse { results }));
+            }
             let lanes = lanes(request.messages, false, |_| None);
             run_lanes(lanes, total, |item: AckItem| {
                 let (cluster, topic) = (cluster.clone(), topic.clone());

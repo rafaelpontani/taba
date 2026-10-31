@@ -365,3 +365,47 @@ async fn a_register_whose_check_fails_releases_the_message() {
         .await
         .unwrap();
 }
+
+/// UC: UC-MSG-024
+#[tokio::test]
+async fn the_hold_of_the_node_alone_excludes_a_pending_operation_on_the_same_message() {
+    let h = harness().await;
+    let message = id::new_at(1_791_288_000_000);
+    let op = id::new_at(1_791_288_000_001);
+
+    // A message held by the node alone: another operation's register is a conflict until the hold goes.
+    let held = h.replica.hold("orders", &message).unwrap();
+    let refused = h
+        .replica
+        .write("orders", &message, register(&op, "orders", &message))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::ClusterConflict);
+    assert!(
+        h.replica.hold("orders", &message).is_err(),
+        "one hold at a time"
+    );
+    assert!(
+        h.replica.hold("orders", "another").is_ok(),
+        "another message is free"
+    );
+    drop(held);
+    assert_eq!(
+        h.replica
+            .write("orders", &message, register(&op, "orders", &message))
+            .await
+            .unwrap(),
+        expected(&op)
+    );
+
+    // And a pending operation refuses the hold until its commit.
+    assert_eq!(
+        h.replica.hold("orders", &message).err().map(|e| e.code),
+        Some(ErrorCode::ClusterConflict)
+    );
+    h.replica
+        .write("orders", &message, commit(&op))
+        .await
+        .unwrap();
+    assert!(h.replica.hold("orders", &message).is_ok());
+}

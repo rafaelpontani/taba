@@ -78,19 +78,26 @@ fn commit_timeout() -> TabaError {
 /// Runs the operation. `Ok` when the commit is confirmed on the quorum.
 pub async fn run(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaError> {
     let result = run_inner(service, plan).await;
-    service.telemetry().registry.add(
-        &WRITE_COORDINATED,
-        &[(
-            "taba.outcome",
-            if result.is_ok() {
-                "committed"
-            } else {
-                "failed"
-            },
-        )],
-        1.0,
-    );
+    count(service, result.is_ok());
     result
+}
+
+/// Counts an operation this node coordinated, also one it applied alone (factor 1, D191).
+pub fn count(service: &ClusterService, committed: bool) {
+    count_many(service, u64::from(committed), u64::from(!committed));
+}
+
+/// Counts at once the operations of a batch this node applied alone.
+pub fn count_many(service: &ClusterService, committed: u64, failed: u64) {
+    for (outcome, n) in [("committed", committed), ("failed", failed)] {
+        if n > 0 {
+            service.telemetry().registry.add(
+                &WRITE_COORDINATED,
+                &[("taba.outcome", outcome)],
+                n as f64,
+            );
+        }
+    }
 }
 
 async fn run_inner(service: &Arc<ClusterService>, plan: Plan) -> Result<(), TabaError> {

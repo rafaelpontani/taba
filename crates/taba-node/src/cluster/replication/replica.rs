@@ -136,6 +136,18 @@ impl Drop for Reservation<'_> {
     }
 }
 
+/// A message taken by [`Replica::hold`]: released when it goes.
+pub(super) struct Held<'a> {
+    replica: &'a Replica,
+    key: (String, String),
+}
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        self.replica.lock().by_message.remove(&self.key);
+    }
+}
+
 pub struct Replica {
     messages: Arc<Messages>,
     topics: Arc<Topics>,
@@ -182,7 +194,7 @@ fn apply(messages: &Messages, topic: &str, id: &str, action: Action) -> Result<(
 
 /// The register of a publication: the topic stores messages, and an `id` that already exists only
 /// passes with the same content (a repeated register is idempotent; another content, a conflict).
-fn check_publish(
+pub(super) fn check_publish(
     messages: &Messages,
     topics: &Topics,
     topic: &str,
@@ -301,6 +313,21 @@ impl Replica {
         check.await?;
         reservation.armed = false;
         Ok(ack(operation_id))
+    }
+
+    /// Takes the message for an operation this node applies alone (factor 1, D191): no register of another
+    /// operation on the same message runs while the guard lives, as with a pending operation.
+    pub(super) fn hold(&self, topic: &str, id: &str) -> Result<Held<'_>, TabaError> {
+        let key = (topic.to_owned(), id.to_owned());
+        let mut state = self.lock();
+        self.purge(&mut state);
+        if state.by_message.contains_key(&key) {
+            return Err(conflict(
+                "There is another pending operation for this message.",
+            ));
+        }
+        state.by_message.insert(key.clone(), String::new());
+        Ok(Held { replica: self, key })
     }
 
     /// Takes the message for the operation. `false` when the operation was already pending or decided.

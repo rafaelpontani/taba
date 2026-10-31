@@ -122,7 +122,7 @@
     {
       "id": "disk-d1-1x",
       "type": "database",
-      "label": "topic/id.body",
+      "label": "body: row or bodies",
       "sublabel": "detail",
       "pos": [
         745,

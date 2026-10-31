@@ -1365,13 +1365,7 @@ async fn ttl_and_the_dead_letter_work_on_messages_on_disk() {
             .all(|m| m.dead_letter_reason.as_deref() == Some("max-deliveries"))
     );
     assert_eq!(h.store.get("orders", &failing).unwrap(), None);
-    assert!(
-        h.dir
-            .path()
-            .join("orders-dead-letter")
-            .join(format!("{failing}.body"))
-            .exists()
-    );
+    assert!(h.store.has_body("orders-dead-letter", &failing));
 
     // `ttl`: what expired disappears from disk, including the body.
     h.clock.advance(Duration::from_secs(3600));

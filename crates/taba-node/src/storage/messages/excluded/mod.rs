@@ -18,7 +18,8 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{
-    MessageMeta, MessageStore, TopicDisk, position_from_db, position_to_db, to_io, write_tombstone,
+    MessageMeta, MessageStore, Op, Scope, TopicDisk, position_from_db, position_to_db, to_io,
+    write_tombstone,
 };
 use crate::storage::state::NodeStateStore;
 
@@ -27,13 +28,15 @@ pub const DEFAULT_MAX_BYTES: u64 = 100 * 1024 * 1024;
 pub const DEFAULT_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// How many exclusions of messages that were only in memory wait before the writer is called to write them in one
-/// transaction. A transaction of this size costs a few microseconds per ack; one transaction per ack cost about 100.
-/// The writer takes everything that waits, so under load the transactions grow and each row costs less.
-const BATCH: usize = 256;
+/// transaction (the sweep writes the rest every second). One transaction per ack cost about 100 µs. The size is what
+/// makes the rows share pages: the index by position is random, so a transaction of 256 rows wrote about one page
+/// (4 KB) of the WAL per row and its checkpoints; with thousands of rows the pages repeat (D191). The writer takes
+/// everything that waits, so under load the transactions grow and each row costs less.
+const BATCH: usize = 8192;
 
 /// Above this many waiting rows the ack writes them itself: the writer fell behind or its writes are failing, and
-/// the queue must not grow without end.
-const INLINE_ABOVE: usize = 64 * BATCH;
+/// the queue must not grow without end (about 5 MB per topic).
+const INLINE_ABOVE: usize = 8 * BATCH;
 
 /// An exclusion waiting to be written: `(id, position as the database stores it, instant)`.
 pub(super) type PendingExclusion = (String, i64, i64);
@@ -181,14 +184,18 @@ impl TopicDisk {
     /// The connection with everything recorded so far written to the log: a read of the `excluded` table
     /// takes it, so what was acked before the read is always seen. The rows are taken while the connection is
     /// held, so a read never overtakes a write that is under way.
-    fn conn_with_exclusions(&self) -> io::Result<MutexGuard<'_, Connection>> {
-        let mut conn = self.conn();
+    /// A fila de escrita esvazia antes: a remoção que grava a exclusão pode estar nela (D192).
+    fn conn_with_exclusions(self: &Arc<Self>) -> io::Result<MutexGuard<'_, Connection>> {
+        let mut conn = self.exclusive();
         self.write_pending_exclusions(&mut conn)?;
         Ok(conn)
     }
 
+    /// Writes the exclusions waiting in memory (those of messages that were only in memory: nothing of them is in
+    /// the write queue).
     fn flush_exclusions(&self) -> io::Result<()> {
-        self.conn_with_exclusions().map(|_| ())
+        let mut conn = self.conn();
+        self.write_pending_exclusions(&mut conn)
     }
 
     fn write_pending_exclusions(&self, conn: &mut Connection) -> io::Result<()> {
@@ -202,7 +209,7 @@ impl TopicDisk {
             return Ok(());
         }
         let written = (|| {
-            let tx = conn.transaction()?;
+            let tx = Scope::begin(&mut *conn)?;
             {
                 let mut insert = tx.prepare_cached(
                     "INSERT OR IGNORE INTO excluded (id, position, at_ms) VALUES (?1, ?2, ?3)",
@@ -265,19 +272,10 @@ impl MessageStore {
         let Some(disk) = self.disk(topic, false)? else {
             return Ok(());
         };
-        {
-            let mut conn = disk.conn();
-            let tx = conn.transaction().map_err(to_io)?;
-            tx.execute(RECORD_FROM_ROW, params![id, at_ms as i64])
-                .map_err(to_io)?;
-            tx.execute("DELETE FROM messages WHERE id = ?1", params![id])
-                .map_err(to_io)?;
-            tx.commit().map_err(to_io)?;
-        }
-        match std::fs::remove_file(disk.body_path(id)) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        }
+        disk.submit(Op::Remove {
+            id: id.to_owned(),
+            excluded_at: Some(at_ms),
+        })
     }
 
     /// Records the exclusion of a message that was not on disk (it was only in memory). The row waits in memory
@@ -316,20 +314,18 @@ impl MessageStore {
     ) -> io::Result<()> {
         let disk = self.disk(topic, true)?.expect("created");
         {
-            let mut conn = disk.conn();
-            let tx = conn.transaction().map_err(to_io)?;
+            let mut conn = disk.exclusive();
+            let tx = Scope::begin(&mut conn).map_err(to_io)?;
             write_tombstone(&tx, meta, delete_at_ms)?;
             tx.execute(
                 "INSERT OR IGNORE INTO excluded (id, position, at_ms) VALUES (?1, ?2, ?3)",
                 params![meta.id, position_to_db(meta.position), at_ms as i64],
             )
             .map_err(to_io)?;
+            disk.drop_body(&tx, &meta.id)?;
             tx.commit().map_err(to_io)?;
         }
-        match std::fs::remove_file(disk.body_path(&meta.id)) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        }
+        disk.drop_legacy_file(&meta.id)
     }
 
     /// Writes rows that came from elsewhere (the synchronization of a block, or the log of a past life).
@@ -340,7 +336,7 @@ impl MessageStore {
         }
         let disk = self.disk(topic, true)?.expect("created");
         let mut conn = disk.conn_with_exclusions()?;
-        let tx = conn.transaction().map_err(to_io)?;
+        let tx = Scope::begin(&mut conn).map_err(to_io)?;
         for row in rows {
             // (not an upsert: the table is called `excluded`, like the pseudo-table of `ON CONFLICT`)
             tx.execute(
@@ -393,6 +389,10 @@ impl MessageStore {
             format!("SELECT id, position, at_ms FROM excluded WHERE {filter} ORDER BY id LIMIT ?");
         args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
         let conn = disk.conn_with_exclusions()?;
+        // O índice por posição só existe em quem lê blocos (o ressincronismo); sem ele cada ack pagaria uma
+        // inserção aleatória. Criado uma vez; depois disso é só uma consulta ao esquema.
+        conn.execute_batch("CREATE INDEX IF NOT EXISTS excluded_position ON excluded (position)")
+            .map_err(to_io)?;
         let mut stmt = conn.prepare(&sql).map_err(to_io)?;
         let rows = stmt
             .query_map(rusqlite::params_from_iter(args), |row| {

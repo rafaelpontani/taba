@@ -40,6 +40,11 @@ public class TabaDriverConfig {
         public int visibilityTimeout = 60;
         /** Acks what one {@code GET} delivered in one request ({@code POST .../messages/ack}); false acks one by one. */
         public boolean ackBatch = true;
+        /**
+         * Threads that long-poll the same queue at the same time, each with its own {@code GET}: while one waits
+         * for its answer another is already asking, the idea of the background fetch of the Kafka consumer.
+         */
+        public int pollers = 1;
     }
 
     public boolean isPerKey() {
@@ -67,6 +72,9 @@ public class TabaDriverConfig {
         }
         if (consumer.visibilityTimeout < 1) {
             throw new IllegalArgumentException("consumer.visibilityTimeout must be at least 1");
+        }
+        if (consumer.pollers < 1) {
+            throw new IllegalArgumentException("consumer.pollers must be at least 1");
         }
     }
 }

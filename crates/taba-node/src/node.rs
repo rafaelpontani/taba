@@ -389,14 +389,18 @@ pub async fn start(config: Config, deps: Deps) -> Result<RunningNode, NodeError>
     let auth = Arc::new(Auth::new(&config.auth, Arc::new(tokens)));
     let telemetry = Arc::new(Telemetry::from_config(&config, &shared.node_id()));
     let message_store = Arc::new(
-        MessageStore::new(&config.storage.dir, config.storage.db_synchronous).with_excluded(
-            ExcludedLimits {
-                max_bytes: config.storage.excluded_max_bytes,
-                max_age_ms: u64::try_from(config.storage.excluded_max_age.as_millis())
-                    .unwrap_or(u64::MAX),
-            },
-            Some(saves.clone()),
-        ),
+        MessageStore::new(&config.storage.dir, config.storage.db_synchronous)
+            .with_body_inline_max(
+                usize::try_from(config.storage.body_inline_max).unwrap_or(usize::MAX),
+            )
+            .with_excluded(
+                ExcludedLimits {
+                    max_bytes: config.storage.excluded_max_bytes,
+                    max_age_ms: u64::try_from(config.storage.excluded_max_age.as_millis())
+                        .unwrap_or(u64::MAX),
+                },
+                Some(saves.clone()),
+            ),
     );
     let disk_store = message_store.clone();
     let messages = if deps.cluster.is_some() {
