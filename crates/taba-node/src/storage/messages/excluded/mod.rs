@@ -385,8 +385,9 @@ impl MessageStore {
             return Ok(Vec::new());
         }
         let (filter, mut args) = ranges_filter(ranges, from, to);
-        let sql =
-            format!("SELECT id, position, at_ms FROM excluded WHERE {filter} ORDER BY id LIMIT ?");
+        let sql = format!(
+            "SELECT id, position, at_ms FROM excluded WHERE {filter} ORDER BY id LIMIT ? + 0"
+        );
         args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
         let conn = disk.conn_with_exclusions()?;
         // O índice por posição só existe em quem lê blocos (o ressincronismo); sem ele cada ack pagaria uma

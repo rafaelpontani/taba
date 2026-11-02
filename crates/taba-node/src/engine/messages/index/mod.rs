@@ -453,7 +453,15 @@ impl TopicIndex {
                     .cloned()
             })
             .filter(keeps_oldest);
+        // Sai a borda do lado em que o novo ID entra (D194): a publicação nova (lado novo) não come o lado velho, que
+        // é o próximo a ser entregue. Alternar os lados esvaziava o lado velho a cada publicação, e cada entrega
+        // seguinte reabastecia a janela com uma vaga só, lendo páginas do banco por mensagem.
+        let incoming_new = self.cursor_new.as_deref().is_some_and(|c| incoming >= c);
+        let incoming_old = self.cursor_old.as_deref().is_some_and(|c| incoming <= c)
+            || first.as_deref().is_some_and(|f| incoming < f);
         let use_old = match (&old_side, &new_side) {
+            (Some(_), Some(_)) if incoming_new && !incoming_old => false,
+            (Some(_), Some(_)) if incoming_old && !incoming_new => true,
             (Some(_), Some(_)) => self.evict_old_next,
             (Some(_), None) => true,
             (None, Some(_)) => false,
@@ -546,11 +554,46 @@ impl TopicIndex {
         let Some(ask) = self.refill_ask() else {
             return false;
         };
-        let old_side_empty = self
-            .cursor_old
+        self.old_side_empty()
+            || self.window.is_empty()
+            || ask.room >= (self.rules.ready_cap / 4).max(1)
+    }
+
+    /// O lado velho já percorrido não tem nenhum ID na janela: a mensagem pronta mais velha pode estar fora dela.
+    pub fn old_side_empty(&self) -> bool {
+        self.cursor_old
             .as_deref()
-            .is_none_or(|c| self.window.first().is_none_or(|first| first.as_str() > c));
-        old_side_empty || self.window.is_empty() || ask.room >= (self.rules.ready_cap / 4).max(1)
+            .is_none_or(|c| self.window.first().is_none_or(|first| first.as_str() > c))
+    }
+
+    /// O reabastecimento lê só a ponta velha: o lado velho esvaziou e a janela tem o lado novo (D194). Na primeira
+    /// montagem (sem cursores) as duas pontas são lidas.
+    pub fn refill_old_only(&self) -> bool {
+        self.cursor_new.is_some() && !self.window.is_empty() && self.old_side_empty()
+    }
+
+    /// Com o lado velho vazio, a janela cede a borda do lado novo até ficar com um quarto livre, e o reabastecimento
+    /// seguinte traz um lote da ponta velha (D194). Sem isso, cada publicação ocupava a vaga que uma entrega abria (a
+    /// mensagem mais nova entra pelo lado novo), e o lado velho era reabastecido um ID por vez, com uma leitura das
+    /// mensagens por entrega. Os IDs que saem são achados de novo pelo cursor novo.
+    pub fn make_room_for_old(&mut self) {
+        if self.rules.fifo || !self.refill_old_only() || self.gap_ready() == 0 {
+            return;
+        }
+        let keep = self.rules.ready_cap - (self.rules.ready_cap / 4).max(1);
+        while self.window.len() > keep {
+            let Some(border) = self.cursor_new.clone().and_then(|c| {
+                self.window
+                    .range::<str, _>((Bound::Included(c.as_str()), Bound::Unbounded))
+                    .next()
+                    .cloned()
+            }) else {
+                return;
+            };
+            // Com o lado velho vazio, a pronta mais velha está na lacuna: o primeiro da janela também pode sair.
+            self.window_drop(&border);
+            self.unclaim(&border);
+        }
     }
 
     /// Next candidate from one end that still lies in the open gap, is not in the window and is
@@ -602,11 +645,7 @@ impl TopicIndex {
         while self.window.len() < self.rules.ready_cap && self.gap_ready() > 0 {
             // The window must hold the oldest ready message: with nothing on the walked old side, that
             // end goes first, whatever the alternation says.
-            let old_side_empty = self
-                .cursor_old
-                .as_deref()
-                .is_none_or(|c| self.window.first().is_none_or(|first| first.as_str() > c));
-            let from_old = self.refill_old_next || old_side_empty;
+            let from_old = self.refill_old_next || self.old_side_empty();
             let found =
                 match self.next_candidate(if from_old { &mut old } else { &mut new }, from_old) {
                     Some(fact) => Some((fact, from_old)),

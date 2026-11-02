@@ -309,6 +309,156 @@ fn a_page_merges_the_queue_without_waiting_for_the_writer() {
     check();
 }
 
+/// Todas as páginas de `query` em pedaços de `query.limit`, do começo ao fim.
+fn walk(store: &MessageStore, query: &PageQuery) -> Vec<String> {
+    let mut walked = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let mut page = query.clone();
+        if query.desc {
+            page.before = cursor.clone();
+        } else {
+            page.after = cursor.clone();
+        }
+        let rows = ids(store.page("orders", &page).unwrap());
+        let full = rows.len() == query.limit;
+        cursor = rows.last().cloned();
+        walked.extend(rows);
+        if !full {
+            return walked;
+        }
+    }
+}
+
+/// Com a fila maior que a página, a página copia da fila só o começo da faixa e para na borda da cópia (D194): as
+/// páginas, em qualquer tamanho, sentido e filtro, dão o mesmo que depois do commit.
+///
+/// UC: UC-ARM-013
+#[test]
+fn a_page_over_a_queue_larger_than_the_page_matches_the_committed_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    // No banco, os pares; na fila, os ímpares novos e mudanças nos pares.
+    for i in (0..300).step_by(2) {
+        store
+            .put("orders", &meta(&format!("m{i:03}")), b"x")
+            .unwrap();
+    }
+    let pairs: Vec<_> = (0..300)
+        .step_by(6)
+        .map(|i| (true, 900 + i as u64, format!("m{i:03}")))
+        .collect();
+    store.expiry_apply("orders", &pairs).unwrap();
+    let ((), written) = store.deferred(|| {
+        for i in 0..300 {
+            let id = format!("m{i:03}");
+            if i % 2 == 1 {
+                store.put("orders", &meta(&id), b"y").unwrap();
+            } else if i % 10 == 0 {
+                store.remove("orders", &id).unwrap();
+            } else if i % 4 == 0 {
+                let mut delivered = meta(&id);
+                delivered.delivery_count = 1;
+                store.update_delivery("orders", &delivered).unwrap();
+            }
+            if i % 12 == 0 {
+                store
+                    .expiry_apply("orders", &[(false, 900 + i as u64, id.clone())])
+                    .unwrap();
+            } else if i % 7 == 0 {
+                store
+                    .expiry_apply("orders", &[(true, 2_000 + i as u64, id.clone())])
+                    .unwrap();
+            }
+        }
+    });
+    let mut queries = Vec::new();
+    for limit in [1, 2, 7, 64, 500] {
+        for desc in [false, true] {
+            for (delivered, off_table) in [(false, false), (true, false), (false, true)] {
+                queries.push(PageQuery {
+                    limit,
+                    desc,
+                    delivered,
+                    off_table,
+                    ..PageQuery::default()
+                });
+            }
+        }
+    }
+    // Uma faixa fechada nas duas pontas, com a borda da cópia caindo no meio dela.
+    queries.push(PageQuery {
+        after: Some("m040".into()),
+        before: Some("m250".into()),
+        limit: 9,
+        ..PageQuery::default()
+    });
+    let pages = || {
+        queries
+            .iter()
+            .map(|query| walk(&store, query))
+            .collect::<Vec<_>>()
+    };
+    let disk = store.disk("orders", false).unwrap().unwrap();
+    let held = disk.conn();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|s| {
+        s.spawn(|| tx.send(pages()).unwrap());
+        let queued = rx.recv_timeout(Duration::from_secs(30));
+        drop(held);
+        let queued = queued.expect("the pages did not wait for the writer");
+        assert!(!committed(&store, "orders", "m001"), "still in the queue");
+        written.wait().unwrap();
+        assert!(committed(&store, "orders", "m001"));
+        for ((query, queued), committed) in queries.iter().zip(queued).zip(pages()) {
+            assert_eq!(queued, committed, "{query:?}");
+        }
+    });
+}
+
+/// A instrução da página, guardada na conexão, roda com faixas e limites diferentes sem o SQLite recompilá-la: um
+/// `LIMIT ?` solto a fazia ser recompilada a cada execução (D194).
+///
+/// UC: UC-ARM-013
+#[test]
+fn the_page_statement_is_not_prepared_again_on_each_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = store(tmp.path());
+    for i in 0..20 {
+        store
+            .put("orders", &meta(&format!("m{i:03}")), b"x")
+            .unwrap();
+    }
+    let disk = store.disk("orders", false).unwrap().unwrap();
+    for desc in [false, true] {
+        let query = PageQuery {
+            desc,
+            off_table: true,
+            ..PageQuery::default()
+        };
+        let sql = page_sql(&query, true, false);
+        let reprepared = disk
+            .read(|conn| {
+                let mut stmt = conn.prepare_cached(&sql)?;
+                for (i, limit) in [1i64, 7, 64, 3].into_iter().enumerate() {
+                    // Do começo da faixa para o fim, no sentido da página.
+                    let (start, far) = if desc {
+                        (format!("m{:03}", 19 - i), "m000")
+                    } else {
+                        (format!("m{i:03}"), "m019")
+                    };
+                    let rows = stmt
+                        .query_map(params![start, far, limit], |row| row.get::<_, String>(0))?
+                        .count();
+                    assert!(rows > 0);
+                }
+                Ok(stmt.get_status(rusqlite::StatementStatus::RePrepare))
+            })
+            .unwrap();
+        assert_eq!(reprepared, 0, "{sql}");
+    }
+}
+
 /// Uma escrita desligada ([`Written::detach`]) chega ao banco sem ninguém esperar por ela.
 ///
 /// UC: UC-ARM-013

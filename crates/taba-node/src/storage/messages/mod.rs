@@ -32,7 +32,7 @@ pub use excluded::{
     DEFAULT_MAX_AGE_MS, DEFAULT_MAX_BYTES, ExcludedLimits, ExcludedRow, merged_since,
 };
 pub use writer::Written;
-use writer::{Op, Pending};
+use writer::{Op, Pending, PendingView};
 
 pub const TOPIC_DB_FILE: &str = "_topic.db";
 /// The extension of the body files of the layout before the bodies went into the database.
@@ -174,6 +174,45 @@ fn page_fits(query: &PageQuery, row: &ScanRow) -> bool {
                 row.group_id.as_deref() == Some(group)
             }
         })
+}
+
+/// O SQL de [`MessageStore::page`]: os parâmetros são o começo e o fim da faixa, o grupo (se houver um com nome) e o
+/// limite. O fim é exclusivo, ou inclusivo quando a faixa para na borda da cópia da fila (`PendingView::edge`); com
+/// `table`, ficam de fora as linhas com par na `expiry`.
+fn page_sql(query: &PageQuery, table: bool, far_included: bool) -> String {
+    let mut sql = String::from(
+        "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id, \
+         published_at, delete_at FROM messages WHERE 1 = 1",
+    );
+    if !query.tombstones {
+        sql.push_str(" AND delete_at IS NULL");
+    }
+    sql.push_str(match (query.desc, far_included) {
+        (true, false) => " AND id < ? AND id > ?",
+        (true, true) => " AND id < ? AND id >= ?",
+        (false, false) => " AND id > ? AND id < ?",
+        (false, true) => " AND id > ? AND id <= ?",
+    });
+    if query.delivered {
+        sql.push_str(" AND delivery_count > 0");
+    }
+    match query.group.as_deref() {
+        Some("") => sql.push_str(" AND (group_id IS NULL OR group_id = '')"),
+        Some(_) => sql.push_str(" AND group_id = ?"),
+        None => {}
+    }
+    if table {
+        sql.push_str(" AND NOT EXISTS (SELECT 1 FROM expiry WHERE expiry.id = messages.id)");
+    }
+    // `? + 0`, não `?`: com um parâmetro solto no LIMIT, o SQLite recompila a instrução a cada execução (o planejador
+    // usa o valor), o que custava 6% da CPU do consumo com o backlog em disco. O mesmo nos outros LIMIT do banco do
+    // tópico.
+    sql.push_str(if query.desc {
+        " ORDER BY id DESC LIMIT ? + 0"
+    } else {
+        " ORDER BY id LIMIT ? + 0"
+    });
+    sql
 }
 
 /// A mensagem tem par gravado na `expiry`.
@@ -781,29 +820,34 @@ impl MessageStore {
         };
         // Sem esperar a fila: os pares dela entram por cima do banco, e um `id` com par na fila deixa de valer pelo
         // do banco (D193).
-        disk.read_pending(Bound::Unbounded, Bound::Unbounded, |conn, view| {
-            let mut stmt = conn.prepare_cached(
-                "SELECT invisible_until, id FROM expiry ORDER BY invisible_until, id LIMIT ?1",
-            )?;
-            let wanted = limit.saturating_add(view.expiry.len());
-            let rows = stmt.query_map(params![wanted as i64], |row| {
-                Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?))
-            })?;
-            let mut pairs: Vec<(u64, String)> = rows
-                .filter(|row| {
-                    row.as_ref()
-                        .map_or(true, |(_, id)| !view.expiry.contains_key(id))
-                })
-                .collect::<rusqlite::Result<_>>()?;
-            pairs.extend(
-                view.expiry
-                    .iter()
-                    .filter_map(|(id, until)| until.map(|until| (until, id.clone()))),
-            );
-            pairs.sort();
-            pairs.truncate(limit);
-            Ok(pairs)
-        })
+        disk.read_pending(
+            (Bound::Unbounded, Bound::Unbounded),
+            false,
+            None,
+            |conn, view| {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT invisible_until, id FROM expiry ORDER BY invisible_until, id LIMIT ?1 + 0",
+                )?;
+                let wanted = limit.saturating_add(view.expiry.len());
+                let rows = stmt.query_map(params![wanted as i64], |row| {
+                    Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?))
+                })?;
+                let mut pairs: Vec<(u64, String)> = rows
+                    .filter(|row| {
+                        row.as_ref()
+                            .map_or(true, |(_, id)| !view.expiry.contains_key(id))
+                    })
+                    .collect::<rusqlite::Result<_>>()?;
+                pairs.extend(
+                    view.expiry
+                        .iter()
+                        .filter_map(|(id, until)| until.map(|until| (until, id.clone()))),
+                );
+                pairs.sort();
+                pairs.truncate(limit);
+                Ok(pairs)
+            },
+        )
     }
 
     /// The deadline of the message's pair in the `expiry` table, if it has one.
@@ -937,50 +981,14 @@ impl MessageStore {
         } else {
             (query.after.as_deref(), query.before.as_deref())
         };
-        let mut sql = String::from(
-            "SELECT id, group_id, age_base, delivery_count, invisible_until, deduplication_id, \
-             published_at, delete_at FROM messages WHERE 1 = 1",
-        );
-        if !query.tombstones {
-            sql.push_str(" AND delete_at IS NULL");
-        }
-        sql.push_str(if query.desc {
-            " AND id < ? AND id > ?"
-        } else {
-            " AND id > ? AND id < ?"
-        });
-        if query.delivered {
-            sql.push_str(" AND delivery_count > 0");
-        }
-        let mut group_arg: Option<Value> = None;
-        match query.group.as_deref() {
-            Some("") => sql.push_str(" AND (group_id IS NULL OR group_id = '')"),
-            Some(group) => {
-                sql.push_str(" AND group_id = ?");
-                group_arg = Some(Value::Text(group.to_owned()));
-            }
-            None => {}
-        }
         // Sem par nenhum gravado, a subconsulta não tem o que achar.
         let table = query.off_table && disk.may_hold_expiry.load(Ordering::SeqCst);
-        if table {
-            sql.push_str(" AND NOT EXISTS (SELECT 1 FROM expiry WHERE expiry.id = messages.id)");
-        }
-        sql.push_str(if query.desc {
-            " ORDER BY id DESC LIMIT ?"
-        } else {
-            " ORDER BY id LIMIT ?"
-        });
-        let (low, high) = (
-            query
-                .after
-                .as_deref()
-                .map_or(Bound::Unbounded, Bound::Excluded),
-            query
-                .before
-                .as_deref()
-                .map_or(Bound::Unbounded, Bound::Excluded),
-        );
+        let (sql_open, sql_edge) = (page_sql(query, table, false), page_sql(query, table, true));
+        let group_arg: Option<Value> = query
+            .group
+            .as_deref()
+            .filter(|group| !group.is_empty())
+            .map(|group| Value::Text(group.to_owned()));
         // Os limites abertos viram os extremos do texto: nenhum `id` é vazio, e todos ficam abaixo de U+10FFFF.
         let bound = |b: Option<&str>, open: &str| Value::Text(b.unwrap_or(open).to_owned());
         let edges = if query.desc {
@@ -988,14 +996,21 @@ impl MessageStore {
         } else {
             ("", "\u{10FFFF}")
         };
-        disk.read_pending(low, high, |conn, view| {
-            let mut stmt = conn.prepare_cached(&sql)?;
+        // Um trecho: até `limit` linhas depois de `start`, até `far` ou até a borda da cópia da fila.
+        let segment = |conn: &Connection,
+                       view: &PendingView,
+                       start: Option<&str>,
+                       limit: usize|
+         -> rusqlite::Result<Vec<ScanRow>> {
+            let (sql, far) = match view.edge.as_deref() {
+                Some(edge) => (&sql_edge, Some(edge)),
+                None => (&sql_open, far),
+            };
+            let mut stmt = conn.prepare_cached(sql)?;
             let mut fetch = |from: Option<&str>| -> rusqlite::Result<Vec<ScanRow>> {
                 let mut args = vec![bound(from, edges.0), bound(far, edges.1)];
                 args.extend(group_arg.clone());
-                args.push(Value::Integer(
-                    i64::try_from(query.limit).unwrap_or(i64::MAX),
-                ));
+                args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
                 stmt.query_map(rusqlite::params_from_iter(args), scan_row)?
                     .collect()
             };
@@ -1010,7 +1025,7 @@ impl MessageStore {
             let mut horizon: Option<String>;
             loop {
                 let rows = fetch(cursor.as_deref())?;
-                let full = rows.len() >= query.limit;
+                let full = rows.len() >= limit;
                 horizon = if full {
                     rows.last().map(|r| r.id.clone())
                 } else {
@@ -1026,7 +1041,7 @@ impl MessageStore {
                         out.push(row);
                     }
                 }
-                if !full || out.len() >= query.limit {
+                if !full || out.len() >= limit {
                     break;
                 }
                 cursor.clone_from(&horizon);
@@ -1085,9 +1100,35 @@ impl MessageStore {
             } else {
                 out.sort_by(|a, b| a.id.cmp(&b.id));
             }
-            out.truncate(query.limit);
+            out.truncate(limit);
             Ok(out)
-        })
+        };
+        // Os trechos são disjuntos e seguem a ordem da página; cada um lê o seu instantâneo, como as páginas
+        // seguidas que o motor lê.
+        let mut out: Vec<ScanRow> = Vec::new();
+        let mut from: Option<String> = start.map(str::to_owned);
+        loop {
+            let near = from.as_deref().map_or(Bound::Unbounded, Bound::Excluded);
+            let away = far.map_or(Bound::Unbounded, Bound::Excluded);
+            let range = if query.desc {
+                (away, near)
+            } else {
+                (near, away)
+            };
+            let limit = query.limit - out.len();
+            let (rows, edge) =
+                disk.read_pending(range, query.desc, Some(limit), |conn, view| {
+                    Ok((
+                        segment(conn, view, from.as_deref(), limit)?,
+                        view.edge.clone(),
+                    ))
+                })?;
+            out.extend(rows);
+            match edge {
+                Some(edge) if out.len() < query.limit => from = Some(edge),
+                _ => return Ok(out),
+            }
+        }
     }
 
     /// A page of the live messages by age, oldest first: `(age, id)` of those with `age ≤ up_to_ms`,
@@ -1106,7 +1147,7 @@ impl MessageStore {
         disk.flush();
         disk.read(|conn| {
             let mut stmt = conn.prepare_cached(
-                "SELECT age_base, id FROM messages WHERE delete_at IS NULL AND age_base <= ?1                  AND (age_base > ?2 OR (age_base = ?2 AND id > ?3))                  ORDER BY age_base, id LIMIT ?4",
+                "SELECT age_base, id FROM messages WHERE delete_at IS NULL AND age_base <= ?1                  AND (age_base > ?2 OR (age_base = ?2 AND id > ?3))                  ORDER BY age_base, id LIMIT ?4 + 0",
             )?;
             let rows = stmt.query_map(
                 params![
@@ -1158,7 +1199,7 @@ impl MessageStore {
             sql.push_str(" AND id <= ?");
             args.push(Value::Text(to.to_owned()));
         }
-        sql.push_str(" ORDER BY id LIMIT ?");
+        sql.push_str(" ORDER BY id LIMIT ? + 0");
         args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
         disk.flush();
         disk.read(|conn| {
@@ -1177,7 +1218,7 @@ impl MessageStore {
     pub fn ready_ids(&self, topic: &str, now_ms: u64, limit: usize) -> io::Result<Vec<String>> {
         self.ids(
             topic,
-            "SELECT id FROM messages WHERE invisible_until <= ?1 ORDER BY id LIMIT ?2",
+            "SELECT id FROM messages WHERE invisible_until <= ?1 ORDER BY id LIMIT ?2 + 0",
             &[now_ms as i64, limit as i64],
         )
     }

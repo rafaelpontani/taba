@@ -100,6 +100,9 @@ pub(super) struct PendingView {
     pub(super) rows: BTreeMap<String, Pending>,
     /// O par da `expiry` de cada `id` com par na fila: `Some(prazo)` gravado, `None` apagado.
     pub(super) expiry: BTreeMap<String, Option<u64>>,
+    /// Com a cópia limitada ([`TopicDisk::read_pending`]), o último `id` copiado quando a fila tinha mais adiante: a
+    /// cópia só vale até ele (inclusive), e quem lê não passa dele.
+    pub(super) edge: Option<String>,
 }
 
 impl PendingView {
@@ -127,6 +130,21 @@ fn copy_error(e: &io::Error) -> io::Error {
             to_io(rusqlite::Error::SqliteFailure(*code, message.clone()))
         }
         _ => io::Error::new(e.kind(), e.to_string()),
+    }
+}
+
+/// Os primeiros `n` `id`s de `map` na faixa, no sentido da leitura.
+fn first_in<'a, V>(
+    map: &'a BTreeMap<String, V>,
+    range: (Bound<&str>, Bound<&str>),
+    desc: bool,
+    n: usize,
+) -> Vec<(&'a String, &'a V)> {
+    let entries = map.range::<str, _>(range);
+    if desc {
+        entries.rev().take(n).collect()
+    } else {
+        entries.take(n).collect()
     }
 }
 
@@ -284,10 +302,15 @@ impl TopicDisk {
     /// Lê com uma conexão só de leitura sem esperar a fila: com a fila parada, fixa o instantâneo do banco e copia o
     /// que está pendente na faixa `(low, high)` de `id`. O banco nunca está à frente da cópia para um `id` que está
     /// nela (nada entra na fila entre as duas), e `work` aplica a cópia por cima do que lê.
+    ///
+    /// Com `cap`, copia só os primeiros `cap` `id`s de cada mapa no sentido da leitura (do `low` para cima, ou do
+    /// `high` para baixo com `desc`), e [`PendingView::edge`] diz até onde a cópia vale: uma página lê poucas linhas,
+    /// e copiar a fila inteira a cada página era o maior custo do consumo com o backlog em disco.
     pub(super) fn read_pending<R>(
         &self,
-        low: Bound<&str>,
-        high: Bound<&str>,
+        (low, high): (Bound<&str>, Bound<&str>),
+        desc: bool,
+        cap: Option<usize>,
         work: impl FnOnce(&Connection, &PendingView) -> rusqlite::Result<R>,
     ) -> io::Result<R> {
         self.read(|conn| {
@@ -309,17 +332,32 @@ impl TopicDisk {
             conn.query_row("SELECT 1 FROM sqlite_master LIMIT 1", [], |_| Ok(()))
                 .optional()?;
             let range = (low, high);
+            let take = cap.map_or(usize::MAX, |cap| cap.max(1));
+            let rows = first_in(&queue.overlay, range, desc, take.saturating_add(1));
+            let expiry = first_in(&queue.expiry, range, desc, take.saturating_add(1));
+            // A borda é o último `id` copiado do mapa que se esgota antes, no sentido da leitura.
+            let edge = [
+                (rows.len() > take).then(|| rows[take - 1].0),
+                (expiry.len() > take).then(|| expiry[take - 1].0),
+            ]
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
+            .reduce(|a, b| if desc == (a > b) { a } else { b });
+            let within =
+                |id: &str| edge.is_none_or(|edge| if desc { id >= edge } else { id <= edge });
             let view = PendingView {
-                rows: queue
-                    .overlay
-                    .range::<str, _>(range)
+                rows: rows
+                    .into_iter()
+                    .filter(|(id, _)| within(id))
                     .map(|(id, (_, pending))| (id.clone(), pending.clone()))
                     .collect(),
-                expiry: queue
-                    .expiry
-                    .range::<str, _>(range)
+                expiry: expiry
+                    .into_iter()
+                    .filter(|(id, _)| within(id))
                     .map(|(id, (_, until))| (id.clone(), *until))
                     .collect(),
+                edge: edge.map(str::to_owned),
             };
             drop(queue);
             work(conn, &view)

@@ -5466,6 +5466,7 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 **Nível:** U  
 **Testes:**
   - `src/engine/messages/index/bounded_tests.rs::only_the_room_that_opened_is_refilled_and_a_full_list_costs_nothing`
+  - `src/engine/messages/index/bounded_tests.rs::when_publications_empty_the_old_side_the_refill_brings_a_batch_from_the_old_end`
   - `src/engine/messages/tests/bounded.rs::ack_and_visibility_work_on_a_message_the_index_only_counts`
 
 ---
@@ -5511,10 +5512,11 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
 
 ### UC-ENT-014
 
-**Caso:** A mensagem cuja invisibilidade vence volta à lista pela posição do GUID v7, **não** pela varredura; se a lista está cheia, o ID do **meio** sai para dar lugar e é reposto depois (nenhuma mensagem se perde).  
+**Caso:** A mensagem cuja invisibilidade vence volta à lista pela posição do GUID v7, **não** pela varredura; se a lista está cheia, o ID do **meio** sai para dar lugar (a borda do lado por onde o novo ID entra: uma mensagem publicada agora toma o lugar da ponta nova e a ponta velha fica inteira, D194) e é reposto depois (nenhuma mensagem se perde).  
 **Nível:** U  
 **Testes:**
   - `src/engine/messages/index/bounded_tests.rs::a_returning_message_enters_by_its_position_and_the_middle_id_leaves_when_full`
+  - `src/engine/messages/index/bounded_tests.rs::a_new_message_in_a_full_window_takes_the_place_of_the_new_side_and_keeps_the_old_one`
 
 ---
 
@@ -6317,6 +6319,8 @@ Nível: **U** unitário, **I** um nó real, **C** cluster simulado, **K** conect
   - `src/storage/messages/writer/tests.rs::a_refused_write_fails_only_its_caller_and_the_rest_of_the_round_commits`
   - `src/storage/messages/writer/tests.rs::a_read_by_id_does_not_wait_for_the_writer`
   - `src/storage/messages/writer/tests.rs::a_page_merges_the_queue_without_waiting_for_the_writer`
+  - `src/storage/messages/writer/tests.rs::a_page_over_a_queue_larger_than_the_page_matches_the_committed_one`
+  - `src/storage/messages/writer/tests.rs::the_page_statement_is_not_prepared_again_on_each_run`
   - `src/storage/messages/writer/tests.rs::a_detached_write_reaches_the_database_without_anyone_waiting`
 ---
 
