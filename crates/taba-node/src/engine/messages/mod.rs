@@ -698,10 +698,16 @@ impl Messages {
     /// without a blocking thread. It is a forecast: a message demoted in the meantime is just read on the calling
     /// thread, once.
     pub fn is_in_memory(&self, topic: &str, id: &str) -> bool {
-        let states = self.states.read().unwrap_or_else(|e| e.into_inner());
-        states
+        // The state is taken out first: the map of topics is never held while waiting for a topic. A publication
+        // holds its topic and then reads the map (`demote`), and a writer waiting for the map blocks new readers,
+        // so holding both the other way round stops every thread (PRB-088).
+        let state = self
+            .states
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .get(topic)
-            .is_some_and(|state| lock(state).memory.contains_key(id))
+            .cloned();
+        state.is_some_and(|state| lock(&state).memory.contains_key(id))
     }
 
     /// The publication that the cluster coordinated took `secs`: it enters the topic's latency histogram.
@@ -3207,6 +3213,29 @@ impl Messages {
             self.wake(topic, woken);
         }
         results
+    }
+
+    /// Aplica operações decididas pelo quórum (o commit numa réplica) num escopo adiado (D192): o que elas gravam entra
+    /// na fila com o tópico preso, e ninguém espera o commit no banco (D196). Com mais de um responsável a durabilidade
+    /// vem das cópias, não do disco (doc 11): a escrita na fila já é visível para as leituras e vale o que vale uma
+    /// cópia em memória; uma thread de fundo a grava. Quando a fila de um banco está cheia, espera o commit dele (a
+    /// contrapressão). Antes, cada commit de réplica que não cabia na memória esperava o seu fsync segurando o tópico, e
+    /// as réplicas de um tópico gravavam uma mensagem por vez (PRB-088).
+    pub fn apply_replicated(
+        &self,
+        work: impl FnOnce() -> Vec<Result<(), TabaError>>,
+    ) -> Vec<Result<(), TabaError>> {
+        let (results, written) = self.store.deferred(work);
+        match written.detach_unless_full() {
+            Ok(()) => results,
+            Err(e) => {
+                let error = self.disk_error("failed to write the batch to disk", &e);
+                results
+                    .into_iter()
+                    .map(|result| result.and_then(|()| Err(error.clone())))
+                    .collect()
+            }
+        }
     }
 
     /// Espera o commit das escritas de um lote adiado; se ele falhar, o que tinha dado certo no lote vira erro de

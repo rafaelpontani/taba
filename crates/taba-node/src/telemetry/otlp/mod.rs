@@ -110,7 +110,8 @@ pub struct Hub {
     sampler: Arc<RwLock<SdkSampler>>,
     processor: Arc<RwLock<Option<Arc<BatchSpanProcessor>>>>,
     logs: Arc<RwLock<Option<LogSlot>>>,
-    /// A pipeline is attached: only then the spans layer sees spans (without it, a span costs nothing).
+    /// A pipeline is attached: only then the spans layer sees spans. Without it a span still goes to the registry of
+    /// the subscriber, so the spans of each call to a node are not even created ([`trace::peer_span`](super::trace)).
     attached: AtomicBool,
 }
 

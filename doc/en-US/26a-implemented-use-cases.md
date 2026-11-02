@@ -5029,6 +5029,7 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `tests/batch.rs::operations_waiting_for_the_same_node_travel_in_fewer_calls_than_operations`
   - `tests/batch.rs::with_max_items_1_every_operation_goes_in_a_call_of_its_own`
   - `tests/batch.rs::fifo_publications_forwarded_to_the_same_node_travel_in_fewer_calls_than_publications`
+  - `tests/batch.rs::a_cluster_over_the_memory_limit_publishes_delivers_and_acks_everything_with_the_operations_batched`
 
 ---
 
@@ -6177,6 +6178,8 @@ Level: **U** unit, **I** a real node, **C** simulated cluster, **K** connector. 
   - `src/engine/messages/tests.rs::what_does_not_fit_in_memory_overflows_to_disk`
   - `tests/messages.rs::messages_over_the_memory_limit_overflow_to_disk_and_come_back_intact`
   - `tests/messages.rs::without_a_memory_limit_nothing_goes_to_disk_by_overflow`
+  - `src/engine/messages/tests/cluster.rs::asking_whether_a_message_is_in_memory_does_not_hold_the_map_of_topics_while_it_waits_for_the_topic`
+  - `tests/batch.rs::a_cluster_over_the_memory_limit_publishes_delivers_and_acks_everything_with_the_operations_batched`
 
 ---
 

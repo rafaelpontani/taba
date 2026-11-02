@@ -148,6 +148,9 @@ fn first_in<'a, V>(
     }
 }
 
+/// As escritas na fila de um banco acima das quais [`Written::detach_unless_full`] espera o commit em vez de soltá-lo.
+const DETACH_MAX_QUEUED: usize = 8192;
+
 /// As sequências de escrita de um escopo adiado, por banco.
 type Tickets = Vec<(Arc<TopicDisk>, Vec<u64>)>;
 
@@ -178,6 +181,22 @@ impl Written {
         for (disk, seqs) in std::mem::take(&mut self.0) {
             disk.flush_later(seqs);
         }
+    }
+
+    /// Como [`detach`](Self::detach), mas espera o commit no banco cuja fila passou de [`DETACH_MAX_QUEUED`] escritas:
+    /// quem escreve mais rápido do que o disco grava espera a vez, e a fila (com os corpos) não cresce sem limite.
+    pub fn detach_unless_full(mut self) -> io::Result<()> {
+        let mut first_error = None;
+        for (disk, seqs) in std::mem::take(&mut self.0) {
+            if disk.queue().ops.len() > DETACH_MAX_QUEUED {
+                if let Err(e) = disk.wait(&seqs) {
+                    first_error.get_or_insert(e);
+                }
+            } else {
+                disk.flush_later(seqs);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
     }
 }
 

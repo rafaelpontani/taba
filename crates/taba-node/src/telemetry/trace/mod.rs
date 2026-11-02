@@ -102,6 +102,11 @@ pub fn durability_event() {
 /// (`taba.attempt`) is recorded by whoever repeats the call. `durability` marks the span as a durability
 /// event (rollback), which the Collector keeps in tail sampling.
 pub fn peer_span(name: &'static str, peer: &str, durability: bool) -> Span {
+    // Without an OTLP pipeline nobody reads this span, but the registry of the subscriber would still keep it: there
+    // is one per call to a node, several per message, and they cost about a tenth of the CPU of a cluster under load.
+    if !super::otlp::hub().is_attached() {
+        return Span::none();
+    }
     let span = tracing::info_span!(
         "peer.call",
         otel.name = name,

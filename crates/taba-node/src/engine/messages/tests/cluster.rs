@@ -632,3 +632,43 @@ async fn a_failed_table_write_undoes_a_reservation_of_the_owner() {
     assert_eq!(again.len(), 1);
     assert_eq!(again[0].meta.delivery_count, 1);
 }
+
+/// UC: UC-ARM-001
+#[tokio::test]
+async fn asking_whether_a_message_is_in_memory_does_not_hold_the_map_of_topics_while_it_waits_for_the_topic()
+ {
+    // PRB-088: a replica asking whether a message is in memory, a topic being deleted and a publication that looks
+    // for memory to free in the other topics (it is over `memory.limit`) stopped every thread of a node.
+    let h = harness_with(&[("TABA_MEMORY_LIMIT", "3")]);
+    h.topics.create(queue("orders")).await.unwrap();
+    h.topics.create(queue("other")).await.unwrap();
+    let id = publish_ok(&h, "orders", "1");
+    publish_ok(&h, "other", "2");
+    // The publication holds its topic, as `publish_held` does.
+    let state = h.messages.state_of("orders");
+    let held = lock(&state);
+
+    // The replica asks about a message of that topic: it has to wait for the topic.
+    let m = h.messages.clone();
+    let asking = std::thread::spawn(move || m.is_in_memory("orders", &id));
+    std::thread::sleep(Duration::from_millis(100));
+    // A topic is deleted: it waits to write in the map of topics.
+    let m = h.messages.clone();
+    let dropping = std::thread::spawn(move || m.drop_topic("other"));
+    std::thread::sleep(Duration::from_millis(100));
+    // Still holding its topic, the publication lists the other topics to demote messages. If the question held the
+    // map while waiting for the topic, this read would queue behind the deletion for good.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let m = h.messages.clone();
+    std::thread::spawn(move || {
+        tx.send(m.existing_states().len()).ok();
+    });
+    let listed = rx.recv_timeout(Duration::from_secs(5));
+    drop(held);
+    assert!(
+        listed.is_ok(),
+        "the list of topics waited for the deletion, which waited for the question, which waited for the topic"
+    );
+    asking.join().unwrap();
+    dropping.join().unwrap();
+}

@@ -90,6 +90,12 @@ fn operation_of(request: &Request) -> Option<(String, usize)> {
     }
 }
 
+/// Whether an operation to this node itself goes through its queue: the operations of the two phases, which have an
+/// operation id to match the reply to (a `Take` or a FIFO publication to itself is served directly).
+pub(super) fn is_local_batchable(request: &Request) -> bool {
+    operation_of(request).is_some_and(|(operation_id, _)| !operation_id.is_empty())
+}
+
 impl Batcher {
     /// The queue of the node, created (with the task that sends from it) on the first operation.
     fn queue_for(&self, service: &Arc<ClusterService>, member: &Member) -> Arc<NodeQueue> {
@@ -237,13 +243,21 @@ async fn send(service: &Arc<ClusterService>, member: &Member, items: Vec<Pending
     }
     registry.observe(&CLUSTER_BATCH_ITEMS, &[], requests.len() as f64);
     registry.observe(&CLUSTER_BATCH_BYTES, &[], bytes as f64);
-    let call = service
-        .call_peer(
-            member,
-            Request::Batch(requests),
-            service.rules().call_timeout,
-        )
-        .await;
+    let call = if service.is_self(member) {
+        // This node itself: the batch is served here, without the network.
+        service
+            .handle(&service.self_caller(), Request::Batch(requests))
+            .await
+            .map_err(CallError::Remote)
+    } else {
+        service
+            .call_peer(
+                member,
+                Request::Batch(requests),
+                service.rules().call_timeout,
+            )
+            .await
+    };
     match call {
         Ok(Response::Batch(results)) if results.len() == waiting.len() => {
             // A reply of another operation must never be taken for this one's.

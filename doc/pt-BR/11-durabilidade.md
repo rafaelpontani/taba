@@ -79,6 +79,10 @@ Se o primário cair **exatamente** entre o commit local e a replicação às ré
 
 Com `replication.factor` 1 (o nó sozinho, D191), a entrega de uma mensagem em disco responde antes de a sua escrita chegar ao banco (D193): uma thread de fundo faz o commit alguns milissegundos depois. Se o **processo** morrer nessa janela, a mensagem volta com o contador e o prazo de antes da entrega: é entregue de novo sem esperar a invisibilidade prometida ao primeiro consumidor, o ack com o primeiro `receiptToken` é recusado como velho, e essa entrega não conta para o `maxDeliveries` (a mensagem pode ser entregue uma vez além do limite antes da dead-letter). Não quebra o *at-least-once*. Uma mensagem só em memória se perde com o processo de qualquer forma, e com mais de um nó responsável a entrega continua esperando o commit no quórum.
 
+### Uma réplica não espera o seu disco
+
+Com mais de um nó responsável, o commit de uma operação numa réplica (uma publicação, uma entrega, um ack) põe o que vai para o disco na fila de escrita do tópico e responde sem esperar o banco (D196): a escrita já é visível para as leituras, e uma thread de fundo faz o commit. É a garantia da tabela acima (a durabilidade vem das cópias, não do disco); uma réplica que morre nessa janela perde o que estava na sua fila como perde o que estava só na sua memória, e as outras cópias guardam a mensagem. Quando a fila de um tópico passa de 8 192 escritas, o commit espera por ela, então um disco mais lento que a carga segura as réplicas em vez de encher a memória.
+
 ## Retenção
 
 | Regra | Padrão | Efeito |

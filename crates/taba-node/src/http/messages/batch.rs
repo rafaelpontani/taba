@@ -27,9 +27,10 @@ use crate::http::openapi::{AuthErrors, ClusterUnavailable, RateLimited};
 use crate::http::{AppState, json};
 use crate::telemetry::trace;
 
-/// Items of a batch in flight at once on a cluster node: enough to fill the protobuf batch of the channel, without
-/// a batch of thousands starting thousands of operations at the same instant.
-const IN_FLIGHT: usize = 128;
+/// Items of a batch in flight at once on a cluster node: a whole batch of the usual size (the OMB driver acks up to
+/// 500 messages per request) goes in one wave, whose operations travel together to each node (D196), instead of
+/// four waves one after the other; a batch of thousands still does not start thousands of operations at once.
+const IN_FLIGHT: usize = 512;
 
 /// A publication of a batch: the same fields as `POST /topics/{topic}/messages`, with the body in the form the `GET`
 /// delivers it.

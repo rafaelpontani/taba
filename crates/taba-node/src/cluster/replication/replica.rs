@@ -148,6 +148,41 @@ impl Drop for Held<'_> {
     }
 }
 
+/// A register of a batch between nodes, ready to reserve and check ([`Replica::register_many`]).
+pub(super) struct RegisterItem {
+    operation_id: String,
+    topic: String,
+    id: String,
+    action: Action,
+    check: Check,
+}
+
+/// What a register checks before it stays, as in its single call.
+#[derive(Clone)]
+enum Check {
+    Nothing,
+    /// The publication: the topic stores messages, and an `id` that already exists only passes with the same content.
+    Publish(Bytes),
+    /// The delivery or the change of deadline (the `receiptToken`), and the ack.
+    Visibility(VisibilityCheck, String),
+}
+
+impl Check {
+    fn run(
+        &self,
+        messages: &Messages,
+        topics: &Topics,
+        topic: &str,
+        id: &str,
+    ) -> Result<(), TabaError> {
+        match self {
+            Check::Nothing => Ok(()),
+            Check::Publish(body) => check_publish(messages, topics, topic, id, body),
+            Check::Visibility(check, token) => messages.check_visibility(topic, id, *check, token),
+        }
+    }
+}
+
 pub struct Replica {
     messages: Arc<Messages>,
     topics: Arc<Topics>,
@@ -190,6 +225,24 @@ fn apply(messages: &Messages, topic: &str, id: &str, action: Action) -> Result<(
         ),
         Action::Ack => messages.apply_ack(topic, id),
     }
+}
+
+/// The message a register of a publication brings, as the engine stores it.
+fn publish_of(record: crate::cluster::protocol::MessageRecord) -> (MessageMeta, Bytes) {
+    let meta = MessageMeta {
+        id: record.id.clone(),
+        content_type: record.content_type.clone(),
+        group_id: record.group_id.clone(),
+        deduplication_id: record.deduplication_id.clone(),
+        published_ms: record.published_ms(),
+        delivery_count: record.delivery_count,
+        invisible_until_ms: record.invisible_until_ms.unwrap_or(0),
+        receipt_token: record.receipt_token.clone(),
+        dead_lettered_ms: None,
+        dead_letter_reason: None,
+        position: 0,
+    };
+    (meta, record.body)
 }
 
 /// The register of a publication: the topic stores messages, and an `id` that already exists only
@@ -390,28 +443,300 @@ impl Replica {
         let Pending {
             topic, id, action, ..
         } = pending;
-        // An operation that only touches memory is applied right here: a blocking thread would cost more
-        // than the work (two thread switches per message). It is a publication that fits in memory, or an ack
-        // or a change of deadline of a message that is in memory.
-        let light = match &action {
-            Action::Publish { body, .. } => {
-                self.messages.publish_is_light(&topic, body.len() as u64)
-            }
-            Action::Ack | Action::Visibility { .. } => self.messages.is_in_memory(&topic, &id),
-            Action::DeadLetter { .. } => false,
-        };
-        let result = if light {
+        let result = if self.is_light(&topic, &id, &action) {
             apply(&self.messages, &topic, &id, action)
         } else {
             let messages = self.messages.clone();
-            tokio::task::spawn_blocking(move || apply(&messages, &topic, &id, action))
-                .await
-                .map_err(|_| TabaError::internal())?
+            // O commit em disco é esperado sem o tópico preso: as réplicas do mesmo tópico entram no mesmo commit.
+            tokio::task::spawn_blocking(move || {
+                messages
+                    .apply_replicated(|| vec![apply(&messages, &topic, &id, action)])
+                    .pop()
+                    .unwrap_or_else(|| Err(TabaError::internal()))
+            })
+            .await
+            .map_err(|_| TabaError::internal())?
         };
         // Applied or not, the operation left the pendings; the error (a message that vanished, for
         // example) goes to the coordinator.
         Self::remember(&mut self.lock(), operation_id, Finished::Committed);
         result.map(|()| ack(operation_id))
+    }
+
+    /// What a register of a batch reserves and checks, built from the call (the same checks of its single call).
+    pub(super) fn register_item(&self, request: Request) -> Result<RegisterItem, TabaError> {
+        match request {
+            Request::Write {
+                topic,
+                id,
+                step: Step::Register(request),
+            } if matches!(request.kind, WriteKind::Publish) => {
+                let record = request.message;
+                if record.id != id || record.topic != topic {
+                    return Err(TabaError::new(
+                        ErrorCode::ValidationFailed,
+                        "The path and the body speak of different messages.",
+                    ));
+                }
+                let (meta, body) = publish_of(record);
+                Ok(RegisterItem {
+                    operation_id: request.operation_id,
+                    check: Check::Publish(body.clone()),
+                    action: Action::Publish { meta, body },
+                    topic,
+                    id,
+                })
+            }
+            Request::Visibility {
+                topic,
+                id,
+                step: Step::Register(request),
+            } => {
+                let (check, delivery) = match request.kind {
+                    VisibilityKind::Delivery => (
+                        VisibilityCheck::Delivery,
+                        Some((
+                            request.delivery_count.ok_or_else(|| {
+                                TabaError::new(
+                                    ErrorCode::ValidationRequired,
+                                    "The delivery requires `deliveryCount`.",
+                                )
+                                .with_detail(
+                                    "deliveryCount",
+                                    ErrorCode::ValidationRequired,
+                                    "Required field.",
+                                )
+                            })?,
+                            request.receipt_token.clone(),
+                        )),
+                    ),
+                    VisibilityKind::Change => (VisibilityCheck::Receipt, None),
+                };
+                Ok(RegisterItem {
+                    operation_id: request.operation_id,
+                    check: Check::Visibility(check, request.receipt_token),
+                    action: Action::Visibility {
+                        until_ms: request.invisible_until_ms,
+                        delivery,
+                    },
+                    topic,
+                    id,
+                })
+            }
+            Request::Ack {
+                topic,
+                id,
+                step: Step::Register(request),
+            } => Ok(RegisterItem {
+                operation_id: request.operation_id,
+                // A discard has no receipt: it is the primary of the group dropping a duplicate (doc 07, section 10.9).
+                check: if request.discard {
+                    Check::Nothing
+                } else {
+                    Check::Visibility(VisibilityCheck::Receipt, request.receipt_token)
+                },
+                action: Action::Ack,
+                topic,
+                id,
+            }),
+            _ => Err(TabaError::internal()),
+        }
+    }
+
+    /// The registers of a batch between nodes, together (D196): each one is what [`write`](Self::write),
+    /// [`visibility`](Self::visibility) or [`ack`](Self::ack) does with a `register` (the reservation first, the check
+    /// after), but the checks that read the disk go in **one** blocking call. The results keep the order of `items`.
+    pub(super) async fn register_many(
+        &self,
+        items: Vec<Result<RegisterItem, TabaError>>,
+    ) -> Vec<Result<Ack, TabaError>> {
+        let mut results: Vec<Option<Result<Ack, TabaError>>> = Vec::with_capacity(items.len());
+        // The reserved operations still to check: (position, operationId, topic, id, check).
+        let mut checks: Vec<(usize, String, String, String, Check)> = Vec::new();
+        for (index, item) in items.into_iter().enumerate() {
+            self.count("register");
+            let RegisterItem {
+                operation_id,
+                topic,
+                id,
+                action,
+                check,
+            } = match item {
+                Ok(item) => item,
+                Err(error) => {
+                    results.push(Some(Err(error)));
+                    continue;
+                }
+            };
+            match self.reserve(&operation_id, &topic, &id, action) {
+                Ok(false) => results.push(Some(Ok(ack(&operation_id)))),
+                Ok(true) => {
+                    results.push(None);
+                    checks.push((index, operation_id, topic, id, check));
+                }
+                Err(error) => results.push(Some(Err(error))),
+            }
+        }
+        let mut heavy = Vec::new();
+        for (index, operation_id, topic, id, check) in checks {
+            let light = match &check {
+                Check::Nothing => true,
+                Check::Publish(body) => self.messages.publish_is_light(&topic, body.len() as u64),
+                Check::Visibility(..) => self.messages.is_in_memory(&topic, &id),
+            };
+            if light {
+                // The check only reads memory: right here, without a blocking thread.
+                let checked = check.run(&self.messages, &self.topics, &topic, &id);
+                results[index] = Some(self.settle_register(&operation_id, checked));
+            } else {
+                heavy.push((index, operation_id, topic, id, check));
+            }
+        }
+        if !heavy.is_empty() {
+            let wanted: Vec<(String, String, Check)> = heavy
+                .iter()
+                .map(|(_, _, topic, id, check)| (topic.clone(), id.clone(), check.clone()))
+                .collect();
+            let (messages, topics) = (self.messages.clone(), self.topics.clone());
+            let checked = tokio::task::spawn_blocking(move || {
+                wanted
+                    .iter()
+                    .map(|(topic, id, check)| check.run(&messages, &topics, topic, id))
+                    .collect::<Vec<_>>()
+            })
+            .await;
+            match checked {
+                Ok(checked) => {
+                    for ((index, operation_id, ..), result) in heavy.into_iter().zip(checked) {
+                        results[index] = Some(self.settle_register(&operation_id, result));
+                    }
+                }
+                Err(_) => {
+                    for (index, operation_id, ..) in heavy {
+                        results[index] =
+                            Some(self.settle_register(&operation_id, Err(TabaError::internal())));
+                    }
+                }
+            }
+        }
+        results
+            .into_iter()
+            .map(|result| result.unwrap_or_else(|| Err(TabaError::internal())))
+            .collect()
+    }
+
+    /// The end of a register whose check ran: the reservation stays when the check passed and is released when it
+    /// failed, as in [`register`](Self::register).
+    fn settle_register(
+        &self,
+        operation_id: &str,
+        checked: Result<(), TabaError>,
+    ) -> Result<Ack, TabaError> {
+        match checked {
+            Ok(()) => Ok(ack(operation_id)),
+            Err(error) => {
+                self.lock().take(operation_id);
+                Err(error)
+            }
+        }
+    }
+
+    /// An operation that only touches memory is applied right on the calling task: a blocking thread would cost
+    /// more than the work (two thread switches per message). It is a publication that fits in memory, or an ack or a
+    /// change of deadline of a message that is in memory.
+    fn is_light(&self, topic: &str, id: &str, action: &Action) -> bool {
+        match action {
+            Action::Publish { body, .. } => {
+                self.messages.publish_is_light(topic, body.len() as u64)
+            }
+            Action::Ack | Action::Visibility { .. } => self.messages.is_in_memory(topic, id),
+            Action::DeadLetter { .. } => false,
+        }
+    }
+
+    /// The commits of a batch between nodes (`POST /cluster/batch`), together (D196): each one is what
+    /// [`commit`](Self::commit) does, but the ones that touch the disk go in **one** blocking call and one deferred
+    /// scope, so their writes enter the topic queues together and the batch waits for one commit on the disk instead
+    /// of one per message. The results keep the order of `operation_ids`.
+    pub(super) async fn commit_many(
+        &self,
+        operation_ids: &[String],
+    ) -> Vec<Result<Ack, TabaError>> {
+        let mut results: Vec<Option<Result<(), TabaError>>> =
+            Vec::with_capacity(operation_ids.len());
+        let mut taken: Vec<(usize, String, String, Action)> = Vec::new();
+        {
+            let mut state = self.lock();
+            self.purge(&mut state);
+            for (index, operation_id) in operation_ids.iter().enumerate() {
+                self.count("commit");
+                match state.take(operation_id) {
+                    Some(Pending {
+                        topic, id, action, ..
+                    }) => {
+                        results.push(None);
+                        taken.push((index, topic, id, action));
+                    }
+                    None => results.push(Some(match state.finished.get(operation_id) {
+                        Some(Finished::Committed) => Ok(()),
+                        Some(Finished::RolledBack) => {
+                            Err(conflict("The operation was cancelled (rollback)."))
+                        }
+                        None => Err(unknown_operation()),
+                    })),
+                }
+            }
+        }
+        let mut heavy: Vec<(usize, String, String, Action)> = Vec::new();
+        let taken_indexes: Vec<usize> = taken.iter().map(|(index, ..)| *index).collect();
+        for (index, topic, id, action) in taken {
+            if self.is_light(&topic, &id, &action) {
+                results[index] = Some(apply(&self.messages, &topic, &id, action));
+            } else {
+                heavy.push((index, topic, id, action));
+            }
+        }
+        if !heavy.is_empty() {
+            let indexes: Vec<usize> = heavy.iter().map(|(index, ..)| *index).collect();
+            let messages = self.messages.clone();
+            let applied = tokio::task::spawn_blocking(move || {
+                messages.apply_replicated(|| {
+                    heavy
+                        .into_iter()
+                        .map(|(_, topic, id, action)| apply(&messages, &topic, &id, action))
+                        .collect()
+                })
+            })
+            .await;
+            match applied {
+                Ok(applied) => {
+                    for (index, result) in indexes.into_iter().zip(applied) {
+                        results[index] = Some(result);
+                    }
+                }
+                Err(_) => {
+                    for index in indexes {
+                        results[index] = Some(Err(TabaError::internal()));
+                    }
+                }
+            }
+        }
+        // Applied or not, the operations left the pendings (as in `commit`).
+        {
+            let mut state = self.lock();
+            for index in taken_indexes {
+                Self::remember(&mut state, &operation_ids[index], Finished::Committed);
+            }
+        }
+        results
+            .into_iter()
+            .zip(operation_ids)
+            .map(|(result, operation_id)| {
+                result
+                    .unwrap_or_else(|| Err(TabaError::internal()))
+                    .map(|()| ack(operation_id))
+            })
+            .collect()
     }
 
     fn rollback(&self, operation_id: &str) -> Result<Ack, TabaError> {
@@ -486,21 +811,7 @@ impl Replica {
         let (topic, id) = (topic.to_owned(), id.to_owned());
         match request.kind {
             WriteKind::Publish => {
-                let published_ms = record.published_ms();
-                let meta = MessageMeta {
-                    id: record.id.clone(),
-                    content_type: record.content_type.clone(),
-                    group_id: record.group_id.clone(),
-                    deduplication_id: record.deduplication_id.clone(),
-                    published_ms,
-                    delivery_count: record.delivery_count,
-                    invisible_until_ms: record.invisible_until_ms.unwrap_or(0),
-                    receipt_token: record.receipt_token.clone(),
-                    dead_lettered_ms: None,
-                    dead_letter_reason: None,
-                    position: 0,
-                };
-                let body = record.body;
+                let (meta, body) = publish_of(record);
                 let held = body.clone();
                 let check = async {
                     if !checked {

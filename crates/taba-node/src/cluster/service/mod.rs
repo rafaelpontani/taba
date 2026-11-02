@@ -723,6 +723,11 @@ impl ClusterService {
         request: Request,
     ) -> Result<Response, CallError> {
         if self.is_self(member) {
+            // The operations of the two phases go through the queue of this node too: the batch is served here,
+            // without the network, with the commits together (D196).
+            if self.rules.batch_max_items > 1 && batch::is_local_batchable(&request) {
+                return self.call_batched(member, request).await;
+            }
             return self
                 .handle(&self.self_caller(), request)
                 .await

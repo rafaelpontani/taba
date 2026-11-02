@@ -79,6 +79,10 @@ If the primary goes down **exactly** between the local commit and the replicatio
 
 With `replication.factor` 1 (the node alone, D191), a delivery of a message on disk answers before its write reaches the database (D193): a background thread commits it a few milliseconds later. If the **process** dies in that window, the message comes back with the counter and the deadline it had before the delivery: it is delivered again without waiting for the invisibility promised to the first consumer, the ack with the first `receiptToken` is refused as stale, and that delivery is not counted for `maxDeliveries` (the message may be delivered once more than the limit before the dead-letter). It does not break *at-least-once*. A message only in memory is lost with the process anyway, and with more than one responsible node the delivery still waits for its commit on the quorum.
 
+### A replica does not wait for its disk
+
+With more than one responsible node, the commit of an operation on a replica (a publication, a delivery, an ack) puts what goes to disk in the write queue of the topic and answers without waiting for the database (D196): the write is already visible to the reads, and a background thread commits it. It is the guarantee of the table above (the durability comes from the copies, not from the disk); a replica that dies in that window loses what was in its queue as it loses what was only in its memory, and the other copies keep the message. When the queue of a topic passes 8 192 writes, the commit waits for it, so a disk slower than the load holds the replicas back instead of filling the memory.
+
 ## Retention
 
 | Rule | Default | Effect |

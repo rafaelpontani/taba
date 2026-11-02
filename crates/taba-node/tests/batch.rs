@@ -406,3 +406,59 @@ async fn fifo_publications_forwarded_to_the_same_node_travel_in_fewer_calls_than
     );
     cluster.shutdown().await;
 }
+
+/// UC: UC-ESC-039, UC-ARM-001
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cluster_over_the_memory_limit_publishes_delivers_and_acks_everything_with_the_operations_batched()
+ {
+    // PRB-088: with the bodies going to disk (`memory.limit` tiny), each commit on a replica waited for its own write
+    // holding the topic, and the nodes stopped answering under load. Every operation of the two phases now goes through
+    // the batches (to this node too), and the commits of a batch are written together.
+    let cluster = TestCluster::start_with(3, &[("TABA_MEMORY_LIMIT", "1B")]).await;
+    create_queue(&cluster).await;
+    let run = async {
+        publish_concurrently(&cluster, 300).await;
+        let node = cluster.node(2);
+        let mut acked = 0;
+        while acked < 300 {
+            let got: Value = node
+                .client
+                .get(node.client_url("/topics/orders/messages?maxMessages=100&waitTime=1"))
+                .send()
+                .await
+                .expect("request")
+                .json()
+                .await
+                .expect("json");
+            let got = got["messages"].as_array().cloned().unwrap_or_default();
+            if got.is_empty() {
+                continue;
+            }
+            let reply: Value = node
+                .client
+                .post(node.client_url("/topics/orders/messages/ack"))
+                .json(&json!({ "messages": got.iter().map(|m| json!({
+                    "id": m["id"], "receiptToken": m["receiptToken"] })).collect::<Vec<_>>() }))
+                .send()
+                .await
+                .expect("request")
+                .json()
+                .await
+                .expect("json");
+            let statuses: Vec<i64> = reply["results"]
+                .as_array()
+                .expect("results")
+                .iter()
+                .map(|r| r["status"].as_i64().unwrap_or(0))
+                .collect();
+            assert!(statuses.iter().all(|s| *s == 204), "{reply}");
+            acked += statuses.len();
+        }
+        acked
+    };
+    let acked = tokio::time::timeout(std::time::Duration::from_secs(60), run)
+        .await
+        .expect("the cluster stopped answering");
+    assert_eq!(acked, 300);
+    cluster.shutdown().await;
+}

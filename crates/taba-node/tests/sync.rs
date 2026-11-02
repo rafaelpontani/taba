@@ -317,10 +317,8 @@ async fn a_message_that_is_listed_but_has_no_content_anywhere_is_a_loss_and_the_
             &cluster.node(number).storage_dir(),
             taba_node::config::DbSynchronous::Normal,
         );
-        assert!(
-            disk.has_body("orders", &target),
-            "the message is on disk on node {number}"
-        );
+        // A replica answers the commit before its write reaches the database (D196): it gets there a moment later.
+        eventually("the message on disk", || disk.has_body("orders", &target)).await;
         disk.evict_body("orders", &target).unwrap();
     }
     let number = start_isolated(&mut cluster, &[("TABA_MEMORY_LIMIT", "1B")]).await;
