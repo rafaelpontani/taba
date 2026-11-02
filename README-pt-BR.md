@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/diagrams/img/pt-BR/hero.gif" width="100%" alt="Taba: mensageria open source que substitui SQS, SNS, Kafka e RabbitMQ com uma única imagem Docker. Animação: 3 nós, cada um desenhado como um prédio de 3 andares. Vários produtores chegam e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica para os outros dois, e todo nó é primário de algumas delas. Os consumidores chegam depois, leem de forma assíncrona e confirmam com um ack.">
+  <img src="doc/diagrams/img/pt-BR/hero.gif" width="100%" alt="Taba: mensageria open source eficiente (filas, FIFO e pub/sub) que escala e se gerencia sozinha, numa só imagem Docker. Animação: 3 nós, cada um desenhado como um prédio de 3 andares. Vários produtores chegam e saem e publicam mensagens; cada mensagem tem um nó primário, que a replica para os outros dois, e todo nó é primário de algumas delas. Os consumidores chegam depois, leem de forma assíncrona e confirmam com um ack.">
 </p>
 
 🇺🇸 [English](README.md) | 🇧🇷 **Português (Brasil)**
