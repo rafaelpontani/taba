@@ -3,7 +3,7 @@ título: Visão geral
 resumo: O que é o Taba, para quem serve, o que ele não é, e a lista de objetivos e requisitos com o estado de cada um.
 tipo: explicação
 status: estável
-verificado-em: 2026-10-19 @ 55b9495
+verificado-em: 2026-11-02 @ c3a1dbc
 fontes: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml, connectors/]
 ---
 
@@ -22,6 +22,8 @@ O nome vem de **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeridos. E
 
 Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotado numa única imagem Docker. Um cluster são três ou mais nós iguais, sem coordenador, sem banco externo e sem broker à parte. Para testar, um nó basta (o perfil de um nó).
 
+**O objetivo é a eficiência.** O Taba é uma suíte de soluções de mensageria (filas, filas FIFO, distribuição) que faz o trabalho de um broker de mensagens com poucos recursos: pouca CPU e memória por mensagem, nenhuma dependência externa e um cluster que se gerencia sozinho (escala, manutenção, falhas), para que operá-lo custe pouco tempo. Ele é da classe dos **brokers de mensagens** (RabbitMQ, NATS JetStream, SQS), que confirmam, reentregam, mandam para dead-letter e expiram cada mensagem no broker. Não é uma **plataforma de streaming** (Kafka, Redpanda, Pulsar): essas são logs de acréscimo, muito rápidas para gravar e reler bytes, que deixam para a aplicação o trabalho em volta de cada mensagem. Por isso o benchmark mede a meta do Taba contra brokers da mesma classe e mantém as plataformas de streaming como a referência de um log puro ([38-benchmarks.md](38-benchmarks.md#o-que-a-comparação-mede), D195).
+
 ![Contexto: quem usa o Taba](../diagrams/img/pt-BR/c4-level0-context.svg)
 
 ## Para quem serve
@@ -39,7 +41,7 @@ Cada nó é **o mesmo programa** (o binário `taba`, escrito em Rust), empacotad
 | Não é | Consequência |
 |---|---|
 | Um substituto de protocolo | Não fala AMQP, MQTT nem o protocolo do Kafka; trocar de broker é trocar o cliente |
-| Uma plataforma de streaming | Não relê o histórico: depois do ack a mensagem some (na FIFO, só o corpo; ver [09-topicos.md](09-topicos.md)) |
+| Uma plataforma de streaming | Não relê o histórico: depois do ack a mensagem some (na FIFO, só o corpo; ver [09-topicos.md](09-topicos.md)). Em troca, o trabalho por mensagem (ack, reentrega, dead-letter, ordem por grupo, `ttl`) é feito pelo broker, não pela aplicação |
 | Multi-região | Um cluster vive numa só rede |
 | Uma interface web | Há API, linha de comando com uma interface de terminal em tela cheia ([20b-cli-ui.md](20b-cli-ui.md)) e telemetria; não há painel web |
 | Autenticação avançada | Há tokens simples com permissões e prefixos; não há OAuth/OIDC |
@@ -113,6 +115,7 @@ Estes oito princípios explicam muitas escolhas do código. Cada um aponta para 
 | Onde roda | Qualquer lugar com Docker | Só na AWS | Onde hospedar, ou gerenciado | Onde hospedar, ou gerenciado |
 | O que subir | A mesma imagem, 3 nós (1 para dev) | Nada | Brokers e coordenação | Broker (mais nós para alta disponibilidade) |
 | Fila e pub/sub | Na mesma API HTTP | Dois serviços | Tópicos e grupos de consumo | Filas e *exchanges* |
+| Trabalho por mensagem | Ack, reentrega, dead-letter e `ttl` por mensagem, no broker | Por mensagem, no serviço | Um offset por partição; o resto fica para a aplicação (ack por registro só com os share groups do Kafka 4) | Ack, reentrega e dead-letter por mensagem, no broker |
 | Alta disponibilidade | Embutida: replicação por quorum, votação, volta automática | Gerenciada | Partições replicadas | Quorum queues |
 | Escala | Adicione ou retire um nó; ele se rebalanceia sozinho | Gerenciada | Partições redistribuídas à mão ou por ferramentas | Nós; líderes das filas rebalanceados por comando |
 | Backup | Contínuo no S3, restaurado ao subir | Gerenciado | Ferramentas externas | Exportação de definições; ferramentas externas |

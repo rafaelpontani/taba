@@ -6,9 +6,15 @@
 
 [![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verifying-a-release)
 
-**Taba** is a **self-hosted, horizontally scalable messaging cluster**: queues (like SQS) and pub/sub (like SNS) behind one HTTP API, from **a single Docker image**. Add a node and the cluster rebalances itself; remove one and it hands its work over before leaving, with no downtime. Every message is replicated across nodes and kept in memory, with a **continuous backup to S3**. A **Helm chart**, a **terminal UI** and published packages come with it.
+**Taba** is a **messaging suite built for efficiency**: queues (like SQS), FIFO queues and pub/sub (like SNS) behind one HTTP API, from **a single Docker image** and with **no external dependencies** (no coordinator, no database, no separate broker). It **manages itself**: add a node and the cluster rebalances; remove one and it hands its work over before leaving, with no downtime; a node that fails is voted out and rejoins by itself. Every message is replicated across nodes and kept in memory, with a **continuous backup to S3**. A **Helm chart**, a **terminal UI** and published packages come with it.
 
-If you want to get away from per-message billing, from a cluster of brokers to operate, or from depending on a cloud, Taba is for you.
+Its goal is to do the work of a message broker with **few resources**: little CPU and memory per message, few machines, and little time spent operating it. If you want to get away from per-message billing, from a cluster of brokers to operate, or from depending on a cloud, Taba is for you.
+
+## Messaging, not streaming
+
+Taba belongs to the class of **message brokers** (RabbitMQ, NATS JetStream, SQS), not to the class of **streaming platforms** (Kafka, Redpanda, Pulsar). A streaming platform is an append-only log: very fast at writing bytes and replaying them, but it leaves the work around each message to the application: confirming one message and not the next, redelivering only the one that failed, sending it to a dead-letter queue, keeping order by key with more consumers than partitions, expiring a single message. Taba does that work in the broker, and does it with as few resources as it can.
+
+That is also how Taba is measured: [against brokers of the same class](doc/en-US/38-benchmarks.md#what-the-comparison-measures). A streaming platform appears in the benchmark as the reference for the speed of a pure log, not as the target.
 
 ## At a glance
 
@@ -84,6 +90,7 @@ The client API is also at `http://localhost:8080` for any HTTP client (with `Aut
 | **Where it runs** | Anywhere: machine, VM, Docker, Kubernetes | AWS only | Wherever you host it, or as a managed service | Wherever you host it, or as a managed service |
 | **What to run** | The same image on 3 nodes (1 for dev) | Nothing (managed) | Brokers and metadata coordination | A broker (more nodes for high availability) |
 | **Queue and pub/sub** | In the same HTTP API | Two separate services | Topics and consumer groups | Queues and exchanges |
+| **Work per message** | Ack, redelivery, dead-letter and expiry per message, in the broker | Per message, in the service | An offset per partition; the rest is left to the application (per-record ack only with the share groups of Kafka 4) | Ack, redelivery and dead-letter per message, in the broker |
 | **High availability** | Built in: replication by quorum, vote and automatic rejoin | Managed by AWS | Replicated partitions | Quorum queues on a cluster |
 | **Scaling** | Add or remove a node: it rebalances by itself | Automatic (managed) | Brokers and partitions, reassigned by hand or by tools | Nodes in the cluster; queue leaders rebalanced by command |
 | **Backup** | Continuous to S3, restored at start | Managed by AWS | Replication; backup with external tools | Definitions export; messages with external tools |

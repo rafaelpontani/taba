@@ -3,7 +3,7 @@ title: Overview
 summary: What Taba is, who it is for, what it is not, and the list of goals and requirements with the state of each one.
 type: explanation
 status: stable
-verified-on: 2026-10-19 @ 55b9495
+verified-on: 2026-11-02 @ c3a1dbc
 sources: [README.md, Cargo.toml, crates/taba-node/src/lib.rs, docker-compose.yml, connectors/]
 ---
 
@@ -22,6 +22,8 @@ The name comes from **T**ópicos **A**ssíncronos **B**alanceados e **A**utogeri
 
 Each node is **the same program** (the `taba` binary, written in Rust), packaged in a single Docker image. A cluster is three or more identical nodes, with no coordinator, no external database and no separate broker. For testing, one node is enough (the one-node profile).
 
+**The goal is efficiency.** Taba is a suite of messaging solutions (queues, FIFO queues, distribution) that does the work of a message broker with few resources: little CPU and memory per message, no external dependency, and a cluster that manages itself (scaling, maintenance, failures) so that operating it costs little time. It belongs to the class of **message brokers** (RabbitMQ, NATS JetStream, SQS), which ack, redeliver, dead-letter and expire each message in the broker. It is not a **streaming platform** (Kafka, Redpanda, Pulsar): those are append-only logs, very fast at writing and replaying bytes, that leave the work around each message to the application. That is why the benchmark sets Taba's goal against brokers of the same class and keeps the streaming platforms as the reference of a pure log ([38-benchmarks.md](38-benchmarks.md#what-the-comparison-measures), D195).
+
 ![Context: who uses Taba](../diagrams/img/en-US/c4-level0-context.svg)
 
 ## Who it is for
@@ -39,7 +41,7 @@ Each node is **the same program** (the `taba` binary, written in Rust), packaged
 | It is not | Consequence |
 |---|---|
 | A protocol replacement | It does not speak AMQP, MQTT or the Kafka protocol; changing broker means changing the client |
-| A streaming platform | It does not re-read history: after the ack the message is gone (in FIFO, only the body; see [09-topics.md](09-topics.md)) |
+| A streaming platform | It does not re-read history: after the ack the message is gone (in FIFO, only the body; see [09-topics.md](09-topics.md)). In exchange, the work per message (ack, redelivery, dead-letter, order per group, `ttl`) is done by the broker, not by the application |
 | Multi-region | A cluster lives in a single network |
 | A web interface | There is an API, a command line with a full-screen terminal interface ([20b-cli-ui.md](20b-cli-ui.md)) and telemetry; there is no web dashboard |
 | Advanced authentication | There are simple tokens with permissions and prefixes; there is no OAuth/OIDC |
@@ -113,6 +115,7 @@ These eight principles explain many choices in the code. Each one points to wher
 | Where it runs | Anywhere with Docker | Only on AWS | Where you host it, or managed | Where you host it, or managed |
 | What to start | The same image, 3 nodes (1 for dev) | Nothing | Brokers and coordination | Broker (more nodes for high availability) |
 | Queue and pub/sub | In the same HTTP API | Two services | Topics and consumer groups | Queues and *exchanges* |
+| Work per message | Ack, redelivery, dead-letter and `ttl` per message, in the broker | Per message, in the service | An offset per partition; the rest is left to the application (per-record ack only with the share groups of Kafka 4) | Ack, redelivery and dead-letter per message, in the broker |
 | High availability | Built in: quorum replication, vote, automatic return | Managed | Replicated partitions | Quorum queues |
 | Scaling | Add or remove a node; it rebalances by itself | Managed | Partitions reassigned by hand or by tools | Nodes; queue leaders rebalanced by command |
 | Backup | Continuous to S3, restored at start | Managed | External tools | Definitions export; external tools |

@@ -6,9 +6,15 @@
 
 [![Release](https://github.com/rafaelpontani/taba/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rafaelpontani/taba/actions/workflows/release.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rafaelpontani/taba/badge)](https://scorecard.dev/viewer/?uri=github.com/rafaelpontani/taba) [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-blue)](#verificando-um-release)
 
-O **Taba** é um **cluster de mensageria self-hosted, com escala horizontal**: filas (como o SQS) e pub/sub (como o SNS) na mesma API HTTP, a partir de **uma única imagem Docker**. Adicione um nó e o cluster se rebalanceia sozinho; retire um e ele entrega o seu trabalho antes de sair, sem downtime. Toda mensagem é replicada entre os nós e mantida em memória, com **backup contínuo no S3**. Vêm junto um **Helm chart**, uma **interface de terminal** e pacotes publicados.
+O **Taba** é uma **suíte de mensageria feita para ser eficiente**: filas (como o SQS), filas FIFO e pub/sub (como o SNS) na mesma API HTTP, a partir de **uma única imagem Docker** e **sem dependências externas** (sem coordenador, sem banco de dados, sem broker à parte). Ele **se gerencia sozinho**: adicione um nó e o cluster se rebalanceia; retire um e ele entrega o seu trabalho antes de sair, sem downtime; um nó que falha é excluído por votação e volta sozinho. Toda mensagem é replicada entre os nós e mantida em memória, com **backup contínuo no S3**. Vêm junto um **Helm chart**, uma **interface de terminal** e pacotes publicados.
 
-Se você quer fugir da cobrança por mensagem, de um cluster de brokers para operar ou da dependência de uma nuvem, o Taba é para você.
+O objetivo é fazer o trabalho de um broker de mensagens com **poucos recursos**: pouca CPU e memória por mensagem, poucas máquinas e pouco tempo gasto para operar. Se você quer fugir da cobrança por mensagem, de um cluster de brokers para operar ou da dependência de uma nuvem, o Taba é para você.
+
+## Mensageria, não streaming
+
+O Taba é da classe dos **brokers de mensagens** (RabbitMQ, NATS JetStream, SQS), não da classe das **plataformas de streaming** (Kafka, Redpanda, Pulsar). Uma plataforma de streaming é um log de acréscimo: muito rápida para gravar bytes e relê-los, mas deixa para a aplicação o trabalho em volta de cada mensagem: confirmar uma mensagem e não a seguinte, reentregar só a que falhou, mandá-la para uma fila de mensagens mortas, manter a ordem por chave com mais consumidores que partições, expirar uma mensagem só. O Taba faz esse trabalho no broker, e o faz com o mínimo de recursos que consegue.
+
+É também assim que o Taba é medido: [contra brokers da mesma classe](doc/pt-BR/38-benchmarks.md#o-que-a-comparação-mede). Uma plataforma de streaming aparece no benchmark como a referência da velocidade de um log puro, não como a meta.
 
 ## Em resumo
 
@@ -84,6 +90,7 @@ A API de cliente também está em `http://localhost:8080` para qualquer cliente 
 | **Onde roda** | Em qualquer lugar: máquina, VM, Docker, Kubernetes | Só na AWS | Onde você hospedar, ou como serviço gerenciado | Onde você hospedar, ou como serviço gerenciado |
 | **O que operar** | A mesma imagem em 3 nós (1 para desenvolvimento) | Nada (gerenciado) | Brokers e coordenação de metadados | Um broker (mais nós para alta disponibilidade) |
 | **Fila e pub/sub** | Na mesma API HTTP | Dois serviços separados | Tópicos e grupos de consumidores | Filas e exchanges |
+| **Trabalho por mensagem** | Ack, reentrega, dead-letter e expiração por mensagem, no broker | Por mensagem, no serviço | Um offset por partição; o resto fica para a aplicação (ack por registro só com os share groups do Kafka 4) | Ack, reentrega e dead-letter por mensagem, no broker |
 | **Alta disponibilidade** | Embutida: replicação por quorum, votação e volta automática | Gerenciada pela AWS | Partições replicadas | Quorum queues num cluster |
 | **Escala** | Adicione ou retire um nó: ele se rebalanceia sozinho | Automática (gerenciada) | Brokers e partições, redistribuídas à mão ou por ferramentas | Nós do cluster; líderes das filas rebalanceados por comando |
 | **Backup** | Contínuo no S3, restaurado ao subir | Gerenciado pela AWS | Replicação; backup com ferramentas externas | Exportação de definições; mensagens com ferramentas externas |

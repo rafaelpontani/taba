@@ -1,9 +1,9 @@
 ---
 title: Benchmarks
-summary: The local comparative benchmark (bench/run.sh): the OpenMessaging Benchmark against Taba, Kafka, Redpanda, RabbitMQ and NATS JetStream in Docker on one machine, how the comparison is kept fair, the durability levels, the workloads, the report and how to add a system. No number is published yet.
+summary: The local comparative benchmark (bench/run.sh): the OpenMessaging Benchmark against Taba, Kafka, Redpanda, RabbitMQ and NATS JetStream in Docker on one machine, which systems are the target (brokers of the same class) and which are the reference (streaming logs), how the comparison is kept fair, the durability levels, the workloads, the report and how to add a system. No number is published yet.
 type: guide
 status: partial
-verified-on: 2026-10-29 @ 6e8cdf6
+verified-on: 2026-11-02 @ c3a1dbc
 sources: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
@@ -14,6 +14,17 @@ sources: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run
 Taba's speed and cost goals (RNF-02) are measured by a script that anyone can run: `bench/run.sh`. It needs only Docker (Compose v2) with at least **4 cores and 8 GB**, no cloud account, and it compares Taba with Kafka, Redpanda, RabbitMQ and NATS JetStream using the [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) at the commit pinned in `connectors/omb/OMB_VERSION`. **No result is published yet**: the tool is ready, and the numbers will come from a `standard` run made by the maintainer, with the machine described.
 
 A result from one machine is **never an absolute number**. It compares the systems with each other, on that machine, in that run. Every `results.md` says so in its first lines.
+
+## What the comparison measures
+
+Taba is a message broker, not a streaming platform ([01-overview.md](01-overview.md#what-it-is)): it acks, redelivers, dead-letters and expires each message in the broker, and its goal is to do that with few resources. So the systems in the run play two roles (D195):
+
+| Role | Systems | What it answers |
+|---|---|---|
+| **Target** (same class) | RabbitMQ (quorum queue), NATS JetStream | Does Taba do the same work per message with more throughput, or with less CPU and memory, under the same limits? The performance goal is set against them |
+| **Reference** (pure log) | Kafka, Redpanda | How fast the same machine moves bytes when the broker does no work per message. A ceiling to know where the cost is, not a target |
+
+A gap to Kafka or Redpanda is read as the price of the work per message (the delivery state, the ack of each message, the redelivery), not as a failure by itself; a gap to RabbitMQ or NATS is a problem to solve.
 
 ## How to run
 
@@ -102,4 +113,4 @@ A system is a folder, `bench/systems/<name>/`, with `compose.yml` (a service cal
 
 - `bench/run.sh`, `bench/lib.sh` (the plan, the limits, the rotation, the cells), `bench/Dockerfile.runner` (the OMB with all its drivers and the Taba driver), `bench/systems/`, `bench/workloads/`, `bench/profile-*`, `bench/report.mjs`.
 - Use cases `UC-BNC-001` to `UC-BNC-005` in [26a](26a-implemented-use-cases.md) and [26b](26b-planned-use-cases.md); tests in `bench/run.test.mjs`, `bench/report.test.mjs` and `bench/test.sh`.
-- Decision [D185](30-decisions.md).
+- Decisions [D185](30-decisions.md) and [D195](30-decisions.md) (target and reference).

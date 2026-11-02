@@ -1,9 +1,9 @@
 ---
 título: Benchmarks
-resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Nenhum número está publicado ainda.
+resumo: O benchmark comparativo local (bench/run.sh): o OpenMessaging Benchmark contra o Taba, Kafka, Redpanda, RabbitMQ e NATS JetStream em Docker numa máquina só, quem é meta (brokers da mesma classe) e quem é referência (logs de streaming), como a comparação é mantida justa, os níveis de durabilidade, os workloads, o relatório e como incluir um sistema. Nenhum número está publicado ainda.
 tipo: guia
 status: parcial
-verificado-em: 2026-10-29 @ 6e8cdf6
+verificado-em: 2026-11-02 @ c3a1dbc
 fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.sh, bench/lib.sh, bench/report.mjs, bench/Dockerfile.runner, bench/run.test.mjs, bench/report.test.mjs, bench/test.sh, connectors/omb/OMB_VERSION]
 ---
 
@@ -14,6 +14,17 @@ fontes: [bench/cluster-trend.sh, bench/profile.sh, bench/profile.awk, bench/run.
 As metas de velocidade e custo do Taba (RNF-02) são medidas por um script que qualquer pessoa roda: `bench/run.sh`. Ele precisa só de Docker (Compose v2) com pelo menos **4 núcleos e 8 GB**, sem conta em nuvem, e compara o Taba com Kafka, Redpanda, RabbitMQ e NATS JetStream usando o [OpenMessaging Benchmark](https://github.com/openmessaging/benchmark) (OMB) no commit fixado em `connectors/omb/OMB_VERSION`. **Nenhum resultado está publicado ainda**: a ferramenta está pronta, e os números virão de uma rodada `standard` feita pelo mantenedor, com a máquina descrita.
 
 O resultado de uma máquina **nunca é número absoluto**. Ele compara os sistemas entre si, naquela máquina, naquela rodada. Todo `results.md` diz isso nas primeiras linhas.
+
+## O que a comparação mede
+
+O Taba é um broker de mensagens, não uma plataforma de streaming ([01-visao-geral.md](01-visao-geral.md#o-que-é)): ele confirma, reentrega, manda para dead-letter e expira cada mensagem no broker, e o objetivo é fazer isso com poucos recursos. Por isso os sistemas da rodada têm dois papéis (D195):
+
+| Papel | Sistemas | O que responde |
+|---|---|---|
+| **Meta** (mesma classe) | RabbitMQ (fila de quórum), NATS JetStream | O Taba faz o mesmo trabalho por mensagem com mais vazão, ou com menos CPU e memória, sob os mesmos limites? A meta de desempenho é medida contra eles |
+| **Referência** (log puro) | Kafka, Redpanda | Quão rápido a mesma máquina move bytes quando o broker não faz trabalho por mensagem. Um teto para saber onde está o custo, não uma meta |
+
+Uma distância para o Kafka ou o Redpanda é lida como o preço do trabalho por mensagem (o estado da entrega, o ack de cada mensagem, a reentrega), não como uma falha por si só; uma distância para o RabbitMQ ou o NATS é um problema a resolver.
 
 ## Como rodar
 
@@ -102,4 +113,4 @@ Um sistema é uma pasta, `bench/systems/<nome>/`, com `compose.yml` (um serviço
 
 - `bench/run.sh`, `bench/lib.sh` (o plano, os limites, o rodízio, as células), `bench/Dockerfile.runner` (o OMB com todos os drivers e o driver do Taba), `bench/systems/`, `bench/workloads/`, `bench/profile-*`, `bench/report.mjs`.
 - Casos de uso `UC-BNC-001` a `UC-BNC-005` em [26a](26a-casos-de-uso-implementados.md) e [26b](26b-casos-de-uso-planejados.md); testes em `bench/run.test.mjs`, `bench/report.test.mjs` e `bench/test.sh`.
-- Decisão [D185](30-decisoes.md).
+- Decisões [D185](30-decisoes.md) e [D195](30-decisoes.md) (meta e referência).
